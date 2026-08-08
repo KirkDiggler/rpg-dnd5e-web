@@ -21,6 +21,7 @@ import {
   getSavingThrowDisplay,
   getWeaponProficiencyCategoryDisplay,
 } from '../../utils/enumDisplay';
+import { isCompleteEquipmentChoice } from '../../utils/equipmentChoiceSelections';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Only show these classes in the selection (pre-alpha simplification)
@@ -373,12 +374,9 @@ export function ClassSelectionModal({
       const equipmentChoice = currentClassChoices.equipment?.find(
         (ec) => ec.choiceId === choice.id
       );
-      const selected = equipmentChoice?.bundleId
-        ? [equipmentChoice.bundleId]
-        : [];
-      if (selected.length === 0) {
+      if (!isCompleteEquipmentChoice(choice, equipmentChoice)) {
         setErrorMessage(
-          `Please select an option for equipment: ${choice.description}`
+          `Please complete each equipment category with different items: ${choice.description}`
         );
         return;
       }
@@ -1617,6 +1615,9 @@ export function ClassSelectionModal({
                                 <ChoiceRenderer
                                   choice={choice}
                                   currentSelections={equipmentSelections}
+                                  hasInvalidPersistedEquipmentSelection={
+                                    foundEquipment?.hasUnconsumedItems ?? false
+                                  }
                                   onSelectionChange={(
                                     _choiceId,
                                     selections

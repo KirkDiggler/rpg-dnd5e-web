@@ -3,7 +3,13 @@
  * W2 "positive category rule" (design.md).
  */
 
-import { cubeToWorld, HEX_SIZE } from '@/components/hex-grid/hexMath';
+import {
+  cubeToWorld,
+  HEX_DIRECTIONS,
+  HEX_SIZE,
+  type CubeCoord,
+} from '@/components/hex-grid/hexMath';
+import { DOOR_FRAME_CALIBRATED_WIDTH } from '@/components/hex-grid/syntyHexWallHelpers';
 import { CUTAWAY_STUB_WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import { create } from '@bufbuild/protobuf';
 import {
@@ -17,6 +23,8 @@ import {
 import { describe, expect, it } from 'vitest';
 import { REAL_REFERENCE_TOMB_WALLS } from './referenceTombRealWireFixture';
 import {
+  authoredWallEdgeCandidates,
+  authoredWallRunEdgeInputs,
   connectorDoorHeights,
   connectorDoorInputsFromWalls,
   connectorDoorPlanes,
@@ -300,6 +308,139 @@ describe('legacyRenderWalls (positive category rule)', () => {
   });
 });
 
+describe('authoredWallEdgeCandidates (authored-wall-run extraction: interior-category, boundary-edge, non-door walls only)', () => {
+  const regions: RegionInput[] = [
+    {
+      id: 'hall',
+      hexes: [
+        { x: 10, y: -10, z: 0 },
+        { x: 11, y: -11, z: 0 },
+      ],
+    },
+  ];
+
+  it('keeps a boundary-edge non-door wall whose candidate cell falls inside a known region (the authored-dungeon case: a painted zone spanning both sides of a real wall edge)', () => {
+    const edge = wall(10, -10, 0, 11, -11, 0); // hexDistance 1, both cells inside `hall`
+    expect(authoredWallEdgeCandidates([edge], regions, [], [])).toEqual([edge]);
+  });
+
+  it('excludes a DEGENERATE interior wall (a genuine blocked-cell obstacle, e.g. a crypt pillar) — no from/to edge to chain', () => {
+    const pillar = wall(10, -10, 0); // from === to, inside `hall`
+    expect(authoredWallEdgeCandidates([pillar], regions, [], [])).toEqual([]);
+    // Still rendered by the legacy per-cell path, unaffected by this split.
+    expect(legacyRenderWalls([pillar], regions, [], [])).toEqual([pillar]);
+  });
+
+  it('excludes a door wall even when its candidate falls inside a known region — doors keep their own dedicated rendering path', () => {
+    const region: RegionInput[] = [
+      {
+        id: 'hall',
+        hexes: [
+          { x: 1, y: -1, z: 0 },
+          { x: 2, y: -2, z: 0 },
+        ],
+      },
+    ];
+    const door = wall(1, -1, 0, 2, -2, 0, WallKind.DOOR_CLOSED, 'd1');
+    expect(authoredWallEdgeCandidates([door], region, [], [])).toEqual([]);
+  });
+
+  it('excludes a multi-hex-span non-door wall (hexDistance > 1) — not a single real edge to tile', () => {
+    const bigRegion: RegionInput[] = [
+      {
+        id: 'hall',
+        hexes: [
+          { x: 10, y: -10, z: 0 },
+          { x: 12, y: -12, z: 0 },
+        ],
+      },
+    ];
+    const span = wall(10, -10, 0, 12, -12, 0); // hexDistance 2
+    expect(authoredWallEdgeCandidates([span], bigRegion, [], [])).toEqual([]);
+  });
+
+  it('excludes a true outer-perimeter wall with no owning region and no matching door column', () => {
+    const outer = wall(50, -50, 0, 51, -51, 0);
+    expect(authoredWallEdgeCandidates([outer], regions, [], [])).toEqual([]);
+  });
+
+  it('produces nothing for the real reference-tomb wire data (zero regression risk for chain dungeons — every real perimeter/connector wall there is already covered by an envelope/connector run or a door, never left in the interior category)', () => {
+    const tombRegions: RegionInput[] = [
+      { id: 'entrance', hexes: [cubeAtColRow(0, 0), cubeAtColRow(5, 7)] },
+      { id: 'hall', hexes: [cubeAtColRow(7, 0), cubeAtColRow(16, 7)] },
+      { id: 'tomb', hexes: [cubeAtColRow(18, 0), cubeAtColRow(29, 7)] },
+    ];
+    expect(
+      authoredWallEdgeCandidates(
+        REAL_REFERENCE_TOMB_WALLS as unknown as Wall[],
+        tombRegions,
+        [],
+        []
+      )
+    ).toEqual([]);
+  });
+});
+
+describe('authoredWallRunEdgeInputs (full edge-input set for computeAuthoredWallRuns: authoredWallEdgeCandidates + every boundary-edge door)', () => {
+  const regions: RegionInput[] = [
+    {
+      id: 'hall',
+      hexes: [
+        { x: 10, y: -10, z: 0 },
+        { x: 11, y: -11, z: 0 },
+      ],
+    },
+  ];
+
+  it('converts an interior boundary-edge wall to a non-door AuthoredWallEdgeInput', () => {
+    const edge = wall(10, -10, 0, 11, -11, 0);
+    expect(authoredWallRunEdgeInputs([edge], regions, [], [])).toEqual([
+      {
+        id: undefined,
+        from: { x: 10, y: -10, z: 0 },
+        to: { x: 11, y: -11, z: 0 },
+        isDoor: false,
+      },
+    ]);
+  });
+
+  it('includes a boundary-edge door as isDoor: true, unconditionally (no region/category test)', () => {
+    const door = wall(1, -1, 0, 2, -2, 0, WallKind.DOOR_CLOSED, 'd1');
+    expect(authoredWallRunEdgeInputs([door], [], [], [])).toEqual([
+      {
+        id: 'd1',
+        from: { x: 1, y: -1, z: 0 },
+        to: { x: 2, y: -2, z: 0 },
+        isDoor: true,
+      },
+    ]);
+  });
+
+  it('excludes a degenerate door (no designated passage edge to chain against)', () => {
+    const degenerateDoor = wall(1, -1, 0, 1, -1, 0, WallKind.DOOR_CLOSED, 'd1');
+    expect(authoredWallRunEdgeInputs([degenerateDoor], [], [], [])).toEqual([]);
+  });
+
+  it('combines interior wall edges and doors from the same wall list', () => {
+    const edge = wall(10, -10, 0, 11, -11, 0);
+    const door = wall(1, -1, 0, 2, -2, 0, WallKind.DOOR_CLOSED, 'd1');
+    const result = authoredWallRunEdgeInputs([edge, door], regions, [], []);
+    expect(result).toHaveLength(2);
+    expect(result).toContainEqual({
+      id: undefined,
+      from: { x: 10, y: -10, z: 0 },
+      to: { x: 11, y: -11, z: 0 },
+      isDoor: false,
+    });
+    expect(result).toContainEqual({
+      id: 'd1',
+      from: { x: 1, y: -1, z: 0 },
+      to: { x: 2, y: -2, z: 0 },
+      isDoor: true,
+    });
+  });
+});
+
 describe("connectorFallbackSegments (W3 fallback restyle: same category-rule candidates as legacyRenderWalls' old category (c), now rendered as straight column-aligned segments instead of the legacy per-cell path)", () => {
   const regions: RegionInput[] = [
     { id: 'hall', hexes: [{ x: 10, y: -10, z: 0 }] },
@@ -370,6 +511,78 @@ describe("connectorFallbackSegments (W3 fallback restyle: same category-rule can
       const toPoint = { x: point.x - columnTop.x, z: point.z - columnTop.z };
       expect(Math.abs(crossZ(columnDir, toPoint))).toBeLessThan(1e-9);
     }
+  });
+
+  it('terminates a one-sided fallback at the same calibrated frame envelope as its resolved ConnectorRun successor', () => {
+    const door = { id: 'door-1', position: cubeAtColRow(60, 4) };
+    const fallback = connectorFallbackSegments(
+      [cellWall(60, 3), ...anchors(0, 7)],
+      regions,
+      [],
+      [door]
+    )[0]!;
+    const rows = (minCol: number, maxCol: number): CubeCoord[] => {
+      const hexes: CubeCoord[] = [];
+      for (let col = minCol; col <= maxCol; col++) {
+        for (let row = 0; row <= 7; row++) hexes.push(cubeAtColRow(col, row));
+      }
+      return hexes;
+    };
+    const resolved = computeWallRuns({
+      regions: [
+        { id: 'left', hexes: rows(58, 59) },
+        { id: 'right', hexes: rows(61, 62) },
+      ],
+      doors: [door],
+    }).connectorRuns[0]!.segments[0]!;
+    const doorCenter = cubeToWorld(door.position, HEX_SIZE);
+    const candidateCenter = cubeToWorld(cubeAtColRow(60, 3), HEX_SIZE);
+    const length = Math.hypot(
+      doorCenter.x - candidateCenter.x,
+      doorCenter.z - candidateCenter.z
+    );
+    const towardDoor = {
+      x: (doorCenter.x - candidateCenter.x) / length,
+      z: (doorCenter.z - candidateCenter.z) / length,
+    };
+    const expected = {
+      x: doorCenter.x - towardDoor.x * (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+      z: doorCenter.z - towardDoor.z * (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+    };
+
+    expect(fallback.end).toEqual(expected);
+    expect(resolved.end).toEqual(expected);
+
+    const afterFallback = connectorFallbackSegments(
+      [cellWall(60, 5), ...anchors(0, 7)],
+      regions,
+      [],
+      [door]
+    )[0]!;
+    const afterResolved = computeWallRuns({
+      regions: [
+        { id: 'left', hexes: rows(58, 59) },
+        { id: 'right', hexes: rows(61, 62) },
+      ],
+      doors: [door],
+    }).connectorRuns[0]!.segments[1]!;
+    const afterCandidateCenter = cubeToWorld(cubeAtColRow(60, 5), HEX_SIZE);
+    const afterLength = Math.hypot(
+      afterCandidateCenter.x - doorCenter.x,
+      afterCandidateCenter.z - doorCenter.z
+    );
+    const afterExpected = {
+      x:
+        doorCenter.x +
+        ((afterCandidateCenter.x - doorCenter.x) / afterLength) *
+          (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+      z:
+        doorCenter.z +
+        ((afterCandidateCenter.z - doorCenter.z) / afterLength) *
+          (DOOR_FRAME_CALIBRATED_WIDTH / 2),
+    };
+    expect(afterFallback.start).toEqual(afterExpected);
+    expect(afterResolved.start).toEqual(afterExpected);
   });
 
   it('excludes a BOUNDARY-EDGE candidate one row beyond the true grid (STILL-BLOCKED regression) even though its column matches a known door', () => {
@@ -611,6 +824,37 @@ describe('connectorDoorPlanes (rpg-project#132 connector-single-wall follow-up, 
     // door (not a coincidental fixture artifact).
     expect(hexColumn(doorHex)).toBe(6);
     expect(hexRow(doorHex)).toBe(4);
+  });
+
+  it('keeps the calibrated connector plane stable for all six wire passage orientations and closed/open/locked states', () => {
+    const doorHex = cubeAtColRow(6, 4);
+    const planes = HEX_DIRECTIONS.map((direction, index) => {
+      const kind = [
+        WallKind.DOOR_CLOSED,
+        WallKind.DOOR_OPEN,
+        WallKind.DOOR_LOCKED,
+      ][index % 3]!;
+      const wireDoor = wall(
+        doorHex.x,
+        doorHex.y,
+        doorHex.z,
+        doorHex.x + direction.x,
+        doorHex.y + direction.y,
+        doorHex.z + direction.z,
+        kind,
+        `door-${index}`
+      );
+      const input = connectorDoorInputsFromWalls([wireDoor]);
+      return connectorDoorPlanes(input, HEX_SIZE).get(`door-${index}`)!;
+    });
+
+    // The production adapter intentionally ignores the arbitrary passage
+    // edge: all states/orientations place the frame on the same connector
+    // column plane from the door cell itself.
+    for (const plane of planes) {
+      expect(plane.position).toEqual(cubeToWorld(doorHex, HEX_SIZE));
+      expect(plane.rotationY).toBeCloseTo(planes[0]!.rotationY, 9);
+    }
   });
 });
 

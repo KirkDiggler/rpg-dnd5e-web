@@ -1,0 +1,30 @@
+version: 1
+key: specimen-kitchen-sink
+name: Specimen — Kitchen Sink
+theme: crypt
+height: 8
+rooms:
+  - id: entry
+    archetype: entrance
+    width: 6
+    place:
+      - { ref: "dnd5e:props:brazier", at: [ 1, 1 ], blocks_movement: true, blocks_los: false }
+      - { ref: "dnd5e:props:statue-reaper", at: [ 3, 1 ], blocks_movement: false, blocks_los: false }
+      - { ref: "dnd5e:props:tomb-open", at: [ 5, 1 ], blocks_movement: true }
+  - id: hall
+    archetype: chamber
+    width: 12
+    obstacles:
+      - { ref: "dnd5e:props:bone-pile", count: 3 }
+    place:
+      - { ref: "dnd5e:monsters:skeleton-captain", at: [ 5, 2 ] }
+      - { ref: "dnd5e:props:wall-banner", at: [ 7, 1 ], blocks_movement: false, blocks_los: false }
+      - { ref: "dnd5e:props:wall-banner", at: [ 8, 3 ], blocks_movement: false, blocks_los: false }
+      - { ref: "dnd5e:props:candles", at: [ 9, 3 ], blocks_movement: false, blocks_los: false }
+  - id: sanctum
+    archetype: boss
+    width: 8
+    boss: { ref: "dnd5e:monsters:skeleton-captain", at: [ 4, 3 ] }
+connectors:
+  - { from: entry, to: hall, locked: { dc: 14, ability: dex } }
+  - { from: hall, to: sanctum }

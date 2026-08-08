@@ -32,6 +32,15 @@ export interface EquipmentChoice {
     categoryIndex: number;
     equipmentIds: string[]; // IDs of equipment selected from this category
   }>;
+  /**
+   * True when reconstructing this choice from persisted wire data found
+   * items left over after the selected bundle's fixed items and every
+   * declared category consumed their slice. That only happens when the
+   * persisted shape doesn't match the declared choice (stale bundle,
+   * schema drift, corruption) — never a legitimately-complete choice.
+   * Absent/false for choices built directly from UI interaction.
+   */
+  hasUnconsumedItems?: boolean;
 }
 
 export interface FeatureChoice {

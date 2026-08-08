@@ -39,3 +39,4 @@ dist-ssr
 
 # Synty-derived assets — licensed, do not redistribute via the repo
 public/models/synty/
+evidence/

@@ -20,6 +20,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cubeAtColRow } from '../../hooks/wallRuns';
 import type { HexGridProps } from '../hex-grid';
 
 const hoisted = vi.hoisted(() => ({
@@ -48,6 +49,33 @@ function revealedHex(x: number, y: number, z: number, zoneId = ''): HexRecord {
   return create(HexRecordSchema, {
     position: create(PositionSchema, { x, y, z }),
     zoneId,
+  });
+}
+
+/** A small 2-column x 2-row zone's worth of revealed hexes, tagged with
+ * `zoneId` — geometrically identical whether that zone represents a real
+ * chain-generated room or a canvas dungeon's purely semantic painted
+ * region (the wire can't tell the two apart from hex membership alone;
+ * that's exactly the bug this file's "wall truth" describe block covers). */
+function zoneHexes(zoneId: string): HexRecord[] {
+  return [
+    cubeAtColRow(0, 0),
+    cubeAtColRow(1, 0),
+    cubeAtColRow(0, 1),
+    cubeAtColRow(1, 1),
+  ].map((c) => revealedHex(c.x, c.y, c.z, zoneId));
+}
+
+/** A non-door SOLID wall entry — the shape a real chain dungeon's
+ * perimeter/connector walls take on the wire (WallKind.SOLID = 1),
+ * standing in for "the server actually emitted wall data for this
+ * space" regardless of this particular entry's own position. */
+function solidWall(id: string): Wall {
+  return create(WallSchema, {
+    from: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+    to: create(PositionSchema, { x: 0, y: 0, z: 0 }),
+    kind: WallKind.SOLID,
+    id,
   });
 }
 
@@ -211,5 +239,173 @@ describe('EncounterMap look-lab lighting experiment dials (?floorPools=1/?litSur
     const props = hoisted.lastHexGridProps.current!;
     expect(props.floorPoolLights).toBeUndefined();
     expect(props.litSurfaces).toBe(false);
+  });
+});
+
+describe('EncounterMap wall truth gate (game walls from truth — zones are not rooms)', () => {
+  it('a zone with ZERO server wall data renders NO envelope/connector walls — canvas regions are semantic-only, not rooms (the untitled-creation bug: walls: [], 3 painted regions, fictional envelope walls in the real game route)', () => {
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={
+          new Map(
+            zoneHexes('region-1').map((h) => [
+              `${h.position!.x},${h.position!.y},${h.position!.z}`,
+              h,
+            ])
+          )
+        }
+        walls={new Map()}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.envelopeRuns).toEqual([]);
+    expect(props.envelopeCorners).toEqual([]);
+    expect(props.connectorRuns).toEqual([]);
+  });
+
+  it('a zone WITH real server wall data (chain dungeons) still produces envelope walls — regression guard, this fix must not strip real room walls', () => {
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={
+          new Map(
+            zoneHexes('room-a').map((h) => [
+              `${h.position!.x},${h.position!.y},${h.position!.z}`,
+              h,
+            ])
+          )
+        }
+        walls={new Map([['wall-1', solidWall('wall-1')]])}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.envelopeRuns!.length).toBe(4); // left/right/top/bottom
+    expect(props.envelopeCorners!.length).toBe(4);
+  });
+
+  it('an entirely empty encounter (no zones, no walls) still renders with no envelope walls, not a crash', () => {
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={new Map()}
+        walls={new Map()}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.envelopeRuns).toEqual([]);
+    expect(props.envelopeCorners).toEqual([]);
+    expect(props.connectorRuns).toEqual([]);
+  });
+});
+
+describe("EncounterMap authored-wall-run wiring (unit/authored-wall-runs: authored walls speak the game's run language)", () => {
+  /** A non-door boundary-edge wall between two adjacent hexes that are
+   * BOTH inside the same painted zone — exactly the shape #720
+   * established an authored dungeon's real wall edges take relative to
+   * its own (semantic-only) zone hex membership: categorizeWall's
+   * 'interior' branch, the extraction point for authoredWallRuns. */
+  function interiorBoundaryWall(
+    fromCol: number,
+    fromRow: number,
+    toCol: number,
+    toRow: number,
+    id?: string
+  ): Wall {
+    const from = cubeAtColRow(fromCol, fromRow);
+    const to = cubeAtColRow(toCol, toRow);
+    return create(WallSchema, {
+      from: create(PositionSchema, { x: from.x, y: from.y, z: from.z }),
+      to: create(PositionSchema, { x: to.x, y: to.y, z: to.z }),
+      kind: WallKind.SOLID,
+      id,
+    });
+  }
+
+  it("an authored dungeon's real boundary-edge wall renders as an authored run, not through legacySyntyWalls (the jagged-per-edge regression this unit fixes)", () => {
+    const zone = zoneHexes('room-a'); // a 2x2 block: (0,0),(1,0),(0,1),(1,1)
+    const edge = interiorBoundaryWall(0, 0, 1, 0, 'edge-1');
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={
+          new Map(
+            zone.map((h) => [
+              `${h.position!.x},${h.position!.y},${h.position!.z}`,
+              h,
+            ])
+          )
+        }
+        walls={new Map([['edge-1', edge]])}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.authoredRuns!.length).toBeGreaterThanOrEqual(1);
+    expect(props.legacySyntyWalls).not.toContainEqual(edge);
+  });
+
+  it("a chain dungeon's real wall data (never in the interior category — covered by an envelope/connector run or a door instead) produces NO authored runs — regression guard for the existing chain-dungeon render path", () => {
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={
+          new Map(
+            zoneHexes('room-a').map((h) => [
+              `${h.position!.x},${h.position!.y},${h.position!.z}`,
+              h,
+            ])
+          )
+        }
+        walls={new Map([['wall-1', solidWall('wall-1')]])}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.authoredRuns).toEqual([]);
+    // The pre-existing chain-dungeon envelope behavior (#720's own
+    // regression guard, above) is untouched by this addition.
+    expect(props.envelopeRuns!.length).toBe(4);
+  });
+
+  it('a degenerate interior wall (a genuine blocked-cell obstacle, e.g. a crypt pillar) stays on the legacy per-cell renderer, never becomes an authored run', () => {
+    const zone = zoneHexes('room-a');
+    const pillar = solidWall('pillar-1'); // degenerate: from === to at (0,0,0), inside the zone
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={
+          new Map(
+            zone.map((h) => [
+              `${h.position!.x},${h.position!.y},${h.position!.z}`,
+              h,
+            ])
+          )
+        }
+        walls={new Map([['pillar-1', pillar]])}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.authoredRuns).toEqual([]);
+    expect(props.legacySyntyWalls).toContainEqual(pillar);
+  });
+
+  it('a door edge is unaffected: still rendered via legacySyntyWalls (the existing per-edge door frame/leaf path), never converted into an authored run', () => {
+    const zone = zoneHexes('room-a');
+    const door = doorWall('door-1');
+    render(
+      <EncounterMap
+        {...baseProps()}
+        revealedHexes={
+          new Map(
+            zone.map((h) => [
+              `${h.position!.x},${h.position!.y},${h.position!.z}`,
+              h,
+            ])
+          )
+        }
+        walls={new Map([['door-1', door]])}
+      />
+    );
+    const props = hoisted.lastHexGridProps.current!;
+    expect(props.legacySyntyWalls).toContainEqual(door);
   });
 });

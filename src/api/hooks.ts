@@ -27,11 +27,8 @@ import {
   ListCharactersRequestSchema,
   ListClassesRequestSchema,
   ListDraftsRequestSchema,
-  ListEquipmentByTypeRequestSchema,
   ListRacesRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import type { EquipmentType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import type { Equipment } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/equipment_types_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { characterClient } from './client';
 
@@ -660,75 +657,6 @@ export function useRollAbilityScores() {
   );
 
   return { rollAbilityScores, response, loading, error };
-}
-
-// Equipment API hooks
-export function useListEquipmentByType({
-  equipmentType,
-  pageSize = 50,
-  enabled = true,
-}: {
-  equipmentType: EquipmentType;
-  pageSize?: number;
-  enabled?: boolean;
-}) {
-  const [state, setState] = useState<
-    ListState<Equipment> & {
-      nextPageToken?: string;
-    }
-  >({
-    data: [],
-    loading: false,
-    error: null,
-    nextPageToken: undefined,
-  });
-
-  const fetchEquipment = useCallback(
-    async (pageToken?: string) => {
-      setState((prev) => ({
-        ...prev,
-        loading: true,
-        error: null,
-      }));
-      try {
-        const request = create(ListEquipmentByTypeRequestSchema, {
-          equipmentType,
-          pageSize,
-          pageToken: pageToken || '',
-        });
-        const response = await characterClient.listEquipmentByType(request);
-        setState({
-          data: response.equipment || [],
-          loading: false,
-          error: null,
-          nextPageToken: response.nextPageToken,
-        });
-      } catch (err) {
-        setState({
-          data: [],
-          loading: false,
-          error:
-            err instanceof Error ? err : new Error('Failed to fetch equipment'),
-          nextPageToken: undefined,
-        });
-      }
-    },
-    [equipmentType, pageSize]
-  );
-
-  useEffect(() => {
-    if (enabled) {
-      void fetchEquipment();
-    }
-  }, [fetchEquipment, enabled]);
-
-  return {
-    ...state,
-    refetch: (pageToken?: string) => fetchEquipment(pageToken),
-    loadMore: state.nextPageToken
-      ? () => fetchEquipment(state.nextPageToken)
-      : undefined,
-  };
 }
 
 // Delete character hook

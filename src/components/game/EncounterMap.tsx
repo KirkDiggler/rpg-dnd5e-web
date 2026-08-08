@@ -29,8 +29,11 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
 import { DevPerfProbe } from '../../dev/DevPerfProbe';
+import { computeAuthoredWallRuns } from '../../hooks/authoredWallRuns';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import {
+  authoredWallEdgeCandidates,
+  authoredWallRunEdgeInputs,
   connectorDoorHeights,
   connectorDoorInputsFromWalls,
   connectorDoorPlanes,
@@ -134,6 +137,11 @@ export interface EncounterMapProps {
   openDoorIds?: string[];
   /** Full computed path (start + intermediates + end) when a hex click lands a move. */
   onMove: (path: Array<{ x: number; y: number; z: number }>) => void;
+  /** Presentation-only completion of an entity's exact rendered move. */
+  onEntityMovementPresentationComplete?: (
+    entityId: string,
+    moveSeq: number
+  ) => void;
   /** Clicked entity id — caller dispatches attack for monsters or selects for characters. */
   onEntityClick: (entityId: string) => void;
   /** Fired with the door's Wall.id (rpg-api-protos#186) when a DOOR_* wall
@@ -159,6 +167,7 @@ export function EncounterMap({
   movementRemaining = DEFAULT_MOVEMENT_FEET,
   openDoorIds = [],
   onMove,
+  onEntityMovementPresentationComplete,
   onEntityClick,
   onDoorClick,
 }: EncounterMapProps) {
@@ -200,13 +209,15 @@ export function EncounterMap({
   }, [entities, myEntityId]);
 
   // Dungeon-walls redesign (rpg-project#133 design.md/plan.md's W2 slice):
-  // reconstruct each room's hex membership from the wire's per-hex zoneId
-  // (regions have no width/offset field on the wire at all — see
-  // wallRuns.ts's doc comment), derive each door's own cell from the walls
-  // list, and compute the straight envelope/connector runs those feed.
-  // Also builds the positive-category-filtered legacy wall list
-  // (doors + interior pattern walls only) and the per-door rotation
-  // overrides HexGrid/SyntyHexWall consume below.
+  // reconstruct each ZONE's hex membership from the wire's per-hex zoneId
+  // (zones have no width/offset field on the wire at all — see
+  // wallRuns.ts's doc comment). For a chain dungeon a zone IS a room; for a
+  // canvas dungeon a zone is a semantic-only scope with no wall truth
+  // behind it (spec §4.10.2.4) — this grouping alone does NOT mean "these
+  // hexes are enclosed by walls." Feeds the `?authorGrid=1` coordinate
+  // overlay unconditionally (labeling is honest for either dungeon kind);
+  // feeds envelope/connector wall-run computation only when gated by real
+  // wall truth below (`hasWallTruth`) — see that gate's own comment.
   const regions = useMemo(
     () => regionInputsFromHexes(revealedHexes.values()),
     [revealedHexes]
@@ -226,11 +237,38 @@ export function EncounterMap({
     () => connectorDoorInputsFromWalls(wallList),
     [wallList]
   );
+  // Wall truth gate (game-walls-truth fix, zones are not rooms):
+  // `computeWallRuns` has no notion of "openness" at all (wallRuns.ts's own
+  // doc comment on envelopeGeometryForRegion) — it synthesizes a full
+  // envelope purely from a region's bounding box, unconditionally. That's
+  // only a legitimate stand-in for a room's real walls when the server has
+  // actually emitted wall data for this space: a chain dungeon's rooms ARE
+  // its zones, and the toolkit's generator emits perimeter/connector Wall
+  // entries for every one of them, unconditionally, from the first
+  // snapshot (this file's own wallRunAdapters.wireGridBounds doc comment).
+  // A canvas dungeon's `regions:` are semantic-only zones — fog/reveal/
+  // naming scopes, spec §4.10.2.4: "region boundaries are semantic-only,
+  // MUST NOT compile to edges" — with zero server-side wall truth behind
+  // them. Feeding their bounding boxes into computeWallRuns synthesized
+  // full envelope walls around painted regions that don't exist server-side:
+  // the real bug on the `untitled-creation` dungeon (walls: [], 3 painted
+  // regions) — fictional walls in the actual game route that the server's
+  // own movement model never enforced. `wallList.length > 0` is the right
+  // signal rather than anything zone-shaped: the wall list is unconditional
+  // and whole-dungeon from wave 1, so an empty list means no wall truth
+  // exists ANYWHERE in this encounter, not merely "not revealed yet" — zero
+  // false negatives for a real walled (chain) dungeon, which always has a
+  // non-empty walls list by construction.
+  const hasWallTruth = wallList.length > 0;
   const wallRunsResult = useMemo(
-    () => computeWallRuns({ regions, doors: connectorDoors }),
-    [regions, connectorDoors]
+    () =>
+      computeWallRuns({
+        regions: hasWallTruth ? regions : [],
+        doors: connectorDoors,
+      }),
+    [regions, connectorDoors, hasWallTruth]
   );
-  const legacySyntyWalls = useMemo(
+  const legacySyntyWallsRaw = useMemo(
     () =>
       legacyRenderWalls(
         wallList,
@@ -240,6 +278,66 @@ export function EncounterMap({
       ),
     [wallList, regions, wallRunsResult, connectorDoors]
   );
+  // Authored-wall-run rendering (rpg-project#720 follow-up, "authored
+  // walls speak the game's run language"): every 'interior'-category,
+  // boundary-edge, non-door wall (authoredWallEdgeCandidates' own doc
+  // comment) — the category nearly every real authored (canvas) dungeon
+  // wall edge falls into today, since #720 correctly stopped feeding a
+  // zone's bounding box into computeWallRuns for those, but never gave
+  // them anywhere better to render than SyntyHexWall's legacy per-cell
+  // path (the "vertical blinds" jagged look: one small piece per single
+  // hex edge, independently rotated/variant-picked). Chained into
+  // straight runs and rendered by WallRunMesh with the same tiled-Synty-
+  // piece language envelope/connector runs already use. A chain dungeon's
+  // real perimeter/connector walls are never in 'interior' category (they
+  // resolve to an envelope/connector run or a door instead), so this is a
+  // no-op there — see wallRunAdapters.test.ts's own regression coverage
+  // against real reference-tomb wire data.
+  const authoredWallEdges = useMemo(
+    () =>
+      authoredWallEdgeCandidates(
+        wallList,
+        regions,
+        wallRunsResult.connectorRuns,
+        connectorDoors
+      ),
+    [wallList, regions, wallRunsResult, connectorDoors]
+  );
+  const authoredWallRuns = useMemo(() => {
+    const edgeInputs = authoredWallRunEdgeInputs(
+      wallList,
+      regions,
+      wallRunsResult.connectorRuns,
+      connectorDoors
+    );
+    // Ground each run's outward `facing` in real floor proximity (every
+    // revealed region's own hex membership) rather than the pure
+    // connected-component-centroid fallback — see
+    // computeAuthoredWallRuns' own `floorHexes` doc comment for why a
+    // centroid-only heuristic breaks down on a finely irregular boundary
+    // (verified live against dungeon-one's own wall data: roughly half
+    // its crenellated stretch's tiled pieces showed their flat,
+    // undecorated back to the player instead of the tinted/detailed
+    // front — exactly Kirk's live report that authored walls read as
+    // dark/illegible, worst under crypt's already-dim mood lighting).
+    const floorHexes = regions.flatMap((region) => region.hexes);
+    return computeAuthoredWallRuns(edgeInputs, HEX_SIZE, floorHexes);
+  }, [wallList, regions, wallRunsResult, connectorDoors]);
+  // legacySyntyWallsRaw still includes every 'interior' wall (degenerate
+  // AND boundary-edge alike — legacyRenderWalls' own contract is
+  // unchanged, see authoredWallEdgeCandidates' doc comment on why it
+  // stays a narrower, separate selection rather than a mutation of that
+  // function). Subtract exactly the boundary-edge ones now covered by
+  // authoredWallRuns above, by reference (both derive from the SAME
+  // `wallList` array, so its own elements are shared, not cloned) — a
+  // degenerate 'interior' wall (a real blocked-cell obstacle, e.g. a
+  // crypt pillar) is never in `authoredWallEdges`, so it stays on
+  // SyntyHexWall's legacy per-cell path unaffected.
+  const legacySyntyWalls = useMemo(() => {
+    if (authoredWallEdges.length === 0) return legacySyntyWallsRaw;
+    const covered = new Set(authoredWallEdges);
+    return legacySyntyWallsRaw.filter((wall) => !covered.has(wall));
+  }, [legacySyntyWallsRaw, authoredWallEdges]);
   // W3 "fallback restyle" (rpg-project#133 design.md/plan.md): the same
   // structural safety-net candidates legacyRenderWalls used to keep for
   // SyntyHexWall's legacy per-cell renderer now render as straight,
@@ -545,6 +643,7 @@ export function EncounterMap({
         envelopeCorners={wallRunsResult.envelopeCorners}
         connectorRuns={wallRunsResult.connectorRuns}
         connectorFallbackSegments={fallbackSegments}
+        authoredRuns={authoredWallRuns}
         doorPlaneOverrides={doorPlaneOverrides}
         wallHeight={wallHeightOverride}
         wallCutaway={wallCutawayOverride}
@@ -583,6 +682,9 @@ export function EncounterMap({
         onMoveComplete={(path: CubeCoord[]) => {
           onMove(path.map((c) => ({ x: c.x, y: c.y, z: c.z })));
         }}
+        onEntityMovementPresentationComplete={
+          onEntityMovementPresentationComplete
+        }
         onEntityClick={(targetId: string) => {
           onEntityClick(targetId);
         }}

@@ -1,0 +1,16 @@
+{
+  "dropped": [
+    "defaults (2 refs; blocks_movement/blocks_los materialized onto 1 placement from 1 of them)",
+    "2 walls",
+    "start",
+    "end",
+    "lighting",
+    "2 top-level placements (mapped into rooms)",
+    "facing (4 placements)",
+    "wall-mount (2 placements)",
+    "height (3 placements)",
+    "targeting (2 placements)",
+    "fine-rotation experiment (2 placements)"
+  ],
+  "compilable": true
+}

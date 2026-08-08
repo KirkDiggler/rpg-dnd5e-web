@@ -108,7 +108,27 @@ export function ClassCharacterModel({
   // one — the model would silently stop animating the moment a player was
   // first selected. Tinting is applied as a separate effect below instead
   // of folding into this clone step.
-  const cloned = useMemo(() => cloneSkeleton(scene), [scene]);
+  //
+  // Every mesh opts OUT of raycasting here too (rpg-dnd5e-web
+  // unit/game-fidelity, Bug A): a THREE.SkinnedMesh raycasts against its
+  // BIND-POSE geometry, never the pose the idle/walk clip actually renders,
+  // so a click on the visible (animated) body hits or misses depending on
+  // which frame is showing — with no console signal on a miss. HexEntity
+  // now mounts a static capsule raycast proxy alongside this model (see its
+  // own doc comment) that is unaffected by any animation; this model's own
+  // meshes have no business being raycast targets at all once that proxy
+  // exists, so disabling it here is both the actual bug fix and a perf win
+  // (R3F's raycaster no longer has to walk this whole skinned mesh tree on
+  // every pointer move). A no-op function, not `null`/`undefined` — three.js
+  // calls `object.raycast(raycaster, intersects)` unconditionally, so the
+  // override must stay callable.
+  const cloned = useMemo(() => {
+    const clone = cloneSkeleton(scene);
+    clone.traverse((child) => {
+      if (child instanceof THREE.Mesh) child.raycast = () => {};
+    });
+    return clone;
+  }, [scene]);
 
   // Snapshot each mesh's original (untinted) material once per `cloned`
   // identity, so the tint effect below always starts from a clean base —

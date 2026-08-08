@@ -23,6 +23,7 @@ import {
   type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
+import { DOOR_FRAME_CALIBRATED_WIDTH } from '@/components/hex-grid/syntyHexWallHelpers';
 import { describe, expect, it } from 'vitest';
 import {
   REAL_LOOK_LAB_DOORS,
@@ -1747,4 +1748,48 @@ describe('computeWallRuns — widening propagation across a 3+ room chain (gate 
       distance(tombBottom.start, stuckAtRow4)
     );
   });
+});
+
+describe('computeWallRuns — door-frame junctions (#635)', () => {
+  it.each([
+    { height: 4, doorRow: 1, label: 'short connector' },
+    { height: 12, doorRow: 6, label: 'long connector' },
+  ])(
+    '$label terminates both wall halves at the calibrated frame envelope without crossing the door center',
+    ({ height, doorRow }) => {
+      const doorCol = 2;
+      const regions: RegionInput[] = [
+        { id: 'left', hexes: regionCubes(2, height, 0) },
+        { id: 'right', hexes: regionCubes(2, height, 3) },
+      ];
+      const door = {
+        id: `door-${height}`,
+        position: cubeAtColRow(doorCol, doorRow),
+      };
+      const run = computeWallRuns({ regions, doors: [door] }).connectorRuns[0]!;
+      const [beforeDoor, afterDoor] = run.segments;
+      const center = cubeToWorld(door.position, HEX_SIZE);
+      const next = cubeToWorld(cubeAtColRow(doorCol, doorRow + 1), HEX_SIZE);
+      const length = Math.hypot(next.x - center.x, next.z - center.z);
+      const direction = {
+        x: (next.x - center.x) / length,
+        z: (next.z - center.z) / length,
+      };
+      const along = (point: WorldPos) =>
+        (point.x - center.x) * direction.x + (point.z - center.z) * direction.z;
+
+      // Prior geometry ended these at +/-sqrt(3) (the adjacent row centers),
+      // leaving the reported 1.15-unit daylight gap after #634's 0.08 tile
+      // overlap. The renderer now overlaps this exact frame envelope by 0.08.
+      const halfFrame = DOOR_FRAME_CALIBRATED_WIDTH / 2;
+      expect(along(beforeDoor!.end)).toBeCloseTo(-halfFrame, 9);
+      expect(along(afterDoor!.start)).toBeCloseTo(halfFrame, 9);
+      expect(Math.abs(along(beforeDoor!.end))).toBeLessThan(1);
+      expect(Math.abs(along(afterDoor!.start))).toBeLessThan(1);
+
+      // Nearest endpoints are outside, never through, the door center.
+      expect(along(beforeDoor!.end)).toBeLessThan(0);
+      expect(along(afterDoor!.start)).toBeGreaterThan(0);
+    }
+  );
 });

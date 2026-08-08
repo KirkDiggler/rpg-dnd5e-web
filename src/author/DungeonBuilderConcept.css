@@ -1,0 +1,68 @@
+/* dungeon-builder concept styles — colocated and imported only by this
+ * concept (no established per-concept CSS convention exists yet in
+ * src/concepts/; other concepts are unstyled/Tailwind-only prototypes).
+ * The affordances below (hazard-stripe door row, entrance BLOCKED
+ * warning) are load-bearing to the interaction under review, not
+ * cosmetic, so they need real styling rather than semantic-only class
+ * hooks. */
+
+.db-cell-empty {
+  fill: #26211c;
+  stroke: #3a332c;
+  stroke-width: 1;
+}
+.db-cell-empty.db-placeable {
+  cursor: pointer;
+}
+.db-cell-empty.db-placeable:hover {
+  fill: #332c24;
+  stroke: #c9a227;
+}
+.db-cell-doorrow {
+  fill: url(#db-doorrow-hatch);
+  stroke: #ffb347;
+  stroke-width: 1.5;
+  opacity: 0.92;
+  cursor: not-allowed;
+}
+/* Both wall/door band cells are now honestly interactive (Kirk's
+ * 2026-08-02 "I cannot set a wall or a door — just realized the gashes
+ * are walls" ask) — wall cells open the WallGashExplainer, door cells
+ * open ConnectorInspector. Neither is a placement handle (cursor: pointer,
+ * not "grab" or similar), but neither is `not-allowed` anymore either —
+ * that cursor was actively misleading once these cells became clickable. */
+.db-cell-wall {
+  fill: #2a2521;
+  stroke: #1c1713;
+  stroke-width: 1;
+  cursor: pointer;
+}
+.db-cell-wall:hover {
+  fill: #362f28;
+  stroke: #5a4a3a;
+}
+.db-cell-door {
+  fill: #2a2117;
+  stroke: #ffb347;
+  stroke-width: 1.5;
+  cursor: pointer;
+}
+.db-cell-door:hover {
+  fill: #3a2a17;
+  stroke: #ffcb70;
+}
+.db-cell-door-selected {
+  stroke: #ffd76a;
+  stroke-width: 3;
+}
+.db-room-label {
+  fill: #a89e90;
+  font-size: 11px;
+}
+.db-room-label-id {
+  fill: #ffd76a;
+  font-weight: 600;
+}
+.db-entrance-marker {
+  pointer-events: none;
+}

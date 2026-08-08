@@ -12,6 +12,17 @@
  * - Turn order overlay
  */
 
+import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+// facingToRotationY is the Kirk-approved reference mapping for a wire
+// `facing` index (rpg-dnd5e-web unit/game-fidelity Bug B) — the builder's
+// 3D preview (author/preview3d/DungeonPreview3D.tsx) already renders
+// authored facing through this exact function, verified correct against
+// TARGET-YAML.md's E/NE/NW/W/SW/SE convention. The live game route reuses
+// it rather than re-deriving an equivalent, per this codebase's own
+// "MEASURED, not inferred" facing-offset discipline (facing.ts's own doc
+// comment on a prior naive-derivation hazard) — importing the single
+// existing measurement is the only way to GUARANTEE agreement with it.
+import { facingToRotationY } from '@/author/boardGeometry';
 import {
   doorHexKinds,
   doorHexPositions,
@@ -40,6 +51,7 @@ import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
+import { readCameraDials } from './cameraDials';
 import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexEntity } from './HexEntity';
 import {
@@ -86,6 +98,11 @@ export interface HexGridEntity {
   isDowned?: boolean;
   obstacleType?: ObstacleType;
   propRefId?: string;
+  /** Authored runtime-override facing (rpg-dnd5e-web unit/game-fidelity Bug
+   * B) — wire hex-direction index E=0/NE=1/NW=2/W=3/SW=4/SE=5, converted to
+   * a rotationY by `resolvePropRotationY` below. Undefined means no
+   * authored override. */
+  facing?: number;
   movePath?: { x: number; y: number; z: number }[];
   moveSeq?: number;
   knowledgeState?: SceneKnowledgeState;
@@ -109,6 +126,11 @@ export interface HexGridProps {
   /** Monster combat state for texture selection (includes monsterType) */
   monsters?: MonsterCombatState[];
   onMoveComplete?: (path: CubeCoord[]) => void;
+  /** Presentation-only completion of an entity's exact rendered move. */
+  onEntityMovementPresentationComplete?: (
+    entityId: string,
+    moveSeq: number
+  ) => void;
   onAttackComplete?: (targetId: string) => void;
   onHoverChange?: (
     entity: { id: string; type: string; name: string } | null
@@ -157,6 +179,15 @@ export interface HexGridProps {
    * instead of SyntyHexWall's legacy per-cell hex-vertex look. Empty/
    * omitted renders nothing extra, unchanged from pre-W3 behavior. */
   connectorFallbackSegments?: WallRunSegment[];
+  /** A canvas (authored) dungeon's own real wall edges, chained into
+   * straight runs by authoredWallRuns.computeAuthoredWallRuns and rendered
+   * by WallRunMesh with the SAME tiled-Synty-piece language as
+   * envelopeRuns — see WallRunMesh's own `authoredRuns` prop doc comment
+   * for why this can't reuse envelope/connector geometry (a canvas
+   * dungeon's regions are semantic-only zones, not wall truth). Empty/
+   * omitted (every caller not yet updated, and any chain-generated
+   * dungeon) renders nothing extra, unchanged. */
+  authoredRuns?: AuthoredWallRun[];
   /** Per-door exact position + rotationY override, keyed by Wall.id
    * (wallRunAdapters.connectorDoorPlanes) — passed straight through to
    * SyntyHexWall so a door frame/leaf sits exactly on its connector's own
@@ -310,6 +341,30 @@ const GROUND_PLANE_SIZE = 200;
  * duplicating the whole rotation-computation wiring. */
 const WALL_ADJACENT_PROP_KEYS = new Set<string>(['dnd5e:props:wall-banner']);
 
+/** The rotationY HexEntity's `propRotationY` prop should actually receive
+ * for one entity (rpg-dnd5e-web unit/game-fidelity Bug B) — the computed
+ * wall-adjacent rotation (wall-banner, geometry-derived from wall
+ * neighbors, ignores `facing` entirely) wins when present, since it solves
+ * a DIFFERENT problem (flush-against-a-specific-wall-face) that a bare
+ * `facingToRotationY` conversion doesn't attempt; otherwise an authored
+ * wire `facing` (statues, bookcases, etc.) converts via the same
+ * Kirk-approved `facingToRotationY` the builder's 3D preview already uses.
+ * `undefined` (no wall-adjacent match AND no authored facing) falls
+ * through to PropModel's own rotationY=0 default, unchanged from every
+ * entity before this field existed. Pulled out of the render loop as a
+ * pure, exported function so the precedence rule is covered by a direct
+ * unit test instead of only a live-render assertion — same "pull the
+ * composition into arithmetic a test can pin" reasoning as
+ * HexEntity.tsx's `shouldTiltDeadOrDowned`. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function resolvePropRotationY(
+  wallAdjacentRotationY: number | undefined,
+  facing: number | undefined
+): number | undefined {
+  if (wallAdjacentRotationY !== undefined) return wallAdjacentRotationY;
+  return facing === undefined ? undefined : facingToRotationY(facing);
+}
+
 // Scene consumes this exact helper; exporting it permits pathfinding coverage.
 // eslint-disable-next-line react-refresh/only-export-components
 export function isHexBlocked(
@@ -394,6 +449,7 @@ function Scene({
   isPlayerTurn = false,
   combatState = null,
   onMoveComplete,
+  onEntityMovementPresentationComplete,
   onAttackComplete,
   onHoverChange,
   onDoorClick,
@@ -408,6 +464,7 @@ function Scene({
   envelopeCorners = [],
   connectorRuns = [],
   connectorFallbackSegments = [],
+  authoredRuns = [],
   doorPlaneOverrides,
   wallHeight,
   wallCutaway = false,
@@ -496,6 +553,24 @@ function Scene({
     }
     return map;
   }, [entities, walls, wallKindByHex]);
+
+  // Final per-entity propRotationY (rpg-dnd5e-web unit/game-fidelity Bug B)
+  // — combines the wall-adjacent computation above with an authored wire
+  // `facing` via resolvePropRotationY's own precedence rule. Precomputed
+  // once per (entities, wallAdjacentRotations) change, same reasoning as
+  // wallAdjacentRotations itself: O(entities) here instead of resolving
+  // per-entity inline in the render loop below.
+  const propRotationYByEntity = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const entity of entities) {
+      const rotationY = resolvePropRotationY(
+        wallAdjacentRotations.get(entity.entityId),
+        entity.facing
+      );
+      if (rotationY !== undefined) map.set(entity.entityId, rotationY);
+    }
+    return map;
+  }, [entities, wallAdjacentRotations]);
 
   // Create character lookup map by ID for efficient entity -> character mapping
   const characterMap = useMemo(() => {
@@ -603,15 +678,24 @@ function Scene({
     return new THREE.Vector3(worldPos.x, 0, worldPos.z);
   }, [myPosX, myPosY, myPosZ]);
 
+  // Camera-feel dials (`?camera=persp`, `?pitchCurve=1`, ...) — read once,
+  // all-off by default, so with no query params this call is exactly the
+  // fixed-angle orthographic rig it has always been. See cameraDials.ts.
+  const cameraDials = useMemo(() => readCameraDials(), []);
+
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
     target: stableTarget,
     polarAngle: Math.PI / 3.5, // ~51 degrees from vertical - slightly lower tactical angle
     panSpeed: 0.3,
     rotateSpeed: 0.02,
-    minZoom: 30,
-    maxZoom: 150,
+    minZoom: cameraDials.zoomMin,
+    maxZoom: cameraDials.zoomMax,
     focusTarget,
+    curve: cameraDials.curve,
+    perspective: cameraDials.perspective,
+    minDistance: cameraDials.minDistance,
+    maxDistance: cameraDials.maxDistance,
   });
 
   // Build entity map for interaction hook (excludes dead entities so they
@@ -971,6 +1055,7 @@ function Scene({
             envelopeCorners={envelopeCorners}
             connectorRuns={connectorRuns}
             fallbackSegments={connectorFallbackSegments}
+            authoredRuns={authoredRuns}
             spaceTheme={spaceTheme}
             rememberedEnvelopeRegionIds={rememberedRunIds.envelopeRegionIds}
             rememberedConnectorDoorIds={rememberedRunIds.connectorDoorIds}
@@ -1044,9 +1129,10 @@ function Scene({
           isDowned={entity.isDowned}
           obstacleType={entity.obstacleType}
           propRefId={entity.propRefId}
-          propRotationY={wallAdjacentRotations.get(entity.entityId)}
+          propRotationY={propRotationYByEntity.get(entity.entityId)}
           movePath={entity.movePath}
           moveSeq={entity.moveSeq}
+          onMovementPresentationComplete={onEntityMovementPresentationComplete}
           knowledgeState={entity.knowledgeState}
         />
       ))}
@@ -1065,6 +1151,13 @@ export function HexGrid(props: HexGridProps) {
   const { combatState, characters = [] } = props;
   const [isContextLost, setIsContextLost] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Camera-feel dials again out here: Scene reads them for the CONTROLS, but
+  // the projection itself is a `<Canvas>` prop and Scene lives inside it.
+  // Both call the same read-once parser rather than sharing state, so there
+  // is nothing to keep in sync. Default (no query params) is unchanged:
+  // orthographic, zoom 80.
+  const canvasDials = useMemo(() => readCameraDials(), []);
 
   // Handle WebGL context loss/restore for GPU protection
   const handleCanvasCreated = useCallback(
@@ -1160,7 +1253,12 @@ export function HexGrid(props: HexGridProps) {
         </div>
       ) : (
         <Canvas
-          orthographic
+          // Projection is fixed at mount — R3F does not swap camera type on a
+          // prop change — so the dial rides a `key` to force a clean remount.
+          // The dials are read once from the URL, so this key is stable and
+          // nothing remounts in practice.
+          key={canvasDials.perspective ? 'persp' : 'ortho'}
+          orthographic={!canvasDials.perspective}
           frameloop="demand"
           onCreated={handleCanvasCreated}
           camera={{
@@ -1170,9 +1268,14 @@ export function HexGrid(props: HexGridProps) {
             // facing against CAMERA_WARD_XZ, derived from this same value)
             // can never drift out of sync with the actual camera.
             position: CAMERA_OFFSET,
-            zoom: 80,
             near: 0.1,
             far: 1000,
+            // `zoom` drives an orthographic camera, `fov` a perspective one.
+            // Both are spelled here because useCameraControls immediately
+            // takes over placement either way; only the projection differs.
+            ...(canvasDials.perspective
+              ? { fov: canvasDials.fovDeg }
+              : { zoom: canvasDials.zoomStart }),
           }}
           style={{ width: '100%', height: '100%' }}
         >

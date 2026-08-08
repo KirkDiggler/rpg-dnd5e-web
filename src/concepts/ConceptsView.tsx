@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
+import { PropCompositionConcept } from '../author/PropCompositionConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
@@ -15,7 +17,9 @@ type ConceptPage =
   | 'equipment'
   | 'combat-pacing'
   | 'just-roll'
-  | 'fog-of-war';
+  | 'fog-of-war'
+  | 'dungeon-builder'
+  | 'prop-composition';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'class-selection', label: 'Class Selection' },
@@ -25,6 +29,8 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'combat-pacing', label: 'Combat Pacing' },
   { id: 'just-roll', label: 'Just Roll' },
   { id: 'fog-of-war', label: 'Fog of War' },
+  { id: 'dungeon-builder', label: 'Dungeon Builder' },
+  { id: 'prop-composition', label: 'Prop Composition' },
 ];
 
 interface ConceptsViewProps {
@@ -73,7 +79,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
       </div>
 
       {/* Sub-navigation */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {CONCEPT_PAGES.map((page) => (
           <button
             key={page.id}
@@ -110,6 +116,16 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
         {activePage === 'just-roll' && <JustRollConcept />}
         {activePage === 'fog-of-war' && <FogOfWarConcept />}
+        {/* Graduated (rpg-project#194): the real builder now lives at the
+            `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
+            tab is the dev sandbox — same component tree, `forceFixtures`
+            so it never calls PutDungeon and never depends on a running
+            server, per Kirk's ask ("a dev one that is hooked to fixture
+            data"). */}
+        {activePage === 'dungeon-builder' && (
+          <DungeonBuilderConcept forceFixtures />
+        )}
+        {activePage === 'prop-composition' && <PropCompositionConcept />}
       </motion.div>
     </div>
   );

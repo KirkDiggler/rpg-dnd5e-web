@@ -1,6 +1,7 @@
 import type { EntityDamaged } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useReducedMotion } from 'framer-motion';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -47,6 +48,15 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('CombatPresentation', () => {
+  it('uses a layout-phase lifecycle release so outcome state commits before the Impact/Verdict paint', () => {
+    const source = readFileSync(
+      'src/components/game/combatPresentation/CombatPresentation.tsx',
+      'utf8'
+    );
+    expect(source).toContain('useLayoutEffect');
+    expect(source).toMatch(/useLayoutEffect\(\(\) => \{[\s\S]*onResultRelease/);
+  });
+
   it('keeps the authoritative roll out of initial static markup', () => {
     const markup = renderToStaticMarkup(
       <CombatPresentation item={item()} onComplete={() => {}} />
@@ -72,71 +82,126 @@ describe('CombatPresentation', () => {
     expect(complete).toHaveBeenCalledWith(7);
   });
 
-  it('announces the server-sent damage result once while hiding the decorative copy from assistive tech', () => {
-    const { rerender } = render(
+  it('gates the server-sent damage behind Impact, emits one semantic result release, and announces it once in the verdict live-region', () => {
+    const onResultRelease = vi.fn();
+    render(
       <CombatPresentation
         item={item()}
-        damage={damage()}
+        damage={damage(16)}
+        onResultRelease={onResultRelease}
         onComplete={() => {}}
       />
     );
 
-    const visualDamage = screen.getByTestId('combat-presentation-damage');
-    const liveDamage = screen.getByTestId(
-      'combat-presentation-damage-announce'
-    );
+    // Damage streamed in immediately (correlation-keyed), but the beat is
+    // still idle/cue/armed/throw — nothing damage-shaped may render yet.
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+    expect(screen.queryByText(/16 damage/)).toBeNull();
 
-    expect(visualDamage.getAttribute('aria-hidden')).toBe('true');
-    expect(liveDamage.getAttribute('role')).toBe('status');
-    expect(liveDamage.getAttribute('aria-live')).toBe('polite');
-    expect(liveDamage.getAttribute('aria-atomic')).toBe('true');
-    expect(liveDamage.textContent).toBe('Damage dealt: 7');
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+
+    act(() => vi.advanceTimersByTime(CINEMATIC.throw));
+    // Now in verdict — still gated; the roll's HIT/MISS must resolve on
+    // its own before damage joins it.
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('verdict');
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+
+    act(() => vi.advanceTimersByTime(CINEMATIC.verdict));
+    // Impact: damage appears now, inside the SAME status region as the
+    // verdict — not a second announced surface.
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('impact');
+    const revealed = screen.getByTestId('beat-damage');
+    expect(revealed.textContent).toContain('16 damage');
+    expect(screen.getByTestId('beat-verdict').contains(revealed)).toBe(true);
     expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(onResultRelease).toHaveBeenCalledExactlyOnceWith(7);
 
-    rerender(
-      <CombatPresentation
-        item={item()}
-        damage={damage()}
-        onComplete={() => {}}
-      />
+    act(() => vi.advanceTimersByTime(CINEMATIC.impact));
+    expect(onResultRelease).toHaveBeenCalledOnce();
+    // Release: damage stays visible, doesn't flash away before the item
+    // completes.
+    expect(screen.getByTestId('beat-damage').textContent).toContain(
+      '16 damage'
     );
-
-    expect(screen.getAllByRole('status')).toHaveLength(1);
   });
 
-  it('does not complete a newly swapped item until its own sequence finishes', () => {
+  it('never reveals damage for a miss', () => {
+    render(
+      <CombatPresentation
+        item={item({ hit: false, attackRoll: 8 })}
+        damage={damage(16)}
+        onComplete={() => {}}
+      />
+    );
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    act(() => vi.advanceTimersByTime(CINEMATIC.throw + CINEMATIC.verdict));
+    expect(
+      screen.getByTestId('combat-presentation').getAttribute('data-beat')
+    ).toBe('release');
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+  });
+
+  it('gates damage under reduced motion the same way, using the shortened throw', () => {
+    vi.mocked(useReducedMotion).mockReturnValue(true);
+    render(
+      <CombatPresentation
+        item={item()}
+        damage={damage(16)}
+        onComplete={() => {}}
+      />
+    );
+    act(() => vi.advanceTimersByTime(CINEMATIC.cue));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    expect(screen.queryByTestId('beat-damage')).toBeNull();
+    act(() => vi.advanceTimersByTime(80 + CINEMATIC.verdict));
+    expect(screen.getByTestId('beat-damage').textContent).toContain(
+      '16 damage'
+    );
+  });
+
+  it('does not complete or re-release a newly swapped item until its own sequence finishes', () => {
     const complete = vi.fn();
+    const resultRelease = vi.fn();
     const firstItem = item();
     const secondItem = { ...item(), id: 8 };
     const { rerender } = render(
-      <CombatPresentation item={firstItem} onComplete={complete} />
+      <CombatPresentation
+        item={firstItem}
+        onResultRelease={resultRelease}
+        onComplete={complete}
+      />
     );
     act(() => vi.advanceTimersByTime(CINEMATIC.cue));
     fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
-    act(() =>
-      vi.advanceTimersByTime(
-        CINEMATIC.throw +
-          CINEMATIC.verdict +
-          CINEMATIC.impact +
-          CINEMATIC.release
-      )
-    );
+    act(() => vi.advanceTimersByTime(CINEMATIC.throw));
+    act(() => vi.advanceTimersByTime(CINEMATIC.verdict));
+    expect(resultRelease).toHaveBeenCalledExactlyOnceWith(7);
+    act(() => vi.advanceTimersByTime(CINEMATIC.impact + CINEMATIC.release));
     expect(complete).toHaveBeenCalledExactlyOnceWith(7);
 
-    rerender(<CombatPresentation item={secondItem} onComplete={complete} />);
+    rerender(
+      <CombatPresentation
+        item={secondItem}
+        onResultRelease={resultRelease}
+        onComplete={complete}
+      />
+    );
 
     expect(complete).toHaveBeenCalledExactlyOnceWith(7);
     act(() => vi.advanceTimersByTime(CINEMATIC.cue));
     fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
-    act(() =>
-      vi.advanceTimersByTime(
-        CINEMATIC.throw +
-          CINEMATIC.verdict +
-          CINEMATIC.impact +
-          CINEMATIC.release
-      )
-    );
+    act(() => vi.advanceTimersByTime(CINEMATIC.throw));
+    act(() => vi.advanceTimersByTime(CINEMATIC.verdict));
+    act(() => vi.advanceTimersByTime(CINEMATIC.impact + CINEMATIC.release));
     expect(complete).toHaveBeenLastCalledWith(8);
+    expect(resultRelease.mock.calls).toEqual([[7], [8]]);
   });
 
   it('completes an item only once when onComplete changes after done', () => {
@@ -173,14 +238,16 @@ describe('CombatPresentation', () => {
     ).toBe('throw');
   });
 
-  it('autoplays and completes a non-viewer miss with no throw control and one MISS status', () => {
+  it('autoplays a non-viewer miss and releases its log seam exactly with the MISS verdict', () => {
     const complete = vi.fn();
+    const resultRelease = vi.fn();
     render(
       <CombatPresentation
         item={{
           ...item({ attackerEntityId: 'npc-1', hit: false, attackRoll: 8 }),
           isViewerAttack: false,
         }}
+        onResultRelease={resultRelease}
         onComplete={complete}
       />
     );
@@ -188,7 +255,9 @@ describe('CombatPresentation', () => {
     expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
     expect(screen.getAllByRole('status')).toHaveLength(1);
     expect(screen.getByRole('status').textContent).toContain('MISS');
+    expect(resultRelease).toHaveBeenCalledExactlyOnceWith(7);
     act(() => vi.advanceTimersByTime(CINEMATIC.verdict + CINEMATIC.release));
+    expect(resultRelease).toHaveBeenCalledOnce();
     expect(complete).toHaveBeenCalledWith(7);
   });
 

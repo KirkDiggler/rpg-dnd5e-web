@@ -12,6 +12,30 @@ let it rot.
 
 ## Active work
 
+- **Authoritative character-creation category options (#690)** — the production
+  `EquipmentBundleChoice` now renders `EquipmentCategoryChoice.options` directly
+  through the accessible rich dropdown/card. It no longer reconstructs category
+  membership or calls `ListEquipmentByType`; ordered toolkit/API options and their
+  selection IDs are preserved through selection and reopened-draft hydration.
+  Persisted flat selection items are reconstructed into the selected bundle's
+  declared category slices (order + `choose` counts), offset past the bundle's
+  fixed items first (the toolkit's own build order); a toolkit-enumerated wire
+  item (weapon/armor/tool/pack/ammunition enum, not `other_equipment_id`) is
+  mapped back to its authoritative `selectionId` via that category's own
+  `options`, not re-derived client-side. A same-category legacy duplicate is
+  surfaced for correction and cannot invoke finalization, the same selection ID
+  remains valid in independently declared categories, and persisted items left
+  over after every declared slot has consumed its slice are treated as invalid
+  rather than silently finalized: the affected equipment control announces a
+  correction alert (not completion) until the player changes that choice.
+  The equipment controls re-sync if a reopened draft's persisted selection
+  resolves after the choice has already mounted. A raw `other_equipment_id`
+  remains an opaque server selection ID: the client deliberately does not
+  duplicate category eligibility rules to reject it locally, because API
+  finalization delegates authoritative eligibility/count/uniqueness validation
+  to the toolkit. Proto dependency: `rpg-api-protos#207` / `v0.1.118`;
+  provider: `rpg-api#764`.
+
 - **Equipment live on the game screen (#571)** — the `/concepts` equipment
   chip + popover bench (#531/#557) is wired to the real
   `dnd5e.api.v1alpha2.character.CharacterService.EquipItem`/`UnequipItem`

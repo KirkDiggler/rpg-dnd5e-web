@@ -18,10 +18,13 @@
  * is this repo's hand-kept mirror of that mapping, same discipline as
  * classCharacterModels.ts's CLASS_CHARACTER_MODELS.
  *
- * Phase 1 has one deterministic candidate per mapped reference: Soldier01
- * for skeleton and Knight for skeleton-captain. The seven private standing
- * assets each export exactly `Idle_Relaxed` [2,55] then in-place
- * `Walk_Forward` [2,33]; only these two assets are runtime-selectable here.
+ * Phase 1 had one deterministic candidate per mapped reference: Soldier01
+ * for skeleton, Knight for skeleton-captain. rpg-dnd5e-web#673 added a
+ * second shape: `zombie` maps to TWO candidates (zombieMutant/hulking,
+ * zombiePeasantFemale/gaunt), picked per-entity rather than always [0] —
+ * see `pickStableCandidateIndex` below. Every mapped reference's standing
+ * asset exports `Idle_Relaxed` or a same-shaped idle clip plus an in-place
+ * `Walk_Forward`; only mapped assets are runtime-selectable here.
  *
  * This hardcoded table is a stopgap for this slice, not the intended end
  * state. propManifest.ts / rpg-game-assets' prop-role-map.json is the
@@ -49,28 +52,36 @@
  * 2. v1alpha1 `MonsterCombatState.monster_type` (`MonsterType` enum,
  *    @kirkdiggler/rpg-api-protos' enums_pb.ts) — the harness/dev-injected
  *    shape (HexGrid's `monsters` prop) and any older caller that hasn't
- *    wired the v1alpha2 meta through yet. Only mapped for the two
- *    MonsterType values that actually have a promoted GLB this wave
- *    (SKELETON, SKELETON_CAPTAIN) — every other value (ZOMBIE, GHOUL,
+ *    wired the v1alpha2 meta through yet. Only mapped for the MonsterType
+ *    values that actually have a promoted GLB (SKELETON, SKELETON_CAPTAIN,
+ *    ZOMBIE as of rpg-dnd5e-web#673) — every other value (GHOUL,
  *    SKELETON_ARCHER, and every non-undead monster) resolves to undefined
  *    here on purpose, same as an unmapped classRefId.
  *
  * Both signals resolve into the SAME ref-id key space before the single
  * table lookup below, so "resolved model" only ever needs one table.
  *
- * Deliberately NOT mapped this wave (rpg-dnd5e-web#559 issue thread):
+ * "zombie" (rpg-dnd5e-web#673, superseding #559's original plan): rather
+ * than one green-tinted class-model reuse, rpg-game-assets#41 promoted TWO
+ * genuinely distinct zombie looks — Style A/"hulking" (zombieMutant) and
+ * Style B/"gaunt" (zombiePeasantFemale) — both mapped to the same toolkit
+ * ref (`zombie`) because both represent the same SRD monster; which look a
+ * given zombie ENTITY renders is a client-side pick, not an asset or rules
+ * decision (rpg-game-assets manifest.json's own `rulesRefNote` for both
+ * entries says exactly this). `MONSTER_REF_MODELS.zombie` therefore holds
+ * TWO candidates instead of one, and `resolveMonsterModelUrl` picks between
+ * them deterministically from the entity's own id (`pickStableCandidateIndex`
+ * below) rather than always taking candidate 0 — every ref with exactly one
+ * candidate (skeleton, skeleton-captain) is unaffected: `x % 1` is always
+ * `0`, so single-candidate resolution is unchanged bit-for-bit.
+ *
+ * Deliberately NOT mapped (rpg-dnd5e-web#559 issue thread):
  * - "ghost" / "specter": Character_Ghost_01/02 and Character_Tormented_Soul
  *   are promoted GLBs, but no rpg-toolkit monster ref for either exists yet
  *   (rulebooks/dnd5e/refs/monsters.go's Undead set is Skeleton/Zombie/
  *   SkeletonArcher/SkeletonCaptain/Ghoul only) -- the server can never send
  *   a monsterRefId that would select them today. Wiring them is a follow-up
  *   the moment the toolkit grows those refs, not a client gap now.
- * - "zombie": no zombie GLB is promoted this wave — issue #559 tracks a
- *   green-tinted material reuse of the barbarian CLASS model instead (no
- *   zombie model exists in any owned Synty pack), a materially different
- *   mechanism (a tint on an existing rig, not an npc GLB) that this
- *   resolver doesn't attempt. Falls through to MediumHumanoid until that
- *   lands.
  * - "ghoul" / "skeleton-archer": refs exist in the toolkit but neither has
  *   a promoted GLB in this issue's asset list.
  */
@@ -84,7 +95,10 @@ const MONSTER_MODEL_BASE = '/models/synty/npcs/';
  * against that file rather than guessed from the proto's MonsterType enum
  * names (which use a different casing convention and, for GHOST/SPECTER,
  * have no equivalent at all). Each value is an ORDERED candidate list of
- * asset-source-named standing-pose files. */
+ * asset-source-named standing-pose files — order is stable (insertion
+ * order, never reshuffled) because `pickStableCandidateIndex` indexes into
+ * it positionally; reordering this array would silently reassign every
+ * existing entity's rendered style on next load. */
 const MONSTER_REF_MODELS: Record<string, string[]> = {
   skeleton: ['skeleton-soldier-01.glb'],
   // The boss's rules identity is skeleton-captain-shaped (rpg-project#110
@@ -94,16 +108,73 @@ const MONSTER_REF_MODELS: Record<string, string[]> = {
   // not the asset. Filed under the boss's real ref id, not a "wight"
   // placeholder.
   'skeleton-captain': ['skeleton-knight.glb'],
+  // Two genuinely distinct looks for the one `zombie` ref (rpg-dnd5e-web#673,
+  // rpg-game-assets#41) — Style A/hulking, Style B/gaunt. Order fixed here;
+  // `resolveMonsterModelUrl` picks between them per-entity, not always [0].
+  zombie: ['zombie-mutant.glb', 'zombie-peasant-female.glb'],
 };
 
-/** The only MonsterType enum values with a promoted GLB this wave, mapped
- * into the same ref-id key space MONSTER_REF_MODELS is keyed by. Every
- * other enum value (including every non-undead monster) is intentionally
- * absent -- see this module's doc comment. */
+/** The MonsterType enum values with a promoted GLB, mapped into the same
+ * ref-id key space MONSTER_REF_MODELS is keyed by. Every other enum value
+ * (including every non-undead monster) is intentionally absent -- see this
+ * module's doc comment. */
 const MONSTER_TYPE_TO_REF_ID: Partial<Record<MonsterType, string>> = {
   [MonsterType.SKELETON]: 'skeleton',
   [MonsterType.SKELETON_CAPTAIN]: 'skeleton-captain',
+  [MonsterType.ZOMBIE]: 'zombie',
 };
+
+/**
+ * Deterministic string hash (FNV-1a, 32-bit) — used only to turn an entity
+ * id into a stable index over a ref's candidate list. Not cryptographic,
+ * not security-sensitive; the only property that matters is that the same
+ * input string always produces the same output number, in this process and
+ * every other one (no `Math.random`, no object identity, no Map insertion
+ * order), so the same entity picks the same style on every render, every
+ * reconnect, and every other client watching the same encounter.
+ */
+function fnv1aHash(input: string): number {
+  let hash = 0x811c9dc5; // FNV offset basis
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // FNV prime
+  }
+  return hash >>> 0; // unsigned
+}
+
+/**
+ * Pick a stable index into a `count`-length candidate list from an entity's
+ * own id — the whole point of rpg-dnd5e-web#673: a zombie's rendered style
+ * must be a pure function of its identity, not of render order, mount
+ * order, or which client is watching, so two zombies in the same encounter
+ * can show both styles at once with neither one flickering between them on
+ * a rerender.
+ *
+ * `count <= 1` always returns `0` without even looking at `entityId` — every
+ * existing single-candidate ref (skeleton, skeleton-captain) is provably
+ * unaffected by this function's introduction, not just unaffected in
+ * practice.
+ *
+ * A missing `entityId` (defensive only — HexEntity's `entityId` prop is
+ * required, every real caller has one) also resolves to `0`, the same
+ * graceful degrade-to-first-candidate this file already used for every ref
+ * before this function existed.
+ *
+ * @example
+ * ```typescript
+ * pickStableCandidateIndex('goblin-1', 1); // 0 -- single-candidate ref
+ * pickStableCandidateIndex('zombie-1', 2); // stable 0 or 1, same every call
+ * pickStableCandidateIndex(undefined, 2); // 0 -- no id to key off of
+ * ```
+ */
+export function pickStableCandidateIndex(
+  entityId: string | undefined,
+  count: number
+): number {
+  if (count <= 1) return 0;
+  if (!entityId) return 0;
+  return fnv1aHash(entityId) % count;
+}
 
 /** Insert the `-downed` suffix before the extension, matching
  * characters/manifest.json's `<name>-downed.glb` convention.
@@ -130,13 +201,21 @@ function withDownedSuffix(file: string): string {
  * MediumHumanoid path in that case, never a broken model reference
  * (rpg-dnd5e-web#479 boundary lineage, same as resolveClassCharacterModelUrl).
  *
+ * `entityId` (rpg-dnd5e-web#673) selects WHICH candidate a multi-candidate
+ * ref (today, only `zombie`) renders — see `pickStableCandidateIndex`.
+ * Single-candidate refs ignore it entirely (`x % 1 === 0` always), so every
+ * pre-#673 caller/behavior is unchanged whether or not it passes one.
+ *
  * @example
  * ```typescript
- * resolveMonsterModelUrl('skeleton', undefined, false);
- * // '/models/synty/npcs/skeleton-soldier-01.glb' -- first candidate look
- * resolveMonsterModelUrl(undefined, MonsterType.SKELETON_CAPTAIN, true);
+ * resolveMonsterModelUrl('skeleton', undefined, false, 'goblin-1');
+ * // '/models/synty/npcs/skeleton-soldier-01.glb' -- only candidate look
+ * resolveMonsterModelUrl(undefined, MonsterType.SKELETON_CAPTAIN, true, 'boss-1');
  * // '/models/synty/npcs/skeleton-knight-downed.glb'
- * resolveMonsterModelUrl('goblin', undefined, false);
+ * resolveMonsterModelUrl('zombie', undefined, false, 'zombie-1');
+ * // '/models/synty/npcs/zombie-mutant.glb' OR
+ * // '/models/synty/npcs/zombie-peasant-female.glb' -- stable per entityId
+ * resolveMonsterModelUrl('goblin', undefined, false, 'goblin-1');
  * // undefined — no crypt-roster GLB mapped for goblin
  * ```
  */
@@ -148,7 +227,16 @@ export function resolveMonsterModelUrl(
    * a CHARACTER-only "unconscious" concept to feed it with — HexEntity.tsx's
    * only call site passes `isDead` here instead (monsters die at 0 HP
    * rather than going unconscious; see buildRenderableEntities). */
-  isDowned: boolean
+  isDowned: boolean,
+  /** The entity's own id — keys the deterministic style pick for a
+   * multi-candidate ref (rpg-dnd5e-web#673). Optional/defensive only: every
+   * real HexEntity call site has one (`entityId` is a required prop there);
+   * an absent id degrades to candidate 0, same as before this parameter
+   * existed. MUST be the same value on every render of the same entity —
+   * passing a freshly-generated id per render (e.g. a `Math.random()`
+   * suffix) would defeat the whole point and reintroduce the flicker this
+   * parameter exists to prevent. */
+  entityId?: string
 ): string | undefined {
   const trimmedRefId = monsterRefId?.trim().toLowerCase();
   const refId =
@@ -158,7 +246,9 @@ export function resolveMonsterModelUrl(
       : undefined);
   if (!refId) return undefined;
   const candidates = MONSTER_REF_MODELS[refId];
-  const file = candidates?.[0];
+  if (!candidates || candidates.length === 0) return undefined;
+  const file =
+    candidates[pickStableCandidateIndex(entityId, candidates.length)];
   if (!file) return undefined;
   return MONSTER_MODEL_BASE + (isDowned ? withDownedSuffix(file) : file);
 }

@@ -156,9 +156,26 @@ export interface LocalEncounterState {
    * (e.g. bounced off a wall and sent back) still each count as a fresh
    * move worth animating, not a no-op React dependency.
    */
+  /**
+   * `facing` (rpg-dnd5e-web unit/game-fidelity Bug B): the wire's
+   * `Placement.facing` (v1alpha2 types_pb.ts — an authored runtime-override
+   * hex-direction index, E=0/NE=1/NW=2/W=3/SW=4/SE=5, `optional uint32` so
+   * presence distinguishes "no override" from explicit E=0), carried
+   * through by `applyHexRecordsMerged`/`applyEntityAppearedBatch` alongside
+   * `position` since both ride the SAME `Placement` record on the wire.
+   * Undefined means no authored override — the renderer keeps whatever
+   * default orientation it already uses (unchanged from every pre-existing
+   * caller). See `facingByEntityIdFromHexes`'s doc comment for the
+   * snapshot-hydration counterpart of this same field.
+   */
   entities: Map<
     string,
-    EntityState & { ghost?: boolean; movePath?: Position[]; moveSeq?: number }
+    EntityState & {
+      ghost?: boolean;
+      movePath?: Position[];
+      moveSeq?: number;
+      facing?: number;
+    }
   >;
   /** v1alpha2-revealed hexes, keyed by stable cube coordinate. */
   revealedHexes: Map<string, HexRecord>;
@@ -451,6 +468,52 @@ export function positionByEntityIdFromHexes(
 }
 
 /**
+ * Sibling to `positionByEntityIdFromHexes` — resolves each entity's
+ * `Placement.facing` (rpg-dnd5e-web unit/game-fidelity Bug B: "authored
+ * facing must render in-game") under the exact same VISIBLE-over-REMEMBERED
+ * precedence (rpg-dnd5e-web#651), for the snapshot-hydration counterpart of
+ * `applyHexRecordsMerged`'s own live-merge facing wire-up above. A separate
+ * pass over the same `hexes` rather than folding into
+ * `positionByEntityIdFromHexes`'s established `Map<string, Position>`
+ * return shape — that function's own contract (and every existing
+ * caller/test asserting against it) shouldn't have to change for a field
+ * most callers don't need.
+ *
+ * `Placement.facing` is `optional uint32` (types_pb.ts's own doc comment:
+ * "Presence distinguishes absent from explicit E=0") — a placement with no
+ * authored override is simply absent from the returned Map, which is
+ * exactly the "keep the model's default orientation" signal callers want:
+ * `.get()` on an unlisted id returns `undefined`, indistinguishable from
+ * every pre-existing caller that never set a facing at all.
+ */
+export function facingByEntityIdFromHexes(
+  hexes: HexRecord[]
+): Map<string, number> {
+  const positioned = hexesWithPosition(hexes);
+  const facings = new Map<string, number>();
+  const claimedByVisible = new Set<string>();
+  for (const hex of positioned) {
+    if (hex.state !== HexState.VISIBLE) continue;
+    for (const placement of hex.contents ?? []) {
+      claimedByVisible.add(placement.entityId);
+      if (placement.facing !== undefined) {
+        facings.set(placement.entityId, placement.facing);
+      }
+    }
+  }
+  for (const hex of positioned) {
+    if (hex.state === HexState.VISIBLE) continue;
+    for (const placement of hex.contents ?? []) {
+      if (claimedByVisible.has(placement.entityId)) continue;
+      if (placement.facing !== undefined) {
+        facings.set(placement.entityId, placement.facing);
+      }
+    }
+  }
+  return facings;
+}
+
+/**
  * Replace region metadata from the server's snapshot. A reconnect snapshot is
  * authoritative, so omitted theme/zones/hexes clear stale local values.
  * Exported for testing.
@@ -622,20 +685,31 @@ export function applyHexRecordsMerged(
   }
 
   let nextEntities: LocalEncounterState['entities'] | undefined;
-  const setPosition = (entityId: string, position: Position) => {
+  // `facing` rides the SAME Placement record as `position` (types_pb.ts's
+  // own doc comment: "facing rides HERE" — on Placement, not Entity), so it
+  // is set alongside position rather than by a separate pass. The identity
+  // short-circuit above now also compares `facing` — an entity that turns
+  // in place (same hex, new authored facing) must still produce a state
+  // update, which a position-only comparison would have swallowed.
+  const setPlacement = (
+    entityId: string,
+    position: Position,
+    facing: number | undefined
+  ) => {
     const existing = (nextEntities ?? prev.entities).get(entityId);
     if (
       existing?.position?.x === position.x &&
       existing?.position?.y === position.y &&
-      existing?.position?.z === position.z
+      existing?.position?.z === position.z &&
+      existing?.facing === facing
     ) {
       return;
     }
     if (!nextEntities) nextEntities = new Map(prev.entities);
-    nextEntities.set(
-      entityId,
-      create(EntityStateSchema, { entityId, position })
-    );
+    nextEntities.set(entityId, {
+      ...create(EntityStateSchema, { entityId, position }),
+      facing,
+    });
   };
 
   // Pass 1: every VISIBLE placement this event. Always wins — set
@@ -647,7 +721,11 @@ export function applyHexRecordsMerged(
     for (const placement of hex.contents ?? []) {
       if (!prev.entityMeta.has(placement.entityId)) continue; // fail closed
       claimedByVisibleThisEvent.add(placement.entityId);
-      setPosition(placement.entityId, v2PositionToV1(hex.position));
+      setPlacement(
+        placement.entityId,
+        v2PositionToV1(hex.position),
+        placement.facing
+      );
     }
   }
   // Pass 2: REMEMBERED placements — only for entities no VISIBLE record
@@ -660,7 +738,11 @@ export function applyHexRecordsMerged(
     for (const placement of hex.contents ?? []) {
       if (claimedByVisibleThisEvent.has(placement.entityId)) continue;
       if (!prev.entityMeta.has(placement.entityId)) continue; // fail closed
-      setPosition(placement.entityId, v2PositionToV1(hex.position));
+      setPlacement(
+        placement.entityId,
+        v2PositionToV1(hex.position),
+        placement.facing
+      );
     }
   }
 
@@ -731,6 +813,13 @@ function toEntityStatus(effect: StatusEffect): EntityStatus | undefined {
  * one map. Omitting statusEffects entirely (existing callers) leaves
  * entityStatuses untouched, matching the pre-#462 behavior exactly.
  *
+ * `facing` (rpg-dnd5e-web unit/game-fidelity Bug B) is the snapshot's own
+ * `facingByEntityIdFromHexes` resolution for this entity — the caller
+ * resolves it the same way it resolves `entity.position` (a one-shot
+ * reverse index off the snapshot's `hexes`), passed straight through here
+ * rather than re-derived. Undefined (every pre-existing caller) leaves the
+ * entity's `facing` unset, matching every renderer's existing default.
+ *
  * Exported for testing.
  */
 export function applyEntityAppearedBatch(
@@ -746,6 +835,7 @@ export function applyEntityAppearedBatch(
     classRefId?: string;
     propRefId?: string;
     equipment?: CharacterEquipment;
+    facing?: number;
   }>
 ): LocalEncounterState {
   if (entries.length === 0) return prev;
@@ -770,8 +860,9 @@ export function applyEntityAppearedBatch(
     classRefId,
     propRefId,
     equipment,
+    facing,
   } of entries) {
-    newEntities.set(entity.entityId, { ...entity, ghost: false });
+    newEntities.set(entity.entityId, { ...entity, ghost: false, facing });
     newMeta.set(entity.entityId, {
       type,
       monsterRefId,
@@ -1435,6 +1526,7 @@ export interface UseEncounterStateResult {
       classRefId?: string;
       propRefId?: string;
       equipment?: CharacterEquipment;
+      facing?: number;
     }>
   ) => void;
   /**
@@ -1581,6 +1673,7 @@ export function useEncounterState(): UseEncounterStateResult {
         classRefId?: string;
         propRefId?: string;
         equipment?: CharacterEquipment;
+        facing?: number;
       }>
     ) => {
       setState((prev) => applyEntityAppearedBatch(prev, entries));

@@ -17,16 +17,21 @@ import {
   coordToKey,
   cubeToWorld,
   HEX_SIZE,
+  hexDistance,
   type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
-import { isDoorWallKind } from '@/components/hex-grid/syntyHexWallHelpers';
+import {
+  DOOR_FRAME_CALIBRATED_WIDTH,
+  isDoorWallKind,
+} from '@/components/hex-grid/syntyHexWallHelpers';
 import { connectorPartitionHeight } from '@/components/hex-grid/wallRunMeshHelpers';
 import {
   HexState,
   type HexRecord,
   type Wall,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
+import type { AuthoredWallEdgeInput } from './authoredWallRuns';
 import {
   cubeAtColRow,
   hexColumn,
@@ -420,6 +425,115 @@ export function legacyRenderWalls(
 }
 
 /**
+ * Boundary-edge (hexDistance(from,to)===1, non-degenerate), non-door walls
+ * in categorizeWall's 'interior' category — the authored-wall-run
+ * extraction point (authoredWallRuns.ts).
+ *
+ * Deliberately narrower than `legacyRenderWalls`' own 'interior' branch,
+ * which also keeps DEGENERATE (from===to, "blocked cell") interior walls —
+ * those are genuine obstacles (a crypt pillar), not a straight-run
+ * candidate, and still belong on SyntyHexWall's legacy per-cell path
+ * (its 6-edge-per-hex fitting is the right tool for an isolated blocked
+ * cell; a run is not). `legacyRenderWalls` itself is UNCHANGED by this
+ * function's existence — both still select 'interior' walls independently,
+ * so a caller that wants "the walls SyntyHexWall should render" minus "the
+ * walls this function claims for a straight run" must filter one against
+ * the other itself (EncounterMap.tsx does this) rather than this module
+ * picking a side.
+ *
+ * Why 'interior' at all, for an AUTHORED dungeon's real perimeter walls:
+ * rpg-dnd5e-web#720 ("zones are not rooms") established that a canvas
+ * dungeon's painted `regions:` are semantic-only zones with no guaranteed
+ * relationship to real wall truth — so a zone's hex membership routinely
+ * includes cells on BOTH sides of a real wall edge, which is exactly what
+ * `categorizeWall` calls 'interior' (the wall's candidate cell falls
+ * inside a KNOWN region). That's the category nearly every one of an
+ * authored dungeon's own wall edges falls into today, and is why they
+ * currently render through SyntyHexWall's per-edge path (the "vertical
+ * blinds" jagged look this whole module exists to fix) rather than any
+ * envelope/connector run — #720 correctly refused to synthesize an
+ * envelope from the zone's bounding box, but never gave those edges
+ * anywhere better to go until now.
+ */
+export function authoredWallEdgeCandidates(
+  walls: Iterable<Wall>,
+  regions: RegionInput[],
+  connectorRuns: ConnectorRun[],
+  doors: ConnectorDoorInput[]
+): Wall[] {
+  const regionHexKeys = new Set<string>();
+  for (const region of regions) {
+    for (const hex of region.hexes) {
+      regionHexKeys.add(coordToKey(hex));
+    }
+  }
+  const coveredRowRanges = coveredRowRangesByColumn(connectorRuns, doors);
+  const doorColumns = new Set(doors.map((door) => hexColumn(door.position)));
+  const gridBounds = wireGridBounds(walls);
+
+  const result: Wall[] = [];
+  for (const wall of walls) {
+    const category = categorizeWall(
+      wall,
+      regionHexKeys,
+      doorColumns,
+      gridBounds,
+      coveredRowRanges
+    );
+    if (category.type !== 'interior') continue;
+    if (!wall.from || !wall.to) continue;
+    const from: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
+    const to: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    const isDegenerate = from.x === to.x && from.y === to.y && from.z === to.z;
+    if (isDegenerate) continue; // a genuine blocked-cell obstacle, not a run
+    if (hexDistance(from, to) !== 1) continue; // not a single real edge
+    result.push(wall);
+  }
+  return result;
+}
+
+/**
+ * Full `AuthoredWallEdgeInput[]` for `computeAuthoredWallRuns`
+ * (authoredWallRuns.ts): every `authoredWallEdgeCandidates` entry
+ * (non-door, chainable into runs) plus every boundary-edge DOOR_* wall
+ * (unconditionally — a door needs no region/category test at all, only
+ * `isDoorWallKind`; see `AuthoredWallEdgeInput.isDoor`'s own doc comment
+ * for why the chaining graph still needs to know where they are, even
+ * though a door edge is never itself tiled into a run).
+ */
+export function authoredWallRunEdgeInputs(
+  walls: Iterable<Wall>,
+  regions: RegionInput[],
+  connectorRuns: ConnectorRun[],
+  doors: ConnectorDoorInput[]
+): AuthoredWallEdgeInput[] {
+  const inputs: AuthoredWallEdgeInput[] = [];
+  for (const wall of authoredWallEdgeCandidates(
+    walls,
+    regions,
+    connectorRuns,
+    doors
+  )) {
+    inputs.push({
+      id: wall.id,
+      from: { x: wall.from!.x, y: wall.from!.y, z: wall.from!.z },
+      to: { x: wall.to!.x, y: wall.to!.y, z: wall.to!.z },
+      isDoor: false,
+    });
+  }
+  for (const wall of walls) {
+    if (!isDoorWallKind(wall.kind) || !wall.from || !wall.to) continue;
+    const from: CubeCoord = { x: wall.from.x, y: wall.from.y, z: wall.from.z };
+    const to: CubeCoord = { x: wall.to.x, y: wall.to.y, z: wall.to.z };
+    const isDegenerate = from.x === to.x && from.y === to.y && from.z === to.z;
+    if (isDegenerate) continue; // no designated passage edge to chain against
+    if (hexDistance(from, to) !== 1) continue;
+    inputs.push({ id: wall.id, from, to, isDoor: true });
+  }
+  return inputs;
+}
+
+/**
  * One connector-flanking candidate cell, turned into a short,
  * column-aligned WallRunSegment spanning exactly one row — centered on the
  * candidate's own world position, oriented along the SAME column axis a
@@ -433,7 +547,8 @@ export function legacyRenderWalls(
  */
 function candidateToFallbackSegment(
   candidate: CubeCoord,
-  hexSize: number
+  hexSize: number,
+  doorAtAdjacentRow: ConnectorDoorInput | undefined
 ): WallRunSegment {
   const col = hexColumn(candidate);
   const row = hexRow(candidate);
@@ -441,6 +556,35 @@ function candidateToFallbackSegment(
   const next = cubeToWorld(cubeAtColRow(col, row + 1), hexSize);
   const dx = next.x - center.x;
   const dz = next.z - center.z;
+  const halfFrame = DOOR_FRAME_CALIBRATED_WIDTH / 2;
+  if (doorAtAdjacentRow) {
+    const doorCenter = cubeToWorld(doorAtAdjacentRow.position, hexSize);
+    const distance = Math.hypot(
+      doorCenter.x - center.x,
+      doorCenter.z - center.z
+    );
+    const towardDoor = {
+      x: (doorCenter.x - center.x) / distance,
+      z: (doorCenter.z - center.z) / distance,
+    };
+    const outerHalfRow = Math.hypot(dx, dz) / 2;
+    // Match connectorRunForDoor's exact frame-envelope termination while
+    // this column is still represented by individual fallback cells.
+    const outer = {
+      x: center.x - towardDoor.x * outerHalfRow,
+      z: center.z - towardDoor.z * outerHalfRow,
+    };
+    const frameEnvelope = {
+      x: doorCenter.x - towardDoor.x * halfFrame,
+      z: doorCenter.z - towardDoor.z * halfFrame,
+    };
+    // Preserve the ordinary increasing-row segment direction on both
+    // sides of the door. It keeps fallback tile orientation identical to
+    // the pre-fix path while changing only the inner endpoint.
+    return row < hexRow(doorAtAdjacentRow.position)
+      ? { start: outer, end: frameEnvelope }
+      : { start: frameEnvelope, end: outer };
+  }
   return {
     start: { x: center.x - dx / 2, z: center.z - dz / 2 },
     end: { x: center.x + dx / 2, z: center.z + dz / 2 },
@@ -482,6 +626,13 @@ export function connectorFallbackSegments(
 
   const segments: WallRunSegment[] = [];
   const seenCandidateKeys = new Set<string>();
+  const doorByColumnRow = new Map<string, ConnectorDoorInput>();
+  for (const door of doors) {
+    doorByColumnRow.set(
+      `${hexColumn(door.position)},${hexRow(door.position)}`,
+      door
+    );
+  }
   for (const wall of walls) {
     const category = categorizeWall(
       wall,
@@ -494,7 +645,14 @@ export function connectorFallbackSegments(
     const key = coordToKey(category.candidate);
     if (seenCandidateKeys.has(key)) continue;
     seenCandidateKeys.add(key);
-    segments.push(candidateToFallbackSegment(category.candidate, hexSize));
+    const candidateCol = hexColumn(category.candidate);
+    const candidateRow = hexRow(category.candidate);
+    const doorAtAdjacentRow =
+      doorByColumnRow.get(`${candidateCol},${candidateRow - 1}`) ??
+      doorByColumnRow.get(`${candidateCol},${candidateRow + 1}`);
+    segments.push(
+      candidateToFallbackSegment(category.candidate, hexSize, doorAtAdjacentRow)
+    );
   }
   return segments;
 }

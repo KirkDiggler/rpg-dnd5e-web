@@ -82,6 +82,23 @@ export interface BeatStageProps {
   persistResult?: boolean;
   /** Concept-owned intensity metadata, never derived from wire damage or HP. */
   impactTier?: string;
+  /**
+   * The server-authored damage amount for THIS attack's `EntityDamaged`,
+   * shown once the beat reaches Impact (the approved combat-pacing
+   * design: "damage reveal belongs to Impact") — never earlier. A hit
+   * whose damage hasn't streamed in yet, or a miss (no damage event at
+   * all), simply renders nothing here; this prop is never derived or
+   * guessed client-side, only passed through from the wire event once
+   * the caller has gated its timing to Impact-or-later.
+   *
+   * Rendered INSIDE the same `role=status`/`aria-live` verdict region
+   * (not a second announced region) so the one live-region update at
+   * Impact reads as "HIT ... 16 damage" in a single utterance — BeatStage
+   * already documents the verdict as "the single announced signal for a
+   * beat"; this keeps that true instead of adding a second aria-live
+   * surface.
+   */
+  damageAmount?: number;
   /** Outcome currently cleared for presentation; defaults to the authoritative label. */
   presentationOutcome?: VerdictLabel;
 }
@@ -117,6 +134,7 @@ export function BeatStage({
   announce = true,
   persistResult = false,
   impactTier,
+  damageAmount,
   presentationOutcome,
 }: BeatStageProps) {
   const label = verdictLabel(attack);
@@ -175,8 +193,19 @@ export function BeatStage({
             className={`beat-verdict beat-verdict--${modifier}`}
             {...announceProps}
           >
-            {label} ({attack.attackRoll}+{attack.attackBonus} vs AC{' '}
-            {attack.targetAc})
+            <div>
+              {label} ({attack.attackRoll}+{attack.attackBonus} vs AC{' '}
+              {attack.targetAc})
+            </div>
+            {(beat === 'impact' || beat === 'release' || showPersistedResult) &&
+              damageAmount != null && (
+                // Damage joins the verdict's OWN aria-live region — the same
+                // single announced signal, updated once at Impact — rather
+                // than a second status region (design note above).
+                <div data-testid="beat-damage" className="beat-damage">
+                  💥 {damageAmount} damage
+                </div>
+              )}
           </div>
         )}
 

@@ -4,6 +4,8 @@ import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
 import './App.css';
+import { AuthorView } from './author/AuthorView';
+import { DungeonBuilderHomeButton } from './author/DungeonBuilderHomeButton';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
 import { InteractiveCharacterSheet } from './character/creation/InteractiveCharacterSheet';
 import { useCharacterDraft } from './character/creation/useCharacterDraft';
@@ -13,6 +15,7 @@ import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
+import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
 
 /**
@@ -30,7 +33,8 @@ type AppView =
   | 'character-creation'
   | 'character-sheet'
   | 'lobby'
-  | 'concepts';
+  | 'concepts'
+  | 'author';
 
 function AppContent() {
   // Stable gate: dev mode + encounterId URL param → render PlaytestHarness.
@@ -41,6 +45,15 @@ function AppContent() {
     () =>
       import.meta.env.MODE === 'development' &&
       !!new URLSearchParams(window.location.search).get('encounterId')
+  );
+
+  // Same shape as showPlaytestHarness above: dev-only, no app chrome.
+  // Thumbnail-baking harness for the dungeon builder palette (rpg-dnd5e-web
+  // #667) — see ThumbHarness.tsx's own doc comment for how it's used.
+  const [showThumbHarness] = useState(
+    () =>
+      import.meta.env.MODE === 'development' &&
+      !!new URLSearchParams(window.location.search).get('thumbGlb')
   );
 
   const [currentView, setCurrentView] = useState<AppView>(
@@ -156,6 +169,10 @@ function AppContent() {
     setCurrentView('concepts');
   };
 
+  const handleOpenAuthor = () => {
+    setCurrentView('author');
+  };
+
   // Carousel selection handler
   const handleCarouselSelect = (id: string, type: 'character' | 'draft') => {
     setSelectedId(id);
@@ -194,6 +211,14 @@ function AppContent() {
     return (
       <div className="min-h-screen">
         <PlaytestHarness />
+      </div>
+    );
+  }
+
+  if (showThumbHarness) {
+    return (
+      <div className="min-h-screen">
+        <ThumbHarness />
       </div>
     );
   }
@@ -272,6 +297,8 @@ function AppContent() {
           />
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
+        ) : currentView === 'author' ? (
+          <AuthorView onBack={handleBackToHome} />
         ) : currentView === 'home' && myActiveLobby.loading ? (
           // Resume-after-refresh (#444): hold Home's content one beat while
           // GetMyActiveLobby resolves, so a resumable session (routed via
@@ -298,6 +325,7 @@ function AppContent() {
             onContinueDraft={handleResumeDraft}
             onDelete={handleDeleteCharacter}
             onDeleteDraft={handleDeleteDraft}
+            onOpenAuthor={handleOpenAuthor}
           />
         ) : currentView === 'character-sheet' && currentCharacterId ? (
           <CharacterSheet
@@ -367,6 +395,7 @@ interface HomeViewProps {
   onContinueDraft: (draftId: string) => void;
   onDelete: (characterId: string) => void;
   onDeleteDraft: (draftId: string) => void;
+  onOpenAuthor: () => void;
 }
 
 function HomeView({
@@ -381,6 +410,7 @@ function HomeView({
   onContinueDraft,
   onDelete,
   onDeleteDraft,
+  onOpenAuthor,
 }: HomeViewProps) {
   // Fetch characters and drafts to find selected item data
   const { data: characters } = useListCharacters({ playerId, sessionId });
@@ -398,6 +428,13 @@ function HomeView({
 
   return (
     <div className="space-y-8">
+      {/* Home menu — real chrome, not dev-gated (rpg-project#194). Button
+          is self-gating (useAuthoringGate): hidden when authoring is off
+          server-side, disabled-with-retry when the server's unreachable. */}
+      <div className="flex justify-center">
+        <DungeonBuilderHomeButton onOpen={onOpenAuthor} />
+      </div>
+
       {/* Character Carousel */}
       <CharacterCarousel
         playerId={playerId}
