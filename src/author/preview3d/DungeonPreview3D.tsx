@@ -159,7 +159,8 @@ import { DEFAULT_CANVAS } from '../creation/emptyCanvasDoc';
 import { cornerPoint, type CornerRef } from '../creation/hexCorner';
 import {
   clipSegmentToShrunkHex,
-  straightWallsFootprintSet,
+  standableFootprintKeys,
+  straightWallsFootprintCoverage,
 } from '../creation/straightWallGeometry';
 import {
   resolvePlacement,
@@ -739,9 +740,19 @@ export function buildPlaceableCells(
     const col = hexColumn(cube);
     const row = hexRow(cube);
     const world = cubeToWorld(cube, HEX_SIZE);
+    // Generic, ref-agnostic precompute — drives hover/occupied display for
+    // every cell regardless of what's currently selected in the palette,
+    // so it uses the STANDABLE-required gate (matches monster/boss, the
+    // majority case). `handleClickCell` below re-checks with the actual
+    // selection's own requirement at click time rather than trusting this
+    // — a `'prop'` selection needs the relaxed (footprint-permitting)
+    // check `canvasPlacementRejectReason`'s `requiresStandable: false`
+    // gives it (rpg-project#169's "props on footprint cells" unit), which
+    // this per-cell table can't express without being recomputed on every
+    // palette change.
     const rejectReason = floorPlan
       ? undefined
-      : (canvasPlacementRejectReason(doc, col, row, wallLineFootprint) ??
+      : (canvasPlacementRejectReason(doc, col, row, wallLineFootprint, true) ??
         undefined);
     cells.push({
       key: `${tile.x},${tile.y},${tile.z}`,
@@ -778,16 +789,40 @@ function buildHexHitShape(): Shape {
 
 /** Every `[col, row]` cell a straight wall (`doc.wallLines`) footprint
  * currently claims, union across every drawn line, door cells already
- * excluded per-line — the exact same `straightWallsFootprintSet` the 2D
- * board's own hatch/warning overlays already use (`CreationBoard.tsx`),
- * reused rather than re-derived. Cheap by construction, and skipped
- * entirely for the (overwhelmingly common) `doc.wallLines.length === 0`
- * case rather than paying for an empty grid scan. */
+ * excluded per-line, each with its own coverage FRACTION (0..0.5,
+ * `straightWallGeometry.ts`'s `hexCoverageFraction`) — the exact same
+ * `straightWallsFootprintCoverage` the 2D board's own hatch overlay now
+ * consumes (`CreationBoard.tsx`), reused rather than re-derived. Cheap by
+ * construction, and skipped entirely for the (overwhelmingly common)
+ * `doc.wallLines.length === 0` case rather than paying for an empty grid
+ * scan. This is the FULL touched-at-all set (any genuine clip, however
+ * shallow) — for the coverage-based STANDABLE subset, see
+ * `buildStandableWallLineFootprint`, below. */
 // eslint-disable-next-line react-refresh/only-export-components
-export function buildWallLineFootprint(doc: DungeonDoc): Set<string> {
-  if (doc.wallLines.length === 0) return new Set();
+export function buildWallLineFootprintCoverage(
+  doc: DungeonDoc
+): Map<string, number> {
+  if (doc.wallLines.length === 0) return new Map();
   const grid = doc.canvas ?? DEFAULT_CANVAS;
-  return straightWallsFootprintSet(doc.wallLines, grid);
+  return straightWallsFootprintCoverage(doc.wallLines, grid);
+}
+
+/** The STANDABLE subset of `buildWallLineFootprintCoverage`'s own result
+ * (rpg-project#169's coverage-based-standability follow-up, live design
+ * round with Kirk, 2026-08-07): only cells at/above
+ * `STANDABLE_COVERAGE_THRESHOLD` — what `buildPlaceableCells`/
+ * `buildWalkContext`/`handleClickCell` below actually need to block
+ * STANDING on. A lightly-clipped cell below the threshold is real floor
+ * again for these purposes; the wall LINE's own crossing prohibition
+ * into/out of it is untouched (`buildWalkContext`'s own `blockedEdges`
+ * derivation still reads the FULL, unfiltered footprint for that —
+ * `straightWallGeometry.ts`'s own "coverage-based standability" header
+ * comment has the full rule-5 writeup: coverage decides standing, never
+ * what the wall's own line blocks crossing, and never Half A's wire
+ * projection). */
+// eslint-disable-next-line react-refresh/only-export-components
+export function buildStandableWallLineFootprint(doc: DungeonDoc): Set<string> {
+  return standableFootprintKeys(buildWallLineFootprintCoverage(doc));
 }
 
 /** The uniform scale between this concept's 2D board-space corner math
@@ -947,28 +982,48 @@ const HIT_CLEAR_COLOR = '#5fd1c9';
 const HIT_OCCUPIED_COLOR = '#ff5a3a';
 
 // The 3D sibling of the 2D board's crimson footprint hatch
-// (`CreationBoard.tsx`'s `db-footprint-hatch` pattern) — Kirk's rule ("any
-// hex that is not 100% uncovered would not be traversable") makes this a
-// BLOCKED overlay on an otherwise-real floor tile, not an omitted tile
-// the way a hole is (see `creation/canvasFloor.ts`'s own doc comment for
-// that distinction spelled out). Same crimson family as the 2D hatch's
-// own stroke color (`#c94f4f`), translucent rather than a hatch pattern —
-// a flat semi-transparent disc is the cheap 3D-legible equivalent; a true
+// (`CreationBoard.tsx`'s `db-footprint-hatch` pattern) — a BLOCKED
+// overlay on an otherwise-real floor tile, not an omitted tile the way a
+// hole is (see `creation/canvasFloor.ts`'s own doc comment for that
+// distinction spelled out). Same crimson family as the 2D hatch's own
+// stroke color (`#c94f4f`), translucent rather than a hatch pattern — a
+// flat semi-transparent disc is the cheap 3D-legible equivalent; a true
 // hatched TEXTURE was judged not worth the extra material/UV work for a
 // first landing.
+//
+// **Coverage-scaled opacity (rpg-project#169's coverage-based-
+// standability follow-up, live design round with Kirk, 2026-08-07)**:
+// every footprint cell still renders SOME dim (an author needs to see
+// every cell a wall genuinely clips, standable or not — the retired
+// binary rule's own honesty about "the wall touches here" doesn't go
+// away just because coverage now decides whether it also blocks
+// standing), but a lightly-clipped, standable cell reads visibly
+// LIGHTER than a heavily-clipped, blocked one — `FOOTPRINT_DIM_OPACITY`
+// is now the opacity at FULL coverage (0.5, the maximum
+// `hexCoverageFraction` ever returns), scaled linearly down from there;
+// `FOOTPRINT_DIM_MIN_OPACITY` is the floor for a near-zero clip so even
+// the faintest genuine touch stays visible, never fully invisible.
 const FOOTPRINT_DIM_Y = 0.21;
 const FOOTPRINT_DIM_COLOR = '#c94f4f';
 const FOOTPRINT_DIM_OPACITY = 0.55;
+const FOOTPRINT_DIM_MIN_OPACITY = 0.12;
 
 function FootprintDimCell({
   worldX,
   worldZ,
   shape,
+  coverage,
 }: {
   worldX: number;
   worldZ: number;
   shape: Shape;
+  /** `hexCoverageFraction`'s own 0..0.5 range. */
+  coverage: number;
 }) {
+  const opacity =
+    FOOTPRINT_DIM_MIN_OPACITY +
+    (FOOTPRINT_DIM_OPACITY - FOOTPRINT_DIM_MIN_OPACITY) *
+      Math.min(1, coverage / 0.5);
   return (
     <mesh
       position={[worldX, FOOTPRINT_DIM_Y, worldZ]}
@@ -978,7 +1033,7 @@ function FootprintDimCell({
       <meshBasicMaterial
         color={FOOTPRINT_DIM_COLOR}
         transparent
-        opacity={FOOTPRINT_DIM_OPACITY}
+        opacity={opacity}
         depthWrite={false}
         side={DoubleSide}
       />
@@ -1155,9 +1210,24 @@ export function DungeonPreview3D({
     [floorPlan]
   );
   // A straight wall's (`doc.wallLines`) footprint — doc-native, renders
-  // identically regardless of `floorPlan`/`floorCells`. See
-  // `buildWallLineFootprint`'s own doc comment.
-  const wallLineFootprint = useMemo(() => buildWallLineFootprint(doc), [doc]);
+  // identically regardless of `floorPlan`/`floorCells`. `wallLineFootprint`
+  // is the STANDABLE subset (coverage-based, rpg-project#169's live-design
+  // follow-up) — every existing consumer below (`buildPlaceableCells`,
+  // `buildWalkContext`, `handleClickCell`) already only ever needed "is
+  // this cell blocked for STANDING," so none of them changed; only what
+  // this variable itself means did. `wallLineFootprintCoverage` is the
+  // FULL touched-at-all map (every footprint cell, any coverage), needed
+  // separately for the dim overlay's own light/full de-emphasis below —
+  // see `buildWallLineFootprintCoverage`/`buildStandableWallLineFootprint`'s
+  // own doc comments.
+  const wallLineFootprintCoverage = useMemo(
+    () => buildWallLineFootprintCoverage(doc),
+    [doc]
+  );
+  const wallLineFootprint = useMemo(
+    () => standableFootprintKeys(wallLineFootprintCoverage),
+    [wallLineFootprintCoverage]
+  );
   // The straight wall's own real geometry (this unit) — doc-native too,
   // same reasoning as the footprint above. See `buildWallLineSegments`'s
   // own doc comment.
@@ -1350,8 +1420,27 @@ export function DungeonPreview3D({
         );
         return;
       }
-      if (cell.rejectReason) {
-        onReject?.(cell.rejectReason);
+      // `cell.rejectReason` (`buildPlaceableCells`) is precomputed
+      // STANDABLE-required — correct for `'monster'`, but a `'prop'`
+      // selection needs a FRESH, ref-aware check
+      // (rpg-project#169's "props on footprint cells" unit: a bookcase
+      // resting against a drawn wall's footprint is a legal target, a
+      // skeleton standing on it is not). Re-running the real predicate
+      // here (rather than conditionally ignoring the precomputed
+      // rejection) keeps the hole/off-canvas/occupied gates intact for
+      // props too — only the footprint gate actually differs.
+      const reject =
+        selectedPalette.kind === 'prop'
+          ? canvasPlacementRejectReason(
+              doc,
+              cell.col,
+              cell.row,
+              wallLineFootprint,
+              false
+            )
+          : cell.rejectReason;
+      if (reject) {
+        onReject?.(reject);
         return;
       }
       onPlace(null, [cell.col, cell.row]);
@@ -1515,7 +1604,7 @@ export function DungeonPreview3D({
                   </group>
                 );
               })}
-              {[...wallLineFootprint].map((key) => {
+              {[...wallLineFootprintCoverage].map(([key, coverage]) => {
                 const [col, row] = key.split(',').map(Number);
                 const [wx, , wz] = worldPosition(col, row);
                 return (
@@ -1524,6 +1613,7 @@ export function DungeonPreview3D({
                     worldX={wx}
                     worldZ={wz}
                     shape={hitShape}
+                    coverage={coverage}
                   />
                 );
               })}

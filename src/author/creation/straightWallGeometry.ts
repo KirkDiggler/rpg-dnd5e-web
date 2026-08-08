@@ -51,7 +51,6 @@
  * `hexCorner.ts`'s own header comment for the corner-lattice addressing
  * and dedup rule this implies.
  */
-import { neighborCell } from '../boardGeometry';
 import {
   BOARD_HEX_SIZE,
   cellCenter,
@@ -67,6 +66,13 @@ import {
   canonicalCorner,
   cornerPoint,
   nearestCorner,
+  // `neighborCell` from `./hexCorner`, not `../boardGeometry` — see that
+  // module's own doc comment on its exported copy: `boardGeometry.ts`
+  // imports `resolvePlacement`/`DungeonDoc` from `dungeonYaml.ts`, so
+  // importing it here would make THIS module (which `dungeonYaml.ts`'s
+  // own `stripToV1Subset` needs to call directly, wallLines->edges
+  // projection unit) part of a real, crashing import cycle.
+  neighborCell,
   type CornerRef,
 } from './hexCorner';
 
@@ -381,6 +387,259 @@ export function straightWallsFootprintSet(
   return set;
 }
 
+/**
+ * Coverage-based standability (rpg-project#169, live-design follow-up to
+ * "drawn walls become real," 2026-08-07) — Kirk, live: "Nothing is set in
+ * stone... if you can say we won't clip we can go on those squares, maybe
+ * some percent is fine. the small triangles on the edge we could prob
+ * allow those to be placed on... like we can slide a bookcase to a wall."
+ * Retires the original binary rule ("any hex that is not 100% uncovered
+ * would not be traversable") for STANDING purposes only.
+ *
+ * **What this does NOT change, deliberately**: the wall LINE's own
+ * crossing prohibition (`straightWallCrossedEdges`, mechanism (b)) and
+ * Half A's wire projection (`projectWallLineToEdges`, `dungeonYaml.ts`'s
+ * `stripToV1Subset`) both keep using the FULL, uncovered-at-all footprint
+ * (`straightWallFootprint`) exactly as before — a coverage percentage
+ * changes whether a client-side preview lets an author STAND in a
+ * lightly-clipped cell, never what edges the real server enforces. See
+ * this module's own `projectWallLineToEdges` doc comment; nothing there
+ * reads a coverage value.
+ *
+ * **The geometry.** `straightWallFootprint`'s existing `isCellClipped`
+ * already answers "does the line's segment genuinely enter this hex" (a
+ * boolean, epsilon-gated). This answers a different question for a cell
+ * ALREADY known to be in that footprint: how much of the hex's own TRUE
+ * area (not epsilon-shrunk — the boolean touch/clip decision is already
+ * made upstream, this only refines "how much") does the line's own
+ * infinite line separate off? The line divides the hex's convex polygon
+ * into exactly two sub-polygons (Sutherland-Hodgman clip against the
+ * line's own half-plane); their areas sum to the hex's total area (a
+ * convex polygon split by one line always partitions exactly, modulo the
+ * zero-area shared boundary). Coverage is the SMALLER of the two,
+ * relative to the total.
+ *
+ * **Why the smaller side, not a directionally-consistent "wall's own
+ * side"**: a single line has no inherent "this side is wall material"
+ * without external context (which way the wall run continues past this
+ * cell, or a designed wall thickness neither this dialect nor this
+ * geometry model has) — the SAME area split (say 5%/95%) is genuinely
+ * ambiguous as to which side is "the small clipped corner" without that
+ * context. But Kirk's own framing ("the small triangles on the edge") is
+ * exactly the min-area case: whichever side is smaller IS the clipped
+ * sliver, symmetric and context-free, and it degrades correctly at both
+ * ends — a pure touch (line along an edge, or through one vertex) gives
+ * 0 on one side; a line through the center gives ~0.5, unambiguously
+ * "blocks half the cell," comfortably above any reasonable threshold.
+ */
+function polygonArea(points: readonly CellPos[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+    sum += p1.x * p2.y - p2.x * p1.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+/** Sutherland-Hodgman clip of a convex polygon against ONE half-plane
+ * (`nx*(x-cx) + ny*(y-cy) <= 0` is the KEPT side) — the standard
+ * textbook algorithm, needed here because `hexHalfPlanes`/
+ * `clipSegmentToShrunkHex` above only ever clip a LINE SEGMENT (1D)
+ * against the hex's 6 edges; this clips the hex's own POLYGON (2D)
+ * against the wall's single line instead, a genuinely different
+ * operation this module didn't need before coverage. */
+function clipPolygonToHalfPlane(
+  poly: readonly CellPos[],
+  nx: number,
+  ny: number,
+  cx: number,
+  cy: number
+): CellPos[] {
+  if (poly.length === 0) return [];
+  const side = (p: CellPos) => nx * (p.x - cx) + ny * (p.y - cy);
+  const intersect = (a: CellPos, b: CellPos): CellPos => {
+    const da = side(a);
+    const db = side(b);
+    const t = da / (da - db);
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  };
+  const output: CellPos[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const curr = poly[i];
+    const prev = poly[(i - 1 + poly.length) % poly.length];
+    const currIn = side(curr) <= 0;
+    const prevIn = side(prev) <= 0;
+    if (currIn) {
+      if (!prevIn) output.push(intersect(prev, curr));
+      output.push(curr);
+    } else if (prevIn) {
+      output.push(intersect(prev, curr));
+    }
+  }
+  return output;
+}
+
+/**
+ * Fraction (0..0.5) of hex (col,row)'s own true area that the wall's
+ * infinite line (through corners `from`/`to`) separates into the SMALLER
+ * of the two resulting sub-polygons — see this section's own header
+ * comment for the full geometric/design writeup. `0` for a cell the line
+ * doesn't genuinely enter at all (correct, if uninteresting — callers
+ * only ever call this for a cell already confirmed in the raw footprint,
+ * where it's always genuinely positive).
+ */
+export function hexCoverageFraction(
+  from: CornerRef,
+  to: CornerRef,
+  col: number,
+  row: number
+): number {
+  const a = cornerPoint(from);
+  const b = cornerPoint(to);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const corners: CellPos[] = cellCorners(
+    cellCenter(col, row),
+    BOARD_HEX_SIZE
+  ).map(([x, y]) => ({ x, y }));
+  const totalArea = polygonArea(corners);
+  if (totalArea === 0) return 0;
+  const sideArea = polygonArea(
+    clipPolygonToHalfPlane(corners, nx, ny, a.x, a.y)
+  );
+  const otherSideArea = totalArea - sideArea;
+  return Math.min(sideArea, otherSideArea) / totalArea;
+}
+
+/**
+ * The standability threshold (rule 1 of Kirk's live-design follow-up): a
+ * footprint cell with `hexCoverageFraction` below this value is
+ * STANDABLE (walkMovement/placement-legality stop blocking the CELL —
+ * the line's own crossing prohibition into/out of it is unaffected, see
+ * this section's header comment); at or above, blocked exactly as the
+ * original binary rule always blocked it.
+ *
+ * **Honest status: reasoned from real geometry, NOT yet visually
+ * measured in Walk mode** — Kirk's own "measured, not guessed"
+ * discipline calls for walking the first-person camera against a real
+ * coverage bench and observing where clipping actually starts to read as
+ * wrong. That pass was ATTEMPTED, not completed: a real two-line bench
+ * was built and loaded live (below), and the server-side projection was
+ * confirmed correct against it (`YamlPane`'s own compile badge read "2
+ * straight walls (projects to 74 wall edges)" for these exact two
+ * lines — Half A's own machinery, unaffected by any of this, working
+ * against real coverage-varying geometry). But the actual visual
+ * inspection couldn't be finished: the shared browser debugging session
+ * this environment provides collided live with a concurrent teammate
+ * agent's own active session mid-pass (a `navigate_page`/click landed on
+ * a DIFFERENT agent's in-progress gameplay at a different origin and
+ * player identity) — continuing risked disrupting their work, so this
+ * stopped rather than push through on a compromised shared resource.
+ * Recorded here rather than silently shipping a number with a
+ * "measured" claim that wouldn't be true.
+ *
+ * **The bench, reproducible for whoever picks up the real visual pass**
+ * (a `wallLines:` doc, loadable via `localStorage.setItem
+ * ('dungeon-builder:draft:create', JSON.stringify({yamlText, savedAt:
+ * Date.now()}))` then reloading the creation-mode builder — no drag-draw
+ * needed): two lines on a `canvas: {width: 50, height: 30}` —
+ * `{from: {cell:[16,21],corner:0}, to: {cell:[22,20],corner:0}}` (cells
+ * or a mix of ~4%/~24%/~37% coverage, alternating) and
+ * `{from: {cell:[37,20],corner:0}, to: {cell:[44,18],corner:0}}` (cells
+ * spanning ~1.7%/~3.8%/~10.4%/~14.7%/~29.5%/~39.7%/~44.9%) — every value
+ * independently verified via `hexCoverageFraction` itself, not eyeballed
+ * (this module's own test suite carries the exact fixtures and asserted
+ * values, so the bench is exact, not approximate).
+ *
+ * **Threshold set at 10%** as the reasoned interim value: below the
+ * already-well-established 16.67% reference (`straightWallFootprint`'s
+ * own existing corner-to-corner-diagonal fixture, the smallest "clean"
+ * symmetric corner cut reachable by connecting two of a hex's own
+ * corners two apart — a real, visibly non-trivial triangular wedge, kept
+ * blocked) while treating the bench's smaller measured slivers (up to
+ * ~10%) as standable, matching Kirk's own qualitative framing ("the
+ * small triangles on the edge") at the geometric level even without a
+ * completed visual confirmation. A tunable constant, not hardcoded
+ * inline at each call site, so a real Walk-mode pass (by a future
+ * session without this collision) is a one-line change once it has
+ * something to correct.
+ */
+export const STANDABLE_COVERAGE_THRESHOLD = 0.1;
+
+/** Per-line coverage map (`"col,row"` -> fraction, `straightWallFootprint`'s
+ * own door-excluded footprint) — the coverage-aware sibling of
+ * `straightWallFootprint`, same cell set, richer per-cell value instead
+ * of bare membership. */
+export function straightWallFootprintCoverage(
+  from: CornerRef,
+  to: CornerRef,
+  grid: CreationGrid,
+  doorCells: readonly [number, number][] = []
+): Map<string, number> {
+  const coverage = new Map<string, number>();
+  for (const [col, row] of straightWallFootprint(from, to, grid, doorCells)) {
+    coverage.set(cellKey(col, row), hexCoverageFraction(from, to, col, row));
+  }
+  return coverage;
+}
+
+/** Multi-line union of `straightWallFootprintCoverage`, the coverage-aware
+ * sibling of `straightWallsFootprintSet` — same cells, per-cell fraction
+ * instead of bare membership. A cell touched by more than one drawn
+ * wallLine takes the MAX of the two lines' own coverage (the more
+ * restrictive claim wins) — a simplification, not a true union-of-areas
+ * (two lines could together cover more than either alone), judged
+ * adequate for a client-side authoring preview rather than a physically
+ * exact overlap computation; recorded here rather than silently assumed
+ * exact. */
+export function straightWallsFootprintCoverage(
+  lines: readonly {
+    from: CornerRef;
+    to: CornerRef;
+    doors?: readonly { cell: [number, number] }[];
+  }[],
+  grid: CreationGrid
+): Map<string, number> {
+  const coverage = new Map<string, number>();
+  for (const line of lines) {
+    const doorCells = (line.doors ?? []).map((d) => d.cell);
+    for (const [key, value] of straightWallFootprintCoverage(
+      line.from,
+      line.to,
+      grid,
+      doorCells
+    )) {
+      const existing = coverage.get(key);
+      if (existing === undefined || value > existing) {
+        coverage.set(key, value);
+      }
+    }
+  }
+  return coverage;
+}
+
+/** Filters a coverage map down to the cells at/above the standability
+ * threshold — a plain `Set<string>`, the exact shape
+ * `walkMovement.ts`'s `blockedCells` and `canvasFloor.ts`'s
+ * `canvasPlacementRejectReason` already consume, so neither needed a
+ * single signature change for this round: only WHICH set their callers
+ * pass in changed (the coverage-filtered one, not the raw touch-at-all
+ * one). */
+export function standableFootprintKeys(
+  coverage: ReadonlyMap<string, number>,
+  threshold: number = STANDABLE_COVERAGE_THRESHOLD
+): Set<string> {
+  const keys = new Set<string>();
+  for (const [key, value] of coverage) {
+    if (value >= threshold) keys.add(key);
+  }
+  return keys;
+}
+
 export function cellKey(col: number, row: number): string {
   return `${col},${row}`;
 }
@@ -463,6 +722,142 @@ export function isValidDoorCell(
   return straightWallFootprint(from, to, grid).some(
     ([c, r]) => c === cell[0] && r === cell[1]
   );
+}
+
+/**
+ * wallLines->edges projection — rpg-project#169's "drawn walls become
+ * real" unit. `wallLines:` has no wire representation of its own (see
+ * `dungeonYaml.ts`'s `WallLineDoc` doc comment: it's this concept's own
+ * client-side sugar, never sent to the real server in any form), but its
+ * GEOMETRY isn't necessarily lost — when the server accepts edge-native
+ * `walls:` (verified live, `capabilityProbe.ts`), a wallLine's footprint +
+ * crossed-edge truth projects down into real `{from, to, kind}` pairs,
+ * the same shape `walls:` already uses. This is that projection: cell-pair
+ * `walls:` edges out, given one `wallLines:` entry's corner-anchored
+ * endpoints and door cells in.
+ */
+export type ProjectedWallEdgeKind = 'solid' | 'door';
+
+export interface ProjectedWallEdge {
+  from: [number, number];
+  to: [number, number];
+  kind: ProjectedWallEdgeKind;
+}
+
+export interface WallLineProjection {
+  /** Every distinct cell-boundary edge this ONE wallLine's geometry
+   * implies, deduped within the line itself. */
+  edges: ProjectedWallEdge[];
+  /** Footprint-boundary edges whose neighbor falls OFF the canvas grid
+   * entirely (a wall run reaching the canvas rim) — a `walls:` entry
+   * needs a real cell on BOTH ends (the server's own adjacent-cell-pair
+   * validation), so these have no honest wire representation. Counted,
+   * never silently folded into `edges` or dropped without a trace — see
+   * TARGET-YAML.md's "Straight walls: stripToV1Subset" section. */
+  rimEdgeCount: number;
+}
+
+/**
+ * Projects ONE `wallLines:` entry down to real edge-native `walls:`
+ * pairs. Reuses this module's own `straightWallFootprint`/
+ * `straightWallCrossedEdges` — the SAME functions `preview3d/walkMovement.ts`
+ * already calls to enforce this exact geometry client-side — rather than
+ * re-deriving it a second time.
+ *
+ * **Mechanism (a): every footprint cell is fully blocked.** Not
+ * expressible as "this cell is non-floor" on the wire (the server has no
+ * such concept — `walls:` only ever blocks a specific edge), so the
+ * faithful edge-native translation is: seal EVERY one of a footprint
+ * cell's 6 real neighbor edges. A neighbor that's one of this line's own
+ * `doors:` cells gets `kind: 'door'` instead of `'solid'` — see this
+ * function's own "door handling" note below. A neighbor off the canvas
+ * grid entirely has no cell to pair with; counted in `rimEdgeCount`; a
+ * cell can never seal an edge toward a footprint neighbor AND a rim in
+ * the same direction, so there's no double-counting between the two.
+ *
+ * **Mechanism (b): a grazing crossing between two CLEAR cells**
+ * (`straightWallCrossedEdges`, unchanged from its existing client-side
+ * use) — always `'solid'`, no door special-case: a door only reverses ITS
+ * OWNING line's own footprint claim on its one cell (TARGET-YAML.md's
+ * "Doors" section, "this cell acts as though the wall line never clipped
+ * it at all, nothing more, and nothing less"), never mechanism (b)'s
+ * independent both-clear-cells test — a door cell whose true boundary the
+ * line still grazes remains subject to that test exactly like any other
+ * clear cell.
+ *
+ * **Door handling, the actual gap-vs-door decision** (TARGET-YAML.md has
+ * the full writeup): a door cell's own edges toward its flanking
+ * footprint neighbors are marked `kind: 'door'`, never omitted as a bare
+ * gap and never `'solid'`. An omitted edge would render as nothing at
+ * all in the real game (`syntyHexWallHelpers.ts`'s per-edge wall-piece
+ * placement only draws where a `Wall` entry exists) — indistinguishable
+ * from a rendering bug, not a doorway. `kind: 'door'` gives the opening a
+ * real door frame via the SAME `isDoorWallKind`/`edgePieceKind` path
+ * every other door in this game already renders through, so an authored
+ * doorway reads as a doorway in the actual game, not an unexplained hole
+ * in a wall — matching Kirk's own repeated diagnosis of the earlier
+ * whole-line `kind: door` prototype ("the gashes are walls... I cannot
+ * set a wall or a door").
+ */
+export function projectWallLineToEdges(
+  line: {
+    from: CornerRef;
+    to: CornerRef;
+    doors: readonly { cell: [number, number] }[];
+  },
+  grid: CreationGrid
+): WallLineProjection {
+  const doorCells = line.doors.map((d) => d.cell);
+  const doorSet = new Set(doorCells.map(([c, r]) => cellKey(c, r)));
+  const footprint = straightWallFootprint(line.from, line.to, grid, doorCells);
+
+  const edgeMap = new Map<string, ProjectedWallEdge>();
+  let rimEdgeCount = 0;
+
+  const addEdge = (
+    a: [number, number],
+    b: [number, number],
+    kind: ProjectedWallEdgeKind
+  ) => {
+    const aKey = cellKey(a[0], a[1]);
+    const bKey = cellKey(b[0], b[1]);
+    const [from, to] = aKey <= bKey ? [a, b] : [b, a];
+    const key = `${cellKey(from[0], from[1])}|${cellKey(to[0], to[1])}`;
+    const existing = edgeMap.get(key);
+    if (existing) {
+      // A door beats a solid found for the SAME edge from the opposite
+      // direction — never the reverse (a door cell's own opening is
+      // never re-sealed by a later, redundant solid derivation).
+      if (kind === 'door') existing.kind = 'door';
+      return;
+    }
+    edgeMap.set(key, { from, to, kind });
+  };
+
+  for (const [col, row] of footprint) {
+    for (let facing = 0; facing < 6; facing++) {
+      const n = neighborCell(col, row, facing);
+      if (!inBoundsGrid(n.col, n.row, grid)) {
+        rimEdgeCount++;
+        continue;
+      }
+      const kind: ProjectedWallEdgeKind = doorSet.has(cellKey(n.col, n.row))
+        ? 'door'
+        : 'solid';
+      addEdge([col, row], [n.col, n.row], kind);
+    }
+  }
+
+  for (const edge of straightWallCrossedEdges(
+    line.from,
+    line.to,
+    grid,
+    footprint
+  )) {
+    addEdge(edge.cellA, edge.cellB, 'solid');
+  }
+
+  return { edges: Array.from(edgeMap.values()), rimEdgeCount };
 }
 
 /**
