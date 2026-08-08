@@ -9,6 +9,7 @@ import {
   ORNATE_TORCH_REF,
   propCompositionReducer,
   selectedCompositionPlacement,
+  TOWARD_WALL_LIMIT_METERS,
 } from './propCompositionExperiment';
 
 describe('precise prop composition fixture state', () => {
@@ -21,25 +22,61 @@ describe('precise prop composition fixture state', () => {
     );
   });
 
-  it('bounds wall-local nudge and changes only the selected placement', () => {
-    const initial = createInitialPropCompositionState();
-    let state = initial;
-    for (let i = 0; i < 20; i += 1) {
-      state = propCompositionReducer(state, {
-        type: 'nudge',
-        axis: 'along-wall',
-        delta: NUDGE_STEP_METERS,
-      });
+  it.each([
+    {
+      label: 'positive along-wall',
+      axis: 'along-wall' as const,
+      delta: NUDGE_STEP_METERS,
+      field: 'alongWallMeters' as const,
+      limit: ALONG_WALL_LIMIT_METERS,
+    },
+    {
+      label: 'negative along-wall',
+      axis: 'along-wall' as const,
+      delta: -NUDGE_STEP_METERS,
+      field: 'alongWallMeters' as const,
+      limit: -ALONG_WALL_LIMIT_METERS,
+    },
+    {
+      label: 'positive wall-normal',
+      axis: 'toward-wall' as const,
+      delta: NUDGE_STEP_METERS,
+      field: 'towardWallMeters' as const,
+      limit: TOWARD_WALL_LIMIT_METERS,
+    },
+    {
+      label: 'negative wall-normal',
+      axis: 'toward-wall' as const,
+      delta: -NUDGE_STEP_METERS,
+      field: 'towardWallMeters' as const,
+      limit: -TOWARD_WALL_LIMIT_METERS,
+    },
+  ])(
+    'clamps $label at its exact limit and leaves both neighbors untouched',
+    ({ axis, delta, field, limit }) => {
+      const initial = createInitialPropCompositionState();
+      let state = initial;
+      for (let i = 0; i < 20; i += 1) {
+        state = propCompositionReducer(state, {
+          type: 'nudge',
+          axis,
+          delta,
+        });
+      }
+
+      const selected = selectedCompositionPlacement(state);
+      expect(selected[field]).toBe(limit);
+      expect(
+        field === 'alongWallMeters'
+          ? selected.towardWallMeters
+          : selected.alongWallMeters
+      ).toBe(0);
+      expect(state.placements[0]).toEqual(initial.placements[0]);
+      expect(state.placements[2]).toEqual(initial.placements[2]);
     }
+  );
 
-    expect(selectedCompositionPlacement(state).alongWallMeters).toBe(
-      ALONG_WALL_LIMIT_METERS
-    );
-    expect(state.placements[0]).toEqual(initial.placements[0]);
-    expect(state.placements[2]).toEqual(initial.placements[2]);
-  });
-
-  it('snaps only the named anchor axis and preserves the orthogonal adjustment', () => {
+  it('slot-center snap clears only along-wall adjustment and preserves normal adjustment plus neighbors', () => {
     let state = createInitialPropCompositionState();
     state = propCompositionReducer(state, {
       type: 'nudge',
@@ -51,6 +88,7 @@ describe('precise prop composition fixture state', () => {
       axis: 'toward-wall',
       delta: -0.15,
     });
+    const neighborsBefore = [state.placements[0], state.placements[2]];
 
     const snapped = propCompositionReducer(state, {
       type: 'snap',
@@ -60,6 +98,36 @@ describe('precise prop composition fixture state', () => {
       alongWallMeters: 0,
       towardWallMeters: -0.15,
     });
+    expect([snapped.placements[0], snapped.placements[2]]).toEqual(
+      neighborsBefore
+    );
+  });
+
+  it('wall-line snap clears only wall-normal adjustment and preserves along-wall adjustment plus neighbors', () => {
+    let state = createInitialPropCompositionState();
+    state = propCompositionReducer(state, {
+      type: 'nudge',
+      axis: 'along-wall',
+      delta: 0.1,
+    });
+    state = propCompositionReducer(state, {
+      type: 'nudge',
+      axis: 'toward-wall',
+      delta: -0.15,
+    });
+    const neighborsBefore = [state.placements[0], state.placements[2]];
+
+    const snapped = propCompositionReducer(state, {
+      type: 'snap',
+      anchor: 'wall-line',
+    });
+    expect(selectedCompositionPlacement(snapped)).toMatchObject({
+      alongWallMeters: 0.1,
+      towardWallMeters: 0,
+    });
+    expect([snapped.placements[0], snapped.placements[2]]).toEqual(
+      neighborsBefore
+    );
   });
 
   it('one-action replacement preserves authored center/nudge while refreshing the asset ref', () => {

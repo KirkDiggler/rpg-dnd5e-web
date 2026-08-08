@@ -38,6 +38,25 @@ describe('PropCompositionConcept — real interaction/state path', () => {
     );
   });
 
+  it('drives wall-clearance snap through the component and clears only normal adjustment', () => {
+    render(<PropCompositionConcept />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Nudge right along wall' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Nudge toward wall' }));
+    expect(screen.getByTestId('nudge-values').textContent).toContain(
+      'along +0.05 m · normal -0.05 m'
+    );
+    expect(screen.getByText(/moves 5 cm normal to wall/)).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Snap to wall clearance/ })
+    );
+    expect(screen.getByTestId('nudge-values').textContent).toContain(
+      'along +0.05 m · normal +0.00 m'
+    );
+  });
+
   it('replaces in one action, keeps the nudge visible, and distinguishes adjustment reset from fixture reset', () => {
     render(<PropCompositionConcept />);
     fireEvent.click(
