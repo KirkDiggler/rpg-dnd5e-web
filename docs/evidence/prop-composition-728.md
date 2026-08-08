@@ -17,17 +17,29 @@ the selected center entry with the real `dnd5e:props:torch-ornate` model.
 The first actual-model pass was useful: preserving the bookcase's floor-level Y
 verbatim made the torch mostly a light at the wall base. Re-resolving a
 fixture-local 1.15 m wall-attachment height from the new asset made the actual
-ornate-torch mesh read correctly. That experiment happened before this contract
-writeup; the terms below record what the working UX proved rather than naming a
-production schema in advance.
+ornate-torch mesh read correctly.
+
+Kirk's next visual-acceptance pass caught a second, acceptance-blocking fact:
+the bookcases appeared between hexes. Measurement confirmed that the authored
+roots were already the exact canonical hex centers; the source bookcase GLB's
+origin is at its back/left floor corner. At the real 0.75 render scale its visible
+XZ bounds center was displaced +0.927 m along the wall and +0.330 m away from it
+— 53.5% of the 1.732 m distance to the next hex center. The corrected fixture now
+cancels that measured pivot offset before applying any bounded authored nudge.
+The visible footprint centers on its owning hex and its back sits within 4.5 cm
+of the measured room-side wall face. Replacement instead resolves a distinct
+torch wall anchor: same span/along-wall intent, but wall-face Z and the
+fixture-local 1.15 m attachment Y. These measured numbers remain fixture-local;
+this is evidence, not a global asset/placement contract.
 
 ## Selected interaction behavior
 
 - **Nudge** is wall-local, 5 cm per action: along-wall is bounded to ±25 cm;
   toward/away is bounded to ±20 cm. Values and coordinate basis are visible.
 - **Snap to span center** clears only along-wall adjustment. **Snap to wall
-  clearance** clears only the wall-normal adjustment. Each button previews its
-  movement and states that neighbors are unchanged.
+  clearance** clears only the wall-normal adjustment. Both return to the chosen
+  asset's resolved fixture baseline, never its raw GLB origin. Each button
+  previews its movement and states that neighbors are unchanged.
 - **Replace** is one action on one stable selected span. It preserves the span and
   authored local nudge. It refreshes the model/variant and asset-resolved
   attachment facts. There is no delete/recreate selection loss.
@@ -43,8 +55,10 @@ These are semantic responsibilities, **not proposed field names**:
 1. A placement has a stable identity during the authoring action.
 2. Its composition intent names a wall-relative span center and facing basis.
 3. It may carry a small, bounded local adjustment along and normal to that wall.
-4. Its selected asset resolves intrinsic model/variant and attachment defaults.
-5. Replacement keeps items 1–3 and re-resolves item 4 from the new asset.
+4. Its selected asset resolves intrinsic model/variant and visual attachment
+   baseline; this fixture's measured baselines are provisional evidence only.
+5. Replacement keeps items 1–3 and re-resolves item 4 from the new asset, so a
+   wall torch does not inherit a floor bookcase's raw-root position.
 
 The local implementation names these ideas `slotId`, `alongWallMeters`, and
 `towardWallMeters` only to run the fixture. Those names and the local state shape
@@ -54,7 +68,7 @@ must not be copied into YAML/protos without a separate contract decision.
 
 | Fact | Learned owner | Replacement behavior | Confidence / caveat |
 | --- | --- | --- | --- |
-| GLB geometry, intrinsic pivot/origin, calibrated shared render scale, deterministic manifest variant | asset/model contract | refresh from new asset | High for ownership; existing `PropModel`/manifest already owns these |
+| GLB geometry, intrinsic pivot/origin, calibrated shared render scale, deterministic manifest variant | asset/model contract | refresh from new asset | High for geometry/scale ownership; `PropModel` currently renders the raw pivot, so this fixture normalizes the measured bounds locally rather than claiming a global default |
 | Footprint and light-source behavior | asset/model contract | refresh from new asset | High; bookcase and torch intentionally differ |
 | Wall-attachment vertical anchor / model-forward correction | asset/model contract candidate | refresh from new asset | Medium; 1.15 m made this actual torch read correctly here, but is **fixture-local evidence**, not yet a global torch default |
 | Chosen wall/span and centered composition intent | per-placement authored intent | preserve | High; otherwise replacement cannot stay in the vacated span |
@@ -73,6 +87,9 @@ real wall pieces/heights first.
   carried bookcase floor anchoring into a wall torch; the first actual-model pass
   made the torch mesh nearly disappear at the wall base. Preserve semantic span
   intent, not an old asset's resolved matrix.
+- **Treat the raw bookcase GLB origin as the hex center** — rejected after Kirk's
+  visual pass. The actual bounds put the visible center 0.927 m toward the next
+  hex and left a 0.285 m wall gap even though the semantic root was correct.
 - **Raw/unbounded transform editor** — rejected. It hid the useful wall-local
   basis, had no predictable reset, and offered degrees of freedom this proof does
   not need.
@@ -109,18 +126,22 @@ All screenshots are 1280×720, a representative Discord Activity viewport. The
 capture run reported no browser console or page errors.
 
 - [`prop-composition-728-initial-bookcases.png`](prop-composition-728-initial-bookcases.png)
-  — **Viewed:** three actual Synty small-bookcase GLBs read as a single wall run:
-  broad faces share one facing, bases share one floor line, and the center span is
-  visibly selected. The wall and neighboring models are all present; this is not
-  a placeholder-box proof.
-- [`prop-composition-728-centered-torch.png`](prop-composition-728-centered-torch.png)
-  — **Viewed:** one click changed the center model to the actual ornate torch;
-  the two bookcases stayed put, the torch mesh and refreshed warm light are
-  visible at the center of the vacated span, and the UI reports `2 bookcases · 1
-  ornate torches`.
-- [`prop-composition-728-play-camera.png`](prop-composition-728-play-camera.png)
-  — **Viewed:** Play is visibly selected. The tactical orthographic view shows
-  the same two bookcases, centered raised torch, wall, and warm light with no
-  second placement transform or camera-only compensation. The angle is different
-  from Orbit, ruling out the center reading being only perspective
-  foreshortening.
+  — **Superseded failed view:** the actual bookcases share a facing, but their raw
+  back/left GLB pivots put each visible footprint between its authored hex and the
+  next. Kirk correctly rejected this view; it is retained as failure evidence.
+- [`prop-composition-728-corrected-bookcases.png`](prop-composition-728-corrected-bookcases.png)
+  — **Viewed after correction:** three actual bookcases now read as three
+  hex-owned spans: each visible shelf footprint centers over its selection/hex,
+  the run stays straight, and the backs sit against the wall rather than leaving
+  the raw-pivot gap. Neighbors remain unchanged.
+- [`prop-composition-728-corrected-torch.png`](prop-composition-728-corrected-torch.png)
+  — **Viewed after correction:** one click replaces only the center span. The
+  actual ornate torch is horizontally centered and visibly attached to the wall
+  on its distinct Z/Y baseline; neither bookcase inherits its transform.
+- [`prop-composition-728-corrected-play-camera.png`](prop-composition-728-corrected-play-camera.png)
+  — **Viewed after correction:** Play is visibly selected. The tactical
+  orthographic view shows the same corrected two bookcase placements and
+  wall-attached centered torch, with no camera-specific compensation.
+- The earlier `prop-composition-728-centered-torch.png` and
+  `prop-composition-728-play-camera.png` remain historical pre-correction
+  captures and are superseded by the corrected views above.

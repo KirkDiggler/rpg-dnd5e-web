@@ -344,9 +344,8 @@ export function PropCompositionConcept() {
               data-testid="replacement-ownership"
               style={{ marginTop: 6, fontSize: 10.5, color: '#a89e90' }}
             >
-              Preserve: span center + local nudge. Refresh: model/variant,
-              intrinsic origin/scale, footprint + light behavior from the
-              selected asset contract.
+              Preserve: span center + local nudge. Refresh: model/variant +
+              fixture-resolved visual anchor, footprint, and light behavior.
             </div>
           </div>
 
