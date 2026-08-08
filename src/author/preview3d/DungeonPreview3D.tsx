@@ -176,6 +176,10 @@ import { BOARD_HEX_SIZE, cubeAtColRow, hexColumn, hexRow } from '../hexLayout';
 import { END_COLOR, regionArchetypeColor, START_COLOR } from '../markerStyle';
 import { regionCentroid } from '../regionGeometry';
 import type { BoardTool, PaletteSelection, PlacementSelection } from '../types';
+import {
+  readOrbitOrthographicPreference,
+  writeOrbitOrthographicPreference,
+} from './orbitProjectionPreference';
 import { PlayCamera } from './PlayCamera';
 import { PreviewMonsterModel } from './PreviewMonsterModel';
 import {
@@ -1224,6 +1228,30 @@ export function DungeonPreview3D({
   const [cameraMode, setCameraMode] = useState<'orbit' | 'walk' | 'play'>(
     'orbit'
   );
+  // Orbit's projection toggle (world-parity unit, see boardGeometry.ts's
+  // own "THE CANONICAL WORLD" doc comment) — perspective vs orthographic,
+  // Orbit-only. Default UNCHANGED (perspective) so nothing shifts under
+  // any existing workflow unless an author opts in. Lets Kirk flip it
+  // live on his own doc and judge "thin-object editing legibility vs
+  // preview fidelity" experientially, rather than this file silently
+  // picking a side of that product tradeoff for him. Read/write plumbing
+  // itself lives in orbitProjectionPreference.ts (own unit tests there);
+  // this is just the React state wiring around it.
+  const [orbitOrthographic, setOrbitOrthographic] = useState<boolean>(() =>
+    readOrbitOrthographicPreference(
+      typeof window === 'undefined' ? undefined : window.localStorage
+    )
+  );
+  const handleToggleOrbitProjection = () => {
+    setOrbitOrthographic((prev) => {
+      const next = !prev;
+      writeOrbitOrthographicPreference(
+        typeof window === 'undefined' ? undefined : window.localStorage,
+        next
+      );
+      return next;
+    });
+  };
   const [walkLocked, setWalkLocked] = useState(false);
   // The player's own nearest cell, updated only on a CELL CHANGE (not
   // every frame — WalkCamera.tsx's own `onCellChange` doc comment) —
@@ -1475,7 +1503,22 @@ export function DungeonPreview3D({
         style={{ width: '100%', height: '100%' }}
       >
         <Canvas
-          camera={{ fov: 45, position: ORBIT_INITIAL_CAMERA_POSITION }}
+          // Projection is fixed at Canvas creation — R3F does not swap
+          // camera type on a prop change — so the toggle rides a `key` to
+          // force a clean remount, same convention HexGrid.tsx's own
+          // ortho/persp dial uses (`canvasDials.perspective`). Only
+          // meaningful while Orbit is the ACTIVE camera: Play/Walk each
+          // mount their own `makeDefault` camera (PlayCamera.tsx's
+          // OrthographicCamera, WalkCamera.tsx's own) that overrides
+          // whatever this prop set up, so switching mode away from Orbit
+          // is unaffected by this toggle either way.
+          key={orbitOrthographic ? 'orbit-ortho' : 'orbit-persp'}
+          orthographic={orbitOrthographic}
+          camera={
+            orbitOrthographic
+              ? { zoom: 40, position: ORBIT_INITIAL_CAMERA_POSITION }
+              : { fov: 45, position: ORBIT_INITIAL_CAMERA_POSITION }
+          }
           onPointerMissed={() => effectiveOnSelect?.(null)}
         >
           <ambientLight intensity={ambientIntensity} />
@@ -1872,6 +1915,38 @@ export function DungeonPreview3D({
           </button>
         ))}
       </div>
+      {/* Orbit-only projection toggle (world-parity unit) — perspective vs
+          orthographic. Positioned below the camera-mode group, only
+          rendered while Orbit is active: Play/Walk already fix their own
+          projection (orthographic, matching the game) and aren't a place
+          this choice applies. See the `orbitOrthographic` state's own doc
+          comment above for why this is a toggle Kirk drives, not a
+          default this file silently changes. */}
+      {cameraMode === 'orbit' && (
+        <button
+          onClick={handleToggleOrbitProjection}
+          title={
+            orbitOrthographic
+              ? 'Orthographic — matches the tactical camera exactly (same projection Play/the live game use). Click to switch back to perspective.'
+              : 'Perspective (default) — easier close-up legibility while placing, but not what the tactical camera actually shows for an off-center rotation. Click to preview orthographic instead.'
+          }
+          style={{
+            position: 'absolute',
+            top: 40,
+            right: 8,
+            padding: '3px 10px',
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 5,
+            border: '1px solid var(--border-primary)',
+            cursor: 'pointer',
+            background: orbitOrthographic ? '#5fd1c9' : '#14110f',
+            color: orbitOrthographic ? '#14110f' : '#e8e2d8',
+          }}
+        >
+          {orbitOrthographic ? 'Orthographic' : 'Perspective'}
+        </button>
+      )}
     </div>
   );
 }

@@ -63,27 +63,98 @@ genuinely different effective viewing angle than the nominal
 camera-to-target one; orthographic (parallel rays) views every object from
 the exact same fixed angle regardless of position.
 
+## Orbit projection toggle — let Kirk judge the tradeoff by feel
+
+Rather than this file silently picking a side of "editing legibility vs
+preview fidelity," Orbit mode now has a projection toggle (perspective ↔
+orthographic, default unchanged = perspective, persisted per-browser in
+`localStorage`). The exact same probe doc, same Orbit camera, same
+bookcase — toggled live:
+
+| `world-parity-toggle-perspective.png` | `world-parity-toggle-orthographic.png` |
+|---|---|
+| Perspective (default) — broad face, shelf detail visible | Orthographic — thin, edge-on, matching Play mode and the live game exactly |
+
+Wired through the existing camera rig: `<Canvas orthographic={...} key={...}>`
+remounts cleanly on toggle (same pattern `HexGrid.tsx`'s own ortho/persp
+dial already uses — R3F doesn't swap camera type on a prop change alone).
+The read/write localStorage plumbing is pulled into its own pure module
+(`orbitProjectionPreference.ts`) with direct unit tests, rather than only
+ever exercised through a full component mount.
+
+## Investigated but not reproduced: the scattered/tumbled bookcases
+
+Kirk's own screenshots (from the combined #723+#724 preview tree on
+:3001) show something the probe-bookcase edge-on finding above doesn't
+fully explain on its own: in the builder's 2D board, `dungeon-one`'s five
+bookcases run cleanly along the room's east wall (col 14); in the live
+game, what read as bookcase-shaped objects appeared scattered near the
+room's south connector-wall area instead, at inconsistent angles — not
+just uniformly edge-on.
+
+Ruled out: **PR #723 cannot be the cause.** Every file it touches is under
+`src/author/` (the builder tool itself — `dungeonYaml.ts`,
+`canvasFloor.ts`, `CreationBoard.tsx`, `DungeonPreview3D.tsx` and their
+tests); nothing under `src/components/hex-grid/`, `src/components/game/`,
+or `src/hooks/useEncounterState.ts`. It cannot touch the live game route's
+rendering at all, for any doc — confirmed by direct diff inspection
+(`gh pr diff 723`), not assumed from its description. Whatever Kirk's
+combined-tree screenshot shows, the game-route behavior in it is #724's
+alone; a plain #724 cherry-pick (what this branch carries) should
+reproduce it exactly.
+
+Attempted to reproduce directly against the same live encounter
+(`dungeon-one`, `b9237b88-...`) three ways: browser click-to-move (fog of
+war only reveals what's actually explored, and pixel-coordinate clicking
+proved unreliable to aim precisely at this scale), the dev-only
+`PlaytestHarness` (`?encounterId=`) Q/R/S move form (blocked — its
+`myPosition` resolution keys off a synthesized `char-<playerId>` entity id
+that doesn't match the real `char_<uuid>` id the server actually uses, so
+`canMove` never turns true), and direct `grpcurl MoveEntity` calls with
+hand-computed contiguous hex paths (silently no-ops on any path that
+crosses the room's real wall geometry — a one-hex sanity move worked, but
+every longer path toward the other four bookcases' cells got rejected
+without error). The one bookcase I could reliably reveal and check
+(`canvas-prop-4`, authored at `[14, 0]`) matched its authored position and
+facing exactly, both server-side and in the client render, from every
+vantage point tried — including one at a normal play distance (not
+close-up) where it read clearly broad-faced, not edge-on, underscoring
+that viewing distance/framing matters as much as azimuth here.
+
+**Not closed out.** The single-bookcase verification plus the ruled-out
+#723 involvement are solid; the specific "scattered to the wrong wall"
+pattern from Kirk's screenshot is not independently reproduced in this
+unit's own testing. Needs either Kirk's exact repro steps/encounter, or a
+more reliable in-repo way to move a test character past real wall
+geometry, to pin down further.
+
 ## What shipped
 
 No changes to position math, facing math, or the wire/render pipeline —
 all independently verified already correct and already shared between the
-builder and the live game. Documented the canonical convention and this
-finding in ONE place (`boardGeometry.ts`'s own "THE CANONICAL WORLD" doc
-comment) so the next renderer can't rediscover it the hard way, plus a
-regression test (`DungeonPreview3D.test.ts`,
-`ORBIT_INITIAL_CAMERA_POSITION` describe block) pinning that Orbit's fixed
-starting azimuth stays matched to the tactical camera's own
-`INITIAL_AZIMUTH` — necessary, though (per the above) not sufficient on its
-own, for Orbit to preview a facing-sensitive placement accurately.
+builder and the live game (see the one-bookcase verification above; the
+scattered-pattern reproduction remains open, see previous section).
+Documented the canonical convention and this finding in ONE place
+(`boardGeometry.ts`'s own "THE CANONICAL WORLD" doc comment) so the next
+renderer can't rediscover it the hard way, plus a regression test
+(`DungeonPreview3D.test.ts`, `ORBIT_INITIAL_CAMERA_POSITION` describe
+block) pinning that Orbit's fixed starting azimuth stays matched to the
+tactical camera's own `INITIAL_AZIMUTH`, and the new Orbit projection
+toggle above so the editing-legibility/preview-fidelity tradeoff is Kirk's
+to make by feel, not this file's to guess at.
 
-Deliberately NOT changed: Orbit's projection type. Switching it to
-orthographic would remove the remaining gap for facing preview, but at the
-cost of Orbit's general-purpose legibility for everything else it's used
-for (wall/region editing, free-look review) — a real product tradeoff, not
-a geometry fix, and Kirk's call to make.
+One more open item, explicitly flagged rather than asserted: Kirk's own
+left/right screen-orientation observation (separate from the scattering
+above) most likely comes from the tactical camera's azimuth/rotation
+differing from whatever angle he happened to view the builder from — this
+unit measured azimuth as identical (45°) across Orbit, Play, and the live
+game (see the "Position/layout" section above), so a further, specific
+left/right flip would have to come from somewhere this investigation
+didn't independently verify (e.g. Q/E rotation applied before the
+screenshot). Stated as likely, not proven.
 
 ## Tests
 
-Full repo `vitest run`: 2323 tests, 140 files, all passing (includes PR
-#724's own cherry-picked coverage). `npm run ci-check` clean
-(format/lint/typecheck/build/tests all pass).
+Full repo `vitest run`: 2331 tests, 141 files, all passing (includes PR
+#724's own cherry-picked coverage plus this unit's new tests). `npm run
+ci-check` clean (format/lint/typecheck/build/tests all pass).
