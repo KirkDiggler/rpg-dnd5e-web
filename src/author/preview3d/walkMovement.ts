@@ -19,29 +19,53 @@
  * camera standing in" and "which cell would a click place into" can never
  * disagree.
  *
- * **Blocking rule, matched to Kirk's own rule for a drawn straight wall**
- * ("any hex that is not 100% uncovered would not be traversable") and
- * generalized to every source of impassability this document can author:
- * a cell is walkable floor MINUS three things — a straight-wall
- * (`wallLines:`) footprint cell, a `place:`/room-`place:` entry whose
- * `resolvePlacement(...).blocksMovement` resolves true (the SAME
- * inherited-default-aware resolver `isEntranceBlocked` already reads, so
- * a `defaults:`-inherited block is honored here exactly like an explicit
- * one), and a room's `boss:` cell (a monster standing there is always an
- * obstacle — `BossDoc` carries no `blocks_movement` field to resolve, so
- * this is a flat rule, not a resolved one). Separately, EDGE-crossing
- * between two individually-walkable cells is blocked by an edge-native
- * `walls:` (or server-truth `FloorPlan.edges`) entry whose `kind ===
- * 'solid'` — a `kind: 'door'` edge is deliberately NOT added to the
- * blocked-edge set, so a door is simply passable, matching this file's
- * neighbor `DungeonPreview3D.tsx`'s own `DoorGap` rendering (a genuine
- * open span, not a shortened solid box). A `wallLines:` door is already
- * handled one layer down: its cell is excluded from the OWNING line's own
- * footprint (`WallLineDoorDoc`'s own doc comment — "as if the line never
- * clipped it"), so it never enters `blockedCells`, and its own boundary
+ * **Blocking rule, generalized to every source of impassability this
+ * document can author:** a cell is walkable floor MINUS three things — a
+ * straight-wall (`wallLines:`) footprint cell whose
+ * `hexCoverageFraction` is AT/ABOVE `STANDABLE_COVERAGE_THRESHOLD`
+ * (`buildWalkContext`'s own `wallLineFootprint` PARAMETER is already the
+ * coverage-filtered subset by the time it reaches this function — see
+ * `DungeonPreview3D.tsx`'s `buildStandableWallLineFootprint`; this
+ * module itself needed no change for that refinement, since it always
+ * just union'd whatever set it was handed into `blockedCells`), a
+ * `place:`/room-`place:` entry whose `resolvePlacement(...).blocksMovement`
+ * resolves true (the SAME inherited-default-aware resolver
+ * `isEntranceBlocked` already reads, so a `defaults:`-inherited block is
+ * honored here exactly like an explicit one), and a room's `boss:` cell
+ * (a monster standing there is always an obstacle — `BossDoc` carries no
+ * `blocks_movement` field to resolve, so this is a flat rule, not a
+ * resolved one). Separately, EDGE-crossing between two
+ * individually-walkable cells is blocked by an edge-native `walls:` (or
+ * server-truth `FloorPlan.edges`) entry whose `kind === 'solid'` — a
+ * `kind: 'door'` edge is deliberately NOT added to the blocked-edge set,
+ * so a door is simply passable, matching this file's neighbor
+ * `DungeonPreview3D.tsx`'s own `DoorGap` rendering (a genuine open span,
+ * not a shortened solid box). A `wallLines:` door is already handled one
+ * layer down: its cell is excluded from the OWNING line's own footprint
+ * (`WallLineDoorDoc`'s own doc comment — "as if the line never clipped
+ * it"), so it never enters `blockedCells`, and its own boundary
  * crossings fall out of `straightWallCrossedEdges`'s ordinary
  * both-clear-cells rule with no separate door-crossing code needed here
  * either.
+ *
+ * **Coverage decides standing, the line's own crossing prohibition
+ * stays absolute** (rpg-project#169's coverage-based-standability
+ * follow-up, live design round with Kirk, 2026-08-07 — retires the
+ * original "any hex that is not 100% uncovered would not be traversable"
+ * rule for STANDING purposes; see `creation/straightWallGeometry.ts`'s
+ * own header comment on this section for the full geometry/rationale
+ * writeup). Below, `straightWallCrossedEdges` is still called against
+ * each line's OWN, UNFILTERED, full raw footprint
+ * (`straightWallFootprint`, computed fresh per line right here, never
+ * the caller-supplied coverage-filtered `wallLineFootprint` param) —
+ * mechanism (b)'s crossing-blocking is deliberately independent of
+ * coverage, exactly like Half A's own wire projection
+ * (`creation/straightWallGeometry.ts`'s `projectWallLineToEdges`) stays
+ * independent of it. A cell can be standable (below the threshold, not
+ * in `blockedCells`) while a specific edge into/out of it is still
+ * blocked by this same mechanism — a low-coverage cell isn't a free
+ * pass through the wall's own line, only a legal place to stand once
+ * you're in it via an unblocked approach.
  */
 import { HEX_SIZE } from '@/components/hex-grid/hexMath';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';

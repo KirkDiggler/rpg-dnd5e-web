@@ -62,8 +62,21 @@ import {
 import type { CreationGrid } from './creationTypes';
 
 /** Duplicated from `boardGeometry.ts`'s own `neighborCell` — see this
- * module's header comment for why it can't just import that one. */
-function neighborCell(
+ * module's header comment for why it can't just import that one.
+ * Exported (wallLines->edges projection unit, rpg-project#169) so
+ * `straightWallGeometry.ts`/`creationGeometry.ts` can use THIS copy
+ * instead of `boardGeometry.ts`'s — those two files sit BELOW
+ * `dungeonYaml.ts` too (both leaf-computable pure geometry, no doc-shape
+ * awareness), so importing `boardGeometry.ts` from either one for a
+ * single function was already the same class of mistake this module's
+ * own header comment names: `dungeonYaml.ts -> straightWallGeometry.ts ->
+ * boardGeometry.ts -> dungeonYaml.ts` is a real, crashing cycle,
+ * necessary the moment `dungeonYaml.ts`'s own `stripToV1Subset` needs to
+ * call `straightWallFootprint`/`straightWallCrossedEdges` directly to
+ * project `wallLines:` into wire `walls:` edges. Redirecting both
+ * consumers to this already-duplicated, already-leaf copy severs that
+ * path at its root instead of adding a THIRD duplicate. */
+export function neighborCell(
   col: number,
   row: number,
   facing: number

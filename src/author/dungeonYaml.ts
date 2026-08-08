@@ -37,12 +37,17 @@ import {
   YAMLSeq,
 } from 'yaml';
 import type { DialectField, ServerCapabilities } from './capabilityProbe';
+import { DEFAULT_CANVAS } from './creation/emptyCanvasDoc';
 import {
   canonicalCorner,
   cornerPoint,
   migrateLegacyCenterEndpoint,
   type CornerRef,
 } from './creation/hexCorner';
+import {
+  projectWallLineToEdges,
+  type ProjectedWallEdge,
+} from './creation/straightWallGeometry';
 import {
   cellCenter,
   hexColumn,
@@ -2410,6 +2415,20 @@ export function pluralCount(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
+/** A cell-pair key with no notion of direction — the same "sort the two
+ * `[col,row]` endpoints lexicographically first" convention
+ * `preview3d/walkMovement.ts`'s own (unimportable here — see this file's
+ * new `straightWallGeometry.ts` import comment) `edgeKey` uses, small
+ * enough to duplicate directly rather than restructure that module's own
+ * dependency graph a second time. Used by `stripToV1Subset`'s wallLines
+ * projection to find/dedupe against `doc.walls`'s explicit entries
+ * regardless of which direction either side happened to author. */
+function wallEdgeKey(a: [number, number], b: [number, number]): string {
+  const aKey = `${a[0]},${a[1]}`;
+  const bKey = `${b[0]},${b[1]}`;
+  return aKey <= bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`;
+}
+
 /** Which `DialectField` governs a placement's own `facing:` — the real
  * server distinguishes by entry type (verified live, this unit,
  * 2026-08-04: a room-scoped, non-monster, non-`mount:wall` floor prop's
@@ -2525,14 +2544,64 @@ export function stripToV1Subset(
     }
   }
 
-  // Straight walls — a sibling target-dialect-only construct to `walls:`
-  // above, NOT probed (see capabilityProbe.ts's own doc comment: it's
-  // this concept's own client-side sugar, never sent to the real server
-  // in any form) — always dropped, counted separately from the edge-wall
-  // tally since the two are genuinely different authoring constructs
-  // (see `WallLineDoc`'s own doc comment).
+  // Straight walls (`wallLines:`) — a sibling target-dialect-only
+  // construct to `walls:` above (never a variant of it — see
+  // `WallLineDoc`'s own doc comment). The KEY itself never survives:
+  // dungeonspec has no `wallLines:` field and never will
+  // (`capabilityProbe.ts` deliberately never probes it — this concept's
+  // own client-side sugar, never sent to the real server in any form).
+  // But the GEOMETRY it authors isn't necessarily lost: when THIS server
+  // accepts edge-native `walls:`, every wallLine's footprint + crossed-edge
+  // truth (`straightWallGeometry.ts`'s `projectWallLineToEdges` — the SAME
+  // primitives `preview3d/walkMovement.ts` already uses to enforce this
+  // client-side) is PROJECTED down into real `walls:` entries and merged
+  // into whatever explicit `walls:` survives above — a drawn straight wall
+  // becomes wire-real geometry the game renders AND enforces, not just a
+  // client-side preview. Not accepted: unchanged prior behavior, dropped
+  // and counted like any other rejected target-dialect construct. See
+  // TARGET-YAML.md's "Straight walls: stripToV1Subset" section for the
+  // full writeup (door-vs-gap decision, rim-edge honesty, the
+  // explicit-wins merge rule).
   if (doc.wallLines.length > 0) {
-    dropped.push(pluralCount(doc.wallLines.length, 'straight wall'));
+    if (accepted('walls')) {
+      const grid = doc.canvas ?? DEFAULT_CANVAS;
+      const projected = new Map<string, ProjectedWallEdge>();
+      let rimEdgeCount = 0;
+      for (const line of doc.wallLines) {
+        const result = projectWallLineToEdges(line, grid);
+        rimEdgeCount += result.rimEdgeCount;
+        for (const edge of result.edges) {
+          const key = wallEdgeKey(edge.from, edge.to);
+          const existing = projected.get(key);
+          if (existing) {
+            if (edge.kind === 'door') existing.kind = 'door';
+          } else {
+            projected.set(key, edge);
+          }
+        }
+      }
+      // Explicit `walls:` entries WIN on a key collision — never
+      // overwritten, never duplicated. A projected edge is only ever
+      // appended when no explicit entry already claims that exact cell
+      // pair (either kind).
+      const explicitKeys = new Set(
+        doc.walls.map((w) => wallEdgeKey(w.from, w.to))
+      );
+      const wallsSeq = topSeq(cst, 'walls');
+      for (const edge of projected.values()) {
+        if (explicitKeys.has(wallEdgeKey(edge.from, edge.to))) continue;
+        wallsSeq.items.push(createWallNode(cst, edge));
+      }
+      const rimNote =
+        rimEdgeCount > 0
+          ? `; ${pluralCount(rimEdgeCount, 'rim edge')} at the canvas boundary could not be expressed`
+          : '';
+      compiling.push(
+        `${pluralCount(doc.wallLines.length, 'straight wall')} (projects to ${pluralCount(projected.size, 'wall edge')}${rimNote})`
+      );
+    } else {
+      dropped.push(pluralCount(doc.wallLines.length, 'straight wall'));
+    }
   }
   cst.delete('wallLines');
 

@@ -35,7 +35,7 @@ import { cubeAtColRow } from '../hexLayout';
 import {
   buildFloorTiles,
   buildPlaceableCells,
-  buildWallLineFootprint,
+  buildStandableWallLineFootprint,
   type PlaceableCell,
 } from './DungeonPreview3D';
 import {
@@ -287,7 +287,7 @@ describe('canStandAt / nearestCell — hand-built context', () => {
 // --- buildWalkContext wiring, against real parsed documents ---
 
 function canvasContextFromDoc(doc: ReturnType<typeof toDungeonDoc>) {
-  const wallLineFootprint = buildWallLineFootprint(doc);
+  const wallLineFootprint = buildStandableWallLineFootprint(doc);
   // A from-scratch canvas has no `floorPlan` — mirror
   // `CreationConcept.tsx`'s own derivation (`deriveCanvasFloorCells`) via
   // the SAME `buildFloorTiles`/`buildPlaceableCells` this concept's 3D
@@ -315,7 +315,7 @@ describe('buildWalkContext — straight-wall (wallLines) footprint wiring', () =
     // here).
     addWallLine(cst, { cell: [5, 4], corner: 2 }, { cell: [5, 4], corner: 5 });
     const doc = toDungeonDoc(cst);
-    const wallLineFootprint = buildWallLineFootprint(doc);
+    const wallLineFootprint = buildStandableWallLineFootprint(doc);
     const grid = doc.canvas!;
     const floorCells: [number, number][] = [];
     for (let col = 0; col < grid.width; col++)
@@ -374,7 +374,7 @@ describe('buildWalkContext — real showcase document (floorPlan present)', () =
   const doc = toDungeonDoc(cst);
   const floorPlan = SHOWCASE_FLOORPLAN;
   const floorTiles = buildFloorTiles(floorPlan, doc.holes, undefined);
-  const wallLineFootprint = buildWallLineFootprint(doc);
+  const wallLineFootprint = buildStandableWallLineFootprint(doc);
   const cells = buildPlaceableCells(
     floorPlan,
     doc,
@@ -411,7 +411,7 @@ describe('resolveWalkStart', () => {
     const doc = toDungeonDoc(cst);
     // start: is not set in the empty canvas fixture — use a doc override.
     const docWithStart = { ...doc, start: [3, 4] as [number, number] };
-    const wallLineFootprint = buildWallLineFootprint(doc);
+    const wallLineFootprint = buildStandableWallLineFootprint(doc);
     const grid = doc.canvas!;
     const floorCells: [number, number][] = [];
     for (let col = 0; col < grid.width; col++)
@@ -427,7 +427,7 @@ describe('resolveWalkStart', () => {
   it('falls back to the standable cell nearest the floor centroid when start: is unset', () => {
     const { cst } = parseDungeon(emptyCanvasYaml(4, 4));
     const doc = toDungeonDoc(cst);
-    const wallLineFootprint = buildWallLineFootprint(doc);
+    const wallLineFootprint = buildStandableWallLineFootprint(doc);
     const floorCells: [number, number][] = [];
     for (let col = 0; col < 4; col++)
       for (let row = 0; row < 4; row++) floorCells.push([col, row]);

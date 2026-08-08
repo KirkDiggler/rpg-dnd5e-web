@@ -540,6 +540,34 @@ export function HexEntity({
     // static prop did).
     return (
       <group ref={movingGroupRef} {...interactionProps}>
+        {/* Raycast proxy (rpg-dnd5e-web unit/game-fidelity, Bug A): a
+            THREE.SkinnedMesh raycasts against its BIND-POSE geometry, not
+            the pose the idle/walk clip actually renders — the animation
+            sways the visible body away from that invisible volume, so a
+            click on the visible model hits or misses depending on which
+            animation frame is showing, with no console signal on a miss.
+            This capsule is a plain (non-skinned) mesh at a FIXED local
+            transform, so it always raycasts exactly where it visually sits
+            — same footprint/height convention as the obstacle capsule
+            (`createEntityGeometry`/`ENTITY_HEIGHT` above), just invisible
+            (zero-opacity material, not `visible={false}` — an invisible
+            object is still raycast-testable in three.js, `visible={false}`
+            is not; `DungeonPreview3D.tsx`'s `FloorHitCell` establishes the
+            same zero-opacity-material idiom in this codebase). It carries
+            no handlers of its own — this group's `interactionProps` above
+            already bubble from any raycast-hit descendant, the same as
+            every other child here. ClassCharacterModel opts its own
+            skinned meshes OUT of raycasting entirely (see its `cloned`
+            useMemo), so this proxy is the only thing left to hit once a
+            GLB is mounted — also a perf win (one capsule test instead of
+            walking a full skinned mesh tree). MediumHumanoid's fallback
+            primitives are NOT skinned (ordinary transformed meshes, whose
+            raycast already tracks their real pose correctly) and are left
+            raycast-enabled, so this proxy only ADDS coverage there, never
+            removes any. */}
+        <mesh geometry={geometry} position={[0, ENTITY_HEIGHT / 2, 0]}>
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
         {/* Dead/downed entities rendered with tilt when using the
             MediumHumanoid fallback (no separate collapsed pose asset); a
             resolved GLB's own downed/dead variant is already posed for it,

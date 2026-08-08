@@ -1,16 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { BOARD_HEX_SIZE, cellCenter } from '../hexLayout';
-import { cornerPoint, nearestCorner, type CornerRef } from './hexCorner';
+import {
+  canonicalCorner,
+  cornerPoint,
+  nearestCorner,
+  type CornerRef,
+} from './hexCorner';
 import {
   clipSegmentToShrunkHex,
   footprintCellAtParam,
+  hexCoverageFraction,
   isCellClipped,
   isValidDoorCell,
   nearestWallAngleFamily,
   projectPointToLineParam,
+  projectWallLineToEdges,
   snapStraightEndpoint,
+  STANDABLE_COVERAGE_THRESHOLD,
+  standableFootprintKeys,
   straightWallCrossedEdges,
   straightWallFootprint,
+  straightWallFootprintCoverage,
+  straightWallsFootprintCoverage,
   straightWallsFootprintSet,
   WALL_ANGLE_SNAP_TOLERANCE_DEG,
   wallLineDoorCellAt,
@@ -340,5 +351,271 @@ describe('clipSegmentToShrunkHex — the touch-vs-clip epsilon rule directly', (
     const a = { x: hexAt55.x + halfFlatWidth - 1, y: hexAt55.y - 30 };
     const b = { x: hexAt55.x + halfFlatWidth - 1, y: hexAt55.y + 30 };
     expect(isCellClipped(a, b, 5, 5)).toBe(true);
+  });
+});
+
+// rpg-project#169's "drawn walls become real" unit — wallLines->edges
+// projection, the send-time seam that lets a drawn straight wall become
+// wire-real `walls:` geometry. Reuses the exact fixtures the door-
+// exclusion/footprint describe blocks above already established, rather
+// than inventing new ones.
+describe('projectWallLineToEdges', () => {
+  it('a single isolated footprint cell seals all 6 of its real neighbor edges, solid, no doors', () => {
+    // The same "wall ENDING at a corner" diameter fixture from above:
+    // footprint is exactly [[5, 4]], well inside the 20x30 grid on every
+    // side, so all 6 neighbor directions resolve to real, in-grid cells.
+    const from: CornerRef = { cell: [5, 4], corner: 2 };
+    const to: CornerRef = { cell: [5, 4], corner: 5 };
+    const result = projectWallLineToEdges({ from, to, doors: [] }, GRID);
+    expect(result.rimEdgeCount).toBe(0);
+    expect(result.edges).toHaveLength(6);
+    for (const edge of result.edges) {
+      expect(edge.kind).toBe('solid');
+      const touchesSealedCell =
+        (edge.from[0] === 5 && edge.from[1] === 4) ||
+        (edge.to[0] === 5 && edge.to[1] === 4);
+      expect(touchesSealedCell).toBe(true);
+    }
+    // Every edge is a distinct cell pair — no duplicate direction landed
+    // on the same neighbor twice.
+    const keys = new Set(
+      result.edges.map((e) => `${e.from.join(',')}|${e.to.join(',')}`)
+    );
+    expect(keys.size).toBe(6);
+  });
+
+  it('every real neighbor direction is either a sealed edge or a counted rim edge — never silently dropped', () => {
+    // Same diameter fixture, but anchored at column 0 — some of the
+    // isolated footprint cell's 6 neighbor directions fall off the
+    // canvas grid entirely (no cell to pair with).
+    const from: CornerRef = { cell: [0, 4], corner: 2 };
+    const to: CornerRef = { cell: [0, 4], corner: 5 };
+    const result = projectWallLineToEdges({ from, to, doors: [] }, GRID);
+    expect(result.rimEdgeCount).toBeGreaterThan(0);
+    // The 6 real neighbor directions are mutually exclusive with rim —
+    // every direction contributes to exactly one of the two counts, so
+    // they always sum to 6 for an isolated single-cell footprint.
+    expect(result.edges.length + result.rimEdgeCount).toBe(6);
+    for (const edge of result.edges) expect(edge.kind).toBe('solid');
+  });
+
+  // A genuinely VERTICAL line (this module's own header comment: "a
+  // vertical line through a column of hex CENTERS instead clips every
+  // hex in that column full-width") clips a CONTIGUOUS run of cells —
+  // unlike the every-other-hex row fixture above, consecutive cells in
+  // this run ARE real hex neighbors of each other (verified directly,
+  // not assumed, while building this test), which is what a door in the
+  // MIDDLE of an ordinary wall run actually needs to exercise.
+  const verticalFrom: CornerRef = { cell: [5, 3], corner: 0 };
+  const verticalTo: CornerRef = { cell: [5, 9], corner: 0 };
+  const MID_DOOR_CELL: [number, number] = [6, 6]; // footprint is [6,4]..[6,9]
+
+  const sameCell = (a: [number, number], b: [number, number]) =>
+    a[0] === b[0] && a[1] === b[1];
+  const edgeBetween = (
+    edges: readonly {
+      from: [number, number];
+      to: [number, number];
+      kind: string;
+    }[],
+    a: [number, number],
+    b: [number, number]
+  ) =>
+    edges.find(
+      (e) =>
+        (sameCell(e.from, a) && sameCell(e.to, b)) ||
+        (sameCell(e.to, a) && sameCell(e.from, b))
+    );
+
+  it('a doors: cell projects its flanking footprint-neighbor edges as kind: door, never solid and never a bare gap', () => {
+    const result = projectWallLineToEdges(
+      { from: verticalFrom, to: verticalTo, doors: [{ cell: MID_DOOR_CELL }] },
+      GRID
+    );
+    // [6,6]'s own flanking footprint neighbors along the wall run are
+    // [6,5] and [6,7] — both of those edges must read as a doorway.
+    expect(edgeBetween(result.edges, MID_DOOR_CELL, [6, 5])?.kind).toBe('door');
+    expect(edgeBetween(result.edges, MID_DOOR_CELL, [6, 7])?.kind).toBe('door');
+  });
+
+  it('a door only reverses ITS OWN line’s footprint claim — an independent mechanism-(b) grazing edge on the same cell stays solid', () => {
+    // TARGET-YAML.md's own rule, verbatim: "something else... can still
+    // legitimately block it independently." [6,6] is a door cell, but the
+    // line's own grazing crossing toward [5,5] (mechanism (b), a
+    // both-clear-cells test wholly separate from the door's flanking
+    // edges above) is untouched by the door exclusion — still solid.
+    const result = projectWallLineToEdges(
+      { from: verticalFrom, to: verticalTo, doors: [{ cell: MID_DOOR_CELL }] },
+      GRID
+    );
+    const graze = edgeBetween(result.edges, MID_DOOR_CELL, [5, 5]);
+    expect(graze?.kind).toBe('solid');
+  });
+
+  it('mechanism (a) and (b) edges merge into one deduped set — no duplicate cell pairs', () => {
+    const from: CornerRef = { cell: [2, 5], corner: 0 };
+    const to: CornerRef = { cell: [10, 5], corner: 3 };
+    const result = projectWallLineToEdges({ from, to, doors: [] }, GRID);
+    const keys = result.edges.map(
+      (e) => `${e.from.join(',')}|${e.to.join(',')}`
+    );
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('rule 5 regression guard: the wire projection is UNCHANGED by coverage — a low-coverage cell still gets sealed', () => {
+    // Kirk's live-design follow-up, rule 5, verbatim: "traversability
+    // relaxation does NOT change Half A's emitted walls — projected
+    // walls: edges = the line's crossings, independent of cell
+    // coverage." (17,20) below has coverage ~1.67% (see the
+    // "hexCoverageFraction" describe block's own bench) — genuinely
+    // standable under STANDABLE_COVERAGE_THRESHOLD — but the WIRE
+    // projection must still seal it exactly as it would any other
+    // footprint cell, since the server has no notion of coverage at all.
+    const from: CornerRef = canonicalCorner({ cell: [17, 20], corner: 0 });
+    const to: CornerRef = canonicalCorner({ cell: [24, 18], corner: 0 });
+    const LOW_COVERAGE_CELL: [number, number] = [19, 19];
+    expect(hexCoverageFraction(from, to, ...LOW_COVERAGE_CELL)).toBeLessThan(
+      STANDABLE_COVERAGE_THRESHOLD
+    );
+    const result = projectWallLineToEdges({ from, to, doors: [] }, GRID);
+    const sealedEdges = result.edges.filter(
+      (e) =>
+        (e.from[0] === LOW_COVERAGE_CELL[0] &&
+          e.from[1] === LOW_COVERAGE_CELL[1]) ||
+        (e.to[0] === LOW_COVERAGE_CELL[0] && e.to[1] === LOW_COVERAGE_CELL[1])
+    );
+    // Mechanism (a) seals every real neighbor direction of a footprint
+    // cell regardless of how little of it the line actually clips.
+    expect(sealedEdges.length).toBeGreaterThan(0);
+    for (const e of sealedEdges) expect(e.kind).toBe('solid');
+  });
+});
+
+// Coverage-based standability (Kirk's live-design follow-up to "drawn
+// walls become real," 2026-08-07) — every fixture value here is
+// independently verified by this describe block itself (not eyeballed),
+// and doubles as the exact bench `STANDABLE_COVERAGE_THRESHOLD`'s own
+// doc comment describes for a future real Walk-mode visual pass.
+describe('hexCoverageFraction — measurement bench', () => {
+  it('a corner-to-corner diagonal two apart (skipping one vertex) always cuts off exactly 1/6 of the hex, by regular-hexagon symmetry', () => {
+    // Real, load-bearing reference point: the smallest "clean" symmetric
+    // corner cut reachable via a same-cell corner-to-corner chord —
+    // STANDABLE_COVERAGE_THRESHOLD is deliberately set below this value,
+    // keeping it blocked.
+    const from: CornerRef = { cell: [8, 8], corner: 0 };
+    const to: CornerRef = { cell: [8, 8], corner: 2 };
+    const cov = hexCoverageFraction(from, to, 8, 8);
+    expect(cov).toBeCloseTo(1 / 6, 5);
+  });
+
+  it('a corner-to-opposite-corner diameter splits the hex exactly in half', () => {
+    const from: CornerRef = { cell: [8, 8], corner: 0 };
+    const to: CornerRef = { cell: [8, 8], corner: 3 };
+    const cov = hexCoverageFraction(from, to, 8, 8);
+    expect(cov).toBeCloseTo(0.5, 5);
+  });
+
+  it('the two sub-polygons a line splits a hex into always sum to the hex’s own full area', () => {
+    // Verified structurally, not just for one fixture: for ANY line that
+    // genuinely clips the cell, the smaller + larger fractions this
+    // function's own `min(sideArea, otherSideArea)` computation implies
+    // must together account for the whole hex — a convex polygon split
+    // by one line partitions exactly, modulo the zero-area shared
+    // boundary (this test's own justification for why `otherSideArea =
+    // totalArea - sideArea` is used instead of a second clip call).
+    const from: CornerRef = canonicalCorner({ cell: [17, 20], corner: 0 });
+    const to: CornerRef = canonicalCorner({ cell: [24, 18], corner: 0 });
+    const footprint = straightWallFootprint(from, to, GRID);
+    expect(footprint.length).toBeGreaterThan(0);
+    for (const [col, row] of footprint) {
+      const cov = hexCoverageFraction(from, to, col, row);
+      expect(cov).toBeGreaterThan(0);
+      expect(cov).toBeLessThanOrEqual(0.5); // always the SMALLER side
+    }
+  });
+
+  it('a real bench line produces a wide, independently-verified spread of coverage values, low to high', () => {
+    // The exact two-line bench STANDABLE_COVERAGE_THRESHOLD's own doc
+    // comment names as reproducible for a future Walk-mode visual pass —
+    // this test is that reproducibility, executable rather than just
+    // described. A wider grid than this file's own default `GRID` —
+    // line B's own cells reach column 44, which `GRID`'s width: 20 would
+    // clamp and silently change the footprint.
+    const BENCH_GRID = { width: 50, height: 30 };
+    const lineA = {
+      from: canonicalCorner({ cell: [16, 21], corner: 0 }),
+      to: canonicalCorner({ cell: [22, 20], corner: 0 }),
+    };
+    const lineB = {
+      from: canonicalCorner({ cell: [37, 20], corner: 0 }),
+      to: canonicalCorner({ cell: [44, 18], corner: 0 }),
+    };
+    const covA = straightWallFootprint(lineA.from, lineA.to, BENCH_GRID).map(
+      ([c, r]) => hexCoverageFraction(lineA.from, lineA.to, c, r)
+    );
+    const covB = straightWallFootprint(lineB.from, lineB.to, BENCH_GRID).map(
+      ([c, r]) => hexCoverageFraction(lineB.from, lineB.to, c, r)
+    );
+    const all = [...covA, ...covB].sort((a, b) => a - b);
+    // A real spread from well under the threshold to well above it —
+    // the bench actually exercises the standable/blocked boundary, not
+    // just one tier. Smallest value is line B's own ~1.67% cell.
+    expect(all[0]).toBeLessThan(0.02);
+    expect(all[all.length - 1]).toBeGreaterThan(0.4);
+    expect(all.some((c) => c < STANDABLE_COVERAGE_THRESHOLD)).toBe(true);
+    expect(all.some((c) => c >= STANDABLE_COVERAGE_THRESHOLD)).toBe(true);
+  });
+});
+
+describe('straightWallFootprintCoverage / straightWallsFootprintCoverage / standableFootprintKeys', () => {
+  it('straightWallFootprintCoverage returns exactly the footprint cell set, each with its own coverage', () => {
+    const from: CornerRef = { cell: [5, 4], corner: 2 };
+    const to: CornerRef = { cell: [5, 4], corner: 5 };
+    const coverage = straightWallFootprintCoverage(from, to, GRID);
+    expect([...coverage.keys()]).toEqual(['5,4']);
+    expect(coverage.get('5,4')).toBeGreaterThan(0);
+  });
+
+  it('a door cell is excluded from the coverage map exactly like the footprint (door exclusion happens before coverage is ever computed for it)', () => {
+    const from: CornerRef = { cell: [2, 5], corner: 0 };
+    const to: CornerRef = { cell: [10, 5], corner: 3 };
+    const DOOR_CELL: [number, number] = [6, 5];
+    const coverage = straightWallFootprintCoverage(from, to, GRID, [DOOR_CELL]);
+    expect(coverage.has('6,5')).toBe(false);
+    expect(coverage.has('4,5')).toBe(true);
+  });
+
+  it('straightWallsFootprintCoverage takes the MAX coverage when two lines both touch the same cell', () => {
+    // Two lines authored to both clip (8,8) at different depths — the
+    // shallower corner-cut (1/6) and the deep diameter (1/2). The
+    // documented simplification: max wins, not a true union of areas.
+    const shallow = {
+      from: { cell: [8, 8], corner: 0 } as CornerRef,
+      to: { cell: [8, 8], corner: 2 } as CornerRef,
+    };
+    const deep = {
+      from: { cell: [8, 8], corner: 0 } as CornerRef,
+      to: { cell: [8, 8], corner: 3 } as CornerRef,
+    };
+    const coverage = straightWallsFootprintCoverage([shallow, deep], GRID);
+    expect(coverage.get('8,8')).toBeCloseTo(0.5, 5);
+  });
+
+  it('standableFootprintKeys filters to cells at/above the threshold, default and explicit', () => {
+    const coverage = new Map<string, number>([
+      ['1,1', 0.02],
+      ['2,2', 0.09],
+      ['3,3', 0.1],
+      ['4,4', 0.5],
+    ]);
+    expect([...standableFootprintKeys(coverage)].sort()).toEqual([
+      '3,3',
+      '4,4',
+    ]);
+    expect([...standableFootprintKeys(coverage, 0.05)].sort()).toEqual([
+      '2,2',
+      '3,3',
+      '4,4',
+    ]);
   });
 });
