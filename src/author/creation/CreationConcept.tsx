@@ -485,6 +485,7 @@ export function CreationConcept({
         onSnapFlush={edit.handleSnapFlush}
         onSetTargeting={edit.handleSetTargeting}
         onSetFacing={edit.handleSetFacing}
+        onSetOffset={edit.handleSetOffset}
         onFlipMountSide={edit.handleFlipMountSide}
       />
       {/* Gated on the Region tool being active — `regionEdit`'s own

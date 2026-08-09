@@ -195,6 +195,26 @@ function parseHeight(raw: unknown): number | null {
   return typeof raw === 'number' ? raw : null;
 }
 
+function parsePlacementOffset(
+  raw: unknown,
+  context: string
+): [number, number, number] | null {
+  if (raw === undefined) return null;
+  if (
+    !Array.isArray(raw) ||
+    raw.length !== 3 ||
+    raw.some(
+      (component) =>
+        typeof component !== 'number' || !Number.isFinite(component)
+    )
+  ) {
+    throw new DungeonParseError(
+      `${context}: expected exactly three finite world-axis numbers`
+    );
+  }
+  return [raw[0], raw[1], raw[2]];
+}
+
 function parseRotationDegrees(raw: unknown): number | null {
   return typeof raw === 'number' ? raw : null;
 }
@@ -295,6 +315,7 @@ function parsePlacementList(raw: unknown, context: string): PlacementDoc[] {
       blocksLos: p.blocks_los === true,
       isMonster: p.ref.startsWith('dnd5e:monsters:'),
       facing: parseFacing(p.facing),
+      offset: parsePlacementOffset(p.offset, `${context}[${pi}].offset`),
       mount: parseMount(p.mount),
       height: parseHeight(p.height),
       rotationDegrees: parseRotationDegrees(p.rotate_degrees),
@@ -331,6 +352,9 @@ export interface PlacementDoc {
    * `null` = unset. Not compiled server-side; stripped by
    * `stripToV1Subset` before any real PutDungeon call. */
   facing: number | null;
+  /** Ratified v0.4 cosmetic translation in canonical world axes/units.
+   * Null is omission and differs from explicit [0,0,0]. */
+  offset: [number, number, number] | null;
   /** target dialect, proposed — see `Mount`'s doc comment. `'floor'` when the YAML
    * has no `mount:` key (the pre-existing, only-ever-possible state). */
   mount: Mount;
@@ -397,6 +421,8 @@ export interface BossDoc {
   at: [number, number];
   /** target dialect, proposed — see `PlacementDoc.facing`. */
   facing: number | null;
+  /** Ratified v0.4 world-axis placement offset; null means omitted. */
+  offset: [number, number, number] | null;
   /** target dialect, proposed — see `PlacementDoc.targeting`. A boss is always a
    * monster, so this is unconditional (no `isMonster` gate needed). */
   targeting: string | null;
@@ -732,6 +758,10 @@ export function toDungeonDoc(cst: Document): DungeonDoc {
             ref: b.ref,
             at,
             facing: parseFacing(b.facing),
+            offset: parsePlacementOffset(
+              b.offset,
+              `Room "${room.id}" boss.offset`
+            ),
             targeting: parseTargeting(b.targeting),
           };
         })()
@@ -1184,6 +1214,8 @@ export function movePlacementAcrossLists(
   }
   if (item.facing !== null)
     setPlacementFacing(cst, toRoomId, newIndex, item.facing);
+  if (item.offset != null)
+    setPlacementOffset(cst, toRoomId, newIndex, item.offset);
   if (item.mount === 'wall') {
     setPlacementMount(cst, toRoomId, newIndex, 'wall');
   }
@@ -1382,6 +1414,43 @@ export function setBossFacing(
   if (!isMap(boss)) return;
   if (facing === null) boss.delete('facing');
   else boss.set('facing', facingLabel(facing));
+}
+
+function offsetNode(cst: Document, offset: [number, number, number]): YAMLSeq {
+  if (offset.some((component) => !Number.isFinite(component))) {
+    throw new DungeonParseError(
+      'offset: expected exactly three finite world-axis numbers'
+    );
+  }
+  const node = new YAMLSeq(cst.schema);
+  node.flow = true;
+  node.items = [...offset];
+  return node;
+}
+
+/** Set/clear ratified v0.4 offset verbatim; no facing/wall reinterpretation. */
+export function setPlacementOffset(
+  cst: Document,
+  roomId: string | null,
+  index: number,
+  offset: [number, number, number] | null
+): void {
+  const item = placeSeq(cst, roomId).items[index];
+  if (!isMap(item)) return;
+  if (offset === null) item.delete('offset');
+  else item.set('offset', offsetNode(cst, offset));
+}
+
+/** Boss sibling of setPlacementOffset. */
+export function setBossOffset(
+  cst: Document,
+  roomId: string,
+  offset: [number, number, number] | null
+): void {
+  const boss = roomMap(cst, roomId).get('boss', true);
+  if (!isMap(boss)) return;
+  if (offset === null) boss.delete('offset');
+  else boss.set('offset', offsetNode(cst, offset));
 }
 
 /** Set or clear a `place:` entry's `mount:` — target dialect, proposed,

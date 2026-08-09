@@ -36,7 +36,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -49,9 +49,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # TODO: Add tests when implemented
       - name: Run tests
-        run: echo "No tests yet - add with Vitest"
+        run: npm test -- --run
+
+      - name: Wave B pure resolver performance gate
+        run: npm run perf:visual-placement
 
   security:
     name: Security Audit

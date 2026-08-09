@@ -623,7 +623,13 @@ export function buildOnePlacement(
   // the decoupling exists for). Rotation stays mount-gated below —
   // ROTATION is still a wall-vs-floor question (flush-against-the-edge
   // vs. general facing), height no longer is.
-  const position = worldPosition(absCol, row, resolved.height ?? 0);
+  const canonicalPosition = worldPosition(absCol, row, resolved.height ?? 0);
+  const offset = p.offset ?? [0, 0, 0];
+  const position: [number, number, number] = [
+    canonicalPosition[0] + offset[0],
+    canonicalPosition[1] + offset[1],
+    canonicalPosition[2] + offset[2],
+  ];
   // EXPERIMENT (see PlacementDoc.rotationDegrees's own doc comment) —
   // `rotationDegrees` is a fine ADJUSTMENT added on top of whichever
   // coarse rotation `facing` produces, never a replacement for it.
@@ -714,7 +720,13 @@ function buildPlacements(
 
       if (room.boss) {
         const absCol = fpRoom.startColumn + room.boss.at[0];
-        const position = worldPosition(absCol, room.boss.at[1]);
+        const canonicalPosition = worldPosition(absCol, room.boss.at[1]);
+        const offset = room.boss.offset ?? [0, 0, 0];
+        const position: [number, number, number] = [
+          canonicalPosition[0] + offset[0],
+          canonicalPosition[1] + offset[1],
+          canonicalPosition[2] + offset[2],
+        ];
         const monsterRefId = room.boss.ref.split(':').pop();
         if (monsterRefId) {
           monsters.push({

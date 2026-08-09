@@ -232,6 +232,8 @@ interface InspectorProps {
   onSetHeight: (height: number | null) => void;
   onSetTargeting: (targeting: string | null) => void;
   onSetFacing: (facing: number | null) => void;
+  /** Ratified world-axis offset. Null removes presence; [0,0,0] is explicit. */
+  onSetOffset: (offset: [number, number, number] | null) => void;
   /** EXPERIMENT — see `ExperimentBadge`'s own doc comment. `null`/`0`
    * both mean "no fine adjustment," matching
    * `setPlacementRotationDegrees`'s own clear-on-zero convention (a 0°
@@ -275,6 +277,7 @@ export function Inspector({
   onSetHeight,
   onSetTargeting,
   onSetFacing,
+  onSetOffset,
   onSetRotationDegrees,
   onSnapFlush,
   onFlipMountSide,
@@ -336,6 +339,9 @@ export function Inspector({
   const facing = selected.boss
     ? (boss?.facing ?? null)
     : (resolved?.facing ?? null);
+  const offset = selected.boss
+    ? (boss?.offset ?? null)
+    : (placement?.offset ?? null);
   const isWallMountable = !selected.boss && WALL_MOUNTABLE_REFS.has(ref);
 
   // Which fields are showing an INHERITED value right now (muted +
@@ -457,6 +463,75 @@ export function Inspector({
         {selected.boss ? 'Boss: ' : ''}
         {ref} [{at[0]},{at[1]}]
       </h4>
+
+      <fieldset
+        style={{
+          margin: '6px 0',
+          padding: 6,
+          border: '1px solid #4a4035',
+          borderRadius: 4,
+        }}
+      >
+        <legend style={{ color: '#8fe8e0', fontSize: 10 }}>
+          world offset ·{' '}
+          {offset === null ? 'omitted' : `[${offset.join(', ')}]`}
+        </legend>
+        {offset === null ? (
+          <button
+            type="button"
+            onClick={() => onSetOffset([0, 0, 0])}
+            style={rotateBtnStyle}
+          >
+            add explicit [0,0,0]
+          </button>
+        ) : (
+          <>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 4,
+              }}
+            >
+              {(['X', 'Y', 'Z'] as const).map((axis, index) => (
+                <label key={axis} style={{ fontSize: 9 }}>
+                  {axis}
+                  <input
+                    aria-label={`world offset ${axis}`}
+                    type="number"
+                    step="any"
+                    value={offset[index]}
+                    onChange={(event) => {
+                      if (event.target.value.trim() === '') return;
+                      const value = Number(event.target.value);
+                      if (!Number.isFinite(value)) return;
+                      const next: [number, number, number] = [...offset];
+                      next[index] = value;
+                      onSetOffset(next);
+                    }}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      fontSize: 10,
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => onSetOffset(null)}
+              style={{ ...rotateBtnStyle, marginTop: 4 }}
+            >
+              remove offset
+            </button>
+          </>
+        )}
+        <div style={{ marginTop: 4, color: '#8a7a5a', fontSize: 9 }}>
+          canonical world X/Y/Z; facing never rotates this vector. Wall edits do
+          not reattach it.
+        </div>
+      </fieldset>
 
       <div
         style={{

@@ -26,11 +26,13 @@ import {
   movePlacementAcrossLists,
   placeItem,
   setBossFacing,
+  setBossOffset,
   setBossTargeting,
   setPlacementFacing,
   setPlacementFlags,
   setPlacementHeight,
   setPlacementMount,
+  setPlacementOffset,
   setPlacementRotationDegrees,
   setPlacementTargeting,
   type DungeonDoc,
@@ -259,6 +261,21 @@ export function useBoardEditing(
     syncFromCst(cst);
   };
 
+  const handleSetOffset = (offset: [number, number, number] | null) => {
+    if (!selectedPlacement) return;
+    if (selectedPlacement.boss) {
+      setBossOffset(cst, selectedPlacement.roomId, offset);
+    } else {
+      setPlacementOffset(
+        cst,
+        selectedPlacement.roomId,
+        selectedPlacement.index,
+        offset
+      );
+    }
+    syncFromCst(cst);
+  };
+
   // Wall-mount edge-selection rework, part 2 (Inspector.tsx's own
   // `onFlipMountSide` doc comment) — the Inspector already validated
   // `target` against a real floor cell before ever calling this, so this
@@ -307,6 +324,7 @@ export function useBoardEditing(
     handleSnapFlush,
     handleSetTargeting,
     handleSetFacing,
+    handleSetOffset,
     handleFlipMountSide,
   };
 }

@@ -22,7 +22,8 @@
     "ci-fix": "npm run format && npm run lint --fix && npm run typecheck && npm run build",
     "assets:sync": "sh scripts/sync-synty-assets.sh",
     "perf:sweep-solo": "node scripts/perf/sweep_solo.mjs",
-    "perf:sweep-party": "node scripts/perf/sweep_party.mjs"
+    "perf:sweep-party": "node scripts/perf/sweep_party.mjs",
+    "perf:visual-placement": "node scripts/perf/visual_placement_resolver.mjs"
   },
   "dependencies": {
     "@connectrpc/connect": "^2.0.2",

@@ -12,7 +12,7 @@
  * test proving an INHERITED facing enables the slider the same way an
  * explicit one does.
  */
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Inspector } from './Inspector';
 import { parseDungeon, setRefDefault, toDungeonDoc } from './dungeonYaml';
@@ -36,6 +36,7 @@ function renderInspector(
     onSetHeight: noop(),
     onSetTargeting: noop(),
     onSetFacing: noop(),
+    onSetOffset: noop(),
     onSetRotationDegrees: noop(),
     onSnapFlush: noop(),
     onFlipMountSide: noop(),
@@ -94,5 +95,41 @@ describe('Inspector — fine-rotation slider gate composed with resolved (inheri
         'pick a facing direction above to enable fine rotation — there is no base angle to nudge yet'
       )
     ).toBeTruthy();
+  });
+});
+
+describe('Inspector — ratified world offset editing', () => {
+  it('displays explicit zero exactly and edits/removes the world tuple', () => {
+    const yaml = SHOWCASE_YAML.replace(
+      'at: [1, 1], blocks_movement: true',
+      'at: [1, 1], offset: [0, 0, 0], blocks_movement: true'
+    );
+    const doc = parseDungeon(yaml).doc;
+    const onSetOffset = vi.fn();
+    const view = renderInspector(doc, {
+      selected: { roomId: 'antechamber', index: 0 },
+      onSetOffset,
+    });
+
+    expect(view.getByText(/world offset · \[0, 0, 0\]/)).toBeTruthy();
+    fireEvent.change(view.getByLabelText('world offset X'), {
+      target: { value: '0.25' },
+    });
+    expect(onSetOffset).toHaveBeenCalledWith([0.25, 0, 0]);
+    fireEvent.click(view.getByRole('button', { name: 'remove offset' }));
+    expect(onSetOffset).toHaveBeenCalledWith(null);
+  });
+
+  it('keeps omission distinct from adding explicit zero', () => {
+    const doc = parseDungeon(SHOWCASE_YAML).doc;
+    const onSetOffset = vi.fn();
+    const view = renderInspector(doc, {
+      selected: { roomId: 'antechamber', index: 0 },
+      onSetOffset,
+    });
+
+    expect(view.getByText(/world offset · omitted/)).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: 'add explicit [0,0,0]' }));
+    expect(onSetOffset).toHaveBeenCalledWith([0, 0, 0]);
   });
 });

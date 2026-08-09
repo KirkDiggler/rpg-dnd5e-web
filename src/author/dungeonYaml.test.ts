@@ -76,6 +76,7 @@ describe('parseDungeon', () => {
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
       facing: null,
+      offset: null,
       targeting: null,
     });
     // 3 in antechamber's place: list, matching the source file exactly.
@@ -364,6 +365,7 @@ describe('stripMonsterPlacements / buildWalkItYaml (Walk it, rpg-dnd5e-web#667)'
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
       facing: null,
+      offset: null,
       targeting: null,
     });
   });
@@ -380,6 +382,7 @@ describe('stripMonsterPlacements / buildWalkItYaml (Walk it, rpg-dnd5e-web#667)'
       ref: 'dnd5e:monsters:skeleton-captain',
       at: [5, 5],
       facing: null,
+      offset: null,
       targeting: null,
     });
 
