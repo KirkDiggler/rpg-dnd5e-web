@@ -11,13 +11,14 @@
  * recomputes a roll, total, or hit/miss verdict.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import {
   formatSourceRefs,
   formatTargetRationale,
 } from '../../utils/combatFormat';
 import { getConditionDisplay } from '../../utils/conditionIcons';
+import { isScrolledAwayFromBottom } from './combatLogScroll';
 
 export interface CombatLogProps {
   entries: CombatLogEntry[];
@@ -29,13 +30,33 @@ export interface CombatLogProps {
 
 export function CombatLog({ entries, translucent = false }: CombatLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Auto-follow (#738): pinned to the newest entry by default, same as
+  // before. Reading back through a fight while it continues means this has
+  // to pause the instant the player scrolls up — otherwise every new event
+  // yanks them back to the bottom mid-read. Resumes (and jumps to the
+  // bottom) either by scrolling back down manually or via the "jump to
+  // latest" affordance below.
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
 
-  // Auto-scroll to the newest entry, mirroring the old sidebar's behavior.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [entries.length]);
+    const el = scrollRef.current;
+    if (!el || !pinnedToBottom) return;
+    el.scrollTop = el.scrollHeight;
+  }, [entries.length, pinnedToBottom]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setPinnedToBottom(
+      !isScrolledAwayFromBottom(el.scrollTop, el.scrollHeight, el.clientHeight)
+    );
+  };
+
+  const jumpToLatest = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    setPinnedToBottom(true);
+  };
 
   return (
     <div
@@ -75,26 +96,54 @@ export function CombatLog({ entries, translucent = false }: CombatLogProps) {
       >
         📜 Combat Log
       </div>
-      <div
-        ref={scrollRef}
-        data-testid="combat-log-scroll"
-        style={{
-          overflowY: 'auto',
-          maxHeight: 200,
-          padding: '6px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-          fontSize: 12,
-          fontFamily: 'monospace',
-        }}
-      >
-        {entries.length === 0 ? (
-          <div style={{ opacity: 0.5, padding: '8px 0' }}>
-            The fight hasn&apos;t started yet…
-          </div>
-        ) : (
-          entries.map((entry) => <CombatLogLine key={entry.id} entry={entry} />)
+      <div style={{ position: 'relative' }}>
+        <div
+          ref={scrollRef}
+          data-testid="combat-log-scroll"
+          onScroll={handleScroll}
+          style={{
+            overflowY: 'auto',
+            maxHeight: 200,
+            padding: '6px 10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            fontSize: 12,
+            fontFamily: 'monospace',
+          }}
+        >
+          {entries.length === 0 ? (
+            <div style={{ opacity: 0.5, padding: '8px 0' }}>
+              The fight hasn&apos;t started yet…
+            </div>
+          ) : (
+            entries.map((entry) => (
+              <CombatLogLine key={entry.id} entry={entry} />
+            ))
+          )}
+        </div>
+        {!pinnedToBottom && entries.length > 0 && (
+          <button
+            type="button"
+            data-testid="combat-log-jump-to-latest"
+            onClick={jumpToLatest}
+            style={{
+              position: 'absolute',
+              bottom: 6,
+              right: 10,
+              padding: '3px 8px',
+              fontSize: 11,
+              fontWeight: 700,
+              color: 'var(--text-primary, #fff)',
+              background: 'var(--bg-tertiary, #333)',
+              border: '1px solid var(--border-primary, #555)',
+              borderRadius: 12,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)',
+            }}
+          >
+            ↓ Jump to latest
+          </button>
         )}
       </div>
     </div>
@@ -154,6 +203,9 @@ function lineStyle(entry: CombatLogEntry): React.CSSProperties {
       };
     case 'entityStabilized':
       return { color: '#4ade80', fontWeight: 700 };
+    case 'entityMoved':
+      // Flavor, not a combat beat — muted like turnEnded/removed.
+      return { opacity: 0.6, fontStyle: 'italic' };
   }
 }
 
@@ -236,5 +288,16 @@ function lineText(entry: CombatLogEntry): string {
     }
     case 'entityStabilized':
       return `🩹 ${entry.event.entityId} is stabilized`;
+    case 'entityMoved': {
+      const e = entry.event;
+      switch (entry.narration.verb) {
+        case 'closes':
+          return `👣 ${e.entityId} closes on ${entry.narration.targetEntityId}`;
+        case 'retreats':
+          return `👣 ${e.entityId} retreats`;
+        case 'moves':
+          return `👣 ${e.entityId} moves`;
+      }
+    }
   }
 }
