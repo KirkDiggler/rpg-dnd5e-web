@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "provider": {
+    "repository": "KirkDiggler/rpg-game-assets",
+    "commit": "1111111111111111111111111111111111111111"
+  },
+  "catalog": {
+    "path": "harness/catalogs/synty-web-assets.json",
+    "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "schemaVersion": 1,
+    "catalogId": "synty-web-assets"
+  },
+  "tool": {
+    "name": "build_web_asset_catalog",
+    "version": "fixture-only"
+  }
+}

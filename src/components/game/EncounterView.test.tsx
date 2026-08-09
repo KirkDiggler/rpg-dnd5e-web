@@ -105,7 +105,11 @@ vi.mock('./EncounterMap', () => ({
     theme?: string;
     entities: Map<
       string,
-      { position?: { x: number; y: number; z: number }; moveSeq?: number }
+      {
+        position?: { x: number; y: number; z: number };
+        moveSeq?: number;
+        offset?: { x: number; y: number; z: number };
+      }
     >;
     entityHP: Map<string, { current: number; max: number }>;
     entityStatuses: Map<string, Array<{ displayName: string }>>;
@@ -129,6 +133,9 @@ vi.mock('./EncounterMap', () => ({
       // reaching into Three.js internals.
       data-entity-positions={JSON.stringify(
         [...props.entities.entries()].map(([id, e]) => [id, e.position])
+      )}
+      data-entity-offsets={JSON.stringify(
+        [...props.entities.entries()].map(([id, e]) => [id, e.offset])
       )}
       data-entity-hp={JSON.stringify([...props.entityHP.entries()])}
       data-entity-statuses={JSON.stringify([...props.entityStatuses.entries()])}
@@ -820,6 +827,74 @@ describe('EncounterView rolls a real d20 for skill checks (rpg-dnd5e-web#597)', 
     );
     expect(rolled).toBeGreaterThanOrEqual(1);
     expect(rolled).toBeLessThanOrEqual(20);
+  });
+});
+
+describe('EncounterView Wave B offset snapshot ingestion', () => {
+  it('hydrates explicit zero from VISIBLE truth instead of a stale REMEMBERED nonzero offset', async () => {
+    render(
+      <EncounterView
+        encounterId="enc-1"
+        characterId="char-alice"
+        playerId="alice"
+        onBack={() => {}}
+      />
+    );
+
+    await act(async () => {
+      hoisted.fakeRef.current?.push(
+        makeEvent('snapshotDelivered', {
+          encounter: {
+            space: {
+              entities: [
+                {
+                  id: 'prop-1',
+                  type: EntityType.PROP,
+                  data: {
+                    case: 'prop',
+                    value: { propRef: { id: 'bookcase' } },
+                  },
+                },
+              ],
+              hexes: [
+                {
+                  position: { x: 0, y: 0, z: 0 },
+                  state: HexState.REMEMBERED,
+                  contents: [
+                    {
+                      entityId: 'prop-1',
+                      offset: { x: 9, y: 8, z: 7 },
+                    },
+                  ],
+                },
+                {
+                  position: { x: 1, y: -1, z: 0 },
+                  state: HexState.VISIBLE,
+                  contents: [
+                    {
+                      entityId: 'prop-1',
+                      offset: { x: 0, y: 0, z: 0 },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const offsets = JSON.parse(
+      screen
+        .getByTestId('encounter-map-stub')
+        .getAttribute('data-entity-offsets')!
+    );
+    expect(offsets.find(([id]: [string]) => id === 'prop-1')?.[1]).toEqual({
+      x: 0,
+      y: 0,
+      z: 0,
+    });
   });
 });
 

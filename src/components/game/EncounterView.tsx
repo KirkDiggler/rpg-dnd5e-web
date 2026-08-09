@@ -77,6 +77,7 @@ import {
   applyStatusApplied,
   applyStatusRemoved,
   facingByEntityIdFromHexes,
+  offsetByEntityIdFromHexes,
   positionByEntityIdFromHexes,
   useEncounterState,
 } from '../../hooks/useEncounterState';
@@ -604,6 +605,7 @@ export function EncounterView({
         // of Placement's implicit hex position — see
         // facingByEntityIdFromHexes's own doc comment.
         const facingByEntityId = facingByEntityIdFromHexes(hexes);
+        const offsetByEntityId = offsetByEntityIdFromHexes(hexes);
         const entityEntries = (e.encounter.space?.entities ?? [])
           .filter((entity) => positionByEntityId.has(entity.id))
           .map((entity) => ({
@@ -659,6 +661,7 @@ export function EncounterView({
             // builder preview — see facingByEntityIdFromHexes's doc
             // comment.
             facing: facingByEntityId.get(entity.id),
+            offset: offsetByEntityId.get(entity.id),
           }));
         if (entityEntries.length > 0) {
           canonicalStatusesRef.current = applyEntityAppearedBatch(

@@ -26,6 +26,7 @@ import {
   type EntityStatus,
 } from '../../hooks/useEncounterState';
 import { CUTAWAY_TALL_WALL_HEIGHT } from '../../rendering/calibrationConstants';
+import type { CanonicalWorldOffset } from '../../rendering/visualPlacement/offset';
 import {
   coordToKey,
   cubeToWorld,
@@ -74,6 +75,8 @@ export interface RenderableEntity {
    * orientation they already use (unchanged from every pre-existing
    * caller). */
   facing?: number;
+  /** Optional canonical world-axis offset; explicit zero remains present. */
+  offset?: CanonicalWorldOffset;
   /** The most recent genuine move's real hex-by-hex route
    * (rpg-dnd5e-web#542), passed straight through to HexEntity's movement
    * interpolation. Undefined for an entity that has never moved. */
@@ -178,6 +181,7 @@ export function buildRenderableEntities(
       movePath?: { x: number; y: number; z: number }[];
       moveSeq?: number;
       facing?: number;
+      offset?: CanonicalWorldOffset;
     }
   >,
   entityMeta: Map<string, EntityMeta>,
@@ -217,6 +221,7 @@ export function buildRenderableEntities(
       isDowned,
       propRefId: meta?.propRefId,
       facing: entity.facing,
+      offset: entity.offset,
       movePath: entity.movePath,
       moveSeq: entity.moveSeq,
       knowledgeState: revealedHexes

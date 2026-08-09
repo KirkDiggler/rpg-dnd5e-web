@@ -13,6 +13,7 @@
  */
 
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import type { CanonicalWorldOffset } from '@/rendering/visualPlacement/offset';
 // facingToRotationY is the Kirk-approved reference mapping for a wire
 // `facing` index (rpg-dnd5e-web unit/game-fidelity Bug B) — the builder's
 // 3D preview (author/preview3d/DungeonPreview3D.tsx) already renders
@@ -103,6 +104,7 @@ export interface HexGridEntity {
    * a rotationY by `resolvePropRotationY` below. Undefined means no
    * authored override. */
   facing?: number;
+  offset?: CanonicalWorldOffset;
   movePath?: { x: number; y: number; z: number }[];
   moveSeq?: number;
   knowledgeState?: SceneKnowledgeState;
@@ -1130,6 +1132,7 @@ function Scene({
           obstacleType={entity.obstacleType}
           propRefId={entity.propRefId}
           propRotationY={propRotationYByEntity.get(entity.entityId)}
+          offset={entity.offset}
           movePath={entity.movePath}
           moveSeq={entity.moveSeq}
           onMovementPresentationComplete={onEntityMovementPresentationComplete}

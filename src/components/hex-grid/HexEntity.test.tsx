@@ -131,6 +131,72 @@ describe('remembered entities are inert', () => {
   });
 });
 
+describe('Wave B generic world offset application', () => {
+  it('adds the exact world-axis triple to an obstacle fallback once', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity {...base} type="obstacle" offset={{ x: 1, y: 2, z: 3 }} />
+    );
+    const capsule = renderer.scene
+      .findAllByType('Mesh')
+      .find(
+        (node) =>
+          (node.instance as THREE.Mesh).geometry.type === 'CapsuleGeometry'
+      );
+    expect((capsule!.instance as THREE.Mesh).position.toArray()).toEqual([
+      1, 2.85, 3,
+    ]);
+  });
+
+  it('keeps a prop offset outside facing rotation', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="obstacle"
+        propRefId="bookcase"
+        propRotationY={Math.PI / 2}
+        offset={{ x: 1, y: 2, z: 3 }}
+      />
+    );
+    const offsetGroup = renderer.scene
+      .findAllByType('Group')
+      .find((node) =>
+        (node.instance as THREE.Group).position.equals(
+          new THREE.Vector3(1, 2, 3)
+        )
+      );
+    expect(offsetGroup).toBeDefined();
+    const rotated = renderer.scene
+      .findAllByType('Group')
+      .find(
+        (node) => (node.instance as THREE.Group).rotation.y === Math.PI / 2
+      );
+    expect(rotated).toBeDefined();
+    expect((offsetGroup!.instance as THREE.Group).position.toArray()).toEqual([
+      1, 2, 3,
+    ]);
+  });
+
+  it('keeps a monster movement/facing group under one unrotated world offset parent', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        offset={{ x: -1, y: 0.5, z: 2 }}
+      />
+    );
+    expect(
+      renderer.scene
+        .findAllByType('Group')
+        .some((node) =>
+          (node.instance as THREE.Group).position.equals(
+            new THREE.Vector3(-1, 0.5, 2)
+          )
+        )
+    ).toBe(true);
+  });
+});
+
 describe('raycast proxy (rpg-dnd5e-web unit/game-fidelity Bug A)', () => {
   // A THREE.SkinnedMesh raycasts against its BIND-POSE geometry, not the
   // pose the idle/walk clip actually renders — clicks on the visible

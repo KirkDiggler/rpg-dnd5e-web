@@ -53,6 +53,11 @@ import type {
   SlotDefLike,
 } from '../components/game/equipment/equipmentTypes';
 import {
+  offsetFromPlacement,
+  sameWorldOffset,
+  type CanonicalWorldOffset,
+} from '../rendering/visualPlacement/offset';
+import {
   hexKey,
   protoPositionToHex,
   type CubeHexCoord,
@@ -175,6 +180,8 @@ export interface LocalEncounterState {
       movePath?: Position[];
       moveSeq?: number;
       facing?: number;
+      /** Optional canonical world-axis translation; explicit zero remains present. */
+      offset?: CanonicalWorldOffset;
     }
   >;
   /** v1alpha2-revealed hexes, keyed by stable cube coordinate. */
@@ -514,6 +521,36 @@ export function facingByEntityIdFromHexes(
 }
 
 /**
+ * Presence-aware snapshot reverse index for Placement.offset. VISIBLE claims
+ * the entity even when its offset is omitted, so a stale REMEMBERED explicit
+ * value can never leak through. Explicit {0,0,0} remains a present map value.
+ */
+export function offsetByEntityIdFromHexes(
+  hexes: HexRecord[]
+): Map<string, CanonicalWorldOffset> {
+  const positioned = hexesWithPosition(hexes);
+  const offsets = new Map<string, CanonicalWorldOffset>();
+  const claimedByVisible = new Set<string>();
+  for (const hex of positioned) {
+    if (hex.state !== HexState.VISIBLE) continue;
+    for (const placement of hex.contents ?? []) {
+      claimedByVisible.add(placement.entityId);
+      const offset = offsetFromPlacement(placement);
+      if (offset !== undefined) offsets.set(placement.entityId, offset);
+    }
+  }
+  for (const hex of positioned) {
+    if (hex.state === HexState.VISIBLE) continue;
+    for (const placement of hex.contents ?? []) {
+      if (claimedByVisible.has(placement.entityId)) continue;
+      const offset = offsetFromPlacement(placement);
+      if (offset !== undefined) offsets.set(placement.entityId, offset);
+    }
+  }
+  return offsets;
+}
+
+/**
  * Replace region metadata from the server's snapshot. A reconnect snapshot is
  * authoritative, so omitted theme/zones/hexes clear stale local values.
  * Exported for testing.
@@ -694,14 +731,16 @@ export function applyHexRecordsMerged(
   const setPlacement = (
     entityId: string,
     position: Position,
-    facing: number | undefined
+    facing: number | undefined,
+    offset: CanonicalWorldOffset | undefined
   ) => {
     const existing = (nextEntities ?? prev.entities).get(entityId);
     if (
       existing?.position?.x === position.x &&
       existing?.position?.y === position.y &&
       existing?.position?.z === position.z &&
-      existing?.facing === facing
+      existing?.facing === facing &&
+      sameWorldOffset(existing?.offset, offset)
     ) {
       return;
     }
@@ -709,6 +748,7 @@ export function applyHexRecordsMerged(
     nextEntities.set(entityId, {
       ...create(EntityStateSchema, { entityId, position }),
       facing,
+      offset,
     });
   };
 
@@ -724,7 +764,8 @@ export function applyHexRecordsMerged(
       setPlacement(
         placement.entityId,
         v2PositionToV1(hex.position),
-        placement.facing
+        placement.facing,
+        offsetFromPlacement(placement)
       );
     }
   }
@@ -741,7 +782,8 @@ export function applyHexRecordsMerged(
       setPlacement(
         placement.entityId,
         v2PositionToV1(hex.position),
-        placement.facing
+        placement.facing,
+        offsetFromPlacement(placement)
       );
     }
   }
@@ -836,6 +878,7 @@ export function applyEntityAppearedBatch(
     propRefId?: string;
     equipment?: CharacterEquipment;
     facing?: number;
+    offset?: CanonicalWorldOffset;
   }>
 ): LocalEncounterState {
   if (entries.length === 0) return prev;
@@ -861,8 +904,14 @@ export function applyEntityAppearedBatch(
     propRefId,
     equipment,
     facing,
+    offset,
   } of entries) {
-    newEntities.set(entity.entityId, { ...entity, ghost: false, facing });
+    newEntities.set(entity.entityId, {
+      ...entity,
+      ghost: false,
+      facing,
+      offset,
+    });
     newMeta.set(entity.entityId, {
       type,
       monsterRefId,
@@ -1527,6 +1576,7 @@ export interface UseEncounterStateResult {
       propRefId?: string;
       equipment?: CharacterEquipment;
       facing?: number;
+      offset?: CanonicalWorldOffset;
     }>
   ) => void;
   /**

@@ -13,6 +13,10 @@ import type {
 } from '@/config/attachmentModels';
 import { isTwoHandedWeapon, WEAPON_CONFIGS } from '@/config/attachmentModels';
 import type { HeadVariant } from '@/config/characterModels';
+import {
+  worldOffsetTuple,
+  type CanonicalWorldOffset,
+} from '@/rendering/visualPlacement/offset';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
@@ -109,6 +113,8 @@ export interface HexEntityProps {
    * unchanged from every pre-#623 caller.
    */
   propRotationY?: number;
+  /** Optional canonical world-axis translation; facing never rotates it. */
+  offset?: CanonicalWorldOffset;
   /** The most recent genuine move's real hex-by-hex route
    * (`EntityMoved.actualPath`), set only alongside `moveSeq` — see
    * `useEncounterState.ts`'s `mergeEntityPosition` doc comment. Undefined
@@ -294,6 +300,7 @@ export function HexEntity({
   obstacleType,
   propRefId,
   propRotationY,
+  offset,
   movePath,
   moveSeq,
   onMovementPresentationComplete,
@@ -377,6 +384,7 @@ export function HexEntity({
     () => cubeToWorld(position, hexSize),
     [position, hexSize]
   );
+  const worldOffset = worldOffsetTuple(offset);
 
   // Create the entity geometry (used for obstacles)
   const geometry = useMemo(() => createEntityGeometry(hexSize), [hexSize]);
@@ -539,8 +547,9 @@ export function HexEntity({
     // was, so it settles at their current position exactly like the old
     // static prop did).
     return (
-      <group ref={movingGroupRef} {...interactionProps}>
-        {/* Raycast proxy (rpg-dnd5e-web unit/game-fidelity, Bug A): a
+      <group position={worldOffset}>
+        <group ref={movingGroupRef} {...interactionProps}>
+          {/* Raycast proxy (rpg-dnd5e-web unit/game-fidelity, Bug A): a
             THREE.SkinnedMesh raycasts against its BIND-POSE geometry, not
             the pose the idle/walk clip actually renders — the animation
             sways the visible body away from that invisible volume, so a
@@ -565,45 +574,46 @@ export function HexEntity({
             raycast already tracks their real pose correctly) and are left
             raycast-enabled, so this proxy only ADDS coverage there, never
             removes any. */}
-        <mesh geometry={geometry} position={[0, ENTITY_HEIGHT / 2, 0]}>
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-        {/* Dead/downed entities rendered with tilt when using the
+          <mesh geometry={geometry} position={[0, ENTITY_HEIGHT / 2, 0]}>
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+          {/* Dead/downed entities rendered with tilt when using the
             MediumHumanoid fallback (no separate collapsed pose asset); a
             resolved GLB's own downed/dead variant is already posed for it,
             so no extra tilt there — true for both the player class model
             and the monster npc model (rpg-dnd5e-web#559 generalized this
             from a player-only check). Ghost entities rendered with ghost
             shader/opacity either way. */}
-        <group
-          rotation={
-            shouldTiltDeadOrDowned(isDead, isDowned, !!effectiveModelUrl)
-              ? [0, 0, Math.PI / 3]
-              : [0, 0, 0]
-          }
-        >
-          <Suspense
-            fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
+          <group
+            rotation={
+              shouldTiltDeadOrDowned(isDead, isDowned, !!effectiveModelUrl)
+                ? [0, 0, Math.PI / 3]
+                : [0, 0, 0]
+            }
           >
-            {effectiveModelUrl ? (
-              <ErrorBoundary
-                fallback={mediumHumanoidElement}
-                onError={() => setFailedEntityModelUrl(effectiveModelUrl)}
-              >
-                <ClassCharacterModel
-                  url={effectiveModelUrl}
-                  isSelected={!isDead && selected}
-                  isGhost={isGhost}
-                  remembered={remembered}
-                  facingRotation={modelForwardOffset}
-                  isMoving={!isDead && !isGhost && !remembered && isMoving}
-                  isDownedVariant={isDownedModelVariant}
-                />
-              </ErrorBoundary>
-            ) : (
-              mediumHumanoidElement
-            )}
-          </Suspense>
+            <Suspense
+              fallback={<LoadingPlaceholder color={color} hexSize={hexSize} />}
+            >
+              {effectiveModelUrl ? (
+                <ErrorBoundary
+                  fallback={mediumHumanoidElement}
+                  onError={() => setFailedEntityModelUrl(effectiveModelUrl)}
+                >
+                  <ClassCharacterModel
+                    url={effectiveModelUrl}
+                    isSelected={!isDead && selected}
+                    isGhost={isGhost}
+                    remembered={remembered}
+                    facingRotation={modelForwardOffset}
+                    isMoving={!isDead && !isGhost && !remembered && isMoving}
+                    isDownedVariant={isDownedModelVariant}
+                  />
+                </ErrorBoundary>
+              ) : (
+                mediumHumanoidElement
+              )}
+            </Suspense>
+          </group>
         </group>
       </group>
     );
@@ -651,11 +661,25 @@ export function HexEntity({
   );
 
   if (!propVariant || !effectivePropModelUrl) {
-    return renderCapsule([worldPos.x, yPosition, worldPos.z], true);
+    return renderCapsule(
+      [
+        worldPos.x + worldOffset[0],
+        yPosition + worldOffset[1],
+        worldPos.z + worldOffset[2],
+      ],
+      true
+    );
   }
 
   return (
-    <group position={[worldPos.x, 0, worldPos.z]} {...interactionProps}>
+    <group
+      position={[
+        worldPos.x + worldOffset[0],
+        worldOffset[1],
+        worldPos.z + worldOffset[2],
+      ]}
+      {...interactionProps}
+    >
       <Suspense fallback={renderCapsule([0, yPosition, 0], false)}>
         <ErrorBoundary
           fallback={renderCapsule([0, yPosition, 0], false)}
