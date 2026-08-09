@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
+import type { MovementNarration } from '../../utils/combatFormat';
 import { CombatLog } from './CombatLog';
+import { isScrolledAwayFromBottom } from './combatLogScroll';
 
 describe('CombatLog', () => {
   it('renders the empty state when there are no entries', () => {
@@ -278,5 +280,138 @@ describe('CombatLog', () => {
     expect(
       screen.getByTestId('combat-log-entry-encounterEnded-3').textContent
     ).toContain('all hostiles defeated');
+  });
+
+  describe('entityMoved narration (#738)', () => {
+    const movedEntry = (narration: MovementNarration): CombatLogEntry => ({
+      id: 0,
+      round: 1,
+      kind: 'entityMoved',
+      event: { entityId: 'skeleton-1' } as never,
+      narration,
+    });
+
+    it('renders a "closes" line naming the target, in-fiction voice, no coordinates', () => {
+      const entries: CombatLogEntry[] = [
+        movedEntry({ verb: 'closes', targetEntityId: 'char-finn' }),
+      ];
+      render(<CombatLog entries={entries} />);
+      const text = screen.getByTestId(
+        'combat-log-entry-entityMoved-0'
+      ).textContent;
+      expect(text).toContain('skeleton-1');
+      expect(text).toContain('closes on char-finn');
+      expect(text).not.toMatch(/\d+,\s*-?\d+,\s*-?\d+/); // no raw coordinates
+    });
+
+    it('renders a "retreats" line with no named target', () => {
+      const entries: CombatLogEntry[] = [movedEntry({ verb: 'retreats' })];
+      render(<CombatLog entries={entries} />);
+      expect(
+        screen.getByTestId('combat-log-entry-entityMoved-0').textContent
+      ).toContain('skeleton-1 retreats');
+    });
+
+    it('renders a neutral "moves" line when direction could not be derived', () => {
+      const entries: CombatLogEntry[] = [movedEntry({ verb: 'moves' })];
+      render(<CombatLog entries={entries} />);
+      expect(
+        screen.getByTestId('combat-log-entry-entityMoved-0').textContent
+      ).toContain('skeleton-1 moves');
+    });
+  });
+
+  describe('scroll behavior (#738)', () => {
+    it('isScrolledAwayFromBottom is false when at the bottom (within the pin threshold)', () => {
+      // scrollHeight - scrollTop - clientHeight = 0
+      expect(isScrolledAwayFromBottom(180, 200, 20)).toBe(false);
+      // Within slack (10px < default 24px threshold).
+      expect(isScrolledAwayFromBottom(170, 200, 20)).toBe(false);
+    });
+
+    it('isScrolledAwayFromBottom is true once scrolled up past the threshold', () => {
+      expect(isScrolledAwayFromBottom(50, 200, 20)).toBe(true);
+    });
+
+    function damaged(id: number): CombatLogEntry {
+      return {
+        id,
+        round: 1,
+        kind: 'damage',
+        event: {
+          entityId: 'goblin-1',
+          amount: 1,
+          hpAfter: { current: 5, max: 7 },
+          damageBreakdown: [],
+        } as never,
+      };
+    }
+
+    it('auto-follows to the bottom on mount and as entries stream in while pinned', () => {
+      const { rerender } = render(<CombatLog entries={[damaged(0)]} />);
+      const scrollEl = screen.getByTestId(
+        'combat-log-scroll'
+      ) as HTMLDivElement;
+      // jsdom never lays out scrollHeight, so simulate a real value.
+      Object.defineProperty(scrollEl, 'scrollHeight', {
+        value: 500,
+        configurable: true,
+      });
+      rerender(<CombatLog entries={[damaged(0), damaged(1)]} />);
+      expect(scrollEl.scrollTop).toBe(500);
+    });
+
+    it('pauses auto-follow once the user scrolls up, and shows a jump-to-latest affordance', () => {
+      const { rerender } = render(<CombatLog entries={[damaged(0)]} />);
+      const scrollEl = screen.getByTestId(
+        'combat-log-scroll'
+      ) as HTMLDivElement;
+      Object.defineProperty(scrollEl, 'scrollHeight', {
+        value: 500,
+        configurable: true,
+      });
+      Object.defineProperty(scrollEl, 'clientHeight', {
+        value: 100,
+        configurable: true,
+      });
+      // User scrolls up, well past the pin threshold.
+      scrollEl.scrollTop = 50;
+      fireEvent.scroll(scrollEl);
+
+      expect(screen.getByTestId('combat-log-jump-to-latest')).toBeTruthy();
+
+      // A new entry arrives — auto-follow must NOT yank the reader back down.
+      scrollEl.scrollTop = 50;
+      rerender(<CombatLog entries={[damaged(0), damaged(1)]} />);
+      expect(scrollEl.scrollTop).toBe(50);
+    });
+
+    it('resumes auto-follow and hides the affordance after jumping to latest', () => {
+      render(<CombatLog entries={[damaged(0)]} />);
+      const scrollEl = screen.getByTestId(
+        'combat-log-scroll'
+      ) as HTMLDivElement;
+      Object.defineProperty(scrollEl, 'scrollHeight', {
+        value: 500,
+        configurable: true,
+      });
+      Object.defineProperty(scrollEl, 'clientHeight', {
+        value: 100,
+        configurable: true,
+      });
+      scrollEl.scrollTop = 50;
+      fireEvent.scroll(scrollEl);
+      expect(screen.getByTestId('combat-log-jump-to-latest')).toBeTruthy();
+
+      fireEvent.click(screen.getByTestId('combat-log-jump-to-latest'));
+
+      expect(scrollEl.scrollTop).toBe(500);
+      expect(screen.queryByTestId('combat-log-jump-to-latest')).toBeNull();
+    });
+
+    it('does not show the jump-to-latest affordance on an empty log', () => {
+      render(<CombatLog entries={[]} />);
+      expect(screen.queryByTestId('combat-log-jump-to-latest')).toBeNull();
+    });
   });
 });
