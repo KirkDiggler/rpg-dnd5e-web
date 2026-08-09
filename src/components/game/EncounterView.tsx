@@ -82,6 +82,7 @@ import {
   useEncounterState,
 } from '../../hooks/useEncounterState';
 import { errorMessage } from '../../utils/combatFormat';
+import type { CubeCoord } from '../hex-grid/hexMath';
 import {
   actionKey,
   targetKindNeedsPrompt,
@@ -726,6 +727,34 @@ export function EncounterView({
           });
           canonicalEntitiesRef.current = nextEntities;
         }
+        // #738: narrate monster movement into the combat log. All gating
+        // (TURN_BASED + MONSTER only) and toward/away derivation happens
+        // inside recordEntityMoved — this call site just gathers what's
+        // already cheaply on hand: the mover's pre-move position (`existing`,
+        // above) and every known CHARACTER's current position.
+        const characterPositions: Array<{
+          entityId: string;
+          position: CubeCoord;
+        }> = [];
+        for (const [id, ent] of canonicalEntitiesRef.current) {
+          if (id === e.entityId || !ent.position) continue;
+          if (
+            encounterState.state.entityMeta.get(id)?.type !==
+            EntityType.CHARACTER
+          ) {
+            continue;
+          }
+          characterPositions.push({ entityId: id, position: ent.position });
+        }
+        combatLog.recordEntityMoved(e, {
+          movingEntityType:
+            encounterState.state.entityMeta.get(e.entityId)?.type ??
+            EntityType.UNSPECIFIED,
+          mode: encounterState.state.mode,
+          from: existing?.position,
+          to: position,
+          characterPositions,
+        });
       }
     },
     // DoorOpened is a pure notification now (door identity only,
