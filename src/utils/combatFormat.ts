@@ -39,6 +39,30 @@ export function errorMessage(err: unknown): string {
 }
 
 /**
+ * D&D-voice narration for an ActionResolved `target_rationale` ref (Monster
+ * AI slice 1, rpg-dnd5e-web#733, rpg-api-protos#215). Per the Boundary Rule
+ * the server sends only a ref — the client owns all prose, mapped here.
+ *
+ * `dnd5e:targeting:closest` renders nothing: it's the default for any
+ * monster without special targeting logic, so voicing it on every routine
+ * turn would bury the rarer, more telling lowest-hp/lowest-ac calls in
+ * noise. Absent and unknown refs also render nothing, and never throw —
+ * an unrecognized ref (a future targeting strategy this map hasn't caught
+ * up to yet) degrades to today's line rather than breaking the log.
+ */
+const TARGET_RATIONALE_VOICE: Record<string, string> = {
+  'dnd5e:targeting:lowest-hp': 'turns on the most wounded',
+  'dnd5e:targeting:lowest-ac': 'picks out the least armored',
+};
+
+/** Trailing clause (" — turns on the most wounded") for a target_rationale ref, or '' when there's nothing to say. */
+export function formatTargetRationale(ref?: string): string {
+  if (!ref) return '';
+  const voice = TARGET_RATIONALE_VOICE[ref];
+  return voice ? ` — ${voice}` : '';
+}
+
+/**
  * In-fiction verb for one `EntityMoved` event (rpg-dnd5e-web#738). The wire
  * carries positions, not narration — a monster's move is a decisive combat
  * fact (walking five hexes past a healthy target to reach a wounded one)

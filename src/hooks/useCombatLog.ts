@@ -63,7 +63,23 @@ export type CombatLogEntry =
   | { id: number; round: number; kind: 'statusRemoved'; event: StatusRemoved }
   | { id: number; round: number; kind: 'turnStarted'; event: TurnStarted }
   | { id: number; round: number; kind: 'turnEnded'; event: TurnEnded }
-  | { id: number; round: number; kind: 'actionResolved'; event: ActionResolved }
+  | {
+      id: number;
+      round: number;
+      kind: 'actionResolved';
+      event: ActionResolved;
+      /**
+       * D&D-voice targeting rationale ref (e.g. `dnd5e:targeting:lowest-hp`,
+       * Monster AI slice 1, rpg-dnd5e-web#733). Read defensively off the raw
+       * event rather than `event.targetRationale` because the generated
+       * `ActionResolved` type doesn't carry `target_rationale` yet
+       * (rpg-api-protos#215) — this field works both before and after the
+       * proto bump, and flips to typed access once it lands. Undefined
+       * (pre-bump) and empty string (post-bump, no rationale) both mean "no
+       * rationale" to CombatLog.
+       */
+      targetRationale?: string;
+    }
   | { id: number; round: number; kind: 'died'; event: EntityDied }
   | { id: number; round: number; kind: 'removed'; event: EntityRemoved }
   | {
@@ -232,6 +248,11 @@ export function useCombatLog(): UseCombatLogResult {
         round: roundRef.current,
         kind: 'actionResolved',
         event,
+        // Defensive read: target_rationale (rpg-api-protos#215) isn't on the
+        // generated ActionResolved type yet. Absent/empty both mean "no
+        // rationale" — see the CombatLogEntry doc comment above.
+        targetRationale: (event as { targetRationale?: string })
+          .targetRationale,
       });
     },
     [pushEntry]
