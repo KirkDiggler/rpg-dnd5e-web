@@ -77,6 +77,7 @@ export type PlacementFixtureKind =
   | 'room-prop'
   | 'canvas-prop'
   | 'room-monster'
+  | 'canvas-monster'
   | 'room-boss';
 
 export interface PlacementContractFixture {
@@ -113,6 +114,14 @@ export const GENERIC_PLACEMENT_FIXTURES: readonly PlacementContractFixture[] = [
     canonicalOrigin: [4, 0, -6],
     facing: 3,
     offset: [0.125, -0.25, 0.5],
+  },
+  {
+    id: 'canvas-monster',
+    kind: 'canvas-monster',
+    semanticRef: 'dnd5e:monsters:zombie',
+    canonicalOrigin: [-7, 0.25, 9],
+    facing: 4,
+    offset: [0.375, 0, -0.625],
   },
   {
     id: 'room-boss',

@@ -327,3 +327,19 @@ describe('Wave B consumer contract fixtures', () => {
     });
   });
 });
+
+describe('resolver-owned legacy seam', () => {
+  it('returns generic position, facing, and moving-parent translation without rotating the world offset', () => {
+    const result = resolveVisualPlacement(
+      undefined,
+      [10, 2, -4],
+      Math.PI / 2,
+      [0.25, -0.5, 0.75]
+    );
+    expect(result.legacy).toEqual({
+      position: [10.25, 1.5, -3.25],
+      rotationY: Math.PI / 2,
+      offsetTranslation: [0.25, -0.5, 0.75],
+    });
+  });
+});

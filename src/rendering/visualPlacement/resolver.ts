@@ -45,6 +45,11 @@ export function resolveVisualPlacement(
     const s = Math.sin(facingYaw);
     return {
       matrix: [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, baseX, baseY, baseZ, 1],
+      legacy: {
+        position: [baseX, baseY, baseZ],
+        rotationY: facingYaw,
+        offsetTranslation: offset,
+      },
       diagnostics: {
         offsetPresence: worldOffset === undefined ? 'omitted' : 'explicit',
         calibration: 'generic',
@@ -94,6 +99,11 @@ export function resolveVisualPlacement(
       translatedZ,
       1,
     ],
+    legacy: {
+      position: [baseX, baseY, baseZ],
+      rotationY: facingYaw,
+      offsetTranslation: offset,
+    },
     diagnostics: {
       offsetPresence: worldOffset === undefined ? 'omitted' : 'explicit',
       calibration: point ? 'enrolled' : 'no-anchor',

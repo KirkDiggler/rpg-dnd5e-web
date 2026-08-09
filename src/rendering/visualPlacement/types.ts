@@ -105,6 +105,17 @@ export type PlacementCalibration = 'generic' | 'enrolled' | 'no-anchor';
 export interface ResolvedVisualPlacement {
   /** Column-major, Three.js-compatible matrix. */
   matrix: Matrix4Elements;
+  /**
+   * Resolver-owned legacy seam for non-enrolled renderers. Consumers must use
+   * these values instead of independently composing canonical origin + offset.
+   * `offsetTranslation` exists for moving renderers whose animation hook owns
+   * the canonical world position while a stable parent owns only the offset.
+   */
+  legacy: {
+    position: Vec3;
+    rotationY: number;
+    offsetTranslation: Vec3;
+  };
   diagnostics: {
     offsetPresence: OffsetPresence;
     calibration: PlacementCalibration;

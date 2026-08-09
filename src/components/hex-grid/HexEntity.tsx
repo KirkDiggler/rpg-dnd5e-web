@@ -390,6 +390,25 @@ export function HexEntity({
     [position, hexSize]
   );
   const worldOffset = worldOffsetTuple(offset);
+  const propSignals = { obstacleType, propRefId };
+  const propKey = resolvePropKeyForEntity(propSignals);
+  const semanticRef =
+    type === 'obstacle'
+      ? (propKey ?? '')
+      : type === 'monster'
+        ? `dnd5e:monsters:${monsterRefId ?? 'unknown'}`
+        : `dnd5e:characters:${entityId}`;
+  // One placement resolution for every actual Game entity kind. Character and
+  // monster movement still owns canonical p imperatively, so their stable
+  // parent consumes the resolver-owned offsetTranslation; static obstacles
+  // consume the resolver-owned full legacy position or enrolled matrix.
+  const resolvedVisual = resolveCatalogVisualPlacement(
+    VISUAL_ASSET_CATALOG,
+    semanticRef,
+    [worldPos.x, 0, worldPos.z],
+    type === 'obstacle' ? (propRotationY ?? 0) : 0,
+    offset === undefined ? undefined : worldOffset
+  );
 
   // Create the entity geometry (used for obstacles)
   const geometry = useMemo(() => createEntityGeometry(hexSize), [hexSize]);
@@ -552,7 +571,7 @@ export function HexEntity({
     // was, so it settles at their current position exactly like the old
     // static prop did).
     return (
-      <group position={worldOffset}>
+      <group position={resolvedVisual.placement.legacy.offsetTranslation}>
         <group ref={movingGroupRef} {...interactionProps}>
           {/* Raycast proxy (rpg-dnd5e-web unit/game-fidelity, Bug A): a
             THREE.SkinnedMesh raycasts against its BIND-POSE geometry, not
@@ -630,8 +649,6 @@ export function HexEntity({
   // that fails to load, falls straight through to the existing capsule —
   // the #479 boundary lineage this codebase already applies to class
   // models (never a broken/missing model reference on screen).
-  const propSignals = { obstacleType, propRefId };
-  const propKey = resolvePropKeyForEntity(propSignals);
   const propVariant = resolvePropVariantForEntity(propSignals);
   const propModelUrl = propVariant
     ? PROPS_MODEL_BASE + propVariant.file
@@ -670,33 +687,18 @@ export function HexEntity({
   if (!propVariant || !effectivePropModelUrl) {
     return renderCapsule(
       [
-        worldPos.x + worldOffset[0],
-        yPosition + worldOffset[1],
-        worldPos.z + worldOffset[2],
+        resolvedVisual.placement.legacy.position[0],
+        yPosition + resolvedVisual.placement.legacy.position[1],
+        resolvedVisual.placement.legacy.position[2],
       ],
       true
     );
   }
 
-  const resolved = resolveCatalogVisualPlacement(
-    VISUAL_ASSET_CATALOG,
-    propKey ?? '',
-    [worldPos.x, 0, worldPos.z],
-    propRotationY ?? 0,
-    offset === undefined ? undefined : worldOffset
-  );
-  if (
-    resolved.selection.selected &&
-    resolved.selection.entry.path !== propVariant.file
-  ) {
-    throw new Error(
-      `enrolled catalog path ${resolved.selection.entry.path} does not match manifest path ${propVariant.file}`
-    );
-  }
   const fallbackPosition: [number, number, number] = [
-    worldPos.x + worldOffset[0],
-    yPosition + worldOffset[1],
-    worldPos.z + worldOffset[2],
+    resolvedVisual.placement.legacy.position[0],
+    yPosition + resolvedVisual.placement.legacy.position[1],
+    resolvedVisual.placement.legacy.position[2],
   ];
 
   return (
@@ -706,21 +708,23 @@ export function HexEntity({
           fallback={renderCapsule(fallbackPosition, false)}
           onError={() => setFailedPropModelUrl(effectivePropModelUrl)}
         >
-          {resolved.selection.selected ? (
+          {resolvedVisual.selection.selected ? (
             <PropModel
               variant={propVariant}
-              matrix={resolved.placement.matrix}
+              matrix={resolvedVisual.placement.matrix}
               remembered={remembered}
             />
           ) : (
             <PropModel
               variant={propVariant}
-              position={[
-                worldPos.x + worldOffset[0],
-                worldOffset[1],
-                worldPos.z + worldOffset[2],
-              ]}
-              rotationY={propRotationY}
+              position={
+                [...resolvedVisual.placement.legacy.position] as [
+                  number,
+                  number,
+                  number,
+                ]
+              }
+              rotationY={resolvedVisual.placement.legacy.rotationY}
               remembered={remembered}
             />
           )}

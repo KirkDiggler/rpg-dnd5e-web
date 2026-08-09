@@ -10,6 +10,7 @@
  */
 
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -178,6 +179,26 @@ describe('Wave B generic world offset application', () => {
     ).toBeCloseTo(Math.PI / 2);
   });
 
+  it('keeps a player movement/facing group under the resolver-owned offset parent', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="player"
+        classRefId="rogue"
+        offset={{ x: 0.25, y: -0.5, z: 0.75 }}
+      />
+    );
+    expect(
+      renderer.scene
+        .findAllByType('Group')
+        .some((node) =>
+          (node.instance as THREE.Group).position.equals(
+            new THREE.Vector3(0.25, -0.5, 0.75)
+          )
+        )
+    ).toBe(true);
+  });
+
   it('keeps a monster movement/facing group under one unrotated world offset parent', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <HexEntity
@@ -197,6 +218,15 @@ describe('Wave B generic world offset application', () => {
         )
     ).toBe(true);
   });
+});
+
+it('routes every actual Game entity through the resolver once and never hand-adds p+o', () => {
+  const source = readFileSync('src/components/hex-grid/HexEntity.tsx', 'utf8');
+  expect(source.match(/resolveCatalogVisualPlacement\(/g)).toHaveLength(1);
+  expect(source).not.toMatch(/worldPos\.[xz]\s*\+\s*worldOffset/);
+  expect(source).not.toMatch(/position=\{worldOffset\}/);
+  expect(source).toContain('resolvedVisual.placement.legacy.offsetTranslation');
+  expect(source).toContain('resolvedVisual.placement.legacy.position');
 });
 
 describe('raycast proxy (rpg-dnd5e-web unit/game-fidelity Bug A)', () => {

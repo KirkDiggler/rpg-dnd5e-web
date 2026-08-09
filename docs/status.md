@@ -25,9 +25,11 @@ let it rot.
   tables no longer enter the production bundle. TypeScript contract is immutable
   generated tag `v0.1.123` (`a6648cecf193`); npm/GitHub Release publication
   defect protos#210 remains separate because Git tag installation resolves the
-  exact generated package. Protected licensed visual/route evidence still
-  requires Kirk's `licensed-assets` environment approval and read-only provider
-  token before review can be claimed complete.
+  exact generated package. Licensed CI cannot be defined by the feature PR it
+  validates: a separately reviewed trusted-ref bootstrap/no-egress workflow must
+  land first and be back-merged. Until then the only licensed visual gate is a
+  private exact-head Kirk review with a signed result; no secret or approval is
+  requested by this PR.
 
 - **Authoritative character-creation category options (#690)** — the production
   `EquipmentBundleChoice` now renders `EquipmentCategoryChoice.options` directly

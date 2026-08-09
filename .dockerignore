@@ -52,5 +52,6 @@ logs/
 # Temporary files
 tmp/
 temp/
-# Protected licensed gate checkout; verified runtime bundle is .asset-stage/.
+# Private provider checkout never enters the Docker context; only its verified
+# atomic runtime projection in .asset-stage/ does.
 .private-provider/

@@ -5,6 +5,7 @@ import {
   FloorPlanSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { PlacementOffsetSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import {
@@ -146,7 +147,7 @@ describe('ratified v0.4 Builder world offset', () => {
     ]);
   });
 
-  it('renders the real provider FloorPlan projection for room prop, monster, boss, and canvas presence', () => {
+  it('routes the five real provider placement kinds through resolver-owned transforms', () => {
     const roomDoc = parseDungeon(WITH_OFFSETS).doc;
     const placement = (
       sourcePath: string,
@@ -177,7 +178,7 @@ describe('ratified v0.4 Builder world offset', () => {
             'dnd5e:props:bookcase',
             9,
             4,
-            [0, 0, 0],
+            [0.125, -0.25, 0.375],
             2
           ),
           placement(
@@ -188,13 +189,20 @@ describe('ratified v0.4 Builder world offset', () => {
             [-0.25, 0.5, 0.75],
             5
           ),
-          placement('rooms[2].boss', 'dnd5e:monsters:skeleton-captain', 20, 5),
+          placement(
+            'rooms[2].boss',
+            'dnd5e:monsters:skeleton-captain',
+            20,
+            5,
+            [-0.75, 0.625, 0.25],
+            1
+          ),
         ],
       }),
       roomDoc
     );
     expect(projected.props).toHaveLength(1);
-    expect(projected.props[0]!.offset).toEqual([0, 0, 0]);
+    expect(projected.props[0]!.offset).toEqual([0.125, -0.25, 0.375]);
     expect(projected.props[0]!.sel).toEqual({
       roomId: 'antechamber',
       index: 0,
@@ -209,18 +217,82 @@ describe('ratified v0.4 Builder world offset', () => {
     const canvasDoc = parseDungeon(
       emptyCanvasYaml(5, 5).replace(
         'place: []',
-        'place: [{ ref: "dnd5e:props:bookcase", at: [0, 0] }]'
+        'place: [{ ref: "dnd5e:props:bookcase", at: [0, 0] }, { ref: "dnd5e:monsters:zombie", at: [1, 1] }]'
       )
     ).doc;
     const canvas = projectedFloorPlanPlacements(
       create(FloorPlanSchema, {
         placements: [
           placement('place[0]', 'dnd5e:props:bookcase', 3, 2, [1, -2, 3]),
+          placement(
+            'place[1]',
+            'dnd5e:monsters:zombie',
+            4,
+            3,
+            [0.5, 1, -1.5],
+            4
+          ),
         ],
       }),
       canvasDoc
     );
     expect(canvas.props[0]!.sel).toEqual({ roomId: null, index: 0 });
     expect(canvas.props[0]!.offset).toEqual([1, -2, 3]);
+    expect(canvas.monsters[0]!.sel).toEqual({ roomId: null, index: 1 });
+    expect(canvas.monsters[0]!.visual.selection).toEqual({
+      selected: false,
+      reason: 'family-not-enrolled',
+    });
+    expect(canvas.monsters[0]!.position).toEqual(
+      canvas.monsters[0]!.visual.placement.legacy.position
+    );
+
+    const fiveKinds = [
+      projected.props[0],
+      canvas.props[0],
+      projected.monsters[0],
+      canvas.monsters[0],
+      projected.monsters[1],
+    ];
+    expect(projected.props[0]!.visual.selection.selected).toBe(true);
+    expect(canvas.props[0]!.visual.selection.selected).toBe(true);
+    for (const monster of [
+      projected.monsters[0],
+      canvas.monsters[0],
+      projected.monsters[1],
+    ]) {
+      expect(monster!.visual.selection).toEqual({
+        selected: false,
+        reason: 'family-not-enrolled',
+      });
+    }
+    expect(fiveKinds).toHaveLength(5);
+    for (const item of fiveKinds) {
+      expect(item!.position).toEqual(item!.visual.placement.legacy.position);
+      expect(item!.visual.placement.diagnostics.offsetPresence).toBe(
+        'explicit'
+      );
+      expect(item!.position).toEqual([
+        item!.canonicalPosition[0] + item!.offset![0],
+        item!.canonicalPosition[1] + item!.offset![1],
+        item!.canonicalPosition[2] + item!.offset![2],
+      ]);
+    }
+  });
+  it('keeps production Builder free of preview overrides and hand-composed p+o mutations', () => {
+    const source = readFileSync(
+      'src/author/preview3d/DungeonPreview3D.tsx',
+      'utf8'
+    );
+    expect(source).not.toMatch(
+      /placementPreviewOverride|applyPlacementPreviewOverride/
+    );
+    expect(source).not.toContain('canonicalPosition[0] + offset[0]');
+    expect(source).not.toContain('canonicalPosition[1] + offset[1]');
+    expect(source).not.toContain('canonicalPosition[2] + offset[2]');
+    expect(source.match(/<PropModel\b/g)).toHaveLength(1);
+    expect(source.match(/<PreviewMonsterModel\b/g)).toHaveLength(1);
+    expect(source).toContain('m.visual.placement.legacy.position');
+    expect(source).toContain('m.visual.placement.legacy.rotationY');
   });
 });

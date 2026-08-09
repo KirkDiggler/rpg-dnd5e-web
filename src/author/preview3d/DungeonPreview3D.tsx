@@ -143,7 +143,10 @@ import {
   WALL_HEIGHT,
 } from '@/rendering/calibrationConstants';
 import { VISUAL_ASSET_CATALOG } from '@/rendering/visualPlacement/catalog';
-import { resolveCatalogVisualPlacement } from '@/rendering/visualPlacement/resolver';
+import {
+  resolveCatalogVisualPlacement,
+  type CatalogVisualPlacement,
+} from '@/rendering/visualPlacement/resolver';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { Billboard, Bounds, OrbitControls, Text } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
@@ -331,25 +334,7 @@ interface DungeonPreview3DProps {
    * creation-canvas-scoped the same way) just falls back to the
    * pre-existing generic message. */
   selectedTool?: BoardTool | null;
-  /**
-   * Fixture-only render seam used by the precise-composition Learn probe
-   * (#728). It can swap the rendered asset or add a small world-space offset
-   * without promoting either experiment into DungeonDoc/YAML. The resolved
-   * prop list is shared by Orbit and Play; this does not create a camera-only
-   * transform path. Omitted by every production authoring caller.
-   */
-  placementPreviewOverride?: PlacementPreviewOverrideResolver;
 }
-
-export interface PlacementPreviewOverride {
-  assetRef?: string;
-  positionOffset?: readonly [number, number, number];
-  rotationOffsetY?: number;
-}
-
-export type PlacementPreviewOverrideResolver = (
-  selection: PlacementSelection
-) => PlacementPreviewOverride | undefined;
 
 export interface PlacedProp {
   key: string;
@@ -360,6 +345,7 @@ export interface PlacedProp {
   offset?: readonly [number, number, number];
   variantRef: string;
   rotationY: number;
+  visual: CatalogVisualPlacement;
   sel: PlacementSelection;
 }
 
@@ -389,8 +375,11 @@ interface PlacedWall {
 interface PlacedMonster {
   key: string;
   position: [number, number, number];
+  canonicalPosition: [number, number, number];
+  offset?: readonly [number, number, number];
   rotationY: number;
   monsterRefId: string;
+  visual: CatalogVisualPlacement;
   sel: PlacementSelection;
 }
 
@@ -631,12 +620,6 @@ export function buildOnePlacement(
   // ROTATION is still a wall-vs-floor question (flush-against-the-edge
   // vs. general facing), height no longer is.
   const canonicalPosition = worldPosition(absCol, row, resolved.height ?? 0);
-  const offset = p.offset ?? [0, 0, 0];
-  const position: [number, number, number] = [
-    canonicalPosition[0] + offset[0],
-    canonicalPosition[1] + offset[1],
-    canonicalPosition[2] + offset[2],
-  ];
   // EXPERIMENT (see PlacementDoc.rotationDegrees's own doc comment) —
   // `rotationDegrees` is a fine ADJUSTMENT added on top of whichever
   // coarse rotation `facing` produces, never a replacement for it.
@@ -660,10 +643,33 @@ export function buildOnePlacement(
           ? wallMountRotationY(absCol, row, resolved.facing)
           : facingToRotationY(resolved.facing)) +
         ((p.rotationDegrees ?? 0) * Math.PI) / 180;
+  const visual = resolveCatalogVisualPlacement(
+    VISUAL_ASSET_CATALOG,
+    p.ref,
+    canonicalPosition,
+    rotationY,
+    p.offset ?? undefined
+  );
+  const position = [...visual.placement.legacy.position] as [
+    number,
+    number,
+    number,
+  ];
   if (p.isMonster) {
     const monsterRefId = p.ref.split(':').pop();
     return monsterRefId
-      ? { monster: { key, position, rotationY, monsterRefId, sel } }
+      ? {
+          monster: {
+            key,
+            position,
+            canonicalPosition,
+            offset: p.offset ?? undefined,
+            rotationY,
+            monsterRefId,
+            visual,
+            sel,
+          },
+        }
       : {};
   }
   return {
@@ -674,36 +680,9 @@ export function buildOnePlacement(
       offset: p.offset ?? undefined,
       variantRef: p.ref,
       rotationY,
+      visual,
       sel,
     },
-  };
-}
-
-/** Apply the Learn probe's optional render-only adjustment to one already-
- * resolved prop. Kept pure/exported so tests discriminate against replacement
- * losing the authored center or a later camera branch applying a second
- * transform. Production authoring never supplies an override. */
-// eslint-disable-next-line react-refresh/only-export-components
-export function applyPlacementPreviewOverride(
-  prop: PlacedProp,
-  override: PlacementPreviewOverride | undefined
-): PlacedProp {
-  if (!override) return prop;
-  const [dx, dy, dz] = override.positionOffset ?? [0, 0, 0];
-  return {
-    ...prop,
-    variantRef: override.assetRef ?? prop.variantRef,
-    position: [
-      prop.position[0] + dx,
-      prop.position[1] + dy,
-      prop.position[2] + dz,
-    ],
-    offset: [
-      (prop.offset?.[0] ?? 0) + dx,
-      (prop.offset?.[1] ?? 0) + dy,
-      (prop.offset?.[2] ?? 0) + dz,
-    ],
-    rotationY: prop.rotationY + (override.rotationOffsetY ?? 0),
   };
 }
 
@@ -748,22 +727,31 @@ export function projectedFloorPlanPlacements(
     const offset = placement.offset
       ? ([placement.offset.x, placement.offset.y, placement.offset.z] as const)
       : undefined;
-    const worldOffset = offset ?? [0, 0, 0];
-    const position: [number, number, number] = [
-      canonicalPosition[0] + worldOffset[0],
-      canonicalPosition[1] + worldOffset[1],
-      canonicalPosition[2] + worldOffset[2],
-    ];
     const rotationY =
       placement.facing === undefined ? 0 : facingToRotationY(placement.facing);
+    const visual = resolveCatalogVisualPlacement(
+      VISUAL_ASSET_CATALOG,
+      placement.ref,
+      canonicalPosition,
+      rotationY,
+      offset
+    );
+    const position = [...visual.placement.legacy.position] as [
+      number,
+      number,
+      number,
+    ];
     if (placement.ref.startsWith('dnd5e:monsters:')) {
       const monsterRefId = placement.ref.split(':').pop();
       if (monsterRefId) {
         monsters.push({
           key: placement.sourcePath,
           position,
+          canonicalPosition,
+          offset,
           rotationY,
           monsterRefId,
+          visual,
           sel,
         });
       }
@@ -776,6 +764,7 @@ export function projectedFloorPlanPlacements(
       offset,
       variantRef: placement.ref,
       rotationY,
+      visual,
       sel,
     });
   }
@@ -821,22 +810,29 @@ function buildPlacements(
       if (room.boss) {
         const absCol = fpRoom.startColumn + room.boss.at[0];
         const canonicalPosition = worldPosition(absCol, room.boss.at[1]);
-        const offset = room.boss.offset ?? [0, 0, 0];
-        const position: [number, number, number] = [
-          canonicalPosition[0] + offset[0],
-          canonicalPosition[1] + offset[1],
-          canonicalPosition[2] + offset[2],
-        ];
+        const rotationY =
+          room.boss.facing === null ? 0 : facingToRotationY(room.boss.facing);
+        const visual = resolveCatalogVisualPlacement(
+          VISUAL_ASSET_CATALOG,
+          room.boss.ref,
+          canonicalPosition,
+          rotationY,
+          room.boss.offset ?? undefined
+        );
         const monsterRefId = room.boss.ref.split(':').pop();
         if (monsterRefId) {
           monsters.push({
             key: `${room.id}:boss`,
-            position,
-            rotationY:
-              room.boss.facing === null
-                ? 0
-                : facingToRotationY(room.boss.facing),
+            position: [...visual.placement.legacy.position] as [
+              number,
+              number,
+              number,
+            ],
+            canonicalPosition,
+            offset: room.boss.offset ?? undefined,
+            rotationY: visual.placement.legacy.rotationY,
             monsterRefId,
+            visual,
             sel: { roomId: room.id, boss: true },
           });
         }
@@ -1366,27 +1362,14 @@ export function DungeonPreview3D({
   onReject,
   onSelectConnector,
   selectedTool,
-  placementPreviewOverride,
 }: DungeonPreview3DProps) {
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes, floorCells),
     [floorPlan, doc.holes, floorCells]
   );
-  const { props: baseProps, monsters } = useMemo(
+  const { props, monsters } = useMemo(
     () => buildPlacements(floorPlan, doc),
     [floorPlan, doc]
-  );
-  // Resolve fixture-only offsets/assets once, before any camera branch.
-  // Orbit and Play below render this SAME array through the SAME PropModel.
-  const props = useMemo(
-    () =>
-      baseProps.map((prop) =>
-        applyPlacementPreviewOverride(
-          prop,
-          placementPreviewOverride?.(prop.sel)
-        )
-      ),
-    [baseProps, placementPreviewOverride]
   );
   const authoredWalls = useMemo(
     () => buildWalls(doc.walls, 'authored'),
@@ -1976,24 +1959,22 @@ export function DungeonPreview3D({
                       />
                     )}
                     {(() => {
-                      const resolved = resolveCatalogVisualPlacement(
-                        VISUAL_ASSET_CATALOG,
-                        p.variantRef,
-                        p.canonicalPosition,
-                        p.rotationY,
-                        p.offset
-                      );
                       if (
-                        resolved.selection.selected &&
-                        resolved.selection.entry.path !== variant.file
+                        p.visual.selection.selected &&
+                        p.visual.selection.entry.path !== variant.file
                       ) {
                         throw new Error(
-                          `enrolled catalog path ${resolved.selection.entry.path} does not match manifest path ${variant.file}`
+                          `enrolled catalog path ${p.visual.selection.entry.path} does not match manifest path ${variant.file}`
                         );
                       }
-                      const transform = resolved.selection.selected
-                        ? { matrix: resolved.placement.matrix }
-                        : { position: p.position, rotationY: p.rotationY };
+                      const transform = p.visual.selection.selected
+                        ? { matrix: p.visual.placement.matrix }
+                        : {
+                            position: [
+                              ...p.visual.placement.legacy.position,
+                            ] as [number, number, number],
+                            rotationY: p.visual.placement.legacy.rotationY,
+                          };
                       return <PropModel variant={variant} {...transform} />;
                     })()}
                   </group>
@@ -2019,8 +2000,14 @@ export function DungeonPreview3D({
                     )}
                     <PreviewMonsterModel
                       monsterRefId={m.monsterRefId}
-                      position={m.position}
-                      rotationY={m.rotationY}
+                      position={
+                        [...m.visual.placement.legacy.position] as [
+                          number,
+                          number,
+                          number,
+                        ]
+                      }
+                      rotationY={m.visual.placement.legacy.rotationY}
                       entityId={m.key}
                     />
                   </group>
