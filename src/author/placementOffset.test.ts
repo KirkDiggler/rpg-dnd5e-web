@@ -294,5 +294,14 @@ describe('ratified v0.4 Builder world offset', () => {
     expect(source.match(/<PreviewMonsterModel\b/g)).toHaveLength(1);
     expect(source).toContain('m.visual.placement.legacy.position');
     expect(source).toContain('m.visual.placement.legacy.rotationY');
+
+    const caller = readFileSync(
+      'src/author/creation/CreationConcept.tsx',
+      'utf8'
+    );
+    expect(caller).toContain('placementFloorPlan={liveFloorPlan ?? undefined}');
+    expect(source).toContain(
+      'buildPlacements(placementFloorPlan ?? floorPlan, doc)'
+    );
   });
 });

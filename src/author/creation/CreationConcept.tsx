@@ -418,16 +418,15 @@ export function CreationConcept({
             // tool (region/wall/hole/start/end) armed while the author
             // clicks in 3D gets an honest "switch to 2D" message instead
             // of the generic "pick a palette item" one.
-            // `floorPlan` stays unset — a canvas has none — so
-            // `floorCells` (this component's own derivation above) is
-            // the only floor input; `onPlace`'s `roomId` argument is
-            // always `null` on this path (`DungeonPreview3D.tsx`'s own
-            // `handleClickCell` doc comment) — the same top-level shape
-            // `CreationBoard.tsx`'s 2D brush already produces via
-            // `edit.handlePlace(null, cell)`. Region/wall 3D editing
-            // itself stays out of scope this round — see CONTRACT.md.
+            // Geometry still uses `floorCells`, and ordinary `floorPlan`
+            // stays unset so canvas clicks keep authoring top-level placements
+            // (`roomId: null`). The separate `placementFloorPlan` consumes the
+            // A-backed PutDungeon projection for rendering only: no doc-side id
+            // rejoin and no accidental switch to room-scoped click semantics.
+            // Region/wall 3D editing itself stays out of scope this round.
             <div style={{ flex: 1, minHeight: 0 }}>
               <DungeonPreview3D
+                placementFloorPlan={liveFloorPlan ?? undefined}
                 floorCells={floorCells}
                 floorSource={resolvedFloor.source}
                 doc={doc}

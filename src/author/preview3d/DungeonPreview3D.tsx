@@ -260,6 +260,14 @@ interface DungeonPreview3DProps {
    * header doc comment for the full list and CONTRACT.md's ledger entry
    * for this unit. */
   floorPlan?: FloorPlan;
+  /**
+   * A-backed placement projection for creation mode. This is deliberately
+   * separate from `floorPlan`: creation keeps canvas click-to-place semantics
+   * (`roomId: null`) and its floorCells geometry, while consuming the real
+   * PutDungeon placement projection instead of rejoining the authoring doc.
+   * Edit mode omits this because its ordinary floorPlan owns both concerns.
+   */
+  placementFloorPlan?: FloorPlan;
   /** Canvas-derived floor cell list — creation mode's alternate input
    * path (`creation/canvasFloor.ts`'s `deriveCanvasFloorCells`, computed
    * by the CALLER, not this component — see this file's header doc
@@ -1352,6 +1360,7 @@ const SELECTED_COLOR = '#ffd76a';
 
 export function DungeonPreview3D({
   floorPlan,
+  placementFloorPlan,
   floorCells,
   floorSource,
   doc,
@@ -1368,8 +1377,8 @@ export function DungeonPreview3D({
     [floorPlan, doc.holes, floorCells]
   );
   const { props, monsters } = useMemo(
-    () => buildPlacements(floorPlan, doc),
-    [floorPlan, doc]
+    () => buildPlacements(placementFloorPlan ?? floorPlan, doc),
+    [placementFloorPlan, floorPlan, doc]
   );
   const authoredWalls = useMemo(
     () => buildWalls(doc.walls, 'authored'),
