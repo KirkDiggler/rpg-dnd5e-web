@@ -1,0 +1,298 @@
+name: Trusted licensed-assets exact-head gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Open same-repository PR number targeting dev
+        required: true
+        type: string
+      expected_head_sha:
+        description: Full 40-character lowercase live PR head SHA
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: licensed-assets-${{ inputs.pr_number }}-${{ inputs.expected_head_sha }}
+  cancel-in-progress: false
+
+env:
+  NODE_IMAGE: node:23-alpine
+  FINAL_IMAGE: licensed-assets-final:${{ github.run_id }}-${{ github.run_attempt }}
+  SANDBOX_IMAGE: licensed-assets-sandbox:${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  trusted-preflight:
+    name: Trusted identity and live PR preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      validated: ${{ steps.preflight.outputs.validated }}
+      head_sha: ${{ steps.preflight.outputs.head_sha }}
+      head_ref: ${{ steps.preflight.outputs.head_ref }}
+      base_sha: ${{ steps.preflight.outputs.base_sha }}
+    steps:
+      - name: Checkout the executing trusted workflow commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Prove default-main workflow identity and live exact head
+        id: preflight
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/trusted-licensed-assets.py preflight
+          --event-name '${{ github.event_name }}'
+          --repository '${{ github.repository }}'
+          --actor '${{ github.actor }}'
+          --ref '${{ github.ref }}'
+          --workflow-ref '${{ github.workflow_ref }}'
+          --workflow-sha '${{ github.workflow_sha }}'
+          --run-sha '${{ github.sha }}'
+          --pr-number '${{ inputs.pr_number }}'
+          --expected-head-sha '${{ inputs.expected_head_sha }}'
+          --snapshot '${{ runner.temp }}/trusted-pr-snapshot.json'
+          --github-output "$GITHUB_OUTPUT"
+
+  licensed:
+    name: Protected licensed exact-head validation
+    needs: trusted-preflight
+    if: needs.trusted-preflight.outputs.validated == 'true'
+    runs-on: ubuntu-latest
+    environment: licensed-assets
+    permissions:
+      contents: read
+    outputs:
+      provider_sha: ${{ steps.provider.outputs.provider_sha }}
+      catalog_sha256: ${{ steps.provider.outputs.catalog_sha256 }}
+      inventory_sha256: ${{ steps.provider.outputs.inventory_sha256 }}
+      tree_sha256: ${{ steps.provider.outputs.tree_sha256 }}
+      asset_files: ${{ steps.provider.outputs.asset_files }}
+      perf_median_p95_ms: ${{ steps.perf-scan.outputs.perf_median_p95_ms }}
+    steps:
+      - name: Checkout only the executing trusted workflow commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Create private scratch
+        run: |
+          set -eu
+          root='${{ runner.temp }}/licensed-${{ github.run_id }}-${{ github.run_attempt }}'
+          umask 077
+          mkdir "$root" "$root/logs"
+          printf 'PRIVATE_ROOT=%s\n' "$root" >> "$GITHUB_ENV"
+      - name: Fetch exact PR and live-base commits as quarantined data
+        run: |
+          set -eu
+          q="$PRIVATE_ROOT/quarantine"
+          git init -q "$q"
+          git -C "$q" config core.hooksPath /dev/null
+          git -C "$q" config protocol.file.allow never
+          git -C "$q" remote add origin https://github.com/KirkDiggler/rpg-dnd5e-web.git
+          git -C "$q" fetch --no-tags origin '${{ needs.trusted-preflight.outputs.head_sha }}' '${{ needs.trusted-preflight.outputs.base_sha }}' >/dev/null 2>&1
+          git -C "$q" checkout -q --detach '${{ needs.trusted-preflight.outputs.head_sha }}'
+          python3 trusted/scripts/trusted-licensed-assets.py quarantine \
+            --worktree "$q" \
+            --expected-head-sha '${{ needs.trusted-preflight.outputs.head_sha }}' \
+            --base-sha '${{ needs.trusted-preflight.outputs.base_sha }}'
+      - name: Pull images and install dependencies before licensed bytes exist
+        run: |
+          set -eu
+          docker pull "$NODE_IMAGE" >"$PRIVATE_ROOT/logs/pull-node.log" 2>&1
+          docker pull nginx:alpine >"$PRIVATE_ROOT/logs/pull-nginx.log" 2>&1
+          docker build --pull=false --tag "$SANDBOX_IMAGE" --file trusted/scripts/trusted-sandbox.Dockerfile trusted/scripts \
+            >"$PRIVATE_ROOT/logs/sandbox-image.log" 2>&1
+          src="$PRIVATE_ROOT/source"
+          mkdir "$src"
+          git -C "$PRIVATE_ROOT/quarantine" archive '${{ needs.trusted-preflight.outputs.head_sha }}' | tar -x -C "$src"
+          chmod -R a+rwX "$src"
+          docker run --rm --network bridge --read-only --user 65532:65532 \
+            --cap-drop ALL --security-opt no-new-privileges --pids-limit 512 --memory 6g --cpus 2 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=2g \
+            --mount "type=bind,src=$src,dst=/workspace" --workdir /workspace \
+            --env HOME=/tmp/home --env npm_config_cache=/tmp/npm-cache --env CI=true \
+            "$SANDBOX_IMAGE" sh -c 'mkdir -p "$HOME" && npm ci --ignore-scripts' \
+            >"$PRIVATE_ROOT/logs/dependency-install.log" 2>&1
+      - name: Fetch exact provider, verify, stage, and scrub credential
+        id: provider
+        env:
+          RPG_GAME_ASSETS_READ_TOKEN: ${{ secrets.RPG_GAME_ASSETS_READ_TOKEN }}
+        run: |
+          set -eu
+          python3 trusted/scripts/trusted-licensed-assets.py provider-stage \
+            --worktree "$PRIVATE_ROOT/quarantine" \
+            --private-root "$PRIVATE_ROOT" \
+            --provider "$PRIVATE_ROOT/private-provider" \
+            --stage "$PRIVATE_ROOT/asset-stage" \
+            --github-output "$GITHUB_OUTPUT"
+          chmod -R a=rX "$PRIVATE_ROOT/asset-stage"
+      - name: Prove provider and credential residue are absent before PR code
+        run: |
+          set -eu
+          test ! -e "$PRIVATE_ROOT/private-provider"
+          test -z "${RPG_GAME_ASSETS_READ_TOKEN-}"
+          test -z "${ASSETS_READ_TOKEN-}"
+          python3 trusted/scripts/trusted-licensed-assets.py residue \
+            --root "$PRIVATE_ROOT" --provider "$PRIVATE_ROOT/private-provider"
+      - name: Prove sandbox isolation with trusted canaries
+        run: |
+          set -eu
+          mkdir -p "$PRIVATE_ROOT/source/public/models/synty"
+          docker run --rm --network none --read-only --user 65532:65532 \
+            --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 2g --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m \
+            --mount "type=bind,src=$PRIVATE_ROOT/source,dst=/workspace" \
+            --mount "type=bind,src=$PRIVATE_ROOT/asset-stage/models/synty,dst=/workspace/public/models/synty,readonly" \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/trusted/scripts,dst=/trusted,readonly" \
+            --workdir /workspace "$SANDBOX_IMAGE" node /trusted/trusted-sandbox-canary.mjs \
+            >"$PRIVATE_ROOT/logs/sandbox-canary.log" 2>&1
+          python3 trusted/scripts/trusted-licensed-assets.py scan-log --log "$PRIVATE_ROOT/logs/sandbox-canary.log"
+      - name: Run every PR lifecycle and native full CI with no egress
+        run: |
+          set -eu
+          run_locked() {
+            name="$1"; shift
+            docker run --rm --network none --read-only --user 65532:65532 \
+              --cap-drop ALL --security-opt no-new-privileges --pids-limit 1024 --memory 7g --cpus 2 \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev,size=2g \
+              --mount "type=bind,src=$PRIVATE_ROOT/source,dst=/workspace" \
+              --mount "type=bind,src=$PRIVATE_ROOT/asset-stage/models/synty,dst=/workspace/public/models/synty,readonly" \
+              --workdir /workspace --env HOME=/tmp/home --env npm_config_cache=/tmp/npm-cache \
+              --env CI=true --env NO_COLOR=1 --env FORCE_COLOR=0 \
+              "$SANDBOX_IMAGE" "$@" >"$PRIVATE_ROOT/logs/$name.log" 2>&1
+            python3 trusted/scripts/trusted-licensed-assets.py scan-log --log "$PRIVATE_ROOT/logs/$name.log"
+          }
+          run_locked lifecycle-rebuild npm rebuild --offline
+          run_locked lifecycle-prepare npm run prepare --if-present
+          run_locked native-ci ./scripts/ci-check.sh
+      - name: Run fixed performance gate in the same sandbox
+        run: |
+          set -eu
+          docker run --rm --network none --read-only --user 65532:65532 \
+            --cap-drop ALL --security-opt no-new-privileges --pids-limit 1024 --memory 7g --cpus 2 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=2g \
+            --mount "type=bind,src=$PRIVATE_ROOT/source,dst=/workspace" \
+            --mount "type=bind,src=$PRIVATE_ROOT/asset-stage/models/synty,dst=/workspace/public/models/synty,readonly" \
+            --workdir /workspace --env HOME=/tmp/home --env npm_config_cache=/tmp/npm-cache \
+            --env CI=true --env NO_COLOR=1 --env FORCE_COLOR=0 \
+            "$SANDBOX_IMAGE" npm run perf:visual-placement \
+            >"$PRIVATE_ROOT/logs/perf.log" 2>&1
+      - name: Parse only the bounded performance scalar
+        id: perf-scan
+        run: >-
+          python3 trusted/scripts/trusted-licensed-assets.py scan-log
+          --log "$PRIVATE_ROOT/logs/perf.log"
+          --perf
+          --github-output "$GITHUB_OUTPUT"
+      - name: Construct allowlisted context, then fail closed on hosted Docker limitation
+        run: |
+          set -eu
+          python3 trusted/scripts/trusted-licensed-assets.py create-context \
+            --worktree "$PRIVATE_ROOT/quarantine" \
+            --base-sha '${{ needs.trusted-preflight.outputs.base_sha }}' \
+            --destination "$PRIVATE_ROOT/context-final" \
+            --asset-root "$PRIVATE_ROOT/asset-stage/models/synty"
+          # docker build --network=none/--pull=false has no build-time equivalents
+          # for cap-drop ALL and no-new-privileges, and the trusted base runs npm
+          # as root. The helper intentionally rejects rather than running it.
+          python3 trusted/scripts/trusted-licensed-assets.py docker-proof \
+            --dockerfile "$PRIVATE_ROOT/context-final/Dockerfile"
+      - name: Cleanup every licensed/private/build surface
+        if: always()
+        run: |
+          set +e
+          docker ps -aq --filter "label=licensed-assets.run=${{ github.run_id }}-${{ github.run_attempt }}" | xargs -r docker rm -f >/dev/null 2>&1
+          docker image rm -f "$FINAL_IMAGE" "$SANDBOX_IMAGE" >/dev/null 2>&1
+          docker volume ls -q --filter "label=licensed-assets.run=${{ github.run_id }}-${{ github.run_attempt }}" | xargs -r docker volume rm -f >/dev/null 2>&1
+          rm -rf "$PRIVATE_ROOT/private-provider" "$PRIVATE_ROOT/asset-stage" "$PRIVATE_ROOT/source/dist" \
+            "$PRIVATE_ROOT/context-final" "$PRIVATE_ROOT/logs" "$PRIVATE_ROOT/quarantine" "$PRIVATE_ROOT/source"
+          set -e
+          test ! -e "$PRIVATE_ROOT/private-provider"
+          test ! -e "$PRIVATE_ROOT/asset-stage"
+          test ! -e "$PRIVATE_ROOT/source"
+          test ! -e "$PRIVATE_ROOT/logs"
+          ! docker image inspect "$FINAL_IMAGE" >/dev/null 2>&1
+          ! docker image inspect "$SANDBOX_IMAGE" >/dev/null 2>&1
+
+  final-status:
+    name: Final live-head recheck and SHA-bound result
+    needs: [trusted-preflight, licensed]
+    if: always() && needs.trusted-preflight.outputs.validated == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Checkout only the executing trusted workflow commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Recheck the original live trust tuple before publishing
+        id: live
+        if: needs.licensed.result == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/trusted-licensed-assets.py live-check
+          --pr-number '${{ inputs.pr_number }}'
+          --expected-head-sha '${{ needs.trusted-preflight.outputs.head_sha }}'
+          --actor '${{ github.actor }}'
+          --base-sha '${{ needs.trusted-preflight.outputs.base_sha }}'
+          --head-ref '${{ needs.trusted-preflight.outputs.head_ref }}'
+      - name: Generate and rescan the sole fixed-schema artifact
+        if: steps.live.outcome == 'success'
+        run: >-
+          python3 scripts/trusted-licensed-assets.py make-artifact
+          --output '${{ runner.temp }}/licensed-assets-evidence.json'
+          --pr-number '${{ inputs.pr_number }}'
+          --web-sha '${{ needs.trusted-preflight.outputs.head_sha }}'
+          --provider-sha '${{ needs.licensed.outputs.provider_sha }}'
+          --catalog-sha256 '${{ needs.licensed.outputs.catalog_sha256 }}'
+          --inventory-sha256 '${{ needs.licensed.outputs.inventory_sha256 }}'
+          --tree-sha256 '${{ needs.licensed.outputs.tree_sha256 }}'
+          --asset-files '${{ needs.licensed.outputs.asset_files }}'
+          --perf-median-p95-ms '${{ needs.licensed.outputs.perf_median_p95_ms }}'
+          --kirk-visual-review external-pending
+      - name: Upload only the scalar JSON evidence
+        id: upload
+        if: steps.live.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: licensed-assets-evidence-${{ needs.trusted-preflight.outputs.head_sha }}
+          path: ${{ runner.temp }}/licensed-assets-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          include-hidden-files: false
+      - name: Delete local evidence after publisher returns
+        if: always()
+        run: rm -f '${{ runner.temp }}/licensed-assets-evidence.json'
+      - name: Final live equality and status on only the expected old SHA
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PUBLISH_RESULT: ${{ steps.upload.outcome }}
+          LICENSED_RESULT: ${{ needs.licensed.result }}
+        run: |
+          set -eu
+          result=failure
+          if [ "$LICENSED_RESULT" = success ] && [ "$PUBLISH_RESULT" = success ]; then result=success; fi
+          python3 scripts/trusted-licensed-assets.py final \
+            --pr-number '${{ inputs.pr_number }}' \
+            --expected-head-sha '${{ needs.trusted-preflight.outputs.head_sha }}' \
+            --actor '${{ github.actor }}' \
+            --base-sha '${{ needs.trusted-preflight.outputs.base_sha }}' \
+            --head-ref '${{ needs.trusted-preflight.outputs.head_ref }}' \
+            --licensed-result "$result"
