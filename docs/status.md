@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-07-12
+updated: 2026-08-09
 confidence: low-medium — entries below "Slice 3" are dated 2026-05-02 and predate slices 1-2 of the game-screen rebuild; several (Task 7, PR #377/#378, LobbyView complexity) are now stale/moot and are flagged inline rather than fully rewritten. This doc needs a dedicated refresh pass covering the intervening waves (#415/#418/#420/#426/#430/#445/#446), not just slice 3's deletions.
 ---
 
@@ -11,6 +11,23 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **Visual-anchor Wave B (#737)** — Builder and actual Game now preserve the
+  published optional `PlacementOffset` message through authoring projections,
+  reconnect/live fog knowledge, movement, and rendering. Both routes call one
+  pure catalog selector/resolver. The two enrolled props use a matrix-only seam
+  bound to exact `rpg-game-assets@29e26f7` catalog/inventory provenance; all
+  other props, walls, rugs, characters, and generic monster/boss placements
+  retain their prior scale path while applying world offsets once outside
+  facing. Local and protected Docker builds use the provider's atomic complete-
+  tree verifier. The former Prop Composition and Asset Anchor Learn routes were
+  removed after production golden-matrix/component parity, so measurement
+  tables no longer enter the production bundle. TypeScript contract is immutable
+  generated tag `v0.1.123` (`a6648cecf193`); npm/GitHub Release publication
+  defect protos#210 remains separate because Git tag installation resolves the
+  exact generated package. Protected licensed visual/route evidence still
+  requires Kirk's `licensed-assets` environment approval and read-only provider
+  token before review can be claimed complete.
 
 - **Authoritative character-creation category options (#690)** — the production
   `EquipmentBundleChoice` now renders `EquipmentCategoryChoice.options` directly

@@ -147,33 +147,35 @@ describe('Wave B generic world offset application', () => {
     ]);
   });
 
-  it('keeps a prop offset outside facing rotation', async () => {
-    const renderer = await ReactThreeTestRenderer.create(
-      <HexEntity
-        {...base}
-        type="obstacle"
-        propRefId="bookcase"
-        propRotationY={Math.PI / 2}
-        offset={{ x: 1, y: 2, z: 3 }}
-      />
+  it('keeps an enrolled prop offset outside facing in the sole matrix seam', async () => {
+    const render = async (offset?: { x: number; y: number; z: number }) => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <HexEntity
+          {...base}
+          type="obstacle"
+          propRefId="bookcase"
+          propRotationY={Math.PI / 2}
+          offset={offset}
+        />
+      );
+      const matrixGroup = renderer.scene
+        .findAllByType('Group')
+        .find(
+          (node) => (node.instance as THREE.Group).matrixAutoUpdate === false
+        );
+      expect(matrixGroup).toBeDefined();
+      return (matrixGroup!.instance as THREE.Group).matrix;
+    };
+    const baseMatrix = await render();
+    const offsetMatrix = await render({ x: 1, y: 2, z: 3 });
+    const basePosition = new THREE.Vector3().setFromMatrixPosition(baseMatrix);
+    const offsetPosition = new THREE.Vector3().setFromMatrixPosition(
+      offsetMatrix
     );
-    const offsetGroup = renderer.scene
-      .findAllByType('Group')
-      .find((node) =>
-        (node.instance as THREE.Group).position.equals(
-          new THREE.Vector3(1, 2, 3)
-        )
-      );
-    expect(offsetGroup).toBeDefined();
-    const rotated = renderer.scene
-      .findAllByType('Group')
-      .find(
-        (node) => (node.instance as THREE.Group).rotation.y === Math.PI / 2
-      );
-    expect(rotated).toBeDefined();
-    expect((offsetGroup!.instance as THREE.Group).position.toArray()).toEqual([
-      1, 2, 3,
-    ]);
+    expect(offsetPosition.sub(basePosition).toArray()).toEqual([1, 2, 3]);
+    expect(
+      Math.atan2(offsetMatrix.elements[8]!, offsetMatrix.elements[0]!)
+    ).toBeCloseTo(Math.PI / 2);
   });
 
   it('keeps a monster movement/facing group under one unrotated world offset parent', async () => {

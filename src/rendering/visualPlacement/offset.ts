@@ -1,3 +1,4 @@
+import type { Placement } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { Vec3 } from './types';
 
 /** Structural shape shared by the current and incoming generated proto. */
@@ -12,10 +13,9 @@ export interface CanonicalWorldOffset {
  * omission remains undefined. Values are never rotated, clamped or defaulted.
  */
 export function offsetFromPlacement(
-  value: unknown
+  value: Pick<Placement, 'offset'> | undefined
 ): CanonicalWorldOffset | undefined {
-  const offset = (value as { offset?: CanonicalWorldOffset } | undefined)
-    ?.offset;
+  const offset = value?.offset;
   if (offset === undefined) return undefined;
   if (![offset.x, offset.y, offset.z].every(Number.isFinite)) {
     throw new TypeError(

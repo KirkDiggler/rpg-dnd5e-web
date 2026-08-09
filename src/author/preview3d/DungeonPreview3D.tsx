@@ -142,6 +142,8 @@ import {
   CUTAWAY_STUB_WALL_HEIGHT,
   WALL_HEIGHT,
 } from '@/rendering/calibrationConstants';
+import { VISUAL_ASSET_CATALOG } from '@/rendering/visualPlacement/catalog';
+import { resolveCatalogVisualPlacement } from '@/rendering/visualPlacement/resolver';
 import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { Billboard, Bounds, OrbitControls, Text } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
@@ -351,7 +353,11 @@ export type PlacementPreviewOverrideResolver = (
 
 export interface PlacedProp {
   key: string;
+  /** Generic legacy position: canonical origin plus the exact world offset. */
   position: [number, number, number];
+  canonicalPosition: [number, number, number];
+  /** Undefined preserves omission; explicit zero remains a present tuple. */
+  offset?: readonly [number, number, number];
   variantRef: string;
   rotationY: number;
   sel: PlacementSelection;
@@ -383,6 +389,7 @@ interface PlacedWall {
 interface PlacedMonster {
   key: string;
   position: [number, number, number];
+  rotationY: number;
   monsterRefId: string;
   sel: PlacementSelection;
 }
@@ -656,10 +663,20 @@ export function buildOnePlacement(
   if (p.isMonster) {
     const monsterRefId = p.ref.split(':').pop();
     return monsterRefId
-      ? { monster: { key, position, monsterRefId, sel } }
+      ? { monster: { key, position, rotationY, monsterRefId, sel } }
       : {};
   }
-  return { prop: { key, position, variantRef: p.ref, rotationY, sel } };
+  return {
+    prop: {
+      key,
+      position,
+      canonicalPosition,
+      offset: p.offset ?? undefined,
+      variantRef: p.ref,
+      rotationY,
+      sel,
+    },
+  };
 }
 
 /** Apply the Learn probe's optional render-only adjustment to one already-
@@ -681,14 +698,97 @@ export function applyPlacementPreviewOverride(
       prop.position[1] + dy,
       prop.position[2] + dz,
     ],
+    offset: [
+      (prop.offset?.[0] ?? 0) + dx,
+      (prop.offset?.[1] ?? 0) + dy,
+      (prop.offset?.[2] ?? 0) + dz,
+    ],
     rotationY: prop.rotationY + (override.rotationOffsetY ?? 0),
   };
+}
+
+function selectionFromSourcePath(
+  sourcePath: string,
+  doc: DungeonDoc
+): PlacementSelection | undefined {
+  const roomPlacement = /^rooms\[(\d+)\]\.place\[(\d+)\]$/.exec(sourcePath);
+  if (roomPlacement) {
+    const room = doc.rooms[Number(roomPlacement[1])];
+    return room
+      ? { roomId: room.id, index: Number(roomPlacement[2]) }
+      : undefined;
+  }
+  const boss = /^rooms\[(\d+)\]\.boss$/.exec(sourcePath);
+  if (boss) {
+    const room = doc.rooms[Number(boss[1])];
+    return room ? { roomId: room.id, boss: true } : undefined;
+  }
+  const canvasPlacement = /^place\[(\d+)\]$/.exec(sourcePath);
+  return canvasPlacement
+    ? { roomId: null, index: Number(canvasPlacement[1]) }
+    : undefined;
+}
+
+/** Render the current provider's authoring projection without rejoining ids. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function projectedFloorPlanPlacements(
+  floorPlan: FloorPlan,
+  doc: DungeonDoc
+): { props: PlacedProp[]; monsters: PlacedMonster[] } {
+  const props: PlacedProp[] = [];
+  const monsters: PlacedMonster[] = [];
+  for (const placement of floorPlan.placements) {
+    if (!placement.at) continue;
+    const sel = selectionFromSourcePath(placement.sourcePath, doc);
+    if (!sel) continue;
+    const canonicalPosition = worldPosition(
+      placement.at.column,
+      placement.at.row
+    );
+    const offset = placement.offset
+      ? ([placement.offset.x, placement.offset.y, placement.offset.z] as const)
+      : undefined;
+    const worldOffset = offset ?? [0, 0, 0];
+    const position: [number, number, number] = [
+      canonicalPosition[0] + worldOffset[0],
+      canonicalPosition[1] + worldOffset[1],
+      canonicalPosition[2] + worldOffset[2],
+    ];
+    const rotationY =
+      placement.facing === undefined ? 0 : facingToRotationY(placement.facing);
+    if (placement.ref.startsWith('dnd5e:monsters:')) {
+      const monsterRefId = placement.ref.split(':').pop();
+      if (monsterRefId) {
+        monsters.push({
+          key: placement.sourcePath,
+          position,
+          rotationY,
+          monsterRefId,
+          sel,
+        });
+      }
+      continue;
+    }
+    props.push({
+      key: placement.sourcePath,
+      position,
+      canonicalPosition,
+      offset,
+      variantRef: placement.ref,
+      rotationY,
+      sel,
+    });
+  }
+  return { props, monsters };
 }
 
 function buildPlacements(
   floorPlan: FloorPlan | undefined,
   doc: DungeonDoc
 ): { props: PlacedProp[]; monsters: PlacedMonster[] } {
+  if (floorPlan?.placements.length) {
+    return projectedFloorPlanPlacements(floorPlan, doc);
+  }
   const props: PlacedProp[] = [];
   const monsters: PlacedMonster[] = [];
 
@@ -732,6 +832,10 @@ function buildPlacements(
           monsters.push({
             key: `${room.id}:boss`,
             position,
+            rotationY:
+              room.boss.facing === null
+                ? 0
+                : facingToRotationY(room.boss.facing),
             monsterRefId,
             sel: { roomId: room.id, boss: true },
           });
@@ -1871,11 +1975,27 @@ export function DungeonPreview3D({
                         color={SELECTED_COLOR}
                       />
                     )}
-                    <PropModel
-                      variant={variant}
-                      position={p.position}
-                      rotationY={p.rotationY}
-                    />
+                    {(() => {
+                      const resolved = resolveCatalogVisualPlacement(
+                        VISUAL_ASSET_CATALOG,
+                        p.variantRef,
+                        p.canonicalPosition,
+                        p.rotationY,
+                        p.offset
+                      );
+                      if (
+                        resolved.selection.selected &&
+                        resolved.selection.entry.path !== variant.file
+                      ) {
+                        throw new Error(
+                          `enrolled catalog path ${resolved.selection.entry.path} does not match manifest path ${variant.file}`
+                        );
+                      }
+                      const transform = resolved.selection.selected
+                        ? { matrix: resolved.placement.matrix }
+                        : { position: p.position, rotationY: p.rotationY };
+                      return <PropModel variant={variant} {...transform} />;
+                    })()}
                   </group>
                 );
               })}
@@ -1900,6 +2020,7 @@ export function DungeonPreview3D({
                     <PreviewMonsterModel
                       monsterRefId={m.monsterRefId}
                       position={m.position}
+                      rotationY={m.rotationY}
                       entityId={m.key}
                     />
                   </group>

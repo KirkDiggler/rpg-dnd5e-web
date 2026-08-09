@@ -8,3 +8,6 @@
 # src/concepts/dungeon-builder/ to src/author/ (rpg-project#194 graduation).
 src/author/specimens/*.yaml
 src/author/specimens/*.json
+
+# Exact byte-for-byte safe provider projection; digest-bound by Wave B lock.
+src/rendering/visualPlacement/synty-web-assets.json

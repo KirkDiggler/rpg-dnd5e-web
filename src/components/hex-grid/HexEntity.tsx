@@ -13,10 +13,12 @@ import type {
 } from '@/config/attachmentModels';
 import { isTwoHandedWeapon, WEAPON_CONFIGS } from '@/config/attachmentModels';
 import type { HeadVariant } from '@/config/characterModels';
+import { VISUAL_ASSET_CATALOG } from '@/rendering/visualPlacement/catalog';
 import {
   worldOffsetTuple,
   type CanonicalWorldOffset,
 } from '@/rendering/visualPlacement/offset';
+import { resolveCatalogVisualPlacement } from '@/rendering/visualPlacement/resolver';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
@@ -38,7 +40,10 @@ import {
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 import { resolveMonsterModelUrl } from './monsterModels';
-import { resolvePropVariantForEntity } from './obstaclePropKeys';
+import {
+  resolvePropKeyForEntity,
+  resolvePropVariantForEntity,
+} from './obstaclePropKeys';
 import { PROPS_MODEL_BASE } from './propManifest';
 import { PropModel } from './PropModel';
 import {
@@ -625,7 +630,9 @@ export function HexEntity({
   // that fails to load, falls straight through to the existing capsule —
   // the #479 boundary lineage this codebase already applies to class
   // models (never a broken/missing model reference on screen).
-  const propVariant = resolvePropVariantForEntity({ obstacleType, propRefId });
+  const propSignals = { obstacleType, propRefId };
+  const propKey = resolvePropKeyForEntity(propSignals);
+  const propVariant = resolvePropVariantForEntity(propSignals);
   const propModelUrl = propVariant
     ? PROPS_MODEL_BASE + propVariant.file
     : undefined;
@@ -671,26 +678,52 @@ export function HexEntity({
     );
   }
 
+  const resolved = resolveCatalogVisualPlacement(
+    VISUAL_ASSET_CATALOG,
+    propKey ?? '',
+    [worldPos.x, 0, worldPos.z],
+    propRotationY ?? 0,
+    offset === undefined ? undefined : worldOffset
+  );
+  if (
+    resolved.selection.selected &&
+    resolved.selection.entry.path !== propVariant.file
+  ) {
+    throw new Error(
+      `enrolled catalog path ${resolved.selection.entry.path} does not match manifest path ${propVariant.file}`
+    );
+  }
+  const fallbackPosition: [number, number, number] = [
+    worldPos.x + worldOffset[0],
+    yPosition + worldOffset[1],
+    worldPos.z + worldOffset[2],
+  ];
+
   return (
-    <group
-      position={[
-        worldPos.x + worldOffset[0],
-        worldOffset[1],
-        worldPos.z + worldOffset[2],
-      ]}
-      {...interactionProps}
-    >
-      <Suspense fallback={renderCapsule([0, yPosition, 0], false)}>
+    <group {...interactionProps}>
+      <Suspense fallback={renderCapsule(fallbackPosition, false)}>
         <ErrorBoundary
-          fallback={renderCapsule([0, yPosition, 0], false)}
+          fallback={renderCapsule(fallbackPosition, false)}
           onError={() => setFailedPropModelUrl(effectivePropModelUrl)}
         >
-          <PropModel
-            variant={propVariant}
-            position={[0, 0, 0]}
-            rotationY={propRotationY}
-            remembered={remembered}
-          />
+          {resolved.selection.selected ? (
+            <PropModel
+              variant={propVariant}
+              matrix={resolved.placement.matrix}
+              remembered={remembered}
+            />
+          ) : (
+            <PropModel
+              variant={propVariant}
+              position={[
+                worldPos.x + worldOffset[0],
+                worldOffset[1],
+                worldPos.z + worldOffset[2],
+              ]}
+              rotationY={propRotationY}
+              remembered={remembered}
+            />
+          )}
         </ErrorBoundary>
       </Suspense>
     </group>

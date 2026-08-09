@@ -103,13 +103,12 @@ export function validateVisualAssetCatalog(input: unknown): VisualAssetCatalog {
     }
   }
   const tool = object(catalog.tool, 'tool');
-  if (tool.name !== 'build_web_asset_catalog') {
+  if (tool.name !== 'build_web_asset_catalog' || tool.version !== '1.0.0') {
     throw new VisualContractError(
       'unsupported-schema',
       'catalog tool mismatch'
     );
   }
-  string(tool.version, 'tool.version');
   if (!Array.isArray(catalog.families) || !Array.isArray(catalog.entries)) {
     throw new VisualContractError(
       'invalid-inventory',
@@ -238,24 +237,43 @@ export function validateVisualAssetProviderLock(
   const lock = object(input, 'provider lock');
   const provider = object(lock.provider, 'provider');
   const catalog = object(lock.catalog, 'catalog');
+  const inventory = object(lock.inventory, 'inventory');
+  const inventoryTool = object(inventory.tool, 'inventory.tool');
   const tool = object(lock.tool, 'tool');
+  const verifier = object(lock.verifier, 'verifier');
   if (
     lock.schemaVersion !== 1 ||
     provider.repository !== 'KirkDiggler/rpg-game-assets' ||
-    !COMMIT.test(String(provider.commit)) ||
+    provider.commit !== '29e26f7e4b92bdc35277bbaa9712f7cdce8ce85a' ||
     catalog.path !== 'harness/catalogs/synty-web-assets.json' ||
-    !SHA256.test(String(catalog.sha256)) ||
+    catalog.sha256 !==
+      '0b816d6f08584e66c90556f9ad4d040c71086c1dbf698bf7d5030fb05c490669' ||
     catalog.schemaVersion !== 1 ||
     catalog.catalogId !== 'synty-web-assets' ||
+    inventory.path !== 'harness/catalogs/synty-complete-inventory.json' ||
+    inventory.sha256 !==
+      'e1e1915d330d0431248cdec57e5a591454c38820c832e7eff1a5e0d6a7c54bd1' ||
+    inventory.schemaVersion !== 1 ||
+    inventory.inventoryId !== 'synty-complete-tree' ||
+    inventoryTool.name !== 'build_synty_complete_inventory' ||
+    inventoryTool.version !== '1.0.0' ||
+    inventory.fileCount !== 2143 ||
+    inventory.treeSha256 !==
+      '3bcb0584e267b4291f86370093e56091f3c62ccfb53e86e062c66ec457c4c144' ||
     tool.name !== 'build_web_asset_catalog' ||
-    typeof tool.version !== 'string' ||
-    tool.version.length === 0 ||
+    tool.version !== '1.0.0' ||
+    verifier.name !== 'verify_web_asset_stage' ||
+    verifier.version !== '1.1.0' ||
     'webSha' in lock ||
-    'branch' in provider
+    'branch' in provider ||
+    !COMMIT.test(String(provider.commit)) ||
+    !SHA256.test(String(catalog.sha256)) ||
+    !SHA256.test(String(inventory.sha256)) ||
+    !SHA256.test(String(inventory.treeSha256))
   ) {
     throw new VisualContractError(
       'invalid-provider-lock',
-      'provider lock shape is invalid'
+      'provider lock shape or exact immutable provenance is invalid'
     );
   }
   return input as VisualAssetProviderLock;

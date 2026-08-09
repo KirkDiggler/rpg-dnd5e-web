@@ -71,6 +71,8 @@ interface PreviewMonsterModelProps {
    * resolveMonsterModelUrl itself documents. */
   monsterRefId: string;
   position: [number, number, number];
+  /** Facing is applied inside the world-offset translation group. */
+  rotationY?: number;
   /** This placement's own stable identity — keys which candidate GLB a
    * multi-candidate ref (today, only `zombie`) resolves to. Optional/
    * defensive only, same as `resolveMonsterModelUrl`'s own `entityId`
@@ -80,24 +82,25 @@ interface PreviewMonsterModelProps {
   entityId?: string;
 }
 
-function LoadedMonsterModel({
-  url,
-  position,
-}: {
-  url: string;
-  position: [number, number, number];
-}) {
+function LoadedMonsterModel({ url }: { url: string }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => cloneSkeleton(scene), [scene]);
-  return <primitive object={cloned} position={position} scale={SYNTY_SCALE} />;
+  return <primitive object={cloned} scale={SYNTY_SCALE} />;
 }
 
 export function PreviewMonsterModel({
   monsterRefId,
   position,
+  rotationY = 0,
   entityId,
 }: PreviewMonsterModelProps) {
   const url = resolveMonsterModelUrl(monsterRefId, undefined, false, entityId);
   if (!url) return null;
-  return <LoadedMonsterModel url={url} position={position} />;
+  return (
+    <group position={position}>
+      <group rotation={[0, rotationY, 0]}>
+        <LoadedMonsterModel url={url} />
+      </group>
+    </group>
+  );
 }

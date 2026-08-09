@@ -68,6 +68,7 @@
  */
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
+import type { Matrix4Elements } from '@/rendering/visualPlacement/types';
 import { useGLTF } from '@react-three/drei';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
@@ -78,18 +79,30 @@ import {
 } from './propManifest';
 import { cloneCryptMaterials } from './sceneKnowledge';
 
-export interface PropModelProps {
+interface PropModelSharedProps {
   variant: PropVariant;
-  /** World position (already converted from hex/cube coords by the
-   * caller — see HexEntity.tsx's cubeToWorld usage). */
-  position: [number, number, number];
-  rotationY?: number;
-  /** Render as the viewer's frozen last observation (rpg-dnd5e-web#605/
-   * #609) — the same shared crypt-memory material tint
-   * ClassCharacterModel.tsx applies to player/monster models. Defaults
-   * false, matching every caller before this prop existed. */
+  /** Render as the viewer's frozen last observation. */
   remembered?: boolean;
 }
+
+/**
+ * Enrolled props enter through a matrix-only seam. Legacy props retain their
+ * existing position/rotation/SYNTY_SCALE path. The union prevents callers from
+ * composing both paths and double-applying translation, facing, or scale.
+ */
+export type PropModelProps = PropModelSharedProps &
+  (
+    | {
+        matrix: Matrix4Elements;
+        position?: never;
+        rotationY?: never;
+      }
+    | {
+        matrix?: never;
+        position: [number, number, number];
+        rotationY?: number;
+      }
+  );
 
 /** Snapshot each mesh's original (untinted) material once per `object`
  * identity, then apply (or remove) the shared crypt-memory tint when
@@ -143,22 +156,21 @@ function PropCompanionModel({
   return <primitive object={cloned} />;
 }
 
-export function PropModel({
-  variant,
-  position,
-  rotationY = 0,
-  remembered = false,
-}: PropModelProps) {
+export function PropModel(props: PropModelProps) {
+  const { variant, remembered = false } = props;
   const { scene } = useGLTF(PROPS_MODEL_BASE + variant.file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
+  const resolvedMatrix = useMemo(
+    () =>
+      props.matrix
+        ? new THREE.Matrix4().fromArray([...props.matrix])
+        : undefined,
+    [props.matrix]
+  );
   useRememberedTint(cloned, remembered);
 
-  return (
-    <group
-      position={position}
-      rotation={[0, rotationY, 0]}
-      scale={SYNTY_SCALE * (variant.renderScale ?? 1)}
-    >
+  const contents = (
+    <>
       <primitive object={cloned} />
       {variant.companions?.map((companion) => (
         <PropCompanionModel
@@ -167,6 +179,24 @@ export function PropModel({
           remembered={remembered}
         />
       ))}
+    </>
+  );
+
+  if (resolvedMatrix) {
+    return (
+      <group matrix={resolvedMatrix} matrixAutoUpdate={false}>
+        {contents}
+      </group>
+    );
+  }
+
+  return (
+    <group
+      position={props.position}
+      rotation={[0, props.rotationY ?? 0, 0]}
+      scale={SYNTY_SCALE * (variant.renderScale ?? 1)}
+    >
+      {contents}
     </group>
   );
 }

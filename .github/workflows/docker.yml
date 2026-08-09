@@ -65,25 +65,24 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Sync Synty assets from private repo
-        env:
-          ASSETS_READ_TOKEN: ${{ secrets.ASSETS_READ_TOKEN }}
-        run: |
-          set -e
-          if [ -z "$ASSETS_READ_TOKEN" ]; then
-            echo "::warning::ASSETS_READ_TOKEN is not set — building WITHOUT Synty assets. Set the ASSETS_READ_TOKEN repo secret to enable this step."
-            exit 0
-          fi
+      - name: Read immutable asset-provider lock
+        if: github.event_name != 'pull_request'
+        id: asset-lock
+        run: echo "sha=$(node -p "require('./src/rendering/visualPlacement/provider-lock.json').provider.commit")" >> "$GITHUB_OUTPUT"
 
-          TMP_DIR=$(mktemp -d)
-          git clone --depth 1 "https://x-access-token:${ASSETS_READ_TOKEN}@github.com/KirkDiggler/rpg-game-assets.git" "$TMP_DIR"
+      - name: Check out exact private provider without persisted credentials
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          repository: KirkDiggler/rpg-game-assets
+          ref: ${{ steps.asset-lock.outputs.sha }}
+          token: ${{ secrets.ASSETS_READ_TOKEN }}
+          path: .private-provider
+          persist-credentials: false
 
-          mkdir -p public/models/synty
-          cp -r "$TMP_DIR"/harness/models/synty/. public/models/synty/
-          rm -rf "$TMP_DIR"
-
-          FILE_COUNT=$(find public/models/synty -type f | wc -l)
-          echo "Synced $FILE_COUNT Synty asset file(s) from rpg-game-assets into public/models/synty/"
+      - name: Atomic complete-tree stage from exact provider
+        if: github.event_name != 'pull_request'
+        run: ./scripts/stage-locked-synty-assets.sh --provider-checkout "$GITHUB_WORKSPACE/.private-provider"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -18,7 +19,7 @@ const lockFixture = JSON.parse(
 const clone = <T>(value: T): T => structuredClone(value);
 
 describe('safe catalog/provider-lock public contract', () => {
-  it('accepts the explicitly synthetic exact-two public fixture', () => {
+  it('accepts the synthetic exact-two matrix fixture and real aggregate lock', () => {
     const catalog = validateVisualAssetCatalog(catalogFixture);
     expect(catalog.entries).toHaveLength(2);
     expect(
@@ -105,5 +106,32 @@ describe('safe catalog/provider-lock public contract', () => {
         toolVersion: 'fixture-only',
       })
     ).toThrowError(expect.objectContaining({ code: 'provenance-mismatch' }));
+  });
+
+  it('binds the checked-in safe production catalog to the exact aggregate lock within budget', () => {
+    const catalogPath = resolve(
+      process.cwd(),
+      'src/rendering/visualPlacement/synty-web-assets.json'
+    );
+    const lockPath = resolve(
+      process.cwd(),
+      'src/rendering/visualPlacement/provider-lock.json'
+    );
+    const bytes = readFileSync(catalogPath);
+    const lock = validateVisualAssetProviderLock(
+      JSON.parse(readFileSync(lockPath, 'utf8'))
+    );
+    const catalog = validateVisualAssetCatalog(JSON.parse(bytes.toString()));
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(
+      lock.catalog.sha256
+    );
+    expect(catalog.tool).toEqual({
+      name: 'build_web_asset_catalog',
+      version: '1.0.0',
+    });
+    expect(
+      statSync(catalogPath).size + statSync(lockPath).size
+    ).toBeLessThanOrEqual(8 * 1024);
+    expect(JSON.stringify(lock)).not.toMatch(/branch|webSha|files\s*:/);
   });
 });

@@ -212,3 +212,47 @@ describe('PropModel remembered tinting (rpg-dnd5e-web#605/#609)', () => {
     }
   });
 });
+
+describe('PropModel enrolled matrix-only seam', () => {
+  it('gives parent and companions one sole matrix without legacy scale compounding', async () => {
+    const variant: PropVariant = {
+      ...BASE_VARIANT,
+      renderScale: 2,
+      companions: [{ name: 'flame', file: 'props/flame.glb' }],
+    };
+    const matrix = new THREE.Matrix4()
+      .makeRotationY(Math.PI / 3)
+      .setPosition(4, 5, 6)
+      .toArray() as unknown as readonly [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ];
+    const renderer = await ReactThreeTestRenderer.create(
+      <PropModel variant={variant} matrix={matrix} />
+    );
+    const groups = renderer.scene
+      .findAllByType('Group')
+      .map((node) => (node as unknown as { instance: THREE.Group }).instance);
+    const soleTransform = groups.find(
+      (group) => group.matrixAutoUpdate === false
+    );
+    expect(soleTransform).toBeDefined();
+    expect(soleTransform!.matrix.toArray()).toEqual([...matrix]);
+    expect(soleTransform!.scale.toArray()).toEqual([1, 1, 1]);
+    expect(renderer.scene.findAllByType('Mesh')).toHaveLength(2);
+  });
+});

@@ -52,3 +52,5 @@ logs/
 # Temporary files
 tmp/
 temp/
+# Protected licensed gate checkout; verified runtime bundle is .asset-stage/.
+.private-provider/

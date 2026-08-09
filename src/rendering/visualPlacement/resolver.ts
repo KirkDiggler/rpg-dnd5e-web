@@ -1,7 +1,10 @@
+import { selectVisualVariant } from './selector';
 import type {
   ResolvedVisualPlacement,
   Vec3,
+  VisualAssetCatalog,
   VisualCalibrationEntry,
+  VisualVariantSelection,
 } from './types';
 
 function finiteVec3(name: string, value: Vec3): void {
@@ -96,5 +99,35 @@ export function resolveVisualPlacement(
       calibration: point ? 'enrolled' : 'no-anchor',
       selectedVariantId: entry.id,
     },
+  };
+}
+
+export interface CatalogVisualPlacement {
+  selection: VisualVariantSelection;
+  placement: ResolvedVisualPlacement;
+}
+
+/**
+ * The single production selector/resolver entry point imported by Builder and
+ * Game. Unknown/unenrolled families keep generic p+o behavior; enrolled
+ * families append their catalog calibration. This function stays pure and has
+ * no React, loader, camera, wall, gameplay, or model-identity knowledge.
+ */
+export function resolveCatalogVisualPlacement(
+  catalog: VisualAssetCatalog,
+  semanticRef: string,
+  canonicalOrigin: Vec3,
+  facingYaw: number,
+  worldOffset?: Vec3
+): CatalogVisualPlacement {
+  const selection = selectVisualVariant(catalog, semanticRef);
+  return {
+    selection,
+    placement: resolveVisualPlacement(
+      selection.selected ? selection.entry : undefined,
+      canonicalOrigin,
+      facingYaw,
+      worldOffset
+    ),
   };
 }

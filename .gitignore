@@ -38,5 +38,6 @@ dist-ssr
 # api-data/
 
 # Synty-derived assets — licensed, do not redistribute via the repo
-public/models/synty/
+public/models/synty
+.asset-stage/
 evidence/

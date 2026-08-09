@@ -124,8 +124,18 @@ export interface VisualAssetProviderLock {
     schemaVersion: 1;
     catalogId: 'synty-web-assets';
   };
+  inventory: {
+    path: 'harness/catalogs/synty-complete-inventory.json';
+    sha256: string;
+    schemaVersion: 1;
+    inventoryId: 'synty-complete-tree';
+    tool: { name: 'build_synty_complete_inventory'; version: string };
+    fileCount: number;
+    treeSha256: string;
+  };
   tool: {
     name: 'build_web_asset_catalog';
     version: string;
   };
+  verifier: { name: 'verify_web_asset_stage'; version: string };
 }

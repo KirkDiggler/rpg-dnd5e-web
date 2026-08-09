@@ -1,3 +1,10 @@
+import { create } from '@bufbuild/protobuf';
+import {
+  FloorPlanCellSchema,
+  FloorPlanPlacementSchema,
+  FloorPlanSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { PlacementOffsetSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { describe, expect, it } from 'vitest';
 import { emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import {
@@ -10,7 +17,10 @@ import {
   toDungeonDoc,
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
-import { buildOnePlacement } from './preview3d/DungeonPreview3D';
+import {
+  buildOnePlacement,
+  projectedFloorPlanPlacements,
+} from './preview3d/DungeonPreview3D';
 
 const WITH_OFFSETS = SHOWCASE_YAML.replace(
   'at: [1, 1], blocks_movement: true, blocks_los: false',
@@ -134,5 +144,83 @@ describe('ratified v0.4 Builder world offset', () => {
       monsterBase.position[1] + 0.5,
       monsterBase.position[2] - 0.75,
     ]);
+  });
+
+  it('renders the real provider FloorPlan projection for room prop, monster, boss, and canvas presence', () => {
+    const roomDoc = parseDungeon(WITH_OFFSETS).doc;
+    const placement = (
+      sourcePath: string,
+      ref: string,
+      column: number,
+      row: number,
+      offset?: [number, number, number],
+      facing?: number
+    ) =>
+      create(FloorPlanPlacementSchema, {
+        sourcePath,
+        ref,
+        at: create(FloorPlanCellSchema, { column, row }),
+        facing,
+        offset: offset
+          ? create(PlacementOffsetSchema, {
+              x: offset[0],
+              y: offset[1],
+              z: offset[2],
+            })
+          : undefined,
+      });
+    const projected = projectedFloorPlanPlacements(
+      create(FloorPlanSchema, {
+        placements: [
+          placement(
+            'rooms[0].place[0]',
+            'dnd5e:props:bookcase',
+            9,
+            4,
+            [0, 0, 0],
+            2
+          ),
+          placement(
+            'rooms[0].place[1]',
+            'dnd5e:monsters:skeleton',
+            10,
+            4,
+            [-0.25, 0.5, 0.75],
+            5
+          ),
+          placement('rooms[2].boss', 'dnd5e:monsters:skeleton-captain', 20, 5),
+        ],
+      }),
+      roomDoc
+    );
+    expect(projected.props).toHaveLength(1);
+    expect(projected.props[0]!.offset).toEqual([0, 0, 0]);
+    expect(projected.props[0]!.sel).toEqual({
+      roomId: 'antechamber',
+      index: 0,
+    });
+    expect(projected.monsters).toHaveLength(2);
+    expect(projected.monsters[0]!.position[1]).toBe(0.5);
+    expect(projected.monsters[1]!.sel).toEqual({
+      roomId: 'vault',
+      boss: true,
+    });
+
+    const canvasDoc = parseDungeon(
+      emptyCanvasYaml(5, 5).replace(
+        'place: []',
+        'place: [{ ref: "dnd5e:props:bookcase", at: [0, 0] }]'
+      )
+    ).doc;
+    const canvas = projectedFloorPlanPlacements(
+      create(FloorPlanSchema, {
+        placements: [
+          placement('place[0]', 'dnd5e:props:bookcase', 3, 2, [1, -2, 3]),
+        ],
+      }),
+      canvasDoc
+    );
+    expect(canvas.props[0]!.sel).toEqual({ roomId: null, index: 0 });
+    expect(canvas.props[0]!.offset).toEqual([1, -2, 3]);
   });
 });

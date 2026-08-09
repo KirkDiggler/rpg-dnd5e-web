@@ -27,60 +27,68 @@
     {
       "id": "synty:props:sm-prop-bookcase-small-01",
       "semanticRef": "dnd5e:props:bookcase",
-      "path": "fixture-only/bookcase.glb",
-      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "totalScale": 2,
-      "sourceForwardYawRad": 0.25,
+      "path": "props/SM_Prop_Bookcase_Small_01.glb",
+      "sha256": "32916c5c04ba13d3cdfd85bb802ccd236be83514c859b7b763ab603a94f306bc",
+      "totalScale": 0.75,
+      "sourceForwardYawRad": 0.0,
       "modelPoint": {
         "kind": "floor-contact",
-        "position": [0.25, 0, -0.5]
+        "position": [
+          0.9266405962407589,
+          0,
+          0.32952056801877916
+        ]
       },
       "companions": [],
       "authoringHints": {
         "right": {
-          "min": -1,
-          "max": 1,
-          "step": 0.25
+          "min": -0.25,
+          "max": 0.25,
+          "step": 0.05
         },
         "up": {
-          "min": 0,
-          "max": 1,
-          "step": 0.25
+          "min": 0.0,
+          "max": 0.15,
+          "step": 0.05
         },
         "forward": {
-          "min": -1,
-          "max": 1,
-          "step": 0.25
+          "min": -0.2,
+          "max": 0.2,
+          "step": 0.05
         }
       }
     },
     {
       "id": "synty:props:sm-prop-torch-ornate-01",
       "semanticRef": "dnd5e:props:torch-ornate",
-      "path": "fixture-only/torch.glb",
-      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "totalScale": 0.5,
-      "sourceForwardYawRad": -0.5,
+      "path": "props/SM_Prop_Torch_Ornate_01.glb",
+      "sha256": "fa00fa3fa98555cf7a016ecda3d0542e24cfd52940486ee90f1b8f9ae712a40a",
+      "totalScale": 0.75,
+      "sourceForwardYawRad": 0.0,
       "modelPoint": {
         "kind": "wall-attachment",
-        "position": [-0.5, 1.25, 0.75]
+        "position": [
+          0,
+          -0.03202003240585327,
+          -0.07597417943179607
+        ]
       },
       "companions": [],
       "authoringHints": {
         "right": {
-          "min": -0.5,
-          "max": 0.5,
-          "step": 0.125
+          "min": -0.25,
+          "max": 0.25,
+          "step": 0.05
         },
         "up": {
-          "min": -0.5,
-          "max": 1.5,
-          "step": 0.125
+          "min": -0.25,
+          "max": 0.25,
+          "step": 0.05
         },
         "forward": {
-          "min": -0.5,
-          "max": 0.5,
-          "step": 0.125
+          "min": -0.2,
+          "max": 0.2,
+          "step": 0.05
         }
       }
     }
