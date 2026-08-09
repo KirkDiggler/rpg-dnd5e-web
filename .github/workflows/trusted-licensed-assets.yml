@@ -59,6 +59,21 @@ jobs:
           --expected-head-sha '${{ inputs.expected_head_sha }}'
           --snapshot '${{ runner.temp }}/trusted-pr-snapshot.json'
           --github-output "$GITHUB_OUTPUT"
+      - name: Quarantine and validate exact tree before any Environment
+        run: |
+          set -eu
+          q='${{ runner.temp }}/trusted-preflight-quarantine'
+          git init -q "$q"
+          git -C "$q" config core.hooksPath /dev/null
+          git -C "$q" config protocol.file.allow never
+          git -C "$q" remote add origin https://github.com/KirkDiggler/rpg-dnd5e-web.git
+          git -C "$q" fetch --no-tags origin '${{ steps.preflight.outputs.head_sha }}' '${{ steps.preflight.outputs.base_sha }}' >/dev/null 2>&1
+          git -C "$q" checkout -q --detach '${{ steps.preflight.outputs.head_sha }}'
+          python3 scripts/trusted-licensed-assets.py quarantine \
+            --worktree "$q" \
+            --expected-head-sha '${{ steps.preflight.outputs.head_sha }}' \
+            --base-sha '${{ steps.preflight.outputs.base_sha }}'
+          rm -rf "$q"
 
   licensed:
     name: Protected licensed exact-head validation
