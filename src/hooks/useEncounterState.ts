@@ -706,10 +706,30 @@ export function applyHexRecordsMerged(
       return;
     }
     if (!nextEntities) nextEntities = new Map(prev.entities);
-    nextEntities.set(entityId, {
-      ...create(EntityStateSchema, { entityId, position }),
-      facing,
-    });
+    // Re-placing a KNOWN entity updates position/facing on its EXISTING
+    // record rather than rebuilding one from scratch (rpg-dnd5e-web#741).
+    // `create(EntityStateSchema, {entityId, position})` produces a bare
+    // record — `movePath`/`moveSeq` are client-added fields with no proto
+    // counterpart, so `create` never repopulates them, and every re-
+    // placement silently wiped whatever move was in flight. Concretely: an
+    // unrelated player's fog update re-covers this entity's hex mid-walk
+    // (the very same live-diff channel a genuine move also arrives on —
+    // see the module doc comment above), and the walk animation
+    // mergeEntityPosition just started gets cancelled/snapped instead of
+    // continuing. Carrying `existing` forward is safe even when position
+    // ALSO genuinely changes here: useHexMovePath only treats a move as
+    // "genuine" when `moveSeq` itself advances (see its own doc comment),
+    // and `moveSeq` is exclusively bumped by `mergeEntityPosition`, never
+    // by this function — so an unchanged `moveSeq` makes the animation hook
+    // snap straight to the fresh `position` below rather than replay a
+    // stale path. Only a never-before-seen entity (no `existing` record)
+    // falls back to a fresh EntityState.
+    nextEntities.set(
+      entityId,
+      existing
+        ? { ...existing, position, facing }
+        : { ...create(EntityStateSchema, { entityId, position }), facing }
+    );
   };
 
   // Pass 1: every VISIBLE placement this event. Always wins — set
@@ -750,13 +770,46 @@ export function applyHexRecordsMerged(
   // updates, and isn't re-placed anywhere else this event, is gone from the
   // cache. Reads only `prev.revealedHexes` (untouched by the two passes
   // above), so its own ordering relative to them doesn't matter.
+  //
+  // Invariant (rpg-dnd5e-web#741): only vacate an entity whose CURRENT
+  // `entities` position still matches the hex we're about to clear it from.
+  // `entities` and `revealedHexes` are two independently-updated indexes —
+  // `mergeEntityPosition` (the OWN-move fast path fed by
+  // MovementCompletedEvent, see its doc comment) updates only `entities`,
+  // deliberately never touching `revealedHexes`. That leaves a STALE
+  // placement for the mover sitting in their old hex's cached `contents`
+  // until some later event happens to re-cover that hex. Without this
+  // guard, that stale listing reads as "used to be here, not re-placed" for
+  // an event that has nothing to do with the mover at all — e.g. a
+  // DIFFERENT player's own move whose fog diff happens to re-touch the
+  // mover's old hex — and the mover gets deleted from `entities` even
+  // though `entities` already holds their correct, newer position. This is
+  // exactly the reported "I could only free roam as 1 of the characters":
+  // whoever moved last (via mergeEntityPosition) evicted the other tab's
+  // own entity on the next unrelated hex update. Comparing positions before
+  // deleting makes vacation correct regardless of event ordering: a cached
+  // hex record is only ever authoritative for an entity `entities` still
+  // agrees was last placed there — if the two disagree, `entities` (the
+  // newer write) wins and the vacate pass defers to it instead of
+  // overwriting it with stale information.
   for (const hex of positioned) {
     const key = hexKey(protoPositionToHex(hex.position));
     const oldContents = prev.revealedHexes.get(key)?.contents ?? [];
     for (const oldPlacement of oldContents) {
       if (placedThisEvent.has(oldPlacement.entityId)) continue;
-      if (!(nextEntities ?? prev.entities).has(oldPlacement.entityId)) {
-        continue;
+      const current = (nextEntities ?? prev.entities).get(
+        oldPlacement.entityId
+      );
+      if (!current) continue;
+      if (current.position) {
+        const hexPos = v2PositionToV1(hex.position);
+        if (
+          current.position.x !== hexPos.x ||
+          current.position.y !== hexPos.y ||
+          current.position.z !== hexPos.z
+        ) {
+          continue;
+        }
       }
       if (!nextEntities) nextEntities = new Map(prev.entities);
       nextEntities.delete(oldPlacement.entityId);

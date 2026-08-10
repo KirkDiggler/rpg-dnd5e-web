@@ -852,6 +852,90 @@ describe('v1alpha2 reducer additions', () => {
         );
       });
 
+      it('does not evict an entity whose position was updated cross-event by mergeEntityPosition (rpg-dnd5e-web#741)', () => {
+        // Reproduces the reported "I could only free roam as 1 of the
+        // characters": the OWN-move fast path (mergeEntityPosition, fed by
+        // MovementCompletedEvent) updates `entities` but deliberately never
+        // touches `revealedHexes` — see its own doc comment. A LATER,
+        // unrelated HexKnowledgeChanged event that happens to re-cover the
+        // entity's now-stale old hex must not read that stale listing as
+        // "not re-placed this event, so gone."
+        let state = seedKnownEntity(createEmptyEncounterState(), 'player-1');
+        const origin = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE, [
+          makePlacement('player-1'),
+        ]);
+        state = applyHexRecordsMerged(state, [origin]);
+        expect(state.entities.get('player-1')?.position).toEqual(
+          create(PositionSchema, { x: 0, y: 0, z: 0 })
+        );
+
+        // player-1's own move arrives via the OTHER reducer, in a SEPARATE
+        // event — revealedHexes is left completely untouched by this call.
+        state = mergeEntityPosition(
+          state,
+          'player-1',
+          create(PositionSchema, { x: 5, y: -3, z: -2 })
+        );
+        expect(state.entities.get('player-1')?.position).toEqual(
+          create(PositionSchema, { x: 5, y: -3, z: -2 })
+        );
+
+        // A later, unrelated HexKnowledgeChanged re-covers player-1's OLD
+        // hex (e.g. recomputed because a DIFFERENT player moved). It
+        // correctly reports nobody there — player-1 really did leave — but
+        // this event says nothing about player-1 at all.
+        const staleHexResighted = makeHexRecord(
+          { x: 0, y: 0, z: 0 },
+          HexState.VISIBLE,
+          []
+        );
+        state = applyHexRecordsMerged(state, [staleHexResighted]);
+
+        expect(state.entities.has('player-1')).toBe(true);
+        expect(state.entities.get('player-1')?.position).toEqual(
+          create(PositionSchema, { x: 5, y: -3, z: -2 })
+        );
+      });
+
+      it('setPlacement preserves movePath/moveSeq from an in-flight move when re-placing a known entity (rpg-dnd5e-web#741)', () => {
+        let state = seedKnownEntity(createEmptyEncounterState(), 'player-1');
+        const origin = makeHexRecord({ x: 0, y: 0, z: 0 }, HexState.VISIBLE, [
+          makePlacement('player-1'),
+        ]);
+        state = applyHexRecordsMerged(state, [origin]);
+
+        // A genuine move starts: mergeEntityPosition sets movePath/moveSeq
+        // alongside the new position — the OWN-move fast path, a separate
+        // event from any HexKnowledgeChanged.
+        const path = [
+          create(PositionSchema, { x: 0, y: 0, z: 0 }),
+          create(PositionSchema, { x: 1, y: -1, z: 0 }),
+        ];
+        state = mergeEntityPosition(
+          state,
+          'player-1',
+          create(PositionSchema, { x: 1, y: -1, z: 0 }),
+          path
+        );
+        expect(state.entities.get('player-1')?.moveSeq).toBe(1);
+        expect(state.entities.get('player-1')?.movePath).toEqual(path);
+
+        // A different player's fog update re-discloses player-1 at the
+        // SAME hex mid-walk, with a fresh authored facing — a bare
+        // position+facing match would short-circuit as a no-op, so use a
+        // changed facing to force setPlacement's re-placement path.
+        const refresh = makeHexRecord({ x: 1, y: -1, z: 0 }, HexState.VISIBLE, [
+          makePlacement('player-1', 3),
+        ]);
+        state = applyHexRecordsMerged(state, [refresh]);
+
+        expect(state.entities.get('player-1')?.facing).toBe(3);
+        // The walk animation's movePath/moveSeq must survive — setPlacement
+        // no longer rebuilds the record from scratch on re-placement.
+        expect(state.entities.get('player-1')?.moveSeq).toBe(1);
+        expect(state.entities.get('player-1')?.movePath).toEqual(path);
+      });
+
       it('an empty event changes nothing (same reference)', () => {
         const state = createEmptyEncounterState();
         expect(applyHexRecordsMerged(state, [])).toBe(state);
