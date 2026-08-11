@@ -62,6 +62,14 @@ if npm run build > /dev/null 2>&1; then
     echo -e "${RED}✗ dist/themes/base.css is missing the combat-HUD styles (web#563 regression)${NC}"
     FAILED=1
   fi
+  # The contributor sandbox is development-only. Production must not even
+  # retain its fixed Dev identities or screen marker in a dead chunk.
+  if grep -R -q -E 'toolkit-sandbox-fighter|toolkit-sandbox-barbarian|Toolkit Contributor Sandbox' dist/assets 2>/dev/null; then
+    echo -e "${RED}✗ Production assets retain Toolkit Contributor Sandbox code${NC}"
+    FAILED=1
+  else
+    echo -e "${GREEN}✓ Production assets exclude Toolkit Contributor Sandbox code${NC}"
+  fi
 else
   echo -e "${RED}✗ Build failed${NC}"
   echo -e "${YELLOW}  Run 'npm run build' to see errors${NC}"
