@@ -18,6 +18,7 @@ import { ConceptsView } from './concepts/ConceptsView';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
+import { ToolkitContributorSandbox } from './toolkit-contributor-sandbox/ToolkitContributorSandbox';
 
 /**
  * Dev-only deep link: `?concept=<id>` opens the Concepts Lab directly and must
@@ -466,10 +467,7 @@ function App() {
       window.location.search
     )
   ) {
-    // Task 7 replaces this route-gated placeholder with the completed
-    // ToolkitContributorSandbox component. Keeping it inline preserves that
-    // task's required module-resolution RED while bypassing normal app state.
-    return <div>Toolkit Contributor Sandbox</div>;
+    return <ToolkitContributorSandbox />;
   }
 
   return (
