@@ -17,6 +17,12 @@
  */
 import { HEX_SIZE } from '@/components/hex-grid/hexMath';
 import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
+import { create } from '@bufbuild/protobuf';
+import {
+  FloorPlanEdgeKind,
+  FloorPlanFloorSource,
+  FloorPlanSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -35,6 +41,7 @@ import {
   setPlacementMount,
   setPlacementRotationDegrees,
   setRefDefault,
+  setWallEdge,
   toDungeonDoc,
   toggleWallLineDoorAt,
 } from '../dungeonYaml';
@@ -50,6 +57,7 @@ import {
   buildWallLineSegments,
   CANVAS_ROOM_ID,
   ORBIT_INITIAL_CAMERA_POSITION,
+  selectPreviewSourceWalls,
 } from './DungeonPreview3D';
 import { azimuthOf, INITIAL_AZIMUTH } from './playCameraRig';
 
@@ -162,6 +170,74 @@ describe('buildOnePlacement — resolved facing × fine-rotation composition', (
 // comment describes. `buildFloorTiles`/`buildStandableWallLineFootprint` are pure
 // math with no Canvas/GLB dependency (same reasoning `buildOnePlacement`'s
 // own doc comment above gives for being exported and tested directly).
+describe('provider-backed region preview wall truth', () => {
+  it('renders source walls before acceptance, then only provider edges for a wall-bearing accepted candidate without dropping placements', () => {
+    const source = emptyCanvasYaml(6, 6).replace(
+      '  height: 6\nrooms:',
+      '  height: 6\n  floor_source: regions\nrooms:'
+    );
+    const { cst } = parseDungeon(source);
+    setWallEdge(cst, [1, 1], [1, 2], 'solid', true);
+    addWallLine(cst, { cell: [3, 3], corner: 2 }, { cell: [3, 3], corner: 5 });
+    placeItem(cst, null, 'dnd5e:props:pillar', [2, 1]);
+    const doc = toDungeonDoc(cst);
+    const floorCells: [number, number][] = [
+      [1, 1],
+      [1, 2],
+      [2, 1],
+    ];
+    const acceptedPlan = create(FloorPlanSchema, {
+      width: 6,
+      height: 6,
+      floorSource: FloorPlanFloorSource.REGIONS,
+      floorCells: floorCells.map(([column, row]) => ({ column, row })),
+      edges: [
+        {
+          from: { column: 1, row: 1 },
+          to: { column: 1, row: 2 },
+          kind: FloorPlanEdgeKind.SOLID,
+        },
+      ],
+    });
+
+    expect(doc.walls).toHaveLength(1);
+    expect(doc.wallLines).toHaveLength(1);
+    expect(doc.place).toHaveLength(1);
+
+    const beforeAcceptance = selectPreviewSourceWalls(
+      undefined,
+      floorCells,
+      doc
+    );
+    expect(beforeAcceptance.enabled).toBe(true);
+    expect(beforeAcceptance.walls).toBe(doc.walls);
+    expect(beforeAcceptance.wallLines).toBe(doc.wallLines);
+
+    const afterAcceptance = selectPreviewSourceWalls(
+      acceptedPlan,
+      floorCells,
+      doc
+    );
+    expect(acceptedPlan.edges).toHaveLength(1);
+    expect(afterAcceptance).toEqual({
+      enabled: false,
+      walls: [],
+      wallLines: [],
+    });
+    expect(
+      buildOnePlacement(
+        doc,
+        doc.place[0],
+        doc.place[0].at[0],
+        doc.place[0].at[1],
+        { roomId: null, index: 0 },
+        'accepted:placement'
+      ).prop
+    ).toBeDefined();
+    expect(doc.place).toHaveLength(1);
+  });
+});
+
 describe('buildFloorTiles — the floorCells alternate input path (creation mode)', () => {
   it('builds one tile per supplied cell, tagged with the canvas room-id sentinel', () => {
     const tiles = buildFloorTiles(

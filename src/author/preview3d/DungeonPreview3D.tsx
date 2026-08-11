@@ -142,7 +142,10 @@ import {
   CUTAWAY_STUB_WALL_HEIGHT,
   WALL_HEIGHT,
 } from '@/rendering/calibrationConstants';
-import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import {
+  FloorPlanFloorSource,
+  type FloorPlan,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { Billboard, Bounds, OrbitControls, Text } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Suspense, useMemo, useState } from 'react';
@@ -558,6 +561,36 @@ function buildWalls(
       edgeA,
     };
   });
+}
+
+export interface PreviewSourceWalls {
+  enabled: boolean;
+  walls: DungeonDoc['walls'];
+  wallLines: DungeonDoc['wallLines'];
+}
+
+/**
+ * Chooses whether doc-native wall topology participates in the preview.
+ * Before provider acceptance, source walls and straight-wall sugar remain
+ * visible and editable. Once a canvas carries an accepted REGIONS plan with
+ * canonical provider edges, only those edges render; the unchanged source
+ * remains the authoring record, not a second post-acceptance topology layer.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function selectPreviewSourceWalls(
+  floorPlan: FloorPlan | undefined,
+  floorCells: readonly [number, number][] | undefined,
+  doc: DungeonDoc
+): PreviewSourceWalls {
+  const providerBackedRegionCanvas =
+    floorCells !== undefined &&
+    floorPlan !== undefined &&
+    floorPlan.floorSource === FloorPlanFloorSource.REGIONS &&
+    hasServerEdges(floorPlan);
+
+  return providerBackedRegionCanvas
+    ? { enabled: false, walls: [], wallLines: [] }
+    : { enabled: true, walls: doc.walls, wallLines: doc.wallLines };
 }
 
 /** `DoorGap`'s `onSelectDoor` for one `PlacedWall` — `undefined` unless
@@ -1276,9 +1309,13 @@ export function DungeonPreview3D({
       ),
     [baseProps, placementPreviewOverride]
   );
+  const sourceWalls = useMemo(
+    () => selectPreviewSourceWalls(floorPlan, floorCells, doc),
+    [floorPlan, floorCells, doc]
+  );
   const authoredWalls = useMemo(
-    () => buildWalls(doc.walls, 'authored'),
-    [doc.walls]
+    () => buildWalls(sourceWalls.walls, 'authored'),
+    [sourceWalls.walls]
   );
   // Server-truth wall/door edges (rpg-project#169's wire-edges unit) — see
   // this file's own header doc comment. Empty whenever `floorPlan` is
@@ -1293,29 +1330,27 @@ export function DungeonPreview3D({
         : [],
     [floorPlan]
   );
-  // A straight wall's (`doc.wallLines`) footprint — doc-native, renders
-  // identically regardless of `floorPlan`/`floorCells`. `wallLineFootprint`
-  // is the STANDABLE subset (coverage-based, rpg-project#169's live-design
-  // follow-up) — every existing consumer below (`buildPlaceableCells`,
-  // `buildWalkContext`, `handleClickCell`) already only ever needed "is
-  // this cell blocked for STANDING," so none of them changed; only what
-  // this variable itself means did. `wallLineFootprintCoverage` is the
-  // FULL touched-at-all map (every footprint cell, any coverage), needed
-  // separately for the dim overlay's own light/full de-emphasis below —
-  // see `buildWallLineFootprintCoverage`/`buildStandableWallLineFootprint`'s
-  // own doc comments.
+  // A straight wall's (`doc.wallLines`) footprint is source-native before
+  // acceptance. An accepted provider-backed REGIONS canvas suppresses it
+  // alongside source wall geometry so provider edges remain the sole preview
+  // topology; the source document itself and its placements stay unchanged.
   const wallLineFootprintCoverage = useMemo(
-    () => buildWallLineFootprintCoverage(doc),
-    [doc]
+    () =>
+      sourceWalls.enabled
+        ? buildWallLineFootprintCoverage(doc)
+        : new Map<string, number>(),
+    [doc, sourceWalls.enabled]
   );
   const wallLineFootprint = useMemo(
     () => standableFootprintKeys(wallLineFootprintCoverage),
     [wallLineFootprintCoverage]
   );
-  // The straight wall's own real geometry (this unit) — doc-native too,
-  // same reasoning as the footprint above. See `buildWallLineSegments`'s
-  // own doc comment.
-  const wallLineSegments = useMemo(() => buildWallLineSegments(doc), [doc]);
+  // The straight wall's own real geometry follows the same source/provider
+  // selection as its footprint. See `buildWallLineSegments`'s own doc comment.
+  const wallLineSegments = useMemo(
+    () => (sourceWalls.enabled ? buildWallLineSegments(doc) : []),
+    [doc, sourceWalls.enabled]
+  );
   // The generator-chosen entrance marker has no creation-mode analog at
   // all (CONTRACT.md's "Start/end: authored, in real tension with the
   // generator-chosen entrance" finding — a freeform canvas has no
