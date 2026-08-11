@@ -26,6 +26,12 @@ import { useState } from 'react';
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'invalid' | 'error';
 
+/** The only authoring RPC this slice needs. Kept structural so an isolated
+ * caller can supply a scoped unary client without pulling in global auth. */
+export interface AuthoringUnaryClient {
+  putDungeon: typeof authoringClient.putDungeon;
+}
+
 export interface UseSaveDungeonResult {
   state: SaveState;
   /** Set once a save succeeds — the request's own `key`, not anything
@@ -43,7 +49,10 @@ export interface UseSaveDungeonResult {
   save: (key: string, yamlText: string) => void;
 }
 
-export function useSaveDungeon(): UseSaveDungeonResult {
+export function useSaveDungeon(
+  client: AuthoringUnaryClient = authoringClient,
+  onSaveSucceeded?: (key: string) => void
+): UseSaveDungeonResult {
   const [state, setState] = useState<SaveState>('idle');
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ValidationError[]>([]);
@@ -54,21 +63,15 @@ export function useSaveDungeon(): UseSaveDungeonResult {
     setFieldErrors([]);
     setErrorMessage(null);
     (async () => {
+      let response;
       try {
-        const response = await authoringClient.putDungeon(
+        response = await client.putDungeon(
           create(PutDungeonRequestSchema, {
             key,
             yaml: yamlText,
             validateOnly: false,
           })
         );
-        if (response.success) {
-          setSavedKey(key);
-          setState('saved');
-        } else {
-          setFieldErrors(response.fieldErrors);
-          setState('invalid');
-        }
       } catch (err) {
         setErrorMessage(
           err instanceof ConnectError
@@ -76,6 +79,23 @@ export function useSaveDungeon(): UseSaveDungeonResult {
             : 'PutDungeon request failed'
         );
         setState('error');
+        return;
+      }
+
+      if (response.success) {
+        setSavedKey(key);
+        setState('saved');
+        // This is a consumer notification, not part of the RPC result. A
+        // throwing (or promise-rejecting) callback must not reclassify an
+        // already-persisted save as a PutDungeon failure.
+        try {
+          void Promise.resolve(onSaveSucceeded?.(key)).catch(() => undefined);
+        } catch {
+          // A synchronous callback failure is likewise isolated from save state.
+        }
+      } else {
+        setFieldErrors(response.fieldErrors);
+        setState('invalid');
       }
     })();
   };

@@ -186,6 +186,21 @@ describe('probeAllCapabilities', () => {
       expect(req.validateOnly).toBe(true);
     }
   });
+
+  it('uses a supplied client for every validate-only probe without touching the global client', async () => {
+    const putDungeon = vi.fn().mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+    });
+
+    await probeAllCapabilities({ putDungeon });
+
+    expect(putDungeon).toHaveBeenCalledTimes(DIALECT_FIELDS.length);
+    for (const [request] of putDungeon.mock.calls) {
+      expect(request.validateOnly).toBe(true);
+    }
+    expect(hoisted.putDungeonFn).not.toHaveBeenCalled();
+  });
 });
 
 // The fields whose only legal document mode is canvas mode (spec v0.3

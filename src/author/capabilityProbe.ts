@@ -100,6 +100,7 @@ import { authoringClient } from '@/api/client';
 import { create } from '@bufbuild/protobuf';
 import type { PutDungeonResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { PutDungeonRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import type { AuthoringUnaryClient } from './useSaveDungeon';
 
 /** One entry per target-dialect construct `stripToV1Subset` knows how to
  * drop. `facing` is split into 4 entry-type variants because the real
@@ -564,12 +565,14 @@ function classify(response: PutDungeonResponse): CapabilityResult {
  *   Not re-derived here — threaded verbatim from the server either way,
  *   per this module's own rule.
  */
-export async function probeAllCapabilities(): Promise<ServerCapabilities> {
+export async function probeAllCapabilities(
+  client: AuthoringUnaryClient = authoringClient
+): Promise<ServerCapabilities> {
   const entries = await Promise.all(
     DIALECT_FIELDS.map(async (field) => {
       const key = `capprobe-${field.toLowerCase()}`;
       try {
-        const response = await authoringClient.putDungeon(
+        const response = await client.putDungeon(
           create(PutDungeonRequestSchema, {
             key,
             yaml: buildProbeDoc(field, key),
