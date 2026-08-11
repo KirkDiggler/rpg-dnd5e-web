@@ -105,7 +105,13 @@ type RegionFloorState =
   | { kind: 'inactive' }
   | { kind: 'validating' }
   | { kind: 'blocked'; reason: string }
-  | { kind: 'accepted'; yaml: string; floorPlan: FloorPlan };
+  | {
+      kind: 'accepted';
+      sourceYaml: string;
+      key: string;
+      yaml: string;
+      floorPlan: FloorPlan;
+    };
 
 /** `draftDiffersFromFreshSeed`'s canonicalize function — the real
  * parse+serialize round trip, module-level since it needs nothing from
@@ -317,6 +323,8 @@ export function DungeonBuilderConcept({
           result.accepted
             ? {
                 kind: 'accepted',
+                sourceYaml: creationYamlText,
+                key: result.key,
                 yaml: result.yaml,
                 floorPlan: result.floorPlan,
               }
@@ -335,6 +343,17 @@ export function DungeonBuilderConcept({
     preview.serverState,
     regionFloorIntent,
   ]);
+
+  // Acceptance belongs to one exact editable source and request key. This
+  // match is render-time safety, not effect cleanup: a source edit revokes
+  // compile, preview, and save access in the same render even while the old
+  // accepted state is still waiting for the passive effect above to clean up.
+  const acceptedRegionFloor =
+    regionFloorState.kind === 'accepted' &&
+    regionFloorState.sourceYaml === creationYamlText &&
+    regionFloorState.key === creationDoc.key
+      ? regionFloorState
+      : null;
 
   // Creation mode's own live FloorPlan preview (v0.3 wire consumption
   // unit, 2026-08-05) — same "reuse the shared serverState/capabilities,
@@ -363,9 +382,9 @@ export function DungeonBuilderConcept({
   const creationSave = useSaveDungeon(authoringClient, onSaveSucceeded);
   const creationV1Subset = useMemo(() => {
     if (regionFloorIntent) {
-      if (regionFloorState.kind !== 'accepted') return null;
+      if (!acceptedRegionFloor) return null;
       return {
-        yaml: regionFloorState.yaml,
+        yaml: acceptedRegionFloor.yaml,
         dropped: [],
         compiling: ['exact region floor'],
         compilable: true,
@@ -381,10 +400,10 @@ export function DungeonBuilderConcept({
       return null;
     }
   }, [
+    acceptedRegionFloor,
     creationYamlText,
     preview.capabilities,
     regionFloorIntent,
-    regionFloorState,
   ]);
 
   // Local drafts + versioned save/load — creation mode's own spec-compat
@@ -396,8 +415,8 @@ export function DungeonBuilderConcept({
 
   const handleCreationSaveAndPlay = () => {
     if (regionFloorIntent) {
-      if (regionFloorState.kind !== 'accepted') return;
-      creationSave.save(creationDoc.key, regionFloorState.yaml);
+      if (!acceptedRegionFloor) return;
+      creationSave.save(acceptedRegionFloor.key, acceptedRegionFloor.yaml);
       return;
     }
     creationSave.save(
@@ -734,8 +753,8 @@ export function DungeonBuilderConcept({
             capabilities={preview.capabilities}
             onRefreshCapabilities={preview.refreshCapabilities}
             liveFloorPlan={
-              regionFloorState.kind === 'accepted'
-                ? regionFloorState.floorPlan
+              acceptedRegionFloor
+                ? acceptedRegionFloor.floorPlan
                 : creationFloorPreview.floorPlan
             }
             v1Subset={creationV1Subset}
@@ -745,16 +764,10 @@ export function DungeonBuilderConcept({
             saveFieldErrors={creationSave.fieldErrors}
             saveErrorMessage={creationSave.errorMessage}
             boardDim={
-              regionFloorIntent && regionFloorState.kind !== 'accepted'
-                ? '2d'
-                : createBoardDim
+              regionFloorIntent && !acceptedRegionFloor ? '2d' : createBoardDim
             }
             onSetBoardDim={(dim) => {
-              if (
-                dim === '3d' &&
-                regionFloorIntent &&
-                regionFloorState.kind !== 'accepted'
-              ) {
+              if (dim === '3d' && regionFloorIntent && !acceptedRegionFloor) {
                 flashToast(
                   regionFloorState.kind === 'blocked'
                     ? regionFloorState.reason

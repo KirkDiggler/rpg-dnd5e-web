@@ -577,6 +577,8 @@ function classify(response: PutDungeonResponse): CapabilityResult {
 export type RegionFloorCandidateValidation =
   | {
       accepted: true;
+      /** Key sent with the exact validate-only request. */
+      key: string;
       /** Exact request payload accepted by validate-only and used for save. */
       yaml: string;
       floorPlan: FloorPlan;
@@ -691,6 +693,7 @@ export async function validateRegionFloorCandidate(
   }
   return {
     accepted: true,
+    key: parsed.doc.key,
     yaml: candidateYaml,
     floorPlan: response.floorPlan,
   };

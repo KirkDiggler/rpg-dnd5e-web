@@ -41,6 +41,8 @@ import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 const hoisted = vi.hoisted(() => ({
   globalPutDungeon: vi.fn(),
   previewProps: null as Record<string, unknown> | null,
+  compilableRenders: [] as boolean[],
+  saveRenderAttempts: [] as Array<() => void>,
 }));
 
 vi.mock('@/api/client', () => ({
@@ -53,6 +55,20 @@ vi.mock('./preview3d/DungeonPreview3D', () => ({
     return null;
   },
 }));
+
+vi.mock('./YamlPane', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./YamlPane')>();
+  return {
+    ...actual,
+    SaveAndPlayButton: (
+      props: Parameters<typeof actual.SaveAndPlayButton>[0]
+    ) => {
+      hoisted.compilableRenders.push(props.v1Compilable);
+      hoisted.saveRenderAttempts.push(props.onSaveAndPlay);
+      return actual.SaveAndPlayButton(props);
+    },
+  };
+});
 
 import { DungeonBuilderConcept } from './DungeonBuilderConcept';
 import type { AuthoringUnaryClient } from './useSaveDungeon';
@@ -113,6 +129,8 @@ describe('DungeonBuilderConcept — exact region-floor hard stops', () => {
   beforeEach(() => {
     localStorage.clear();
     hoisted.previewProps = null;
+    hoisted.compilableRenders.length = 0;
+    hoisted.saveRenderAttempts.length = 0;
   });
   afterEach(() => {
     localStorage.clear();
@@ -249,6 +267,74 @@ describe('DungeonBuilderConcept — exact region-floor hard stops', () => {
         )
       ).toBe(true)
     );
+  });
+
+  it('synchronously revokes an accepted candidate when the current YAML/key changes, before Save & Play can reuse stale YAML', async () => {
+    const source = regionFixture('simple-room-v04-regions.yaml');
+    const editedSource = source.replace(
+      'key: simple-room',
+      'key: simple-room-edited'
+    );
+    const floorPlan = canonicalRegionFloorPlan();
+    const client = liveClient(
+      (request) =>
+        ({
+          success: true,
+          fieldErrors: [],
+          floorPlan: request.validateOnly ? floorPlan : undefined,
+        }) as unknown as PutDungeonResponse
+    );
+
+    render(
+      <DungeonBuilderConcept
+        initialYaml={source}
+        authoringClient={client}
+        persistDraft={false}
+        allowNewCanvas={false}
+      />
+    );
+
+    const saveButton = await screen.findByRole(
+      'button',
+      { name: 'Save & Play' },
+      { timeout: 4000 }
+    );
+    await waitFor(() =>
+      expect((saveButton as HTMLButtonElement).disabled).toBe(false)
+    );
+    fireEvent.click(screen.getByRole('button', { name: '3D' }));
+    await waitFor(() =>
+      expect(hoisted.previewProps?.floorPlan).toBe(floorPlan)
+    );
+
+    hoisted.previewProps = null;
+    hoisted.compilableRenders.length = 0;
+    hoisted.saveRenderAttempts.length = 0;
+    fireEvent.change(screen.getByLabelText('Dungeon YAML'), {
+      target: { value: editedSource },
+    });
+
+    // Exercise every callback committed for the edit. Before the fix, the
+    // first render still advertised `compilable: true`, and its callback
+    // could persist the prior accepted YAML before the passive cleanup render.
+    act(() => {
+      hoisted.saveRenderAttempts.forEach((attempt) => attempt());
+    });
+    expect(
+      client.putDungeon.mock.calls.filter(
+        ([request]) => request.validateOnly === false
+      )
+    ).toEqual([]);
+    expect(hoisted.compilableRenders).not.toContain(true);
+    expect(hoisted.compilableRenders.at(-1)).toBe(false);
+    expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+    expect(hoisted.previewProps).toBeNull();
+    fireEvent.click(saveButton);
+    expect(
+      client.putDungeon.mock.calls.filter(
+        ([request]) => request.validateOnly === false
+      )
+    ).toEqual([]);
   });
 });
 
