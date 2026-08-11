@@ -575,4 +575,28 @@ describe('ToolkitContributorSandbox', () => {
       fighter.lobby.startEncounter.mock.invocationCallOrder[0]
     );
   });
+
+  it('ignores a late successful save callback after the sandbox unmounts', async () => {
+    const persisted = deferred<{ success: boolean; fieldErrors: never[] }>();
+    fighter.authoring.putDungeon.mockImplementation((request) =>
+      request.validateOnly
+        ? Promise.resolve({ success: true, fieldErrors: [] })
+        : persisted.promise
+    );
+
+    const { unmount } = render(<ToolkitContributorSandbox />);
+    await clickTemplateSave();
+    expect(fighter.character.listCharacters).not.toHaveBeenCalled();
+    expect(barbarian.character.listCharacters).not.toHaveBeenCalled();
+
+    unmount();
+    await act(async () => {
+      persisted.resolve({ success: true, fieldErrors: [] });
+      await persisted.promise;
+    });
+    await settleDeferred();
+
+    expect(fighter.character.listCharacters).not.toHaveBeenCalled();
+    expect(barbarian.character.listCharacters).not.toHaveBeenCalled();
+  });
 });

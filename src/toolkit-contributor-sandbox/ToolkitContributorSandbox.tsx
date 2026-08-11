@@ -41,6 +41,7 @@ export function ToolkitContributorSandbox() {
   const [result, setResult] = useState<SandboxResult>(null);
   const operationGeneration = useRef(0);
   const actionInFlight = useRef(false);
+  const mounted = useRef(false);
 
   const invalidateOperations = () => {
     operationGeneration.current += 1;
@@ -48,17 +49,19 @@ export function ToolkitContributorSandbox() {
     return operationGeneration.current;
   };
   const isCurrentOperation = (generation: number) =>
-    generation === operationGeneration.current;
+    mounted.current && generation === operationGeneration.current;
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       operationGeneration.current += 1;
       actionInFlight.current = false;
-    },
-    []
-  );
+    };
+  }, []);
 
   const handleSaveSucceeded = async (key: string) => {
+    if (!mounted.current) return;
     const generation = invalidateOperations();
     setPartyChoicesEnabled(false);
     setFighterCharacterId(null);
@@ -104,7 +107,12 @@ export function ToolkitContributorSandbox() {
   };
 
   const startFighter = async () => {
-    if (!partyChoicesEnabled || !fighterCharacterId || actionInFlight.current)
+    if (
+      !mounted.current ||
+      !partyChoicesEnabled ||
+      !fighterCharacterId ||
+      actionInFlight.current
+    )
       return;
     actionInFlight.current = true;
     const generation = ++operationGeneration.current;
@@ -146,7 +154,12 @@ export function ToolkitContributorSandbox() {
   };
 
   const startBarbarian = async () => {
-    if (!partyChoicesEnabled || !barbarianCharacterId || actionInFlight.current)
+    if (
+      !mounted.current ||
+      !partyChoicesEnabled ||
+      !barbarianCharacterId ||
+      actionInFlight.current
+    )
       return;
     actionInFlight.current = true;
     const generation = ++operationGeneration.current;
@@ -189,6 +202,7 @@ export function ToolkitContributorSandbox() {
 
   const startFighterThenBarbarian = async () => {
     if (
+      !mounted.current ||
       !partyChoicesEnabled ||
       !fighterCharacterId ||
       !barbarianCharacterId ||
@@ -249,6 +263,7 @@ export function ToolkitContributorSandbox() {
 
   const startBarbarianThenFighter = async () => {
     if (
+      !mounted.current ||
       !partyChoicesEnabled ||
       !fighterCharacterId ||
       !barbarianCharacterId ||
