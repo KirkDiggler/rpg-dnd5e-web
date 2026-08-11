@@ -17,6 +17,7 @@ import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
+import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
 
 /**
  * Dev-only deep link: `?concept=<id>` opens the Concepts Lab directly and must
@@ -459,6 +460,18 @@ function HomeView({
 }
 
 function App() {
+  if (
+    isToolkitContributorSandboxRoute(
+      import.meta.env.MODE,
+      window.location.search
+    )
+  ) {
+    // Task 7 replaces this route-gated placeholder with the completed
+    // ToolkitContributorSandbox component. Keeping it inline preserves that
+    // task's required module-resolution RED while bypassing normal app state.
+    return <div>Toolkit Contributor Sandbox</div>;
+  }
+
   return (
     <CharacterDraftProvider>
       <AppContent />
