@@ -128,6 +128,49 @@ describe('validateRegionFloorCandidate — exact normal PutDungeon acceptance', 
     });
   });
 
+  it('never accepts incomplete or non-adjacent generated REGIONS projections', async () => {
+    const source = regionFixture('simple-room-v04-regions.yaml');
+    const invalidPlans = [
+      create(FloorPlanSchema, {
+        floorSource: FloorPlanFloorSource.REGIONS,
+        floorCells: [],
+        edges: [
+          {
+            from: { column: 0, row: 0 },
+            to: { column: -1, row: 0 },
+            kind: FloorPlanEdgeKind.SOLID,
+          },
+        ],
+      }),
+      create(FloorPlanSchema, {
+        floorSource: FloorPlanFloorSource.REGIONS,
+        floorCells: [{ column: 0, row: 0 }],
+        edges: [],
+      }),
+      create(FloorPlanSchema, {
+        floorSource: FloorPlanFloorSource.REGIONS,
+        floorCells: [{ column: 0, row: 0 }],
+        edges: [
+          {
+            from: { column: 0, row: 0 },
+            to: { column: 4, row: 4 },
+            kind: FloorPlanEdgeKind.SOLID,
+          },
+        ],
+      }),
+    ];
+
+    for (const floorPlan of invalidPlans) {
+      hoisted.putDungeonFn.mockResolvedValueOnce({
+        success: true,
+        fieldErrors: [],
+        floorPlan,
+      });
+      const result = await validateRegionFloorCandidate(source);
+      expect(result.accepted).toBe(false);
+    }
+  });
+
   it.each([
     ['absent', undefined],
     ['UNSPECIFIED', FloorPlanFloorSource.UNSPECIFIED],

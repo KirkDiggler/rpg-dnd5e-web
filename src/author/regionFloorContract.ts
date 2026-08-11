@@ -1,3 +1,4 @@
+import { hexDistance } from '@/components/hex-grid/hexMath';
 import {
   FloorPlanEdgeKind,
   FloorPlanFloorSource,
@@ -16,6 +17,7 @@ import {
   type DungeonDoc,
   type WallDoc,
 } from './dungeonYaml';
+import { cubeAtColRow } from './hexLayout';
 
 export { UnsupportedRegionFloorContractError } from './dungeonYaml';
 
@@ -228,6 +230,17 @@ export function consumeRegionFloorProjection(
     );
   }
 
+  if (floorPlan.floorCells.length === 0) {
+    throw new UnsupportedRegionFloorContractError(
+      'FloorPlan.floor_cells is empty for a REGIONS projection'
+    );
+  }
+  if (floorPlan.edges.length === 0) {
+    throw new UnsupportedRegionFloorContractError(
+      'FloorPlan.edges is empty for a REGIONS projection'
+    );
+  }
+
   const floorCells: RegionFloorCell[] = [];
   const floorKeys = new Set<string>();
   let previous: RegionFloorCell | undefined;
@@ -268,6 +281,18 @@ export function consumeRegionFloorProjection(
       if (cellKey(from) === cellKey(to)) {
         throw new UnsupportedRegionFloorContractError(
           `FloorPlan edge ${key} has identical endpoints`
+        );
+      }
+      // Producer-contract validation only: reject an invalid returned pair.
+      // This does not derive, orient, repair, or add any topology.
+      if (
+        hexDistance(
+          cubeAtColRow(from[0], from[1]),
+          cubeAtColRow(to[0], to[1])
+        ) !== 1
+      ) {
+        throw new UnsupportedRegionFloorContractError(
+          `FloorPlan edge ${key} endpoints are not adjacent`
         );
       }
       if (seenEdges.has(key)) {

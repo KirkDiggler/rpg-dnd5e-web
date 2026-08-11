@@ -426,9 +426,11 @@ export function CreationConcept({
             // tool (region/wall/hole/start/end) armed while the author
             // clicks in 3D gets an honest "switch to 2D" message instead
             // of the generic "pick a palette item" one.
-            // `floorPlan` stays unset — a canvas has none — so
-            // `floorCells` (this component's own derivation above) is
-            // the only floor input; `onPlace`'s `roomId` argument is
+            // `floorCells` remains the canvas tile mask. When exact live
+            // provider truth exists, the full `floorPlan` is also passed so
+            // DungeonPreview3D renders its returned envelope/door pairs and
+            // presence-aware entrance; it never derives replacements.
+            // `onPlace`'s `roomId` argument is
             // always `null` on this path (`DungeonPreview3D.tsx`'s own
             // `handleClickCell` doc comment) — the same top-level shape
             // `CreationBoard.tsx`'s 2D brush already produces via
@@ -436,6 +438,7 @@ export function CreationConcept({
             // itself stays out of scope this round — see CONTRACT.md.
             <div style={{ flex: 1, minHeight: 0 }}>
               <DungeonPreview3D
+                floorPlan={liveFloorPlan ?? undefined}
                 floorCells={floorCells}
                 floorSource={resolvedFloor.source}
                 doc={doc}

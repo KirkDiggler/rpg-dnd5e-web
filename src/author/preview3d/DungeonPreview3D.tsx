@@ -1252,6 +1252,10 @@ export function DungeonPreview3D({
   selectedTool,
   placementPreviewOverride,
 }: DungeonPreview3DProps) {
+  // A canvas can now carry both its exact floorCells mask and a full provider
+  // FloorPlan for returned envelope/entrance truth. Tile input, not FloorPlan
+  // presence, distinguishes canvas placement semantics from a room chain.
+  const isCanvasFloor = floorCells !== undefined;
   const floorTiles = useMemo(
     () => buildFloorTiles(floorPlan, doc.holes, floorCells),
     [floorPlan, doc.holes, floorCells]
@@ -1323,16 +1327,22 @@ export function DungeonPreview3D({
     [floorPlan, doc]
   );
   // Click-to-place (Kirk's "3D editing" arc, part 3) now covers creation
-  // mode too (rpg-project#169's creation-3D-editing unit) — `floorPlan`
-  // presence still decides WHICH legality rule applies (room-scoped vs.
-  // top-level canvas), but `placeableCells` is no longer gated to "empty
-  // without floorPlan": `floorTiles` already carries the right cell set
+  // mode too (rpg-project#169's creation-3D-editing unit) — `floorCells`
+  // presence selects top-level canvas legality even when a provider
+  // FloorPlan is also present for envelope/entrance rendering. Otherwise
+  // the room-scoped plan path applies. `floorTiles` carries the right set
   // for either mode (`buildFloorTiles`'s own doc comment), and
   // `buildPlaceableCells` now branches internally per-cell instead of the
   // caller branching on the whole set.
   const placeableCells = useMemo(
-    () => buildPlaceableCells(floorPlan, doc, floorTiles, wallLineFootprint),
-    [floorPlan, doc, floorTiles, wallLineFootprint]
+    () =>
+      buildPlaceableCells(
+        isCanvasFloor ? undefined : floorPlan,
+        doc,
+        floorTiles,
+        wallLineFootprint
+      ),
+    [isCanvasFloor, floorPlan, doc, floorTiles, wallLineFootprint]
   );
   const hitShape = useMemo(() => buildHexHitShape(), []);
 
@@ -1489,12 +1499,12 @@ export function DungeonPreview3D({
     : onSelectConnector;
 
   // Mirrors Board.tsx's own click-to-place cell handler for the edit-mode
-  // (floorPlan present) branch — same messages, same boss/occupied rules,
-  // still silent on `occupied` there (no toast, matching Board.tsx's own
-  // click-to-place precedent exactly — `if (occupied) return;`).
+  // (room-chain floorPlan without floorCells) branch — same messages,
+  // same boss/occupied rules, still silent on `occupied` there (no toast,
+  // matching Board.tsx's own click-to-place precedent exactly).
   //
-  // The `!floorPlan` branch (creation mode's from-scratch canvas, this
-  // unit) is a genuinely different placement shape: TOP-LEVEL
+  // The `isCanvasFloor` branch (floorCells, optionally with provider plan
+  // truth) is a genuinely different placement shape: TOP-LEVEL
   // (`roomId: null`, absolute `[col, row]`, no room to resolve a
   // room-local column against) — the exact shape `CreationBoard.tsx`'s
   // own 2D brush already produces via `edit.handlePlace(null, cell)`.
@@ -1513,7 +1523,7 @@ export function DungeonPreview3D({
       return;
     }
     const onPlace = effectiveOnPlace;
-    if (!floorPlan) {
+    if (isCanvasFloor) {
       // Boss stays room-scoped even in the target dialect (dungeonspec's
       // validateBossCardinality needs an owning archetype:boss room) — a
       // from-scratch canvas has zero rooms, same guard
@@ -1548,6 +1558,10 @@ export function DungeonPreview3D({
         return;
       }
       onPlace(null, [cell.col, cell.row]);
+      return;
+    }
+    if (!floorPlan) {
+      onReject?.('No compiled floor plan is available for this cell.');
       return;
     }
     // The connector-band fix above (`buildFloorTiles`) gives the door its

@@ -8,3 +8,6 @@
 # src/concepts/dungeon-builder/ to src/author/ (rpg-project#194 graduation).
 src/author/specimens/*.yaml
 src/author/specimens/*.json
+
+# Immutable provider-boundary regression input; must remain byte-identical to /home/kirk/Downloads/simple-room.yaml.
+src/author/testdata/simple-room-legacy.yaml

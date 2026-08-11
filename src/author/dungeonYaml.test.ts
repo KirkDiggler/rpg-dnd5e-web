@@ -1,4 +1,5 @@
 import { hexDistance } from '@/components/hex-grid/hexMath';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -70,6 +71,21 @@ const regionFixture = (name: string): string =>
   readFileSync(join(__dirname, 'testdata', name), 'utf8');
 
 describe('Dungeon YAML v0.4 exact region-floor candidates', () => {
+  it('pins the legacy fixture byte-for-byte to the immutable downloaded source and its SHA-256', () => {
+    const immutable = readFileSync('/home/kirk/Downloads/simple-room.yaml');
+    const fixture = readFileSync(
+      join(__dirname, 'testdata', 'simple-room-legacy.yaml')
+    );
+    const sha256 = (bytes: Buffer): string =>
+      createHash('sha256').update(bytes).digest('hex');
+
+    expect(fixture.equals(immutable)).toBe(true);
+    expect(sha256(immutable)).toBe(
+      '85c9b6e27cfb4a09ff1ef764f4a923056586eabf1bdd2585b36206d19c41d620'
+    );
+    expect(sha256(fixture)).toBe(sha256(immutable));
+  });
+
   it('keeps the immutable legacy source exact and refuses the legacy subset path instead of deleting spec or inferring floor_source', () => {
     const source = regionFixture('simple-room-legacy.yaml');
     const before = source;

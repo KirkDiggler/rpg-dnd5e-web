@@ -123,6 +123,32 @@ describe('generated authoring region-floor projection consumer', () => {
     }
   );
 
+  it('hard-stops incomplete REGIONS projections with an empty floor mask or empty provider envelope', () => {
+    expect(() =>
+      consumeRegionFloorProjection(ringFloorPlan({ floorCells: [] }))
+    ).toThrow(/FloorPlan\.floor_cells is empty/);
+
+    expect(() =>
+      consumeRegionFloorProjection(ringFloorPlan({ edges: [] }))
+    ).toThrow(/FloorPlan\.edges is empty/);
+  });
+
+  it('rejects a non-adjacent provider pair as an invalid canonical edge without deriving replacement topology', () => {
+    expect(() =>
+      consumeRegionFloorProjection(
+        ringFloorPlan({
+          edges: [
+            {
+              from: { column: 1, row: 1 },
+              to: { column: 4, row: 4 },
+              kind: FloorPlanEdgeKind.SOLID,
+            },
+          ],
+        })
+      )
+    ).toThrow(/endpoints are not adjacent/);
+  });
+
   it('rejects non-canonical floor-cell order instead of normalizing provider truth client-side', () => {
     expect(() =>
       consumeRegionFloorProjection(

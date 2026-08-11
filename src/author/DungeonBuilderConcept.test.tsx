@@ -40,10 +40,18 @@ import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 
 const hoisted = vi.hoisted(() => ({
   globalPutDungeon: vi.fn(),
+  previewProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock('@/api/client', () => ({
   authoringClient: { putDungeon: hoisted.globalPutDungeon },
+}));
+
+vi.mock('./preview3d/DungeonPreview3D', () => ({
+  DungeonPreview3D: (props: Record<string, unknown>) => {
+    hoisted.previewProps = props;
+    return null;
+  },
 }));
 
 import { DungeonBuilderConcept } from './DungeonBuilderConcept';
@@ -104,6 +112,7 @@ function seedBrokenDraft() {
 describe('DungeonBuilderConcept — exact region-floor hard stops', () => {
   beforeEach(() => {
     localStorage.clear();
+    hoisted.previewProps = null;
   });
   afterEach(() => {
     localStorage.clear();
@@ -181,16 +190,15 @@ describe('DungeonBuilderConcept — exact region-floor hard stops', () => {
     expect(source).not.toContain('floor_source');
   });
 
-  it('enables Save & Play only after the byte-exact canonical candidate receives a valid REGIONS plan, then saves that same candidate', async () => {
+  it('enables Save & Play only after the byte-exact canonical candidate receives a valid REGIONS plan, renders its envelope/entrance, then saves that same candidate', async () => {
     const source = regionFixture('simple-room-v04-regions.yaml');
+    const floorPlan = canonicalRegionFloorPlan();
     const client = liveClient(
       (request) =>
         ({
           success: true,
           fieldErrors: [],
-          floorPlan: request.validateOnly
-            ? canonicalRegionFloorPlan()
-            : undefined,
+          floorPlan: request.validateOnly ? floorPlan : undefined,
         }) as unknown as PutDungeonResponse
     );
 
@@ -217,6 +225,18 @@ describe('DungeonBuilderConcept — exact region-floor hard stops', () => {
     expect(
       (screen.getByLabelText('Dungeon YAML') as HTMLTextAreaElement).value
     ).toBe(source);
+
+    fireEvent.click(screen.getByRole('button', { name: '3D' }));
+    await waitFor(() =>
+      expect(hoisted.previewProps?.floorPlan).toBe(floorPlan)
+    );
+    const renderedPlan = hoisted.previewProps?.floorPlan as ReturnType<
+      typeof canonicalRegionFloorPlan
+    >;
+    expect(renderedPlan.edges).toEqual(floorPlan.edges);
+    expect(renderedPlan.entrance).toEqual(floorPlan.entrance);
+    expect(renderedPlan.edges).toHaveLength(1);
+
     fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
 
     await waitFor(() =>
