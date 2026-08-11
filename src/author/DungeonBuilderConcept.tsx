@@ -37,6 +37,7 @@
  * interactive drag actually calls) are untouched.
  */
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
+import type { FloorPlan } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   useEffect,
   useMemo,
@@ -45,6 +46,7 @@ import {
   type MutableRefObject,
 } from 'react';
 import { BoardCrashRecovery } from './BoardCrashRecovery';
+import { validateRegionFloorCandidate } from './capabilityProbe';
 import { CreationConcept } from './creation/CreationConcept';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
 import type { CornerRef } from './creation/hexCorner';
@@ -74,6 +76,7 @@ import {
   type DungeonDoc,
   type WallKind,
 } from './dungeonYaml';
+import { hasRegionFloorIntent } from './regionFloorContract';
 import { buildSpecCompatReport } from './specCompat';
 import type { BoardTool } from './types';
 import { useBoardEditing } from './useBoardEditing';
@@ -97,6 +100,12 @@ interface CreationCrash {
   message: string;
   yamlText: string;
 }
+
+type RegionFloorState =
+  | { kind: 'inactive' }
+  | { kind: 'validating' }
+  | { kind: 'blocked'; reason: string }
+  | { kind: 'accepted'; yaml: string; floorPlan: FloorPlan };
 
 /** `draftDiffersFromFreshSeed`'s canonicalize function — the real
  * parse+serialize round trip, module-level since it needs nothing from
@@ -269,6 +278,63 @@ export function DungeonBuilderConcept({
     null
   );
   const createAutosaveRef = useRef<DraftAutosave | null>(null);
+  const regionFloorIntent = hasRegionFloorIntent(creationDoc);
+  const [regionFloorState, setRegionFloorState] = useState<RegionFloorState>({
+    kind: 'inactive',
+  });
+
+  // A region floor is accepted by its normal exact validate-only request,
+  // never by the legacy per-field capability strip. Keep the request payload
+  // separate from the editable source: lossless wallLines sugar may compile on
+  // a fresh CST, while failures always leave the textarea byte-for-byte intact.
+  useEffect(() => {
+    if (!regionFloorIntent) {
+      setRegionFloorState({ kind: 'inactive' });
+      return;
+    }
+    if (preview.serverState === 'probing') {
+      setRegionFloorState({ kind: 'validating' });
+      return;
+    }
+    if (preview.serverState !== 'live') {
+      setRegionFloorState({
+        kind: 'blocked',
+        reason:
+          'canvas.floor_source: regions requires a reachable authoring provider for exact validate-only acceptance',
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setRegionFloorState({ kind: 'validating' });
+    const timer = setTimeout(() => {
+      validateRegionFloorCandidate(creationYamlText, {
+        capabilities: preview.capabilities,
+        client: authoringClient,
+      }).then((result) => {
+        if (cancelled) return;
+        setRegionFloorState(
+          result.accepted
+            ? {
+                kind: 'accepted',
+                yaml: result.yaml,
+                floorPlan: result.floorPlan,
+              }
+            : { kind: 'blocked', reason: result.reason }
+        );
+      });
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    authoringClient,
+    creationYamlText,
+    preview.capabilities,
+    preview.serverState,
+    regionFloorIntent,
+  ]);
 
   // Creation mode's own live FloorPlan preview (v0.3 wire consumption
   // unit, 2026-08-05) — same "reuse the shared serverState/capabilities,
@@ -282,7 +348,7 @@ export function DungeonBuilderConcept({
   // Wave 0/1 lands, not a behavior change against any server reachable
   // right now.
   const creationFloorPreview = useCreationFloorPlanPreview(
-    creationDoc,
+    regionFloorIntent ? null : creationDoc,
     creationYamlText,
     preview.serverState,
     preview.capabilities,
@@ -296,6 +362,16 @@ export function DungeonBuilderConcept({
   // strip too — no second probe needed.
   const creationSave = useSaveDungeon(authoringClient, onSaveSucceeded);
   const creationV1Subset = useMemo(() => {
+    if (regionFloorIntent) {
+      if (regionFloorState.kind !== 'accepted') return null;
+      return {
+        yaml: regionFloorState.yaml,
+        dropped: [],
+        compiling: ['exact region floor'],
+        compilable: true,
+        compilableBlockers: [],
+      };
+    }
     try {
       return stripToV1Subset(
         creationYamlText,
@@ -304,7 +380,12 @@ export function DungeonBuilderConcept({
     } catch {
       return null;
     }
-  }, [creationYamlText, preview.capabilities]);
+  }, [
+    creationYamlText,
+    preview.capabilities,
+    regionFloorIntent,
+    regionFloorState,
+  ]);
 
   // Local drafts + versioned save/load — creation mode's own spec-compat
   // report.
@@ -314,6 +395,11 @@ export function DungeonBuilderConcept({
   );
 
   const handleCreationSaveAndPlay = () => {
+    if (regionFloorIntent) {
+      if (regionFloorState.kind !== 'accepted') return;
+      creationSave.save(creationDoc.key, regionFloorState.yaml);
+      return;
+    }
     creationSave.save(
       creationDoc.key,
       creationV1Subset?.yaml ?? creationYamlText
@@ -619,7 +705,12 @@ export function DungeonBuilderConcept({
           <CreationConcept
             doc={creationDoc}
             yamlText={creationYamlText}
-            yamlParseError={creationParseError}
+            yamlParseError={
+              creationParseError ??
+              (regionFloorState.kind === 'blocked'
+                ? regionFloorState.reason
+                : null)
+            }
             onChangeYamlText={handleChangeCreationText}
             edit={creationEdit}
             selectedTool={creationSelectedTool}
@@ -642,15 +733,37 @@ export function DungeonBuilderConcept({
             serverState={preview.serverState}
             capabilities={preview.capabilities}
             onRefreshCapabilities={preview.refreshCapabilities}
-            liveFloorPlan={creationFloorPreview.floorPlan}
+            liveFloorPlan={
+              regionFloorState.kind === 'accepted'
+                ? regionFloorState.floorPlan
+                : creationFloorPreview.floorPlan
+            }
             v1Subset={creationV1Subset}
             onSaveAndPlay={handleCreationSaveAndPlay}
             saveState={creationSave.state}
             savedKey={creationSave.savedKey}
             saveFieldErrors={creationSave.fieldErrors}
             saveErrorMessage={creationSave.errorMessage}
-            boardDim={createBoardDim}
-            onSetBoardDim={setCreateBoardDim}
+            boardDim={
+              regionFloorIntent && regionFloorState.kind !== 'accepted'
+                ? '2d'
+                : createBoardDim
+            }
+            onSetBoardDim={(dim) => {
+              if (
+                dim === '3d' &&
+                regionFloorIntent &&
+                regionFloorState.kind !== 'accepted'
+              ) {
+                flashToast(
+                  regionFloorState.kind === 'blocked'
+                    ? regionFloorState.reason
+                    : 'Validating the exact region-floor candidate before preview.'
+                );
+                return;
+              }
+              setCreateBoardDim(dim);
+            }}
             yamlDownloadFilename={creationDownloadFilename}
             onLoadYamlFile={handleLoadCreationYamlFile}
             onLoadYamlFileError={handleLoadCreationYamlFileError}

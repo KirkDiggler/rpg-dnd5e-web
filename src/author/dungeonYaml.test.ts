@@ -60,7 +60,84 @@ import {
 } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
 import { cubeAtColRow } from './hexLayout';
+import {
+  prepareExactRegionFloorCandidate,
+  UnsupportedRegionFloorContractError,
+} from './regionFloorContract';
 import { OVERLAP_SAMPLE_CELLS } from './regionTree';
+
+const regionFixture = (name: string): string =>
+  readFileSync(join(__dirname, 'testdata', name), 'utf8');
+
+describe('Dungeon YAML v0.4 exact region-floor candidates', () => {
+  it('keeps the immutable legacy source exact and refuses the legacy subset path instead of deleting spec or inferring floor_source', () => {
+    const source = regionFixture('simple-room-legacy.yaml');
+    const before = source;
+    const parsed = parseDungeon(source);
+
+    expect(parsed.doc.spec).toBe('0.3');
+    expect(parsed.doc.canvas?.floorSource).toBeNull();
+    expect(source).toBe(before);
+    expect(() => stripToV1Subset(source)).toThrow(
+      /exact region-floor candidate/
+    );
+    expect(source).toMatch(/spec: ['"]0\.3['"]/);
+    expect(source).not.toContain('floor_source');
+  });
+
+  it('serializes an explicitly authored canvas.floor_source without inventing one when it was absent', () => {
+    const legacy = parseDungeon(regionFixture('simple-room-legacy.yaml'));
+    const canonical = parseDungeon(
+      regionFixture('simple-room-v04-regions.yaml')
+    );
+
+    expect(serializeDungeon(legacy.cst)).not.toContain('floor_source');
+    expect(serializeDungeon(canonical.cst)).toContain('floor_source: regions');
+  });
+
+  it('hard-stops the local v0.4 derivative non-destructively for both lossy perimeter wallLines and unsupported rotate_degrees', () => {
+    const source = regionFixture('simple-room-v04-lossy.yaml');
+    const before = source;
+
+    expect(() => prepareExactRegionFloorCandidate(source)).toThrowError(
+      new UnsupportedRegionFloorContractError(
+        'wallLines: perimeter rim edges cannot compile losslessly to walls; place[5].rotate_degrees: unsupported capability: fine rotation cannot be removed from an exact region-floor candidate; wallLines[3]: projection produced no canonical walls; exact region-floor candidate blocked'
+      )
+    );
+    expect(source).toBe(before);
+    expect(source).toContain('wallLines:');
+    expect(source).toContain('rotate_degrees: 30');
+  });
+
+  it('submits the simplified canonical fixture byte-for-byte because it needs no client-side wall sugar', () => {
+    const source = regionFixture('simple-room-v04-regions.yaml');
+    const candidate = prepareExactRegionFloorCandidate(source);
+
+    expect(candidate.yaml).toBe(source);
+    expect(candidate.doc.canvas?.floorSource).toBe('regions');
+    expect(candidate.doc.regions[0]?.cells).toHaveLength(53);
+    expect(candidate.doc.place).toHaveLength(6);
+    expect(candidate.doc.walls).toEqual([]);
+  });
+
+  it('blocks wallLines with the exact rejected walls capability reason before attempting a projection', () => {
+    const source = regionFixture('simple-room-v04-lossy.yaml').replace(
+      ', rotate_degrees: 30',
+      ''
+    );
+
+    expect(() =>
+      prepareExactRegionFloorCandidate(source, {
+        wallsCapability: {
+          accepted: false,
+          message: 'walls are disabled on this provider',
+        },
+      })
+    ).toThrow(
+      'walls: walls are disabled on this provider; wallLines cannot compile for an exact region-floor candidate'
+    );
+  });
+});
 
 describe('parseDungeon', () => {
   it('parses showcase.yaml into the expected room chain', () => {

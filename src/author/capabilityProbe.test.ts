@@ -1,4 +1,12 @@
-import type { PutDungeonRequest } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { create } from '@bufbuild/protobuf';
+import {
+  FloorPlanEdgeKind,
+  FloorPlanFloorSource,
+  FloorPlanSchema,
+  type PutDungeonRequest,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
@@ -17,12 +25,132 @@ import {
   probeAllCapabilities,
   V03_CUT_FIELDS,
   v03CutFullySupported,
+  validateRegionFloorCandidate,
   type DialectField,
   type ServerCapabilities,
 } from './capabilityProbe';
 
 beforeEach(() => {
   hoisted.putDungeonFn.mockReset();
+});
+
+const regionFixture = (name: string): string =>
+  readFileSync(join(__dirname, 'testdata', name), 'utf8');
+
+function canonicalRegionFloorPlan() {
+  return create(FloorPlanSchema, {
+    width: 20,
+    height: 30,
+    floorSource: FloorPlanFloorSource.REGIONS,
+    floorCells: [
+      { column: 0, row: 0 },
+      { column: 0, row: 1 },
+      { column: 1, row: 1 },
+    ],
+    edges: [
+      {
+        from: { column: 0, row: 0 },
+        to: { column: -1, row: 0 },
+        kind: FloorPlanEdgeKind.SOLID,
+      },
+    ],
+    entrance: { column: 0, row: 0 },
+  });
+}
+
+describe('validateRegionFloorCandidate — exact normal PutDungeon acceptance', () => {
+  it('sends the immutable legacy source byte-for-byte and surfaces the provider strict-decode source path for spec', async () => {
+    const source = regionFixture('simple-room-legacy.yaml');
+    hoisted.putDungeonFn.mockResolvedValue({
+      success: false,
+      fieldErrors: [
+        {
+          field: 'spec',
+          message: 'decode dungeon spec: line 2: spec is not a supported field',
+        },
+      ],
+    });
+
+    const result = await validateRegionFloorCandidate(source);
+
+    expect(result).toEqual({
+      accepted: false,
+      reason:
+        'spec: decode dungeon spec: line 2: spec is not a supported field',
+    });
+    expect(hoisted.putDungeonFn).toHaveBeenCalledOnce();
+    expect(hoisted.putDungeonFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'simple-room',
+        yaml: source,
+        validateOnly: true,
+      })
+    );
+    expect(source).toMatch(/spec: ['"]0\.3['"]/);
+    expect(source).not.toContain('floor_source');
+  });
+
+  it('submits the simplified canonical fixture byte-for-byte and accepts only a generated REGIONS response', async () => {
+    const source = regionFixture('simple-room-v04-regions.yaml');
+    hoisted.putDungeonFn.mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+      floorPlan: canonicalRegionFloorPlan(),
+    });
+
+    const result = await validateRegionFloorCandidate(source);
+
+    expect(result.accepted).toBe(true);
+    if (!result.accepted) throw new Error(result.reason);
+    expect(result.yaml).toBe(source);
+    expect(result.floorPlan.floorSource).toBe(FloorPlanFloorSource.REGIONS);
+    expect(hoisted.putDungeonFn).toHaveBeenCalledWith(
+      expect.objectContaining({ yaml: source, validateOnly: true })
+    );
+  });
+
+  it('blocks preview/save with the exact validate-only server reason', async () => {
+    const source = regionFixture('simple-room-v04-regions.yaml');
+    hoisted.putDungeonFn.mockResolvedValue({
+      success: false,
+      fieldErrors: [
+        {
+          field: 'regions[0].cells',
+          message: 'region-union floor must be connected in strict mode',
+        },
+      ],
+    });
+
+    await expect(validateRegionFloorCandidate(source)).resolves.toEqual({
+      accepted: false,
+      reason:
+        'regions[0].cells: region-union floor must be connected in strict mode',
+    });
+  });
+
+  it.each([
+    ['absent', undefined],
+    ['UNSPECIFIED', FloorPlanFloorSource.UNSPECIFIED],
+    ['BOUNDS', FloorPlanFloorSource.BOUNDS],
+  ])(
+    'rejects a successful response whose floor source is %s',
+    async (_label, floorSource) => {
+      const source = regionFixture('simple-room-v04-regions.yaml');
+      hoisted.putDungeonFn.mockResolvedValue({
+        success: true,
+        fieldErrors: [],
+        floorPlan: create(FloorPlanSchema, {
+          ...canonicalRegionFloorPlan(),
+          floorSource,
+        }),
+      });
+
+      const result = await validateRegionFloorCandidate(source);
+      expect(result.accepted).toBe(false);
+      if (result.accepted) throw new Error('unexpected acceptance');
+      expect(result.reason).toMatch(/FloorPlan\.floor_source/);
+    }
+  );
 });
 
 describe('DIALECT_FIELDS', () => {

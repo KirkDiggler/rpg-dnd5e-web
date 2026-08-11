@@ -17,8 +17,14 @@
  * broken text intact and editable, never a thrown render exception and
  * never a silently-discarded draft.
  */
+import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
-import type { PutDungeonResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import {
+  FloorPlanEdgeKind,
+  FloorPlanFloorSource,
+  FloorPlanSchema,
+  type PutDungeonResponse,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   act,
   fireEvent,
@@ -26,6 +32,8 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TOOLKIT_SANDBOX_YAML } from '../toolkit-contributor-sandbox/constants';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
@@ -39,6 +47,7 @@ vi.mock('@/api/client', () => ({
 }));
 
 import { DungeonBuilderConcept } from './DungeonBuilderConcept';
+import type { AuthoringUnaryClient } from './useSaveDungeon';
 
 /** `DungeonBuilderConcept.tsx`'s own `APPLY_DEBOUNCE_MS` (not exported —
  * this is the pane's debounced-reparse delay the two-way-pane tests below
@@ -46,6 +55,29 @@ import { DungeonBuilderConcept } from './DungeonBuilderConcept';
 const APPLY_DEBOUNCE_MS = 700;
 
 const DRAFT_KEY = 'dungeon-builder:draft:create';
+
+const regionFixture = (name: string): string =>
+  readFileSync(join(__dirname, 'testdata', name), 'utf8');
+
+const canonicalRegionFloorPlan = () =>
+  create(FloorPlanSchema, {
+    width: 20,
+    height: 30,
+    floorSource: FloorPlanFloorSource.REGIONS,
+    floorCells: [
+      { column: 0, row: 0 },
+      { column: 0, row: 1 },
+      { column: 1, row: 1 },
+    ],
+    edges: [
+      {
+        from: { column: 0, row: 0 },
+        to: { column: -1, row: 0 },
+        kind: FloorPlanEdgeKind.SOLID,
+      },
+    ],
+    entrance: { column: 0, row: 0 },
+  });
 
 /** Kirk's exact repro: a `walls:` entry shaped like `wallLines:` instead
  * — `{cell, corner}` where a real `[col, row]` `from` belongs. Genuinely
@@ -68,6 +100,137 @@ function seedBrokenDraft() {
     JSON.stringify({ yamlText: BROKEN_WALLS_YAML, savedAt: Date.now() })
   );
 }
+
+describe('DungeonBuilderConcept — exact region-floor hard stops', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  function liveClient(
+    validate: (
+      request: Parameters<AuthoringUnaryClient['putDungeon']>[0]
+    ) => PutDungeonResponse
+  ) {
+    const putDungeon = vi.fn(
+      async (request: Parameters<AuthoringUnaryClient['putDungeon']>[0]) => {
+        if (request.key === '') {
+          throw new ConnectError('bad key', Code.InvalidArgument);
+        }
+        if ((request.key ?? '').startsWith('capprobe-')) {
+          return {
+            success: true,
+            fieldErrors: [],
+          } as unknown as PutDungeonResponse;
+        }
+        return validate(request);
+      }
+    );
+    return { putDungeon };
+  }
+
+  it('keeps the immutable legacy source visible, surfaces the exact spec source-path failure, and disables Save & Play', async () => {
+    const source = regionFixture('simple-room-legacy.yaml');
+    const client = liveClient(
+      () =>
+        ({
+          success: false,
+          fieldErrors: [
+            {
+              field: 'spec',
+              message:
+                'decode dungeon spec: line 2: spec is not a supported field',
+            },
+          ],
+        }) as unknown as PutDungeonResponse
+    );
+
+    render(
+      <DungeonBuilderConcept
+        initialYaml={source}
+        authoringClient={client}
+        persistDraft={false}
+        allowNewCanvas={false}
+      />
+    );
+
+    await screen.findByText(
+      'spec: decode dungeon spec: line 2: spec is not a supported field',
+      undefined,
+      { timeout: 4000 }
+    );
+    expect(
+      (screen.getByLabelText('Dungeon YAML') as HTMLTextAreaElement).value
+    ).toBe(source);
+    expect(
+      (screen.getByRole('button', { name: /^Save/ }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(
+      client.putDungeon.mock.calls.some(
+        ([request]) =>
+          request.key === 'simple-room' &&
+          request.validateOnly === true &&
+          request.yaml === source
+      )
+    ).toBe(true);
+    expect(source).toMatch(/spec: ['"]0\.3['"]/);
+    expect(source).not.toContain('floor_source');
+  });
+
+  it('enables Save & Play only after the byte-exact canonical candidate receives a valid REGIONS plan, then saves that same candidate', async () => {
+    const source = regionFixture('simple-room-v04-regions.yaml');
+    const client = liveClient(
+      (request) =>
+        ({
+          success: true,
+          fieldErrors: [],
+          floorPlan: request.validateOnly
+            ? canonicalRegionFloorPlan()
+            : undefined,
+        }) as unknown as PutDungeonResponse
+    );
+
+    render(
+      <DungeonBuilderConcept
+        initialYaml={source}
+        authoringClient={client}
+        persistDraft={false}
+        allowNewCanvas={false}
+      />
+    );
+
+    await waitFor(
+      () =>
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'Save & Play',
+            }) as HTMLButtonElement
+          ).disabled
+        ).toBe(false),
+      { timeout: 4000 }
+    );
+    expect(
+      (screen.getByLabelText('Dungeon YAML') as HTMLTextAreaElement).value
+    ).toBe(source);
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Play' }));
+
+    await waitFor(() =>
+      expect(
+        client.putDungeon.mock.calls.some(
+          ([request]) =>
+            request.key === 'simple-room' &&
+            request.validateOnly === false &&
+            request.yaml === source
+        )
+      ).toBe(true)
+    );
+  });
+});
 
 describe('DungeonBuilderConcept — crash-proof draft restore (Kirk incident regression)', () => {
   beforeEach(() => {

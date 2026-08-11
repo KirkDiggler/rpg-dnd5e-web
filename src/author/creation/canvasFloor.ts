@@ -32,15 +32,20 @@
  * against every live server today — verified by the
  * rpg-api-protos#214 conformance review's finding A4).
  */
-import type {
-  FloorPlan,
-  FloorPlanCell,
+import {
+  FloorPlanFloorSource,
+  type FloorPlan,
+  type FloorPlanCell,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { isCellOccupied } from '../boardGeometry';
 import {
   UnsupportedRegionFloorContractError,
   type DungeonDoc,
 } from '../dungeonYaml';
+import {
+  consumeRegionFloorProjection,
+  type ConsumedRegionFloorEdge,
+} from '../regionFloorContract';
 import { DEFAULT_CANVAS } from './emptyCanvasDoc';
 
 export type Cell = [number, number];
@@ -91,10 +96,14 @@ function floorPlanCellToTuple(cell: FloorPlanCell): Cell {
 export type CanvasFloorSource = 'server' | 'derived';
 
 export interface ResolvedCanvasFloor {
-  /** Ascending-lexicographic-normalized (see `sortCellsLexicographic`),
-   * regardless of source. */
+  /** Provider order for REGIONS; normalized legacy order for bounds fallback. */
   cells: Cell[];
   source: CanvasFloorSource;
+  floorSource?: FloorPlanFloorSource;
+  /** Present only for exact REGIONS output; never client-invented. */
+  edges?: readonly ConsumedRegionFloorEdge[];
+  /** Presence-aware provider anchor, including a real [0,0]. */
+  entrance?: Cell;
 }
 
 /**
@@ -130,9 +139,21 @@ export function resolveCanvasFloor(
   floorPlan: FloorPlan | null
 ): ResolvedCanvasFloor {
   if (doc.canvas?.floorSource === 'regions') {
-    throw new UnsupportedRegionFloorContractError(
-      'FloorPlan.floor_source is not present in the released proto; refusing to infer or downgrade a region-union floor'
-    );
+    if (!floorPlan) {
+      throw new UnsupportedRegionFloorContractError(
+        'canvas.floor_source: regions requires a successful validate-only FloorPlan; refusing to derive bounds'
+      );
+    }
+    const projection = consumeRegionFloorProjection(floorPlan);
+    return {
+      cells: projection.floorCells.map(([column, row]) => [column, row]),
+      source: 'server',
+      floorSource: projection.floorSource,
+      edges: projection.edges,
+      entrance: projection.entrance
+        ? [projection.entrance[0], projection.entrance[1]]
+        : undefined,
+    };
   }
   if (floorPlan && floorPlan.floorCells.length > 0) {
     return {

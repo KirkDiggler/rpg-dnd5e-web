@@ -98,8 +98,17 @@
  */
 import { authoringClient } from '@/api/client';
 import { create } from '@bufbuild/protobuf';
-import type { PutDungeonResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import type {
+  FloorPlan,
+  PutDungeonResponse,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { PutDungeonRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { parseDungeon } from './dungeonYaml';
+import {
+  consumeRegionFloorProjection,
+  hasRegionFloorIntent,
+  prepareExactRegionFloorCandidate,
+} from './regionFloorContract';
 import type { AuthoringUnaryClient } from './useSaveDungeon';
 
 /** One entry per target-dialect construct `stripToV1Subset` knows how to
@@ -565,6 +574,128 @@ function classify(response: PutDungeonResponse): CapabilityResult {
  *   Not re-derived here — threaded verbatim from the server either way,
  *   per this module's own rule.
  */
+export type RegionFloorCandidateValidation =
+  | {
+      accepted: true;
+      /** Exact request payload accepted by validate-only and used for save. */
+      yaml: string;
+      floorPlan: FloorPlan;
+    }
+  | { accepted: false; reason: string };
+
+export interface ValidateRegionFloorCandidateOptions {
+  capabilities?: ServerCapabilities | null;
+  client?: AuthoringUnaryClient;
+}
+
+function formatCandidateFailure(response: PutDungeonResponse): string {
+  const reasons = response.fieldErrors.map((error) =>
+    error.field ? `${error.field}: ${error.message}` : error.message
+  );
+  return (
+    reasons.join('; ') ||
+    'validate-only rejected the candidate without a reason'
+  );
+}
+
+/**
+ * Validates one region-floor candidate through the normal PutDungeon RPC. This
+ * is intentionally not another capability bit: successful validate-only output
+ * plus the generated REGIONS projection is the acceptance signal. Legacy input
+ * carrying `spec` is attempted byte-for-byte so the provider's strict-decode
+ * source path remains visible; no client code deletes `spec` or adds a floor
+ * source on its behalf.
+ */
+export async function validateRegionFloorCandidate(
+  yaml: string,
+  options: ValidateRegionFloorCandidateOptions = {}
+): Promise<RegionFloorCandidateValidation> {
+  let parsed;
+  try {
+    parsed = parseDungeon(yaml);
+  } catch (error) {
+    return {
+      accepted: false,
+      reason: error instanceof Error ? error.message : 'invalid dungeon YAML',
+    };
+  }
+  if (!hasRegionFloorIntent(parsed.doc)) {
+    return {
+      accepted: false,
+      reason: 'regions: no region-floor candidate is present',
+    };
+  }
+
+  let candidateYaml = yaml;
+  // `spec` is provider grammar evidence: send the immutable source exactly so
+  // its real strict-decode path is surfaced. Every valid v0.4 candidate takes
+  // the explicit/lossless preparation path below.
+  if (parsed.doc.spec === null) {
+    try {
+      candidateYaml = prepareExactRegionFloorCandidate(yaml, {
+        wallsCapability: options.capabilities?.walls,
+      }).yaml;
+    } catch (error) {
+      return {
+        accepted: false,
+        reason:
+          error instanceof Error
+            ? error.message
+            : 'region-floor candidate preparation failed',
+      };
+    }
+  }
+
+  const client = options.client ?? authoringClient;
+  let response: PutDungeonResponse;
+  try {
+    response = await client.putDungeon(
+      create(PutDungeonRequestSchema, {
+        key: parsed.doc.key,
+        yaml: candidateYaml,
+        validateOnly: true,
+      })
+    );
+  } catch (error) {
+    return {
+      accepted: false,
+      reason:
+        error instanceof Error ? error.message : 'PutDungeon request failed',
+    };
+  }
+  if (!response.success) {
+    return { accepted: false, reason: formatCandidateFailure(response) };
+  }
+  if (parsed.doc.spec !== null) {
+    return {
+      accepted: false,
+      reason: 'spec: legacy authoring metadata is not provider grammar',
+    };
+  }
+  if (!response.floorPlan) {
+    return {
+      accepted: false,
+      reason: 'validate-only succeeded without a FloorPlan',
+    };
+  }
+  try {
+    consumeRegionFloorProjection(response.floorPlan);
+  } catch (error) {
+    return {
+      accepted: false,
+      reason:
+        error instanceof Error
+          ? error.message
+          : 'invalid region-floor projection',
+    };
+  }
+  return {
+    accepted: true,
+    yaml: candidateYaml,
+    floorPlan: response.floorPlan,
+  };
+}
+
 export async function probeAllCapabilities(
   client: AuthoringUnaryClient = authoringClient
 ): Promise<ServerCapabilities> {

@@ -678,8 +678,8 @@ export interface ParsedDungeon {
 
 export class DungeonParseError extends Error {}
 
-/** Hard stop for an exact `floor_source: regions` document while the
- * released FloorPlan proto cannot project the resolved discriminator. */
+/** Visible hard stop for a region-floor candidate that cannot be submitted
+ * and consumed without changing its authored semantics. */
 export class UnsupportedRegionFloorContractError extends Error {}
 
 /** Parse YAML text into both the CST (for mutation/round-trip) and a plain
@@ -2628,9 +2628,12 @@ export function stripToV1Subset(
   capabilities?: ServerCapabilities
 ): V1SubsetResult {
   const { cst, doc } = parseDungeon(yamlText);
-  if (doc.canvas?.floorSource === 'regions') {
+  if (
+    doc.canvas?.floorSource === 'regions' ||
+    (doc.canvas !== null && doc.rooms.length === 0 && doc.regions.length > 0)
+  ) {
     throw new UnsupportedRegionFloorContractError(
-      'canvas.floor_source: regions cannot be stripped or downgraded; wait for the additive FloorPlan.floor_source proto before preview/save/run'
+      'regions require an exact region-floor candidate; stripToV1Subset cannot remove spec, infer canvas.floor_source, drop regions, or approximate wallLines'
     );
   }
   const dropped: string[] = [];

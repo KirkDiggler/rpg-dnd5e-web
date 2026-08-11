@@ -1,4 +1,10 @@
-import { create } from '@bufbuild/protobuf';
+import { create, type MessageInitShape } from '@bufbuild/protobuf';
+import {
+  FloorPlanEdgeKind,
+  FloorPlanFloorSource,
+  FloorPlanSchema,
+  type FloorPlan,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   HexRecordSchema,
   PositionSchema,
@@ -6,15 +12,11 @@ import {
   WallSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
-import { resolveCanvasFloor } from './creation/canvasFloor';
-import { parseDungeon, serializeDungeon, stripToV1Subset } from './dungeonYaml';
 import {
   consumeAuthorizedRuntimeHexes,
   consumeRegionFloorProjection,
-  prepareExactRegionFloorCandidate,
   UnsupportedRegionFloorContractError,
   type RegionFloorCell,
-  type RegionFloorProjection,
 } from './regionFloorContract';
 
 const RING_CELLS = [
@@ -28,170 +30,150 @@ const RING_CELLS = [
   [3, 3],
 ] as const satisfies readonly RegionFloorCell[];
 
-const RING_YAML = `# preserve this exact candidate
-version: 1
-key: ring-room
-name: 'Ring Room'
-canvas: { width: 5, height: 5, floor_source: regions }
-rooms: []
-connectors: []
-regions:
-  - id: ring
-    archetype: chamber
-    cells: [[1,1], [1,2], [1,3], [2,1], [2,3], [3,1], [3,2], [3,3]]
-`;
+function ringFloorPlan(
+  overrides: MessageInitShape<typeof FloorPlanSchema> = {}
+): FloorPlan {
+  return create(FloorPlanSchema, {
+    width: 5,
+    height: 5,
+    floorSource: FloorPlanFloorSource.REGIONS,
+    floorCells: RING_CELLS.map(([column, row]) => ({ column, row })),
+    edges: [
+      // Reversed interior-void pair: ownership must come from membership.
+      {
+        from: { column: 2, row: 2 },
+        to: { column: 2, row: 1 },
+        kind: FloorPlanEdgeKind.SOLID,
+      },
+      // Off-canvas endpoint, orientation deliberately nonsemantic.
+      {
+        from: { column: 1, row: 1 },
+        to: { column: 0, row: 1 },
+        kind: FloorPlanEdgeKind.SOLID,
+      },
+      {
+        from: { column: 1, row: 2 },
+        to: { column: 1, row: 3 },
+        kind: FloorPlanEdgeKind.DOOR,
+        doorId: 'door-a',
+      },
+    ],
+    entrance: { column: 1, row: 1 },
+    ...overrides,
+  } as never);
+}
 
-describe('Dungeon YAML v0.4 Wave A exact candidate', () => {
-  it('parses floor_source: regions and returns the byte-exact YAML instead of stripping or downgrading it', () => {
-    const candidate = prepareExactRegionFloorCandidate(RING_YAML);
+describe('generated authoring region-floor projection consumer', () => {
+  it('renders and hit-tests exactly the canonical returned mask, preserving voids and optional entrance', () => {
+    const preview = consumeRegionFloorProjection(ringFloorPlan());
 
-    expect(candidate.doc.canvas?.floorSource).toBe('regions');
-    expect(candidate.yaml).toBe(RING_YAML);
-    expect(candidate.yaml).toContain('floor_source: regions');
-    expect(candidate.yaml).toContain('# preserve this exact candidate');
-  });
-
-  it('keeps omission distinct from explicit bounds while preserving both CST shapes', () => {
-    const omitted = RING_YAML.replace(', floor_source: regions', '');
-    const bounds = RING_YAML.replace(
-      'floor_source: regions',
-      'floor_source: bounds'
-    );
-
-    const omittedParsed = parseDungeon(omitted);
-    const boundsParsed = parseDungeon(bounds);
-    expect(omittedParsed.doc.canvas?.floorSource).toBeNull();
-    expect(boundsParsed.doc.canvas?.floorSource).toBe('bounds');
-    expect(serializeDungeon(omittedParsed.cst)).not.toContain('floor_source');
-    expect(serializeDungeon(boundsParsed.cst)).toContain(
-      'floor_source: bounds'
-    );
-  });
-
-  it('rejects an unknown floor source instead of silently treating it as bounds', () => {
-    expect(() =>
-      parseDungeon(
-        RING_YAML.replace('floor_source: regions', 'floor_source: painted')
-      )
-    ).toThrow(/canvas\.floor_source: expected "bounds" or "regions"/);
-  });
-
-  it('hard-stops the region-floor path for a non-region candidate', () => {
-    expect(() =>
-      prepareExactRegionFloorCandidate(
-        RING_YAML.replace('floor_source: regions', 'floor_source: bounds')
-      )
-    ).toThrow(UnsupportedRegionFloorContractError);
-  });
-
-  it('never routes region semantics through the legacy subset strip or bounds-derived preview fallback', () => {
-    const doc = parseDungeon(RING_YAML).doc;
-
-    expect(() => stripToV1Subset(RING_YAML)).toThrow(
-      /cannot be stripped or downgraded/
-    );
-    expect(() => resolveCanvasFloor(doc, null)).toThrow(
-      /refusing to infer or downgrade/
-    );
-  });
-});
-
-describe('authoring projection consumer', () => {
-  function ringProjection(): RegionFloorProjection {
-    return {
-      floorSource: 'regions',
-      floorCells: RING_CELLS,
-      edges: [
-        // Interior void envelope. Pair orientation is intentionally reversed:
-        // ownership comes from floor membership, never `from`.
-        { from: [2, 2], to: [2, 1], kind: 'solid' },
-        // Outer envelope with an off-canvas endpoint.
-        { from: [1, 1], to: [0, 1], kind: 'solid' },
-        // An ordinary provider edge whose endpoints are both floor.
-        { from: [1, 2], to: [1, 3], kind: 'door', doorId: 'door-a' },
-      ],
-      entrance: [1, 1],
-    };
-  }
-
-  it('renders and hit-tests exactly the eight returned ring cells, leaving the in-bounds center void non-floor', () => {
-    const preview = consumeRegionFloorProjection(ringProjection());
-
+    expect(preview.floorSource).toBe(FloorPlanFloorSource.REGIONS);
     expect(preview.floorCells).toEqual(RING_CELLS);
     expect(preview.floorCells).toHaveLength(8);
     expect(preview.contains([2, 2])).toBe(false);
     expect(preview.contains([1, 1])).toBe(true);
-    // Only the three provider pairs exist; no rectangle/union envelope was
-    // recreated by this consumer.
+    expect(preview.entrance).toEqual([1, 1]);
     expect(preview.edges).toHaveLength(3);
   });
 
-  it('determines envelope ownership by returned floor membership, including reversed and off-canvas pairs', () => {
-    const preview = consumeRegionFloorProjection(ringProjection());
+  it('preserves provider pair orientation and derives one-sided envelope ownership only from returned floor membership', () => {
+    const preview = consumeRegionFloorProjection(ringFloorPlan());
 
-    expect(preview.edges[0]?.floorOwners).toEqual([[2, 1]]);
-    expect(preview.edges[1]?.floorOwners).toEqual([[1, 1]]);
-    expect(preview.edges[2]?.floorOwners).toEqual([
-      [1, 2],
-      [1, 3],
-    ]);
+    expect(preview.edges[0]).toMatchObject({
+      from: [2, 2],
+      to: [2, 1],
+      kind: FloorPlanEdgeKind.SOLID,
+      floorOwners: [[2, 1]],
+    });
+    expect(preview.edges[1]).toMatchObject({
+      from: [1, 1],
+      to: [0, 1],
+      kind: FloorPlanEdgeKind.SOLID,
+      floorOwners: [[1, 1]],
+    });
+    expect(preview.edges[2]).toMatchObject({
+      from: [1, 2],
+      to: [1, 3],
+      kind: FloorPlanEdgeKind.DOOR,
+      doorId: 'door-a',
+      floorOwners: [
+        [1, 2],
+        [1, 3],
+      ],
+    });
   });
 
-  it('previews a structurally valid tiny draft with an absent entrance', () => {
-    const preview = consumeRegionFloorProjection({
-      floorSource: 'regions',
-      floorCells: [
-        [1, 1],
-        [1, 2],
-      ],
-      edges: [{ from: [1, 1], to: [0, 1], kind: 'solid' }],
-      // entrance intentionally absent: strict runnable validity is provider-owned.
-    });
-
-    expect(preview.floorCells).toHaveLength(2);
+  it('preserves an absent entrance for a structurally valid draft', () => {
+    const preview = consumeRegionFloorProjection(
+      ringFloorPlan({ entrance: undefined })
+    );
     expect(preview.entrance).toBeUndefined();
   });
 
-  it('keeps both returned islands even when the provider returns an entrance only on the runnable-sized island', () => {
-    const islandA = [
-      [0, 0],
-      [0, 1],
-      [1, 0],
-      [1, 1],
-    ] as const;
-    const islandB = [4, 4] as const;
-    const preview = consumeRegionFloorProjection({
-      floorSource: 'regions',
-      floorCells: [...islandA, islandB],
-      edges: [
-        { from: [0, 0], to: [-1, 0], kind: 'solid' },
-        { from: islandB, to: [5, 4], kind: 'solid' },
-      ],
-      entrance: [0, 0],
-    });
+  it.each([
+    ['absent', undefined],
+    ['UNSPECIFIED', FloorPlanFloorSource.UNSPECIFIED],
+    ['BOUNDS', FloorPlanFloorSource.BOUNDS],
+  ])(
+    'hard-stops when generated FloorPlan.floorSource is %s instead of present REGIONS',
+    (_label, floorSource) => {
+      expect(() =>
+        consumeRegionFloorProjection(ringFloorPlan({ floorSource }))
+      ).toThrow(UnsupportedRegionFloorContractError);
+    }
+  );
 
-    expect(preview.floorCells).toEqual([...islandA, islandB]);
-    expect(preview.entrance).toEqual([0, 0]);
-    expect(preview.contains(islandB)).toBe(true);
+  it('rejects non-canonical floor-cell order instead of normalizing provider truth client-side', () => {
+    expect(() =>
+      consumeRegionFloorProjection(
+        ringFloorPlan({
+          floorCells: [
+            { column: 3, row: 3 },
+            { column: 1, row: 1 },
+          ],
+        })
+      )
+    ).toThrow(/canonical ascending order/);
   });
 
-  it('hard-stops when the released projection cannot discriminate floor_source', () => {
+  it('rejects a canonical edge with no returned floor owner instead of inventing or clipping an envelope', () => {
     expect(() =>
-      consumeRegionFloorProjection({
-        floorCells: RING_CELLS,
-        edges: [],
-      })
-    ).toThrow(/additive authoring proto is required/);
-  });
-
-  it('hard-stops malformed provider truth instead of inferring a repair', () => {
-    expect(() =>
-      consumeRegionFloorProjection({
-        floorSource: 'regions',
-        floorCells: RING_CELLS,
-        edges: [{ from: [0, 0], to: [0, 1], kind: 'solid' }],
-      })
+      consumeRegionFloorProjection(
+        ringFloorPlan({
+          edges: [
+            {
+              from: { column: 0, row: 0 },
+              to: { column: 0, row: 1 },
+              kind: FloorPlanEdgeKind.SOLID,
+            },
+          ],
+        })
+      )
     ).toThrow(/has no returned floor owner/);
+  });
+
+  it('rejects missing endpoints and unsupported edge kinds with the provider pair intact', () => {
+    expect(() =>
+      consumeRegionFloorProjection(
+        ringFloorPlan({
+          edges: [{ to: { column: 1, row: 1 }, kind: FloorPlanEdgeKind.SOLID }],
+        })
+      )
+    ).toThrow(/missing from or to/);
+
+    expect(() =>
+      consumeRegionFloorProjection(
+        ringFloorPlan({
+          edges: [
+            {
+              from: { column: 1, row: 1 },
+              to: { column: 1, row: 2 },
+              kind: FloorPlanEdgeKind.UNSPECIFIED,
+            },
+          ],
+        })
+      )
+    ).toThrow(/unsupported kind/);
   });
 });
 

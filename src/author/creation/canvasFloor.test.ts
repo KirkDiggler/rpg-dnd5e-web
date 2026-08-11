@@ -1,5 +1,7 @@
 import { create } from '@bufbuild/protobuf';
 import {
+  FloorPlanEdgeKind,
+  FloorPlanFloorSource,
   FloorPlanSchema,
   type FloorPlan,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
@@ -77,6 +79,68 @@ describe('deriveCanvasFloorCells', () => {
       holes: [[0, 0]],
     });
     expect(cells).toEqual([]);
+  });
+});
+
+describe('resolveCanvasFloor — exact region floor', () => {
+  const doc = {
+    canvas: { width: 5, height: 5, floorSource: 'regions' as const },
+    holes: [] as [number, number][],
+  };
+
+  const regionPlan = (floorSource: FloorPlanFloorSource | undefined) =>
+    create(FloorPlanSchema, {
+      width: 5,
+      height: 5,
+      floorSource,
+      floorCells: [
+        { column: 1, row: 1 },
+        { column: 1, row: 2 },
+        { column: 2, row: 1 },
+      ],
+      edges: [
+        {
+          from: { column: 0, row: 1 },
+          to: { column: 1, row: 1 },
+          kind: FloorPlanEdgeKind.SOLID,
+        },
+      ],
+      entrance: { column: 1, row: 1 },
+    });
+
+  it('requires a real generated REGIONS plan and never renders a client-derived bounds rectangle', () => {
+    const result = resolveCanvasFloor(
+      doc,
+      regionPlan(FloorPlanFloorSource.REGIONS)
+    );
+
+    expect(result.source).toBe('server');
+    expect(result.floorSource).toBe(FloorPlanFloorSource.REGIONS);
+    expect(result.cells).toEqual([
+      [1, 1],
+      [1, 2],
+      [2, 1],
+    ]);
+    expect(result.cells).not.toContainEqual([0, 0]);
+    expect(result.entrance).toEqual([1, 1]);
+    expect(result.edges).toEqual([
+      expect.objectContaining({
+        from: [0, 1],
+        to: [1, 1],
+        floorOwners: [[1, 1]],
+      }),
+    ]);
+  });
+
+  it.each([
+    ['no plan', null],
+    ['absent source', regionPlan(undefined)],
+    ['unspecified source', regionPlan(FloorPlanFloorSource.UNSPECIFIED)],
+    ['bounds source', regionPlan(FloorPlanFloorSource.BOUNDS)],
+  ])('hard-stops for %s instead of deriving bounds', (_label, floorPlan) => {
+    expect(() => resolveCanvasFloor(doc, floorPlan)).toThrow(
+      /FloorPlan\.floor_source|requires a successful validate-only FloorPlan/
+    );
   });
 });
 
