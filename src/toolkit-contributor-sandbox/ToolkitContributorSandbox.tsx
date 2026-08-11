@@ -6,7 +6,7 @@ import {
   StartEncounterRequestSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { ListCharactersRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
 import { toolkitSandboxClients as clients } from './clients';
 import {
@@ -39,8 +39,27 @@ export function ToolkitContributorSandbox() {
   >(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SandboxResult>(null);
+  const operationGeneration = useRef(0);
+  const actionInFlight = useRef(false);
+
+  const invalidateOperations = () => {
+    operationGeneration.current += 1;
+    actionInFlight.current = false;
+    return operationGeneration.current;
+  };
+  const isCurrentOperation = (generation: number) =>
+    generation === operationGeneration.current;
+
+  useEffect(
+    () => () => {
+      operationGeneration.current += 1;
+      actionInFlight.current = false;
+    },
+    []
+  );
 
   const handleSaveSucceeded = async (key: string) => {
+    const generation = invalidateOperations();
     setPartyChoicesEnabled(false);
     setFighterCharacterId(null);
     setBarbarianCharacterId(null);
@@ -48,7 +67,9 @@ export function ToolkitContributorSandbox() {
     setResult(null);
 
     if (key !== TOOLKIT_SANDBOX_KEY) {
-      setError(`Unexpected saved dungeon key: ${key}`);
+      if (isCurrentOperation(generation)) {
+        setError(`Unexpected saved dungeon key: ${key}`);
+      }
       return;
     }
 
@@ -56,10 +77,13 @@ export function ToolkitContributorSandbox() {
       const fighterCharacters = await clients.fighter.character.listCharacters(
         create(ListCharactersRequestSchema)
       );
+      if (!isCurrentOperation(generation)) return;
+
       const barbarianCharacters =
         await clients.barbarian.character.listCharacters(
           create(ListCharactersRequestSchema)
         );
+      if (!isCurrentOperation(generation)) return;
 
       if (fighterCharacters.characters.length !== 1) {
         setError('Expected exactly one fighter character.');
@@ -74,12 +98,16 @@ export function ToolkitContributorSandbox() {
       setBarbarianCharacterId(barbarianCharacters.characters[0].id);
       setPartyChoicesEnabled(true);
     } catch (requestError) {
+      if (!isCurrentOperation(generation)) return;
       setError(messageFor(requestError));
     }
   };
 
   const startFighter = async () => {
-    if (!partyChoicesEnabled || !fighterCharacterId) return;
+    if (!partyChoicesEnabled || !fighterCharacterId || actionInFlight.current)
+      return;
+    actionInFlight.current = true;
+    const generation = ++operationGeneration.current;
     setPartyChoicesEnabled(false);
     setError(null);
     setResult(null);
@@ -91,25 +119,37 @@ export function ToolkitContributorSandbox() {
           characterId: fighterCharacterId,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.fighter.lobby.setReady(
         create(SetReadyRequestSchema, { lobbyId: created.lobbyId, ready: true })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.fighter.lobby.startEncounter(
         create(StartEncounterRequestSchema, {
           lobbyId: created.lobbyId,
           dungeonKey: TOOLKIT_SANDBOX_KEY,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
+      actionInFlight.current = false;
       setPartyChoicesEnabled(false);
       setResult('fighter');
     } catch (requestError) {
+      if (!isCurrentOperation(generation)) return;
+      actionInFlight.current = false;
       setPartyChoicesEnabled(false);
       setError(messageFor(requestError));
     }
   };
 
   const startBarbarian = async () => {
-    if (!partyChoicesEnabled || !barbarianCharacterId) return;
+    if (!partyChoicesEnabled || !barbarianCharacterId || actionInFlight.current)
+      return;
+    actionInFlight.current = true;
+    const generation = ++operationGeneration.current;
     setPartyChoicesEnabled(false);
     setError(null);
     setResult(null);
@@ -121,26 +161,42 @@ export function ToolkitContributorSandbox() {
           characterId: barbarianCharacterId,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.barbarian.lobby.setReady(
         create(SetReadyRequestSchema, { lobbyId: created.lobbyId, ready: true })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.barbarian.lobby.startEncounter(
         create(StartEncounterRequestSchema, {
           lobbyId: created.lobbyId,
           dungeonKey: TOOLKIT_SANDBOX_KEY,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
+      actionInFlight.current = false;
       setPartyChoicesEnabled(false);
       setResult('barbarian');
     } catch (requestError) {
+      if (!isCurrentOperation(generation)) return;
+      actionInFlight.current = false;
       setPartyChoicesEnabled(false);
       setError(messageFor(requestError));
     }
   };
 
   const startFighterThenBarbarian = async () => {
-    if (!partyChoicesEnabled || !fighterCharacterId || !barbarianCharacterId)
+    if (
+      !partyChoicesEnabled ||
+      !fighterCharacterId ||
+      !barbarianCharacterId ||
+      actionInFlight.current
+    )
       return;
+    actionInFlight.current = true;
+    const generation = ++operationGeneration.current;
     setPartyChoicesEnabled(false);
     setError(null);
     setResult(null);
@@ -152,35 +208,55 @@ export function ToolkitContributorSandbox() {
           characterId: fighterCharacterId,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.barbarian.lobby.joinLobby(
         create(JoinLobbyRequestSchema, {
           joinRef: created.joinRef,
           characterId: barbarianCharacterId,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.fighter.lobby.setReady(
         create(SetReadyRequestSchema, { lobbyId: created.lobbyId, ready: true })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.barbarian.lobby.setReady(
         create(SetReadyRequestSchema, { lobbyId: created.lobbyId, ready: true })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.fighter.lobby.startEncounter(
         create(StartEncounterRequestSchema, {
           lobbyId: created.lobbyId,
           dungeonKey: TOOLKIT_SANDBOX_KEY,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
+      actionInFlight.current = false;
       setPartyChoicesEnabled(false);
       setResult('fighter-then-barbarian');
     } catch (requestError) {
+      if (!isCurrentOperation(generation)) return;
+      actionInFlight.current = false;
       setPartyChoicesEnabled(false);
       setError(messageFor(requestError));
     }
   };
 
   const startBarbarianThenFighter = async () => {
-    if (!partyChoicesEnabled || !fighterCharacterId || !barbarianCharacterId)
+    if (
+      !partyChoicesEnabled ||
+      !fighterCharacterId ||
+      !barbarianCharacterId ||
+      actionInFlight.current
+    )
       return;
+    actionInFlight.current = true;
+    const generation = ++operationGeneration.current;
     setPartyChoicesEnabled(false);
     setError(null);
     setResult(null);
@@ -192,27 +268,40 @@ export function ToolkitContributorSandbox() {
           characterId: barbarianCharacterId,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.fighter.lobby.joinLobby(
         create(JoinLobbyRequestSchema, {
           joinRef: created.joinRef,
           characterId: fighterCharacterId,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.barbarian.lobby.setReady(
         create(SetReadyRequestSchema, { lobbyId: created.lobbyId, ready: true })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.fighter.lobby.setReady(
         create(SetReadyRequestSchema, { lobbyId: created.lobbyId, ready: true })
       );
+      if (!isCurrentOperation(generation)) return;
+
       await clients.barbarian.lobby.startEncounter(
         create(StartEncounterRequestSchema, {
           lobbyId: created.lobbyId,
           dungeonKey: TOOLKIT_SANDBOX_KEY,
         })
       );
+      if (!isCurrentOperation(generation)) return;
+
+      actionInFlight.current = false;
       setPartyChoicesEnabled(false);
       setResult('barbarian-then-fighter');
     } catch (requestError) {
+      if (!isCurrentOperation(generation)) return;
+      actionInFlight.current = false;
       setPartyChoicesEnabled(false);
       setError(messageFor(requestError));
     }

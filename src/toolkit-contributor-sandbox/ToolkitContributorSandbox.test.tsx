@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   TOOLKIT_SANDBOX_BARBARIAN,
@@ -73,11 +79,9 @@ function resetClients() {
   barbarian.lobby.joinLobby.mockResolvedValue({ lobbyId: 'lobby-1' });
 }
 
-async function saveTemplate() {
-  render(<ToolkitContributorSandbox />);
-
+async function clickTemplateSave() {
   const saveButton = screen.getByRole('button', {
-    name: /save the compilable subset/i,
+    name: /^Save/,
   }) as HTMLButtonElement;
   await waitFor(() => expect(saveButton.disabled).toBe(false));
   fireEvent.click(saveButton);
@@ -87,11 +91,33 @@ async function saveTemplate() {
       validateOnly: false,
     })
   );
+}
+
+async function saveTemplate() {
+  render(<ToolkitContributorSandbox />);
+  await clickTemplateSave();
 
   await waitFor(() => {
     expect(fighter.character.listCharacters).toHaveBeenCalledOnce();
     expect(barbarian.character.listCharacters).toHaveBeenCalledOnce();
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+async function settleDeferred() {
+  await act(async () => {
+    await Promise.resolve();
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 async function chooseParty(
@@ -297,7 +323,7 @@ describe('ToolkitContributorSandbox', () => {
 
     render(<ToolkitContributorSandbox />);
     const saveButton = screen.getByRole('button', {
-      name: /save the compilable subset/i,
+      name: /^Save/,
     }) as HTMLButtonElement;
     await waitFor(() => expect(saveButton.disabled).toBe(false));
     fireEvent.click(saveButton);
@@ -326,5 +352,227 @@ describe('ToolkitContributorSandbox', () => {
     expect(barbarian.lobby.setReady).not.toHaveBeenCalled();
     expect(fighter.lobby.startEncounter).not.toHaveBeenCalled();
     expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('waits for a successful save callback before listing and ignores a stale list completion after a newer save', async () => {
+    const persisted = deferred<{ success: boolean; fieldErrors: never[] }>();
+    const staleFighterList = deferred<{ characters: Array<{ id: string }> }>();
+    fighter.authoring.putDungeon.mockImplementation((request) =>
+      request.validateOnly
+        ? Promise.resolve({ success: true, fieldErrors: [] })
+        : persisted.promise
+    );
+    fighter.character.listCharacters
+      .mockImplementationOnce(() => staleFighterList.promise)
+      .mockResolvedValue({ characters: [{ id: 'fighter-char' }] });
+
+    render(<ToolkitContributorSandbox />);
+    await clickTemplateSave();
+    expect(fighter.character.listCharacters).not.toHaveBeenCalled();
+
+    await act(async () => {
+      persisted.resolve({ success: true, fieldErrors: [] });
+      await persisted.promise;
+    });
+    await waitFor(() =>
+      expect(fighter.character.listCharacters).toHaveBeenCalledOnce()
+    );
+    expect(barbarian.character.listCharacters).not.toHaveBeenCalled();
+
+    await clickTemplateSave();
+    await waitFor(() => {
+      expect(fighter.character.listCharacters).toHaveBeenCalledTimes(2);
+      expect(barbarian.character.listCharacters).toHaveBeenCalledOnce();
+      expect(
+        (screen.getByRole('button', { name: 'Fighter' }) as HTMLButtonElement)
+          .disabled
+      ).toBe(false);
+    });
+
+    await act(async () => {
+      staleFighterList.resolve({ characters: [{ id: 'stale-fighter-char' }] });
+      await staleFighterList.promise;
+    });
+    await settleDeferred();
+
+    expect(barbarian.character.listCharacters).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('makes a stale in-flight lobby success inert after a newer successful save callback', async () => {
+    const staleCreate = deferred<{ lobbyId: string; joinRef: string }>();
+    fighter.lobby.createLobby.mockImplementationOnce(() => staleCreate.promise);
+
+    await saveTemplate();
+    const partyButton = screen.getByRole('button', {
+      name: 'Fighter',
+    }) as HTMLButtonElement;
+    fireEvent.click(partyButton);
+    expect(fighter.lobby.createLobby).toHaveBeenCalledOnce();
+
+    await clickTemplateSave();
+    await waitFor(() => {
+      expect(fighter.character.listCharacters).toHaveBeenCalledTimes(2);
+      expect(barbarian.character.listCharacters).toHaveBeenCalledTimes(2);
+      expect(partyButton.disabled).toBe(false);
+    });
+
+    await act(async () => {
+      staleCreate.resolve({ lobbyId: 'stale-lobby', joinRef: 'stale-join' });
+      await staleCreate.promise;
+    });
+    await settleDeferred();
+
+    expect(fighter.lobby.setReady).not.toHaveBeenCalled();
+    expect(fighter.lobby.startEncounter).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('ignores a stale in-flight lobby rejection after a newer successful save callback', async () => {
+    const staleCreate = deferred<{ lobbyId: string; joinRef: string }>();
+    fighter.lobby.createLobby.mockImplementationOnce(() => staleCreate.promise);
+
+    await saveTemplate();
+    fireEvent.click(screen.getByRole('button', { name: 'Fighter' }));
+    await waitFor(() => expect(fighter.lobby.createLobby).toHaveBeenCalled());
+
+    await clickTemplateSave();
+    await waitFor(() =>
+      expect(fighter.character.listCharacters).toHaveBeenCalledTimes(2)
+    );
+
+    await act(async () => {
+      staleCreate.reject(new Error('stale create rejected'));
+      try {
+        await staleCreate.promise;
+      } catch {
+        // The component is responsible for ignoring this stale rejection.
+      }
+    });
+    await settleDeferred();
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('does not start competing lobbies for rapid double party activation', async () => {
+    const create = deferred<{ lobbyId: string; joinRef: string }>();
+    fighter.lobby.createLobby.mockImplementation(() => create.promise);
+
+    await saveTemplate();
+    const partyButton = screen.getByRole('button', {
+      name: 'Fighter',
+    }) as HTMLButtonElement;
+
+    await act(async () => {
+      fireEvent.click(partyButton);
+      fireEvent.click(partyButton);
+    });
+
+    expect(fighter.lobby.createLobby).toHaveBeenCalledOnce();
+    expect(fighter.lobby.setReady).not.toHaveBeenCalled();
+    expect(fighter.lobby.startEncounter).not.toHaveBeenCalled();
+  });
+
+  it('stops after SetReady rejects and renders no result link', async () => {
+    fighter.lobby.setReady.mockRejectedValue(
+      new Error('fighter ready rejected')
+    );
+
+    await saveTemplate();
+    fireEvent.click(screen.getByRole('button', { name: 'Fighter' }));
+
+    await screen.findByText('fighter ready rejected');
+    expect(fighter.lobby.startEncounter).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('stops after StartEncounter rejects and renders no result link', async () => {
+    fighter.lobby.startEncounter.mockRejectedValue(
+      new Error('fighter start rejected')
+    );
+
+    await saveTemplate();
+    fireEvent.click(screen.getByRole('button', { name: 'Fighter' }));
+
+    await screen.findByText('fighter start rejected');
+    expect(fighter.lobby.setReady).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('awaits each cross-client two-seat boundary in temporal order', async () => {
+    const created = deferred<{ lobbyId: string; joinRef: string }>();
+    const joined = deferred<{ lobbyId: string }>();
+    const fighterReady = deferred<Record<string, never>>();
+    const barbarianReady = deferred<Record<string, never>>();
+    const started = deferred<{ encounterId: string }>();
+    fighter.lobby.createLobby.mockImplementation(() => created.promise);
+    barbarian.lobby.joinLobby.mockImplementation(() => joined.promise);
+    fighter.lobby.setReady.mockImplementation(() => fighterReady.promise);
+    barbarian.lobby.setReady.mockImplementation(() => barbarianReady.promise);
+    fighter.lobby.startEncounter.mockImplementation(() => started.promise);
+
+    await saveTemplate();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Fighter then Barbarian' })
+    );
+    expect(fighter.lobby.createLobby).toHaveBeenCalledOnce();
+    expect(barbarian.lobby.joinLobby).not.toHaveBeenCalled();
+
+    await act(async () => {
+      created.resolve({ lobbyId: 'lobby-1', joinRef: 'join-fighter' });
+      await created.promise;
+    });
+    await waitFor(() =>
+      expect(barbarian.lobby.joinLobby).toHaveBeenCalledOnce()
+    );
+    expect(fighter.lobby.setReady).not.toHaveBeenCalled();
+
+    await act(async () => {
+      joined.resolve({ lobbyId: 'lobby-1' });
+      await joined.promise;
+    });
+    await waitFor(() => expect(fighter.lobby.setReady).toHaveBeenCalledOnce());
+    expect(barbarian.lobby.setReady).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fighterReady.resolve({});
+      await fighterReady.promise;
+    });
+    await waitFor(() =>
+      expect(barbarian.lobby.setReady).toHaveBeenCalledOnce()
+    );
+    expect(fighter.lobby.startEncounter).not.toHaveBeenCalled();
+
+    await act(async () => {
+      barbarianReady.resolve({});
+      await barbarianReady.promise;
+    });
+    await waitFor(() =>
+      expect(fighter.lobby.startEncounter).toHaveBeenCalledOnce()
+    );
+
+    await act(async () => {
+      started.resolve({ encounterId: 'enc-1' });
+      await started.promise;
+    });
+    await waitFor(() =>
+      expectResultLinks([TOOLKIT_SANDBOX_FIGHTER, TOOLKIT_SANDBOX_BARBARIAN])
+    );
+
+    expect(fighter.lobby.createLobby.mock.invocationCallOrder[0]).toBeLessThan(
+      barbarian.lobby.joinLobby.mock.invocationCallOrder[0]
+    );
+    expect(barbarian.lobby.joinLobby.mock.invocationCallOrder[0]).toBeLessThan(
+      fighter.lobby.setReady.mock.invocationCallOrder[0]
+    );
+    expect(fighter.lobby.setReady.mock.invocationCallOrder[0]).toBeLessThan(
+      barbarian.lobby.setReady.mock.invocationCallOrder[0]
+    );
+    expect(barbarian.lobby.setReady.mock.invocationCallOrder[0]).toBeLessThan(
+      fighter.lobby.startEncounter.mock.invocationCallOrder[0]
+    );
   });
 });
