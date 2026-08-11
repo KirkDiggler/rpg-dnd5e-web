@@ -64,6 +64,8 @@ interface ProposedYamlPaneProps {
   downloadFilename: string;
   onLoadFile: (text: string) => void;
   onLoadFileError: (message: string) => void;
+  allowYamlFileIO: boolean;
+  showSaveResultLink: boolean;
   specCompat: SpecCompatReport;
 }
 
@@ -83,6 +85,8 @@ export function ProposedYamlPane({
   downloadFilename,
   onLoadFile,
   onLoadFileError,
+  allowYamlFileIO,
+  showSaveResultLink,
   specCompat,
 }: ProposedYamlPaneProps) {
   const dropped = v1Subset?.dropped ?? [];
@@ -110,10 +114,15 @@ export function ProposedYamlPane({
           gap: 4,
         }}
       >
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <DownloadYamlButton yamlText={yamlText} filename={downloadFilename} />
-          <LoadYamlButton onLoad={onLoadFile} onLoadError={onLoadFileError} />
-        </div>
+        {allowYamlFileIO && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <DownloadYamlButton
+              yamlText={yamlText}
+              filename={downloadFilename}
+            />
+            <LoadYamlButton onLoad={onLoadFile} onLoadError={onLoadFileError} />
+          </div>
+        )}
         <CapabilitiesLine
           serverState={serverState}
           capabilities={capabilities}
@@ -169,6 +178,7 @@ export function ProposedYamlPane({
         savedKey={savedKey}
         saveFieldErrors={saveFieldErrors}
         saveErrorMessage={saveErrorMessage}
+        showLobbyLink={showSaveResultLink}
         honestyNote={
           hasDialectFields
             ? `Saved the compilable subset — dropped: ${dropped.join(', ')}.${compiling.length > 0 ? ` Compiled for real: ${compiling.join(', ')}.` : ''} (see TARGET-YAML.md).`

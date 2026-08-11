@@ -391,12 +391,14 @@ export function SaveResultPanel({
   saveFieldErrors,
   saveErrorMessage,
   honestyNote,
+  showLobbyLink = true,
 }: {
   saveState: SaveState;
   savedKey: string | null;
   saveFieldErrors: ValidationError[];
   saveErrorMessage: string | null;
   honestyNote?: string;
+  showLobbyLink?: boolean;
 }) {
   if (saveState === 'saved') {
     return (
@@ -410,16 +412,22 @@ export function SaveResultPanel({
           lineHeight: 1.5,
         }}
       >
-        <strong>Saved as "{savedKey}".</strong> Open{' '}
-        <a
-          href="http://localhost:3001/"
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: '#5fd1c9' }}
-        >
-          http://localhost:3001/
-        </a>{' '}
-        and pick "{savedKey}" in the dungeon dropdown to play it.
+        <strong>Saved as "{savedKey}".</strong>
+        {showLobbyLink && (
+          <>
+            {' '}
+            Open{' '}
+            <a
+              href="http://localhost:3001/"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: '#5fd1c9' }}
+            >
+              http://localhost:3001/
+            </a>{' '}
+            and pick "{savedKey}" in the dungeon dropdown to play it.
+          </>
+        )}
         {honestyNote && (
           <div style={{ color: '#ffb347', marginTop: 4 }}>{honestyNote}</div>
         )}

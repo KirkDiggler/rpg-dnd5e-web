@@ -80,7 +80,7 @@ import {
   type FloorPlan,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   probeAllCapabilities,
   type ServerCapabilities,
@@ -88,6 +88,7 @@ import {
 import { stripToV1Subset, type DungeonDoc } from './dungeonYaml';
 import { SHOWCASE_FLOORPLAN } from './fixtures';
 import { compileFloorPlanLocally } from './floorPlanCompile';
+import type { AuthoringUnaryClient } from './useSaveDungeon';
 
 export type ServerState = 'probing' | 'live' | 'gate-off' | 'unreachable';
 
@@ -168,7 +169,8 @@ type LiveCompileResult =
 async function compileLive(
   doc: DungeonDoc,
   yamlText: string,
-  capabilities: ServerCapabilities | null
+  capabilities: ServerCapabilities | null,
+  client: AuthoringUnaryClient
 ): Promise<LiveCompileResult> {
   let subsetYaml: string;
   try {
@@ -181,7 +183,7 @@ async function compileLive(
     return { kind: 'unparseable' };
   }
   try {
-    const response = await authoringClient.putDungeon(
+    const response = await client.putDungeon(
       create(PutDungeonRequestSchema, {
         key: doc.key,
         yaml: subsetYaml,
@@ -217,7 +219,8 @@ export function usePutDungeonPreview(
    * regardless of whether one happens to be reachable. The real `/author`
    * mount (`AuthorView.tsx`) omits this and gets today's normal
    * live-probing behavior unchanged. */
-  forceFixtures = false
+  forceFixtures = false,
+  client: AuthoringUnaryClient = authoringClient
 ): UsePutDungeonPreviewResult {
   const [serverState, setServerState] = useState<ServerState>(
     forceFixtures ? 'gate-off' : 'probing'
@@ -231,6 +234,8 @@ export function usePutDungeonPreview(
   );
   const [capabilitiesNonce, setCapabilitiesNonce] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const putDungeon = client.putDungeon;
+  const resolvedClient = useMemo(() => ({ putDungeon }), [putDungeon]);
 
   // Mount-time (and manual retry) probe — never runs at all when
   // `forceFixtures` is set (see this function's own param doc comment).
@@ -243,7 +248,7 @@ export function usePutDungeonPreview(
     setServerState('probing');
     (async () => {
       try {
-        await authoringClient.putDungeon(
+        await resolvedClient.putDungeon(
           create(PutDungeonRequestSchema, {
             key: '',
             yaml: '',
@@ -260,7 +265,7 @@ export function usePutDungeonPreview(
     return () => {
       cancelled = true;
     };
-  }, [probeNonce, forceFixtures]);
+  }, [probeNonce, forceFixtures, resolvedClient]);
 
   // Capability probe: runs once per live connection (this effect's own
   // `serverState` dependency covers both the initial live transition and
@@ -275,13 +280,13 @@ export function usePutDungeonPreview(
       return;
     }
     let cancelled = false;
-    probeAllCapabilities().then((caps) => {
+    probeAllCapabilities(resolvedClient).then((caps) => {
       if (!cancelled) setCapabilities(caps);
     });
     return () => {
       cancelled = true;
     };
-  }, [serverState, capabilitiesNonce]);
+  }, [serverState, capabilitiesNonce, resolvedClient]);
 
   // Live per-edit preview, debounced, only while the probe found the gate on.
   useEffect(() => {
@@ -290,7 +295,12 @@ export function usePutDungeonPreview(
     debounceRef.current = setTimeout(() => {
       (async () => {
         setRequestError(null);
-        const result = await compileLive(doc, yamlText, capabilities);
+        const result = await compileLive(
+          doc,
+          yamlText,
+          capabilities,
+          resolvedClient
+        );
         switch (result.kind) {
           case 'unparseable':
             return;
@@ -315,7 +325,7 @@ export function usePutDungeonPreview(
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [serverState, doc, yamlText, capabilities]);
+  }, [serverState, doc, yamlText, capabilities, resolvedClient]);
 
   const fallbackFloorPlan = doc
     ? doc.key === 'showcase'
@@ -380,10 +390,13 @@ export function useCreationFloorPlanPreview(
   doc: DungeonDoc | null,
   yamlText: string,
   serverState: ServerState,
-  capabilities: ServerCapabilities | null
+  capabilities: ServerCapabilities | null,
+  client: AuthoringUnaryClient = authoringClient
 ): { floorPlan: FloorPlan | null } {
   const [liveFloorPlan, setLiveFloorPlan] = useState<FloorPlan | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const putDungeon = client.putDungeon;
+  const resolvedClient = useMemo(() => ({ putDungeon }), [putDungeon]);
 
   useEffect(() => {
     if (serverState !== 'live' || !doc) {
@@ -396,21 +409,23 @@ export function useCreationFloorPlanPreview(
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      compileLive(doc, yamlText, capabilities).then((result) => {
-        if (result.kind === 'success') setLiveFloorPlan(result.floorPlan);
-        // 'unparseable' (mid-edit)/'field-errors'/'unreachable'/
-        // 'request-error': keep the last-good floor plan on screen,
-        // matching `usePutDungeonPreview`'s own field-errors discipline —
-        // this hook has no field_errors surface of its own (creation
-        // mode's own validation feedback is out of this unit's scope),
-        // so every non-success outcome is treated the same way here:
-        // don't blank a plan that was already rendering.
-      });
+      compileLive(doc, yamlText, capabilities, resolvedClient).then(
+        (result) => {
+          if (result.kind === 'success') setLiveFloorPlan(result.floorPlan);
+          // 'unparseable' (mid-edit)/'field-errors'/'unreachable'/
+          // 'request-error': keep the last-good floor plan on screen,
+          // matching `usePutDungeonPreview`'s own field-errors discipline —
+          // this hook has no field_errors surface of its own (creation
+          // mode's own validation feedback is out of this unit's scope),
+          // so every non-success outcome is treated the same way here:
+          // don't blank a plan that was already rendering.
+        }
+      );
     }, DEBOUNCE_MS);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [serverState, doc, yamlText, capabilities]);
+  }, [serverState, doc, yamlText, capabilities, resolvedClient]);
 
   return { floorPlan: liveFloorPlan };
 }

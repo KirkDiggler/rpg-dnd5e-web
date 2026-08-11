@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
@@ -17,6 +17,18 @@ import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
+import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
+
+const LazyToolkitContributorSandbox =
+  import.meta.env.MODE === 'development'
+    ? lazy(() =>
+        import('./toolkit-contributor-sandbox/ToolkitContributorSandbox').then(
+          ({ ToolkitContributorSandbox }) => ({
+            default: ToolkitContributorSandbox,
+          })
+        )
+      )
+    : null;
 
 /**
  * Dev-only deep link: `?concept=<id>` opens the Concepts Lab directly and must
@@ -459,6 +471,20 @@ function HomeView({
 }
 
 function App() {
+  if (
+    isToolkitContributorSandboxRoute(
+      import.meta.env.MODE,
+      window.location.search
+    ) &&
+    LazyToolkitContributorSandbox
+  ) {
+    return (
+      <Suspense fallback={null}>
+        <LazyToolkitContributorSandbox />
+      </Suspense>
+    );
+  }
+
   return (
     <CharacterDraftProvider>
       <AppContent />

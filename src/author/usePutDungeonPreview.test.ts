@@ -15,7 +15,10 @@ vi.mock('@/api/client', () => ({
 import { capabilitySummary, DIALECT_FIELDS } from './capabilityProbe';
 import { parseDungeon } from './dungeonYaml';
 import { SHOWCASE_YAML } from './fixtures';
-import { usePutDungeonPreview } from './usePutDungeonPreview';
+import {
+  useCreationFloorPlanPreview,
+  usePutDungeonPreview,
+} from './usePutDungeonPreview';
 
 const { doc } = parseDungeon(SHOWCASE_YAML);
 
@@ -197,6 +200,70 @@ describe('usePutDungeonPreview — live mode per-edit preview', () => {
       timeout: 2000,
     });
     expect(result.current.fieldErrors).toEqual([]);
+  });
+});
+
+describe('usePutDungeonPreview — supplied authoring client', () => {
+  it('uses the supplied client for liveness, capabilities, and live preview without touching the global client', async () => {
+    const putDungeon = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new ConnectError('bad key', Code.InvalidArgument) // liveness probe
+      )
+      .mockResolvedValue({
+        success: true,
+        fieldErrors: [],
+      } as unknown as PutDungeonResponse);
+
+    renderHook(() =>
+      usePutDungeonPreview(doc, SHOWCASE_YAML, false, { putDungeon })
+    );
+
+    await waitFor(() =>
+      expect(putDungeon).toHaveBeenCalledWith(
+        expect.objectContaining({ key: '', validateOnly: true })
+      )
+    );
+    await waitFor(
+      () =>
+        expect(
+          putDungeon.mock.calls.some(
+            ([request]) =>
+              request.key === doc.key && request.validateOnly === true
+          )
+        ).toBe(true),
+      { timeout: 2000 }
+    );
+
+    expect(
+      putDungeon.mock.calls.some(
+        ([request]) =>
+          request.key.startsWith('capprobe-') && request.validateOnly === true
+      )
+    ).toBe(true);
+    expect(hoisted.putDungeonFn).not.toHaveBeenCalled();
+  });
+
+  it('uses the supplied client for creation-mode validate-only previews without touching the global client', async () => {
+    const putDungeon = vi.fn().mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+    } as unknown as PutDungeonResponse);
+
+    renderHook(() =>
+      useCreationFloorPlanPreview(doc, SHOWCASE_YAML, 'live', null, {
+        putDungeon,
+      })
+    );
+
+    await waitFor(
+      () =>
+        expect(putDungeon).toHaveBeenCalledWith(
+          expect.objectContaining({ key: doc.key, validateOnly: true })
+        ),
+      { timeout: 2000 }
+    );
+    expect(hoisted.putDungeonFn).not.toHaveBeenCalled();
   });
 });
 

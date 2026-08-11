@@ -72,6 +72,7 @@ interface CreationConceptProps {
   onToggleHole: (col: number, row: number) => void;
   onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
   onNewCanvas: (width: number, height: number) => void;
+  allowNewCanvas: boolean;
   toast: (message: string) => void;
   /** Cell-authored semantic region editing (rpg-project#180) —
    * creation-mode-only this round. See `useRegionEditing.ts`. */
@@ -118,6 +119,8 @@ interface CreationConceptProps {
   yamlDownloadFilename: string;
   onLoadYamlFile: (text: string) => void;
   onLoadYamlFileError: (message: string) => void;
+  allowYamlFileIO: boolean;
+  showSaveResultLink: boolean;
   specCompat: SpecCompatReport;
 }
 
@@ -137,6 +140,7 @@ export function CreationConcept({
   onToggleHole,
   onSetPoint,
   onNewCanvas,
+  allowNewCanvas,
   toast,
   regionEdit,
   paletteCollapsed,
@@ -158,6 +162,8 @@ export function CreationConcept({
   yamlDownloadFilename,
   onLoadYamlFile,
   onLoadYamlFileError,
+  allowYamlFileIO,
+  showSaveResultLink,
   specCompat,
 }: CreationConceptProps) {
   const [dims, setDims] = useState(DEFAULT_CANVAS);
@@ -227,75 +233,77 @@ export function CreationConcept({
           20×30 room → draw walls → start/end → door → monster → reaper statue,
           facing this way
         </span>
-        <div
-          style={{
-            marginLeft: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 12,
-          }}
-        >
-          <label>
-            W:{' '}
-            <input
-              type="number"
-              min={4}
-              max={60}
-              value={dims.width}
-              onChange={(e) =>
-                setDims((d) => ({
-                  ...d,
-                  width: Number(e.target.value) || d.width,
-                }))
-              }
-              style={{
-                width: 48,
-                background: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 4,
-              }}
-            />
-          </label>
-          <label>
-            H:{' '}
-            <input
-              type="number"
-              min={4}
-              max={60}
-              value={dims.height}
-              onChange={(e) =>
-                setDims((d) => ({
-                  ...d,
-                  height: Number(e.target.value) || d.height,
-                }))
-              }
-              style={{
-                width: 48,
-                background: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 4,
-              }}
-            />
-          </label>
-          <button
-            onClick={() => onNewCanvas(dims.width, dims.height)}
+        {allowNewCanvas && (
+          <div
             style={{
-              background: '#c9a227',
-              color: '#14110f',
-              border: 'none',
-              borderRadius: 4,
-              padding: '4px 10px',
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
               fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
             }}
           >
-            New Canvas
-          </button>
-        </div>
+            <label>
+              W:{' '}
+              <input
+                type="number"
+                min={4}
+                max={60}
+                value={dims.width}
+                onChange={(e) =>
+                  setDims((d) => ({
+                    ...d,
+                    width: Number(e.target.value) || d.width,
+                  }))
+                }
+                style={{
+                  width: 48,
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 4,
+                }}
+              />
+            </label>
+            <label>
+              H:{' '}
+              <input
+                type="number"
+                min={4}
+                max={60}
+                value={dims.height}
+                onChange={(e) =>
+                  setDims((d) => ({
+                    ...d,
+                    height: Number(e.target.value) || d.height,
+                  }))
+                }
+                style={{
+                  width: 48,
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 4,
+                }}
+              />
+            </label>
+            <button
+              onClick={() => onNewCanvas(dims.width, dims.height)}
+              style={{
+                background: '#c9a227',
+                color: '#14110f',
+                border: 'none',
+                borderRadius: 4,
+                padding: '4px 10px',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              New Canvas
+            </button>
+          </div>
+        )}
         <div
           role="group"
           aria-label="2D or 3D board"
@@ -468,6 +476,8 @@ export function CreationConcept({
             downloadFilename={yamlDownloadFilename}
             onLoadFile={onLoadYamlFile}
             onLoadFileError={onLoadYamlFileError}
+            allowYamlFileIO={allowYamlFileIO}
+            showSaveResultLink={showSaveResultLink}
             specCompat={specCompat}
           />
         </CollapsibleSidePanel>
