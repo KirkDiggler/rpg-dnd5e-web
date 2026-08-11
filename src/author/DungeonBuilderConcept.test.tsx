@@ -228,15 +228,23 @@ describe('DungeonBuilderConcept — injected sandbox contract', () => {
     expect(screen.queryByRole('button', { name: 'Load .yaml' })).toBeNull();
     expect(screen.queryByLabelText('Load dungeon YAML file')).toBeNull();
 
-    await waitFor(() =>
-      expect(
-        (
-          screen.getByRole('button', {
-            name: /^Save/,
-          }) as HTMLButtonElement
-        ).disabled
-      ).toBe(false)
+    // The visible capability result proves the injected client completed
+    // liveness plus every concurrent per-field probe. Under the full
+    // parallel Vitest scheduler, that asynchronous prerequisite can take
+    // longer than Testing Library's one-second default. It remains a real
+    // readiness check: missing liveness/capability wiring never renders it.
+    await screen.findByText(
+      'server capabilities: accepts 17/17 dialect fields',
+      { exact: false },
+      { timeout: 3000 }
     );
+    expect(
+      (
+        screen.getByRole('button', {
+          name: /^Save/,
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
 
     await waitFor(() => expect(onSaveSucceeded).toHaveBeenCalledTimes(1));
