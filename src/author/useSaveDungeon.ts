@@ -63,22 +63,15 @@ export function useSaveDungeon(
     setFieldErrors([]);
     setErrorMessage(null);
     (async () => {
+      let response;
       try {
-        const response = await client.putDungeon(
+        response = await client.putDungeon(
           create(PutDungeonRequestSchema, {
             key,
             yaml: yamlText,
             validateOnly: false,
           })
         );
-        if (response.success) {
-          setSavedKey(key);
-          setState('saved');
-          onSaveSucceeded?.(key);
-        } else {
-          setFieldErrors(response.fieldErrors);
-          setState('invalid');
-        }
       } catch (err) {
         setErrorMessage(
           err instanceof ConnectError
@@ -86,6 +79,23 @@ export function useSaveDungeon(
             : 'PutDungeon request failed'
         );
         setState('error');
+        return;
+      }
+
+      if (response.success) {
+        setSavedKey(key);
+        setState('saved');
+        // This is a consumer notification, not part of the RPC result. A
+        // throwing (or promise-rejecting) callback must not reclassify an
+        // already-persisted save as a PutDungeon failure.
+        try {
+          void Promise.resolve(onSaveSucceeded?.(key)).catch(() => undefined);
+        } catch {
+          // A synchronous callback failure is likewise isolated from save state.
+        }
+      } else {
+        setFieldErrors(response.fieldErrors);
+        setState('invalid');
       }
     })();
   };

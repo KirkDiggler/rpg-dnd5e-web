@@ -272,6 +272,65 @@ describe('DungeonBuilderConcept — injected sandbox contract', () => {
   });
 });
 
+describe('DungeonBuilderConcept — runtime draft-persistence opt-out', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('does not autosave any text after persistence is disabled at runtime', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const { rerender } = render(
+      <DungeonBuilderConcept forceFixtures persistDraft />
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000); // consume the normal mount skip
+    });
+    setItem.mockClear();
+
+    rerender(<DungeonBuilderConcept forceFixtures persistDraft={false} />);
+    fireEvent.change(screen.getByLabelText('Dungeon YAML'), {
+      target: { value: 'version: 1\nkey: edited-while-disabled\n' },
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it('resumes normal autosave only for edits made after persistence is re-enabled', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const { rerender } = render(
+      <DungeonBuilderConcept forceFixtures persistDraft={false} />
+    );
+
+    rerender(<DungeonBuilderConcept forceFixtures persistDraft />);
+    await act(async () => {
+      vi.advanceTimersByTime(1000); // the re-enabled mount skip
+    });
+    expect(setItem).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Dungeon YAML'), {
+      target: { value: 'version: 1\nkey: edited-after-reenable\n' },
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(setItem).toHaveBeenCalledOnce();
+    expect(JSON.parse(setItem.mock.calls[0][1]).yamlText).toBe(
+      'version: 1\nkey: edited-after-reenable\n'
+    );
+  });
+});
+
 describe('DungeonBuilderConcept — the live YAML pane is genuinely two-way (tooth 3)', () => {
   beforeEach(() => {
     localStorage.clear();

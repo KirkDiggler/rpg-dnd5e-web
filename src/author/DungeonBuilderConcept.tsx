@@ -37,7 +37,13 @@
  * interactive drag actually calls) are untouched.
  */
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react';
 import { BoardCrashRecovery } from './BoardCrashRecovery';
 import { CreationConcept } from './creation/CreationConcept';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
@@ -71,7 +77,7 @@ import {
 import { buildSpecCompatReport } from './specCompat';
 import type { BoardTool } from './types';
 import { useBoardEditing } from './useBoardEditing';
-import { useDraftAutosave } from './useDraftAutosave';
+import { useDraftAutosave, type DraftAutosave } from './useDraftAutosave';
 import {
   useCreationFloorPlanPreview,
   usePutDungeonPreview,
@@ -262,6 +268,7 @@ export function DungeonBuilderConcept({
   const creationApplyDebounce = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const createAutosaveRef = useRef<DraftAutosave | null>(null);
 
   // Creation mode's own live FloorPlan preview (v0.3 wire consumption
   // unit, 2026-08-05) — same "reuse the shared serverState/capabilities,
@@ -472,15 +479,11 @@ export function DungeonBuilderConcept({
     []
   );
 
-  // Local drafts — creation mode's own autosave.
-  const createAutosave = useDraftAutosave(
-    'create',
-    persistDraft ? creationYamlText : ''
-  );
-
   const handleDiscardCreateDraft = () => {
-    if (persistDraft) discardDraft('create');
-    createAutosave.skipNextTick();
+    if (persistDraft) {
+      discardDraft('create');
+      createAutosaveRef.current?.skipNextTick();
+    }
     const fresh = parseDungeon(
       initialYaml ??
         emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
@@ -567,8 +570,16 @@ export function DungeonBuilderConcept({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creationEdit.selectedPlacement, creationCst]);
 
+  // Keep draft autosave in its own child so switching persistence off
+  // unmounts it and cancels any pending debounce before it can write.
   return (
     <div>
+      {persistDraft && (
+        <CreationDraftAutosave
+          yamlText={creationYamlText}
+          autosaveRef={createAutosaveRef}
+        />
+      )}
       {createRestoredDraftAt !== null && !createDraftBannerDismissed && (
         <DraftRestoredBanner
           savedAt={createRestoredDraftAt}
@@ -652,6 +663,25 @@ export function DungeonBuilderConcept({
       {toast && <ToastBanner message={toast} />}
     </div>
   );
+}
+
+function CreationDraftAutosave({
+  yamlText,
+  autosaveRef,
+}: {
+  yamlText: string;
+  autosaveRef: MutableRefObject<DraftAutosave | null>;
+}) {
+  const autosave = useDraftAutosave('create', yamlText);
+
+  useEffect(() => {
+    autosaveRef.current = autosave;
+    return () => {
+      autosaveRef.current = null;
+    };
+  }, [autosave, autosaveRef]);
+
+  return null;
 }
 
 function ToastBanner({ message }: { message: string }) {

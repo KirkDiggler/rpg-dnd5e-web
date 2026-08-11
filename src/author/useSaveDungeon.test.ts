@@ -168,6 +168,54 @@ describe('useSaveDungeon', () => {
     expect(onSaveSucceeded).toHaveBeenCalledWith('toolkit-contributor-sandbox');
   });
 
+  it('keeps a successful save saved when its consumer callback throws', async () => {
+    const putDungeon = vi.fn().mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+    } as unknown as PutDungeonResponse);
+    const onSaveSucceeded = vi.fn(() => {
+      throw new Error('consumer callback failed');
+    });
+    const { result } = renderHook(() =>
+      useSaveDungeon({ putDungeon }, onSaveSucceeded)
+    );
+
+    act(() => {
+      result.current.save('toolkit-contributor-sandbox', 'valid yaml');
+    });
+
+    await waitFor(() => expect(result.current.state).toBe('saved'));
+    expect(result.current.savedKey).toBe('toolkit-contributor-sandbox');
+    expect(result.current.errorMessage).toBeNull();
+    expect(onSaveSucceeded).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a successful save saved when its consumer callback returns a rejecting Promise', async () => {
+    const putDungeon = vi.fn().mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+    } as unknown as PutDungeonResponse);
+    const onSaveSucceeded = vi.fn(() =>
+      Promise.reject(new Error('consumer callback rejected'))
+    );
+    const { result } = renderHook(() =>
+      useSaveDungeon({ putDungeon }, onSaveSucceeded)
+    );
+
+    act(() => {
+      result.current.save('toolkit-contributor-sandbox', 'valid yaml');
+    });
+
+    await waitFor(() => expect(result.current.state).toBe('saved'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.state).toBe('saved');
+    expect(result.current.savedKey).toBe('toolkit-contributor-sandbox');
+    expect(result.current.errorMessage).toBeNull();
+    expect(onSaveSucceeded).toHaveBeenCalledTimes(1);
+  });
+
   it('does not call the supplied success callback for a validation rejection', async () => {
     const putDungeon = vi.fn().mockResolvedValue({
       success: false,
