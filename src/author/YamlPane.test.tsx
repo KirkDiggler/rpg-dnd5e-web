@@ -13,6 +13,7 @@
  * vitest config has no such setup (`vite.config.ts`'s `test` block), so
  * assertions use plain DOM properties.
  */
+import type { ValidationError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/common_pb';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { DialectField, ServerCapabilities } from './capabilityProbe';
@@ -21,6 +22,7 @@ import {
   CapabilitiesLine,
   CompileBadgeStrip,
   SaveAndPlayButton,
+  SaveResultPanel,
 } from './YamlPane';
 
 function allCapabilities(accepted: DialectField[]): ServerCapabilities {
@@ -183,6 +185,58 @@ describe('CompileBadgeStrip — dual compiling/dropped halves', () => {
     expect(container.textContent).toContain(
       'Uses: 1 hole — not yet accepted by this server'
     );
+  });
+});
+
+describe('SaveResultPanel — optional generic lobby link', () => {
+  it('hides only the generic lobby anchor while retaining saved feedback', () => {
+    render(
+      <SaveResultPanel
+        saveState="saved"
+        savedKey="toolkit-contributor-sandbox"
+        saveFieldErrors={[]}
+        saveErrorMessage={null}
+        showLobbyLink={false}
+      />
+    );
+
+    expect(
+      screen.getByText(/Saved as "toolkit-contributor-sandbox"/)
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'http://localhost:3001/' })
+    ).toBeNull();
+  });
+
+  it('retains validation feedback while the generic lobby anchor is hidden', () => {
+    render(
+      <SaveResultPanel
+        saveState="invalid"
+        savedKey={null}
+        saveFieldErrors={[
+          { field: '', message: 'boss required' } as unknown as ValidationError,
+        ]}
+        saveErrorMessage={null}
+        showLobbyLink={false}
+      />
+    );
+
+    expect(screen.getByText(/Save rejected/)).toBeTruthy();
+    expect(screen.getByText('boss required')).toBeTruthy();
+  });
+
+  it('retains transport feedback while the generic lobby anchor is hidden', () => {
+    render(
+      <SaveResultPanel
+        saveState="error"
+        savedKey={null}
+        saveFieldErrors={[]}
+        saveErrorMessage="Failed to fetch"
+        showLobbyLink={false}
+      />
+    );
+
+    expect(screen.getByText('Save failed: Failed to fetch')).toBeTruthy();
   });
 });
 

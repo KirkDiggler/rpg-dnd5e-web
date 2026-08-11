@@ -26,6 +26,12 @@ import { useState } from 'react';
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'invalid' | 'error';
 
+/** The only authoring RPC this slice needs. Kept structural so an isolated
+ * caller can supply a scoped unary client without pulling in global auth. */
+export interface AuthoringUnaryClient {
+  putDungeon: typeof authoringClient.putDungeon;
+}
+
 export interface UseSaveDungeonResult {
   state: SaveState;
   /** Set once a save succeeds — the request's own `key`, not anything
@@ -43,7 +49,10 @@ export interface UseSaveDungeonResult {
   save: (key: string, yamlText: string) => void;
 }
 
-export function useSaveDungeon(): UseSaveDungeonResult {
+export function useSaveDungeon(
+  client: AuthoringUnaryClient = authoringClient,
+  onSaveSucceeded?: (key: string) => void
+): UseSaveDungeonResult {
   const [state, setState] = useState<SaveState>('idle');
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ValidationError[]>([]);
@@ -55,7 +64,7 @@ export function useSaveDungeon(): UseSaveDungeonResult {
     setErrorMessage(null);
     (async () => {
       try {
-        const response = await authoringClient.putDungeon(
+        const response = await client.putDungeon(
           create(PutDungeonRequestSchema, {
             key,
             yaml: yamlText,
@@ -65,6 +74,7 @@ export function useSaveDungeon(): UseSaveDungeonResult {
         if (response.success) {
           setSavedKey(key);
           setState('saved');
+          onSaveSucceeded?.(key);
         } else {
           setFieldErrors(response.fieldErrors);
           setState('invalid');

@@ -17,9 +17,27 @@
  * broken text intact and editable, never a thrown render exception and
  * never a silently-discarded draft.
  */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { Code, ConnectError } from '@connectrpc/connect';
+import type { PutDungeonResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TOOLKIT_SANDBOX_YAML } from '../toolkit-contributor-sandbox/constants';
 import { DEFAULT_CANVAS, emptyCanvasYaml } from './creation/emptyCanvasDoc';
+
+const hoisted = vi.hoisted(() => ({
+  globalPutDungeon: vi.fn(),
+}));
+
+vi.mock('@/api/client', () => ({
+  authoringClient: { putDungeon: hoisted.globalPutDungeon },
+}));
+
 import { DungeonBuilderConcept } from './DungeonBuilderConcept';
 
 /** `DungeonBuilderConcept.tsx`'s own `APPLY_DEBOUNCE_MS` (not exported —
@@ -156,6 +174,101 @@ describe('DungeonBuilderConcept — crash-proof draft restore (Kirk incident reg
     expect(screen.queryByLabelText('Dungeon YAML (recovery)')).toBeNull();
     expect(screen.getByLabelText('Dungeon YAML')).toBeTruthy();
     expect(screen.getByText(/Draft restored/)).toBeTruthy();
+  });
+});
+
+describe('DungeonBuilderConcept — injected sandbox contract', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    hoisted.globalPutDungeon.mockReset();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('uses only its injected client and literal template, disables draft persistence and sandbox-hidden controls, and calls back after a real save', async () => {
+    const editedDraft = TOOLKIT_SANDBOX_YAML.replace(
+      'Toolkit Contributor Sandbox',
+      'Local Draft Must Not Restore'
+    );
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ yamlText: editedDraft, savedAt: Date.now() })
+    );
+    const getItem = vi.spyOn(Storage.prototype, 'getItem');
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
+    const putDungeon = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new ConnectError('bad key', Code.InvalidArgument) // liveness probe
+      )
+      .mockResolvedValue({
+        success: true,
+        fieldErrors: [],
+      } as unknown as PutDungeonResponse);
+    const onSaveSucceeded = vi.fn();
+
+    const props = {
+      initialYaml: TOOLKIT_SANDBOX_YAML,
+      authoringClient: { putDungeon },
+      persistDraft: false,
+      allowNewCanvas: false,
+      allowYamlFileIO: false,
+      onSaveSucceeded,
+      showSaveResultLink: false,
+    };
+    const { unmount } = render(<DungeonBuilderConcept {...props} />);
+
+    const pane = screen.getByLabelText('Dungeon YAML') as HTMLTextAreaElement;
+    expect(pane.value).toBe(TOOLKIT_SANDBOX_YAML);
+    expect(screen.queryByRole('button', { name: 'New Canvas' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Download .yaml' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Load .yaml' })).toBeNull();
+    expect(screen.queryByLabelText('Load dungeon YAML file')).toBeNull();
+
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole('button', {
+            name: /^Save/,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false)
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Save/ }));
+
+    await waitFor(() => expect(onSaveSucceeded).toHaveBeenCalledTimes(1));
+    expect(onSaveSucceeded).toHaveBeenCalledWith('toolkit-contributor-sandbox');
+    expect(
+      putDungeon.mock.calls.some(
+        ([request]) =>
+          request.key === 'toolkit-contributor-sandbox' &&
+          request.validateOnly === false
+      )
+    ).toBe(true);
+    expect(
+      screen.getByText(/Saved as "toolkit-contributor-sandbox"/)
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'http://localhost:3001/' })
+    ).toBeNull();
+    expect(hoisted.globalPutDungeon).not.toHaveBeenCalled();
+
+    fireEvent.change(pane, {
+      target: { value: editedDraft },
+    });
+    unmount();
+    render(<DungeonBuilderConcept {...props} />);
+
+    expect(
+      (screen.getByLabelText('Dungeon YAML') as HTMLTextAreaElement).value
+    ).toBe(TOOLKIT_SANDBOX_YAML);
+    expect(getItem).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    expect(hoisted.globalPutDungeon).not.toHaveBeenCalled();
   });
 });
 

@@ -138,4 +138,68 @@ describe('useSaveDungeon', () => {
     expect(result.current.errorMessage).toBeNull();
     expect(result.current.fieldErrors).toEqual([]);
   });
+
+  it('uses a supplied client for an explicit non-validate save and calls its success callback with the exact request key once', async () => {
+    const putDungeon = vi.fn().mockResolvedValue({
+      success: true,
+      fieldErrors: [],
+    } as unknown as PutDungeonResponse);
+    const onSaveSucceeded = vi.fn();
+    const { result } = renderHook(() =>
+      useSaveDungeon({ putDungeon }, onSaveSucceeded)
+    );
+
+    act(() => {
+      result.current.save(
+        'toolkit-contributor-sandbox',
+        'version: 1\nkey: toolkit-contributor-sandbox\n'
+      );
+    });
+
+    await waitFor(() => expect(result.current.state).toBe('saved'));
+    expect(putDungeon).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'toolkit-contributor-sandbox',
+        validateOnly: false,
+      })
+    );
+    expect(hoisted.putDungeonFn).not.toHaveBeenCalled();
+    expect(onSaveSucceeded).toHaveBeenCalledTimes(1);
+    expect(onSaveSucceeded).toHaveBeenCalledWith('toolkit-contributor-sandbox');
+  });
+
+  it('does not call the supplied success callback for a validation rejection', async () => {
+    const putDungeon = vi.fn().mockResolvedValue({
+      success: false,
+      fieldErrors: [{ field: '', message: 'invalid dungeon' }],
+    } as unknown as PutDungeonResponse);
+    const onSaveSucceeded = vi.fn();
+    const { result } = renderHook(() =>
+      useSaveDungeon({ putDungeon }, onSaveSucceeded)
+    );
+
+    act(() => {
+      result.current.save('toolkit-contributor-sandbox', 'invalid');
+    });
+
+    await waitFor(() => expect(result.current.state).toBe('invalid'));
+    expect(onSaveSucceeded).not.toHaveBeenCalled();
+  });
+
+  it('does not call the supplied success callback when the save throws', async () => {
+    const putDungeon = vi
+      .fn()
+      .mockRejectedValue(new TypeError('Failed to fetch'));
+    const onSaveSucceeded = vi.fn();
+    const { result } = renderHook(() =>
+      useSaveDungeon({ putDungeon }, onSaveSucceeded)
+    );
+
+    act(() => {
+      result.current.save('toolkit-contributor-sandbox', 'invalid');
+    });
+
+    await waitFor(() => expect(result.current.state).toBe('error'));
+    expect(onSaveSucceeded).not.toHaveBeenCalled();
+  });
 });

@@ -76,7 +76,7 @@ import {
   useCreationFloorPlanPreview,
   usePutDungeonPreview,
 } from './usePutDungeonPreview';
-import { useSaveDungeon } from './useSaveDungeon';
+import { useSaveDungeon, type AuthoringUnaryClient } from './useSaveDungeon';
 
 const APPLY_DEBOUNCE_MS = 700;
 
@@ -105,10 +105,24 @@ export interface DungeonBuilderConceptProps {
    * real `/author` mount (`AuthorView.tsx`) leaves it unset and gets
    * today's normal live-probing behavior, unchanged. */
   forceFixtures?: boolean;
+  initialYaml?: string;
+  authoringClient?: AuthoringUnaryClient;
+  persistDraft?: boolean;
+  allowNewCanvas?: boolean;
+  allowYamlFileIO?: boolean;
+  onSaveSucceeded?: (key: string) => void;
+  showSaveResultLink?: boolean;
 }
 
 export function DungeonBuilderConcept({
   forceFixtures = false,
+  initialYaml,
+  authoringClient,
+  persistDraft = true,
+  allowNewCanvas = true,
+  allowYamlFileIO = true,
+  onSaveSucceeded,
+  showSaveResultLink = true,
 }: DungeonBuilderConceptProps = {}) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -133,7 +147,12 @@ export function DungeonBuilderConcept({
   // no-document case — its per-edit live-preview effect no-ops entirely,
   // leaving only the mount-time reachability probe and capability suite
   // live, which is exactly what this component still needs from it.
-  const preview = usePutDungeonPreview(null, '', forceFixtures);
+  const preview = usePutDungeonPreview(
+    null,
+    '',
+    forceFixtures,
+    authoringClient
+  );
 
   const flashToast = (message: string) => {
     setToast(message);
@@ -182,11 +201,10 @@ export function DungeonBuilderConcept({
       crash: creationInitialCrash,
     },
   ] = useState(() => {
-    const freshCreationSeed = emptyCanvasYaml(
-      DEFAULT_CANVAS.width,
-      DEFAULT_CANVAS.height
-    );
-    const draft = loadDraft('create');
+    const freshCreationSeed =
+      initialYaml ??
+      emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height);
+    const draft = persistDraft ? loadDraft('create') : null;
     if (draft) {
       if (
         draftDiffersFromFreshSeed(
@@ -212,7 +230,7 @@ export function DungeonBuilderConcept({
             } as CreationCrash | null,
           };
         }
-      } else {
+      } else if (persistDraft) {
         discardDraft('create');
       }
     }
@@ -232,7 +250,9 @@ export function DungeonBuilderConcept({
     creationInitial.doc
   );
   const [creationYamlText, setCreationYamlText] = useState(() =>
-    serializeDungeon(creationInitial.cst)
+    initialYaml !== undefined && !persistDraft
+      ? initialYaml
+      : serializeDungeon(creationInitial.cst)
   );
   const [creationSelectedTool, setCreationSelectedTool] =
     useState<BoardTool | null>('wall');
@@ -258,7 +278,8 @@ export function DungeonBuilderConcept({
     creationDoc,
     creationYamlText,
     preview.serverState,
-    preview.capabilities
+    preview.capabilities,
+    authoringClient
   );
 
   // Creation mode's own Save & Play (capability-probed graduation unit).
@@ -266,7 +287,7 @@ export function DungeonBuilderConcept({
   // which document is being viewed, so probing once (on the shared
   // `usePutDungeonPreview` instance) is correct for creation mode's own
   // strip too — no second probe needed.
-  const creationSave = useSaveDungeon();
+  const creationSave = useSaveDungeon(authoringClient, onSaveSucceeded);
   const creationV1Subset = useMemo(() => {
     try {
       return stripToV1Subset(
@@ -452,17 +473,25 @@ export function DungeonBuilderConcept({
   );
 
   // Local drafts — creation mode's own autosave.
-  const createAutosave = useDraftAutosave('create', creationYamlText);
+  const createAutosave = useDraftAutosave(
+    'create',
+    persistDraft ? creationYamlText : ''
+  );
 
   const handleDiscardCreateDraft = () => {
-    discardDraft('create');
+    if (persistDraft) discardDraft('create');
     createAutosave.skipNextTick();
     const fresh = parseDungeon(
-      emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
+      initialYaml ??
+        emptyCanvasYaml(DEFAULT_CANVAS.width, DEFAULT_CANVAS.height)
     );
     setCreationCst(fresh.cst);
     setCreationDoc(fresh.doc);
-    setCreationYamlText(serializeDungeon(fresh.cst));
+    setCreationYamlText(
+      initialYaml !== undefined && !persistDraft
+        ? initialYaml
+        : serializeDungeon(fresh.cst)
+    );
     setCreationParseError(null);
     creationEdit.setSelectedPlacement(null);
     setCreateDraftBannerDismissed(true);
@@ -592,6 +621,7 @@ export function DungeonBuilderConcept({
             onToggleHole={handleCreationToggleHole}
             onSetPoint={handleCreationSetPoint}
             onNewCanvas={handleNewCanvas}
+            allowNewCanvas={allowNewCanvas}
             toast={flashToast}
             regionEdit={regionEdit}
             paletteCollapsed={createPaletteCollapsed}
@@ -613,6 +643,8 @@ export function DungeonBuilderConcept({
             yamlDownloadFilename={creationDownloadFilename}
             onLoadYamlFile={handleLoadCreationYamlFile}
             onLoadYamlFileError={handleLoadCreationYamlFileError}
+            allowYamlFileIO={allowYamlFileIO}
+            showSaveResultLink={showSaveResultLink}
             specCompat={creationSpecCompat}
           />
         </ErrorBoundary>
