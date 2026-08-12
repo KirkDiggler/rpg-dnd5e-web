@@ -1,0 +1,47 @@
+import type { Material } from 'three';
+import type { AttackDieMaterialMode } from './attackDieContract';
+import { normalizeSelectorName } from './attackDieContract';
+export function resolveAttackDieMaterials(
+  materials: Material[],
+  bodyName: string,
+  numeralName: string
+) {
+  const body = materials.filter(
+    (m) => normalizeSelectorName(m.name) === bodyName
+  );
+  const numeral = materials.filter(
+    (m) => normalizeSelectorName(m.name) === numeralName
+  );
+  if (body.length !== 1 || numeral.length !== 1 || body[0] === numeral[0])
+    throw Error('ambiguous attack die material selectors');
+  return { body: body[0], numeral: numeral[0] };
+}
+export function patchAttackDieMaterials(
+  materials: Material[],
+  mode: AttackDieMaterialMode,
+  reducedMotion: boolean
+) {
+  const { body, numeral } = resolveAttackDieMaterials(
+    materials,
+    'D20_Lightning_Material',
+    'Paint_Material'
+  );
+  if (mode === 'raw') return { body, numeral, shaderTime: 0 };
+  const patched = body.clone();
+  patched.onBeforeCompile = (shader) => {
+    shader.uniforms.attackDieTime = {
+      value: reducedMotion ? 0 : performance.now() / 1000,
+    };
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(0.05, 0.12, 0.25) * (0.65 + 0.35 * sin(attackDieTime));'
+    );
+  };
+  patched.customProgramCacheKey = () =>
+    `attack-die-magical-v1-${reducedMotion ? 'static' : 'animated'}`;
+  return {
+    body: patched,
+    numeral,
+    shaderTime: reducedMotion ? 0 : performance.now() / 1000,
+  };
+}

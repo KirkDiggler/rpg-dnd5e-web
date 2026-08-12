@@ -1503,3 +1503,60 @@
 .beat-stage--reduced-motion .beat-verdict--nat1 {
   animation: none;
 }
+
+/* Development-only staged attack die concept. */
+.attack-die-concept {
+  display: grid;
+  gap: 1.25rem;
+  color: var(--text-primary);
+}
+.attack-die-concept__eyebrow {
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.attack-die-concept__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.attack-die-concept__tabs button,
+.attack-die-concept__stage button {
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 0.65rem 1rem;
+}
+.attack-die-concept__tabs button[aria-selected='true'] {
+  border-color: var(--accent-primary);
+  box-shadow: inset 0 -2px var(--accent-primary);
+}
+.attack-die-concept__stage {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(18rem, 1.5fr);
+  gap: 1rem;
+  min-height: 24rem;
+  padding: 1rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0.75rem;
+  background: var(--bg-secondary);
+}
+.attack-die-3d {
+  position: relative;
+  min-height: 18rem;
+}
+.attack-die-3d__fallback,
+.attack-die-3d__canvas {
+  position: absolute !important;
+  inset: 0;
+}
+.attack-die-3d__fallback--covered {
+  visibility: hidden;
+}
+@media (max-width: 700px) {
+  .attack-die-concept__stage {
+    grid-template-columns: 1fr;
+  }
+}
