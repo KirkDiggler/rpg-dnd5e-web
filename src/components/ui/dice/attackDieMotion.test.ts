@@ -37,6 +37,22 @@ describe('attack die motion', () => {
       }).quaternion
     ).toEqual(target);
   });
+  it('produces deterministic decorative tumble before final convergence', () => {
+    const start = stepAttackDieMotion({
+      elapsedMs: 100,
+      reducedMotion: false,
+      current: [0, 0, 0, 1],
+      target,
+    });
+    const later = stepAttackDieMotion({
+      elapsedMs: 700,
+      reducedMotion: false,
+      current: start.quaternion,
+      target,
+    });
+    expect(later.quaternion).not.toEqual(start.quaternion);
+    expect(later.observeNow).toBe(false);
+  });
   it('fails rather than observing when schedule expires off target', () =>
     expect(
       stepAttackDieMotion({

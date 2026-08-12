@@ -75,13 +75,21 @@ export function stepAttackDieMotion({
       exactTargetHeld: false,
       failed: true,
     };
-  if (elapsedMs < 1200)
+  if (elapsedMs < 1200) {
+    const angle = elapsedMs * 0.004;
+    const decorative: QuaternionTuple = normalized([
+      Math.sin(angle * 0.71) * 0.55,
+      Math.sin(angle * 1.13 + 0.7) * 0.45,
+      Math.sin(angle * 0.83 + 1.4) * 0.5,
+      Math.cos(angle),
+    ]);
     return {
-      quaternion: current,
+      quaternion: decorative,
       observeNow: false,
       exactTargetHeld: false,
       failed: false,
     };
+  }
   return {
     quaternion: slerp(current, target, Math.min(1, (elapsedMs - 1200) / 700)),
     observeNow: false,

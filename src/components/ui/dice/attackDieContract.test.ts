@@ -146,6 +146,78 @@ describe('attack die contract', () => {
       ).ok
     ).toBe(false);
   });
+  it.each([
+    [
+      'asset',
+      (s: ReturnType<typeof validSidecar>) => ({
+        ...s,
+        asset: { ...s.asset, extra: true },
+      }),
+    ],
+    [
+      'coordinates',
+      (s: ReturnType<typeof validSidecar>) => ({
+        ...s,
+        coordinates: { ...s.coordinates, upAxis: '-Y' },
+      }),
+    ],
+    [
+      'selectors',
+      (s: ReturnType<typeof validSidecar>) => ({
+        ...s,
+        selectors: { ...s.selectors, materialSlots: 3 },
+      }),
+    ],
+    [
+      'tuple',
+      (s: ReturnType<typeof validSidecar>) => ({
+        ...s,
+        tuple: { ...s.tuple, extra: true },
+      }),
+    ],
+    [
+      'camera',
+      (s: ReturnType<typeof validSidecar>) => ({
+        ...s,
+        tuple: { ...s.tuple, topCamera: { ...s.tuple.topCamera, fov: 0 } },
+      }),
+    ],
+    [
+      'vector',
+      (s: ReturnType<typeof validSidecar>) => ({
+        ...s,
+        tuple: { ...s.tuple, viewportCss: [400, 0] },
+      }),
+    ],
+    [
+      'hash',
+      (s: ReturnType<typeof validSidecar>) => ({
+        ...s,
+        asset: { ...s.asset, sha256: 'B'.repeat(64) },
+      }),
+    ],
+  ])('strictly rejects invalid nested %s data', async (_name, mutate) => {
+    expect(
+      (
+        await validateAttackDieSidecar(mutate(validSidecar()), {
+          verifyDigest: false,
+        })
+      ).ok
+    ).toBe(false);
+  });
+  it('deeply freezes every trusted nested value', async () => {
+    const checked = await validateAttackDieSidecar(validSidecar(), {
+      verifyDigest: false,
+    });
+    expect(checked.ok).toBe(true);
+    if (!checked.ok) return;
+    expect(Object.isFrozen(checked.sidecar)).toBe(true);
+    expect(Object.isFrozen(checked.sidecar.asset)).toBe(true);
+    expect(Object.isFrozen(checked.sidecar.faces[0].quaternion)).toBe(true);
+    expect(Object.isFrozen(checked.sidecar.tuple.topCamera.position)).toBe(
+      true
+    );
+  });
   it('normalizes only a Blender numeric suffix', () => {
     expect(normalizeSelectorName('Paint_Material.010')).toBe('Paint_Material');
     expect(normalizeSelectorName('Paint_Material.extra')).toBe(

@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { AttackDie3D } from '../../components/ui/dice/AttackDie3D';
 import { DiceTray } from '../../components/ui/dice/DiceTray';
 const stages = ['Appearance', 'Calibrate', 'Roll', 'Verify'] as const;
 export function AttackDie3DConcept() {
   const [stage, setStage] = useState(0);
   const [token, setToken] = useState(1);
+  const tabs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectTab = (index: number) => {
+    setStage(index);
+    tabs.current[index]?.focus();
+  };
   return (
     <section className="attack-die-concept">
       <header>
@@ -25,14 +30,18 @@ export function AttackDie3DConcept() {
         {stages.map((name, index) => (
           <button
             key={name}
+            ref={(element) => {
+              tabs.current[index] = element;
+            }}
             role="tab"
             aria-selected={stage === index}
             tabIndex={stage === index ? 0 : -1}
-            onClick={() => setStage(index)}
+            onClick={() => selectTab(index)}
             onKeyDown={(e) => {
-              if (e.key === 'ArrowRight') setStage((index + 1) % stages.length);
+              if (e.key === 'ArrowRight')
+                selectTab((index + 1) % stages.length);
               if (e.key === 'ArrowLeft')
-                setStage((index + stages.length - 1) % stages.length);
+                selectTab((index + stages.length - 1) % stages.length);
             }}
           >
             {name}

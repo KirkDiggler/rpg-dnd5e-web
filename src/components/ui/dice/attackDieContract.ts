@@ -63,22 +63,38 @@ export interface AttackDieRuntimeSidecar {
     performanceSha256: string;
   } | null;
 }
-const hex = (x: unknown) => typeof x === 'string' && /^[a-f0-9]{64}$/.test(x);
-const plain = (x: unknown): x is Record<string, unknown> =>
-  !!x && typeof x === 'object' && !Array.isArray(x);
-const exact = (x: Record<string, unknown>, keys: string[]) =>
-  Object.keys(x).length === keys.length && keys.every((k) => k in x);
-const stable = (x: unknown): unknown =>
-  Array.isArray(x)
-    ? x.map(stable)
-    : plain(x)
+const plain = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === 'object' && !Array.isArray(v);
+const exact = (v: Record<string, unknown>, keys: readonly string[]) =>
+  Object.keys(v).length === keys.length && keys.every((k) => k in v);
+const finite = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v);
+const positive = (v: unknown) => finite(v) && v > 0;
+const text = (v: unknown) => typeof v === 'string' && v.length > 0;
+const hash = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
+const commit = (v: unknown) =>
+  typeof v === 'string' && /^[0-9a-f]{40}$/.test(v);
+const vector = (
+  v: unknown,
+  length: number,
+  positiveOnly = false
+): v is number[] =>
+  Array.isArray(v) &&
+  v.length === length &&
+  v.every(positiveOnly ? positive : finite);
+const quaternion = (v: unknown) =>
+  vector(v, 4) && Math.abs(Math.hypot(...v) - 1) <= 1e-6;
+const stable = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(stable)
+    : plain(v)
       ? Object.fromEntries(
-          Object.keys(x)
+          Object.keys(v)
             .sort()
-            .map((k) => [k, stable(x[k])])
+            .map((k) => [k, stable(v[k])])
         )
-      : x;
-export function canonicalCoreJson(sidecar: Record<string, unknown>): string {
+      : v;
+export function canonicalCoreJson(sidecar: Record<string, unknown>) {
   const tuple = { ...(sidecar.tuple as Record<string, unknown>) };
   delete tuple.contractCoreSha256;
   return JSON.stringify(
@@ -102,6 +118,117 @@ export async function sha256Hex(bytes: BufferSource | string) {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', data))]
     .map((x) => x.toString(16).padStart(2, '0'))
     .join('');
+}
+function validCamera(v: unknown): v is CameraContract {
+  return (
+    plain(v) &&
+    exact(v, ['type', 'fov', 'near', 'far', 'position', 'target', 'up']) &&
+    v.type === 'perspective' &&
+    positive(v.fov) &&
+    Number(v.fov) < 180 &&
+    positive(v.near) &&
+    positive(v.far) &&
+    Number(v.far) > Number(v.near) &&
+    vector(v.position, 3) &&
+    vector(v.target, 3) &&
+    vector(v.up, 3) &&
+    Math.hypot(...v.up) > 0
+  );
+}
+function deepFreeze<T>(v: T): T {
+  if (v && typeof v === 'object' && !Object.isFrozen(v)) {
+    for (const child of Object.values(v)) deepFreeze(child);
+    Object.freeze(v);
+  }
+  return v;
+}
+function validateNested(v: Record<string, unknown>) {
+  if (
+    !plain(v.asset) ||
+    !exact(v.asset, ['url', 'sha256']) ||
+    v.asset.url !== '/models/synty/props/SM_Prop_D20_Lightning_01.glb' ||
+    !hash(v.asset.sha256)
+  )
+    throw Error('asset');
+  if (
+    !plain(v.coordinates) ||
+    !exact(v.coordinates, [
+      'quaternionOrder',
+      'handedness',
+      'upAxis',
+      'rootCorrection',
+      'normalizationEpsilon',
+    ]) ||
+    v.coordinates.quaternionOrder !== 'xyzw' ||
+    v.coordinates.handedness !== 'right' ||
+    v.coordinates.upAxis !== '+Y' ||
+    v.coordinates.normalizationEpsilon !== 0.000001 ||
+    !quaternion(v.coordinates.rootCorrection)
+  )
+    throw Error('coordinates');
+  if (
+    !plain(v.selectors) ||
+    !exact(v.selectors, [
+      'blenderSuffixPattern',
+      'node',
+      'mesh',
+      'bodyMaterial',
+      'numeralMaterial',
+      'materialSlots',
+    ]) ||
+    v.selectors.blenderSuffixPattern !== '\\.\\d{3}$' ||
+    v.selectors.materialSlots !== 2 ||
+    !['node', 'mesh', 'bodyMaterial', 'numeralMaterial'].every((k) =>
+      text((v.selectors as Record<string, unknown>)[k])
+    )
+  )
+    throw Error('selectors');
+  const t = v.tuple;
+  if (
+    !plain(t) ||
+    !exact(t, [
+      'webCommit',
+      'webBuildSha256',
+      'glbSha256',
+      'contractCoreSha256',
+      'selectorRootRevision',
+      'topCamera',
+      'threeQuarterCamera',
+      'materialMode',
+      'shaderRevision',
+      'lightingRevision',
+      'environmentRevision',
+      'exposure',
+      'toneMapping',
+      'outputColorSpace',
+      'dieScale',
+      'viewportCss',
+      'outputPixels',
+      'devicePixelRatio',
+      'toleranceDegrees',
+    ]) ||
+    !commit(t.webCommit) ||
+    !hash(t.webBuildSha256) ||
+    !hash(t.glbSha256) ||
+    !hash(t.contractCoreSha256) ||
+    t.glbSha256 !== v.asset.sha256 ||
+    !text(t.selectorRootRevision) ||
+    !validCamera(t.topCamera) ||
+    !validCamera(t.threeQuarterCamera) ||
+    !['raw', 'magical'].includes(String(t.materialMode)) ||
+    !['shaderRevision', 'lightingRevision', 'environmentRevision'].every((k) =>
+      text(t[k])
+    ) ||
+    !positive(t.exposure) ||
+    t.toneMapping !== 'ACESFilmic' ||
+    t.outputColorSpace !== 'sRGB' ||
+    !positive(t.dieScale) ||
+    !vector(t.viewportCss, 2, true) ||
+    !vector(t.outputPixels, 2, true) ||
+    !positive(t.devicePixelRatio) ||
+    t.toleranceDegrees !== 0.25
+  )
+    throw Error('tuple');
 }
 export async function validateAttackDieSidecar(
   value: unknown,
@@ -129,29 +256,29 @@ export async function validateAttackDieSidecar(
     if (
       value.schemaVersion !== 1 ||
       value.kind !== 'attack-die-runtime-contract' ||
-      !['candidate', 'verified'].includes(String(value.state))
+      !['candidate', 'verified'].includes(String(value.state)) ||
+      !hash(value.contractCoreSha256)
     )
       throw Error('identity');
+    validateNested(value);
     if (!Array.isArray(value.faces) || value.faces.length !== 20)
       throw Error('faces');
     const seen = new Set<number>();
-    for (const f of value.faces) {
+    for (const face of value.faces) {
       if (
-        !plain(f) ||
-        !exact(f, ['result', 'quaternion']) ||
-        !Number.isInteger(f.result) ||
-        Number(f.result) < 1 ||
-        Number(f.result) > 20 ||
-        seen.has(Number(f.result)) ||
-        !Array.isArray(f.quaternion) ||
-        f.quaternion.length !== 4 ||
-        !f.quaternion.every(Number.isFinite)
+        !plain(face) ||
+        !exact(face, ['result', 'quaternion']) ||
+        !Number.isInteger(face.result) ||
+        Number(face.result) < 1 ||
+        Number(face.result) > 20 ||
+        seen.has(Number(face.result)) ||
+        !quaternion(face.quaternion)
       )
         throw Error('face');
-      seen.add(Number(f.result));
-      const n = Math.hypot(...(f.quaternion as number[]));
-      if (!n || Math.abs(n - 1) > 1e-6) throw Error('quaternion');
+      seen.add(Number(face.result));
     }
+    if (value.state === 'candidate' && value.evidence !== null)
+      throw Error('evidence');
     if (
       value.state === 'verified' &&
       (!plain(value.evidence) ||
@@ -160,15 +287,23 @@ export async function validateAttackDieSidecar(
           'humanReviewSha256',
           'performanceSha256',
         ]) ||
-        !Object.values(value.evidence).every(hex))
+        !Object.values(value.evidence).every(hash))
     )
       throw Error('evidence');
+    if (
+      (value.tuple as Record<string, unknown>).contractCoreSha256 !==
+      value.contractCoreSha256
+    )
+      throw Error('tuple digest');
     if (
       options.verifyDigest !== false &&
       (await sha256Hex(canonicalCoreJson(value))) !== value.contractCoreSha256
     )
       throw Error('digest');
-    return { ok: true, sidecar: value as unknown as AttackDieRuntimeSidecar };
+    return {
+      ok: true,
+      sidecar: deepFreeze(value as unknown as AttackDieRuntimeSidecar),
+    };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : 'invalid' };
   }

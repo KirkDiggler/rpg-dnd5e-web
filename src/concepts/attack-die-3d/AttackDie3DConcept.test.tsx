@@ -14,11 +14,9 @@ describe('AttackDie3D concept shell', () => {
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Appearance' }), {
       key: 'ArrowRight',
     });
-    expect(
-      screen
-        .getByRole('tab', { name: 'Calibrate' })
-        .getAttribute('aria-selected')
-    ).toBe('true');
+    const calibrate = screen.getByRole('tab', { name: 'Calibrate' });
+    expect(calibrate.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(calibrate);
     expect(screen.getByTestId('attack-die')).toBeTruthy();
     expect(screen.getByTestId('dice-tray')).toBeTruthy();
   });

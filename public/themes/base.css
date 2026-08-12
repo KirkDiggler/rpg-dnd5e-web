@@ -1552,7 +1552,8 @@
   position: absolute !important;
   inset: 0;
 }
-.attack-die-3d__fallback--covered {
+.attack-die-3d__fallback--covered .dice-tray__die,
+.attack-die-3d__fallback-visual--covered {
   visibility: hidden;
 }
 @media (max-width: 700px) {

@@ -10,15 +10,16 @@ export interface AttackDieRuntimeSnapshot {
   failureReason?: string;
 }
 const GLB_URL = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
-const SIDECAR_URL =
-  '/models/synty/props/SM_Prop_D20_Lightning_01.attack-die.json';
+const SIDECAR_URL = '/models/synty/dice/d20-lightning/attack-die-contract.json';
 let snapshot: AttackDieRuntimeSnapshot = { status: 'idle' };
 let owner: Promise<void> | undefined;
 let cachedScene: Object3D | undefined;
 export function getAttackDieRuntimeSnapshot(): AttackDieRuntimeSnapshot {
   return Object.freeze({ ...snapshot });
 }
-export function preloadAttackDieRuntime(): Promise<void> {
+export function preloadAttackDieRuntime(
+  options: { verifyContractDigest?: boolean } = {}
+): Promise<void> {
   if (owner) return owner;
   snapshot = { status: 'loading' };
   owner = (async () => {
@@ -31,7 +32,9 @@ export function preloadAttackDieRuntime(): Promise<void> {
         throw Error('asset load failed');
       const bytes = await glbResponse.arrayBuffer();
       const sidecarValue: unknown = await sidecarResponse.json();
-      const checked = await validateAttackDieSidecar(sidecarValue);
+      const checked = await validateAttackDieSidecar(sidecarValue, {
+        verifyDigest: options.verifyContractDigest !== false,
+      });
       if (!checked.ok) throw Error(checked.reason);
       const digest = [
         ...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),

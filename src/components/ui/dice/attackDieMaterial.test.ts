@@ -31,5 +31,29 @@ describe('attack die material', () => {
     expect(patched.body).not.toBe(body);
     expect(numeral.clone).not.toHaveBeenCalled();
     expect(patched.shaderTime).toBe(0);
+    const shader = {
+      uniforms: {},
+      vertexShader: '',
+      fragmentShader: '#include <emissivemap_fragment>',
+    };
+    patched.body.onBeforeCompile(shader as never, {} as never);
+    expect(shader.fragmentShader).toContain('uniform float attackDieTime;');
+    expect(shader.fragmentShader).toContain('sin(attackDieTime)');
+  });
+  it('uses supplied sidecar selectors and reports owned material readiness', () => {
+    const body = {
+      name: 'Body.010',
+      clone: vi.fn(() => ({ name: 'clone', dispose: vi.fn() })),
+    };
+    const numeral = { name: 'Numbers.010' };
+    const patched = patchAttackDieMaterials(
+      [body, numeral] as never,
+      'magical',
+      false,
+      { bodyMaterial: 'Body', numeralMaterial: 'Numbers' }
+    );
+    expect(patched.originalBody).toBe(body);
+    expect(patched.numeral).toBe(numeral);
+    expect(patched.owned).toBe(true);
   });
 });
