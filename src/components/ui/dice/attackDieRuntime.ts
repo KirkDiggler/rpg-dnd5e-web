@@ -24,12 +24,10 @@ export function preloadAttackDieRuntime(
   snapshot = { status: 'loading' };
   owner = (async () => {
     try {
-      const [glbResponse, sidecarResponse] = await Promise.all([
-        fetch(GLB_URL),
-        fetch(SIDECAR_URL),
-      ]);
-      if (!glbResponse.ok || !sidecarResponse.ok)
-        throw Error('asset load failed');
+      const glbResponse = await fetch(GLB_URL);
+      if (!glbResponse.ok) throw Error('GLB fetch failed');
+      const sidecarResponse = await fetch(SIDECAR_URL);
+      if (!sidecarResponse.ok) throw Error('contract fetch failed');
       const bytes = await glbResponse.arrayBuffer();
       const sidecarValue: unknown = await sidecarResponse.json();
       const checked = await validateAttackDieSidecar(sidecarValue, {

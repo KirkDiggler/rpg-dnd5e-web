@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { validSidecar } from './attackDieContract.test';
 import {
   __resetAttackDieRuntimeForTests,
-  getAttackDieRuntimeSnapshot,
   lockAttackDieRenderer,
   preloadAttackDieRuntime,
 } from './attackDieRuntime';
@@ -132,12 +131,32 @@ describe('attack die runtime', () => {
     expect(lock.renderer).toBe('svg');
     expect(lock.fail('recovered').renderer).toBe('svg');
   });
-  it.each(['network unavailable', 'sidecar unavailable'])(
-    'fails closed on fetch failure: %s',
-    async (reason) => {
-      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error(reason)));
-      await expect(preloadAttackDieRuntime()).rejects.toThrow(reason);
-      expect(getAttackDieRuntimeSnapshot().status).toBe('failed');
-    }
-  );
+  it('distinguishes GLB fetch failure before sidecar fetch', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('GLB fetch failed'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(preloadAttackDieRuntime()).rejects.toThrow('GLB fetch failed');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/models/synty/props/SM_Prop_D20_Lightning_01.glb'
+    );
+  });
+  it('distinguishes sidecar fetch failure after successful GLB fetch', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => new Uint8Array([1]).buffer,
+      })
+      .mockRejectedValueOnce(new Error('contract fetch failed'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(preloadAttackDieRuntime()).rejects.toThrow(
+      'contract fetch failed'
+    );
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/models/synty/props/SM_Prop_D20_Lightning_01.glb',
+      '/models/synty/dice/d20-lightning/attack-die-contract.json',
+    ]);
+  });
 });

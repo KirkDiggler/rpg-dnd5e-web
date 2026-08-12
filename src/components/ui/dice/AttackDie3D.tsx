@@ -1,5 +1,12 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Component, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { Group, Material, Mesh, WebGLRenderer } from 'three';
 import type { DiceTrayPhase } from './DiceTray';
 import type {
@@ -82,12 +89,18 @@ function cloneTokenScene(
   mesh.material = tokenSlots.map((material) =>
     material === patched.originalBody ? patched.body : material
   );
+  const owned = [
+    ...tokenSlots,
+    ...(patched.owned ? [patched.body] : []),
+  ] as Material[];
+  let disposed = false;
   return {
     scene,
-    owned: [
-      ...tokenSlots,
-      ...(patched.owned ? [patched.body] : []),
-    ] as Material[],
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      owned.forEach((material) => material.dispose());
+    },
   };
 }
 
@@ -98,6 +111,7 @@ function RuntimeDie({
   reducedMotion,
   onReady,
   onFrame,
+  shaderDiagnostic,
   onFailure,
 }: {
   sidecar: AttackDieRuntimeSidecar;
@@ -106,6 +120,7 @@ function RuntimeDie({
   reducedMotion: boolean;
   onReady: () => void;
   onFrame: (frame: AttackDieMotionFrame) => void;
+  shaderDiagnostic: React.MutableRefObject<string | undefined>;
   onFailure: (reason: string) => void;
 }) {
   const group = useRef<Group>(null);
@@ -116,14 +131,19 @@ function RuntimeDie({
     ? target
     : [0.31, -0.47, 0.19, 0.805];
   const renderedQuaternion = useRef<QuaternionTuple>(initial);
-  const bundle = useMemo(
-    () => cloneTokenScene(sidecar, mode, reducedMotion),
-    [sidecar, mode, reducedMotion]
-  );
-  useEffect(
-    () => () => bundle.owned.forEach((material) => material.dispose()),
-    [bundle]
-  );
+  const elapsedFrames = useRef(0);
+  const [bundle, setBundle] = useState<ReturnType<typeof cloneTokenScene>>();
+  useEffect(() => {
+    try {
+      const next = cloneTokenScene(sidecar, mode, reducedMotion);
+      setBundle(next);
+      return () => next.dispose();
+    } catch (error) {
+      onFailure(
+        `render setup failed: ${error instanceof Error ? error.message : 'unknown'}`
+      );
+    }
+  }, [mode, onFailure, reducedMotion, sidecar]);
   useFrame(({ clock }) => {
     start.current ??= clock.elapsedTime * 1000;
     const frame = stepAttackDieMotion({
@@ -142,8 +162,14 @@ function RuntimeDie({
     if (!ready.current) {
       try {
         gl.compile(renderScene, camera);
-        ready.current = true;
-        onReady();
+        if (shaderDiagnostic.current) {
+          onFailure(shaderDiagnostic.current);
+          return;
+        }
+        if (elapsedFrames.current++ > 0) {
+          ready.current = true;
+          onReady();
+        }
       } catch (error) {
         onFailure(
           `shader readiness failed: ${error instanceof Error ? error.message : 'unknown'}`
@@ -151,6 +177,7 @@ function RuntimeDie({
       }
     }
   });
+  if (!bundle) return null;
   return (
     <group ref={group} quaternion={initial}>
       <primitive object={bundle.scene} />
@@ -177,34 +204,50 @@ function AttackDieToken({
   const eligible =
     lock.renderer === '3d' && !!target && result >= 1 && result <= 20;
   const [truthful, setTruthful] = useState(false);
+  const [failed, setFailed] = useState(false);
   const active = useRef(true);
   const listener = useRef<
-    { renderer: WebGLRenderer; callback: EventListener } | undefined
+    | {
+        renderer: WebGLRenderer;
+        callback: EventListener;
+        previousShaderError: WebGLRenderer['debug']['onShaderError'];
+        previousCheckShaderErrors: boolean;
+      }
+    | undefined
   >(undefined);
-  const fail = (reason: string) => {
-    if (!active.current) return;
-    lock.fail(reason);
-    setTruthful(false);
-    onTelemetry?.({
-      presentationToken,
-      requestedResult: result,
-      renderer: 'svg',
-      state: 'failed',
-      exactTargetHeld: false,
-      failureReason: reason,
-    });
-  };
+  const shaderDiagnostic = useRef<string | undefined>(undefined);
+  const fail = useCallback(
+    (reason: string) => {
+      if (!active.current) return;
+      lock.fail(reason);
+      setTruthful(false);
+      setFailed(true);
+      onTelemetry?.({
+        presentationToken,
+        requestedResult: result,
+        renderer: 'svg',
+        state: 'failed',
+        exactTargetHeld: false,
+        failureReason: reason,
+      });
+    },
+    [lock, onTelemetry, presentationToken, result]
+  );
   useEffect(() => {
     active.current = true;
     void preloadAttackDieRuntime().catch(() => undefined);
     return () => {
       active.current = false;
       const current = listener.current;
-      if (current)
+      if (current) {
         current.renderer.domElement.removeEventListener(
           'webglcontextlost',
           current.callback
         );
+        current.renderer.debug.onShaderError = current.previousShaderError;
+        current.renderer.debug.checkShaderErrors =
+          current.previousCheckShaderErrors;
+      }
       releaseAttackDieRenderer(presentationToken);
       onTelemetry?.({
         presentationToken,
@@ -215,7 +258,7 @@ function AttackDieToken({
       });
     };
   }, [lock, onTelemetry, presentationToken, result]);
-  const canvasVisible = eligible && phase !== 'hidden';
+  const canvasVisible = eligible && !failed && phase !== 'hidden';
   return (
     <div className="attack-die-3d">
       <div
@@ -231,13 +274,36 @@ function AttackDieToken({
             style={{ visibility: truthful ? 'visible' : 'hidden' }}
             onCreated={({ gl, scene, camera }) => {
               try {
+                const existing = listener.current;
+                if (existing) {
+                  existing.renderer.domElement.removeEventListener(
+                    'webglcontextlost',
+                    existing.callback
+                  );
+                  existing.renderer.debug.onShaderError =
+                    existing.previousShaderError;
+                  existing.renderer.debug.checkShaderErrors =
+                    existing.previousCheckShaderErrors;
+                }
+                const previousShaderError = gl.debug.onShaderError;
+                const previousCheckShaderErrors = gl.debug.checkShaderErrors;
+                gl.debug.checkShaderErrors = true;
+                gl.debug.onShaderError = () => {
+                  shaderDiagnostic.current = 'shader diagnostic/link failure';
+                  fail(shaderDiagnostic.current);
+                };
                 gl.compile(scene, camera);
                 const callback: EventListener = (event) => {
                   event.preventDefault();
                   fail('WebGL context lost');
                 };
                 gl.domElement.addEventListener('webglcontextlost', callback);
-                listener.current = { renderer: gl, callback };
+                listener.current = {
+                  renderer: gl,
+                  callback,
+                  previousShaderError,
+                  previousCheckShaderErrors,
+                };
               } catch (error) {
                 fail(
                   `shader readiness failed: ${error instanceof Error ? error.message : 'unknown'}`
@@ -254,6 +320,7 @@ function AttackDieToken({
               onReady={() => {
                 if (active.current) setTruthful(true);
               }}
+              shaderDiagnostic={shaderDiagnostic}
               onFailure={fail}
               onFrame={(frame) => {
                 if (!active.current || !frame.observeNow) return;

@@ -205,6 +205,21 @@ describe('attack die contract', () => {
       ).ok
     ).toBe(false);
   });
+  it.each([
+    ['node', 'Wrong_Node'],
+    ['mesh', 'Wrong_Mesh'],
+    ['bodyMaterial', 'Wrong_Body'],
+    ['numeralMaterial', 'Wrong_Numerals'],
+    ['materialSlots', 1],
+    ['materialSlots', 3],
+  ] as const)('rejects mutated approved selector %s=%s', async (key, value) => {
+    const sidecar = validSidecar();
+    const checked = await validateAttackDieSidecar(
+      { ...sidecar, selectors: { ...sidecar.selectors, [key]: value } },
+      { verifyDigest: false }
+    );
+    expect(checked.ok).toBe(false);
+  });
   it('deeply freezes every trusted nested value', async () => {
     const checked = await validateAttackDieSidecar(validSidecar(), {
       verifyDigest: false,

@@ -178,9 +178,10 @@ function validateNested(v: Record<string, unknown>) {
     ]) ||
     v.selectors.blenderSuffixPattern !== '\\.\\d{3}$' ||
     v.selectors.materialSlots !== 2 ||
-    !['node', 'mesh', 'bodyMaterial', 'numeralMaterial'].every((k) =>
-      text((v.selectors as Record<string, unknown>)[k])
-    )
+    v.selectors.node !== 'D20_Lightning_preview_4pct' ||
+    v.selectors.mesh !== 'D20_Lightning_preview_4pct_Mesh' ||
+    v.selectors.bodyMaterial !== 'D20_Lightning_Material' ||
+    v.selectors.numeralMaterial !== 'Paint_Material'
   )
     throw Error('selectors');
   const t = v.tuple;
