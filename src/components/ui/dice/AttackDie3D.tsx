@@ -62,6 +62,8 @@ export interface AttackDie3DProps {
   calibrationPose?: QuaternionTuple;
   /** Development-only failure exercise; normal behavior is unchanged. */
   forceFailure?: 'shader' | 'invalid-result' | 'unmapped';
+  /** Development-only observed provider failure from the actual load/hash path. */
+  providerFailureReason?: string;
   /** Development-only parsed scene for provisional, not-yet-verified calibration. */
   sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
   /** Development-only inspected candidate sidecar metadata. */
@@ -252,6 +254,7 @@ function AttackDieToken({
   cameraView = 'three-quarter',
   calibrationPose,
   forceFailure,
+  providerFailureReason,
   sceneOverride,
   sidecarOverride,
   onRendererInfo,
@@ -364,11 +367,13 @@ function AttackDieToken({
     result,
   ]);
   useEffect(() => {
+    if (providerFailureReason)
+      fail(`provider failure: ${providerFailureReason}`);
     if (forceFailure === 'invalid-result')
       fail('invalid authoritative result: expected 1–20');
     if (forceFailure === 'unmapped')
       fail('authoritative result has no verified mapping');
-  }, [fail, forceFailure]);
+  }, [fail, forceFailure, providerFailureReason]);
   const canvasVisible = eligible && !failed && phase !== 'hidden';
   return (
     <div className="attack-die-3d">
