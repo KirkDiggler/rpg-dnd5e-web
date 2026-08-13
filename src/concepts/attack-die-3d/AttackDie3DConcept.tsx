@@ -352,7 +352,11 @@ export function AttackDie3DConcept() {
           aria-label={stages[stage]}
           className="attack-die-concept__stage attack-die-concept__stage--tray"
         >
-          <DiceTray3DConceptPanel />
+          <DiceTray3DConceptPanel
+            token={token}
+            sceneOverride={provider?.scene}
+            sidecarOverride={provider?.sidecar}
+          />
         </div>
       )}
       {stage !== 4 && (

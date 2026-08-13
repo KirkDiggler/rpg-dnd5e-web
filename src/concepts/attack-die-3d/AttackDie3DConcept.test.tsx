@@ -59,8 +59,19 @@ describe('AttackDie3D staged concept', () => {
     const tray = screen.getByRole('tab', { name: 'Tray' });
     expect(tray.getAttribute('aria-selected')).toBe('true');
     expect(document.activeElement).toBe(tray);
-    expect(screen.getByText(/Empty tray checkpoint/)).toBeTruthy();
-    expect(screen.getByText(/No interaction yet/)).toBeTruthy();
+    expect(screen.getByText(/Gameplay placement checkpoint/)).toBeTruthy();
+    expect(
+      screen.getByText(/Result 10 only · no interaction yet/)
+    ).toBeTruthy();
+    expect(screen.getByTestId('dice-tray-encounter-preview')).toBeTruthy();
+    expect(screen.getByTestId('dice-tray-left-drawer')).toBeTruthy();
+    expect(screen.getByTestId('encounter-dock')).toBeTruthy();
+    expect(screen.getByTestId('floating-log')).toBeTruthy();
+    expect(props.at(-1)).toMatchObject({
+      result: 10,
+      phase: 'settled',
+      reducedMotion: true,
+    });
   });
 
   it('starts with zero mappings, exposes 0.1-degree controls, and camera switching preserves pose', () => {
@@ -119,6 +130,36 @@ describe('AttackDie3D staged concept', () => {
     expect(
       screen.getByText(/Result 10 uses a geometry-inspected provisional pose/)
     ).toBeTruthy();
+  });
+
+  it('passes the already-loaded provider into the tray without another GLB fetch', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
+        })
+        .mockResolvedValueOnce({ ok: false, status: 404 })
+    );
+    render(<AttackDie3DConcept />);
+    await waitFor(() =>
+      expect(
+        props.at(-1)?.sceneOverride && props.at(-1)?.presentationToken
+      ).toBe(2)
+    );
+    const providerScene = props.at(-1)?.sceneOverride;
+    const providerSidecar = props.at(-1)?.sidecarOverride;
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
+
+    expect(props.at(-1)).toMatchObject({
+      result: 10,
+      sceneOverride: providerScene,
+      sidecarOverride: providerSidecar,
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('previews the inspected lightning d20 with a hardcoded pose and replays its tumble', async () => {
