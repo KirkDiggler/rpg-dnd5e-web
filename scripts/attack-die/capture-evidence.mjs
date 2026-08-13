@@ -94,7 +94,7 @@ const consoleMessages = [];
 page.on('console', (message) =>
   consoleMessages.push(`${message.type()}: ${message.text()}`)
 );
-await page.goto(url, { waitUntil: 'networkidle' });
+await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 await page
   .getByRole('heading', { name: 'Authoritative 3D Attack Die' })
   .waitFor();
