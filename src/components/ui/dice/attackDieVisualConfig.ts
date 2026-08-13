@@ -1,4 +1,4 @@
-import type { AttackDieEvidenceTuple } from '../../components/ui/dice/attackDieContract';
+import type { AttackDieEvidenceTuple } from './attackDieContract';
 export const ATTACK_DIE_VISUAL_CONFIG = Object.freeze({
   approval: 'unverified-provisional' as const,
   topCamera: {

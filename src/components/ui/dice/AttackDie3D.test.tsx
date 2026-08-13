@@ -93,6 +93,7 @@ vi.mock('./attackDieRuntime', () => ({
   getAttackDieRuntimeScene: () => {
     const root = new Group();
     root.name = 'D20_Lightning_preview_4pct';
+    root.userData.attackDieSourceName = root.name;
     const materials = [new MeshStandardMaterial(), new MeshStandardMaterial()];
     materials[0].name = 'D20_Lightning_Material.010';
     materials[1].name = 'Paint_Material.010';
@@ -110,10 +111,15 @@ vi.mock('./attackDieRuntime', () => ({
     body.name = mocks.selectorMismatch
       ? 'Wrong_Mesh'
       : 'D20_Lightning_preview_4pct_Mesh_0';
+    body.userData.attackDieSourceName = body.name;
     const numeral = new Mesh(new BufferGeometry(), materials[1]);
     numeral.name = 'D20_Lightning_preview_4pct_Mesh_1';
+    numeral.userData.attackDieSourceName = numeral.name;
     root.add(body, numeral);
-    return root;
+    const scene = new Group();
+    scene.name = 'synthetic-scene-root';
+    scene.add(root);
+    return scene;
   },
   lockAttackDieRenderer: (_token: number, result: number) => {
     const ready = mocks.status === 'ready' && result <= 20;
@@ -123,8 +129,14 @@ vi.mock('./attackDieRuntime', () => ({
             blenderSuffixPattern: '\\.\\d{3}$',
             node: 'D20_Lightning_preview_4pct',
             sourceMesh: 'D20_Lightning_preview_4pct_Mesh',
-            bodyPrimitive: { material: 'D20_Lightning_Material' },
-            numeralPrimitive: { material: 'Paint_Material' },
+            bodyPrimitive: {
+              mesh: 'D20_Lightning_preview_4pct_Mesh_0',
+              material: 'D20_Lightning_Material',
+            },
+            numeralPrimitive: {
+              mesh: 'D20_Lightning_preview_4pct_Mesh_1',
+              material: 'Paint_Material',
+            },
           },
           faces: Array.from({ length: 20 }, (_, index) => ({
             result: index + 1,

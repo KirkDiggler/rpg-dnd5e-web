@@ -84,3 +84,58 @@ describe('AttackDiePerfHarness', () => {
     ).toBe(false);
   });
 });
+
+it('latches first-ready and counts unique context lifecycle observations', async () => {
+  const { applyAttackDieRendererObservation } =
+    await import('./attackDiePerfProtocol');
+  const base = window.__attackDiePerf?.readCounters() ?? {
+    mountedMode: null,
+    mountCount: 0,
+    unmountCount: 0,
+    contextsCreated: 0,
+    contextsLost: 0,
+    contextsDisposed: 0,
+    activeContextIds: [],
+    rendererInfo: {
+      calls: 0,
+      triangles: 0,
+      geometries: 0,
+      textures: 0,
+      programs: 0,
+    },
+    telemetry: null,
+    healthy3d: false,
+    readyAtMs: null,
+    gpuBytes: null,
+    gpuBytesLimitation: '',
+  };
+  const info = {
+    calls: 1,
+    triangles: 2,
+    geometries: 1,
+    textures: 0,
+    programs: 1,
+    contextId: 4,
+  };
+  const created = applyAttackDieRendererObservation(base, {
+    ...info,
+    lifecycle: 'created',
+  });
+  const duplicate = applyAttackDieRendererObservation(created, {
+    ...info,
+    lifecycle: 'created',
+  });
+  const sampled = applyAttackDieRendererObservation(duplicate, {
+    ...info,
+    calls: 3,
+    lifecycle: 'sample',
+  });
+  const disposed = applyAttackDieRendererObservation(sampled, {
+    ...info,
+    lifecycle: 'disposed',
+  });
+  expect(duplicate.contextsCreated).toBe(1);
+  expect(sampled.rendererInfo.calls).toBe(3);
+  expect(disposed.contextsDisposed).toBe(1);
+  expect(disposed.activeContextIds).toEqual([]);
+});

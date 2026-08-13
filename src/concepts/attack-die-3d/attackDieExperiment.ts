@@ -5,8 +5,8 @@ import type {
   AttackDieRuntimeSidecar,
   QuaternionTuple,
 } from '../../components/ui/dice/attackDieContract';
-import { tupleFromVisualConfig } from './attackDieVisualConfig';
-export { ATTACK_DIE_VISUAL_CONFIG as PROVISIONAL_VISUAL_DEFAULTS } from './attackDieVisualConfig';
+import { tupleFromVisualConfig } from '../../components/ui/dice/attackDieVisualConfig';
+export { ATTACK_DIE_VISUAL_CONFIG as PROVISIONAL_VISUAL_DEFAULTS } from '../../components/ui/dice/attackDieVisualConfig';
 
 export const PROVISIONAL_WARNING =
   'PROVISIONAL — NOT AN ASSET CONTRACT' as const;

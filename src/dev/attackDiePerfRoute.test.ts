@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { shouldMountAttackDiePerf } from './attackDiePerfRoute';
+import { selectAttackDieDevRoute } from './attackDiePerfRoute';
 describe('attack die real-route gate', () => {
-  it('mounts only development encounter route with explicit flag', () => {
+  it('selects actual GameView encounter + overlay only for flagged development route', () => {
     expect(
-      shouldMountAttackDiePerf('development', '?encounterId=e&attackDiePerf=1')
-    ).toBe(true);
+      selectAttackDieDevRoute(
+        'development',
+        '?encounterId=real&attackDiePerf=1'
+      )
+    ).toEqual({ kind: 'real-encounter-perf', encounterId: 'real' });
     expect(
-      shouldMountAttackDiePerf('production', '?encounterId=e&attackDiePerf=1')
-    ).toBe(false);
-    expect(shouldMountAttackDiePerf('development', '?encounterId=e')).toBe(
-      false
-    );
-    expect(shouldMountAttackDiePerf('development', '?attackDiePerf=1')).toBe(
-      false
-    );
+      selectAttackDieDevRoute('development', '?encounterId=fixture')
+    ).toEqual({ kind: 'playtest', encounterId: 'fixture' });
+    expect(
+      selectAttackDieDevRoute('production', '?encounterId=real&attackDiePerf=1')
+    ).toEqual({ kind: 'normal' });
   });
 });

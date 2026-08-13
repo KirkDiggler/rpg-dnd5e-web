@@ -4,12 +4,22 @@ import {
   type AttackDieTelemetry,
 } from '../components/ui/dice/AttackDie3D';
 import { DiceTray } from '../components/ui/dice/DiceTray';
-import type { AttackDiePerfMode } from './attackDiePerfProtocol';
+import {
+  applyAttackDieRendererObservation,
+  type AttackDiePerfMode,
+} from './attackDiePerfProtocol';
 export interface AttackDiePerfSampleRequest {
   mode: AttackDiePerfMode;
   result: number;
   reducedMotion: boolean;
   token: number;
+}
+export interface AttackDieRendererInfo {
+  calls: number;
+  triangles: number;
+  geometries: number;
+  textures: number;
+  programs: number;
 }
 export interface AttackDiePerfCounters {
   mountedMode: AttackDiePerfMode | null;
@@ -17,18 +27,14 @@ export interface AttackDiePerfCounters {
   unmountCount: number;
   contextsCreated: number;
   contextsLost: number;
-  rendererInfo: {
-    calls: number;
-    triangles: number;
-    geometries: number;
-    textures: number;
-    programs: number;
-  };
+  contextsDisposed: number;
+  activeContextIds: number[];
+  rendererInfo: AttackDieRendererInfo;
   telemetry: AttackDieTelemetry | null;
   healthy3d: boolean;
   readyAtMs: number | null;
   gpuBytes: null;
-  gpuBytesLimitation: 'Browser does not expose portable GPU allocation bytes; renderer.info proxies recorded.';
+  gpuBytesLimitation: string;
 }
 export interface AttackDiePerfDriver {
   runSample(request: AttackDiePerfSampleRequest): void;
@@ -40,12 +46,14 @@ declare global {
     __attackDiePerf?: AttackDiePerfDriver;
   }
 }
-const emptyCounters = (): AttackDiePerfCounters => ({
+const empty = (): AttackDiePerfCounters => ({
   mountedMode: null,
   mountCount: 0,
   unmountCount: 0,
   contextsCreated: 0,
   contextsLost: 0,
+  contextsDisposed: 0,
+  activeContextIds: [],
   rendererInfo: {
     calls: 0,
     triangles: 0,
@@ -60,15 +68,15 @@ const emptyCounters = (): AttackDiePerfCounters => ({
   gpuBytesLimitation:
     'Browser does not expose portable GPU allocation bytes; renderer.info proxies recorded.',
 });
-/** Independent development overlay. It deliberately has no queue/completion props. */
+/** Independent observation overlay; no queue callbacks. */
 export function AttackDiePerfHarness({
   enabled = import.meta.env.MODE === 'development',
 }: {
   enabled?: boolean;
 }) {
   const [sample, setSample] = useState<AttackDiePerfSampleRequest | null>(null);
-  const counters = useRef(emptyCounters());
-  const sampleStart = useRef(0);
+  const counters = useRef(empty());
+  const start = useRef(0);
   useEffect(() => {
     if (!enabled) {
       delete window.__attackDiePerf;
@@ -82,7 +90,7 @@ export function AttackDiePerfHarness({
           request.result > 20
         )
           throw Error('result must be 1–20');
-        sampleStart.current = performance.now();
+        start.current = performance.now();
         counters.current = {
           ...counters.current,
           mountedMode: request.mode,
@@ -95,6 +103,7 @@ export function AttackDiePerfHarness({
       },
       readCounters: () => ({
         ...counters.current,
+        activeContextIds: [...counters.current.activeContextIds],
         rendererInfo: { ...counters.current.rendererInfo },
       }),
       unmountDie() {
@@ -124,8 +133,8 @@ export function AttackDiePerfHarness({
         event.exactTargetHeld &&
         event.state === 'observed',
       readyAtMs:
-        event.renderer === '3d'
-          ? performance.now() - sampleStart.current
+        event.renderer === '3d' && counters.current.readyAtMs === null
+          ? performance.now() - start.current
           : counters.current.readyAtMs,
     };
   };
@@ -145,24 +154,10 @@ export function AttackDiePerfHarness({
           fallback={fallback}
           onTelemetry={telemetry}
           onRendererInfo={(info) => {
-            counters.current = {
-              ...counters.current,
-              contextsCreated: Math.max(
-                counters.current.contextsCreated,
-                info.contextsCreated
-              ),
-              contextsLost: Math.max(
-                counters.current.contextsLost,
-                info.contextsLost
-              ),
-              rendererInfo: {
-                calls: info.calls,
-                triangles: info.triangles,
-                geometries: info.geometries,
-                textures: info.textures,
-                programs: info.programs,
-              },
-            };
+            counters.current = applyAttackDieRendererObservation(
+              counters.current,
+              info
+            );
           }}
         />
       ) : (

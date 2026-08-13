@@ -51,8 +51,8 @@ export interface AttackDieRuntimeSidecar {
     blenderSuffixPattern: '\\.\\d{3}$';
     node: string;
     sourceMesh: string;
-    bodyPrimitive: { material: string };
-    numeralPrimitive: { material: string };
+    bodyPrimitive: { mesh: string; material: string };
+    numeralPrimitive: { mesh: string; material: string };
   };
   faces: ReadonlyArray<{ result: number; quaternion: QuaternionTuple }>;
   tuple: AttackDieEvidenceTuple;
@@ -178,11 +178,14 @@ function validateNested(v: Record<string, unknown>) {
     !text(v.selectors.node) ||
     !text(v.selectors.sourceMesh) ||
     !plain(v.selectors.bodyPrimitive) ||
-    !exact(v.selectors.bodyPrimitive, ['material']) ||
+    !exact(v.selectors.bodyPrimitive, ['mesh', 'material']) ||
+    !text(v.selectors.bodyPrimitive.mesh) ||
     !text(v.selectors.bodyPrimitive.material) ||
     !plain(v.selectors.numeralPrimitive) ||
-    !exact(v.selectors.numeralPrimitive, ['material']) ||
+    !exact(v.selectors.numeralPrimitive, ['mesh', 'material']) ||
+    !text(v.selectors.numeralPrimitive.mesh) ||
     !text(v.selectors.numeralPrimitive.material) ||
+    v.selectors.bodyPrimitive.mesh === v.selectors.numeralPrimitive.mesh ||
     v.selectors.bodyPrimitive.material === v.selectors.numeralPrimitive.material
   )
     throw Error('selectors');

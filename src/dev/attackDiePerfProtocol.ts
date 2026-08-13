@@ -49,6 +49,8 @@ export function parseAttackDieProfiles(value: unknown): {
       throw Error('profile categories invalid');
     const category = raw.category as AttackDieProfileCategory;
     if (raw.status === 'blocked') {
+      if (category !== 'mobile-low-gpu')
+        throw Error(`${category} must be available with exact human facts`);
       if (!nonempty(raw.reason)) throw Error('blocked profile reason required');
       return { category, status: 'blocked', reason: raw.reason };
     }
@@ -98,6 +100,14 @@ export function parseAttackDieProfiles(value: unknown): {
       .map((profile) => `${profile.category}: ${profile.reason}`),
   };
 }
+export function performanceExitCode(
+  outcomes: ReadonlyArray<{ status: string }>
+): 0 | 1 {
+  return outcomes.length > 0 &&
+    outcomes.every((outcome) => outcome.status === 'pass')
+    ? 0
+    : 1;
+}
 export function alternatingAttackDieModes(
   samplesPerMode: number
 ): AttackDiePerfMode[] {
@@ -141,10 +151,10 @@ export function evaluateAttackDieRun(input: {
   svgPostUnmountP95: number;
   candidatePostUnmountP95: number;
   postUnmountCounters: {
-    contextsActive: number;
-    geometries: number;
-    textures: number;
-    programs: number;
+    contextsActive: number | null;
+    geometries: number | null;
+    textures: number | null;
+    programs: number | null;
   };
 }) {
   const healthy =
@@ -152,9 +162,12 @@ export function evaluateAttackDieRun(input: {
     input.samples
       .filter((sample) => sample.mode === '3d')
       .every((sample) => sample.healthy3d);
-  const resourcesReleased = Object.values(input.postUnmountCounters).every(
-    (value) => value === 0
+  const resourcesKnown = Object.values(input.postUnmountCounters).every(
+    (value) => typeof value === 'number' && Number.isFinite(value)
   );
+  const resourcesReleased =
+    resourcesKnown &&
+    Object.values(input.postUnmountCounters).every((value) => value === 0);
   const budget = evaluateAttackDieBudgets({
     ...input,
     attributableLongTasks: input.samples.reduce(
@@ -165,7 +178,79 @@ export function evaluateAttackDieRun(input: {
   return {
     ...budget,
     healthy,
+    resourcesKnown,
     resourcesReleased,
-    pass: budget.pass && healthy && resourcesReleased,
+    pass: budget.pass && healthy && resourcesKnown && resourcesReleased,
+  };
+}
+
+export interface AttackDieRendererObservationCounters {
+  contextsCreated: number;
+  contextsLost: number;
+  contextsDisposed: number;
+  activeContextIds: number[];
+  rendererInfo: {
+    calls: number;
+    triangles: number;
+    geometries: number;
+    textures: number;
+    programs: number;
+  };
+  [key: string]: unknown;
+}
+export interface AttackDieRendererObservation {
+  calls: number;
+  triangles: number;
+  geometries: number;
+  textures: number;
+  programs: number;
+  lifecycle: 'created' | 'sample' | 'lost' | 'disposed';
+  contextId: number;
+}
+export function applyAttackDieRendererObservation<
+  T extends {
+    contextsCreated: number;
+    contextsLost: number;
+    contextsDisposed: number;
+    activeContextIds: number[];
+    rendererInfo: {
+      calls: number;
+      triangles: number;
+      geometries: number;
+      textures: number;
+      programs: number;
+    };
+  },
+>(
+  counters: T,
+  info: AttackDieRendererObservation & {
+    lifecycle: 'created' | 'sample' | 'lost' | 'disposed';
+    contextId: number;
+  }
+) {
+  const active = new Set(counters.activeContextIds);
+  let created = counters.contextsCreated,
+    lost = counters.contextsLost,
+    disposed = counters.contextsDisposed;
+  if (info.lifecycle === 'created' && !active.has(info.contextId)) {
+    active.add(info.contextId);
+    created++;
+  }
+  if (info.lifecycle === 'lost' && active.delete(info.contextId)) lost++;
+  if (info.lifecycle === 'disposed' && active.delete(info.contextId))
+    disposed++;
+  return {
+    ...counters,
+    contextsCreated: created,
+    contextsLost: lost,
+    contextsDisposed: disposed,
+    activeContextIds: [...active],
+    rendererInfo: {
+      calls: info.calls,
+      triangles: info.triangles,
+      geometries: info.geometries,
+      textures: info.textures,
+      programs: info.programs,
+    },
   };
 }

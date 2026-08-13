@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+  encodeFrozenBuildRecords,
+  type FrozenBuildManifest,
+} from './frozenBuildManifest';
 export interface Settlement {
   requestedResult: number;
   renderer: '3d' | 'svg';
@@ -6,9 +10,39 @@ export interface Settlement {
   exactTargetHeld: boolean;
   token: number;
 }
+const healthy = (
+  value: Settlement | undefined,
+  result: number,
+  token: number
+) =>
+  !!value &&
+  value.requestedResult === result &&
+  value.token === token &&
+  value.renderer === '3d' &&
+  value.angularErrorDegrees <= 0.25 &&
+  value.exactTargetHeld;
+export async function observeHeldSettlement(
+  result: number,
+  previousToken: number,
+  observe: () => Promise<Settlement | undefined>,
+  nextFrame: () => Promise<void>
+): Promise<Settlement> {
+  const first = await observe();
+  if (!first || first.token <= previousToken)
+    throw Error('presentation token did not advance');
+  if (!healthy(first, result, first.token))
+    throw Error('healthy settlement mismatch');
+  await nextFrame();
+  const second = await observe();
+  if (!second) throw Error('repeated held observation required');
+  if (!healthy(second, result, first.token)) throw Error('hold regression');
+  return second;
+}
 export interface EvidenceApi {
+  currentToken(): Promise<number> | number;
   setResult(result: number): Promise<void> | void;
-  settle(result: number): Promise<Settlement>;
+  settle(result: number, previousToken: number): Promise<Settlement>;
+  verifyHeld(settlement: Settlement): Promise<Settlement>;
   capture(
     result: number,
     camera: 'top' | 'three-quarter',
@@ -21,34 +55,78 @@ export async function runEvidenceSequence(
 ) {
   const rows = [];
   for (const result of results) {
+    const previous = await api.currentToken();
     await api.setResult(result);
-    const settled = await api.settle(result);
-    if (settled.requestedResult !== result)
-      throw Error('settlement result mismatch');
-    if (
-      settled.renderer !== '3d' ||
-      settled.angularErrorDegrees > 0.25 ||
-      !settled.exactTargetHeld
-    )
-      throw Error('healthy 3D exact settlement required');
+    let held = await api.settle(result, previous);
+    if (held.token <= previous)
+      throw Error('presentation token did not advance');
+    if (!healthy(held, result, held.token))
+      throw Error('healthy 3D settlement mismatch');
     for (const camera of ['top', 'three-quarter'] as const) {
-      await api.capture(result, camera, settled);
-      rows.push({ result, camera, ...settled });
+      held = await api.verifyHeld(held);
+      if (!healthy(held, result, held.token))
+        throw Error('camera hold mismatch');
+      await api.capture(result, camera, held);
+      rows.push({ result, camera, ...held });
     }
   }
   return rows;
 }
 const sha = (bytes: Uint8Array) =>
   createHash('sha256').update(bytes).digest('hex');
+export function validateManifest(value: unknown): FrozenBuildManifest {
+  if (!value || typeof value !== 'object') throw Error('manifest schema');
+  const m = value as FrozenBuildManifest;
+  if (
+    m.schemaVersion !== 1 ||
+    m.kind !== 'attack-die-web-build-manifest' ||
+    !Array.isArray(m.files) ||
+    !/^[0-9a-f]{64}$/.test(m.webBuildSha256)
+  )
+    throw Error('manifest schema');
+  const seen = new Set<string>();
+  for (const file of m.files) {
+    if (
+      !file ||
+      typeof file.path !== 'string' ||
+      file.path.startsWith('/') ||
+      file.path.split('/').includes('..') ||
+      seen.has(file.path) ||
+      !Number.isInteger(file.size) ||
+      file.size < 0 ||
+      !/^[0-9a-f]{64}$/.test(file.sha256)
+    )
+      throw Error('manifest entry');
+    seen.add(file.path);
+  }
+  const sorted = [...m.files].sort((a, b) =>
+    Buffer.from(a.path).compare(Buffer.from(b.path))
+  );
+  if (JSON.stringify(sorted) !== JSON.stringify(m.files))
+    throw Error('manifest path order');
+  if (
+    sha(new TextEncoder().encode(encodeFrozenBuildRecords(m.files))) !==
+    m.webBuildSha256
+  )
+    throw Error('manifest root digest mismatch');
+  return m;
+}
+export function assertSameManifest(
+  local: FrozenBuildManifest,
+  served: unknown
+) {
+  const checked = validateManifest(served);
+  if (JSON.stringify(checked) !== JSON.stringify(local))
+    throw Error('served manifest mismatch');
+}
 export async function validateServedBuild(
-  manifest: { files: Array<{ path: string; size: number; sha256: string }> },
+  manifestValue: unknown,
   get: (path: string) => Promise<Uint8Array>
 ) {
-  const listed = new Set(manifest.files.map((file) => file.path));
+  const manifest = validateManifest(manifestValue);
+  const listed = new Set(manifest.files.map((f) => f.path));
   let index = '';
   for (const file of manifest.files) {
-    if (file.path.startsWith('/') || file.path.split('/').includes('..'))
-      throw Error('unsafe manifest path');
     const bytes = await get(file.path);
     if (!bytes || bytes.byteLength !== file.size || sha(bytes) !== file.sha256)
       throw Error(`served build digest mismatch: ${file.path}`);
@@ -57,4 +135,28 @@ export async function validateServedBuild(
   for (const match of index.matchAll(/(?:src|href)=["']\/?([^"'#?]+)/g))
     if (!listed.has(match[1]))
       throw Error(`unlisted index reference: ${match[1]}`);
+  return manifest;
+}
+export const FORCED_FAILURES = [
+  'none',
+  'load',
+  'webgl',
+  'shader',
+  'context-loss',
+  'hash',
+  'invalid-result',
+  'unmapped',
+] as const;
+export function parseForcedFailure(value: string) {
+  if (!FORCED_FAILURES.includes(value as never))
+    throw Error('unsupported --force value');
+  return value as (typeof FORCED_FAILURES)[number];
+}
+export function assertForcedFallback(
+  force: string,
+  observations: Settlement[]
+) {
+  if (force === 'none') return;
+  if (observations.some((o) => o.renderer !== 'svg' || o.exactTargetHeld))
+    throw Error('forced failure must stay fail-closed SVG');
 }

@@ -76,8 +76,14 @@ function provisionalSidecar(digest: string): AttackDieRuntimeSidecar {
       blenderSuffixPattern: '\\.\\d{3}$',
       node: 'PROVIDER_PENDING',
       sourceMesh: 'PROVIDER_PENDING',
-      bodyPrimitive: { material: 'PROVIDER_PENDING_BODY' },
-      numeralPrimitive: { material: 'PROVIDER_PENDING_NUMERALS' },
+      bodyPrimitive: {
+        mesh: 'PROVIDER_PENDING_BODY_PRIMITIVE',
+        material: 'PROVIDER_PENDING_BODY',
+      },
+      numeralPrimitive: {
+        mesh: 'PROVIDER_PENDING_NUMERAL_PRIMITIVE',
+        material: 'PROVIDER_PENDING_NUMERALS',
+      },
     },
     faces: [],
     tuple: {

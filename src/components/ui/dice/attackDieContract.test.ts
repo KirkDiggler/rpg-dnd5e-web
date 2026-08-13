@@ -28,8 +28,14 @@ export const validSidecar = (
     blenderSuffixPattern: '\\.\\d{3}$',
     node: 'synthetic-node',
     sourceMesh: 'synthetic-source-mesh',
-    bodyPrimitive: { material: 'synthetic-body' },
-    numeralPrimitive: { material: 'synthetic-numerals' },
+    bodyPrimitive: {
+      mesh: 'synthetic-body-primitive',
+      material: 'synthetic-body',
+    },
+    numeralPrimitive: {
+      mesh: 'synthetic-numeral-primitive',
+      material: 'synthetic-numerals',
+    },
   },
   faces: Array.from({ length: 20 }, (_, i) => q(i + 1)),
   tuple: {

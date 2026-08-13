@@ -34,6 +34,7 @@ import {
   preloadAttackDieRuntime,
   releaseAttackDieRenderer,
 } from './attackDieRuntime';
+import { ATTACK_DIE_VISUAL_CONFIG } from './attackDieVisualConfig';
 
 export interface AttackDieTelemetry {
   presentationToken: number;
@@ -79,8 +80,8 @@ export interface AttackDie3DProps {
     geometries: number;
     textures: number;
     programs: number;
-    contextsCreated: number;
-    contextsLost: number;
+    lifecycle: 'created' | 'sample' | 'lost' | 'disposed';
+    contextId: number;
   }) => void;
 }
 
@@ -110,7 +111,17 @@ function cloneTokenScene(
 ) {
   const source = sourceOverride ?? getAttackDieRuntimeScene();
   if (!source) throw Error('runtime scene unavailable');
-  const scene = source.clone(true);
+  if (source.name === sidecar.selectors.node && !source.parent) {
+    const wrapper = source.clone(false);
+    wrapper.name = 'attack-die-scene-root';
+    wrapper.add(source);
+    sourceOverride = wrapper;
+  }
+  const effectiveSource = sourceOverride ?? source;
+  effectiveSource.traverse((object) => {
+    object.userData.attackDieSourceName = object.name;
+  });
+  const scene = effectiveSource.clone(true);
   const { body, numeral } = resolveAttackDiePrimitives(
     scene,
     sidecar.selectors
@@ -234,6 +245,7 @@ function RuntimeDie({
   );
 }
 
+let nextAttackDieContextId = 1;
 function AttackDieToken({
   result,
   presentationToken,
@@ -251,6 +263,7 @@ function AttackDieToken({
   sidecarOverride,
   onRendererInfo,
 }: AttackDie3DProps) {
+  const visual = ATTACK_DIE_VISUAL_CONFIG;
   const effectiveResult = forceFailure === 'invalid-result' ? 21 : result;
   const lock = useMemo(
     () => lockAttackDieRenderer(presentationToken, effectiveResult),
@@ -278,6 +291,7 @@ function AttackDieToken({
   const [truthful, setTruthful] = useState(false);
   const [failed, setFailed] = useState(false);
   const active = useRef(true);
+  const contextId = useRef<number | undefined>(undefined);
   const listener = useRef<
     | {
         renderer: WebGLRenderer;
@@ -317,6 +331,16 @@ function AttackDieToken({
         );
         current.gate.dispose();
       }
+      if (contextId.current !== undefined)
+        onRendererInfo?.({
+          calls: 0,
+          triangles: 0,
+          geometries: 0,
+          textures: 0,
+          programs: 0,
+          lifecycle: 'disposed',
+          contextId: contextId.current,
+        });
       releaseAttackDieRenderer(presentationToken);
       onTelemetry?.({
         presentationToken,
@@ -326,7 +350,7 @@ function AttackDieToken({
         exactTargetHeld: false,
       });
     };
-  }, [forced, lock, onTelemetry, presentationToken, result]);
+  }, [forced, lock, onRendererInfo, onTelemetry, presentationToken, result]);
   useEffect(() => {
     if (forceFailure) fail(`forced ${forceFailure} failure`);
   }, [fail, forceFailure]);
@@ -344,29 +368,40 @@ function AttackDieToken({
             aria-hidden="true"
             className="attack-die-3d__canvas"
             style={{ visibility: truthful ? 'visible' : 'hidden' }}
-            camera={
-              cameraView === 'top'
-                ? {
-                    fov: 35,
-                    near: 0.1,
-                    far: 100,
-                    position: [0, 4, 0],
-                    up: [0, 0, -1],
-                  }
-                : {
-                    fov: 35,
-                    near: 0.1,
-                    far: 100,
-                    position: [3, 2.4, 3],
-                    up: [0, 1, 0],
-                  }
-            }
-            dpr={2}
+            camera={(() => {
+              const c =
+                cameraView === 'top'
+                  ? visual.topCamera
+                  : visual.threeQuarterCamera;
+              return {
+                fov: c.fov,
+                near: c.near,
+                far: c.far,
+                position: c.position,
+                up: c.up,
+              };
+            })()}
+            dpr={visual.devicePixelRatio}
             onCreated={({ gl, scene, camera }) => {
               try {
+                contextId.current = nextAttackDieContextId++;
+                onRendererInfo?.({
+                  calls: gl.info.render.calls,
+                  triangles: gl.info.render.triangles,
+                  geometries: gl.info.memory.geometries,
+                  textures: gl.info.memory.textures,
+                  programs: gl.info.programs?.length ?? 0,
+                  lifecycle: 'created',
+                  contextId: contextId.current,
+                });
                 gl.toneMapping = ACESFilmicToneMapping;
                 gl.outputColorSpace = SRGBColorSpace;
-                gl.toneMappingExposure = 1;
+                gl.toneMappingExposure = visual.exposure;
+                camera.lookAt?.(
+                  ...visual[
+                    cameraView === 'top' ? 'topCamera' : 'threeQuarterCamera'
+                  ].target
+                );
                 const existing = listener.current;
                 if (existing) {
                   existing.renderer.domElement.removeEventListener(
@@ -387,8 +422,8 @@ function AttackDieToken({
                         geometries: gl.info.memory.geometries,
                         textures: gl.info.memory.textures,
                         programs: gl.info.programs?.length ?? 0,
-                        contextsCreated: 1,
-                        contextsLost: 0,
+                        lifecycle: 'sample',
+                        contextId: contextId.current!,
                       });
                     }
                   },
@@ -402,8 +437,8 @@ function AttackDieToken({
                     geometries: gl.info.memory.geometries,
                     textures: gl.info.memory.textures,
                     programs: gl.info.programs?.length ?? 0,
-                    contextsCreated: 1,
-                    contextsLost: 1,
+                    lifecycle: 'lost',
+                    contextId: contextId.current!,
                   });
                   gate.fail('WebGL context lost');
                 };
@@ -420,10 +455,16 @@ function AttackDieToken({
               }
             }}
           >
-            <ambientLight intensity={0.65} />
-            <directionalLight position={[4, 6, 5]} intensity={3} />
-            <directionalLight position={[-4, 2, -3]} intensity={1.2} />
-            <group scale={0.75}>
+            <ambientLight intensity={visual.ambientIntensity} />
+            <directionalLight
+              position={visual.keyLight.position}
+              intensity={visual.keyLight.intensity}
+            />
+            <directionalLight
+              position={visual.fillLight.position}
+              intensity={visual.fillLight.intensity}
+            />
+            <group scale={visual.dieScale}>
               <RuntimeDie
                 sidecar={sidecar!}
                 target={target!}

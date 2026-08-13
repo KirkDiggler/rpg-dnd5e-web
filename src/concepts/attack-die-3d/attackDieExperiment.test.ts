@@ -22,8 +22,14 @@ const selectors = {
   blenderSuffixPattern: '\\.\\d{3}$' as const,
   node: 'synthetic-node',
   sourceMesh: 'synthetic-source',
-  bodyPrimitive: { material: 'synthetic-body' },
-  numeralPrimitive: { material: 'synthetic-numerals' },
+  bodyPrimitive: {
+    mesh: 'synthetic-body-primitive',
+    material: 'synthetic-body',
+  },
+  numeralPrimitive: {
+    mesh: 'synthetic-numeral-primitive',
+    material: 'synthetic-numerals',
+  },
 };
 
 describe('attack die experiment', () => {

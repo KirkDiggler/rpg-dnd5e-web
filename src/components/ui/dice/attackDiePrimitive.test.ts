@@ -24,8 +24,8 @@ describe('parsed primitive selectors', () => {
       ...validSidecar().selectors,
       node: 'Node',
       sourceMesh: 'SourceMesh_primitive',
-      bodyPrimitive: { material: 'Body' },
-      numeralPrimitive: { material: 'Numbers' },
+      bodyPrimitive: { mesh: 'SourceMesh_primitive_0', material: 'Body' },
+      numeralPrimitive: { mesh: 'SourceMesh_primitive_1', material: 'Numbers' },
     };
     expect(resolveAttackDiePrimitives(scene, selectors as never)).toEqual({
       node: scene.children[0],
@@ -39,8 +39,8 @@ describe('parsed primitive selectors', () => {
       ...validSidecar().selectors,
       node: 'Node',
       sourceMesh: 'SourceMesh_primitive',
-      bodyPrimitive: { material: 'Body' },
-      numeralPrimitive: { material: 'Numbers' },
+      bodyPrimitive: { mesh: 'SourceMesh_primitive_0', material: 'Body' },
+      numeralPrimitive: { mesh: 'SourceMesh_primitive_1', material: 'Numbers' },
     };
     const extra = (scene.children[0].children[0] as Mesh).clone();
     scene.children[0].add(extra);
@@ -48,4 +48,27 @@ describe('parsed primitive selectors', () => {
       /primitive/
     );
   });
+});
+
+it('rejects matching descendants and unrelated prefix primitive names', () => {
+  const { scene } = sceneFixture();
+  const node = scene.children[0];
+  const wrapper = new Group();
+  wrapper.add(node.children[0]);
+  node.add(wrapper);
+  const selectors = {
+    ...validSidecar().selectors,
+    node: 'Node',
+    sourceMesh: 'SourceMesh_primitive',
+    bodyPrimitive: { mesh: 'SourceMesh_primitive_0', material: 'Body' },
+    numeralPrimitive: { mesh: 'SourceMesh_primitive_1', material: 'Numbers' },
+  };
+  expect(() => resolveAttackDiePrimitives(scene, selectors as never)).toThrow(
+    /direct sibling/
+  );
+  wrapper.clear();
+  (node.children[0] as Mesh).name = 'SourceMesh_primitive_extra';
+  expect(() => resolveAttackDiePrimitives(scene, selectors as never)).toThrow(
+    /primitive/
+  );
 });

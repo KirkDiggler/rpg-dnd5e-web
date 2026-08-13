@@ -3,6 +3,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import {
+  assertForcedFallback,
+  assertSameManifest,
+  observeHeldSettlement,
+  parseForcedFailure,
   runEvidenceSequence,
   validateServedBuild,
 } from './evidenceProtocol.ts';
@@ -17,6 +21,7 @@ const out = resolve(option('--out'));
 const manifestPath = resolve(option('--build-manifest'));
 if (!url || !out || !manifestPath)
   throw Error('--url, --out, and --build-manifest are required');
+const force = parseForcedFailure(option('--force', 'none'));
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 if (!/^[0-9a-f]{64}$/.test(manifest.webBuildSha256))
   throw Error('invalid build hash');
@@ -29,8 +34,7 @@ await validateServedBuild(manifest, async (path) => {
 const servedManifest = await (
   await fetch(new URL('/__attack-die-build-manifest.json', base))
 ).json();
-if (servedManifest.webBuildSha256 !== manifest.webBuildSha256)
-  throw Error('preview serves a different build manifest');
+assertSameManifest(manifest, servedManifest);
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch({
   headless: true,
@@ -43,6 +47,26 @@ try {
     reducedMotion: flag('--reduced-motion') ? 'reduce' : 'no-preference',
   });
   const page = await context.newPage();
+  if (force === 'load')
+    await page.route('**/SM_Prop_D20_Lightning_01.glb', (route) =>
+      route.abort()
+    );
+  if (force === 'hash')
+    await page.route('**/SM_Prop_D20_Lightning_01.glb', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'model/gltf-binary',
+        body: 'forced changed bytes',
+      })
+    );
+  if (force === 'webgl')
+    await page.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+        if (kind === 'webgl' || kind === 'webgl2') return null;
+        return original.call(this, kind, ...rest);
+      };
+    });
   await page.addInitScript((hash) => {
     window.__ATTACK_DIE_BUILD_SHA256__ = hash;
   }, manifest.webBuildSha256);
@@ -50,6 +74,16 @@ try {
   await page
     .getByRole('heading', { name: 'Authoritative 3D Attack Die' })
     .waitFor();
+  if (force !== 'none')
+    await page.getByLabel('Forced fallback').selectOption(force);
+  if (force === 'context-loss') {
+    await page.locator('.attack-die-3d__canvas').waitFor();
+    await page.evaluate(() =>
+      document
+        .querySelector('.attack-die-3d__canvas')
+        ?.dispatchEvent(new Event('webglcontextlost', { cancelable: true }))
+    );
+  }
   const modes = [
     ...(flag('--animated') ? ['animated'] : []),
     ...(flag('--reduced-motion') ? ['reduced-motion'] : []),
@@ -59,13 +93,41 @@ try {
     ? Array.from({ length: 20 }, (_, i) => i + 1)
     : [20];
   const captures = [];
+  const forcedObservations = [];
   for (const mode of modes) {
     await page.getByRole('tab', { name: 'Roll' }).click();
     const reduced = page.getByLabel(/Reduced motion/);
     if (mode === 'reduced-motion') await reduced.check();
     else await reduced.uncheck();
+    if (force !== 'none') {
+      await page.waitForFunction(
+        () => window.__attackDieEvidenceTelemetry?.renderer === 'svg',
+        undefined,
+        { timeout: 5000 }
+      );
+      const observed = await page.evaluate(
+        () =>
+          window.__attackDieEvidenceTelemetry && {
+            ...window.__attackDieEvidenceTelemetry,
+            token: window.__attackDieEvidenceTelemetry.presentationToken,
+          }
+      );
+      if (observed) forcedObservations.push(observed);
+      await page.screenshot({
+        path: resolve(out, `forced-${force}-${mode}.png`),
+        fullPage: true,
+      });
+      continue;
+    }
     const rows = await runEvidenceSequence(
       {
+        async currentToken() {
+          return (
+            (await page.evaluate(
+              () => window.__attackDieEvidenceTelemetry?.presentationToken
+            )) ?? -1
+          );
+        },
         async setResult(result) {
           const input = page.getByLabel('Authoritative input');
           await input.fill(String(result));
@@ -73,7 +135,7 @@ try {
             .getByRole('button', { name: /Replay decorative variation/ })
             .click();
         },
-        async settle(result) {
+        async settle(result, previousToken) {
           await page.waitForFunction(
             (expected) => {
               const value = window.__attackDieEvidenceTelemetry;
@@ -85,7 +147,40 @@ try {
             result,
             { timeout: 5000 }
           );
-          return page.evaluate(() => window.__attackDieEvidenceTelemetry);
+          return observeHeldSettlement(
+            result,
+            previousToken,
+            async () =>
+              page.evaluate(
+                () =>
+                  window.__attackDieEvidenceTelemetry && {
+                    ...window.__attackDieEvidenceTelemetry,
+                    token:
+                      window.__attackDieEvidenceTelemetry.presentationToken,
+                  }
+              ),
+            async () => {
+              await page.evaluate(() => new Promise(requestAnimationFrame));
+            }
+          );
+        },
+        async verifyHeld(settlement) {
+          return observeHeldSettlement(
+            settlement.requestedResult,
+            settlement.token - 1,
+            async () =>
+              page.evaluate(
+                () =>
+                  window.__attackDieEvidenceTelemetry && {
+                    ...window.__attackDieEvidenceTelemetry,
+                    token:
+                      window.__attackDieEvidenceTelemetry.presentationToken,
+                  }
+              ),
+            async () => {
+              await page.evaluate(() => new Promise(requestAnimationFrame));
+            }
+          );
         },
         async capture(result, camera, settlement) {
           await page
@@ -115,12 +210,24 @@ try {
   );
   if (proposalHash !== manifest.webBuildSha256)
     throw Error('proposal build hash mismatch');
+  if (force !== 'none') {
+    const observed = await page.evaluate(
+      () =>
+        window.__attackDieEvidenceTelemetry && {
+          ...window.__attackDieEvidenceTelemetry,
+          token: window.__attackDieEvidenceTelemetry.presentationToken,
+        }
+    );
+    if (observed) forcedObservations.push(observed);
+    assertForcedFallback(force, forcedObservations);
+  }
   const output = {
     schemaVersion: 1,
     kind: 'attack-die-concept-evidence',
     warning: 'PROVISIONAL — NOT GRADUATION EVIDENCE',
     webBuildSha256: manifest.webBuildSha256,
-    captures,
+    forcedFailure: force,
+    captures: force === 'none' ? captures : [],
     humanAppearanceApproval: 'pending',
     humanFaceCalibration: 'pending',
   };

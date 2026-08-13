@@ -12,11 +12,10 @@ import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
-import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
-import { AttackDiePerfHarness } from './dev/AttackDiePerfHarness';
-import { shouldMountAttackDiePerf } from './dev/attackDiePerfRoute';
+import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
+import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
@@ -55,10 +54,8 @@ function AppContent() {
   // Computed once on mount via useState initializer so route doesn't flicker.
   // /playtest is a permanent verification surface (design.md), not slated
   // for removal — this gate stays.
-  const [showPlaytestHarness] = useState(
-    () =>
-      import.meta.env.MODE === 'development' &&
-      !!new URLSearchParams(window.location.search).get('encounterId')
+  const [attackDieDevRoute] = useState(() =>
+    selectAttackDieDevRoute(import.meta.env.MODE, window.location.search)
   );
 
   // Same shape as showPlaytestHarness above: dev-only, no app chrome.
@@ -221,16 +218,12 @@ function AppContent() {
     }
   };
 
-  if (showPlaytestHarness) {
-    const showAttackDiePerf = shouldMountAttackDiePerf(
-      import.meta.env.MODE,
-      window.location.search
-    );
+  if (attackDieDevRoute.kind !== 'normal') {
     return (
-      <div className="min-h-screen">
-        <PlaytestHarness />
-        {showAttackDiePerf && <AttackDiePerfHarness />}
-      </div>
+      <AttackDieDevRouteSurface
+        route={attackDieDevRoute}
+        playerId={playerId || 'test-player'}
+      />
     );
   }
 
@@ -364,14 +357,6 @@ function AppContent() {
             onCancel={handleCancelCreation}
           />
         )}
-
-        {/* Independent dev-only performance overlay. It observes the real
-            EncounterView route without receiving or invoking queue callbacks. */}
-        {isDevelopment &&
-          currentView === 'lobby' &&
-          new URLSearchParams(window.location.search).has('attackDiePerf') && (
-            <AttackDiePerfHarness />
-          )}
 
         {/* Dev tools buttons */}
         {isDevelopment && (

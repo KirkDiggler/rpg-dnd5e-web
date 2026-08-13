@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import {
   evaluateAttackDieRun,
   parseAttackDieProfiles,
+  performanceExitCode,
 } from '../../src/dev/attackDiePerfProtocol.ts';
 
 const args = process.argv.slice(2);
@@ -48,11 +49,12 @@ if (profileArtifact.blocked.length) {
   console.log(JSON.stringify(blocked));
   process.exit(2);
 }
+const outcomes = [];
 for (const profile of profileArtifact.profiles) {
   if (profile.status !== 'available') continue;
-  await runProfile(profile);
+  outcomes.push(await runProfile(profile));
 }
-process.exit(0);
+process.exitCode = performanceExitCode(outcomes);
 async function runProfile(profile) {
   const percentile = (values, p) => {
     const sorted = [...values].sort((a, b) => a - b);
@@ -85,6 +87,7 @@ async function runProfile(profile) {
     });
     const page = await context.newPage();
     const requests = new Map();
+    let requestSequence = 0;
     page.on('response', async (response) => {
       const url = response.url();
       if (!requests.has(url)) {
@@ -92,7 +95,12 @@ async function runProfile(profile) {
         try {
           bytes = (await response.body()).byteLength;
         } catch {}
-        requests.set(url, { url, status: response.status(), bytes });
+        requests.set(url, {
+          url,
+          status: response.status(),
+          bytes,
+          sequence: requestSequence++,
+        });
       }
     });
     await page.addInitScript(() => {
@@ -129,6 +137,7 @@ async function runProfile(profile) {
       const sample = await page.evaluate(
         async ({ mode, result, token }) => {
           const longStart = window.__attackDiePerfLongTasks.length;
+          const resourceStart = performance.getEntriesByType('resource').length;
           const deltas = [];
           const begin = performance.now();
           let last = begin;
@@ -160,6 +169,18 @@ async function runProfile(profile) {
               .filter((task) => task.duration > 50),
             counters,
             healthy3d: mode === 'svg' || counters.healthy3d,
+            requestCount:
+              performance.getEntriesByType('resource').length - resourceStart,
+            requestBytes: performance
+              .getEntriesByType('resource')
+              .slice(resourceStart)
+              .reduce((sum, entry) => sum + (entry.transferSize || 0), 0),
+            requestBytesLimitation:
+              'Resource Timing transferSize may be zero when unavailable or cross-origin.',
+            readyMs: counters.readyAtMs,
+            decodeMs: null,
+            decodeMsLimitation:
+              'Three.js loader does not expose a separate portable decode interval through this harness.',
             heapBytes: performance.memory?.usedJSHeapSize ?? null,
           };
         },
@@ -196,6 +217,18 @@ async function runProfile(profile) {
             p95FrameTimeMs: deltas[Math.ceil(deltas.length * 0.95) - 1] ?? 0,
             frameCount: deltas.length,
             counters: window.__attackDiePerf.readCounters(),
+            requestCount:
+              performance.getEntriesByType('resource').length - resourceStart,
+            requestBytes: performance
+              .getEntriesByType('resource')
+              .slice(resourceStart)
+              .reduce((sum, entry) => sum + (entry.transferSize || 0), 0),
+            requestBytesLimitation:
+              'Resource Timing transferSize may be zero when unavailable or cross-origin.',
+            readyMs: counters.readyAtMs,
+            decodeMs: null,
+            decodeMsLimitation:
+              'Three.js loader does not expose a separate portable decode interval through this harness.',
             heapBytes: performance.memory?.usedJSHeapSize ?? null,
           };
         },
@@ -218,15 +251,19 @@ async function runProfile(profile) {
       svgPostUnmountP95: postUnmount.svg.p95FrameTimeMs,
       candidatePostUnmountP95: postUnmount['3d'].p95FrameTimeMs,
       postUnmountCounters: {
-        contextsActive: Math.max(
-          0,
-          postUnmount['3d'].counters.contextsCreated -
-            postUnmount['3d'].counters.contextsLost -
-            postUnmount['3d'].counters.unmountCount
-        ),
-        geometries: postUnmount['3d'].counters.rendererInfo.geometries,
-        textures: postUnmount['3d'].counters.rendererInfo.textures,
-        programs: postUnmount['3d'].counters.rendererInfo.programs,
+        contextsActive: postUnmount['3d'].counters.activeContextIds.length,
+        geometries:
+          postUnmount['3d'].counters.activeContextIds.length === 0
+            ? 0
+            : postUnmount['3d'].counters.rendererInfo.geometries,
+        textures:
+          postUnmount['3d'].counters.activeContextIds.length === 0
+            ? 0
+            : postUnmount['3d'].counters.rendererInfo.textures,
+        programs:
+          postUnmount['3d'].counters.activeContextIds.length === 0
+            ? 0
+            : postUnmount['3d'].counters.rendererInfo.programs,
       },
     });
     budgets.healthy3d = health.healthy;
@@ -254,7 +291,23 @@ async function runProfile(profile) {
       summary: { svg, candidate },
       postUnmount,
       budgets,
-      network: { count: requests.size, requests: [...requests.values()] },
+      readiness: {
+        coldMs: samples.find((sample) => sample.mode === '3d')?.readyMs ?? null,
+        warmMs: samples
+          .filter((sample) => sample.mode === '3d')
+          .slice(1)
+          .map((sample) => sample.readyMs),
+        decodeMs: null,
+        decodeMsLimitation: 'No portable separate decode interval is exposed.',
+      },
+      network: {
+        count: requests.size,
+        bytes: [...requests.values()].reduce(
+          (sum, request) => sum + (request.bytes ?? 0),
+          0
+        ),
+        requests: [...requests.values()],
+      },
       gpuBytes: null,
       gpuBytesLimitation:
         'Browser does not expose portable GPU allocation bytes; exact harness renderer.info proxies are recorded when available.',
@@ -274,4 +327,5 @@ async function runProfile(profile) {
     await browser.close();
   }
   console.log(JSON.stringify(finalSummary));
+  return finalSummary;
 }
