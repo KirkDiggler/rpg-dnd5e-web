@@ -8,9 +8,7 @@ import {
   useState,
 } from 'react';
 import {
-  ACESFilmicToneMapping,
   Quaternion,
-  SRGBColorSpace,
   type Group,
   type Material,
   type WebGLRenderer,
@@ -35,6 +33,7 @@ import {
   releaseAttackDieRenderer,
 } from './attackDieRuntime';
 import { ATTACK_DIE_VISUAL_CONFIG } from './attackDieVisualConfig';
+import { resolveAttackDieRendererVisuals } from './attackDieVisualRuntime';
 
 export interface AttackDieTelemetry {
   presentationToken: number;
@@ -62,26 +61,20 @@ export interface AttackDie3DProps {
   /** Development calibration pose override; never supplied by production. */
   calibrationPose?: QuaternionTuple;
   /** Development-only failure exercise; normal behavior is unchanged. */
-  forceFailure?:
-    | 'load'
-    | 'webgl'
-    | 'shader'
-    | 'context-loss'
-    | 'hash'
-    | 'invalid-result'
-    | 'unmapped';
+  forceFailure?: 'shader' | 'invalid-result' | 'unmapped';
   /** Development-only parsed scene for provisional, not-yet-verified calibration. */
   sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
   /** Development-only inspected candidate sidecar metadata. */
   sidecarOverride?: AttackDieRuntimeSidecar;
   onRendererInfo?: (info: {
-    calls: number;
-    triangles: number;
-    geometries: number;
-    textures: number;
-    programs: number;
+    calls: number | null;
+    triangles: number | null;
+    geometries: number | null;
+    textures: number | null;
+    programs: number | null;
     lifecycle: 'created' | 'sample' | 'lost' | 'disposed';
     contextId: number;
+    observationLimitation?: string;
   }) => void;
 }
 
@@ -264,6 +257,7 @@ function AttackDieToken({
   onRendererInfo,
 }: AttackDie3DProps) {
   const visual = ATTACK_DIE_VISUAL_CONFIG;
+  const rendererVisuals = resolveAttackDieRendererVisuals(visual);
   const effectiveResult = forceFailure === 'invalid-result' ? 21 : result;
   const lock = useMemo(
     () => lockAttackDieRenderer(presentationToken, effectiveResult),
@@ -285,9 +279,7 @@ function AttackDieToken({
     !!target &&
     effectiveResult >= 1 &&
     effectiveResult <= 20 &&
-    !['load', 'webgl', 'shader', 'hash', 'invalid-result', 'unmapped'].includes(
-      forceFailure ?? ''
-    );
+    !['invalid-result', 'unmapped'].includes(forceFailure ?? '');
   const [truthful, setTruthful] = useState(false);
   const [failed, setFailed] = useState(false);
   const active = useRef(true);
@@ -320,7 +312,12 @@ function AttackDieToken({
   );
   useEffect(() => {
     active.current = true;
-    if (!forced) void preloadAttackDieRuntime().catch(() => undefined);
+    if (!forced)
+      void preloadAttackDieRuntime().catch((error) =>
+        fail(
+          `runtime load failed: ${error instanceof Error ? error.message : 'unknown'}`
+        )
+      );
     return () => {
       active.current = false;
       const current = listener.current;
@@ -331,16 +328,23 @@ function AttackDieToken({
         );
         current.gate.dispose();
       }
-      if (contextId.current !== undefined)
+      if (contextId.current !== undefined) {
+        const renderer = listener.current?.renderer;
+        renderer?.dispose();
+        renderer?.forceContextLoss();
         onRendererInfo?.({
-          calls: 0,
-          triangles: 0,
-          geometries: 0,
-          textures: 0,
-          programs: 0,
+          calls: renderer?.info.render.calls ?? null,
+          triangles: renderer?.info.render.triangles ?? null,
+          geometries: renderer?.info.memory.geometries ?? null,
+          textures: renderer?.info.memory.textures ?? null,
+          programs: renderer?.info.programs?.length ?? null,
           lifecycle: 'disposed',
           contextId: contextId.current,
+          observationLimitation: renderer
+            ? 'Observed renderer.info after dispose/forceContextLoss of only the owned overlay renderer; browser context release is not synchronously queryable.'
+            : 'Owned renderer was unavailable at disposal; resource release is unknown.',
         });
+      }
       releaseAttackDieRenderer(presentationToken);
       onTelemetry?.({
         presentationToken,
@@ -350,9 +354,20 @@ function AttackDieToken({
         exactTargetHeld: false,
       });
     };
-  }, [forced, lock, onRendererInfo, onTelemetry, presentationToken, result]);
+  }, [
+    fail,
+    forced,
+    lock,
+    onRendererInfo,
+    onTelemetry,
+    presentationToken,
+    result,
+  ]);
   useEffect(() => {
-    if (forceFailure) fail(`forced ${forceFailure} failure`);
+    if (forceFailure === 'invalid-result')
+      fail('invalid authoritative result: expected 1–20');
+    if (forceFailure === 'unmapped')
+      fail('authoritative result has no verified mapping');
   }, [fail, forceFailure]);
   const canvasVisible = eligible && !failed && phase !== 'hidden';
   return (
@@ -394,9 +409,10 @@ function AttackDieToken({
                   lifecycle: 'created',
                   contextId: contextId.current,
                 });
-                gl.toneMapping = ACESFilmicToneMapping;
-                gl.outputColorSpace = SRGBColorSpace;
+                gl.toneMapping = rendererVisuals.toneMapping;
+                gl.outputColorSpace = rendererVisuals.outputColorSpace;
                 gl.toneMappingExposure = visual.exposure;
+                scene.environment = rendererVisuals.environment;
                 camera.lookAt?.(
                   ...visual[
                     cameraView === 'top' ? 'topCamera' : 'threeQuarterCamera'
@@ -428,6 +444,7 @@ function AttackDieToken({
                     }
                   },
                   onFailure: fail,
+                  forceShaderFailure: forceFailure === 'shader',
                 });
                 const callback: EventListener = (event) => {
                   event.preventDefault();

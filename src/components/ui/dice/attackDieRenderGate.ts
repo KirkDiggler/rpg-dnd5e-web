@@ -5,6 +5,7 @@ interface AttackDieRenderGateOptions {
   isPoseValidated: () => boolean;
   onReady: () => void;
   onFailure: (reason: string) => void;
+  forceShaderFailure?: boolean;
 }
 
 interface AttackDieRenderLease {
@@ -105,6 +106,8 @@ export function installAttackDieRenderGate(
   gl.debug.onShaderError = onShaderError;
   gl.render = wrappedRender;
   try {
+    if (options.forceShaderFailure)
+      throw Error('forced shader diagnostic/link failure');
     gl.compile(scene, camera);
   } catch (error) {
     fail(

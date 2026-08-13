@@ -42,6 +42,7 @@ export interface EvidenceApi {
   currentToken(): Promise<number> | number;
   setResult(result: number): Promise<void> | void;
   settle(result: number, previousToken: number): Promise<Settlement>;
+  setCamera(camera: 'top' | 'three-quarter'): Promise<void> | void;
   verifyHeld(settlement: Settlement): Promise<Settlement>;
   capture(
     result: number,
@@ -62,10 +63,14 @@ export async function runEvidenceSequence(
       throw Error('presentation token did not advance');
     if (!healthy(held, result, held.token))
       throw Error('healthy 3D settlement mismatch');
+    const settledToken = held.token;
     for (const camera of ['top', 'three-quarter'] as const) {
-      held = await api.verifyHeld(held);
-      if (!healthy(held, result, held.token))
-        throw Error('camera hold mismatch');
+      await api.setCamera(camera);
+      for (let observation = 0; observation < 2; observation++) {
+        held = await api.verifyHeld(held);
+        if (!healthy(held, result, settledToken))
+          throw Error('camera hold token/result mismatch');
+      }
       await api.capture(result, camera, held);
       rows.push({ result, camera, ...held });
     }
@@ -78,6 +83,8 @@ export function validateManifest(value: unknown): FrozenBuildManifest {
   if (!value || typeof value !== 'object') throw Error('manifest schema');
   const m = value as FrozenBuildManifest;
   if (
+    Object.keys(m).sort().join(',') !==
+      'files,kind,schemaVersion,webBuildSha256' ||
     m.schemaVersion !== 1 ||
     m.kind !== 'attack-die-web-build-manifest' ||
     !Array.isArray(m.files) ||
@@ -88,9 +95,24 @@ export function validateManifest(value: unknown): FrozenBuildManifest {
   for (const file of m.files) {
     if (
       !file ||
+      typeof file !== 'object' ||
+      Object.keys(file).sort().join(',') !== 'path,sha256,size' ||
       typeof file.path !== 'string' ||
+      !file.path ||
+      file.path === '.' ||
       file.path.startsWith('/') ||
-      file.path.split('/').includes('..') ||
+      file.path.endsWith('/') ||
+      file.path.includes('//') ||
+      file.path.includes('\\') ||
+      [...file.path].some((character) => {
+        const code = character.charCodeAt(0);
+        return (
+          character === '?' || character === '#' || code < 32 || code === 127
+        );
+      }) ||
+      file.path
+        .split('/')
+        .some((segment) => segment === '.' || segment === '..') ||
       seen.has(file.path) ||
       !Number.isInteger(file.size) ||
       file.size < 0 ||
@@ -152,11 +174,45 @@ export function parseForcedFailure(value: string) {
     throw Error('unsupported --force value');
   return value as (typeof FORCED_FAILURES)[number];
 }
+export interface ForcedFallbackObservation extends Settlement {
+  state?: string;
+  failureReason?: string;
+  semanticFallbackCount?: number;
+}
+const forcedReason = (force: string, reason: string) => {
+  if (force === 'context-loss') return /context lost/i.test(reason);
+  if (force === 'shader') return /shader/i.test(reason);
+  if (force === 'invalid-result') return /invalid|1.+20/i.test(reason);
+  if (force === 'unmapped') return /unmapped|mapping/i.test(reason);
+  if (force === 'webgl') return /webgl/i.test(reason);
+  if (force === 'hash') return /hash|digest/i.test(reason);
+  if (force === 'load') return /load|runtime scene unavailable/i.test(reason);
+  return false;
+};
 export function assertForcedFallback(
   force: string,
-  observations: Settlement[]
+  observations: ForcedFallbackObservation[],
+  expected?: { result: number; token: number }
 ) {
   if (force === 'none') return;
-  if (observations.some((o) => o.renderer !== 'svg' || o.exactTargetHeld))
-    throw Error('forced failure must stay fail-closed SVG');
+  if (observations.length < 2)
+    throw Error('forced failure fail-closed repeated observations required');
+  const reference = expected ?? {
+    result: observations[0].requestedResult,
+    token: observations[0].token,
+  };
+  if (
+    observations.some(
+      (o) =>
+        o.renderer !== 'svg' ||
+        o.exactTargetHeld ||
+        o.requestedResult !== reference.result ||
+        o.token !== reference.token ||
+        o.state !== 'failed' ||
+        o.semanticFallbackCount !== 1 ||
+        !o.failureReason ||
+        !forcedReason(force, o.failureReason)
+    )
+  )
+    throw Error('forced failure must stay exact fail-closed semantic SVG');
 }

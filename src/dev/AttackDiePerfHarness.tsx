@@ -15,11 +15,11 @@ export interface AttackDiePerfSampleRequest {
   token: number;
 }
 export interface AttackDieRendererInfo {
-  calls: number;
-  triangles: number;
-  geometries: number;
-  textures: number;
-  programs: number;
+  calls: number | null;
+  triangles: number | null;
+  geometries: number | null;
+  textures: number | null;
+  programs: number | null;
 }
 export interface AttackDiePerfCounters {
   mountedMode: AttackDiePerfMode | null;
@@ -35,6 +35,7 @@ export interface AttackDiePerfCounters {
   readyAtMs: number | null;
   gpuBytes: null;
   gpuBytesLimitation: string;
+  rendererObservationLimitation: string | null;
 }
 export interface AttackDiePerfDriver {
   runSample(request: AttackDiePerfSampleRequest): void;
@@ -67,6 +68,7 @@ const empty = (): AttackDiePerfCounters => ({
   gpuBytes: null,
   gpuBytesLimitation:
     'Browser does not expose portable GPU allocation bytes; renderer.info proxies recorded.',
+  rendererObservationLimitation: null,
 });
 /** Independent observation overlay; no queue callbacks. */
 export function AttackDiePerfHarness({
@@ -125,15 +127,22 @@ export function AttackDiePerfHarness({
     <DiceTray phase="settled" finalFace={sample.result} outcome="HIT" />
   );
   const telemetry = (event: AttackDieTelemetry) => {
+    const matchesMountedSample =
+      sample.mode === '3d' &&
+      event.presentationToken === sample.token &&
+      event.requestedResult === sample.result;
+    const healthy =
+      matchesMountedSample &&
+      event.renderer === '3d' &&
+      event.exactTargetHeld &&
+      event.state === 'observed';
+    if (!matchesMountedSample) return;
     counters.current = {
       ...counters.current,
       telemetry: event,
-      healthy3d:
-        event.renderer === '3d' &&
-        event.exactTargetHeld &&
-        event.state === 'observed',
+      healthy3d: healthy,
       readyAtMs:
-        event.renderer === '3d' && counters.current.readyAtMs === null
+        healthy && counters.current.readyAtMs === null
           ? performance.now() - start.current
           : counters.current.readyAtMs,
     };
@@ -154,10 +163,12 @@ export function AttackDiePerfHarness({
           fallback={fallback}
           onTelemetry={telemetry}
           onRendererInfo={(info) => {
-            counters.current = applyAttackDieRendererObservation(
-              counters.current,
-              info
-            );
+            counters.current = {
+              ...applyAttackDieRendererObservation(counters.current, info),
+              rendererObservationLimitation:
+                info.observationLimitation ??
+                counters.current.rendererObservationLimitation,
+            };
           }}
         />
       ) : (

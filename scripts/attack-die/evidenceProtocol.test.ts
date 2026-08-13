@@ -15,6 +15,7 @@ describe('attack die evidence protocol', () => {
       setResult: vi.fn(() => {
         token += 1;
       }),
+      setCamera: vi.fn(async () => undefined),
       verifyHeld: vi.fn(async (settlement) => settlement),
       settle: vi.fn(async (result: number) => ({
         requestedResult: result,
@@ -38,6 +39,7 @@ describe('attack die evidence protocol', () => {
   it('fails on fallback, mismatch, missed hold, and timeout', async () => {
     const base = {
       currentToken: () => 0,
+      setCamera: async () => undefined,
       verifyHeld: async (settlement: never) => settlement,
       setResult: vi.fn(),
       capture: vi.fn(),
@@ -120,17 +122,17 @@ it('validates every forced mode and requires fail-closed SVG observations', () =
       },
     ])
   ).toThrow(/fail-closed/);
-  expect(() =>
-    assertForcedFallback('shader', [
-      {
-        requestedResult: 1,
-        renderer: 'svg',
-        angularErrorDegrees: 0,
-        exactTargetHeld: false,
-        token: 2,
-      },
-    ])
-  ).not.toThrow();
+  const failed = {
+    requestedResult: 1,
+    renderer: 'svg' as const,
+    angularErrorDegrees: 0,
+    exactTargetHeld: false,
+    token: 2,
+    state: 'failed',
+    failureReason: 'shader readiness failed',
+    semanticFallbackCount: 1,
+  };
+  expect(() => assertForcedFallback('shader', [failed, failed])).not.toThrow();
 });
 
 it('requires token advancement and repeated held observations before and during cameras', async () => {
@@ -227,4 +229,137 @@ it('validates manifest schema, canonical root, exact served identity, and unlist
       async () => bytes
     )
   ).rejects.toThrow(/root/);
+});
+
+it('switches camera before two same-token holds and capture', async () => {
+  const order: string[] = [];
+  let token = 10;
+  const healthy = {
+    requestedResult: 1,
+    renderer: '3d' as const,
+    angularErrorDegrees: 0,
+    exactTargetHeld: true,
+    token,
+  };
+  const api = {
+    currentToken: () => 9,
+    setResult: async () => undefined,
+    settle: async () => healthy,
+    setCamera: async (camera: string) => {
+      order.push(`camera:${camera}`);
+    },
+    verifyHeld: async () => {
+      order.push('hold');
+      return { ...healthy, token };
+    },
+    capture: async () => {
+      order.push('capture');
+    },
+  };
+  await runEvidenceSequence(api as never, [1]);
+  expect(order).toEqual([
+    'camera:top',
+    'hold',
+    'hold',
+    'capture',
+    'camera:three-quarter',
+    'hold',
+    'hold',
+    'capture',
+  ]);
+  token++;
+  await expect(
+    runEvidenceSequence(
+      {
+        ...api,
+        currentToken: () => 9,
+        settle: async () => ({ ...healthy, token: 10 }),
+        verifyHeld: async () => ({ ...healthy, token }),
+      } as never,
+      [1]
+    )
+  ).rejects.toThrow(/camera hold|token/);
+});
+
+it('strictly validates manifest keys and unsafe POSIX paths and exact same manifest', async () => {
+  const { createHash } = await import('node:crypto');
+  const { encodeFrozenBuildRecords } = await import('./frozenBuildManifest');
+  const { validateManifest, assertSameManifest } =
+    await import('./evidenceProtocol');
+  const make = (path = 'index.html') => {
+    const file = {
+      path,
+      size: 0,
+      sha256: createHash('sha256').update('').digest('hex'),
+    };
+    return {
+      schemaVersion: 1,
+      kind: 'attack-die-web-build-manifest',
+      files: [file],
+      webBuildSha256: createHash('sha256')
+        .update(encodeFrozenBuildRecords([file]))
+        .digest('hex'),
+    };
+  };
+  for (const path of [
+    '',
+    '.',
+    '..',
+    '/x',
+    'a//b',
+    'a/',
+    'a\\b',
+    'a/../b',
+    'a/./b',
+    'a?b',
+    'a#b',
+    'a\u0000b',
+  ])
+    expect(() => validateManifest(make(path) as never), path).toThrow(
+      /manifest entry/
+    );
+  expect(() => validateManifest({ ...make(), extra: true } as never)).toThrow(
+    /manifest schema/
+  );
+  expect(() =>
+    validateManifest({
+      ...make(),
+      files: [{ ...make().files[0], extra: true }],
+    } as never)
+  ).toThrow(/manifest entry/);
+  expect(() => assertSameManifest(make() as never, make('other.html'))).toThrow(
+    /served manifest mismatch/
+  );
+});
+
+it('requires forced evidence to be repeated, exact, irreversible semantic SVG', async () => {
+  const { assertForcedFallback } = await import('./evidenceProtocol');
+  const good = {
+    requestedResult: 7,
+    renderer: 'svg' as const,
+    angularErrorDegrees: 0,
+    exactTargetHeld: false,
+    token: 4,
+    state: 'failed' as const,
+    failureReason: 'shader readiness failed',
+    semanticFallbackCount: 1,
+  };
+  expect(() =>
+    assertForcedFallback('shader', [good, good], { result: 7, token: 4 })
+  ).not.toThrow();
+  for (const observations of [
+    [],
+    [good],
+    [good, { ...good, renderer: '3d' as const }],
+    [good, { ...good, token: 5 }],
+    [good, { ...good, requestedResult: 8 }],
+    [good, { ...good, failureReason: 'forced generic failure' }],
+    [good, { ...good, semanticFallbackCount: 2 }],
+  ])
+    expect(() =>
+      assertForcedFallback('shader', observations as never, {
+        result: 7,
+        token: 4,
+      })
+    ).toThrow();
 });

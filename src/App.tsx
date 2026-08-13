@@ -50,7 +50,7 @@ type AppView =
   | 'author';
 
 function AppContent() {
-  // Stable gate: dev mode + encounterId URL param → render PlaytestHarness.
+  // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
   // /playtest is a permanent verification surface (design.md), not slated
   // for removal — this gate stays.

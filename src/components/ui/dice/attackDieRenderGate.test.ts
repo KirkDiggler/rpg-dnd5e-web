@@ -93,3 +93,20 @@ describe('installAttackDieRenderGate', () => {
     expect(gl.render).toBe(originalRender);
   });
 });
+
+it('drives the shader failure seam through the shader readiness gate', () => {
+  const { gl } = renderer();
+  const failed = vi.fn();
+  expect(() =>
+    installAttackDieRenderGate(gl, {} as never, {} as never, {
+      isActive: () => true,
+      isPoseValidated: () => true,
+      onReady: vi.fn(),
+      onFailure: failed,
+      forceShaderFailure: true,
+    })
+  ).toThrow(/forced shader/);
+  expect(failed).toHaveBeenCalledWith(
+    expect.stringMatching(/shader readiness failed.*forced shader/)
+  );
+});

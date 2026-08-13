@@ -74,7 +74,7 @@ try {
   await page
     .getByRole('heading', { name: 'Authoritative 3D Attack Die' })
     .waitFor();
-  if (force !== 'none')
+  if (['shader', 'invalid-result', 'unmapped'].includes(force))
     await page.getByLabel('Forced fallback').selectOption(force);
   if (force === 'context-loss') {
     await page.locator('.attack-die-3d__canvas').waitFor();
@@ -100,19 +100,37 @@ try {
     if (mode === 'reduced-motion') await reduced.check();
     else await reduced.uncheck();
     if (force !== 'none') {
-      await page.waitForFunction(
-        () => window.__attackDieEvidenceTelemetry?.renderer === 'svg',
-        undefined,
-        { timeout: 5000 }
-      );
-      const observed = await page.evaluate(
-        () =>
-          window.__attackDieEvidenceTelemetry && {
-            ...window.__attackDieEvidenceTelemetry,
-            token: window.__attackDieEvidenceTelemetry.presentationToken,
-          }
-      );
-      if (observed) forcedObservations.push(observed);
+      for (let observation = 0; observation < 2; observation++) {
+        await page.waitForFunction(
+          () => window.__attackDieEvidenceTelemetry?.renderer === 'svg',
+          undefined,
+          { timeout: 5000 }
+        );
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        const observed = await page.evaluate(() => {
+          const telemetry = window.__attackDieEvidenceTelemetry;
+          if (!telemetry) return undefined;
+          const semantic = [
+            ...document.querySelectorAll('.attack-die-3d__fallback'),
+          ].filter((node) => {
+            const face = node.querySelector('[data-testid="dice-face"]');
+            return (
+              node.querySelector('[data-testid="d20-die"]') &&
+              face?.textContent?.trim() === String(telemetry.requestedResult)
+            );
+          });
+          return {
+            ...telemetry,
+            token: telemetry.presentationToken,
+            semanticFallbackCount: semantic.length,
+          };
+        });
+        if (observed) forcedObservations.push(observed);
+      }
+      assertForcedFallback(force, forcedObservations, {
+        result: forcedObservations[0]?.requestedResult,
+        token: forcedObservations[0]?.token,
+      });
       await page.screenshot({
         path: resolve(out, `forced-${force}-${mode}.png`),
         fullPage: true,
@@ -164,30 +182,42 @@ try {
             }
           );
         },
-        async verifyHeld(settlement) {
-          return observeHeldSettlement(
-            settlement.requestedResult,
-            settlement.token - 1,
-            async () =>
-              page.evaluate(
-                () =>
-                  window.__attackDieEvidenceTelemetry && {
-                    ...window.__attackDieEvidenceTelemetry,
-                    token:
-                      window.__attackDieEvidenceTelemetry.presentationToken,
-                  }
-              ),
-            async () => {
-              await page.evaluate(() => new Promise(requestAnimationFrame));
-            }
-          );
-        },
-        async capture(result, camera, settlement) {
+        async setCamera(camera) {
           await page
             .getByRole('radio', {
               name: camera === 'top' ? 'Top' : 'Three-quarter',
             })
             .click();
+        },
+        async verifyHeld(settlement) {
+          await page.evaluate(() => new Promise(requestAnimationFrame));
+          const observed = await page.evaluate(
+            () =>
+              window.__attackDieEvidenceTelemetry && {
+                ...window.__attackDieEvidenceTelemetry,
+                token: window.__attackDieEvidenceTelemetry.presentationToken,
+              }
+          );
+          if (!observed || observed.token !== settlement.token)
+            throw Error('camera hold token replacement');
+          return observed;
+        },
+        async capture(result, camera, settlement) {
+          const observed = await page.evaluate(
+            () =>
+              window.__attackDieEvidenceTelemetry && {
+                ...window.__attackDieEvidenceTelemetry,
+                token: window.__attackDieEvidenceTelemetry.presentationToken,
+              }
+          );
+          if (
+            !observed ||
+            observed.token !== settlement.token ||
+            observed.requestedResult !== result ||
+            observed.renderer !== '3d' ||
+            !observed.exactTargetHeld
+          )
+            throw Error('capture telemetry regression');
           const file = `${mode}-result-${String(result).padStart(2, '0')}-${camera}.png`;
           await page.screenshot({ path: resolve(out, file), fullPage: true });
           captures.push({
@@ -210,17 +240,7 @@ try {
   );
   if (proposalHash !== manifest.webBuildSha256)
     throw Error('proposal build hash mismatch');
-  if (force !== 'none') {
-    const observed = await page.evaluate(
-      () =>
-        window.__attackDieEvidenceTelemetry && {
-          ...window.__attackDieEvidenceTelemetry,
-          token: window.__attackDieEvidenceTelemetry.presentationToken,
-        }
-    );
-    if (observed) forcedObservations.push(observed);
-    assertForcedFallback(force, forcedObservations);
-  }
+  if (force !== 'none') assertForcedFallback(force, forcedObservations);
   const output = {
     schemaVersion: 1,
     kind: 'attack-die-concept-evidence',

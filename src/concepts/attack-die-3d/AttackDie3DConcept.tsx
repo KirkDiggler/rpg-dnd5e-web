@@ -548,7 +548,11 @@ export function AttackDie3DConcept() {
             onTelemetry={handleTelemetry}
             cameraView={state.camera}
             calibrationPose={displayedPose}
-            forceFailure={forcedFailure === 'none' ? undefined : forcedFailure}
+            forceFailure={
+              ['shader', 'invalid-result', 'unmapped'].includes(forcedFailure)
+                ? (forcedFailure as 'shader' | 'invalid-result' | 'unmapped')
+                : undefined
+            }
             sceneOverride={provider?.scene}
             sidecarOverride={provider?.sidecar}
           />

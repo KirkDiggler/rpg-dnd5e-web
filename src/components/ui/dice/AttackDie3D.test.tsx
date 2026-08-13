@@ -27,6 +27,9 @@ const mocks = vi.hoisted(() => ({
   groupMissing: false,
   motionFailure: false,
   poseCopy: vi.fn(),
+  canvasProps: null as Record<string, unknown> | null,
+  createdScene: { environment: 'unexpected' } as { environment: unknown },
+  createdCamera: { lookAt: vi.fn() },
   gl: {
     debug: {
       checkShaderErrors: false,
@@ -34,6 +37,16 @@ const mocks = vi.hoisted(() => ({
     },
     compile: vi.fn(),
     render: vi.fn(),
+    dispose: vi.fn(),
+    forceContextLoss: vi.fn(),
+    toneMappingExposure: 0,
+    toneMapping: 0,
+    outputColorSpace: '',
+    info: {
+      render: { calls: 1, triangles: 2 },
+      memory: { geometries: 1, textures: 0 },
+      programs: [{}],
+    },
     domElement: null as HTMLCanvasElement | null,
   },
 }));
@@ -58,7 +71,12 @@ vi.mock('@react-three/fiber', () => ({
       mocks.listeners.delete(type);
     };
     mocks.gl.domElement = canvas;
-    onCreated?.({ gl: mocks.gl, scene: {}, camera: {} });
+    mocks.canvasProps = props;
+    onCreated?.({
+      gl: mocks.gl,
+      scene: mocks.createdScene,
+      camera: mocks.createdCamera,
+    });
     if (mocks.renderFailure) throw Error('child render failed');
     return (
       <div data-testid="canvas" {...props}>
@@ -421,4 +439,27 @@ describe('AttackDie3D', () => {
     >;
     expectTypeOf<Forbidden>().toEqualTypeOf<never>();
   });
+});
+
+it('consumes the complete renderer-owned camera/DPR/environment authority', async () => {
+  const { ATTACK_DIE_VISUAL_CONFIG: visual } =
+    await import('./attackDieVisualConfig');
+  mocks.status = 'ready';
+  render(<AttackDie3D {...props(33)} cameraView="top" />);
+  expect(mocks.canvasProps?.camera).toEqual({
+    fov: visual.topCamera.fov,
+    near: visual.topCamera.near,
+    far: visual.topCamera.far,
+    position: visual.topCamera.position,
+    up: visual.topCamera.up,
+  });
+  expect(mocks.canvasProps?.dpr).toBe(visual.devicePixelRatio);
+  expect(mocks.createdCamera.lookAt).toHaveBeenCalledWith(
+    ...visual.topCamera.target
+  );
+  expect(mocks.createdScene.environment).toBeNull();
+  expect(mocks.gl.toneMappingExposure).toBe(visual.exposure);
+  expect(
+    screen.getByTestId('canvas').querySelector('group')?.getAttribute('scale')
+  ).toBe(String(visual.dieScale));
 });

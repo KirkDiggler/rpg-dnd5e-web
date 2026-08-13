@@ -5,8 +5,14 @@ import { chromium } from 'playwright';
 import {
   evaluateAttackDieRun,
   parseAttackDieProfiles,
-  performanceExitCode,
 } from '../../src/dev/attackDiePerfProtocol.ts';
+import {
+  measurePostUnmount,
+  releasedCounters,
+  runProfileAttempts,
+  writeProfileArtifact,
+} from './attackDiePairedDriver.ts';
+import { AttackDieRequestTracker } from './attackDieRequestTracker.ts';
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -49,12 +55,12 @@ if (profileArtifact.blocked.length) {
   console.log(JSON.stringify(blocked));
   process.exit(2);
 }
-const outcomes = [];
-for (const profile of profileArtifact.profiles) {
-  if (profile.status !== 'available') continue;
-  outcomes.push(await runProfile(profile));
-}
-process.exitCode = performanceExitCode(outcomes);
+const attempted = await runProfileAttempts(
+  profileArtifact.profiles.filter((profile) => profile.status === 'available'),
+  out,
+  runProfile
+);
+process.exitCode = attempted.exitCode;
 async function runProfile(profile) {
   const percentile = (values, p) => {
     const sorted = [...values].sort((a, b) => a - b);
@@ -86,22 +92,20 @@ async function runProfile(profile) {
       deviceScaleFactor: profile.dpr,
     });
     const page = await context.newPage();
-    const requests = new Map();
-    let requestSequence = 0;
+    const requestTracker = new AttackDieRequestTracker();
+    page.on('request', (request) =>
+      requestTracker.start(request, request.url(), performance.now())
+    );
     page.on('response', async (response) => {
-      const url = response.url();
-      if (!requests.has(url)) {
-        let bytes = null;
-        try {
-          bytes = (await response.body()).byteLength;
-        } catch {}
-        requests.set(url, {
-          url,
-          status: response.status(),
-          bytes,
-          sequence: requestSequence++,
-        });
-      }
+      let bytes = null;
+      try {
+        bytes = (await response.body()).byteLength;
+      } catch {}
+      requestTracker.settle(response.request(), {
+        status: response.status(),
+        bytes,
+        settledAt: performance.now(),
+      });
     });
     await page.addInitScript(() => {
       window.__attackDiePerfLongTasks = [];
@@ -119,7 +123,8 @@ async function runProfile(profile) {
     url.searchParams.set('attackDiePerf', '1');
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => Boolean(window.__attackDiePerf));
-    // Warm provider and shader outside timed windows without touching the queue.
+    // Preserve one actual cold readiness trial before any provider/shader warmup.
+    const coldBoundary = performance.now();
     await page.evaluate(() =>
       window.__attackDiePerf.runSample({
         mode: '3d',
@@ -128,16 +133,42 @@ async function runProfile(profile) {
         token: 1,
       })
     );
+    await page
+      .waitForFunction(
+        () => window.__attackDiePerf.readCounters().readyAtMs !== null,
+        undefined,
+        { timeout: 5000 }
+      )
+      .catch(() => undefined);
+    const coldCounters = await page.evaluate(() =>
+      window.__attackDiePerf.readCounters()
+    );
+    const coldEndedAt = performance.now();
+    const coldTrial = {
+      readyMs: coldCounters.readyAtMs,
+      healthy3d: coldCounters.healthy3d,
+      requests: requestTracker.sample(coldBoundary, coldEndedAt),
+    };
+    await page.evaluate(() => window.__attackDiePerf.unmountDie());
+    // Warm after the separately recorded cold trial, outside measured alternating windows.
+    await page.evaluate(() =>
+      window.__attackDiePerf.runSample({
+        mode: '3d',
+        result: 20,
+        reducedMotion: false,
+        token: 2,
+      })
+    );
     await page.waitForTimeout(2500);
     await page.evaluate(() => window.__attackDiePerf.unmountDie());
     const samples = [];
     for (let index = 0; index < 40; index++) {
       const mode = index % 2 === 0 ? 'svg' : '3d';
       const result = (Math.floor(index / 2) % 20) + 1;
+      const sampleStartedAt = performance.now();
       const sample = await page.evaluate(
         async ({ mode, result, token }) => {
           const longStart = window.__attackDiePerfLongTasks.length;
-          const resourceStart = performance.getEntriesByType('resource').length;
           const deltas = [];
           const begin = performance.now();
           let last = begin;
@@ -169,14 +200,6 @@ async function runProfile(profile) {
               .filter((task) => task.duration > 50),
             counters,
             healthy3d: mode === 'svg' || counters.healthy3d,
-            requestCount:
-              performance.getEntriesByType('resource').length - resourceStart,
-            requestBytes: performance
-              .getEntriesByType('resource')
-              .slice(resourceStart)
-              .reduce((sum, entry) => sum + (entry.transferSize || 0), 0),
-            requestBytesLimitation:
-              'Resource Timing transferSize may be zero when unavailable or cross-origin.',
             readyMs: counters.readyAtMs,
             decodeMs: null,
             decodeMsLimitation:
@@ -184,56 +207,34 @@ async function runProfile(profile) {
             heapBytes: performance.memory?.usedJSHeapSize ?? null,
           };
         },
-        { mode, result, token: index + 2 }
+        { mode, result, token: index + 3 }
       );
-      samples.push(sample);
+      const sampleEndedAt = performance.now();
+      const startedRequests = requestTracker.sample(
+        sampleStartedAt,
+        sampleEndedAt
+      );
+      samples.push({
+        ...sample,
+        requestCount: startedRequests.length,
+        requestBytes: startedRequests.every((request) => request.bytes !== null)
+          ? startedRequests.reduce((sum, request) => sum + request.bytes, 0)
+          : null,
+        requests: startedRequests,
+        requestBytesLimitation: startedRequests.some(
+          (request) => request.bytes === null
+        )
+          ? 'One or more requests started in this sample have unknown bytes or had not settled at sample close.'
+          : null,
+      });
     }
     const postUnmount = {};
     for (const mode of ['svg', '3d']) {
-      postUnmount[mode] = await page.evaluate(
-        async ({ mode, token, windowMs }) => {
-          window.__attackDiePerf.runSample({
-            mode,
-            result: 20,
-            reducedMotion: false,
-            token,
-          });
-          await new Promise((done) => setTimeout(done, 100));
-          window.__attackDiePerf.unmountDie();
-          const deltas = [];
-          let last = performance.now();
-          const start = last;
-          await new Promise((done) => {
-            const frame = (now) => {
-              deltas.push(now - last);
-              last = now;
-              if (now - start >= windowMs) done();
-              else requestAnimationFrame(frame);
-            };
-            requestAnimationFrame(frame);
-          });
-          deltas.sort((a, b) => a - b);
-          return {
-            p95FrameTimeMs: deltas[Math.ceil(deltas.length * 0.95) - 1] ?? 0,
-            frameCount: deltas.length,
-            counters: window.__attackDiePerf.readCounters(),
-            requestCount:
-              performance.getEntriesByType('resource').length - resourceStart,
-            requestBytes: performance
-              .getEntriesByType('resource')
-              .slice(resourceStart)
-              .reduce((sum, entry) => sum + (entry.transferSize || 0), 0),
-            requestBytesLimitation:
-              'Resource Timing transferSize may be zero when unavailable or cross-origin.',
-            readyMs: counters.readyAtMs,
-            decodeMs: null,
-            decodeMsLimitation:
-              'Three.js loader does not expose a separate portable decode interval through this harness.',
-            heapBytes: performance.memory?.usedJSHeapSize ?? null,
-          };
-        },
-        { mode, token: mode === 'svg' ? 50 : 51, windowMs: postUnmountMs }
-      );
+      postUnmount[mode] = await measurePostUnmount(page, {
+        mode,
+        token: mode === 'svg' ? 50 : 51,
+        windowMs: postUnmountMs,
+      });
     }
     const svg = summary(samples.filter((sample) => sample.mode === 'svg'));
     const candidate = summary(samples.filter((sample) => sample.mode === '3d'));
@@ -250,21 +251,7 @@ async function runProfile(profile) {
       candidateP95: candidate.p95,
       svgPostUnmountP95: postUnmount.svg.p95FrameTimeMs,
       candidatePostUnmountP95: postUnmount['3d'].p95FrameTimeMs,
-      postUnmountCounters: {
-        contextsActive: postUnmount['3d'].counters.activeContextIds.length,
-        geometries:
-          postUnmount['3d'].counters.activeContextIds.length === 0
-            ? 0
-            : postUnmount['3d'].counters.rendererInfo.geometries,
-        textures:
-          postUnmount['3d'].counters.activeContextIds.length === 0
-            ? 0
-            : postUnmount['3d'].counters.rendererInfo.textures,
-        programs:
-          postUnmount['3d'].counters.activeContextIds.length === 0
-            ? 0
-            : postUnmount['3d'].counters.rendererInfo.programs,
-      },
+      postUnmountCounters: releasedCounters(postUnmount['3d'].counters),
     });
     budgets.healthy3d = health.healthy;
     budgets.resourcesReleased = health.resourcesReleased;
@@ -292,31 +279,25 @@ async function runProfile(profile) {
       postUnmount,
       budgets,
       readiness: {
-        coldMs: samples.find((sample) => sample.mode === '3d')?.readyMs ?? null,
+        coldTrial,
+        coldMs: coldTrial.readyMs,
         warmMs: samples
           .filter((sample) => sample.mode === '3d')
-          .slice(1)
           .map((sample) => sample.readyMs),
         decodeMs: null,
         decodeMsLimitation: 'No portable separate decode interval is exposed.',
       },
       network: {
-        count: requests.size,
-        bytes: [...requests.values()].reduce(
-          (sum, request) => sum + (request.bytes ?? 0),
-          0
-        ),
-        requests: [...requests.values()],
+        attribution:
+          'Playwright request identity with request-start boundaries; repeated URLs retained.',
+        byteLimitation:
+          'Response body bytes are null when unavailable or the request has not settled.',
       },
       gpuBytes: null,
       gpuBytesLimitation:
         'Browser does not expose portable GPU allocation bytes; exact harness renderer.info proxies are recorded when available.',
     };
-    await mkdir(out, { recursive: true });
-    await writeFile(
-      resolve(out, `performance-${profile.category}.json`),
-      `${JSON.stringify(output, null, 2)}\n`
-    );
+    await writeProfileArtifact(out, profile.category, output);
     finalSummary = {
       status: output.status,
       out,

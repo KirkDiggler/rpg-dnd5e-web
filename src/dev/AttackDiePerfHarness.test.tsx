@@ -6,12 +6,16 @@ import {
   evaluateAttackDieBudgets,
 } from './attackDiePerfProtocol';
 
+let latest3dProps: Record<string, unknown> = {};
 vi.mock('../components/ui/dice/AttackDie3D', () => ({
-  AttackDie3D: (props: { result: number; fallback: React.ReactNode }) => (
-    <div data-testid="perf-3d" data-result={props.result}>
-      {props.fallback}
-    </div>
-  ),
+  AttackDie3D: (props: { result: number; fallback: React.ReactNode }) => {
+    latest3dProps = props;
+    return (
+      <div data-testid="perf-3d" data-result={props.result}>
+        {props.fallback}
+      </div>
+    );
+  },
 }));
 vi.mock('../components/ui/dice/DiceTray', () => ({
   DiceTray: ({ finalFace }: { finalFace: number }) => (
@@ -138,4 +142,57 @@ it('latches first-ready and counts unique context lifecycle observations', async
   expect(sampled.rendererInfo.calls).toBe(3);
   expect(disposed.contextsDisposed).toBe(1);
   expect(disposed.activeContextIds).toEqual([]);
+});
+
+it('correlates readiness only to the current exact held healthy sample', () => {
+  render(<AttackDiePerfHarness enabled />);
+  act(() =>
+    window.__attackDiePerf!.runSample({
+      mode: '3d',
+      result: 7,
+      reducedMotion: false,
+      token: 20,
+    })
+  );
+  act(() =>
+    (latest3dProps.onTelemetry as (event: Record<string, unknown>) => void)({
+      presentationToken: 19,
+      requestedResult: 7,
+      renderer: '3d',
+      state: 'observed',
+      exactTargetHeld: true,
+    })
+  );
+  expect(window.__attackDiePerf!.readCounters().healthy3d).toBe(false);
+  act(() =>
+    (latest3dProps.onTelemetry as (event: Record<string, unknown>) => void)({
+      presentationToken: 20,
+      requestedResult: 8,
+      renderer: '3d',
+      state: 'observed',
+      exactTargetHeld: true,
+    })
+  );
+  expect(window.__attackDiePerf!.readCounters().readyAtMs).toBeNull();
+  act(() =>
+    (latest3dProps.onTelemetry as (event: Record<string, unknown>) => void)({
+      presentationToken: 20,
+      requestedResult: 7,
+      renderer: '3d',
+      state: 'disposed',
+      exactTargetHeld: true,
+    })
+  );
+  expect(window.__attackDiePerf!.readCounters().healthy3d).toBe(false);
+  act(() =>
+    (latest3dProps.onTelemetry as (event: Record<string, unknown>) => void)({
+      presentationToken: 20,
+      requestedResult: 7,
+      renderer: '3d',
+      state: 'observed',
+      exactTargetHeld: true,
+    })
+  );
+  expect(window.__attackDiePerf!.readCounters().healthy3d).toBe(true);
+  expect(window.__attackDiePerf!.readCounters().readyAtMs).not.toBeNull();
 });

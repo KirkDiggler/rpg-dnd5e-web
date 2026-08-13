@@ -72,3 +72,24 @@ it('rejects matching descendants and unrelated prefix primitive names', () => {
     /primitive/
   );
 });
+
+it('rejects source-mesh prefix aliases and matching root plus descendant nodes', () => {
+  const fixture = sceneFixture();
+  const selectors = {
+    ...validSidecar().selectors,
+    node: 'Node',
+    sourceMesh: 'SourceMesh',
+    bodyPrimitive: { mesh: 'SourceMesh_primitive_0', material: 'Body' },
+    numeralPrimitive: { mesh: 'SourceMesh_primitive_1', material: 'Numbers' },
+  };
+  expect(() =>
+    resolveAttackDiePrimitives(fixture.scene, selectors as never)
+  ).toThrow(/primitive/);
+  fixture.scene.name = 'Node';
+  expect(() =>
+    resolveAttackDiePrimitives(fixture.scene, {
+      ...selectors,
+      sourceMesh: 'SourceMesh_primitive',
+    } as never)
+  ).toThrow(/node selector/);
+});

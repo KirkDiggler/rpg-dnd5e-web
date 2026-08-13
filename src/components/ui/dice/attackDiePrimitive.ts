@@ -13,11 +13,9 @@ export function resolveAttackDiePrimitives(
   selectors: AttackDieRuntimeSidecar['selectors']
 ): ResolvedAttackDiePrimitives {
   const nodes: Object3D[] = [];
-  if (scene.name === selectors.node) nodes.push(scene);
-  else
-    scene.traverse((object) => {
-      if (object.name === selectors.node) nodes.push(object);
-    });
+  scene.traverse((object) => {
+    if (object.name === selectors.node) nodes.push(object);
+  });
   if (nodes.length !== 1) throw Error('attack die node selector ambiguous');
   const directMeshes = nodes[0].children.filter(
     (object): object is Mesh => (object as Mesh).isMesh === true
@@ -38,7 +36,8 @@ export function resolveAttackDiePrimitives(
       );
       return (
         originalName === selector.mesh &&
-        normalizeSelectorName(originalName).startsWith(selectors.sourceMesh) &&
+        normalizeSelectorName(originalName).replace(/_\d+$/, '') ===
+          selectors.sourceMesh &&
         materials(mesh).length === 1 &&
         normalizeSelectorName(materials(mesh)[0].name) === selector.material
       );

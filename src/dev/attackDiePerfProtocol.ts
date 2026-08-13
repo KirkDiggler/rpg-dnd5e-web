@@ -190,20 +190,20 @@ export interface AttackDieRendererObservationCounters {
   contextsDisposed: number;
   activeContextIds: number[];
   rendererInfo: {
-    calls: number;
-    triangles: number;
-    geometries: number;
-    textures: number;
-    programs: number;
+    calls: number | null;
+    triangles: number | null;
+    geometries: number | null;
+    textures: number | null;
+    programs: number | null;
   };
   [key: string]: unknown;
 }
 export interface AttackDieRendererObservation {
-  calls: number;
-  triangles: number;
-  geometries: number;
-  textures: number;
-  programs: number;
+  calls: number | null;
+  triangles: number | null;
+  geometries: number | null;
+  textures: number | null;
+  programs: number | null;
   lifecycle: 'created' | 'sample' | 'lost' | 'disposed';
   contextId: number;
 }
@@ -214,11 +214,11 @@ export function applyAttackDieRendererObservation<
     contextsDisposed: number;
     activeContextIds: number[];
     rendererInfo: {
-      calls: number;
-      triangles: number;
-      geometries: number;
-      textures: number;
-      programs: number;
+      calls: number | null;
+      triangles: number | null;
+      geometries: number | null;
+      textures: number | null;
+      programs: number | null;
     };
   },
 >(

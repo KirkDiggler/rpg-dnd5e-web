@@ -145,3 +145,32 @@ describe('fix round 2 strictness and exit', () => {
     expect(performanceExitCode([])).toBe(1);
   });
 });
+
+it('never infers released renderer resources from inactive context IDs', () => {
+  const base = {
+    samples: [{ mode: '3d' as const, healthy3d: true, longTasks: [] }],
+    svgP95: 10,
+    candidateP95: 10,
+    svgPostUnmountP95: 10,
+    candidatePostUnmountP95: 10,
+  };
+  for (const counters of [
+    { contextsActive: 0, geometries: 1, textures: 0, programs: 0 },
+    { contextsActive: 0, geometries: null, textures: null, programs: null },
+    { contextsActive: 1, geometries: 0, textures: 0, programs: 0 },
+  ])
+    expect(
+      evaluateAttackDieRun({ ...base, postUnmountCounters: counters }).pass
+    ).toBe(false);
+  expect(
+    evaluateAttackDieRun({
+      ...base,
+      postUnmountCounters: {
+        contextsActive: 0,
+        geometries: 0,
+        textures: 0,
+        programs: 0,
+      },
+    }).pass
+  ).toBe(true);
+});
