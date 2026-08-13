@@ -11,13 +11,13 @@ import {
   AttackDie3D,
   type AttackDieTelemetry,
 } from '../../components/ui/dice/AttackDie3D';
-import { DiceTray } from '../../components/ui/dice/DiceTray';
 import {
   sha256Hex,
   validateAttackDieSidecar,
   type AttackDieRuntimeSidecar,
   type QuaternionTuple,
 } from '../../components/ui/dice/attackDieContract';
+import { DiceTray } from '../../components/ui/dice/DiceTray';
 import {
   PROVISIONAL_VISUAL_DEFAULTS,
   PROVISIONAL_WARNING,
@@ -346,7 +346,7 @@ export function AttackDie3DConcept() {
           </button>
         ))}
       </div>
-      {stage === 4 ? (
+      {stage === 4 && (
         <div
           role="tabpanel"
           aria-label={stages[stage]}
@@ -354,8 +354,11 @@ export function AttackDie3DConcept() {
         >
           <DiceTray3DConceptPanel />
         </div>
-      ) : (
-      <div
+      )}
+      {stage !== 4 && (
+        <>
+          {/* prettier-ignore */}
+          <div
         role="tabpanel"
         aria-label={stages[stage]}
         className="attack-die-concept__stage"
@@ -576,6 +579,7 @@ export function AttackDie3DConcept() {
           />
         </div>
       </div>
+        </>
       )}
     </section>
   );
