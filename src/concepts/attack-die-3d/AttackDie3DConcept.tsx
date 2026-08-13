@@ -397,6 +397,7 @@ export function AttackDie3DConcept() {
                 result={state.selectedResult}
                 onResult={(result) => dispatch({ type: 'result', result })}
               />
+              <CameraControls camera={state.camera} dispatch={dispatch} />
               <label>
                 <input
                   type="checkbox"

@@ -68,6 +68,8 @@ describe('AttackDie3D staged concept', () => {
     fireEvent.click(screen.getByLabelText('Magical'));
     fireEvent.click(screen.getByLabelText(/Animate magical treatment/));
     fireEvent.click(screen.getByRole('tab', { name: 'Roll' }));
+    expect(screen.getByRole('radio', { name: 'Top' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Three-quarter' })).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/Reduced motion/));
     fireEvent.change(screen.getByLabelText('Forced fallback'), {
       target: { value: 'shader' },
