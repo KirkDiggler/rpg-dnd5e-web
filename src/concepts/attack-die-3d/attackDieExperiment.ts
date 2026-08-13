@@ -3,52 +3,13 @@ import type {
   AttackDieEvidenceTuple,
   AttackDieMaterialMode,
   AttackDieRuntimeSidecar,
-  CameraContract,
   QuaternionTuple,
 } from '../../components/ui/dice/attackDieContract';
+import { tupleFromVisualConfig } from './attackDieVisualConfig';
+export { ATTACK_DIE_VISUAL_CONFIG as PROVISIONAL_VISUAL_DEFAULTS } from './attackDieVisualConfig';
 
 export const PROVISIONAL_WARNING =
   'PROVISIONAL — NOT AN ASSET CONTRACT' as const;
-
-const topCamera: CameraContract = {
-  type: 'perspective',
-  fov: 35,
-  near: 0.1,
-  far: 100,
-  position: [0, 4, 0],
-  target: [0, 0, 0],
-  up: [0, 0, -1],
-};
-const threeQuarterCamera: CameraContract = {
-  type: 'perspective',
-  fov: 35,
-  near: 0.1,
-  far: 100,
-  position: [3, 2.4, 3],
-  target: [0, 0, 0],
-  up: [0, 1, 0],
-};
-
-export const PROVISIONAL_VISUAL_DEFAULTS = Object.freeze({
-  approval: 'unverified-provisional' as const,
-  topCamera,
-  threeQuarterCamera,
-  viewportCss: [320, 320] as const,
-  outputPixels: [640, 640] as const,
-  devicePixelRatio: 2,
-  dieScale: 0.75,
-  toneMapping: 'ACESFilmic' as const,
-  outputColorSpace: 'sRGB' as const,
-  exposure: 1,
-  environment: null,
-  ambientIntensity: 0.65,
-  keyLight: { position: [4, 6, 5] as const, intensity: 3 },
-  fillLight: { position: [-4, 2, -3] as const, intensity: 1.2 },
-  shaderRevision: 'attack-die-magical-v1',
-  lightingRevision: 'attack-die-provisional-lighting-v1',
-  environmentRevision: 'none',
-  selectorRootRevision: 'normalized-blender-suffix-v1',
-});
 
 export interface AttackDieCalibrationProposal {
   schemaVersion: 1;
@@ -91,7 +52,11 @@ export type AttackDieExperimentAction =
   | { type: 'replay' }
   | { type: 'verify-start'; mode: 'animated' | 'reduced-motion' }
   | { type: 'verify-next' }
-  | { type: 'verify-stop' };
+  | { type: 'verify-stop' }
+  | {
+      type: 'import-faces';
+      faces: ReadonlyArray<{ result: number; quaternion: QuaternionTuple }>;
+    };
 
 function normalized(tuple: QuaternionTuple): QuaternionTuple {
   if (!tuple.every(Number.isFinite)) throw Error('quaternion must be finite');
@@ -217,6 +182,34 @@ export function attackDieExperimentReducer(
     }
     case 'verify-stop':
       return { ...state, verificationMode: 'idle', verificationResult: null };
+    case 'import-faces': {
+      if (action.faces.length !== 20)
+        throw Error('candidate import requires 20 faces');
+      const seen = new Set<number>();
+      const faces = action.faces
+        .map((face) => {
+          if (
+            !Number.isInteger(face.result) ||
+            face.result < 1 ||
+            face.result > 20 ||
+            seen.has(face.result)
+          )
+            throw Error('candidate faces invalid');
+          seen.add(face.result);
+          return {
+            result: face.result,
+            quaternion: normalized(face.quaternion),
+          };
+        })
+        .sort((a, b) => a.result - b.result);
+      return {
+        ...state,
+        faces,
+        pose:
+          faces.find((face) => face.result === state.selectedResult)
+            ?.quaternion ?? state.pose,
+      };
+    }
   }
 }
 
@@ -240,6 +233,13 @@ export function exportCalibrationProposal(
     !/^[0-9a-f]{64}$/.test(input.webBuildSha256)
   )
     throw Error('build digest must be SHA-256 or null');
+  if (
+    input.webBuildSha256 !== null &&
+    typeof window !== 'undefined' &&
+    window.__ATTACK_DIE_BUILD_SHA256__ !== undefined &&
+    input.webBuildSha256 !== window.__ATTACK_DIE_BUILD_SHA256__
+  )
+    throw Error('build digest mismatch');
   if (input.faces.length > 20)
     throw Error('at most 20 mappings may be proposed');
   const seen = new Set<number>();
@@ -256,7 +256,6 @@ export function exportCalibrationProposal(
       return { result: face.result, quaternion: normalized(face.quaternion) };
     })
     .sort((a, b) => a.result - b.result);
-  const d = PROVISIONAL_VISUAL_DEFAULTS;
   return {
     schemaVersion: 1,
     kind: 'attack-die-calibration-proposal',
@@ -266,25 +265,11 @@ export function exportCalibrationProposal(
     coordinates: input.coordinates,
     selectors: input.selectors,
     webBuildSha256: input.webBuildSha256,
-    tupleDraft: {
+    tupleDraft: tupleFromVisualConfig({
       webCommit: input.webCommit,
       glbSha256: input.asset.sha256,
-      selectorRootRevision: d.selectorRootRevision,
-      topCamera: d.topCamera,
-      threeQuarterCamera: d.threeQuarterCamera,
       materialMode: input.materialMode,
-      shaderRevision: d.shaderRevision,
-      lightingRevision: d.lightingRevision,
-      environmentRevision: d.environmentRevision,
-      exposure: d.exposure,
-      toneMapping: d.toneMapping,
-      outputColorSpace: d.outputColorSpace,
-      dieScale: d.dieScale,
-      viewportCss: d.viewportCss,
-      outputPixels: d.outputPixels,
-      devicePixelRatio: d.devicePixelRatio,
-      toleranceDegrees: 0.25,
-    },
+    }),
     faces,
   };
 }

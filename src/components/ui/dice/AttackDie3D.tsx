@@ -13,7 +13,6 @@ import {
   SRGBColorSpace,
   type Group,
   type Material,
-  type Mesh,
   type WebGLRenderer,
 } from 'three';
 import type { DiceTrayPhase } from './DiceTray';
@@ -28,6 +27,7 @@ import {
   stepAttackDieMotion,
   type AttackDieMotionFrame,
 } from './attackDieMotion';
+import { resolveAttackDiePrimitives } from './attackDiePrimitive';
 import {
   getAttackDieRuntimeScene,
   lockAttackDieRenderer,
@@ -52,6 +52,8 @@ export interface AttackDie3DProps {
   phase: DiceTrayPhase;
   materialMode: AttackDieMaterialMode;
   reducedMotion: boolean;
+  magicalAnimation?: boolean;
+  decorativeSeed?: number;
   fallback: React.ReactNode;
   onTelemetry?: (event: AttackDieTelemetry) => void;
   /** Development concept camera; omitted in production-intent usage. */
@@ -71,6 +73,15 @@ export interface AttackDie3DProps {
   sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
   /** Development-only inspected candidate sidecar metadata. */
   sidecarOverride?: AttackDieRuntimeSidecar;
+  onRendererInfo?: (info: {
+    calls: number;
+    triangles: number;
+    geometries: number;
+    textures: number;
+    programs: number;
+    contextsCreated: number;
+    contextsLost: number;
+  }) => void;
 }
 
 import { installAttackDieRenderGate } from './attackDieRenderGate';
@@ -100,30 +111,38 @@ function cloneTokenScene(
   const source = sourceOverride ?? getAttackDieRuntimeScene();
   if (!source) throw Error('runtime scene unavailable');
   const scene = source.clone(true);
-  const node = scene.getObjectByName(sidecar.selectors.node);
-  if (!node) throw Error('attack die node selector failed');
-  const mesh = node.getObjectByName(sidecar.selectors.mesh) as Mesh | undefined;
-  if (!mesh?.isMesh) throw Error('attack die mesh selector failed');
-  const slots = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  if (slots.length !== sidecar.selectors.materialSlots)
-    throw Error('attack die material slot count failed');
-  const tokenSlots = slots.map((material) => material.clone());
-  const patched = patchAttackDieMaterials(
-    tokenSlots,
-    mode,
-    reducedMotion,
+  const { body, numeral } = resolveAttackDiePrimitives(
+    scene,
     sidecar.selectors
   );
-  mesh.material = tokenSlots.map((material) =>
-    material === patched.originalBody ? patched.body : material
+  const bodyMaterial = (
+    Array.isArray(body.material) ? body.material[0] : body.material
+  ).clone();
+  const numeralMaterial = (
+    Array.isArray(numeral.material) ? numeral.material[0] : numeral.material
+  ).clone();
+  const patched = patchAttackDieMaterials(
+    [bodyMaterial, numeralMaterial],
+    mode,
+    reducedMotion,
+    {
+      bodyMaterial: sidecar.selectors.bodyPrimitive.material,
+      numeralMaterial: sidecar.selectors.numeralPrimitive.material,
+    }
   );
+  body.material = patched.body;
+  numeral.material = numeralMaterial;
   const owned = [
-    ...tokenSlots,
+    bodyMaterial,
+    numeralMaterial,
     ...(patched.owned ? [patched.body] : []),
   ] as Material[];
   let disposed = false;
   return {
     scene,
+    updateShaderTime(time: number) {
+      patched.setTime(time);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -141,6 +160,8 @@ function RuntimeDie({
   poseValidated,
   onFailure,
   sceneOverride,
+  magicalAnimation,
+  decorativeSeed,
 }: {
   sidecar: AttackDieRuntimeSidecar;
   target: QuaternionTuple;
@@ -150,6 +171,8 @@ function RuntimeDie({
   poseValidated: React.MutableRefObject<boolean>;
   onFailure: (reason: string) => void;
   sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
+  magicalAnimation: boolean;
+  decorativeSeed: number;
 }) {
   const group = useRef<Group>(null);
   const start = useRef<number | undefined>(undefined);
@@ -178,6 +201,7 @@ function RuntimeDie({
       reducedMotion,
       current: renderedQuaternion.current,
       target,
+      decorativeSeed,
     });
     renderedQuaternion.current = frame.quaternion;
     if (frame.failed) {
@@ -193,6 +217,8 @@ function RuntimeDie({
     try {
       selectedGroup.quaternion.copy(new Quaternion(...frame.quaternion));
       poseValidated.current = true;
+      if (magicalAnimation && !reducedMotion)
+        bundle?.updateShaderTime(clock.elapsedTime);
       onFrame(frame);
     } catch (error) {
       onFailure(
@@ -214,6 +240,8 @@ function AttackDieToken({
   phase,
   materialMode,
   reducedMotion,
+  magicalAnimation = true,
+  decorativeSeed = presentationToken,
   fallback,
   onTelemetry,
   cameraView = 'three-quarter',
@@ -221,6 +249,7 @@ function AttackDieToken({
   forceFailure,
   sceneOverride,
   sidecarOverride,
+  onRendererInfo,
 }: AttackDie3DProps) {
   const effectiveResult = forceFailure === 'invalid-result' ? 21 : result;
   const lock = useMemo(
@@ -350,12 +379,32 @@ function AttackDieToken({
                   isActive: () => active.current,
                   isPoseValidated: () => poseValidated.current,
                   onReady: () => {
-                    if (active.current) setTruthful(true);
+                    if (active.current) {
+                      setTruthful(true);
+                      onRendererInfo?.({
+                        calls: gl.info.render.calls,
+                        triangles: gl.info.render.triangles,
+                        geometries: gl.info.memory.geometries,
+                        textures: gl.info.memory.textures,
+                        programs: gl.info.programs?.length ?? 0,
+                        contextsCreated: 1,
+                        contextsLost: 0,
+                      });
+                    }
                   },
                   onFailure: fail,
                 });
                 const callback: EventListener = (event) => {
                   event.preventDefault();
+                  onRendererInfo?.({
+                    calls: gl.info.render.calls,
+                    triangles: gl.info.render.triangles,
+                    geometries: gl.info.memory.geometries,
+                    textures: gl.info.memory.textures,
+                    programs: gl.info.programs?.length ?? 0,
+                    contextsCreated: 1,
+                    contextsLost: 1,
+                  });
                   gate.fail('WebGL context lost');
                 };
                 gl.domElement.addEventListener('webglcontextlost', callback);
@@ -383,6 +432,8 @@ function AttackDieToken({
                 poseValidated={poseValidated}
                 onFailure={fail}
                 sceneOverride={sceneOverride}
+                magicalAnimation={magicalAnimation}
+                decorativeSeed={decorativeSeed}
                 onFrame={(frame) => {
                   if (!active.current || !frame.observeNow) return;
                   onTelemetry?.({

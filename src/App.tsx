@@ -16,6 +16,7 @@ import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
 import { AttackDiePerfHarness } from './dev/AttackDiePerfHarness';
+import { shouldMountAttackDiePerf } from './dev/attackDiePerfRoute';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
@@ -221,9 +222,14 @@ function AppContent() {
   };
 
   if (showPlaytestHarness) {
+    const showAttackDiePerf = shouldMountAttackDiePerf(
+      import.meta.env.MODE,
+      window.location.search
+    );
     return (
       <div className="min-h-screen">
         <PlaytestHarness />
+        {showAttackDiePerf && <AttackDiePerfHarness />}
       </div>
     );
   }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { extname, relative, resolve, sep } from 'node:path';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -33,9 +33,14 @@ async function safeFile(root, requested) {
   const rel = relative(root, candidate);
   if (rel === '..' || rel.startsWith(`..${sep}`))
     throw Object.assign(Error('path traversal'), { status: 400 });
+  let current = candidate;
+  while (current !== root) {
+    const info = await lstat(current);
+    if (info.isSymbolicLink())
+      throw Object.assign(Error('symlink rejected'), { status: 403 });
+    current = dirname(current);
+  }
   const info = await lstat(candidate);
-  if (info.isSymbolicLink())
-    throw Object.assign(Error('symlink rejected'), { status: 403 });
   const actual = await realpath(candidate);
   const actualRel = relative(root, actual);
   if (actualRel === '..' || actualRel.startsWith(`..${sep}`))

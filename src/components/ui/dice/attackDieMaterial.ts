@@ -36,11 +36,20 @@ export function patchAttackDieMaterials(
     selectors.numeralMaterial
   );
   if (mode === 'raw')
-    return { body, numeral, originalBody: body, shaderTime: 0, owned: false };
+    return {
+      body,
+      numeral,
+      originalBody: body,
+      shaderTime: 0,
+      owned: false,
+      setTime: () => undefined,
+    };
   const patched = body.clone();
+  let compiled: CompiledShader | undefined;
   patched.onBeforeCompile = (shader: CompiledShader) => {
+    compiled = shader;
     shader.uniforms.attackDieTime = {
-      value: reducedMotion ? 0 : performance.now() / 1000,
+      value: 0,
     };
     shader.fragmentShader =
       `uniform float attackDieTime;\n${shader.fragmentShader}`.replace(
@@ -54,7 +63,11 @@ export function patchAttackDieMaterials(
     body: patched,
     numeral,
     originalBody: body,
-    shaderTime: reducedMotion ? 0 : performance.now() / 1000,
+    shaderTime: 0,
     owned: true,
+    setTime(time: number) {
+      if (compiled)
+        compiled.uniforms.attackDieTime.value = reducedMotion ? 0 : time;
+    },
   };
 }

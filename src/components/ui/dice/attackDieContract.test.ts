@@ -26,11 +26,10 @@ export const validSidecar = (
   },
   selectors: {
     blenderSuffixPattern: '\\.\\d{3}$',
-    node: 'D20_Lightning_preview_4pct',
-    mesh: 'D20_Lightning_preview_4pct_Mesh',
-    bodyMaterial: 'D20_Lightning_Material',
-    numeralMaterial: 'Paint_Material',
-    materialSlots: 2,
+    node: 'synthetic-node',
+    sourceMesh: 'synthetic-source-mesh',
+    bodyPrimitive: { material: 'synthetic-body' },
+    numeralPrimitive: { material: 'synthetic-numerals' },
   },
   faces: Array.from({ length: 20 }, (_, i) => q(i + 1)),
   tuple: {
@@ -165,7 +164,7 @@ describe('attack die contract', () => {
       'selectors',
       (s: ReturnType<typeof validSidecar>) => ({
         ...s,
-        selectors: { ...s.selectors, materialSlots: 3 },
+        selectors: { ...s.selectors, bodyPrimitive: { material: '' } },
       }),
     ],
     [
@@ -205,17 +204,21 @@ describe('attack die contract', () => {
       ).ok
     ).toBe(false);
   });
-  it.each([
-    ['node', 'Wrong_Node'],
-    ['mesh', 'Wrong_Mesh'],
-    ['bodyMaterial', 'Wrong_Body'],
-    ['numeralMaterial', 'Wrong_Numerals'],
-    ['materialSlots', 1],
-    ['materialSlots', 3],
-  ] as const)('rejects mutated approved selector %s=%s', async (key, value) => {
+  it('accepts provider-owned exact selector strings but rejects ambiguous roles', async () => {
     const sidecar = validSidecar();
+    expect(
+      (await validateAttackDieSidecar(sidecar, { verifyDigest: false })).ok
+    ).toBe(true);
     const checked = await validateAttackDieSidecar(
-      { ...sidecar, selectors: { ...sidecar.selectors, [key]: value } },
+      {
+        ...sidecar,
+        selectors: {
+          ...sidecar.selectors,
+          numeralPrimitive: {
+            material: sidecar.selectors.bodyPrimitive.material,
+          },
+        },
+      },
       { verifyDigest: false }
     );
     expect(checked.ok).toBe(false);

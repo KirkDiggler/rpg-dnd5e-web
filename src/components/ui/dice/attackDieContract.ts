@@ -50,10 +50,9 @@ export interface AttackDieRuntimeSidecar {
   selectors: {
     blenderSuffixPattern: '\\.\\d{3}$';
     node: string;
-    mesh: string;
-    bodyMaterial: string;
-    numeralMaterial: string;
-    materialSlots: 2;
+    sourceMesh: string;
+    bodyPrimitive: { material: string };
+    numeralPrimitive: { material: string };
   };
   faces: ReadonlyArray<{ result: number; quaternion: QuaternionTuple }>;
   tuple: AttackDieEvidenceTuple;
@@ -171,17 +170,20 @@ function validateNested(v: Record<string, unknown>) {
     !exact(v.selectors, [
       'blenderSuffixPattern',
       'node',
-      'mesh',
-      'bodyMaterial',
-      'numeralMaterial',
-      'materialSlots',
+      'sourceMesh',
+      'bodyPrimitive',
+      'numeralPrimitive',
     ]) ||
     v.selectors.blenderSuffixPattern !== '\\.\\d{3}$' ||
-    v.selectors.materialSlots !== 2 ||
-    v.selectors.node !== 'D20_Lightning_preview_4pct' ||
-    v.selectors.mesh !== 'D20_Lightning_preview_4pct_Mesh' ||
-    v.selectors.bodyMaterial !== 'D20_Lightning_Material' ||
-    v.selectors.numeralMaterial !== 'Paint_Material'
+    !text(v.selectors.node) ||
+    !text(v.selectors.sourceMesh) ||
+    !plain(v.selectors.bodyPrimitive) ||
+    !exact(v.selectors.bodyPrimitive, ['material']) ||
+    !text(v.selectors.bodyPrimitive.material) ||
+    !plain(v.selectors.numeralPrimitive) ||
+    !exact(v.selectors.numeralPrimitive, ['material']) ||
+    !text(v.selectors.numeralPrimitive.material) ||
+    v.selectors.bodyPrimitive.material === v.selectors.numeralPrimitive.material
   )
     throw Error('selectors');
   const t = v.tuple;

@@ -20,11 +20,10 @@ const coordinates = {
 };
 const selectors = {
   blenderSuffixPattern: '\\.\\d{3}$' as const,
-  node: 'D20_Lightning_preview_4pct',
-  mesh: 'D20_Lightning_preview_4pct_Mesh',
-  bodyMaterial: 'D20_Lightning_Material',
-  numeralMaterial: 'Paint_Material',
-  materialSlots: 2 as const,
+  node: 'synthetic-node',
+  sourceMesh: 'synthetic-source',
+  bodyPrimitive: { material: 'synthetic-body' },
+  numeralPrimitive: { material: 'synthetic-numerals' },
 };
 
 describe('attack die experiment', () => {
@@ -143,5 +142,34 @@ describe('attack die experiment', () => {
         faces: [{ result: 1, quaternion: [0, 0, 0, 0] }],
       })
     ).toThrow();
+  });
+});
+
+describe('frozen proposal build binding', () => {
+  it('allows null exploration, accepts injected matching hash, rejects invalid and mismatch', () => {
+    const base = {
+      webCommit: 'b'.repeat(40),
+      asset,
+      coordinates,
+      selectors,
+      materialMode: 'magical' as const,
+      faces: [],
+    };
+    expect(
+      exportCalibrationProposal({ ...base, webBuildSha256: null })
+        .webBuildSha256
+    ).toBeNull();
+    window.__ATTACK_DIE_BUILD_SHA256__ = 'c'.repeat(64);
+    expect(
+      exportCalibrationProposal({ ...base, webBuildSha256: 'c'.repeat(64) })
+        .webBuildSha256
+    ).toBe('c'.repeat(64));
+    expect(() =>
+      exportCalibrationProposal({ ...base, webBuildSha256: 'bad' })
+    ).toThrow(/SHA-256/);
+    expect(() =>
+      exportCalibrationProposal({ ...base, webBuildSha256: 'd'.repeat(64) })
+    ).toThrow(/mismatch/);
+    delete window.__ATTACK_DIE_BUILD_SHA256__;
   });
 });

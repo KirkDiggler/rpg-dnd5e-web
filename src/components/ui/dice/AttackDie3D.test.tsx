@@ -106,11 +106,13 @@ vi.mock('./attackDieRuntime', () => ({
         return clone;
       };
     }
-    const mesh = new Mesh(new BufferGeometry(), materials);
-    mesh.name = mocks.selectorMismatch
+    const body = new Mesh(new BufferGeometry(), materials[0]);
+    body.name = mocks.selectorMismatch
       ? 'Wrong_Mesh'
-      : 'D20_Lightning_preview_4pct_Mesh';
-    root.add(mesh);
+      : 'D20_Lightning_preview_4pct_Mesh_0';
+    const numeral = new Mesh(new BufferGeometry(), materials[1]);
+    numeral.name = 'D20_Lightning_preview_4pct_Mesh_1';
+    root.add(body, numeral);
     return root;
   },
   lockAttackDieRenderer: (_token: number, result: number) => {
@@ -118,11 +120,11 @@ vi.mock('./attackDieRuntime', () => ({
     const sidecar = ready
       ? {
           selectors: {
+            blenderSuffixPattern: '\\.\\d{3}$',
             node: 'D20_Lightning_preview_4pct',
-            mesh: 'D20_Lightning_preview_4pct_Mesh',
-            bodyMaterial: 'D20_Lightning_Material',
-            numeralMaterial: 'Paint_Material',
-            materialSlots: 2,
+            sourceMesh: 'D20_Lightning_preview_4pct_Mesh',
+            bodyPrimitive: { material: 'D20_Lightning_Material' },
+            numeralPrimitive: { material: 'Paint_Material' },
           },
           faces: Array.from({ length: 20 }, (_, index) => ({
             result: index + 1,

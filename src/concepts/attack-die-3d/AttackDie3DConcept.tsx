@@ -14,6 +14,7 @@ import {
 import { DiceTray } from '../../components/ui/dice/DiceTray';
 import {
   sha256Hex,
+  validateAttackDieSidecar,
   type AttackDieRuntimeSidecar,
   type QuaternionTuple,
 } from '../../components/ui/dice/attackDieContract';
@@ -25,6 +26,13 @@ import {
   exportCalibrationProposal,
 } from './attackDieExperiment';
 
+declare global {
+  interface Window {
+    __ATTACK_DIE_BUILD_SHA256__?: string;
+    __attackDieEvidenceTelemetry?: AttackDieTelemetry;
+    __attackDieProposalBuildSha256?: string | null;
+  }
+}
 const stages = ['Appearance', 'Calibrate', 'Roll', 'Verify'] as const;
 const GLB_URL = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
 const SOURCE_SIDECAR_URL =
@@ -66,11 +74,10 @@ function provisionalSidecar(digest: string): AttackDieRuntimeSidecar {
     },
     selectors: {
       blenderSuffixPattern: '\\.\\d{3}$',
-      node: 'D20_Lightning_preview_4pct',
-      mesh: 'D20_Lightning_preview_4pct_Mesh',
-      bodyMaterial: 'D20_Lightning_Material',
-      numeralMaterial: 'Paint_Material',
-      materialSlots: 2,
+      node: 'PROVIDER_PENDING',
+      sourceMesh: 'PROVIDER_PENDING',
+      bodyPrimitive: { material: 'PROVIDER_PENDING_BODY' },
+      numeralPrimitive: { material: 'PROVIDER_PENDING_NUMERALS' },
     },
     faces: [],
     tuple: {
@@ -110,11 +117,6 @@ function useInspectedProvider() {
         const bytes = await response.arrayBuffer();
         const digest = await sha256Hex(bytes);
         const parsed = await new GLTFLoader().parseAsync(bytes, '');
-        const inspectedMesh = parsed.scene
-          .getObjectByName('D20_Lightning_preview_4pct')
-          ?.children.find((child) => 'isMesh' in child && child.isMesh);
-        if (inspectedMesh)
-          inspectedMesh.name = 'D20_Lightning_preview_4pct_Mesh';
         let sidecar = provisionalSidecar(digest);
         let note =
           'No canonical sidecar is available; selectors were inspected from the controlled GLB for provisional authoring only.';
@@ -125,11 +127,17 @@ function useInspectedProvider() {
             ?.get('content-type')
             ?.includes('application/json')
         ) {
-          const candidate =
-            (await sidecarResponse.json()) as AttackDieRuntimeSidecar;
-          sidecar = { ...candidate, faces: [] };
+          const candidate: unknown = await sidecarResponse.json();
+          const checked = await validateAttackDieSidecar(candidate);
+          if (!checked.ok)
+            throw Error(`candidate sidecar invalid: ${checked.reason}`);
+          if (checked.sidecar.state !== 'candidate')
+            throw Error('development import requires candidate sidecar');
+          if (checked.sidecar.asset.sha256 !== digest)
+            throw Error('candidate GLB hash mismatch');
+          sidecar = checked.sidecar;
           note =
-            'Candidate sidecar loaded for provisional authoring; it is not accepted as a verified runtime contract.';
+            'Strictly validated candidate sidecar loaded for provisional evidence; it is not accepted as a verified runtime contract.';
         }
         if (active) {
           setProvider({ digest, sidecar, scene: parsed.scene, note });
@@ -181,11 +189,16 @@ function Metadata({
       </div>
       <div>
         <dt>Body selector</dt>
-        <dd>{provider?.sidecar.selectors.bodyMaterial ?? 'unavailable'}</dd>
+        <dd>
+          {provider?.sidecar.selectors.bodyPrimitive.material ?? 'unavailable'}
+        </dd>
       </div>
       <div>
         <dt>Numeral selector</dt>
-        <dd>{provider?.sidecar.selectors.numeralMaterial ?? 'unavailable'}</dd>
+        <dd>
+          {provider?.sidecar.selectors.numeralPrimitive.material ??
+            'unavailable'}
+        </dd>
       </div>
       <div>
         <dt>Human appearance approval</dt>
@@ -203,6 +216,7 @@ export function AttackDie3DConcept() {
     undefined,
     createAttackDieExperiment
   );
+  const importedDigest = useRef<string | undefined>(undefined);
   const [forcedFailure, setForcedFailure] = useState<'none' | ForcedFailure>(
     'none'
   );
@@ -212,6 +226,29 @@ export function AttackDie3DConcept() {
   >({});
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const { provider, error } = useInspectedProvider();
+  useEffect(() => {
+    if (
+      !provider ||
+      importedDigest.current === provider.digest ||
+      provider.sidecar.faces.length !== 20
+    )
+      return;
+    importedDigest.current = provider.digest;
+    dispatch({ type: 'import-faces', faces: provider.sidecar.faces });
+  }, [provider]);
+  const [osReducedMotion, setOsReducedMotion] = useState(
+    () =>
+      typeof matchMedia === 'function' &&
+      matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
+    const media = matchMedia('(prefers-reduced-motion: reduce)');
+    const change = () => setOsReducedMotion(media.matches);
+    media.addEventListener('change', change);
+    return () => media.removeEventListener('change', change);
+  }, []);
+  const effectiveReducedMotion = state.reducedMotion || osReducedMotion;
   const effectiveResult = state.verificationResult ?? state.selectedResult;
   const currentMapping = state.faces.find(
     (face) => face.result === effectiveResult
@@ -228,6 +265,7 @@ export function AttackDie3DConcept() {
   };
   const handleTelemetry = useCallback(
     (event: AttackDieTelemetry) => {
+      window.__attackDieEvidenceTelemetry = event;
       setTelemetry(event);
       if (stage === 3 && state.verificationResult)
         setMachineRows((rows) => ({
@@ -245,7 +283,7 @@ export function AttackDie3DConcept() {
     if (!provider) return null;
     return exportCalibrationProposal({
       webCommit: import.meta.env.VITE_ATTACK_DIE_WEB_COMMIT || '0'.repeat(40),
-      webBuildSha256: null,
+      webBuildSha256: window.__ATTACK_DIE_BUILD_SHA256__ ?? null,
       asset: provider.sidecar.asset,
       coordinates: provider.sidecar.coordinates,
       selectors: provider.sidecar.selectors,
@@ -253,6 +291,9 @@ export function AttackDie3DConcept() {
       faces: state.faces,
     });
   }, [provider, state.faces, state.materialMode]);
+  useEffect(() => {
+    window.__attackDieProposalBuildSha256 = proposal?.webBuildSha256 ?? null;
+  }, [proposal]);
 
   return (
     <section className="attack-die-concept">
@@ -482,7 +523,9 @@ export function AttackDie3DConcept() {
             presentationToken={token}
             phase="rolling"
             materialMode={state.materialMode}
-            reducedMotion={state.reducedMotion}
+            reducedMotion={effectiveReducedMotion}
+            magicalAnimation={state.magicalAnimation && !effectiveReducedMotion}
+            decorativeSeed={token + state.decorativeVariation}
             fallback={
               <DiceTray
                 phase="settled"
@@ -549,7 +592,10 @@ function ResultControl({
         min={1}
         max={20}
         value={result}
-        onChange={(event) => onResult(Number(event.target.value))}
+        onChange={(event) => {
+          if (event.target.value === '') return;
+          onResult(Number(event.target.value));
+        }}
       />
     </label>
   );

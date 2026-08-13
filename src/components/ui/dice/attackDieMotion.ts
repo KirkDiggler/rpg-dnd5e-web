@@ -4,6 +4,7 @@ export interface AttackDieMotionInput {
   reducedMotion: boolean;
   current: QuaternionTuple;
   target: QuaternionTuple;
+  decorativeSeed?: number;
 }
 export interface AttackDieMotionFrame {
   quaternion: QuaternionTuple;
@@ -52,6 +53,7 @@ export function stepAttackDieMotion({
   reducedMotion,
   current,
   target,
+  decorativeSeed = 0,
 }: AttackDieMotionInput): AttackDieMotionFrame {
   if (reducedMotion)
     return {
@@ -77,11 +79,12 @@ export function stepAttackDieMotion({
     };
   if (elapsedMs < 1200) {
     const angle = elapsedMs * 0.004;
+    const seedPhase = (Math.abs(decorativeSeed) % 997) * 0.013;
     const decorative: QuaternionTuple = normalized([
-      Math.sin(angle * 0.71) * 0.55,
-      Math.sin(angle * 1.13 + 0.7) * 0.45,
-      Math.sin(angle * 0.83 + 1.4) * 0.5,
-      Math.cos(angle),
+      Math.sin(angle * 0.71 + seedPhase) * 0.55,
+      Math.sin(angle * 1.13 + 0.7 + seedPhase * 0.7) * 0.45,
+      Math.sin(angle * 0.83 + 1.4 + seedPhase * 1.3) * 0.5,
+      Math.cos(angle + seedPhase * 0.4),
     ]);
     return {
       quaternion: decorative,

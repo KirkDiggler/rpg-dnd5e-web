@@ -3,6 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttackDie3DConcept } from './AttackDie3DConcept';
 
 const props: Array<Record<string, unknown>> = [];
+vi.mock('../../components/ui/dice/attackDieContract', async (original) => {
+  const actual =
+    await original<
+      typeof import('../../components/ui/dice/attackDieContract')
+    >();
+  return {
+    ...actual,
+    validateAttackDieSidecar: vi.fn(async () => ({
+      ok: false,
+      reason: 'malformed',
+    })),
+  };
+});
 vi.mock('../../components/ui/dice/AttackDie3D', () => ({
   AttackDie3D: (
     value: Record<string, unknown> & { fallback: React.ReactNode }
@@ -96,6 +109,27 @@ describe('AttackDie3D staged concept', () => {
       )
     );
     expect(screen.getByText(/No canonical sidecar is available/)).toBeTruthy();
+  });
+
+  it('rejects candidate sidecar before making export/hash claims', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ malformed: true }),
+        })
+    );
+    render(<AttackDie3DConcept />);
+    await waitFor(() =>
+      expect(screen.getByText(/candidate sidecar invalid/)).toBeTruthy()
+    );
   });
 
   it('keeps human verification explicitly pending in the fixed-order verify stage', () => {

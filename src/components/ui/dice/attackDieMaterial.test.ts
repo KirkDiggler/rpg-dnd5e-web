@@ -57,3 +57,44 @@ describe('attack die material', () => {
     expect(patched.owned).toBe(true);
   });
 });
+
+describe('magical animation time', () => {
+  it('updates compiled shader only through explicit frame time and stays zero reduced', () => {
+    const body = { name: 'Body.010', clone: vi.fn(() => ({ name: 'clone' })) };
+    const numeral = { name: 'Numbers.010' };
+    const animated = patchAttackDieMaterials(
+      [body, numeral] as never,
+      'magical',
+      false,
+      { bodyMaterial: 'Body', numeralMaterial: 'Numbers' }
+    );
+    const shader = {
+      uniforms: {},
+      vertexShader: '',
+      fragmentShader: '#include <emissivemap_fragment>',
+    };
+    animated.body.onBeforeCompile(shader as never, {} as never);
+    animated.setTime(3);
+    expect(
+      (shader.uniforms as { attackDieTime: { value: number } }).attackDieTime
+        .value
+    ).toBe(3);
+    const reduced = patchAttackDieMaterials(
+      [body, numeral] as never,
+      'magical',
+      true,
+      { bodyMaterial: 'Body', numeralMaterial: 'Numbers' }
+    );
+    const reducedShader = {
+      uniforms: {},
+      vertexShader: '',
+      fragmentShader: '#include <emissivemap_fragment>',
+    };
+    reduced.body.onBeforeCompile(reducedShader as never, {} as never);
+    reduced.setTime(3);
+    expect(
+      (reducedShader.uniforms as { attackDieTime: { value: number } })
+        .attackDieTime.value
+    ).toBe(0);
+  });
+});

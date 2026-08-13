@@ -81,3 +81,27 @@ describe('attack die motion', () => {
     ).toBe(true);
   });
 });
+
+describe('decorative replay seed', () => {
+  it('changes only the pre-convergence path and holds the same exact target', () => {
+    const base = {
+      elapsedMs: 500,
+      reducedMotion: false,
+      current: [0, 0, 0, 1] as const,
+      target: [0, 0, 0, 1] as const,
+    };
+    expect(
+      stepAttackDieMotion({ ...base, decorativeSeed: 1 }).quaternion
+    ).not.toEqual(
+      stepAttackDieMotion({ ...base, decorativeSeed: 2 }).quaternion
+    );
+    expect(
+      stepAttackDieMotion({ ...base, elapsedMs: 1900, decorativeSeed: 1 })
+        .quaternion
+    ).toEqual(base.target);
+    expect(
+      stepAttackDieMotion({ ...base, elapsedMs: 1900, decorativeSeed: 2 })
+        .quaternion
+    ).toEqual(base.target);
+  });
+});
