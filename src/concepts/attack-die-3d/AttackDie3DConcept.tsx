@@ -356,230 +356,234 @@ export function AttackDie3DConcept() {
         </div>
       )}
       {stage !== 4 && (
-        <>
-          {/* prettier-ignore */}
-          <div
-        role="tabpanel"
-        aria-label={stages[stage]}
-        className="attack-die-concept__stage"
-      >
-        <div className="attack-die-concept__controls">
-          <h3>{stages[stage]}</h3>
-          {stage === 0 && (
-            <>
-              <fieldset>
-                <legend>Material</legend>
-                {(['raw', 'magical'] as const).map((mode) => (
-                  <label key={mode}>
-                    <input
-                      type="radio"
-                      name="material"
-                      checked={state.materialMode === mode}
-                      onChange={() =>
-                        dispatch({ type: 'material', materialMode: mode })
-                      }
-                    />{' '}
-                    {mode === 'raw' ? 'Raw' : 'Magical'}
-                  </label>
-                ))}
-              </fieldset>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={state.magicalAnimation}
-                  disabled={state.reducedMotion || state.materialMode === 'raw'}
-                  onChange={(event) =>
-                    dispatch({
-                      type: 'magical-animation',
-                      enabled: event.target.checked,
-                    })
-                  }
-                />{' '}
-                Animate magical treatment
-              </label>
-              <CameraControls camera={state.camera} dispatch={dispatch} />
-              <p>
-                Top and three-quarter use the same pose, viewport, lighting, and
-                exposure.
-              </p>
-            </>
-          )}
-          {stage === 1 && (
-            <>
-              <ResultControl
-                result={state.selectedResult}
-                onResult={(result) => dispatch({ type: 'result', result })}
-              />
-              <CameraControls camera={state.camera} dispatch={dispatch} />
-              <div
-                className="attack-die-concept__rotation"
-                aria-label="Local-axis calibration controls"
-              >
-                {(['x', 'y', 'z'] as const).flatMap((axis) =>
-                  [15, -15, 0.1, -0.1].map((degrees) => (
-                    <button
-                      key={`${axis}${degrees}`}
-                      onClick={() =>
-                        dispatch({ type: 'rotate', axis, degrees })
-                      }
-                    >
-                      {axis.toUpperCase()} {degrees > 0 ? '+' : ''}
-                      {degrees}°
-                    </button>
-                  ))
-                )}
-              </div>
-              <output aria-label="Current quaternion">
-                {state.pose.map((value) => value.toFixed(7)).join(', ')}
-              </output>
-              <p>
-                {currentMapping
-                  ? 'Mapped (not human verified)'
-                  : 'Unmapped — provisional pose is not a saved or inferred face'}
-              </p>
-              <button onClick={() => dispatch({ type: 'save' })}>
-                Save normalized proposal mapping
-              </button>
-              <button onClick={() => dispatch({ type: 'reset' })}>
-                Reset to saved pose
-              </button>
-              <button
-                disabled={!proposal}
-                onClick={() =>
-                  proposal &&
-                  downloadJson('attack-die-calibration-proposal.json', proposal)
-                }
-              >
-                Export provisional proposal ({state.faces.length}/20)
-              </button>
-            </>
-          )}
-          {stage === 2 && (
-            <>
-              <ResultControl
-                result={state.selectedResult}
-                onResult={(result) => dispatch({ type: 'result', result })}
-              />
-              <CameraControls camera={state.camera} dispatch={dispatch} />
-              <label>
-                <input
-                  type="checkbox"
-                  checked={state.reducedMotion}
-                  onChange={(event) =>
-                    dispatch({
-                      type: 'reduced-motion',
-                      enabled: event.target.checked,
-                    })
-                  }
-                />{' '}
-                Reduced motion (suppresses tumble/lightning)
-              </label>
-              <button onClick={replay}>
-                Replay decorative variation #{state.decorativeVariation + 1}
-              </button>
-              <Status
-                telemetry={telemetry}
-                target={currentMapping?.quaternion}
-              />
-            </>
-          )}
-          {stage === 3 && (
-            <>
-              <p>
-                Fixed order 1→20. Machine observations are separate from pending
-                human two-camera review.
-              </p>
-              <button
-                onClick={() => {
-                  setMachineRows({});
-                  dispatch({ type: 'verify-start', mode: 'animated' });
-                }}
-              >
-                Run animated 1→20
-              </button>
-              <button
-                onClick={() => {
-                  setMachineRows({});
-                  dispatch({ type: 'verify-start', mode: 'reduced-motion' });
-                }}
-              >
-                Run reduced-motion 1→20
-              </button>
-              <button
-                disabled={state.verificationResult === null}
-                onClick={() => dispatch({ type: 'verify-next' })}
-              >
-                Next result
-              </button>
-              <p>
-                Current: {state.verificationResult ?? 'not running'} · Machine
-                rows: {Object.keys(machineRows).length}/20 · Human review:
-                pending for all top/three-quarter views
-              </p>
-            </>
-          )}
-          <label>
-            Forced fallback
-            <select
-              value={forcedFailure}
-              onChange={(event) => {
-                const next = event.target.value as typeof forcedFailure;
-                setForcedFailure(next);
-                setForcedInvalidResult(
-                  next === 'invalid-result' ? 21 : undefined
-                );
-                setToken((value) => value + 1);
-              }}
-            >
-              {fallbackOptions.map((failure) => (
-                <option key={failure} value={failure}>
-                  {failure}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Metadata provider={provider} error={error} />
-        </div>
         <div
-          className="attack-die-concept__viewport"
-          data-camera={state.camera}
+          role="tabpanel"
+          aria-label={stages[stage]}
+          className="attack-die-concept__stage"
         >
-          <AttackDie3D
-            result={effectiveResult}
-            presentationToken={token}
-            phase="rolling"
-            materialMode={state.materialMode}
-            reducedMotion={effectiveReducedMotion}
-            magicalAnimation={state.magicalAnimation && !effectiveReducedMotion}
-            decorativeSeed={token + state.decorativeVariation}
-            fallback={
-              <DiceTray
-                phase="settled"
-                finalFace={effectiveResult}
-                outcome={
-                  effectiveResult === 20
-                    ? 'CRIT'
-                    : effectiveResult === 1
-                      ? 'NAT-1'
-                      : 'HIT'
-                }
-              />
-            }
-            onTelemetry={handleTelemetry}
-            cameraView={state.camera}
-            calibrationPose={displayedPose}
-            providerFailureReason={
-              ['load', 'hash'].includes(forcedFailure) && error
-                ? error
-                : undefined
-            }
-            forceFailure={forcedFailure === 'shader' ? 'shader' : undefined}
-            sceneOverride={provider?.scene}
-            sidecarOverride={provider?.sidecar}
-          />
+          <div className="attack-die-concept__controls">
+            <h3>{stages[stage]}</h3>
+            {stage === 0 && (
+              <>
+                <fieldset>
+                  <legend>Material</legend>
+                  {(['raw', 'magical'] as const).map((mode) => (
+                    <label key={mode}>
+                      <input
+                        type="radio"
+                        name="material"
+                        checked={state.materialMode === mode}
+                        onChange={() =>
+                          dispatch({ type: 'material', materialMode: mode })
+                        }
+                      />{' '}
+                      {mode === 'raw' ? 'Raw' : 'Magical'}
+                    </label>
+                  ))}
+                </fieldset>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={state.magicalAnimation}
+                    disabled={
+                      state.reducedMotion || state.materialMode === 'raw'
+                    }
+                    onChange={(event) =>
+                      dispatch({
+                        type: 'magical-animation',
+                        enabled: event.target.checked,
+                      })
+                    }
+                  />{' '}
+                  Animate magical treatment
+                </label>
+                <CameraControls camera={state.camera} dispatch={dispatch} />
+                <p>
+                  Top and three-quarter use the same pose, viewport, lighting,
+                  and exposure.
+                </p>
+              </>
+            )}
+            {stage === 1 && (
+              <>
+                <ResultControl
+                  result={state.selectedResult}
+                  onResult={(result) => dispatch({ type: 'result', result })}
+                />
+                <CameraControls camera={state.camera} dispatch={dispatch} />
+                <div
+                  className="attack-die-concept__rotation"
+                  aria-label="Local-axis calibration controls"
+                >
+                  {(['x', 'y', 'z'] as const).flatMap((axis) =>
+                    [15, -15, 0.1, -0.1].map((degrees) => (
+                      <button
+                        key={`${axis}${degrees}`}
+                        onClick={() =>
+                          dispatch({ type: 'rotate', axis, degrees })
+                        }
+                      >
+                        {axis.toUpperCase()} {degrees > 0 ? '+' : ''}
+                        {degrees}°
+                      </button>
+                    ))
+                  )}
+                </div>
+                <output aria-label="Current quaternion">
+                  {state.pose.map((value) => value.toFixed(7)).join(', ')}
+                </output>
+                <p>
+                  {currentMapping
+                    ? 'Mapped (not human verified)'
+                    : 'Unmapped — provisional pose is not a saved or inferred face'}
+                </p>
+                <button onClick={() => dispatch({ type: 'save' })}>
+                  Save normalized proposal mapping
+                </button>
+                <button onClick={() => dispatch({ type: 'reset' })}>
+                  Reset to saved pose
+                </button>
+                <button
+                  disabled={!proposal}
+                  onClick={() =>
+                    proposal &&
+                    downloadJson(
+                      'attack-die-calibration-proposal.json',
+                      proposal
+                    )
+                  }
+                >
+                  Export provisional proposal ({state.faces.length}/20)
+                </button>
+              </>
+            )}
+            {stage === 2 && (
+              <>
+                <ResultControl
+                  result={state.selectedResult}
+                  onResult={(result) => dispatch({ type: 'result', result })}
+                />
+                <CameraControls camera={state.camera} dispatch={dispatch} />
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={state.reducedMotion}
+                    onChange={(event) =>
+                      dispatch({
+                        type: 'reduced-motion',
+                        enabled: event.target.checked,
+                      })
+                    }
+                  />{' '}
+                  Reduced motion (suppresses tumble/lightning)
+                </label>
+                <button onClick={replay}>
+                  Replay decorative variation #{state.decorativeVariation + 1}
+                </button>
+                <Status
+                  telemetry={telemetry}
+                  target={currentMapping?.quaternion}
+                />
+              </>
+            )}
+            {stage === 3 && (
+              <>
+                <p>
+                  Fixed order 1→20. Machine observations are separate from
+                  pending human two-camera review.
+                </p>
+                <button
+                  onClick={() => {
+                    setMachineRows({});
+                    dispatch({ type: 'verify-start', mode: 'animated' });
+                  }}
+                >
+                  Run animated 1→20
+                </button>
+                <button
+                  onClick={() => {
+                    setMachineRows({});
+                    dispatch({ type: 'verify-start', mode: 'reduced-motion' });
+                  }}
+                >
+                  Run reduced-motion 1→20
+                </button>
+                <button
+                  disabled={state.verificationResult === null}
+                  onClick={() => dispatch({ type: 'verify-next' })}
+                >
+                  Next result
+                </button>
+                <p>
+                  Current: {state.verificationResult ?? 'not running'} · Machine
+                  rows: {Object.keys(machineRows).length}/20 · Human review:
+                  pending for all top/three-quarter views
+                </p>
+              </>
+            )}
+            <label>
+              Forced fallback
+              <select
+                value={forcedFailure}
+                onChange={(event) => {
+                  const next = event.target.value as typeof forcedFailure;
+                  setForcedFailure(next);
+                  setForcedInvalidResult(
+                    next === 'invalid-result' ? 21 : undefined
+                  );
+                  setToken((value) => value + 1);
+                }}
+              >
+                {fallbackOptions.map((failure) => (
+                  <option key={failure} value={failure}>
+                    {failure}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Metadata provider={provider} error={error} />
+          </div>
+          <div
+            className="attack-die-concept__viewport"
+            data-camera={state.camera}
+          >
+            <AttackDie3D
+              result={effectiveResult}
+              presentationToken={token}
+              phase="rolling"
+              materialMode={state.materialMode}
+              reducedMotion={effectiveReducedMotion}
+              magicalAnimation={
+                state.magicalAnimation && !effectiveReducedMotion
+              }
+              decorativeSeed={token + state.decorativeVariation}
+              fallback={
+                <DiceTray
+                  phase="settled"
+                  finalFace={effectiveResult}
+                  outcome={
+                    effectiveResult === 20
+                      ? 'CRIT'
+                      : effectiveResult === 1
+                        ? 'NAT-1'
+                        : 'HIT'
+                  }
+                />
+              }
+              onTelemetry={handleTelemetry}
+              cameraView={state.camera}
+              calibrationPose={displayedPose}
+              providerFailureReason={
+                ['load', 'hash'].includes(forcedFailure) && error
+                  ? error
+                  : undefined
+              }
+              forceFailure={forcedFailure === 'shader' ? 'shader' : undefined}
+              sceneOverride={provider?.scene}
+              sidecarOverride={provider?.sidecar}
+            />
+          </div>
         </div>
-      </div>
-        </>
       )}
     </section>
   );
