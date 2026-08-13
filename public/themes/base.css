@@ -1522,12 +1522,65 @@
   gap: 0.5rem;
 }
 .attack-die-concept__tabs button,
-.attack-die-concept__stage button {
+.attack-die-concept__stage button,
+.attack-die-concept__stage input,
+.attack-die-concept__stage select {
   border: 1px solid var(--border-primary);
   border-radius: 0.5rem;
   background: var(--bg-secondary);
   color: var(--text-primary);
   padding: 0.65rem 1rem;
+}
+.attack-die-concept button:focus-visible,
+.attack-die-concept input:focus-visible,
+.attack-die-concept select:focus-visible {
+  outline: 3px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.attack-die-concept__warning {
+  padding: 0.75rem;
+  border: 2px solid #e7b94b;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, #e7b94b 12%, var(--bg-secondary));
+  font-weight: 700;
+}
+.attack-die-concept__controls {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+}
+.attack-die-concept__controls fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.attack-die-concept__rotation {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(4.5rem, 1fr));
+  gap: 0.4rem;
+}
+.attack-die-concept__metadata {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.attack-die-concept__metadata > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.attack-die-concept__metadata dt {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+.attack-die-concept__metadata dd {
+  overflow-wrap: anywhere;
+}
+.attack-die-concept__viewport {
+  width: min(100%, 320px);
+  min-height: 320px;
+  justify-self: center;
+  border: 1px dashed var(--accent-primary);
 }
 .attack-die-concept__tabs button[aria-selected='true'] {
   border-color: var(--accent-primary);
@@ -1547,6 +1600,14 @@
   position: relative;
   min-height: 18rem;
 }
+.attack-die-perf-harness {
+  position: fixed;
+  inset: auto 1rem 1rem auto;
+  z-index: 45;
+  width: 320px;
+  height: 320px;
+  pointer-events: none;
+}
 .attack-die-3d__fallback,
 .attack-die-3d__canvas {
   position: absolute !important;
@@ -1559,5 +1620,24 @@
 @media (max-width: 700px) {
   .attack-die-concept__stage {
     grid-template-columns: 1fr;
+    min-width: 0;
+    padding: 0.75rem;
+  }
+  .attack-die-concept__rotation {
+    grid-template-columns: repeat(2, minmax(4.5rem, 1fr));
+  }
+  .attack-die-concept__metadata > div {
+    grid-template-columns: 1fr;
+  }
+  .attack-die-perf-harness {
+    width: min(320px, calc(100vw - 2rem));
+    height: min(320px, calc(100vw - 2rem));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .attack-die-concept *,
+  .attack-die-perf-harness * {
+    animation: none !important;
+    transition: none !important;
   }
 }

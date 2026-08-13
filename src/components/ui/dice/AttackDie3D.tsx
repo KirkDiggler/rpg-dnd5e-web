@@ -8,7 +8,9 @@ import {
   useState,
 } from 'react';
 import {
+  ACESFilmicToneMapping,
   Quaternion,
+  SRGBColorSpace,
   type Group,
   type Material,
   type Mesh,
@@ -52,6 +54,23 @@ export interface AttackDie3DProps {
   reducedMotion: boolean;
   fallback: React.ReactNode;
   onTelemetry?: (event: AttackDieTelemetry) => void;
+  /** Development concept camera; omitted in production-intent usage. */
+  cameraView?: 'top' | 'three-quarter';
+  /** Development calibration pose override; never supplied by production. */
+  calibrationPose?: QuaternionTuple;
+  /** Development-only failure exercise; normal behavior is unchanged. */
+  forceFailure?:
+    | 'load'
+    | 'webgl'
+    | 'shader'
+    | 'context-loss'
+    | 'hash'
+    | 'invalid-result'
+    | 'unmapped';
+  /** Development-only parsed scene for provisional, not-yet-verified calibration. */
+  sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
+  /** Development-only inspected candidate sidecar metadata. */
+  sidecarOverride?: AttackDieRuntimeSidecar;
 }
 
 import { installAttackDieRenderGate } from './attackDieRenderGate';
@@ -75,9 +94,10 @@ class RenderBoundary extends Component<
 function cloneTokenScene(
   sidecar: AttackDieRuntimeSidecar,
   mode: AttackDieMaterialMode,
-  reducedMotion: boolean
+  reducedMotion: boolean,
+  sourceOverride?: ReturnType<typeof getAttackDieRuntimeScene>
 ) {
-  const source = getAttackDieRuntimeScene();
+  const source = sourceOverride ?? getAttackDieRuntimeScene();
   if (!source) throw Error('runtime scene unavailable');
   const scene = source.clone(true);
   const node = scene.getObjectByName(sidecar.selectors.node);
@@ -120,6 +140,7 @@ function RuntimeDie({
   onFrame,
   poseValidated,
   onFailure,
+  sceneOverride,
 }: {
   sidecar: AttackDieRuntimeSidecar;
   target: QuaternionTuple;
@@ -128,6 +149,7 @@ function RuntimeDie({
   onFrame: (frame: AttackDieMotionFrame) => void;
   poseValidated: React.MutableRefObject<boolean>;
   onFailure: (reason: string) => void;
+  sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
 }) {
   const group = useRef<Group>(null);
   const start = useRef<number | undefined>(undefined);
@@ -139,7 +161,7 @@ function RuntimeDie({
   const [bundle, setBundle] = useState<ReturnType<typeof cloneTokenScene>>();
   useEffect(() => {
     try {
-      const next = cloneTokenScene(sidecar, mode, reducedMotion);
+      const next = cloneTokenScene(sidecar, mode, reducedMotion, sceneOverride);
       setBundle(next);
       return () => next.dispose();
     } catch (error) {
@@ -147,7 +169,7 @@ function RuntimeDie({
         `render setup failed: ${error instanceof Error ? error.message : 'unknown'}`
       );
     }
-  }, [mode, onFailure, reducedMotion, sidecar]);
+  }, [mode, onFailure, reducedMotion, sceneOverride, sidecar]);
   useFrame(({ clock }) => {
     poseValidated.current = false;
     start.current ??= clock.elapsedTime * 1000;
@@ -194,16 +216,36 @@ function AttackDieToken({
   reducedMotion,
   fallback,
   onTelemetry,
+  cameraView = 'three-quarter',
+  calibrationPose,
+  forceFailure,
+  sceneOverride,
+  sidecarOverride,
 }: AttackDie3DProps) {
+  const effectiveResult = forceFailure === 'invalid-result' ? 21 : result;
   const lock = useMemo(
-    () => lockAttackDieRenderer(presentationToken, result),
-    [presentationToken, result]
+    () => lockAttackDieRenderer(presentationToken, effectiveResult),
+    [presentationToken, effectiveResult]
   );
-  const target = lock.sidecar?.faces.find(
-    (face) => face.result === result
+  const sidecar = sidecarOverride ?? lock.sidecar;
+  const mappedTarget = sidecar?.faces.find(
+    (face) => face.result === effectiveResult
   )?.quaternion;
+  const target = calibrationPose ?? mappedTarget;
+  const forced = forceFailure !== undefined;
+  const authoringEligible =
+    calibrationPose !== undefined &&
+    sidecarOverride !== undefined &&
+    sceneOverride !== undefined;
   const eligible =
-    lock.renderer === '3d' && !!target && result >= 1 && result <= 20;
+    (authoringEligible || lock.renderer === '3d') &&
+    !!sidecar &&
+    !!target &&
+    effectiveResult >= 1 &&
+    effectiveResult <= 20 &&
+    !['load', 'webgl', 'shader', 'hash', 'invalid-result', 'unmapped'].includes(
+      forceFailure ?? ''
+    );
   const [truthful, setTruthful] = useState(false);
   const [failed, setFailed] = useState(false);
   const active = useRef(true);
@@ -235,7 +277,7 @@ function AttackDieToken({
   );
   useEffect(() => {
     active.current = true;
-    void preloadAttackDieRuntime().catch(() => undefined);
+    if (!forced) void preloadAttackDieRuntime().catch(() => undefined);
     return () => {
       active.current = false;
       const current = listener.current;
@@ -255,7 +297,10 @@ function AttackDieToken({
         exactTargetHeld: false,
       });
     };
-  }, [lock, onTelemetry, presentationToken, result]);
+  }, [forced, lock, onTelemetry, presentationToken, result]);
+  useEffect(() => {
+    if (forceFailure) fail(`forced ${forceFailure} failure`);
+  }, [fail, forceFailure]);
   const canvasVisible = eligible && !failed && phase !== 'hidden';
   return (
     <div className="attack-die-3d">
@@ -270,8 +315,29 @@ function AttackDieToken({
             aria-hidden="true"
             className="attack-die-3d__canvas"
             style={{ visibility: truthful ? 'visible' : 'hidden' }}
+            camera={
+              cameraView === 'top'
+                ? {
+                    fov: 35,
+                    near: 0.1,
+                    far: 100,
+                    position: [0, 4, 0],
+                    up: [0, 0, -1],
+                  }
+                : {
+                    fov: 35,
+                    near: 0.1,
+                    far: 100,
+                    position: [3, 2.4, 3],
+                    up: [0, 1, 0],
+                  }
+            }
+            dpr={2}
             onCreated={({ gl, scene, camera }) => {
               try {
+                gl.toneMapping = ACESFilmicToneMapping;
+                gl.outputColorSpace = SRGBColorSpace;
+                gl.toneMappingExposure = 1;
                 const existing = listener.current;
                 if (existing) {
                   existing.renderer.domElement.removeEventListener(
@@ -305,31 +371,36 @@ function AttackDieToken({
               }
             }}
           >
-            <ambientLight intensity={1.2} />
-            <RuntimeDie
-              sidecar={lock.sidecar!}
-              target={target!}
-              mode={materialMode}
-              reducedMotion={reducedMotion}
-              poseValidated={poseValidated}
-              onFailure={fail}
-              onFrame={(frame) => {
-                if (!active.current || !frame.observeNow) return;
-                onTelemetry?.({
-                  presentationToken,
-                  requestedResult: result,
-                  renderer: '3d',
-                  state: 'observed',
-                  mappedTarget: target,
-                  observedQuaternion: frame.quaternion,
-                  angularErrorDegrees: angularDistanceDegrees(
-                    frame.quaternion,
-                    target!
-                  ),
-                  exactTargetHeld: frame.exactTargetHeld,
-                });
-              }}
-            />
+            <ambientLight intensity={0.65} />
+            <directionalLight position={[4, 6, 5]} intensity={3} />
+            <directionalLight position={[-4, 2, -3]} intensity={1.2} />
+            <group scale={0.75}>
+              <RuntimeDie
+                sidecar={sidecar!}
+                target={target!}
+                mode={materialMode}
+                reducedMotion={reducedMotion}
+                poseValidated={poseValidated}
+                onFailure={fail}
+                sceneOverride={sceneOverride}
+                onFrame={(frame) => {
+                  if (!active.current || !frame.observeNow) return;
+                  onTelemetry?.({
+                    presentationToken,
+                    requestedResult: result,
+                    renderer: '3d',
+                    state: 'observed',
+                    mappedTarget: target,
+                    observedQuaternion: frame.quaternion,
+                    angularErrorDegrees: angularDistanceDegrees(
+                      frame.quaternion,
+                      target!
+                    ),
+                    exactTargetHeld: frame.exactTargetHeld,
+                  });
+                }}
+              />
+            </group>
           </Canvas>
         </RenderBoundary>
       )}

@@ -1,15 +1,254 @@
-import { useRef, useState } from 'react';
-import { AttackDie3D } from '../../components/ui/dice/AttackDie3D';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {
+  AttackDie3D,
+  type AttackDieTelemetry,
+} from '../../components/ui/dice/AttackDie3D';
 import { DiceTray } from '../../components/ui/dice/DiceTray';
+import {
+  sha256Hex,
+  type AttackDieRuntimeSidecar,
+  type QuaternionTuple,
+} from '../../components/ui/dice/attackDieContract';
+import {
+  PROVISIONAL_VISUAL_DEFAULTS,
+  PROVISIONAL_WARNING,
+  attackDieExperimentReducer,
+  createAttackDieExperiment,
+  exportCalibrationProposal,
+} from './attackDieExperiment';
+
 const stages = ['Appearance', 'Calibrate', 'Roll', 'Verify'] as const;
+const GLB_URL = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
+const SOURCE_SIDECAR_URL =
+  '/models/synty/dice/d20-lightning/attack-die-contract.json';
+const fallbackOptions = [
+  'none',
+  'load',
+  'webgl',
+  'shader',
+  'context-loss',
+  'hash',
+  'invalid-result',
+  'unmapped',
+] as const;
+type ForcedFailure = Exclude<(typeof fallbackOptions)[number], 'none'>;
+
+interface InspectedProvider {
+  digest: string;
+  sidecar: AttackDieRuntimeSidecar;
+  scene: Awaited<ReturnType<GLTFLoader['parseAsync']>>['scene'];
+  note: string;
+}
+
+function provisionalSidecar(digest: string): AttackDieRuntimeSidecar {
+  const d = PROVISIONAL_VISUAL_DEFAULTS;
+  const empty = '0'.repeat(64);
+  return {
+    schemaVersion: 1,
+    kind: 'attack-die-runtime-contract',
+    state: 'candidate',
+    contractCoreSha256: empty,
+    asset: { url: GLB_URL, sha256: digest },
+    coordinates: {
+      quaternionOrder: 'xyzw',
+      handedness: 'right',
+      upAxis: '+Y',
+      rootCorrection: [0, 0, 0, 1],
+      normalizationEpsilon: 0.000001,
+    },
+    selectors: {
+      blenderSuffixPattern: '\\.\\d{3}$',
+      node: 'D20_Lightning_preview_4pct',
+      mesh: 'D20_Lightning_preview_4pct_Mesh',
+      bodyMaterial: 'D20_Lightning_Material',
+      numeralMaterial: 'Paint_Material',
+      materialSlots: 2,
+    },
+    faces: [],
+    tuple: {
+      webCommit: '0'.repeat(40),
+      webBuildSha256: empty,
+      glbSha256: digest,
+      contractCoreSha256: empty,
+      selectorRootRevision: d.selectorRootRevision,
+      topCamera: d.topCamera,
+      threeQuarterCamera: d.threeQuarterCamera,
+      materialMode: 'magical',
+      shaderRevision: d.shaderRevision,
+      lightingRevision: d.lightingRevision,
+      environmentRevision: d.environmentRevision,
+      exposure: d.exposure,
+      toneMapping: d.toneMapping,
+      outputColorSpace: d.outputColorSpace,
+      dieScale: d.dieScale,
+      viewportCss: d.viewportCss,
+      outputPixels: d.outputPixels,
+      devicePixelRatio: d.devicePixelRatio,
+      toleranceDegrees: 0.25,
+    },
+    evidence: null,
+  };
+}
+
+function useInspectedProvider() {
+  const [provider, setProvider] = useState<InspectedProvider>();
+  const [error, setError] = useState('Loading controlled provider bytes…');
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch(GLB_URL);
+        if (!response.ok) throw Error(`GLB load failed (${response.status})`);
+        const bytes = await response.arrayBuffer();
+        const digest = await sha256Hex(bytes);
+        const parsed = await new GLTFLoader().parseAsync(bytes, '');
+        let sidecar = provisionalSidecar(digest);
+        let note =
+          'No canonical sidecar is available; selectors were inspected from the controlled GLB for provisional authoring only.';
+        const sidecarResponse = await fetch(SOURCE_SIDECAR_URL);
+        if (
+          sidecarResponse.ok &&
+          sidecarResponse.headers
+            ?.get('content-type')
+            ?.includes('application/json')
+        ) {
+          const candidate =
+            (await sidecarResponse.json()) as AttackDieRuntimeSidecar;
+          sidecar = { ...candidate, faces: [] };
+          note =
+            'Candidate sidecar loaded for provisional authoring; it is not accepted as a verified runtime contract.';
+        }
+        if (active) {
+          setProvider({ digest, sidecar, scene: parsed.scene, note });
+          setError('');
+        }
+      } catch (caught) {
+        if (active)
+          setError(
+            caught instanceof Error ? caught.message : 'Provider load failed'
+          );
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+  return { provider, error };
+}
+
+const downloadJson = (name: string, value: unknown) => {
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
+  );
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+};
+
+function Metadata({
+  provider,
+  error,
+}: {
+  provider?: InspectedProvider;
+  error: string;
+}) {
+  return (
+    <dl className="attack-die-concept__metadata">
+      <div>
+        <dt>Provider</dt>
+        <dd>{error || provider?.note}</dd>
+      </div>
+      <div>
+        <dt>Actual GLB SHA-256</dt>
+        <dd data-testid="actual-glb-digest">
+          {provider?.digest ?? 'unavailable'}
+        </dd>
+      </div>
+      <div>
+        <dt>Body selector</dt>
+        <dd>{provider?.sidecar.selectors.bodyMaterial ?? 'unavailable'}</dd>
+      </div>
+      <div>
+        <dt>Numeral selector</dt>
+        <dd>{provider?.sidecar.selectors.numeralMaterial ?? 'unavailable'}</dd>
+      </div>
+      <div>
+        <dt>Human appearance approval</dt>
+        <dd>Pending</dd>
+      </div>
+    </dl>
+  );
+}
+
 export function AttackDie3DConcept() {
   const [stage, setStage] = useState(0);
   const [token, setToken] = useState(1);
+  const [state, dispatch] = useReducer(
+    attackDieExperimentReducer,
+    undefined,
+    createAttackDieExperiment
+  );
+  const [forcedFailure, setForcedFailure] = useState<'none' | ForcedFailure>(
+    'none'
+  );
+  const [telemetry, setTelemetry] = useState<AttackDieTelemetry>();
+  const [machineRows, setMachineRows] = useState<
+    Record<number, AttackDieTelemetry>
+  >({});
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
+  const { provider, error } = useInspectedProvider();
+  const effectiveResult = state.verificationResult ?? state.selectedResult;
+  const currentMapping = state.faces.find(
+    (face) => face.result === effectiveResult
+  );
+  const displayedPose: QuaternionTuple | undefined =
+    stage === 1 ? state.pose : currentMapping?.quaternion;
   const selectTab = (index: number) => {
     setStage(index);
     tabs.current[index]?.focus();
   };
+  const replay = () => {
+    dispatch({ type: 'replay' });
+    setToken((value) => value + 1);
+  };
+  const handleTelemetry = useCallback(
+    (event: AttackDieTelemetry) => {
+      setTelemetry(event);
+      if (stage === 3 && state.verificationResult)
+        setMachineRows((rows) => ({
+          ...rows,
+          [state.verificationResult!]: event,
+        }));
+    },
+    [stage, state.verificationResult]
+  );
+  useEffect(() => {
+    if (state.verificationResult === null) return;
+    setToken((value) => value + 1);
+  }, [state.verificationResult]);
+  const proposal = useMemo(() => {
+    if (!provider) return null;
+    return exportCalibrationProposal({
+      webCommit: import.meta.env.VITE_ATTACK_DIE_WEB_COMMIT || '0'.repeat(40),
+      webBuildSha256: null,
+      asset: provider.sidecar.asset,
+      coordinates: provider.sidecar.coordinates,
+      selectors: provider.sidecar.selectors,
+      materialMode: state.materialMode,
+      faces: state.faces,
+    });
+  }, [provider, state.faces, state.materialMode]);
+
   return (
     <section className="attack-die-concept">
       <header>
@@ -17,9 +256,12 @@ export function AttackDie3DConcept() {
           Development concept · production-intent renderer
         </p>
         <h2>Authoritative 3D Attack Die</h2>
+        <p className="attack-die-concept__warning">
+          {PROVISIONAL_WARNING} · Unverified provisional visual defaults
+        </p>
         <p>
-          The SVG remains semantic truth while this staged lab proves
-          appearance, calibration, roll, and verification contracts.
+          The SVG remains semantic truth. This lab never drives or completes the
+          encounter queue.
         </p>
       </header>
       <div
@@ -37,10 +279,10 @@ export function AttackDie3DConcept() {
             aria-selected={stage === index}
             tabIndex={stage === index ? 0 : -1}
             onClick={() => selectTab(index)}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowRight')
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowRight')
                 selectTab((index + 1) % stages.length);
-              if (e.key === 'ArrowLeft')
+              if (event.key === 'ArrowLeft')
                 selectTab((index + stages.length - 1) % stages.length);
             }}
           >
@@ -53,28 +295,284 @@ export function AttackDie3DConcept() {
         aria-label={stages[stage]}
         className="attack-die-concept__stage"
       >
-        <div>
+        <div className="attack-die-concept__controls">
           <h3>{stages[stage]}</h3>
-          <p>
-            {stage === 0
-              ? 'Compare raw and magical treatment.'
-              : stage === 1
-                ? 'Prepare explicit 1–20 calibration without inferred poses.'
-                : stage === 2
-                  ? 'Replay the same authoritative fixture through decorative paths.'
-                  : 'Inspect the fixed-order all-face evidence workflow.'}
-          </p>
-          <button onClick={() => setToken((x) => x + 1)}>Replay fixture</button>
+          {stage === 0 && (
+            <>
+              <fieldset>
+                <legend>Material</legend>
+                {(['raw', 'magical'] as const).map((mode) => (
+                  <label key={mode}>
+                    <input
+                      type="radio"
+                      name="material"
+                      checked={state.materialMode === mode}
+                      onChange={() =>
+                        dispatch({ type: 'material', materialMode: mode })
+                      }
+                    />{' '}
+                    {mode === 'raw' ? 'Raw' : 'Magical'}
+                  </label>
+                ))}
+              </fieldset>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={state.magicalAnimation}
+                  disabled={state.reducedMotion || state.materialMode === 'raw'}
+                  onChange={(event) =>
+                    dispatch({
+                      type: 'magical-animation',
+                      enabled: event.target.checked,
+                    })
+                  }
+                />{' '}
+                Animate magical treatment
+              </label>
+              <CameraControls camera={state.camera} dispatch={dispatch} />
+              <p>
+                Top and three-quarter use the same pose, viewport, lighting, and
+                exposure.
+              </p>
+            </>
+          )}
+          {stage === 1 && (
+            <>
+              <ResultControl
+                result={state.selectedResult}
+                onResult={(result) => dispatch({ type: 'result', result })}
+              />
+              <CameraControls camera={state.camera} dispatch={dispatch} />
+              <div
+                className="attack-die-concept__rotation"
+                aria-label="Local-axis calibration controls"
+              >
+                {(['x', 'y', 'z'] as const).flatMap((axis) =>
+                  [15, -15, 0.1, -0.1].map((degrees) => (
+                    <button
+                      key={`${axis}${degrees}`}
+                      onClick={() =>
+                        dispatch({ type: 'rotate', axis, degrees })
+                      }
+                    >
+                      {axis.toUpperCase()} {degrees > 0 ? '+' : ''}
+                      {degrees}°
+                    </button>
+                  ))
+                )}
+              </div>
+              <output aria-label="Current quaternion">
+                {state.pose.map((value) => value.toFixed(7)).join(', ')}
+              </output>
+              <p>
+                {currentMapping
+                  ? 'Mapped (not human verified)'
+                  : 'Unmapped — zero pose is not a saved or inferred face'}
+              </p>
+              <button onClick={() => dispatch({ type: 'save' })}>
+                Save normalized proposal mapping
+              </button>
+              <button onClick={() => dispatch({ type: 'reset' })}>
+                Reset to saved pose
+              </button>
+              <button
+                disabled={!proposal}
+                onClick={() =>
+                  proposal &&
+                  downloadJson('attack-die-calibration-proposal.json', proposal)
+                }
+              >
+                Export provisional proposal ({state.faces.length}/20)
+              </button>
+            </>
+          )}
+          {stage === 2 && (
+            <>
+              <ResultControl
+                result={state.selectedResult}
+                onResult={(result) => dispatch({ type: 'result', result })}
+              />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={state.reducedMotion}
+                  onChange={(event) =>
+                    dispatch({
+                      type: 'reduced-motion',
+                      enabled: event.target.checked,
+                    })
+                  }
+                />{' '}
+                Reduced motion (suppresses tumble/lightning)
+              </label>
+              <button onClick={replay}>
+                Replay decorative variation #{state.decorativeVariation + 1}
+              </button>
+              <Status
+                telemetry={telemetry}
+                target={currentMapping?.quaternion}
+              />
+            </>
+          )}
+          {stage === 3 && (
+            <>
+              <p>
+                Fixed order 1→20. Machine observations are separate from pending
+                human two-camera review.
+              </p>
+              <button
+                onClick={() => {
+                  setMachineRows({});
+                  dispatch({ type: 'verify-start', mode: 'animated' });
+                }}
+              >
+                Run animated 1→20
+              </button>
+              <button
+                onClick={() => {
+                  setMachineRows({});
+                  dispatch({ type: 'verify-start', mode: 'reduced-motion' });
+                }}
+              >
+                Run reduced-motion 1→20
+              </button>
+              <button
+                disabled={state.verificationResult === null}
+                onClick={() => dispatch({ type: 'verify-next' })}
+              >
+                Next result
+              </button>
+              <p>
+                Current: {state.verificationResult ?? 'not running'} · Machine
+                rows: {Object.keys(machineRows).length}/20 · Human review:
+                pending for all top/three-quarter views
+              </p>
+            </>
+          )}
+          <label>
+            Forced fallback
+            <select
+              value={forcedFailure}
+              onChange={(event) => {
+                setForcedFailure(event.target.value as typeof forcedFailure);
+                setToken((value) => value + 1);
+              }}
+            >
+              {fallbackOptions.map((failure) => (
+                <option key={failure} value={failure}>
+                  {failure}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Metadata provider={provider} error={error} />
         </div>
-        <AttackDie3D
-          result={20}
-          presentationToken={token}
-          phase="rolling"
-          materialMode="magical"
-          reducedMotion={false}
-          fallback={<DiceTray phase="settled" finalFace={20} outcome="CRIT" />}
-        />
+        <div
+          className="attack-die-concept__viewport"
+          data-camera={state.camera}
+        >
+          <AttackDie3D
+            result={effectiveResult}
+            presentationToken={token}
+            phase="rolling"
+            materialMode={state.materialMode}
+            reducedMotion={state.reducedMotion}
+            fallback={
+              <DiceTray
+                phase="settled"
+                finalFace={effectiveResult}
+                outcome={
+                  effectiveResult === 20
+                    ? 'CRIT'
+                    : effectiveResult === 1
+                      ? 'NAT-1'
+                      : 'HIT'
+                }
+              />
+            }
+            onTelemetry={handleTelemetry}
+            cameraView={state.camera}
+            calibrationPose={displayedPose}
+            forceFailure={forcedFailure === 'none' ? undefined : forcedFailure}
+            sceneOverride={provider?.scene}
+            sidecarOverride={provider?.sidecar}
+          />
+        </div>
       </div>
     </section>
+  );
+}
+
+function CameraControls({
+  camera,
+  dispatch,
+}: {
+  camera: 'top' | 'three-quarter';
+  dispatch: React.Dispatch<Parameters<typeof attackDieExperimentReducer>[1]>;
+}) {
+  return (
+    <fieldset>
+      <legend>Camera</legend>
+      {(['top', 'three-quarter'] as const).map((view) => (
+        <label key={view}>
+          <input
+            type="radio"
+            name="camera"
+            checked={camera === view}
+            onChange={() => dispatch({ type: 'camera', camera: view })}
+          />{' '}
+          {view === 'top' ? 'Top' : 'Three-quarter'}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+function ResultControl({
+  result,
+  onResult,
+}: {
+  result: number;
+  onResult: (value: number) => void;
+}) {
+  return (
+    <label>
+      Authoritative input{' '}
+      <input
+        aria-label="Authoritative input"
+        type="number"
+        min={1}
+        max={20}
+        value={result}
+        onChange={(event) => onResult(Number(event.target.value))}
+      />
+    </label>
+  );
+}
+function Status({
+  telemetry,
+  target,
+}: {
+  telemetry?: AttackDieTelemetry;
+  target?: QuaternionTuple;
+}) {
+  return (
+    <dl className="attack-die-concept__metadata">
+      <div>
+        <dt>Requested</dt>
+        <dd>{telemetry?.requestedResult ?? 'pending'}</dd>
+      </div>
+      <div>
+        <dt>Mapped target</dt>
+        <dd>{target?.join(', ') ?? 'unmapped'}</dd>
+      </div>
+      <div>
+        <dt>Measured error</dt>
+        <dd>{telemetry?.angularErrorDegrees ?? 'not observed'}</dd>
+      </div>
+      <div>
+        <dt>Renderer lock/fallback</dt>
+        <dd>{telemetry?.renderer ?? 'pending'}</dd>
+      </div>
+    </dl>
   );
 }

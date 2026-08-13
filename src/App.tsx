@@ -15,6 +15,7 @@ import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
+import { AttackDiePerfHarness } from './dev/AttackDiePerfHarness';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
@@ -357,6 +358,14 @@ function AppContent() {
             onCancel={handleCancelCreation}
           />
         )}
+
+        {/* Independent dev-only performance overlay. It observes the real
+            EncounterView route without receiving or invoking queue callbacks. */}
+        {isDevelopment &&
+          currentView === 'lobby' &&
+          new URLSearchParams(window.location.search).has('attackDiePerf') && (
+            <AttackDiePerfHarness />
+          )}
 
         {/* Dev tools buttons */}
         {isDevelopment && (
