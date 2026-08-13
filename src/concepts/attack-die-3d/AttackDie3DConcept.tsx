@@ -75,15 +75,15 @@ function provisionalSidecar(digest: string): AttackDieRuntimeSidecar {
     },
     selectors: {
       blenderSuffixPattern: '\\.\\d{3}$',
-      node: 'PROVIDER_PENDING',
-      sourceMesh: 'PROVIDER_PENDING',
+      node: 'D20_Lightning_preview_4pct',
+      sourceMesh: 'D20_Lightning_preview_4pct_Mesh001',
       bodyPrimitive: {
-        mesh: 'PROVIDER_PENDING_BODY_PRIMITIVE',
-        material: 'PROVIDER_PENDING_BODY',
+        mesh: 'D20_Lightning_preview_4pct_Mesh001',
+        material: 'D20_Lightning_Material',
       },
       numeralPrimitive: {
-        mesh: 'PROVIDER_PENDING_NUMERAL_PRIMITIVE',
-        material: 'PROVIDER_PENDING_NUMERALS',
+        mesh: 'D20_Lightning_preview_4pct_Mesh001_1',
+        material: 'Paint_Material',
       },
     },
     faces: [],
@@ -126,7 +126,7 @@ function useInspectedProvider() {
         const parsed = await new GLTFLoader().parseAsync(bytes, '');
         let sidecar = provisionalSidecar(digest);
         let note =
-          'No canonical sidecar is available; selectors were inspected from the controlled GLB for provisional authoring only.';
+          'Hardcoded concept preview of the inspected GLB. Result 10 uses a geometry-inspected provisional pose; the full face map is not calibrated.';
         const sidecarResponse = await fetch(SOURCE_SIDECAR_URL);
         if (
           sidecarResponse.ok &&
@@ -235,14 +235,11 @@ export function AttackDie3DConcept() {
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const { provider, error } = useInspectedProvider();
   useEffect(() => {
-    if (
-      !provider ||
-      importedDigest.current === provider.digest ||
-      provider.sidecar.faces.length !== 20
-    )
-      return;
+    if (!provider || importedDigest.current === provider.digest) return;
     importedDigest.current = provider.digest;
-    dispatch({ type: 'import-faces', faces: provider.sidecar.faces });
+    setToken((value) => value + 1);
+    if (provider.sidecar.faces.length === 20)
+      dispatch({ type: 'import-faces', faces: provider.sidecar.faces });
   }, [provider]);
   const [osReducedMotion, setOsReducedMotion] = useState(
     () =>
@@ -262,8 +259,8 @@ export function AttackDie3DConcept() {
   const currentMapping = state.faces.find(
     (face) => face.result === effectiveResult
   );
-  const displayedPose: QuaternionTuple | undefined =
-    stage === 1 ? state.pose : currentMapping?.quaternion;
+  const displayedPose: QuaternionTuple =
+    currentMapping?.quaternion ?? state.pose;
   const selectTab = (index: number) => {
     setStage(index);
     tabs.current[index]?.focus();
@@ -425,7 +422,7 @@ export function AttackDie3DConcept() {
               <p>
                 {currentMapping
                   ? 'Mapped (not human verified)'
-                  : 'Unmapped — zero pose is not a saved or inferred face'}
+                  : 'Unmapped — provisional pose is not a saved or inferred face'}
               </p>
               <button onClick={() => dispatch({ type: 'save' })}>
                 Save normalized proposal mapping

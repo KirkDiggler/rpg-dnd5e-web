@@ -11,6 +11,12 @@ export { ATTACK_DIE_VISUAL_CONFIG as PROVISIONAL_VISUAL_DEFAULTS } from '../../c
 export const PROVISIONAL_WARNING =
   'PROVISIONAL — NOT AN ASSET CONTRACT' as const;
 
+/** Inspected concept-only pose: actual 10-face normal aligned to +Y and yawed for readability. */
+export const PROVISIONAL_RESULT_10_POSE: QuaternionTuple = [
+  0.31157754187207176, 0.875164463918048, 0.0748112861222172,
+  -0.36250499026183464,
+];
+
 export interface AttackDieCalibrationProposal {
   schemaVersion: 1;
   kind: 'attack-die-calibration-proposal';
@@ -88,9 +94,9 @@ export function rotateLocal(
 
 export function createAttackDieExperiment(): AttackDieExperimentState {
   return {
-    selectedResult: 1,
-    pose: [0, 0, 0, 1],
-    camera: 'top',
+    selectedResult: 10,
+    pose: PROVISIONAL_RESULT_10_POSE,
+    camera: 'three-quarter',
     materialMode: 'raw',
     magicalAnimation: false,
     reducedMotion: false,
@@ -124,7 +130,9 @@ export function attackDieExperimentReducer(
       return {
         ...state,
         selectedResult: action.result,
-        pose: saved ?? [0, 0, 0, 1],
+        pose:
+          saved ??
+          (action.result === 10 ? PROVISIONAL_RESULT_10_POSE : [0, 0, 0, 1]),
       };
     }
     case 'camera':
@@ -162,7 +170,14 @@ export function attackDieExperimentReducer(
       };
     }
     case 'reset':
-      return { ...state, pose: selectedSaved(state) ?? [0, 0, 0, 1] };
+      return {
+        ...state,
+        pose:
+          selectedSaved(state) ??
+          (state.selectedResult === 10
+            ? PROVISIONAL_RESULT_10_POSE
+            : [0, 0, 0, 1]),
+      };
     case 'replay':
       return { ...state, decorativeVariation: state.decorativeVariation + 1 };
     case 'verify-start':

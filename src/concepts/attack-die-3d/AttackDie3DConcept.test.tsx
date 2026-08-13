@@ -59,7 +59,7 @@ describe('AttackDie3D staged concept', () => {
     render(<AttackDie3DConcept />);
     fireEvent.click(screen.getByRole('tab', { name: 'Calibrate' }));
     expect(
-      screen.getByText(/zero pose is not a saved or inferred face/i)
+      screen.getByText(/provisional pose is not a saved or inferred face/i)
     ).toBeTruthy();
     const before = screen.getByLabelText('Current quaternion').textContent;
     fireEvent.click(screen.getByRole('button', { name: 'X +0.1°' }));
@@ -108,7 +108,62 @@ describe('AttackDie3D staged concept', () => {
         /^[0-9a-f]{64}$/
       )
     );
-    expect(screen.getByText(/No canonical sidecar is available/)).toBeTruthy();
+    expect(
+      screen.getByText(/Result 10 uses a geometry-inspected provisional pose/)
+    ).toBeTruthy();
+  });
+
+  it('previews the inspected lightning d20 with a hardcoded pose and replays its tumble', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
+        })
+        .mockResolvedValueOnce({ ok: false, status: 404 })
+    );
+    render(<AttackDie3DConcept />);
+    await waitFor(() =>
+      expect(
+        props.at(-1)?.sceneOverride && props.at(-1)?.presentationToken
+      ).toBe(2)
+    );
+    const preview = props.at(-1)!;
+    const sidecar = preview.sidecarOverride as {
+      selectors: {
+        node: string;
+        sourceMesh: string;
+        bodyPrimitive: { mesh: string; material: string };
+        numeralPrimitive: { mesh: string; material: string };
+      };
+    };
+    expect(preview.result).toBe(10);
+    expect(preview.cameraView).toBe('three-quarter');
+    expect(preview.calibrationPose).toEqual([
+      0.31157754187207176, 0.875164463918048, 0.0748112861222172,
+      -0.36250499026183464,
+    ]);
+    expect(sidecar.selectors).toEqual({
+      blenderSuffixPattern: '\\.\\d{3}$',
+      node: 'D20_Lightning_preview_4pct',
+      sourceMesh: 'D20_Lightning_preview_4pct_Mesh001',
+      bodyPrimitive: {
+        mesh: 'D20_Lightning_preview_4pct_Mesh001',
+        material: 'D20_Lightning_Material',
+      },
+      numeralPrimitive: {
+        mesh: 'D20_Lightning_preview_4pct_Mesh001_1',
+        material: 'Paint_Material',
+      },
+    });
+    const firstToken = preview.presentationToken;
+    fireEvent.click(screen.getByRole('tab', { name: 'Roll' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Replay decorative variation/ })
+    );
+    expect(props.at(-1)?.presentationToken).toBe(Number(firstToken) + 1);
   });
 
   it('rejects candidate sidecar before making export/hash claims', async () => {

@@ -23,6 +23,7 @@ import type {
 import { patchAttackDieMaterials } from './attackDieMaterial';
 import {
   angularDistanceDegrees,
+  attackDieRollTranslation,
   stepAttackDieMotion,
   type AttackDieMotionFrame,
 } from './attackDieMotion';
@@ -239,6 +240,11 @@ function RuntimeDie({
     }
     try {
       selectedGroup.quaternion.copy(new Quaternion(...frame.quaternion));
+      const translation = attackDieRollTranslation(
+        clock.elapsedTime * 1000 - start.current,
+        reducedMotion
+      );
+      selectedGroup.position.set(...translation);
       poseValidated.current = true;
       if (magicalAnimation && !reducedMotion)
         bundle?.updateShaderTime(clock.elapsedTime);
@@ -347,7 +353,7 @@ function AttackDieToken({
   );
   useEffect(() => {
     active.current = true;
-    if (!forced)
+    if (!forced && !authoringEligible)
       void preloadAttackDieRuntime().catch((error) =>
         fail(
           `runtime load failed: ${error instanceof Error ? error.message : 'unknown'}`
@@ -368,6 +374,7 @@ function AttackDieToken({
       });
     };
   }, [
+    authoringEligible,
     fail,
     forced,
     lock,

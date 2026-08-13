@@ -11,6 +11,7 @@ import {
   vi,
 } from 'vitest';
 import { AttackDie3D, type AttackDie3DProps } from './AttackDie3D';
+import type { AttackDieRuntimeSidecar } from './attackDieContract';
 const mocks = vi.hoisted(() => ({
   frames: [] as Array<(state: { clock: { elapsedTime: number } }) => void>,
   release: vi.fn(),
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   groupMissing: false,
   motionFailure: false,
   poseCopy: vi.fn(),
+  positionSet: vi.fn(),
   canvasProps: null as Record<string, unknown> | null,
   createdScene: { environment: 'unexpected' } as { environment: unknown },
   canvasCreates: 0,
@@ -231,6 +233,13 @@ beforeEach(() => {
   mocks.groupMissing = false;
   mocks.motionFailure = false;
   mocks.poseCopy.mockReset();
+  mocks.positionSet.mockReset();
+  Object.defineProperty(HTMLElement.prototype, 'position', {
+    configurable: true,
+    get() {
+      return this.tagName === 'GROUP' ? { set: mocks.positionSet } : undefined;
+    },
+  });
   Object.defineProperty(HTMLElement.prototype, 'quaternion', {
     configurable: true,
     get() {
@@ -257,9 +266,52 @@ beforeEach(() => {
   mocks.gl.render = vi.fn();
 });
 afterEach(() => {
+  delete (HTMLElement.prototype as { position?: unknown }).position;
   delete (HTMLElement.prototype as { quaternion?: unknown }).quaternion;
 });
 describe('AttackDie3D', () => {
+  it('renders a development authoring scene without invoking verified runtime preload', () => {
+    const root = new Group();
+    root.name = 'D20_Lightning_preview_4pct';
+    const bodyMaterial = new MeshStandardMaterial();
+    bodyMaterial.name = 'D20_Lightning_Material.010';
+    const numeralMaterial = new MeshStandardMaterial();
+    numeralMaterial.name = 'Paint_Material.010';
+    const body = new Mesh(new BufferGeometry(), bodyMaterial);
+    body.name = 'D20_Lightning_preview_4pct_Mesh001';
+    const numeral = new Mesh(new BufferGeometry(), numeralMaterial);
+    numeral.name = 'D20_Lightning_preview_4pct_Mesh001_1';
+    root.add(body, numeral);
+    const scene = new Group();
+    scene.add(root);
+    const sidecar = {
+      selectors: {
+        blenderSuffixPattern: '\\.\\d{3}$',
+        node: root.name,
+        sourceMesh: 'D20_Lightning_preview_4pct_Mesh001',
+        bodyPrimitive: {
+          mesh: body.name,
+          material: 'D20_Lightning_Material',
+        },
+        numeralPrimitive: {
+          mesh: numeral.name,
+          material: 'Paint_Material',
+        },
+      },
+      faces: [],
+    } as unknown as AttackDieRuntimeSidecar;
+    render(
+      <AttackDie3D
+        {...props(100)}
+        calibrationPose={[0, 0, 0, 1]}
+        sceneOverride={scene}
+        sidecarOverride={sidecar}
+      />
+    );
+    expect(mocks.preload).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('canvas')).not.toBeNull();
+  });
+
   it('keeps current SVG token locked while successful late readiness enables only next token', () => {
     const view = render(<AttackDie3D {...props(1)} />);
     mocks.status = 'ready';

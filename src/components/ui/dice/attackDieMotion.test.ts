@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { angularDistanceDegrees, stepAttackDieMotion } from './attackDieMotion';
+import {
+  angularDistanceDegrees,
+  attackDieRollTranslation,
+  stepAttackDieMotion,
+} from './attackDieMotion';
 const target = [0, 0, 0, 1] as const;
 describe('attack die motion', () => {
   it('treats q and -q equivalently and takes shortest arc', () => {
@@ -79,6 +83,25 @@ describe('attack die motion', () => {
         target,
       }).observeNow
     ).toBe(true);
+  });
+});
+
+describe('right-to-left roll translation', () => {
+  it('enters on the right, travels left, and settles on the left', () => {
+    const start = attackDieRollTranslation(0, false);
+    const middle = attackDieRollTranslation(850, false);
+    const settled = attackDieRollTranslation(1900, false);
+    expect(start[0]).toBeGreaterThan(0);
+    expect(middle[0]).toBeLessThan(start[0]);
+    expect(settled[0]).toBeLessThan(0);
+    expect(settled).toEqual(attackDieRollTranslation(2400, false));
+    expect(middle[2]).toBeLessThan(0);
+  });
+
+  it('places reduced motion directly at the left resting position', () => {
+    expect(attackDieRollTranslation(0, true)).toEqual(
+      attackDieRollTranslation(1900, false)
+    );
   });
 });
 

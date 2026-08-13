@@ -1,5 +1,7 @@
+import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  PROVISIONAL_RESULT_10_POSE,
   PROVISIONAL_VISUAL_DEFAULTS,
   attackDieExperimentReducer,
   createAttackDieExperiment,
@@ -36,15 +38,26 @@ describe('attack die experiment', () => {
   it('starts explicitly unverified, with zero inferred/saved faces and exact defaults', () => {
     const state = createAttackDieExperiment();
     expect(state.faces).toEqual([]);
-    expect(state.camera).toBe('top');
+    expect(state.selectedResult).toBe(10);
+    expect(state.camera).toBe('three-quarter');
+    expect(state.pose).toEqual(PROVISIONAL_RESULT_10_POSE);
+    const sourceTenNormal = new Vector3(
+      0.491124,
+      0.794645,
+      0.356841
+    ).normalize();
+    sourceTenNormal.applyQuaternion(new Quaternion(...state.pose));
+    expect(sourceTenNormal.x).toBeCloseTo(0, 5);
+    expect(sourceTenNormal.y).toBeCloseTo(1, 5);
+    expect(sourceTenNormal.z).toBeCloseTo(0, 5);
     expect(PROVISIONAL_VISUAL_DEFAULTS).toMatchObject({
       approval: 'unverified-provisional',
-      topCamera: { fov: 35, near: 0.1, far: 100, position: [0, 4, 0] },
-      threeQuarterCamera: { position: [3, 2.4, 3] },
-      viewportCss: [320, 320],
-      outputPixels: [640, 640],
+      topCamera: { fov: 35, near: 0.1, far: 100, position: [0, 1.95, 0] },
+      threeQuarterCamera: { position: [0.7, 1.7146, 0.7] },
+      viewportCss: [440, 360],
+      outputPixels: [880, 720],
       devicePixelRatio: 2,
-      dieScale: 0.75,
+      dieScale: 1.1,
       ambientIntensity: 0.65,
       keyLight: { position: [4, 6, 5], intensity: 3 },
       fillLight: { position: [-4, 2, -3], intensity: 1.2 },
@@ -66,11 +79,16 @@ describe('attack die experiment', () => {
     });
     expect(camera.pose).toEqual(rotated.pose);
     expect(camera.camera).toBe('three-quarter');
-    expect(camera.pose).toEqual(rotateLocal([0, 0, 0, 1], 'x', 0.1));
+    expect(camera.pose).toEqual(
+      rotateLocal(PROVISIONAL_RESULT_10_POSE, 'x', 0.1)
+    );
   });
 
   it('saves normalized unique mappings for results 1–20 and resets to saved pose', () => {
-    let state = createAttackDieExperiment();
+    let state = attackDieExperimentReducer(createAttackDieExperiment(), {
+      type: 'result',
+      result: 1,
+    });
     state = attackDieExperimentReducer(
       { ...state, pose: [0, 0, 0, 2] },
       { type: 'save' }
@@ -111,7 +129,7 @@ describe('attack die experiment', () => {
       });
       expect(proposal.warning).toBe('PROVISIONAL — NOT AN ASSET CONTRACT');
       expect(proposal.faces).toHaveLength(count);
-      expect(proposal.tupleDraft.topCamera.position).toEqual([0, 4, 0]);
+      expect(proposal.tupleDraft.topCamera.position).toEqual([0, 1.95, 0]);
       expect(JSON.stringify(proposal)).not.toMatch(
         /provenance|human|verified|PASS/
       );

@@ -12,6 +12,24 @@ export interface AttackDieMotionFrame {
   exactTargetHeld: boolean;
   failed: boolean;
 }
+export type AttackDieTranslation = readonly [number, number, number];
+
+const LEFT_RESTING_X = -0.23;
+const RIGHT_ENTRY_X = 1.05;
+
+export function attackDieRollTranslation(
+  elapsedMs: number,
+  reducedMotion: boolean
+): AttackDieTranslation {
+  if (reducedMotion) return [LEFT_RESTING_X, 0, 0];
+  const progress = Math.min(1, Math.max(0, elapsedMs / 1800));
+  const eased = 1 - Math.pow(1 - progress, 3);
+  const x = RIGHT_ENTRY_X + (LEFT_RESTING_X - RIGHT_ENTRY_X) * eased;
+  const y = Math.sin(progress * Math.PI) * 0.08;
+  const z = -Math.sin(progress * Math.PI) * 0.12;
+  return progress === 1 ? [LEFT_RESTING_X, 0, 0] : [x, y, z];
+}
+
 const normalized = (q: QuaternionTuple): QuaternionTuple => {
   const n = Math.hypot(...q);
   return n ? [q[0] / n, q[1] / n, q[2] / n, q[3] / n] : q;
