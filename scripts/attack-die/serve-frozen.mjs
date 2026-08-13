@@ -56,7 +56,8 @@ const server = createServer(async (request, response) => {
       bytes = await safeFile(assetRoot, rawPath.slice('/models/synty'.length));
     } else {
       try {
-        bytes = await safeFile(dist, rawPath === '/' ? '/index.html' : rawPath);
+        if (rawPath === '/') typePath = '/index.html';
+        bytes = await safeFile(dist, typePath);
       } catch (error) {
         if (error?.code !== 'ENOENT') throw error;
         bytes = await safeFile(dist, '/index.html');
