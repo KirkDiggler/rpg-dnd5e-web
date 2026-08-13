@@ -110,6 +110,11 @@ function useInspectedProvider() {
         const bytes = await response.arrayBuffer();
         const digest = await sha256Hex(bytes);
         const parsed = await new GLTFLoader().parseAsync(bytes, '');
+        const inspectedMesh = parsed.scene
+          .getObjectByName('D20_Lightning_preview_4pct')
+          ?.children.find((child) => 'isMesh' in child && child.isMesh);
+        if (inspectedMesh)
+          inspectedMesh.name = 'D20_Lightning_preview_4pct_Mesh';
         let sidecar = provisionalSidecar(digest);
         let note =
           'No canonical sidecar is available; selectors were inspected from the controlled GLB for provisional authoring only.';

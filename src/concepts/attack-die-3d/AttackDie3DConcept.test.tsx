@@ -13,7 +13,9 @@ vi.mock('../../components/ui/dice/AttackDie3D', () => ({
 }));
 vi.mock('three/examples/jsm/loaders/GLTFLoader.js', () => ({
   GLTFLoader: class {
-    parseAsync = vi.fn().mockResolvedValue({ scene: {} });
+    parseAsync = vi.fn().mockResolvedValue({
+      scene: { getObjectByName: () => undefined },
+    });
   },
 }));
 
