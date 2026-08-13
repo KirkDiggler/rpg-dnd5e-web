@@ -25,6 +25,7 @@ import {
   createAttackDieExperiment,
   exportCalibrationProposal,
 } from './attackDieExperiment';
+import { DiceTray3DConceptPanel } from './DiceTray3DConceptPanel';
 
 declare global {
   interface Window {
@@ -34,7 +35,7 @@ declare global {
     __attackDieEvidenceExpected?: { result: number; token: number };
   }
 }
-const stages = ['Appearance', 'Calibrate', 'Roll', 'Verify'] as const;
+const stages = ['Appearance', 'Calibrate', 'Roll', 'Verify', 'Tray'] as const;
 const GLB_URL = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
 const SOURCE_SIDECAR_URL =
   '/models/synty/dice/d20-lightning/attack-die-contract.json';
@@ -345,6 +346,15 @@ export function AttackDie3DConcept() {
           </button>
         ))}
       </div>
+      {stage === 4 ? (
+        <div
+          role="tabpanel"
+          aria-label={stages[stage]}
+          className="attack-die-concept__stage attack-die-concept__stage--tray"
+        >
+          <DiceTray3DConceptPanel />
+        </div>
+      ) : (
       <div
         role="tabpanel"
         aria-label={stages[stage]}
@@ -566,6 +576,7 @@ export function AttackDie3DConcept() {
           />
         </div>
       </div>
+      )}
     </section>
   );
 }

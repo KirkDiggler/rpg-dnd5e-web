@@ -38,9 +38,9 @@ beforeEach(() => {
 });
 
 describe('AttackDie3D staged concept', () => {
-  it('offers keyboard-operable four-stage tabs and a truthful fixture', () => {
+  it('offers keyboard-operable five-stage tabs and a truthful fixture', () => {
     render(<AttackDie3DConcept />);
-    for (const name of ['Appearance', 'Calibrate', 'Roll', 'Verify'])
+    for (const name of ['Appearance', 'Calibrate', 'Roll', 'Verify', 'Tray'])
       expect(screen.getByRole('tab', { name })).toBeTruthy();
     expect(
       screen.getByText(/PROVISIONAL — NOT AN ASSET CONTRACT/)
@@ -53,6 +53,14 @@ describe('AttackDie3D staged concept', () => {
     expect(document.activeElement).toBe(calibrate);
     expect(screen.getByTestId('attack-die')).toBeTruthy();
     expect(screen.getByTestId('dice-tray')).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Appearance' }), {
+      key: 'ArrowLeft',
+    });
+    const tray = screen.getByRole('tab', { name: 'Tray' });
+    expect(tray.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(tray);
+    expect(screen.getByText(/Empty tray checkpoint/)).toBeTruthy();
+    expect(screen.getByText(/No interaction yet/)).toBeTruthy();
   });
 
   it('starts with zero mappings, exposes 0.1-degree controls, and camera switching preserves pose', () => {
