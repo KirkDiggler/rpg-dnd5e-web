@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
       onShaderError: null as null | (() => void),
     },
     compile: vi.fn(),
+    render: vi.fn(),
     domElement: null as HTMLCanvasElement | null,
   },
 }));
@@ -151,6 +152,7 @@ beforeEach(() => {
     if (mocks.compileFailure) throw Error('compile threw');
     if (mocks.shaderDiagnostic) mocks.gl.debug.onShaderError?.();
   });
+  mocks.gl.render = vi.fn();
 });
 describe('AttackDie3D', () => {
   it('keeps current SVG token locked while successful late readiness enables only next token', () => {
@@ -162,8 +164,11 @@ describe('AttackDie3D', () => {
     expect(screen.queryByTestId('canvas')).not.toBeNull();
     expect(fallbackCovered()).toBe(false);
     frame(-1, 0);
-    expect(fallbackCovered()).toBe(false);
     frame(-1, 0.016);
+    expect(fallbackCovered()).toBe(false);
+    act(() => mocks.gl.render({}, {}));
+    expect(fallbackCovered()).toBe(true);
+    act(() => mocks.gl.render({}, {}));
     expect(fallbackCovered()).toBe(true);
   });
   it('rejects stale ready callbacks after token change', () => {
@@ -200,14 +205,49 @@ describe('AttackDie3D', () => {
     expect(screen.queryByTestId('canvas')).toBeNull();
     expect(fallbackCovered()).toBe(false);
   });
-  it('does not reveal when compile returns but shader diagnostic reports link failure', () => {
+  it('does not reveal from compile or pre-render frames; only successful renderer.render after validated pose readies once', () => {
     mocks.status = 'ready';
-    mocks.shaderDiagnostic = true;
     render(<AttackDie3D {...props(1)} />);
+    const wrappedRender = mocks.gl.render;
     frame(-1, 0);
     frame(-1, 0.016);
     expect(fallbackCovered()).toBe(false);
-    expect(mocks.gl.debug.onShaderError).not.toBeNull();
+    act(() => wrappedRender({}, {}));
+    expect(fallbackCovered()).toBe(true);
+    act(() => wrappedRender({}, {}));
+    expect(fallbackCovered()).toBe(true);
+  });
+  it('does not reveal when shader diagnostic fires during compile or actual render', () => {
+    mocks.status = 'ready';
+    mocks.shaderDiagnostic = true;
+    const compileView = render(<AttackDie3D {...props(1)} />);
+    expect(fallbackCovered()).toBe(false);
+    compileView.unmount();
+    mocks.shaderDiagnostic = false;
+    const renderView = render(<AttackDie3D {...props(2)} />);
+    frame(-1, 0);
+    const wrappedRender = mocks.gl.render;
+    mocks.gl.debug.onShaderError?.();
+    act(() => wrappedRender({}, {}));
+    expect(fallbackCovered()).toBe(false);
+    renderView.unmount();
+  });
+  it('fails closed when the underlying actual renderer.render throws and ignores its stale wrapper', () => {
+    mocks.status = 'ready';
+    mocks.gl.render.mockImplementationOnce(() => {
+      throw Error('WebGL render failed');
+    });
+    const view = render(<AttackDie3D {...props(1)} />);
+    frame(-1, 0);
+    const staleWrappedRender = mocks.gl.render;
+    expect(() => act(() => staleWrappedRender({}, {}))).toThrow(
+      'WebGL render failed'
+    );
+    expect(fallbackCovered()).toBe(false);
+    mocks.status = 'idle';
+    view.rerender(<AttackDie3D {...props(2)} />);
+    expect(() => staleWrappedRender({}, {})).not.toThrow();
+    expect(fallbackCovered()).toBe(false);
   });
   it('fails closed on thrown compile diagnostics', () => {
     mocks.status = 'ready';
@@ -220,7 +260,7 @@ describe('AttackDie3D', () => {
     mocks.status = 'ready';
     render(<AttackDie3D {...props(1)} />);
     frame(-1, 0);
-    frame(-1, 0.016);
+    act(() => mocks.gl.render({}, {}));
     expect(fallbackCovered()).toBe(true);
     act(() =>
       mocks.listeners.get('webglcontextlost')?.(new Event('webglcontextlost'))
@@ -230,23 +270,58 @@ describe('AttackDie3D', () => {
     frame(-1, 0.032);
     expect(fallbackCovered()).toBe(false);
   });
-  it('restores shader hook, removes listener, releases lock, and disposes owned materials under StrictMode', () => {
-    const original = vi.fn();
-    mocks.gl.debug.onShaderError = original;
+  it.each([
+    'success',
+    'compile-throw',
+    'render-throw',
+    'context-loss',
+    'token-change',
+    'strict-unmount',
+  ] as const)('restores renderer/debug hooks for %s', (scenario) => {
+    const originalShaderError = vi.fn();
+    const originalRender = mocks.gl.render;
+    mocks.gl.debug.onShaderError = originalShaderError;
+    mocks.gl.debug.checkShaderErrors = false;
+    if (scenario === 'compile-throw') mocks.compileFailure = true;
+    if (scenario === 'render-throw')
+      originalRender.mockImplementationOnce(() => {
+        throw Error('render failed');
+      });
     mocks.status = 'ready';
-    const view = render(
-      <StrictMode>
+    const tree =
+      scenario === 'strict-unmount' ? (
+        <StrictMode>
+          <AttackDie3D {...props(1)} />
+        </StrictMode>
+      ) : (
         <AttackDie3D {...props(1)} />
-      </StrictMode>
-    );
+      );
+    const view = render(tree);
+    const wrapped = mocks.gl.render;
+    if (scenario === 'success') {
+      frame(-1, 0);
+      act(() => wrapped({}, {}));
+    }
+    if (scenario === 'render-throw')
+      expect(() => act(() => wrapped({}, {}))).toThrow('render failed');
+    if (scenario === 'context-loss')
+      act(() =>
+        mocks.listeners.get('webglcontextlost')?.(new Event('webglcontextlost'))
+      );
+    if (scenario === 'token-change') {
+      mocks.status = 'idle';
+      view.rerender(<AttackDie3D {...props(2)} />);
+    }
     view.unmount();
-    expect(mocks.remove).toHaveBeenCalled();
+    if (scenario !== 'compile-throw') expect(mocks.remove).toHaveBeenCalled();
     expect(mocks.release).toHaveBeenCalled();
     expect(mocks.disposals.length).toBeGreaterThan(0);
     expect(
       mocks.disposals.every((dispose) => dispose.mock.calls.length === 1)
     ).toBe(true);
-    expect(mocks.gl.debug.onShaderError).toBe(original);
+    expect(mocks.gl.render).toBe(originalRender);
+    expect(mocks.gl.debug.onShaderError).toBe(originalShaderError);
+    expect(mocks.gl.debug.checkShaderErrors).toBe(false);
   });
   it('has no completion or result-release API', () => {
     type Forbidden = Extract<
