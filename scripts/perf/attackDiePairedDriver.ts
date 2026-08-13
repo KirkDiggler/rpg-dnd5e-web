@@ -6,6 +6,7 @@ export interface PairedOutcome {
   status: 'pass' | 'failed';
   category: string;
   error?: { name: string; message: string };
+  artifactWritten?: boolean;
 }
 export async function writeProfileArtifact(
   out: string,
@@ -21,7 +22,11 @@ export async function writeProfileArtifact(
 export async function runProfileAttempts<T extends { category: string }>(
   profiles: T[],
   out: string,
-  run: (profile: T) => Promise<PairedOutcome>
+  run: (profile: T) => Promise<PairedOutcome>,
+  options: {
+    writeArtifact?: typeof writeProfileArtifact;
+    onDiagnostic?: (message: string) => void;
+  } = {}
 ): Promise<{ outcomes: PairedOutcome[]; exitCode: 0 | 1 }> {
   const outcomes: PairedOutcome[] = [];
   for (const profile of profiles) {
@@ -34,11 +39,19 @@ export async function runProfileAttempts<T extends { category: string }>(
         category: profile.category,
         error: { name: error.name, message: error.message },
       };
-      await writeProfileArtifact(out, profile.category, {
-        schemaVersion: 1,
-        kind: 'attack-die-paired-performance',
-        ...failed,
-      });
+      try {
+        await (options.writeArtifact ?? writeProfileArtifact)(
+          out,
+          profile.category,
+          { schemaVersion: 1, kind: 'attack-die-paired-performance', ...failed }
+        );
+        failed.artifactWritten = true;
+      } catch (writeError) {
+        failed.artifactWritten = false;
+        options.onDiagnostic?.(
+          `failed to write ${profile.category} artifact: ${writeError instanceof Error ? writeError.message : String(writeError)}`
+        );
+      }
       outcomes.push(failed);
     }
   }
@@ -57,14 +70,16 @@ export function releasedCounters(counters: {
     textures: number | null;
     programs: number | null;
   };
-  rendererObservationLimitation?: string | null;
+  contextLifecycles: Record<
+    number,
+    import('../../src/dev/attackDiePerfProtocol').AttackDieContextLifecycle
+  >;
 }) {
   return {
     contextsActive: counters.activeContextIds.length,
     geometries: counters.rendererInfo.geometries,
     textures: counters.rendererInfo.textures,
     programs: counters.rendererInfo.programs,
-    observationLimitation: counters.rendererObservationLimitation ?? null,
   };
 }
 export async function measurePostUnmount(

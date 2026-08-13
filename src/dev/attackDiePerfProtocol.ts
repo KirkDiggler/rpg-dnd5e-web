@@ -156,18 +156,19 @@ export function evaluateAttackDieRun(input: {
     textures: number | null;
     programs: number | null;
   };
+  release: {
+    releaseKnown: boolean;
+    resourcesReleased: boolean;
+    releaseBasis: 'owned-canvas-webglcontextlost' | null;
+  };
 }) {
   const healthy =
     input.samples.filter((sample) => sample.mode === '3d').length > 0 &&
     input.samples
       .filter((sample) => sample.mode === '3d')
       .every((sample) => sample.healthy3d);
-  const resourcesKnown = Object.values(input.postUnmountCounters).every(
-    (value) => typeof value === 'number' && Number.isFinite(value)
-  );
-  const resourcesReleased =
-    resourcesKnown &&
-    Object.values(input.postUnmountCounters).every((value) => value === 0);
+  const resourcesKnown = input.release.releaseKnown;
+  const resourcesReleased = input.release.resourcesReleased;
   const budget = evaluateAttackDieBudgets({
     ...input,
     attributableLongTasks: input.samples.reduce(
@@ -184,19 +185,17 @@ export function evaluateAttackDieRun(input: {
   };
 }
 
-export interface AttackDieRendererObservationCounters {
-  contextsCreated: number;
-  contextsLost: number;
-  contextsDisposed: number;
-  activeContextIds: number[];
-  rendererInfo: {
-    calls: number | null;
-    triangles: number | null;
-    geometries: number | null;
-    textures: number | null;
-    programs: number | null;
-  };
-  [key: string]: unknown;
+export type AttackDieRendererLifecycle =
+  | 'created'
+  | 'sampled'
+  | 'release-requested'
+  | 'release-observed'
+  | 'release-timeout'
+  | 'unexpected-loss';
+export interface AttackDieContextLifecycle {
+  contextId: number;
+  state: AttackDieRendererLifecycle;
+  releaseRequested: boolean;
 }
 export interface AttackDieRendererObservation {
   calls: number | null;
@@ -204,15 +203,28 @@ export interface AttackDieRendererObservation {
   geometries: number | null;
   textures: number | null;
   programs: number | null;
-  lifecycle: 'created' | 'sample' | 'lost' | 'disposed';
+  lifecycle: AttackDieRendererLifecycle;
   contextId: number;
+}
+export function evaluateAttackDieRelease(
+  lifecycles: Record<number, AttackDieContextLifecycle>
+) {
+  const values = Object.values(lifecycles);
+  const released =
+    values.length > 0 &&
+    values.every(
+      (value) => value.releaseRequested && value.state === 'release-observed'
+    );
+  return {
+    releaseKnown: released,
+    resourcesReleased: released,
+    releaseBasis: released ? ('owned-canvas-webglcontextlost' as const) : null,
+  };
 }
 export function applyAttackDieRendererObservation<
   T extends {
-    contextsCreated: number;
-    contextsLost: number;
-    contextsDisposed: number;
     activeContextIds: number[];
+    contextLifecycles: Record<number, AttackDieContextLifecycle>;
     rendererInfo: {
       calls: number | null;
       triangles: number | null;
@@ -221,30 +233,54 @@ export function applyAttackDieRendererObservation<
       programs: number | null;
     };
   },
->(
-  counters: T,
-  info: AttackDieRendererObservation & {
-    lifecycle: 'created' | 'sample' | 'lost' | 'disposed';
-    contextId: number;
-  }
-) {
-  const active = new Set(counters.activeContextIds);
-  let created = counters.contextsCreated,
-    lost = counters.contextsLost,
-    disposed = counters.contextsDisposed;
-  if (info.lifecycle === 'created' && !active.has(info.contextId)) {
-    active.add(info.contextId);
-    created++;
-  }
-  if (info.lifecycle === 'lost' && active.delete(info.contextId)) lost++;
-  if (info.lifecycle === 'disposed' && active.delete(info.contextId))
-    disposed++;
+>(counters: T, info: AttackDieRendererObservation): T {
+  const previous = counters.contextLifecycles[info.contextId];
+  let next: AttackDieContextLifecycle | undefined;
+  if (info.lifecycle === 'created' && !previous)
+    next = {
+      contextId: info.contextId,
+      state: 'created',
+      releaseRequested: false,
+    };
+  if (info.lifecycle === 'sampled' && previous && !previous.releaseRequested)
+    next = { ...previous, state: 'sampled' };
+  if (
+    info.lifecycle === 'release-requested' &&
+    previous &&
+    previous.state !== 'release-observed'
+  )
+    next = { ...previous, state: 'release-requested', releaseRequested: true };
+  if (info.lifecycle === 'release-observed' && previous?.releaseRequested)
+    next = { ...previous, state: 'release-observed' };
+  if (
+    info.lifecycle === 'release-timeout' &&
+    previous?.releaseRequested &&
+    previous.state !== 'release-observed'
+  )
+    next = { ...previous, state: 'release-timeout' };
+  if (
+    info.lifecycle === 'unexpected-loss' &&
+    previous &&
+    !previous.releaseRequested
+  )
+    next = { ...previous, state: 'unexpected-loss' };
+  if (!next) return counters;
+  const contextLifecycles = {
+    ...counters.contextLifecycles,
+    [info.contextId]: next,
+  };
+  const activeContextIds = Object.values(contextLifecycles)
+    .filter(
+      (value) =>
+        !['release-observed', 'release-timeout', 'unexpected-loss'].includes(
+          value.state
+        )
+    )
+    .map((value) => value.contextId);
   return {
     ...counters,
-    contextsCreated: created,
-    contextsLost: lost,
-    contextsDisposed: disposed,
-    activeContextIds: [...active],
+    contextLifecycles,
+    activeContextIds,
     rendererInfo: {
       calls: info.calls,
       triangles: info.triangles,

@@ -17,6 +17,9 @@ vi.mock('../components/ui/dice/AttackDie3D', () => ({
     );
   },
 }));
+vi.mock('../components/ui/dice/attackDieRuntime', () => ({
+  getAttackDieRuntimeSnapshot: () => ({ status: 'idle' }),
+}));
 vi.mock('../components/ui/dice/DiceTray', () => ({
   DiceTray: ({ finalFace }: { finalFace: number }) => (
     <div data-testid="perf-svg">{finalFace}</div>
@@ -96,9 +99,10 @@ it('latches first-ready and counts unique context lifecycle observations', async
     mountedMode: null,
     mountCount: 0,
     unmountCount: 0,
-    contextsCreated: 0,
-    contextsLost: 0,
-    contextsDisposed: 0,
+    contextLifecycles: {} as Record<
+      number,
+      import('./attackDiePerfProtocol').AttackDieContextLifecycle
+    >,
     activeContextIds: [],
     rendererInfo: {
       calls: 0,
@@ -132,15 +136,19 @@ it('latches first-ready and counts unique context lifecycle observations', async
   const sampled = applyAttackDieRendererObservation(duplicate, {
     ...info,
     calls: 3,
-    lifecycle: 'sample',
+    lifecycle: 'sampled',
   });
-  const disposed = applyAttackDieRendererObservation(sampled, {
+  const requested = applyAttackDieRendererObservation(sampled, {
     ...info,
-    lifecycle: 'disposed',
+    lifecycle: 'release-requested',
   });
-  expect(duplicate.contextsCreated).toBe(1);
+  const disposed = applyAttackDieRendererObservation(requested, {
+    ...info,
+    lifecycle: 'release-observed',
+  });
+  expect(duplicate.contextLifecycles[4].state).toBe('created');
   expect(sampled.rendererInfo.calls).toBe(3);
-  expect(disposed.contextsDisposed).toBe(1);
+  expect(disposed.contextLifecycles[4].state).toBe('release-observed');
   expect(disposed.activeContextIds).toEqual([]);
 });
 

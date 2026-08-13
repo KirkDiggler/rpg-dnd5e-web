@@ -6,6 +6,9 @@ import {
 } from './attackDieContract';
 export interface AttackDieRuntimeSnapshot {
   status: 'idle' | 'loading' | 'ready' | 'failed';
+  startedAtMs?: number;
+  readyAtMs?: number;
+  durationMs?: number;
   sidecar?: AttackDieRuntimeSidecar;
   failureReason?: string;
 }
@@ -21,7 +24,8 @@ export function preloadAttackDieRuntime(
   options: { verifyContractDigest?: boolean } = {}
 ): Promise<void> {
   if (owner) return owner;
-  snapshot = { status: 'loading' };
+  const startedAtMs = performance.now();
+  snapshot = { status: 'loading', startedAtMs };
   owner = (async () => {
     try {
       const glbResponse = await fetch(GLB_URL);
@@ -46,10 +50,19 @@ export function preloadAttackDieRuntime(
       cachedScene = await new Promise<Object3D>((resolve, reject) =>
         new GLTFLoader().parse(bytes, '', (gltf) => resolve(gltf.scene), reject)
       );
-      snapshot = { status: 'ready', sidecar: checked.sidecar };
+      const readyAtMs = performance.now();
+      snapshot = {
+        status: 'ready',
+        sidecar: checked.sidecar,
+        startedAtMs,
+        readyAtMs,
+        durationMs: readyAtMs - startedAtMs,
+      };
     } catch (e) {
       snapshot = {
         status: 'failed',
+        startedAtMs,
+        durationMs: performance.now() - startedAtMs,
         failureReason: e instanceof Error ? e.message : 'runtime failure',
       };
       throw e;

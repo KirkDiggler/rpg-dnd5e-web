@@ -4,6 +4,7 @@ import {
   type AttackDieTelemetry,
 } from '../components/ui/dice/AttackDie3D';
 import { DiceTray } from '../components/ui/dice/DiceTray';
+import { getAttackDieRuntimeSnapshot } from '../components/ui/dice/attackDieRuntime';
 import {
   applyAttackDieRendererObservation,
   type AttackDiePerfMode,
@@ -25,9 +26,10 @@ export interface AttackDiePerfCounters {
   mountedMode: AttackDiePerfMode | null;
   mountCount: number;
   unmountCount: number;
-  contextsCreated: number;
-  contextsLost: number;
-  contextsDisposed: number;
+  contextLifecycles: Record<
+    number,
+    import('./attackDiePerfProtocol').AttackDieContextLifecycle
+  >;
   activeContextIds: number[];
   rendererInfo: AttackDieRendererInfo;
   telemetry: AttackDieTelemetry | null;
@@ -36,6 +38,14 @@ export interface AttackDiePerfCounters {
   gpuBytes: null;
   gpuBytesLimitation: string;
   rendererObservationLimitation: string | null;
+  provider: {
+    status: 'idle' | 'loading' | 'ready' | 'failed';
+    startedAtMs: number | null;
+    readyAtMs: number | null;
+    durationMs: number | null;
+    failure: string | null;
+    contaminated: boolean;
+  };
 }
 export interface AttackDiePerfDriver {
   runSample(request: AttackDiePerfSampleRequest): void;
@@ -51,16 +61,14 @@ const empty = (): AttackDiePerfCounters => ({
   mountedMode: null,
   mountCount: 0,
   unmountCount: 0,
-  contextsCreated: 0,
-  contextsLost: 0,
-  contextsDisposed: 0,
+  contextLifecycles: {},
   activeContextIds: [],
   rendererInfo: {
-    calls: 0,
-    triangles: 0,
-    geometries: 0,
-    textures: 0,
-    programs: 0,
+    calls: null,
+    triangles: null,
+    geometries: null,
+    textures: null,
+    programs: null,
   },
   telemetry: null,
   healthy3d: false,
@@ -69,6 +77,14 @@ const empty = (): AttackDiePerfCounters => ({
   gpuBytesLimitation:
     'Browser does not expose portable GPU allocation bytes; renderer.info proxies recorded.',
   rendererObservationLimitation: null,
+  provider: {
+    status: 'idle',
+    startedAtMs: null,
+    readyAtMs: null,
+    durationMs: null,
+    failure: null,
+    contaminated: false,
+  },
 });
 /** Independent observation overlay; no queue callbacks. */
 export function AttackDiePerfHarness({
@@ -93,6 +109,7 @@ export function AttackDiePerfHarness({
         )
           throw Error('result must be 1–20');
         start.current = performance.now();
+        const runtime = getAttackDieRuntimeSnapshot();
         counters.current = {
           ...counters.current,
           mountedMode: request.mode,
@@ -100,14 +117,33 @@ export function AttackDiePerfHarness({
           telemetry: null,
           healthy3d: request.mode === 'svg',
           readyAtMs: request.mode === 'svg' ? 0 : null,
+          provider: {
+            ...counters.current.provider,
+            status: runtime.status,
+            contaminated:
+              counters.current.mountCount === 0 &&
+              request.mode === '3d' &&
+              runtime.status !== 'idle',
+          },
         };
         setSample({ ...request });
       },
-      readCounters: () => ({
-        ...counters.current,
-        activeContextIds: [...counters.current.activeContextIds],
-        rendererInfo: { ...counters.current.rendererInfo },
-      }),
+      readCounters: () => {
+        const runtime = getAttackDieRuntimeSnapshot();
+        return {
+          ...counters.current,
+          provider: {
+            status: runtime.status,
+            startedAtMs: runtime.startedAtMs ?? null,
+            readyAtMs: runtime.readyAtMs ?? null,
+            durationMs: runtime.durationMs ?? null,
+            failure: runtime.failureReason ?? null,
+            contaminated: counters.current.provider.contaminated,
+          },
+          activeContextIds: [...counters.current.activeContextIds],
+          rendererInfo: { ...counters.current.rendererInfo },
+        };
+      },
       unmountDie() {
         counters.current = {
           ...counters.current,
@@ -163,12 +199,10 @@ export function AttackDiePerfHarness({
           fallback={fallback}
           onTelemetry={telemetry}
           onRendererInfo={(info) => {
-            counters.current = {
-              ...applyAttackDieRendererObservation(counters.current, info),
-              rendererObservationLimitation:
-                info.observationLimitation ??
-                counters.current.rendererObservationLimitation,
-            };
+            counters.current = applyAttackDieRendererObservation(
+              counters.current,
+              info
+            );
           }}
         />
       ) : (

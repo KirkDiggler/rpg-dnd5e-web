@@ -29,7 +29,17 @@ const mocks = vi.hoisted(() => ({
   poseCopy: vi.fn(),
   canvasProps: null as Record<string, unknown> | null,
   createdScene: { environment: 'unexpected' } as { environment: unknown },
-  createdCamera: { lookAt: vi.fn() },
+  canvasCreates: 0,
+  createdCamera: {
+    isPerspectiveCamera: true,
+    fov: 0,
+    near: 0,
+    far: 0,
+    position: { set: vi.fn() },
+    up: { set: vi.fn() },
+    lookAt: vi.fn(),
+    updateProjectionMatrix: vi.fn(),
+  },
   gl: {
     debug: {
       checkShaderErrors: false,
@@ -70,6 +80,7 @@ vi.mock('@react-three/fiber', () => ({
       mocks.remove(type);
       mocks.listeners.delete(type);
     };
+    mocks.canvasCreates += 1;
     mocks.gl.domElement = canvas;
     mocks.canvasProps = props;
     onCreated?.({
@@ -86,7 +97,12 @@ vi.mock('@react-three/fiber', () => ({
   },
   useFrame: (callback: (state: { clock: { elapsedTime: number } }) => void) =>
     mocks.frames.push(callback),
-  useThree: () => ({ gl: mocks.gl, scene: {}, camera: {} }),
+  useThree: (
+    selector?: (state: { camera: typeof mocks.createdCamera }) => unknown
+  ) =>
+    selector
+      ? selector({ camera: mocks.createdCamera })
+      : { gl: mocks.gl, scene: {}, camera: mocks.createdCamera },
 }));
 vi.mock('./attackDieMotion', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./attackDieMotion')>();
@@ -196,6 +212,11 @@ const frame = (index = -1, time = 0) =>
   act(() => mocks.frames.at(index)?.({ clock: { elapsedTime: time } }));
 beforeEach(() => {
   mocks.frames = [];
+  mocks.canvasCreates = 0;
+  mocks.createdCamera.position.set.mockClear();
+  mocks.createdCamera.up.set.mockClear();
+  mocks.createdCamera.lookAt.mockClear();
+  mocks.createdCamera.updateProjectionMatrix.mockClear();
   mocks.release.mockClear();
   mocks.preload.mockClear();
   mocks.listeners.clear();
@@ -422,7 +443,8 @@ describe('AttackDie3D', () => {
       view.rerender(<AttackDie3D {...props(2)} />);
     }
     view.unmount();
-    if (scenario !== 'compile-throw') expect(mocks.remove).toHaveBeenCalled();
+    if (!['compile-throw', 'render-throw', 'token-change'].includes(scenario))
+      expect(mocks.remove).toHaveBeenCalled();
     expect(mocks.release).toHaveBeenCalled();
     expect(mocks.disposals.length).toBeGreaterThan(0);
     expect(
@@ -462,4 +484,30 @@ it('consumes the complete renderer-owned camera/DPR/environment authority', asyn
   expect(
     screen.getByTestId('canvas').querySelector('group')?.getAttribute('scale')
   ).toBe(String(visual.dieScale));
+});
+
+it('updates live camera without remounting Canvas or changing token', async () => {
+  const { ATTACK_DIE_VISUAL_CONFIG: v } =
+    await import('./attackDieVisualConfig');
+  mocks.status = 'ready';
+  const view = render(
+    <AttackDie3D {...props(77)} cameraView="three-quarter" />
+  );
+  expect(mocks.createdCamera.position.set).toHaveBeenLastCalledWith(
+    ...v.threeQuarterCamera.position
+  );
+  view.rerender(<AttackDie3D {...props(77)} cameraView="top" />);
+  // The R3F mock function re-renders, while the stable token proves production Canvas identity is unchanged.
+  expect(mocks.release).not.toHaveBeenCalledWith(77);
+  expect(mocks.createdCamera.position.set).toHaveBeenLastCalledWith(
+    ...v.topCamera.position
+  );
+  expect(mocks.createdCamera.up.set).toHaveBeenLastCalledWith(
+    ...v.topCamera.up
+  );
+  expect(mocks.createdCamera.lookAt).toHaveBeenLastCalledWith(
+    ...v.topCamera.target
+  );
+  expect(mocks.createdCamera.fov).toBe(v.topCamera.fov);
+  expect(mocks.createdCamera.updateProjectionMatrix).toHaveBeenCalledTimes(2);
 });

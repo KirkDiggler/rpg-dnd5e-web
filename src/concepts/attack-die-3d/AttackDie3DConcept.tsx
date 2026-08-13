@@ -31,6 +31,7 @@ declare global {
     __ATTACK_DIE_BUILD_SHA256__?: string;
     __attackDieEvidenceTelemetry?: AttackDieTelemetry;
     __attackDieProposalBuildSha256?: string | null;
+    __attackDieEvidenceExpected?: { result: number; token: number };
   }
 }
 const stages = ['Appearance', 'Calibrate', 'Roll', 'Verify'] as const;
@@ -281,6 +282,9 @@ export function AttackDie3DConcept() {
     },
     [stage, state.verificationResult]
   );
+  useEffect(() => {
+    window.__attackDieEvidenceExpected = { result: effectiveResult, token };
+  }, [effectiveResult, token]);
   useEffect(() => {
     if (state.verificationResult === null) return;
     setToken((value) => value + 1);
@@ -554,8 +558,8 @@ export function AttackDie3DConcept() {
                 : undefined
             }
             forceFailure={
-              ['shader', 'invalid-result', 'unmapped'].includes(forcedFailure)
-                ? (forcedFailure as 'shader' | 'invalid-result' | 'unmapped')
+              ['shader', 'invalid-result'].includes(forcedFailure)
+                ? (forcedFailure as 'shader' | 'invalid-result')
                 : undefined
             }
             sceneOverride={provider?.scene}

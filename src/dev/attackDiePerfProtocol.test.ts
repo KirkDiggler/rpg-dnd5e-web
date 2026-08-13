@@ -79,6 +79,11 @@ describe('attack die performance protocol', () => {
           textures: 0,
           programs: 0,
         },
+        release: {
+          releaseKnown: false,
+          resourcesReleased: false,
+          releaseBasis: null,
+        },
       }).pass
     ).toBe(false);
     expect(
@@ -94,6 +99,11 @@ describe('attack die performance protocol', () => {
           textures: 0,
           programs: 0,
         },
+        release: {
+          releaseKnown: true,
+          resourcesReleased: true,
+          releaseBasis: 'owned-canvas-webglcontextlost',
+        },
       }).pass
     ).toBe(true);
     expect(
@@ -108,6 +118,11 @@ describe('attack die performance protocol', () => {
           geometries: null,
           textures: null,
           programs: null,
+        },
+        release: {
+          releaseKnown: false,
+          resourcesReleased: false,
+          releaseBasis: null,
         },
       }).pass
     ).toBe(false);
@@ -160,7 +175,15 @@ it('never infers released renderer resources from inactive context IDs', () => {
     { contextsActive: 1, geometries: 0, textures: 0, programs: 0 },
   ])
     expect(
-      evaluateAttackDieRun({ ...base, postUnmountCounters: counters }).pass
+      evaluateAttackDieRun({
+        ...base,
+        postUnmountCounters: counters,
+        release: {
+          releaseKnown: false,
+          resourcesReleased: false,
+          releaseBasis: null,
+        },
+      }).pass
     ).toBe(false);
   expect(
     evaluateAttackDieRun({
@@ -171,6 +194,83 @@ it('never infers released renderer resources from inactive context IDs', () => {
         textures: 0,
         programs: 0,
       },
+      release: {
+        releaseKnown: true,
+        resourcesReleased: true,
+        releaseBasis: 'owned-canvas-webglcontextlost',
+      },
     }).pass
   ).toBe(true);
+});
+
+it('requires owned-canvas release request followed by observed context loss', async () => {
+  const { applyAttackDieRendererObservation, evaluateAttackDieRelease } =
+    await import('./attackDiePerfProtocol');
+  const base = {
+    contextsCreated: 0,
+    contextsLost: 0,
+    contextsDisposed: 0,
+    activeContextIds: [],
+    rendererInfo: {
+      calls: null,
+      triangles: null,
+      geometries: null,
+      textures: null,
+      programs: null,
+    },
+    contextLifecycles: {},
+  };
+  const info = {
+    contextId: 9,
+    calls: null,
+    triangles: null,
+    geometries: null,
+    textures: null,
+    programs: null,
+  };
+  let value = applyAttackDieRendererObservation(base, {
+    ...info,
+    lifecycle: 'created',
+  } as never);
+  expect(evaluateAttackDieRelease(value.contextLifecycles)).toMatchObject({
+    releaseKnown: false,
+    resourcesReleased: false,
+  });
+  value = applyAttackDieRendererObservation(value, {
+    ...info,
+    lifecycle: 'release-requested',
+  } as never);
+  expect(
+    evaluateAttackDieRelease(value.contextLifecycles).resourcesReleased
+  ).toBe(false);
+  value = applyAttackDieRendererObservation(value, {
+    ...info,
+    lifecycle: 'release-observed',
+  } as never);
+  expect(evaluateAttackDieRelease(value.contextLifecycles)).toEqual({
+    releaseKnown: true,
+    resourcesReleased: true,
+    releaseBasis: 'owned-canvas-webglcontextlost',
+  });
+  for (const lifecycle of ['release-timeout', 'unexpected-loss'] as const) {
+    const failed = applyAttackDieRendererObservation(value, {
+      ...info,
+      contextId: 10,
+      lifecycle: 'created',
+    } as never);
+    const terminal = applyAttackDieRendererObservation(failed, {
+      ...info,
+      contextId: 10,
+      lifecycle,
+    } as never);
+    expect(
+      evaluateAttackDieRelease(terminal.contextLifecycles).resourcesReleased
+    ).toBe(false);
+  }
+  expect(
+    applyAttackDieRendererObservation(value, {
+      ...info,
+      lifecycle: 'release-observed',
+    } as never).contextLifecycles
+  ).toEqual(value.contextLifecycles);
 });

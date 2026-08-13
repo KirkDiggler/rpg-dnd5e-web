@@ -1,4 +1,4 @@
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
   Component,
   useCallback,
@@ -14,6 +14,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import type { DiceTrayPhase } from './DiceTray';
+import { applyAttackDieCamera } from './attackDieCamera';
 import type {
   AttackDieMaterialMode,
   AttackDieRuntimeSidecar,
@@ -26,6 +27,7 @@ import {
   type AttackDieMotionFrame,
 } from './attackDieMotion';
 import { resolveAttackDiePrimitives } from './attackDiePrimitive';
+import { ownAttackDieRendererLifecycle } from './attackDieRendererLifecycle';
 import {
   getAttackDieRuntimeScene,
   lockAttackDieRenderer,
@@ -35,6 +37,14 @@ import {
 import { ATTACK_DIE_VISUAL_CONFIG } from './attackDieVisualConfig';
 import { resolveAttackDieRendererVisuals } from './attackDieVisualRuntime';
 
+export type AttackDieFailureCode =
+  | 'provider-load'
+  | 'provider-hash'
+  | 'webgl-unavailable'
+  | 'shader-failure'
+  | 'context-loss'
+  | 'invalid-result'
+  | 'unmapped-result';
 export interface AttackDieTelemetry {
   presentationToken: number;
   requestedResult: number;
@@ -45,6 +55,22 @@ export interface AttackDieTelemetry {
   angularErrorDegrees?: number;
   exactTargetHeld: boolean;
   failureReason?: string;
+  failureCode?: AttackDieFailureCode;
+}
+export interface AttackDieRendererInfo {
+  calls: number | null;
+  triangles: number | null;
+  geometries: number | null;
+  textures: number | null;
+  programs: number | null;
+  lifecycle:
+    | 'created'
+    | 'sampled'
+    | 'release-requested'
+    | 'release-observed'
+    | 'release-timeout'
+    | 'unexpected-loss';
+  contextId: number;
 }
 export interface AttackDie3DProps {
   result: number;
@@ -61,23 +87,14 @@ export interface AttackDie3DProps {
   /** Development calibration pose override; never supplied by production. */
   calibrationPose?: QuaternionTuple;
   /** Development-only failure exercise; normal behavior is unchanged. */
-  forceFailure?: 'shader' | 'invalid-result' | 'unmapped';
+  forceFailure?: 'shader' | 'invalid-result';
   /** Development-only observed provider failure from the actual load/hash path. */
   providerFailureReason?: string;
   /** Development-only parsed scene for provisional, not-yet-verified calibration. */
   sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
   /** Development-only inspected candidate sidecar metadata. */
   sidecarOverride?: AttackDieRuntimeSidecar;
-  onRendererInfo?: (info: {
-    calls: number | null;
-    triangles: number | null;
-    geometries: number | null;
-    textures: number | null;
-    programs: number | null;
-    lifecycle: 'created' | 'sample' | 'lost' | 'disposed';
-    contextId: number;
-    observationLimitation?: string;
-  }) => void;
+  onRendererInfo?: (info: AttackDieRendererInfo) => void;
 }
 
 import { installAttackDieRenderGate } from './attackDieRenderGate';
@@ -240,6 +257,19 @@ function RuntimeDie({
   );
 }
 
+function AttackDieCameraController({
+  cameraView,
+}: {
+  cameraView: 'top' | 'three-quarter';
+}) {
+  const camera = useThree((state) => state.camera);
+  useEffect(
+    () => applyAttackDieCamera(camera, cameraView, ATTACK_DIE_VISUAL_CONFIG),
+    [camera, cameraView]
+  );
+  return null;
+}
+
 let nextAttackDieContextId = 1;
 function AttackDieToken({
   result,
@@ -282,7 +312,7 @@ function AttackDieToken({
     !!target &&
     effectiveResult >= 1 &&
     effectiveResult <= 20 &&
-    !['invalid-result', 'unmapped'].includes(forceFailure ?? '');
+    forceFailure !== 'invalid-result';
   const [truthful, setTruthful] = useState(false);
   const [failed, setFailed] = useState(false);
   const active = useRef(true);
@@ -290,14 +320,14 @@ function AttackDieToken({
   const listener = useRef<
     | {
         renderer: WebGLRenderer;
-        callback: EventListener;
+        lifecycle: ReturnType<typeof ownAttackDieRendererLifecycle>;
         gate: ReturnType<typeof installAttackDieRenderGate>;
       }
     | undefined
   >(undefined);
   const poseValidated = useRef(false);
   const fail = useCallback(
-    (reason: string) => {
+    (reason: string, failureCode?: AttackDieFailureCode) => {
       if (!active.current) return;
       lock.fail(reason);
       setTruthful(false);
@@ -309,6 +339,7 @@ function AttackDieToken({
         state: 'failed',
         exactTargetHeld: false,
         failureReason: reason,
+        failureCode,
       });
     },
     [lock, onTelemetry, presentationToken, result]
@@ -324,30 +355,8 @@ function AttackDieToken({
     return () => {
       active.current = false;
       const current = listener.current;
-      if (current) {
-        current.renderer.domElement.removeEventListener(
-          'webglcontextlost',
-          current.callback
-        );
-        current.gate.dispose();
-      }
-      if (contextId.current !== undefined) {
-        const renderer = listener.current?.renderer;
-        renderer?.dispose();
-        renderer?.forceContextLoss();
-        onRendererInfo?.({
-          calls: renderer?.info.render.calls ?? null,
-          triangles: renderer?.info.render.triangles ?? null,
-          geometries: renderer?.info.memory.geometries ?? null,
-          textures: renderer?.info.memory.textures ?? null,
-          programs: renderer?.info.programs?.length ?? null,
-          lifecycle: 'disposed',
-          contextId: contextId.current,
-          observationLimitation: renderer
-            ? 'Observed renderer.info after dispose/forceContextLoss of only the owned overlay renderer; browser context release is not synchronously queryable.'
-            : 'Owned renderer was unavailable at disposal; resource release is unknown.',
-        });
-      }
+      current?.gate.dispose();
+      current?.lifecycle.requestRelease();
       releaseAttackDieRenderer(presentationToken);
       onTelemetry?.({
         presentationToken,
@@ -368,12 +377,17 @@ function AttackDieToken({
   ]);
   useEffect(() => {
     if (providerFailureReason)
-      fail(`provider failure: ${providerFailureReason}`);
+      fail(
+        `provider failure: ${providerFailureReason}`,
+        /hash|digest/i.test(providerFailureReason)
+          ? 'provider-hash'
+          : 'provider-load'
+      );
     if (forceFailure === 'invalid-result')
-      fail('invalid authoritative result: expected 1–20');
-    if (forceFailure === 'unmapped')
-      fail('authoritative result has no verified mapping');
-  }, [fail, forceFailure, providerFailureReason]);
+      fail('invalid authoritative result: expected 1–20', 'invalid-result');
+    if (!target)
+      fail('authoritative result has no verified mapping', 'unmapped-result');
+  }, [fail, forceFailure, providerFailureReason, target]);
   const canvasVisible = eligible && !failed && phase !== 'hidden';
   return (
     <div className="attack-die-3d">
@@ -383,7 +397,14 @@ function AttackDieToken({
         {fallback}
       </div>
       {canvasVisible && (
-        <RenderBoundary onError={fail}>
+        <RenderBoundary
+          onError={(reason) =>
+            fail(
+              reason,
+              /WebGL creation/i.test(reason) ? 'webgl-unavailable' : undefined
+            )
+          }
+        >
           <Canvas
             aria-hidden="true"
             className="attack-die-3d__canvas"
@@ -405,31 +426,14 @@ function AttackDieToken({
             onCreated={({ gl, scene, camera }) => {
               try {
                 contextId.current = nextAttackDieContextId++;
-                onRendererInfo?.({
-                  calls: gl.info.render.calls,
-                  triangles: gl.info.render.triangles,
-                  geometries: gl.info.memory.geometries,
-                  textures: gl.info.memory.textures,
-                  programs: gl.info.programs?.length ?? 0,
-                  lifecycle: 'created',
-                  contextId: contextId.current,
-                });
                 gl.toneMapping = rendererVisuals.toneMapping;
                 gl.outputColorSpace = rendererVisuals.outputColorSpace;
                 gl.toneMappingExposure = visual.exposure;
                 scene.environment = rendererVisuals.environment;
-                camera.lookAt?.(
-                  ...visual[
-                    cameraView === 'top' ? 'topCamera' : 'threeQuarterCamera'
-                  ].target
-                );
                 const existing = listener.current;
                 if (existing) {
-                  existing.renderer.domElement.removeEventListener(
-                    'webglcontextlost',
-                    existing.callback
-                  );
                   existing.gate.dispose();
+                  existing.lifecycle.cancel();
                 }
                 const gate = installAttackDieRenderGate(gl, scene, camera, {
                   isActive: () => active.current,
@@ -437,37 +441,24 @@ function AttackDieToken({
                   onReady: () => {
                     if (active.current) {
                       setTruthful(true);
-                      onRendererInfo?.({
-                        calls: gl.info.render.calls,
-                        triangles: gl.info.render.triangles,
-                        geometries: gl.info.memory.geometries,
-                        textures: gl.info.memory.textures,
-                        programs: gl.info.programs?.length ?? 0,
-                        lifecycle: 'sample',
-                        contextId: contextId.current!,
-                      });
+                      listener.current?.lifecycle.sampled();
                     }
                   },
-                  onFailure: fail,
+                  onFailure: (reason) => fail(reason, 'shader-failure'),
                   forceShaderFailure: forceFailure === 'shader',
                 });
-                const callback: EventListener = (event) => {
-                  event.preventDefault();
-                  onRendererInfo?.({
-                    calls: gl.info.render.calls,
-                    triangles: gl.info.render.triangles,
-                    geometries: gl.info.memory.geometries,
-                    textures: gl.info.memory.textures,
-                    programs: gl.info.programs?.length ?? 0,
-                    lifecycle: 'lost',
-                    contextId: contextId.current!,
-                  });
-                  gate.fail('WebGL context lost');
-                };
-                gl.domElement.addEventListener('webglcontextlost', callback);
+                const lifecycle = ownAttackDieRendererLifecycle({
+                  renderer: gl,
+                  contextId: contextId.current,
+                  sink: onRendererInfo,
+                  onUnexpectedLoss: () => {
+                    gate.fail('WebGL context lost');
+                    fail('WebGL context lost', 'context-loss');
+                  },
+                });
                 listener.current = {
                   renderer: gl,
-                  callback,
+                  lifecycle,
                   gate,
                 };
               } catch (error) {
@@ -477,6 +468,7 @@ function AttackDieToken({
               }
             }}
           >
+            <AttackDieCameraController cameraView={cameraView} />
             <ambientLight intensity={visual.ambientIntensity} />
             <directionalLight
               position={visual.keyLight.position}

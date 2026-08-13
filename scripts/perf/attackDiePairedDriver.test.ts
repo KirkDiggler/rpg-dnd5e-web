@@ -26,6 +26,7 @@ describe('paired driver boundaries', () => {
           readyAtMs: 12,
           activeContextIds: [],
           rendererInfo: { geometries: 0, textures: 0, programs: 0 },
+          contextLifecycles: {},
         };
         (globalThis as never as { window: unknown }).window = {
           __attackDiePerf: {
@@ -97,24 +98,28 @@ it('preserves leaking, stale nonzero, unknown, lost, and healthy disposal observ
     releasedCounters({
       activeContextIds: [],
       rendererInfo: { geometries: 1, textures: 0, programs: 0 },
+      contextLifecycles: {},
     }).geometries
   ).toBe(1);
   expect(
     releasedCounters({
       activeContextIds: [],
       rendererInfo: { geometries: null, textures: null, programs: null },
+      contextLifecycles: {},
     }).geometries
   ).toBeNull();
   expect(
     releasedCounters({
       activeContextIds: [7],
       rendererInfo: { geometries: 0, textures: 0, programs: 0 },
+      contextLifecycles: {},
     }).contextsActive
   ).toBe(1);
   expect(
     releasedCounters({
       activeContextIds: [],
       rendererInfo: { geometries: 0, textures: 0, programs: 0 },
+      contextLifecycles: {},
     })
   ).toMatchObject({
     contextsActive: 0,
@@ -122,4 +127,27 @@ it('preserves leaking, stale nonzero, unknown, lost, and healthy disposal observ
     textures: 0,
     programs: 0,
   });
+});
+
+it('continues profiles and reports nonzero when a failure artifact write fails', async () => {
+  const attempted: string[] = [];
+  const diagnostics: string[] = [];
+  const result = await runProfileAttempts(
+    [{ category: 'one' }, { category: 'two' }],
+    '/ignored',
+    async (p) => {
+      attempted.push(p.category);
+      throw Error(`failed ${p.category}`);
+    },
+    {
+      writeArtifact: async (_o, c) => {
+        if (c === 'one') throw Error('disk full');
+      },
+      onDiagnostic: (m) => diagnostics.push(m),
+    }
+  );
+  expect(attempted).toEqual(['one', 'two']);
+  expect(result.exitCode).toBe(1);
+  expect(result.outcomes[0]).toMatchObject({ artifactWritten: false });
+  expect(diagnostics.join(' ')).toMatch(/disk full/);
 });

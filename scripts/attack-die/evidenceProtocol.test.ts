@@ -130,6 +130,7 @@ it('validates every forced mode and requires fail-closed SVG observations', () =
     token: 2,
     state: 'failed',
     failureReason: 'shader readiness failed',
+    failureCode: 'shader-failure',
     semanticFallbackCount: 1,
   };
   expect(() => assertForcedFallback('shader', [failed, failed])).not.toThrow();
@@ -314,6 +315,10 @@ it('strictly validates manifest keys and unsafe POSIX paths and exact same manif
     'a?b',
     'a#b',
     'a\u0000b',
+    'a%2Fb',
+    '%2e%2e/x',
+    'a%5cb',
+    'a%2eb',
   ])
     expect(() => validateManifest(make(path) as never), path).toThrow(
       /manifest entry/
@@ -342,6 +347,7 @@ it('requires forced evidence to be repeated, exact, irreversible semantic SVG', 
     token: 4,
     state: 'failed' as const,
     failureReason: 'shader readiness failed',
+    failureCode: 'shader-failure',
     semanticFallbackCount: 1,
   };
   expect(() =>
@@ -353,7 +359,7 @@ it('requires forced evidence to be repeated, exact, irreversible semantic SVG', 
     [good, { ...good, renderer: '3d' as const }],
     [good, { ...good, token: 5 }],
     [good, { ...good, requestedResult: 8 }],
-    [good, { ...good, failureReason: 'forced generic failure' }],
+    [good, { ...good, failureCode: 'provider-load' }],
     [good, { ...good, semanticFallbackCount: 2 }],
   ])
     expect(() =>

@@ -104,6 +104,7 @@ export function validateManifest(value: unknown): FrozenBuildManifest {
       file.path.endsWith('/') ||
       file.path.includes('//') ||
       file.path.includes('\\') ||
+      file.path.includes('%') ||
       [...file.path].some((character) => {
         const code = character.charCodeAt(0);
         return (
@@ -177,18 +178,18 @@ export function parseForcedFailure(value: string) {
 export interface ForcedFallbackObservation extends Settlement {
   state?: string;
   failureReason?: string;
+  failureCode?: string;
   semanticFallbackCount?: number;
 }
-const forcedReason = (force: string, reason: string) => {
-  if (force === 'context-loss') return /context lost/i.test(reason);
-  if (force === 'shader') return /shader/i.test(reason);
-  if (force === 'invalid-result') return /invalid|1.+20/i.test(reason);
-  if (force === 'unmapped') return /unmapped|mapping/i.test(reason);
-  if (force === 'webgl') return /webgl/i.test(reason);
-  if (force === 'hash') return /hash|digest/i.test(reason);
-  if (force === 'load') return /load|runtime scene unavailable/i.test(reason);
-  return false;
-};
+const forcedCodes = {
+  load: 'provider-load',
+  hash: 'provider-hash',
+  webgl: 'webgl-unavailable',
+  shader: 'shader-failure',
+  'context-loss': 'context-loss',
+  'invalid-result': 'invalid-result',
+  unmapped: 'unmapped-result',
+} as const;
 export function assertForcedFallback(
   force: string,
   observations: ForcedFallbackObservation[],
@@ -210,8 +211,7 @@ export function assertForcedFallback(
         o.token !== reference.token ||
         o.state !== 'failed' ||
         o.semanticFallbackCount !== 1 ||
-        !o.failureReason ||
-        !forcedReason(force, o.failureReason)
+        o.failureCode !== forcedCodes[force as keyof typeof forcedCodes]
     )
   )
     throw Error('forced failure must stay exact fail-closed semantic SVG');

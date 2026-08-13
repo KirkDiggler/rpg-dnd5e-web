@@ -3,9 +3,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import {
+  evaluateAttackDieRelease,
   evaluateAttackDieRun,
   parseAttackDieProfiles,
 } from '../../src/dev/attackDiePerfProtocol.ts';
+import { runColdAttackDieSequence } from './attackDieColdProtocol.ts';
 import {
   measurePostUnmount,
   releasedCounters,
@@ -58,7 +60,8 @@ if (profileArtifact.blocked.length) {
 const attempted = await runProfileAttempts(
   profileArtifact.profiles.filter((profile) => profile.status === 'available'),
   out,
-  runProfile
+  runProfile,
+  { onDiagnostic: (message) => console.error(message) }
 );
 process.exitCode = attempted.exitCode;
 async function runProfile(profile) {
@@ -96,16 +99,15 @@ async function runProfile(profile) {
     page.on('request', (request) =>
       requestTracker.start(request, request.url(), performance.now())
     );
-    page.on('response', async (response) => {
-      let bytes = null;
-      try {
-        bytes = (await response.body()).byteLength;
-      } catch {}
-      requestTracker.settle(response.request(), {
-        status: response.status(),
-        bytes,
-        settledAt: performance.now(),
-      });
+    page.on('response', (response) => {
+      requestTracker.trackSettlement(
+        response.request(),
+        response.body().then((body) => ({
+          status: response.status(),
+          bytes: body.byteLength,
+          settledAt: performance.now(),
+        }))
+      );
     });
     await page.addInitScript(() => {
       window.__attackDiePerfLongTasks = [];
@@ -123,49 +125,51 @@ async function runProfile(profile) {
     url.searchParams.set('attackDiePerf', '1');
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => Boolean(window.__attackDiePerf));
-    // Preserve one actual cold readiness trial before any provider/shader warmup.
-    const coldBoundary = performance.now();
-    await page.evaluate(() =>
-      window.__attackDiePerf.runSample({
-        mode: '3d',
-        result: 20,
-        reducedMotion: false,
-        token: 1,
-      })
+    const coldRangeStart = requestTracker.boundary();
+    const coldTrial = await runColdAttackDieSequence(
+      {
+        readCounters: () =>
+          page.evaluate(() => window.__attackDiePerf.readCounters()),
+        runSample: (request) =>
+          page.evaluate(
+            (value) => window.__attackDiePerf.runSample(value),
+            request
+          ),
+        unmountDie: () =>
+          page.evaluate(() => window.__attackDiePerf.unmountDie()),
+      },
+      async () =>
+        page.waitForFunction(
+          () => {
+            const c = window.__attackDiePerf.readCounters();
+            return (
+              c.provider.status === 'failed' ||
+              c.provider.status === 'ready' ||
+              c.healthy3d
+            );
+          },
+          undefined,
+          { timeout: 7000 }
+        ),
+      () => performance.now()
     );
-    await page
-      .waitForFunction(
-        () => window.__attackDiePerf.readCounters().readyAtMs !== null,
-        undefined,
-        { timeout: 5000 }
-      )
-      .catch(() => undefined);
-    const coldCounters = await page.evaluate(() =>
-      window.__attackDiePerf.readCounters()
-    );
-    const coldEndedAt = performance.now();
-    const coldTrial = {
-      readyMs: coldCounters.readyAtMs,
-      healthy3d: coldCounters.healthy3d,
-      requests: requestTracker.sample(coldBoundary, coldEndedAt),
-    };
+    const coldRange = requestTracker.closeRange('cold', coldRangeStart);
     await page.evaluate(() => window.__attackDiePerf.unmountDie());
-    // Warm after the separately recorded cold trial, outside measured alternating windows.
     await page.evaluate(() =>
       window.__attackDiePerf.runSample({
         mode: '3d',
         result: 20,
         reducedMotion: false,
-        token: 2,
+        token: 3,
       })
     );
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(500);
     await page.evaluate(() => window.__attackDiePerf.unmountDie());
     const samples = [];
     for (let index = 0; index < 40; index++) {
       const mode = index % 2 === 0 ? 'svg' : '3d';
       const result = (Math.floor(index / 2) % 20) + 1;
-      const sampleStartedAt = performance.now();
+      const requestRangeStart = requestTracker.boundary();
       const sample = await page.evaluate(
         async ({ mode, result, token }) => {
           const longStart = window.__attackDiePerfLongTasks.length;
@@ -207,34 +211,48 @@ async function runProfile(profile) {
             heapBytes: performance.memory?.usedJSHeapSize ?? null,
           };
         },
-        { mode, result, token: index + 3 }
-      );
-      const sampleEndedAt = performance.now();
-      const startedRequests = requestTracker.sample(
-        sampleStartedAt,
-        sampleEndedAt
+        { mode, result, token: index + 4 }
       );
       samples.push({
         ...sample,
-        requestCount: startedRequests.length,
-        requestBytes: startedRequests.every((request) => request.bytes !== null)
-          ? startedRequests.reduce((sum, request) => sum + request.bytes, 0)
-          : null,
-        requests: startedRequests,
-        requestBytesLimitation: startedRequests.some(
-          (request) => request.bytes === null
-        )
-          ? 'One or more requests started in this sample have unknown bytes or had not settled at sample close.'
-          : null,
+        requestRange: requestTracker.closeRange(
+          `sample-${index}`,
+          requestRangeStart
+        ),
       });
     }
     const postUnmount = {};
     for (const mode of ['svg', '3d']) {
+      const releaseStart = await page.evaluate(() =>
+        Object.keys(
+          window.__attackDiePerf.readCounters().contextLifecycles
+        ).map(Number)
+      );
       postUnmount[mode] = await measurePostUnmount(page, {
         mode,
         token: mode === 'svg' ? 50 : 51,
         windowMs: postUnmountMs,
       });
+      const all = postUnmount[mode].counters.contextLifecycles;
+      postUnmount[mode].measuredContextLifecycles = Object.fromEntries(
+        Object.entries(all).filter(([id]) => !releaseStart.includes(Number(id)))
+      );
+    }
+    await requestTracker.awaitSettlements(1000);
+    coldTrial.requests = requestTracker.materialize(coldRange);
+    for (const sample of samples) {
+      const requests = requestTracker.materialize(sample.requestRange);
+      sample.requests = requests;
+      sample.requestCount = requests.length;
+      sample.requestBytes = requests.every((request) => request.bytes !== null)
+        ? requests.reduce((sum, request) => sum + request.bytes, 0)
+        : null;
+      sample.requestBytesLimitation = requests.some(
+        (request) => request.bytes === null
+      )
+        ? 'One or more requests remained unsettled after bounded finalization; status/bytes/settledAt are null.'
+        : null;
+      delete sample.requestRange;
     }
     const svg = summary(samples.filter((sample) => sample.mode === 'svg'));
     const candidate = summary(samples.filter((sample) => sample.mode === '3d'));
@@ -252,6 +270,9 @@ async function runProfile(profile) {
       svgPostUnmountP95: postUnmount.svg.p95FrameTimeMs,
       candidatePostUnmountP95: postUnmount['3d'].p95FrameTimeMs,
       postUnmountCounters: releasedCounters(postUnmount['3d'].counters),
+      release: evaluateAttackDieRelease(
+        postUnmount['3d'].measuredContextLifecycles
+      ),
     });
     budgets.healthy3d = health.healthy;
     budgets.resourcesReleased = health.resourcesReleased;

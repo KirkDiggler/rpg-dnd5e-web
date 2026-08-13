@@ -74,7 +74,7 @@ try {
   await page
     .getByRole('heading', { name: 'Authoritative 3D Attack Die' })
     .waitFor();
-  if (['shader', 'invalid-result', 'unmapped'].includes(force))
+  if (['shader', 'invalid-result'].includes(force))
     await page.getByLabel('Forced fallback').selectOption(force);
   if (force === 'context-loss') {
     await page.locator('.attack-die-3d__canvas').waitFor();
@@ -84,6 +84,17 @@ try {
         ?.dispatchEvent(new Event('webglcontextlost', { cancelable: true }))
     );
   }
+  const forcedExpected =
+    force === 'none'
+      ? null
+      : await page.evaluate(() => window.__attackDieEvidenceExpected);
+  if (
+    force !== 'none' &&
+    (!forcedExpected ||
+      !Number.isInteger(forcedExpected.result) ||
+      !Number.isInteger(forcedExpected.token))
+  )
+    throw Error('forced expected UI identity unavailable');
   const modes = [
     ...(flag('--animated') ? ['animated'] : []),
     ...(flag('--reduced-motion') ? ['reduced-motion'] : []),
@@ -128,8 +139,8 @@ try {
         if (observed) forcedObservations.push(observed);
       }
       assertForcedFallback(force, forcedObservations, {
-        result: forcedObservations[0]?.requestedResult,
-        token: forcedObservations[0]?.token,
+        result: forcedExpected.result,
+        token: forcedExpected.token,
       });
       await page.screenshot({
         path: resolve(out, `forced-${force}-${mode}.png`),
@@ -240,7 +251,8 @@ try {
   );
   if (proposalHash !== manifest.webBuildSha256)
     throw Error('proposal build hash mismatch');
-  if (force !== 'none') assertForcedFallback(force, forcedObservations);
+  if (force !== 'none')
+    assertForcedFallback(force, forcedObservations, forcedExpected);
   const output = {
     schemaVersion: 1,
     kind: 'attack-die-concept-evidence',
@@ -248,6 +260,19 @@ try {
     webBuildSha256: manifest.webBuildSha256,
     forcedFailure: force,
     captures: force === 'none' ? captures : [],
+    forcedObservations:
+      force === 'none'
+        ? null
+        : {
+            cause: forcedObservations[0]?.failureCode,
+            result: forcedExpected.result,
+            token: forcedExpected.token,
+            count: forcedObservations.length,
+            semanticFallbackResult: forcedExpected.result,
+            semanticFallbackCount:
+              forcedObservations.at(-1)?.semanticFallbackCount,
+            irreversibility: true,
+          },
     humanAppearanceApproval: 'pending',
     humanFaceCalibration: 'pending',
   };
