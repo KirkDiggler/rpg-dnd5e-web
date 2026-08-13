@@ -87,7 +87,7 @@ export interface AttackDie3DProps {
   /** Development calibration pose override; never supplied by production. */
   calibrationPose?: QuaternionTuple;
   /** Development-only failure exercise; normal behavior is unchanged. */
-  forceFailure?: 'shader' | 'invalid-result';
+  forceFailure?: 'shader';
   /** Development-only observed provider failure from the actual load/hash path. */
   providerFailureReason?: string;
   /** Development-only parsed scene for provisional, not-yet-verified calibration. */
@@ -291,7 +291,7 @@ function AttackDieToken({
 }: AttackDie3DProps) {
   const visual = ATTACK_DIE_VISUAL_CONFIG;
   const rendererVisuals = resolveAttackDieRendererVisuals(visual);
-  const effectiveResult = forceFailure === 'invalid-result' ? 21 : result;
+  const effectiveResult = result;
   const lock = useMemo(
     () => lockAttackDieRenderer(presentationToken, effectiveResult),
     [presentationToken, effectiveResult]
@@ -312,7 +312,8 @@ function AttackDieToken({
     !!target &&
     effectiveResult >= 1 &&
     effectiveResult <= 20 &&
-    forceFailure !== 'invalid-result';
+    effectiveResult >= 1 &&
+    effectiveResult <= 20;
   const [truthful, setTruthful] = useState(false);
   const [failed, setFailed] = useState(false);
   const active = useRef(true);
@@ -383,11 +384,15 @@ function AttackDieToken({
           ? 'provider-hash'
           : 'provider-load'
       );
-    if (forceFailure === 'invalid-result')
+    if (
+      !Number.isInteger(effectiveResult) ||
+      effectiveResult < 1 ||
+      effectiveResult > 20
+    )
       fail('invalid authoritative result: expected 1–20', 'invalid-result');
     if (!target)
       fail('authoritative result has no verified mapping', 'unmapped-result');
-  }, [fail, forceFailure, providerFailureReason, target]);
+  }, [effectiveResult, fail, providerFailureReason, target]);
   const canvasVisible = eligible && !failed && phase !== 'hidden';
   return (
     <div className="attack-die-3d">

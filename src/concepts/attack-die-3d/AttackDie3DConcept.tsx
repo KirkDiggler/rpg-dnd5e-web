@@ -228,6 +228,7 @@ export function AttackDie3DConcept() {
     'none'
   );
   const [telemetry, setTelemetry] = useState<AttackDieTelemetry>();
+  const [forcedInvalidResult, setForcedInvalidResult] = useState<number>();
   const [machineRows, setMachineRows] = useState<
     Record<number, AttackDieTelemetry>
   >({});
@@ -256,7 +257,8 @@ export function AttackDie3DConcept() {
     return () => media.removeEventListener('change', change);
   }, []);
   const effectiveReducedMotion = state.reducedMotion || osReducedMotion;
-  const effectiveResult = state.verificationResult ?? state.selectedResult;
+  const effectiveResult =
+    forcedInvalidResult ?? state.verificationResult ?? state.selectedResult;
   const currentMapping = state.faces.find(
     (face) => face.result === effectiveResult
   );
@@ -511,7 +513,11 @@ export function AttackDie3DConcept() {
             <select
               value={forcedFailure}
               onChange={(event) => {
-                setForcedFailure(event.target.value as typeof forcedFailure);
+                const next = event.target.value as typeof forcedFailure;
+                setForcedFailure(next);
+                setForcedInvalidResult(
+                  next === 'invalid-result' ? 21 : undefined
+                );
                 setToken((value) => value + 1);
               }}
             >
@@ -557,11 +563,7 @@ export function AttackDie3DConcept() {
                 ? error
                 : undefined
             }
-            forceFailure={
-              ['shader', 'invalid-result'].includes(forcedFailure)
-                ? (forcedFailure as 'shader' | 'invalid-result')
-                : undefined
-            }
+            forceFailure={forcedFailure === 'shader' ? 'shader' : undefined}
             sceneOverride={provider?.scene}
             sidecarOverride={provider?.sidecar}
           />
