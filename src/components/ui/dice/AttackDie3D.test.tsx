@@ -1,7 +1,15 @@
 import { act, render, screen } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { BufferGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
-import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+  vi,
+} from 'vitest';
 import { AttackDie3D, type AttackDie3DProps } from './AttackDie3D';
 const mocks = vi.hoisted(() => ({
   frames: [] as Array<(state: { clock: { elapsedTime: number } }) => void>,
@@ -16,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   selectorMismatch: false,
   shaderDiagnostic: false,
   compileFailure: false,
+  groupMissing: false,
+  motionFailure: false,
+  poseCopy: vi.fn(),
   gl: {
     debug: {
       checkShaderErrors: false,
@@ -59,6 +70,23 @@ vi.mock('@react-three/fiber', () => ({
     mocks.frames.push(callback),
   useThree: () => ({ gl: mocks.gl, scene: {}, camera: {} }),
 }));
+vi.mock('./attackDieMotion', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./attackDieMotion')>();
+  return {
+    ...actual,
+    stepAttackDieMotion: (
+      input: Parameters<typeof actual.stepAttackDieMotion>[0]
+    ) =>
+      mocks.motionFailure
+        ? {
+            quaternion: input.current,
+            observeNow: false,
+            exactTargetHeld: false,
+            failed: true,
+          }
+        : actual.stepAttackDieMotion(input),
+  };
+});
 vi.mock('./attackDieRuntime', () => ({
   preloadAttackDieRuntime: () => mocks.preload(),
   releaseAttackDieRenderer: (token: number) => mocks.release(token),
@@ -147,12 +175,36 @@ beforeEach(() => {
   mocks.selectorMismatch = false;
   mocks.shaderDiagnostic = false;
   mocks.compileFailure = false;
+  mocks.groupMissing = false;
+  mocks.motionFailure = false;
+  mocks.poseCopy.mockReset();
+  Object.defineProperty(HTMLElement.prototype, 'quaternion', {
+    configurable: true,
+    get() {
+      return this.tagName === 'GROUP' && !mocks.groupMissing
+        ? { copy: mocks.poseCopy }
+        : undefined;
+    },
+    set(value) {
+      Object.defineProperty(this, 'quaternion', {
+        configurable: true,
+        writable: true,
+        value:
+          this.tagName === 'GROUP' && !mocks.groupMissing
+            ? { copy: mocks.poseCopy }
+            : value,
+      });
+    },
+  });
   mocks.gl.debug = { checkShaderErrors: false, onShaderError: null };
   mocks.gl.compile.mockReset().mockImplementation(() => {
     if (mocks.compileFailure) throw Error('compile threw');
     if (mocks.shaderDiagnostic) mocks.gl.debug.onShaderError?.();
   });
   mocks.gl.render = vi.fn();
+});
+afterEach(() => {
+  delete (HTMLElement.prototype as { quaternion?: unknown }).quaternion;
 });
 describe('AttackDie3D', () => {
   it('keeps current SVG token locked while successful late readiness enables only next token', () => {
@@ -205,30 +257,55 @@ describe('AttackDie3D', () => {
     expect(screen.queryByTestId('canvas')).toBeNull();
     expect(fallbackCovered()).toBe(false);
   });
-  it('does not reveal from compile or pre-render frames; only successful renderer.render after validated pose readies once', () => {
+  it('does not reveal from compile or pre-render frames; only successful renderer.render after an applied pose readies once', () => {
     mocks.status = 'ready';
     render(<AttackDie3D {...props(1)} />);
     const wrappedRender = mocks.gl.render;
+    expect(fallbackCovered()).toBe(false);
+    act(() => wrappedRender({}, {}));
+    expect(fallbackCovered()).toBe(false);
     frame(-1, 0);
-    frame(-1, 0.016);
+    expect(mocks.poseCopy).toHaveBeenCalledTimes(1);
     expect(fallbackCovered()).toBe(false);
     act(() => wrappedRender({}, {}));
     expect(fallbackCovered()).toBe(true);
     act(() => wrappedRender({}, {}));
     expect(fallbackCovered()).toBe(true);
   });
-  it('does not reveal when shader diagnostic fires during compile or actual render', () => {
+  it('keeps fallback when the selected group is missing', () => {
+    mocks.status = 'ready';
+    mocks.groupMissing = true;
+    render(<AttackDie3D {...props(1)} />);
+    const wrappedRender = mocks.gl.render;
+    frame(-1, 0);
+    expect(mocks.poseCopy).not.toHaveBeenCalled();
+    act(() => wrappedRender({}, {}));
+    expect(fallbackCovered()).toBe(false);
+  });
+  it('does not apply or validate a failed motion frame', () => {
+    mocks.status = 'ready';
+    mocks.motionFailure = true;
+    render(<AttackDie3D {...props(1)} />);
+    const wrappedRender = mocks.gl.render;
+    frame(-1, 0);
+    expect(mocks.poseCopy).not.toHaveBeenCalled();
+    act(() => wrappedRender({}, {}));
+    expect(fallbackCovered()).toBe(false);
+  });
+  it('does not reveal when shader diagnostic fires during compile or inside the underlying actual render', () => {
     mocks.status = 'ready';
     mocks.shaderDiagnostic = true;
     const compileView = render(<AttackDie3D {...props(1)} />);
     expect(fallbackCovered()).toBe(false);
     compileView.unmount();
     mocks.shaderDiagnostic = false;
+    const underlyingRender = vi.fn(() => mocks.gl.debug.onShaderError?.());
+    mocks.gl.render = underlyingRender;
     const renderView = render(<AttackDie3D {...props(2)} />);
     frame(-1, 0);
     const wrappedRender = mocks.gl.render;
-    mocks.gl.debug.onShaderError?.();
     act(() => wrappedRender({}, {}));
+    expect(underlyingRender).toHaveBeenCalledTimes(1);
     expect(fallbackCovered()).toBe(false);
     renderView.unmount();
   });

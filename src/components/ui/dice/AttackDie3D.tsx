@@ -7,7 +7,13 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { Group, Material, Mesh, WebGLRenderer } from 'three';
+import {
+  Quaternion,
+  type Group,
+  type Material,
+  type Mesh,
+  type WebGLRenderer,
+} from 'three';
 import type { DiceTrayPhase } from './DiceTray';
 import type {
   AttackDieMaterialMode,
@@ -143,6 +149,7 @@ function RuntimeDie({
     }
   }, [mode, onFailure, reducedMotion, sidecar]);
   useFrame(({ clock }) => {
+    poseValidated.current = false;
     start.current ??= clock.elapsedTime * 1000;
     const frame = stepAttackDieMotion({
       elapsedMs: clock.elapsedTime * 1000 - start.current,
@@ -151,12 +158,24 @@ function RuntimeDie({
       target,
     });
     renderedQuaternion.current = frame.quaternion;
-    group.current?.quaternion?.fromArray(frame.quaternion);
-    onFrame(frame);
-    poseValidated.current = true;
     if (frame.failed) {
+      poseValidated.current = false;
       onFailure('motion observation missed');
       return;
+    }
+    const selectedGroup = group.current;
+    if (!selectedGroup?.quaternion) {
+      poseValidated.current = false;
+      return;
+    }
+    try {
+      selectedGroup.quaternion.copy(new Quaternion(...frame.quaternion));
+      poseValidated.current = true;
+      onFrame(frame);
+    } catch (error) {
+      onFailure(
+        `motion pose application failed: ${error instanceof Error ? error.message : 'unknown'}`
+      );
     }
   });
   if (!bundle) return null;
