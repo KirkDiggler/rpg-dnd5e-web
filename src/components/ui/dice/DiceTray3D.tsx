@@ -81,12 +81,13 @@ export function DiceTray3D({
       phase !== 'armed' ||
       rollerRole !== 'player' ||
       witnessRole !== 'roller' ||
+      !onReleaseRequest ||
       committedRequest.current === requestIdentity
     )
       return;
 
     committedRequest.current = requestIdentity;
-    onReleaseRequest?.();
+    onReleaseRequest();
   }, [
     onReleaseRequest,
     phase,
@@ -112,7 +113,10 @@ export function DiceTray3D({
       ? release
       : undefined;
   const controls =
-    phase === 'armed' && rollerRole === 'player' && witnessRole === 'roller' ? (
+    phase === 'armed' &&
+    rollerRole === 'player' &&
+    witnessRole === 'roller' &&
+    onReleaseRequest ? (
       <button type="button" onClick={requestRelease}>
         Roll d20
       </button>

@@ -128,6 +128,43 @@ describe('dice presentation release', () => {
     expect(parseDicePresentationRelease(value)).toBeUndefined();
   });
 
+  it('fails closed instead of throwing for reflective access failures', () => {
+    const throwingGetter = validRelease();
+    Object.defineProperty(throwingGetter, 'presetId', {
+      enumerable: true,
+      get() {
+        throw Error('hostile getter');
+      },
+    });
+    const throwingProxy = new Proxy(validRelease(), {
+      ownKeys() {
+        throw Error('hostile proxy');
+      },
+    });
+
+    expect(() => parseDicePresentationRelease(throwingGetter)).not.toThrow();
+    expect(parseDicePresentationRelease(throwingGetter)).toBeUndefined();
+    expect(() => parseDicePresentationRelease(throwingProxy)).not.toThrow();
+    expect(parseDicePresentationRelease(throwingProxy)).toBeUndefined();
+  });
+
+  it('snapshots changing getters once before validation and reconstruction', () => {
+    const inbound = validRelease();
+    let reads = 0;
+    Object.defineProperty(inbound, 'presentationId', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? 'attack:7' : 'attack:8';
+      },
+    });
+
+    const parsed = parseDicePresentationRelease(inbound);
+
+    expect(parsed?.presentationId).toBe('attack:7');
+    expect(reads).toBe(1);
+  });
+
   it('keys release cardinality solely by presentation id', () => {
     const release = createDicePresentationRelease({
       presentationId: 'attack:7',

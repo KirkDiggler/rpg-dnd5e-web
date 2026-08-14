@@ -1,6 +1,14 @@
 const PRESENTATION_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/;
 const PRESET_IDENTIFIER = /^[a-z][a-z0-9-]{0,63}$/;
 const RELEASE_VARIATION_CARDINALITY = 997;
+const RELEASE_KEYS = [
+  'schemaVersion',
+  'presentationId',
+  'presetId',
+  'variation',
+  'vector',
+  'shake',
+] as const;
 
 export interface AttackDieDecorativeRelease {
   variation: number;
@@ -20,15 +28,46 @@ interface CreateDicePresentationReleaseInput {
   variation: number;
 }
 
-const plainObject = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+function snapshotExactObject(
+  value: unknown,
+  expectedKeys: readonly string[]
+): Record<string, unknown> | undefined {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      return undefined;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (
+      keys.length !== expectedKeys.length ||
+      !expectedKeys.every((key) => keys.includes(key))
+    )
+      return undefined;
+    const snapshot: Record<string, unknown> = {};
+    for (const key of expectedKeys) snapshot[key] = record[key];
+    return snapshot;
+  } catch {
+    return undefined;
+  }
+}
 
-const hasExactKeys = (
-  value: Record<string, unknown>,
-  keys: readonly string[]
-) =>
-  Object.keys(value).length === keys.length &&
-  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+function snapshotVector(
+  value: unknown
+): readonly [unknown, unknown] | undefined {
+  try {
+    if (!Array.isArray(value)) return undefined;
+    const keys = Object.keys(value);
+    if (
+      value.length !== 2 ||
+      keys.length !== 2 ||
+      !keys.includes('0') ||
+      !keys.includes('1')
+    )
+      return undefined;
+    return [value[0], value[1]];
+  } catch {
+    return undefined;
+  }
+}
 
 const boundedFinite = (value: unknown, minimum: number, maximum: number) =>
   typeof value === 'number' &&
@@ -67,42 +106,29 @@ export function createDicePresentationRelease({
 export function parseDicePresentationRelease(
   value: unknown
 ): DicePresentationRelease | undefined {
+  const snapshot = snapshotExactObject(value, RELEASE_KEYS);
+  if (!snapshot) return undefined;
+  const vector = snapshotVector(snapshot.vector);
   if (
-    !plainObject(value) ||
-    !hasExactKeys(value, [
-      'schemaVersion',
-      'presentationId',
-      'presetId',
-      'variation',
-      'vector',
-      'shake',
-    ]) ||
-    value.schemaVersion !== 1 ||
-    !isDicePresentationIdentifier(value.presentationId) ||
-    !isDicePresetIdentifier(value.presetId) ||
-    !Number.isInteger(value.variation) ||
-    !boundedFinite(value.variation, 0, RELEASE_VARIATION_CARDINALITY - 1) ||
-    !Array.isArray(value.vector) ||
-    value.vector.length !== 2 ||
-    Object.keys(value.vector).length !== 2 ||
-    !Object.prototype.hasOwnProperty.call(value.vector, 0) ||
-    !Object.prototype.hasOwnProperty.call(value.vector, 1) ||
-    !boundedFinite(value.vector[0], -1, 1) ||
-    !boundedFinite(value.vector[1], -1, 1) ||
-    !boundedFinite(value.shake, 0, 1)
+    snapshot.schemaVersion !== 1 ||
+    !isDicePresentationIdentifier(snapshot.presentationId) ||
+    !isDicePresetIdentifier(snapshot.presetId) ||
+    !Number.isInteger(snapshot.variation) ||
+    !boundedFinite(snapshot.variation, 0, RELEASE_VARIATION_CARDINALITY - 1) ||
+    !vector ||
+    !boundedFinite(vector[0], -1, 1) ||
+    !boundedFinite(vector[1], -1, 1) ||
+    !boundedFinite(snapshot.shake, 0, 1)
   )
     return undefined;
 
   return Object.freeze({
     schemaVersion: 1,
-    presentationId: value.presentationId,
-    presetId: value.presetId,
-    variation: Number(value.variation),
-    vector: Object.freeze([
-      Number(value.vector[0]),
-      Number(value.vector[1]),
-    ] as const),
-    shake: Number(value.shake),
+    presentationId: snapshot.presentationId,
+    presetId: snapshot.presetId,
+    variation: Number(snapshot.variation),
+    vector: Object.freeze([Number(vector[0]), Number(vector[1])] as const),
+    shake: Number(snapshot.shake),
   });
 }
 

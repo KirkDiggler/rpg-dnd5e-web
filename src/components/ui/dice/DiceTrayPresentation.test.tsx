@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { startTransition, StrictMode, Suspense, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
 import { parseDicePresentationEvent } from './dicePresentationEvent';
@@ -113,6 +114,26 @@ describe('DiceTrayPresentation', () => {
     }
   });
 
+  it('exposes no Roll authority without a host callback and permits it when one is installed later', () => {
+    const view = renderPresentation([requested()]);
+
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+
+    const onReleaseRequest = vi.fn();
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested()]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+  });
+
   it('requests one frozen release event without mutating props or leaving armed before delivery', () => {
     const events = Object.freeze([requested()]);
     const before = JSON.stringify(events);
@@ -186,6 +207,103 @@ describe('DiceTrayPresentation', () => {
 
     expect(attackDieProps.at(-1)?.phase).toBe('rolling');
     expect(attackDieProps.at(-1)?.onTelemetry).toBe(armedTelemetry);
+  });
+
+  it('keeps one token and telemetry sink under StrictMode across same-presentation delivery', () => {
+    attackDieProps.length = 0;
+    const view = render(
+      <StrictMode>
+        <DiceTrayPresentation
+          label="Player attack dice"
+          events={[requested()]}
+          witnessRole="roller"
+          reducedMotion={false}
+          onReleaseRequest={vi.fn()}
+        />
+      </StrictMode>
+    );
+    const armed = attackDieProps.at(-1)!;
+
+    expect(
+      new Set(attackDieProps.map((props) => props.presentationToken)).size
+    ).toBe(1);
+    view.rerender(
+      <StrictMode>
+        <DiceTrayPresentation
+          label="Player attack dice"
+          events={[requested(), released()]}
+          witnessRole="roller"
+          reducedMotion={false}
+          onReleaseRequest={vi.fn()}
+        />
+      </StrictMode>
+    );
+    const rolling = attackDieProps.at(-1)!;
+
+    expect(rolling.presentationToken).toBe(armed.presentationToken);
+    expect(rolling.onTelemetry).toBe(armed.onTelemetry);
+    expect(rolling.phase).toBe('rolling');
+  });
+
+  it('does not let an abandoned presentation update corrupt committed telemetry acceptance', async () => {
+    const never = new Promise<never>(() => undefined);
+    let deliverCurrent!: () => void;
+    let interruptWithNext!: () => void;
+
+    function Blocker({ active }: { active: boolean }) {
+      if (active) throw never;
+      return null;
+    }
+    function Harness() {
+      const [input, setInput] = useState<{
+        events: readonly unknown[];
+        blocked: boolean;
+      }>({ events: [requested()], blocked: false });
+      deliverCurrent = () =>
+        setInput({ events: [requested(), released()], blocked: false });
+      interruptWithNext = () =>
+        startTransition(() =>
+          setInput({ events: [requested('attack:8')], blocked: true })
+        );
+      return (
+        <Suspense fallback={<p>Suspended update</p>}>
+          <DiceTrayPresentation
+            label="Player attack dice"
+            events={
+              input.events as React.ComponentProps<
+                typeof DiceTrayPresentation
+              >['events']
+            }
+            witnessRole="roller"
+            reducedMotion
+          />
+          <Blocker active={input.blocked} />
+        </Suspense>
+      );
+    }
+
+    attackDieProps.length = 0;
+    render(<Harness />);
+    act(() => deliverCurrent());
+    const committed = attackDieProps.at(-1)!;
+    expect(committed.phase).toBe('rolling');
+
+    await act(async () => interruptWithNext());
+    expect(screen.queryByText('Suspended update')).toBeNull();
+    expect(screen.getByRole('region').getAttribute('data-phase')).toBe(
+      'rolling'
+    );
+    expect(attackDieProps.at(-1)?.presentationToken).toBe(
+      committed.presentationToken
+    );
+    expect(attackDieProps.at(-1)?.onTelemetry).toBe(committed.onTelemetry);
+
+    act(() => committed.onTelemetry?.(matchingTelemetry(committed)));
+
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    expect(screen.getByRole('region').getAttribute('data-phase')).toBe(
+      'settled'
+    );
   });
 
   it('settles only from matching local-generation and result observation', () => {
@@ -403,6 +521,111 @@ describe('DiceTrayPresentation', () => {
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
   });
 
+  it('preserves terminal failure through release truncation and same-release redelivery', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation([requested()], { onReleaseRequest });
+    const armed = attackDieProps.at(-1)!;
+    const token = armed.presentationToken;
+
+    act(() =>
+      armed.onTelemetry?.(
+        matchingTelemetry(armed, {
+          renderer: 'svg',
+          state: 'failed',
+          exactTargetHeld: false,
+          failureCode: 'shader-failure',
+        })
+      )
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+    expect(screen.getByRole('status').textContent).not.toContain('10');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    const event = onReleaseRequest.mock.calls[0][0];
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), event]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: token,
+      phase: 'settled',
+    });
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested()]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: token,
+      phase: 'ready',
+    });
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+    expect(screen.getByRole('status').textContent).not.toContain('10');
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), event]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: token,
+      phase: 'settled',
+    });
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+  });
+
+  it('resets terminal failure and renderer generation for a new presentation', () => {
+    const view = renderPresentation([requested()]);
+    const failed = attackDieProps.at(-1)!;
+    act(() =>
+      failed.onTelemetry?.(
+        matchingTelemetry(failed, {
+          renderer: 'svg',
+          state: 'failed',
+          exactTargetHeld: false,
+        })
+      )
+    );
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    const next = attackDieProps.at(-1)!;
+    expect(next.presentationToken).not.toBe(failed.presentationToken);
+    expect(next.phase).toBe('ready');
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8'), released('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+  });
+
   it('renders an unknown safe preset as neutral, rolling, then settled SVG without loading a renderer URL', () => {
     vi.useFakeTimers();
     try {
@@ -446,11 +669,12 @@ describe('DiceTrayPresentation', () => {
     }
   });
 
-  it('announces changing presentation status through a polite live region', () => {
+  it('announces phase politely without revealing the result before settlement', () => {
     const view = renderPresentation([requested()]);
     const status = screen.getByRole('status');
     expect(status.getAttribute('aria-live')).toBe('polite');
     expect(status.textContent).toMatch(/waiting for release/i);
+    expect(status.textContent).not.toContain('10');
 
     view.rerender(
       <DiceTrayPresentation
@@ -460,6 +684,11 @@ describe('DiceTrayPresentation', () => {
         reducedMotion
       />
     );
+    const rolling = attackDieProps.at(-1)!;
     expect(screen.getByRole('status').textContent).toMatch(/rolling/i);
+    expect(screen.getByRole('status').textContent).not.toContain('10');
+
+    act(() => rolling.onTelemetry?.(matchingTelemetry(rolling)));
+    expect(screen.getByRole('status').textContent).toContain('10');
   });
 });

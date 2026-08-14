@@ -91,6 +91,29 @@ describe('DiceTray3D', () => {
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
+  it('hides Roll without a host callback and preserves authority when one is installed later', () => {
+    const view = renderTray([die], { phase: 'armed' });
+
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+
+    const onReleaseRequest = vi.fn();
+    view.rerender(
+      <DiceTray3D
+        label="Player attack tray"
+        presentationId="attack:7"
+        rendererGeneration={-7}
+        rollerRole="player"
+        witnessRole="roller"
+        phase="armed"
+        dice={[die]}
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+  });
+
   it('requests release once and does not synthesize delivery or settlement', () => {
     const onReleaseRequest = vi.fn();
     const view = renderTray([die], { phase: 'armed', onReleaseRequest });

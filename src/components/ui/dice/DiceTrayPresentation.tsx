@@ -1,10 +1,17 @@
-import { useCallback, useReducer, useRef } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
 import type { QuaternionTuple } from './attackDieContract';
 import {
   projectDicePresentationEvents,
   type DicePresentationEvent,
   type DicePresentationReleasedEvent,
+  type DicePresentationRequestedEvent,
 } from './dicePresentationEvent';
 import { createDicePresentationRelease } from './dicePresentationRelease';
 import { DiceTray3D } from './DiceTray3D';
@@ -27,11 +34,32 @@ export interface DiceTrayPresentationProps {
 type PresentationPhase = 'armed' | 'rolling' | 'settled';
 
 interface PresentationLifecycle {
-  presentationId?: string;
-  acceptedDelivery: readonly string[];
+  acceptedDeliveryIdentity: string;
   releaseIdentity?: string;
   phase: PresentationPhase;
   rendererFailed: boolean;
+}
+
+type LifecycleAction =
+  | {
+      type: 'reconcile-delivery';
+      acceptedDeliveryIdentity: string;
+      releaseIdentity?: string;
+    }
+  | { type: 'renderer-failed' }
+  | { type: 'renderer-observed' }
+  | { type: 'fallback-complete' };
+
+interface PresentationInstanceProps {
+  label: string;
+  request: DicePresentationRequestedEvent;
+  release?: DicePresentationReleasedEvent;
+  acceptedDeliveryIdentity: string;
+  releaseIdentity?: string;
+  witnessRole: 'roller' | 'spectator';
+  onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
+  reducedMotion: boolean;
+  developmentOnlyRenderer?: DiceTrayPresentationDevelopmentRenderer;
 }
 
 let nextRendererGeneration = -1;
@@ -46,21 +74,80 @@ function eventIdentity(event: DicePresentationEvent) {
   return JSON.stringify(event);
 }
 
-function sameDelivery(first: readonly string[], second: readonly string[]) {
-  return (
-    first.length === second.length &&
-    first.every((value, index) => value === second[index])
-  );
+function deliveryValues(identity: string): readonly string[] {
+  return JSON.parse(identity) as readonly string[];
 }
 
-function isDeliveryPrefix(
-  prefix: readonly string[],
-  delivery: readonly string[]
-) {
+function isDeliveryPrefix(prefixIdentity: string, deliveryIdentity: string) {
+  const prefix = deliveryValues(prefixIdentity);
+  const delivery = deliveryValues(deliveryIdentity);
   return (
     prefix.length <= delivery.length &&
     prefix.every((value, index) => value === delivery[index])
   );
+}
+
+function createLifecycle(input: {
+  acceptedDeliveryIdentity: string;
+  releaseIdentity?: string;
+}): PresentationLifecycle {
+  return {
+    acceptedDeliveryIdentity: input.acceptedDeliveryIdentity,
+    releaseIdentity: input.releaseIdentity,
+    phase: input.releaseIdentity ? 'settled' : 'armed',
+    rendererFailed: false,
+  };
+}
+
+function lifecycleReducer(
+  state: PresentationLifecycle,
+  action: LifecycleAction
+): PresentationLifecycle {
+  if (action.type === 'renderer-failed') {
+    return {
+      ...state,
+      rendererFailed: true,
+      phase: state.releaseIdentity ? 'settled' : 'armed',
+    };
+  }
+  if (action.type === 'renderer-observed') {
+    return state.phase === 'rolling' && state.releaseIdentity
+      ? { ...state, phase: 'settled' }
+      : state;
+  }
+  if (action.type === 'fallback-complete') {
+    return state.phase === 'rolling' && state.releaseIdentity
+      ? { ...state, phase: 'settled' }
+      : state;
+  }
+  if (
+    action.acceptedDeliveryIdentity === state.acceptedDeliveryIdentity &&
+    action.releaseIdentity === state.releaseIdentity
+  )
+    return state;
+
+  const appendOnly = isDeliveryPrefix(
+    state.acceptedDeliveryIdentity,
+    action.acceptedDeliveryIdentity
+  );
+  let phase = state.phase;
+  if (!action.releaseIdentity) {
+    phase = 'armed';
+  } else if (action.releaseIdentity !== state.releaseIdentity) {
+    phase =
+      state.rendererFailed || !appendOnly || state.releaseIdentity !== undefined
+        ? 'settled'
+        : 'rolling';
+  } else if (!appendOnly) {
+    phase = 'settled';
+  }
+
+  return {
+    ...state,
+    acceptedDeliveryIdentity: action.acceptedDeliveryIdentity,
+    releaseIdentity: action.releaseIdentity,
+    phase,
+  };
 }
 
 function presentationHash(value: string) {
@@ -79,176 +166,127 @@ function releaseEventId(presentationId: string) {
     : `release:${presentationHash(presentationId).toString(16)}`;
 }
 
-export function DiceTrayPresentation({
+function DiceTrayPresentationInstance({
   label,
-  events,
+  request,
+  release,
+  acceptedDeliveryIdentity,
+  releaseIdentity,
   witnessRole,
   onReleaseRequest,
-  reducedMotion = false,
+  reducedMotion,
   developmentOnlyRenderer,
-}: DiceTrayPresentationProps) {
-  const projection = projectDicePresentationEvents(events);
-  const request = projection.request;
-  const release = projection.release;
-  const acceptedDelivery = projection.acceptedEvents.map(eventIdentity);
-  const releaseIdentity = release ? eventIdentity(release) : undefined;
-  const lifecycle = useRef<PresentationLifecycle>({
-    acceptedDelivery: [],
-    phase: 'armed',
-    rendererFailed: false,
-  });
-  const renderer = useRef<
-    | {
-        presentationId: string;
-        generation: number;
-      }
-    | undefined
+}: PresentationInstanceProps) {
+  const [lifecycle, dispatch] = useReducer(
+    lifecycleReducer,
+    { acceptedDeliveryIdentity, releaseIdentity },
+    createLifecycle
+  );
+  const generationRef = useRef<number | undefined>(undefined);
+  const [rendererGeneration, setRendererGeneration] = useState<
+    number | undefined
   >(undefined);
-  const requestedRelease = useRef(new Set<string>());
-  const [, rerender] = useReducer((value: number) => value + 1, 0);
+  const requestedRelease = useRef(false);
 
-  if (!request) {
-    lifecycle.current = {
-      acceptedDelivery,
-      phase: 'armed',
-      rendererFailed: false,
-    };
-  } else if (lifecycle.current.presentationId !== request.presentationId) {
-    lifecycle.current = {
-      presentationId: request.presentationId,
-      acceptedDelivery,
+  useLayoutEffect(() => {
+    if (generationRef.current === undefined)
+      generationRef.current = allocateRendererGeneration();
+    const committedGeneration = generationRef.current;
+    setRendererGeneration((current) => current ?? committedGeneration);
+  }, []);
+
+  useLayoutEffect(() => {
+    dispatch({
+      type: 'reconcile-delivery',
+      acceptedDeliveryIdentity,
       releaseIdentity,
-      phase: release ? 'settled' : 'armed',
-      rendererFailed: false,
-    };
-  } else if (
-    !sameDelivery(lifecycle.current.acceptedDelivery, acceptedDelivery)
-  ) {
-    const previous = lifecycle.current;
-    const appendOnly = isDeliveryPrefix(
-      previous.acceptedDelivery,
-      acceptedDelivery
-    );
-    let phase = previous.phase;
-    let rendererFailed = previous.rendererFailed;
+    });
+  }, [acceptedDeliveryIdentity, releaseIdentity]);
 
-    if (!releaseIdentity) {
-      phase = 'armed';
-      if (!appendOnly) rendererFailed = false;
-    } else if (releaseIdentity !== previous.releaseIdentity) {
-      phase = appendOnly && !previous.releaseIdentity ? 'rolling' : 'settled';
-      if (rendererFailed) phase = 'settled';
-    } else if (!appendOnly) {
-      phase = 'settled';
-    }
-
-    lifecycle.current = {
-      presentationId: request.presentationId,
-      acceptedDelivery,
-      releaseIdentity,
-      phase,
-      rendererFailed,
-    };
-  }
-
-  if (request && renderer.current?.presentationId !== request.presentationId) {
-    renderer.current = {
-      presentationId: request.presentationId,
-      generation: allocateRendererGeneration(),
-    };
-  }
-  const rendererGeneration = renderer.current?.generation ?? 0;
-  const requestPresentationId = request?.presentationId;
-  const result = request?.die.authoritativeResult ?? 0;
+  const presentationId = request.presentationId;
+  const presetId = request.die.presetId;
+  const result = request.die.authoritativeResult;
+  const rollerRole = request.roller.role;
 
   const handleReleaseRequest = useCallback(() => {
-    const currentRequest = projection.request;
     if (
-      !currentRequest ||
-      lifecycle.current.presentationId !== currentRequest.presentationId ||
-      lifecycle.current.phase !== 'armed' ||
-      currentRequest.roller.role !== 'player' ||
+      !onReleaseRequest ||
+      lifecycle.phase !== 'armed' ||
+      rollerRole !== 'player' ||
       witnessRole !== 'roller' ||
-      requestedRelease.current.has(currentRequest.presentationId)
+      requestedRelease.current
     )
       return;
 
-    const variation = presentationHash(currentRequest.presentationId) % 997;
+    const variation = presentationHash(presentationId) % 997;
     const next: DicePresentationReleasedEvent = Object.freeze({
       schemaVersion: 1,
       type: 'dice-presentation-released',
-      eventId: releaseEventId(currentRequest.presentationId),
-      presentationId: currentRequest.presentationId,
+      eventId: releaseEventId(presentationId),
+      presentationId,
       release: createDicePresentationRelease({
-        presentationId: currentRequest.presentationId,
-        presetId: currentRequest.die.presetId,
+        presentationId,
+        presetId,
         variation,
       }),
     });
-    requestedRelease.current.add(currentRequest.presentationId);
-    onReleaseRequest?.(next);
-  }, [onReleaseRequest, projection.request, witnessRole]);
+    requestedRelease.current = true;
+    onReleaseRequest(next);
+  }, [
+    lifecycle.phase,
+    onReleaseRequest,
+    presentationId,
+    presetId,
+    rollerRole,
+    witnessRole,
+  ]);
 
   const handleTelemetry = useCallback(
     (event: AttackDieTelemetry) => {
       if (
-        !requestPresentationId ||
+        rendererGeneration === undefined ||
         event.presentationToken !== rendererGeneration ||
-        event.requestedResult !== result ||
-        lifecycle.current.presentationId !== requestPresentationId
+        event.requestedResult !== result
       )
         return;
 
       if (event.state === 'failed') {
-        lifecycle.current.rendererFailed = true;
-        if (lifecycle.current.releaseIdentity)
-          lifecycle.current.phase = 'settled';
-        rerender();
+        dispatch({ type: 'renderer-failed' });
         return;
       }
-      if (
-        event.state === 'observed' &&
-        event.exactTargetHeld &&
-        lifecycle.current.phase === 'rolling' &&
-        lifecycle.current.releaseIdentity
-      ) {
-        lifecycle.current.phase = 'settled';
-        rerender();
-      }
+      if (event.state === 'observed' && event.exactTargetHeld)
+        dispatch({ type: 'renderer-observed' });
     },
-    [rendererGeneration, requestPresentationId, result]
+    [rendererGeneration, result]
   );
 
   const handleFallbackPresentationComplete = useCallback(() => {
-    if (
-      requestPresentationId &&
-      lifecycle.current.presentationId === requestPresentationId &&
-      lifecycle.current.phase === 'rolling' &&
-      lifecycle.current.releaseIdentity
-    ) {
-      lifecycle.current.phase = 'settled';
-      rerender();
-    }
-  }, [requestPresentationId]);
+    dispatch({ type: 'fallback-complete' });
+  }, []);
 
-  if (!request) return null;
+  const phase = lifecycle.phase;
+  const status =
+    phase === 'armed'
+      ? 'Dice presentation requested · waiting for release event'
+      : phase === 'rolling'
+        ? 'Dice release delivered · rolling'
+        : lifecycle.rendererFailed || presetId !== 'lightning'
+          ? `Result ${result} released · truthful SVG settled`
+          : `Result ${result} presented · roll settled`;
+
+  if (rendererGeneration === undefined)
+    return (
+      <p role="status" aria-live="polite" className="sr-only">
+        {status}
+      </p>
+    );
 
   const developmentInjectionEligible =
-    request.die.presetId === 'lightning' &&
+    presetId === 'lightning' &&
     result === 10 &&
     developmentOnlyRenderer?.scene !== undefined &&
     developmentOnlyRenderer.sidecar !== undefined &&
     developmentOnlyRenderer.calibrationPose !== undefined;
-  const phase = lifecycle.current.phase;
-  const status =
-    phase === 'armed'
-      ? `Result ${result} requested · waiting for release event`
-      : phase === 'rolling'
-        ? `Result ${result} release delivered · rolling`
-        : lifecycle.current.rendererFailed ||
-            request.die.presetId !== 'lightning'
-          ? `Result ${result} released · truthful SVG settled`
-          : `Result ${result} presented · roll settled`;
 
   return (
     <>
@@ -257,14 +295,14 @@ export function DiceTrayPresentation({
       </p>
       <DiceTray3D
         label={label}
-        presentationId={request.presentationId}
+        presentationId={presentationId}
         rendererGeneration={rendererGeneration}
-        rollerRole={request.roller.role}
+        rollerRole={rollerRole}
         witnessRole={witnessRole}
         phase={phase}
         dice={[request.die]}
         release={release?.release}
-        onReleaseRequest={handleReleaseRequest}
+        onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
         onFallbackPresentationComplete={handleFallbackPresentationComplete}
         reducedMotion={reducedMotion}
@@ -285,5 +323,40 @@ export function DiceTrayPresentation({
         }
       />
     </>
+  );
+}
+
+export function DiceTrayPresentation({
+  label,
+  events,
+  witnessRole,
+  onReleaseRequest,
+  reducedMotion = false,
+  developmentOnlyRenderer,
+}: DiceTrayPresentationProps) {
+  const projection = projectDicePresentationEvents(events);
+  const request = projection.request;
+  if (!request) return null;
+
+  const acceptedDeliveryIdentity = JSON.stringify(
+    projection.acceptedEvents.map(eventIdentity)
+  );
+  const releaseIdentity = projection.release
+    ? eventIdentity(projection.release)
+    : undefined;
+
+  return (
+    <DiceTrayPresentationInstance
+      key={request.presentationId}
+      label={label}
+      request={request}
+      release={projection.release}
+      acceptedDeliveryIdentity={acceptedDeliveryIdentity}
+      releaseIdentity={releaseIdentity}
+      witnessRole={witnessRole}
+      onReleaseRequest={onReleaseRequest}
+      reducedMotion={reducedMotion}
+      developmentOnlyRenderer={developmentOnlyRenderer}
+    />
   );
 }

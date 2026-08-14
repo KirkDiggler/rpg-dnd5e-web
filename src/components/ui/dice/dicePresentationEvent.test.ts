@@ -178,6 +178,44 @@ describe('parseDicePresentationEvent', () => {
   ])('fails closed for $name', ({ value }) => {
     expect(parseDicePresentationEvent(value)).toBeUndefined();
   });
+  it('fails closed instead of throwing for hostile getters and proxies', () => {
+    const throwingGetter = requested();
+    Object.defineProperty(throwingGetter, 'roller', {
+      enumerable: true,
+      get() {
+        throw Error('hostile getter');
+      },
+    });
+    const throwingProxy = new Proxy(requested(), {
+      ownKeys() {
+        throw Error('hostile proxy');
+      },
+    });
+
+    expect(() => parseDicePresentationEvent(throwingGetter)).not.toThrow();
+    expect(parseDicePresentationEvent(throwingGetter)).toBeUndefined();
+    expect(() => parseDicePresentationEvent(throwingProxy)).not.toThrow();
+    expect(parseDicePresentationEvent(throwingProxy)).toBeUndefined();
+  });
+
+  it('snapshots changing getters once before choosing and reconstructing the event', () => {
+    const inbound = requested();
+    let reads = 0;
+    Object.defineProperty(inbound, 'type', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1
+          ? 'dice-presentation-requested'
+          : 'dice-presentation-released';
+      },
+    });
+
+    const parsed = parseDicePresentationEvent(inbound);
+
+    expect(parsed?.type).toBe('dice-presentation-requested');
+    expect(reads).toBe(1);
+  });
 });
 
 describe('projectDicePresentationEvents', () => {

@@ -39,43 +39,98 @@ export interface DicePresentationProjection {
   readonly acceptedEvents: readonly DicePresentationEvent[];
 }
 
-const plainObject = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const REQUEST_KEYS = [
+  'schemaVersion',
+  'type',
+  'eventId',
+  'presentationId',
+  'roller',
+  'die',
+] as const;
+const RELEASE_KEYS = [
+  'schemaVersion',
+  'type',
+  'eventId',
+  'presentationId',
+  'release',
+] as const;
 
-const hasExactKeys = (
-  value: Record<string, unknown>,
-  keys: readonly string[]
-) =>
-  Object.keys(value).length === keys.length &&
-  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+function sameKeys(keys: readonly string[], expected: readonly string[]) {
+  return (
+    keys.length === expected.length &&
+    expected.every((key) => keys.includes(key))
+  );
+}
+
+function snapshotExactObject(
+  value: unknown,
+  expectedKeys: readonly string[]
+): Record<string, unknown> | undefined {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      return undefined;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (!sameKeys(keys, expectedKeys)) return undefined;
+    const snapshot: Record<string, unknown> = {};
+    for (const key of expectedKeys) snapshot[key] = record[key];
+    return snapshot;
+  } catch {
+    return undefined;
+  }
+}
+
+function snapshotEvent(
+  value: unknown
+):
+  | { kind: 'requested'; value: Record<string, unknown> }
+  | { kind: 'released'; value: Record<string, unknown> }
+  | undefined {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      return undefined;
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    const expected = sameKeys(keys, REQUEST_KEYS)
+      ? REQUEST_KEYS
+      : sameKeys(keys, RELEASE_KEYS)
+        ? RELEASE_KEYS
+        : undefined;
+    if (!expected) return undefined;
+    const snapshot: Record<string, unknown> = {};
+    for (const key of expected) snapshot[key] = record[key];
+    return {
+      kind: expected === REQUEST_KEYS ? 'requested' : 'released',
+      value: snapshot,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 function parseRequestedEvent(
   value: Record<string, unknown>
 ): DicePresentationRequestedEvent | undefined {
+  const roller = snapshotExactObject(value.roller, ['entityId', 'role']);
+  const die = snapshotExactObject(value.die, [
+    'kind',
+    'presetId',
+    'authoritativeResult',
+  ]);
   if (
-    !hasExactKeys(value, [
-      'schemaVersion',
-      'type',
-      'eventId',
-      'presentationId',
-      'roller',
-      'die',
-    ]) ||
     value.schemaVersion !== 1 ||
     value.type !== 'dice-presentation-requested' ||
     !isDicePresentationIdentifier(value.eventId) ||
     !isDicePresentationIdentifier(value.presentationId) ||
-    !plainObject(value.roller) ||
-    !hasExactKeys(value.roller, ['entityId', 'role']) ||
-    !isDicePresentationIdentifier(value.roller.entityId) ||
-    (value.roller.role !== 'player' && value.roller.role !== 'monster') ||
-    !plainObject(value.die) ||
-    !hasExactKeys(value.die, ['kind', 'presetId', 'authoritativeResult']) ||
-    value.die.kind !== 'd20' ||
-    !isDicePresetIdentifier(value.die.presetId) ||
-    !Number.isInteger(value.die.authoritativeResult) ||
-    Number(value.die.authoritativeResult) < 1 ||
-    Number(value.die.authoritativeResult) > 20
+    !roller ||
+    !isDicePresentationIdentifier(roller.entityId) ||
+    (roller.role !== 'player' && roller.role !== 'monster') ||
+    !die ||
+    die.kind !== 'd20' ||
+    !isDicePresetIdentifier(die.presetId) ||
+    !Number.isInteger(die.authoritativeResult) ||
+    Number(die.authoritativeResult) < 1 ||
+    Number(die.authoritativeResult) > 20
   )
     return undefined;
 
@@ -85,13 +140,13 @@ function parseRequestedEvent(
     eventId: value.eventId,
     presentationId: value.presentationId,
     roller: Object.freeze({
-      entityId: value.roller.entityId,
-      role: value.roller.role,
+      entityId: roller.entityId,
+      role: roller.role,
     }),
     die: Object.freeze({
       kind: 'd20' as const,
-      presetId: value.die.presetId,
-      authoritativeResult: Number(value.die.authoritativeResult),
+      presetId: die.presetId,
+      authoritativeResult: Number(die.authoritativeResult),
     }),
   });
 }
@@ -100,13 +155,6 @@ function parseReleasedEvent(
   value: Record<string, unknown>
 ): DicePresentationReleasedEvent | undefined {
   if (
-    !hasExactKeys(value, [
-      'schemaVersion',
-      'type',
-      'eventId',
-      'presentationId',
-      'release',
-    ]) ||
     value.schemaVersion !== 1 ||
     value.type !== 'dice-presentation-released' ||
     !isDicePresentationIdentifier(value.eventId) ||
@@ -130,12 +178,11 @@ function parseReleasedEvent(
 export function parseDicePresentationEvent(
   value: unknown
 ): DicePresentationEvent | undefined {
-  if (!plainObject(value)) return undefined;
-  if (value.type === 'dice-presentation-requested')
-    return parseRequestedEvent(value);
-  if (value.type === 'dice-presentation-released')
-    return parseReleasedEvent(value);
-  return undefined;
+  const snapshot = snapshotEvent(value);
+  if (!snapshot) return undefined;
+  return snapshot.kind === 'requested'
+    ? parseRequestedEvent(snapshot.value)
+    : parseReleasedEvent(snapshot.value);
 }
 
 function sameRequestFacts(

@@ -64,7 +64,9 @@ describe('AttackDie3D staged concept', () => {
       screen.getByText(/Shared event-fed presentation · fixed result 10/)
     ).toBeTruthy();
     expect(
-      screen.getByText(/Result 10 requested · waiting for release event/)
+      screen.getByText(
+        /Dice presentation requested · waiting for release event/
+      )
     ).toBeTruthy();
     expect(screen.getByTestId('dice-tray-encounter-preview')).toBeTruthy();
     expect(screen.getByTestId('dice-tray-left-drawer')).toBeTruthy();
