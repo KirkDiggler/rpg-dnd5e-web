@@ -23,8 +23,7 @@ import type {
 import { patchAttackDieMaterials } from './attackDieMaterial';
 import {
   angularDistanceDegrees,
-  attackDieRollTranslation,
-  stepAttackDieMotion,
+  attackDiePoseForPhase,
   type AttackDieMotionFrame,
 } from './attackDieMotion';
 import { resolveAttackDiePrimitives } from './attackDiePrimitive';
@@ -37,6 +36,7 @@ import {
 } from './attackDieRuntime';
 import { ATTACK_DIE_VISUAL_CONFIG } from './attackDieVisualConfig';
 import { resolveAttackDieRendererVisuals } from './attackDieVisualRuntime';
+import type { AttackDieDecorativeRelease } from './dicePresentationRelease';
 
 export type AttackDieFailureCode =
   | 'provider-load'
@@ -81,6 +81,7 @@ export interface AttackDie3DProps {
   reducedMotion: boolean;
   magicalAnimation?: boolean;
   decorativeSeed?: number;
+  decorativeRelease?: AttackDieDecorativeRelease;
   fallback: React.ReactNode;
   onTelemetry?: (event: AttackDieTelemetry) => void;
   /** Development concept camera; omitted in production-intent usage. */
@@ -185,7 +186,8 @@ function RuntimeDie({
   onFailure,
   sceneOverride,
   magicalAnimation,
-  decorativeSeed,
+  phase,
+  release,
 }: {
   sidecar: AttackDieRuntimeSidecar;
   target: QuaternionTuple;
@@ -196,14 +198,23 @@ function RuntimeDie({
   onFailure: (reason: string) => void;
   sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
   magicalAnimation: boolean;
-  decorativeSeed: number;
+  phase: DiceTrayPhase;
+  release?: AttackDieDecorativeRelease;
 }) {
   const group = useRef<Group>(null);
-  const start = useRef<number | undefined>(undefined);
+  const rollStartedAt = useRef<number | undefined>(undefined);
+  const previousPhase = useRef<DiceTrayPhase>(phase);
+  const observationSent = useRef(false);
 
-  const initial: QuaternionTuple = reducedMotion
-    ? target
-    : [0.31, -0.47, 0.19, 0.805];
+  const neutral: QuaternionTuple = [0.31, -0.47, 0.19, 0.805];
+  const initial = attackDiePoseForPhase({
+    phase,
+    elapsedMs: 0,
+    reducedMotion,
+    current: neutral,
+    target,
+    release,
+  }).quaternion;
   const renderedQuaternion = useRef<QuaternionTuple>(initial);
   const [bundle, setBundle] = useState<ReturnType<typeof cloneTokenScene>>();
   useEffect(() => {
@@ -219,13 +230,28 @@ function RuntimeDie({
   }, [mode, onFailure, reducedMotion, sceneOverride, sidecar]);
   useFrame(({ clock }) => {
     poseValidated.current = false;
-    start.current ??= clock.elapsedTime * 1000;
-    const frame = stepAttackDieMotion({
-      elapsedMs: clock.elapsedTime * 1000 - start.current,
+    const now = clock.elapsedTime * 1000;
+    if (phase === 'rolling') {
+      if (
+        previousPhase.current !== 'rolling' ||
+        rollStartedAt.current === undefined
+      ) {
+        rollStartedAt.current = now;
+        observationSent.current = false;
+      }
+    } else {
+      rollStartedAt.current = undefined;
+    }
+    previousPhase.current = phase;
+    const elapsedMs =
+      phase === 'rolling' ? now - (rollStartedAt.current ?? now) : 0;
+    const frame = attackDiePoseForPhase({
+      phase,
+      elapsedMs,
       reducedMotion,
       current: renderedQuaternion.current,
       target,
-      decorativeSeed,
+      release,
     });
     renderedQuaternion.current = frame.quaternion;
     if (frame.failed) {
@@ -240,15 +266,15 @@ function RuntimeDie({
     }
     try {
       selectedGroup.quaternion.copy(new Quaternion(...frame.quaternion));
-      const translation = attackDieRollTranslation(
-        clock.elapsedTime * 1000 - start.current,
-        reducedMotion
-      );
-      selectedGroup.position.set(...translation);
+      selectedGroup.position.set(...frame.translation);
       poseValidated.current = true;
       if (magicalAnimation && !reducedMotion)
         bundle?.updateShaderTime(clock.elapsedTime);
-      onFrame(frame);
+      const observeNow = frame.observeNow && !observationSent.current;
+      if (observeNow) observationSent.current = true;
+      onFrame(
+        observeNow === frame.observeNow ? frame : { ...frame, observeNow }
+      );
     } catch (error) {
       onFailure(
         `motion pose application failed: ${error instanceof Error ? error.message : 'unknown'}`
@@ -285,6 +311,7 @@ function AttackDieToken({
   reducedMotion,
   magicalAnimation = true,
   decorativeSeed = presentationToken,
+  decorativeRelease,
   fallback,
   onTelemetry,
   cameraView = 'three-quarter',
@@ -297,6 +324,15 @@ function AttackDieToken({
 }: AttackDie3DProps) {
   const visual = ATTACK_DIE_VISUAL_CONFIG;
   const rendererVisuals = resolveAttackDieRendererVisuals(visual);
+  const release = useMemo<AttackDieDecorativeRelease>(
+    () =>
+      decorativeRelease ?? {
+        variation: decorativeSeed,
+        vector: [0, 0],
+        shake: 0,
+      },
+    [decorativeRelease, decorativeSeed]
+  );
   const effectiveResult = result;
   const lock = useMemo(
     () => lockAttackDieRenderer(presentationToken, effectiveResult),
@@ -500,7 +536,8 @@ function AttackDieToken({
                 onFailure={fail}
                 sceneOverride={sceneOverride}
                 magicalAnimation={magicalAnimation}
-                decorativeSeed={decorativeSeed}
+                phase={phase}
+                release={release}
                 onFrame={(frame) => {
                   if (!active.current || !frame.observeNow) return;
                   onTelemetry?.({

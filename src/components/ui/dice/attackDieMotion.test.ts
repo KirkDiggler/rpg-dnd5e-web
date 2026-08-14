@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   angularDistanceDegrees,
+  attackDiePoseForPhase,
   attackDieRollTranslation,
   stepAttackDieMotion,
 } from './attackDieMotion';
@@ -102,6 +103,102 @@ describe('right-to-left roll translation', () => {
     expect(attackDieRollTranslation(0, true)).toEqual(
       attackDieRollTranslation(1900, false)
     );
+  });
+});
+
+describe('phase-aware pose', () => {
+  const current = [0.31, -0.47, 0.19, 0.805] as const;
+  const alternateTarget = [1, 0, 0, 0] as const;
+
+  it.each(['entering', 'ready'] as const)(
+    'keeps %s neutral at center without revealing either target',
+    (phase) => {
+      const low = attackDiePoseForPhase({
+        phase,
+        elapsedMs: 12_000,
+        reducedMotion: false,
+        current,
+        target,
+      });
+      const high = attackDiePoseForPhase({
+        phase,
+        elapsedMs: 12_000,
+        reducedMotion: false,
+        current,
+        target: alternateTarget,
+      });
+
+      expect(low.quaternion).toEqual(high.quaternion);
+      expect(low.translation).toEqual([0, 0, 0]);
+      expect(low.observeNow).toBe(false);
+      expect(low.exactTargetHeld).toBe(false);
+    }
+  );
+
+  it('uses the existing rolling trajectory and decorative variation', () => {
+    const release = { variation: 17, vector: [0, 0] as const, shake: 0 };
+    const pose = attackDiePoseForPhase({
+      phase: 'rolling',
+      elapsedMs: 500,
+      reducedMotion: false,
+      current,
+      target,
+      release,
+    });
+
+    expect(pose).toEqual({
+      ...stepAttackDieMotion({
+        elapsedMs: 500,
+        reducedMotion: false,
+        current,
+        target,
+        decorativeSeed: 17,
+      }),
+      translation: attackDieRollTranslation(500, false),
+    });
+  });
+
+  it.each(['settled', 'exiting'] as const)(
+    'copies the exact target and left resting position immediately for %s',
+    (phase) => {
+      const pose = attackDiePoseForPhase({
+        phase,
+        elapsedMs: 0,
+        reducedMotion: false,
+        current,
+        target,
+      });
+
+      expect(pose.quaternion).toBe(target);
+      expect(pose.translation).toEqual(attackDieRollTranslation(1900, false));
+      expect(pose.exactTargetHeld).toBe(true);
+      expect(pose.observeNow).toBe(false);
+      expect(pose.failed).toBe(false);
+    }
+  );
+
+  it('keeps reduced motion neutral until release, then produces matching observation', () => {
+    const ready = attackDiePoseForPhase({
+      phase: 'ready',
+      elapsedMs: 60_000,
+      reducedMotion: true,
+      current,
+      target,
+    });
+    const released = attackDiePoseForPhase({
+      phase: 'rolling',
+      elapsedMs: 16,
+      reducedMotion: true,
+      current: ready.quaternion,
+      target,
+    });
+
+    expect(ready.quaternion).not.toEqual(target);
+    expect(ready.observeNow).toBe(false);
+    expect(released.quaternion).toBe(target);
+    expect(released.translation).toEqual(attackDieRollTranslation(1900, false));
+    expect(released.observeNow).toBe(true);
+    expect(released.exactTargetHeld).toBe(true);
   });
 });
 

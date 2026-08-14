@@ -1,4 +1,6 @@
+import type { DiceTrayPhase } from './DiceTray';
 import type { QuaternionTuple } from './attackDieContract';
+import type { AttackDieDecorativeRelease } from './dicePresentationRelease';
 export interface AttackDieMotionInput {
   elapsedMs: number;
   reducedMotion: boolean;
@@ -16,18 +18,63 @@ export type AttackDieTranslation = readonly [number, number, number];
 
 const LEFT_RESTING_X = -0.23;
 const RIGHT_ENTRY_X = 1.05;
+const NEUTRAL_QUATERNION: QuaternionTuple = [0.31, -0.47, 0.19, 0.805];
+const CENTER_TRANSLATION: AttackDieTranslation = [0, 0, 0];
+const LEFT_RESTING_TRANSLATION: AttackDieTranslation = [LEFT_RESTING_X, 0, 0];
 
 export function attackDieRollTranslation(
   elapsedMs: number,
   reducedMotion: boolean
 ): AttackDieTranslation {
-  if (reducedMotion) return [LEFT_RESTING_X, 0, 0];
+  if (reducedMotion) return LEFT_RESTING_TRANSLATION;
   const progress = Math.min(1, Math.max(0, elapsedMs / 1800));
   const eased = 1 - Math.pow(1 - progress, 3);
   const x = RIGHT_ENTRY_X + (LEFT_RESTING_X - RIGHT_ENTRY_X) * eased;
   const y = Math.sin(progress * Math.PI) * 0.08;
   const z = -Math.sin(progress * Math.PI) * 0.12;
-  return progress === 1 ? [LEFT_RESTING_X, 0, 0] : [x, y, z];
+  return progress === 1 ? LEFT_RESTING_TRANSLATION : [x, y, z];
+}
+
+export function attackDiePoseForPhase(input: {
+  phase: DiceTrayPhase;
+  elapsedMs: number;
+  reducedMotion: boolean;
+  current: QuaternionTuple;
+  target: QuaternionTuple;
+  release?: AttackDieDecorativeRelease;
+}): AttackDieMotionFrame & { translation: AttackDieTranslation } {
+  const { phase, elapsedMs, reducedMotion, current, target, release } = input;
+
+  if (phase === 'rolling') {
+    return {
+      ...stepAttackDieMotion({
+        elapsedMs,
+        reducedMotion,
+        current,
+        target,
+        decorativeSeed: release?.variation,
+      }),
+      translation: attackDieRollTranslation(elapsedMs, reducedMotion),
+    };
+  }
+
+  if (phase === 'settled' || phase === 'exiting') {
+    return {
+      quaternion: target,
+      translation: LEFT_RESTING_TRANSLATION,
+      observeNow: false,
+      exactTargetHeld: true,
+      failed: false,
+    };
+  }
+
+  return {
+    quaternion: NEUTRAL_QUATERNION,
+    translation: CENTER_TRANSLATION,
+    observeNow: false,
+    exactTargetHeld: false,
+    failed: false,
+  };
 }
 
 const normalized = (q: QuaternionTuple): QuaternionTuple => {

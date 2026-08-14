@@ -1784,6 +1784,15 @@
 }
 .dice-tray-left-drawer__floor
   .dice-tray-3d-shell--compact
+  .dice-tray-3d-shell__controls {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.5rem;
+  z-index: 3;
+  margin-top: 0;
+}
+.dice-tray-left-drawer__floor
+  .dice-tray-3d-shell--compact
   .dice-tray-3d-shell__well {
   inset: 0.65rem 0.75rem 0.45rem;
   border: 0;

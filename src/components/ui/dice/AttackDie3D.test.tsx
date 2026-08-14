@@ -108,19 +108,26 @@ vi.mock('@react-three/fiber', () => ({
 }));
 vi.mock('./attackDieMotion', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./attackDieMotion')>();
+  const failedFrame = (current: readonly [number, number, number, number]) => ({
+    quaternion: current,
+    observeNow: false,
+    exactTargetHeld: false,
+    failed: true,
+  });
   return {
     ...actual,
     stepAttackDieMotion: (
       input: Parameters<typeof actual.stepAttackDieMotion>[0]
     ) =>
       mocks.motionFailure
-        ? {
-            quaternion: input.current,
-            observeNow: false,
-            exactTargetHeld: false,
-            failed: true,
-          }
+        ? failedFrame(input.current)
         : actual.stepAttackDieMotion(input),
+    attackDiePoseForPhase: (
+      input: Parameters<typeof actual.attackDiePoseForPhase>[0]
+    ) =>
+      mocks.motionFailure
+        ? { ...failedFrame(input.current), translation: [0, 0, 0] }
+        : actual.attackDiePoseForPhase(input),
   };
 });
 vi.mock('./attackDieRuntime', () => ({
@@ -176,7 +183,7 @@ vi.mock('./attackDieRuntime', () => ({
           },
           faces: Array.from({ length: 20 }, (_, index) => ({
             result: index + 1,
-            quaternion: [0, 0, 0, 1],
+            quaternion: index === 0 ? [1, 0, 0, 0] : [0, 0, 0, 1],
           })),
         }
       : undefined;
@@ -506,6 +513,150 @@ describe('AttackDie3D', () => {
     expect(mocks.gl.debug.onShaderError).toBe(originalShaderError);
     expect(mocks.gl.debug.checkShaderErrors).toBe(false);
   });
+  it('keeps ready neutral for different authoritative targets and emits no observation', () => {
+    mocks.status = 'ready';
+    const telemetry = vi.fn();
+    const view = render(
+      <AttackDie3D {...props(300, 1)} phase="ready" onTelemetry={telemetry} />
+    );
+    frame(-1, 0);
+    frame(-1, 1.9);
+    frame(-1, 1.916);
+    const lowPose = mocks.poseCopy.mock.calls.at(-1)?.[0];
+    view.unmount();
+
+    telemetry.mockClear();
+    mocks.poseCopy.mockClear();
+    render(
+      <AttackDie3D {...props(301, 20)} phase="ready" onTelemetry={telemetry} />
+    );
+    frame(-1, 0);
+    frame(-1, 1.9);
+    frame(-1, 1.916);
+    const highPose = mocks.poseCopy.mock.calls.at(-1)?.[0];
+
+    expect(lowPose).toMatchObject({
+      x: highPose.x,
+      y: highPose.y,
+      z: highPose.z,
+      w: highPose.w,
+    });
+    expect(
+      telemetry.mock.calls.some(([event]) => event.state === 'observed')
+    ).toBe(false);
+  });
+
+  it('resets roll elapsed once on ready-to-rolling without restarting on rolling rerender', () => {
+    mocks.status = 'ready';
+    const release = {
+      variation: 17,
+      vector: [0, 0] as const,
+      shake: 0,
+    };
+    const view = render(
+      <AttackDie3D {...props(302)} phase="ready" decorativeRelease={release} />
+    );
+    frame(-1, 10);
+
+    view.rerender(
+      <AttackDie3D
+        {...props(302)}
+        phase="rolling"
+        decorativeRelease={release}
+      />
+    );
+    mocks.positionSet.mockClear();
+    frame(-1, 10.5);
+    const atRelease = mocks.positionSet.mock.calls.at(-1);
+    frame(-1, 11);
+    const inFlight = mocks.positionSet.mock.calls.at(-1);
+
+    view.rerender(
+      <AttackDie3D
+        {...props(302)}
+        phase="rolling"
+        decorativeRelease={release}
+      />
+    );
+    frame(-1, 11.1);
+    const afterRerender = mocks.positionSet.mock.calls.at(-1);
+
+    expect(atRelease).toEqual([1.05, 0, -0]);
+    expect(inFlight?.[0]).toBeLessThan(atRelease?.[0]);
+    expect(afterRerender?.[0]).toBeLessThan(inFlight?.[0]);
+  });
+
+  it('applies the exact settled target and resting position immediately', () => {
+    mocks.status = 'ready';
+    render(<AttackDie3D {...props(303, 1)} phase="settled" />);
+    frame(-1, 0);
+
+    expect(mocks.poseCopy.mock.calls.at(-1)?.[0]).toMatchObject({
+      x: 1,
+      y: 0,
+      z: 0,
+      w: 0,
+    });
+    expect(mocks.positionSet).toHaveBeenLastCalledWith(-0.23, 0, 0);
+  });
+
+  it('keeps reduced motion neutral until release and observes matching target once', () => {
+    mocks.status = 'ready';
+    const telemetry = vi.fn();
+    const view = render(
+      <AttackDie3D
+        {...props(304, 1)}
+        phase="ready"
+        reducedMotion
+        onTelemetry={telemetry}
+      />
+    );
+    frame(-1, 10);
+    frame(-1, 11);
+    expect(mocks.poseCopy.mock.calls.at(-1)?.[0]).not.toMatchObject({
+      x: 1,
+      y: 0,
+      z: 0,
+      w: 0,
+    });
+    expect(
+      telemetry.mock.calls.some(([event]) => event.state === 'observed')
+    ).toBe(false);
+
+    view.rerender(
+      <AttackDie3D
+        {...props(304, 1)}
+        phase="rolling"
+        reducedMotion
+        decorativeRelease={{ variation: 304, vector: [0, 0], shake: 0 }}
+        onTelemetry={telemetry}
+      />
+    );
+    frame(-1, 12);
+    frame(-1, 12.016);
+    frame(-1, 12.032);
+
+    const observed = telemetry.mock.calls.filter(
+      ([event]) => event.state === 'observed'
+    );
+    expect(observed).toHaveLength(1);
+    expect(observed[0][0]).toMatchObject({
+      presentationToken: 304,
+      requestedResult: 1,
+      observedQuaternion: [1, 0, 0, 0],
+      exactTargetHeld: true,
+    });
+  });
+
+  it('preserves the renderer lock across phase-only rerenders', () => {
+    mocks.status = 'ready';
+    const view = render(<AttackDie3D {...props(305)} phase="ready" />);
+    view.rerender(<AttackDie3D {...props(305)} phase="rolling" />);
+    view.rerender(<AttackDie3D {...props(305)} phase="settled" />);
+
+    expect(mocks.release).not.toHaveBeenCalledWith(305);
+  });
+
   it('has no completion or result-release API', () => {
     type Forbidden = Extract<
       keyof AttackDie3DProps,

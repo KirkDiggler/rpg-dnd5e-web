@@ -61,15 +61,16 @@ describe('AttackDie3D staged concept', () => {
     expect(document.activeElement).toBe(tray);
     expect(screen.getByText(/Gameplay placement checkpoint/)).toBeTruthy();
     expect(
-      screen.getByText(/Result 10 only · no interaction yet/)
+      screen.getByText(/Result 10 only · waiting for your roll/)
     ).toBeTruthy();
     expect(screen.getByTestId('dice-tray-encounter-preview')).toBeTruthy();
     expect(screen.getByTestId('dice-tray-left-drawer')).toBeTruthy();
     expect(screen.getByTestId('encounter-dock')).toBeTruthy();
     expect(screen.getByTestId('floating-log')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
     expect(props.at(-1)).toMatchObject({
       result: 10,
-      phase: 'settled',
+      phase: 'ready',
       reducedMotion: true,
     });
   });
