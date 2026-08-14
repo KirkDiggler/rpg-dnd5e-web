@@ -61,10 +61,15 @@ export function DiceTrayEncounterPreview({
       aria-label="Fixture gameplay preview"
     >
       <div
-        className="dice-tray-encounter-preview__map"
-        data-testid="dice-tray-neutral-map"
+        className="dice-tray-encounter-preview__map-boundary"
+        data-testid="dice-tray-map-boundary"
       >
-        <span aria-hidden="true">Neutral encounter map</span>
+        <div
+          className="dice-tray-encounter-preview__map"
+          data-testid="dice-tray-neutral-map"
+        >
+          <span aria-hidden="true">Neutral encounter map</span>
+        </div>
         <aside
           className="dice-tray-left-drawer"
           data-testid="dice-tray-left-drawer"

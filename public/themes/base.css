@@ -1627,6 +1627,13 @@
   background: var(--bg-primary);
   isolation: isolate;
 }
+.dice-tray-encounter-preview__map-boundary {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
 .dice-tray-encounter-preview__map {
   position: relative;
   flex: 1;

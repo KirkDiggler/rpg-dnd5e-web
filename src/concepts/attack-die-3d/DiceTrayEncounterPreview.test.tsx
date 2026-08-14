@@ -10,13 +10,17 @@ describe('DiceTrayEncounterPreview', () => {
     render(<DiceTrayEncounterPreview tray={<div>Tray stub</div>} />);
 
     const preview = screen.getByTestId('dice-tray-encounter-preview');
+    const boundary = screen.getByTestId('dice-tray-map-boundary');
     const map = screen.getByTestId('dice-tray-neutral-map');
     const drawer = screen.getByTestId('dice-tray-left-drawer');
     const dock = screen.getByTestId('encounter-dock');
     const floatingLog = screen.getByTestId('floating-log');
 
-    expect(preview.contains(map)).toBe(true);
-    expect(map.contains(drawer)).toBe(true);
+    expect(preview.contains(boundary)).toBe(true);
+    expect(boundary.contains(map)).toBe(true);
+    expect(boundary.contains(drawer)).toBe(true);
+    expect(map.contains(drawer)).toBe(false);
+    expect(map.parentElement).toBe(drawer.parentElement);
     expect(drawer.contains(screen.getByText('Tray stub'))).toBe(true);
     expect(screen.getByLabelText(/Hide combat log/)).toBeTruthy();
     expect(floatingLog).toBeTruthy();
