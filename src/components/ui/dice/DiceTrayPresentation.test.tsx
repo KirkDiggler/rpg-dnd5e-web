@@ -522,6 +522,301 @@ describe('DiceTrayPresentation', () => {
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
+  it('retains armed request authority across a conflicting same-id request-only delivery', () => {
+    const scene = {} as AttackDie3DProps['sceneOverride'];
+    const sidecar = {} as NonNullable<AttackDie3DProps['sidecarOverride']>;
+    const calibrationPose = [0.1, 0.2, 0.3, 0.9] as const;
+    const developmentOnlyRenderer = { scene, sidecar, calibrationPose };
+    const onReleaseRequest = vi.fn();
+    const requestA = requested();
+    const requestB = requested('attack:7', {
+      eventId: 'request:attack:7:replacement',
+      roller: { entityId: 'monster:2', role: 'monster' },
+      die: {
+        kind: 'd20',
+        presetId: 'newer-safe-preset',
+        authoritativeResult: 20,
+      },
+    });
+    const view = renderPresentation([requestA], {
+      onReleaseRequest,
+      developmentOnlyRenderer,
+    });
+    const armed = attackDieProps.at(-1)!;
+    const renderCount = attackDieProps.length;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requestB]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+        developmentOnlyRenderer={developmentOnlyRenderer}
+      />
+    );
+
+    expect(attackDieProps.length).toBeGreaterThan(renderCount);
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: armed.presentationToken,
+      onTelemetry: armed.onTelemetry,
+      result: 10,
+      phase: 'ready',
+      sceneOverride: scene,
+      sidecarOverride: sidecar,
+      calibrationPose,
+    });
+    expect(attackDieProps.at(-1)?.sceneOverride).toBe(scene);
+    expect(attackDieProps.at(-1)?.sidecarOverride).toBe(sidecar);
+    expect(attackDieProps.at(-1)?.calibrationPose).toBe(calibrationPose);
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+    expect(screen.getByRole('status').textContent).toMatch(
+      /waiting for release/i
+    );
+    expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(onReleaseRequest.mock.calls[0][0]).toMatchObject({
+      eventId: 'attack:7:release',
+      presentationId: 'attack:7',
+      release: {
+        presentationId: 'attack:7',
+        presetId: 'lightning',
+      },
+    });
+    expect(Object.isFrozen(onReleaseRequest.mock.calls[0][0])).toBe(true);
+  });
+
+  it('rejects a release matching only a conflicting same-id replacement preset', () => {
+    const requestA = requested();
+    const releaseA = released();
+    const requestB = requested('attack:7', {
+      eventId: 'request:attack:7:replacement',
+      roller: { entityId: 'monster:2', role: 'monster' },
+      die: {
+        kind: 'd20',
+        presetId: 'newer-safe-preset',
+        authoritativeResult: 20,
+      },
+    });
+    const releaseB = {
+      ...released('attack:7', { presetId: 'newer-safe-preset' }),
+      eventId: 'release:attack:7:replacement',
+    };
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation([requestA], { onReleaseRequest });
+    const generation = attackDieProps.at(-1)!.presentationToken;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requestB, releaseB]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: generation,
+      result: 10,
+      phase: 'ready',
+      decorativeRelease: undefined,
+    });
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+    expect(screen.getByRole('status').textContent).not.toContain('10');
+    expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+
+    const redeliveryRenderCount = attackDieProps.length;
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requestA, releaseA]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: generation,
+      result: 10,
+      phase: 'settled',
+      decorativeRelease: releaseA.release,
+    });
+    expect(
+      attackDieProps
+        .slice(redeliveryRenderCount)
+        .every((props) => props.phase !== 'rolling')
+    ).toBe(true);
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+  });
+
+  it('retains original result and roller facts when a same-preset conflicting request releases', () => {
+    const scene = {} as AttackDie3DProps['sceneOverride'];
+    const sidecar = {} as NonNullable<AttackDie3DProps['sidecarOverride']>;
+    const calibrationPose = [0.1, 0.2, 0.3, 0.9] as const;
+    const developmentOnlyRenderer = { scene, sidecar, calibrationPose };
+    const requestA = requested();
+    const requestC = requested('attack:7', {
+      eventId: 'request:attack:7:same-preset-conflict',
+      roller: { entityId: 'monster:2', role: 'monster' },
+      die: {
+        kind: 'd20',
+        presetId: 'lightning',
+        authoritativeResult: 20,
+      },
+    });
+    const releaseC = {
+      ...released(),
+      eventId: 'release:attack:7:same-preset-conflict',
+    };
+    const view = renderPresentation([requestA], {
+      developmentOnlyRenderer,
+    });
+    const armed = attackDieProps.at(-1)!;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requestC, releaseC]}
+        witnessRole="roller"
+        reducedMotion
+        developmentOnlyRenderer={developmentOnlyRenderer}
+      />
+    );
+
+    const settled = attackDieProps.at(-1)!;
+    expect(settled).toMatchObject({
+      presentationToken: armed.presentationToken,
+      result: 10,
+      phase: 'settled',
+      sceneOverride: scene,
+      sidecarOverride: sidecar,
+      calibrationPose,
+    });
+    expect(settled.sceneOverride).toBe(scene);
+    expect(settled.sidecarOverride).toBe(sidecar);
+    expect(settled.calibrationPose).toBe(calibrationPose);
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    expect(screen.getByRole('status').textContent).toMatch(
+      /result 10 presented/i
+    );
+
+    act(() =>
+      settled.onTelemetry?.(
+        matchingTelemetry(settled, {
+          requestedResult: 20,
+          renderer: 'svg',
+          state: 'failed',
+          exactTargetHeld: false,
+        })
+      )
+    );
+    expect(screen.getByRole('status').textContent).toMatch(
+      /result 10 presented/i
+    );
+  });
+
+  it('retains settled request and release authority across same-id replacement', () => {
+    const scene = {} as AttackDie3DProps['sceneOverride'];
+    const sidecar = {} as NonNullable<AttackDie3DProps['sidecarOverride']>;
+    const calibrationPose = [0.1, 0.2, 0.3, 0.9] as const;
+    const developmentOnlyRenderer = { scene, sidecar, calibrationPose };
+    const requestA = requested();
+    const releaseA = released();
+    const requestB = requested('attack:7', {
+      eventId: 'request:attack:7:replacement',
+      roller: { entityId: 'monster:2', role: 'monster' },
+      die: {
+        kind: 'd20',
+        presetId: 'newer-safe-preset',
+        authoritativeResult: 20,
+      },
+    });
+    const releaseB = {
+      ...released('attack:7', { presetId: 'newer-safe-preset' }),
+      eventId: 'release:attack:7:replacement',
+    };
+    const view = renderPresentation([requestA, releaseA], {
+      developmentOnlyRenderer,
+    });
+    const settled = attackDieProps.at(-1)!;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requestB, releaseB]}
+        witnessRole="roller"
+        reducedMotion
+        developmentOnlyRenderer={developmentOnlyRenderer}
+      />
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: settled.presentationToken,
+      result: 10,
+      phase: 'settled',
+      decorativeRelease: releaseA.release,
+      sceneOverride: scene,
+      sidecarOverride: sidecar,
+      calibrationPose,
+    });
+    expect(attackDieProps.at(-1)?.sceneOverride).toBe(scene);
+    expect(attackDieProps.at(-1)?.sidecarOverride).toBe(sidecar);
+    expect(attackDieProps.at(-1)?.calibrationPose).toBe(calibrationPose);
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    expect(screen.getByRole('status').textContent).toMatch(
+      /result 10 presented/i
+    );
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+  });
+
+  it('accepts new request facts only when a new presentation id resets the keyed lifecycle', () => {
+    const scene = {} as AttackDie3DProps['sceneOverride'];
+    const sidecar = {} as NonNullable<AttackDie3DProps['sidecarOverride']>;
+    const calibrationPose = [0.1, 0.2, 0.3, 0.9] as const;
+    const developmentOnlyRenderer = { scene, sidecar, calibrationPose };
+    const view = renderPresentation([requested()], {
+      developmentOnlyRenderer,
+    });
+    const firstGeneration = attackDieProps.at(-1)!.presentationToken;
+    const nextRequest = requested('attack:8', {
+      eventId: 'request:attack:8:monster',
+      roller: { entityId: 'monster:2', role: 'monster' },
+      die: {
+        kind: 'd20',
+        presetId: 'lightning',
+        authoritativeResult: 12,
+      },
+    });
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Monster attack dice"
+        events={[nextRequest]}
+        witnessRole="roller"
+        reducedMotion
+        developmentOnlyRenderer={developmentOnlyRenderer}
+      />
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      result: 12,
+      phase: 'ready',
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+    });
+    expect(attackDieProps.at(-1)?.presentationToken).not.toBe(firstGeneration);
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+  });
+
   it('retains a live accepted release through observation, truncation, and same redelivery without replay', () => {
     const onReleaseRequest = vi.fn();
     const view = renderPresentation([requested()], { onReleaseRequest });

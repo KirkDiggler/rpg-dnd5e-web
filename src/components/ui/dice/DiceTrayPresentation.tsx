@@ -37,6 +37,7 @@ export interface DiceTrayPresentationProps {
 type PresentationPhase = 'armed' | 'rolling' | 'settled';
 
 interface PresentationLifecycle {
+  acceptedRequest: DicePresentationRequestedEvent;
   acceptedDeliveryIdentity: string;
   acceptedRelease?: DicePresentationReleasedEvent;
   releaseIdentity?: string;
@@ -92,16 +93,33 @@ function isDeliveryPrefix(prefixIdentity: string, deliveryIdentity: string) {
   );
 }
 
+function isReleaseCompatible(
+  request: DicePresentationRequestedEvent,
+  release: DicePresentationReleasedEvent
+) {
+  return (
+    release.presentationId === request.presentationId &&
+    release.release.presentationId === request.presentationId &&
+    release.release.presetId === request.die.presetId
+  );
+}
+
 function createLifecycle(input: {
+  acceptedRequest: DicePresentationRequestedEvent;
   acceptedDeliveryIdentity: string;
   release?: DicePresentationReleasedEvent;
   releaseIdentity?: string;
 }): PresentationLifecycle {
+  const release =
+    input.release && isReleaseCompatible(input.acceptedRequest, input.release)
+      ? input.release
+      : undefined;
   return {
+    acceptedRequest: input.acceptedRequest,
     acceptedDeliveryIdentity: input.acceptedDeliveryIdentity,
-    acceptedRelease: input.release,
-    releaseIdentity: input.releaseIdentity,
-    phase: input.release ? 'settled' : 'armed',
+    acceptedRelease: release,
+    releaseIdentity: release ? input.releaseIdentity : undefined,
+    phase: release ? 'settled' : 'armed',
     rendererFailed: false,
   };
 }
@@ -127,9 +145,14 @@ function lifecycleReducer(
       ? { ...state, phase: 'settled' }
       : state;
   }
+  const release =
+    action.release && isReleaseCompatible(state.acceptedRequest, action.release)
+      ? action.release
+      : undefined;
+  const releaseIdentity = release ? action.releaseIdentity : undefined;
   if (
     action.acceptedDeliveryIdentity === state.acceptedDeliveryIdentity &&
-    (state.acceptedRelease || action.releaseIdentity === state.releaseIdentity)
+    (state.acceptedRelease || releaseIdentity === state.releaseIdentity)
   )
     return state;
 
@@ -148,9 +171,9 @@ function lifecycleReducer(
   return {
     ...state,
     acceptedDeliveryIdentity: action.acceptedDeliveryIdentity,
-    acceptedRelease: action.release,
-    releaseIdentity: action.releaseIdentity,
-    phase: action.release
+    acceptedRelease: release,
+    releaseIdentity,
+    phase: release
       ? state.rendererFailed || !appendOnly
         ? 'settled'
         : 'rolling'
@@ -187,7 +210,12 @@ function DiceTrayPresentationInstance({
 }: PresentationInstanceProps) {
   const [lifecycle, dispatch] = useReducer(
     lifecycleReducer,
-    { acceptedDeliveryIdentity, release, releaseIdentity },
+    {
+      acceptedRequest: request,
+      acceptedDeliveryIdentity,
+      release,
+      releaseIdentity,
+    },
     createLifecycle
   );
   const generationRef = useRef<number | undefined>(undefined);
@@ -212,10 +240,11 @@ function DiceTrayPresentationInstance({
     });
   }, [acceptedDeliveryIdentity, release, releaseIdentity]);
 
-  const presentationId = request.presentationId;
-  const presetId = request.die.presetId;
-  const result = request.die.authoritativeResult;
-  const rollerRole = request.roller.role;
+  const acceptedRequest = lifecycle.acceptedRequest;
+  const presentationId = acceptedRequest.presentationId;
+  const presetId = acceptedRequest.die.presetId;
+  const result = acceptedRequest.die.authoritativeResult;
+  const rollerRole = acceptedRequest.roller.role;
 
   const handleReleaseRequest = useCallback(
     (gesture?: DiceGestureSample) => {
@@ -313,7 +342,7 @@ function DiceTrayPresentationInstance({
         rollerRole={rollerRole}
         witnessRole={witnessRole}
         phase={phase}
-        dice={[request.die]}
+        dice={[acceptedRequest.die]}
         release={lifecycle.acceptedRelease?.release}
         onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
