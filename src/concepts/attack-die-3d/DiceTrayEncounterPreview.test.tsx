@@ -16,6 +16,7 @@ describe('DiceTrayEncounterPreview', () => {
     const floatingLog = screen.getByTestId('floating-log');
 
     expect(preview.contains(map)).toBe(true);
+    expect(map.contains(drawer)).toBe(true);
     expect(drawer.contains(screen.getByText('Tray stub'))).toBe(true);
     expect(screen.getByLabelText(/Hide combat log/)).toBeTruthy();
     expect(floatingLog).toBeTruthy();

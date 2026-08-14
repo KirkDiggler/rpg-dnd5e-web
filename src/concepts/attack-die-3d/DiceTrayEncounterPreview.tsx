@@ -65,17 +65,17 @@ export function DiceTrayEncounterPreview({
         data-testid="dice-tray-neutral-map"
       >
         <span aria-hidden="true">Neutral encounter map</span>
+        <aside
+          className="dice-tray-left-drawer"
+          data-testid="dice-tray-left-drawer"
+          aria-label="Always visible dice drawer"
+        >
+          <p className="dice-tray-left-drawer__status">
+            Always visible · dice only
+          </p>
+          {tray}
+        </aside>
       </div>
-      <aside
-        className="dice-tray-left-drawer"
-        data-testid="dice-tray-left-drawer"
-        aria-label="Always visible dice drawer"
-      >
-        <p className="dice-tray-left-drawer__status">
-          Always visible · dice only
-        </p>
-        {tray}
-      </aside>
       <div className="dice-tray-encounter-preview__dock">
         <EncounterDock
           entityId="char-alice"

@@ -1657,7 +1657,7 @@
 .dice-tray-left-drawer {
   position: absolute;
   left: clamp(0.75rem, 2vw, 1.25rem);
-  bottom: 178px;
+  bottom: 10px;
   z-index: 5;
   width: 292px;
   padding: 0.6rem;
