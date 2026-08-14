@@ -38,6 +38,7 @@ type PresentationPhase = 'armed' | 'rolling' | 'settled';
 
 interface PresentationLifecycle {
   acceptedDeliveryIdentity: string;
+  acceptedRelease?: DicePresentationReleasedEvent;
   releaseIdentity?: string;
   phase: PresentationPhase;
   rendererFailed: boolean;
@@ -47,6 +48,7 @@ type LifecycleAction =
   | {
       type: 'reconcile-delivery';
       acceptedDeliveryIdentity: string;
+      release?: DicePresentationReleasedEvent;
       releaseIdentity?: string;
     }
   | { type: 'renderer-failed' }
@@ -92,12 +94,14 @@ function isDeliveryPrefix(prefixIdentity: string, deliveryIdentity: string) {
 
 function createLifecycle(input: {
   acceptedDeliveryIdentity: string;
+  release?: DicePresentationReleasedEvent;
   releaseIdentity?: string;
 }): PresentationLifecycle {
   return {
     acceptedDeliveryIdentity: input.acceptedDeliveryIdentity,
+    acceptedRelease: input.release,
     releaseIdentity: input.releaseIdentity,
-    phase: input.releaseIdentity ? 'settled' : 'armed',
+    phase: input.release ? 'settled' : 'armed',
     rendererFailed: false,
   };
 }
@@ -110,22 +114,22 @@ function lifecycleReducer(
     return {
       ...state,
       rendererFailed: true,
-      phase: state.releaseIdentity ? 'settled' : 'armed',
+      phase: state.acceptedRelease ? 'settled' : 'armed',
     };
   }
   if (action.type === 'renderer-observed') {
-    return state.phase === 'rolling' && state.releaseIdentity
+    return state.phase === 'rolling' && state.acceptedRelease
       ? { ...state, phase: 'settled' }
       : state;
   }
   if (action.type === 'fallback-complete') {
-    return state.phase === 'rolling' && state.releaseIdentity
+    return state.phase === 'rolling' && state.acceptedRelease
       ? { ...state, phase: 'settled' }
       : state;
   }
   if (
     action.acceptedDeliveryIdentity === state.acceptedDeliveryIdentity &&
-    action.releaseIdentity === state.releaseIdentity
+    (state.acceptedRelease || action.releaseIdentity === state.releaseIdentity)
   )
     return state;
 
@@ -133,23 +137,24 @@ function lifecycleReducer(
     state.acceptedDeliveryIdentity,
     action.acceptedDeliveryIdentity
   );
-  let phase = state.phase;
-  if (!action.releaseIdentity) {
-    phase = 'armed';
-  } else if (action.releaseIdentity !== state.releaseIdentity) {
-    phase =
-      state.rendererFailed || !appendOnly || state.releaseIdentity !== undefined
-        ? 'settled'
-        : 'rolling';
-  } else if (!appendOnly) {
-    phase = 'settled';
+  if (state.acceptedRelease) {
+    return {
+      ...state,
+      acceptedDeliveryIdentity: action.acceptedDeliveryIdentity,
+      phase: 'settled',
+    };
   }
 
   return {
     ...state,
     acceptedDeliveryIdentity: action.acceptedDeliveryIdentity,
+    acceptedRelease: action.release,
     releaseIdentity: action.releaseIdentity,
-    phase,
+    phase: action.release
+      ? state.rendererFailed || !appendOnly
+        ? 'settled'
+        : 'rolling'
+      : 'armed',
   };
 }
 
@@ -182,7 +187,7 @@ function DiceTrayPresentationInstance({
 }: PresentationInstanceProps) {
   const [lifecycle, dispatch] = useReducer(
     lifecycleReducer,
-    { acceptedDeliveryIdentity, releaseIdentity },
+    { acceptedDeliveryIdentity, release, releaseIdentity },
     createLifecycle
   );
   const generationRef = useRef<number | undefined>(undefined);
@@ -202,9 +207,10 @@ function DiceTrayPresentationInstance({
     dispatch({
       type: 'reconcile-delivery',
       acceptedDeliveryIdentity,
+      release,
       releaseIdentity,
     });
-  }, [acceptedDeliveryIdentity, releaseIdentity]);
+  }, [acceptedDeliveryIdentity, release, releaseIdentity]);
 
   const presentationId = request.presentationId;
   const presetId = request.die.presetId;
@@ -308,7 +314,7 @@ function DiceTrayPresentationInstance({
         witnessRole={witnessRole}
         phase={phase}
         dice={[request.die]}
-        release={release?.release}
+        release={lifecycle.acceptedRelease?.release}
         onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
         onFallbackPresentationComplete={handleFallbackPresentationComplete}

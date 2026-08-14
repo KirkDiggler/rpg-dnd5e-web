@@ -522,9 +522,121 @@ describe('DiceTrayPresentation', () => {
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
-  it('converges on truncation, reorder, and non-prefix replacement instead of replaying stale choreography', () => {
-    const view = renderPresentation([requested(), released()]);
-    expect(attackDieProps.at(-1)?.phase).toBe('settled');
+  it('retains a live accepted release through observation, truncation, and same redelivery without replay', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation([requested()], { onReleaseRequest });
+    const armed = attackDieProps.at(-1)!;
+    const generation = armed.presentationToken;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    const event = onReleaseRequest.mock.calls[0][0];
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), event]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    const rolling = attackDieProps.at(-1)!;
+    expect(rolling).toMatchObject({
+      presentationToken: generation,
+      phase: 'rolling',
+    });
+
+    act(() => rolling.onTelemetry?.(matchingTelemetry(rolling)));
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: generation,
+      phase: 'settled',
+    });
+    const settledRenderCount = attackDieProps.length;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested()]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: generation,
+      phase: 'settled',
+      decorativeRelease: event.release,
+    });
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    expect(screen.getByRole('status').textContent).toContain('10');
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), event]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: generation,
+      phase: 'settled',
+      decorativeRelease: event.release,
+    });
+    expect(
+      attackDieProps
+        .slice(settledRenderCount)
+        .every((props) => props.phase === 'settled')
+    ).toBe(true);
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains a hydrated release through truncation, reorder, and same redelivery', () => {
+    const firstRelease = released();
+    const view = renderPresentation([requested(), firstRelease]);
+    const generation = attackDieProps.at(-1)!.presentationToken;
+    expect(attackDieProps.at(-1)).toMatchObject({
+      phase: 'settled',
+      decorativeRelease: firstRelease.release,
+    });
+
+    for (const events of [
+      [requested()],
+      [firstRelease, requested()],
+      [requested(), firstRelease],
+    ]) {
+      view.rerender(
+        <DiceTrayPresentation
+          label="Player attack dice"
+          events={events}
+          witnessRole="roller"
+          reducedMotion
+        />
+      );
+      expect(attackDieProps.at(-1)).toMatchObject({
+        presentationToken: generation,
+        phase: 'settled',
+        decorativeRelease: firstRelease.release,
+      });
+      expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    }
+  });
+
+  it('retains the first accepted release when a conflicting later release replaces discontinuous delivery', () => {
+    const firstRelease = released();
+    const conflictingRelease = {
+      ...released('attack:7', {
+        variation: 19,
+        vector: [1, -1],
+        shake: 1,
+      }),
+      eventId: 'release:attack:7:conflict',
+    };
+    const view = renderPresentation([requested(), firstRelease]);
+    const generation = attackDieProps.at(-1)!.presentationToken;
 
     view.rerender(
       <DiceTrayPresentation
@@ -534,30 +646,51 @@ describe('DiceTrayPresentation', () => {
         reducedMotion
       />
     );
-    expect(attackDieProps.at(-1)?.phase).toBe('ready');
-
     view.rerender(
       <DiceTrayPresentation
         label="Player attack dice"
-        events={[released(), requested()]}
+        events={[requested(), conflictingRelease]}
         witnessRole="roller"
         reducedMotion
       />
     );
-    expect(attackDieProps.at(-1)?.phase).toBe('ready');
 
-    view.rerender(
-      <DiceTrayPresentation
-        label="Player attack dice"
-        events={[requested('attack:8'), released('attack:8')]}
-        witnessRole="roller"
-        reducedMotion
-      />
-    );
     expect(attackDieProps.at(-1)).toMatchObject({
-      result: 10,
+      presentationToken: generation,
       phase: 'settled',
+      decorativeRelease: firstRelease.release,
     });
+    expect(attackDieProps.at(-1)?.decorativeRelease).not.toEqual(
+      conflictingRelease.release
+    );
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+  });
+
+  it('resets sticky release state only for a new presentation id', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation([requested(), released()], {
+      onReleaseRequest,
+    });
+    const settledGeneration = attackDieProps.at(-1)!.presentationToken;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(attackDieProps.at(-1)?.presentationToken).not.toBe(
+      settledGeneration
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+    expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Grab d20' })).toBeTruthy();
+    expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -684,10 +817,13 @@ describe('DiceTrayPresentation', () => {
     );
     expect(attackDieProps.at(-1)).toMatchObject({
       presentationToken: token,
-      phase: 'ready',
+      phase: 'settled',
+      decorativeRelease: event.release,
     });
-    expect(screen.getByTestId('dice-face').textContent).toBe('?');
-    expect(screen.getByRole('status').textContent).not.toContain('10');
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    expect(screen.getByRole('status').textContent).toContain('10');
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
 
     view.rerender(
       <DiceTrayPresentation
