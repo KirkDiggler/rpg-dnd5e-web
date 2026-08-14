@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
 import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
 import { PropCompositionConcept } from '../author/PropCompositionConcept';
+import { AttackDie3DConcept } from './attack-die-3d/AttackDie3DConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
@@ -12,6 +13,7 @@ import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
 
 type ConceptPage =
+  | 'attack-die-3d'
   | 'class-selection'
   | 'encounter-dock'
   | 'combat-panel'
@@ -24,6 +26,7 @@ type ConceptPage =
   | 'asset-anchor-lab';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
+  { id: 'attack-die-3d', label: 'Attack Die 3D' },
   { id: 'class-selection', label: 'Class Selection' },
   { id: 'encounter-dock', label: 'Encounter Dock' },
   { id: 'combat-panel', label: 'Combat Panel' },
@@ -112,6 +115,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
       >
+        {activePage === 'attack-die-3d' && <AttackDie3DConcept />}
         {activePage === 'class-selection' && <ClassSelectionConcept />}
         {activePage === 'encounter-dock' && <EncounterDockConcept />}
         {activePage === 'combat-panel' && <CombatPanelConcept />}

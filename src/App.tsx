@@ -12,9 +12,10 @@ import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
-import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ConceptsView } from './concepts/ConceptsView';
+import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
+import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
@@ -49,14 +50,12 @@ type AppView =
   | 'author';
 
 function AppContent() {
-  // Stable gate: dev mode + encounterId URL param → render PlaytestHarness.
+  // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
   // /playtest is a permanent verification surface (design.md), not slated
   // for removal — this gate stays.
-  const [showPlaytestHarness] = useState(
-    () =>
-      import.meta.env.MODE === 'development' &&
-      !!new URLSearchParams(window.location.search).get('encounterId')
+  const [attackDieDevRoute] = useState(() =>
+    selectAttackDieDevRoute(import.meta.env.MODE, window.location.search)
   );
 
   // Same shape as showPlaytestHarness above: dev-only, no app chrome.
@@ -219,11 +218,12 @@ function AppContent() {
     }
   };
 
-  if (showPlaytestHarness) {
+  if (attackDieDevRoute.kind !== 'normal') {
     return (
-      <div className="min-h-screen">
-        <PlaytestHarness />
-      </div>
+      <AttackDieDevRouteSurface
+        route={attackDieDevRoute}
+        playerId={playerId || 'test-player'}
+      />
     );
   }
 
