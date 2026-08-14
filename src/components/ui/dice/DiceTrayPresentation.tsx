@@ -13,7 +13,10 @@ import {
   type DicePresentationReleasedEvent,
   type DicePresentationRequestedEvent,
 } from './dicePresentationEvent';
-import { createDicePresentationRelease } from './dicePresentationRelease';
+import {
+  createDicePresentationRelease,
+  type DiceGestureSample,
+} from './dicePresentationRelease';
 import { DiceTray3D } from './DiceTray3D';
 
 export interface DiceTrayPresentationDevelopmentRenderer {
@@ -208,38 +211,42 @@ function DiceTrayPresentationInstance({
   const result = request.die.authoritativeResult;
   const rollerRole = request.roller.role;
 
-  const handleReleaseRequest = useCallback(() => {
-    if (
-      !onReleaseRequest ||
-      lifecycle.phase !== 'armed' ||
-      rollerRole !== 'player' ||
-      witnessRole !== 'roller' ||
-      requestedRelease.current
-    )
-      return;
+  const handleReleaseRequest = useCallback(
+    (gesture?: DiceGestureSample) => {
+      if (
+        !onReleaseRequest ||
+        lifecycle.phase !== 'armed' ||
+        rollerRole !== 'player' ||
+        witnessRole !== 'roller' ||
+        requestedRelease.current
+      )
+        return;
 
-    const variation = presentationHash(presentationId) % 997;
-    const next: DicePresentationReleasedEvent = Object.freeze({
-      schemaVersion: 1,
-      type: 'dice-presentation-released',
-      eventId: releaseEventId(presentationId),
-      presentationId,
-      release: createDicePresentationRelease({
+      const variation = presentationHash(presentationId) % 997;
+      const next: DicePresentationReleasedEvent = Object.freeze({
+        schemaVersion: 1,
+        type: 'dice-presentation-released',
+        eventId: releaseEventId(presentationId),
         presentationId,
-        presetId,
-        variation,
-      }),
-    });
-    requestedRelease.current = true;
-    onReleaseRequest(next);
-  }, [
-    lifecycle.phase,
-    onReleaseRequest,
-    presentationId,
-    presetId,
-    rollerRole,
-    witnessRole,
-  ]);
+        release: createDicePresentationRelease({
+          presentationId,
+          presetId,
+          variation,
+          gesture,
+        }),
+      });
+      requestedRelease.current = true;
+      onReleaseRequest(next);
+    },
+    [
+      lifecycle.phase,
+      onReleaseRequest,
+      presentationId,
+      presetId,
+      rollerRole,
+      witnessRole,
+    ]
+  );
 
   const handleTelemetry = useCallback(
     (event: AttackDieTelemetry) => {

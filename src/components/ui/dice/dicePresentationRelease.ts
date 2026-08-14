@@ -10,6 +10,12 @@ const RELEASE_KEYS = [
   'shake',
 ] as const;
 
+export interface DiceGestureSample {
+  origin: readonly [number, number];
+  current: readonly [number, number];
+  distance: number;
+}
+
 export interface AttackDieDecorativeRelease {
   variation: number;
   vector: readonly [number, number];
@@ -26,6 +32,7 @@ interface CreateDicePresentationReleaseInput {
   presentationId: string;
   presetId: string;
   variation: number;
+  gesture?: DiceGestureSample;
 }
 
 function snapshotExactObject(
@@ -83,23 +90,45 @@ export function isDicePresetIdentifier(value: unknown): value is string {
   return typeof value === 'string' && PRESET_IDENTIFIER.test(value);
 }
 
+function clampRuntimeNumber(value: number, minimum: number, maximum: number) {
+  if (Number.isNaN(value)) return 0;
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
 export function createDicePresentationRelease({
   presentationId,
   presetId,
   variation,
+  gesture,
 }: CreateDicePresentationReleaseInput): DicePresentationRelease {
   if (!isDicePresentationIdentifier(presentationId))
     throw Error('presentation id is malformed');
   if (!isDicePresetIdentifier(presetId)) throw Error('preset id is malformed');
   if (!Number.isFinite(variation)) throw Error('variation must be finite');
 
+  const vector = gesture
+    ? Object.freeze([
+        clampRuntimeNumber(
+          (gesture.current[0] - gesture.origin[0]) / 160,
+          -1,
+          1
+        ),
+        clampRuntimeNumber(
+          (gesture.current[1] - gesture.origin[1]) / 160,
+          -1,
+          1
+        ),
+      ] as const)
+    : Object.freeze([0, 0] as const);
+  const shake = gesture ? clampRuntimeNumber(gesture.distance / 240, 0, 1) : 0;
+
   return Object.freeze({
     schemaVersion: 1,
     presentationId,
     presetId,
     variation: Math.abs(Math.trunc(variation)) % RELEASE_VARIATION_CARDINALITY,
-    vector: Object.freeze([0, 0] as const),
-    shake: 0,
+    vector,
+    shake,
   });
 }
 

@@ -76,7 +76,90 @@ describe('dice presentation release', () => {
     }
   );
 
-  it('creates a recursively frozen compact release with no authority or transport data', () => {
+  it('quantizes a gesture into one deterministic deeply frozen release', () => {
+    const input = {
+      presentationId: 'attack:7',
+      presetId: 'lightning',
+      variation: 7,
+      gesture: {
+        origin: [10, 20] as const,
+        current: [90, -20] as const,
+        distance: 120,
+      },
+    };
+
+    const first = createDicePresentationRelease(input);
+    const second = createDicePresentationRelease(input);
+
+    expect(first).toEqual({
+      schemaVersion: 1,
+      presentationId: 'attack:7',
+      presetId: 'lightning',
+      variation: 7,
+      vector: [0.5, -0.25],
+      shake: 0.5,
+    });
+    expect(second).toEqual(first);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(first.vector)).toBe(true);
+  });
+
+  it('clamps excess gesture values and sanitizes hostile runtime numerics', () => {
+    const release = createDicePresentationRelease({
+      presentationId: 'attack:7',
+      presetId: 'lightning',
+      variation: 7,
+      gesture: {
+        origin: [Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY],
+        current: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
+        distance: Number.POSITIVE_INFINITY,
+      },
+    });
+    const neutralized = createDicePresentationRelease({
+      presentationId: 'attack:8',
+      presetId: 'lightning',
+      variation: 7,
+      gesture: {
+        origin: [Number.POSITIVE_INFINITY, Number.NaN],
+        current: [Number.POSITIVE_INFINITY, Number.NaN],
+        distance: Number.NaN,
+      },
+    });
+    const negativeDistance = createDicePresentationRelease({
+      presentationId: 'attack:9',
+      presetId: 'lightning',
+      variation: 7,
+      gesture: {
+        origin: [500, -500],
+        current: [-500, 500],
+        distance: Number.NEGATIVE_INFINITY,
+      },
+    });
+
+    expect(release.vector).toEqual([1, -1]);
+    expect(release.shake).toBe(1);
+    expect(neutralized.vector).toEqual([0, 0]);
+    expect(neutralized.shake).toBe(0);
+    expect(negativeDistance.vector).toEqual([-1, 1]);
+    expect(negativeDistance.shake).toBe(0);
+    expect(parseDicePresentationRelease(release)).toEqual(release);
+    expect(parseDicePresentationRelease(neutralized)).toEqual(neutralized);
+    expect(parseDicePresentationRelease(negativeDistance)).toEqual(
+      negativeDistance
+    );
+    for (const value of [
+      ...release.vector,
+      release.shake,
+      ...neutralized.vector,
+      neutralized.shake,
+      ...negativeDistance.vector,
+      negativeDistance.shake,
+    ]) {
+      expect(Number.isFinite(value)).toBe(true);
+    }
+  });
+
+  it('creates compact zero gesture defaults without samples, authority, or transport data', () => {
     const release = createDicePresentationRelease({
       presentationId: 'attack:7',
       presetId: 'lightning',
@@ -94,7 +177,7 @@ describe('dice presentation release', () => {
     expect(Object.isFrozen(release)).toBe(true);
     expect(Object.isFrozen(release.vector)).toBe(true);
     expect(JSON.stringify(release)).not.toMatch(
-      /result|hit|damage|target|https?:\/\//i
+      /origin|current|distance|pointer|event|result|hit|damage|target|url|renderer|transport|https?:\/\//i
     );
   });
 

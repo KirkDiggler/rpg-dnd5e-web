@@ -1,9 +1,17 @@
-import { useCallback, useRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { AttackDie3D, type AttackDie3DProps } from './AttackDie3D';
 import type { QuaternionTuple } from './attackDieContract';
 import {
   isDicePresentationIdentifier,
   isDicePresetIdentifier,
+  type DiceGestureSample,
   type DicePresentationRelease,
 } from './dicePresentationRelease';
 import { DiceTray } from './DiceTray';
@@ -24,13 +32,31 @@ export interface DiceTray3DProps {
   phase: 'armed' | 'rolling' | 'settled';
   dice: readonly DiceTray3DItem[];
   release?: DicePresentationRelease;
-  onReleaseRequest?: () => void;
+  onReleaseRequest?: (gesture?: DiceGestureSample) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onFallbackPresentationComplete?: () => void;
   reducedMotion?: boolean;
   sceneOverride?: AttackDie3DProps['sceneOverride'];
   sidecarOverride?: AttackDie3DProps['sidecarOverride'];
   calibrationPose?: QuaternionTuple;
+}
+
+interface ActiveDiceGesture {
+  pointerId: number;
+  requestIdentity: string;
+  origin: readonly [number, number];
+  current: readonly [number, number];
+  distance: number;
+  captureTarget: HTMLButtonElement;
+}
+
+function safelyReleaseCapture(active: ActiveDiceGesture) {
+  try {
+    if (active.captureTarget.hasPointerCapture(active.pointerId))
+      active.captureTarget.releasePointerCapture(active.pointerId);
+  } catch {
+    // Capture may already be gone after browser cancellation or element removal.
+  }
 }
 
 function validDieInput(
@@ -74,28 +100,154 @@ export function DiceTray3D({
     ? `${presentationId}:${rendererGeneration}`
     : undefined;
   const committedRequest = useRef<string | undefined>(undefined);
-  const requestRelease = useCallback(() => {
-    if (
-      !valid ||
-      !requestIdentity ||
-      phase !== 'armed' ||
-      rollerRole !== 'player' ||
-      witnessRole !== 'roller' ||
-      !onReleaseRequest ||
-      committedRequest.current === requestIdentity
-    )
-      return;
+  const activeGesture = useRef<ActiveDiceGesture | undefined>(undefined);
+  const [grabbed, setGrabbed] = useState(false);
+  const canInteract =
+    valid &&
+    requestIdentity !== undefined &&
+    phase === 'armed' &&
+    rollerRole === 'player' &&
+    witnessRole === 'roller' &&
+    onReleaseRequest !== undefined;
+  const requestRelease = useCallback(
+    (gesture?: DiceGestureSample) => {
+      if (
+        !valid ||
+        !requestIdentity ||
+        phase !== 'armed' ||
+        rollerRole !== 'player' ||
+        witnessRole !== 'roller' ||
+        !onReleaseRequest ||
+        committedRequest.current === requestIdentity
+      )
+        return;
 
-    committedRequest.current = requestIdentity;
-    onReleaseRequest();
-  }, [
-    onReleaseRequest,
-    phase,
-    requestIdentity,
-    rollerRole,
-    valid,
-    witnessRole,
-  ]);
+      committedRequest.current = requestIdentity;
+      if (gesture === undefined) onReleaseRequest();
+      else onReleaseRequest(gesture);
+    },
+    [onReleaseRequest, phase, requestIdentity, rollerRole, valid, witnessRole]
+  );
+
+  const cancelGesture = useCallback((pointerId: number) => {
+    const active = activeGesture.current;
+    if (!active || active.pointerId !== pointerId) return;
+    activeGesture.current = undefined;
+    setGrabbed(false);
+    safelyReleaseCapture(active);
+  }, []);
+
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (
+        !canInteract ||
+        !requestIdentity ||
+        committedRequest.current === requestIdentity ||
+        activeGesture.current
+      )
+        return;
+
+      const pointerId = event.pointerId;
+      const point = [event.clientX, event.clientY] as const;
+      const active: ActiveDiceGesture = {
+        pointerId,
+        requestIdentity,
+        origin: point,
+        current: point,
+        distance: 0,
+        captureTarget: event.currentTarget,
+      };
+      activeGesture.current = active;
+      try {
+        active.captureTarget.setPointerCapture(pointerId);
+        if (!active.captureTarget.hasPointerCapture(pointerId)) {
+          activeGesture.current = undefined;
+          return;
+        }
+      } catch {
+        activeGesture.current = undefined;
+        return;
+      }
+      setGrabbed(true);
+    },
+    [canInteract, requestIdentity]
+  );
+
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const active = activeGesture.current;
+      if (
+        !active ||
+        active.pointerId !== event.pointerId ||
+        active.requestIdentity !== requestIdentity
+      )
+        return;
+
+      const current = [event.clientX, event.clientY] as const;
+      activeGesture.current = {
+        ...active,
+        current,
+        distance:
+          active.distance +
+          Math.hypot(
+            current[0] - active.current[0],
+            current[1] - active.current[1]
+          ),
+      };
+    },
+    [requestIdentity]
+  );
+
+  const handlePointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const active = activeGesture.current;
+      if (!active || active.pointerId !== event.pointerId) return;
+      if (!canInteract || active.requestIdentity !== requestIdentity) {
+        cancelGesture(event.pointerId);
+        return;
+      }
+
+      const current = [event.clientX, event.clientY] as const;
+      const sample: DiceGestureSample = {
+        origin: [active.origin[0], active.origin[1]],
+        current,
+        distance:
+          active.distance +
+          Math.hypot(
+            current[0] - active.current[0],
+            current[1] - active.current[1]
+          ),
+      };
+      activeGesture.current = undefined;
+      setGrabbed(false);
+      safelyReleaseCapture(active);
+      requestRelease(sample);
+    },
+    [canInteract, cancelGesture, requestIdentity, requestRelease]
+  );
+
+  const handlePointerCancel = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      cancelGesture(event.pointerId);
+    },
+    [cancelGesture]
+  );
+
+  useLayoutEffect(() => {
+    const active = activeGesture.current;
+    if (active && (!canInteract || active.requestIdentity !== requestIdentity))
+      cancelGesture(active.pointerId);
+  }, [canInteract, cancelGesture, requestIdentity]);
+
+  useEffect(
+    () => () => {
+      const active = activeGesture.current;
+      if (!active) return;
+      activeGesture.current = undefined;
+      safelyReleaseCapture(active);
+    },
+    []
+  );
 
   if (!valid) {
     return (
@@ -112,15 +264,12 @@ export function DiceTray3D({
     release.presetId === item.presetId
       ? release
       : undefined;
-  const controls =
-    phase === 'armed' &&
-    rollerRole === 'player' &&
-    witnessRole === 'roller' &&
-    onReleaseRequest ? (
-      <button type="button" onClick={requestRelease}>
-        Roll d20
-      </button>
-    ) : undefined;
+  const controls = canInteract ? (
+    <button type="button" onClick={() => requestRelease()}>
+      Roll d20
+    </button>
+  ) : undefined;
+  const reviewGrabbed = canInteract && grabbed;
   const fallback = (
     <DiceTray
       phase={rendererPhase}
@@ -140,6 +289,7 @@ export function DiceTray3D({
       <div
         className="dice-tray-3d-renderer"
         data-testid="dice-tray-3d-renderer"
+        data-grabbed={reviewGrabbed ? 'true' : 'false'}
       >
         {item.presetId === 'lightning' ? (
           <AttackDie3D
@@ -164,6 +314,20 @@ export function DiceTray3D({
             onPresentationComplete={
               phase === 'rolling' ? onFallbackPresentationComplete : undefined
             }
+          />
+        )}
+        {canInteract && (
+          <button
+            type="button"
+            className="dice-tray-3d-grab-target"
+            aria-label="Grab d20"
+            data-grabbed={reviewGrabbed ? 'true' : 'false'}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+            onLostPointerCapture={handlePointerCancel}
+            onClick={() => requestRelease()}
           />
         )}
       </div>

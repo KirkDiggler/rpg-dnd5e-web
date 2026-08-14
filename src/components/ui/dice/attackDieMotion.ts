@@ -35,6 +35,50 @@ export function attackDieRollTranslation(
   return progress === 1 ? LEFT_RESTING_TRANSLATION : [x, y, z];
 }
 
+function boundedDecoration(value: number, minimum: number, maximum: number) {
+  return Number.isFinite(value)
+    ? Math.min(maximum, Math.max(minimum, value))
+    : 0;
+}
+
+function gestureDecorativeSeed(release?: AttackDieDecorativeRelease) {
+  if (!release) return undefined;
+  const variation = boundedDecoration(release.variation, 0, 996);
+  const vectorX = boundedDecoration(release.vector[0], -1, 1);
+  const vectorY = boundedDecoration(release.vector[1], -1, 1);
+  const shake = boundedDecoration(release.shake, 0, 1);
+  if (vectorX === 0 && vectorY === 0 && shake === 0) return variation;
+  return variation + vectorX * 173 + vectorY * 269 + shake * 419;
+}
+
+function gestureRollTranslation(
+  elapsedMs: number,
+  reducedMotion: boolean,
+  release?: AttackDieDecorativeRelease
+): AttackDieTranslation {
+  const base = attackDieRollTranslation(elapsedMs, reducedMotion);
+  if (reducedMotion || !release) return base;
+
+  const variation = boundedDecoration(release.variation, 0, 996);
+  const vectorX = boundedDecoration(release.vector[0], -1, 1);
+  const vectorY = boundedDecoration(release.vector[1], -1, 1);
+  const shake = boundedDecoration(release.shake, 0, 1);
+  if (vectorX === 0 && vectorY === 0 && shake === 0) return base;
+
+  const progress = Math.min(1, Math.max(0, elapsedMs / 1800));
+  const flightEnvelope =
+    progress === 0 || progress === 1 ? 0 : Math.sin(progress * Math.PI);
+  const shakeWave =
+    Math.sin(progress * Math.PI * 6 + variation * 0.013) * shake;
+  return [
+    base[0] + vectorX * 0.18 * flightEnvelope,
+    base[1] -
+      vectorY * 0.14 * flightEnvelope +
+      shakeWave * 0.04 * flightEnvelope,
+    base[2] - shake * 0.1 * flightEnvelope,
+  ];
+}
+
 export function attackDiePoseForPhase(input: {
   phase: DiceTrayPhase;
   elapsedMs: number;
@@ -52,9 +96,9 @@ export function attackDiePoseForPhase(input: {
         reducedMotion,
         current,
         target,
-        decorativeSeed: release?.variation,
+        decorativeSeed: gestureDecorativeSeed(release),
       }),
-      translation: attackDieRollTranslation(elapsedMs, reducedMotion),
+      translation: gestureRollTranslation(elapsedMs, reducedMotion, release),
     };
   }
 

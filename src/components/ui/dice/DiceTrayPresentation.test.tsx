@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { startTransition, StrictMode, Suspense, useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
 import { parseDicePresentationEvent } from './dicePresentationEvent';
 import type { DicePresentationRelease } from './dicePresentationRelease';
@@ -13,6 +13,40 @@ vi.mock('./AttackDie3D', () => ({
     return <div data-testid="attack-die-3d-mock">{props.fallback}</div>;
   },
 }));
+
+let capturedPointers: WeakMap<HTMLElement, Set<number>>;
+
+beforeEach(() => {
+  capturedPointers = new WeakMap();
+  Object.defineProperties(HTMLElement.prototype, {
+    setPointerCapture: {
+      configurable: true,
+      value(this: HTMLElement, pointerId: number) {
+        const captured = capturedPointers.get(this) ?? new Set<number>();
+        captured.add(pointerId);
+        capturedPointers.set(this, captured);
+      },
+    },
+    hasPointerCapture: {
+      configurable: true,
+      value(this: HTMLElement, pointerId: number) {
+        return capturedPointers.get(this)?.has(pointerId) ?? false;
+      },
+    },
+    releasePointerCapture: {
+      configurable: true,
+      value(this: HTMLElement, pointerId: number) {
+        capturedPointers.get(this)?.delete(pointerId);
+      },
+    },
+  });
+});
+
+afterEach(() => {
+  delete (HTMLElement.prototype as Partial<HTMLElement>).setPointerCapture;
+  delete (HTMLElement.prototype as Partial<HTMLElement>).hasPointerCapture;
+  delete (HTMLElement.prototype as Partial<HTMLElement>).releasePointerCapture;
+});
 
 function requested(
   presentationId = 'attack:7',
@@ -118,6 +152,7 @@ describe('DiceTrayPresentation', () => {
     const view = renderPresentation([requested()]);
 
     expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
 
     const onReleaseRequest = vi.fn();
     view.rerender(
@@ -153,6 +188,8 @@ describe('DiceTrayPresentation', () => {
       release: {
         presentationId: 'attack:7',
         presetId: 'lightning',
+        vector: [0, 0],
+        shake: 0,
       },
     });
     expect(Object.isFrozen(event)).toBe(true);
@@ -164,6 +201,83 @@ describe('DiceTrayPresentation', () => {
     expect(JSON.stringify(events)).toBe(before);
     expect(attackDieProps.at(-1)?.phase).toBe('ready');
     expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+  });
+
+  it('wraps one local gesture as one compact frozen event and forwards it unchanged only after append', () => {
+    const events = Object.freeze([requested()]);
+    const before = JSON.stringify(events);
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation(events, {
+      reducedMotion: false,
+      onReleaseRequest,
+    });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    const armed = attackDieProps.at(-1)!;
+
+    fireEvent.pointerDown(grab, {
+      pointerId: 21,
+      clientX: 10,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(grab, {
+      pointerId: 21,
+      clientX: 90,
+      clientY: 20,
+    });
+
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    expect(attackDieProps.at(-1)?.presentationToken).toBe(
+      armed.presentationToken
+    );
+    expect(attackDieProps.at(-1)?.onTelemetry).toBe(armed.onTelemetry);
+
+    fireEvent.pointerUp(grab, {
+      pointerId: 21,
+      clientX: 90,
+      clientY: -20,
+    });
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    const event = onReleaseRequest.mock.calls[0][0];
+    expect(parseDicePresentationEvent(event)).toEqual(event);
+    expect(event.release).toEqual({
+      schemaVersion: 1,
+      presentationId: 'attack:7',
+      presetId: 'lightning',
+      variation: event.release.variation,
+      vector: [0.5, -0.25],
+      shake: 0.5,
+    });
+    expect(Object.isFrozen(event)).toBe(true);
+    expect(Object.isFrozen(event.release)).toBe(true);
+    expect(Object.isFrozen(event.release.vector)).toBe(true);
+    expect(JSON.stringify(event)).not.toMatch(
+      /origin|current|distance|pointer|presentationToken|renderer|result|hit|damage|target|transport|https?:\/\//i
+    );
+    expect(JSON.stringify(events)).toBe(before);
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    expect(screen.getByRole('button', { name: 'Grab d20' })).toBeTruthy();
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[structuredClone(requested()), structuredClone(event)]}
+        witnessRole="roller"
+        reducedMotion={false}
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      result: 10,
+      phase: 'rolling',
+      decorativeRelease: event.release,
+      presentationToken: armed.presentationToken,
+      onTelemetry: armed.onTelemetry,
+    });
+    expect(attackDieProps.at(-1)?.decorativeRelease).toEqual(event.release);
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
   });
 
   it('starts rolling only when an immutable accepted append delivers the requested event', () => {
@@ -464,6 +578,7 @@ describe('DiceTrayPresentation', () => {
       );
 
       expect(screen.queryByRole('button', { name: /roll/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
       expect(onReleaseRequest).not.toHaveBeenCalled();
     }
   );

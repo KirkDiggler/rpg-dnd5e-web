@@ -135,7 +135,7 @@ describe('phase-aware pose', () => {
     }
   );
 
-  it('uses the existing rolling trajectory and decorative variation', () => {
+  it('uses the existing rolling trajectory and decorative variation for zero gesture', () => {
     const release = { variation: 17, vector: [0, 0] as const, shake: 0 };
     const pose = attackDiePoseForPhase({
       phase: 'rolling',
@@ -156,6 +156,92 @@ describe('phase-aware pose', () => {
       }),
       translation: attackDieRollTranslation(500, false),
     });
+  });
+
+  it('uses vector and shake only to vary bounded mid-roll decoration', () => {
+    const base = {
+      phase: 'rolling' as const,
+      elapsedMs: 500,
+      reducedMotion: false,
+      current,
+      target,
+    };
+    const first = attackDiePoseForPhase({
+      ...base,
+      release: { variation: 17, vector: [0.75, -0.5], shake: 0.8 },
+    });
+    const second = attackDiePoseForPhase({
+      ...base,
+      release: { variation: 17, vector: [-0.6, 0.9], shake: 0.25 },
+    });
+
+    expect(first.translation).not.toEqual(second.translation);
+    expect(first.quaternion).not.toEqual(second.quaternion);
+    for (const value of [...first.translation, ...second.translation]) {
+      expect(Number.isFinite(value)).toBe(true);
+      expect(Math.abs(value)).toBeLessThan(2);
+    }
+  });
+
+  it('removes gesture decoration at completion and exact settled rest', () => {
+    const releases = [
+      { variation: 17, vector: [0.75, -0.5] as const, shake: 0.8 },
+      { variation: 17, vector: [-0.6, 0.9] as const, shake: 0.25 },
+    ];
+
+    const completed = releases.map((release) =>
+      attackDiePoseForPhase({
+        phase: 'rolling',
+        elapsedMs: 1900,
+        reducedMotion: false,
+        current: target,
+        target,
+        release,
+      })
+    );
+    const settled = releases.map((release) =>
+      attackDiePoseForPhase({
+        phase: 'settled',
+        elapsedMs: 500,
+        reducedMotion: false,
+        current,
+        target,
+        release,
+      })
+    );
+
+    expect(completed[0].translation).toEqual(
+      attackDieRollTranslation(1900, false)
+    );
+    expect(completed[1].translation).toEqual(completed[0].translation);
+    expect(completed[0].quaternion).toBe(target);
+    expect(completed[1].quaternion).toBe(target);
+    expect(settled[0].translation).toEqual(completed[0].translation);
+    expect(settled[1].translation).toEqual(completed[0].translation);
+    expect(settled[0].quaternion).toBe(target);
+    expect(settled[1].quaternion).toBe(target);
+  });
+
+  it('ignores gesture decoration for reduced motion and observes the exact target', () => {
+    const releases = [
+      { variation: 17, vector: [0.75, -0.5] as const, shake: 0.8 },
+      { variation: 17, vector: [-0.6, 0.9] as const, shake: 0.25 },
+    ];
+    const poses = releases.map((release) =>
+      attackDiePoseForPhase({
+        phase: 'rolling',
+        elapsedMs: 16,
+        reducedMotion: true,
+        current,
+        target,
+        release,
+      })
+    );
+
+    expect(poses[0]).toEqual(poses[1]);
+    expect(poses[0].quaternion).toBe(target);
+    expect(poses[0].translation).toEqual(attackDieRollTranslation(1900, false));
+    expect(poses[0].observeNow).toBe(true);
   });
 
   it.each(['settled', 'exiting'] as const)(

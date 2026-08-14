@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AttackDie3DProps } from './AttackDie3D';
 import type { AttackDieRuntimeSidecar } from './attackDieContract';
 import type { DicePresentationRelease } from './dicePresentationRelease';
@@ -33,6 +34,44 @@ const release: DicePresentationRelease = Object.freeze({
 const sceneOverride = {} as AttackDie3DProps['sceneOverride'];
 const sidecarOverride = {} as AttackDieRuntimeSidecar;
 const calibrationPose = [0.1, 0.2, 0.3, 0.4] as const;
+
+let capturedPointers: WeakMap<HTMLElement, Set<number>>;
+let setPointerCapture: ReturnType<typeof vi.fn>;
+let hasPointerCapture: ReturnType<typeof vi.fn>;
+let releasePointerCapture: ReturnType<typeof vi.fn>;
+let emitLostCaptureOnRelease: boolean;
+
+beforeEach(() => {
+  capturedPointers = new WeakMap();
+  emitLostCaptureOnRelease = false;
+  setPointerCapture = vi.fn(function (this: HTMLElement, pointerId: number) {
+    const captured = capturedPointers.get(this) ?? new Set<number>();
+    captured.add(pointerId);
+    capturedPointers.set(this, captured);
+  });
+  hasPointerCapture = vi.fn(function (this: HTMLElement, pointerId: number) {
+    return capturedPointers.get(this)?.has(pointerId) ?? false;
+  });
+  releasePointerCapture = vi.fn(function (
+    this: HTMLElement,
+    pointerId: number
+  ) {
+    capturedPointers.get(this)?.delete(pointerId);
+    if (emitLostCaptureOnRelease)
+      fireEvent.lostPointerCapture(this, { pointerId });
+  });
+  Object.defineProperties(HTMLElement.prototype, {
+    setPointerCapture: { configurable: true, value: setPointerCapture },
+    hasPointerCapture: { configurable: true, value: hasPointerCapture },
+    releasePointerCapture: { configurable: true, value: releasePointerCapture },
+  });
+});
+
+afterEach(() => {
+  delete (HTMLElement.prototype as Partial<HTMLElement>).setPointerCapture;
+  delete (HTMLElement.prototype as Partial<HTMLElement>).hasPointerCapture;
+  delete (HTMLElement.prototype as Partial<HTMLElement>).releasePointerCapture;
+});
 
 function renderTray(
   dice: readonly DiceTray3DItem[] = [die],
@@ -77,7 +116,7 @@ describe('DiceTray3D', () => {
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
   });
 
-  it('arms a player roller without revealing the 3D or SVG result', () => {
+  it('arms a player roller with separate Roll and Grab controls without revealing the result', () => {
     const onReleaseRequest = vi.fn();
     renderTray([die], { phase: 'armed', onReleaseRequest });
 
@@ -86,6 +125,11 @@ describe('DiceTray3D', () => {
         .getByRole('button', { name: 'Roll d20' })
         .closest('.dice-tray-3d-shell--compact .dice-tray-3d-shell__controls')
     ).toBeTruthy();
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    expect(grab.closest('.dice-tray-3d-renderer')).toBeTruthy();
+    fireEvent.pointerDown(grab, { pointerId: 17, clientX: 10, clientY: 20 });
+    expect(setPointerCapture).toHaveBeenCalledWith(17);
+    expect(grab.getAttribute('data-grabbed')).toBe('true');
     expect(attackDieProps[0]).toMatchObject({ result: 10, phase: 'ready' });
     expect(screen.getByTestId('dice-face').textContent).toBe('?');
     expect(onReleaseRequest).not.toHaveBeenCalled();
@@ -95,6 +139,7 @@ describe('DiceTray3D', () => {
     const view = renderTray([die], { phase: 'armed' });
 
     expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
 
     const onReleaseRequest = vi.fn();
     view.rerender(
@@ -122,6 +167,7 @@ describe('DiceTray3D', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
 
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(onReleaseRequest).toHaveBeenCalledWith();
     expect(attackDieProps.at(-1)?.phase).toBe('ready');
     view.rerender(
       <DiceTray3D
@@ -142,7 +188,263 @@ describe('DiceTray3D', () => {
       phase: 'rolling',
       decorativeRelease: release,
     });
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps moves local, accumulates path distance, and commits one plain outside release', () => {
+    const onReleaseRequest = vi.fn();
+    renderTray([die], {
+      phase: 'armed',
+      reducedMotion: false,
+      onReleaseRequest,
+    });
+    const renderer = screen.getByTestId('dice-tray-3d-renderer');
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    const dieNode = screen.getByTestId('attack-die-3d-mock');
+    const initialProps = attackDieProps.at(-1)!;
+
+    fireEvent.pointerDown(grab, { pointerId: 4, clientX: 10, clientY: 20 });
+    fireEvent.pointerMove(grab, { pointerId: 4, clientX: 40, clientY: 60 });
+
+    expect(renderer.getAttribute('data-grabbed')).toBe('true');
+    expect(grab.getAttribute('data-grabbed')).toBe('true');
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+    expect(screen.getByTestId('attack-die-3d-mock')).toBe(dieNode);
+    expect(attackDieProps.at(-1)).toMatchObject({
+      result: 10,
+      presentationToken: initialProps.presentationToken,
+      onTelemetry: initialProps.onTelemetry,
+    });
+
+    fireEvent.pointerUp(grab, { pointerId: 4, clientX: 90, clientY: 60 });
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(onReleaseRequest).toHaveBeenCalledWith({
+      origin: [10, 20],
+      current: [90, 60],
+      distance: 100,
+    });
+    expect(onReleaseRequest.mock.calls[0][0]).toEqual({
+      origin: [10, 20],
+      current: [90, 60],
+      distance: 100,
+    });
+    expect(renderer.getAttribute('data-grabbed')).toBe('false');
+    expect(releasePointerCapture).toHaveBeenCalledWith(4);
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+  });
+
+  it('commits pointerup before capture loss and ignores compatibility click and duplicate up', () => {
+    const onReleaseRequest = vi.fn();
+    renderTray([die], { phase: 'armed', onReleaseRequest });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    emitLostCaptureOnRelease = true;
+
+    fireEvent.pointerDown(grab, { pointerId: 5, clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(grab, { pointerId: 5, clientX: 20, clientY: 10 });
+    fireEvent.click(grab);
+    fireEvent.pointerUp(grab, { pointerId: 5, clientX: 30, clientY: 20 });
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(onReleaseRequest).toHaveBeenCalledWith({
+      origin: [0, 0],
+      current: [20, 10],
+      distance: Math.hypot(20, 10),
+    });
+    expect(grab.getAttribute('data-grabbed')).toBe('false');
+  });
+
+  it('ignores unrelated pointer ids without mutating or cancelling the active gesture', () => {
+    const onReleaseRequest = vi.fn();
+    renderTray([die], { phase: 'armed', onReleaseRequest });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+
+    fireEvent.pointerDown(grab, { pointerId: 1, clientX: 10, clientY: 20 });
+    fireEvent.pointerDown(grab, { pointerId: 2, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(grab, { pointerId: 2, clientX: 200, clientY: 200 });
+    fireEvent.pointerUp(grab, { pointerId: 2, clientX: 300, clientY: 300 });
+    fireEvent.pointerCancel(grab, { pointerId: 2 });
+    fireEvent.lostPointerCapture(grab, { pointerId: 2 });
+
+    expect(grab.getAttribute('data-grabbed')).toBe('true');
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+    expect(setPointerCapture).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerUp(grab, { pointerId: 1, clientX: 30, clientY: 40 });
+    expect(onReleaseRequest).toHaveBeenCalledWith({
+      origin: [10, 20],
+      current: [30, 40],
+      distance: Math.hypot(20, 20),
+    });
+  });
+
+  it.each(['cancel', 'lost capture'] as const)(
+    'returns to armed without release after matching %s',
+    (ending) => {
+      const onReleaseRequest = vi.fn();
+      renderTray([die], { phase: 'armed', onReleaseRequest });
+      const grab = screen.getByRole('button', { name: 'Grab d20' });
+
+      fireEvent.pointerDown(grab, {
+        pointerId: 6,
+        clientX: 10,
+        clientY: 20,
+      });
+      fireEvent.pointerMove(grab, {
+        pointerId: 6,
+        clientX: 40,
+        clientY: 50,
+      });
+      if (ending === 'cancel') fireEvent.pointerCancel(grab, { pointerId: 6 });
+      else fireEvent.lostPointerCapture(grab, { pointerId: 6 });
+
+      expect(grab.getAttribute('data-grabbed')).toBe('false');
+      expect(onReleaseRequest).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+    }
+  );
+
+  it('fails pointer capture into a deterministic armed and not-grabbed state', () => {
+    const onReleaseRequest = vi.fn();
+    setPointerCapture.mockImplementationOnce(() => {
+      throw Error('capture unavailable');
+    });
+    renderTray([die], { phase: 'armed', onReleaseRequest });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+
+    expect(() =>
+      fireEvent.pointerDown(grab, {
+        pointerId: 9,
+        clientX: 10,
+        clientY: 20,
+      })
+    ).not.toThrow();
+    fireEvent.pointerUp(grab, { pointerId: 9, clientX: 90, clientY: 90 });
+
+    expect(grab.getAttribute('data-grabbed')).toBe('false');
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+  });
+
+  it('cleans held capture on unmount without emitting', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderTray([die], { phase: 'armed', onReleaseRequest });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, { pointerId: 10, clientX: 10, clientY: 20 });
+
+    view.unmount();
+
+    expect(releasePointerCapture).toHaveBeenCalledTimes(1);
+    expect(releasePointerCapture).toHaveBeenCalledWith(10);
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+  });
+
+  it('cleans held capture on authority loss without emitting', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderTray([die], { phase: 'armed', onReleaseRequest });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, { pointerId: 13, clientX: 10, clientY: 20 });
+
+    view.rerender(
+      <DiceTray3D
+        label="Player attack tray"
+        presentationId="attack:7"
+        rendererGeneration={-7}
+        rollerRole="player"
+        witnessRole="spectator"
+        phase="armed"
+        dice={[die]}
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(releasePointerCapture).toHaveBeenCalledTimes(1);
+    expect(releasePointerCapture).toHaveBeenCalledWith(13);
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+    expect(
+      screen.getByTestId('dice-tray-3d-renderer').getAttribute('data-grabbed')
+    ).toBe('false');
+  });
+
+  it('keeps held-capture cleanup idempotent under StrictMode', () => {
+    const onReleaseRequest = vi.fn();
+    const view = render(
+      <StrictMode>
+        <DiceTray3D
+          label="Player attack tray"
+          presentationId="attack:7"
+          rendererGeneration={-7}
+          rollerRole="player"
+          witnessRole="roller"
+          phase="armed"
+          dice={[die]}
+          onReleaseRequest={onReleaseRequest}
+        />
+      </StrictMode>
+    );
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, { pointerId: 14, clientX: 10, clientY: 20 });
+
+    view.unmount();
+
+    expect(releasePointerCapture).toHaveBeenCalledTimes(1);
+    expect(releasePointerCapture).toHaveBeenCalledWith(14);
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+  });
+
+  it('cleans held capture on request identity change without emitting', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderTray([die], { phase: 'armed', onReleaseRequest });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, { pointerId: 11, clientX: 10, clientY: 20 });
+
+    view.rerender(
+      <DiceTray3D
+        label="Player attack tray"
+        presentationId="attack:8"
+        rendererGeneration={-8}
+        rollerRole="player"
+        witnessRole="roller"
+        phase="armed"
+        dice={[die]}
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(releasePointerCapture).toHaveBeenCalledTimes(1);
+    expect(releasePointerCapture).toHaveBeenCalledWith(11);
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByRole('button', { name: 'Grab d20' })
+        .getAttribute('data-grabbed')
+    ).toBe('false');
+  });
+
+  it('preserves explicit grab release in reduced motion and plain Grab activation', () => {
+    const pointerRequest = vi.fn();
+    renderTray([die], {
+      phase: 'armed',
+      reducedMotion: true,
+      onReleaseRequest: pointerRequest,
+    });
+    let grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, { pointerId: 12, clientX: 10, clientY: 20 });
+    fireEvent.pointerUp(grab, { pointerId: 12, clientX: 30, clientY: 40 });
+    expect(pointerRequest).toHaveBeenCalledTimes(1);
+    expect(pointerRequest).toHaveBeenCalledWith({
+      origin: [10, 20],
+      current: [30, 40],
+      distance: Math.hypot(20, 20),
+    });
+
+    const clickRequest = vi.fn();
+    renderTray([die], { phase: 'armed', onReleaseRequest: clickRequest });
+    grab = screen.getAllByRole('button', { name: 'Grab d20' }).at(-1)!;
+    fireEvent.click(grab);
+    expect(clickRequest).toHaveBeenCalledTimes(1);
+    expect(clickRequest).toHaveBeenCalledWith();
   });
 
   it('never automatically requests release for a monster roller', () => {
@@ -154,6 +456,7 @@ describe('DiceTray3D', () => {
     });
 
     expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
@@ -169,6 +472,7 @@ describe('DiceTray3D', () => {
       });
 
       expect(screen.queryByRole('button', { name: /roll/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
       expect(onReleaseRequest).not.toHaveBeenCalled();
     }
   );
