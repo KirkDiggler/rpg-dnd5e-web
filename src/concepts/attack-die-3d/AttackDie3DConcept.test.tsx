@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttackDie3DConcept } from './AttackDie3DConcept';
 
@@ -38,7 +39,7 @@ beforeEach(() => {
 });
 
 describe('AttackDie3D staged concept', () => {
-  it('offers keyboard-operable five-stage tabs and a truthful fixture', () => {
+  it('offers keyboard-operable five-stage tabs and a truthful fixture', async () => {
     render(<AttackDie3DConcept />);
     for (const name of ['Appearance', 'Calibrate', 'Roll', 'Verify', 'Tray'])
       expect(screen.getByRole('tab', { name })).toBeTruthy();
@@ -51,7 +52,7 @@ describe('AttackDie3D staged concept', () => {
     const calibrate = screen.getByRole('tab', { name: 'Calibrate' });
     expect(calibrate.getAttribute('aria-selected')).toBe('true');
     expect(document.activeElement).toBe(calibrate);
-    expect(screen.getByTestId('attack-die')).toBeTruthy();
+    expect(await screen.findByTestId('attack-die')).toBeTruthy();
     expect(screen.getByTestId('dice-tray')).toBeTruthy();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Appearance' }), {
       key: 'ArrowLeft',
@@ -103,8 +104,9 @@ describe('AttackDie3D staged concept', () => {
     ).toBeTruthy();
   });
 
-  it('suppresses magical animation under reduced motion and exposes forced failure review', () => {
+  it('suppresses magical animation under reduced motion and exposes forced failure review', async () => {
     render(<AttackDie3DConcept />);
+    await screen.findByTestId('attack-die');
     fireEvent.click(screen.getByLabelText('Magical'));
     fireEvent.click(screen.getByLabelText(/Animate magical treatment/));
     fireEvent.click(screen.getByRole('tab', { name: 'Roll' }));
@@ -140,34 +142,53 @@ describe('AttackDie3D staged concept', () => {
     ).toBeTruthy();
   });
 
-  it('passes the already-loaded provider into the tray without another GLB fetch', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce({
+  it('coalesces StrictMode provider loading and passes it to both Tray witnesses without another request', async () => {
+    const glbUrl = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
+    const sidecarUrl =
+      '/models/synty/dice/d20-lightning/attack-die-contract.json';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === glbUrl)
+        return {
           ok: true,
+          status: 200,
           arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
-        })
-        .mockResolvedValueOnce({ ok: false, status: 404 })
+        };
+      if (url === sidecarUrl) return { ok: false, status: 404 };
+      throw new Error(`unexpected fixture URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <StrictMode>
+        <AttackDie3DConcept />
+      </StrictMode>
     );
-    render(<AttackDie3DConcept />);
+    expect(screen.queryByTestId('attack-die')).toBeNull();
     await waitFor(() =>
       expect(
         props.at(-1)?.sceneOverride && props.at(-1)?.presentationToken
       ).toBe(2)
     );
+    const callsFor = (url: string) =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === url);
+    expect(callsFor(glbUrl)).toHaveLength(1);
+    expect(callsFor(sidecarUrl)).toHaveLength(1);
     const providerScene = props.at(-1)?.sceneOverride;
     const providerSidecar = props.at(-1)?.sidecarOverride;
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
 
-    expect(props.at(-1)).toMatchObject({
-      result: 10,
-      sceneOverride: providerScene,
-      sidecarOverride: providerSidecar,
-    });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    const paired = props.slice(-2);
+    expect(paired).toHaveLength(2);
+    for (const witness of paired)
+      expect(witness).toMatchObject({
+        result: 10,
+        sceneOverride: providerScene,
+        sidecarOverride: providerSidecar,
+      });
+    expect(callsFor(glbUrl)).toHaveLength(1);
+    expect(callsFor(sidecarUrl)).toHaveLength(1);
   });
 
   it('previews the inspected lightning d20 with a hardcoded pose and replays its tumble', async () => {

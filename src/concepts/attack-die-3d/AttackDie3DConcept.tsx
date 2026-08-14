@@ -113,56 +113,81 @@ function provisionalSidecar(digest: string): AttackDieRuntimeSidecar {
   };
 }
 
+async function loadInspectedProvider(): Promise<InspectedProvider> {
+  const response = await fetch(GLB_URL);
+  if (!response.ok) throw Error(`GLB load failed (${response.status})`);
+  const bytes = await response.arrayBuffer();
+  const digest = await sha256Hex(bytes);
+  const parsed = await new GLTFLoader().parseAsync(bytes, '');
+  let sidecar = provisionalSidecar(digest);
+  let note =
+    'Hardcoded concept preview of the inspected GLB. Result 10 uses a geometry-inspected provisional pose; the full face map is not calibrated.';
+  const sidecarResponse = await fetch(SOURCE_SIDECAR_URL);
+  if (
+    sidecarResponse.ok &&
+    sidecarResponse.headers?.get('content-type')?.includes('application/json')
+  ) {
+    const candidate: unknown = await sidecarResponse.json();
+    const checked = await validateAttackDieSidecar(candidate);
+    if (!checked.ok)
+      throw Error(`candidate sidecar invalid: ${checked.reason}`);
+    if (checked.sidecar.state !== 'candidate')
+      throw Error('development import requires candidate sidecar');
+    if (checked.sidecar.asset.sha256 !== digest)
+      throw Error('candidate GLB hash mismatch');
+    sidecar = checked.sidecar;
+    note =
+      'Strictly validated candidate sidecar loaded for provisional evidence; it is not accepted as a verified runtime contract.';
+  }
+  return { digest, sidecar, scene: parsed.scene, note };
+}
+
+let pendingInspectedProvider: Promise<InspectedProvider> | undefined;
+
+function loadPendingInspectedProvider() {
+  if (pendingInspectedProvider) return pendingInspectedProvider;
+
+  const pending = loadInspectedProvider();
+  pendingInspectedProvider = pending;
+  void pending.then(
+    () => {
+      if (pendingInspectedProvider === pending)
+        pendingInspectedProvider = undefined;
+    },
+    () => {
+      if (pendingInspectedProvider === pending)
+        pendingInspectedProvider = undefined;
+    }
+  );
+  return pending;
+}
+
 function useInspectedProvider() {
   const [provider, setProvider] = useState<InspectedProvider>();
   const [error, setError] = useState('Loading controlled provider bytes…');
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     let active = true;
-    void (async () => {
-      try {
-        const response = await fetch(GLB_URL);
-        if (!response.ok) throw Error(`GLB load failed (${response.status})`);
-        const bytes = await response.arrayBuffer();
-        const digest = await sha256Hex(bytes);
-        const parsed = await new GLTFLoader().parseAsync(bytes, '');
-        let sidecar = provisionalSidecar(digest);
-        let note =
-          'Hardcoded concept preview of the inspected GLB. Result 10 uses a geometry-inspected provisional pose; the full face map is not calibrated.';
-        const sidecarResponse = await fetch(SOURCE_SIDECAR_URL);
-        if (
-          sidecarResponse.ok &&
-          sidecarResponse.headers
-            ?.get('content-type')
-            ?.includes('application/json')
-        ) {
-          const candidate: unknown = await sidecarResponse.json();
-          const checked = await validateAttackDieSidecar(candidate);
-          if (!checked.ok)
-            throw Error(`candidate sidecar invalid: ${checked.reason}`);
-          if (checked.sidecar.state !== 'candidate')
-            throw Error('development import requires candidate sidecar');
-          if (checked.sidecar.asset.sha256 !== digest)
-            throw Error('candidate GLB hash mismatch');
-          sidecar = checked.sidecar;
-          note =
-            'Strictly validated candidate sidecar loaded for provisional evidence; it is not accepted as a verified runtime contract.';
-        }
-        if (active) {
-          setProvider({ digest, sidecar, scene: parsed.scene, note });
-          setError('');
-        }
-      } catch (caught) {
-        if (active)
-          setError(
-            caught instanceof Error ? caught.message : 'Provider load failed'
-          );
+    void loadPendingInspectedProvider().then(
+      (loaded) => {
+        if (!active) return;
+        setProvider(loaded);
+        setError('');
+        setLoading(false);
+      },
+      (caught: unknown) => {
+        if (!active) return;
+        setError(
+          caught instanceof Error ? caught.message : 'Provider load failed'
+        );
+        setLoading(false);
       }
-    })();
+    );
     return () => {
       active = false;
     };
   }, []);
-  return { provider, error };
+  return { provider, error, loading };
 }
 
 const downloadJson = (name: string, value: unknown) => {
@@ -234,7 +259,7 @@ export function AttackDie3DConcept() {
     Record<number, AttackDieTelemetry>
   >({});
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
-  const { provider, error } = useInspectedProvider();
+  const { provider, error, loading } = useInspectedProvider();
   useEffect(() => {
     if (!provider || importedDigest.current === provider.digest) return;
     importedDigest.current = provider.digest;
@@ -551,41 +576,55 @@ export function AttackDie3DConcept() {
             className="attack-die-concept__viewport"
             data-camera={state.camera}
           >
-            <AttackDie3D
-              result={effectiveResult}
-              presentationToken={token}
-              phase="rolling"
-              materialMode={state.materialMode}
-              reducedMotion={effectiveReducedMotion}
-              magicalAnimation={
-                state.magicalAnimation && !effectiveReducedMotion
-              }
-              decorativeSeed={token + state.decorativeVariation}
-              fallback={
-                <DiceTray
-                  phase="settled"
-                  finalFace={effectiveResult}
-                  outcome={
-                    effectiveResult === 20
-                      ? 'CRIT'
-                      : effectiveResult === 1
-                        ? 'NAT-1'
-                        : 'HIT'
-                  }
-                />
-              }
-              onTelemetry={handleTelemetry}
-              cameraView={state.camera}
-              calibrationPose={displayedPose}
-              providerFailureReason={
-                ['load', 'hash'].includes(forcedFailure) && error
-                  ? error
-                  : undefined
-              }
-              forceFailure={forcedFailure === 'shader' ? 'shader' : undefined}
-              sceneOverride={provider?.scene}
-              sidecarOverride={provider?.sidecar}
-            />
+            {loading ? (
+              <DiceTray
+                phase="settled"
+                finalFace={effectiveResult}
+                outcome={
+                  effectiveResult === 20
+                    ? 'CRIT'
+                    : effectiveResult === 1
+                      ? 'NAT-1'
+                      : 'HIT'
+                }
+              />
+            ) : (
+              <AttackDie3D
+                result={effectiveResult}
+                presentationToken={token}
+                phase="rolling"
+                materialMode={state.materialMode}
+                reducedMotion={effectiveReducedMotion}
+                magicalAnimation={
+                  state.magicalAnimation && !effectiveReducedMotion
+                }
+                decorativeSeed={token + state.decorativeVariation}
+                fallback={
+                  <DiceTray
+                    phase="settled"
+                    finalFace={effectiveResult}
+                    outcome={
+                      effectiveResult === 20
+                        ? 'CRIT'
+                        : effectiveResult === 1
+                          ? 'NAT-1'
+                          : 'HIT'
+                    }
+                  />
+                }
+                onTelemetry={handleTelemetry}
+                cameraView={state.camera}
+                calibrationPose={displayedPose}
+                providerFailureReason={
+                  ['load', 'hash'].includes(forcedFailure) && error
+                    ? error
+                    : undefined
+                }
+                forceFailure={forcedFailure === 'shader' ? 'shader' : undefined}
+                sceneOverride={provider?.scene}
+                sidecarOverride={provider?.sidecar}
+              />
+            )}
           </div>
         </div>
       )}
