@@ -33,6 +33,27 @@ describe('DiceTrayEncounterPreview', () => {
     );
   });
 
+  it('builds an accessible drawer carcass around visible decorative hardware', () => {
+    render(<DiceTrayEncounterPreview tray={<div>Tray stub</div>} />);
+
+    const drawer = screen.getByRole('complementary', {
+      name: 'Always visible dice drawer',
+    });
+    const carcass = screen.getByTestId('dice-tray-drawer-carcass');
+    const front = screen.getByTestId('dice-tray-drawer-front');
+    const handle = screen.getByTestId('dice-tray-drawer-handle');
+    const rail = screen.getByTestId('dice-tray-drawer-rail');
+
+    expect(drawer.contains(carcass)).toBe(true);
+    expect(drawer.contains(rail)).toBe(true);
+    expect(carcass.contains(screen.getByText('Tray stub'))).toBe(true);
+    expect(carcass.contains(front)).toBe(true);
+    expect(front.contains(handle)).toBe(true);
+    expect(front.getAttribute('aria-hidden')).toBe('true');
+    expect(handle.getAttribute('aria-hidden')).toBe('true');
+    expect(rail.getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('stays fixture-only instead of importing production encounter/presentation surfaces', () => {
     const source = readFileSync(
       'src/concepts/attack-die-3d/DiceTrayEncounterPreview.tsx',
