@@ -33,25 +33,35 @@ describe('DiceTrayEncounterPreview', () => {
     );
   });
 
-  it('builds an accessible drawer carcass around visible decorative hardware', () => {
+  it('builds an accessible open drawer from a floor and angled wall planes', () => {
     render(<DiceTrayEncounterPreview tray={<div>Tray stub</div>} />);
 
     const drawer = screen.getByRole('complementary', {
       name: 'Always visible dice drawer',
     });
     const carcass = screen.getByTestId('dice-tray-drawer-carcass');
+    const floor = screen.getByTestId('dice-tray-drawer-floor');
+    const backWall = screen.getByTestId('dice-tray-drawer-back-wall');
+    const leftWall = screen.getByTestId('dice-tray-drawer-left-wall');
+    const rightWall = screen.getByTestId('dice-tray-drawer-right-wall');
     const front = screen.getByTestId('dice-tray-drawer-front');
     const handle = screen.getByTestId('dice-tray-drawer-handle');
-    const rail = screen.getByTestId('dice-tray-drawer-rail');
 
     expect(drawer.contains(carcass)).toBe(true);
-    expect(drawer.contains(rail)).toBe(true);
-    expect(carcass.contains(screen.getByText('Tray stub'))).toBe(true);
+    expect(carcass.contains(floor)).toBe(true);
+    expect(floor.contains(screen.getByText('Tray stub'))).toBe(true);
+    expect(floor.getAttribute('aria-hidden')).toBeNull();
+    expect(carcass.contains(backWall)).toBe(true);
+    expect(carcass.contains(leftWall)).toBe(true);
+    expect(carcass.contains(rightWall)).toBe(true);
     expect(carcass.contains(front)).toBe(true);
     expect(front.contains(handle)).toBe(true);
+    expect(backWall.getAttribute('aria-hidden')).toBe('true');
+    expect(leftWall.getAttribute('aria-hidden')).toBe('true');
+    expect(rightWall.getAttribute('aria-hidden')).toBe('true');
     expect(front.getAttribute('aria-hidden')).toBe('true');
     expect(handle.getAttribute('aria-hidden')).toBe('true');
-    expect(rail.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.queryByTestId('dice-tray-drawer-rail')).toBeNull();
   });
 
   it('stays fixture-only instead of importing production encounter/presentation surfaces', () => {

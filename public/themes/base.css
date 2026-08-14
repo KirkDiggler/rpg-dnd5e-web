@@ -1662,215 +1662,185 @@
   text-transform: uppercase;
 }
 .dice-tray-left-drawer {
-  --drawer-edge-gap: clamp(0.75rem, 2vw, 1.25rem);
-
   position: absolute;
-  left: var(--drawer-edge-gap);
+  left: clamp(0.75rem, 2vw, 1.25rem);
   bottom: 10px;
   z-index: 5;
-  width: 292px;
+  width: min(356px, calc(100% - 1.5rem));
   isolation: isolate;
-}
-.dice-tray-left-drawer__rail {
-  position: absolute;
-  inset: 2.35rem auto 2rem calc(-1 * var(--drawer-edge-gap));
-  z-index: -1;
-  width: calc(var(--drawer-edge-gap) + 1.1rem);
-  border: 1px solid
-    color-mix(in srgb, var(--border-primary) 78%, var(--text-muted));
-  border-left: 0;
-  border-radius: 0 0.35rem 0.35rem 0;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--bg-primary) 88%, black),
-    color-mix(in srgb, var(--border-primary) 72%, var(--bg-secondary)) 52%,
-    color-mix(in srgb, var(--text-muted) 28%, var(--bg-secondary)) 54%,
-    color-mix(in srgb, var(--bg-primary) 82%, black)
-  );
-  box-shadow:
-    inset -1px 0 color-mix(in srgb, var(--text-secondary) 28%, transparent),
-    0.3rem 0.45rem 0.8rem rgb(0 0 0 / 38%);
-}
-.dice-tray-left-drawer__rail::before {
-  position: absolute;
-  inset: 0.8rem auto auto 0.2rem;
-  width: 0.78rem;
-  height: 2.4rem;
-  border: 1px solid
-    color-mix(in srgb, var(--border-primary) 80%, var(--text-muted));
-  border-radius: 0.18rem;
-  background: color-mix(in srgb, var(--bg-primary) 84%, black);
-  box-shadow: inset -2px 0.15rem 0.25rem rgb(0 0 0 / 48%);
-  content: '';
-}
-.dice-tray-left-drawer__rail::after {
-  position: absolute;
-  inset: 0.45rem 0.25rem;
-  border-block: 2px solid color-mix(in srgb, var(--text-muted) 32%, transparent);
-  box-shadow:
-    inset 0 2px color-mix(in srgb, var(--bg-primary) 88%, black),
-    inset 0 -2px color-mix(in srgb, var(--bg-primary) 88%, black);
-  content: '';
 }
 .dice-tray-left-drawer__carcass {
   position: relative;
   width: 100%;
-  padding: 0.55rem 0.55rem 0;
-  border: 1px solid
-    color-mix(in srgb, var(--accent-primary) 34%, var(--border-primary));
-  border-radius: 0.65rem 0.9rem 0.3rem 0.2rem;
-  background:
-    linear-gradient(
-      115deg,
-      color-mix(in srgb, var(--text-muted) 10%, transparent),
-      transparent 32%
-    ),
-    color-mix(in srgb, var(--bg-secondary) 95%, black);
-  box-shadow:
-    0.65rem 0.85rem 1.6rem rgb(0 0 0 / 42%),
-    1.4rem 1.65rem 2.6rem rgb(0 0 0 / 24%),
-    inset 0 1px color-mix(in srgb, var(--text-secondary) 20%, transparent);
-}
-.dice-tray-left-drawer__carcass::after {
-  position: absolute;
-  inset: 0.55rem -0.45rem 0.45rem auto;
-  width: 0.45rem;
-  border: 1px solid
-    color-mix(in srgb, var(--border-primary) 75%, var(--bg-primary));
-  border-left: 0;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--bg-secondary) 92%, black),
-    color-mix(in srgb, var(--bg-primary) 76%, black)
-  );
-  clip-path: polygon(0 0, 100% 4px, 100% calc(100% - 4px), 0 100%);
-  content: '';
 }
 .dice-tray-left-drawer__status {
   position: relative;
   z-index: 5;
-  margin: 0 0 0.4rem;
-  padding-inline: 0.1rem;
+  margin: 0 0 0.15rem 3.15rem;
   color: var(--text-secondary);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.08em;
+  line-height: 1.25;
   text-shadow: 0 1px 1px rgb(0 0 0 / 72%);
   text-transform: uppercase;
 }
-.dice-tray-left-drawer__bed {
-  position: relative;
-  border: 2px solid
-    color-mix(in srgb, var(--border-primary) 82%, var(--bg-primary));
-  border-radius: 0.8rem 0.95rem 0.3rem 0.3rem;
-  background: color-mix(
-    in srgb,
-    var(--bg-tertiary, var(--bg-primary)) 74%,
-    black
+.dice-tray-left-drawer__back-wall,
+.dice-tray-left-drawer__left-wall,
+.dice-tray-left-drawer__right-wall,
+.dice-tray-left-drawer__front,
+.dice-tray-left-drawer__handle {
+  pointer-events: none;
+}
+.dice-tray-left-drawer__back-wall {
+  position: absolute;
+  inset: 0.95rem 3rem auto;
+  z-index: 4;
+  height: 0.95rem;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--text-muted) 22%, var(--bg-secondary)),
+    color-mix(in srgb, var(--bg-primary) 86%, black) 56%,
+    color-mix(in srgb, var(--accent-primary) 16%, var(--border-primary))
   );
   box-shadow:
-    inset 0 0.7rem 1rem rgb(0 0 0 / 50%),
-    inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 18%, transparent),
-    0 -1px color-mix(in srgb, var(--text-secondary) 13%, transparent);
+    0 0.35rem 0.55rem rgb(0 0 0 / 46%),
+    inset 0 1px color-mix(in srgb, var(--text-secondary) 18%, transparent);
+  clip-path: polygon(3% 0, 97% 0, 100% 100%, 0 100%);
 }
-.dice-tray-left-drawer__bed::before,
-.dice-tray-left-drawer__bed::after {
+.dice-tray-left-drawer__left-wall,
+.dice-tray-left-drawer__right-wall {
   position: absolute;
-  z-index: 4;
+  top: 1.35rem;
+  bottom: 1.65rem;
+  z-index: 3;
+  width: 3.85rem;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-primary) 90%, black),
+    color-mix(in srgb, var(--text-muted) 20%, var(--bg-secondary))
+  );
+  box-shadow: inset 0 1px
+    color-mix(in srgb, var(--text-secondary) 14%, transparent);
+}
+.dice-tray-left-drawer__left-wall {
+  left: 0;
+  clip-path: polygon(68% 0, 100% 0, 15% 100%, 0 100%);
+}
+.dice-tray-left-drawer__right-wall {
+  right: 0;
+  background: linear-gradient(
+    270deg,
+    color-mix(in srgb, var(--bg-primary) 90%, black),
+    color-mix(in srgb, var(--text-muted) 20%, var(--bg-secondary))
+  );
+  clip-path: polygon(0 0, 32% 0, 100% 100%, 85% 100%);
+}
+.dice-tray-left-drawer__floor {
+  position: relative;
+  z-index: 1;
+  height: 220px;
+  overflow: visible;
+}
+.dice-tray-left-drawer__floor::before,
+.dice-tray-left-drawer__floor::after,
+.dice-tray-left-drawer__front::before {
+  position: absolute;
   pointer-events: none;
   content: '';
 }
-.dice-tray-left-drawer__bed::before {
-  inset: 0 0 auto;
-  height: 0.65rem;
-  border-radius: 0.5rem 0.65rem 0.15rem 0.15rem;
+.dice-tray-left-drawer__floor::before {
+  inset: 0;
+  z-index: 0;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--text-muted) 25%, var(--bg-secondary)),
+    color-mix(in srgb, var(--accent-primary) 18%, var(--border-primary)),
+    color-mix(in srgb, var(--bg-secondary) 92%, black) 15%,
     color-mix(in srgb, var(--bg-primary) 88%, black)
   );
-  box-shadow: 0 0.3rem 0.45rem rgb(0 0 0 / 44%);
+  filter: drop-shadow(0.7rem 0.55rem 0.75rem rgb(0 0 0 / 44%));
+  clip-path: polygon(14% 0, 86% 0, 99% 100%, 1% 100%);
 }
-.dice-tray-left-drawer__bed::after {
-  inset: 0;
-  border: solid
-    color-mix(in srgb, var(--bg-secondary) 72%, var(--border-primary));
-  border-width: 0 0.35rem 0.35rem;
-  border-radius: 0.65rem 0.65rem 0.15rem 0.15rem;
-  box-shadow:
-    inset 0.28rem 0 0.42rem rgb(0 0 0 / 42%),
-    inset -0.28rem 0 0.42rem rgb(0 0 0 / 42%);
-}
-.dice-tray-left-drawer__bed .dice-tray-3d-shell--compact {
-  border: 0;
-  border-radius: 0.55rem;
-  background: color-mix(
-    in srgb,
-    var(--bg-tertiary, var(--bg-primary)) 84%,
-    black
+.dice-tray-left-drawer__floor::after {
+  inset: auto 1% 0;
+  z-index: 2;
+  height: 0.35rem;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--text-muted) 22%, var(--bg-secondary)),
+    color-mix(in srgb, var(--bg-primary) 90%, black)
   );
+  clip-path: polygon(4% 0, 96% 0, 100% 100%, 0 100%);
 }
-.dice-tray-left-drawer__bed
+.dice-tray-left-drawer__floor .dice-tray-3d-shell--compact {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 220px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.dice-tray-left-drawer__floor
   .dice-tray-3d-shell--compact
   .dice-tray-3d-shell__well {
-  border-color: color-mix(
-    in srgb,
-    var(--accent-primary) 24%,
-    var(--border-primary)
-  );
-  background: radial-gradient(
-    circle at 48% 46%,
-    color-mix(in srgb, var(--bg-tertiary, var(--bg-primary)) 82%, black),
-    color-mix(in srgb, var(--bg-primary) 92%, black)
-  );
+  inset: 0.65rem 0.75rem 0.45rem;
+  border: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(rgb(255 255 255 / 2%) 1px, transparent 1px),
+    radial-gradient(
+      ellipse at 50% 58%,
+      color-mix(in srgb, var(--bg-tertiary, var(--bg-primary)) 82%, black),
+      color-mix(in srgb, var(--bg-primary) 94%, black) 72%
+    );
+  background-size:
+    100% 2rem,
+    auto;
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--text-secondary) 12%, transparent),
-    inset 0 1.15rem 1.75rem rgb(0 0 0 / 35%),
-    0 1px color-mix(in srgb, var(--text-muted) 13%, transparent);
+    inset 0 1.15rem 1.6rem rgb(0 0 0 / 38%),
+    inset 0 -0.25rem 0.65rem
+      color-mix(in srgb, var(--text-muted) 10%, transparent);
+  clip-path: polygon(12% 0, 88% 0, 100% 100%, 0 100%);
+}
+.dice-tray-left-drawer__floor .attack-die-3d__fallback--covered .dice-tray {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 .dice-tray-left-drawer__front {
   position: relative;
+  z-index: 4;
   display: grid;
   place-items: center;
-  height: 2.15rem;
-  margin: 0 -0.55rem;
-  border: 1px solid
-    color-mix(in srgb, var(--accent-primary) 22%, var(--border-primary));
-  border-radius: 0 0 0.45rem 0.3rem;
+  height: 1.65rem;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--text-muted) 18%, var(--bg-secondary)),
-    color-mix(in srgb, var(--bg-secondary) 94%, black) 42%,
-    color-mix(in srgb, var(--bg-primary) 86%, black)
+    color-mix(in srgb, var(--text-muted) 20%, var(--bg-secondary)),
+    color-mix(in srgb, var(--bg-secondary) 94%, black) 46%,
+    color-mix(in srgb, var(--bg-primary) 88%, black)
   );
   box-shadow:
-    inset 0 2px color-mix(in srgb, var(--text-secondary) 14%, transparent),
-    inset 0 -0.3rem 0.45rem rgb(0 0 0 / 36%),
-    0 0.35rem 0.5rem rgb(0 0 0 / 30%);
+    0 0.35rem 0.45rem rgb(0 0 0 / 34%),
+    inset 0 -0.2rem 0.3rem rgb(0 0 0 / 30%);
+  clip-path: polygon(1% 0, 99% 0, 95% 100%, 5% 100%);
 }
 .dice-tray-left-drawer__front::before {
-  position: absolute;
-  inset: 0.35rem 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--border-primary) 62%, transparent);
-  border-radius: 0.2rem;
-  content: '';
+  inset: 0 4% auto;
+  height: 1px;
+  background: color-mix(in srgb, var(--text-secondary) 20%, transparent);
 }
 .dice-tray-left-drawer__handle {
   position: relative;
   z-index: 1;
-  width: 3.25rem;
-  height: 0.48rem;
+  width: 2.1rem;
+  height: 0.3rem;
   border: 1px solid
-    color-mix(in srgb, var(--text-muted) 62%, var(--border-primary));
+    color-mix(in srgb, var(--text-muted) 50%, var(--border-primary));
   border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--text-secondary) 56%, var(--bg-secondary)),
-    color-mix(in srgb, var(--bg-primary) 82%, black)
-  );
-  box-shadow:
-    0 0.18rem 0.2rem rgb(0 0 0 / 64%),
-    inset 0 1px color-mix(in srgb, white 28%, transparent);
+  background: color-mix(in srgb, var(--text-secondary) 32%, var(--bg-primary));
+  box-shadow: 0 0.12rem 0.16rem rgb(0 0 0 / 56%);
 }
 .dice-tray-encounter-preview__dock {
   position: relative;
@@ -1979,12 +1949,10 @@
     min-height: 960px;
   }
   .dice-tray-left-drawer {
-    --drawer-edge-gap: 0.75rem;
-
     position: relative;
     inset: auto;
     order: 2;
-    width: min(100%, 292px);
+    width: min(calc(100% - 1.5rem), 356px);
     margin: 0.75rem;
     align-self: flex-start;
   }

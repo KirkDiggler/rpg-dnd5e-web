@@ -76,18 +76,33 @@ export function DiceTrayEncounterPreview({
           aria-label="Always visible dice drawer"
         >
           <div
-            className="dice-tray-left-drawer__rail"
-            data-testid="dice-tray-drawer-rail"
-            aria-hidden="true"
-          />
-          <div
             className="dice-tray-left-drawer__carcass"
             data-testid="dice-tray-drawer-carcass"
           >
             <p className="dice-tray-left-drawer__status">
               Always visible · dice only
             </p>
-            <div className="dice-tray-left-drawer__bed">{tray}</div>
+            <div
+              className="dice-tray-left-drawer__back-wall"
+              data-testid="dice-tray-drawer-back-wall"
+              aria-hidden="true"
+            />
+            <div
+              className="dice-tray-left-drawer__left-wall"
+              data-testid="dice-tray-drawer-left-wall"
+              aria-hidden="true"
+            />
+            <div
+              className="dice-tray-left-drawer__right-wall"
+              data-testid="dice-tray-drawer-right-wall"
+              aria-hidden="true"
+            />
+            <div
+              className="dice-tray-left-drawer__floor"
+              data-testid="dice-tray-drawer-floor"
+            >
+              {tray}
+            </div>
             <div
               className="dice-tray-left-drawer__front"
               data-testid="dice-tray-drawer-front"
