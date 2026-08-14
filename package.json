@@ -20,7 +20,7 @@
     "pre-commit": "npm run format && npm run lint && npm run typecheck",
     "ci-check": "./scripts/ci-check.sh",
     "ci-fix": "npm run format && npm run lint --fix && npm run typecheck && npm run build",
-    "assets:sync": "sh scripts/sync-synty-assets.sh",
+    "assets:sync": "sh scripts/sync-game-assets.sh",
     "attack-die:build": "npm run build -- --mode development",
     "attack-die:hash-build": "node scripts/attack-die/hash-build.mjs",
     "attack-die:freeze-build": "bash scripts/attack-die/build-frozen.sh",

@@ -1,4 +1,20 @@
 // @vitest-environment node
+import { execFile, spawn } from 'node:child_process';
+import { once } from 'node:events';
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
+import { createServer as createNetServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import {
   assertForcedFallback,
@@ -368,4 +384,284 @@ it('requires forced evidence to be repeated, exact, irreversible semantic SVG', 
         token: 4,
       })
     ).toThrow();
+});
+
+const execFileAsync = promisify(execFile);
+const serveFrozenScript = fileURLToPath(
+  new URL('./serve-frozen.mjs', import.meta.url)
+);
+const buildFrozenScript = fileURLToPath(
+  new URL('./build-frozen.sh', import.meta.url)
+);
+
+async function put(path: string, contents: string) {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, contents);
+}
+
+async function reservePort() {
+  const server = createNetServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  if (address === null || typeof address === 'string')
+    throw new Error('failed to reserve TCP port');
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve()))
+  );
+  return address.port;
+}
+
+async function waitForServer(
+  child: ReturnType<typeof spawn>,
+  expected: RegExp
+) {
+  let stdout = '';
+  let stderr = '';
+  child.stdout?.on('data', (chunk) => {
+    stdout += String(chunk);
+  });
+  child.stderr?.on('data', (chunk) => {
+    stderr += String(chunk);
+  });
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`server startup timed out: ${stderr}`)),
+      5_000
+    );
+    const inspect = () => {
+      if (!expected.test(stdout)) return;
+      clearTimeout(timeout);
+      resolve();
+    };
+    child.stdout?.on('data', inspect);
+    child.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timeout);
+      reject(new Error(`server exited ${code}: ${stderr}`));
+    });
+  });
+}
+
+async function stopServer(child: ReturnType<typeof spawn>) {
+  if (child.exitCode !== null) return;
+  child.kill('SIGTERM');
+  await once(child, 'exit');
+}
+
+async function makeFrozenBuildFixture(leak = '') {
+  const root = await mkdtemp(join(tmpdir(), 'frozen-provider-'));
+  const repo = join(root, 'web');
+  const fakeBin = join(root, 'bin');
+  const observation = join(root, 'providers-withheld.txt');
+  const manifest = join(root, 'manifest.json');
+  await mkdir(repo, { recursive: true });
+  await put(
+    join(repo, '.gitignore'),
+    'public/models/synty/\npublic/models/custom-dice/\ndist/\n'
+  );
+  await put(join(repo, 'tracked.txt'), 'clean');
+  await execFileAsync('git', ['init', '--quiet'], { cwd: repo });
+  await execFileAsync('git', ['config', 'user.name', 'Task Test'], {
+    cwd: repo,
+  });
+  await execFileAsync('git', ['config', 'user.email', 'task@example.test'], {
+    cwd: repo,
+  });
+  await execFileAsync('git', ['add', '.'], { cwd: repo });
+  await execFileAsync('git', ['commit', '--quiet', '-m', 'fixture'], {
+    cwd: repo,
+  });
+  await put(join(repo, 'public', 'models', 'synty', 'provider.glb'), 'synty');
+  await put(
+    join(repo, 'public', 'models', 'custom-dice', 'd20.glb'),
+    'custom-dice'
+  );
+  const fakeNpm = join(fakeBin, 'npm');
+  await put(
+    fakeNpm,
+    `#!/bin/sh
+set -eu
+root=$(git rev-parse --show-toplevel)
+case "$*" in
+  "run attack-die:build")
+    if [ -e "$root/public/models/synty" ] || [ -e "$root/public/models/custom-dice" ]; then
+      echo 'provider roots were visible to the frozen build' >&2
+      exit 41
+    fi
+    printf 'both providers withheld' > "$FAKE_NPM_OBSERVATION"
+    mkdir -p "$root/dist"
+    printf '<!doctype html>' > "$root/dist/index.html"
+    if [ -n "\${FAKE_BUILD_LEAK:-}" ]; then
+      mkdir -p "$root/dist/$FAKE_BUILD_LEAK"
+      printf 'private' > "$root/dist/$FAKE_BUILD_LEAK/leaked.glb"
+    fi
+    ;;
+  "run attack-die:hash-build"*)
+    for argument in "$@"; do output=$argument; done
+    printf '{"files":[]}' > "$output"
+    ;;
+  *)
+    echo "unexpected npm invocation: $*" >&2
+    exit 42
+    ;;
+esac
+`
+  );
+  await chmod(fakeNpm, 0o755);
+  return { leak, manifest, observation, repo, root, fakeBin };
+}
+
+describe('frozen private provider boundary', () => {
+  it('mounts both provider roots with traversal and symlink containment', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'frozen-server-'));
+    const dist = join(root, 'dist');
+    const syntyRoot = join(root, 'synty');
+    const customDiceRoot = join(root, 'custom-dice');
+    const outside = join(root, 'outside.glb');
+    const manifest = join(root, 'manifest.json');
+    await put(join(dist, 'index.html'), '<!doctype html>');
+    await put(join(syntyRoot, 'tray.glb'), 'synty-bytes');
+    await put(join(customDiceRoot, 'd20.glb'), 'custom-dice-bytes');
+    await put(
+      join(customDiceRoot, 'dice-tray-presets.json'),
+      '{"schemaVersion":1}'
+    );
+    await put(outside, 'outside-private-bytes');
+    await symlink(outside, join(syntyRoot, 'link.glb'));
+    await symlink(outside, join(customDiceRoot, 'link.glb'));
+    await put(manifest, '{"files":[]}');
+    const port = await reservePort();
+    const child = spawn(process.execPath, [
+      serveFrozenScript,
+      '--dist',
+      dist,
+      '--synty-root',
+      syntyRoot,
+      '--custom-dice-root',
+      customDiceRoot,
+      '--build-manifest',
+      manifest,
+      '--host',
+      '127.0.0.1',
+      '--port',
+      String(port),
+    ]);
+
+    try {
+      await waitForServer(child, /frozen preview/);
+      const base = `http://127.0.0.1:${port}`;
+      await expect(
+        fetch(`${base}/models/synty/tray.glb`).then((response) =>
+          response.text()
+        )
+      ).resolves.toBe('synty-bytes');
+      await expect(
+        fetch(`${base}/models/custom-dice/d20.glb`).then((response) =>
+          response.text()
+        )
+      ).resolves.toBe('custom-dice-bytes');
+      await expect(
+        fetch(`${base}/models/custom-dice/dice-tray-presets.json`).then(
+          (response) => response.text()
+        )
+      ).resolves.toBe('{"schemaVersion":1}');
+
+      for (const mount of ['synty', 'custom-dice']) {
+        const traversal = await fetch(
+          `${base}/models/${mount}/..%2Foutside.glb`
+        );
+        expect(traversal.status, mount).toBe(400);
+        expect(await traversal.text(), mount).toMatch(/path traversal/);
+        const linked = await fetch(`${base}/models/${mount}/link.glb`);
+        expect(linked.status, mount).toBe(403);
+        expect(await linked.text(), mount).toMatch(/symlink rejected/);
+      }
+    } finally {
+      await stopServer(child);
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it('withholds and restores both providers around a successful build', async () => {
+    const fixture = await makeFrozenBuildFixture();
+    try {
+      await execFileAsync(
+        'bash',
+        [buildFrozenScript, '--out', fixture.manifest],
+        {
+          cwd: fixture.repo,
+          env: {
+            ...process.env,
+            FAKE_NPM_OBSERVATION: fixture.observation,
+            PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
+            VITE_ATTACK_DIE_WEB_COMMIT: 'a'.repeat(40),
+          },
+        }
+      );
+      await expect(readFile(fixture.observation, 'utf8')).resolves.toBe(
+        'both providers withheld'
+      );
+      await expect(
+        readFile(
+          join(fixture.repo, 'public', 'models', 'synty', 'provider.glb'),
+          'utf8'
+        )
+      ).resolves.toBe('synty');
+      await expect(
+        readFile(
+          join(fixture.repo, 'public', 'models', 'custom-dice', 'd20.glb'),
+          'utf8'
+        )
+      ).resolves.toBe('custom-dice');
+    } finally {
+      await rm(fixture.root, { force: true, recursive: true });
+    }
+  });
+
+  it.each(['models/synty', 'models/custom-dice'])(
+    'rejects a leaked %s tree and still restores both providers',
+    async (leak) => {
+      const fixture = await makeFrozenBuildFixture(leak);
+      try {
+        await expect(
+          execFileAsync(
+            'bash',
+            [buildFrozenScript, '--out', fixture.manifest],
+            {
+              cwd: fixture.repo,
+              env: {
+                ...process.env,
+                FAKE_BUILD_LEAK: fixture.leak,
+                FAKE_NPM_OBSERVATION: fixture.observation,
+                PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
+                VITE_ATTACK_DIE_WEB_COMMIT: 'a'.repeat(40),
+              },
+            }
+          )
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining(
+            `private provider entered dist: ${fixture.leak}`
+          ),
+        });
+        await expect(
+          readFile(
+            join(fixture.repo, 'public', 'models', 'synty', 'provider.glb'),
+            'utf8'
+          )
+        ).resolves.toBe('synty');
+        await expect(
+          readFile(
+            join(fixture.repo, 'public', 'models', 'custom-dice', 'd20.glb'),
+            'utf8'
+          )
+        ).resolves.toBe('custom-dice');
+      } finally {
+        await rm(fixture.root, { force: true, recursive: true });
+      }
+    }
+  );
 });

@@ -37,6 +37,7 @@ dist-ssr
 # See api-data/README.md for update instructions
 # api-data/
 
-# Synty-derived assets — licensed, do not redistribute via the repo
+# Private runtime assets — licensed, do not redistribute via the repo
 public/models/synty/
+public/models/custom-dice/
 evidence/
