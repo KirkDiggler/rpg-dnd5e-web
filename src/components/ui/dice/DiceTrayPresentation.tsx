@@ -8,6 +8,7 @@ import {
 import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
 import type { QuaternionTuple } from './attackDieContract';
 import {
+  parseDicePresentationEvent,
   projectDicePresentationEvents,
   type DicePresentationEvent,
   type DicePresentationReleasedEvent,
@@ -39,18 +40,19 @@ type PresentationPhase = 'armed' | 'rolling' | 'settled';
 interface PresentationLifecycle {
   acceptedRequest: DicePresentationRequestedEvent;
   acceptedDeliveryIdentity: string;
+  observedDeliveryIdentity: string;
   acceptedRelease?: DicePresentationReleasedEvent;
   releaseIdentity?: string;
   phase: PresentationPhase;
   rendererFailed: boolean;
+  discontinuityObserved: boolean;
 }
 
 type LifecycleAction =
   | {
       type: 'reconcile-delivery';
       acceptedDeliveryIdentity: string;
-      release?: DicePresentationReleasedEvent;
-      releaseIdentity?: string;
+      observedDeliveryIdentity: string;
     }
   | { type: 'renderer-failed' }
   | { type: 'renderer-observed' }
@@ -61,6 +63,7 @@ interface PresentationInstanceProps {
   request: DicePresentationRequestedEvent;
   release?: DicePresentationReleasedEvent;
   acceptedDeliveryIdentity: string;
+  observedDeliveryIdentity: string;
   releaseIdentity?: string;
   witnessRole: 'roller' | 'spectator';
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
@@ -80,17 +83,43 @@ function eventIdentity(event: DicePresentationEvent) {
   return JSON.stringify(event);
 }
 
-function deliveryValues(identity: string): readonly string[] {
-  return JSON.parse(identity) as readonly string[];
+function deliveryValues(identity: string): readonly string[] | undefined {
+  try {
+    const values: unknown = JSON.parse(identity);
+    return Array.isArray(values) &&
+      values.every((value) => typeof value === 'string')
+      ? values
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function isDeliveryPrefix(prefixIdentity: string, deliveryIdentity: string) {
   const prefix = deliveryValues(prefixIdentity);
   const delivery = deliveryValues(deliveryIdentity);
   return (
+    prefix !== undefined &&
+    delivery !== undefined &&
     prefix.length <= delivery.length &&
     prefix.every((value, index) => value === delivery[index])
   );
+}
+
+function deliveryEvents(identity: string) {
+  const values = deliveryValues(identity);
+  if (!values) return [];
+
+  const events: DicePresentationEvent[] = [];
+  for (const value of values) {
+    try {
+      const event = parseDicePresentationEvent(JSON.parse(value));
+      if (event) events.push(event);
+    } catch {
+      // Internal identities still fail closed if corrupted.
+    }
+  }
+  return events;
 }
 
 function isReleaseCompatible(
@@ -104,9 +133,31 @@ function isReleaseCompatible(
   );
 }
 
+function retainedRequestReleaseCandidate(
+  request: DicePresentationRequestedEvent,
+  observedDeliveryIdentity: string
+) {
+  const events = deliveryEvents(observedDeliveryIdentity);
+  const requestIdentity = eventIdentity(request);
+  const requestIndex = events.findIndex(
+    (event) => eventIdentity(event) === requestIdentity
+  );
+  const firstEligibleIndex = requestIndex >= 0 ? requestIndex + 1 : 0;
+  for (let index = firstEligibleIndex; index < events.length; index += 1) {
+    const event = events[index];
+    if (
+      event.type === 'dice-presentation-released' &&
+      isReleaseCompatible(request, event)
+    )
+      return { release: event, releaseIdentity: eventIdentity(event) };
+  }
+  return undefined;
+}
+
 function createLifecycle(input: {
   acceptedRequest: DicePresentationRequestedEvent;
   acceptedDeliveryIdentity: string;
+  observedDeliveryIdentity: string;
   release?: DicePresentationReleasedEvent;
   releaseIdentity?: string;
 }): PresentationLifecycle {
@@ -117,10 +168,12 @@ function createLifecycle(input: {
   return {
     acceptedRequest: input.acceptedRequest,
     acceptedDeliveryIdentity: input.acceptedDeliveryIdentity,
+    observedDeliveryIdentity: input.observedDeliveryIdentity,
     acceptedRelease: release,
     releaseIdentity: release ? input.releaseIdentity : undefined,
     phase: release ? 'settled' : 'armed',
     rendererFailed: false,
+    discontinuityObserved: false,
   };
 }
 
@@ -145,39 +198,43 @@ function lifecycleReducer(
       ? { ...state, phase: 'settled' }
       : state;
   }
-  const release =
-    action.release && isReleaseCompatible(state.acceptedRequest, action.release)
-      ? action.release
-      : undefined;
-  const releaseIdentity = release ? action.releaseIdentity : undefined;
   if (
     action.acceptedDeliveryIdentity === state.acceptedDeliveryIdentity &&
-    (state.acceptedRelease || releaseIdentity === state.releaseIdentity)
+    action.observedDeliveryIdentity === state.observedDeliveryIdentity
   )
     return state;
 
   const appendOnly = isDeliveryPrefix(
-    state.acceptedDeliveryIdentity,
-    action.acceptedDeliveryIdentity
+    state.observedDeliveryIdentity,
+    action.observedDeliveryIdentity
   );
+  const discontinuityObserved = state.discontinuityObserved || !appendOnly;
   if (state.acceptedRelease) {
     return {
       ...state,
       acceptedDeliveryIdentity: action.acceptedDeliveryIdentity,
-      phase: 'settled',
+      observedDeliveryIdentity: action.observedDeliveryIdentity,
+      phase: appendOnly ? state.phase : 'settled',
+      discontinuityObserved,
     };
   }
 
+  const candidate = retainedRequestReleaseCandidate(
+    state.acceptedRequest,
+    action.observedDeliveryIdentity
+  );
   return {
     ...state,
     acceptedDeliveryIdentity: action.acceptedDeliveryIdentity,
-    acceptedRelease: release,
-    releaseIdentity,
-    phase: release
-      ? state.rendererFailed || !appendOnly
+    observedDeliveryIdentity: action.observedDeliveryIdentity,
+    acceptedRelease: candidate?.release,
+    releaseIdentity: candidate?.releaseIdentity,
+    phase: candidate
+      ? state.rendererFailed || discontinuityObserved
         ? 'settled'
         : 'rolling'
       : 'armed',
+    discontinuityObserved,
   };
 }
 
@@ -202,6 +259,7 @@ function DiceTrayPresentationInstance({
   request,
   release,
   acceptedDeliveryIdentity,
+  observedDeliveryIdentity,
   releaseIdentity,
   witnessRole,
   onReleaseRequest,
@@ -213,6 +271,7 @@ function DiceTrayPresentationInstance({
     {
       acceptedRequest: request,
       acceptedDeliveryIdentity,
+      observedDeliveryIdentity,
       release,
       releaseIdentity,
     },
@@ -235,10 +294,9 @@ function DiceTrayPresentationInstance({
     dispatch({
       type: 'reconcile-delivery',
       acceptedDeliveryIdentity,
-      release,
-      releaseIdentity,
+      observedDeliveryIdentity,
     });
-  }, [acceptedDeliveryIdentity, release, releaseIdentity]);
+  }, [acceptedDeliveryIdentity, observedDeliveryIdentity]);
 
   const acceptedRequest = lifecycle.acceptedRequest;
   const presentationId = acceptedRequest.presentationId;
@@ -376,13 +434,23 @@ export function DiceTrayPresentation({
   reducedMotion = false,
   developmentOnlyRenderer,
 }: DiceTrayPresentationProps) {
-  const projection = projectDicePresentationEvents(events);
+  const snapshots: DicePresentationEvent[] = [];
+  for (const event of events) {
+    try {
+      const snapshot = parseDicePresentationEvent(event);
+      if (snapshot) snapshots.push(snapshot);
+    } catch {
+      // Hostile inbound values fail closed without affecting valid snapshots.
+    }
+  }
+  const projection = projectDicePresentationEvents(snapshots);
   const request = projection.request;
   if (!request) return null;
 
   const acceptedDeliveryIdentity = JSON.stringify(
     projection.acceptedEvents.map(eventIdentity)
   );
+  const observedDeliveryIdentity = JSON.stringify(snapshots.map(eventIdentity));
   const releaseIdentity = projection.release
     ? eventIdentity(projection.release)
     : undefined;
@@ -394,6 +462,7 @@ export function DiceTrayPresentation({
       request={request}
       release={projection.release}
       acceptedDeliveryIdentity={acceptedDeliveryIdentity}
+      observedDeliveryIdentity={observedDeliveryIdentity}
       releaseIdentity={releaseIdentity}
       witnessRole={witnessRole}
       onReleaseRequest={onReleaseRequest}

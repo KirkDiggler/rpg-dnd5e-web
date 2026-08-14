@@ -304,6 +304,21 @@ describe('DiceTrayPresentation', () => {
       decorativeRelease: event.release,
     });
     expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), event, released('stale:1')]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+    const stillRolling = attackDieProps.at(-1)!;
+    expect(stillRolling.phase).toBe('rolling');
+
+    act(() => stillRolling.onTelemetry?.(matchingTelemetry(stillRolling)));
+    expect(attackDieProps.at(-1)?.phase).toBe('settled');
   });
 
   it('keeps the renderer telemetry sink stable across armed-to-released delivery', () => {
@@ -522,6 +537,46 @@ describe('DiceTrayPresentation', () => {
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
+  it('rejects an initial release before its request but rolls for a later post-request release', () => {
+    const onReleaseRequest = vi.fn();
+    const earlyRelease = {
+      ...released(),
+      eventId: 'release:attack:7:early',
+    };
+    const laterRelease = {
+      ...released('attack:7', { variation: 11 }),
+      eventId: 'release:attack:7:later',
+    };
+    const requestA = requested();
+    const view = renderPresentation([earlyRelease, requestA], {
+      onReleaseRequest,
+    });
+    const armed = attackDieProps.at(-1)!;
+
+    expect(armed.phase).toBe('ready');
+    expect(armed.decorativeRelease).toBeUndefined();
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[earlyRelease, requestA, laterRelease]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: armed.presentationToken,
+      phase: 'rolling',
+      decorativeRelease: laterRelease.release,
+    });
+    expect(screen.getByTestId('dice-face').textContent).not.toBe('10');
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+  });
+
   it('retains armed request authority across a conflicting same-id request-only delivery', () => {
     const scene = {} as AttackDie3DProps['sceneOverride'];
     const sidecar = {} as NonNullable<AttackDie3DProps['sidecarOverride']>;
@@ -578,7 +633,8 @@ describe('DiceTrayPresentation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
 
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
-    expect(onReleaseRequest.mock.calls[0][0]).toMatchObject({
+    const emittedReleaseA = onReleaseRequest.mock.calls[0][0];
+    expect(emittedReleaseA).toMatchObject({
       eventId: 'attack:7:release',
       presentationId: 'attack:7',
       release: {
@@ -586,7 +642,45 @@ describe('DiceTrayPresentation', () => {
         presetId: 'lightning',
       },
     });
-    expect(Object.isFrozen(onReleaseRequest.mock.calls[0][0])).toBe(true);
+    expect(Object.isFrozen(emittedReleaseA)).toBe(true);
+
+    const appendRenderCount = attackDieProps.length;
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requestB, emittedReleaseA]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+        developmentOnlyRenderer={developmentOnlyRenderer}
+      />
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      presentationToken: armed.presentationToken,
+      onTelemetry: armed.onTelemetry,
+      result: 10,
+      phase: 'settled',
+      decorativeRelease: emittedReleaseA.release,
+      sceneOverride: scene,
+      sidecarOverride: sidecar,
+      calibrationPose,
+    });
+    expect(attackDieProps.at(-1)?.sceneOverride).toBe(scene);
+    expect(attackDieProps.at(-1)?.sidecarOverride).toBe(sidecar);
+    expect(attackDieProps.at(-1)?.calibrationPose).toBe(calibrationPose);
+    expect(
+      attackDieProps
+        .slice(appendRenderCount)
+        .every((props) => props.phase !== 'rolling')
+    ).toBe(true);
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    expect(screen.getByRole('status').textContent).toMatch(
+      /result 10 presented/i
+    );
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a release matching only a conflicting same-id replacement preset', () => {
@@ -1010,6 +1104,75 @@ describe('DiceTrayPresentation', () => {
       expect(onReleaseRequest).not.toHaveBeenCalled();
     }
   );
+
+  it('snapshots each original accessor once and fails closed on hostile input', () => {
+    const reads = new Map<string, number>();
+    const defineOneRead = (
+      target: Record<string, unknown>,
+      path: string,
+      value: unknown
+    ) =>
+      Object.defineProperty(target, path.split('.').at(-1)!, {
+        enumerable: true,
+        get() {
+          const count = (reads.get(path) ?? 0) + 1;
+          reads.set(path, count);
+          if (count > 1) throw new Error(`${path} read more than once`);
+          return value;
+        },
+      });
+
+    const releaseValue: Record<string, unknown> = {};
+    defineOneRead(releaseValue, 'release.schemaVersion', 1);
+    defineOneRead(releaseValue, 'release.presentationId', 'attack:7');
+    defineOneRead(releaseValue, 'release.presetId', 'lightning');
+    defineOneRead(releaseValue, 'release.variation', 7);
+    defineOneRead(releaseValue, 'release.vector', [0, 0]);
+    defineOneRead(releaseValue, 'release.shake', 0);
+    const releaseEvent: Record<string, unknown> = {};
+    defineOneRead(releaseEvent, 'early.schemaVersion', 1);
+    defineOneRead(releaseEvent, 'early.type', 'dice-presentation-released');
+    defineOneRead(releaseEvent, 'early.eventId', 'release:attack:7:early');
+    defineOneRead(releaseEvent, 'early.presentationId', 'attack:7');
+    defineOneRead(releaseEvent, 'early.release', releaseValue);
+
+    const roller: Record<string, unknown> = {};
+    defineOneRead(roller, 'roller.entityId', 'character:1');
+    defineOneRead(roller, 'roller.role', 'player');
+    const die: Record<string, unknown> = {};
+    defineOneRead(die, 'die.kind', 'd20');
+    defineOneRead(die, 'die.presetId', 'lightning');
+    defineOneRead(die, 'die.authoritativeResult', 10);
+    const requestEvent: Record<string, unknown> = {};
+    defineOneRead(requestEvent, 'request.schemaVersion', 1);
+    defineOneRead(requestEvent, 'request.type', 'dice-presentation-requested');
+    defineOneRead(requestEvent, 'request.eventId', 'request:attack:7');
+    defineOneRead(requestEvent, 'request.presentationId', 'attack:7');
+    defineOneRead(requestEvent, 'request.roller', roller);
+    defineOneRead(requestEvent, 'request.die', die);
+
+    const hostile = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('hostile get');
+        },
+        ownKeys() {
+          throw new Error('hostile ownKeys');
+        },
+        getOwnPropertyDescriptor() {
+          throw new Error('hostile descriptor');
+        },
+      }
+    );
+
+    renderPresentation([releaseEvent, requestEvent, hostile]);
+
+    expect([...reads.values()].every((count) => count === 1)).toBe(true);
+    expect(reads).toHaveProperty('size', 22);
+    expect(attackDieProps.at(-1)).toMatchObject({ result: 10, phase: 'ready' });
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+  });
 
   it('keeps fixed request facts active despite malformed, duplicate, conflicting, and stale events', () => {
     renderPresentation([
