@@ -61,15 +61,17 @@ describe('AttackDie3D staged concept', () => {
     expect(document.activeElement).toBe(tray);
     expect(screen.getByText(/Gameplay placement checkpoint/)).toBeTruthy();
     expect(
-      screen.getByText(/Shared event-fed presentation · fixed result 10/)
-    ).toBeTruthy();
-    expect(
       screen.getByText(
-        /Dice presentation requested · waiting for release event/
+        /Fixture event delivery · shared component contract · no production transport/
       )
     ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /Dice presentation requested · waiting for release event/
+      )
+    ).toHaveLength(2);
     expect(screen.getByTestId('dice-tray-encounter-preview')).toBeTruthy();
-    expect(screen.getByTestId('dice-tray-left-drawer')).toBeTruthy();
+    expect(screen.getAllByTestId('dice-tray-left-drawer')).toHaveLength(2);
     expect(screen.getByTestId('encounter-dock')).toBeTruthy();
     expect(screen.getByTestId('floating-log')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();

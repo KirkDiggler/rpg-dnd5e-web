@@ -10,8 +10,13 @@ import {
 import { EncounterDock } from '../../components/game/EncounterDock';
 import { CONCEPT_LOG_ENTRIES } from '../combat-panel/logFixtures';
 
+interface DiceTrayEncounterPreviewTray {
+  label: string;
+  content: React.ReactNode;
+}
+
 export interface DiceTrayEncounterPreviewProps {
-  tray: React.ReactNode;
+  trays: readonly [DiceTrayEncounterPreviewTray, DiceTrayEncounterPreviewTray];
 }
 
 const economy = {
@@ -52,7 +57,7 @@ const actions = [
 const inert = () => {};
 
 export function DiceTrayEncounterPreview({
-  tray,
+  trays,
 }: DiceTrayEncounterPreviewProps) {
   return (
     <section
@@ -70,52 +75,64 @@ export function DiceTrayEncounterPreview({
         >
           <span aria-hidden="true">Neutral encounter map</span>
         </div>
-        <aside
-          className="dice-tray-left-drawer"
-          data-testid="dice-tray-left-drawer"
-          aria-label="Always visible dice drawer"
+        <div
+          className="dice-tray-encounter-preview__witnesses"
+          data-testid="dice-tray-witness-drawers"
         >
-          <div
-            className="dice-tray-left-drawer__carcass"
-            data-testid="dice-tray-drawer-carcass"
-          >
-            <p className="dice-tray-left-drawer__status">
-              Always visible · dice only
-            </p>
-            <div
-              className="dice-tray-left-drawer__back-wall"
-              data-testid="dice-tray-drawer-back-wall"
-              aria-hidden="true"
-            />
-            <div
-              className="dice-tray-left-drawer__left-wall"
-              data-testid="dice-tray-drawer-left-wall"
-              aria-hidden="true"
-            />
-            <div
-              className="dice-tray-left-drawer__right-wall"
-              data-testid="dice-tray-drawer-right-wall"
-              aria-hidden="true"
-            />
-            <div
-              className="dice-tray-left-drawer__floor"
-              data-testid="dice-tray-drawer-floor"
+          {trays.map(({ label, content }) => (
+            <aside
+              key={label}
+              className="dice-tray-left-drawer"
+              data-testid="dice-tray-left-drawer"
+              data-witness-role={label.toLowerCase()}
+              aria-label={`${label} dice drawer`}
             >
-              {tray}
-            </div>
-            <div
-              className="dice-tray-left-drawer__front"
-              data-testid="dice-tray-drawer-front"
-              aria-hidden="true"
-            >
-              <span
-                className="dice-tray-left-drawer__handle"
-                data-testid="dice-tray-drawer-handle"
-                aria-hidden="true"
-              />
-            </div>
-          </div>
-        </aside>
+              <div
+                className="dice-tray-left-drawer__carcass"
+                data-testid="dice-tray-drawer-carcass"
+              >
+                <h4
+                  className="dice-tray-left-drawer__status"
+                  aria-label={label}
+                >
+                  {label} · dice only
+                </h4>
+                <div
+                  className="dice-tray-left-drawer__back-wall"
+                  data-testid="dice-tray-drawer-back-wall"
+                  aria-hidden="true"
+                />
+                <div
+                  className="dice-tray-left-drawer__left-wall"
+                  data-testid="dice-tray-drawer-left-wall"
+                  aria-hidden="true"
+                />
+                <div
+                  className="dice-tray-left-drawer__right-wall"
+                  data-testid="dice-tray-drawer-right-wall"
+                  aria-hidden="true"
+                />
+                <div
+                  className="dice-tray-left-drawer__floor"
+                  data-testid="dice-tray-drawer-floor"
+                >
+                  {content}
+                </div>
+                <div
+                  className="dice-tray-left-drawer__front"
+                  data-testid="dice-tray-drawer-front"
+                  aria-hidden="true"
+                >
+                  <span
+                    className="dice-tray-left-drawer__handle"
+                    data-testid="dice-tray-drawer-handle"
+                    aria-hidden="true"
+                  />
+                </div>
+              </div>
+            </aside>
+          ))}
+        </div>
       </div>
       <div className="dice-tray-encounter-preview__dock">
         <EncounterDock

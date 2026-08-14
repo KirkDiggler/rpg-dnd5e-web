@@ -1,16 +1,18 @@
-import { useCallback, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import type { AttackDie3DProps } from '../../components/ui/dice/AttackDie3D';
-import type {
-  DicePresentationEvent,
-  DicePresentationReleasedEvent,
-  DicePresentationRequestedEvent,
-} from '../../components/ui/dice/dicePresentationEvent';
+import type { DicePresentationEvent } from '../../components/ui/dice/dicePresentationEvent';
 import {
   DiceTrayPresentation,
   type DiceTrayPresentationDevelopmentRenderer,
 } from '../../components/ui/dice/DiceTrayPresentation';
 import { PROVISIONAL_RESULT_10_POSE } from './attackDieExperiment';
 import { DiceTrayEncounterPreview } from './DiceTrayEncounterPreview';
+import {
+  appendDiceTrayWitnessEvent,
+  createDiceTrayWitnessInitialEvents,
+  scheduleMonsterDiceTrayWitnessRelease,
+  type DiceTrayWitnessMode,
+} from './diceTrayWitnessFixture';
 
 interface DiceTray3DConceptPanelProps {
   token: number;
@@ -22,76 +24,118 @@ export function DiceTray3DConceptPanel(props: DiceTray3DConceptPanelProps) {
   return <TokenDiceTray3DConceptPanel key={props.token} {...props} />;
 }
 
-function createFixtureRequest(token: number): DicePresentationRequestedEvent {
-  const presentationId = `concept:attack:${token}`;
-  return Object.freeze({
-    schemaVersion: 1,
-    type: 'dice-presentation-requested',
-    eventId: `concept:request:${token}`,
-    presentationId,
-    roller: Object.freeze({ entityId: 'concept:player', role: 'player' }),
-    die: Object.freeze({
-      kind: 'd20',
-      presetId: 'lightning',
-      authoritativeResult: 10,
-    }),
-  });
-}
-
 function TokenDiceTray3DConceptPanel({
   token,
   sceneOverride,
   sidecarOverride,
 }: DiceTray3DConceptPanelProps) {
-  const [events, setEvents] = useState<readonly DicePresentationEvent[]>(() =>
-    Object.freeze([createFixtureRequest(token)])
-  );
-  const appendRequestedRelease = useCallback(
-    (next: DicePresentationReleasedEvent) => {
-      if (next.presentationId !== `concept:attack:${token}`) return;
-      setEvents((current) => {
-        if (
-          current.some(
-            (event) =>
-              event.type === 'dice-presentation-released' &&
-              event.presentationId === next.presentationId
-          )
-        )
-          return current;
-        return Object.freeze([...current, next]);
-      });
-    },
-    [token]
-  );
-  const developmentOnlyRenderer:
-    | DiceTrayPresentationDevelopmentRenderer
-    | undefined =
-    sceneOverride && sidecarOverride
-      ? {
-          scene: sceneOverride,
-          sidecar: sidecarOverride,
-          calibrationPose: PROVISIONAL_RESULT_10_POSE,
-        }
-      : undefined;
+  const [mode, setMode] = useState<DiceTrayWitnessMode>('player');
 
   return (
     <section className="dice-tray-3d-concept-panel">
       <header>
         <h3>Gameplay placement checkpoint</h3>
-        <p>Shared event-fed presentation · fixed result 10</p>
+        <p>
+          Fixture event delivery · shared component contract · no production
+          transport
+        </p>
+        <fieldset
+          className="dice-tray-3d-concept-panel__modes"
+          aria-label="Dice witness roller mode"
+        >
+          <legend>Roller mode</legend>
+          {(['player', 'monster'] as const).map((value) => (
+            <label key={value}>
+              <input
+                type="radio"
+                name="dice-tray-witness-mode"
+                value={value}
+                checked={mode === value}
+                onChange={() => setMode(value)}
+              />
+              {value === 'player' ? 'Player' : 'Monster'}
+            </label>
+          ))}
+        </fieldset>
       </header>
-      <DiceTrayEncounterPreview
-        tray={
-          <DiceTrayPresentation
-            label="Player attack dice"
-            events={events}
-            witnessRole="roller"
-            onReleaseRequest={appendRequestedRelease}
-            reducedMotion={false}
-            developmentOnlyRenderer={developmentOnlyRenderer}
-          />
-        }
+      <DiceTrayWitnessDeliveryHost
+        key={`${token}:${mode}`}
+        token={token}
+        mode={mode}
+        sceneOverride={sceneOverride}
+        sidecarOverride={sidecarOverride}
       />
     </section>
+  );
+}
+
+interface DiceTrayWitnessDeliveryHostProps extends DiceTray3DConceptPanelProps {
+  mode: DiceTrayWitnessMode;
+}
+
+function DiceTrayWitnessDeliveryHost({
+  token,
+  mode,
+  sceneOverride,
+  sidecarOverride,
+}: DiceTrayWitnessDeliveryHostProps) {
+  const [events, append] = useReducer(
+    (
+      current: readonly DicePresentationEvent[],
+      input: unknown
+    ): readonly DicePresentationEvent[] =>
+      appendDiceTrayWitnessEvent(current, input),
+    createDiceTrayWitnessInitialEvents(token, mode)
+  );
+
+  useEffect(() => {
+    if (mode !== 'monster') return;
+    return scheduleMonsterDiceTrayWitnessRelease(token, append);
+  }, [append, mode, token]);
+
+  const developmentOnlyRenderer = useMemo<
+    DiceTrayPresentationDevelopmentRenderer | undefined
+  >(
+    () =>
+      sceneOverride && sidecarOverride
+        ? {
+            scene: sceneOverride,
+            sidecar: sidecarOverride,
+            calibrationPose: PROVISIONAL_RESULT_10_POSE,
+          }
+        : undefined,
+    [sceneOverride, sidecarOverride]
+  );
+
+  return (
+    <DiceTrayEncounterPreview
+      trays={[
+        {
+          label: 'Roller',
+          content: (
+            <DiceTrayPresentation
+              label="Roller attack dice"
+              events={events}
+              witnessRole="roller"
+              onReleaseRequest={mode === 'player' ? append : undefined}
+              reducedMotion={false}
+              developmentOnlyRenderer={developmentOnlyRenderer}
+            />
+          ),
+        },
+        {
+          label: 'Spectator',
+          content: (
+            <DiceTrayPresentation
+              label="Spectator attack dice"
+              events={events}
+              witnessRole="spectator"
+              reducedMotion={false}
+              developmentOnlyRenderer={developmentOnlyRenderer}
+            />
+          ),
+        },
+      ]}
+    />
   );
 }

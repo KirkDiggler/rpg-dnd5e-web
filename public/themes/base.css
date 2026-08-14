@@ -1612,15 +1612,32 @@
   width: 100%;
 }
 .dice-tray-3d-concept-panel > header {
-  width: min(100%, 1024px);
+  width: min(100%, 1200px);
+}
+.dice-tray-3d-concept-panel__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  border: 0;
+}
+.dice-tray-3d-concept-panel__modes legend {
+  width: 100%;
+}
+.dice-tray-3d-concept-panel__modes label {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
 }
 .dice-tray-encounter-preview {
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(100%, 1024px);
-  aspect-ratio: 4 / 3;
-  min-height: 620px;
+  width: min(100%, 1200px);
+  height: 768px;
+  min-height: 0;
+  aspect-ratio: auto;
   overflow: hidden;
   border: 1px solid var(--border-primary);
   border-radius: 0.75rem;
@@ -1661,12 +1678,20 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
-.dice-tray-left-drawer {
+.dice-tray-encounter-preview__witnesses {
   position: absolute;
   left: clamp(0.75rem, 2vw, 1.25rem);
   bottom: 10px;
   z-index: 5;
-  width: min(356px, calc(100% - 1.5rem));
+  display: grid;
+  grid-template-columns: repeat(2, 356px);
+  gap: 12px;
+}
+.dice-tray-left-drawer {
+  position: relative;
+  inset: auto;
+  z-index: 5;
+  width: 356px;
   isolation: isolate;
 }
 .dice-tray-left-drawer__carcass {
@@ -1790,6 +1815,24 @@
   bottom: 0.5rem;
   z-index: 3;
   margin-top: 0;
+}
+.dice-tray-left-drawer__floor .dice-tray-3d-shell--compact::after {
+  position: absolute;
+  top: 0.55rem;
+  right: 4rem;
+  z-index: 3;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
+  color: var(--text-secondary);
+  content: attr(data-phase);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  pointer-events: none;
 }
 .dice-tray-left-drawer__floor
   .dice-tray-3d-shell--compact
@@ -1980,24 +2023,31 @@
 .attack-die-3d__fallback-visual--covered {
   visibility: hidden;
 }
-@media (max-width: 800px) {
+@media (max-width: 1240px) {
   .dice-tray-encounter-preview {
-    aspect-ratio: auto;
-    min-height: 960px;
+    height: auto;
+    min-height: 0;
   }
-  .dice-tray-left-drawer {
-    position: relative;
-    inset: auto;
-    order: 2;
-    width: min(calc(100% - 1.5rem), 356px);
-    margin: 0.75rem;
-    align-self: flex-start;
+  .dice-tray-encounter-preview__map-boundary {
+    flex: none;
   }
   .dice-tray-encounter-preview__map {
+    flex: none;
     min-height: 220px;
   }
+  .dice-tray-encounter-preview__witnesses {
+    position: relative;
+    inset: auto;
+    grid-template-columns: minmax(0, 356px);
+    gap: 12px;
+    box-sizing: border-box;
+    padding: 12px;
+  }
+  .dice-tray-left-drawer {
+    width: 100%;
+    max-width: 356px;
+  }
   .dice-tray-encounter-preview__dock {
-    order: 3;
     margin-top: 250px;
   }
   .dice-tray-encounter-preview__dock .floating-log {
