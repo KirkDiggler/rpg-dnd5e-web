@@ -2,6 +2,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import {
+  access,
   chmod,
   mkdir,
   mkdtemp,
@@ -12,7 +13,7 @@ import {
 } from 'node:fs/promises';
 import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
@@ -456,10 +457,13 @@ async function makeFrozenBuildFixture(leak = '') {
   const root = await mkdtemp(join(tmpdir(), 'frozen-provider-'));
   const repo = join(root, 'web');
   const fakeBin = join(root, 'bin');
+  const defaultTempRoot = join(root, 'default-temp');
   const observation = join(root, 'providers-withheld.txt');
   const signalMarker = join(root, 'signal-after-move.txt');
+  const tempLocationMarker = join(root, 'provider-temp-location.txt');
   const manifest = join(root, 'manifest.json');
   await mkdir(repo, { recursive: true });
+  await mkdir(defaultTempRoot);
   await put(
     join(repo, '.gitignore'),
     'public/models/synty/\npublic/models/custom-dice/\ndist/\n'
@@ -521,6 +525,9 @@ set -eu
 destination=
 for argument in "$@"; do destination=$argument; done
 /usr/bin/mv "$@"
+if [ -n "\${TEMP_LOCATION_MARKER:-}" ] && [ ! -e "$TEMP_LOCATION_MARKER" ]; then
+  dirname "$destination" > "$TEMP_LOCATION_MARKER"
+fi
 case "$destination" in
   */"\${SIGNAL_AFTER_MOVE:-not-requested}")
     if [ ! -e "$SIGNAL_MARKER" ]; then
@@ -539,7 +546,9 @@ esac
     repo,
     root,
     fakeBin,
+    defaultTempRoot,
     signalMarker,
+    tempLocationMarker,
   };
 }
 
@@ -630,6 +639,54 @@ describe('frozen private provider boundary', () => {
           },
         }
       );
+      await expect(readFile(fixture.observation, 'utf8')).resolves.toBe(
+        'both providers withheld'
+      );
+      await expect(
+        readFile(
+          join(fixture.repo, 'public', 'models', 'synty', 'provider.glb'),
+          'utf8'
+        )
+      ).resolves.toBe('synty');
+      await expect(
+        readFile(
+          join(fixture.repo, 'public', 'models', 'custom-dice', 'd20.glb'),
+          'utf8'
+        )
+      ).resolves.toBe('custom-dice');
+    } finally {
+      await rm(fixture.root, { force: true, recursive: true });
+    }
+  });
+
+  it('creates the provider temp directory as a hidden repository-root sibling', async () => {
+    const fixture = await makeFrozenBuildFixture();
+    try {
+      await execFileAsync(
+        'bash',
+        [buildFrozenScript, '--out', fixture.manifest],
+        {
+          cwd: fixture.repo,
+          env: {
+            ...process.env,
+            FAKE_NPM_OBSERVATION: fixture.observation,
+            PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
+            TEMP_LOCATION_MARKER: fixture.tempLocationMarker,
+            TMPDIR: fixture.defaultTempRoot,
+            VITE_ATTACK_DIE_WEB_COMMIT: 'a'.repeat(40),
+          },
+        }
+      );
+      const providerTemp = (
+        await readFile(fixture.tempLocationMarker, 'utf8')
+      ).trim();
+      expect(dirname(providerTemp)).toBe(fixture.repo);
+      expect(basename(providerTemp)).toMatch(
+        /^\.attack-die-frozen-providers\./
+      );
+      await expect(access(providerTemp)).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
       await expect(readFile(fixture.observation, 'utf8')).resolves.toBe(
         'both providers withheld'
       );

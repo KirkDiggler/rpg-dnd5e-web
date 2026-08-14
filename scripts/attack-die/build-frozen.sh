@@ -20,7 +20,7 @@ test -z "$(git status --porcelain=v1 --untracked-files=no)" || { echo 'tracked/i
 
 SYNTY_PROVIDER="$ROOT/public/models/synty"
 CUSTOM_DICE_PROVIDER="$ROOT/public/models/custom-dice"
-TEMP=$(mktemp -d)
+TEMP=$(mktemp -d "$ROOT/.attack-die-frozen-providers.XXXXXX")
 SYNTY_MOVED=0
 CUSTOM_DICE_MOVED=0
 restore_providers() {
