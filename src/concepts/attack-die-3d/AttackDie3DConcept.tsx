@@ -377,11 +377,23 @@ export function AttackDie3DConcept() {
           aria-label={stages[stage]}
           className="attack-die-concept__stage attack-die-concept__stage--tray"
         >
-          <DiceTray3DConceptPanel
-            token={token}
-            sceneOverride={provider?.scene}
-            sidecarOverride={provider?.sidecar}
-          />
+          {provider?.scene && provider.sidecar ? (
+            <DiceTray3DConceptPanel
+              token={token}
+              sceneOverride={provider.scene}
+              sidecarOverride={provider.sidecar}
+            />
+          ) : (
+            <p
+              role="status"
+              aria-live="polite"
+              data-testid="dice-tray-provider-status"
+            >
+              {loading
+                ? 'Loading controlled dice provider…'
+                : `Controlled dice provider unavailable. ${error}`}
+            </p>
+          )}
         </div>
       )}
       {stage !== 4 && (

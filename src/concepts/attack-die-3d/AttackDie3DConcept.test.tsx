@@ -4,6 +4,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttackDie3DConcept } from './AttackDie3DConcept';
 
 const props: Array<Record<string, unknown>> = [];
+const GLB_URL = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
+const SIDECAR_URL = '/models/synty/dice/d20-lightning/attack-die-contract.json';
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 vi.mock('../../components/ui/dice/attackDieContract', async (original) => {
   const actual =
     await original<
@@ -40,6 +52,16 @@ beforeEach(() => {
 
 describe('AttackDie3D staged concept', () => {
   it('offers keyboard-operable five-stage tabs and a truthful fixture', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
+        })
+        .mockResolvedValueOnce({ ok: false, status: 404 })
+    );
     render(<AttackDie3DConcept />);
     for (const name of ['Appearance', 'Calibrate', 'Roll', 'Verify', 'Tray'])
       expect(screen.getByRole('tab', { name })).toBeTruthy();
@@ -142,53 +164,163 @@ describe('AttackDie3D staged concept', () => {
     ).toBeTruthy();
   });
 
-  it('coalesces StrictMode provider loading and passes it to both Tray witnesses without another request', async () => {
-    const glbUrl = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
-    const sidecarUrl =
-      '/models/synty/dice/d20-lightning/attack-die-contract.json';
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  it('gates an early Tray selection until one StrictMode provider load is validated', async () => {
+    const pendingGlb = deferred<{
+      ok: boolean;
+      status: number;
+      arrayBuffer: () => Promise<ArrayBuffer>;
+    }>();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === glbUrl)
-        return {
-          ok: true,
-          status: 200,
-          arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
-        };
-      if (url === sidecarUrl) return { ok: false, status: 404 };
-      throw new Error(`unexpected fixture URL: ${url}`);
+      if (url === GLB_URL) return pendingGlb.promise;
+      if (url === SIDECAR_URL)
+        return Promise.resolve({ ok: false, status: 404 });
+      return Promise.reject(new Error(`unexpected fixture URL: ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
+    const callsFor = (url: string) =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === url);
 
     render(
       <StrictMode>
         <AttackDie3DConcept />
       </StrictMode>
     );
-    expect(screen.queryByTestId('attack-die')).toBeNull();
-    await waitFor(() =>
-      expect(
-        props.at(-1)?.sceneOverride && props.at(-1)?.presentationToken
-      ).toBe(2)
-    );
-    const callsFor = (url: string) =>
-      fetchMock.mock.calls.filter(([input]) => String(input) === url);
-    expect(callsFor(glbUrl)).toHaveLength(1);
-    expect(callsFor(sidecarUrl)).toHaveLength(1);
-    const providerScene = props.at(-1)?.sceneOverride;
-    const providerSidecar = props.at(-1)?.sidecarOverride;
-
+    await waitFor(() => expect(callsFor(GLB_URL)).toHaveLength(1));
     fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
 
-    const paired = props.slice(-2);
-    expect(paired).toHaveLength(2);
+    try {
+      const loading = screen.getByText(/Loading controlled dice provider/);
+      expect(loading.getAttribute('role')).toBe('status');
+      expect(loading.textContent).not.toContain('10');
+      expect(screen.queryByText('Gameplay placement checkpoint')).toBeNull();
+      expect(screen.queryAllByTestId('dice-tray-left-drawer')).toHaveLength(0);
+      expect(screen.queryByTestId('attack-die')).toBeNull();
+      expect(document.querySelectorAll('canvas')).toHaveLength(0);
+      expect(props).toHaveLength(0);
+      expect(callsFor(GLB_URL)).toHaveLength(1);
+      expect(callsFor(SIDECAR_URL)).toHaveLength(0);
+    } finally {
+      pendingGlb.resolve({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
+      });
+      await waitFor(() => expect(callsFor(SIDECAR_URL)).toHaveLength(1));
+      await waitFor(() =>
+        expect(props.some((value) => value.sceneOverride)).toBe(true)
+      );
+    }
+    await screen.findByText('Gameplay placement checkpoint');
+    await waitFor(() =>
+      expect(screen.getAllByTestId('dice-tray-left-drawer')).toHaveLength(2)
+    );
+
+    const byToken = new Map<unknown, Record<string, unknown>>();
+    for (const value of props) {
+      if (
+        value.phase === 'ready' &&
+        value.sceneOverride &&
+        value.sidecarOverride &&
+        Number.isSafeInteger(value.presentationToken)
+      )
+        byToken.set(value.presentationToken, value);
+    }
+    expect(byToken.size).toBe(2);
+    const paired = [...byToken.values()];
+    const providerScene = paired[0].sceneOverride;
+    const providerSidecar = paired[0].sidecarOverride;
     for (const witness of paired)
       expect(witness).toMatchObject({
         result: 10,
         sceneOverride: providerScene,
         sidecarOverride: providerSidecar,
       });
-    expect(callsFor(glbUrl)).toHaveLength(1);
-    expect(callsFor(sidecarUrl)).toHaveLength(1);
+    expect(callsFor(GLB_URL)).toHaveLength(1);
+    expect(callsFor(SIDECAR_URL)).toHaveLength(1);
+  });
+
+  it('keeps a rejected early Tray fail-closed and permits a later real parent remount', async () => {
+    const pendingGlb = deferred<{
+      ok: boolean;
+      status: number;
+      arrayBuffer?: () => Promise<ArrayBuffer>;
+    }>();
+    let glbAttempt = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === GLB_URL) {
+        glbAttempt += 1;
+        if (glbAttempt === 1) return pendingGlb.promise;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
+        });
+      }
+      if (url === SIDECAR_URL)
+        return Promise.resolve({ ok: false, status: 404 });
+      return Promise.reject(new Error(`unexpected fixture URL: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const callsFor = (url: string) =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === url);
+
+    const first = render(
+      <StrictMode>
+        <AttackDie3DConcept />
+      </StrictMode>
+    );
+    await waitFor(() => expect(callsFor(GLB_URL)).toHaveLength(1));
+    fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
+    let rejected = false;
+    try {
+      expect(
+        screen
+          .getByText(/Loading controlled dice provider/)
+          .getAttribute('role')
+      ).toBe('status');
+
+      pendingGlb.resolve({ ok: false, status: 503 });
+      rejected = true;
+      await waitFor(() =>
+        expect(
+          screen
+            .getByText(
+              /Controlled dice provider unavailable.*GLB load failed \(503\)/
+            )
+            .getAttribute('role')
+        ).toBe('status')
+      );
+      expect(
+        screen.getByText(
+          /Controlled dice provider unavailable.*GLB load failed \(503\)/
+        ).textContent
+      ).not.toContain('10');
+      expect(screen.queryByText('Gameplay placement checkpoint')).toBeNull();
+      expect(screen.queryAllByTestId('dice-tray-left-drawer')).toHaveLength(0);
+      expect(screen.queryByTestId('attack-die')).toBeNull();
+      expect(document.querySelectorAll('canvas')).toHaveLength(0);
+      expect(props).toHaveLength(0);
+      expect(callsFor(GLB_URL)).toHaveLength(1);
+      expect(callsFor(SIDECAR_URL)).toHaveLength(0);
+    } finally {
+      if (!rejected) pendingGlb.resolve({ ok: false, status: 503 });
+      fireEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
+      await waitFor(() =>
+        expect(screen.getByText(/GLB load failed \(503\)/)).toBeTruthy()
+      );
+    }
+
+    first.unmount();
+    render(<AttackDie3DConcept />);
+    await waitFor(() =>
+      expect(screen.getByTestId('actual-glb-digest').textContent).toMatch(
+        /^[0-9a-f]{64}$/
+      )
+    );
+    expect(callsFor(GLB_URL)).toHaveLength(2);
+    expect(callsFor(SIDECAR_URL)).toHaveLength(1);
   });
 
   it('previews the inspected lightning d20 with a hardcoded pose and replays its tumble', async () => {
