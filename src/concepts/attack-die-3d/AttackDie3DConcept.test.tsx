@@ -61,7 +61,10 @@ describe('AttackDie3D staged concept', () => {
     expect(document.activeElement).toBe(tray);
     expect(screen.getByText(/Gameplay placement checkpoint/)).toBeTruthy();
     expect(
-      screen.getByText(/Result 10 only · waiting for your roll/)
+      screen.getByText(/Shared event-fed presentation · fixed result 10/)
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Result 10 requested · waiting for release event/)
     ).toBeTruthy();
     expect(screen.getByTestId('dice-tray-encounter-preview')).toBeTruthy();
     expect(screen.getByTestId('dice-tray-left-drawer')).toBeTruthy();
@@ -71,7 +74,7 @@ describe('AttackDie3D staged concept', () => {
     expect(props.at(-1)).toMatchObject({
       result: 10,
       phase: 'ready',
-      reducedMotion: true,
+      reducedMotion: false,
     });
   });
 

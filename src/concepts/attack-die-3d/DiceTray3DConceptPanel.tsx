@@ -1,10 +1,14 @@
 import { useCallback, useState } from 'react';
+import type { AttackDie3DProps } from '../../components/ui/dice/AttackDie3D';
 import type {
-  AttackDie3DProps,
-  AttackDieTelemetry,
-} from '../../components/ui/dice/AttackDie3D';
-import type { DicePresentationRelease } from '../../components/ui/dice/dicePresentationRelease';
-import { DiceTray3D } from '../../components/ui/dice/DiceTray3D';
+  DicePresentationEvent,
+  DicePresentationReleasedEvent,
+  DicePresentationRequestedEvent,
+} from '../../components/ui/dice/dicePresentationEvent';
+import {
+  DiceTrayPresentation,
+  type DiceTrayPresentationDevelopmentRenderer,
+} from '../../components/ui/dice/DiceTrayPresentation';
 import { PROVISIONAL_RESULT_10_POSE } from './attackDieExperiment';
 import { DiceTrayEncounterPreview } from './DiceTrayEncounterPreview';
 
@@ -18,71 +22,73 @@ export function DiceTray3DConceptPanel(props: DiceTray3DConceptPanelProps) {
   return <TokenDiceTray3DConceptPanel key={props.token} {...props} />;
 }
 
+function createFixtureRequest(token: number): DicePresentationRequestedEvent {
+  const presentationId = `concept:attack:${token}`;
+  return Object.freeze({
+    schemaVersion: 1,
+    type: 'dice-presentation-requested',
+    eventId: `concept:request:${token}`,
+    presentationId,
+    roller: Object.freeze({ entityId: 'concept:player', role: 'player' }),
+    die: Object.freeze({
+      kind: 'd20',
+      presetId: 'lightning',
+      authoritativeResult: 10,
+    }),
+  });
+}
+
 function TokenDiceTray3DConceptPanel({
   token,
   sceneOverride,
   sidecarOverride,
 }: DiceTray3DConceptPanelProps) {
-  const [phase, setPhase] = useState<'armed' | 'rolling' | 'settled'>('armed');
-  const [release, setRelease] = useState<DicePresentationRelease>();
-
-  const onReleaseRequest = useCallback(
-    (next: DicePresentationRelease) => {
-      if (next.presentationId !== `attack:${token}`) return;
-      setRelease(next);
-      setPhase('rolling');
+  const [events, setEvents] = useState<readonly DicePresentationEvent[]>(() =>
+    Object.freeze([createFixtureRequest(token)])
+  );
+  const appendRequestedRelease = useCallback(
+    (next: DicePresentationReleasedEvent) => {
+      if (next.presentationId !== `concept:attack:${token}`) return;
+      setEvents((current) => {
+        if (
+          current.some(
+            (event) =>
+              event.type === 'dice-presentation-released' &&
+              event.presentationId === next.presentationId
+          )
+        )
+          return current;
+        return Object.freeze([...current, next]);
+      });
     },
     [token]
   );
-  const onTelemetry = useCallback(
-    (event: AttackDieTelemetry) => {
-      if (
-        event.state !== 'observed' ||
-        event.presentationToken !== token ||
-        event.requestedResult !== 10 ||
-        !event.exactTargetHeld
-      )
-        return;
-      setPhase((current) => (current === 'rolling' ? 'settled' : current));
-    },
-    [token]
-  );
-  const status =
-    phase === 'armed'
-      ? 'Result 10 only · waiting for your roll'
-      : phase === 'rolling'
-        ? 'Result 10 released · waiting for observation'
-        : 'Result 10 observed · roll settled';
+  const developmentOnlyRenderer:
+    | DiceTrayPresentationDevelopmentRenderer
+    | undefined =
+    sceneOverride && sidecarOverride
+      ? {
+          scene: sceneOverride,
+          sidecar: sidecarOverride,
+          calibrationPose: PROVISIONAL_RESULT_10_POSE,
+        }
+      : undefined;
 
   return (
     <section className="dice-tray-3d-concept-panel">
       <header>
         <h3>Gameplay placement checkpoint</h3>
-        <p>{status}</p>
+        <p>Shared event-fed presentation · fixed result 10</p>
       </header>
       <DiceTrayEncounterPreview
         tray={
-          <DiceTray3D
+          <DiceTrayPresentation
             label="Player attack dice"
-            rollerRole="player"
+            events={events}
             witnessRole="roller"
-            phase={phase}
-            release={release}
-            onReleaseRequest={onReleaseRequest}
-            onTelemetry={onTelemetry}
-            dice={[
-              {
-                id: 'attack',
-                kind: 'd20',
-                presetId: 'lightning',
-                authoritativeResult: 10,
-                presentationToken: token,
-              },
-            ]}
-            reducedMotion
-            sceneOverride={sceneOverride}
-            sidecarOverride={sidecarOverride}
-            calibrationPose={PROVISIONAL_RESULT_10_POSE}
+            onReleaseRequest={appendRequestedRelease}
+            reducedMotion={false}
+            developmentOnlyRenderer={developmentOnlyRenderer}
           />
         }
       />

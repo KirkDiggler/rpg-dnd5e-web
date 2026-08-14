@@ -1,0 +1,465 @@
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
+import { parseDicePresentationEvent } from './dicePresentationEvent';
+import type { DicePresentationRelease } from './dicePresentationRelease';
+import { DiceTrayPresentation } from './DiceTrayPresentation';
+
+const attackDieProps: AttackDie3DProps[] = [];
+vi.mock('./AttackDie3D', () => ({
+  AttackDie3D: (props: AttackDie3DProps) => {
+    attackDieProps.push(props);
+    return <div data-testid="attack-die-3d-mock">{props.fallback}</div>;
+  },
+}));
+
+function requested(
+  presentationId = 'attack:7',
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    schemaVersion: 1 as const,
+    type: 'dice-presentation-requested' as const,
+    eventId: `request:${presentationId}`,
+    presentationId,
+    roller: { entityId: 'character:1', role: 'player' as const },
+    die: {
+      kind: 'd20' as const,
+      presetId: 'lightning',
+      authoritativeResult: 10,
+    },
+    ...overrides,
+  };
+}
+
+function released(
+  presentationId = 'attack:7',
+  releaseOverrides: Partial<DicePresentationRelease> = {}
+) {
+  return {
+    schemaVersion: 1 as const,
+    type: 'dice-presentation-released' as const,
+    eventId: `release:${presentationId}`,
+    presentationId,
+    release: {
+      schemaVersion: 1 as const,
+      presentationId,
+      presetId: 'lightning',
+      variation: 7,
+      vector: [0, 0] as const,
+      shake: 0,
+      ...releaseOverrides,
+    },
+  };
+}
+
+function renderPresentation(
+  events: readonly unknown[],
+  overrides: Partial<React.ComponentProps<typeof DiceTrayPresentation>> = {}
+) {
+  attackDieProps.length = 0;
+  return render(
+    <DiceTrayPresentation
+      label="Player attack dice"
+      events={
+        events as React.ComponentProps<typeof DiceTrayPresentation>['events']
+      }
+      witnessRole="roller"
+      reducedMotion
+      {...overrides}
+    />
+  );
+}
+
+function matchingTelemetry(
+  props: AttackDie3DProps,
+  overrides: Partial<AttackDieTelemetry> = {}
+): AttackDieTelemetry {
+  return {
+    presentationToken: props.presentationToken,
+    requestedResult: props.result,
+    renderer: '3d',
+    state: 'observed',
+    exactTargetHeld: true,
+    ...overrides,
+  };
+}
+
+describe('DiceTrayPresentation', () => {
+  it('renders no tray without a valid request', () => {
+    renderPresentation([]);
+
+    expect(screen.queryByRole('region')).toBeNull();
+    expect(attackDieProps).toHaveLength(0);
+  });
+
+  it('keeps a player roller armed indefinitely without release delivery', () => {
+    vi.useFakeTimers();
+    try {
+      const onReleaseRequest = vi.fn();
+      renderPresentation([requested()], { onReleaseRequest });
+
+      expect(attackDieProps.at(-1)).toMatchObject({
+        result: 10,
+        phase: 'ready',
+      });
+      expect(screen.getByTestId('dice-face').textContent).toBe('?');
+      expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+      act(() => vi.advanceTimersByTime(60 * 60 * 1000));
+      expect(onReleaseRequest).not.toHaveBeenCalled();
+      expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('requests one frozen release event without mutating props or leaving armed before delivery', () => {
+    const events = Object.freeze([requested()]);
+    const before = JSON.stringify(events);
+    const onReleaseRequest = vi.fn();
+    renderPresentation(events, { onReleaseRequest });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    const event = onReleaseRequest.mock.calls[0][0];
+    expect(parseDicePresentationEvent(event)).toEqual(event);
+    expect(event).toMatchObject({
+      schemaVersion: 1,
+      type: 'dice-presentation-released',
+      presentationId: 'attack:7',
+      release: {
+        presentationId: 'attack:7',
+        presetId: 'lightning',
+      },
+    });
+    expect(Object.isFrozen(event)).toBe(true);
+    expect(Object.isFrozen(event.release)).toBe(true);
+    expect(Object.isFrozen(event.release.vector)).toBe(true);
+    expect(JSON.stringify(event)).not.toMatch(
+      /presentationToken|renderer|result|hit|damage|target|https?:\/\//i
+    );
+    expect(JSON.stringify(events)).toBe(before);
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+  });
+
+  it('starts rolling only when an immutable accepted append delivers the requested event', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation([structuredClone(requested())], {
+      onReleaseRequest,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    const event = onReleaseRequest.mock.calls[0][0];
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[structuredClone(requested()), structuredClone(event)]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      result: 10,
+      phase: 'rolling',
+      decorativeRelease: event.release,
+    });
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+  });
+
+  it('keeps the renderer telemetry sink stable across armed-to-released delivery', () => {
+    const view = renderPresentation([requested()]);
+    const armedTelemetry = attackDieProps.at(-1)?.onTelemetry;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), released()]}
+        witnessRole="roller"
+        reducedMotion={false}
+      />
+    );
+
+    expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+    expect(attackDieProps.at(-1)?.onTelemetry).toBe(armedTelemetry);
+  });
+
+  it('settles only from matching local-generation and result observation', () => {
+    const view = renderPresentation([requested()]);
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), released()]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    const rolling = attackDieProps.at(-1)!;
+
+    act(() =>
+      rolling.onTelemetry?.(
+        matchingTelemetry(rolling, { presentationToken: 999 })
+      )
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+    act(() =>
+      rolling.onTelemetry?.(matchingTelemetry(rolling, { requestedResult: 9 }))
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+    act(() =>
+      rolling.onTelemetry?.(matchingTelemetry(rolling, { state: 'held' }))
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+
+    act(() => rolling.onTelemetry?.(matchingTelemetry(rolling)));
+
+    expect(attackDieProps.at(-1)?.phase).toBe('settled');
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+  });
+
+  it('allocates collision-free renderer generations and resets for a new presentation id', () => {
+    const scene = {} as AttackDie3DProps['sceneOverride'];
+    const sidecar = {} as NonNullable<AttackDie3DProps['sidecarOverride']>;
+    const calibrationPose = [0.1, 0.2, 0.3, 0.9] as const;
+    const first = renderPresentation([requested()], {
+      developmentOnlyRenderer: { scene, sidecar, calibrationPose },
+    });
+    const firstToken = attackDieProps.at(-1)!.presentationToken;
+
+    first.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+        developmentOnlyRenderer={{ scene, sidecar, calibrationPose }}
+      />
+    );
+    const secondProps = attackDieProps.at(-1)!;
+    expect(secondProps.presentationToken).not.toBe(firstToken);
+    expect(secondProps).toMatchObject({
+      phase: 'ready',
+      sceneOverride: scene,
+      sidecarOverride: sidecar,
+      calibrationPose,
+    });
+
+    renderPresentation([requested('attack:9')]);
+    expect(attackDieProps.at(-1)?.presentationToken).not.toBe(
+      secondProps.presentationToken
+    );
+  });
+
+  it('binds development renderer injection to lightning result 10 only', () => {
+    const developmentOnlyRenderer = {
+      scene: {} as AttackDie3DProps['sceneOverride'],
+      sidecar: {} as NonNullable<AttackDie3DProps['sidecarOverride']>,
+      calibrationPose: [0.1, 0.2, 0.3, 0.9] as const,
+    };
+    renderPresentation(
+      [
+        requested('attack:9', {
+          die: {
+            kind: 'd20',
+            presetId: 'lightning',
+            authoritativeResult: 9,
+          },
+        }),
+      ],
+      { developmentOnlyRenderer }
+    );
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      result: 9,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+    });
+  });
+
+  it('hydrates request plus release directly as settled without replay', () => {
+    const onReleaseRequest = vi.fn();
+    renderPresentation([requested(), released()], { onReleaseRequest });
+
+    expect(attackDieProps.at(-1)?.phase).toBe('settled');
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+  });
+
+  it('converges on truncation, reorder, and non-prefix replacement instead of replaying stale choreography', () => {
+    const view = renderPresentation([requested(), released()]);
+    expect(attackDieProps.at(-1)?.phase).toBe('settled');
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested()]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[released(), requested()]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8'), released('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    expect(attackDieProps.at(-1)).toMatchObject({
+      result: 10,
+      phase: 'settled',
+    });
+  });
+
+  it.each([
+    ['monster roller', 'roller', 'monster'],
+    ['player spectator', 'spectator', 'player'],
+    ['monster spectator', 'spectator', 'monster'],
+  ] as const)(
+    'never grants append authority to a %s',
+    (_name, witnessRole, rollerRole) => {
+      const onReleaseRequest = vi.fn();
+      renderPresentation(
+        [
+          requested('attack:7', {
+            roller: { entityId: 'entity:1', role: rollerRole },
+          }),
+        ],
+        { witnessRole, onReleaseRequest }
+      );
+
+      expect(screen.queryByRole('button', { name: /roll/i })).toBeNull();
+      expect(onReleaseRequest).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps fixed request facts active despite malformed, duplicate, conflicting, and stale events', () => {
+    renderPresentation([
+      requested(),
+      requested('attack:7', {
+        eventId: 'request:conflict',
+        die: {
+          kind: 'd20',
+          presetId: 'lightning',
+          authoritativeResult: 20,
+        },
+      }),
+      { ...requested(), target: 'monster:1' },
+      released('stale:1'),
+      { ...requested(), eventId: '../malformed' },
+    ]);
+
+    expect(attackDieProps.at(-1)).toMatchObject({ result: 10, phase: 'ready' });
+  });
+
+  it('conceals an armed renderer failure and reveals truthful settled SVG only after matching release delivery', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation([requested()], { onReleaseRequest });
+    const armed = attackDieProps.at(-1)!;
+
+    act(() =>
+      armed.onTelemetry?.(
+        matchingTelemetry(armed, {
+          renderer: 'svg',
+          state: 'failed',
+          exactTargetHeld: false,
+          failureCode: 'shader-failure',
+        })
+      )
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    const event = onReleaseRequest.mock.calls[0][0];
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), event]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(attackDieProps.at(-1)?.phase).toBe('settled');
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+  });
+
+  it('renders an unknown safe preset as neutral, rolling, then settled SVG without loading a renderer URL', () => {
+    vi.useFakeTimers();
+    try {
+      const unknownRequest = requested('attack:unknown', {
+        die: {
+          kind: 'd20',
+          presetId: 'newer-safe-preset',
+          authoritativeResult: 14,
+        },
+      });
+      const onReleaseRequest = vi.fn();
+      const view = renderPresentation([unknownRequest], {
+        reducedMotion: false,
+        onReleaseRequest,
+      });
+
+      expect(attackDieProps).toHaveLength(0);
+      expect(screen.getByTestId('dice-face').textContent).toBe('?');
+      fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+      const event = onReleaseRequest.mock.calls[0][0];
+      view.rerender(
+        <DiceTrayPresentation
+          label="Player attack dice"
+          events={[unknownRequest, event]}
+          witnessRole="roller"
+          reducedMotion={false}
+          onReleaseRequest={onReleaseRequest}
+        />
+      );
+
+      expect(screen.getByTestId('dice-tray').className).toContain(
+        'dice-tray--rolling'
+      );
+      expect(screen.getByTestId('dice-face').textContent).not.toBe('14');
+      act(() => vi.advanceTimersByTime(3000));
+      expect(screen.getByTestId('dice-face').textContent).toBe('14');
+      expect(attackDieProps).toHaveLength(0);
+      expect(document.body.innerHTML).not.toMatch(/https?:\/\/|\.glb/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('announces changing presentation status through a polite live region', () => {
+    const view = renderPresentation([requested()]);
+    const status = screen.getByRole('status');
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.textContent).toMatch(/waiting for release/i);
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested(), released()]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    expect(screen.getByRole('status').textContent).toMatch(/rolling/i);
+  });
+});
