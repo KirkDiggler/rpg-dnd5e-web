@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { AttackDie3D, type AttackDie3DProps } from './AttackDie3D';
@@ -48,14 +49,23 @@ interface ActiveDiceGesture {
   current: readonly [number, number];
   distance: number;
   captureTarget: HTMLButtonElement;
+  captureStatus: 'accepted' | 'rejected';
 }
 
 function safelyReleaseCapture(active: ActiveDiceGesture) {
+  let captureHeld: boolean | undefined;
   try {
-    if (active.captureTarget.hasPointerCapture(active.pointerId))
-      active.captureTarget.releasePointerCapture(active.pointerId);
+    captureHeld = active.captureTarget.hasPointerCapture(active.pointerId);
   } catch {
-    // Capture may already be gone after browser cancellation or element removal.
+    captureHeld = undefined;
+  }
+  if (captureHeld === false) return true;
+
+  try {
+    active.captureTarget.releasePointerCapture(active.pointerId);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -129,7 +139,7 @@ export function DiceTray3D({
     [onReleaseRequest, phase, requestIdentity, rollerRole, valid, witnessRole]
   );
 
-  const cancelGesture = useCallback((pointerId: number) => {
+  const finishGesture = useCallback((pointerId: number) => {
     const active = activeGesture.current;
     if (!active || active.pointerId !== pointerId) return;
     activeGesture.current = undefined;
@@ -156,18 +166,24 @@ export function DiceTray3D({
         current: point,
         distance: 0,
         captureTarget: event.currentTarget,
+        captureStatus: 'rejected',
       };
       activeGesture.current = active;
+
+      let captureVerified = false;
       try {
         active.captureTarget.setPointerCapture(pointerId);
-        if (!active.captureTarget.hasPointerCapture(pointerId)) {
-          activeGesture.current = undefined;
-          return;
-        }
+        captureVerified = active.captureTarget.hasPointerCapture(pointerId);
       } catch {
-        activeGesture.current = undefined;
+        captureVerified = false;
+      }
+      if (!captureVerified) {
+        setGrabbed(false);
+        if (safelyReleaseCapture(active)) activeGesture.current = undefined;
         return;
       }
+
+      activeGesture.current = { ...active, captureStatus: 'accepted' };
       setGrabbed(true);
     },
     [canInteract, requestIdentity]
@@ -178,6 +194,7 @@ export function DiceTray3D({
       const active = activeGesture.current;
       if (
         !active ||
+        active.captureStatus !== 'accepted' ||
         active.pointerId !== event.pointerId ||
         active.requestIdentity !== requestIdentity
       )
@@ -202,8 +219,12 @@ export function DiceTray3D({
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       const active = activeGesture.current;
       if (!active || active.pointerId !== event.pointerId) return;
-      if (!canInteract || active.requestIdentity !== requestIdentity) {
-        cancelGesture(event.pointerId);
+      if (
+        active.captureStatus !== 'accepted' ||
+        !canInteract ||
+        active.requestIdentity !== requestIdentity
+      ) {
+        finishGesture(event.pointerId);
         return;
       }
 
@@ -223,21 +244,33 @@ export function DiceTray3D({
       safelyReleaseCapture(active);
       requestRelease(sample);
     },
-    [canInteract, cancelGesture, requestIdentity, requestRelease]
+    [canInteract, finishGesture, requestIdentity, requestRelease]
   );
 
   const handlePointerCancel = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
-      cancelGesture(event.pointerId);
+      finishGesture(event.pointerId);
     },
-    [cancelGesture]
+    [finishGesture]
+  );
+
+  const handleGrabClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (event.detail !== 0 || activeGesture.current) return;
+      requestRelease();
+    },
+    [requestRelease]
   );
 
   useLayoutEffect(() => {
     const active = activeGesture.current;
-    if (active && (!canInteract || active.requestIdentity !== requestIdentity))
-      cancelGesture(active.pointerId);
-  }, [canInteract, cancelGesture, requestIdentity]);
+    if (!active || (canInteract && active.requestIdentity === requestIdentity))
+      return;
+
+    setGrabbed(false);
+    if (safelyReleaseCapture(active)) activeGesture.current = undefined;
+    else activeGesture.current = { ...active, captureStatus: 'rejected' };
+  }, [canInteract, requestIdentity]);
 
   useEffect(
     () => () => {
@@ -327,7 +360,7 @@ export function DiceTray3D({
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
             onLostPointerCapture={handlePointerCancel}
-            onClick={() => requestRelease()}
+            onClick={handleGrabClick}
           />
         )}
       </div>
