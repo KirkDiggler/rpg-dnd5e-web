@@ -43,12 +43,12 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ -e "$SYNTY_PROVIDER" ]]; then
-  mv "$SYNTY_PROVIDER" "$TEMP/synty"
   SYNTY_MOVED=1
+  mv "$SYNTY_PROVIDER" "$TEMP/synty"
 fi
 if [[ -e "$CUSTOM_DICE_PROVIDER" ]]; then
-  mv "$CUSTOM_DICE_PROVIDER" "$TEMP/custom-dice"
   CUSTOM_DICE_MOVED=1
+  mv "$CUSTOM_DICE_PROVIDER" "$TEMP/custom-dice"
 fi
 
 npm run attack-die:build

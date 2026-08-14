@@ -457,6 +457,7 @@ async function makeFrozenBuildFixture(leak = '') {
   const repo = join(root, 'web');
   const fakeBin = join(root, 'bin');
   const observation = join(root, 'providers-withheld.txt');
+  const signalMarker = join(root, 'signal-after-move.txt');
   const manifest = join(root, 'manifest.json');
   await mkdir(repo, { recursive: true });
   await put(
@@ -512,7 +513,34 @@ esac
 `
   );
   await chmod(fakeNpm, 0o755);
-  return { leak, manifest, observation, repo, root, fakeBin };
+  const fakeMv = join(fakeBin, 'mv');
+  await put(
+    fakeMv,
+    `#!/bin/sh
+set -eu
+destination=
+for argument in "$@"; do destination=$argument; done
+/usr/bin/mv "$@"
+case "$destination" in
+  */"\${SIGNAL_AFTER_MOVE:-not-requested}")
+    if [ ! -e "$SIGNAL_MARKER" ]; then
+      printf signal-sent > "$SIGNAL_MARKER"
+      kill -TERM "$PPID"
+    fi
+    ;;
+esac
+`
+  );
+  await chmod(fakeMv, 0o755);
+  return {
+    leak,
+    manifest,
+    observation,
+    repo,
+    root,
+    fakeBin,
+    signalMarker,
+  };
 }
 
 describe('frozen private provider boundary', () => {
@@ -621,6 +649,48 @@ describe('frozen private provider boundary', () => {
       await rm(fixture.root, { force: true, recursive: true });
     }
   });
+
+  it.each(['synty', 'custom-dice'])(
+    'restores both providers if TERM lands after moving %s',
+    async (signalAfterMove) => {
+      const fixture = await makeFrozenBuildFixture();
+      try {
+        await expect(
+          execFileAsync(
+            'bash',
+            [buildFrozenScript, '--out', fixture.manifest],
+            {
+              cwd: fixture.repo,
+              env: {
+                ...process.env,
+                PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
+                SIGNAL_AFTER_MOVE: signalAfterMove,
+                SIGNAL_MARKER: fixture.signalMarker,
+                VITE_ATTACK_DIE_WEB_COMMIT: 'a'.repeat(40),
+              },
+            }
+          )
+        ).rejects.toMatchObject({ code: 143 });
+        await expect(readFile(fixture.signalMarker, 'utf8')).resolves.toBe(
+          'signal-sent'
+        );
+        await expect(
+          readFile(
+            join(fixture.repo, 'public', 'models', 'synty', 'provider.glb'),
+            'utf8'
+          )
+        ).resolves.toBe('synty');
+        await expect(
+          readFile(
+            join(fixture.repo, 'public', 'models', 'custom-dice', 'd20.glb'),
+            'utf8'
+          )
+        ).resolves.toBe('custom-dice');
+      } finally {
+        await rm(fixture.root, { force: true, recursive: true });
+      }
+    }
+  );
 
   it.each(['models/synty', 'models/custom-dice'])(
     'rejects a leaked %s tree and still restores both providers',
