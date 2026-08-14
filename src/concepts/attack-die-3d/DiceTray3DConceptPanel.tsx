@@ -16,6 +16,7 @@ import {
 
 interface DiceTray3DConceptPanelProps {
   token: number;
+  reducedMotion: boolean;
   sceneOverride?: AttackDie3DProps['sceneOverride'];
   sidecarOverride?: AttackDie3DProps['sidecarOverride'];
 }
@@ -26,6 +27,7 @@ export function DiceTray3DConceptPanel(props: DiceTray3DConceptPanelProps) {
 
 function TokenDiceTray3DConceptPanel({
   token,
+  reducedMotion,
   sceneOverride,
   sidecarOverride,
 }: DiceTray3DConceptPanelProps) {
@@ -62,6 +64,7 @@ function TokenDiceTray3DConceptPanel({
         key={`${token}:${mode}`}
         token={token}
         mode={mode}
+        reducedMotion={reducedMotion}
         sceneOverride={sceneOverride}
         sidecarOverride={sidecarOverride}
       />
@@ -76,6 +79,7 @@ interface DiceTrayWitnessDeliveryHostProps extends DiceTray3DConceptPanelProps {
 function DiceTrayWitnessDeliveryHost({
   token,
   mode,
+  reducedMotion,
   sceneOverride,
   sidecarOverride,
 }: DiceTrayWitnessDeliveryHostProps) {
@@ -118,7 +122,7 @@ function DiceTrayWitnessDeliveryHost({
               events={events}
               witnessRole="roller"
               onReleaseRequest={mode === 'player' ? append : undefined}
-              reducedMotion={false}
+              reducedMotion={reducedMotion}
               developmentOnlyRenderer={developmentOnlyRenderer}
             />
           ),
@@ -130,7 +134,7 @@ function DiceTrayWitnessDeliveryHost({
               label="Spectator attack dice"
               events={events}
               witnessRole="spectator"
-              reducedMotion={false}
+              reducedMotion={reducedMotion}
               developmentOnlyRenderer={developmentOnlyRenderer}
             />
           ),

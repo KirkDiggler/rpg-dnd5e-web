@@ -146,9 +146,10 @@ describe('DiceTray3DConceptPanel', () => {
     const scene = {} as NonNullable<AttackDie3DProps['sceneOverride']>;
     const sidecar = {} as NonNullable<AttackDie3DProps['sidecarOverride']>;
 
-    render(
+    const view = render(
       <DiceTray3DConceptPanel
         token={9}
+        reducedMotion={true}
         sceneOverride={scene}
         sidecarOverride={sidecar}
       />
@@ -179,6 +180,8 @@ describe('DiceTray3DConceptPanel', () => {
 
     const rollerCall = latestPresentation('Roller');
     const spectatorCall = latestPresentation('Spectator');
+    expect(rollerCall.reducedMotion).toBe(true);
+    expect(spectatorCall.reducedMotion).toBe(true);
     expect(rollerCall.events).toBe(spectatorCall.events);
     expect(Object.isFrozen(rollerCall.events)).toBe(true);
     expect(rollerCall.events).toEqual([
@@ -213,7 +216,7 @@ describe('DiceTray3DConceptPanel', () => {
     expect(latestAttack(rollerToken)).toMatchObject({
       result: 10,
       phase: 'ready',
-      reducedMotion: false,
+      reducedMotion: true,
       sceneOverride: scene,
       sidecarOverride: sidecar,
       calibrationPose: PROVISIONAL_RESULT_10_POSE,
@@ -221,11 +224,37 @@ describe('DiceTray3DConceptPanel', () => {
     expect(latestAttack(spectatorToken)).toMatchObject({
       result: 10,
       phase: 'ready',
-      reducedMotion: false,
+      reducedMotion: true,
       sceneOverride: scene,
       sidecarOverride: sidecar,
       calibrationPose: PROVISIONAL_RESULT_10_POSE,
     });
+
+    view.rerender(
+      <DiceTray3DConceptPanel
+        token={9}
+        reducedMotion={false}
+        sceneOverride={scene}
+        sidecarOverride={sidecar}
+      />
+    );
+    const normalRollerCall = latestPresentation('Roller');
+    const normalSpectatorCall = latestPresentation('Spectator');
+    expect(normalRollerCall.reducedMotion).toBe(false);
+    expect(normalSpectatorCall.reducedMotion).toBe(false);
+    expect(normalRollerCall.events).toBe(rollerCall.events);
+    expect(normalSpectatorCall.events).toBe(rollerCall.events);
+    expect(normalRollerCall.developmentOnlyRenderer).toBe(
+      rollerCall.developmentOnlyRenderer
+    );
+    expect(normalSpectatorCall.developmentOnlyRenderer).toBe(
+      rollerCall.developmentOnlyRenderer
+    );
+    expect(tokenFor('Roller')).toBe(rollerToken);
+    expect(tokenFor('Spectator')).toBe(spectatorToken);
+    expect(latestAttack(rollerToken).reducedMotion).toBe(false);
+    expect(latestAttack(spectatorToken).reducedMotion).toBe(false);
+
     expect(face('Roller').textContent).toBe('?');
     expect(face('Spectator').textContent).toBe('?');
     expect(
@@ -243,6 +272,7 @@ describe('DiceTray3DConceptPanel', () => {
     render(
       <DiceTray3DConceptPanel
         token={12}
+        reducedMotion={false}
         sceneOverride={{} as NonNullable<AttackDie3DProps['sceneOverride']>}
         sidecarOverride={{} as NonNullable<AttackDie3DProps['sidecarOverride']>}
       />
@@ -325,6 +355,7 @@ describe('DiceTray3DConceptPanel', () => {
     const view = render(
       <DiceTray3DConceptPanel
         token={30}
+        reducedMotion={false}
         sceneOverride={{} as NonNullable<AttackDie3DProps['sceneOverride']>}
         sidecarOverride={{} as NonNullable<AttackDie3DProps['sidecarOverride']>}
       />
@@ -383,6 +414,7 @@ describe('DiceTray3DConceptPanel', () => {
     view.rerender(
       <DiceTray3DConceptPanel
         token={31}
+        reducedMotion={false}
         sceneOverride={{} as NonNullable<AttackDie3DProps['sceneOverride']>}
         sidecarOverride={{} as NonNullable<AttackDie3DProps['sidecarOverride']>}
       />
@@ -404,6 +436,7 @@ describe('DiceTray3DConceptPanel', () => {
       <StrictMode>
         <DiceTray3DConceptPanel
           token={41}
+          reducedMotion={false}
           sceneOverride={{} as NonNullable<AttackDie3DProps['sceneOverride']>}
           sidecarOverride={
             {} as NonNullable<AttackDie3DProps['sidecarOverride']>

@@ -16,6 +16,67 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+function stubReducedMotionPreference(matches: boolean) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)' ? matches : false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true),
+    }))
+  );
+}
+
+function stubReadyProvider() {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
+      })
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+  );
+}
+
+function readyWitnesses() {
+  const byToken = new Map<number, Record<string, unknown>>();
+  for (const value of props) {
+    if (
+      value.phase === 'ready' &&
+      value.result === 10 &&
+      value.sceneOverride &&
+      value.sidecarOverride &&
+      Number.isSafeInteger(value.presentationToken)
+    )
+      byToken.set(value.presentationToken as number, value);
+  }
+  return [...byToken.values()];
+}
+
+async function expectReadyWitnessMotion(reducedMotion: boolean) {
+  await waitFor(() => expect(readyWitnesses()).toHaveLength(2));
+  const witnesses = readyWitnesses();
+  expect(new Set(witnesses.map((value) => value.presentationToken)).size).toBe(
+    2
+  );
+  for (const witness of witnesses)
+    expect(witness).toMatchObject({
+      result: 10,
+      phase: 'ready',
+      reducedMotion,
+    });
+  expect(witnesses[0].sceneOverride).toBe(witnesses[1].sceneOverride);
+  expect(witnesses[0].sidecarOverride).toBe(witnesses[1].sidecarOverride);
+  return witnesses;
+}
 vi.mock('../../components/ui/dice/attackDieContract', async (original) => {
   const actual =
     await original<
@@ -47,21 +108,13 @@ vi.mock('three/examples/jsm/loaders/GLTFLoader.js', () => ({
 
 beforeEach(() => {
   props.length = 0;
+  stubReducedMotionPreference(false);
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
 });
 
 describe('AttackDie3D staged concept', () => {
   it('offers keyboard-operable five-stage tabs and a truthful fixture', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
-        })
-        .mockResolvedValueOnce({ ok: false, status: 404 })
-    );
+    stubReadyProvider();
     render(<AttackDie3DConcept />);
     for (const name of ['Appearance', 'Calibrate', 'Roll', 'Verify', 'Tray'])
       expect(screen.getByRole('tab', { name })).toBeTruthy();
@@ -98,11 +151,51 @@ describe('AttackDie3D staged concept', () => {
     expect(screen.getByTestId('encounter-dock')).toBeTruthy();
     expect(screen.getByTestId('floating-log')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
-    expect(props.at(-1)).toMatchObject({
-      result: 10,
-      phase: 'ready',
-      reducedMotion: false,
-    });
+    await expectReadyWitnessMotion(false);
+  });
+
+  it('passes the explicit lab reduced-motion preference to both ready Tray witnesses', async () => {
+    stubReadyProvider();
+    render(
+      <StrictMode>
+        <AttackDie3DConcept />
+      </StrictMode>
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Roll' }));
+    const explicitPreference = screen.getByLabelText(/Reduced motion/);
+    expect((explicitPreference as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(explicitPreference);
+    expect((explicitPreference as HTMLInputElement).checked).toBe(true);
+    await waitFor(() =>
+      expect(screen.getByTestId('actual-glb-digest').textContent).toMatch(
+        /^[0-9a-f]{64}$/
+      )
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
+    await expectReadyWitnessMotion(true);
+  });
+
+  it('passes the OS reduced-motion preference to both ready Tray witnesses while the explicit control remains false', async () => {
+    stubReducedMotionPreference(true);
+    stubReadyProvider();
+    render(
+      <StrictMode>
+        <AttackDie3DConcept />
+      </StrictMode>
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Roll' }));
+    expect(
+      (screen.getByLabelText(/Reduced motion/) as HTMLInputElement).checked
+    ).toBe(false);
+    await waitFor(() =>
+      expect(screen.getByTestId('actual-glb-digest').textContent).toMatch(
+        /^[0-9a-f]{64}$/
+      )
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
+    await expectReadyWitnessMotion(true);
   });
 
   it('starts with zero mappings, exposes 0.1-degree controls, and camera switching preserves pose', () => {

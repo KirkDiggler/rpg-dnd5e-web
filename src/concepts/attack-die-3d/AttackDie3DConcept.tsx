@@ -380,6 +380,7 @@ export function AttackDie3DConcept() {
           {provider?.scene && provider.sidecar ? (
             <DiceTray3DConceptPanel
               token={token}
+              reducedMotion={effectiveReducedMotion}
               sceneOverride={provider.scene}
               sidecarOverride={provider.sidecar}
             />
