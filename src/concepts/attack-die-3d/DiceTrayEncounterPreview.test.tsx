@@ -14,9 +14,14 @@ function renderPreview() {
   return render(<DiceTrayEncounterPreview trays={trays} />);
 }
 
-function cssRuleBodies(source: string, selectorFragment: string) {
+function cssRuleBodies(source: string, exactSelector: string) {
   return [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-    .filter((match) => match[1].includes(selectorFragment))
+    .filter((match) =>
+      match[1]
+        .split(',')
+        .map((selector) => selector.trim())
+        .includes(exactSelector)
+    )
     .map((match) => match[2]);
 }
 

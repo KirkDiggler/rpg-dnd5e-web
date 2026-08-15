@@ -9,6 +9,7 @@ import {
   dicePresentationReleaseKey,
   isDicePresetIdentifier,
 } from '../../components/ui/dice/dicePresentationRelease';
+import { createNeutralVisualThrowProfile } from '../../components/ui/dice/visualThrowProfile';
 
 export type DiceTrayWitnessMode = 'player' | 'monster';
 
@@ -111,7 +112,7 @@ export function scheduleMonsterDiceTrayWitnessRelease(
         release: createDicePresentationRelease({
           presentationId: monsterPresentationId,
           presetId: checkedPresetId,
-          variation: 0,
+          throwProfile: createNeutralVisualThrowProfile(0),
         }),
       })
     );

@@ -11,12 +11,24 @@ import {
 } from './DiceTray3D';
 
 const attackDieProps: AttackDie3DProps[] = [];
+const controllerMocks = vi.hoisted(() => ({ creates: vi.fn() }));
 vi.mock('./AttackDie3D', () => ({
   AttackDie3D: (props: AttackDie3DProps) => {
     attackDieProps.push(props);
     return <div data-testid="attack-die-3d-mock">{props.fallback}</div>;
   },
 }));
+vi.mock('./rollGroupGestureController', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('./rollGroupGestureController')>();
+  return {
+    ...actual,
+    createRollGroupGestureController: () => {
+      controllerMocks.creates();
+      return actual.createRollGroupGestureController();
+    },
+  };
+});
 
 const die: DiceTray3DItem = {
   kind: 'd20',
@@ -29,12 +41,18 @@ const originalDie: DiceTray3DItem = {
   authoritativeResult: 10,
 };
 const release: DicePresentationRelease = Object.freeze({
-  schemaVersion: 1,
+  schemaVersion: 2,
   presentationId: 'attack:7',
   presetId: 'lightning',
-  variation: 7,
-  vector: Object.freeze([0, 0] as const),
-  shake: 0,
+  throwProfile: Object.freeze({
+    schemaVersion: 1,
+    releasePosition: Object.freeze([0.5, 0.5] as const),
+    releaseDirection: Object.freeze([0, 0] as const),
+    releaseSpeed: 0,
+    shakeEnergy: 0,
+    spinBias: 0,
+    motionSeed: 0x755,
+  }),
 });
 const sceneOverride = {} as AttackDie3DProps['sceneOverride'];
 const sidecarOverride = {} as AttackDieRuntimeSidecar;
@@ -63,6 +81,7 @@ function releaseCapturedPointer(this: HTMLElement, pointerId: number) {
 }
 
 beforeEach(() => {
+  controllerMocks.creates.mockClear();
   capturedPointers = new WeakMap();
   emitLostCaptureOnRelease = false;
   setPointerCapture = vi.fn(capturePointer);
@@ -72,6 +91,22 @@ beforeEach(() => {
     setPointerCapture: { configurable: true, value: setPointerCapture },
     hasPointerCapture: { configurable: true, value: hasPointerCapture },
     releasePointerCapture: { configurable: true, value: releasePointerCapture },
+    getBoundingClientRect: {
+      configurable: true,
+      value(this: HTMLElement) {
+        const bounds = this.classList.contains('dice-tray-3d-grab-target')
+          ? { left: 0, top: 0, width: 100, height: 100 }
+          : { left: 0, top: 0, width: 240, height: 220 };
+        return {
+          ...bounds,
+          right: bounds.left + bounds.width,
+          bottom: bounds.top + bounds.height,
+          x: bounds.left,
+          y: bounds.top,
+          toJSON: () => bounds,
+        };
+      },
+    },
   });
 });
 
@@ -79,6 +114,7 @@ afterEach(() => {
   delete (HTMLElement.prototype as Partial<HTMLElement>).setPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).hasPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).releasePointerCapture;
+  delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
 });
 
 function renderTray(
@@ -91,6 +127,7 @@ function renderTray(
       label="Player attack tray"
       presentationId="attack:7"
       rendererGeneration={-7}
+      motionSeed={0x755}
       rollerRole="player"
       witnessRole="roller"
       phase="settled"
@@ -166,9 +203,27 @@ describe('DiceTray3D', () => {
       firstProps.presentationToken
     );
     expect(secondProps.provider).toBe(firstProps.provider);
-    expect(firstProps.onTelemetry).toBe(firstTelemetry);
-    expect(secondProps.onTelemetry).toBe(secondTelemetry);
-    expect(secondProps.onTelemetry).not.toBe(firstProps.onTelemetry);
+    expect(firstProps.onTelemetry).not.toBe(secondProps.onTelemetry);
+    firstProps.onTelemetry?.({
+      presentationToken: -101,
+      requestedResult: 10,
+      renderer: '3d',
+      state: 'held',
+      exactTargetHeld: false,
+    });
+    secondProps.onTelemetry?.({
+      presentationToken: -102,
+      requestedResult: 10,
+      renderer: '3d',
+      state: 'held',
+      exactTargetHeld: false,
+    });
+    expect(firstTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({ presentationToken: -101 })
+    );
+    expect(secondTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({ presentationToken: -102 })
+    );
   });
 
   it('forwards optional diagnostics and development-only renderer failure exercises', () => {
@@ -198,7 +253,7 @@ describe('DiceTray3D', () => {
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
   });
 
-  it('arms a player roller with separate Roll and Grab controls without revealing the result', () => {
+  it('uses a die-sized hit target and lazily creates held state only after an eligible begin', () => {
     const onReleaseRequest = vi.fn();
     renderTray([die], { phase: 'armed', onReleaseRequest });
 
@@ -207,14 +262,75 @@ describe('DiceTray3D', () => {
         .getByRole('button', { name: 'Roll d20' })
         .closest('.dice-tray-3d-shell--compact .dice-tray-3d-shell__controls')
     ).toBeTruthy();
+    const renderer = screen.getByTestId('dice-tray-3d-renderer');
     const grab = screen.getByRole('button', { name: 'Grab d20' });
-    expect(grab.closest('.dice-tray-3d-renderer')).toBeTruthy();
-    fireEvent.pointerDown(grab, { pointerId: 17, clientX: 10, clientY: 20 });
+    expect(grab.closest('.dice-tray-3d-renderer')).toBe(renderer);
+    expect(grab.getBoundingClientRect().width).toBeLessThan(
+      renderer.getBoundingClientRect().width
+    );
+    expect(grab.getBoundingClientRect().height).toBeLessThan(
+      renderer.getBoundingClientRect().height
+    );
+    expect(controllerMocks.creates).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(grab, {
+      pointerId: 16,
+      pointerType: 'mouse',
+      clientX: 150,
+      clientY: 50,
+    });
+    expect(setPointerCapture).not.toHaveBeenCalled();
+    expect(controllerMocks.creates).toHaveBeenCalledTimes(1);
+    expect(attackDieProps.at(-1)?.heldRollGroup).toBeUndefined();
+
+    fireEvent.pointerDown(grab, {
+      pointerId: 17,
+      pointerType: 'mouse',
+      clientX: 10,
+      clientY: 20,
+    });
     expect(setPointerCapture).toHaveBeenCalledWith(17);
     expect(grab.getAttribute('data-grabbed')).toBe('true');
-    expect(attackDieProps[0]).toMatchObject({ result: 10, phase: 'ready' });
+    expect(attackDieProps.at(-1)).toMatchObject({
+      result: 10,
+      phase: 'ready',
+      heldRollGroup: {
+        normalizedPosition: [10 / 240, 20 / 220],
+        normalizedTilt: [0, 0],
+        shakeEnergy: 0,
+        wobblePhase: 0,
+      },
+    });
     expect(screen.getByTestId('dice-face').textContent).toBe('?');
     expect(onReleaseRequest).not.toHaveBeenCalled();
+  });
+
+  it('uses 14px mouse padding and 24px touch padding at the snapshotted hit bounds', () => {
+    const mouseRequest = vi.fn();
+    const mouse = renderTray([die], {
+      phase: 'armed',
+      onReleaseRequest: mouseRequest,
+    });
+    let grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, {
+      pointerId: 18,
+      pointerType: 'mouse',
+      clientX: -20,
+      clientY: 50,
+    });
+    expect(setPointerCapture).not.toHaveBeenCalled();
+    mouse.unmount();
+
+    renderTray([die], { phase: 'armed', onReleaseRequest: vi.fn() });
+    grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, {
+      pointerId: 19,
+      pointerType: 'touch',
+      clientX: -20,
+      clientY: 50,
+    });
+    expect(setPointerCapture).toHaveBeenCalledWith(19);
+    expect(grab.getAttribute('data-grabbed')).toBe('true');
   });
 
   it('hides Roll without a host callback and preserves authority when one is installed later', () => {
@@ -229,6 +345,7 @@ describe('DiceTray3D', () => {
         label="Player attack tray"
         presentationId="attack:7"
         rendererGeneration={-7}
+        motionSeed={0x755}
         rollerRole="player"
         witnessRole="roller"
         phase="armed"
@@ -249,13 +366,14 @@ describe('DiceTray3D', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
 
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
-    expect(onReleaseRequest).toHaveBeenCalledWith();
+    expect(onReleaseRequest).toHaveBeenCalledWith(undefined);
     expect(attackDieProps.at(-1)?.phase).toBe('ready');
     view.rerender(
       <DiceTray3D
         label="Player attack tray"
         presentationId="attack:7"
         rendererGeneration={-7}
+        motionSeed={0x755}
         rollerRole="player"
         witnessRole="roller"
         phase="rolling"
@@ -271,13 +389,13 @@ describe('DiceTray3D', () => {
       result: 10,
       presentationToken: -7,
       phase: 'rolling',
-      decorativeRelease: release,
+      throwProfile: release.throwProfile,
     });
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps moves local, accumulates path distance, and commits one plain outside release', () => {
+  it('passes held motion to the actual die, keeps events absent during moves, and commits one frozen profile', () => {
     const onReleaseRequest = vi.fn();
     renderTray([die], {
       phase: 'armed',
@@ -300,21 +418,31 @@ describe('DiceTray3D', () => {
       result: 10,
       presentationToken: initialProps.presentationToken,
       onTelemetry: initialProps.onTelemetry,
+      heldRollGroup: {
+        normalizedPosition: [40 / 240, 60 / 220],
+        normalizedTilt: [expect.any(Number), expect.any(Number)],
+        shakeEnergy: expect.any(Number),
+        wobblePhase: expect.any(Number),
+      },
     });
 
     fireEvent.pointerUp(grab, { pointerId: 4, clientX: 90, clientY: 60 });
 
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
-    expect(onReleaseRequest).toHaveBeenCalledWith({
-      origin: [10, 20],
-      current: [90, 60],
-      distance: 100,
+    const profile = onReleaseRequest.mock.calls[0][0];
+    expect(profile).toMatchObject({
+      schemaVersion: 1,
+      releasePosition: [90 / 240, 60 / 220],
+      releaseDirection: [expect.any(Number), expect.any(Number)],
+      releaseSpeed: expect.any(Number),
+      shakeEnergy: expect.any(Number),
+      spinBias: expect.any(Number),
+      motionSeed: 0x755,
     });
-    expect(onReleaseRequest.mock.calls[0][0]).toEqual({
-      origin: [10, 20],
-      current: [90, 60],
-      distance: 100,
-    });
+    expect(Object.isFrozen(profile)).toBe(true);
+    expect(Object.isFrozen(profile.releasePosition)).toBe(true);
+    expect(Object.isFrozen(profile.releaseDirection)).toBe(true);
+    expect(attackDieProps.at(-1)?.heldRollGroup).toBeUndefined();
     expect(renderer.getAttribute('data-grabbed')).toBe('false');
     expect(releasePointerCapture).toHaveBeenCalledWith(4);
     expect(attackDieProps.at(-1)?.phase).toBe('ready');
@@ -332,11 +460,13 @@ describe('DiceTray3D', () => {
     fireEvent.pointerUp(grab, { pointerId: 5, clientX: 30, clientY: 20 });
 
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
-    expect(onReleaseRequest).toHaveBeenCalledWith({
-      origin: [0, 0],
-      current: [20, 10],
-      distance: Math.hypot(20, 10),
-    });
+    expect(onReleaseRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schemaVersion: 1,
+        releasePosition: [20 / 240, 10 / 220],
+        motionSeed: 0x755,
+      })
+    );
     expect(grab.getAttribute('data-grabbed')).toBe('false');
   });
 
@@ -358,11 +488,13 @@ describe('DiceTray3D', () => {
     expect(setPointerCapture).toHaveBeenCalledTimes(1);
 
     fireEvent.pointerUp(grab, { pointerId: 1, clientX: 30, clientY: 40 });
-    expect(onReleaseRequest).toHaveBeenCalledWith({
-      origin: [10, 20],
-      current: [30, 40],
-      distance: Math.hypot(20, 20),
-    });
+    expect(onReleaseRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schemaVersion: 1,
+        releasePosition: [30 / 240, 40 / 220],
+        motionSeed: 0x755,
+      })
+    );
   });
 
   it.each(['cancel', 'lost capture'] as const)(
@@ -387,6 +519,7 @@ describe('DiceTray3D', () => {
       fireEvent.click(grab, { detail: 1 });
 
       expect(grab.getAttribute('data-grabbed')).toBe('false');
+      expect(attackDieProps.at(-1)?.heldRollGroup).toBeUndefined();
       expect(onReleaseRequest).not.toHaveBeenCalled();
       expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
     }
@@ -439,7 +572,7 @@ describe('DiceTray3D', () => {
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
-  it('blocks another pointer when uncertain capture release fails until terminal cleanup', () => {
+  it('clears a failed uncertain capture so a later pointer can begin', () => {
     const onReleaseRequest = vi.fn();
     hasPointerCapture.mockImplementation(() => {
       throw Error('capture inspection unavailable');
@@ -463,7 +596,7 @@ describe('DiceTray3D', () => {
       clientY: 40,
     });
 
-    expect(setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(setPointerCapture).toHaveBeenCalledTimes(2);
     expect(grab.getAttribute('data-grabbed')).toBe('false');
     expect(onReleaseRequest).not.toHaveBeenCalled();
 
@@ -483,7 +616,7 @@ describe('DiceTray3D', () => {
       clientY: 40,
     });
 
-    expect(setPointerCapture).toHaveBeenCalledTimes(2);
+    expect(setPointerCapture).toHaveBeenCalledTimes(3);
     expect(setPointerCapture).toHaveBeenLastCalledWith(24);
     expect(grab.getAttribute('data-grabbed')).toBe('true');
     expect(onReleaseRequest).not.toHaveBeenCalled();
@@ -502,6 +635,40 @@ describe('DiceTray3D', () => {
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
+  it('cleans held capture and local state on provider failure without emitting', () => {
+    const onReleaseRequest = vi.fn();
+    const onTelemetry = vi.fn();
+    renderTray([originalDie], {
+      phase: 'armed',
+      onReleaseRequest,
+      onTelemetry,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+    });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, { pointerId: 15, clientX: 10, clientY: 20 });
+    expect(attackDieProps.at(-1)?.heldRollGroup).toBeDefined();
+
+    act(() =>
+      attackDieProps.at(-1)?.onTelemetry?.({
+        presentationToken: -7,
+        requestedResult: 10,
+        renderer: 'svg',
+        state: 'failed',
+        exactTargetHeld: false,
+        failureCode: 'provider-load',
+      })
+    );
+
+    expect(releasePointerCapture).toHaveBeenCalledWith(15);
+    expect(attackDieProps.at(-1)?.heldRollGroup).toBeUndefined();
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+    expect(onTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'failed' })
+    );
+  });
+
   it('cleans held capture on authority loss without emitting', () => {
     const onReleaseRequest = vi.fn();
     const view = renderTray([die], { phase: 'armed', onReleaseRequest });
@@ -513,6 +680,7 @@ describe('DiceTray3D', () => {
         label="Player attack tray"
         presentationId="attack:7"
         rendererGeneration={-7}
+        motionSeed={0x755}
         rollerRole="player"
         witnessRole="spectator"
         phase="armed"
@@ -538,6 +706,7 @@ describe('DiceTray3D', () => {
           label="Player attack tray"
           presentationId="attack:7"
           rendererGeneration={-7}
+          motionSeed={0x755}
           rollerRole="player"
           witnessRole="roller"
           phase="armed"
@@ -567,6 +736,7 @@ describe('DiceTray3D', () => {
         label="Player attack tray"
         presentationId="attack:8"
         rendererGeneration={-8}
+        motionSeed={0x755}
         rollerRole="player"
         witnessRole="roller"
         phase="armed"
@@ -583,6 +753,38 @@ describe('DiceTray3D', () => {
         .getByRole('button', { name: 'Grab d20' })
         .getAttribute('data-grabbed')
     ).toBe('false');
+  });
+
+  it('resets held state and capture on phase interruption without releasing', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderTray([originalDie], {
+      phase: 'armed',
+      onReleaseRequest,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+    });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, { pointerId: 26, clientX: 10, clientY: 20 });
+    expect(attackDieProps.at(-1)?.heldRollGroup).toBeDefined();
+
+    view.rerender(
+      <DiceTray3D
+        label="Player attack tray"
+        presentationId="attack:7"
+        rendererGeneration={-7}
+        motionSeed={0x755}
+        rollerRole="player"
+        witnessRole="roller"
+        phase="rolling"
+        dice={[originalDie]}
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(releasePointerCapture).toHaveBeenCalledWith(26);
+    expect(attackDieProps.at(-1)?.heldRollGroup).toBeUndefined();
+    expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
   it.each(['unmount', 'identity', 'authority'] as const)(
@@ -613,6 +815,7 @@ describe('DiceTray3D', () => {
             label="Player attack tray"
             presentationId={cleanup === 'identity' ? 'attack:8' : 'attack:7'}
             rendererGeneration={cleanup === 'identity' ? -8 : -7}
+            motionSeed={0x755}
             rollerRole="player"
             witnessRole={cleanup === 'authority' ? 'spectator' : 'roller'}
             phase="armed"
@@ -639,11 +842,13 @@ describe('DiceTray3D', () => {
     fireEvent.pointerDown(grab, { pointerId: 12, clientX: 10, clientY: 20 });
     fireEvent.pointerUp(grab, { pointerId: 12, clientX: 30, clientY: 40 });
     expect(pointerRequest).toHaveBeenCalledTimes(1);
-    expect(pointerRequest).toHaveBeenCalledWith({
-      origin: [10, 20],
-      current: [30, 40],
-      distance: Math.hypot(20, 20),
-    });
+    expect(pointerRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schemaVersion: 1,
+        releasePosition: [30 / 240, 40 / 220],
+        motionSeed: 0x755,
+      })
+    );
 
     const clickRequest = vi.fn();
     renderTray([die], { phase: 'armed', onReleaseRequest: clickRequest });
@@ -652,7 +857,7 @@ describe('DiceTray3D', () => {
     expect(clickRequest).not.toHaveBeenCalled();
     fireEvent.click(grab, { detail: 0 });
     expect(clickRequest).toHaveBeenCalledTimes(1);
-    expect(clickRequest).toHaveBeenCalledWith();
+    expect(clickRequest).toHaveBeenCalledWith(undefined);
   });
 
   it('never automatically requests release for a monster roller', () => {
@@ -665,6 +870,7 @@ describe('DiceTray3D', () => {
 
     expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+    expect(controllerMocks.creates).not.toHaveBeenCalled();
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
@@ -681,6 +887,7 @@ describe('DiceTray3D', () => {
 
       expect(screen.queryByRole('button', { name: /roll/i })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+      expect(controllerMocks.creates).not.toHaveBeenCalled();
       expect(onReleaseRequest).not.toHaveBeenCalled();
     }
   );
@@ -711,13 +918,13 @@ describe('DiceTray3D', () => {
       phase: 'rolling',
       release: { ...release, presentationId: 'attack:8' },
     });
-    expect(attackDieProps.at(-1)?.decorativeRelease).toBeUndefined();
+    expect(attackDieProps.at(-1)?.throwProfile).toBeUndefined();
 
     renderTray([die], {
       phase: 'rolling',
       release: { ...release, presetId: 'newer-safe-preset' },
     });
-    expect(attackDieProps.at(-1)?.decorativeRelease).toBeUndefined();
+    expect(attackDieProps.at(-1)?.throwProfile).toBeUndefined();
   });
 
   it('renders an unknown safe preset as semantic SVG without invoking the allowlisted renderer', () => {
@@ -743,6 +950,7 @@ describe('DiceTray3D', () => {
           label="Player attack tray"
           presentationId="attack:7"
           rendererGeneration={-7}
+          motionSeed={0x755}
           rollerRole="player"
           witnessRole="roller"
           phase="rolling"
@@ -780,6 +988,7 @@ describe('DiceTray3D', () => {
         label="Player attack tray"
         presentationId="attack:7"
         rendererGeneration={-7}
+        motionSeed={0x755}
         rollerRole="player"
         witnessRole="roller"
         phase="settled"
@@ -815,6 +1024,7 @@ describe('DiceTray3D', () => {
         label="Player attack tray"
         presentationId="attack:7"
         rendererGeneration={Number.NaN}
+        motionSeed={0x755}
         rollerRole="player"
         witnessRole="roller"
         phase="settled"

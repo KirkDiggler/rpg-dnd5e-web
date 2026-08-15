@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { StrictMode } from 'react';
 import {
   BufferGeometry,
@@ -28,6 +29,8 @@ import {
   ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE,
   runtimeDiceNormalization,
 } from './materialFreeCarvedMesh';
+import type { HeldRollGroupState } from './rollGroupGestureController';
+import { createVisualThrowProfile } from './visualThrowProfile';
 const mocks = vi.hoisted(() => ({
   frames: [] as Array<(state: { clock: { elapsedTime: number } }) => void>,
   release: vi.fn(),
@@ -43,8 +46,14 @@ const mocks = vi.hoisted(() => ({
   compileFailure: false,
   groupMissing: false,
   motionFailure: false,
+  solverInputs: [] as unknown[],
+  solverOutputs: [] as unknown[],
+  settlementInputs: [] as unknown[],
   poseCopy: vi.fn(),
   positionSet: vi.fn(),
+  shadowPositionSet: vi.fn(),
+  shadowScaleSet: vi.fn(),
+  shadowOpacityValues: [] as number[],
   groupQuaternions: new WeakMap<
     object,
     { x: number; y: number; z: number; w: number }
@@ -132,28 +141,48 @@ vi.mock('@react-three/fiber', () => ({
       ? selector({ camera: mocks.createdCamera })
       : { gl: mocks.gl, scene: {}, camera: mocks.createdCamera },
 }));
-vi.mock('./attackDieMotion', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./attackDieMotion')>();
-  const failedFrame = (current: readonly [number, number, number, number]) => ({
-    quaternion: current,
-    observeNow: false,
-    exactTargetHeld: false,
-    failed: true,
-  });
+vi.mock('./choreographedDiceMotion', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('./choreographedDiceMotion')>();
   return {
     ...actual,
-    stepAttackDieMotion: (
-      input: Parameters<typeof actual.stepAttackDieMotion>[0]
-    ) =>
-      mocks.motionFailure
-        ? failedFrame(input.current)
-        : actual.stepAttackDieMotion(input),
-    attackDiePoseForPhase: (
-      input: Parameters<typeof actual.attackDiePoseForPhase>[0]
-    ) =>
-      mocks.motionFailure
-        ? { ...failedFrame(input.current), translation: [0, 0, 0] }
-        : actual.attackDiePoseForPhase(input),
+    ChoreographedSolverV1: {
+      ...actual.ChoreographedSolverV1,
+      solve: (
+        input: Parameters<typeof actual.ChoreographedSolverV1.solve>[0]
+      ) => {
+        mocks.solverInputs.push(input);
+        const output = mocks.motionFailure
+          ? {
+              quaternion: [0.31, -0.47, 0.19, 0.805] as const,
+              translation: [0, 0.16, 0] as const,
+              shadow: {
+                translation: [0, 0, 0] as const,
+                scale: 1,
+                opacity: 0.2,
+              },
+              observeNow: false,
+              exactTargetHeld: false,
+              failed: true,
+            }
+          : actual.ChoreographedSolverV1.solve(input);
+        mocks.solverOutputs.push(output);
+        return output;
+      },
+    },
+  };
+});
+vi.mock('./diceSettlementResolver', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('./diceSettlementResolver')>();
+  return {
+    ...actual,
+    resolveRuntimeDiceSettlement: (
+      input: Parameters<typeof actual.resolveRuntimeDiceSettlement>[0]
+    ) => {
+      mocks.settlementInputs.push(input);
+      return actual.resolveRuntimeDiceSettlement(input);
+    },
   };
 });
 vi.mock('./diceRuntimeProvider', () => ({
@@ -328,6 +357,21 @@ const props = (token: number, result = 20) => ({
     </output>
   ),
 });
+const throwProfile = (motionSeed: number) =>
+  createVisualThrowProfile({
+    releasePosition: [0.75, 0.25],
+    releaseDirection: [0.6, -0.8],
+    releaseSpeed: 0.7,
+    shakeEnergy: 0.4,
+    spinBias: -0.3,
+    motionSeed,
+  });
+const heldRollGroup: HeldRollGroupState = Object.freeze({
+  normalizedPosition: Object.freeze([0.75, 0.25] as const),
+  normalizedTilt: Object.freeze([0.4, -0.2] as const),
+  shakeEnergy: 0.35,
+  wobblePhase: 0.25,
+});
 const fallbackCovered = () =>
   screen
     .getByTestId('fallback-svg')
@@ -370,30 +414,57 @@ beforeEach(() => {
   mocks.compileFailure = false;
   mocks.groupMissing = false;
   mocks.motionFailure = false;
+  mocks.solverInputs = [];
+  mocks.solverOutputs = [];
+  mocks.settlementInputs = [];
   mocks.poseCopy.mockReset();
   mocks.positionSet.mockReset();
+  mocks.shadowPositionSet.mockReset();
+  mocks.shadowScaleSet.mockReset();
+  mocks.shadowOpacityValues = [];
   mocks.groupQuaternions = new WeakMap();
   mocks.worldQuaternionReads = [];
   mocks.worldQuaternionOverride = undefined;
   Object.defineProperty(HTMLElement.prototype, 'position', {
     configurable: true,
     get() {
-      return this.tagName === 'GROUP' ? { set: mocks.positionSet } : undefined;
+      if (this.getAttribute('name') === 'attack-die-selected-group')
+        return { set: mocks.positionSet };
+      if (this.getAttribute('name') === 'attack-die-shadow')
+        return { set: mocks.shadowPositionSet };
+      return undefined;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'scale', {
+    configurable: true,
+    get() {
+      return this.getAttribute('name') === 'attack-die-shadow'
+        ? { setScalar: mocks.shadowScaleSet }
+        : undefined;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'opacity', {
+    configurable: true,
+    get() {
+      return mocks.shadowOpacityValues.at(-1);
+    },
+    set(value: number) {
+      if (this.getAttribute('name') === 'attack-die-shadow-material')
+        mocks.shadowOpacityValues.push(value);
     },
   });
   Object.defineProperty(HTMLElement.prototype, 'quaternion', {
     configurable: true,
     get() {
-      if (this.tagName !== 'GROUP' || mocks.groupMissing) return undefined;
+      if (
+        this.getAttribute('name') !== 'attack-die-selected-group' ||
+        mocks.groupMissing
+      )
+        return undefined;
       return {
-        copy: (value: { x: number; y: number; z: number; w: number }) => {
-          mocks.groupQuaternions.set(this, {
-            x: value.x,
-            y: value.y,
-            z: value.z,
-            w: value.w,
-          });
-          mocks.poseCopy(value);
+        set: (x: number, y: number, z: number, w: number) => {
+          mocks.groupQuaternions.set(this, { x, y, z, w });
+          mocks.poseCopy({ x, y, z, w });
         },
       };
     },
@@ -427,6 +498,8 @@ beforeEach(() => {
 afterEach(() => {
   delete (HTMLElement.prototype as { position?: unknown }).position;
   delete (HTMLElement.prototype as { quaternion?: unknown }).quaternion;
+  delete (HTMLElement.prototype as { scale?: unknown }).scale;
+  delete (HTMLElement.prototype as { opacity?: unknown }).opacity;
   delete (HTMLElement.prototype as { getWorldQuaternion?: unknown })
     .getWorldQuaternion;
   delete (HTMLCanvasElement.prototype as { getContext?: unknown }).getContext;
@@ -719,46 +792,53 @@ describe('AttackDie3D', () => {
     expect(
       telemetry.mock.calls.some(([event]) => event.state === 'observed')
     ).toBe(false);
+    expect(mocks.solverInputs.at(-1)).toMatchObject({
+      phase: 'ready',
+      throwProfile: {
+        schemaVersion: 1,
+        releasePosition: [0.5, 0.5],
+        releaseDirection: [0, 0],
+        releaseSpeed: 0,
+        shakeEnergy: 0,
+        spinBias: 0,
+        motionSeed: 301,
+      },
+    });
   });
 
-  it('resets roll elapsed once on ready-to-rolling without restarting on rolling rerender', () => {
+  it('feeds profile facts and continuous elapsed time to the solver without previous-frame quaternion state', () => {
     mocks.status = 'ready';
-    const release = {
-      variation: 17,
-      vector: [0, 0] as const,
-      shake: 0,
-    };
+    const profile = throwProfile(17);
     const view = render(
-      <AttackDie3D {...props(302)} phase="ready" decorativeRelease={release} />
+      <AttackDie3D {...props(302)} phase="ready" throwProfile={profile} />
     );
     frame(-1, 10);
 
     view.rerender(
-      <AttackDie3D
-        {...props(302)}
-        phase="rolling"
-        decorativeRelease={release}
-      />
+      <AttackDie3D {...props(302)} phase="rolling" throwProfile={profile} />
     );
-    mocks.positionSet.mockClear();
     frame(-1, 10.5);
-    const atRelease = mocks.positionSet.mock.calls.at(-1);
+    const atRelease = mocks.solverInputs.at(-1) as Record<string, unknown>;
     frame(-1, 11);
-    const inFlight = mocks.positionSet.mock.calls.at(-1);
+    const inFlight = mocks.solverInputs.at(-1) as Record<string, unknown>;
 
     view.rerender(
-      <AttackDie3D
-        {...props(302)}
-        phase="rolling"
-        decorativeRelease={release}
-      />
+      <AttackDie3D {...props(302)} phase="rolling" throwProfile={profile} />
     );
     frame(-1, 11.1);
-    const afterRerender = mocks.positionSet.mock.calls.at(-1);
+    const afterRerender = mocks.solverInputs.at(-1) as Record<string, unknown>;
 
-    expect(atRelease).toEqual([1.05, 0, -0]);
-    expect(inFlight?.[0]).toBeLessThan(atRelease?.[0]);
-    expect(afterRerender?.[0]).toBeLessThan(inFlight?.[0]);
+    const frameInputs = [atRelease, inFlight, afterRerender];
+    expect(frameInputs.map((input) => input.elapsedMs)).toEqual([0, 500, 600]);
+    for (const input of frameInputs) {
+      expect(input).toMatchObject({
+        phase: 'rolling',
+        reducedMotion: false,
+        throwProfile: profile,
+        member: { memberIndex: 0, memberCount: 1 },
+      });
+      expect(input).not.toHaveProperty('current');
+    }
   });
 
   it('applies the exact settled target and resting position immediately', () => {
@@ -803,7 +883,7 @@ describe('AttackDie3D', () => {
         {...props(304, 1)}
         phase="rolling"
         reducedMotion
-        decorativeRelease={{ variation: 304, vector: [0, 0], shake: 0 }}
+        throwProfile={throwProfile(304)}
         onTelemetry={telemetry}
       />
     );
@@ -888,17 +968,18 @@ describe('Original carved runtime renderer', () => {
           provider={originalProvider}
           phase="settled"
           calibrationPose={[0, 1, 0, 0]}
-          decorativeRelease={{
-            variation: 996 - result,
-            vector: [1, -1],
-            shake: 1,
-          }}
+          throwProfile={throwProfile(996 - result)}
         />
       );
 
       frame(-1, 0);
       const expected =
         preset.faceSettlementMap.entries[String(result)].quaternion;
+      expect(mocks.settlementInputs.at(-1)).toMatchObject({
+        preset,
+        expectedPresetId: ORIGINAL_PRESET_ID,
+        authoritativeResult: result,
+      });
       expect(mocks.poseCopy.mock.calls.at(-1)?.[0]).toMatchObject({
         x: expected[0],
         y: expected[1],
@@ -907,6 +988,61 @@ describe('Original carved runtime renderer', () => {
       });
     }
   );
+
+  it('applies solver die and independently owned shadow poses only to sibling Three.js objects', () => {
+    arrangeRuntimeReady();
+    render(
+      <AttackDie3D
+        {...props(549, 12)}
+        provider={originalProvider}
+        phase="ready"
+        throwProfile={throwProfile(549)}
+        heldRollGroup={heldRollGroup}
+      />
+    );
+
+    const canvas = screen.getByTestId('canvas');
+    const selectedGroup = canvas.querySelector(
+      'group[name="attack-die-selected-group"]'
+    );
+    const shadow = canvas.querySelector('mesh[name="attack-die-shadow"]');
+    expect(selectedGroup).toBeTruthy();
+    expect(shadow).toBeTruthy();
+    expect(selectedGroup?.parentElement).toBe(shadow?.parentElement);
+    expect(selectedGroup?.contains(shadow)).toBe(false);
+
+    frame(-1, 0);
+    const pose = mocks.solverOutputs.at(-1) as {
+      quaternion: readonly [number, number, number, number];
+      translation: readonly [number, number, number];
+      shadow: {
+        translation: readonly [number, number, number];
+        scale: number;
+        opacity: number;
+      };
+    };
+    expect(mocks.solverInputs.at(-1)).toMatchObject({
+      phase: 'ready',
+      held: heldRollGroup,
+      member: { memberIndex: 0, memberCount: 1 },
+    });
+    expect(mocks.poseCopy).toHaveBeenLastCalledWith({
+      x: pose.quaternion[0],
+      y: pose.quaternion[1],
+      z: pose.quaternion[2],
+      w: pose.quaternion[3],
+    });
+    expect(mocks.positionSet).toHaveBeenLastCalledWith(...pose.translation);
+    expect(mocks.shadowPositionSet).toHaveBeenLastCalledWith(
+      ...pose.shadow.translation
+    );
+    expect(mocks.shadowScaleSet).toHaveBeenLastCalledWith(pose.shadow.scale);
+    expect(mocks.shadowOpacityValues.at(-1)).toBe(pose.shadow.opacity);
+    expect(mocks.canvasProps?.style).toEqual({ visibility: 'hidden' });
+    expect(JSON.stringify(mocks.canvasProps)).not.toMatch(
+      /transform|translate|rotate/
+    );
+  });
 
   it('applies the exact model normalization as a Three.js group without Canvas transforms', () => {
     arrangeRuntimeReady();
@@ -1179,7 +1315,7 @@ describe('Original carved runtime renderer', () => {
         provider={originalProvider}
         phase="rolling"
         reducedMotion
-        decorativeRelease={{ variation: 91, vector: [1, -1], shake: 1 }}
+        throwProfile={throwProfile(91)}
         onTelemetry={telemetry}
       />
     );
@@ -1420,4 +1556,27 @@ it('updates live camera without remounting Canvas or changing token', async () =
   );
   expect(mocks.createdCamera.fov).toBe(v.topCamera.fov);
   expect(mocks.createdCamera.updateProjectionMatrix).toHaveBeenCalledTimes(2);
+});
+
+it('keeps Canvas, renderer, and die wrappers free of CSS motion', () => {
+  const css = readFileSync('public/themes/base.css', 'utf8');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  for (const selector of [
+    '.attack-die-3d__canvas',
+    '.attack-die-3d',
+    '.dice-tray-3d-renderer',
+  ]) {
+    const exactRules = rules.filter((match) =>
+      match[1]
+        .split(',')
+        .map((part) => part.trim())
+        .includes(selector)
+    );
+    expect(exactRules.length).toBeGreaterThan(0);
+    for (const [, , declarations] of exactRules) {
+      expect(declarations).not.toMatch(
+        /(?:^|;)\s*(?:transform|translate|rotate|animation(?:-\w+)?)\s*:/i
+      );
+    }
+  }
 });

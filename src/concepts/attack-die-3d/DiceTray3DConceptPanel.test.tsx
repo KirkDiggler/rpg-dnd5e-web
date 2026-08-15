@@ -75,6 +75,22 @@ beforeEach(() => {
       configurable: true,
       value: vi.fn(releaseCapturedPointer),
     },
+    getBoundingClientRect: {
+      configurable: true,
+      value(this: HTMLElement) {
+        const bounds = this.classList.contains('dice-tray-3d-grab-target')
+          ? { left: 0, top: 0, width: 100, height: 100 }
+          : { left: 0, top: 0, width: 240, height: 220 };
+        return {
+          ...bounds,
+          right: bounds.left + bounds.width,
+          bottom: bounds.top + bounds.height,
+          x: bounds.left,
+          y: bounds.top,
+          toJSON: () => bounds,
+        };
+      },
+    },
   });
 });
 
@@ -83,6 +99,7 @@ afterEach(() => {
   delete (HTMLElement.prototype as Partial<HTMLElement>).setPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).hasPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).releasePointerCapture;
+  delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
 });
 
 function observed(props: AttackDie3DProps): AttackDieTelemetry {
@@ -523,17 +540,16 @@ describe('DiceTray3DConceptPanel', () => {
     const spectatorToken = tokenFor('Spectator');
     const rollingRoller = latestAttack(rollerToken);
     const rollingSpectator = latestAttack(spectatorToken);
-    expect(rollingRoller.decorativeRelease).toEqual(
-      rollingSpectator.decorativeRelease
-    );
-    expect(rollingRoller.decorativeRelease).not.toBe(
-      rollingSpectator.decorativeRelease
-    );
-    expect(rollingRoller.decorativeRelease).toMatchObject({
-      presentationId: 'concept:witness:player:12:result:10',
-      presetId: 'dice.original.carved.d20',
-      vector: [0.5, -0.25],
-      shake: expect.any(Number),
+    expect(rollingRoller.throwProfile).toEqual(rollingSpectator.throwProfile);
+    expect(rollingRoller.throwProfile).not.toBe(rollingSpectator.throwProfile);
+    expect(rollingRoller.throwProfile).toMatchObject({
+      schemaVersion: 1,
+      releasePosition: [90 / 240, 0],
+      releaseDirection: [expect.any(Number), expect.any(Number)],
+      releaseSpeed: expect.any(Number),
+      shakeEnergy: expect.any(Number),
+      spinBias: expect.any(Number),
+      motionSeed: expect.any(Number),
     });
 
     act(() =>

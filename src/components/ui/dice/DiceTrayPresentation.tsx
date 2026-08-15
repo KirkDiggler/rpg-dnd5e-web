@@ -18,11 +18,12 @@ import {
   type DicePresentationReleasedEvent,
   type DicePresentationRequestedEvent,
 } from './dicePresentationEvent';
-import {
-  createDicePresentationRelease,
-  type DiceGestureSample,
-} from './dicePresentationRelease';
+import { createDicePresentationRelease } from './dicePresentationRelease';
 import { DiceTray3D } from './DiceTray3D';
+import {
+  createNeutralVisualThrowProfile,
+  type VisualThrowProfileV1,
+} from './visualThrowProfile';
 
 export interface DiceTrayPresentationDevelopmentRenderer {
   scene: AttackDie3DProps['sceneOverride'];
@@ -349,7 +350,7 @@ function DiceTrayPresentationInstance({
   const rollerRole = acceptedRequest.roller.role;
 
   const handleReleaseRequest = useCallback(
-    (gesture?: DiceGestureSample) => {
+    (requestedProfile?: VisualThrowProfileV1) => {
       if (
         !onReleaseRequest ||
         lifecycle.phase !== 'armed' ||
@@ -359,7 +360,9 @@ function DiceTrayPresentationInstance({
       )
         return;
 
-      const variation = presentationHash(presentationId) % 997;
+      const throwProfile =
+        requestedProfile ??
+        createNeutralVisualThrowProfile(presentationHash(presentationId));
       const next: DicePresentationReleasedEvent = Object.freeze({
         schemaVersion: 1,
         type: 'dice-presentation-released',
@@ -368,8 +371,7 @@ function DiceTrayPresentationInstance({
         release: createDicePresentationRelease({
           presentationId,
           presetId,
-          variation,
-          gesture,
+          throwProfile,
         }),
       });
       requestedRelease.current = true;
@@ -464,6 +466,7 @@ function DiceTrayPresentationInstance({
         label={label}
         presentationId={presentationId}
         rendererGeneration={rendererGeneration}
+        motionSeed={presentationHash(presentationId)}
         rollerRole={rollerRole}
         witnessRole={witnessRole}
         phase={phase}

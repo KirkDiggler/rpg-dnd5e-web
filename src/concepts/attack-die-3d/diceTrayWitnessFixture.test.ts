@@ -8,6 +8,10 @@ import {
   createDicePresentationRelease,
   dicePresentationReleaseKey,
 } from '../../components/ui/dice/dicePresentationRelease';
+import {
+  createNeutralVisualThrowProfile,
+  createVisualThrowProfile,
+} from '../../components/ui/dice/visualThrowProfile';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import { CONCEPT_LOG_ENTRIES } from '../combat-panel/logFixtures';
 import {
@@ -129,12 +133,17 @@ describe('dice tray witness fixture', () => {
       eventId: 'fixture:release:11',
       presentationId: 'concept:witness:player:11:result:10',
       release: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         presentationId: 'concept:witness:player:11:result:10',
         presetId: 'dice.original.carved.d20',
-        variation: 3,
-        vector: [0.5, -0.25],
-        shake: 0.5,
+        throwProfile: createVisualThrowProfile({
+          releasePosition: [0.5, 0.5],
+          releaseDirection: [0.5, -0.25],
+          releaseSpeed: 0.5,
+          shakeEnergy: 0.5,
+          spinBias: 0,
+          motionSeed: 3,
+        }),
       },
     };
 
@@ -172,7 +181,7 @@ describe('dice tray witness fixture', () => {
       release: createDicePresentationRelease({
         presentationId: 'concept:witness:player:12:result:10',
         presetId: 'dice.original.carved.d20',
-        variation: 0,
+        throwProfile: createNeutralVisualThrowProfile(0),
       }),
     };
     const accepted = appendDiceTrayWitnessEvent(initial, release);
@@ -184,7 +193,7 @@ describe('dice tray witness fixture', () => {
         release: createDicePresentationRelease({
           presentationId: 'concept:witness:player:12:result:10',
           presetId: 'dice.original.carved.d20',
-          variation: 42,
+          throwProfile: createNeutralVisualThrowProfile(42),
         }),
       })
     ).toBe(accepted);
@@ -222,12 +231,18 @@ describe('dice tray witness fixture', () => {
       eventId: 'concept:witness:release:monster:21:result:10',
       presentationId: 'concept:witness:monster:21:result:10',
       release: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         presentationId: 'concept:witness:monster:21:result:10',
         presetId: 'dice.original.carved.d20',
-        variation: 0,
-        vector: [0, 0],
-        shake: 0,
+        throwProfile: {
+          schemaVersion: 1,
+          releasePosition: [0.5, 0.5],
+          releaseDirection: [0, 0],
+          releaseSpeed: 0,
+          shakeEnergy: 0,
+          spinBias: 0,
+          motionSeed: 0,
+        },
       },
     });
     expectRecursivelyFrozen(host.events());

@@ -11,6 +11,8 @@ import {
   Quaternion,
   type Group,
   type Material,
+  type Mesh,
+  type MeshBasicMaterial,
   type WebGLRenderer,
 } from 'three';
 import type { DiceTrayPhase } from './DiceTray';
@@ -24,11 +26,6 @@ import {
   patchAttackDieMaterials,
   type DiceMaterialTreatment,
 } from './attackDieMaterial';
-import {
-  angularDistanceDegrees,
-  attackDiePoseForPhase,
-  type AttackDieMotionFrame,
-} from './attackDieMotion';
 import { resolveAttackDiePrimitives } from './attackDiePrimitive';
 import { ownAttackDieRendererLifecycle } from './attackDieRendererLifecycle';
 import {
@@ -39,7 +36,11 @@ import {
 } from './attackDieRuntime';
 import { ATTACK_DIE_VISUAL_CONFIG } from './attackDieVisualConfig';
 import { resolveAttackDieRendererVisuals } from './attackDieVisualRuntime';
-import type { AttackDieDecorativeRelease } from './dicePresentationRelease';
+import {
+  angularDistanceDegrees,
+  ChoreographedSolverV1,
+} from './choreographedDiceMotion';
+import type { DiceMotionPose } from './diceMotionSolver';
 import type {
   DiceRuntimePreset,
   DiceSettlementEntryV2,
@@ -51,11 +52,17 @@ import {
   type RuntimeMeshBinding,
 } from './diceRuntimeProvider';
 import { observeUpwardResult } from './diceSettlementObservation';
+import { resolveRuntimeDiceSettlement } from './diceSettlementResolver';
 import {
   ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE,
   prepareMaterialFreeCarvedScene,
   runtimeDiceNormalization,
 } from './materialFreeCarvedMesh';
+import type { HeldRollGroupState } from './rollGroupGestureController';
+import {
+  createNeutralVisualThrowProfile,
+  type VisualThrowProfileV1,
+} from './visualThrowProfile';
 
 export type AttackDieFailureCode =
   | 'provider-load'
@@ -115,7 +122,8 @@ export interface AttackDie3DProps {
   reducedMotion: boolean;
   magicalAnimation?: boolean;
   decorativeSeed?: number;
-  decorativeRelease?: AttackDieDecorativeRelease;
+  throwProfile?: VisualThrowProfileV1;
+  heldRollGroup?: HeldRollGroupState;
   fallback: React.ReactNode;
   provider?: AttackDieProvider;
   onTelemetry?: (event: AttackDieTelemetry) => void;
@@ -299,7 +307,8 @@ function RuntimeDie({
   sceneOverride,
   magicalAnimation,
   phase,
-  release,
+  throwProfile,
+  heldRollGroup,
 }: {
   sidecar?: AttackDieRuntimeSidecar;
   runtimeSource?: RuntimePresetSceneSource;
@@ -307,7 +316,7 @@ function RuntimeDie({
   mode: AttackDieMaterialMode;
   reducedMotion: boolean;
   onFrame: (
-    frame: AttackDieMotionFrame,
+    frame: DiceMotionPose,
     worldQuaternion: QuaternionTuple,
     runtimeIdentities?: {
       runtimeSourceId: number;
@@ -319,23 +328,25 @@ function RuntimeDie({
   sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
   magicalAnimation: boolean;
   phase: DiceTrayPhase;
-  release?: AttackDieDecorativeRelease;
+  throwProfile: VisualThrowProfileV1;
+  heldRollGroup?: HeldRollGroupState;
 }) {
   const group = useRef<Group>(null);
+  const shadow = useRef<Mesh>(null);
+  const shadowMaterial = useRef<MeshBasicMaterial>(null);
   const rollStartedAt = useRef<number | undefined>(undefined);
   const previousPhase = useRef<DiceTrayPhase>(phase);
   const observationSent = useRef(false);
 
-  const neutral: QuaternionTuple = [0.31, -0.47, 0.19, 0.805];
-  const initial = attackDiePoseForPhase({
+  const initialPose = ChoreographedSolverV1.solve({
     phase,
     elapsedMs: 0,
     reducedMotion,
-    current: neutral,
     target,
-    release,
-  }).quaternion;
-  const renderedQuaternion = useRef<QuaternionTuple>(initial);
+    throwProfile,
+    member: { memberIndex: 0, memberCount: 1 },
+    held: heldRollGroup,
+  });
   const [bundle, setBundle] = useState<ReturnType<typeof cloneTokenScene>>();
   useEffect(() => {
     try {
@@ -371,28 +382,29 @@ function RuntimeDie({
     previousPhase.current = phase;
     const elapsedMs =
       phase === 'rolling' ? now - (rollStartedAt.current ?? now) : 0;
-    const frame = attackDiePoseForPhase({
+    const frame = ChoreographedSolverV1.solve({
       phase,
       elapsedMs,
       reducedMotion,
-      current: renderedQuaternion.current,
       target,
-      release,
+      throwProfile,
+      member: { memberIndex: 0, memberCount: 1 },
+      held: heldRollGroup,
     });
-    renderedQuaternion.current = frame.quaternion;
     if (frame.failed) {
-      poseValidated.current = false;
       onFailure('motion observation missed');
       return;
     }
     const selectedGroup = group.current;
-    if (!selectedGroup?.quaternion) {
-      poseValidated.current = false;
-      return;
-    }
+    const shadowGroup = shadow.current;
+    const ownedShadowMaterial = shadowMaterial.current;
+    if (!selectedGroup || !shadowGroup || !ownedShadowMaterial) return;
     try {
-      selectedGroup.quaternion.copy(new Quaternion(...frame.quaternion));
+      selectedGroup.quaternion.set(...frame.quaternion);
       selectedGroup.position.set(...frame.translation);
+      shadowGroup.position.set(...frame.shadow.translation);
+      shadowGroup.scale.setScalar(frame.shadow.scale);
+      ownedShadowMaterial.opacity = frame.shadow.opacity;
       poseValidated.current = true;
       if (magicalAnimation && !reducedMotion)
         bundle?.updateShaderTime(clock.elapsedTime);
@@ -429,23 +441,47 @@ function RuntimeDie({
   });
   if (!bundle) return null;
   return (
-    <group ref={group} quaternion={initial}>
-      {bundle.normalization ? (
-        <group
-          name="attack-die-runtime-normalization"
-          scale={bundle.normalization.scale}
-        >
+    <>
+      <group
+        ref={group}
+        name="attack-die-selected-group"
+        quaternion={initialPose.quaternion}
+        position={initialPose.translation}
+      >
+        {bundle.normalization ? (
           <group
-            name="attack-die-runtime-recenter"
-            position={bundle.normalization.position}
+            name="attack-die-runtime-normalization"
+            scale={bundle.normalization.scale}
           >
-            <primitive object={bundle.scene} />
+            <group
+              name="attack-die-runtime-recenter"
+              position={bundle.normalization.position}
+            >
+              <primitive object={bundle.scene} />
+            </group>
           </group>
-        </group>
-      ) : (
-        <primitive object={bundle.scene} />
-      )}
-    </group>
+        ) : (
+          <primitive object={bundle.scene} />
+        )}
+      </group>
+      <mesh
+        ref={shadow}
+        name="attack-die-shadow"
+        position={initialPose.shadow.translation}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={initialPose.shadow.scale}
+      >
+        <circleGeometry args={[0.34, 48]} />
+        <meshBasicMaterial
+          ref={shadowMaterial}
+          name="attack-die-shadow-material"
+          color="#05070c"
+          transparent
+          opacity={initialPose.shadow.opacity}
+          depthWrite={false}
+        />
+      </mesh>
+    </>
   );
 }
 
@@ -480,7 +516,8 @@ function AttackDieToken({
   reducedMotion,
   magicalAnimation = true,
   decorativeSeed = presentationToken,
-  decorativeRelease,
+  throwProfile,
+  heldRollGroup,
   fallback,
   provider,
   onTelemetry,
@@ -496,14 +533,9 @@ function AttackDieToken({
   const runtimeProvider =
     provider?.kind === 'dice-runtime-preset' ? provider : undefined;
   const rendererVisuals = resolveAttackDieRendererVisuals(visual);
-  const release = useMemo<AttackDieDecorativeRelease>(
-    () =>
-      decorativeRelease ?? {
-        variation: decorativeSeed,
-        vector: [0, 0],
-        shake: 0,
-      },
-    [decorativeRelease, decorativeSeed]
+  const effectiveThrowProfile = useMemo(
+    () => throwProfile ?? createNeutralVisualThrowProfile(decorativeSeed),
+    [decorativeSeed, throwProfile]
   );
   const effectiveResult = result;
   const legacyLock = useMemo(
@@ -542,24 +574,38 @@ function AttackDieToken({
     runtimeSnapshot?.scene,
     runtimeSnapshot?.status,
   ]);
+  const runtimeSettlement = useMemo(
+    () =>
+      runtimeProvider &&
+      runtimeSnapshot?.status === 'ready' &&
+      runtimeSnapshot.preset
+        ? resolveRuntimeDiceSettlement({
+            preset: runtimeSnapshot.preset,
+            expectedPresetId: runtimeProvider.presetId,
+            authoritativeResult: effectiveResult,
+          })
+        : undefined,
+    [effectiveResult, runtimeProvider, runtimeSnapshot]
+  );
   const settlementEntries:
     | Readonly<Record<string, DiceSettlementEntryV2>>
-    | undefined = runtimeProvider
+    | undefined = runtimeSettlement
     ? runtimeSnapshot?.preset?.faceSettlementMap.entries
     : undefined;
-  const mappedTarget: QuaternionTuple | undefined = runtimeProvider
-    ? settlementEntries?.[String(effectiveResult)]?.quaternion
-    : sidecar?.faces.find((face) => face.result === effectiveResult)
-        ?.quaternion;
-  const target = runtimeProvider
-    ? mappedTarget
-    : (calibrationPose ?? mappedTarget);
-  const forced = forceFailure !== undefined;
+  const developmentTarget = sidecar?.faces.find(
+    (face) => face.result === effectiveResult
+  )?.quaternion;
   const authoringEligible =
     !runtimeProvider &&
     calibrationPose !== undefined &&
     sidecarOverride !== undefined &&
     sceneOverride !== undefined;
+  const target = runtimeProvider
+    ? runtimeSettlement?.target
+    : authoringEligible
+      ? calibrationPose
+      : developmentTarget;
+  const forced = forceFailure !== undefined;
   const eligible = runtimeProvider
     ? runtimeSnapshot?.status === 'ready' &&
       runtimeSource !== undefined &&
@@ -857,7 +903,8 @@ function AttackDieToken({
                 sceneOverride={sceneOverride}
                 magicalAnimation={magicalAnimation}
                 phase={phase}
-                release={release}
+                throwProfile={effectiveThrowProfile}
+                heldRollGroup={heldRollGroup}
                 onFrame={(frame, worldQuaternion, runtimeIdentities) => {
                   if (!active.current || !frame.observeNow) return;
                   if (!settlementEntries) {

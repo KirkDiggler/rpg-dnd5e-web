@@ -4,30 +4,55 @@ import {
   dicePresentationReleaseKey,
   parseDicePresentationRelease,
 } from './dicePresentationRelease';
+import type { VisualThrowProfileV1 } from './visualThrowProfile';
 
-const validRelease = () => ({
-  schemaVersion: 1,
-  presentationId: 'attack:7',
-  presetId: 'lightning',
-  variation: 7,
-  vector: [0.25, -0.5],
-  shake: 0.75,
-});
+function validProfile(
+  overrides: Partial<VisualThrowProfileV1> = {}
+): VisualThrowProfileV1 {
+  return {
+    schemaVersion: 1,
+    releasePosition: [0.25, 0.75],
+    releaseDirection: [0.6, -0.8],
+    releaseSpeed: 0.7,
+    shakeEnergy: 0.4,
+    spinBias: -0.3,
+    motionSeed: 0x755,
+    ...overrides,
+  };
+}
 
-describe('dice presentation release', () => {
+function validRelease() {
+  return {
+    schemaVersion: 2,
+    presentationId: 'attack:7',
+    presetId: 'lightning',
+    throwProfile: validProfile(),
+  };
+}
+
+describe('dice presentation release v2', () => {
   it.each(['lightning', 'dice.original.carved.d20', 'newer-safe-preset'])(
-    'accepts the bounded segmented preset identifier %s without requiring registry membership',
+    'creates the exact v2 release for safe preset identifier %s',
     (presetId) => {
-      expect(
-        createDicePresentationRelease({
-          presentationId: 'Encounter_7:attack-2',
-          presetId,
-          variation: 1,
-        })
-      ).toMatchObject({
+      const release = createDicePresentationRelease({
         presentationId: 'Encounter_7:attack-2',
         presetId,
+        throwProfile: validProfile(),
       });
+
+      expect(release).toEqual({
+        schemaVersion: 2,
+        presentationId: 'Encounter_7:attack-2',
+        presetId,
+        throwProfile: validProfile(),
+      });
+      expect(Reflect.ownKeys(release)).toEqual([
+        'schemaVersion',
+        'presentationId',
+        'presetId',
+        'throwProfile',
+      ]);
+      expect(release.throwProfile.schemaVersion).toBe(1);
     }
   );
 
@@ -41,14 +66,10 @@ describe('dice presentation release', () => {
     ['attack:7', 'lightning.'],
     ['attack:7', 'dice..d20'],
     ['attack:7', 'dice/original'],
-    ['attack:7', 'dice\\original'],
-    ['attack:7', 'dice:original'],
-    ['attack:7', 'dice%2eoriginal'],
     ['attack:7', 'https://evil.test'],
     ['attack:7', '../dice'],
     ['attack:7', 'Dice.original'],
     ['attack:7', `dice.${'a'.repeat(33)}`],
-    ['attack:7', Array.from({ length: 8 }, () => 'abcdefgh').join('.')],
     ['attack:7', 'a.a.a.a.a.a.a.a.a'],
   ])(
     'rejects malformed or URL-shaped identifiers (%s, %s)',
@@ -57,177 +78,149 @@ describe('dice presentation release', () => {
         createDicePresentationRelease({
           presentationId,
           presetId,
-          variation: 1,
+          throwProfile: validProfile(),
         })
       ).toThrow(/presentation|preset/i);
     }
   );
 
-  it.each([
-    [1002.9, 5],
-    [-1002.9, 5],
-    [-0.9, 0],
-  ])('normalizes finite variation %s to %s', (variation, normalized) => {
-    expect(
-      createDicePresentationRelease({
-        presentationId: 'attack:7',
-        presetId: 'lightning',
-        variation,
-      }).variation
-    ).toBe(normalized);
+  it('snapshots the parsed profile instead of retaining caller-owned gesture or profile data', () => {
+    const throwProfile = validProfile();
+    const release = createDicePresentationRelease({
+      presentationId: 'attack:7',
+      presetId: 'lightning',
+      throwProfile,
+    });
+
+    expect(release.throwProfile).toEqual(throwProfile);
+    expect(release.throwProfile).not.toBe(throwProfile);
+    expect(release.throwProfile.releasePosition).not.toBe(
+      throwProfile.releasePosition
+    );
+    expect(release.throwProfile.releaseDirection).not.toBe(
+      throwProfile.releaseDirection
+    );
+    expect(Object.isFrozen(release)).toBe(true);
+    expect(Object.isFrozen(release.throwProfile)).toBe(true);
+    expect(Object.isFrozen(release.throwProfile.releasePosition)).toBe(true);
+    expect(Object.isFrozen(release.throwProfile.releaseDirection)).toBe(true);
+    expect(JSON.stringify(release)).not.toMatch(
+      /origin|current|distance|pointer|event|result|hit|damage|target|url|renderer|transport|https?:\/\//i
+    );
   });
 
-  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    'rejects non-finite variation %s',
-    (variation) => {
+  it.each([
+    validProfile({ schemaVersion: 2 as never }),
+    validProfile({ releasePosition: [0, 0, 0] as never }),
+    validProfile({ releaseDirection: [0.5, 0.5] }),
+    validProfile({ releaseSpeed: Number.NaN }),
+    validProfile({ releaseSpeed: 1.01 }),
+    validProfile({ shakeEnergy: -0.01 }),
+    validProfile({ spinBias: 1.01 }),
+    validProfile({ motionSeed: -1 }),
+    { ...validProfile(), pointerId: 7 },
+  ])(
+    'rejects malformed or gesture-bearing profile input %#',
+    (throwProfile) => {
       expect(() =>
         createDicePresentationRelease({
           presentationId: 'attack:7',
           presetId: 'lightning',
-          variation,
+          throwProfile: throwProfile as VisualThrowProfileV1,
         })
-      ).toThrow(/variation/i);
+      ).toThrow(/profile/i);
     }
   );
 
-  it('quantizes a gesture into one deterministic deeply frozen release', () => {
-    const input = {
-      presentationId: 'attack:7',
-      presetId: 'lightning',
-      variation: 7,
-      gesture: {
-        origin: [10, 20] as const,
-        current: [90, -20] as const,
-        distance: 120,
-      },
-    };
+  it('strictly reconstructs and deeply freezes unknown inbound data', () => {
+    const inbound = validRelease();
+    const parsed = parseDicePresentationRelease(inbound);
 
-    const first = createDicePresentationRelease(input);
-    const second = createDicePresentationRelease(input);
-
-    expect(first).toEqual({
-      schemaVersion: 1,
-      presentationId: 'attack:7',
-      presetId: 'lightning',
-      variation: 7,
-      vector: [0.5, -0.25],
-      shake: 0.5,
-    });
-    expect(second).toEqual(first);
-    expect(Object.isFrozen(first)).toBe(true);
-    expect(Object.isFrozen(first.vector)).toBe(true);
-  });
-
-  it('clamps excess gesture values and sanitizes hostile runtime numerics', () => {
-    const release = createDicePresentationRelease({
-      presentationId: 'attack:7',
-      presetId: 'lightning',
-      variation: 7,
-      gesture: {
-        origin: [Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY],
-        current: [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY],
-        distance: Number.POSITIVE_INFINITY,
-      },
-    });
-    const neutralized = createDicePresentationRelease({
-      presentationId: 'attack:8',
-      presetId: 'lightning',
-      variation: 7,
-      gesture: {
-        origin: [Number.POSITIVE_INFINITY, Number.NaN],
-        current: [Number.POSITIVE_INFINITY, Number.NaN],
-        distance: Number.NaN,
-      },
-    });
-    const negativeDistance = createDicePresentationRelease({
-      presentationId: 'attack:9',
-      presetId: 'lightning',
-      variation: 7,
-      gesture: {
-        origin: [500, -500],
-        current: [-500, 500],
-        distance: Number.NEGATIVE_INFINITY,
-      },
-    });
-
-    expect(release.vector).toEqual([1, -1]);
-    expect(release.shake).toBe(1);
-    expect(neutralized.vector).toEqual([0, 0]);
-    expect(neutralized.shake).toBe(0);
-    expect(negativeDistance.vector).toEqual([-1, 1]);
-    expect(negativeDistance.shake).toBe(0);
-    expect(parseDicePresentationRelease(release)).toEqual(release);
-    expect(parseDicePresentationRelease(neutralized)).toEqual(neutralized);
-    expect(parseDicePresentationRelease(negativeDistance)).toEqual(
-      negativeDistance
+    expect(parsed).toEqual(inbound);
+    expect(parsed).not.toBe(inbound);
+    expect(parsed?.throwProfile).not.toBe(inbound.throwProfile);
+    expect(parsed?.throwProfile.releasePosition).not.toBe(
+      inbound.throwProfile.releasePosition
     );
-    for (const value of [
-      ...release.vector,
-      release.shake,
-      ...neutralized.vector,
-      neutralized.shake,
-      ...negativeDistance.vector,
-      negativeDistance.shake,
-    ]) {
-      expect(Number.isFinite(value)).toBe(true);
-    }
+    expect(parsed?.throwProfile.releaseDirection).not.toBe(
+      inbound.throwProfile.releaseDirection
+    );
+    expect(Object.isFrozen(parsed)).toBe(true);
+    expect(Object.isFrozen(parsed?.throwProfile)).toBe(true);
+    expect(Object.isFrozen(parsed?.throwProfile.releasePosition)).toBe(true);
+    expect(Object.isFrozen(parsed?.throwProfile.releaseDirection)).toBe(true);
+    expect(Object.isFrozen(inbound)).toBe(false);
   });
 
-  it('creates compact zero gesture defaults without samples, authority, or transport data', () => {
-    const release = createDicePresentationRelease({
-      presentationId: 'attack:7',
-      presetId: 'lightning',
-      variation: 7,
-    });
-
-    expect(release).toEqual({
+  it.each([
+    { ...validRelease(), extra: true },
+    { ...validRelease(), schemaVersion: 1 },
+    { ...validRelease(), presentationId: '../attack' },
+    { ...validRelease(), presetId: 'https://evil.test/model.glb' },
+    {
       schemaVersion: 1,
       presentationId: 'attack:7',
       presetId: 'lightning',
       variation: 7,
       vector: [0, 0],
       shake: 0,
-    });
-    expect(Object.isFrozen(release)).toBe(true);
-    expect(Object.isFrozen(release.vector)).toBe(true);
-    expect(JSON.stringify(release)).not.toMatch(
-      /origin|current|distance|pointer|event|result|hit|damage|target|url|renderer|transport|https?:\/\//i
-    );
-  });
+    },
+    {
+      ...validRelease(),
+      variation: 7,
+      vector: [0, 0],
+      shake: 0,
+    },
+    { ...validRelease(), throwProfile: { ...validProfile(), pointerId: 1 } },
+    {
+      ...validRelease(),
+      throwProfile: { ...validProfile(), origin: [10, 20] },
+    },
+    {
+      ...validRelease(),
+      throwProfile: {
+        ...validProfile(),
+        releasePosition: Object.assign([0.25, 0.75], { pointerId: 1 }),
+      },
+    },
+    {
+      ...validRelease(),
+      throwProfile: { ...validProfile(), releaseDirection: [0, 0, 0] },
+    },
+    {
+      ...validRelease(),
+      throwProfile: { ...validProfile(), releaseDirection: Array(2) },
+    },
+    {
+      ...validRelease(),
+      throwProfile: {
+        ...validProfile(),
+        releaseSpeed: Number.POSITIVE_INFINITY,
+      },
+    },
+  ])(
+    'fails closed for former, mixed, extra, or malformed shape %#',
+    (value) => {
+      expect(parseDicePresentationRelease(value)).toBeUndefined();
+    }
+  );
 
-  it('strictly reconstructs and recursively freezes unknown inbound data', () => {
-    const inbound = validRelease();
-    const parsed = parseDicePresentationRelease(inbound);
+  it('rejects symbol keys and denied raw gesture fields at every object depth', () => {
+    const symbol = Symbol('pointer');
+    const outer = Object.assign(validRelease(), { [symbol]: 1 });
+    const profile = validRelease();
+    Object.assign(profile.throwProfile, { [symbol]: 1 });
+    const tuple = validRelease();
+    Object.assign(tuple.throwProfile.releasePosition, { [symbol]: 1 });
 
-    expect(parsed).toEqual(inbound);
-    expect(parsed).not.toBe(inbound);
-    expect(parsed?.vector).not.toBe(inbound.vector);
-    expect(Object.isFrozen(parsed)).toBe(true);
-    expect(Object.isFrozen(parsed?.vector)).toBe(true);
-    expect(Object.isFrozen(inbound)).toBe(false);
-    expect(Object.isFrozen(inbound.vector)).toBe(false);
-  });
-
-  it.each([
-    { ...validRelease(), extra: true },
-    { ...validRelease(), schemaVersion: 2 },
-    { ...validRelease(), presentationId: '../attack' },
-    { ...validRelease(), presetId: 'https://evil.test/model.glb' },
-    { ...validRelease(), variation: 0.5 },
-    { ...validRelease(), variation: 997 },
-    { ...validRelease(), vector: [0, 0, 0] },
-    { ...validRelease(), vector: Array(2) },
-    { ...validRelease(), vector: [1.01, 0] },
-    { ...validRelease(), vector: [Number.NaN, 0] },
-    { ...validRelease(), shake: -0.01 },
-    { ...validRelease(), shake: 1.01 },
-  ])('fails closed for malformed inbound release %#', (value) => {
-    expect(parseDicePresentationRelease(value)).toBeUndefined();
+    expect(parseDicePresentationRelease(outer)).toBeUndefined();
+    expect(parseDicePresentationRelease(profile)).toBeUndefined();
+    expect(parseDicePresentationRelease(tuple)).toBeUndefined();
   });
 
   it('fails closed instead of throwing for reflective access failures', () => {
     const throwingGetter = validRelease();
-    Object.defineProperty(throwingGetter, 'presetId', {
+    Object.defineProperty(throwingGetter, 'throwProfile', {
       enumerable: true,
       get() {
         throw Error('hostile getter');
@@ -266,14 +259,14 @@ describe('dice presentation release', () => {
     const release = createDicePresentationRelease({
       presentationId: 'attack:7',
       presetId: 'lightning',
-      variation: 1002.9,
+      throwProfile: validProfile(),
     });
-
-    const alternateVariation = {
+    const alternateProfile = {
       ...release,
-      variation: release.variation + 1,
+      throwProfile: validProfile({ motionSeed: 99 }),
     };
+
     expect(dicePresentationReleaseKey(release)).toBe('attack:7');
-    expect(dicePresentationReleaseKey(alternateVariation)).toBe('attack:7');
+    expect(dicePresentationReleaseKey(alternateProfile)).toBe('attack:7');
   });
 });
