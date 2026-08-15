@@ -874,6 +874,21 @@ try {
               throw Error('lost-capture fixture did not own pointer 1');
             element.releasePointerCapture(1);
           });
+          await page.evaluate(
+            () =>
+              new Promise((resolveFrame) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
+              )
+          );
+          // Chromium does not synthesize lostpointercapture for an explicit
+          // release in every headless backend. Drive the native React/DOM path
+          // after proving real capture ownership and releasing that ownership.
+          await grabState.target.dispatchEvent('lostpointercapture', {
+            pointerId: 1,
+            pointerType: 'mouse',
+            button: 0,
+            buttons: 0,
+          });
           cancellationObserved = true;
           await page.waitForFunction(
             () =>

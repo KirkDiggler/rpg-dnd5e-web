@@ -414,6 +414,7 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain('page.mouse.up');
     expect(source).toContain("dispatchEvent('pointercancel'");
     expect(source).toContain('releasePointerCapture(1)');
+    expect(source).toContain("dispatchEvent('lostpointercapture'");
     expect(source).toContain("getExtension('WEBGL_lose_context')");
     expect(source).toContain('capturePhaseCloseups');
     expect(source).toContain('assertStone1TrayEvidencePackage');
