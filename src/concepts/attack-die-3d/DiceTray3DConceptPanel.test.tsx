@@ -384,6 +384,44 @@ describe('DiceTray3DConceptPanel', () => {
     );
   });
 
+  it('keeps the current diagnostic bridge when a disposed witness publishes late telemetry', () => {
+    render(<DiceTray3DConceptPanel token={901} reducedMotion={false} />);
+    const oldRoller = latestPresentation('Roller');
+    const oldToken = tokenFor('Roller');
+
+    fireEvent.change(screen.getByLabelText('Authoritative fixture result'), {
+      target: { value: '11' },
+    });
+    const currentBridge = (
+      window as unknown as { __stone0TrayEvidence?: object }
+    ).__stone0TrayEvidence;
+    expect(currentBridge).toBeTruthy();
+
+    act(() => {
+      oldRoller.onTelemetry?.({
+        presentationToken: oldToken,
+        requestedResult: 10,
+        renderer: '3d',
+        state: 'disposed',
+        exactTargetHeld: false,
+      });
+      oldRoller.onRendererInfo?.({
+        calls: 0,
+        triangles: 0,
+        geometries: 0,
+        textures: 0,
+        programs: 0,
+        lifecycle: 'release-observed',
+        contextId: 901,
+      });
+    });
+
+    expect(
+      (window as unknown as { __stone0TrayEvidence?: object })
+        .__stone0TrayEvidence
+    ).toBe(currentBridge);
+  });
+
   it('keeps synthetic renderer exercises explicit and never routes Tray through Lightning', () => {
     render(<DiceTray3DConceptPanel token={91} reducedMotion={false} />);
     const exercise = screen.getByLabelText('Evidence-only renderer exercise');

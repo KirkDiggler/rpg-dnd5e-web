@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import type {
   AttackDie3DProps,
   AttackDieRendererInfo,
@@ -220,7 +227,7 @@ function DiceTrayWitnessDeliveryHost({
   const bridge = bridgeRef.current;
   bridge.eventCount = events.length;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     window.__stone0TrayEvidence = bridge;
     return () => {
       if (window.__stone0TrayEvidence === bridge)
@@ -233,6 +240,7 @@ function DiceTrayWitnessDeliveryHost({
       witness: 'roller' | 'spectator',
       diagnostic: DiceTrayPresentationBoundaryDiagnostic
     ) => {
+      if (window.__stone0TrayEvidence !== bridge) return;
       bridge.witnesses[witness].boundary = {
         eventArrayId: evidenceObjectId(diagnostic.events),
         providerId: evidenceObjectId(diagnostic.provider),
@@ -246,6 +254,7 @@ function DiceTrayWitnessDeliveryHost({
   );
   const publishTelemetry = useCallback(
     (witness: 'roller' | 'spectator', telemetry: AttackDieTelemetry) => {
+      if (window.__stone0TrayEvidence !== bridge) return;
       bridge.witnesses[witness].telemetry = telemetry;
       window.__stone0TrayEvidence = bridge;
     },
@@ -253,6 +262,7 @@ function DiceTrayWitnessDeliveryHost({
   );
   const publishRendererInfo = useCallback(
     (witness: 'roller' | 'spectator', rendererInfo: AttackDieRendererInfo) => {
+      if (window.__stone0TrayEvidence !== bridge) return;
       bridge.witnesses[witness].rendererInfo = rendererInfo;
       window.__stone0TrayEvidence = bridge;
     },
