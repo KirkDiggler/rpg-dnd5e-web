@@ -757,7 +757,7 @@ try {
   async function capturePhaseCloseups(page, phase) {
     const isolationStyle = await page.addStyleTag({
       content:
-        '[data-witness-role] { z-index: 7 !important; } /* isolate wells above the dock only for diagnostic crops */',
+        '.dice-tray-encounter-preview__witnesses { z-index: 7 !important; } /* isolate wells above the dock only for diagnostic crops */',
     });
     try {
       for (const role of ['roller', 'spectator']) {

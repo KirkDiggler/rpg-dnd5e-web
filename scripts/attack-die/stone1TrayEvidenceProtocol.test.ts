@@ -423,6 +423,9 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain(
       'return page.locator(`[data-witness-role="${role}"]`);'
     );
+    expect(source).toContain(
+      '.dice-tray-encounter-preview__witnesses { z-index: 7 !important; }'
+    );
     expect(source).toContain('assertStone1TrayEvidencePackage');
     expect(source).toContain('FAILED.txt');
     expect(source).toContain('INVALIDATED-PASS.txt');
