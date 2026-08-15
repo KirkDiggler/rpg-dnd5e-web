@@ -18,16 +18,21 @@ ASSETS_REPO_URL_HTTPS="https://github.com/KirkDiggler/rpg-game-assets.git"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 WEB_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 PARENT_DIR=$(CDPATH= cd -- "$WEB_ROOT/.." && pwd)
-ASSETS_DIR="$PARENT_DIR/rpg-game-assets"
 
-if [ -d "$ASSETS_DIR/.git" ]; then
-  echo "Found existing rpg-game-assets checkout at $ASSETS_DIR — pulling latest..."
-  git -C "$ASSETS_DIR" pull
+if [ -n "${RPG_GAME_ASSETS_PATH:-}" ]; then
+  ASSETS_DIR=$RPG_GAME_ASSETS_PATH
+  echo "Using explicit rpg-game-assets source at $ASSETS_DIR"
 else
-  echo "Cloning rpg-game-assets into $ASSETS_DIR..."
-  if ! git clone "$ASSETS_REPO_URL" "$ASSETS_DIR"; then
-    echo "SSH clone failed, retrying over HTTPS..."
-    git clone "$ASSETS_REPO_URL_HTTPS" "$ASSETS_DIR"
+  ASSETS_DIR="$PARENT_DIR/rpg-game-assets"
+  if [ -d "$ASSETS_DIR/.git" ]; then
+    echo "Found existing rpg-game-assets checkout at $ASSETS_DIR — pulling latest..."
+    git -C "$ASSETS_DIR" pull
+  else
+    echo "Cloning rpg-game-assets into $ASSETS_DIR..."
+    if ! git clone "$ASSETS_REPO_URL" "$ASSETS_DIR"; then
+      echo "SSH clone failed, retrying over HTTPS..."
+      git clone "$ASSETS_REPO_URL_HTTPS" "$ASSETS_DIR"
+    fi
   fi
 fi
 
