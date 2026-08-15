@@ -355,6 +355,12 @@ beforeEach(() => {
       });
     },
   });
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: vi.fn(() => ({
+      getExtension: () => ({ loseContext: vi.fn() }),
+    })),
+  });
   mocks.gl.debug = { checkShaderErrors: false, onShaderError: null };
   mocks.gl.compile.mockReset().mockImplementation(() => {
     if (mocks.compileFailure) throw Error('compile threw');
@@ -367,6 +373,7 @@ beforeEach(() => {
 afterEach(() => {
   delete (HTMLElement.prototype as { position?: unknown }).position;
   delete (HTMLElement.prototype as { quaternion?: unknown }).quaternion;
+  delete (HTMLCanvasElement.prototype as { getContext?: unknown }).getContext;
 });
 describe('AttackDie3D', () => {
   it('renders a development authoring scene without invoking verified runtime preload', () => {
@@ -452,6 +459,26 @@ describe('AttackDie3D', () => {
     mocks.canvasFailure = true;
     render(<AttackDie3D {...props(1)} />);
     expect(screen.queryByTestId('canvas')).toBeNull();
+    expect(fallbackCovered()).toBe(false);
+  });
+  it('detects real WebGL unavailability before mounting asynchronous R3F Canvas', () => {
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value: vi.fn(() => null),
+    });
+    mocks.status = 'ready';
+    const telemetry = vi.fn();
+
+    render(<AttackDie3D {...props(98)} onTelemetry={telemetry} />);
+
+    expect(screen.queryByTestId('canvas')).toBeNull();
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        renderer: 'svg',
+        state: 'failed',
+        failureCode: 'webgl-unavailable',
+      })
+    );
     expect(fallbackCovered()).toBe(false);
   });
   it('fails closed when render boundary catches a child render failure', () => {

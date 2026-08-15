@@ -145,6 +145,21 @@ function runtimeObjectIdentity(value: object) {
   return identity;
 }
 
+function canCreateWebGLContext() {
+  if (typeof document === 'undefined') return true;
+  try {
+    const probe = document.createElement('canvas');
+    const context =
+      probe.getContext('webgl2', { failIfMajorPerformanceCaveat: true }) ??
+      probe.getContext('webgl', { failIfMajorPerformanceCaveat: true });
+    if (!context) return false;
+    context.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const runtimeCameraVisual = Object.freeze({
   ...ATTACK_DIE_VISUAL_CONFIG,
   topCamera: Object.freeze({
@@ -535,6 +550,10 @@ function AttackDieToken({
       Number.isInteger(effectiveResult) &&
       effectiveResult >= 1 &&
       effectiveResult <= 20;
+  const webglAvailable = useMemo(
+    () => !eligible || canCreateWebGLContext(),
+    [eligible]
+  );
   const [truthful, setTruthful] = useState(false);
   const [failed, setFailed] = useState(false);
   const active = useRef(true);
@@ -639,6 +658,10 @@ function AttackDieToken({
   ]);
 
   useEffect(() => {
+    if (eligible && !webglAvailable) {
+      fail('WebGL creation failed', 'webgl-unavailable');
+      return;
+    }
     if (forceFailure === 'unmapped') {
       fail(
         'synthetic authoritative result mapping exercise',
@@ -692,6 +715,7 @@ function AttackDieToken({
       fail('authoritative result has no verified mapping', 'unmapped-result');
   }, [
     effectiveResult,
+    eligible,
     fail,
     phase,
     forceFailure,
@@ -701,8 +725,10 @@ function AttackDieToken({
     runtimeSnapshot?.status,
     runtimeSource,
     target,
+    webglAvailable,
   ]);
-  const canvasVisible = eligible && !failed && phase !== 'hidden';
+  const canvasVisible =
+    eligible && webglAvailable && !failed && phase !== 'hidden';
   return (
     <div className="attack-die-3d">
       <div
