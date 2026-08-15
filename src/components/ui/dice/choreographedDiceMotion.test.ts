@@ -8,7 +8,7 @@ import {
   RESTING_TRANSLATION,
   ROLL_DURATION_MS,
 } from './choreographedDiceMotion';
-import type { DiceMotionSolverInput } from './diceMotionSolver';
+import type { DiceMotionPose, DiceMotionSolverInput } from './diceMotionSolver';
 import type { HeldRollGroupState } from './rollGroupGestureController';
 import {
   createNeutralVisualThrowProfile,
@@ -67,10 +67,21 @@ function heldState(
   };
 }
 
-function allNumbers(value: unknown): number[] {
-  if (typeof value === 'number') return [value];
-  if (value === null || typeof value !== 'object') return [];
-  return Object.values(value).flatMap(allNumbers);
+function expectFiniteTuple(tuple: readonly number[], length: number): void {
+  expect(tuple).toHaveLength(length);
+  for (let index = 0; index < length; index += 1) {
+    expect(Object.hasOwn(tuple, index)).toBe(true);
+    expect(typeof tuple[index]).toBe('number');
+    expect(Number.isFinite(tuple[index])).toBe(true);
+  }
+}
+
+function expectFinitePose(pose: DiceMotionPose): void {
+  expectFiniteTuple(pose.quaternion, 4);
+  expectFiniteTuple(pose.translation, 3);
+  expectFiniteTuple(pose.shadow.translation, 3);
+  expect(Number.isFinite(pose.shadow.scale)).toBe(true);
+  expect(Number.isFinite(pose.shadow.opacity)).toBe(true);
 }
 
 describe('ChoreographedSolverV1', () => {
@@ -91,7 +102,7 @@ describe('ChoreographedSolverV1', () => {
 
       expect(ChoreographedSolverV1.solve(input)).toEqual(first);
       expect(ChoreographedSolverV1.solve({ ...input })).toEqual(first);
-      expect(allNumbers(first).every(Number.isFinite)).toBe(true);
+      expectFinitePose(first);
     }
   );
 
@@ -106,7 +117,7 @@ describe('ChoreographedSolverV1', () => {
     expect(pose.failed).toBe(true);
     expect(pose.observeNow).toBe(false);
     expect(pose.exactTargetHeld).toBe(false);
-    expect(allNumbers(pose).every(Number.isFinite)).toBe(true);
+    expectFinitePose(pose);
   });
 
   it('uses profile facts in flight and the identical target at settlement', () => {
@@ -293,7 +304,167 @@ describe('ChoreographedSolverV1', () => {
     expect(pose.failed).toBe(true);
     expect(pose.observeNow).toBe(false);
     expect(pose.exactTargetHeld).toBe(false);
-    expect(allNumbers(pose).every(Number.isFinite)).toBe(true);
+    expectFinitePose(pose);
+  });
+
+  it.each([
+    {
+      label: 'target',
+      input: rollingInput({
+        elapsedMs: 1500,
+        target: Object.assign(new Array<number>(4), {
+          3: 1,
+        }) as unknown as DiceMotionSolverInput['target'],
+      }),
+    },
+    {
+      label: 'profile release position',
+      input: rollingInput({
+        elapsedMs: 600,
+        throwProfile: {
+          ...profileA(),
+          releasePosition: Object.assign(new Array<number>(2), {
+            0: 0.25,
+          }) as unknown as VisualThrowProfileV1['releasePosition'],
+        },
+      }),
+    },
+    {
+      label: 'profile release direction',
+      input: rollingInput({
+        elapsedMs: 600,
+        throwProfile: {
+          ...profileA(),
+          releaseDirection: Object.assign(new Array<number>(2), {
+            0: 1,
+          }) as unknown as VisualThrowProfileV1['releaseDirection'],
+        },
+      }),
+    },
+    {
+      label: 'held position',
+      input: rollingInput({
+        phase: 'ready',
+        held: heldState({
+          normalizedPosition: Object.assign(new Array<number>(2), {
+            0: 0.5,
+          }) as unknown as HeldRollGroupState['normalizedPosition'],
+        }),
+      }),
+    },
+    {
+      label: 'held tilt',
+      input: rollingInput({
+        phase: 'ready',
+        held: heldState({
+          normalizedTilt: Object.assign(new Array<number>(2), {
+            0: 0,
+          }) as unknown as HeldRollGroupState['normalizedTilt'],
+        }),
+      }),
+    },
+  ])(
+    'rejects a sparse $label tuple with a structurally finite failed pose',
+    ({ input }) => {
+      const pose = ChoreographedSolverV1.solve(input);
+
+      expect(pose.failed).toBe(true);
+      expectFinitePose(pose);
+    }
+  );
+
+  it.each([
+    {
+      label: 'schema version',
+      throwProfile: { ...profileA(), schemaVersion: 2 },
+    },
+    {
+      label: 'release position range',
+      throwProfile: { ...profileA(), releasePosition: [-0.01, 0.5] },
+    },
+    {
+      label: 'release direction unit length',
+      throwProfile: { ...profileA(), releaseDirection: [0.6, 0.7] },
+    },
+    {
+      label: 'speed with zero direction',
+      throwProfile: {
+        ...profileA(),
+        releaseDirection: [0, 0],
+        releaseSpeed: 0.5,
+      },
+    },
+    {
+      label: 'release speed range',
+      throwProfile: { ...profileA(), releaseSpeed: -0.01 },
+    },
+    {
+      label: 'shake energy range',
+      throwProfile: { ...profileA(), shakeEnergy: 1.01 },
+    },
+    {
+      label: 'spin bias range',
+      throwProfile: { ...profileA(), spinBias: -1.01 },
+    },
+    {
+      label: 'motion seed integer',
+      throwProfile: { ...profileA(), motionSeed: 1.5 },
+    },
+    {
+      label: 'motion seed uint32 range',
+      throwProfile: { ...profileA(), motionSeed: 0x1_0000_0000 },
+    },
+  ])('rejects an out-of-domain profile $label', ({ throwProfile }) => {
+    const pose = ChoreographedSolverV1.solve(
+      rollingInput({
+        elapsedMs: 600,
+        throwProfile: throwProfile as VisualThrowProfileV1,
+      })
+    );
+
+    expect(pose.failed).toBe(true);
+    expectFinitePose(pose);
+  });
+
+  it('rejects a finite extreme profile before it can emit non-finite output', () => {
+    const pose = ChoreographedSolverV1.solve(
+      rollingInput({
+        elapsedMs: 600,
+        throwProfile: {
+          ...profileA(),
+          releaseSpeed: Number.MAX_VALUE,
+        },
+      })
+    );
+
+    expect(pose.failed).toBe(true);
+    expectFinitePose(pose);
+  });
+
+  it.each([
+    {
+      label: 'position range',
+      held: heldState({ normalizedPosition: [1.01, 0.5] }),
+    },
+    {
+      label: 'tilt range',
+      held: heldState({ normalizedTilt: [-1.01, 0] }),
+    },
+    {
+      label: 'shake energy range',
+      held: heldState({ shakeEnergy: Number.MAX_VALUE }),
+    },
+    {
+      label: 'wobble phase range',
+      held: heldState({ wobblePhase: 1 }),
+    },
+  ])('rejects an out-of-domain held-state $label', ({ held }) => {
+    const pose = ChoreographedSolverV1.solve(
+      rollingInput({ phase: 'ready', held })
+    );
+
+    expect(pose.failed).toBe(true);
+    expectFinitePose(pose);
   });
 
   it('computes quaternion angular distance without sign ambiguity', () => {
@@ -309,5 +480,33 @@ describe('ChoreographedSolverV1', () => {
     const before = ChoreographedSolverV1.solve(input);
 
     expect(ChoreographedSolverV1.solve(input)).toEqual(before);
+  });
+
+  it('runtime-freezes shared pose tuples so one result cannot corrupt later results', () => {
+    const resting = ChoreographedSolverV1.solve(
+      rollingInput({ elapsedMs: ROLL_DURATION_MS })
+    );
+    const neutral = ChoreographedSolverV1.solve(
+      rollingInput({ phase: 'ready' })
+    );
+
+    const restingMutation = Reflect.set(resting.translation, 0, 99);
+    const neutralQuaternionMutation = Reflect.set(neutral.quaternion, 0, 99);
+    const centeredLiftMutation = Reflect.set(neutral.translation, 0, 99);
+    const nextResting = ChoreographedSolverV1.solve(
+      rollingInput({ elapsedMs: ROLL_DURATION_MS })
+    );
+    const nextNeutral = ChoreographedSolverV1.solve(
+      rollingInput({ phase: 'ready' })
+    );
+
+    expect(restingMutation).toBe(false);
+    expect(neutralQuaternionMutation).toBe(false);
+    expect(centeredLiftMutation).toBe(false);
+    expect(nextResting.translation).toEqual([-0.23, 0, 0]);
+    expect(nextNeutral.quaternion).toEqual([0.31, -0.47, 0.19, 0.805]);
+    expect(nextNeutral.translation).toEqual([0, HOLD_LIFT, 0]);
+    expectFinitePose(nextResting);
+    expectFinitePose(nextNeutral);
   });
 });

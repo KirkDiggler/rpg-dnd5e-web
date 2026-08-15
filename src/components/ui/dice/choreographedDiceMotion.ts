@@ -12,11 +12,13 @@ import type { VisualThrowProfileV1 } from './visualThrowProfile';
 export const ROLL_DURATION_MS = 1900;
 export const CONVERGENCE_START_MS = 1200;
 export const HOLD_LIFT = 0.16;
-export const RESTING_TRANSLATION = [-0.23, 0, 0] as const;
-export const NEUTRAL_QUATERNION = [0.31, -0.47, 0.19, 0.805] as const;
+export const RESTING_TRANSLATION = Object.freeze([-0.23, 0, 0] as const);
+export const NEUTRAL_QUATERNION = Object.freeze([
+  0.31, -0.47, 0.19, 0.805,
+] as const);
 
 const CONVERGENCE_DURATION_MS = ROLL_DURATION_MS - CONVERGENCE_START_MS;
-const CENTERED_LIFT_TRANSLATION = [0, HOLD_LIFT, 0] as const;
+const CENTERED_LIFT_TRANSLATION = Object.freeze([0, HOLD_LIFT, 0] as const);
 const VALID_PHASES = new Set([
   'hidden',
   'entering',
@@ -26,6 +28,8 @@ const VALID_PHASES = new Set([
   'exiting',
 ]);
 const TARGET_UNIT_TOLERANCE = 0.000001;
+const DIRECTION_UNIT_TOLERANCE = 0.000001;
+const MAX_UINT32 = 0xffff_ffff;
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, value));
@@ -281,39 +285,91 @@ function heldPose(held: HeldRollGroupState): DiceMotionPose {
   return pose(heldQuaternion(held), translation, false, false, false);
 }
 
-function finiteTuple(tuple: readonly number[], length: number): boolean {
-  return tuple.length === length && tuple.every(Number.isFinite);
+function finiteTuple2(tuple: readonly number[]): boolean {
+  return (
+    Array.isArray(tuple) &&
+    tuple.length === 2 &&
+    Object.hasOwn(tuple, 0) &&
+    Object.hasOwn(tuple, 1) &&
+    Number.isFinite(tuple[0]) &&
+    Number.isFinite(tuple[1])
+  );
+}
+
+function finiteTuple4(tuple: readonly number[]): boolean {
+  return (
+    Array.isArray(tuple) &&
+    tuple.length === 4 &&
+    Object.hasOwn(tuple, 0) &&
+    Object.hasOwn(tuple, 1) &&
+    Object.hasOwn(tuple, 2) &&
+    Object.hasOwn(tuple, 3) &&
+    Number.isFinite(tuple[0]) &&
+    Number.isFinite(tuple[1]) &&
+    Number.isFinite(tuple[2]) &&
+    Number.isFinite(tuple[3])
+  );
+}
+
+function inRange(value: number, minimum: number, maximum: number): boolean {
+  return Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+
+function validThrowProfile(profile: VisualThrowProfileV1): boolean {
+  if (
+    profile.schemaVersion !== 1 ||
+    !finiteTuple2(profile.releasePosition) ||
+    !finiteTuple2(profile.releaseDirection) ||
+    !inRange(profile.releasePosition[0], 0, 1) ||
+    !inRange(profile.releasePosition[1], 0, 1) ||
+    !inRange(profile.releaseSpeed, 0, 1) ||
+    !inRange(profile.shakeEnergy, 0, 1) ||
+    !inRange(profile.spinBias, -1, 1) ||
+    !Number.isInteger(profile.motionSeed) ||
+    !inRange(profile.motionSeed, 0, MAX_UINT32)
+  ) {
+    return false;
+  }
+
+  const directionMagnitude = Math.hypot(...profile.releaseDirection);
+  return directionMagnitude === 0
+    ? profile.releaseSpeed === 0
+    : Math.abs(directionMagnitude - 1) <= DIRECTION_UNIT_TOLERANCE;
+}
+
+function validHeldState(held: HeldRollGroupState): boolean {
+  return (
+    finiteTuple2(held.normalizedPosition) &&
+    finiteTuple2(held.normalizedTilt) &&
+    inRange(held.normalizedPosition[0], 0, 1) &&
+    inRange(held.normalizedPosition[1], 0, 1) &&
+    inRange(held.normalizedTilt[0], -1, 1) &&
+    inRange(held.normalizedTilt[1], -1, 1) &&
+    inRange(held.shakeEnergy, 0, 1) &&
+    Number.isFinite(held.wobblePhase) &&
+    held.wobblePhase >= 0 &&
+    held.wobblePhase < 1
+  );
 }
 
 function validInput(input: Parameters<DiceMotionSolver['solve']>[0]): boolean {
-  const profile = input.throwProfile;
-  const held = input.held;
   if (
     input.member.memberIndex !== 0 ||
     input.member.memberCount !== 1 ||
     !VALID_PHASES.has(input.phase) ||
     !Number.isFinite(input.elapsedMs) ||
     typeof input.reducedMotion !== 'boolean' ||
-    !finiteTuple(input.target, 4) ||
-    Math.abs(Math.hypot(...input.target) - 1) > TARGET_UNIT_TOLERANCE ||
-    !finiteTuple(profile.releasePosition, 2) ||
-    !finiteTuple(profile.releaseDirection, 2) ||
-    ![
-      profile.releaseSpeed,
-      profile.shakeEnergy,
-      profile.spinBias,
-      profile.motionSeed,
-    ].every(Number.isFinite)
+    !finiteTuple4(input.target) ||
+    !validThrowProfile(input.throwProfile)
   ) {
     return false;
   }
 
+  const targetMagnitude = Math.hypot(...input.target);
   return (
-    !held ||
-    (finiteTuple(held.normalizedPosition, 2) &&
-      finiteTuple(held.normalizedTilt, 2) &&
-      Number.isFinite(held.shakeEnergy) &&
-      Number.isFinite(held.wobblePhase))
+    Number.isFinite(targetMagnitude) &&
+    Math.abs(targetMagnitude - 1) <= TARGET_UNIT_TOLERANCE &&
+    (!input.held || validHeldState(input.held))
   );
 }
 
