@@ -19,6 +19,11 @@ export const NEUTRAL_QUATERNION = Object.freeze([
 
 const CONVERGENCE_DURATION_MS = ROLL_DURATION_MS - CONVERGENCE_START_MS;
 const CENTERED_LIFT_TRANSLATION = Object.freeze([0, HOLD_LIFT, 0] as const);
+const REDUCED_HELD_LIFT_TRANSLATION = Object.freeze([
+  0,
+  HOLD_LIFT + 0.12,
+  0,
+] as const);
 const VALID_PHASES = new Set([
   'hidden',
   'entering',
@@ -236,6 +241,16 @@ function neutralPose(): DiceMotionPose {
   );
 }
 
+function reducedHeldPose(): DiceMotionPose {
+  return pose(
+    NEUTRAL_QUATERNION,
+    REDUCED_HELD_LIFT_TRANSLATION,
+    false,
+    false,
+    false
+  );
+}
+
 function multiplyQuaternions(
   first: QuaternionTuple,
   second: QuaternionTuple
@@ -384,7 +399,8 @@ export const ChoreographedSolverV1: DiceMotionSolver = Object.freeze({
       }
 
       if (input.phase === 'entering' || input.phase === 'ready') {
-        if (!input.held || input.reducedMotion) return neutralPose();
+        if (!input.held) return neutralPose();
+        if (input.reducedMotion) return reducedHeldPose();
         return heldPose(input.held);
       }
 

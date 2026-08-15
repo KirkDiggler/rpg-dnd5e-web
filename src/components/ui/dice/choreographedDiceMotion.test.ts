@@ -243,7 +243,7 @@ describe('ChoreographedSolverV1', () => {
     expect(pose.shadow.translation).toEqual([0, 0, 0]);
   });
 
-  it('uses one centered static held pose for reduced motion regardless of samples', () => {
+  it('uses one visibly lifted centered static held cue for reduced motion regardless of samples', () => {
     const first = ChoreographedSolverV1.solve(
       rollingInput({
         phase: 'ready',
@@ -264,8 +264,16 @@ describe('ChoreographedSolverV1', () => {
       })
     );
 
+    const unheld = ChoreographedSolverV1.solve(
+      rollingInput({ phase: 'ready', reducedMotion: true, held: undefined })
+    );
+
     expect(first).toEqual(second);
-    expect(first.translation).toEqual([0, HOLD_LIFT, 0]);
+    expect(first.translation[0]).toBe(0);
+    expect(first.translation[1]).toBeGreaterThan(HOLD_LIFT);
+    expect(first.translation[2]).toBe(0);
+    expect(first.translation).not.toEqual(unheld.translation);
+    expect(first.shadow).not.toEqual(unheld.shadow);
     expect(first.quaternion).toBe(NEUTRAL_QUATERNION);
   });
 
