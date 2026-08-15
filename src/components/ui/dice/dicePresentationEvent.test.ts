@@ -68,20 +68,54 @@ describe('parseDicePresentationEvent', () => {
     }
   );
 
-  it('accepts a newer syntactically safe preset without authorizing an asset URL', () => {
+  it.each(['lightning', 'dice.original.carved.d20', 'newer-safe-preset'])(
+    'accepts the syntactically safe preset %s without authorizing an asset URL',
+    (presetId) => {
+      expect(
+        parseDicePresentationEvent(
+          requested({
+            die: {
+              kind: 'd20',
+              presetId,
+              authoritativeResult: 20,
+            },
+          })
+        )
+      ).toMatchObject({
+        die: { presetId, authoritativeResult: 20 },
+      });
+      expect(
+        parseDicePresentationEvent(release({}, { presetId }))
+      ).toMatchObject({ release: { presetId } });
+    }
+  );
+
+  it.each([
+    '',
+    '.lightning',
+    'lightning.',
+    'dice..d20',
+    'dice/original',
+    'dice\\original',
+    'dice:original',
+    'dice%2eoriginal',
+    'https://evil.test',
+    '../dice',
+    'Dice.original',
+    `dice.${'a'.repeat(33)}`,
+    Array.from({ length: 8 }, () => 'abcdefgh').join('.'),
+    'a.a.a.a.a.a.a.a.a',
+  ])('rejects malformed inbound preset identifier %s', (presetId) => {
     expect(
       parseDicePresentationEvent(
         requested({
-          die: {
-            kind: 'd20',
-            presetId: 'newer-safe-preset',
-            authoritativeResult: 20,
-          },
+          die: { kind: 'd20', presetId, authoritativeResult: 10 },
         })
       )
-    ).toMatchObject({
-      die: { presetId: 'newer-safe-preset', authoritativeResult: 20 },
-    });
+    ).toBeUndefined();
+    expect(
+      parseDicePresentationEvent(release({}, { presetId }))
+    ).toBeUndefined();
   });
 
   it.each([
