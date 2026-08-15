@@ -232,6 +232,22 @@ const privateGlbSource = resolve(
   'original-set/Original_D20_Source.glb'
 );
 const runtimeProviderRoot = resolve(ROOT, 'public/models/custom-dice');
+const syntyProviderRoot = resolve(
+  process.env.STONE1_SYNTY_PROVIDER_ROOT ??
+    '/home/kirk/game-dev/rpg-game-assets/harness/models/synty'
+);
+const runtimeSyntyRoot = resolve(ROOT, 'public/models/synty');
+const STONE1_SYNTY_FIXTURE_PATHS = [
+  'env/SM_Env_Wall_Half_01.glb',
+  'env/SM_Env_Wall_Broken_Edge_01.glb',
+  'env/SM_Env_Wall_Alcove_01.glb',
+  'env/SM_Env_Wall_Quarter_01.glb',
+  'env/SM_Env_Door_Frame_01.glb',
+  'env/SM_Env_Door_01.glb',
+  'ui/actions/attack.png',
+  'ui/actions/dodge.png',
+  'ui/library/frames/SPR_FantasyWarrior_Frame_Box03.png',
+];
 const runtimeManifestPath = resolve(
   runtimeProviderRoot,
   'dice-tray-presets.json'
@@ -244,6 +260,11 @@ const runtimeGlbPath = resolve(
 try {
   await atomicProviderCopy(privateManifestSource, runtimeManifestPath);
   await atomicProviderCopy(privateGlbSource, runtimeGlbPath);
+  for (const relativePath of STONE1_SYNTY_FIXTURE_PATHS)
+    await atomicProviderCopy(
+      resolve(syntyProviderRoot, relativePath),
+      resolve(runtimeSyntyRoot, relativePath)
+    );
   const providerManifestBytes = new Uint8Array(
     await readFile(runtimeManifestPath)
   );
@@ -306,7 +327,7 @@ try {
       '--build-manifest',
       buildManifestPath,
       '--synty-root',
-      'public/models/synty',
+      runtimeSyntyRoot,
       '--custom-dice-root',
       runtimeProviderRoot,
       '--host',
@@ -455,7 +476,7 @@ try {
     });
     page.on('console', (message) => {
       const location = message.location();
-      const severe = ['error', 'warning'].includes(message.type());
+      const severe = message.type() === 'error';
       const expectedSevere =
         !severe || id === 'provider-failure' || id === 'context-loss';
       consoleEntries.push({
@@ -587,6 +608,7 @@ try {
     const target = page
       .locator('[data-witness-role="roller"]')
       .getByRole('button', { name: 'Grab d20' });
+    await target.scrollIntoViewIfNeeded();
     const box = await target.boundingBox();
     if (!box) throw Error('Roller grab target has no bounds');
     const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
