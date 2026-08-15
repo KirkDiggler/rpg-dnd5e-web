@@ -236,6 +236,16 @@ describe('Stone 0 Tray evidence protocol', () => {
     expect(source).toMatch(/\.attack-die-3d__canvas canvas/);
   });
 
+  it('scrolls the below-fold grab target into view before driving a real pointer gesture', () => {
+    const source = readFileSync(
+      'scripts/attack-die/capture-stone0-tray-evidence.mjs',
+      'utf8'
+    );
+    expect(source).toMatch(
+      /const grab =[\s\S]*?await grab\.scrollIntoViewIfNeeded\(\);[\s\S]*?await grab\.boundingBox\(\)/
+    );
+  });
+
   it('accepts one exact complete immutable identity, result, and scenario matrix', () => {
     const evidence = validEvidence();
     expect(assertStone0TrayEvidence(evidence, identity)).toEqual(evidence);

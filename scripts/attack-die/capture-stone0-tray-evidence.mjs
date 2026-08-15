@@ -453,6 +453,7 @@ async function runResultRelease(result, releaseKind) {
     const grab = page
       .getByRole('complementary', { name: 'Roller dice drawer' })
       .getByRole('button', { name: 'Grab d20' });
+    await grab.scrollIntoViewIfNeeded();
     const box = await grab.boundingBox();
     if (!box) throw Error(`${id} grab target has no bounding box`);
     await page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.55);
