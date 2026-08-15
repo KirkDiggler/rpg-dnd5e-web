@@ -3,6 +3,12 @@ import { validateManifest } from './evidenceProtocol';
 
 export const ORIGINAL_D20_GLB_SHA256 =
   '87bf2d0535023e69c968fb9878ba4ad990df4eeec4b503ebb0e917419c47a77e';
+export const ORIGINAL_D20_MANIFEST_SHA256 =
+  '9c2d08b53442e6307ea4235103495f33fd4678b0363d9721bafa7f162dac1c74';
+export const ORIGINAL_D20_SOURCE_MANIFEST_SHA256 =
+  '46f50f32b27e16d2c5e984b07a0612a6fab890834d9ae3a4cba7a4dcf05059f7';
+export const ORIGINAL_D20_BODY_TRIANGLE_COUNT = 2684;
+export const ORIGINAL_D20_NUMERAL_TRIANGLE_COUNT = 7798;
 export const ORIGINAL_D20_PRESET_ID = 'dice.original.carved.d20';
 export const ORIGINAL_D20_MANIFEST_PATH =
   '/models/custom-dice/dice-tray-presets.json';
@@ -62,17 +68,30 @@ export interface Stone0TrayEvidenceIdentity {
   providerSourceManifestSha256: string;
 }
 
-export interface Stone0WitnessFact {
+export interface Stone0ResultWitnessV2 {
+  readonly requestedResult: number;
+  readonly mappedTarget: Stone0Quaternion;
+  readonly observedUpwardResult: number;
+  readonly observedUpDot: number;
+  readonly observedUpMargin: number;
+  readonly canvasVisible: boolean;
+  readonly exactTargetHeld: boolean;
+  readonly numeralTriangleCount: 7798;
+}
+
+export interface Stone0WitnessFact extends Stone0ResultWitnessV2 {
   generation: number;
   contextId: number;
   cloneId: string;
   eventArrayId: number;
   providerId: number;
-  requestedResult: number;
-  renderer: '3d';
-  angularErrorDegrees: number;
-  exactTargetHeld: boolean;
-  targetQuaternion: Stone0Quaternion;
+}
+
+export interface Stone0CloseupFact {
+  screenshot: string;
+  deviceScaleFactor: 3;
+  physicalWidth: number;
+  physicalHeight: number;
 }
 
 export interface Stone0ResultFact {
@@ -95,6 +114,10 @@ export interface Stone0ResultFact {
     decorativeVariation: Stone0Quaternion;
   };
   screenshot: string;
+  closeups: {
+    roller: Stone0CloseupFact;
+    spectator: Stone0CloseupFact;
+  };
 }
 
 export interface Stone0ScenarioFact {
@@ -106,7 +129,7 @@ export interface Stone0ScenarioFact {
 }
 
 export interface Stone0TrayEvidence {
-  schemaVersion: 1;
+  schemaVersion: 2;
   kind: 'stone0-original-d20-tray-evidence';
   sourceSha: string;
   webBuildSha256: string;
@@ -119,6 +142,8 @@ export interface Stone0TrayEvidence {
     glbPath: string;
     glbSha256: string;
     glbSizeBytes: number;
+    bodyTriangleCount: number;
+    numeralTriangleCount: number;
     manifestRequestCount: number;
     manifestTransferCount: number;
     glbRequestCount: number;
@@ -159,6 +184,8 @@ const PROVIDER_KEYS = [
   'glbPath',
   'glbSha256',
   'glbSizeBytes',
+  'bodyTriangleCount',
+  'numeralTriangleCount',
   'manifestRequestCount',
   'manifestTransferCount',
   'glbRequestCount',
@@ -180,6 +207,7 @@ const RESULT_KEYS = [
   'spectator',
   'targetInvariance',
   'screenshot',
+  'closeups',
 ] as const;
 const WITNESS_KEYS = [
   'generation',
@@ -188,10 +216,20 @@ const WITNESS_KEYS = [
   'eventArrayId',
   'providerId',
   'requestedResult',
-  'renderer',
-  'angularErrorDegrees',
+  'mappedTarget',
+  'observedUpwardResult',
+  'observedUpDot',
+  'observedUpMargin',
+  'canvasVisible',
   'exactTargetHeld',
-  'targetQuaternion',
+  'numeralTriangleCount',
+] as const;
+const CLOSEUPS_KEYS = ['roller', 'spectator'] as const;
+const CLOSEUP_KEYS = [
+  'screenshot',
+  'deviceScaleFactor',
+  'physicalWidth',
+  'physicalHeight',
 ] as const;
 const INVARIANCE_KEYS = [
   'rollerRoll',
@@ -292,10 +330,23 @@ function sameQuaternion(first: Stone0Quaternion, second: Stone0Quaternion) {
   return first.every((value, index) => value === second[index]);
 }
 
+function assertResultNumber(result: number, label: string) {
+  if (!Number.isInteger(result) || result < 1 || result > 20) fail(label);
+}
+
 export function stone0ResultScreenshot(result: number) {
-  if (!Number.isInteger(result) || result < 1 || result > 20)
-    fail('result screenshot input');
+  assertResultNumber(result, 'result screenshot input');
   return `result-${String(result).padStart(2, '0')}-desktop-1440x1080.png`;
+}
+
+export function stone0ResultCloseupScreenshot(
+  result: number,
+  role: 'roller' | 'spectator'
+) {
+  assertResultNumber(result, 'result closeup screenshot input');
+  if (role !== 'roller' && role !== 'spectator')
+    fail('result closeup role input');
+  return `result-${String(result).padStart(2, '0')}-${role}-well-dsf3.png`;
 }
 
 export function stone0ScenarioScreenshot(id: Stone0ScenarioId) {
@@ -346,12 +397,56 @@ function validateWitness(
     fail(`${label} boundary identities must be positive`);
   if (witness.requestedResult !== result)
     fail(`${label} requested result mismatch`);
-  exactString(witness.renderer, '3d', `${label} renderer`);
-  const error = finite(witness.angularErrorDegrees, `${label} angular error`);
-  if (error < 0 || error > 0.25) fail(`${label} angular error exceeds 0.25`);
-  exactBoolean(witness.exactTargetHeld, true, `${label} held witness`);
-  quaternion(witness.targetQuaternion, `${label} target`);
+
+  quaternion(witness.mappedTarget, `${label} mapped target`);
+  const observed = safeInteger(
+    witness.observedUpwardResult,
+    `${label} observed upward result`
+  );
+  if (observed !== witness.requestedResult)
+    fail(
+      `result ${result} ${label.endsWith('roller') ? 'roller' : 'spectator'} requested result ${witness.requestedResult} observed upward result ${observed}`
+    );
+  const upDot = finite(witness.observedUpDot, `${label} observed upward dot`);
+  const upMargin = finite(
+    witness.observedUpMargin,
+    `${label} observed upward margin`
+  );
+  if (upDot <= 0.999999) fail(`${label} observed upward dot is not decisive`);
+  if (upMargin <= 0.2) fail(`${label} observed upward margin is not decisive`);
+  exactBoolean(witness.canvasVisible, true, `${label} canvas visibility`);
+  exactBoolean(
+    witness.exactTargetHeld,
+    true,
+    `${label} target-hold diagnostic`
+  );
+  if (witness.numeralTriangleCount !== ORIGINAL_D20_NUMERAL_TRIANGLE_COUNT)
+    fail(`${label} numeral triangle role mismatch`);
   return witness as unknown as Stone0WitnessFact;
+}
+
+function validateCloseup(
+  value: unknown,
+  result: number,
+  role: 'roller' | 'spectator'
+): Stone0CloseupFact {
+  const label = `result ${result} ${role} closeup`;
+  const closeup = exactObject(value, CLOSEUP_KEYS, label);
+  exactString(
+    closeup.screenshot,
+    stone0ResultCloseupScreenshot(result, role),
+    `${label} screenshot filename`
+  );
+  if (closeup.deviceScaleFactor !== 3)
+    fail(`${label} device scale factor must equal 3`);
+  const width = safeInteger(closeup.physicalWidth, `${label} physical width`);
+  const height = safeInteger(
+    closeup.physicalHeight,
+    `${label} physical height`
+  );
+  if (width < 220 || height < 220)
+    fail(`${label} physical dimensions must be at least 220x220`);
+  return closeup as unknown as Stone0CloseupFact;
 }
 
 function validateResult(value: unknown, result: number): Stone0ResultFact {
@@ -403,8 +498,8 @@ function validateResult(value: unknown, result: number): Stone0ResultFact {
     fail(
       `result ${result} witnesses must own distinct generations, contexts, and clones`
     );
-  if (!sameQuaternion(roller.targetQuaternion, spectator.targetQuaternion))
-    fail(`result ${result} witness target mismatch`);
+  if (!sameQuaternion(roller.mappedTarget, spectator.mappedTarget))
+    fail(`result ${result} witness mapped target mismatch`);
 
   const invariance = exactObject(
     fact.targetInvariance,
@@ -424,7 +519,7 @@ function validateResult(value: unknown, result: number): Stone0ResultFact {
     `result ${result} decorative variation target`
   );
   if (
-    !sameQuaternion(roller.targetQuaternion, rollerRoll) ||
+    !sameQuaternion(roller.mappedTarget, rollerRoll) ||
     !sameQuaternion(rollerRoll, hostRelease) ||
     !sameQuaternion(rollerRoll, variation)
   )
@@ -434,6 +529,13 @@ function validateResult(value: unknown, result: number): Stone0ResultFact {
     stone0ResultScreenshot(result),
     `result ${result} screenshot filename`
   );
+  const closeups = exactObject(
+    fact.closeups,
+    CLOSEUPS_KEYS,
+    `result ${result} closeups`
+  );
+  validateCloseup(closeups.roller, result, 'roller');
+  validateCloseup(closeups.spectator, result, 'spectator');
   return fact as unknown as Stone0ResultFact;
 }
 
@@ -462,9 +564,8 @@ const SURFACE_KEYS = [
 ] as const;
 const RESPONSIVE_FACT_KEYS = [
   'layout',
-  'carvedResult',
-  'rollerCarvedVisible',
-  'spectatorCarvedVisible',
+  'rollerCanvasVisible',
+  'spectatorCanvasVisible',
   'innerWidth',
   'scrollWidth',
   'surfaces',
@@ -511,17 +612,15 @@ function responsiveFacts(
 ) {
   const facts = exactObject(value, RESPONSIVE_FACT_KEYS, `${label} facts`);
   exactString(facts.layout, layout, `${label} layout`);
-  if (facts.carvedResult !== 10)
-    fail(`${label} carved result must be released result 10`);
   exactBoolean(
-    facts.rollerCarvedVisible,
+    facts.rollerCanvasVisible,
     true,
-    `${label} Roller carved numeral visibility`
+    `${label} Roller canvas visibility`
   );
   exactBoolean(
-    facts.spectatorCarvedVisible,
+    facts.spectatorCanvasVisible,
     true,
-    `${label} Spectator carved numeral visibility`
+    `${label} Spectator canvas visibility`
   );
   if (facts.innerWidth !== width) fail(`${label} browser inner width mismatch`);
   const scrollWidth = finite(facts.scrollWidth, `${label} scroll width`);
@@ -700,14 +799,15 @@ export function assertStone0TrayEvidence(
     !SOURCE_SHA.test(identity.sourceSha) ||
     !SHA256.test(identity.webBuildSha256) ||
     !SHA256.test(identity.buildManifestSha256) ||
-    !SHA256.test(identity.providerManifestSha256) ||
-    !SHA256.test(identity.providerSourceManifestSha256)
+    identity.providerManifestSha256 !== ORIGINAL_D20_MANIFEST_SHA256 ||
+    identity.providerSourceManifestSha256 !==
+      ORIGINAL_D20_SOURCE_MANIFEST_SHA256
   )
-    fail('expected identity schema');
+    fail('expected identity schema or corrected provider hash');
 
   const evidence = exactObject(value, TOP_KEYS, 'top-level');
   if (
-    evidence.schemaVersion !== 1 ||
+    evidence.schemaVersion !== 2 ||
     evidence.kind !== 'stone0-original-d20-tray-evidence'
   )
     fail('top-level schema');
@@ -726,9 +826,11 @@ export function assertStone0TrayEvidence(
     provider.presetId !== ORIGINAL_D20_PRESET_ID ||
     provider.glbPath !== ORIGINAL_D20_GLB_PATH ||
     provider.glbSha256 !== ORIGINAL_D20_GLB_SHA256 ||
-    provider.glbSizeBytes !== ORIGINAL_D20_SIZE_BYTES
+    provider.glbSizeBytes !== ORIGINAL_D20_SIZE_BYTES ||
+    provider.bodyTriangleCount !== ORIGINAL_D20_BODY_TRIANGLE_COUNT ||
+    provider.numeralTriangleCount !== ORIGINAL_D20_NUMERAL_TRIANGLE_COUNT
   )
-    fail('provider identity or hash mismatch');
+    fail('provider identity, hash, or triangle role mismatch');
   for (const key of [
     'manifestRequestCount',
     'manifestTransferCount',
@@ -749,7 +851,14 @@ export function assertStone0TrayEvidence(
   );
 
   const filenames = [
-    ...results.map((fact) => (fact as Stone0ResultFact).screenshot),
+    ...results.flatMap((fact) => {
+      const result = fact as Stone0ResultFact;
+      return [
+        result.screenshot,
+        result.closeups.roller.screenshot,
+        result.closeups.spectator.screenshot,
+      ];
+    }),
     ...scenarios.map((fact) => (fact as Stone0ScenarioFact).screenshot),
   ];
   if (new Set(filenames).size !== filenames.length)
@@ -778,6 +887,8 @@ const PACKAGE_KEYS = [
   'resultCount',
   'scenarioCount',
   'contextCount',
+  'screenshotCount',
+  'closeupCount',
   'consoleErrorCount',
   'pageErrorCount',
   'artifacts',
@@ -844,7 +955,7 @@ export interface Stone0PackageArtifact {
 }
 
 export interface Stone0TrayEvidencePackage {
-  schemaVersion: 1;
+  schemaVersion: 2;
   kind: 'stone0-original-d20-tray-package';
   verdict: 'PASS';
   sourceSha: string;
@@ -853,6 +964,8 @@ export interface Stone0TrayEvidencePackage {
   resultCount: number;
   scenarioCount: number;
   contextCount: number;
+  screenshotCount: number;
+  closeupCount: number;
   consoleErrorCount: number;
   pageErrorCount: number;
   artifacts: Stone0PackageArtifact[];
@@ -1176,14 +1289,38 @@ function validateConsole(
   };
 }
 
+function pngDimensions(bytes: Uint8Array, label: string) {
+  if (
+    bytes.byteLength < 24 ||
+    ![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
+      (byte, index) => bytes[index] === byte
+    ) ||
+    String.fromCharCode(...bytes.slice(12, 16)) !== 'IHDR'
+  )
+    fail(`${label} PNG content mismatch`);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  if (width < 1 || height < 1) fail(`${label} PNG dimensions`);
+  return { width, height };
+}
+
 export function assertStone0TrayEvidencePackage(
   value: unknown,
   identity: Stone0TrayEvidenceIdentity,
-  artifactBytes: ReadonlyMap<string, Uint8Array>
+  artifactBytes: ReadonlyMap<string, Uint8Array>,
+  markerNames: readonly string[] = ['PASS']
 ): Stone0TrayEvidencePackage {
+  if (
+    markerNames.length !== 1 ||
+    markerNames[0] !== 'PASS' ||
+    markerNames.includes('FAILED') ||
+    markerNames.includes('FAILED.txt')
+  )
+    fail('package marker matrix must contain PASS and no FAILED marker');
   const packageValue = exactObject(value, PACKAGE_KEYS, 'package manifest');
   if (
-    packageValue.schemaVersion !== 1 ||
+    packageValue.schemaVersion !== 2 ||
     packageValue.kind !== 'stone0-original-d20-tray-package' ||
     packageValue.verdict !== 'PASS'
   )
@@ -1200,9 +1337,14 @@ export function assertStone0TrayEvidencePackage(
       exactObject(artifact, PACKAGE_ARTIFACT_KEYS, `package artifact ${index}`)
   );
   const expectedScreenshotPaths = [
-    ...Array.from({ length: 20 }, (_, index) =>
-      stone0ResultScreenshot(index + 1)
-    ),
+    ...Array.from({ length: 20 }, (_, index) => {
+      const result = index + 1;
+      return [
+        stone0ResultScreenshot(result),
+        stone0ResultCloseupScreenshot(result, 'roller'),
+        stone0ResultCloseupScreenshot(result, 'spectator'),
+      ];
+    }).flat(),
     ...STONE0_SCENARIO_IDS.map(stone0ScenarioScreenshot),
   ];
   const expectedPaths = [
@@ -1240,14 +1382,8 @@ export function assertStone0TrayEvidencePackage(
       hashBytes(bytes) !== artifact.sha256
     )
       fail(`package artifact digest/size mismatch: ${path}`);
-    if (
-      expectedKind === 'screenshot' &&
-      (bytes.byteLength <= 8 ||
-        ![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
-          (byte, byteIndex) => bytes[byteIndex] === byte
-        ))
-    )
-      fail(`package screenshot PNG content mismatch: ${path}`);
+    if (expectedKind === 'screenshot')
+      pngDimensions(bytes, `package screenshot ${path}`);
   });
   for (const path of artifactBytes.keys())
     if (!expectedPaths.includes(path))
@@ -1274,10 +1410,29 @@ export function assertStone0TrayEvidencePackage(
     parseJsonBytes(artifactBytes.get('console.json')!, 'console'),
     network
   );
+  for (const result of evidence.results)
+    for (const role of ['roller', 'spectator'] as const) {
+      const closeup = result.closeups[role];
+      const dimensions = pngDimensions(
+        artifactBytes.get(closeup.screenshot)!,
+        `result ${result.result} ${role} closeup`
+      );
+      if (
+        dimensions.width !== closeup.physicalWidth ||
+        dimensions.height !== closeup.physicalHeight ||
+        dimensions.width < 220 ||
+        dimensions.height < 220
+      )
+        fail(
+          `result ${result.result} ${role} closeup physical dimensions mismatch`
+        );
+    }
   if (
     packageValue.resultCount !== evidence.results.length ||
     packageValue.scenarioCount !== evidence.scenarios.length ||
     packageValue.contextCount !== network.contextCount ||
+    packageValue.screenshotCount !== expectedScreenshotPaths.length ||
+    packageValue.closeupCount !== evidence.results.length * 2 ||
     packageValue.consoleErrorCount !== consoleSummary.consoleErrorCount ||
     packageValue.pageErrorCount !== consoleSummary.pageErrorCount
   )

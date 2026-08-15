@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -30,16 +37,21 @@ const [manifestModule, frozenEvidenceModule, stone0ProtocolModule] =
 const { parseDiceRuntimeManifest } = manifestModule;
 const { assertSameManifest, validateServedBuild } = frozenEvidenceModule;
 const {
+  ORIGINAL_D20_BODY_TRIANGLE_COUNT,
   ORIGINAL_D20_GLB_PATH,
   ORIGINAL_D20_GLB_SHA256,
   ORIGINAL_D20_MANIFEST_PATH,
+  ORIGINAL_D20_MANIFEST_SHA256,
+  ORIGINAL_D20_NUMERAL_TRIANGLE_COUNT,
   ORIGINAL_D20_PRESET_ID,
   ORIGINAL_D20_SIZE_BYTES,
+  ORIGINAL_D20_SOURCE_MANIFEST_SHA256,
   STONE0_LOCAL_API_FIXTURES,
   STONE0_LOCAL_API_RESPONSE,
   STONE0_SCENARIO_IDS,
   assertStone0TrayEvidence,
   assertStone0TrayEvidencePackage,
+  stone0ResultCloseupScreenshot,
   stone0ResultScreenshot,
   stone0ScenarioScreenshot,
 } = stone0ProtocolModule;
@@ -73,9 +85,22 @@ const networkPath = resolve(packageTempRoot, 'network.json');
 const consolePath = resolve(packageTempRoot, 'console.json');
 const packageManifestPath = resolve(out, 'package-manifest.json');
 const passPath = resolve(out, 'PASS');
-const resultScreenshots = Array.from({ length: 20 }, (_, index) =>
-  stone0ResultScreenshot(index + 1)
-);
+const failedPath = resolve(out, 'FAILED.txt');
+const resultScreenshots = Array.from({ length: 20 }, (_, index) => {
+  const result = index + 1;
+  return [
+    stone0ResultScreenshot(result),
+    stone0ResultCloseupScreenshot(result, 'roller'),
+    stone0ResultCloseupScreenshot(result, 'spectator'),
+  ];
+}).flat();
+const resultCloseupScreenshots = Array.from(
+  { length: 20 },
+  (_, index) => index + 1
+).flatMap((result) => [
+  stone0ResultCloseupScreenshot(result, 'roller'),
+  stone0ResultCloseupScreenshot(result, 'spectator'),
+]);
 const scenarioScreenshots = STONE0_SCENARIO_IDS.map(stone0ScenarioScreenshot);
 const capturedArtifactPath = (filename) => resolve(packageTempRoot, filename);
 for (const path of [
@@ -84,6 +109,7 @@ for (const path of [
   resolve(out, 'console.json'),
   packageManifestPath,
   passPath,
+  failedPath,
   ...resultScreenshots.map((filename) => resolve(out, filename)),
   ...scenarioScreenshots.map((filename) => resolve(out, filename)),
 ])
@@ -132,6 +158,8 @@ const providerManifestBytes = new Uint8Array(
   await providerManifestResponse.arrayBuffer()
 );
 const providerManifestSha256 = sha256(providerManifestBytes);
+if (providerManifestSha256 !== ORIGINAL_D20_MANIFEST_SHA256)
+  throw Error('baseline provider manifest is not the exact corrected manifest');
 let providerManifestValue;
 try {
   providerManifestValue = JSON.parse(
@@ -152,11 +180,19 @@ if (
     ORIGINAL_D20_GLB_PATH.split('/').slice(3).join('/') ||
   originalPreset.model.sha256 !== ORIGINAL_D20_GLB_SHA256 ||
   originalPreset.model.sizeBytes !== ORIGINAL_D20_SIZE_BYTES ||
+  originalPreset.model.geometry.bodyTriangleIndices.length !==
+    ORIGINAL_D20_BODY_TRIANGLE_COUNT ||
+  originalPreset.model.geometry.numeralTriangleIndices.length !==
+    ORIGINAL_D20_NUMERAL_TRIANGLE_COUNT ||
   originalPreset.faceSettlementMap.supportedResults.length !== 20
 )
-  throw Error('Original carved d20 baseline identity mismatch');
+  throw Error('Original carved d20 baseline identity/triangle roles mismatch');
 const providerSourceManifestSha256 =
   parsedProvider.manifest.sourceManifestSha256;
+if (providerSourceManifestSha256 !== ORIGINAL_D20_SOURCE_MANIFEST_SHA256)
+  throw Error(
+    'baseline provider source manifest is not the corrected identity'
+  );
 const glbUrl = new URL(ORIGINAL_D20_GLB_PATH, baseUrl);
 const glbResponse = await fetch(glbUrl);
 if (!glbResponse.ok) throw Error('baseline Original carved d20 GLB failed');
@@ -221,13 +257,14 @@ async function createScenarioPage({
   id,
   viewport = { width: 1440, height: 1080 },
   reducedMotion = 'no-preference',
+  deviceScaleFactor = 1,
   init,
   route,
 }) {
   const ordinal = nextContextOrdinal++;
   const context = await browser.newContext({
     viewport,
-    deviceScaleFactor: 1,
+    deviceScaleFactor,
     reducedMotion,
   });
   const page = await context.newPage();
@@ -477,6 +514,11 @@ async function waitHealthy(page, result) {
           telemetry?.requestedResult === expected &&
           telemetry.renderer === '3d' &&
           telemetry.state === 'observed' &&
+          telemetry.observedUpwardResult === expected &&
+          typeof telemetry.observedUpDot === 'number' &&
+          telemetry.observedUpDot > 0.999999 &&
+          typeof telemetry.observedUpMargin === 'number' &&
+          telemetry.observedUpMargin > 0.2 &&
           telemetry.exactTargetHeld === true &&
           typeof telemetry.angularErrorDegrees === 'number' &&
           telemetry.angularErrorDegrees <= 0.25 &&
@@ -534,6 +576,11 @@ function assertHealthyBridge(bridge, result, label) {
       telemetry.requestedResult !== result ||
       telemetry.renderer !== '3d' ||
       telemetry.state !== 'observed' ||
+      telemetry.observedUpwardResult !== telemetry.requestedResult ||
+      !Number.isFinite(telemetry.observedUpDot) ||
+      telemetry.observedUpDot <= 0.999999 ||
+      !Number.isFinite(telemetry.observedUpMargin) ||
+      telemetry.observedUpMargin <= 0.2 ||
       !telemetry.exactTargetHeld ||
       telemetry.angularErrorDegrees > 0.25 ||
       !Array.isArray(telemetry.mappedTarget) ||
@@ -571,9 +618,53 @@ async function startHealthyContext(id, result, options = {}) {
   return scenario;
 }
 
+function readPngDimensions(bytes, label) {
+  if (bytes.byteLength < 24 || bytes.toString('ascii', 12, 16) !== 'IHDR')
+    throw Error(`${label} is not a readable PNG`);
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  if (width < 1 || height < 1) throw Error(`${label} has invalid dimensions`);
+  return { width, height };
+}
+
+async function canvasVisible(page, role) {
+  return page.locator(`[data-witness-role="${role}"]`).evaluate((witness) => {
+    const canvas = witness.querySelector('.attack-die-3d__canvas canvas');
+    if (!(canvas instanceof HTMLCanvasElement)) return false;
+    const style = getComputedStyle(canvas);
+    const rect = canvas.getBoundingClientRect();
+    return (
+      style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      Number(style.opacity || '1') > 0 &&
+      rect.width > 0 &&
+      rect.height > 0
+    );
+  });
+}
+
+async function captureResultCloseup(page, result, role) {
+  const screenshot = stone0ResultCloseupScreenshot(result, role);
+  const bytes = await page.locator(`[data-witness-role="${role}"]`).screenshot({
+    path: capturedArtifactPath(screenshot),
+  });
+  const dimensions = readPngDimensions(bytes, `${result} ${role} closeup`);
+  if (dimensions.width < 220 || dimensions.height < 220)
+    throw Error(`${result} ${role} closeup is below 220x220 physical pixels`);
+  return {
+    screenshot,
+    deviceScaleFactor: 3,
+    physicalWidth: dimensions.width,
+    physicalHeight: dimensions.height,
+  };
+}
+
 async function runResultRelease(result, releaseKind) {
   const id = `result-${String(result).padStart(2, '0')}-${releaseKind}`;
-  const scenario = await startHealthyContext(id, result);
+  const scenario =
+    releaseKind === 'roller-roll'
+      ? await startHealthyContext(id, result, { deviceScaleFactor: 3 })
+      : await startHealthyContext(id, result);
   const { page } = scenario;
   if (releaseKind === 'roller-roll') {
     await page.getByRole('button', { name: 'Roll d20' }).click();
@@ -602,7 +693,16 @@ async function runResultRelease(result, releaseKind) {
   }
   const bridge = await waitHealthy(page, result);
   assertHealthyBridge(bridge, result, id);
+  const canvasVisibility = {
+    roller: await canvasVisible(page, 'roller'),
+    spectator: await canvasVisible(page, 'spectator'),
+  };
+  let closeups;
   if (releaseKind === 'roller-roll') {
+    closeups = {
+      roller: await captureResultCloseup(page, result, 'roller'),
+      spectator: await captureResultCloseup(page, result, 'spectator'),
+    };
     const screenshot = stone0ResultScreenshot(result);
     await page.screenshot({
       path: capturedArtifactPath(screenshot),
@@ -610,22 +710,27 @@ async function runResultRelease(result, releaseKind) {
     });
   }
   await closeScenario(scenario);
-  return { bridge, record: scenario.record };
+  return { bridge, record: scenario.record, canvasVisibility, closeups };
 }
 
-function witnessFact(bridge, role) {
+function witnessFact(bridge, role, canvasVisibility) {
   const witness = bridge.witnesses[role];
+  const telemetry = witness.telemetry;
   return {
-    generation: witness.telemetry.presentationToken,
+    generation: telemetry.presentationToken,
     contextId: witness.rendererInfo.contextId,
-    cloneId: `runtime-clone:${witness.telemetry.runtimeCloneId}`,
+    cloneId: `runtime-clone:${telemetry.runtimeCloneId}`,
     eventArrayId: witness.boundary.eventArrayId,
     providerId: witness.boundary.providerId,
-    requestedResult: witness.telemetry.requestedResult,
-    renderer: '3d',
-    angularErrorDegrees: witness.telemetry.angularErrorDegrees,
-    exactTargetHeld: witness.telemetry.exactTargetHeld,
-    targetQuaternion: witness.telemetry.mappedTarget,
+    requestedResult: telemetry.requestedResult,
+    mappedTarget: telemetry.mappedTarget,
+    observedUpwardResult: telemetry.observedUpwardResult,
+    observedUpDot: telemetry.observedUpDot,
+    observedUpMargin: telemetry.observedUpMargin,
+    canvasVisible: canvasVisibility,
+    exactTargetHeld: telemetry.exactTargetHeld,
+    numeralTriangleCount:
+      originalPreset.model.geometry.numeralTriangleIndices.length,
   };
 }
 
@@ -663,14 +768,23 @@ try {
       clonesDistinct:
         roller.bridge.witnesses.roller.telemetry.runtimeCloneId !==
         roller.bridge.witnesses.spectator.telemetry.runtimeCloneId,
-      roller: witnessFact(roller.bridge, 'roller'),
-      spectator: witnessFact(roller.bridge, 'spectator'),
+      roller: witnessFact(
+        roller.bridge,
+        'roller',
+        roller.canvasVisibility.roller
+      ),
+      spectator: witnessFact(
+        roller.bridge,
+        'spectator',
+        roller.canvasVisibility.spectator
+      ),
       targetInvariance: {
         rollerRoll: rollerTarget,
         hostRelease: hostTarget,
         decorativeVariation: decorationTarget,
       },
       screenshot: stone0ResultScreenshot(result),
+      closeups: roller.closeups,
     });
   }
 
@@ -874,25 +988,14 @@ try {
             }
           : null;
       };
-      const carvedVisible = (role) => {
-        const witness = document.querySelector(`[data-witness-role="${role}"]`);
-        const telemetry =
-          window.__stone0TrayEvidence?.witnesses[role]?.telemetry;
-        const canvas = witness?.querySelector('.attack-die-3d__canvas canvas');
-        const fallbackDie = witness?.querySelector('[data-testid="d20-die"]');
-        if (
-          !(canvas instanceof HTMLCanvasElement) ||
-          !(fallbackDie instanceof SVGElement)
-        )
-          return false;
+      const canvasVisible = (role) => {
+        const canvas = document.querySelector(
+          `[data-witness-role="${role}"] .attack-die-3d__canvas canvas`
+        );
+        if (!(canvas instanceof HTMLCanvasElement)) return false;
         const canvasStyle = getComputedStyle(canvas);
         const canvasRect = canvas.getBoundingClientRect();
         return (
-          telemetry?.requestedResult === 10 &&
-          telemetry?.renderer === '3d' &&
-          telemetry?.state === 'observed' &&
-          telemetry?.exactTargetHeld === true &&
-          getComputedStyle(fallbackDie).visibility === 'hidden' &&
           canvasStyle.display !== 'none' &&
           canvasStyle.visibility !== 'hidden' &&
           Number(canvasStyle.opacity || '1') > 0 &&
@@ -914,9 +1017,8 @@ try {
             : innerWidth <= 760
               ? 'narrow-order'
               : 'stacked',
-        carvedResult: 10,
-        rollerCarvedVisible: carvedVisible('roller'),
-        spectatorCarvedVisible: carvedVisible('spectator'),
+        rollerCanvasVisible: canvasVisible('roller'),
+        spectatorCanvasVisible: canvasVisible('spectator'),
         innerWidth,
         scrollWidth: document.documentElement.scrollWidth,
         surfaces: {
@@ -952,9 +1054,8 @@ try {
           log.bottom + gap <= dock.top;
     if (
       measured.layout !== layout ||
-      measured.carvedResult !== 10 ||
-      !measured.rollerCarvedVisible ||
-      !measured.spectatorCarvedVisible ||
+      !measured.rollerCanvasVisible ||
+      !measured.spectatorCanvasVisible ||
       measured.innerWidth !== width ||
       measured.scrollWidth > measured.innerWidth ||
       !surfacesPresent ||
@@ -963,7 +1064,7 @@ try {
       dock.top < map.bottom - 1
     )
       throw Error(
-        `${id} released carved-result/order/gap/containment/clearance mismatch: ${JSON.stringify(measured)}`
+        `${id} released canvas/order/gap/containment/clearance mismatch: ${JSON.stringify(measured)}`
       );
     await scenario.page.screenshot({
       path: capturedArtifactPath(stone0ScenarioScreenshot(id)),
@@ -1260,7 +1361,7 @@ try {
   );
   assertProviderOnce(baseline, 'baseline provider');
   const evidence = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'stone0-original-d20-tray-evidence',
     sourceSha,
     webBuildSha256: buildManifest.webBuildSha256,
@@ -1273,6 +1374,10 @@ try {
       glbPath: ORIGINAL_D20_GLB_PATH,
       glbSha256: ORIGINAL_D20_GLB_SHA256,
       glbSizeBytes: ORIGINAL_D20_SIZE_BYTES,
+      bodyTriangleCount:
+        originalPreset.model.geometry.bodyTriangleIndices.length,
+      numeralTriangleCount:
+        originalPreset.model.geometry.numeralTriangleIndices.length,
       ...baseline.provider,
     },
     results,
@@ -1334,7 +1439,7 @@ try {
         ? 'json'
         : 'screenshot';
   const packageManifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'stone0-original-d20-tray-package',
     verdict: 'PASS',
     sourceSha,
@@ -1343,6 +1448,8 @@ try {
     resultCount: results.length,
     scenarioCount: scenarios.length,
     contextCount: networkContexts.length,
+    screenshotCount: resultScreenshots.length + scenarioScreenshots.length,
+    closeupCount: resultCloseupScreenshots.length,
     consoleErrorCount: consoleEntries.filter((entry) => entry.type === 'error')
       .length,
     pageErrorCount: pageErrors.length,
@@ -1413,6 +1520,15 @@ try {
   if ((await readFile(temporaryPassPath, 'utf8')) !== passContents)
     throw Error('temporary PASS reread mismatch');
   await rename(temporaryPassPath, passPath);
+  const markerNames = (await readdir(out)).filter(
+    (name) => name === 'PASS' || name === 'FAILED' || name === 'FAILED.txt'
+  );
+  assertStone0TrayEvidencePackage(
+    JSON.parse(await readFile(packageManifestPath, 'utf8')),
+    identity,
+    await readArtifactPackage(true),
+    markerNames
+  );
 
   const artifactHashes = Object.fromEntries(
     packageManifest.artifacts.map((artifact) => [
@@ -1434,6 +1550,7 @@ try {
       scenarioFacts: scenarios.length,
       contextFacts: networkContexts.length,
       screenshotFacts: resultScreenshots.length + scenarioScreenshots.length,
+      closeupFacts: resultCloseupScreenshots.length,
       unexpectedErrors: unexpectedErrors.length,
       packageManifestSha256: sha256(await readFile(packageManifestPath)),
       artifactHashes,

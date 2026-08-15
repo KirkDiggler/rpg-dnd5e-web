@@ -91,6 +91,10 @@ function observed(props: AttackDie3DProps): AttackDieTelemetry {
     requestedResult: 10,
     renderer: '3d',
     state: 'observed',
+    observedUpwardResult: 10,
+    observedUpDot: 1,
+    observedUpMargin: 0.25,
+    angularErrorDegrees: 0,
     exactTargetHeld: true,
   };
 }

@@ -217,6 +217,47 @@ describe('AttackDie3D staged concept', () => {
     );
   });
 
+  it('publishes each renderer upward observation without deriving identity from its held mapped target', async () => {
+    stubReadyProvider();
+    render(<AttackDie3DConcept />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
+    const witnesses = await expectReadyWitnessMotion(false);
+    const target = [0, 0, 0, 1] as const;
+
+    for (const [index, witness] of witnesses.entries())
+      (witness.onTelemetry as (telemetry: Record<string, unknown>) => void)({
+        presentationToken: witness.presentationToken,
+        requestedResult: 10,
+        renderer: '3d',
+        state: 'observed',
+        mappedTarget: target,
+        observedUpwardResult: index === 0 ? 5 : 10,
+        observedUpDot: 1,
+        observedUpMargin: 0.25,
+        angularErrorDegrees: 0,
+        exactTargetHeld: true,
+        runtimeSourceId: 1,
+        runtimeCloneId: index + 1,
+      });
+
+    expect(
+      window.__stone0TrayEvidence?.witnesses.roller.telemetry
+    ).toMatchObject({
+      requestedResult: 10,
+      mappedTarget: target,
+      observedUpwardResult: 5,
+      exactTargetHeld: true,
+    });
+    expect(
+      window.__stone0TrayEvidence?.witnesses.spectator.telemetry
+    ).toMatchObject({
+      requestedResult: 10,
+      mappedTarget: target,
+      observedUpwardResult: 10,
+      exactTargetHeld: true,
+    });
+  });
+
   it('passes the explicit lab reduced-motion preference to both ready Tray witnesses', async () => {
     stubReadyProvider();
     render(

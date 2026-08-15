@@ -10,10 +10,12 @@ production transport, profile, or asset-ownership surface. `CombatPresentation`,
 > model is `/models/custom-dice/original-set/Original_D20_Source.glb`, exact
 > SHA-256
 > `87bf2d0535023e69c968fb9878ba4ad990df4eeec4b503ebb0e917419c47a77e`,
-> size `491312` bytes. The current generated provider manifest SHA-256 is
-> `bae0bb907e6b34cb6192f9e0abad2ea2cae23dfe850bf178833ce018e11c8b55`;
+> size `491312` bytes. The corrected generated provider manifest SHA-256 is
+> `9c2d08b53442e6307ea4235103495f33fd4678b0363d9721bafa7f162dac1c74`;
 > its source-manifest identity is
-> `07b55de7b01eb556325edc7d6b30285ecd8ef4991cb69a91c3b8bcea989ca1eb`.
+> `46f50f32b27e16d2c5e984b07a0612a6fab890834d9ae3a4cba7a4dcf05059f7`.
+> The material-free partition has exactly 2,684 body triangles and 7,798
+> numeral triangles.
 >
 > **HISTORICAL LIGHTNING TOOLING:** Appearance, Calibrate, Roll, and Verify still
 > inspect the historical Lightning development model. Those non-Tray stages are
@@ -109,9 +111,11 @@ Open the exact development build, select **Tray**, and review:
 6. provider, WebGL, context-loss, and shader failure convergence to truthful SVG;
 7. desktop `1440×1080`, boundary `1241×900`/`1240×900`, and narrow
    `760×900` after releasing result 10 and awaiting both held 3D witnesses. The
-   browser records the carved-numeral visibility and actual map, Roller,
-   Spectator, log, dock, and preview rectangles, then validates breakpoint order,
-   gaps, containment, dock clearance, and horizontal overflow before capture.
+   browser records Canvas visibility (not numeral identity) and the actual map,
+   Roller, Spectator, log, dock, and preview rectangles, then validates breakpoint
+   order, gaps, containment, dock clearance, and horizontal overflow before
+   capture. Numeral identity comes separately from each renderer's
+   `observedUpwardResult`, upward dot, and upward margin telemetry.
 
 The visible combat prose comes from the real `CombatLog` consuming unchanged
 structured `CombatLogEntry[]` fixture facts. The dice fixture does not author
@@ -140,11 +144,12 @@ node scripts/attack-die/serve-frozen.mjs \
   --port 3003 >"$OUT/preview.log" 2>&1 &
 PREVIEW_PID=$!
 trap 'kill "$PREVIEW_PID" 2>/dev/null || true' EXIT
-for attempt in $(seq 1 40); do
+for attempt in $(seq 1 80); do
   curl -fsS 'http://127.0.0.1:3003/?concept=attack-die-3d' >/dev/null && break
   sleep 0.25
 done
 curl -fsS 'http://127.0.0.1:3003/?concept=attack-die-3d' >/dev/null
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome \
 npm run attack-die:stone0-evidence -- \
   --url 'http://127.0.0.1:3003/?concept=attack-die-3d' \
   --out "$OUT" \
@@ -154,15 +159,25 @@ kill "$PREVIEW_PID"
 trap - EXIT
 ```
 
-The pure `stone0TrayEvidenceProtocol` rejects stale source/build/provider
-identity, any GLB hash other than the exact Original D20 digest, duplicate
-manifest/GLB requests or transfers, incomplete/reordered 1–20 rows, settlement
-above `0.25°`, shared witness ownership, duplicate/malformed scenario rows,
-nondeterministic filenames, non-empty validation failures, or unexpected
-console/page errors. It also rereads and binds the parsed build, browser,
-network, and console JSON; exact 78-context ID/count matrix; exact console
-location/message matrix; and all 38 PNG bytes/digests into one package manifest.
-Missing, substituted, reordered, or contradictory package artifacts fail.
+The pure schema-v2 `stone0TrayEvidenceProtocol` rejects stale
+source/build/provider identity, any provider hash other than the exact corrected
+manifest, any GLB hash other than the exact Original D20 digest, roles other than
+2,684 body/7,798 numeral triangles, duplicate manifest/GLB requests or
+transfers, incomplete/reordered 1–20 rows, or either renderer reporting an
+upward result different from the request. `exactTargetHeld` remains a separate
+diagnostic and cannot stand in for upward observation. The protocol also
+rejects non-decisive upward dot/margin values, non-visible Canvases,
+shared witness ownership, duplicate/malformed scenarios or filenames,
+non-empty validation failures, unexpected console/page errors, and a directory
+with both PASS and FAILED markers.
+
+The package rereads and binds the parsed build, browser, network, and console
+JSON; exact 78-context ID/count matrix; exact console location/message matrix;
+20 full-page result PNGs; 40 Roller/Spectator well close-ups; and 18 scenario
+PNGs. Close-ups are captured at browser device scale factor 3, include the
+whole witness well, and must be at least 220×220 physical pixels in both their
+browser facts and reread PNG IHDR. Missing, substituted, reordered,
+undersized, or contradictory package artifacts fail.
 
 The driver starts on the dedicated `attackDieStage=tray` route, so historical
 Lightning loading remains dormant. Every exact `localhost:8080` RPC is fulfilled
@@ -185,15 +200,18 @@ hashed, reread, and validated. Only then are artifacts published and an atomic
 - `browser-evidence.json`
 - `network.json`
 - `console.json`
-- deterministic result/scenario screenshots
-- `package-manifest.json` and the final `PASS` marker
+- 20 full-page result screenshots, exactly 40 result well close-ups, and 18
+  deterministic scenario screenshots
+- schema-v2 `package-manifest.json` and the final `PASS` marker
 - `preview.log` and `build-manifest.json`
 
 All output remains private under
 `/home/kirk/game-dev/.verification/interactive-dice-tray/stone-0/<SHA>/`.
 Never stage evidence JSON, logs, hashes, PNGs, GIFs, or provider bytes. If a
-browser defect requires a fix, commit that fix, mark/discard the old SHA output,
-and recapture into the new exact-SHA directory.
+browser defect requires a fix, preserve the failed SHA output for diagnosis,
+commit that fix, and capture only into the new exact-SHA directory. A machine
+PASS does not claim Kirk review or independent visual approval; those reviews
+remain explicitly pending until performed.
 
 ## Deferred promotion evidence
 
