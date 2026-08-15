@@ -134,6 +134,27 @@ function localLifecyclePhase(
   return 'mixed';
 }
 
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function sameVisualThrowProfile(
+  first: VisualThrowProfileV1,
+  second: VisualThrowProfileV1
+) {
+  return (
+    first.schemaVersion === second.schemaVersion &&
+    Object.is(first.releasePosition[0], second.releasePosition[0]) &&
+    Object.is(first.releasePosition[1], second.releasePosition[1]) &&
+    Object.is(first.releaseDirection[0], second.releaseDirection[0]) &&
+    Object.is(first.releaseDirection[1], second.releaseDirection[1]) &&
+    Object.is(first.releaseSpeed, second.releaseSpeed) &&
+    Object.is(first.shakeEnergy, second.shakeEnergy) &&
+    Object.is(first.spinBias, second.spinBias) &&
+    Object.is(first.motionSeed, second.motionSeed)
+  );
+}
+
 interface DiceTray3DConceptPanelProps {
   token: number;
   reducedMotion: boolean;
@@ -409,11 +430,18 @@ function DiceTrayWitnessDeliveryHost({
         !Number.isSafeInteger(diagnostic.rendererGeneration)
       )
         return;
-      evidenceData.current[witness].rendererGeneration =
-        diagnostic.rendererGeneration;
-      evidenceData.current[witness].providerId = evidenceObjectId(
-        diagnostic.provider
-      );
+      const providerId = evidenceObjectId(diagnostic.provider);
+      if (
+        evidenceData.current[witness].rendererGeneration !==
+        diagnostic.rendererGeneration
+      ) {
+        evidenceData.current[witness] = {
+          rendererGeneration: diagnostic.rendererGeneration,
+          providerId,
+        };
+      } else {
+        evidenceData.current[witness].providerId = providerId;
+      }
       publishEvidence();
     },
     [publishEvidence]
@@ -434,10 +462,12 @@ function DiceTrayWitnessDeliveryHost({
         telemetry.presentationToken !== data.rendererGeneration ||
         telemetry.requestedResult !== delivery.result ||
         delivery.releaseCount !== 1 ||
+        !delivery.releaseProfile ||
+        !parsedProfile ||
+        !sameVisualThrowProfile(parsedProfile, delivery.releaseProfile) ||
         telemetry.renderer !== '3d' ||
         telemetry.state !== 'observed' ||
         telemetry.motionRevision !== 'choreographed-v1' ||
-        !parsedProfile ||
         !telemetry.exactTargetHeld ||
         telemetry.observedUpwardResult !== delivery.result ||
         telemetry.observedUpDot === undefined ||
@@ -449,7 +479,11 @@ function DiceTrayWitnessDeliveryHost({
         telemetry.angularErrorDegrees === undefined ||
         !Number.isFinite(telemetry.angularErrorDegrees) ||
         telemetry.angularErrorDegrees < 0 ||
-        telemetry.angularErrorDegrees > 0.25
+        telemetry.angularErrorDegrees > 0.25 ||
+        (telemetry.runtimeSourceId !== undefined &&
+          !isPositiveSafeInteger(telemetry.runtimeSourceId)) ||
+        (telemetry.runtimeCloneId !== undefined &&
+          !isPositiveSafeInteger(telemetry.runtimeCloneId))
       )
         return;
 
@@ -477,7 +511,8 @@ function DiceTrayWitnessDeliveryHost({
         !evidenceActive.current ||
         callbackFence.current[`${witness}Renderer`] !== callback ||
         data.rendererGeneration === undefined ||
-        rendererInfo.presentationToken !== data.rendererGeneration
+        rendererInfo.presentationToken !== data.rendererGeneration ||
+        !isPositiveSafeInteger(rendererInfo.contextId)
       )
         return;
       data.rendererContextId = rendererInfo.contextId;

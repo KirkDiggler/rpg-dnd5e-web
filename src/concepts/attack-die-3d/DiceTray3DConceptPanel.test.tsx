@@ -7,7 +7,10 @@ import type {
 } from '../../components/ui/dice/AttackDie3D';
 import { ChoreographedSolverV1 } from '../../components/ui/dice/choreographedDiceMotion';
 import type { DiceTrayPresentationProps } from '../../components/ui/dice/DiceTrayPresentation';
-import { parseVisualThrowProfile } from '../../components/ui/dice/visualThrowProfile';
+import {
+  createVisualThrowProfile,
+  parseVisualThrowProfile,
+} from '../../components/ui/dice/visualThrowProfile';
 import { DiceTray3DConceptPanel } from './DiceTray3DConceptPanel';
 import { MONSTER_FIXTURE_RELEASE_DELAY_MS } from './diceTrayWitnessFixture';
 
@@ -457,6 +460,179 @@ describe('DiceTray3DConceptPanel', () => {
       (window as unknown as { __stone0TrayEvidence?: unknown })
         .__stone0TrayEvidence
     ).toBeUndefined();
+  });
+
+  it('rejects malformed renderer and runtime ownership scalars without changing the safe bridge', () => {
+    render(<DiceTray3DConceptPanel token={902} reducedMotion={false} />);
+    fireEvent.click(
+      within(drawer('Roller')).getByRole('button', { name: 'Roll d20' })
+    );
+    const roller = latestPresentation('Roller');
+    const rollerAttack = latestAttack(tokenFor('Roller'));
+    const before = window.__stone1TrayEvidence;
+    const smuggledOwnership = Object.freeze({
+      pointerId: 73,
+      history: Object.freeze([{ clientX: 10, clientY: 20 }]),
+    }) as unknown as number;
+
+    act(() => {
+      roller.onRendererInfo?.({
+        presentationToken: rollerAttack.presentationToken,
+        calls: 1,
+        triangles: 1,
+        geometries: 1,
+        textures: 0,
+        programs: 1,
+        lifecycle: 'sampled',
+        contextId: smuggledOwnership,
+      });
+      roller.onTelemetry?.({
+        ...observed(rollerAttack),
+        runtimeSourceId: smuggledOwnership,
+        runtimeCloneId: Number.MAX_SAFE_INTEGER + 1,
+      });
+      roller.onRendererInfo?.({
+        presentationToken: rollerAttack.presentationToken,
+        calls: 1,
+        triangles: 1,
+        geometries: 1,
+        textures: 0,
+        programs: 1,
+        lifecycle: 'sampled',
+        contextId: 0,
+      });
+      roller.onTelemetry?.({
+        ...observed(rollerAttack),
+        runtimeSourceId: 0,
+        runtimeCloneId: -1,
+      });
+    });
+
+    expect(window.__stone1TrayEvidence).toBe(before);
+    expect(window.__stone1TrayEvidence?.witnesses.roller).toEqual({
+      releaseProfile: rollerAttack.throwProfile,
+    });
+    const keys = recursivelyCollectKeys(window.__stone1TrayEvidence);
+    for (const key of ['pointerid', 'history', 'clientx', 'clienty'])
+      expect(keys.has(key)).toBe(false);
+  });
+
+  it('rejects final telemetry whose canonical profile differs from the accepted shared release', () => {
+    render(<DiceTray3DConceptPanel token={903} reducedMotion={false} />);
+    fireEvent.click(
+      within(drawer('Roller')).getByRole('button', { name: 'Roll d20' })
+    );
+    const roller = latestPresentation('Roller');
+    const rollerAttack = latestAttack(tokenFor('Roller'));
+    const acceptedProfile = rollerAttack.throwProfile!;
+    const mismatchedProfile = createVisualThrowProfile({
+      releasePosition: acceptedProfile.releasePosition,
+      releaseDirection: acceptedProfile.releaseDirection,
+      releaseSpeed: acceptedProfile.releaseSpeed,
+      shakeEnergy: acceptedProfile.shakeEnergy,
+      spinBias: acceptedProfile.spinBias,
+      motionSeed: acceptedProfile.motionSeed ^ 1,
+    });
+    const before = window.__stone1TrayEvidence;
+
+    act(() =>
+      roller.onTelemetry?.({
+        ...observed(rollerAttack),
+        throwProfile: mismatchedProfile,
+        runtimeSourceId: 21,
+        runtimeCloneId: 22,
+      })
+    );
+
+    expect(window.__stone1TrayEvidence).toBe(before);
+    expect(
+      window.__stone1TrayEvidence?.witnesses.roller.finalTelemetry
+    ).toBeUndefined();
+    expect(
+      window.__stone1TrayEvidence?.witnesses.roller.releaseProfile
+    ).toEqual(acceptedProfile);
+
+    act(() =>
+      roller.onTelemetry?.({
+        ...observed(rollerAttack),
+        runtimeSourceId: 21,
+        runtimeCloneId: 22,
+      })
+    );
+    expect(
+      window.__stone1TrayEvidence?.witnesses.roller.finalTelemetry
+    ).toMatchObject({
+      throwProfile: acceptedProfile,
+      cloneId: 22,
+    });
+  });
+
+  it('clears prior witness ownership and final facts before publishing a new renderer generation', () => {
+    render(<DiceTray3DConceptPanel token={904} reducedMotion={false} />);
+    fireEvent.click(
+      within(drawer('Roller')).getByRole('button', { name: 'Roll d20' })
+    );
+    const roller = latestPresentation('Roller');
+    const rollerAttack = latestAttack(tokenFor('Roller'));
+
+    act(() => {
+      roller.onRendererInfo?.({
+        presentationToken: rollerAttack.presentationToken,
+        calls: 1,
+        triangles: 1,
+        geometries: 1,
+        textures: 0,
+        programs: 1,
+        lifecycle: 'sampled',
+        contextId: 31,
+      });
+      roller.onTelemetry?.({
+        ...observed(rollerAttack),
+        runtimeSourceId: 30,
+        runtimeCloneId: 32,
+      });
+    });
+    expect(window.__stone1TrayEvidence?.witnesses.roller).toMatchObject({
+      rendererContextId: 31,
+      runtimeSourceId: 30,
+      runtimeCloneId: 32,
+      finalTelemetry: { cloneId: 32 },
+    });
+
+    const nextGeneration = rollerAttack.presentationToken - 1000;
+    act(() =>
+      roller.onBoundaryDiagnostic?.({
+        events: roller.events,
+        provider: rollerAttack.provider!,
+        rendererGeneration: nextGeneration,
+      })
+    );
+    const clearedBridge = window.__stone1TrayEvidence;
+    expect(clearedBridge?.witnesses.roller).toEqual({
+      releaseProfile: rollerAttack.throwProfile,
+    });
+
+    act(() => {
+      roller.onRendererInfo?.({
+        presentationToken: rollerAttack.presentationToken,
+        calls: 0,
+        triangles: 0,
+        geometries: 0,
+        textures: 0,
+        programs: 0,
+        lifecycle: 'release-observed',
+        contextId: 41,
+      });
+      roller.onTelemetry?.({
+        ...observed(rollerAttack),
+        runtimeSourceId: 40,
+        runtimeCloneId: 42,
+      });
+    });
+    expect(window.__stone1TrayEvidence).toBe(clearedBridge);
+    expect(window.__stone1TrayEvidence?.witnesses.roller).toEqual({
+      releaseProfile: rollerAttack.throwProfile,
+    });
   });
 
   it('keeps the current diagnostic bridge when a disposed witness publishes late telemetry', () => {
