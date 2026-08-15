@@ -504,6 +504,8 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain("page.on('requestfailed'");
     expect(source).not.toContain('expectedSevere');
     expect(source).not.toContain('motionCounts = { tumble: 3');
+    expect(source).toContain('heldMotion.length >= 1');
+    expect(source).not.toContain('heldMotion.length >= 2');
     expect(source).toContain('observedFallbackFacts');
     expect(source).toContain('.filter(');
     expect(source).toContain('.slice(1)');

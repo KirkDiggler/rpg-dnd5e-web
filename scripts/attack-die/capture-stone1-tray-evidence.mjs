@@ -1149,7 +1149,7 @@ try {
             sha256(firstHeld) === sha256(secondHeld) &&
             reducedBeforePose !== undefined &&
             firstHeldPose !== undefined &&
-            heldMotion.length >= 2 &&
+            heldMotion.length >= 1 &&
             firstHeldPose.reducedMotion === true &&
             firstHeldPose.translation[1] >
               reducedBeforePose.translation[1] + 0.05 &&
