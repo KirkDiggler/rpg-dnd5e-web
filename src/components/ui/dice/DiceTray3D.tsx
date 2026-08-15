@@ -48,11 +48,14 @@ export interface DiceTray3DProps {
   release?: DicePresentationRelease;
   onReleaseRequest?: (gesture?: DiceGestureSample) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
+  onRendererInfo?: AttackDie3DProps['onRendererInfo'];
   onFallbackPresentationComplete?: () => void;
   reducedMotion?: boolean;
   sceneOverride?: AttackDie3DProps['sceneOverride'];
   sidecarOverride?: AttackDie3DProps['sidecarOverride'];
   calibrationPose?: QuaternionTuple;
+  /** Development concept failure exercise; never supplied by production. */
+  forceFailure?: AttackDie3DProps['forceFailure'];
 }
 
 interface ActiveDiceGesture {
@@ -111,11 +114,13 @@ export function DiceTray3D({
   release,
   onReleaseRequest,
   onTelemetry,
+  onRendererInfo,
   onFallbackPresentationComplete,
   reducedMotion = false,
   sceneOverride,
   sidecarOverride,
   calibrationPose,
+  forceFailure,
 }: DiceTray3DProps) {
   const valid = validDieInput(presentationId, rendererGeneration, dice);
   const item = dice[0];
@@ -375,10 +380,12 @@ export function DiceTray3D({
                 : LIGHTNING_DEVELOPMENT_PROVIDER
             }
             onTelemetry={onTelemetry}
+            onRendererInfo={onRendererInfo}
             fallback={fallback}
             sceneOverride={lightningDevelopment ? sceneOverride : undefined}
             sidecarOverride={lightningDevelopment ? sidecarOverride : undefined}
             calibrationPose={lightningDevelopment ? calibrationPose : undefined}
+            forceFailure={originalRuntime ? forceFailure : undefined}
           />
         ) : (
           <DiceTray

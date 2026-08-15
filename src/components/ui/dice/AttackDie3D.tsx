@@ -72,6 +72,10 @@ export interface AttackDieTelemetry {
   exactTargetHeld: boolean;
   failureReason?: string;
   failureCode?: AttackDieFailureCode;
+  /** Runtime diagnostic identity: equal for witnesses consuming one source. */
+  runtimeSourceId?: number;
+  /** Runtime diagnostic identity: distinct for each owned witness clone. */
+  runtimeCloneId?: number;
 }
 export interface AttackDieRendererInfo {
   calls: number | null;
@@ -112,7 +116,7 @@ export interface AttackDie3DProps {
   /** Development calibration pose override; never supplied by production. */
   calibrationPose?: QuaternionTuple;
   /** Development-only failure exercise; normal behavior is unchanged. */
-  forceFailure?: 'shader';
+  forceFailure?: 'shader' | 'unmapped';
   /** Development-only observed provider failure from the actual load/hash path. */
   providerFailureReason?: string;
   /** Development-only parsed scene for provisional, not-yet-verified calibration. */
@@ -130,6 +134,16 @@ const ORIGINAL_RUNTIME_TREATMENT: DiceMaterialTreatment = Object.freeze({
   roughness: 0.72,
   metalness: 0.08,
 });
+
+const runtimeObjectIdentities = new WeakMap<object, number>();
+let nextRuntimeObjectIdentity = 1;
+function runtimeObjectIdentity(value: object) {
+  const existing = runtimeObjectIdentities.get(value);
+  if (existing !== undefined) return existing;
+  const identity = nextRuntimeObjectIdentity++;
+  runtimeObjectIdentities.set(value, identity);
+  return identity;
+}
 
 const runtimeCameraVisual = Object.freeze({
   ...ATTACK_DIE_VISUAL_CONFIG,
@@ -186,6 +200,8 @@ function cloneTokenScene(
     return {
       scene: prepared.scene,
       normalization: runtimeDiceNormalization(runtimeSource.preset),
+      runtimeSourceId: runtimeObjectIdentity(runtimeSource.scene),
+      runtimeCloneId: runtimeObjectIdentity(prepared.scene),
       updateShaderTime: () => undefined,
       dispose: prepared.dispose,
     };
@@ -235,6 +251,8 @@ function cloneTokenScene(
   return {
     scene,
     normalization: undefined,
+    runtimeSourceId: undefined,
+    runtimeCloneId: undefined,
     updateShaderTime(time: number) {
       patched.setTime(time);
     },
@@ -265,7 +283,13 @@ function RuntimeDie({
   target: QuaternionTuple;
   mode: AttackDieMaterialMode;
   reducedMotion: boolean;
-  onFrame: (frame: AttackDieMotionFrame) => void;
+  onFrame: (
+    frame: AttackDieMotionFrame,
+    runtimeIdentities?: {
+      runtimeSourceId: number;
+      runtimeCloneId: number;
+    }
+  ) => void;
   poseValidated: React.MutableRefObject<boolean>;
   onFailure: (reason: string) => void;
   sceneOverride?: ReturnType<typeof getAttackDieRuntimeScene>;
@@ -353,7 +377,14 @@ function RuntimeDie({
         !observationSent.current;
       if (observeNow) observationSent.current = true;
       onFrame(
-        observeNow === frame.observeNow ? frame : { ...frame, observeNow }
+        observeNow === frame.observeNow ? frame : { ...frame, observeNow },
+        bundle?.runtimeSourceId !== undefined &&
+          bundle.runtimeCloneId !== undefined
+          ? {
+              runtimeSourceId: bundle.runtimeSourceId,
+              runtimeCloneId: bundle.runtimeCloneId,
+            }
+          : undefined
       );
     } catch (error) {
       onFailure(
@@ -608,6 +639,13 @@ function AttackDieToken({
   ]);
 
   useEffect(() => {
+    if (forceFailure === 'unmapped') {
+      fail(
+        'synthetic authoritative result mapping exercise',
+        'unmapped-result'
+      );
+      return;
+    }
     if (providerFailureReason) {
       fail(
         `provider failure: ${providerFailureReason}`,
@@ -656,6 +694,7 @@ function AttackDieToken({
     effectiveResult,
     fail,
     phase,
+    forceFailure,
     providerFailureReason,
     runtimeProvider,
     runtimeSnapshot?.failureReason,
@@ -770,7 +809,7 @@ function AttackDieToken({
                 magicalAnimation={magicalAnimation}
                 phase={phase}
                 release={release}
-                onFrame={(frame) => {
+                onFrame={(frame, runtimeIdentities) => {
                   if (!active.current || !frame.observeNow) return;
                   onTelemetry?.({
                     presentationToken,
@@ -784,6 +823,7 @@ function AttackDieToken({
                       target!
                     ),
                     exactTargetHeld: frame.exactTargetHeld,
+                    ...runtimeIdentities,
                   });
                 }}
               />

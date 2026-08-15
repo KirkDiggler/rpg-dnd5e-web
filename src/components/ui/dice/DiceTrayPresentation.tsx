@@ -31,8 +31,12 @@ export interface DiceTrayPresentationProps {
   events: readonly DicePresentationEvent[];
   witnessRole: 'roller' | 'spectator';
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
+  onTelemetry?: AttackDie3DProps['onTelemetry'];
+  onRendererInfo?: AttackDie3DProps['onRendererInfo'];
   reducedMotion?: boolean;
   developmentOnlyRenderer?: DiceTrayPresentationDevelopmentRenderer;
+  /** Development concept failure exercise; never supplied by production. */
+  forceFailure?: AttackDie3DProps['forceFailure'];
 }
 
 type PresentationPhase = 'armed' | 'rolling' | 'settled';
@@ -68,8 +72,11 @@ interface PresentationInstanceProps {
   releaseIdentity?: string;
   witnessRole: 'roller' | 'spectator';
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
+  onTelemetry?: AttackDie3DProps['onTelemetry'];
+  onRendererInfo?: AttackDie3DProps['onRendererInfo'];
   reducedMotion: boolean;
   developmentOnlyRenderer?: DiceTrayPresentationDevelopmentRenderer;
+  forceFailure?: AttackDie3DProps['forceFailure'];
 }
 
 let nextRendererGeneration = -1;
@@ -278,8 +285,11 @@ function DiceTrayPresentationInstance({
   releaseIdentity,
   witnessRole,
   onReleaseRequest,
+  onTelemetry,
+  onRendererInfo,
   reducedMotion,
   developmentOnlyRenderer,
+  forceFailure,
 }: PresentationInstanceProps) {
   const [lifecycle, dispatch] = useReducer(
     lifecycleReducer,
@@ -365,6 +375,7 @@ function DiceTrayPresentationInstance({
       )
         return;
 
+      onTelemetry?.(event);
       if (event.renderer === 'svg' && event.state === 'failed') {
         dispatch({ type: 'renderer-failed' });
         return;
@@ -376,7 +387,7 @@ function DiceTrayPresentationInstance({
       )
         dispatch({ type: 'renderer-observed' });
     },
-    [rendererGeneration, result]
+    [onTelemetry, rendererGeneration, result]
   );
 
   const handleFallbackPresentationComplete = useCallback(() => {
@@ -425,6 +436,7 @@ function DiceTrayPresentationInstance({
         release={lifecycle.acceptedRelease?.release}
         onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
+        onRendererInfo={onRendererInfo}
         onFallbackPresentationComplete={handleFallbackPresentationComplete}
         reducedMotion={reducedMotion}
         sceneOverride={
@@ -442,6 +454,7 @@ function DiceTrayPresentationInstance({
             ? developmentOnlyRenderer.calibrationPose
             : undefined
         }
+        forceFailure={forceFailure}
       />
     </>
   );
@@ -452,8 +465,11 @@ export function DiceTrayPresentation({
   events,
   witnessRole,
   onReleaseRequest,
+  onTelemetry,
+  onRendererInfo,
   reducedMotion = false,
   developmentOnlyRenderer,
+  forceFailure,
 }: DiceTrayPresentationProps) {
   const snapshots: DicePresentationEvent[] = [];
   for (const event of events) {
@@ -487,8 +503,11 @@ export function DiceTrayPresentation({
       releaseIdentity={releaseIdentity}
       witnessRole={witnessRole}
       onReleaseRequest={onReleaseRequest}
+      onTelemetry={onTelemetry}
+      onRendererInfo={onRendererInfo}
       reducedMotion={reducedMotion}
       developmentOnlyRenderer={developmentOnlyRenderer}
+      forceFailure={forceFailure}
     />
   );
 }

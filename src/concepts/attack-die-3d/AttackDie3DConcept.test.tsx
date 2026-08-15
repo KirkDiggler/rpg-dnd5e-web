@@ -4,8 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttackDie3DConcept } from './AttackDie3DConcept';
 
 const props: Array<Record<string, unknown>> = [];
-const GLB_URL = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
-const SIDECAR_URL = '/models/synty/dice/d20-lightning/attack-die-contract.json';
+const ORIGINAL_PRESET_ID = 'dice.original.carved.d20';
+const runtimeProvider = vi.hoisted(() => ({
+  snapshot: { status: 'ready' } as Record<string, unknown>,
+  getSnapshot: vi.fn(),
+  preload: vi.fn(),
+}));
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -48,17 +52,19 @@ function stubReadyProvider() {
 
 function readyWitnesses() {
   const byToken = new Map<number, Record<string, unknown>>();
-  for (const value of props) {
+  for (const value of [...props].reverse()) {
     if (
       value.phase === 'ready' &&
       value.result === 10 &&
-      value.sceneOverride &&
-      value.sidecarOverride &&
-      Number.isSafeInteger(value.presentationToken)
+      (value.provider as { presetId?: string } | undefined)?.presetId ===
+        ORIGINAL_PRESET_ID &&
+      Number.isSafeInteger(value.presentationToken) &&
+      !byToken.has(value.presentationToken as number)
     )
       byToken.set(value.presentationToken as number, value);
+    if (byToken.size === 2) break;
   }
-  return [...byToken.values()];
+  return [...byToken.values()].reverse();
 }
 
 async function expectReadyWitnessMotion(reducedMotion: boolean) {
@@ -73,8 +79,11 @@ async function expectReadyWitnessMotion(reducedMotion: boolean) {
       phase: 'ready',
       reducedMotion,
     });
-  expect(witnesses[0].sceneOverride).toBe(witnesses[1].sceneOverride);
-  expect(witnesses[0].sidecarOverride).toBe(witnesses[1].sidecarOverride);
+  expect(witnesses[0].provider).toBe(witnesses[1].provider);
+  expect(witnesses[0].sceneOverride).toBeUndefined();
+  expect(witnesses[1].sceneOverride).toBeUndefined();
+  expect(witnesses[0].sidecarOverride).toBeUndefined();
+  expect(witnesses[1].sidecarOverride).toBeUndefined();
   return witnesses;
 }
 vi.mock('../../components/ui/dice/attackDieContract', async (original) => {
@@ -90,6 +99,14 @@ vi.mock('../../components/ui/dice/attackDieContract', async (original) => {
     })),
   };
 });
+vi.mock('../../components/ui/dice/diceRuntimeProvider', () => ({
+  getDiceRuntimePresetSnapshot: (presetId: string) => {
+    runtimeProvider.getSnapshot(presetId);
+    return runtimeProvider.snapshot;
+  },
+  preloadDiceRuntimePreset: (presetId: string) =>
+    runtimeProvider.preload(presetId),
+}));
 vi.mock('../../components/ui/dice/AttackDie3D', () => ({
   AttackDie3D: (
     value: Record<string, unknown> & { fallback: React.ReactNode }
@@ -108,6 +125,9 @@ vi.mock('three/examples/jsm/loaders/GLTFLoader.js', () => ({
 
 beforeEach(() => {
   props.length = 0;
+  runtimeProvider.snapshot = { status: 'ready' };
+  runtimeProvider.getSnapshot.mockReset();
+  runtimeProvider.preload.mockReset().mockResolvedValue(undefined);
   stubReducedMotionPreference(false);
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
 });
@@ -120,6 +140,11 @@ describe('AttackDie3D staged concept', () => {
       expect(screen.getByRole('tab', { name })).toBeTruthy();
     expect(
       screen.getByText(/PROVISIONAL — NOT AN ASSET CONTRACT/)
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Historical non-Tray Lightning authoring remains provisional/i
+      )
     ).toBeTruthy();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Appearance' }), {
       key: 'ArrowRight',
@@ -152,6 +177,20 @@ describe('AttackDie3D staged concept', () => {
     expect(screen.getByTestId('floating-log')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
     await expectReadyWitnessMotion(false);
+    expect(
+      props.filter(
+        (value) =>
+          (value.provider as { presetId?: string } | undefined)?.presetId ===
+          ORIGINAL_PRESET_ID
+      )
+    ).toHaveLength(2);
+    expect(
+      props.some(
+        (value) =>
+          (value.provider as { presetId?: string } | undefined)?.presetId ===
+          'lightning'
+      )
+    ).toBe(false);
   });
 
   it('passes the explicit lab reduced-motion preference to both ready Tray witnesses', async () => {
@@ -257,163 +296,101 @@ describe('AttackDie3D staged concept', () => {
     ).toBeTruthy();
   });
 
-  it('gates an early Tray selection until one StrictMode provider load is validated', async () => {
-    const pendingGlb = deferred<{
-      ok: boolean;
-      status: number;
-      arrayBuffer: () => Promise<ArrayBuffer>;
-    }>();
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === GLB_URL) return pendingGlb.promise;
-      if (url === SIDECAR_URL)
-        return Promise.resolve({ ok: false, status: 404 });
-      return Promise.reject(new Error(`unexpected fixture URL: ${url}`));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    const callsFor = (url: string) =>
-      fetchMock.mock.calls.filter(([input]) => String(input) === url);
+  it('gates pending Original provider state with result-free polite loading and no Tray presentation', async () => {
+    const pending = deferred<void>();
+    runtimeProvider.snapshot = { status: 'idle' };
+    runtimeProvider.preload.mockReturnValue(pending.promise);
+    stubReadyProvider();
 
     render(
       <StrictMode>
         <AttackDie3DConcept />
       </StrictMode>
     );
-    await waitFor(() => expect(callsFor(GLB_URL)).toHaveLength(1));
     fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
 
-    try {
-      const loading = screen.getByText(/Loading controlled dice provider/);
-      expect(loading.getAttribute('role')).toBe('status');
-      expect(loading.textContent).not.toContain('10');
-      expect(screen.queryByText('Gameplay placement checkpoint')).toBeNull();
-      expect(screen.queryAllByTestId('dice-tray-left-drawer')).toHaveLength(0);
-      expect(screen.queryByTestId('attack-die')).toBeNull();
-      expect(document.querySelectorAll('canvas')).toHaveLength(0);
-      expect(props).toHaveLength(0);
-      expect(callsFor(GLB_URL)).toHaveLength(1);
-      expect(callsFor(SIDECAR_URL)).toHaveLength(0);
-    } finally {
-      pendingGlb.resolve({
-        ok: true,
-        status: 200,
-        arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
-      });
-      await waitFor(() => expect(callsFor(SIDECAR_URL)).toHaveLength(1));
-      await waitFor(() =>
-        expect(props.some((value) => value.sceneOverride)).toBe(true)
-      );
-    }
-    await screen.findByText('Gameplay placement checkpoint');
-    await waitFor(() =>
-      expect(screen.getAllByTestId('dice-tray-left-drawer')).toHaveLength(2)
-    );
-
-    const byToken = new Map<unknown, Record<string, unknown>>();
-    for (const value of props) {
-      if (
-        value.phase === 'ready' &&
-        value.sceneOverride &&
-        value.sidecarOverride &&
-        Number.isSafeInteger(value.presentationToken)
+    const loading = screen.getByText(/Loading Original carved d20 provider/);
+    expect(loading.getAttribute('role')).toBe('status');
+    expect(loading.getAttribute('aria-live')).toBe('polite');
+    expect(loading.textContent).not.toContain('10');
+    expect(screen.queryByText('Gameplay placement checkpoint')).toBeNull();
+    expect(screen.queryAllByTestId('dice-tray-left-drawer')).toHaveLength(0);
+    expect(screen.queryByTestId('attack-die')).toBeNull();
+    expect(document.querySelectorAll('canvas')).toHaveLength(0);
+    expect(runtimeProvider.preload).toHaveBeenCalledWith(ORIGINAL_PRESET_ID);
+    expect(
+      runtimeProvider.preload.mock.calls.every(
+        ([preset]) => preset === ORIGINAL_PRESET_ID
       )
-        byToken.set(value.presentationToken, value);
-    }
-    expect(byToken.size).toBe(2);
-    const paired = [...byToken.values()];
-    const providerScene = paired[0].sceneOverride;
-    const providerSidecar = paired[0].sidecarOverride;
-    for (const witness of paired)
-      expect(witness).toMatchObject({
-        result: 10,
-        sceneOverride: providerScene,
-        sidecarOverride: providerSidecar,
-      });
-    expect(callsFor(GLB_URL)).toHaveLength(1);
-    expect(callsFor(SIDECAR_URL)).toHaveLength(1);
+    ).toBe(true);
+
+    runtimeProvider.snapshot = { status: 'ready' };
+    pending.resolve();
+    await screen.findByText('Gameplay placement checkpoint');
+    await expectReadyWitnessMotion(false);
   });
 
-  it('keeps a rejected early Tray fail-closed and permits a later real parent remount', async () => {
-    const pendingGlb = deferred<{
-      ok: boolean;
-      status: number;
-      arrayBuffer?: () => Promise<ArrayBuffer>;
-    }>();
-    let glbAttempt = 0;
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === GLB_URL) {
-        glbAttempt += 1;
-        if (glbAttempt === 1) return pendingGlb.promise;
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          arrayBuffer: async () => new TextEncoder().encode('fake glb').buffer,
-        });
-      }
-      if (url === SIDECAR_URL)
-        return Promise.resolve({ ok: false, status: 404 });
-      return Promise.reject(new Error(`unexpected fixture URL: ${url}`));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    const callsFor = (url: string) =>
-      fetchMock.mock.calls.filter(([input]) => String(input) === url);
+  it('mounts the shared fail-closed presentation on terminal provider failure and reveals truth only after release', async () => {
+    const pending = deferred<void>();
+    runtimeProvider.snapshot = { status: 'idle' };
+    runtimeProvider.preload.mockReturnValue(pending.promise);
+    stubReadyProvider();
 
-    const first = render(
-      <StrictMode>
-        <AttackDie3DConcept />
-      </StrictMode>
-    );
-    await waitFor(() => expect(callsFor(GLB_URL)).toHaveLength(1));
-    fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
-    let rejected = false;
-    try {
-      expect(
-        screen
-          .getByText(/Loading controlled dice provider/)
-          .getAttribute('role')
-      ).toBe('status');
-
-      pendingGlb.resolve({ ok: false, status: 503 });
-      rejected = true;
-      await waitFor(() =>
-        expect(
-          screen
-            .getByText(
-              /Controlled dice provider unavailable.*GLB load failed \(503\)/
-            )
-            .getAttribute('role')
-        ).toBe('status')
-      );
-      expect(
-        screen.getByText(
-          /Controlled dice provider unavailable.*GLB load failed \(503\)/
-        ).textContent
-      ).not.toContain('10');
-      expect(screen.queryByText('Gameplay placement checkpoint')).toBeNull();
-      expect(screen.queryAllByTestId('dice-tray-left-drawer')).toHaveLength(0);
-      expect(screen.queryByTestId('attack-die')).toBeNull();
-      expect(document.querySelectorAll('canvas')).toHaveLength(0);
-      expect(props).toHaveLength(0);
-      expect(callsFor(GLB_URL)).toHaveLength(1);
-      expect(callsFor(SIDECAR_URL)).toHaveLength(0);
-    } finally {
-      if (!rejected) pendingGlb.resolve({ ok: false, status: 503 });
-      fireEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
-      await waitFor(() =>
-        expect(screen.getByText(/GLB load failed \(503\)/)).toBeTruthy()
-      );
-    }
-
-    first.unmount();
     render(<AttackDie3DConcept />);
-    await waitFor(() =>
-      expect(screen.getByTestId('actual-glb-digest').textContent).toMatch(
-        /^[0-9a-f]{64}$/
-      )
+    fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
+    expect(
+      screen.getByText(/Loading Original carved d20 provider/)
+    ).toBeTruthy();
+
+    runtimeProvider.snapshot = {
+      status: 'failed',
+      failureReason: 'manifest validation failed: incomplete face map',
+    };
+    pending.reject(
+      new Error('manifest validation failed: incomplete face map')
     );
-    expect(callsFor(GLB_URL)).toHaveLength(2);
-    expect(callsFor(SIDECAR_URL)).toHaveLength(1);
+
+    await screen.findByText('Gameplay placement checkpoint');
+    await waitFor(() => expect(readyWitnesses()).toHaveLength(2));
+    expect(document.querySelectorAll('canvas')).toHaveLength(0);
+    expect(
+      screen.getAllByTestId('dice-face').map((face) => face.textContent)
+    ).toEqual(['?', '?']);
+    expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+    expect(
+      screen
+        .getByRole('complementary', { name: 'Spectator dice drawer' })
+        .querySelector('button')
+    ).toBeNull();
+
+    const [roller, spectator] = readyWitnesses();
+    for (const witness of [roller, spectator])
+      (witness.onTelemetry as ((event: unknown) => void) | undefined)?.({
+        presentationToken: witness.presentationToken,
+        requestedResult: 10,
+        renderer: 'svg',
+        state: 'failed',
+        exactTargetHeld: false,
+        failureCode: 'provider-load',
+        failureReason: 'manifest validation failed: incomplete face map',
+      });
+    expect(
+      screen.getAllByTestId('dice-face').map((face) => face.textContent)
+    ).toEqual(['?', '?']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(
+        screen.getAllByTestId('dice-face').map((face) => face.textContent)
+      ).toEqual(['10', '10'])
+    );
+    expect(
+      screen
+        .getAllByRole('status')
+        .some((status) =>
+          /truthful SVG settled/i.test(status.textContent ?? '')
+        )
+    ).toBe(true);
   });
 
   it('previews the inspected lightning d20 with a hardcoded pose and replays its tumble', async () => {

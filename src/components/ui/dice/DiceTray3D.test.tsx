@@ -171,6 +171,22 @@ describe('DiceTray3D', () => {
     expect(secondProps.onTelemetry).not.toBe(firstProps.onTelemetry);
   });
 
+  it('forwards optional diagnostics and development-only renderer failure exercises', () => {
+    const onRendererInfo = vi.fn();
+    renderTray([originalDie], {
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+      forceFailure: 'unmapped',
+      onRendererInfo,
+    });
+
+    expect(attackDieProps.at(-1)).toMatchObject({
+      forceFailure: 'unmapped',
+      onRendererInfo,
+    });
+  });
+
   it('keeps historical Lightning only for explicit development injection', () => {
     renderTray([die], {
       sceneOverride: undefined,

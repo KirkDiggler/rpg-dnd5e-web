@@ -947,6 +947,23 @@ describe('Original carved runtime renderer', () => {
     expect(spectatorTelemetry).toHaveBeenCalledWith(
       expect.objectContaining({ presentationToken: 561, renderer: '3d' })
     );
+    const rollerObserved = rollerTelemetry.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.state === 'observed');
+    const spectatorObserved = spectatorTelemetry.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.state === 'observed');
+    expect(rollerObserved).toMatchObject({
+      runtimeSourceId: expect.any(Number),
+      runtimeCloneId: expect.any(Number),
+    });
+    expect(spectatorObserved).toMatchObject({
+      runtimeSourceId: rollerObserved.runtimeSourceId,
+      runtimeCloneId: expect.any(Number),
+    });
+    expect(spectatorObserved.runtimeCloneId).not.toBe(
+      rollerObserved.runtimeCloneId
+    );
 
     view.unmount();
     const disposed = [

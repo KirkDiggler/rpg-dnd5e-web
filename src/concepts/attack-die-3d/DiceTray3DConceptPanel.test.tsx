@@ -6,7 +6,6 @@ import type {
   AttackDieTelemetry,
 } from '../../components/ui/dice/AttackDie3D';
 import type { DiceTrayPresentationProps } from '../../components/ui/dice/DiceTrayPresentation';
-import { PROVISIONAL_RESULT_10_POSE } from './attackDieExperiment';
 import { DiceTray3DConceptPanel } from './DiceTray3DConceptPanel';
 import { MONSTER_FIXTURE_RELEASE_DELAY_MS } from './diceTrayWitnessFixture';
 
@@ -186,27 +185,25 @@ describe('DiceTray3DConceptPanel', () => {
     expect(Object.isFrozen(rollerCall.events)).toBe(true);
     expect(rollerCall.events).toEqual([
       expect.objectContaining({
-        presentationId: 'concept:witness:player:9',
+        presentationId: 'concept:witness:player:9:result:10',
         roller: { entityId: 'concept:player', role: 'player' },
         die: {
           kind: 'd20',
-          presetId: 'lightning',
+          presetId: 'dice.original.carved.d20',
           authoritativeResult: 10,
         },
       }),
     ]);
     expect(rollerCall.witnessRole).toBe('roller');
     expect(rollerCall.onReleaseRequest).toEqual(expect.any(Function));
+    expect(rollerCall.onTelemetry).toEqual(expect.any(Function));
+    expect(rollerCall.onRendererInfo).toEqual(expect.any(Function));
     expect(spectatorCall.witnessRole).toBe('spectator');
     expect(spectatorCall.onReleaseRequest).toBeUndefined();
-    expect(rollerCall.developmentOnlyRenderer).toBe(
-      spectatorCall.developmentOnlyRenderer
-    );
-    expect(rollerCall.developmentOnlyRenderer).toEqual({
-      scene,
-      sidecar,
-      calibrationPose: PROVISIONAL_RESULT_10_POSE,
-    });
+    expect(spectatorCall.onTelemetry).toEqual(expect.any(Function));
+    expect(spectatorCall.onRendererInfo).toEqual(expect.any(Function));
+    expect(rollerCall.developmentOnlyRenderer).toBeUndefined();
+    expect(spectatorCall.developmentOnlyRenderer).toBeUndefined();
 
     const rollerToken = tokenFor('Roller');
     const spectatorToken = tokenFor('Spectator');
@@ -217,18 +214,29 @@ describe('DiceTray3DConceptPanel', () => {
       result: 10,
       phase: 'ready',
       reducedMotion: true,
-      sceneOverride: scene,
-      sidecarOverride: sidecar,
-      calibrationPose: PROVISIONAL_RESULT_10_POSE,
+      provider: {
+        kind: 'dice-runtime-preset',
+        presetId: 'dice.original.carved.d20',
+      },
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
     });
     expect(latestAttack(spectatorToken)).toMatchObject({
       result: 10,
       phase: 'ready',
       reducedMotion: true,
-      sceneOverride: scene,
-      sidecarOverride: sidecar,
-      calibrationPose: PROVISIONAL_RESULT_10_POSE,
+      provider: {
+        kind: 'dice-runtime-preset',
+        presetId: 'dice.original.carved.d20',
+      },
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
     });
+    expect(latestAttack(rollerToken).provider).toBe(
+      latestAttack(spectatorToken).provider
+    );
 
     view.rerender(
       <DiceTray3DConceptPanel
@@ -244,12 +252,8 @@ describe('DiceTray3DConceptPanel', () => {
     expect(normalSpectatorCall.reducedMotion).toBe(false);
     expect(normalRollerCall.events).toBe(rollerCall.events);
     expect(normalSpectatorCall.events).toBe(rollerCall.events);
-    expect(normalRollerCall.developmentOnlyRenderer).toBe(
-      rollerCall.developmentOnlyRenderer
-    );
-    expect(normalSpectatorCall.developmentOnlyRenderer).toBe(
-      rollerCall.developmentOnlyRenderer
-    );
+    expect(normalRollerCall.developmentOnlyRenderer).toBeUndefined();
+    expect(normalSpectatorCall.developmentOnlyRenderer).toBeUndefined();
     expect(tokenFor('Roller')).toBe(rollerToken);
     expect(tokenFor('Spectator')).toBe(spectatorToken);
     expect(latestAttack(rollerToken).reducedMotion).toBe(false);
@@ -266,6 +270,140 @@ describe('DiceTray3DConceptPanel', () => {
     expect(
       within(drawer('Spectator')).queryByRole('button', { name: /d20/ })
     ).toBeNull();
+  });
+
+  it('publishes measured per-witness telemetry, context, shared-event, and request facts for private evidence', () => {
+    render(<DiceTray3DConceptPanel token={90} reducedMotion={false} />);
+    const roller = latestPresentation('Roller');
+    const spectator = latestPresentation('Spectator');
+    const rollerToken = tokenFor('Roller');
+    const spectatorToken = tokenFor('Spectator');
+
+    act(() => {
+      roller.onTelemetry?.({
+        presentationToken: rollerToken,
+        requestedResult: 10,
+        renderer: '3d',
+        state: 'observed',
+        exactTargetHeld: true,
+        mappedTarget: [0, 0, 0, 1],
+        angularErrorDegrees: 0,
+        runtimeSourceId: 7,
+        runtimeCloneId: 8,
+      });
+      spectator.onTelemetry?.({
+        presentationToken: spectatorToken,
+        requestedResult: 10,
+        renderer: '3d',
+        state: 'observed',
+        exactTargetHeld: true,
+        mappedTarget: [0, 0, 0, 1],
+        angularErrorDegrees: 0,
+        runtimeSourceId: 7,
+        runtimeCloneId: 9,
+      });
+      roller.onRendererInfo?.({
+        calls: 1,
+        triangles: 1,
+        geometries: 1,
+        textures: 0,
+        programs: 1,
+        lifecycle: 'sampled',
+        contextId: 11,
+      });
+      spectator.onRendererInfo?.({
+        calls: 1,
+        triangles: 1,
+        geometries: 1,
+        textures: 0,
+        programs: 1,
+        lifecycle: 'sampled',
+        contextId: 12,
+      });
+    });
+
+    const bridge = (
+      window as unknown as {
+        __stone0TrayEvidence?: Record<string, unknown>;
+      }
+    ).__stone0TrayEvidence as {
+      requestIdentity: string;
+      eventArrayId: number;
+      eventCount: number;
+      witnesses: Record<
+        string,
+        { telemetry: AttackDieTelemetry; rendererInfo: { contextId: number } }
+      >;
+    };
+    expect(bridge).toMatchObject({
+      requestIdentity: 'concept:witness:player:90:result:10',
+      eventCount: 1,
+      witnesses: {
+        roller: {
+          telemetry: {
+            presentationToken: rollerToken,
+            runtimeSourceId: 7,
+            runtimeCloneId: 8,
+          },
+          rendererInfo: { contextId: 11 },
+        },
+        spectator: {
+          telemetry: {
+            presentationToken: spectatorToken,
+            runtimeSourceId: 7,
+            runtimeCloneId: 9,
+          },
+          rendererInfo: { contextId: 12 },
+        },
+      },
+    });
+    expect(Number.isSafeInteger(bridge.eventArrayId)).toBe(true);
+  });
+
+  it('keeps synthetic renderer exercises explicit and never routes Tray through Lightning', () => {
+    render(<DiceTray3DConceptPanel token={91} reducedMotion={false} />);
+    const exercise = screen.getByLabelText('Evidence-only renderer exercise');
+
+    fireEvent.change(exercise, { target: { value: 'unknown-safe-preset' } });
+    expect(latestPresentation('Roller').events[0]).toMatchObject({
+      die: { presetId: 'stone0.unknown.safe.d20' },
+    });
+    expect(
+      attackDieProps.every(
+        (value) => value.provider?.kind !== 'lightning-development'
+      )
+    ).toBe(true);
+
+    fireEvent.change(exercise, { target: { value: 'unmapped-result' } });
+    expect(latestAttack(tokenFor('Roller')).forceFailure).toBe('unmapped');
+
+    fireEvent.change(exercise, { target: { value: 'shader-failure' } });
+    expect(latestAttack(tokenFor('Roller')).forceFailure).toBe('shader');
+  });
+
+  it('accepts fixture results 1–20 and replaces request identity before any delivery', () => {
+    render(<DiceTray3DConceptPanel token={10} reducedMotion={false} />);
+    const input = screen.getByLabelText('Authoritative fixture result');
+    let previousIdentity = '';
+
+    for (const result of Array.from({ length: 20 }, (_, index) => index + 1)) {
+      fireEvent.change(input, { target: { value: String(result) } });
+      const roller = latestPresentation('Roller');
+      const spectator = latestPresentation('Spectator');
+      expect(roller.events).toBe(spectator.events);
+      expect(roller.events).toHaveLength(1);
+      expect(roller.events[0]).toMatchObject({
+        presentationId: `concept:witness:player:10:result:${result}`,
+        die: {
+          presetId: 'dice.original.carved.d20',
+          authoritativeResult: result,
+        },
+      });
+      expect(roller.events[0].presentationId).not.toBe(previousIdentity);
+      previousIdentity = roller.events[0].presentationId;
+      expect(face('Roller').textContent).toBe('?');
+      expect(face('Spectator').textContent).toBe('?');
+    }
   });
 
   it('keeps pointer motion Roller-local, then shares one deep-equal release and settles telemetry independently', () => {
@@ -326,8 +464,8 @@ describe('DiceTray3DConceptPanel', () => {
       rollingSpectator.decorativeRelease
     );
     expect(rollingRoller.decorativeRelease).toMatchObject({
-      presentationId: 'concept:witness:player:12',
-      presetId: 'lightning',
+      presentationId: 'concept:witness:player:12:result:10',
+      presetId: 'dice.original.carved.d20',
       vector: [0.5, -0.25],
       shake: expect.any(Number),
     });
@@ -388,7 +526,7 @@ describe('DiceTray3DConceptPanel', () => {
     expect(newSpectatorToken).not.toBe(oldSpectatorToken);
     expect(latestPresentation('Roller').events).toEqual([
       expect.objectContaining({
-        presentationId: 'concept:witness:monster:30',
+        presentationId: 'concept:witness:monster:30:result:10',
         roller: { entityId: 'concept:monster', role: 'monster' },
       }),
     ]);
@@ -422,7 +560,7 @@ describe('DiceTray3DConceptPanel', () => {
     expectPhases('armed', 'armed');
     expect(latestPresentation('Roller').events).toEqual([
       expect.objectContaining({
-        presentationId: 'concept:witness:player:31',
+        presentationId: 'concept:witness:player:31:result:10',
         roller: { entityId: 'concept:player', role: 'player' },
       }),
     ]);
