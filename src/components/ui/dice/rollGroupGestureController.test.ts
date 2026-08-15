@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createRollGroupGestureController,
   type PointerCaptureOwner,
@@ -134,6 +134,98 @@ describe('createRollGroupGestureController', () => {
     expect(controller.held()).toBeUndefined();
   });
 
+  it.each([
+    [
+      'zero tray width',
+      {
+        trayBounds: { left: 100, top: 0, width: 0, height: 160 },
+      },
+    ],
+    [
+      'zero tray height',
+      {
+        trayBounds: { left: 0, top: 100, width: 200, height: 0 },
+      },
+    ],
+    [
+      'negative tray width',
+      {
+        trayBounds: { left: 0, top: 0, width: -200, height: 160 },
+      },
+    ],
+    [
+      'non-finite tray origin',
+      {
+        trayBounds: {
+          left: Number.NaN,
+          top: 0,
+          width: 200,
+          height: 160,
+        },
+      },
+    ],
+    [
+      'zero hit width',
+      {
+        sample: { ...START_SAMPLE, clientX: 60 },
+        hitBounds: { left: 60, top: 40, width: 0, height: 80 },
+      },
+    ],
+    [
+      'zero hit height',
+      {
+        sample: { ...START_SAMPLE, clientY: 40 },
+        hitBounds: { left: 60, top: 40, width: 80, height: 0 },
+      },
+    ],
+    [
+      'non-finite hit origin',
+      {
+        hitBounds: {
+          left: 60,
+          top: Number.POSITIVE_INFINITY,
+          width: 80,
+          height: 80,
+        },
+      },
+    ],
+    ['negative padding', { hitPaddingPx: -1 }],
+    ['non-finite padding', { hitPaddingPx: Number.NaN }],
+    [
+      'non-finite pointer ID',
+      { sample: { ...START_SAMPLE, pointerId: Number.POSITIVE_INFINITY } },
+    ],
+    [
+      'non-finite client X',
+      { sample: { ...START_SAMPLE, clientX: Number.NaN } },
+    ],
+    [
+      'non-finite client Y',
+      { sample: { ...START_SAMPLE, clientY: Number.NEGATIVE_INFINITY } },
+    ],
+    [
+      'non-finite sample time',
+      { sample: { ...START_SAMPLE, timeMs: Number.NaN } },
+    ],
+    ['non-finite motion seed', { motionSeed: Number.POSITIVE_INFINITY }],
+  ] satisfies ReadonlyArray<readonly [string, Partial<RollGroupGestureStart>]>)(
+    'rejects invalid begin input: %s',
+    (_label, overrides) => {
+      const controller = createRollGroupGestureController();
+      const captureTarget = new FakePointerCaptureOwner();
+
+      let held: ReturnType<typeof controller.begin> = undefined;
+      expect(() => {
+        held = controller.begin(gestureStart(captureTarget, overrides));
+      }).not.toThrow();
+      expect(held).toBeUndefined();
+      expect(controller.held()).toBeUndefined();
+      expect(captureTarget.setCalls).toEqual([]);
+      expect(captureTarget.hasCalls).toEqual([]);
+      expect(captureTarget.releaseCalls).toEqual([]);
+    }
+  );
+
   it('returns a deeply frozen centered initial held state with zero motion', () => {
     const controller = createRollGroupGestureController();
     const captureTarget = new FakePointerCaptureOwner();
@@ -264,6 +356,58 @@ describe('createRollGroupGestureController', () => {
     expect(captureTarget.releaseCalls).toEqual([]);
   });
 
+  it.each(['move', 'release'] as const)(
+    'terminates matching %s with non-finite sample data without throwing',
+    (method) => {
+      const controller = createRollGroupGestureController();
+      const captureTarget = new FakePointerCaptureOwner();
+      controller.begin(gestureStart(captureTarget));
+      const invalidSample = {
+        pointerId: 7,
+        clientX: method === 'move' ? Number.NaN : 148,
+        clientY: 92,
+        timeMs: method === 'release' ? Number.POSITIVE_INFINITY : 16,
+      };
+      let result: ReturnType<(typeof controller)[typeof method]> = undefined;
+
+      expect(() => {
+        result = controller[method](invalidSample);
+      }).not.toThrow();
+      expect(result).toBeUndefined();
+      expect(controller.held()).toBeUndefined();
+      expect(captureTarget.releaseCalls).toEqual([7]);
+      controller.reset();
+      expect(captureTarget.releaseCalls).toEqual([7]);
+    }
+  );
+
+  it('ignores an invalid sample from the wrong pointer', () => {
+    const controller = createRollGroupGestureController();
+    const captureTarget = new FakePointerCaptureOwner();
+    const initial = controller.begin(gestureStart(captureTarget));
+    const hasCallsAfterBegin = captureTarget.hasCalls.length;
+
+    expect(
+      controller.move({
+        pointerId: 8,
+        clientX: Number.NaN,
+        clientY: Number.POSITIVE_INFINITY,
+        timeMs: Number.NaN,
+      })
+    ).toBeUndefined();
+    expect(
+      controller.release({
+        pointerId: 8,
+        clientX: Number.NaN,
+        clientY: Number.NEGATIVE_INFINITY,
+        timeMs: Number.POSITIVE_INFINITY,
+      })
+    ).toBeUndefined();
+    expect(controller.held()).toBe(initial);
+    expect(captureTarget.hasCalls).toHaveLength(hasCallsAfterBegin);
+    expect(captureTarget.releaseCalls).toEqual([]);
+  });
+
   it('returns a valid deeply frozen profile and releases matching capture exactly once', () => {
     const controller = createRollGroupGestureController();
     const captureTarget = new FakePointerCaptureOwner();
@@ -337,6 +481,32 @@ describe('createRollGroupGestureController', () => {
 
     expect(profile?.releaseDirection).toEqual([0, 0]);
     expect(profile?.releaseSpeed).toBe(0);
+  });
+
+  it('clears and releases capture when profile creation throws', () => {
+    const controller = createRollGroupGestureController();
+    const captureTarget = new FakePointerCaptureOwner();
+    controller.begin(gestureStart(captureTarget));
+    const realHypot = Math.hypot;
+    const hypot = vi
+      .spyOn(Math, 'hypot')
+      .mockImplementationOnce((...values) => realHypot(...values))
+      .mockReturnValueOnce(Number.NaN);
+
+    try {
+      expect(() =>
+        controller.release({
+          pointerId: 7,
+          clientX: 148,
+          clientY: 92,
+          timeMs: 32,
+        })
+      ).toThrow(RangeError);
+    } finally {
+      hypot.mockRestore();
+    }
+    expect(controller.held()).toBeUndefined();
+    expect(captureTarget.releaseCalls).toEqual([7]);
   });
 
   it('keeps an active gesture untouched when a duplicate or competing begin arrives', () => {

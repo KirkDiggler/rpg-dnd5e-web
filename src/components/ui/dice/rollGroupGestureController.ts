@@ -102,6 +102,37 @@ function copyBounds(bounds: ClientBounds): ClientBounds {
   };
 }
 
+function isFiniteSample(sample: RollGroupPointerSample): boolean {
+  return (
+    Number.isFinite(sample.pointerId) &&
+    Number.isFinite(sample.clientX) &&
+    Number.isFinite(sample.clientY) &&
+    Number.isFinite(sample.timeMs)
+  );
+}
+
+function isValidBounds(bounds: ClientBounds): boolean {
+  return (
+    Number.isFinite(bounds.left) &&
+    Number.isFinite(bounds.top) &&
+    Number.isFinite(bounds.width) &&
+    Number.isFinite(bounds.height) &&
+    bounds.width > 0 &&
+    bounds.height > 0
+  );
+}
+
+function isValidStart(input: RollGroupGestureStart): boolean {
+  return (
+    isFiniteSample(input.sample) &&
+    isValidBounds(input.trayBounds) &&
+    isValidBounds(input.hitBounds) &&
+    Number.isFinite(input.hitPaddingPx) &&
+    input.hitPaddingPx >= 0 &&
+    Number.isFinite(input.motionSeed)
+  );
+}
+
 function containsExpandedPoint(
   bounds: ClientBounds,
   padding: number,
@@ -208,7 +239,7 @@ export function createRollGroupGestureController(): RollGroupGestureController {
 
   return {
     begin(input) {
-      if (active) return undefined;
+      if (active || !isValidStart(input)) return undefined;
       if (
         !containsExpandedPoint(
           input.hitBounds,
@@ -256,6 +287,10 @@ export function createRollGroupGestureController(): RollGroupGestureController {
     move(sample) {
       const gesture = active;
       if (!gesture || sample.pointerId !== gesture.pointerId) return undefined;
+      if (!isFiniteSample(sample)) {
+        clearAndRelease(gesture);
+        return undefined;
+      }
       if (!stillOwnsCapture(gesture)) return undefined;
 
       updateMotion(gesture, sample);
@@ -265,32 +300,37 @@ export function createRollGroupGestureController(): RollGroupGestureController {
     release(sample) {
       const gesture = active;
       if (!gesture || sample.pointerId !== gesture.pointerId) return undefined;
+      if (!isFiniteSample(sample)) {
+        clearAndRelease(gesture);
+        return undefined;
+      }
       if (!stillOwnsCapture(gesture)) return undefined;
 
-      updateMotion(gesture, sample);
-      const speed = Math.hypot(...gesture.previousVelocity);
-      const releaseDirection =
-        speed < 0.02
-          ? frozenTuple(0, 0)
-          : frozenTuple(
-              gesture.previousVelocity[0] / speed,
-              gesture.previousVelocity[1] / speed
-            );
-      const profile = createVisualThrowProfile({
-        releasePosition: gesture.previousPosition,
-        releaseDirection,
-        releaseSpeed: clamp(speed / 2.4, 0, 1),
-        shakeEnergy: gesture.heldState.shakeEnergy,
-        spinBias: clamp(
-          gesture.accumulatedTurn * 6 + releaseDirection[0] * 0.2,
-          -1,
-          1
-        ),
-        motionSeed: gesture.motionSeed,
-      });
-
-      clearAndRelease(gesture);
-      return profile;
+      try {
+        updateMotion(gesture, sample);
+        const speed = Math.hypot(...gesture.previousVelocity);
+        const releaseDirection =
+          speed < 0.02
+            ? frozenTuple(0, 0)
+            : frozenTuple(
+                gesture.previousVelocity[0] / speed,
+                gesture.previousVelocity[1] / speed
+              );
+        return createVisualThrowProfile({
+          releasePosition: gesture.previousPosition,
+          releaseDirection,
+          releaseSpeed: clamp(speed / 2.4, 0, 1),
+          shakeEnergy: gesture.heldState.shakeEnergy,
+          spinBias: clamp(
+            gesture.accumulatedTurn * 6 + releaseDirection[0] * 0.2,
+            -1,
+            1
+          ),
+          motionSeed: gesture.motionSeed,
+        });
+      } finally {
+        clearAndRelease(gesture);
+      }
     },
 
     cancel(pointerId) {
