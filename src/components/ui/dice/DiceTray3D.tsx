@@ -49,6 +49,8 @@ export interface DiceTray3DProps {
   onReleaseRequest?: (gesture?: DiceGestureSample) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  /** Read-only development diagnostic for the exact provider object consumed. */
+  onProviderDiagnostic?: (provider: AttackDieProvider) => void;
   onFallbackPresentationComplete?: () => void;
   reducedMotion?: boolean;
   sceneOverride?: AttackDie3DProps['sceneOverride'];
@@ -115,6 +117,7 @@ export function DiceTray3D({
   onReleaseRequest,
   onTelemetry,
   onRendererInfo,
+  onProviderDiagnostic,
   onFallbackPresentationComplete,
   reducedMotion = false,
   sceneOverride,
@@ -136,6 +139,11 @@ export function DiceTray3D({
     sidecarOverride !== undefined &&
     calibrationPose !== undefined;
   const uses3DRenderer = originalRuntime || lightningDevelopment;
+  const provider = originalRuntime
+    ? ORIGINAL_CARVED_D20_PROVIDER
+    : lightningDevelopment
+      ? LIGHTNING_DEVELOPMENT_PROVIDER
+      : undefined;
   const committedRequest = useRef<string | undefined>(undefined);
   const activeGesture = useRef<ActiveDiceGesture | undefined>(undefined);
   const completedFallback = useRef<string | undefined>(undefined);
@@ -321,6 +329,10 @@ export function DiceTray3D({
   );
 
   useEffect(() => {
+    if (provider) onProviderDiagnostic?.(provider);
+  }, [onProviderDiagnostic, provider]);
+
+  useEffect(() => {
     if (!uses3DRenderer && phase === 'settled') completeFallback();
   }, [completeFallback, phase, uses3DRenderer]);
 
@@ -374,11 +386,7 @@ export function DiceTray3D({
             reducedMotion={reducedMotion}
             magicalAnimation={!originalRuntime}
             decorativeRelease={effectiveRelease}
-            provider={
-              originalRuntime
-                ? ORIGINAL_CARVED_D20_PROVIDER
-                : LIGHTNING_DEVELOPMENT_PROVIDER
-            }
+            provider={provider}
             onTelemetry={onTelemetry}
             onRendererInfo={onRendererInfo}
             fallback={fallback}

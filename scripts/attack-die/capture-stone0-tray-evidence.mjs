@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, resolve } from 'node:path';
 import { chromium } from 'playwright';
 
 async function bundleTsModule(path) {
@@ -35,8 +35,10 @@ const {
   ORIGINAL_D20_MANIFEST_PATH,
   ORIGINAL_D20_PRESET_ID,
   ORIGINAL_D20_SIZE_BYTES,
+  STONE0_LOCAL_API_FIXTURES,
   STONE0_SCENARIO_IDS,
   assertStone0TrayEvidence,
+  assertStone0TrayEvidencePackage,
   stone0ResultScreenshot,
   stone0ScenarioScreenshot,
 } = stone0ProtocolModule;
@@ -56,10 +58,34 @@ if (!/^[a-f0-9]{40}$/.test(sourceSha)) throw Error('invalid exact source SHA');
 
 const out = resolve(outputRoot);
 const manifestPath = resolve(buildManifestPath);
-const browserEvidencePath = resolve(out, 'browser-evidence.json');
-const networkPath = resolve(out, 'network.json');
-const consolePath = resolve(out, 'console.json');
-for (const path of [browserEvidencePath, networkPath, consolePath])
+if (
+  dirname(manifestPath) !== out ||
+  basename(manifestPath) !== 'build-manifest.json'
+)
+  throw Error('build manifest must be the exact output build-manifest.json');
+const packageTempRoot = resolve(
+  out,
+  `.stone0-package-${process.pid}-${Date.now()}`
+);
+const browserEvidencePath = resolve(packageTempRoot, 'browser-evidence.json');
+const networkPath = resolve(packageTempRoot, 'network.json');
+const consolePath = resolve(packageTempRoot, 'console.json');
+const packageManifestPath = resolve(out, 'package-manifest.json');
+const passPath = resolve(out, 'PASS');
+const resultScreenshots = Array.from({ length: 20 }, (_, index) =>
+  stone0ResultScreenshot(index + 1)
+);
+const scenarioScreenshots = STONE0_SCENARIO_IDS.map(stone0ScenarioScreenshot);
+const capturedArtifactPath = (filename) => resolve(packageTempRoot, filename);
+for (const path of [
+  resolve(out, 'browser-evidence.json'),
+  resolve(out, 'network.json'),
+  resolve(out, 'console.json'),
+  packageManifestPath,
+  passPath,
+  ...resultScreenshots.map((filename) => resolve(out, filename)),
+  ...scenarioScreenshots.map((filename) => resolve(out, filename)),
+])
   await readFile(path).then(
     () => {
       throw Error(`refusing stale Stone 0 evidence file: ${path}`);
@@ -68,13 +94,15 @@ for (const path of [browserEvidencePath, networkPath, consolePath])
       if (error?.code !== 'ENOENT') throw error;
     }
   );
-await mkdir(out, { recursive: true });
+await mkdir(packageTempRoot, { recursive: true });
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const buildManifestBytes = await readFile(manifestPath);
 const buildManifestSha256 = sha256(buildManifestBytes);
 const buildManifest = JSON.parse(buildManifestBytes.toString('utf8'));
 const baseUrl = new URL(url);
+const trayEvidenceUrl = new URL(url);
+trayEvidenceUrl.searchParams.set('attackDieStage', 'tray');
 const servedFiles = new Map();
 await validateServedBuild(buildManifest, async (path) => {
   const response = await fetch(new URL(`/${path}`, baseUrl));
@@ -178,20 +206,14 @@ const providerKind = (requestUrl) => {
   return undefined;
 };
 
-function isExpectedConsole(id, text) {
-  if (
-    /dnd5e\.api\..*Failed to fetch/i.test(text) ||
-    /Failed to load resource: net::ERR_CONNECTION_REFUSED/i.test(text) ||
-    /Failed to load resource: the server responded with a status of 404/i.test(
-      text
-    )
-  )
-    return true;
-  if (id === 'webgl-creation-failure')
-    return /webgl|context|renderer/i.test(text);
-  if (id === 'context-loss') return /context.*lost|webgl/i.test(text);
-  if (id === 'shader-failure') return /shader/i.test(text);
-  return false;
+function isExpectedConsole({ id, type, text, location }) {
+  return (
+    id === 'missing-manifest' &&
+    type === 'error' &&
+    text ===
+      'Failed to load resource: the server responded with a status of 404 (Not Found)' &&
+    location.url === providerManifestUrl.href
+  );
 }
 
 async function createScenarioPage({
@@ -214,6 +236,7 @@ async function createScenarioPage({
     viewport,
     requests: [],
     responses: [],
+    apiFixtures: [],
     provider: {
       manifestRequestCount: 0,
       manifestTransferCount: 0,
@@ -245,20 +268,66 @@ async function createScenarioPage({
     });
   });
   page.on('console', (message) => {
+    const location = message.location();
     const entry = {
       id,
       contextOrdinal: ordinal,
       type: message.type(),
       text: message.text(),
-      expected: isExpectedConsole(id, message.text()),
+      location: {
+        url: location.url,
+        lineNumber: location.lineNumber,
+        columnNumber: location.columnNumber,
+      },
+      expected: false,
     };
+    entry.expected = isExpectedConsole(entry);
     consoleEntries.push(entry);
     if (message.type() === 'error' && !entry.expected)
-      unexpectedErrors.push(`console:${id}:${message.text()}`);
+      unexpectedErrors.push(
+        `console:${id}:${entry.location.url}:${message.text()}`
+      );
   });
   page.on('pageerror', (error) => {
     pageErrors.push({ id, contextOrdinal: ordinal, message: error.message });
     unexpectedErrors.push(`pageerror:${id}:${error.message}`);
+  });
+  await page.route('http://localhost:8080/**', async (route) => {
+    const request = route.request();
+    const fixture = STONE0_LOCAL_API_FIXTURES.find(
+      (candidate) => candidate.url === request.url()
+    );
+    if (!fixture || request.method() !== 'POST') {
+      unexpectedErrors.push(
+        `local-api:${id}:${request.method()}:${request.url()}`
+      );
+      await route.fulfill({
+        status: 418,
+        contentType: 'application/json',
+        body: '{"error":"unowned local API request"}',
+        headers: { 'access-control-allow-origin': '*' },
+      });
+      return;
+    }
+    const requestBody = request.postDataBuffer() ?? Buffer.alloc(0);
+    const responseBody = '{}';
+    record.apiFixtures.push({
+      url: fixture.url,
+      method: 'POST',
+      status: 200,
+      requestBodySha256: sha256(requestBody),
+      responseBodySha256: sha256(responseBody),
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: responseBody,
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-expose-headers': '*',
+        'connect-protocol-version': '1',
+      },
+    });
   });
   await page.addInitScript(() => {
     window.__stone0TrayCanvasFirstObservedMs = null;
@@ -279,7 +348,10 @@ async function createScenarioPage({
   });
   if (init) await page.addInitScript(init);
   if (route) await route(page);
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  await page.goto(trayEvidenceUrl.href, {
+    waitUntil: 'domcontentloaded',
+    timeout: 30_000,
+  });
   await page
     .getByRole('heading', { name: 'Authoritative 3D Attack Die' })
     .waitFor({ timeout: 30_000 });
@@ -287,6 +359,24 @@ async function createScenarioPage({
 }
 
 async function closeScenario(scenario) {
+  const fixtureUrls = scenario.record.apiFixtures
+    .map((fixture) => fixture.url)
+    .sort();
+  const expectedFixtureUrls = STONE0_LOCAL_API_FIXTURES.map(
+    (fixture) => fixture.url
+  ).sort();
+  if (JSON.stringify(fixtureUrls) !== JSON.stringify(expectedFixtureUrls))
+    throw Error(
+      `${scenario.record.id} exact local API fixture matrix mismatch`
+    );
+  if (
+    scenario.record.requests.some((request) =>
+      /SM_Prop_D20_Lightning_01|d20-lightning/.test(request.url)
+    )
+  )
+    throw Error(
+      `${scenario.record.id} loaded historical Lightning on Tray route`
+    );
   const timing = await scenario.page.evaluate(
     ({ glb }) => {
       const resource = performance.getEntriesByName(glb)[0];
@@ -312,7 +402,8 @@ async function closeScenario(scenario) {
 }
 
 async function selectTray(page) {
-  await page.getByRole('tab', { name: 'Tray' }).click();
+  const tray = page.getByRole('tab', { name: 'Tray' });
+  if ((await tray.getAttribute('aria-selected')) !== 'true') await tray.click();
 }
 
 async function waitTrayReady(page) {
@@ -322,6 +413,13 @@ async function waitTrayReady(page) {
   await page.waitForFunction(
     () =>
       window.__stone0TrayEvidence?.witnesses &&
+      ['roller', 'spectator'].every((role) => {
+        const boundary = window.__stone0TrayEvidence?.witnesses[role]?.boundary;
+        return (
+          Number.isSafeInteger(boundary?.eventArrayId) &&
+          Number.isSafeInteger(boundary?.providerId)
+        );
+      }) &&
       document.querySelectorAll('[data-witness-role]').length === 2,
     undefined,
     { timeout: 30_000 }
@@ -384,7 +482,14 @@ async function waitHealthy(page, result) {
           telemetry.angularErrorDegrees <= 0.25 &&
           Number.isSafeInteger(telemetry.runtimeSourceId) &&
           Number.isSafeInteger(telemetry.runtimeCloneId) &&
-          Number.isSafeInteger(rendererInfo?.contextId)
+          Number.isSafeInteger(rendererInfo?.contextId) &&
+          Number.isSafeInteger(
+            bridge.witnesses[role]?.boundary?.eventArrayId
+          ) &&
+          Number.isSafeInteger(bridge.witnesses[role]?.boundary?.providerId) &&
+          bridge.witnesses[role]?.boundary?.eventCount === bridge.eventCount &&
+          bridge.witnesses[role]?.boundary?.eventsFrozen === true &&
+          bridge.witnesses[role]?.boundary?.providerFrozen === true
         );
       });
     },
@@ -412,13 +517,18 @@ function assertHealthyBridge(bridge, result, label) {
     !bridge ||
     bridge.result !== result ||
     bridge.presetId !== ORIGINAL_D20_PRESET_ID ||
-    bridge.eventCount !== 2 ||
-    !bridge.eventsFrozen
+    bridge.eventCount !== 2
   )
     throw Error(`${label} bridge/request mismatch`);
   const roller = bridge.witnesses.roller;
   const spectator = bridge.witnesses.spectator;
   for (const [role, witness] of Object.entries({ roller, spectator })) {
+    if (
+      witness.boundary.eventCount !== bridge.eventCount ||
+      !witness.boundary.eventsFrozen ||
+      !witness.boundary.providerFrozen
+    )
+      throw Error(`${label} ${role} boundary diagnostic mismatch`);
     const telemetry = witness.telemetry;
     if (
       telemetry.requestedResult !== result ||
@@ -431,6 +541,11 @@ function assertHealthyBridge(bridge, result, label) {
     )
       throw Error(`${label} ${role} settlement mismatch`);
   }
+  if (
+    roller.boundary.eventArrayId !== spectator.boundary.eventArrayId ||
+    roller.boundary.providerId !== spectator.boundary.providerId
+  )
+    throw Error(`${label} measured shared boundary identity mismatch`);
   if (
     roller.telemetry.presentationToken ===
       spectator.telemetry.presentationToken ||
@@ -489,7 +604,10 @@ async function runResultRelease(result, releaseKind) {
   assertHealthyBridge(bridge, result, id);
   if (releaseKind === 'roller-roll') {
     const screenshot = stone0ResultScreenshot(result);
-    await page.screenshot({ path: resolve(out, screenshot), fullPage: true });
+    await page.screenshot({
+      path: capturedArtifactPath(screenshot),
+      fullPage: true,
+    });
   }
   await closeScenario(scenario);
   return { bridge, record: scenario.record };
@@ -501,6 +619,8 @@ function witnessFact(bridge, role) {
     generation: witness.telemetry.presentationToken,
     contextId: witness.rendererInfo.contextId,
     cloneId: `runtime-clone:${witness.telemetry.runtimeCloneId}`,
+    eventArrayId: witness.boundary.eventArrayId,
+    providerId: witness.boundary.providerId,
     requestedResult: witness.telemetry.requestedResult,
     renderer: '3d',
     angularErrorDegrees: witness.telemetry.angularErrorDegrees,
@@ -531,8 +651,12 @@ try {
       requestIdentity: roller.bridge.requestIdentity,
       presetId: ORIGINAL_D20_PRESET_ID,
       ...roller.record.provider,
-      sharedEvents: true,
-      sharedProvider: true,
+      sharedEvents:
+        roller.bridge.witnesses.roller.boundary.eventArrayId ===
+        roller.bridge.witnesses.spectator.boundary.eventArrayId,
+      sharedProvider:
+        roller.bridge.witnesses.roller.boundary.providerId ===
+        roller.bridge.witnesses.spectator.boundary.providerId,
       sourceSceneShared:
         roller.bridge.witnesses.roller.telemetry.runtimeSourceId ===
         roller.bridge.witnesses.spectator.telemetry.runtimeSourceId,
@@ -598,7 +722,7 @@ try {
     )
       throw Error('pending provider leaked result/tray/Canvas');
     await scenario.page.screenshot({
-      path: resolve(out, stone0ScenarioScreenshot('pending-provider')),
+      path: capturedArtifactPath(stone0ScenarioScreenshot('pending-provider')),
       fullPage: true,
     });
     pushScenario(
@@ -642,7 +766,7 @@ try {
     )
       throw Error('player armed authority/concealment mismatch');
     await scenario.page.screenshot({
-      path: resolve(out, stone0ScenarioScreenshot('player-armed')),
+      path: capturedArtifactPath(stone0ScenarioScreenshot('player-armed')),
       fullPage: true,
     });
     pushScenario(
@@ -670,7 +794,9 @@ try {
     if (bridge.mode !== 'monster' || bridge.eventCount !== 2 || controls !== 0)
       throw Error('Monster release authority mismatch');
     await scenario.page.screenshot({
-      path: resolve(out, stone0ScenarioScreenshot('monster-host-release')),
+      path: capturedArtifactPath(
+        stone0ScenarioScreenshot('monster-host-release')
+      ),
       fullPage: true,
     });
     pushScenario(
@@ -707,7 +833,7 @@ try {
       throw Error('reduced motion performed a tumble-duration settlement');
     assertHealthyBridge(bridge, 10, 'reduced-motion');
     await scenario.page.screenshot({
-      path: resolve(out, stone0ScenarioScreenshot('reduced-motion')),
+      path: capturedArtifactPath(stone0ScenarioScreenshot('reduced-motion')),
       fullPage: true,
     });
     pushScenario(
@@ -731,6 +857,9 @@ try {
   ]) {
     const viewport = { width, height };
     const scenario = await startHealthyContext(id, 10, { viewport });
+    await scenario.page.getByRole('button', { name: 'Roll d20' }).click();
+    const bridge = await waitHealthy(scenario.page, 10);
+    assertHealthyBridge(bridge, 10, id);
     const measured = await scenario.page.evaluate(() => {
       const rect = (selector) => {
         const value = document.querySelector(selector)?.getBoundingClientRect();
@@ -745,64 +874,99 @@ try {
             }
           : null;
       };
-      const drawers = [...document.querySelectorAll('[data-witness-role]')].map(
-        (value) => {
-          const box = value.getBoundingClientRect();
-          return {
-            role: value.getAttribute('data-witness-role'),
-            left: box.left,
-            right: box.right,
-            top: box.top,
-            bottom: box.bottom,
-          };
-        }
-      );
+      const carvedVisible = (role) => {
+        const witness = document.querySelector(`[data-witness-role="${role}"]`);
+        const canvas = witness?.querySelector('.attack-die-3d__canvas canvas');
+        const face = witness?.querySelector('[data-testid="dice-face"]');
+        const fallbackDie = witness?.querySelector('[data-testid="d20-die"]');
+        if (
+          !(canvas instanceof HTMLCanvasElement) ||
+          !(face instanceof SVGElement) ||
+          !(fallbackDie instanceof SVGElement)
+        )
+          return false;
+        const canvasStyle = getComputedStyle(canvas);
+        const canvasRect = canvas.getBoundingClientRect();
+        return (
+          face.textContent?.trim() === '10' &&
+          getComputedStyle(fallbackDie).visibility === 'hidden' &&
+          canvasStyle.display !== 'none' &&
+          canvasStyle.visibility !== 'hidden' &&
+          Number(canvasStyle.opacity || '1') > 0 &&
+          canvasRect.width > 0 &&
+          canvasRect.height > 0
+        );
+      };
       return {
+        layout:
+          Math.abs(
+            document
+              .querySelector('[data-witness-role="roller"]')
+              .getBoundingClientRect().top -
+              document
+                .querySelector('[data-witness-role="spectator"]')
+                .getBoundingClientRect().top
+          ) < 2
+            ? 'columns'
+            : innerWidth <= 760
+              ? 'narrow-order'
+              : 'stacked',
+        carvedResult: 10,
+        rollerCarvedVisible: carvedVisible('roller'),
+        spectatorCarvedVisible: carvedVisible('spectator'),
         innerWidth,
         scrollWidth: document.documentElement.scrollWidth,
-        drawers,
-        map: rect('[data-testid="dice-tray-neutral-map"]'),
-        log: rect('[data-testid="floating-log"]'),
-        dock: rect('[data-testid="encounter-dock"]'),
+        surfaces: {
+          preview: rect('[data-testid="dice-tray-encounter-preview"]'),
+          map: rect('[data-testid="dice-tray-neutral-map"]'),
+          roller: rect('[data-witness-role="roller"]'),
+          spectator: rect('[data-witness-role="spectator"]'),
+          log: rect('[data-testid="floating-log"]'),
+          dock: rect('[data-testid="encounter-dock"]'),
+        },
       };
     });
-    const [roller, spectator] = measured.drawers;
-    const contained = measured.drawers.every(
-      (drawer) => drawer.left >= 0 && drawer.right <= measured.innerWidth
-    );
-    const horizontalOverflow = measured.scrollWidth > measured.innerWidth;
-    const drawerOverlap = !(
-      roller.right <= spectator.left ||
-      spectator.right <= roller.left ||
-      roller.bottom <= spectator.top ||
-      spectator.bottom <= roller.top
-    );
-    const observedLayout =
-      Math.abs(roller.top - spectator.top) < 2
-        ? 'columns'
-        : width <= 760
-          ? 'narrow-order'
-          : 'stacked';
+    const { preview, map, roller, spectator, log, dock } = measured.surfaces;
+    const allSurfaces = [map, roller, spectator, log, dock];
+    const contains = (outer, inner) =>
+      inner.left >= outer.left - 1 &&
+      inner.right <= outer.right + 1 &&
+      inner.top >= outer.top - 1 &&
+      inner.bottom <= outer.bottom + 1;
+    const surfacesPresent = preview && allSurfaces.every(Boolean);
+    const gap = 7.5;
+    const breakpointOrder =
+      surfacesPresent && layout === 'columns'
+        ? contains(map, roller) &&
+          contains(map, spectator) &&
+          roller.right + gap <= spectator.left &&
+          spectator.right + gap <= log.left &&
+          log.bottom + gap <= dock.top
+        : surfacesPresent &&
+          map.bottom + gap <= roller.top &&
+          roller.bottom + gap <= spectator.top &&
+          spectator.bottom + gap <= log.top &&
+          log.bottom + gap <= dock.top;
     if (
-      observedLayout !== layout ||
-      !contained ||
-      horizontalOverflow ||
-      drawerOverlap ||
-      !measured.map ||
-      !measured.log ||
-      !measured.dock
+      measured.layout !== layout ||
+      measured.carvedResult !== 10 ||
+      !measured.rollerCarvedVisible ||
+      !measured.spectatorCarvedVisible ||
+      measured.innerWidth !== width ||
+      measured.scrollWidth > measured.innerWidth ||
+      !surfacesPresent ||
+      allSurfaces.some((surface) => !surface || !contains(preview, surface)) ||
+      !breakpointOrder ||
+      dock.top < map.bottom - 1
     )
-      throw Error(`${id} responsive containment/layout mismatch`);
+      throw Error(
+        `${id} released carved-result/order/gap/containment/clearance mismatch: ${JSON.stringify(measured)}`
+      );
     await scenario.page.screenshot({
-      path: resolve(out, stone0ScenarioScreenshot(id)),
+      path: capturedArtifactPath(stone0ScenarioScreenshot(id)),
       fullPage: true,
     });
-    pushScenario(id, viewport, {
-      layout,
-      contained: true,
-      horizontalOverflow: false,
-      overlap: false,
-    });
+    pushScenario(id, viewport, measured);
     await closeScenario(scenario);
   }
 
@@ -973,7 +1137,7 @@ try {
     if (!/truthful SVG settled/i.test(rollerStatus ?? ''))
       throw Error(`${id} did not converge to truthful Roller SVG`);
     await scenario.page.screenshot({
-      path: resolve(out, stone0ScenarioScreenshot(id)),
+      path: capturedArtifactPath(stone0ScenarioScreenshot(id)),
       fullPage: true,
     });
     const modelRequestCount = scenario.record.provider.glbRequestCount;
@@ -1059,7 +1223,7 @@ try {
     if (!/truthful SVG settled/i.test(rollerStatus ?? ''))
       throw Error('context loss Roller did not converge to truthful SVG');
     await scenario.page.screenshot({
-      path: resolve(out, stone0ScenarioScreenshot(id)),
+      path: capturedArtifactPath(stone0ScenarioScreenshot(id)),
       fullPage: true,
     });
     pushScenario(
@@ -1118,37 +1282,141 @@ try {
     validationFailures: [],
     unexpectedErrors,
   };
-  assertStone0TrayEvidence(evidence, {
+  const identity = {
     sourceSha,
     webBuildSha256: buildManifest.webBuildSha256,
     buildManifestSha256,
     providerManifestSha256,
     providerSourceManifestSha256,
-  });
-  await writeFile(
-    networkPath,
-    `${JSON.stringify({ schemaVersion: 1, contexts: networkContexts }, null, 2)}\n`
-  );
-  await writeFile(
-    consolePath,
-    `${JSON.stringify(
-      {
-        schemaVersion: 1,
-        console: consoleEntries,
-        pageErrors,
-        unexpectedErrors,
-      },
-      null,
-      2
-    )}\n`
-  );
+  };
+  assertStone0TrayEvidence(evidence, identity);
+  const networkEvidence = { schemaVersion: 2, contexts: networkContexts };
+  const consoleEvidence = {
+    schemaVersion: 2,
+    console: consoleEntries,
+    pageErrors,
+    unexpectedErrors,
+  };
+  await writeFile(networkPath, `${JSON.stringify(networkEvidence, null, 2)}\n`);
+  await writeFile(consolePath, `${JSON.stringify(consoleEvidence, null, 2)}\n`);
   await writeFile(
     browserEvidencePath,
     `${JSON.stringify(evidence, null, 2)}\n`
   );
-  const artifactHashes = {};
-  for (const path of [browserEvidencePath, networkPath, consolePath])
-    artifactHashes[path.split('/').at(-1)] = sha256(await readFile(path));
+
+  const artifactPaths = [
+    'build-manifest.json',
+    'browser-evidence.json',
+    'network.json',
+    'console.json',
+    ...resultScreenshots,
+    ...scenarioScreenshots,
+  ];
+  const readArtifactPackage = async (published) => {
+    const bytes = new Map();
+    for (const filename of artifactPaths) {
+      const path =
+        filename === 'build-manifest.json'
+          ? manifestPath
+          : resolve(published ? out : packageTempRoot, filename);
+      bytes.set(filename, new Uint8Array(await readFile(path)));
+    }
+    return bytes;
+  };
+  const temporaryArtifactBytes = await readArtifactPackage(false);
+  const artifactKind = (filename) =>
+    filename === 'build-manifest.json'
+      ? 'build-manifest'
+      : filename.endsWith('.json')
+        ? 'json'
+        : 'screenshot';
+  const packageManifest = {
+    schemaVersion: 1,
+    kind: 'stone0-original-d20-tray-package',
+    verdict: 'PASS',
+    sourceSha,
+    webBuildSha256: buildManifest.webBuildSha256,
+    buildManifestSha256,
+    resultCount: results.length,
+    scenarioCount: scenarios.length,
+    contextCount: networkContexts.length,
+    consoleErrorCount: consoleEntries.filter((entry) => entry.type === 'error')
+      .length,
+    pageErrorCount: pageErrors.length,
+    artifacts: artifactPaths.map((filename) => {
+      const bytes = temporaryArtifactBytes.get(filename);
+      return {
+        path: filename,
+        kind: artifactKind(filename),
+        sha256: sha256(bytes),
+        sizeBytes: bytes.byteLength,
+      };
+    }),
+  };
+  assertStone0TrayEvidencePackage(
+    packageManifest,
+    identity,
+    temporaryArtifactBytes
+  );
+
+  for (const filename of artifactPaths) {
+    if (filename === 'build-manifest.json') continue;
+    await rename(resolve(packageTempRoot, filename), resolve(out, filename));
+  }
+  const publishedArtifactBytes = await readArtifactPackage(true);
+  assertStone0TrayEvidencePackage(
+    packageManifest,
+    identity,
+    publishedArtifactBytes
+  );
+
+  const temporaryPackageManifestPath = resolve(
+    packageTempRoot,
+    'package-manifest.json'
+  );
+  await writeFile(
+    temporaryPackageManifestPath,
+    `${JSON.stringify(packageManifest, null, 2)}\n`
+  );
+  const packageManifestBytes = new Uint8Array(
+    await readFile(temporaryPackageManifestPath)
+  );
+  const rereadPackageManifest = JSON.parse(
+    new TextDecoder('utf-8', { fatal: true }).decode(packageManifestBytes)
+  );
+  assertStone0TrayEvidencePackage(
+    rereadPackageManifest,
+    identity,
+    publishedArtifactBytes
+  );
+  await rename(temporaryPackageManifestPath, packageManifestPath);
+  const finalPackageManifest = JSON.parse(
+    await readFile(packageManifestPath, 'utf8')
+  );
+  assertStone0TrayEvidencePackage(
+    finalPackageManifest,
+    identity,
+    await readArtifactPackage(true)
+  );
+
+  const passContents = [
+    'PASS',
+    `sourceSha=${sourceSha}`,
+    `packageManifestSha256=${sha256(await readFile(packageManifestPath))}`,
+    '',
+  ].join('\n');
+  const temporaryPassPath = resolve(packageTempRoot, 'PASS');
+  await writeFile(temporaryPassPath, passContents);
+  if ((await readFile(temporaryPassPath, 'utf8')) !== passContents)
+    throw Error('temporary PASS reread mismatch');
+  await rename(temporaryPassPath, passPath);
+
+  const artifactHashes = Object.fromEntries(
+    packageManifest.artifacts.map((artifact) => [
+      artifact.path,
+      artifact.sha256,
+    ])
+  );
   console.log(
     JSON.stringify({
       verdict: 'PASS',
@@ -1161,10 +1429,17 @@ try {
       glbSha256: ORIGINAL_D20_GLB_SHA256,
       resultFacts: results.length,
       scenarioFacts: scenarios.length,
+      contextFacts: networkContexts.length,
+      screenshotFacts: resultScreenshots.length + scenarioScreenshots.length,
       unexpectedErrors: unexpectedErrors.length,
+      packageManifestSha256: sha256(await readFile(packageManifestPath)),
       artifactHashes,
     })
   );
 } finally {
-  await browser.close();
+  try {
+    await browser.close();
+  } finally {
+    await rm(packageTempRoot, { recursive: true, force: true });
+  }
 }

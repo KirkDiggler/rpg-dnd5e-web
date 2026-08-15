@@ -195,12 +195,14 @@ function useOriginalTrayProvider(enabled: boolean) {
   return snapshot;
 }
 
-function useInspectedProvider() {
+function useInspectedProvider(enabled: boolean) {
   const [provider, setProvider] = useState<InspectedProvider>();
   const [error, setError] = useState('Loading controlled provider bytes…');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
+    setLoading(true);
     void loadPendingInspectedProvider().then(
       (loaded) => {
         if (!active) return;
@@ -219,7 +221,7 @@ function useInspectedProvider() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled]);
   return { provider, error, loading };
 }
 
@@ -275,7 +277,12 @@ function Metadata({
 }
 
 export function AttackDie3DConcept() {
-  const [stage, setStage] = useState(0);
+  const [stage, setStage] = useState(() =>
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('attackDieStage') === 'tray'
+      ? 4
+      : 0
+  );
   const [token, setToken] = useState(1);
   const [state, dispatch] = useReducer(
     attackDieExperimentReducer,
@@ -292,7 +299,7 @@ export function AttackDie3DConcept() {
     Record<number, AttackDieTelemetry>
   >({});
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
-  const { provider, error, loading } = useInspectedProvider();
+  const { provider, error, loading } = useInspectedProvider(stage !== 4);
   const trayProvider = useOriginalTrayProvider(stage === 4);
   useEffect(() => {
     if (!provider || importedDigest.current === provider.digest) return;

@@ -5,7 +5,11 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
+import type {
+  AttackDie3DProps,
+  AttackDieProvider,
+  AttackDieTelemetry,
+} from './AttackDie3D';
 import type { QuaternionTuple } from './attackDieContract';
 import {
   parseDicePresentationEvent,
@@ -26,6 +30,11 @@ export interface DiceTrayPresentationDevelopmentRenderer {
   calibrationPose: QuaternionTuple;
 }
 
+export interface DiceTrayPresentationBoundaryDiagnostic {
+  readonly events: readonly DicePresentationEvent[];
+  readonly provider: AttackDieProvider;
+}
+
 export interface DiceTrayPresentationProps {
   label: string;
   events: readonly DicePresentationEvent[];
@@ -33,6 +42,10 @@ export interface DiceTrayPresentationProps {
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  /** Read-only development evidence emitted from this actual boundary. */
+  onBoundaryDiagnostic?: (
+    diagnostic: DiceTrayPresentationBoundaryDiagnostic
+  ) => void;
   reducedMotion?: boolean;
   developmentOnlyRenderer?: DiceTrayPresentationDevelopmentRenderer;
   /** Development concept failure exercise; never supplied by production. */
@@ -74,6 +87,10 @@ interface PresentationInstanceProps {
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  diagnosticEvents: readonly DicePresentationEvent[];
+  onBoundaryDiagnostic?: (
+    diagnostic: DiceTrayPresentationBoundaryDiagnostic
+  ) => void;
   reducedMotion: boolean;
   developmentOnlyRenderer?: DiceTrayPresentationDevelopmentRenderer;
   forceFailure?: AttackDie3DProps['forceFailure'];
@@ -287,6 +304,8 @@ function DiceTrayPresentationInstance({
   onReleaseRequest,
   onTelemetry,
   onRendererInfo,
+  diagnosticEvents,
+  onBoundaryDiagnostic,
   reducedMotion,
   developmentOnlyRenderer,
   forceFailure,
@@ -393,6 +412,11 @@ function DiceTrayPresentationInstance({
   const handleFallbackPresentationComplete = useCallback(() => {
     dispatch({ type: 'fallback-complete' });
   }, []);
+  const handleProviderDiagnostic = useCallback(
+    (provider: AttackDieProvider) =>
+      onBoundaryDiagnostic?.({ events: diagnosticEvents, provider }),
+    [diagnosticEvents, onBoundaryDiagnostic]
+  );
 
   const phase = lifecycle.phase;
   const status =
@@ -437,6 +461,7 @@ function DiceTrayPresentationInstance({
         onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
         onRendererInfo={onRendererInfo}
+        onProviderDiagnostic={handleProviderDiagnostic}
         onFallbackPresentationComplete={handleFallbackPresentationComplete}
         reducedMotion={reducedMotion}
         sceneOverride={
@@ -467,6 +492,7 @@ export function DiceTrayPresentation({
   onReleaseRequest,
   onTelemetry,
   onRendererInfo,
+  onBoundaryDiagnostic,
   reducedMotion = false,
   developmentOnlyRenderer,
   forceFailure,
@@ -505,6 +531,8 @@ export function DiceTrayPresentation({
       onReleaseRequest={onReleaseRequest}
       onTelemetry={onTelemetry}
       onRendererInfo={onRendererInfo}
+      diagnosticEvents={events}
+      onBoundaryDiagnostic={onBoundaryDiagnostic}
       reducedMotion={reducedMotion}
       developmentOnlyRenderer={developmentOnlyRenderer}
       forceFailure={forceFailure}

@@ -108,7 +108,10 @@ Open the exact development build, select **Tray**, and review:
    tumble;
 6. provider, WebGL, context-loss, and shader failure convergence to truthful SVG;
 7. desktop `1440×1080`, boundary `1241×900`/`1240×900`, and narrow
-   `760×900` containment, accepted column/stack order, scrolling, log, and dock.
+   `760×900` after releasing result 10 and awaiting both held 3D witnesses. The
+   browser records the carved-numeral visibility and actual map, Roller,
+   Spectator, log, dock, and preview rectangles, then validates breakpoint order,
+   gaps, containment, dock clearance, and horizontal overflow before capture.
 
 The visible combat prose comes from the real `CombatLog` consuming unchanged
 structured `CombatLogEntry[]` fixture facts. The dice fixture does not author
@@ -156,18 +159,33 @@ identity, any GLB hash other than the exact Original D20 digest, duplicate
 manifest/GLB requests or transfers, incomplete/reordered 1–20 rows, settlement
 above `0.25°`, shared witness ownership, duplicate/malformed scenario rows,
 nondeterministic filenames, non-empty validation failures, or unexpected
-console/page errors.
+console/page errors. It also rereads and binds the parsed build, browser,
+network, and console JSON; exact 78-context ID/count matrix; exact console
+location/message matrix; and all 38 PNG bytes/digests into one package manifest.
+Missing, substituted, reordered, or contradictory package artifacts fail.
+
+The driver starts on the dedicated `attackDieStage=tray` route, so historical
+Lightning loading remains dormant. Every exact `localhost:8080` RPC is fulfilled
+by a driver-owned deterministic JSON fixture; unknown URLs or methods fail. Each
+console message records `consoleMessage.location()`, and only the exact
+missing-manifest 404 URL/message in that scenario is allowed. The two actual
+`DiceTrayPresentation` boundaries publish read-only event-array and provider
+object identities, and browser facts compare the measured per-witness IDs rather
+than self-asserting shared values.
 
 The driver uses a fresh browser context per observation and deterministic
 response mutation for missing/malformed/incomplete manifests, GLB hash mismatch,
 and invalid geometry. It uses the explicit synthetic-only controls for unknown
-safe preset/unmapped-result, a real `WEBGL_lose_context` extension for context
-loss, and writes:
+safe preset/unmapped-result and a real `WEBGL_lose_context` extension for context
+loss. JSON and screenshots are first written under a temporary package root,
+hashed, reread, and validated. Only then are artifacts published and an atomic
+`package-manifest.json` plus `PASS` marker written. The directory contains:
 
 - `browser-evidence.json`
 - `network.json`
 - `console.json`
 - deterministic result/scenario screenshots
+- `package-manifest.json` and the final `PASS` marker
 - `preview.log` and `build-manifest.json`
 
 All output remains private under

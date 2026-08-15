@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { startTransition, StrictMode, Suspense, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
@@ -147,6 +153,42 @@ function matchingTelemetry(
 }
 
 describe('DiceTrayPresentation', () => {
+  it('reports the actual event-array and provider objects observed inside each presentation boundary', async () => {
+    const rollerEvents = Object.freeze([originalRequested('attack:boundary')]);
+    const spectatorEvents = Object.freeze([...rollerEvents]);
+    const rollerDiagnostic = vi.fn();
+    const spectatorDiagnostic = vi.fn();
+
+    render(
+      <>
+        <DiceTrayPresentation
+          label="Roller attack dice"
+          events={rollerEvents}
+          witnessRole="roller"
+          onBoundaryDiagnostic={rollerDiagnostic}
+        />
+        <DiceTrayPresentation
+          label="Spectator attack dice"
+          events={spectatorEvents}
+          witnessRole="spectator"
+          onBoundaryDiagnostic={spectatorDiagnostic}
+        />
+      </>
+    );
+
+    await waitFor(() => {
+      expect(rollerDiagnostic).toHaveBeenCalled();
+      expect(spectatorDiagnostic).toHaveBeenCalled();
+    });
+    const roller = rollerDiagnostic.mock.calls.at(-1)?.[0];
+    const spectator = spectatorDiagnostic.mock.calls.at(-1)?.[0];
+    expect(roller.events).toBe(rollerEvents);
+    expect(spectator.events).toBe(spectatorEvents);
+    expect(roller.events).not.toBe(spectator.events);
+    expect(roller.provider).toBe(spectator.provider);
+    expect(Object.isFrozen(roller.provider)).toBe(true);
+  });
+
   it('renders no tray without a valid request', () => {
     renderPresentation([]);
 

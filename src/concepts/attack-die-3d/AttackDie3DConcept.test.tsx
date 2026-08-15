@@ -124,6 +124,7 @@ vi.mock('three/examples/jsm/loaders/GLTFLoader.js', () => ({
 }));
 
 beforeEach(() => {
+  window.history.replaceState({}, '', '/');
   props.length = 0;
   runtimeProvider.snapshot = { status: 'ready' };
   runtimeProvider.getSnapshot.mockReset();
@@ -191,6 +192,29 @@ describe('AttackDie3D staged concept', () => {
           'lightning'
       )
     ).toBe(false);
+  });
+
+  it('opens the dedicated Tray evidence route without starting historical Lightning work', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/?concept=attack-die-3d&attackDieStage=tray'
+    );
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+
+    render(<AttackDie3DConcept />);
+
+    expect(
+      await screen.findByText('Gameplay placement checkpoint')
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('tab', { name: 'Tray' }).getAttribute('aria-selected')
+    ).toBe('true');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(runtimeProvider.getSnapshot).toHaveBeenCalledWith(
+      ORIGINAL_PRESET_ID
+    );
   });
 
   it('passes the explicit lab reduced-motion preference to both ready Tray witnesses', async () => {

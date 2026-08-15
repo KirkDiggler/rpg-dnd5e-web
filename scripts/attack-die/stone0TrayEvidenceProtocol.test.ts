@@ -1,10 +1,14 @@
 // @vitest-environment node
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   ORIGINAL_D20_GLB_SHA256,
+  STONE0_LOCAL_API_FIXTURES,
   STONE0_SCENARIO_IDS,
   assertStone0TrayEvidence,
+  assertStone0TrayEvidencePackage,
+  stone0ExpectedNetworkContextIds,
   stone0ResultScreenshot,
   stone0ScenarioScreenshot,
   type Stone0TrayEvidence,
@@ -39,6 +43,53 @@ const failureSemantics = {
   'context-loss': ['webgl-context-loss', false, false, 1],
   'shader-failure': ['shader', false, false, 1],
 } as const;
+
+function rect(left: number, top: number, width: number, height: number) {
+  return {
+    left,
+    right: left + width,
+    top,
+    bottom: top + height,
+    width,
+    height,
+  };
+}
+
+function responsiveFacts(layout: string, width: number) {
+  if (layout === 'columns')
+    return {
+      layout,
+      carvedResult: 10,
+      rollerCarvedVisible: true,
+      spectatorCarvedVisible: true,
+      innerWidth: width,
+      scrollWidth: width,
+      surfaces: {
+        preview: rect(0, 0, width, 1_010),
+        map: rect(0, 0, width, 650),
+        roller: rect(20, 300, 356, 248),
+        spectator: rect(388, 300, 356, 248),
+        log: rect(width - 360, 400, 348, 230),
+        dock: rect(0, 650, width, 360),
+      },
+    };
+  return {
+    layout,
+    carvedResult: 10,
+    rollerCarvedVisible: true,
+    spectatorCarvedVisible: true,
+    innerWidth: width,
+    scrollWidth: width,
+    surfaces: {
+      preview: rect(0, 0, width, 1_350),
+      map: rect(0, 0, width, 220),
+      roller: rect(12, 232, 356, 248),
+      spectator: rect(12, 492, 356, 248),
+      log: rect(Math.max(12, width - 372), 752, 360, 230),
+      dock: rect(0, 992, width, 358),
+    },
+  };
+}
 
 function scenario(id: (typeof STONE0_SCENARIO_IDS)[number]) {
   const common = {
@@ -101,12 +152,7 @@ function scenario(id: (typeof STONE0_SCENARIO_IDS)[number]) {
     return {
       ...common,
       viewport: { width, height },
-      facts: {
-        layout,
-        contained: true,
-        horizontalOverflow: false,
-        overlap: false,
-      },
+      facts: responsiveFacts(layout, width),
     };
   }
   const [failureOrigin, providerMutation, parseBeforeModel, modelRequestCount] =
@@ -155,6 +201,8 @@ function resultFact(result: number) {
       generation: -result * 2,
       contextId: result * 2,
       cloneId: `clone:${result}:roller`,
+      eventArrayId: result * 2_000,
+      providerId: 1,
       requestedResult: result,
       renderer: '3d' as const,
       angularErrorDegrees: 0,
@@ -165,6 +213,8 @@ function resultFact(result: number) {
       generation: -result * 2 - 1,
       contextId: result * 2 + 1,
       cloneId: `clone:${result}:spectator`,
+      eventArrayId: result * 2_000,
+      providerId: 1,
       requestedResult: result,
       renderer: '3d' as const,
       angularErrorDegrees: 0.1,
@@ -216,6 +266,236 @@ function cloneEvidence() {
   return structuredClone(validEvidence());
 }
 
+const hash = (value: Uint8Array | string) =>
+  createHash('sha256').update(value).digest('hex');
+const jsonBytes = (value: unknown) =>
+  new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`);
+
+function packageFixture() {
+  const evidence = validEvidence();
+  const build = {
+    schemaVersion: 1,
+    kind: 'attack-die-web-build-manifest',
+    files: [],
+    webBuildSha256: hash(''),
+  };
+  const buildBytes = jsonBytes(build);
+  const packageIdentity: Stone0TrayEvidenceIdentity = {
+    ...identity,
+    webBuildSha256: build.webBuildSha256,
+    buildManifestSha256: hash(buildBytes),
+  };
+  evidence.webBuildSha256 = packageIdentity.webBuildSha256;
+  evidence.buildManifestSha256 = packageIdentity.buildManifestSha256;
+
+  const resultContextIds = Array.from({ length: 20 }, (_, index) => {
+    const prefix = `result-${String(index + 1).padStart(2, '0')}`;
+    return [
+      `${prefix}-roller-roll`,
+      `${prefix}-decorative-gesture`,
+      `${prefix}-host-release`,
+    ];
+  }).flat();
+  const contextIds = stone0ExpectedNetworkContextIds();
+  expect(contextIds.slice(0, 60)).toEqual(resultContextIds);
+
+  const scenarioById = new Map(
+    evidence.scenarios.map((value) => [value.id, value])
+  );
+  const providerCounts = (id: string) => {
+    if (id === 'missing-manifest')
+      return {
+        manifestRequestCount: 1,
+        manifestTransferCount: 0,
+        glbRequestCount: 0,
+        glbTransferCount: 0,
+      };
+    if (
+      [
+        'incomplete-face-map',
+        'malformed-manifest',
+        'invalid-geometry-partition',
+      ].includes(id)
+    )
+      return {
+        manifestRequestCount: 1,
+        manifestTransferCount: 1,
+        glbRequestCount: 0,
+        glbTransferCount: 0,
+      };
+    return {
+      manifestRequestCount: 1,
+      manifestTransferCount: 1,
+      glbRequestCount: 1,
+      glbTransferCount: 1,
+    };
+  };
+  const contexts = contextIds.map((id, index) => {
+    const scenarioId = STONE0_SCENARIO_IDS.find((value) => value === id);
+    const viewport = scenarioId
+      ? scenarioById.get(scenarioId)!.viewport
+      : { width: 1440, height: 1080 };
+    const provider = providerCounts(id);
+    const apiFixtures = STONE0_LOCAL_API_FIXTURES.map((fixture) => ({
+      url: fixture.url,
+      method: 'POST',
+      status: 200,
+      requestBodySha256: hash(`request:${fixture.url}`),
+      responseBodySha256: fixture.responseSha256,
+    }));
+    const requests = [
+      ...apiFixtures.map((fixture) => ({
+        url: fixture.url,
+        method: fixture.method,
+        resourceType: 'fetch',
+        providerKind: null,
+      })),
+      ...(provider.manifestRequestCount
+        ? [
+            {
+              url: `http://127.0.0.1:3003${evidence.provider.manifestPath}`,
+              method: 'GET',
+              resourceType: 'fetch',
+              providerKind: 'manifest',
+            },
+          ]
+        : []),
+      ...(provider.glbRequestCount
+        ? [
+            {
+              url: `http://127.0.0.1:3003${evidence.provider.glbPath}`,
+              method: 'GET',
+              resourceType: 'fetch',
+              providerKind: 'glb',
+            },
+          ]
+        : []),
+    ];
+    const responses = [
+      ...apiFixtures.map((fixture) => ({
+        url: fixture.url,
+        status: fixture.status,
+        providerKind: null,
+        contentLength: '2',
+      })),
+      ...(provider.manifestRequestCount
+        ? [
+            {
+              url: `http://127.0.0.1:3003${evidence.provider.manifestPath}`,
+              status: provider.manifestTransferCount ? 200 : 404,
+              providerKind: 'manifest',
+              contentLength: null,
+            },
+          ]
+        : []),
+      ...(provider.glbRequestCount
+        ? [
+            {
+              url: `http://127.0.0.1:3003${evidence.provider.glbPath}`,
+              status: 200,
+              providerKind: 'glb',
+              contentLength: String(491312),
+            },
+          ]
+        : []),
+    ];
+    return {
+      id,
+      contextOrdinal: index + 1,
+      viewport,
+      requests,
+      responses,
+      apiFixtures,
+      provider,
+      trayCanvasFirstObservedMs: provider.glbTransferCount ? 200 : null,
+      glbResponseEndMs: provider.glbTransferCount ? 100 : null,
+    };
+  });
+  const network = { schemaVersion: 2, contexts };
+  const missingOrdinal = contextIds.indexOf('missing-manifest') + 1;
+  const consoleEvidence = {
+    schemaVersion: 2,
+    console: [
+      {
+        id: 'missing-manifest',
+        contextOrdinal: missingOrdinal,
+        type: 'error',
+        text: 'Failed to load resource: the server responded with a status of 404 (Not Found)',
+        location: {
+          url: `http://127.0.0.1:3003${evidence.provider.manifestPath}`,
+          lineNumber: 0,
+          columnNumber: 0,
+        },
+        expected: true,
+      },
+    ],
+    pageErrors: [],
+    unexpectedErrors: [],
+  };
+
+  const files = new Map<string, Uint8Array>([
+    ['build-manifest.json', buildBytes],
+    ['browser-evidence.json', jsonBytes(evidence)],
+    ['network.json', jsonBytes(network)],
+    ['console.json', jsonBytes(consoleEvidence)],
+  ]);
+  for (const [index, path] of [
+    ...evidence.results.map((value) => value.screenshot),
+    ...evidence.scenarios.map((value) => value.screenshot),
+  ].entries())
+    files.set(
+      path,
+      Uint8Array.from([
+        0x89,
+        0x50,
+        0x4e,
+        0x47,
+        0x0d,
+        0x0a,
+        0x1a,
+        0x0a,
+        index & 0xff,
+        1,
+        2,
+        3,
+      ])
+    );
+  const kind = (path: string) =>
+    path === 'build-manifest.json'
+      ? 'build-manifest'
+      : path.endsWith('.json')
+        ? 'json'
+        : 'screenshot';
+  const artifacts = [...files].map(([path, bytes]) => ({
+    path,
+    kind: kind(path),
+    sha256: hash(bytes),
+    sizeBytes: bytes.byteLength,
+  }));
+  const packageManifest = {
+    schemaVersion: 1,
+    kind: 'stone0-original-d20-tray-package',
+    verdict: 'PASS',
+    sourceSha: packageIdentity.sourceSha,
+    webBuildSha256: packageIdentity.webBuildSha256,
+    buildManifestSha256: packageIdentity.buildManifestSha256,
+    resultCount: evidence.results.length,
+    scenarioCount: evidence.scenarios.length,
+    contextCount: contexts.length,
+    consoleErrorCount: 1,
+    pageErrorCount: 0,
+    artifacts,
+  };
+  return {
+    evidence,
+    network,
+    consoleEvidence,
+    packageIdentity,
+    packageManifest,
+    files,
+  };
+}
+
 describe('Stone 0 Tray evidence protocol', () => {
   it('keeps the Node 22 capture entrypoint free of direct TypeScript imports with extensionless transitive dependencies', () => {
     const source = readFileSync(
@@ -254,6 +534,18 @@ describe('Stone 0 Tray evidence protocol', () => {
     expect(source).toMatch(
       /await waitRendererOwnership\(scenario\.page\);\s*const lost =/
     );
+  });
+
+  it('requires the capture driver to own exact local API fixtures, location-aware console rules, and a Tray-first route', () => {
+    const source = readFileSync(
+      'scripts/attack-die/capture-stone0-tray-evidence.mjs',
+      'utf8'
+    );
+    expect(source).toContain('STONE0_LOCAL_API_FIXTURES');
+    expect(source).toContain('message.location()');
+    expect(source).toContain("attackDieStage', 'tray'");
+    expect(source).not.toMatch(/ERR_CONNECTION_REFUSED/);
+    expect(source).not.toMatch(/responded with a status of 404\/i/);
   });
 
   it('accepts one exact complete immutable identity, result, and scenario matrix', () => {
@@ -353,6 +645,10 @@ describe('Stone 0 Tray evidence protocol', () => {
       (value: Stone0TrayEvidence) => (value.results[0].sharedEvents = false),
       (value: Stone0TrayEvidence) => (value.results[0].sharedProvider = false),
       (value: Stone0TrayEvidence) =>
+        (value.results[0].spectator.eventArrayId += 1),
+      (value: Stone0TrayEvidence) =>
+        (value.results[0].spectator.providerId += 1),
+      (value: Stone0TrayEvidence) =>
         (value.results[0].sourceSceneShared = false),
       (value: Stone0TrayEvidence) => (value.results[0].clonesDistinct = false),
       (value: Stone0TrayEvidence) =>
@@ -367,7 +663,7 @@ describe('Stone 0 Tray evidence protocol', () => {
       const value = cloneEvidence();
       mutate(value);
       expect(() => assertStone0TrayEvidence(value, identity)).toThrow(
-        /witness|held|error|distinct|shared/i
+        /witness|held|error|distinct|shared|identity|measured/i
       );
     }
   });
@@ -430,6 +726,31 @@ describe('Stone 0 Tray evidence protocol', () => {
     );
   });
 
+  it('requires released carved result 10 and measured five-surface responsive containment, order, gaps, clearance, and overflow', () => {
+    for (const mutate of [
+      (facts: ReturnType<typeof responsiveFacts>) =>
+        (facts.rollerCarvedVisible = false),
+      (facts: ReturnType<typeof responsiveFacts>) => (facts.carvedResult = 9),
+      (facts: ReturnType<typeof responsiveFacts>) =>
+        (facts.scrollWidth = facts.innerWidth + 1),
+      (facts: ReturnType<typeof responsiveFacts>) =>
+        (facts.surfaces.spectator.left = facts.surfaces.roller.right + 1),
+      (facts: ReturnType<typeof responsiveFacts>) =>
+        (facts.surfaces.log.right = facts.surfaces.preview.right + 20),
+      (facts: ReturnType<typeof responsiveFacts>) =>
+        (facts.surfaces.dock.top = facts.surfaces.log.bottom + 1),
+    ]) {
+      const value = cloneEvidence();
+      const scenario = value.scenarios.find(
+        (candidate) => candidate.id === 'responsive-desktop'
+      )!;
+      mutate(scenario.facts as ReturnType<typeof responsiveFacts>);
+      expect(() => assertStone0TrayEvidence(value, identity)).toThrow(
+        /responsive|carved|overflow|contain|order|gap|clearance|dimension/i
+      );
+    }
+  });
+
   it('requires incomplete maps to be manifest parse failures and unmapped-result to remain synthetic renderer-only', () => {
     const incomplete = cloneEvidence();
     incomplete.scenarios.find(
@@ -457,6 +778,138 @@ describe('Stone 0 Tray evidence protocol', () => {
       expect(() => assertStone0TrayEvidence(value, identity)).toThrow(
         /failure|error/i
       );
+    }
+  });
+
+  it('binds reread browser/network/console/build data and every screenshot digest into one PASS package', () => {
+    const fixture = packageFixture();
+    expect(
+      assertStone0TrayEvidencePackage(
+        fixture.packageManifest,
+        fixture.packageIdentity,
+        fixture.files
+      )
+    ).toEqual(fixture.packageManifest);
+    expect(fixture.packageManifest.contextCount).toBe(78);
+    expect(fixture.packageManifest.artifacts).toHaveLength(42);
+  });
+
+  it.each([
+    'browser-evidence.json',
+    'network.json',
+    'console.json',
+    'build-manifest.json',
+    stone0ResultScreenshot(1),
+    stone0ScenarioScreenshot('responsive-narrow'),
+  ])('rejects a missing or substituted package artifact: %s', (path) => {
+    const missing = packageFixture();
+    missing.files.delete(path);
+    expect(() =>
+      assertStone0TrayEvidencePackage(
+        missing.packageManifest,
+        missing.packageIdentity,
+        missing.files
+      )
+    ).toThrow(/artifact|missing|package/i);
+
+    const substituted = packageFixture();
+    substituted.files.set(path, new TextEncoder().encode('substituted'));
+    expect(() =>
+      assertStone0TrayEvidencePackage(
+        substituted.packageManifest,
+        substituted.packageIdentity,
+        substituted.files
+      )
+    ).toThrow(/artifact|digest|size|json|png|package/i);
+  });
+
+  it('rejects contradictory network context IDs/counts, API fixtures, console locations, screenshot references, and build data', () => {
+    for (const mutate of [
+      (fixture: ReturnType<typeof packageFixture>) => {
+        fixture.network.contexts[0].id = 'substituted-context';
+        fixture.files.set('network.json', jsonBytes(fixture.network));
+      },
+      (fixture: ReturnType<typeof packageFixture>) => {
+        fixture.network.contexts[0].provider.glbTransferCount = 0;
+        fixture.files.set('network.json', jsonBytes(fixture.network));
+      },
+      (fixture: ReturnType<typeof packageFixture>) => {
+        fixture.network.contexts[0].apiFixtures.pop();
+        fixture.files.set('network.json', jsonBytes(fixture.network));
+      },
+      (fixture: ReturnType<typeof packageFixture>) => {
+        fixture.consoleEvidence.console[0].location.url =
+          'http://127.0.0.1:3003/unrelated.png';
+        fixture.files.set('console.json', jsonBytes(fixture.consoleEvidence));
+      },
+      (fixture: ReturnType<typeof packageFixture>) => {
+        fixture.evidence.results[0].screenshot = stone0ResultScreenshot(2);
+        fixture.files.set('browser-evidence.json', jsonBytes(fixture.evidence));
+      },
+      (fixture: ReturnType<typeof packageFixture>) => {
+        const build = JSON.parse(
+          new TextDecoder().decode(fixture.files.get('build-manifest.json'))
+        );
+        build.webBuildSha256 = 'f'.repeat(64);
+        fixture.files.set('build-manifest.json', jsonBytes(build));
+      },
+    ]) {
+      const fixture = packageFixture();
+      mutate(fixture);
+      const changedPath = [
+        'network.json',
+        'console.json',
+        'browser-evidence.json',
+        'build-manifest.json',
+      ].find(
+        (path) =>
+          hash(fixture.files.get(path)!) !==
+          fixture.packageManifest.artifacts.find(
+            (artifact) => artifact.path === path
+          )!.sha256
+      )!;
+      const artifact = fixture.packageManifest.artifacts.find(
+        (value) => value.path === changedPath
+      )!;
+      const bytes = fixture.files.get(changedPath)!;
+      artifact.sha256 = hash(bytes);
+      artifact.sizeBytes = bytes.byteLength;
+      expect(() =>
+        assertStone0TrayEvidencePackage(
+          fixture.packageManifest,
+          fixture.packageIdentity,
+          fixture.files
+        )
+      ).toThrow(
+        /context|count|fixture|console|location|screenshot|build|identity|package/i
+      );
+    }
+  });
+
+  it('rejects package manifests that omit, duplicate, reorder, or falsely summarize artifacts', () => {
+    for (const mutate of [
+      (fixture: ReturnType<typeof packageFixture>) =>
+        fixture.packageManifest.artifacts.pop(),
+      (fixture: ReturnType<typeof packageFixture>) =>
+        (fixture.packageManifest.artifacts[1] = structuredClone(
+          fixture.packageManifest.artifacts[0]
+        )),
+      (fixture: ReturnType<typeof packageFixture>) =>
+        fixture.packageManifest.artifacts.reverse(),
+      (fixture: ReturnType<typeof packageFixture>) =>
+        (fixture.packageManifest.contextCount = 77),
+      (fixture: ReturnType<typeof packageFixture>) =>
+        (fixture.packageManifest.consoleErrorCount = 0),
+    ]) {
+      const fixture = packageFixture();
+      mutate(fixture);
+      expect(() =>
+        assertStone0TrayEvidencePackage(
+          fixture.packageManifest,
+          fixture.packageIdentity,
+          fixture.files
+        )
+      ).toThrow(/artifact|order|count|package/i);
     }
   });
 

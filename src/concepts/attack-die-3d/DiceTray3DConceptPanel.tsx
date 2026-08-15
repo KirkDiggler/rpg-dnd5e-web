@@ -5,7 +5,10 @@ import type {
   AttackDieTelemetry,
 } from '../../components/ui/dice/AttackDie3D';
 import type { DicePresentationEvent } from '../../components/ui/dice/dicePresentationEvent';
-import { DiceTrayPresentation } from '../../components/ui/dice/DiceTrayPresentation';
+import {
+  DiceTrayPresentation,
+  type DiceTrayPresentationBoundaryDiagnostic,
+} from '../../components/ui/dice/DiceTrayPresentation';
 import { DiceTrayEncounterPreview } from './DiceTrayEncounterPreview';
 import {
   appendDiceTrayWitnessEvent,
@@ -25,15 +28,27 @@ interface Stone0TrayEvidenceBridge {
   presetId: string;
   result: number;
   mode: DiceTrayWitnessMode;
-  eventArrayId: number;
   eventCount: number;
-  eventsFrozen: boolean;
   witnesses: {
     roller: {
+      boundary?: {
+        eventArrayId: number;
+        providerId: number;
+        eventCount: number;
+        eventsFrozen: boolean;
+        providerFrozen: boolean;
+      };
       telemetry?: AttackDieTelemetry;
       rendererInfo?: AttackDieRendererInfo;
     };
     spectator: {
+      boundary?: {
+        eventArrayId: number;
+        providerId: number;
+        eventCount: number;
+        eventsFrozen: boolean;
+        providerFrozen: boolean;
+      };
       telemetry?: AttackDieTelemetry;
       rendererInfo?: AttackDieRendererInfo;
     };
@@ -199,15 +214,11 @@ function DiceTrayWitnessDeliveryHost({
       presetId,
       result,
       mode,
-      eventArrayId: evidenceObjectId(events),
       eventCount: events.length,
-      eventsFrozen: Object.isFrozen(events),
       witnesses: { roller: {}, spectator: {} },
     };
   const bridge = bridgeRef.current;
-  bridge.eventArrayId = evidenceObjectId(events);
   bridge.eventCount = events.length;
-  bridge.eventsFrozen = Object.isFrozen(events);
 
   useEffect(() => {
     window.__stone0TrayEvidence = bridge;
@@ -217,6 +228,22 @@ function DiceTrayWitnessDeliveryHost({
     };
   }, [bridge]);
 
+  const publishBoundaryDiagnostic = useCallback(
+    (
+      witness: 'roller' | 'spectator',
+      diagnostic: DiceTrayPresentationBoundaryDiagnostic
+    ) => {
+      bridge.witnesses[witness].boundary = {
+        eventArrayId: evidenceObjectId(diagnostic.events),
+        providerId: evidenceObjectId(diagnostic.provider),
+        eventCount: diagnostic.events.length,
+        eventsFrozen: Object.isFrozen(diagnostic.events),
+        providerFrozen: Object.isFrozen(diagnostic.provider),
+      };
+      window.__stone0TrayEvidence = bridge;
+    },
+    [bridge]
+  );
   const publishTelemetry = useCallback(
     (witness: 'roller' | 'spectator', telemetry: AttackDieTelemetry) => {
       bridge.witnesses[witness].telemetry = telemetry;
@@ -230,6 +257,16 @@ function DiceTrayWitnessDeliveryHost({
       window.__stone0TrayEvidence = bridge;
     },
     [bridge]
+  );
+  const publishRollerBoundaryDiagnostic = useCallback(
+    (diagnostic: DiceTrayPresentationBoundaryDiagnostic) =>
+      publishBoundaryDiagnostic('roller', diagnostic),
+    [publishBoundaryDiagnostic]
+  );
+  const publishSpectatorBoundaryDiagnostic = useCallback(
+    (diagnostic: DiceTrayPresentationBoundaryDiagnostic) =>
+      publishBoundaryDiagnostic('spectator', diagnostic),
+    [publishBoundaryDiagnostic]
   );
   const publishRollerTelemetry = useCallback(
     (telemetry: AttackDieTelemetry) => publishTelemetry('roller', telemetry),
@@ -263,6 +300,7 @@ function DiceTrayWitnessDeliveryHost({
               onReleaseRequest={mode === 'player' ? append : undefined}
               onTelemetry={publishRollerTelemetry}
               onRendererInfo={publishRollerRendererInfo}
+              onBoundaryDiagnostic={publishRollerBoundaryDiagnostic}
               reducedMotion={reducedMotion}
               forceFailure={forceFailure}
             />
@@ -277,6 +315,7 @@ function DiceTrayWitnessDeliveryHost({
               witnessRole="spectator"
               onTelemetry={publishSpectatorTelemetry}
               onRendererInfo={publishSpectatorRendererInfo}
+              onBoundaryDiagnostic={publishSpectatorBoundaryDiagnostic}
               reducedMotion={reducedMotion}
               forceFailure={forceFailure}
             />

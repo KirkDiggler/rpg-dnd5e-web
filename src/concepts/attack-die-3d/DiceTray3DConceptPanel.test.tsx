@@ -328,11 +328,20 @@ describe('DiceTray3DConceptPanel', () => {
       }
     ).__stone0TrayEvidence as {
       requestIdentity: string;
-      eventArrayId: number;
       eventCount: number;
       witnesses: Record<
         string,
-        { telemetry: AttackDieTelemetry; rendererInfo: { contextId: number } }
+        {
+          boundary: {
+            eventArrayId: number;
+            providerId: number;
+            eventCount: number;
+            eventsFrozen: boolean;
+            providerFrozen: boolean;
+          };
+          telemetry: AttackDieTelemetry;
+          rendererInfo: { contextId: number };
+        }
       >;
     };
     expect(bridge).toMatchObject({
@@ -340,6 +349,11 @@ describe('DiceTray3DConceptPanel', () => {
       eventCount: 1,
       witnesses: {
         roller: {
+          boundary: {
+            eventCount: 1,
+            eventsFrozen: true,
+            providerFrozen: true,
+          },
           telemetry: {
             presentationToken: rollerToken,
             runtimeSourceId: 7,
@@ -348,6 +362,11 @@ describe('DiceTray3DConceptPanel', () => {
           rendererInfo: { contextId: 11 },
         },
         spectator: {
+          boundary: {
+            eventCount: 1,
+            eventsFrozen: true,
+            providerFrozen: true,
+          },
           telemetry: {
             presentationToken: spectatorToken,
             runtimeSourceId: 7,
@@ -357,7 +376,12 @@ describe('DiceTray3DConceptPanel', () => {
         },
       },
     });
-    expect(Number.isSafeInteger(bridge.eventArrayId)).toBe(true);
+    expect(bridge.witnesses.roller.boundary.eventArrayId).toBe(
+      bridge.witnesses.spectator.boundary.eventArrayId
+    );
+    expect(bridge.witnesses.roller.boundary.providerId).toBe(
+      bridge.witnesses.spectator.boundary.providerId
+    );
   });
 
   it('keeps synthetic renderer exercises explicit and never routes Tray through Lightning', () => {
