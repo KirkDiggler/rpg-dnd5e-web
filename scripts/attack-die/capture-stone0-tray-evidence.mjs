@@ -643,6 +643,98 @@ async function canvasVisible(page, role) {
   });
 }
 
+async function waitForReadablePendingProvider(page, status) {
+  const statusHandle = await status.elementHandle();
+  if (!statusHandle) throw Error('pending provider status element unavailable');
+  await page.waitForFunction(
+    (element) => {
+      let effectiveAncestorOpacity = 1;
+      for (
+        let node = element;
+        node instanceof Element;
+        node = node.parentElement
+      )
+        effectiveAncestorOpacity *= Number(getComputedStyle(node).opacity);
+      return effectiveAncestorOpacity >= 0.9999;
+    },
+    statusHandle,
+    { timeout: 10_000 }
+  );
+  await page.evaluate(
+    () =>
+      new Promise((resolvePaint) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolvePaint))
+      )
+  );
+  const readability = await status.evaluate((element) => {
+    const parseColor = (value) => {
+      const channels = value.match(/[\d.]+/g)?.map(Number) ?? [];
+      if (channels.length < 3) return null;
+      return [channels[0], channels[1], channels[2], channels[3] ?? 1];
+    };
+    const relativeLuminance = (color) => {
+      const channels = color.slice(0, 3).map((channel) => {
+        const value = channel / 255;
+        return value <= 0.04045
+          ? value / 12.92
+          : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    };
+    let effectiveAncestorOpacity = 1;
+    for (let node = element; node instanceof Element; node = node.parentElement)
+      effectiveAncestorOpacity *= Number(getComputedStyle(node).opacity);
+    let background = [0, 0, 0, 1];
+    for (
+      let node = element;
+      node instanceof Element;
+      node = node.parentElement
+    ) {
+      const candidate = parseColor(getComputedStyle(node).backgroundColor);
+      if (candidate && candidate[3] > 0) {
+        background = candidate;
+        break;
+      }
+    }
+    const foreground = parseColor(getComputedStyle(element).color);
+    if (!foreground) return null;
+    const compositedForeground = foreground.map((channel, index) =>
+      index < 3
+        ? channel * effectiveAncestorOpacity +
+          background[index] * (1 - effectiveAncestorOpacity)
+        : 1
+    );
+    const foregroundLuminance = relativeLuminance(compositedForeground);
+    const backgroundLuminance = relativeLuminance(background);
+    const statusContrastRatio =
+      (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+      (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+    const rect = element.getBoundingClientRect();
+    return {
+      effectiveAncestorOpacity,
+      statusContrastRatio,
+      paintedAfterStabilization: true,
+      statusWidth: rect.width,
+      statusHeight: rect.height,
+    };
+  });
+  if (
+    !readability ||
+    readability.effectiveAncestorOpacity < 0.9999 ||
+    readability.statusContrastRatio < 4.5 ||
+    readability.statusWidth <= 0 ||
+    readability.statusHeight <= 0
+  )
+    throw Error(
+      `pending provider status is not fully opaque and readable: ${JSON.stringify(readability)}`
+    );
+  return {
+    effectiveAncestorOpacity: readability.effectiveAncestorOpacity,
+    statusContrastRatio: readability.statusContrastRatio,
+    paintedAfterStabilization: readability.paintedAfterStabilization,
+  };
+}
+
 async function captureResultCloseup(page, result, role) {
   const screenshot = stone0ResultCloseupScreenshot(result, role);
   const bytes = await page.locator(`[data-witness-role="${role}"]`).screenshot({
@@ -821,6 +913,10 @@ try {
     const status = scenario.page.getByTestId('dice-tray-provider-status');
     await status.waitFor();
     const text = await status.textContent();
+    const readability = await waitForReadablePendingProvider(
+      scenario.page,
+      status
+    );
     const trayMounted = await scenario.page
       .getByRole('heading', { name: 'Gameplay placement checkpoint' })
       .count();
@@ -847,6 +943,7 @@ try {
         resultVisible: false,
         trayMounted: false,
         canvasCount: 0,
+        ...readability,
       }
     );
     releaseManifest();

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { inflateSync } from 'node:zlib';
 import { validateManifest } from './evidenceProtocol';
 
 export const ORIGINAL_D20_GLB_SHA256 =
@@ -713,15 +714,43 @@ function validateScenario(
 
   if (id === 'pending-provider') {
     validateViewport(scenario.viewport, 1440, 1080, id);
-    validateFacts(
+    const facts = exactObject(
       scenario.facts,
-      {
-        providerState: 'loading',
-        resultVisible: false,
-        trayMounted: false,
-        canvasCount: 0,
-      },
+      [
+        'providerState',
+        'resultVisible',
+        'trayMounted',
+        'canvasCount',
+        'effectiveAncestorOpacity',
+        'statusContrastRatio',
+        'paintedAfterStabilization',
+      ],
       'pending provider scenario'
+    );
+    exactString(facts.providerState, 'loading', 'pending provider state');
+    exactBoolean(
+      facts.resultVisible,
+      false,
+      'pending provider result visibility'
+    );
+    exactBoolean(facts.trayMounted, false, 'pending provider Tray mount');
+    if (facts.canvasCount !== 0) fail('pending provider Canvas count');
+    const opacity = finite(
+      facts.effectiveAncestorOpacity,
+      'pending provider effective ancestor opacity'
+    );
+    if (opacity < 0.9999 || opacity > 1)
+      fail('pending provider content is not fully opaque');
+    const contrast = finite(
+      facts.statusContrastRatio,
+      'pending provider status contrast ratio'
+    );
+    if (contrast < 4.5 || contrast > 21)
+      fail('pending provider status is not readable at 4.5:1 contrast');
+    exactBoolean(
+      facts.paintedAfterStabilization,
+      true,
+      'pending provider painted-after-stabilization witness'
     );
   } else if (id === 'player-armed') {
     validateViewport(scenario.viewport, 1440, 1080, id);
@@ -1289,19 +1318,158 @@ function validateConsole(
   };
 }
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+const PNG_MAX_INFLATED_BYTES = 128 * 1024 * 1024;
+const PNG_CRC_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
+  let crc = value;
+  for (let bit = 0; bit < 8; bit += 1)
+    crc = (crc & 1) !== 0 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+  return crc >>> 0;
+});
+
+function pngCrc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+  for (const byte of bytes)
+    crc = PNG_CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function paethPredictor(left: number, above: number, upperLeft: number) {
+  const prediction = left + above - upperLeft;
+  const leftDistance = Math.abs(prediction - left);
+  const aboveDistance = Math.abs(prediction - above);
+  const upperLeftDistance = Math.abs(prediction - upperLeft);
+  if (leftDistance <= aboveDistance && leftDistance <= upperLeftDistance)
+    return left;
+  return aboveDistance <= upperLeftDistance ? above : upperLeft;
+}
+
 function pngDimensions(bytes: Uint8Array, label: string) {
   if (
-    bytes.byteLength < 24 ||
-    ![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
-      (byte, index) => bytes[index] === byte
-    ) ||
-    String.fromCharCode(...bytes.slice(12, 16)) !== 'IHDR'
+    bytes.byteLength < 57 ||
+    !PNG_SIGNATURE.every((byte, index) => bytes[index] === byte)
   )
-    fail(`${label} PNG content mismatch`);
+    fail(`${label} PNG signature or framing mismatch`);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const width = view.getUint32(16);
-  const height = view.getUint32(20);
-  if (width < 1 || height < 1) fail(`${label} PNG dimensions`);
+  let offset = PNG_SIGNATURE.length;
+  let width = 0;
+  let height = 0;
+  let sawHeader = false;
+  let sawImageData = false;
+  let imageDataEnded = false;
+  let sawEnd = false;
+  const imageDataChunks: Uint8Array[] = [];
+  let imageDataLength = 0;
+
+  while (offset < bytes.byteLength) {
+    if (bytes.byteLength - offset < 12)
+      fail(`${label} PNG truncated chunk framing`);
+    const length = view.getUint32(offset);
+    const typeOffset = offset + 4;
+    const dataOffset = offset + 8;
+    const crcOffset = dataOffset + length;
+    const nextOffset = crcOffset + 4;
+    if (nextOffset > bytes.byteLength)
+      fail(`${label} PNG truncated chunk data`);
+    const type = String.fromCharCode(...bytes.subarray(typeOffset, dataOffset));
+    if (!/^[A-Za-z]{4}$/.test(type)) fail(`${label} PNG illegal chunk type`);
+    if (
+      pngCrc32(bytes.subarray(typeOffset, crcOffset)) !==
+      view.getUint32(crcOffset)
+    )
+      fail(`${label} PNG ${type} CRC mismatch`);
+
+    if (type === 'IHDR') {
+      if (sawHeader || offset !== PNG_SIGNATURE.length || length !== 13)
+        fail(`${label} PNG IHDR order or length mismatch`);
+      width = view.getUint32(dataOffset);
+      height = view.getUint32(dataOffset + 4);
+      if (
+        width < 1 ||
+        height < 1 ||
+        bytes[dataOffset + 8] !== 8 ||
+        bytes[dataOffset + 9] !== 2 ||
+        bytes[dataOffset + 10] !== 0 ||
+        bytes[dataOffset + 11] !== 0 ||
+        bytes[dataOffset + 12] !== 0
+      )
+        fail(`${label} PNG unsupported or illegal IHDR screenshot profile`);
+      sawHeader = true;
+    } else if (type === 'IDAT') {
+      if (!sawHeader || sawEnd || imageDataEnded || length < 1)
+        fail(`${label} PNG IDAT order or length mismatch`);
+      sawImageData = true;
+      imageDataLength += length;
+      if (!Number.isSafeInteger(imageDataLength))
+        fail(`${label} PNG IDAT length overflow`);
+      imageDataChunks.push(bytes.subarray(dataOffset, crcOffset));
+    } else if (type === 'IEND') {
+      if (!sawHeader || !sawImageData || sawEnd || length !== 0)
+        fail(`${label} PNG IEND order or length mismatch`);
+      sawEnd = true;
+      if (nextOffset !== bytes.byteLength)
+        fail(`${label} PNG data follows IEND`);
+    } else {
+      fail(`${label} PNG unsupported screenshot chunk ${type}`);
+    }
+    if (sawImageData && type !== 'IDAT' && type !== 'IEND')
+      imageDataEnded = true;
+    offset = nextOffset;
+    if (sawEnd) break;
+  }
+  if (!sawHeader || !sawImageData || !sawEnd || offset !== bytes.byteLength)
+    fail(`${label} PNG incomplete IHDR/IDAT/IEND structure`);
+
+  const rowBytes = width * 3;
+  const inflatedLength = height * (rowBytes + 1);
+  if (
+    !Number.isSafeInteger(rowBytes) ||
+    !Number.isSafeInteger(inflatedLength) ||
+    inflatedLength > PNG_MAX_INFLATED_BYTES
+  )
+    fail(`${label} PNG decoded image dimensions exceed supported profile`);
+  const compressed = new Uint8Array(imageDataLength);
+  let compressedOffset = 0;
+  for (const chunk of imageDataChunks) {
+    compressed.set(chunk, compressedOffset);
+    compressedOffset += chunk.byteLength;
+  }
+  let inflated: Uint8Array;
+  try {
+    inflated = inflateSync(compressed, {
+      maxOutputLength: inflatedLength + 1,
+    });
+  } catch {
+    fail(`${label} PNG IDAT inflate failed`);
+  }
+  if (inflated.byteLength !== inflatedLength)
+    fail(`${label} PNG inflated image-data length mismatch`);
+
+  let previous = new Uint8Array(rowBytes);
+  for (let row = 0; row < height; row += 1) {
+    const scanlineOffset = row * (rowBytes + 1);
+    const filter = inflated[scanlineOffset];
+    if (filter > 4) fail(`${label} PNG illegal scanline filter`);
+    const current = new Uint8Array(rowBytes);
+    for (let column = 0; column < rowBytes; column += 1) {
+      const encoded = inflated[scanlineOffset + column + 1];
+      const left = column >= 3 ? current[column - 3] : 0;
+      const above = previous[column];
+      const upperLeft = column >= 3 ? previous[column - 3] : 0;
+      const predictor =
+        filter === 0
+          ? 0
+          : filter === 1
+            ? left
+            : filter === 2
+              ? above
+              : filter === 3
+                ? Math.floor((left + above) / 2)
+                : paethPredictor(left, above, upperLeft);
+      current[column] = (encoded + predictor) & 0xff;
+    }
+    previous = current;
+  }
   return { width, height };
 }
 

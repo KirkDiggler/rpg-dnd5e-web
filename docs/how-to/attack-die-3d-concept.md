@@ -174,13 +174,21 @@ with both PASS and FAILED markers.
 The package rereads and binds the parsed build, browser, network, and console
 JSON; exact 78-context ID/count matrix; exact console location/message matrix;
 20 full-page result PNGs; 40 Roller/Spectator well close-ups; and 18 scenario
-PNGs. Close-ups are captured at browser device scale factor 3, include the
-whole witness well, and must be at least 220×220 physical pixels in both their
-browser facts and reread PNG IHDR. Missing, substituted, reordered,
-undersized, or contradictory package artifacts fail.
+PNGs. Every PNG must have complete signature/IHDR/contiguous IDAT/IEND framing,
+valid chunk CRCs, the supported 8-bit truecolor non-interlaced screenshot
+profile, successful zlib inflation, exact scanline lengths, and legal filters.
+Close-ups are captured at browser device scale factor 3, include the whole
+witness well, and must be at least 220×220 physical pixels in both their browser
+facts and decoded PNG dimensions. Missing, substituted, reordered, truncated,
+corrupt, undersized, or contradictory package artifacts fail.
 
 The driver starts on the dedicated `attackDieStage=tray` route, so historical
-Lightning loading remains dormant. Every exact `localhost:8080` RPC is fulfilled
+Lightning loading remains dormant. Before the pending-provider screenshot it
+waits for the effective opacity of the status and every ancestor to reach full
+opacity, waits a double animation frame so at least one paint occurs after
+stabilization, and requires at least 4.5:1 computed status contrast. Near-black
+mid-transition loading evidence cannot package-pass. Every exact
+`localhost:8080` RPC is fulfilled
 by a driver-owned deterministic successful gRPC-Web empty-protobuf envelope;
 unknown URLs or methods fail. Each
 console message records `consoleMessage.location()`, and only the exact

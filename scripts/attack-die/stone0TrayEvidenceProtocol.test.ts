@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import type { DiceSettlementEntryV2 } from '../../src/components/ui/dice/diceRuntimeManifest';
+import { observeUpwardResult } from '../../src/components/ui/dice/diceSettlementObservation';
 import {
   ORIGINAL_D20_BODY_TRIANGLE_COUNT,
   ORIGINAL_D20_GLB_SHA256,
@@ -108,6 +111,9 @@ function scenario(id: (typeof STONE0_SCENARIO_IDS)[number]) {
         resultVisible: false,
         trayMounted: false,
         canvasCount: 0,
+        effectiveAncestorOpacity: 1,
+        statusContrastRatio: 7,
+        paintedAfterStabilization: true,
       },
     };
   if (id === 'player-armed')
@@ -226,14 +232,14 @@ function resultFact(result: number) {
       roller: {
         screenshot: stone0ResultCloseupScreenshot(result, 'roller'),
         deviceScaleFactor: 3,
-        physicalWidth: 660,
-        physicalHeight: 660,
+        physicalWidth: 220,
+        physicalHeight: 220,
       },
       spectator: {
         screenshot: stone0ResultCloseupScreenshot(result, 'spectator'),
         deviceScaleFactor: 3,
-        physicalWidth: 660,
-        physicalHeight: 660,
+        physicalWidth: 220,
+        physicalHeight: 220,
       },
     },
   };
@@ -282,9 +288,74 @@ const hash = (value: Uint8Array | string) =>
 const jsonBytes = (value: unknown) =>
   new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`);
 
-function pngBytes(width = 1440, height = 1080) {
+const PNG_SIGNATURE = Uint8Array.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+const pngCache = new Map<string, Uint8Array>();
+const crcTable = Uint32Array.from({ length: 256 }, (_, value) => {
+  let crc = value;
+  for (let bit = 0; bit < 8; bit += 1)
+    crc = (crc & 1) !== 0 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+  return crc >>> 0;
+});
+
+function crc32(bytes: Uint8Array) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array) {
+  const typeBytes = new TextEncoder().encode(type);
+  const bytes = new Uint8Array(data.byteLength + 12);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, data.byteLength);
+  bytes.set(typeBytes, 4);
+  bytes.set(data, 8);
+  view.setUint32(
+    8 + data.byteLength,
+    crc32(bytes.slice(4, 8 + data.byteLength))
+  );
+  return bytes;
+}
+
+function pngFromRows(width: number, height: number, rows: Uint8Array) {
+  const header = new Uint8Array(13);
+  const headerView = new DataView(header.buffer);
+  headerView.setUint32(0, width);
+  headerView.setUint32(4, height);
+  header.set([8, 2, 0, 0, 0], 8);
+  const parts = [
+    PNG_SIGNATURE,
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(rows)),
+    pngChunk('IEND', new Uint8Array()),
+  ];
+  const bytes = new Uint8Array(
+    parts.reduce((total, part) => total + part.byteLength, 0)
+  );
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.byteLength;
+  }
+  return bytes;
+}
+
+function pngBytes(width = 1, height = 1) {
+  const key = `${width}x${height}`;
+  const cached = pngCache.get(key);
+  if (cached) return cached;
+  const rows = new Uint8Array(height * (1 + width * 3));
+  for (let row = 0; row < height; row += 1) rows[row * (1 + width * 3)] = 0;
+  const bytes = pngFromRows(width, height, rows);
+  pngCache.set(key, bytes);
+  return bytes;
+}
+
+function truncatedPseudoPng(width: number, height: number) {
   const bytes = new Uint8Array(24);
-  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  bytes.set(PNG_SIGNATURE, 0);
   bytes.set([0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52], 8);
   new DataView(bytes.buffer).setUint32(16, width);
   new DataView(bytes.buffer).setUint32(20, height);
@@ -517,6 +588,43 @@ function refreshArtifact(
   artifact.sizeBytes = bytes.byteLength;
 }
 
+const HISTORICAL_RESULT_3_WORLD_POSE = [
+  -0.32505761, 0, -0.32505764, 0.8880738,
+] as const;
+
+function historicalResult3ObserverEntries(): Record<
+  string,
+  DiceSettlementEntryV2
+> {
+  const downward = [0, -1, 0] as const;
+  return Object.fromEntries(
+    Array.from({ length: 20 }, (_, index) => {
+      const result = index + 1;
+      const readDirection =
+        result === 3
+          ? ([0.57735025, 0.57735043, -0.57735013] as const)
+          : result === 5
+            ? ([-0.57735022, 0.57735044, 0.57735015] as const)
+            : downward;
+      return [
+        String(result),
+        {
+          quaternion:
+            result === 3
+              ? HISTORICAL_RESULT_3_WORLD_POSE
+              : ([0, 0, 0, 1] as const),
+          witness: {
+            kind: 'runtime-direction' as const,
+            readKind: 'face' as const,
+            readIndex: index,
+            readDirection,
+          },
+        },
+      ];
+    })
+  );
+}
+
 describe('Stone 0 Tray evidence protocol v2', () => {
   it('keeps the capture on the real Tray and obtains upward identity only from renderer telemetry', () => {
     const source = readFileSync(
@@ -544,6 +652,10 @@ describe('Stone 0 Tray evidence protocol v2', () => {
     expect(source).not.toMatch(/observedUpwardResult\s*:\s*(?:\d+|result)\b/);
     expect(source).toMatch(/deviceScaleFactor:\s*3/);
     expect(source).toMatch(/stone0ResultCloseupScreenshot/);
+    expect(source).toMatch(/waitForReadablePendingProvider/);
+    expect(source).toMatch(/effectiveAncestorOpacity/);
+    expect(source).toMatch(/statusContrastRatio/);
+    expect(source).toMatch(/requestAnimationFrame[\s\S]*requestAnimationFrame/);
     expect(STONE0_LOCAL_API_RESPONSE).toEqual(
       Uint8Array.from([
         0, 0, 0, 0, 0, 128, 0, 0, 0, 16, 103, 114, 112, 99, 45, 115, 116, 97,
@@ -619,15 +731,37 @@ describe('Stone 0 Tray evidence protocol v2', () => {
     );
   });
 
-  it('rejects the historical semantic permutation from independent renderer observations', () => {
-    const oldObservedByRequested = [
-      1, 2, 5, 6, 3, 4, 8, 7, 9, 11, 12, 10, 14, 13, 18, 17, 16, 15, 19, 20,
-    ];
+  it('rejects the historical result-3 world pose after the production observer sees corrected result 5 witnesses', () => {
+    const entries = historicalResult3ObserverEntries();
+    const rollerObservation = observeUpwardResult(
+      entries,
+      HISTORICAL_RESULT_3_WORLD_POSE
+    );
+    const spectatorObservation = observeUpwardResult(
+      structuredClone(entries),
+      HISTORICAL_RESULT_3_WORLD_POSE
+    );
+    expect(rollerObservation.result).toBe(5);
+    expect(spectatorObservation.result).toBe(5);
+
     const value = cloneEvidence();
-    value.results.forEach((fact, index) => {
-      fact.roller.observedUpwardResult = oldObservedByRequested[index];
-      fact.spectator.observedUpwardResult = oldObservedByRequested[index];
-    });
+    const fact = value.results[2];
+    fact.targetInvariance = {
+      rollerRoll: HISTORICAL_RESULT_3_WORLD_POSE,
+      hostRelease: HISTORICAL_RESULT_3_WORLD_POSE,
+      decorativeVariation: HISTORICAL_RESULT_3_WORLD_POSE,
+    };
+    for (const [role, observation] of [
+      ['roller', rollerObservation],
+      ['spectator', spectatorObservation],
+    ] as const) {
+      fact[role].mappedTarget = HISTORICAL_RESULT_3_WORLD_POSE;
+      fact[role].observedUpwardResult = observation.result;
+      fact[role].observedUpDot = observation.upDot;
+      fact[role].observedUpMargin = observation.margin;
+      fact[role].exactTargetHeld = true;
+    }
+
     expect(() => assertStone0TrayEvidence(value, identity)).toThrow(
       'requested result 3 observed upward result 5'
     );
@@ -724,6 +858,25 @@ describe('Stone 0 Tray evidence protocol v2', () => {
     }
   });
 
+  it('rejects pending-provider evidence captured before full opacity, paint stabilization, or readable contrast', () => {
+    for (const mutate of [
+      (facts: Record<string, unknown>) =>
+        (facts.effectiveAncestorOpacity = 0.999),
+      (facts: Record<string, unknown>) => (facts.statusContrastRatio = 4.49),
+      (facts: Record<string, unknown>) =>
+        (facts.paintedAfterStabilization = false),
+    ]) {
+      const value = cloneEvidence();
+      const pending = value.scenarios.find(
+        (candidate) => candidate.id === 'pending-provider'
+      )!;
+      mutate(pending.facts);
+      expect(() => assertStone0TrayEvidence(value, identity)).toThrow(
+        /pending|opacity|paint|contrast|readable/i
+      );
+    }
+  });
+
   it('retains the complete pending, release, reduced-motion, failure, context-loss, and shader matrix', () => {
     const missing = cloneEvidence();
     missing.scenarios.pop();
@@ -795,11 +948,62 @@ describe('Stone 0 Tray evidence protocol v2', () => {
     ).toThrow(/artifact|digest|size|json|png|package/i);
   });
 
+  it('rejects truncated, corrupt, or structurally undecodable PNG artifacts', () => {
+    const valid = pngBytes();
+    const corruptCrc = valid.slice();
+    corruptCrc[29] ^= 0xff;
+    const invalidFilterRows = Uint8Array.from([5, 0, 0, 0]);
+    const missingIdat = new Uint8Array(
+      PNG_SIGNATURE.byteLength +
+        pngChunk(
+          'IHDR',
+          Uint8Array.from([0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0])
+        ).byteLength +
+        pngChunk('IEND', new Uint8Array()).byteLength
+    );
+    missingIdat.set(PNG_SIGNATURE, 0);
+    const missingIdatHeader = pngChunk(
+      'IHDR',
+      Uint8Array.from([0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0])
+    );
+    missingIdat.set(missingIdatHeader, PNG_SIGNATURE.byteLength);
+    missingIdat.set(
+      pngChunk('IEND', new Uint8Array()),
+      PNG_SIGNATURE.byteLength + missingIdatHeader.byteLength
+    );
+    const trailingBytes = new Uint8Array(valid.byteLength + 1);
+    trailingBytes.set(valid);
+    trailingBytes[valid.byteLength] = 1;
+
+    for (const bytes of [
+      truncatedPseudoPng(1, 1),
+      valid.slice(0, -12),
+      corruptCrc,
+      missingIdat,
+      trailingBytes,
+      pngFromRows(1, 1, invalidFilterRows),
+      pngFromRows(1, 1, Uint8Array.from([0, 0, 0])),
+    ]) {
+      const fixture = packageFixture();
+      const path = stone0ResultScreenshot(1);
+      fixture.files.set(path, bytes);
+      refreshArtifact(fixture, path);
+      expect(() =>
+        assertStone0TrayEvidencePackage(
+          fixture.packageManifest,
+          fixture.packageIdentity,
+          fixture.files,
+          ['PASS']
+        )
+      ).toThrow(/PNG|chunk|CRC|IHDR|IDAT|IEND|inflate|image|filter/i);
+    }
+  });
+
   it('rejects actual closeup PNG dimensions below the physical minimum or contradicting browser facts', () => {
     for (const dimensions of [
-      [219, 660],
-      [660, 219],
-      [659, 660],
+      [219, 220],
+      [220, 219],
+      [221, 220],
     ]) {
       const fixture = packageFixture();
       const path = stone0ResultCloseupScreenshot(1, 'roller');
