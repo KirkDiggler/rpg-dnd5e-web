@@ -1387,16 +1387,16 @@ export function classifyStone1ConsoleEntry(
   return null;
 }
 
-function validateConsole(
+export function assertStone1ConsoleEvidence(
   value: unknown,
   baseOrigin: string,
-  build: ReturnType<typeof validateManifest>
+  buildValue: unknown
 ) {
   const artifact = exactObject(value, CONSOLE_KEYS, 'console log');
   if (artifact.schemaVersion !== 1 || artifact.kind !== 'stone1-console-log')
     fail('console log schema');
   const mainJsPath = oneBuildPath(
-    build,
+    validateManifest(buildValue),
     /^assets\/index-[^/]+\.js$/,
     'main JS'
   );
@@ -1444,6 +1444,7 @@ function validateConsole(
   }
   emptyArray(artifact.pageErrors, 'console page errors');
   emptyArray(artifact.unexpectedErrors, 'console unexpected errors');
+  return value;
 }
 
 function currentPeakRssBytes() {
@@ -1581,7 +1582,7 @@ export function assertStone1TrayEvidencePackage(
     build,
     identity.sourceSha
   );
-  validateConsole(
+  assertStone1ConsoleEvidence(
     parseJsonBytes(artifactBytes.get('console.json')!, 'console'),
     network.baseOrigin,
     build

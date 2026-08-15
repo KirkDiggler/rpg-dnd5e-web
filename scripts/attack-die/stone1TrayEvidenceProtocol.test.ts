@@ -16,6 +16,7 @@ import {
   STONE1_SCENARIO_IDS,
   STONE1_SYNTY_REQUEST_PATHS,
   assertFrozenBuildSourceBinding,
+  assertStone1ConsoleEvidence,
   assertStone1TrayEvidence,
   assertStone1TrayEvidencePackage,
   stone1PhaseCloseupScreenshot,
@@ -988,6 +989,17 @@ describe('Stone 1 exact package protocol', () => {
       path: string,
       mutate: (value: Record<string, unknown>) => void
     ) => {
+      if (path === 'console.json') {
+        const value = structuredClone(consoleArtifact()) as Record<
+          string,
+          unknown
+        >;
+        mutate(value);
+        expect(() =>
+          assertStone1ConsoleEvidence(value, fixtureOrigin, buildManifest)
+        ).toThrow();
+        return;
+      }
       const fixture = packageFixture();
       const value = JSON.parse(
         new TextDecoder().decode(fixture.artifactBytes.get(path)!)
@@ -1181,10 +1193,7 @@ describe('Stone 1 exact package protocol', () => {
   }, 30_000);
 
   it('accepts only bounded exact-class Chrome ReadPixels warnings and variable RPC timing', () => {
-    const fixture = packageFixture();
-    const value = JSON.parse(
-      new TextDecoder().decode(fixture.artifactBytes.get('console.json')!)
-    ) as Record<string, unknown>;
+    const value = structuredClone(consoleArtifact()) as Record<string, unknown>;
     const entries = value.entries as Record<string, unknown>[];
     entries.push(
       {
@@ -1204,19 +1213,8 @@ describe('Stone 1 exact package protocol', () => {
       (entry) => entry.text === fixtureConsoleResponses[0]
     )!;
     response.text = String(response.text).replace('(42ms)', '(1234ms)');
-    const replacement = new TextEncoder().encode(JSON.stringify(value));
-    fixture.artifactBytes.set('console.json', replacement);
-    const artifact = fixture.manifest.artifacts.find(
-      (entry) => entry.path === 'console.json'
-    )!;
-    artifact.sha256 = sha256(replacement);
-    artifact.sizeBytes = replacement.byteLength;
     expect(() =>
-      assertStone1TrayEvidencePackage(
-        fixture.manifest,
-        identity,
-        fixture.artifactBytes
-      )
+      assertStone1ConsoleEvidence(value, fixtureOrigin, buildManifest)
     ).not.toThrow();
   });
 });
