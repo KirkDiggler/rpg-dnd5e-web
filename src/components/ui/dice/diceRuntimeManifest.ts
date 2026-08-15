@@ -101,7 +101,11 @@ const EXPECTED_RESULTS: Readonly<Record<RuntimeDieKind, readonly number[]>> = {
   d4: Object.freeze(Array.from({ length: 4 }, (_, index) => index + 1)),
 };
 
-class ManifestValidationError extends Error {}
+const validationFailureReasons = new WeakMap<object, string>();
+const GENERIC_MANIFEST_FAILURE: DiceRuntimeManifestResult = Object.freeze({
+  ok: false,
+  reason: 'manifest could not be safely inspected',
+});
 
 interface ObjectSnapshot {
   readonly keys: readonly string[];
@@ -109,7 +113,9 @@ interface ObjectSnapshot {
 }
 
 function invalid(reason: string): never {
-  throw new ManifestValidationError(reason);
+  const failure = Object.freeze(Object.create(null) as object);
+  validationFailureReasons.set(failure, reason);
+  throw failure;
 }
 
 function sameKeys(actual: readonly string[], expected: readonly string[]) {
@@ -627,12 +633,12 @@ export function parseDiceRuntimeManifest(
   try {
     return Object.freeze({ ok: true, manifest: parseManifest(value) });
   } catch (error) {
-    return Object.freeze({
-      ok: false,
-      reason:
-        error instanceof ManifestValidationError
-          ? error.message
-          : 'manifest could not be safely inspected',
-    });
+    const isWeakKey =
+      (typeof error === 'object' && error !== null) ||
+      typeof error === 'function';
+    const reason = isWeakKey ? validationFailureReasons.get(error) : undefined;
+    return reason
+      ? Object.freeze({ ok: false, reason })
+      : GENERIC_MANIFEST_FAILURE;
   }
 }

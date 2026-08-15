@@ -452,6 +452,31 @@ describe('parseDiceRuntimeManifest', () => {
     expectRejected(decorated);
   });
 
+  it('returns a frozen generic failure when a getter throws a prototype-trapping Proxy', () => {
+    const thrownProxy = new Proxy(Object.create(null) as object, {
+      getPrototypeOf() {
+        throw Error('hostile thrown-value prototype trap');
+      },
+    });
+    const inbound = cloneFixture();
+    Object.defineProperty(inbound.presets[0].model, 'path', {
+      enumerable: true,
+      get() {
+        throw thrownProxy;
+      },
+    });
+
+    let result: ReturnType<typeof parseDiceRuntimeManifest> | undefined;
+    expect(() => {
+      result = parseDiceRuntimeManifest(inbound);
+    }).not.toThrow();
+    expect(result).toEqual({
+      ok: false,
+      reason: 'manifest could not be safely inspected',
+    });
+    expect(Object.isFrozen(result)).toBe(true);
+  });
+
   it('fails closed instead of throwing for hostile getters and proxies at any depth', () => {
     const throwingGetter = cloneFixture();
     Object.defineProperty(throwingGetter.presets[0].model, 'path', {

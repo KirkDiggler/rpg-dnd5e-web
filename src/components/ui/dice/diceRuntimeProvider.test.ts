@@ -92,6 +92,23 @@ function arrangeFetches(manifest: unknown = validDiceRuntimeManifest()) {
   return fetchMock;
 }
 
+function hostileFailureValue() {
+  return new Proxy(new Error('untrusted failure'), {
+    getPrototypeOf() {
+      throw Error('hostile provider prototype trap');
+    },
+    get(target, property, receiver) {
+      if (
+        property === 'message' ||
+        property === 'toString' ||
+        property === Symbol.toPrimitive
+      )
+        throw Error('hostile provider string trap');
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+}
+
 beforeEach(() => {
   __resetDiceRuntimeProviderForTests();
   loader.parse.mockReset();
@@ -180,6 +197,38 @@ describe('dice runtime provider', () => {
       });
     }
   );
+
+  it('shares bounded disallowed ownership across distinct arbitrary IDs without fetching', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    arrangeDigest();
+
+    const first = preloadDiceRuntimePreset('arbitrary.disallowed.one');
+    const second = preloadDiceRuntimePreset('arbitrary.disallowed.two');
+    const third = preloadDiceRuntimePreset(`arbitrary.${'x'.repeat(10_000)}`);
+
+    expect(second).toBe(first);
+    expect(third).toBe(first);
+    await expect(first).rejects.toThrow(/allowlist/i);
+    await expect(second).rejects.toThrow(/allowlist/i);
+    await expect(third).rejects.toThrow(/allowlist/i);
+
+    const firstSnapshot = getDiceRuntimePresetSnapshot(
+      'arbitrary.disallowed.one'
+    );
+    expect(getDiceRuntimePresetSnapshot('arbitrary.disallowed.two')).toBe(
+      firstSnapshot
+    );
+    expect(
+      getDiceRuntimePresetSnapshot(`arbitrary.${'y'.repeat(10_000)}`)
+    ).toBe(firstSnapshot);
+    expect(firstSnapshot).toEqual({
+      status: 'failed',
+      failureReason: 'runtime preset is not allowlisted',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(loader.parse).not.toHaveBeenCalled();
+  });
 
   it('coalesces a terminal manifest response failure', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
@@ -325,6 +374,55 @@ describe('dice runtime provider', () => {
     expect(digest).toHaveBeenCalledWith('SHA-256', expect.any(ArrayBuffer));
     expect(loader.parse).not.toHaveBeenCalled();
     expect(getDiceRuntimePresetSnapshot(PRESET_ID).status).toBe('failed');
+  });
+
+  it('normalizes a hostile digest rejection and unconditionally leaves a failed snapshot', async () => {
+    const fetchMock = arrangeFetches();
+    const digest = vi.fn().mockRejectedValue(hostileFailureValue());
+    vi.stubGlobal('crypto', { subtle: { digest } });
+
+    const owner = preloadDiceRuntimePreset(PRESET_ID);
+    await expect(owner).rejects.toThrow('dice runtime failure');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(digest).toHaveBeenCalledTimes(1);
+    expect(loader.parse).not.toHaveBeenCalled();
+    expect(getDiceRuntimePresetSnapshot(PRESET_ID)).toMatchObject({
+      status: 'failed',
+      preset: { presetId: PRESET_ID },
+      failureReason: 'dice runtime failure',
+    });
+    await expect(preloadDiceRuntimePreset(PRESET_ID)).rejects.toThrow(
+      'dice runtime failure'
+    );
+  });
+
+  it('normalizes a hostile GLTF rejection and unconditionally leaves a failed snapshot', async () => {
+    const fetchMock = arrangeFetches();
+    const digest = arrangeDigest();
+    loader.parse.mockImplementation(
+      (
+        _bytes: ArrayBuffer,
+        _path: string,
+        _onLoad: unknown,
+        onError: (error: unknown) => void
+      ) => onError(hostileFailureValue())
+    );
+
+    const owner = preloadDiceRuntimePreset(PRESET_ID);
+    await expect(owner).rejects.toThrow('dice runtime failure');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(digest).toHaveBeenCalledTimes(1);
+    expect(loader.parse).toHaveBeenCalledTimes(1);
+    expect(getDiceRuntimePresetSnapshot(PRESET_ID)).toMatchObject({
+      status: 'failed',
+      preset: { presetId: PRESET_ID },
+      failureReason: 'dice runtime failure',
+    });
+    await expect(preloadDiceRuntimePreset(PRESET_ID)).rejects.toThrow(
+      'dice runtime failure'
+    );
   });
 
   it('enforces contract → bytes/size/hash → GLTF parse ordering', async () => {

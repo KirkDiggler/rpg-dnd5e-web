@@ -23,9 +23,14 @@ export interface DiceRuntimePresetSnapshot {
 const MANIFEST_URL = '/models/custom-dice/dice-tray-presets.json';
 const RUNTIME_MODEL_ROOT = '/models/custom-dice';
 const ORIGINAL_CARVED_D20_PRESET_ID = 'dice.original.carved.d20';
+const DISALLOWED_REASON = 'runtime preset is not allowlisted';
 const ALLOWLIST = new Set([ORIGINAL_CARVED_D20_PRESET_ID]);
 const IDLE_SNAPSHOT: DiceRuntimePresetSnapshot = Object.freeze({
   status: 'idle',
+});
+const DISALLOWED_SNAPSHOT: DiceRuntimePresetSnapshot = Object.freeze({
+  status: 'failed',
+  failureReason: DISALLOWED_REASON,
 });
 
 type ParsedGltf = Awaited<ReturnType<GLTFLoader['parseAsync']>>;
@@ -37,13 +42,31 @@ interface PresetCacheEntry {
 
 let manifestOwner: Promise<DiceRuntimeManifest> | undefined;
 let validatedManifest: DiceRuntimeManifest | undefined;
+let disallowedOwner: Promise<void> | undefined;
 const requestOwners = new Map<string, Promise<void>>();
 const requestSnapshots = new Map<string, DiceRuntimePresetSnapshot>();
 const presetCacheKeys = new Map<string, string>();
 const presetCache = new Map<string, PresetCacheEntry>();
 
-function failureReason(error: unknown) {
-  return error instanceof Error ? error.message : 'dice runtime failure';
+function failureReason(error: unknown): string {
+  if (typeof error === 'string' && error.length > 0) return error;
+  if (
+    (typeof error === 'object' && error !== null) ||
+    typeof error === 'function'
+  ) {
+    try {
+      const message = Reflect.get(error, 'message');
+      if (typeof message === 'string' && message.length > 0) return message;
+    } catch {
+      // Untrusted rejection values must not escape failure normalization.
+    }
+  }
+  return 'dice runtime failure';
+}
+
+function controlledError(error: unknown, context?: string): Error {
+  const reason = failureReason(error);
+  return Error(context ? `${context}: ${reason}` : reason);
 }
 
 function failedSnapshot(
@@ -70,7 +93,7 @@ async function fetchManifest(): Promise<DiceRuntimeManifest> {
   try {
     response = checkedResponse(await fetch(MANIFEST_URL), 'manifest');
   } catch (error) {
-    throw Error(`manifest fetch failed: ${failureReason(error)}`);
+    throw controlledError(error, 'manifest fetch failed');
   }
 
   let value: unknown;
@@ -79,7 +102,7 @@ async function fetchManifest(): Promise<DiceRuntimeManifest> {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     value = JSON.parse(text) as unknown;
   } catch (error) {
-    throw Error(`manifest JSON failed: ${failureReason(error)}`);
+    throw controlledError(error, 'manifest JSON failed');
   }
 
   const result = parseDiceRuntimeManifest(value);
@@ -120,14 +143,14 @@ async function fetchModelBytes(
   try {
     response = checkedResponse(await fetch(modelUrl), 'model');
   } catch (error) {
-    throw Error(`model fetch failed: ${failureReason(error)}`);
+    throw controlledError(error, 'model fetch failed');
   }
 
   let bytes: ArrayBuffer;
   try {
     bytes = await response.arrayBuffer();
   } catch (error) {
-    throw Error(`model bytes failed: ${failureReason(error)}`);
+    throw controlledError(error, 'model bytes failed');
   }
   if (bytes.byteLength !== preset.model.sizeBytes)
     throw Error('model byte size mismatch');
@@ -194,12 +217,7 @@ function prepareSingleMeshBinding(
       meshDefinition,
       meshDefinitionIndex,
     });
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === 'runtime mesh binding failed'
-    )
-      throw error;
+  } catch {
     return meshBindingFailure();
   }
 }
@@ -221,7 +239,7 @@ async function loadPresetEntry(
   } catch (error) {
     const reason = failureReason(error);
     entry.snapshot = failedSnapshot(reason, preset);
-    throw error instanceof Error ? error : Error(reason);
+    throw Error(reason);
   }
 }
 
@@ -251,21 +269,18 @@ async function loadRequestedPreset(presetId: string): Promise<void> {
     if (!presetCacheKeys.has(presetId)) {
       requestSnapshots.set(presetId, failedSnapshot(reason));
     }
-    throw error instanceof Error ? error : Error(reason);
+    throw Error(reason);
   }
 }
 
 export function preloadDiceRuntimePreset(presetId: string): Promise<void> {
+  if (!ALLOWLIST.has(presetId)) {
+    disallowedOwner ??= Promise.reject(Error(DISALLOWED_REASON));
+    return disallowedOwner;
+  }
+
   const existing = requestOwners.get(presetId);
   if (existing) return existing;
-
-  if (!ALLOWLIST.has(presetId)) {
-    const error = Error('runtime preset is not allowlisted');
-    requestSnapshots.set(presetId, failedSnapshot(error.message));
-    const owner = Promise.reject(error);
-    requestOwners.set(presetId, owner);
-    return owner;
-  }
 
   requestSnapshots.set(presetId, Object.freeze({ status: 'loading' }));
   const owner = loadRequestedPreset(presetId);
@@ -276,6 +291,7 @@ export function preloadDiceRuntimePreset(presetId: string): Promise<void> {
 export function getDiceRuntimePresetSnapshot(
   presetId: string
 ): DiceRuntimePresetSnapshot {
+  if (!ALLOWLIST.has(presetId)) return DISALLOWED_SNAPSHOT;
   const cacheKey = presetCacheKeys.get(presetId);
   if (cacheKey) return presetCache.get(cacheKey)?.snapshot ?? IDLE_SNAPSHOT;
   return requestSnapshots.get(presetId) ?? IDLE_SNAPSHOT;
@@ -284,6 +300,7 @@ export function getDiceRuntimePresetSnapshot(
 export function __resetDiceRuntimeProviderForTests() {
   manifestOwner = undefined;
   validatedManifest = undefined;
+  disallowedOwner = undefined;
   requestOwners.clear();
   requestSnapshots.clear();
   presetCacheKeys.clear();
