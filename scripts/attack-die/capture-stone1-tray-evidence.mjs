@@ -965,21 +965,12 @@ try {
           '[data-witness-role] [data-testid="dice-face"]'
         ),
       ].map((node) => Number(node.textContent));
-      const failureTelemetry = witnesses.map(
-        (witness) => witness.failureTelemetry
-      );
       if (
         svgs.length !== 2 ||
         results.length !== 2 ||
-        !results.every((result) => result === results[0]) ||
-        !failureTelemetry.every(
-          (telemetry) =>
-            telemetry?.renderer === 'svg' &&
-            telemetry.state === 'failed' &&
-            telemetry.requestedResult === results[0]
-        )
+        !results.every((result) => result === results[0])
       )
-        throw Error('live fallback renderer/result telemetry mismatch');
+        throw Error('live fallback renderer/result DOM mismatch');
       return {
         origin: failureOrigin,
         fallbackRenderer: 'svg',

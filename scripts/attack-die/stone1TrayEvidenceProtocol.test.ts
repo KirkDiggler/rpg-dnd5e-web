@@ -503,6 +503,10 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain("page.on('requestfailed'");
     expect(source).not.toContain('expectedSevere');
     expect(source).not.toContain('motionCounts = { tumble: 3');
+    expect(source).toContain('observedFallbackFacts');
+    expect(source).toContain('[data-testid="d20-die"]');
+    expect(source).toContain('[data-testid="dice-face"]');
+    expect(source).not.toContain('failureTelemetry.every');
     expect(source).toContain('page.mouse.down');
     expect(source).toContain('page.mouse.up');
     expect(source).toContain("type: 'touchCancel'");
