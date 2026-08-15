@@ -362,6 +362,32 @@ function nearBlackStatusPng() {
   return pngFromRows(2, 1, Uint8Array.from([0, 10, 10, 10, 11, 11, 11]));
 }
 
+function pngWithDeclaredDimensionsAndTinyImageData(
+  width: number,
+  height: number
+) {
+  const header = new Uint8Array(13);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
+  header.set([8, 2, 0, 0, 0], 8);
+  const parts = [
+    PNG_SIGNATURE,
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(Uint8Array.from([0, 0, 0, 0]))),
+    pngChunk('IEND', new Uint8Array()),
+  ];
+  const bytes = new Uint8Array(
+    parts.reduce((total, part) => total + part.byteLength, 0)
+  );
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.byteLength;
+  }
+  return bytes;
+}
+
 function truncatedPseudoPng(width: number, height: number) {
   const bytes = new Uint8Array(24);
   bytes.set(PNG_SIGNATURE, 0);
@@ -637,6 +663,27 @@ function historicalResult3ObserverEntries(): Record<
 }
 
 describe('Stone 0 Tray evidence protocol v2', () => {
+  it('preflights an aggregate PNG budget and decodes sequentially without retaining full reconstructed images', () => {
+    const source = readFileSync(
+      'scripts/attack-die/stone0TrayEvidenceProtocol.ts',
+      'utf8'
+    );
+    expect(source).toMatch(/PNG_MAX_AGGREGATE_DECODED_BYTES/);
+    expect(source).toMatch(/aggregateDecodedBytes/);
+    expect(source).toMatch(
+      /PNG_MAX_AGGREGATE_DECODED_BYTES = 1536 \* 1024 \* 1024/
+    );
+    expect(source).toMatch(/for \(const path of expectedScreenshotPaths\)/);
+    expect(source.match(/\bdecodePng\(/g)).toHaveLength(2);
+    expect(source.match(/\binflateSync\(/g)).toHaveLength(1);
+    expect(source).toMatch(/screenshotDimensions/);
+    expect(source).not.toMatch(/decodedScreenshots/);
+    expect(source).not.toMatch(/const pixels = new Uint8Array/);
+    expect(source).toMatch(
+      /closeup[\s\S]*screenshotDimensions\.get\(closeup\.screenshot\)/
+    );
+  });
+
   it('keeps the capture on the real Tray and obtains upward identity only from renderer telemetry', () => {
     const source = readFileSync(
       'scripts/attack-die/capture-stone0-tray-evidence.mjs',
@@ -974,6 +1021,24 @@ describe('Stone 0 Tray evidence protocol v2', () => {
         ['PASS']
       )
     ).toThrow(/artifact|digest|size|json|png|package/i);
+  });
+
+  it('rejects a hostile multi-image decoded total before bulk inflation', () => {
+    const fixture = packageFixture();
+    const hostile = pngWithDeclaredDimensionsAndTinyImageData(4096, 4096);
+    for (const artifact of fixture.packageManifest.artifacts) {
+      if (artifact.kind !== 'screenshot') continue;
+      fixture.files.set(artifact.path, hostile);
+      refreshArtifact(fixture, artifact.path);
+    }
+    expect(() =>
+      assertStone0TrayEvidencePackage(
+        fixture.packageManifest,
+        fixture.packageIdentity,
+        fixture.files,
+        ['PASS']
+      )
+    ).toThrow(/aggregate.*decoded|decoded.*budget|budget.*PNG/i);
   });
 
   it('rejects truncated, corrupt, or structurally undecodable PNG artifacts', () => {

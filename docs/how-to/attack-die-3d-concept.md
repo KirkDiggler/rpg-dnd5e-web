@@ -174,10 +174,17 @@ with both PASS and FAILED markers.
 The package rereads and binds the parsed build, browser, network, and console
 JSON; exact 78-context ID/count matrix; exact console location/message matrix;
 20 full-page result PNGs; 40 Roller/Spectator well close-ups; and 18 scenario
-PNGs. Every PNG must have complete signature/IHDR/contiguous IDAT/IEND framing,
-valid chunk CRCs, the supported 8-bit truecolor non-interlaced screenshot
-profile, successful zlib inflation, exact scanline lengths, and legal filters.
-Close-ups are captured at browser device scale factor 3, include the whole
+PNGs. Before any bulk inflation, IHDR preflight sums the expected RGB bytes and
+requires the package to remain within a 1.5 GiB aggregate decoded-byte budget.
+That bound accepts the reviewed package's 1,370,878,587 RGB bytes with about
+17.5% growth room while rejecting hostile multi-image totals. Every PNG must
+then have complete signature/IHDR/contiguous IDAT/IEND framing, valid chunk
+CRCs, the supported 8-bit truecolor non-interlaced screenshot profile,
+successful zlib inflation, exact scanline lengths, and legal filters. PNGs are
+decoded exactly once in sequence; ordinary screenshots retain only dimensions,
+the pending screenshot retains only its region-contrast result, and filter
+reconstruction keeps only previous/current rows. Close-ups are captured at
+browser device scale factor 3, include the whole
 witness well, and must be at least 220×220 physical pixels in both their browser
 facts and decoded PNG dimensions. Missing, substituted, reordered, truncated,
 corrupt, undersized, or contradictory package artifacts fail.

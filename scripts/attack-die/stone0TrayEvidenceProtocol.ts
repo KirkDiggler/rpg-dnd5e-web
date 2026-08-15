@@ -1351,6 +1351,10 @@ function validateConsole(
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 const PNG_MAX_INFLATED_BYTES = 128 * 1024 * 1024;
+// The reviewed package expands to 1,370,878,587 RGB bytes. A 1.5 GiB
+// package budget leaves about 17.5% growth room while rejecting hostile
+// multi-image totals long before any screenshot is inflated.
+const PNG_MAX_AGGREGATE_DECODED_BYTES = 1536 * 1024 * 1024;
 const PNG_CRC_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
   let crc = value;
   for (let bit = 0; bit < 8; bit += 1)
@@ -1375,7 +1379,63 @@ function paethPredictor(left: number, above: number, upperLeft: number) {
   return aboveDistance <= upperLeftDistance ? above : upperLeft;
 }
 
-function pngDimensions(bytes: Uint8Array, label: string) {
+function preflightPngDecodedBytes(bytes: Uint8Array, label: string) {
+  if (
+    bytes.byteLength < 33 ||
+    !PNG_SIGNATURE.every((byte, index) => bytes[index] === byte)
+  )
+    fail(`${label} PNG signature or preflight framing mismatch`);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headerOffset = PNG_SIGNATURE.length;
+  const headerLength = view.getUint32(headerOffset);
+  const typeOffset = headerOffset + 4;
+  const dataOffset = headerOffset + 8;
+  const crcOffset = dataOffset + headerLength;
+  if (
+    headerLength !== 13 ||
+    crcOffset + 4 > bytes.byteLength ||
+    String.fromCharCode(...bytes.subarray(typeOffset, dataOffset)) !== 'IHDR' ||
+    pngCrc32(bytes.subarray(typeOffset, crcOffset)) !==
+      view.getUint32(crcOffset)
+  )
+    fail(`${label} PNG IHDR preflight mismatch`);
+  const width = view.getUint32(dataOffset);
+  const height = view.getUint32(dataOffset + 4);
+  if (
+    width < 1 ||
+    height < 1 ||
+    bytes[dataOffset + 8] !== 8 ||
+    bytes[dataOffset + 9] !== 2 ||
+    bytes[dataOffset + 10] !== 0 ||
+    bytes[dataOffset + 11] !== 0 ||
+    bytes[dataOffset + 12] !== 0
+  )
+    fail(`${label} PNG unsupported or illegal IHDR screenshot profile`);
+  const rowBytes = width * 3;
+  const inflatedBytes = height * (rowBytes + 1);
+  const decodedBytes = width * height * 3;
+  if (
+    !Number.isSafeInteger(rowBytes) ||
+    !Number.isSafeInteger(inflatedBytes) ||
+    !Number.isSafeInteger(decodedBytes) ||
+    inflatedBytes > PNG_MAX_INFLATED_BYTES
+  )
+    fail(`${label} PNG decoded image dimensions exceed supported profile`);
+  return { width, height, decodedBytes };
+}
+
+interface PngContrastRegion {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+function decodePng(
+  bytes: Uint8Array,
+  label: string,
+  contrastRegion?: PngContrastRegion
+) {
   if (
     bytes.byteLength < 57 ||
     !PNG_SIGNATURE.every((byte, index) => bytes[index] === byte)
@@ -1476,13 +1536,26 @@ function pngDimensions(bytes: Uint8Array, label: string) {
   if (inflated.byteLength !== inflatedLength)
     fail(`${label} PNG inflated image-data length mismatch`);
 
-  const pixels = new Uint8Array(width * height * 3);
+  if (
+    contrastRegion &&
+    (contrastRegion.left < 0 ||
+      contrastRegion.top < 0 ||
+      contrastRegion.width < 1 ||
+      contrastRegion.height < 1 ||
+      contrastRegion.left + contrastRegion.width > width ||
+      contrastRegion.top + contrastRegion.height > height)
+  )
+    fail(`${label} PNG contrast region containment`);
+
+  let darkest = 1;
+  let lightest = 0;
   let previous = new Uint8Array(rowBytes);
+  let current = new Uint8Array(rowBytes);
   for (let row = 0; row < height; row += 1) {
     const scanlineOffset = row * (rowBytes + 1);
     const filter = inflated[scanlineOffset];
     if (filter > 4) fail(`${label} PNG illegal scanline filter`);
-    const current = new Uint8Array(rowBytes);
+    current.fill(0);
     for (let column = 0; column < rowBytes; column += 1) {
       const encoded = inflated[scanlineOffset + column + 1];
       const left = column >= 3 ? current[column - 3] : 0;
@@ -1500,10 +1573,35 @@ function pngDimensions(bytes: Uint8Array, label: string) {
                 : paethPredictor(left, above, upperLeft);
       current[column] = (encoded + predictor) & 0xff;
     }
-    pixels.set(current, row * rowBytes);
+    if (
+      contrastRegion &&
+      row >= contrastRegion.top &&
+      row < contrastRegion.top + contrastRegion.height
+    )
+      for (
+        let column = contrastRegion.left * 3;
+        column < (contrastRegion.left + contrastRegion.width) * 3;
+        column += 3
+      ) {
+        const luminance = relativeLuminance(
+          current[column],
+          current[column + 1],
+          current[column + 2]
+        );
+        darkest = Math.min(darkest, luminance);
+        lightest = Math.max(lightest, luminance);
+      }
+    const swap = previous;
     previous = current;
+    current = swap;
   }
-  return { width, height, pixels };
+  return {
+    width,
+    height,
+    contrastRatio: contrastRegion
+      ? (lightest + 0.05) / (darkest + 0.05)
+      : undefined,
+  };
 }
 
 function relativeLuminance(red: number, green: number, blue: number) {
@@ -1568,10 +1666,6 @@ export function assertStone0TrayEvidencePackage(
     artifactBytes.size !== expectedPaths.length
   )
     fail('package exact artifact count mismatch');
-  const decodedScreenshots = new Map<
-    string,
-    ReturnType<typeof pngDimensions>
-  >();
   artifacts.forEach((artifact, index) => {
     const path = expectedPaths[index];
     const expectedKind =
@@ -1595,11 +1689,6 @@ export function assertStone0TrayEvidencePackage(
       hashBytes(bytes) !== artifact.sha256
     )
       fail(`package artifact digest/size mismatch: ${path}`);
-    if (expectedKind === 'screenshot')
-      decodedScreenshots.set(
-        path,
-        pngDimensions(bytes, `package screenshot ${path}`)
-      );
   });
   for (const path of artifactBytes.keys())
     if (!expectedPaths.includes(path))
@@ -1629,28 +1718,51 @@ export function assertStone0TrayEvidencePackage(
     pendingFacts.statusRegion,
     'pending provider screenshot status region'
   );
-  const pendingImage = decodedScreenshots.get(pending.screenshot)!;
-  const left = Number(statusRegion.left);
-  const top = Number(statusRegion.top);
-  const width = Number(statusRegion.width);
-  const height = Number(statusRegion.height);
-  if (left + width > pendingImage.width || top + height > pendingImage.height)
-    fail('pending provider screenshot status region containment');
-  let darkest = 1;
-  let lightest = 0;
-  for (let y = top; y < top + height; y += 1)
-    for (let x = left; x < left + width; x += 1) {
-      const pixel = (y * pendingImage.width + x) * 3;
-      const luminance = relativeLuminance(
-        pendingImage.pixels[pixel],
-        pendingImage.pixels[pixel + 1],
-        pendingImage.pixels[pixel + 2]
+  const pendingContrastRegion: PngContrastRegion = {
+    left: Number(statusRegion.left),
+    top: Number(statusRegion.top),
+    width: Number(statusRegion.width),
+    height: Number(statusRegion.height),
+  };
+
+  let aggregateDecodedBytes = 0;
+  for (const path of expectedScreenshotPaths) {
+    const preflight = preflightPngDecodedBytes(
+      artifactBytes.get(path)!,
+      `package screenshot ${path}`
+    );
+    aggregateDecodedBytes += preflight.decodedBytes;
+    if (
+      !Number.isSafeInteger(aggregateDecodedBytes) ||
+      aggregateDecodedBytes > PNG_MAX_AGGREGATE_DECODED_BYTES
+    )
+      fail(
+        `package aggregate decoded PNG budget exceeds ${PNG_MAX_AGGREGATE_DECODED_BYTES} bytes`
       );
-      darkest = Math.min(darkest, luminance);
-      lightest = Math.max(lightest, luminance);
-    }
-  const screenshotContrast = (lightest + 0.05) / (darkest + 0.05);
-  if (screenshotContrast < 4.5)
+  }
+
+  const screenshotDimensions = new Map<
+    string,
+    { readonly width: number; readonly height: number }
+  >();
+  let pendingScreenshotContrast: number | undefined;
+  for (const path of expectedScreenshotPaths) {
+    const decoded = decodePng(
+      artifactBytes.get(path)!,
+      `package screenshot ${path}`,
+      path === pending.screenshot ? pendingContrastRegion : undefined
+    );
+    screenshotDimensions.set(path, {
+      width: decoded.width,
+      height: decoded.height,
+    });
+    if (path === pending.screenshot)
+      pendingScreenshotContrast = decoded.contrastRatio;
+  }
+  if (
+    pendingScreenshotContrast === undefined ||
+    pendingScreenshotContrast < 4.5
+  )
     fail('pending provider screenshot status region is not readable at 4.5:1');
 
   const network = validateNetwork(
@@ -1664,10 +1776,7 @@ export function assertStone0TrayEvidencePackage(
   for (const result of evidence.results)
     for (const role of ['roller', 'spectator'] as const) {
       const closeup = result.closeups[role];
-      const dimensions = pngDimensions(
-        artifactBytes.get(closeup.screenshot)!,
-        `result ${result.result} ${role} closeup`
-      );
+      const dimensions = screenshotDimensions.get(closeup.screenshot)!;
       if (
         dimensions.width !== closeup.physicalWidth ||
         dimensions.height !== closeup.physicalHeight ||
