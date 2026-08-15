@@ -539,15 +539,18 @@ try {
           bridge.releaseCount !== 0 ||
           bridge.lifecyclePhase !== 'armed' ||
           !Number.isSafeInteger(bridge.shared.eventArrayId) ||
-          !Number.isSafeInteger(bridge.shared.providerId) ||
-          !Number.isSafeInteger(bridge.witnesses.roller.rendererContextId) ||
-          !Number.isSafeInteger(bridge.witnesses.spectator.rendererContextId)
+          !Number.isSafeInteger(bridge.shared.providerId)
         )
           return false;
         const canvases = document.querySelectorAll(
           '[data-witness-role] .attack-die-3d__canvas canvas'
         ).length;
-        return failure ? canvases === 0 : canvases === 2;
+        if (failure) return canvases === 0;
+        return (
+          canvases === 2 &&
+          Number.isSafeInteger(bridge.witnesses.roller.rendererContextId) &&
+          Number.isSafeInteger(bridge.witnesses.spectator.rendererContextId)
+        );
       },
       { failure: Boolean(options.providerFailure) },
       { timeout: 30_000 }
