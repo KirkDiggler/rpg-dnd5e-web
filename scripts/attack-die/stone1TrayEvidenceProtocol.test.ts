@@ -419,6 +419,10 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain("dispatchEvent('lostpointercapture'");
     expect(source).toContain("getExtension('WEBGL_lose_context')");
     expect(source).toContain('capturePhaseCloseups');
+    expect(source).toContain('function witnessCloseupLocator(page, role)');
+    expect(source).toContain(
+      'return page.locator(`[data-witness-role="${role}"]`);'
+    );
     expect(source).toContain('assertStone1TrayEvidencePackage');
     expect(source).toContain('FAILED.txt');
     expect(source).toContain('INVALIDATED-PASS.txt');

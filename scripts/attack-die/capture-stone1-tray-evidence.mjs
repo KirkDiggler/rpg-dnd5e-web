@@ -750,23 +750,35 @@ try {
     });
   }
 
+  function witnessCloseupLocator(page, role) {
+    return page.locator(`[data-witness-role="${role}"]`);
+  }
+
   async function capturePhaseCloseups(page, phase) {
-    for (const role of ['roller', 'spectator']) {
-      const locator = page.locator(
-        `[data-witness-role="${role}"] [role="region"]`
-      );
-      const filename = stone1PhaseCloseupScreenshot(phase, role);
-      await locator.screenshot({ path: resolve(tempRoot, filename) });
-      const bytes = new Uint8Array(await readFile(resolve(tempRoot, filename)));
-      const dimensions = readPngDimensions(bytes, filename);
-      phaseCloseups.push({
-        phase,
-        role,
-        screenshot: filename,
-        deviceScaleFactor: 1,
-        physicalWidth: dimensions.width,
-        physicalHeight: dimensions.height,
-      });
+    const isolationStyle = await page.addStyleTag({
+      content:
+        '[data-witness-role] { z-index: 7 !important; } /* isolate wells above the dock only for diagnostic crops */',
+    });
+    try {
+      for (const role of ['roller', 'spectator']) {
+        const locator = witnessCloseupLocator(page, role);
+        const filename = stone1PhaseCloseupScreenshot(phase, role);
+        await locator.screenshot({ path: resolve(tempRoot, filename) });
+        const bytes = new Uint8Array(
+          await readFile(resolve(tempRoot, filename))
+        );
+        const dimensions = readPngDimensions(bytes, filename);
+        phaseCloseups.push({
+          phase,
+          role,
+          screenshot: filename,
+          deviceScaleFactor: 1,
+          physicalWidth: dimensions.width,
+          physicalHeight: dimensions.height,
+        });
+      }
+    } finally {
+      await isolationStyle.evaluate((style) => style.remove());
     }
   }
 
