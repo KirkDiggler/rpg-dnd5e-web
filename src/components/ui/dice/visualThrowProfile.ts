@@ -207,6 +207,7 @@ export function parseVisualThrowProfile(
     !isInRange(profile.spinBias, -1, 1) ||
     !Number.isInteger(profile.motionSeed) ||
     !isInRange(profile.motionSeed, 0, 0xffff_ffff) ||
+    (directionLength === 0 && profile.releaseSpeed !== 0) ||
     (directionLength !== 0 && Math.abs(directionLength - 1) > UNIT_TOLERANCE)
   ) {
     return undefined;

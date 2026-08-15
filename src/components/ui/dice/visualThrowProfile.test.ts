@@ -315,6 +315,14 @@ describe('parseVisualThrowProfile', () => {
     expect(accepted?.releaseDirection).toEqual(withinTolerance);
   });
 
+  it('rejects nonzero speed for a zero direction', () => {
+    expect(
+      parseVisualThrowProfile(
+        validProfile({ releaseDirection: [0, 0], releaseSpeed: 1 })
+      )
+    ).toBeUndefined();
+  });
+
   it.each([
     [0.5, 0],
     [1 + 1.1e-6, 0],
