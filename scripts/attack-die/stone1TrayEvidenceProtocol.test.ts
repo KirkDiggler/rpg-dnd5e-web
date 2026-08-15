@@ -7,11 +7,15 @@ import {
   ORIGINAL_D20_GLB_SHA256,
   ORIGINAL_D20_MANIFEST_SHA256,
   ORIGINAL_D20_SOURCE_MANIFEST_SHA256,
+  STONE0_LOCAL_API_FIXTURES,
 } from './stone0TrayEvidenceProtocol';
 import {
   STONE1_DENIED_PROFILE_KEYS,
+  STONE1_FONT_CSS_URL,
   STONE1_PHASES,
   STONE1_SCENARIO_IDS,
+  STONE1_SYNTY_REQUEST_PATHS,
+  assertFrozenBuildSourceBinding,
   assertStone1TrayEvidence,
   assertStone1TrayEvidencePackage,
   stone1PhaseCloseupScreenshot,
@@ -78,23 +82,39 @@ function screenshotPng(width: number, height: number, filter = 0) {
   ]);
 }
 
-const buildIndex = new TextEncoder().encode(
-  '<script>1'.repeat(40) + '</script>'
+const sourceBindingAssetPath = 'assets/index-test.js';
+const sourceBindingAssetBytes = new TextEncoder().encode(
+  `globalThis.__STONE1_WEB_COMMIT__ = '${'1'.repeat(40)}';`
 );
-const buildFileSha = sha256(buildIndex);
+const buildFixtureBytes = new Map<string, Uint8Array>([
+  [sourceBindingAssetPath, sourceBindingAssetBytes],
+  ['assets/index-test.css', new TextEncoder().encode('body{color:white}')],
+  ['themes/base.css', new TextEncoder().encode(':root{}')],
+  ['themes/dark-fantasy.css', new TextEncoder().encode(':root{}')],
+  ['vite.svg', new TextEncoder().encode('<svg/>')],
+]);
+const buildFiles = [...buildFixtureBytes]
+  .map(([path, bytes]) => ({
+    path,
+    size: bytes.byteLength,
+    sha256: sha256(bytes),
+  }))
+  .sort((a, b) => Buffer.from(a.path).compare(Buffer.from(b.path)));
 const webBuildSha256 = sha256(
-  `index.html\0${buildIndex.byteLength}\0${buildFileSha}\n`
+  buildFiles
+    .map((file) => `${file.path}\0${file.size}\0${file.sha256}\n`)
+    .join('')
 );
+const buildManifest = {
+  schemaVersion: 1 as const,
+  kind: 'attack-die-web-build-manifest' as const,
+  files: buildFiles,
+  webBuildSha256,
+};
 const buildManifestBytes = new TextEncoder().encode(
-  JSON.stringify({
-    schemaVersion: 1,
-    kind: 'attack-die-web-build-manifest',
-    files: [
-      { path: 'index.html', size: buildIndex.byteLength, sha256: buildFileSha },
-    ],
-    webBuildSha256,
-  })
+  JSON.stringify(buildManifest)
 );
+
 const identity: Stone1TrayEvidenceIdentity = {
   sourceSha: '1'.repeat(40),
   frozenBuildSourceSha: '1'.repeat(40),
@@ -222,27 +242,23 @@ function scenario(id: (typeof STONE1_SCENARIO_IDS)[number], index: number) {
     timeline: timeline(release, pointerHeldIds.has(id)),
     heldCue: {
       staticLifted: id === 'reduced-motion-held',
-      tumbleSampleCount:
-        id === 'reduced-motion-held'
-          ? 0
-          : success && id !== 'keyboard-neutral'
-            ? 3
-            : 0,
-      shakeSampleCount:
-        id === 'reduced-motion-held'
-          ? 0
-          : success && id !== 'keyboard-neutral'
-            ? 2
-            : 0,
-      bounceSampleCount:
-        id === 'reduced-motion-held'
-          ? 0
-          : success && id !== 'keyboard-neutral'
-            ? 1
-            : 0,
+      tumbleSampleCount: id === 'reduced-motion-held' ? 0 : success ? 3 : 0,
+      shakeSampleCount: id === 'reduced-motion-held' ? 0 : success ? 2 : 0,
+      bounceSampleCount: id === 'reduced-motion-held' ? 0 : success ? 1 : 0,
     },
     outsideCaptureObserved: id === 'held-outside-capture',
     cancellationObserved: cancelled,
+    terminalInput: cancelled
+      ? {
+          eventType:
+            id === 'pointer-cancel'
+              ? ('pointercancel' as const)
+              : ('lostpointercapture' as const),
+          isTrusted: true,
+          captureOwnedBefore: true,
+          captureOwnedAfter: false,
+        }
+      : null,
     observations: success ? observations(index) : null,
     failure: failure
       ? {
@@ -298,6 +314,69 @@ function evidence(): Stone1TrayEvidence {
   };
 }
 
+const fixtureOrigin = 'http://127.0.0.1:4173';
+function fixtureRequests(scenarioId: (typeof STONE1_SCENARIO_IDS)[number]) {
+  const request = (
+    url: string,
+    method: 'GET' | 'POST',
+    resourceType: string,
+    status = 200
+  ) => ({
+    scenarioId,
+    url,
+    method,
+    resourceType,
+    status,
+    completed: true,
+  });
+  const values = [
+    request(
+      `${fixtureOrigin}/?concept=attack-die-3d&attackDieStage=tray`,
+      'GET',
+      'document'
+    ),
+    request(`${fixtureOrigin}/${sourceBindingAssetPath}`, 'GET', 'script'),
+    request(`${fixtureOrigin}/assets/index-test.css`, 'GET', 'stylesheet'),
+    ...STONE1_SYNTY_REQUEST_PATHS.slice(0, 6).map((path) =>
+      request(`${fixtureOrigin}${path}`, 'GET', 'fetch')
+    ),
+    request(
+      `${fixtureOrigin}/models/custom-dice/dice-tray-presets.json`,
+      'GET',
+      'fetch',
+      scenarioId === 'provider-failure' ? 503 : 200
+    ),
+    ...STONE0_LOCAL_API_FIXTURES.map((fixture) =>
+      request(fixture.url, 'POST', 'fetch')
+    ),
+    request(
+      `${fixtureOrigin}/themes/base.css?v=${identity.sourceSha.slice(0, 7)}`,
+      'GET',
+      'stylesheet'
+    ),
+    request(
+      `${fixtureOrigin}/themes/dark-fantasy.css?v=${identity.sourceSha.slice(0, 7)}`,
+      'GET',
+      'stylesheet'
+    ),
+    request(STONE1_FONT_CSS_URL, 'GET', 'stylesheet'),
+    request(`${fixtureOrigin}/vite.svg`, 'GET', 'other'),
+  ];
+  if (scenarioId !== 'provider-failure')
+    values.push(
+      request(
+        `${fixtureOrigin}/models/custom-dice/original-set/Original_D20_Source.glb`,
+        'GET',
+        'fetch'
+      )
+    );
+  values.push(
+    ...STONE1_SYNTY_REQUEST_PATHS.slice(6).map((path) =>
+      request(`${fixtureOrigin}${path}`, 'GET', 'image')
+    )
+  );
+  return values;
+}
 function networkArtifact() {
   return {
     schemaVersion: 1,
@@ -311,10 +390,11 @@ function networkArtifact() {
       glbTransferCount: scenarioId === 'provider-failure' ? 0 : 1,
       unexpectedRequestCount: 0,
     })),
-    requests: [],
+    requests: STONE1_SCENARIO_IDS.flatMap(fixtureRequests),
     unexpectedErrors: [],
   };
 }
+
 function consoleArtifact() {
   return {
     schemaVersion: 1,
@@ -331,8 +411,10 @@ function packageFixture() {
   const consoleBytes = new TextEncoder().encode(
     JSON.stringify(consoleArtifact())
   );
+  const sourceBindingPackagePath = `frozen-build/${sourceBindingAssetPath}`;
   const artifactBytes = new Map<string, Uint8Array>([
     ['build-manifest.json', buildManifestBytes],
+    [sourceBindingPackagePath, sourceBindingAssetBytes],
     ['browser-evidence.json', browser],
     ['network.json', network],
     ['console.json', consoleBytes],
@@ -355,9 +437,11 @@ function packageFixture() {
     kind:
       path === 'build-manifest.json'
         ? 'build-manifest'
-        : path.endsWith('.json')
-          ? 'json'
-          : 'screenshot',
+        : path === sourceBindingPackagePath
+          ? 'build-source-binding'
+          : path.endsWith('.json')
+            ? 'json'
+            : 'screenshot',
     sha256: sha256(bytes),
     sizeBytes: bytes.byteLength,
   }));
@@ -373,6 +457,7 @@ function packageFixture() {
       providerManifestSha256: identity.providerManifestSha256,
       providerSourceManifestSha256: identity.providerSourceManifestSha256,
       providerGlbSha256: identity.providerGlbSha256,
+      sourceBindingAssetPath,
       scenarioCount: 12,
       contextCount: 12,
       screenshotCount: 18,
@@ -407,16 +492,28 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain('atomicProviderCopy');
     expect(source).toContain('attack-die:freeze-build');
     expect(source).toContain('validateServedBuild');
-    expect(source).toContain('includes(sourceSha)');
+    expect(source).toContain('sourceBindingAssetPath');
+    expect(source).toContain('sourceBindingAssetBytes');
+    expect(source).toContain('assertFrozenBuildSourceBinding');
     expect(source).toContain('chromium.launch');
     expect(source).toContain('browser.newContext');
     expect(source).toContain("page.route('https://fonts.googleapis.com/**'");
     expect(source).toContain("contentType: 'text/css'");
+    expect(source).toContain("page.on('requestfinished'");
+    expect(source).toContain("page.on('requestfailed'");
+    expect(source).not.toContain('expectedSevere');
+    expect(source).not.toContain('motionCounts = { tumble: 3');
     expect(source).toContain('page.mouse.down');
     expect(source).toContain('page.mouse.up');
-    expect(source).toContain("dispatchEvent('pointercancel'");
-    expect(source).toContain('releasePointerCapture(1)');
-    expect(source).toContain("dispatchEvent('lostpointercapture'");
+    expect(source).toContain("type: 'touchCancel'");
+    expect(source).toContain("['pointercancel', 'lostpointercapture']");
+    expect(source).toContain('event.type !== terminalType');
+    expect(source).toContain('event.isTrusted');
+    expect(source).toContain('captureOwnedBefore');
+    expect(source).toContain('captureOwnedAfter');
+    expect(source).toContain('transferPointerCapture');
+    expect(source).not.toContain("dispatchEvent('pointercancel'");
+    expect(source).not.toContain("dispatchEvent('lostpointercapture'");
     expect(source).toContain("getExtension('WEBGL_lose_context')");
     expect(source).toContain('capturePhaseCloseups');
     expect(source).toContain('function witnessCloseupLocator(page, role)');
@@ -595,6 +692,19 @@ describe('Stone 1 browser evidence protocol', () => {
       (value) =>
         (value.scenarios[9].timeline.afterRelease.profilePresent = true)
     );
+    for (const index of [8, 9]) {
+      expectEvidenceFailure(
+        (value) => (value.scenarios[index].terminalInput!.isTrusted = false)
+      );
+      expectEvidenceFailure(
+        (value) =>
+          (value.scenarios[index].terminalInput!.captureOwnedBefore = false)
+      );
+      expectEvidenceFailure(
+        (value) =>
+          (value.scenarios[index].terminalInput!.captureOwnedAfter = true)
+      );
+    }
     for (const key of ['heldStateCleared'] as const)
       expectEvidenceFailure(
         (value) => (value.scenarios[10].failure![key] = false)
@@ -703,6 +813,51 @@ describe('Stone 1 exact package protocol', () => {
     ).toThrow();
   });
 
+  it('cross-binds a packaged frozen JS asset path/hash/bytes to the exact expected HEAD', () => {
+    expect(
+      assertFrozenBuildSourceBinding(
+        buildManifest,
+        identity.sourceSha,
+        sourceBindingAssetPath,
+        sourceBindingAssetBytes
+      ).path
+    ).toBe(sourceBindingAssetPath);
+    expect(() =>
+      assertFrozenBuildSourceBinding(
+        buildManifest,
+        '2'.repeat(40),
+        sourceBindingAssetPath,
+        sourceBindingAssetBytes
+      )
+    ).toThrow();
+    expect(() =>
+      assertFrozenBuildSourceBinding(
+        buildManifest,
+        identity.sourceSha,
+        'assets/other.js',
+        sourceBindingAssetBytes
+      )
+    ).toThrow();
+    const fixture = packageFixture();
+    const packagePath = `frozen-build/${sourceBindingAssetPath}`;
+    const replacement = new TextEncoder().encode(
+      `globalThis.__STONE1_WEB_COMMIT__ = '${'2'.repeat(40)}';`
+    );
+    fixture.artifactBytes.set(packagePath, replacement);
+    const artifact = fixture.manifest.artifacts.find(
+      (entry) => entry.path === packagePath
+    )!;
+    artifact.sha256 = sha256(replacement);
+    artifact.sizeBytes = replacement.byteLength;
+    expect(() =>
+      assertStone1TrayEvidencePackage(
+        fixture.manifest,
+        identity,
+        fixture.artifactBytes
+      )
+    ).toThrow();
+  });
+
   it('rejects each PNG corruption stage and screenshot viewport/hash/resource mismatches', () => {
     const mutatePng = (mutate: (bytes: Uint8Array) => Uint8Array) => {
       const fixture = packageFixture();
@@ -769,8 +924,29 @@ describe('Stone 1 exact package protocol', () => {
         ((value.contexts as Record<string, unknown>[])[0].manifestRequestCount =
           2)
     );
+    for (const [field, replacement] of [
+      ['url', 'https://unowned.invalid/a.js'],
+      ['method', 'POST'],
+      ['status', 201],
+      ['completed', false],
+    ] as const)
+      mutateJson('network.json', (value) => {
+        (value.requests as Record<string, unknown>[])[0][field] = replacement;
+      });
+    mutateJson('network.json', (value) => {
+      const requests = value.requests as Record<string, unknown>[];
+      requests.push(structuredClone(requests[0]));
+    });
     mutateJson('network.json', (value) =>
       (value.unexpectedErrors as unknown[]).push('request')
+    );
+    mutateJson('console.json', (value) =>
+      (value.entries as unknown[]).push({
+        scenarioId: 'provider-failure',
+        type: 'error',
+        text: 'arbitrary expected severe message',
+        url: `${fixtureOrigin}/models/custom-dice/dice-tray-presets.json`,
+      })
     );
     mutateJson('console.json', (value) =>
       (value.pageErrors as unknown[]).push('boom')

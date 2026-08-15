@@ -1457,6 +1457,38 @@ describe('Original carved runtime renderer', () => {
     expect(mocks.worldQuaternionReads).toHaveLength(1);
   });
 
+  it('reports actual applied rendered poses only through the explicit Concepts diagnostic', () => {
+    arrangeRuntimeReady();
+    const diagnostic = vi.fn();
+    render(
+      <AttackDie3D
+        {...props(571, 7)}
+        provider={originalProvider}
+        phase="ready"
+        reducedMotion
+        heldRollGroup={heldRollGroup}
+        onMotionDiagnostic={diagnostic}
+      />
+    );
+
+    frame(-1, 22);
+    frame(-1, 22.016);
+
+    expect(diagnostic).toHaveBeenCalledTimes(2);
+    expect(diagnostic).toHaveBeenLastCalledWith({
+      presentationToken: 571,
+      sequence: 2,
+      phase: 'ready',
+      reducedMotion: true,
+      held: true,
+      translation: [0, 0.28, 0],
+      quaternion: [0.31, -0.47, 0.19, 0.805],
+    });
+    expect(Object.isFrozen(diagnostic.mock.calls[1][0])).toBe(true);
+    expect(Object.isFrozen(diagnostic.mock.calls[1][0].translation)).toBe(true);
+    expect(Object.isFrozen(diagnostic.mock.calls[1][0].quaternion)).toBe(true);
+  });
+
   it('fails closed when a synthetically permuted target physically presents another result', () => {
     const { preset } = arrangeRuntimeReady();
     const mutableEntries = preset.faceSettlementMap

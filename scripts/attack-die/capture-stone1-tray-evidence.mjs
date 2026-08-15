@@ -59,9 +59,12 @@ const {
   STONE0_LOCAL_API_RESPONSE,
 } = stone0Module;
 const {
+  STONE1_FONT_CSS_URL,
   STONE1_PHASES,
   STONE1_SCENARIO_IDS,
+  STONE1_SYNTY_REQUEST_PATHS,
   STONE1_VALIDATION_RSS_LIMIT_BYTES,
+  assertFrozenBuildSourceBinding,
   assertStone1TrayEvidence,
   assertStone1TrayEvidencePackage,
   stone1PhaseCloseupScreenshot,
@@ -237,17 +240,9 @@ const syntyProviderRoot = resolve(
     '/home/kirk/game-dev/rpg-game-assets/harness/models/synty'
 );
 const runtimeSyntyRoot = resolve(ROOT, 'public/models/synty');
-const STONE1_SYNTY_FIXTURE_PATHS = [
-  'env/SM_Env_Wall_Half_01.glb',
-  'env/SM_Env_Wall_Broken_Edge_01.glb',
-  'env/SM_Env_Wall_Alcove_01.glb',
-  'env/SM_Env_Wall_Quarter_01.glb',
-  'env/SM_Env_Door_Frame_01.glb',
-  'env/SM_Env_Door_01.glb',
-  'ui/actions/attack.png',
-  'ui/actions/dodge.png',
-  'ui/library/frames/SPR_FantasyWarrior_Frame_Box03.png',
-];
+const STONE1_SYNTY_FIXTURE_PATHS = STONE1_SYNTY_REQUEST_PATHS.map((path) =>
+  path.replace('/models/synty/', '')
+);
 const runtimeManifestPath = resolve(
   runtimeProviderRoot,
   'dice-tray-presets.json'
@@ -374,14 +369,27 @@ try {
   );
   if (!servedManifestResponse.ok) throw Error('served build manifest failed');
   assertSameManifest(buildManifest, await servedManifestResponse.json());
-  if (
-    ![...servedFiles.values()].some((bytes) =>
+  const sourceBindingCandidates = [...servedFiles].filter(
+    ([path, bytes]) =>
+      path.startsWith('assets/') &&
+      path.endsWith('.js') &&
       new TextDecoder('utf8', { fatal: false })
         .decode(bytes)
         .includes(sourceSha)
-    )
-  )
-    throw Error('exact source SHA is not embedded in frozen served bytes');
+  );
+  if (sourceBindingCandidates.length !== 1)
+    throw Error(
+      `exact source SHA must be embedded by one frozen JS asset, found ${sourceBindingCandidates.length}`
+    );
+  const [sourceBindingAssetPath, sourceBindingAssetBytes] =
+    sourceBindingCandidates[0];
+  assertFrozenBuildSourceBinding(
+    buildManifest,
+    sourceSha,
+    sourceBindingAssetPath,
+    sourceBindingAssetBytes
+  );
+  const sourceBindingPackagePath = `frozen-build/${sourceBindingAssetPath}`;
   const servedProvider = new Uint8Array(
     await (
       await fetch(new URL(ORIGINAL_D20_MANIFEST_PATH, baseUrl))
@@ -416,13 +424,38 @@ try {
     STONE0_LOCAL_API_FIXTURES.map((fixture) => fixture.url)
   );
 
-  function expectedRequest(requestUrl) {
-    const parsed = new URL(requestUrl);
+  const frozenBuildPaths = new Set(
+    buildManifest.files.map((file) => file.path)
+  );
+  function ownedRequest(request) {
+    const parsed = new URL(request.url());
+    if (expectedApiUrls.has(request.url())) return request.method() === 'POST';
+    if (request.url() === STONE1_FONT_CSS_URL)
+      return request.method() === 'GET';
+    if (parsed.origin !== baseUrl.origin || request.method() !== 'GET')
+      return false;
+    const path = parsed.pathname.replace(/^\//, '');
     return (
-      parsed.origin === baseUrl.origin ||
-      expectedApiUrls.has(requestUrl) ||
-      (parsed.origin === 'https://fonts.googleapis.com' &&
-        parsed.pathname === '/css2')
+      parsed.pathname === '/' ||
+      frozenBuildPaths.has(path) ||
+      STONE1_SYNTY_REQUEST_PATHS.includes(parsed.pathname) ||
+      parsed.pathname === ORIGINAL_D20_MANIFEST_PATH ||
+      parsed.pathname === ORIGINAL_D20_GLB_PATH
+    );
+  }
+
+  function ownedSevereConsole(id, type, text, url) {
+    if (type !== 'error') return true;
+    return (
+      (id === 'provider-failure' &&
+        text ===
+          'Failed to load resource: the server responded with a status of 503 (Service Unavailable)' &&
+        url === new URL(ORIGINAL_D20_MANIFEST_PATH, baseUrl).href) ||
+      (id === 'context-loss' &&
+        ['THREE.WebGLRenderer: Context Lost.', 'WebGL context lost'].includes(
+          text
+        ) &&
+        (url === '' || url.startsWith(baseUrl.href)))
     );
   }
 
@@ -435,6 +468,7 @@ try {
       viewport,
       deviceScaleFactor: 1,
       reducedMotion: id === 'reduced-motion-held' ? 'reduce' : 'no-preference',
+      hasTouch: id === 'pointer-cancel',
     });
     const page = await context.newPage();
     const record = {
@@ -452,8 +486,7 @@ try {
       const path = new URL(request.url()).pathname;
       if (path === ORIGINAL_D20_MANIFEST_PATH) record.manifestRequestCount += 1;
       if (path === ORIGINAL_D20_GLB_PATH) record.glbRequestCount += 1;
-      const expected = expectedRequest(request.url());
-      if (!expected) {
+      if (!ownedRequest(request)) {
         record.unexpectedRequestCount += 1;
         networkUnexpectedErrors.push(
           `${id}:${request.method()}:${request.url()}`
@@ -465,36 +498,43 @@ try {
         method: request.method(),
         resourceType: request.resourceType(),
         status: null,
-        expected,
+        completed: false,
       };
       requestRecords.set(request, item);
       networkRequests.push(item);
     });
     page.on('response', (response) => {
-      const path = new URL(response.url()).pathname;
-      if (response.ok() && path === ORIGINAL_D20_MANIFEST_PATH)
-        record.manifestTransferCount += 1;
-      if (response.ok() && path === ORIGINAL_D20_GLB_PATH)
-        record.glbTransferCount += 1;
       const item = requestRecords.get(response.request());
       if (item) item.status = response.status();
     });
+    page.on('requestfinished', (request) => {
+      const item = requestRecords.get(request);
+      if (!item) {
+        networkUnexpectedErrors.push(`${id}:finished-without-request`);
+        return;
+      }
+      item.completed = true;
+      const path = new URL(request.url()).pathname;
+      if (item.status === 200 && path === ORIGINAL_D20_MANIFEST_PATH)
+        record.manifestTransferCount += 1;
+      if (item.status === 200 && path === ORIGINAL_D20_GLB_PATH)
+        record.glbTransferCount += 1;
+    });
+    page.on('requestfailed', (request) => {
+      const item = requestRecords.get(request);
+      networkUnexpectedErrors.push(
+        `${id}:incomplete:${request.method()}:${request.url()}:${request.failure()?.errorText ?? 'unknown'}`
+      );
+      if (item) item.completed = false;
+    });
     page.on('console', (message) => {
       const location = message.location();
-      const severe = message.type() === 'error';
-      const expectedSevere =
-        !severe || id === 'provider-failure' || id === 'context-loss';
-      consoleEntries.push({
-        scenarioId: id,
-        type: message.type(),
-        text: message.text(),
-        url: location.url || '',
-        expected: expectedSevere,
-      });
-      if (!expectedSevere)
-        consoleUnexpectedErrors.push(
-          `${id}:${message.type()}:${location.url}:${message.text()}`
-        );
+      const type = message.type();
+      const text = message.text();
+      const url = location.url || '';
+      consoleEntries.push({ scenarioId: id, type, text, url });
+      if (!ownedSevereConsole(id, type, text, url))
+        consoleUnexpectedErrors.push(`${id}:${type}:${url}:${text}`);
     });
     page.on('pageerror', (error) => {
       pageErrors.push(`${id}:${error.message}`);
@@ -567,7 +607,7 @@ try {
       { failure: Boolean(options.providerFailure) },
       { timeout: 30_000 }
     );
-    return { context, page, viewport };
+    return { context, page, viewport, requestRecords };
   }
 
   async function bridgeState(page, phase = 'timeline') {
@@ -582,9 +622,19 @@ try {
         rollerGrabbed: bridge.rollerGrabbed,
         spectatorGrabbed: bridge.spectatorGrabbed,
         releasePresent: bridge.releaseCount > 0,
+        releaseSchemaVersion: bridge.releaseSchemaVersion ?? null,
         profilePresent: witnesses.every(
           (witness) => witness.releaseProfile !== undefined
         ),
+        profileSchemaVersion:
+          witnesses.length > 0 &&
+          witnesses.every(
+            (witness) =>
+              witness.releaseProfile?.schemaVersion ===
+              witnesses[0].releaseProfile?.schemaVersion
+          )
+            ? (witnesses[0].releaseProfile?.schemaVersion ?? null)
+            : null,
         finalObservationPresent: witnesses.every(
           (witness) => witness.finalTelemetry !== undefined
         ),
@@ -613,13 +663,71 @@ try {
       rollerGrabbed: state.rollerGrabbed,
       spectatorGrabbed: state.spectatorGrabbed,
       releasePresent: state.releasePresent,
-      releaseSchemaVersion: state.releasePresent ? 2 : null,
+      releaseSchemaVersion: state.releaseSchemaVersion,
       profilePresent: state.profilePresent,
-      profileSchemaVersion: state.profilePresent ? 1 : null,
+      profileSchemaVersion: state.profileSchemaVersion,
     };
   }
 
-  async function grab(page, moves, outside = false) {
+  async function installNativeInputAudit(target, expectedType) {
+    await target.evaluate((element, terminalType) => {
+      const audit = {
+        gotCaptureTrusted: false,
+        captureOwnedBefore: false,
+        terminal: null,
+      };
+      Object.defineProperty(window, '__stone1NativeInputAudit', {
+        configurable: true,
+        enumerable: false,
+        value: audit,
+      });
+      element.addEventListener(
+        'gotpointercapture',
+        (event) => {
+          audit.gotCaptureTrusted = event.isTrusted;
+          audit.captureOwnedBefore = element.hasPointerCapture(event.pointerId);
+        },
+        { once: true }
+      );
+      for (const eventType of ['pointercancel', 'lostpointercapture'])
+        element.addEventListener(
+          eventType,
+          (event) => {
+            if (event.type !== terminalType) return;
+            const eventIsTrusted = event.isTrusted;
+            queueMicrotask(() => {
+              audit.terminal = {
+                eventType: event.type,
+                isTrusted: eventIsTrusted,
+                captureOwnedBefore:
+                  audit.gotCaptureTrusted && audit.captureOwnedBefore,
+                captureOwnedAfter: element.hasPointerCapture(event.pointerId),
+              };
+            });
+          },
+          { once: true }
+        );
+    }, expectedType);
+  }
+
+  async function nativeTerminalInputFact(page, expectedType) {
+    await page.waitForFunction(
+      (terminalType) =>
+        window.__stone1NativeInputAudit?.terminal?.eventType === terminalType,
+      expectedType,
+      { timeout: 10_000 }
+    );
+    return page.evaluate(() =>
+      structuredClone(window.__stone1NativeInputAudit.terminal)
+    );
+  }
+
+  async function grab(
+    page,
+    moves,
+    outside = false,
+    nativeTerminalType = undefined
+  ) {
     const target = page
       .locator('[data-witness-role="roller"]')
       .getByRole('button', { name: 'Grab d20' });
@@ -627,21 +735,58 @@ try {
     const box = await target.boundingBox();
     if (!box) throw Error('Roller grab target has no bounds');
     const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    for (const move of moves)
-      await page.mouse.move(start.x + move[0], start.y + move[1], {
-        steps: move[2] ?? 1,
+    if (nativeTerminalType)
+      await installNativeInputAudit(target, nativeTerminalType);
+    let cdp;
+    if (nativeTerminalType === 'pointercancel') {
+      cdp = await page.context().newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: start.x, y: start.y }],
       });
-    if (outside) await page.mouse.move(4, 4, { steps: 3 });
+      const touchMoves = moves.length > 0 ? moves : [[1, 1, 1]];
+      for (const move of touchMoves)
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: start.x + move[0], y: start.y + move[1] }],
+        });
+    } else {
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      for (const move of moves)
+        await page.mouse.move(start.x + move[0], start.y + move[1], {
+          steps: move[2] ?? 1,
+        });
+      if (outside) await page.mouse.move(4, 4, { steps: 3 });
+    }
     await page.waitForFunction(
       () => window.__stone1TrayEvidence?.rollerGrabbed === true
     );
-    const capture = await target.evaluate((element) => ({
-      captured: element.hasPointerCapture(1),
-      grabbed: element.getAttribute('data-grabbed') === 'true',
-    }));
-    return { target, start, capture };
+    const capture = await target.evaluate(
+      (element, terminalType) => ({
+        captured:
+          terminalType === 'pointercancel'
+            ? window.__stone1NativeInputAudit?.captureOwnedBefore === true
+            : element.hasPointerCapture(1),
+        grabbed: element.getAttribute('data-grabbed') === 'true',
+      }),
+      nativeTerminalType
+    );
+    return { target, start, capture, cdp };
+  }
+
+  async function transferPointerCapture(page, grabState) {
+    await grabState.target.evaluate((element) => {
+      if (!element.hasPointerCapture(1))
+        throw Error('lost-capture fixture did not own active pointer 1');
+      const transferTarget = element.closest(
+        '[data-testid="dice-tray-3d-renderer"]'
+      );
+      if (!(transferTarget instanceof HTMLElement))
+        throw Error('lost-capture transfer target missing');
+      transferTarget.setPointerCapture(1);
+    });
+    await page.mouse.move(grabState.start.x + 2, grabState.start.y + 2);
   }
 
   async function waitSettled(page, observations) {
@@ -715,11 +860,10 @@ try {
           providerId: bridge.shared.providerId,
           requestedResult: final.requestedResult,
           observedUpwardResult: final.observedUpwardResult,
-          // Publication of finalTelemetry is fenced by the unchanged Stone 0
-          // dot, margin, angular-error, exact-target, and rendered-result gates.
-          upwardDotThresholdPassed: true,
-          upwardMarginThresholdPassed: true,
-          angularThresholdPassed: true,
+          upwardDotThresholdPassed: final.observedUpDot > 0.999999,
+          upwardMarginThresholdPassed: final.observedUpMargin > 0.2,
+          angularThresholdPassed:
+            final.angularErrorDegrees >= 0 && final.angularErrorDegrees <= 0.25,
           exactTargetHeld: final.exactTargetHeld,
           canvasVisible: Boolean(canvasVisible),
           motionRevision: final.motionRevision,
@@ -748,6 +892,106 @@ try {
         spectator: spectatorFact,
       };
     });
+  }
+
+  async function renderedMotionSamples(page) {
+    return page.evaluate(() => {
+      const bridge = window.__stone1TrayEvidence;
+      if (!bridge) throw Error('Stone 1 motion bridge missing');
+      return structuredClone(bridge.witnesses.roller.motionSamples);
+    });
+  }
+
+  function changedTuple(first, second, indices) {
+    return indices.some(
+      (index) => Math.abs(first[index] - second[index]) > 1e-6
+    );
+  }
+
+  function observedMotionCounts(samples, afterSequence = 0) {
+    const rolling = samples.filter(
+      (sample) => sample.sequence > afterSequence && sample.phase === 'rolling'
+    );
+    let tumble = 0;
+    let shake = 0;
+    let bounce = 0;
+    for (let index = 1; index < rolling.length; index += 1) {
+      if (
+        changedTuple(
+          rolling[index - 1].quaternion,
+          rolling[index].quaternion,
+          [0, 1, 2, 3]
+        )
+      )
+        tumble += 1;
+      if (
+        changedTuple(
+          rolling[index - 1].translation,
+          rolling[index].translation,
+          [0, 2]
+        )
+      )
+        shake += 1;
+      if (
+        changedTuple(
+          rolling[index - 1].translation,
+          rolling[index].translation,
+          [1]
+        )
+      )
+        bounce += 1;
+    }
+    return { tumble, shake, bounce };
+  }
+
+  async function observedFallbackFacts(page, origin) {
+    return page.evaluate((failureOrigin) => {
+      const bridge = window.__stone1TrayEvidence;
+      if (!bridge) throw Error('Stone 1 fallback bridge missing');
+      const witnesses = [bridge.witnesses.roller, bridge.witnesses.spectator];
+      const canvases = document.querySelectorAll(
+        '[data-witness-role] .attack-die-3d__canvas canvas'
+      );
+      const svgs = [
+        ...document.querySelectorAll(
+          '[data-witness-role] [data-testid="d20-die"]'
+        ),
+      ].filter((svg) => {
+        const rect = svg.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+      const results = [
+        ...document.querySelectorAll(
+          '[data-witness-role] [data-testid="dice-face"]'
+        ),
+      ].map((node) => Number(node.textContent));
+      const failureTelemetry = witnesses.map(
+        (witness) => witness.failureTelemetry
+      );
+      if (
+        svgs.length !== 2 ||
+        results.length !== 2 ||
+        !results.every((result) => result === results[0]) ||
+        !failureTelemetry.every(
+          (telemetry) =>
+            telemetry?.renderer === 'svg' &&
+            telemetry.state === 'failed' &&
+            telemetry.requestedResult === results[0]
+        )
+      )
+        throw Error('live fallback renderer/result telemetry mismatch');
+      return {
+        origin: failureOrigin,
+        fallbackRenderer: 'svg',
+        fallbackResult: results[0],
+        affectedCanvasCount: canvases.length,
+        heldStateCleared: !bridge.rollerGrabbed && !bridge.spectatorGrabbed,
+        staleHeldTelemetry: bridge.rollerGrabbed || bridge.spectatorGrabbed,
+        staleProfileTelemetry: witnesses.some(
+          (witness) => witness.finalTelemetry?.throwProfile !== undefined
+        ),
+      };
+    }, origin);
   }
 
   function witnessCloseupLocator(page, role) {
@@ -785,12 +1029,18 @@ try {
   async function runScenario(id) {
     const providerFailure = id === 'provider-failure';
     const scenario = await createScenario(id, { providerFailure });
-    const { page, context, viewport } = scenario;
+    const { page, context, viewport, requestRecords } = scenario;
     try {
       const before = timelineState(await bridgeState(page, 'before'));
+      const motionBefore = await renderedMotionSamples(page);
+      const motionSequenceBefore = motionBefore.at(-1)?.sequence ?? 0;
+      const reducedBeforePose = motionBefore
+        .filter((sample) => sample.phase === 'ready' && !sample.held)
+        .at(-1);
       let held = before;
       let outsideCaptureObserved = false;
       let cancellationObserved = false;
+      let terminalInput = null;
       let observations = null;
       let failure = null;
       let mainCaptured = false;
@@ -803,15 +1053,7 @@ try {
           .getByRole('button', { name: 'Roll d20' })
           .click();
         await waitSettled(page, false);
-        failure = {
-          origin: 'provider',
-          fallbackRenderer: 'svg',
-          fallbackResult: 10,
-          affectedCanvasCount: 0,
-          heldStateCleared: true,
-          staleHeldTelemetry: false,
-          staleProfileTelemetry: false,
-        };
+        failure = await observedFallbackFacts(page, 'provider');
       } else if (id === 'keyboard-neutral') {
         const roll = page
           .locator('[data-witness-role="roller"]')
@@ -848,7 +1090,13 @@ try {
                 .locator('[data-witness-role="roller"] [role="region"]')
                 .screenshot()
             : undefined;
-        const grabState = await grab(page, moves, outside);
+        const nativeTerminalType =
+          id === 'pointer-cancel'
+            ? 'pointercancel'
+            : id === 'lost-pointer-capture'
+              ? 'lostpointercapture'
+              : undefined;
+        const grabState = await grab(page, moves, outside, nativeTerminalType);
         held = timelineState(await bridgeState(page, 'held'));
         outsideCaptureObserved = outside
           ? grabState.capture.captured && grabState.capture.grabbed
@@ -873,9 +1121,29 @@ try {
           const firstHeld = await heldLocator.screenshot();
           await page.waitForTimeout(100);
           const secondHeld = await heldLocator.screenshot();
+          const heldMotion = (await renderedMotionSamples(page)).filter(
+            (sample) =>
+              sample.sequence > motionSequenceBefore &&
+              sample.phase === 'ready' &&
+              sample.held
+          );
+          const firstHeldPose = heldMotion[0];
           reducedStaticLifted =
             sha256(beforeRegion) !== sha256(firstHeld) &&
-            sha256(firstHeld) === sha256(secondHeld);
+            sha256(firstHeld) === sha256(secondHeld) &&
+            reducedBeforePose !== undefined &&
+            firstHeldPose !== undefined &&
+            heldMotion.length >= 2 &&
+            firstHeldPose.reducedMotion === true &&
+            firstHeldPose.translation[1] >
+              reducedBeforePose.translation[1] + 0.05 &&
+            heldMotion.every(
+              (sample) =>
+                JSON.stringify(sample.translation) ===
+                  JSON.stringify(firstHeldPose.translation) &&
+                JSON.stringify(sample.quaternion) ===
+                  JSON.stringify(firstHeldPose.quaternion)
+            );
           if (!reducedStaticLifted)
             throw Error(
               'reduced-motion held cue was not changed, static, and lifted'
@@ -883,45 +1151,31 @@ try {
         }
 
         if (id === 'pointer-cancel') {
-          await grabState.target.dispatchEvent('pointercancel', {
-            pointerId: 1,
-            pointerType: 'mouse',
-            button: 0,
-            buttons: 0,
+          await grabState.cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchCancel',
+            touchPoints: [],
           });
-          cancellationObserved = true;
+          terminalInput = await nativeTerminalInputFact(page, 'pointercancel');
+          cancellationObserved = terminalInput.isTrusted;
           await page.waitForFunction(
             () =>
               window.__stone1TrayEvidence?.rollerGrabbed === false &&
               window.__stone1TrayEvidence?.releaseCount === 0
           );
+          await grabState.cdp.detach();
         } else if (id === 'lost-pointer-capture') {
-          await grabState.target.evaluate((element) => {
-            if (!element.hasPointerCapture(1))
-              throw Error('lost-capture fixture did not own pointer 1');
-            element.releasePointerCapture(1);
-          });
-          await page.evaluate(
-            () =>
-              new Promise((resolveFrame) =>
-                requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
-              )
+          await transferPointerCapture(page, grabState);
+          terminalInput = await nativeTerminalInputFact(
+            page,
+            'lostpointercapture'
           );
-          // Chromium does not synthesize lostpointercapture for an explicit
-          // release in every headless backend. Drive the native React/DOM path
-          // after proving real capture ownership and releasing that ownership.
-          await grabState.target.dispatchEvent('lostpointercapture', {
-            pointerId: 1,
-            pointerType: 'mouse',
-            button: 0,
-            buttons: 0,
-          });
-          cancellationObserved = true;
+          cancellationObserved = terminalInput.isTrusted;
           await page.waitForFunction(
             () =>
               window.__stone1TrayEvidence?.rollerGrabbed === false &&
               window.__stone1TrayEvidence?.releaseCount === 0
           );
+          await page.mouse.up();
         } else if (id === 'context-loss') {
           await page.evaluate(() => {
             const canvases = [
@@ -953,15 +1207,7 @@ try {
             .getByRole('button', { name: 'Roll d20' })
             .click();
           await waitSettled(page, false);
-          failure = {
-            origin: 'context-loss',
-            fallbackRenderer: 'svg',
-            fallbackResult: 10,
-            affectedCanvasCount: 0,
-            heldStateCleared: true,
-            staleHeldTelemetry: false,
-            staleProfileTelemetry: false,
-          };
+          failure = await observedFallbackFacts(page, 'context-loss');
         } else {
           await page.mouse.up();
           if (id === 'held-desktop') {
@@ -974,7 +1220,6 @@ try {
           observations = await observationFacts(page);
           if (id === 'held-desktop')
             await capturePhaseCloseups(page, 'settled');
-          motionCounts = { tumble: 3, shake: 2, bounce: 1 };
         }
       }
 
@@ -982,20 +1227,11 @@ try {
       const after = afterReleaseState(afterRaw);
       if (!mainCaptured)
         await page.screenshot({ path: mainScreenshotPath(id) });
-      if (id === 'reduced-motion-held')
-        motionCounts = { tumble: 0, shake: 0, bounce: 0 };
-      if (
-        ![
-          'held-desktop',
-          'held-outside-capture',
-          'quick-release',
-          'repeated-shake',
-          'paired-shared-release',
-          'reduced-motion-held',
-          'responsive-narrow',
-        ].includes(id)
-      )
-        motionCounts = { tumble: 0, shake: 0, bounce: 0 };
+      if (STONE1_SCENARIO_IDS.indexOf(id) < 8)
+        motionCounts = observedMotionCounts(
+          await renderedMotionSamples(page),
+          motionSequenceBefore
+        );
       const fact = {
         id,
         passed: true,
@@ -1012,9 +1248,17 @@ try {
         },
         outsideCaptureObserved,
         cancellationObserved,
+        terminalInput,
         observations,
         failure,
       };
+      await page.waitForLoadState('networkidle', { timeout: 15_000 });
+      if (
+        [...requestRecords.values()].some(
+          (request) => request.status === null || request.completed !== true
+        )
+      )
+        throw Error(`${id} retained an incomplete network transfer`);
       scenarioFacts.push(fact);
     } finally {
       await context.close();
@@ -1127,6 +1371,7 @@ try {
   ];
   const packagePaths = [
     'build-manifest.json',
+    sourceBindingPackagePath,
     'browser-evidence.json',
     'network.json',
     'console.json',
@@ -1136,13 +1381,15 @@ try {
   for (const filename of packagePaths)
     artifactBytes.set(
       filename,
-      new Uint8Array(
-        await readFile(
-          filename === 'build-manifest.json'
-            ? buildManifestPath
-            : resolve(tempRoot, filename)
-        )
-      )
+      filename === sourceBindingPackagePath
+        ? sourceBindingAssetBytes
+        : new Uint8Array(
+            await readFile(
+              filename === 'build-manifest.json'
+                ? buildManifestPath
+                : resolve(tempRoot, filename)
+            )
+          )
     );
   const packageManifest = {
     schemaVersion: 1,
@@ -1155,6 +1402,7 @@ try {
     providerManifestSha256: ORIGINAL_D20_MANIFEST_SHA256,
     providerSourceManifestSha256: ORIGINAL_D20_SOURCE_MANIFEST_SHA256,
     providerGlbSha256: ORIGINAL_D20_GLB_SHA256,
+    sourceBindingAssetPath,
     scenarioCount: 12,
     contextCount: 12,
     screenshotCount: 18,
@@ -1167,9 +1415,11 @@ try {
         kind:
           path === 'build-manifest.json'
             ? 'build-manifest'
-            : path.endsWith('.json')
-              ? 'json'
-              : 'screenshot',
+            : path === sourceBindingPackagePath
+              ? 'build-source-binding'
+              : path.endsWith('.json')
+                ? 'json'
+                : 'screenshot',
         sha256: sha256(bytes),
         sizeBytes: bytes.byteLength,
       };
@@ -1181,6 +1431,13 @@ try {
 
   for (const filename of packagePaths) {
     if (filename === 'build-manifest.json') continue;
+    if (filename === sourceBindingPackagePath) {
+      await mkdir(dirname(resolve(out, filename)), { recursive: true });
+      await writeFile(resolve(out, filename), sourceBindingAssetBytes, {
+        flag: 'wx',
+      });
+      continue;
+    }
     await rename(resolve(tempRoot, filename), resolve(out, filename));
   }
   await rm(tempRoot, { recursive: true, force: true });

@@ -362,6 +362,24 @@ describe('DiceTray3DConceptPanel', () => {
         runtimeSourceId: 7,
         runtimeCloneId: 9,
       });
+      rollerAttack.onMotionDiagnostic?.({
+        presentationToken: rollerToken,
+        sequence: 41,
+        phase: 'rolling',
+        reducedMotion: false,
+        held: false,
+        translation: [0.1, 0.2, 0.3],
+        quaternion: [0, 0, 0, 1],
+      });
+      spectatorAttack.onMotionDiagnostic?.({
+        presentationToken: spectatorToken,
+        sequence: 42,
+        phase: 'rolling',
+        reducedMotion: false,
+        held: false,
+        translation: [0.2, 0.3, 0.4],
+        quaternion: [0, 0.1, 0, 0.995],
+      });
     });
 
     const bridge = (
@@ -372,6 +390,7 @@ describe('DiceTray3DConceptPanel', () => {
       request: { identity: string; result: number; presetId: string };
       shared: { eventArrayId: number; providerId: number };
       releaseCount: number;
+      releaseSchemaVersion: number;
       lifecyclePhase: string;
       rollerGrabbed: boolean;
       spectatorGrabbed: boolean;
@@ -383,6 +402,7 @@ describe('DiceTray3DConceptPanel', () => {
           runtimeCloneId: number;
           releaseProfile: unknown;
           finalTelemetry: Record<string, unknown>;
+          motionSamples: readonly Record<string, unknown>[];
         }
       >;
     };
@@ -393,6 +413,7 @@ describe('DiceTray3DConceptPanel', () => {
         presetId: 'dice.original.carved.d20',
       },
       releaseCount: 1,
+      releaseSchemaVersion: 2,
       lifecyclePhase: 'settled',
       rollerGrabbed: false,
       spectatorGrabbed: false,
@@ -405,6 +426,9 @@ describe('DiceTray3DConceptPanel', () => {
             motionRevision: 'choreographed-v1',
             requestedResult: 10,
             observedUpwardResult: 10,
+            observedUpDot: 1,
+            observedUpMargin: 0.25,
+            angularErrorDegrees: 0,
             exactTargetHeld: true,
             contextId: 11,
             cloneId: 8,
@@ -418,6 +442,9 @@ describe('DiceTray3DConceptPanel', () => {
             motionRevision: 'choreographed-v1',
             requestedResult: 10,
             observedUpwardResult: 10,
+            observedUpDot: 1,
+            observedUpMargin: 0.25,
+            angularErrorDegrees: 0,
             exactTargetHeld: true,
             contextId: 12,
             cloneId: 9,
@@ -425,6 +452,17 @@ describe('DiceTray3DConceptPanel', () => {
         },
       },
     });
+    expect(bridge.witnesses.roller.motionSamples).toEqual([
+      {
+        sequence: 41,
+        phase: 'rolling',
+        reducedMotion: false,
+        held: false,
+        translation: [0.1, 0.2, 0.3],
+        quaternion: [0, 0, 0, 1],
+      },
+    ]);
+    expect(bridge.witnesses.spectator.motionSamples).toHaveLength(1);
     expect(bridge.shared.eventArrayId).toBeGreaterThan(0);
     expect(bridge.shared.providerId).toBeGreaterThan(0);
     expect(bridge.witnesses.roller.releaseProfile).toEqual(
@@ -511,6 +549,7 @@ describe('DiceTray3DConceptPanel', () => {
     expect(window.__stone1TrayEvidence).toBe(before);
     expect(window.__stone1TrayEvidence?.witnesses.roller).toEqual({
       releaseProfile: rollerAttack.throwProfile,
+      motionSamples: [],
     });
     const keys = recursivelyCollectKeys(window.__stone1TrayEvidence);
     for (const key of ['pointerid', 'history', 'clientx', 'clienty'])
@@ -610,6 +649,7 @@ describe('DiceTray3DConceptPanel', () => {
     const clearedBridge = window.__stone1TrayEvidence;
     expect(clearedBridge?.witnesses.roller).toEqual({
       releaseProfile: rollerAttack.throwProfile,
+      motionSamples: [],
     });
 
     act(() => {
@@ -632,6 +672,7 @@ describe('DiceTray3DConceptPanel', () => {
     expect(window.__stone1TrayEvidence).toBe(clearedBridge);
     expect(window.__stone1TrayEvidence?.witnesses.roller).toEqual({
       releaseProfile: rollerAttack.throwProfile,
+      motionSamples: [],
     });
   });
 

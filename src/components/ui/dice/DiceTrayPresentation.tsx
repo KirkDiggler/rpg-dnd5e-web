@@ -44,6 +44,8 @@ export interface DiceTrayPresentationProps {
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  /** Concepts-only rendered-pose diagnostic; never carries pointer samples. */
+  onMotionDiagnostic?: AttackDie3DProps['onMotionDiagnostic'];
   /** Read-only development evidence emitted from this actual boundary. */
   onBoundaryDiagnostic?: (
     diagnostic: DiceTrayPresentationBoundaryDiagnostic
@@ -89,6 +91,7 @@ interface PresentationInstanceProps {
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  onMotionDiagnostic?: AttackDie3DProps['onMotionDiagnostic'];
   diagnosticEvents: readonly DicePresentationEvent[];
   onBoundaryDiagnostic?: (
     diagnostic: DiceTrayPresentationBoundaryDiagnostic
@@ -306,6 +309,7 @@ function DiceTrayPresentationInstance({
   onReleaseRequest,
   onTelemetry,
   onRendererInfo,
+  onMotionDiagnostic,
   diagnosticEvents,
   onBoundaryDiagnostic,
   reducedMotion,
@@ -539,6 +543,7 @@ function DiceTrayPresentationInstance({
         onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
         onRendererInfo={handleRendererInfo}
+        onMotionDiagnostic={onMotionDiagnostic}
         onProviderDiagnostic={handleProviderDiagnostic}
         onFallbackPresentationComplete={handleFallbackPresentationComplete}
         reducedMotion={reducedMotion}
@@ -570,6 +575,7 @@ export function DiceTrayPresentation({
   onReleaseRequest,
   onTelemetry,
   onRendererInfo,
+  onMotionDiagnostic,
   onBoundaryDiagnostic,
   reducedMotion = false,
   developmentOnlyRenderer,
@@ -609,6 +615,7 @@ export function DiceTrayPresentation({
       onReleaseRequest={onReleaseRequest}
       onTelemetry={onTelemetry}
       onRendererInfo={onRendererInfo}
+      onMotionDiagnostic={onMotionDiagnostic}
       diagnosticEvents={events}
       onBoundaryDiagnostic={onBoundaryDiagnostic}
       reducedMotion={reducedMotion}

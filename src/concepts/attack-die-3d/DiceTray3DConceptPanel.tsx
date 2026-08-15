@@ -8,6 +8,7 @@ import {
 } from 'react';
 import type {
   AttackDie3DProps,
+  AttackDieMotionDiagnostic,
   AttackDieRendererInfo,
   AttackDieTelemetry,
 } from '../../components/ui/dice/AttackDie3D';
@@ -40,8 +41,27 @@ export interface Stone1WitnessMotionFact {
   readonly requestedResult: number;
   readonly observedUpwardResult?: number;
   readonly exactTargetHeld: boolean;
+  readonly observedUpDot: number;
+  readonly observedUpMargin: number;
+  readonly angularErrorDegrees: number;
   readonly contextId?: number;
   readonly cloneId?: number;
+}
+
+interface Stone1RenderedMotionFact {
+  readonly sequence: number;
+  readonly phase: AttackDieMotionDiagnostic['phase'];
+  readonly reducedMotion: boolean;
+  readonly held: boolean;
+  readonly translation: AttackDieMotionDiagnostic['translation'];
+  readonly quaternion: AttackDieMotionDiagnostic['quaternion'];
+}
+
+interface Stone1FailureTelemetryFact {
+  readonly renderer: 'svg';
+  readonly state: 'failed';
+  readonly requestedResult: number;
+  readonly failureCode?: string;
 }
 
 interface Stone1WitnessEvidence {
@@ -50,6 +70,8 @@ interface Stone1WitnessEvidence {
   readonly runtimeCloneId?: number;
   readonly finalTelemetry?: Stone1WitnessMotionFact;
   readonly releaseProfile?: VisualThrowProfileV1;
+  readonly motionSamples: readonly Stone1RenderedMotionFact[];
+  readonly failureTelemetry?: Stone1FailureTelemetryFact;
 }
 
 interface Stone1TrayEvidenceBridge {
@@ -69,6 +91,7 @@ interface Stone1TrayEvidenceBridge {
   readonly rollerGrabbed: boolean;
   readonly spectatorGrabbed: boolean;
   readonly releaseCount: number;
+  readonly releaseSchemaVersion?: number;
   readonly lifecyclePhase: 'armed' | 'rolling' | 'settled' | 'mixed';
 }
 
@@ -97,6 +120,8 @@ interface WitnessEvidenceData {
   runtimeSourceId?: number;
   runtimeCloneId?: number;
   finalObservation?: Omit<Stone1WitnessMotionFact, 'contextId' | 'cloneId'>;
+  motionSamples: Stone1RenderedMotionFact[];
+  failureTelemetry?: Stone1FailureTelemetryFact;
 }
 
 function witnessRegion(
@@ -293,18 +318,21 @@ function DiceTrayWitnessDeliveryHost({
     undefined
   );
   const evidenceData = useRef<Record<WitnessIdentity, WitnessEvidenceData>>({
-    roller: {},
-    spectator: {},
+    roller: { motionSamples: [] },
+    spectator: { motionSamples: [] },
   });
   const callbackFence = useRef<Record<string, unknown>>({});
-  const releaseProfile = (() => {
-    const released = events.find(
-      (event) => event.type === 'dice-presentation-released'
-    );
-    return released?.type === 'dice-presentation-released'
-      ? parseVisualThrowProfile(released.release.throwProfile)
+  const acceptedRelease = events.find(
+    (event) => event.type === 'dice-presentation-released'
+  );
+  const releaseProfile =
+    acceptedRelease?.type === 'dice-presentation-released'
+      ? parseVisualThrowProfile(acceptedRelease.release.throwProfile)
       : undefined;
-  })();
+  const releaseSchemaVersion =
+    acceptedRelease?.type === 'dice-presentation-released'
+      ? acceptedRelease.release.schemaVersion
+      : undefined;
   const releaseCount = events.filter(
     (event) => event.type === 'dice-presentation-released'
   ).length;
@@ -313,6 +341,7 @@ function DiceTrayWitnessDeliveryHost({
     presetId,
     releaseCount,
     releaseProfile,
+    releaseSchemaVersion,
     requestIdentity,
     result,
   });
@@ -321,6 +350,7 @@ function DiceTrayWitnessDeliveryHost({
     presetId,
     releaseCount,
     releaseProfile,
+    releaseSchemaVersion,
     requestIdentity,
     result,
   };
@@ -342,7 +372,7 @@ function DiceTrayWitnessDeliveryHost({
               : { cloneId: data.runtimeCloneId }),
           })
         : undefined;
-      return Object.freeze({
+      const bridge = {
         ...(data.rendererContextId === undefined
           ? {}
           : { rendererContextId: data.rendererContextId }),
@@ -353,10 +383,18 @@ function DiceTrayWitnessDeliveryHost({
           ? {}
           : { runtimeCloneId: data.runtimeCloneId }),
         ...(finalTelemetry ? { finalTelemetry } : {}),
+        ...(data.failureTelemetry
+          ? { failureTelemetry: data.failureTelemetry }
+          : {}),
         ...(delivery.releaseProfile
           ? { releaseProfile: delivery.releaseProfile }
           : {}),
+      } as Stone1WitnessEvidence;
+      Object.defineProperty(bridge, 'motionSamples', {
+        enumerable: true,
+        get: () => data.motionSamples.slice(),
       });
+      return Object.freeze(bridge);
     };
 
     const providerIds = (['roller', 'spectator'] as const)
@@ -383,6 +421,9 @@ function DiceTrayWitnessDeliveryHost({
         spectator: buildWitness('spectator'),
       }),
       releaseCount: delivery.releaseCount,
+      ...(delivery.releaseSchemaVersion === undefined
+        ? {}
+        : { releaseSchemaVersion: delivery.releaseSchemaVersion }),
     } as Stone1TrayEvidenceBridge;
     Object.defineProperties(bridge, {
       rollerGrabbed: {
@@ -438,6 +479,7 @@ function DiceTrayWitnessDeliveryHost({
         evidenceData.current[witness] = {
           rendererGeneration: diagnostic.rendererGeneration,
           providerId,
+          motionSamples: [],
         };
       } else {
         evidenceData.current[witness].providerId = providerId;
@@ -454,13 +496,28 @@ function DiceTrayWitnessDeliveryHost({
     ) => {
       const data = evidenceData.current[witness];
       const delivery = currentDelivery.current;
-      const parsedProfile = parseVisualThrowProfile(telemetry.throwProfile);
       if (
         !evidenceActive.current ||
         callbackFence.current[`${witness}Telemetry`] !== callback ||
         data.rendererGeneration === undefined ||
         telemetry.presentationToken !== data.rendererGeneration ||
-        telemetry.requestedResult !== delivery.result ||
+        telemetry.requestedResult !== delivery.result
+      )
+        return;
+      if (telemetry.renderer === 'svg' && telemetry.state === 'failed') {
+        data.failureTelemetry = Object.freeze({
+          renderer: telemetry.renderer,
+          state: telemetry.state,
+          requestedResult: telemetry.requestedResult,
+          ...(telemetry.failureCode
+            ? { failureCode: telemetry.failureCode }
+            : {}),
+        });
+        publishEvidence();
+        return;
+      }
+      const parsedProfile = parseVisualThrowProfile(telemetry.throwProfile);
+      if (
         delivery.releaseCount !== 1 ||
         !delivery.releaseProfile ||
         !parsedProfile ||
@@ -494,11 +551,45 @@ function DiceTrayWitnessDeliveryHost({
         throwProfile: parsedProfile,
         requestedResult: telemetry.requestedResult,
         observedUpwardResult: telemetry.observedUpwardResult,
+        observedUpDot: telemetry.observedUpDot,
+        observedUpMargin: telemetry.observedUpMargin,
+        angularErrorDegrees: telemetry.angularErrorDegrees,
         exactTargetHeld: true,
       });
       publishEvidence();
     },
     [publishEvidence]
+  );
+  const publishMotionDiagnostic = useCallback(
+    (
+      witness: WitnessIdentity,
+      diagnostic: AttackDieMotionDiagnostic,
+      callback: unknown
+    ) => {
+      const data = evidenceData.current[witness];
+      if (
+        !evidenceActive.current ||
+        callbackFence.current[`${witness}Motion`] !== callback ||
+        data.rendererGeneration === undefined ||
+        diagnostic.presentationToken !== data.rendererGeneration
+      )
+        return;
+      const sample = Object.freeze({
+        sequence: diagnostic.sequence,
+        phase: diagnostic.phase,
+        reducedMotion: diagnostic.reducedMotion,
+        held: diagnostic.held,
+        translation: Object.freeze([
+          ...diagnostic.translation,
+        ]) as AttackDieMotionDiagnostic['translation'],
+        quaternion: Object.freeze([
+          ...diagnostic.quaternion,
+        ]) as AttackDieMotionDiagnostic['quaternion'],
+      });
+      data.motionSamples.push(sample);
+      if (data.motionSamples.length > 240) data.motionSamples.shift();
+    },
+    []
   );
   const publishRendererInfo = useCallback(
     (
@@ -548,6 +639,24 @@ function DiceTrayWitnessDeliveryHost({
       publishTelemetry('spectator', telemetry, publishSpectatorTelemetry),
     [publishTelemetry]
   );
+  const publishRollerMotionDiagnostic = useCallback(
+    (diagnostic: AttackDieMotionDiagnostic) =>
+      publishMotionDiagnostic(
+        'roller',
+        diagnostic,
+        publishRollerMotionDiagnostic
+      ),
+    [publishMotionDiagnostic]
+  );
+  const publishSpectatorMotionDiagnostic = useCallback(
+    (diagnostic: AttackDieMotionDiagnostic) =>
+      publishMotionDiagnostic(
+        'spectator',
+        diagnostic,
+        publishSpectatorMotionDiagnostic
+      ),
+    [publishMotionDiagnostic]
+  );
   const publishRollerRendererInfo = useCallback(
     (rendererInfo: AttackDieRendererInfo) =>
       publishRendererInfo('roller', rendererInfo, publishRollerRendererInfo),
@@ -569,6 +678,8 @@ function DiceTrayWitnessDeliveryHost({
       spectatorBoundary: publishSpectatorBoundaryDiagnostic,
       rollerTelemetry: publishRollerTelemetry,
       spectatorTelemetry: publishSpectatorTelemetry,
+      rollerMotion: publishRollerMotionDiagnostic,
+      spectatorMotion: publishSpectatorMotionDiagnostic,
       rollerRenderer: publishRollerRendererInfo,
       spectatorRenderer: publishSpectatorRendererInfo,
     };
@@ -578,9 +689,11 @@ function DiceTrayWitnessDeliveryHost({
     };
   }, [
     publishRollerBoundaryDiagnostic,
+    publishRollerMotionDiagnostic,
     publishRollerRendererInfo,
     publishRollerTelemetry,
     publishSpectatorBoundaryDiagnostic,
+    publishSpectatorMotionDiagnostic,
     publishSpectatorRendererInfo,
     publishSpectatorTelemetry,
   ]);
@@ -599,6 +712,7 @@ function DiceTrayWitnessDeliveryHost({
                 onReleaseRequest={mode === 'player' ? append : undefined}
                 onTelemetry={publishRollerTelemetry}
                 onRendererInfo={publishRollerRendererInfo}
+                onMotionDiagnostic={publishRollerMotionDiagnostic}
                 onBoundaryDiagnostic={publishRollerBoundaryDiagnostic}
                 reducedMotion={reducedMotion}
                 forceFailure={forceFailure}
@@ -614,6 +728,7 @@ function DiceTrayWitnessDeliveryHost({
                 witnessRole="spectator"
                 onTelemetry={publishSpectatorTelemetry}
                 onRendererInfo={publishSpectatorRendererInfo}
+                onMotionDiagnostic={publishSpectatorMotionDiagnostic}
                 onBoundaryDiagnostic={publishSpectatorBoundaryDiagnostic}
                 reducedMotion={reducedMotion}
                 forceFailure={forceFailure}

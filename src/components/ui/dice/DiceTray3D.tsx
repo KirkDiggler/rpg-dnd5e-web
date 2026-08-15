@@ -57,6 +57,8 @@ export interface DiceTray3DProps {
   onReleaseRequest?: (throwProfile?: VisualThrowProfileV1) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  /** Concepts-only rendered-pose diagnostic; never carries pointer samples. */
+  onMotionDiagnostic?: AttackDie3DProps['onMotionDiagnostic'];
   /** Read-only development diagnostic for the exact provider object consumed. */
   onProviderDiagnostic?: (provider: AttackDieProvider) => void;
   onFallbackPresentationComplete?: () => void;
@@ -121,6 +123,7 @@ export function DiceTray3D({
   onReleaseRequest,
   onTelemetry,
   onRendererInfo,
+  onMotionDiagnostic,
   onProviderDiagnostic,
   onFallbackPresentationComplete,
   reducedMotion = false,
@@ -366,6 +369,7 @@ export function DiceTray3D({
             provider={provider}
             onTelemetry={handleTelemetry}
             onRendererInfo={onRendererInfo}
+            onMotionDiagnostic={onMotionDiagnostic}
             fallback={fallback}
             sceneOverride={lightningDevelopment ? sceneOverride : undefined}
             sidecarOverride={lightningDevelopment ? sidecarOverride : undefined}

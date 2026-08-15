@@ -11,6 +11,7 @@ import {
   ORIGINAL_D20_PRESET_ID,
   ORIGINAL_D20_SIZE_BYTES,
   ORIGINAL_D20_SOURCE_MANIFEST_SHA256,
+  STONE0_LOCAL_API_FIXTURES,
 } from './stone0TrayEvidenceProtocol';
 
 export const STONE1_SCENARIO_IDS = [
@@ -139,6 +140,13 @@ export interface Stone1FailureFact {
   staleProfileTelemetry: boolean;
 }
 
+export interface Stone1TerminalInputFact {
+  eventType: 'pointercancel' | 'lostpointercapture';
+  isTrusted: boolean;
+  captureOwnedBefore: boolean;
+  captureOwnedAfter: boolean;
+}
+
 export interface Stone1ScenarioFact {
   id: Stone1ScenarioId;
   passed: boolean;
@@ -159,6 +167,7 @@ export interface Stone1ScenarioFact {
   };
   outsideCaptureObserved: boolean;
   cancellationObserved: boolean;
+  terminalInput: Stone1TerminalInputFact | null;
   observations: Stone1ObservationPair | null;
   failure: Stone1FailureFact | null;
 }
@@ -203,7 +212,7 @@ export interface Stone1TrayEvidence {
 
 export interface Stone1PackageArtifact {
   path: string;
-  kind: 'build-manifest' | 'json' | 'screenshot';
+  kind: 'build-manifest' | 'build-source-binding' | 'json' | 'screenshot';
   sha256: string;
   sizeBytes: number;
 }
@@ -219,6 +228,7 @@ export interface Stone1TrayEvidencePackage {
   providerManifestSha256: string;
   providerSourceManifestSha256: string;
   providerGlbSha256: string;
+  sourceBindingAssetPath: string;
   scenarioCount: number;
   contextCount: number;
   screenshotCount: number;
@@ -231,6 +241,19 @@ const SOURCE_SHA = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 export const STONE1_VALIDATION_RSS_LIMIT_BYTES = 512 * 1024 * 1024;
 export const STONE1_MAX_AGGREGATE_DECODED_BYTES = 96 * 1024 * 1024;
+export const STONE1_FONT_CSS_URL =
+  'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Courier+Prime:wght@400;700&display=swap';
+export const STONE1_SYNTY_REQUEST_PATHS = Object.freeze([
+  '/models/synty/env/SM_Env_Wall_Half_01.glb',
+  '/models/synty/env/SM_Env_Wall_Broken_Edge_01.glb',
+  '/models/synty/env/SM_Env_Wall_Alcove_01.glb',
+  '/models/synty/env/SM_Env_Wall_Quarter_01.glb',
+  '/models/synty/env/SM_Env_Door_Frame_01.glb',
+  '/models/synty/env/SM_Env_Door_01.glb',
+  '/models/synty/ui/library/frames/SPR_FantasyWarrior_Frame_Box03.png',
+  '/models/synty/ui/actions/attack.png',
+  '/models/synty/ui/actions/dodge.png',
+] as const);
 
 const TOP_KEYS = [
   'schemaVersion',
@@ -268,6 +291,7 @@ const SCENARIO_KEYS = [
   'heldCue',
   'outsideCaptureObserved',
   'cancellationObserved',
+  'terminalInput',
   'observations',
   'failure',
 ] as const;
@@ -339,6 +363,12 @@ const PROFILE_KEYS = [
   'spinBias',
   'motionSeed',
 ] as const;
+const TERMINAL_INPUT_KEYS = [
+  'eventType',
+  'isTrusted',
+  'captureOwnedBefore',
+  'captureOwnedAfter',
+] as const;
 const FAILURE_KEYS = [
   'origin',
   'fallbackRenderer',
@@ -372,6 +402,7 @@ const PACKAGE_KEYS = [
   'providerManifestSha256',
   'providerSourceManifestSha256',
   'providerGlbSha256',
+  'sourceBindingAssetPath',
   'scenarioCount',
   'contextCount',
   'screenshotCount',
@@ -752,14 +783,13 @@ function validateScenario(value: unknown, id: Stone1ScenarioId, index: number) {
     exactBoolean(cue.staticLifted, false, `${label} static lifted cue`);
     if (
       SUCCESS_IDS.has(id) &&
-      id !== 'keyboard-neutral' &&
       (Number(cue.tumbleSampleCount) < 1 ||
         Number(cue.shakeSampleCount) < 1 ||
         Number(cue.bounceSampleCount) < 1)
     )
       fail(`${label} tactile motion samples missing`);
     if (
-      (!SUCCESS_IDS.has(id) || id === 'keyboard-neutral') &&
+      !SUCCESS_IDS.has(id) &&
       (cue.tumbleSampleCount !== 0 ||
         cue.shakeSampleCount !== 0 ||
         cue.bounceSampleCount !== 0)
@@ -776,6 +806,23 @@ function validateScenario(value: unknown, id: Stone1ScenarioId, index: number) {
     CANCEL_IDS.has(id),
     `${label} cancellation witness`
   );
+  if (CANCEL_IDS.has(id)) {
+    const terminal = exactObject(
+      scenario.terminalInput,
+      TERMINAL_INPUT_KEYS,
+      `${label} terminal input`
+    );
+    if (
+      terminal.eventType !==
+        (id === 'pointer-cancel' ? 'pointercancel' : 'lostpointercapture') ||
+      terminal.isTrusted !== true ||
+      terminal.captureOwnedBefore !== true ||
+      terminal.captureOwnedAfter !== false
+    )
+      fail(`${label} terminal input trust/capture transition`);
+  } else if (scenario.terminalInput !== null) {
+    fail(`${label} unexpected terminal input fact`);
+  }
 
   if (SUCCESS_IDS.has(id)) {
     if (scenario.observations === null) fail(`${label} observations missing`);
@@ -923,6 +970,33 @@ function hashBytes(bytes: Uint8Array) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+export function assertFrozenBuildSourceBinding(
+  buildValue: unknown,
+  expectedSourceSha: string,
+  sourceBindingAssetPath: string,
+  sourceBindingAssetBytes: Uint8Array
+) {
+  if (!SOURCE_SHA.test(expectedSourceSha)) fail('source binding expected SHA');
+  const build = validateManifest(buildValue);
+  const entry = build.files.find(
+    (file) => file.path === sourceBindingAssetPath
+  );
+  if (
+    !entry ||
+    !sourceBindingAssetPath.startsWith('assets/') ||
+    !sourceBindingAssetPath.endsWith('.js') ||
+    entry.size !== sourceBindingAssetBytes.byteLength ||
+    entry.sha256 !== hashBytes(sourceBindingAssetBytes)
+  )
+    fail('source binding asset path/hash/size versus frozen build manifest');
+  const source = new TextDecoder('utf8', { fatal: false }).decode(
+    sourceBindingAssetBytes
+  );
+  const occurrences = source.split(expectedSourceSha).length - 1;
+  if (occurrences < 1) fail('source binding asset does not embed exact HEAD');
+  return entry;
+}
+
 function parseJsonBytes(bytes: Uint8Array, label: string): unknown {
   try {
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
@@ -953,7 +1027,7 @@ const NETWORK_REQUEST_KEYS = [
   'method',
   'resourceType',
   'status',
-  'expected',
+  'completed',
 ] as const;
 const CONSOLE_KEYS = [
   'schemaVersion',
@@ -962,21 +1036,180 @@ const CONSOLE_KEYS = [
   'pageErrors',
   'unexpectedErrors',
 ] as const;
-const CONSOLE_ENTRY_KEYS = [
-  'scenarioId',
-  'type',
-  'text',
-  'url',
-  'expected',
-] as const;
+const CONSOLE_ENTRY_KEYS = ['scenarioId', 'type', 'text', 'url'] as const;
 
-function validateNetwork(value: unknown) {
+interface ExpectedNetworkRequest {
+  url: string;
+  method: 'GET' | 'POST';
+  resourceType: string;
+  status: number;
+}
+
+function oneBuildPath(
+  build: ReturnType<typeof validateManifest>,
+  pattern: RegExp,
+  label: string
+) {
+  const paths = build.files
+    .map((file) => file.path)
+    .filter((path) => pattern.test(path));
+  if (paths.length !== 1) fail(`network ${label} frozen build path`);
+  return paths[0];
+}
+
+function requestKey(request: ExpectedNetworkRequest) {
+  return `${request.method}\0${request.url}\0${request.resourceType}\0${request.status}`;
+}
+
+function expectedNetworkRequests(
+  id: Stone1ScenarioId,
+  baseOrigin: string,
+  build: ReturnType<typeof validateManifest>,
+  sourceSha: string
+): ExpectedNetworkRequest[] {
+  const mainJs = oneBuildPath(build, /^assets\/index-[^/]+\.js$/, 'main JS');
+  const mainCss = oneBuildPath(build, /^assets\/index-[^/]+\.css$/, 'main CSS');
+  for (const required of [
+    mainJs,
+    mainCss,
+    'themes/base.css',
+    'themes/dark-fantasy.css',
+    'vite.svg',
+  ])
+    if (!build.files.some((file) => file.path === required))
+      fail(`network required frozen build file ${required}`);
+  const local = (path: string) => `${baseOrigin}${path}`;
+  const expected: ExpectedNetworkRequest[] = [
+    {
+      url: local('/?concept=attack-die-3d&attackDieStage=tray'),
+      method: 'GET',
+      resourceType: 'document',
+      status: 200,
+    },
+    {
+      url: local(`/${mainJs}`),
+      method: 'GET',
+      resourceType: 'script',
+      status: 200,
+    },
+    {
+      url: local(`/${mainCss}`),
+      method: 'GET',
+      resourceType: 'stylesheet',
+      status: 200,
+    },
+    ...STONE1_SYNTY_REQUEST_PATHS.slice(0, 6).map((path) => ({
+      url: local(path),
+      method: 'GET' as const,
+      resourceType: 'fetch',
+      status: 200,
+    })),
+    {
+      url: local(ORIGINAL_D20_MANIFEST_PATH),
+      method: 'GET',
+      resourceType: 'fetch',
+      status: id === 'provider-failure' ? 503 : 200,
+    },
+    ...STONE0_LOCAL_API_FIXTURES.map((fixture) => ({
+      url: fixture.url,
+      method: 'POST' as const,
+      resourceType: 'fetch',
+      status: 200,
+    })),
+    {
+      url: local(`/themes/base.css?v=${sourceSha.slice(0, 7)}`),
+      method: 'GET',
+      resourceType: 'stylesheet',
+      status: 200,
+    },
+    {
+      url: local(`/themes/dark-fantasy.css?v=${sourceSha.slice(0, 7)}`),
+      method: 'GET',
+      resourceType: 'stylesheet',
+      status: 200,
+    },
+    {
+      url: STONE1_FONT_CSS_URL,
+      method: 'GET',
+      resourceType: 'stylesheet',
+      status: 200,
+    },
+    {
+      url: local('/vite.svg'),
+      method: 'GET',
+      resourceType: 'other',
+      status: 200,
+    },
+  ];
+  if (id !== 'provider-failure')
+    expected.push({
+      url: local(ORIGINAL_D20_GLB_PATH),
+      method: 'GET',
+      resourceType: 'fetch',
+      status: 200,
+    });
+  expected.push(
+    ...STONE1_SYNTY_REQUEST_PATHS.slice(6).map((path) => ({
+      url: local(path),
+      method: 'GET' as const,
+      resourceType: 'image',
+      status: 200,
+    }))
+  );
+  return expected;
+}
+
+function validateNetwork(
+  value: unknown,
+  build: ReturnType<typeof validateManifest>,
+  sourceSha: string
+) {
   const network = exactObject(value, NETWORK_KEYS, 'network log');
   if (network.schemaVersion !== 1 || network.kind !== 'stone1-network-log')
     fail('network log schema');
   const contexts = denseArray(network.contexts, 'network contexts');
   if (contexts.length !== STONE1_SCENARIO_IDS.length)
     fail('network exact context count');
+  const requests = denseArray(network.requests, 'network request records').map(
+    (raw, index) => {
+      const request = exactObject(
+        raw,
+        NETWORK_REQUEST_KEYS,
+        `network request ${index}`
+      );
+      if (
+        !STONE1_SCENARIO_IDS.includes(request.scenarioId as Stone1ScenarioId) ||
+        typeof request.url !== 'string' ||
+        typeof request.method !== 'string' ||
+        typeof request.resourceType !== 'string' ||
+        !Number.isInteger(request.status) ||
+        request.completed !== true
+      )
+        fail(`network request ${index} schema/completion`);
+      return request;
+    }
+  );
+  const firstDocument = requests.find(
+    (request) =>
+      request.scenarioId === STONE1_SCENARIO_IDS[0] &&
+      request.resourceType === 'document'
+  );
+  if (!firstDocument || typeof firstDocument.url !== 'string')
+    fail('network first document origin');
+  let baseOrigin: string;
+  try {
+    const parsed = new URL(firstDocument.url);
+    if (
+      parsed.protocol !== 'http:' ||
+      parsed.hostname !== '127.0.0.1' ||
+      !/^\d+$/.test(parsed.port)
+    )
+      fail('network exact loopback origin');
+    baseOrigin = parsed.origin;
+  } catch {
+    fail('network document URL');
+  }
+
   contexts.forEach((raw, index) => {
     const context = exactObject(
       raw,
@@ -984,40 +1217,69 @@ function validateNetwork(value: unknown) {
       `network context ${index}`
     );
     const id = STONE1_SCENARIO_IDS[index];
+    const scenarioRequests = requests.filter(
+      (request) => request.scenarioId === id
+    );
+    const expected = expectedNetworkRequests(id, baseOrigin, build, sourceSha);
+    const actualCounts = new Map<string, number>();
+    for (const request of scenarioRequests) {
+      const key = requestKey(request as unknown as ExpectedNetworkRequest);
+      actualCounts.set(key, (actualCounts.get(key) ?? 0) + 1);
+    }
+    const expectedCounts = new Map<string, number>();
+    for (const request of expected) {
+      const key = requestKey(request);
+      expectedCounts.set(key, (expectedCounts.get(key) ?? 0) + 1);
+    }
+    if (
+      actualCounts.size !== expectedCounts.size ||
+      [...expectedCounts].some(
+        ([key, count]) => actualCounts.get(key) !== count
+      )
+    )
+      fail(`network ${id} exact URL/method/status/count allowlist`);
+    const manifestRequests = scenarioRequests.filter(
+      (request) =>
+        new URL(String(request.url)).pathname === ORIGINAL_D20_MANIFEST_PATH
+    );
+    const glbRequests = scenarioRequests.filter(
+      (request) =>
+        new URL(String(request.url)).pathname === ORIGINAL_D20_GLB_PATH
+    );
     const providerFailed = id === 'provider-failure';
     if (
       context.scenarioId !== id ||
       context.contextOrdinal !== index + 1 ||
+      context.manifestRequestCount !== manifestRequests.length ||
+      context.manifestTransferCount !==
+        manifestRequests.filter(
+          (request) => request.status === 200 && request.completed === true
+        ).length ||
+      context.glbRequestCount !== glbRequests.length ||
+      context.glbTransferCount !==
+        glbRequests.filter(
+          (request) => request.status === 200 && request.completed === true
+        ).length ||
       context.manifestRequestCount !== 1 ||
       context.manifestTransferCount !== (providerFailed ? 0 : 1) ||
       context.glbRequestCount !== (providerFailed ? 0 : 1) ||
       context.glbTransferCount !== (providerFailed ? 0 : 1) ||
       context.unexpectedRequestCount !== 0
     )
-      fail(`network ${id} exact request/transfer matrix`);
-  });
-  const requests = denseArray(network.requests, 'network request records');
-  requests.forEach((raw, index) => {
-    const request = exactObject(
-      raw,
-      NETWORK_REQUEST_KEYS,
-      `network request ${index}`
-    );
-    if (
-      !STONE1_SCENARIO_IDS.includes(request.scenarioId as Stone1ScenarioId) ||
-      typeof request.url !== 'string' ||
-      typeof request.method !== 'string' ||
-      typeof request.resourceType !== 'string' ||
-      !(request.status === null || Number.isInteger(request.status)) ||
-      request.expected !== true
-    )
-      fail(`network request ${index} schema/ownership`);
+      fail(`network ${id} correlated request/transfer matrix`);
   });
   emptyArray(network.unexpectedErrors, 'network unexpected errors');
-  return contexts.length;
+  return { contextCount: contexts.length, baseOrigin };
 }
 
-function validateConsole(value: unknown) {
+const PROVIDER_FAILURE_CONSOLE_TEXT =
+  'Failed to load resource: the server responded with a status of 503 (Service Unavailable)';
+const CONTEXT_LOSS_CONSOLE_TEXTS = new Set([
+  'THREE.WebGLRenderer: Context Lost.',
+  'WebGL context lost',
+]);
+
+function validateConsole(value: unknown, baseOrigin: string) {
   const artifact = exactObject(value, CONSOLE_KEYS, 'console log');
   if (artifact.schemaVersion !== 1 || artifact.kind !== 'stone1-console-log')
     fail('console log schema');
@@ -1031,11 +1293,22 @@ function validateConsole(value: unknown) {
     if (
       !STONE1_SCENARIO_IDS.includes(entry.scenarioId as Stone1ScenarioId) ||
       typeof entry.type !== 'string' ||
+      !['debug', 'info', 'log', 'warning', 'error'].includes(entry.type) ||
       typeof entry.text !== 'string' ||
-      typeof entry.url !== 'string' ||
-      entry.expected !== true
+      typeof entry.url !== 'string'
     )
-      fail(`console entry ${index} schema/expectation`);
+      fail(`console entry ${index} schema`);
+    if (entry.type !== 'error') return;
+    const providerDiagnostic =
+      entry.scenarioId === 'provider-failure' &&
+      entry.text === PROVIDER_FAILURE_CONSOLE_TEXT &&
+      entry.url === `${baseOrigin}${ORIGINAL_D20_MANIFEST_PATH}`;
+    const contextDiagnostic =
+      entry.scenarioId === 'context-loss' &&
+      CONTEXT_LOSS_CONSOLE_TEXTS.has(String(entry.text)) &&
+      (entry.url === '' || String(entry.url).startsWith(`${baseOrigin}/`));
+    if (!providerDiagnostic && !contextDiagnostic)
+      fail(`console entry ${index} unowned severe diagnostic`);
   });
   emptyArray(artifact.pageErrors, 'console page errors');
   emptyArray(artifact.unexpectedErrors, 'console unexpected errors');
@@ -1098,8 +1371,16 @@ export function assertStone1TrayEvidencePackage(
       )
     ),
   ];
+  if (
+    typeof packageValue.sourceBindingAssetPath !== 'string' ||
+    !packageValue.sourceBindingAssetPath.startsWith('assets/') ||
+    !packageValue.sourceBindingAssetPath.endsWith('.js')
+  )
+    fail('package source binding asset path');
+  const sourceBindingPackagePath = `frozen-build/${packageValue.sourceBindingAssetPath}`;
   const expectedPaths = [
     'build-manifest.json',
+    sourceBindingPackagePath,
     'browser-evidence.json',
     'network.json',
     'console.json',
@@ -1119,9 +1400,11 @@ export function assertStone1TrayEvidencePackage(
     const kind =
       path === 'build-manifest.json'
         ? 'build-manifest'
-        : path.endsWith('.json')
-          ? 'json'
-          : 'screenshot';
+        : path === sourceBindingPackagePath
+          ? 'build-source-binding'
+          : path.endsWith('.json')
+            ? 'json'
+            : 'screenshot';
     if (
       artifact.path !== path ||
       artifact.kind !== kind ||
@@ -1148,6 +1431,12 @@ export function assertStone1TrayEvidencePackage(
   const build = validateManifest(parseJsonBytes(buildBytes, 'build manifest'));
   if (build.webBuildSha256 !== identity.webBuildSha256)
     fail('package frozen build root mismatch');
+  assertFrozenBuildSourceBinding(
+    build,
+    identity.sourceSha,
+    String(packageValue.sourceBindingAssetPath),
+    artifactBytes.get(sourceBindingPackagePath)!
+  );
   const evidence = assertStone1TrayEvidence(
     parseJsonBytes(
       artifactBytes.get('browser-evidence.json')!,
@@ -1155,12 +1444,16 @@ export function assertStone1TrayEvidencePackage(
     ),
     identity
   );
-  const contextCount = validateNetwork(
-    parseJsonBytes(artifactBytes.get('network.json')!, 'network')
+  const network = validateNetwork(
+    parseJsonBytes(artifactBytes.get('network.json')!, 'network'),
+    build,
+    identity.sourceSha
   );
   validateConsole(
-    parseJsonBytes(artifactBytes.get('console.json')!, 'console')
+    parseJsonBytes(artifactBytes.get('console.json')!, 'console'),
+    network.baseOrigin
   );
+  const contextCount = network.contextCount;
 
   const pngValidation = validatePngEvidenceSequence(
     expectedScreenshotPaths.map((path) => ({

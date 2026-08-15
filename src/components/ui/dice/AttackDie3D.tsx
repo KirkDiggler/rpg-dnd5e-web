@@ -97,6 +97,15 @@ export interface AttackDieTelemetry {
   /** Deeply frozen release profile emitted only with final 3D observation. */
   throwProfile?: VisualThrowProfileV1;
 }
+export interface AttackDieMotionDiagnostic {
+  readonly presentationToken: number;
+  readonly sequence: number;
+  readonly phase: DiceTrayPhase;
+  readonly reducedMotion: boolean;
+  readonly held: boolean;
+  readonly translation: DiceMotionPose['translation'];
+  readonly quaternion: QuaternionTuple;
+}
 export interface AttackDieRendererInfo {
   /** Token fence added by AttackDie3D at the component boundary. */
   presentationToken?: number;
@@ -147,6 +156,8 @@ export interface AttackDie3DProps {
   /** Development-only inspected candidate sidecar metadata. */
   sidecarOverride?: AttackDieRuntimeSidecar;
   onRendererInfo?: (info: AttackDieRendererInfo) => void;
+  /** Concepts-only rendered-pose diagnostic; never carries pointer samples. */
+  onMotionDiagnostic?: (diagnostic: AttackDieMotionDiagnostic) => void;
 }
 
 import { installAttackDieRenderGate } from './attackDieRenderGate';
@@ -316,6 +327,7 @@ function RuntimeDie({
   phase,
   throwProfile,
   heldRollGroup,
+  onMotionDiagnostic,
 }: {
   sidecar?: AttackDieRuntimeSidecar;
   runtimeSource?: RuntimePresetSceneSource;
@@ -337,6 +349,9 @@ function RuntimeDie({
   phase: DiceTrayPhase;
   throwProfile: VisualThrowProfileV1;
   heldRollGroup?: HeldRollGroupState;
+  onMotionDiagnostic?: (
+    diagnostic: Omit<AttackDieMotionDiagnostic, 'presentationToken'>
+  ) => void;
 }) {
   const group = useRef<Group>(null);
   const shadow = useRef<Mesh>(null);
@@ -344,6 +359,7 @@ function RuntimeDie({
   const rollStartedAt = useRef<number | undefined>(undefined);
   const previousPhase = useRef<DiceTrayPhase>(phase);
   const observationSent = useRef(false);
+  const diagnosticSequence = useRef(0);
 
   const initialPose = ChoreographedSolverV1.solve({
     phase,
@@ -413,6 +429,21 @@ function RuntimeDie({
       shadowGroup.scale.setScalar(frame.shadow.scale);
       ownedShadowMaterial.opacity = frame.shadow.opacity;
       poseValidated.current = true;
+      if (onMotionDiagnostic) {
+        diagnosticSequence.current += 1;
+        onMotionDiagnostic(
+          Object.freeze({
+            sequence: diagnosticSequence.current,
+            phase,
+            reducedMotion,
+            held: heldRollGroup !== undefined,
+            translation: Object.freeze([
+              ...frame.translation,
+            ]) as DiceMotionPose['translation'],
+            quaternion: Object.freeze([...frame.quaternion]) as QuaternionTuple,
+          })
+        );
+      }
       if (magicalAnimation && !reducedMotion)
         bundle?.updateShaderTime(clock.elapsedTime);
       const observeNow =
@@ -535,6 +566,7 @@ function AttackDieToken({
   sceneOverride,
   sidecarOverride,
   onRendererInfo,
+  onMotionDiagnostic,
 }: AttackDie3DProps) {
   const visual = ATTACK_DIE_VISUAL_CONFIG;
   const runtimeProvider =
@@ -648,6 +680,11 @@ function AttackDieToken({
     | undefined
   >(undefined);
   const poseValidated = useRef(false);
+  const handleMotionDiagnostic = useCallback(
+    (diagnostic: Omit<AttackDieMotionDiagnostic, 'presentationToken'>) =>
+      onMotionDiagnostic?.(Object.freeze({ ...diagnostic, presentationToken })),
+    [onMotionDiagnostic, presentationToken]
+  );
   const handleRendererInfo = useCallback(
     (info: AttackDieRendererInfo) =>
       onRendererInfo?.(
@@ -921,6 +958,9 @@ function AttackDieToken({
                 phase={phase}
                 throwProfile={effectiveThrowProfile}
                 heldRollGroup={heldRollGroup}
+                onMotionDiagnostic={
+                  onMotionDiagnostic ? handleMotionDiagnostic : undefined
+                }
                 onFrame={(frame, worldQuaternion, runtimeIdentities) => {
                   if (!active.current || !frame.observeNow) return;
                   if (!settlementEntries) {
