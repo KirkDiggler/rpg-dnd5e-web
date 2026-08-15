@@ -7,7 +7,11 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { AttackDie3D, type AttackDie3DProps } from './AttackDie3D';
+import {
+  AttackDie3D,
+  type AttackDie3DProps,
+  type AttackDieProvider,
+} from './AttackDie3D';
 import type { QuaternionTuple } from './attackDieContract';
 import {
   isDicePresentationIdentifier,
@@ -17,6 +21,15 @@ import {
 } from './dicePresentationRelease';
 import { DiceTray } from './DiceTray';
 import { DiceTray3DShell } from './DiceTray3DShell';
+
+const ORIGINAL_CARVED_D20_PRESET_ID = 'dice.original.carved.d20';
+const ORIGINAL_CARVED_D20_PROVIDER: AttackDieProvider = Object.freeze({
+  kind: 'dice-runtime-preset',
+  presetId: ORIGINAL_CARVED_D20_PRESET_ID,
+});
+const LIGHTNING_DEVELOPMENT_PROVIDER: AttackDieProvider = Object.freeze({
+  kind: 'lightning-development',
+});
 
 export interface DiceTray3DItem {
   kind: 'd20';
@@ -35,11 +48,16 @@ export interface DiceTray3DProps {
   release?: DicePresentationRelease;
   onReleaseRequest?: (gesture?: DiceGestureSample) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
+  onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  /** Read-only development diagnostic for the exact provider object consumed. */
+  onProviderDiagnostic?: (provider: AttackDieProvider) => void;
   onFallbackPresentationComplete?: () => void;
   reducedMotion?: boolean;
   sceneOverride?: AttackDie3DProps['sceneOverride'];
   sidecarOverride?: AttackDie3DProps['sidecarOverride'];
   calibrationPose?: QuaternionTuple;
+  /** Development concept failure exercise; never supplied by production. */
+  forceFailure?: AttackDie3DProps['forceFailure'];
 }
 
 interface ActiveDiceGesture {
@@ -98,19 +116,37 @@ export function DiceTray3D({
   release,
   onReleaseRequest,
   onTelemetry,
+  onRendererInfo,
+  onProviderDiagnostic,
   onFallbackPresentationComplete,
   reducedMotion = false,
   sceneOverride,
   sidecarOverride,
   calibrationPose,
+  forceFailure,
 }: DiceTray3DProps) {
   const valid = validDieInput(presentationId, rendererGeneration, dice);
   const item = dice[0];
   const requestIdentity = valid
     ? `${presentationId}:${rendererGeneration}`
     : undefined;
+  const originalRuntime =
+    valid && item?.presetId === ORIGINAL_CARVED_D20_PRESET_ID;
+  const lightningDevelopment =
+    valid &&
+    item?.presetId === 'lightning' &&
+    sceneOverride !== undefined &&
+    sidecarOverride !== undefined &&
+    calibrationPose !== undefined;
+  const uses3DRenderer = originalRuntime || lightningDevelopment;
+  const provider = originalRuntime
+    ? ORIGINAL_CARVED_D20_PROVIDER
+    : lightningDevelopment
+      ? LIGHTNING_DEVELOPMENT_PROVIDER
+      : undefined;
   const committedRequest = useRef<string | undefined>(undefined);
   const activeGesture = useRef<ActiveDiceGesture | undefined>(undefined);
+  const completedFallback = useRef<string | undefined>(undefined);
   const [grabbed, setGrabbed] = useState(false);
   const canInteract =
     valid &&
@@ -119,6 +155,16 @@ export function DiceTray3D({
     rollerRole === 'player' &&
     witnessRole === 'roller' &&
     onReleaseRequest !== undefined;
+  const completeFallback = useCallback(() => {
+    if (
+      !requestIdentity ||
+      !onFallbackPresentationComplete ||
+      completedFallback.current === requestIdentity
+    )
+      return;
+    completedFallback.current = requestIdentity;
+    onFallbackPresentationComplete();
+  }, [onFallbackPresentationComplete, requestIdentity]);
   const requestRelease = useCallback(
     (gesture?: DiceGestureSample) => {
       if (
@@ -282,6 +328,14 @@ export function DiceTray3D({
     []
   );
 
+  useEffect(() => {
+    if (provider) onProviderDiagnostic?.(provider);
+  }, [onProviderDiagnostic, provider]);
+
+  useEffect(() => {
+    if (!uses3DRenderer && phase === 'settled') completeFallback();
+  }, [completeFallback, phase, uses3DRenderer]);
+
   if (!valid) {
     return (
       <DiceTray3DShell label={label} phase={phase}>
@@ -311,7 +365,6 @@ export function DiceTray3D({
       reducedMotion={reducedMotion}
     />
   );
-
   return (
     <DiceTray3DShell
       label={label}
@@ -324,19 +377,23 @@ export function DiceTray3D({
         data-testid="dice-tray-3d-renderer"
         data-grabbed={reviewGrabbed ? 'true' : 'false'}
       >
-        {item.presetId === 'lightning' ? (
+        {originalRuntime || lightningDevelopment ? (
           <AttackDie3D
             result={item.authoritativeResult}
             presentationToken={rendererGeneration}
             phase={rendererPhase}
-            materialMode="magical"
+            materialMode={originalRuntime ? 'raw' : 'magical'}
             reducedMotion={reducedMotion}
+            magicalAnimation={!originalRuntime}
             decorativeRelease={effectiveRelease}
+            provider={provider}
             onTelemetry={onTelemetry}
+            onRendererInfo={onRendererInfo}
             fallback={fallback}
-            sceneOverride={sceneOverride}
-            sidecarOverride={sidecarOverride}
-            calibrationPose={calibrationPose}
+            sceneOverride={lightningDevelopment ? sceneOverride : undefined}
+            sidecarOverride={lightningDevelopment ? sidecarOverride : undefined}
+            calibrationPose={lightningDevelopment ? calibrationPose : undefined}
+            forceFailure={originalRuntime ? forceFailure : undefined}
           />
         ) : (
           <DiceTray
@@ -345,7 +402,7 @@ export function DiceTray3D({
             outcome=""
             reducedMotion={reducedMotion}
             onPresentationComplete={
-              phase === 'rolling' ? onFallbackPresentationComplete : undefined
+              phase === 'rolling' ? completeFallback : undefined
             }
           />
         )}

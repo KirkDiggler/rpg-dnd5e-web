@@ -17,6 +17,11 @@ import {
   type AttackDieRuntimeSidecar,
   type QuaternionTuple,
 } from '../../components/ui/dice/attackDieContract';
+import {
+  getDiceRuntimePresetSnapshot,
+  preloadDiceRuntimePreset,
+  type DiceRuntimePresetSnapshot,
+} from '../../components/ui/dice/diceRuntimeProvider';
 import { DiceTray } from '../../components/ui/dice/DiceTray';
 import {
   PROVISIONAL_VISUAL_DEFAULTS,
@@ -36,6 +41,7 @@ declare global {
   }
 }
 const stages = ['Appearance', 'Calibrate', 'Roll', 'Verify', 'Tray'] as const;
+const ORIGINAL_CARVED_D20_PRESET_ID = 'dice.original.carved.d20';
 const GLB_URL = '/models/synty/props/SM_Prop_D20_Lightning_01.glb';
 const SOURCE_SIDECAR_URL =
   '/models/synty/dice/d20-lightning/attack-die-contract.json';
@@ -162,12 +168,41 @@ function loadPendingInspectedProvider() {
   return pending;
 }
 
-function useInspectedProvider() {
+function useOriginalTrayProvider(enabled: boolean) {
+  const [snapshot, setSnapshot] = useState<DiceRuntimePresetSnapshot>(() =>
+    getDiceRuntimePresetSnapshot(ORIGINAL_CARVED_D20_PRESET_ID)
+  );
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    const refresh = () => {
+      if (active)
+        setSnapshot(
+          getDiceRuntimePresetSnapshot(ORIGINAL_CARVED_D20_PRESET_ID)
+        );
+    };
+    const current = getDiceRuntimePresetSnapshot(ORIGINAL_CARVED_D20_PRESET_ID);
+    setSnapshot(current);
+    if (current.status === 'idle' || current.status === 'loading')
+      void preloadDiceRuntimePreset(ORIGINAL_CARVED_D20_PRESET_ID).then(
+        refresh,
+        refresh
+      );
+    return () => {
+      active = false;
+    };
+  }, [enabled]);
+  return snapshot;
+}
+
+function useInspectedProvider(enabled: boolean) {
   const [provider, setProvider] = useState<InspectedProvider>();
   const [error, setError] = useState('Loading controlled provider bytes…');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
+    setLoading(true);
     void loadPendingInspectedProvider().then(
       (loaded) => {
         if (!active) return;
@@ -186,7 +221,7 @@ function useInspectedProvider() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled]);
   return { provider, error, loading };
 }
 
@@ -242,7 +277,12 @@ function Metadata({
 }
 
 export function AttackDie3DConcept() {
-  const [stage, setStage] = useState(0);
+  const [stage, setStage] = useState(() =>
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('attackDieStage') === 'tray'
+      ? 4
+      : 0
+  );
   const [token, setToken] = useState(1);
   const [state, dispatch] = useReducer(
     attackDieExperimentReducer,
@@ -259,7 +299,8 @@ export function AttackDie3DConcept() {
     Record<number, AttackDieTelemetry>
   >({});
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
-  const { provider, error, loading } = useInspectedProvider();
+  const { provider, error, loading } = useInspectedProvider(stage !== 4);
+  const trayProvider = useOriginalTrayProvider(stage === 4);
   useEffect(() => {
     if (!provider || importedDigest.current === provider.digest) return;
     importedDigest.current = provider.digest;
@@ -342,7 +383,8 @@ export function AttackDie3DConcept() {
         </p>
         <p>
           The SVG remains semantic truth. This lab never drives or completes the
-          encounter queue.
+          encounter queue. Historical non-Tray Lightning authoring remains
+          provisional; Tray uses the fixture-only Original carved d20 runtime.
         </p>
       </header>
       <div
@@ -377,23 +419,20 @@ export function AttackDie3DConcept() {
           aria-label={stages[stage]}
           className="attack-die-concept__stage attack-die-concept__stage--tray"
         >
-          {provider?.scene && provider.sidecar ? (
-            <DiceTray3DConceptPanel
-              token={token}
-              reducedMotion={effectiveReducedMotion}
-              sceneOverride={provider.scene}
-              sidecarOverride={provider.sidecar}
-            />
-          ) : (
+          {trayProvider.status === 'idle' ||
+          trayProvider.status === 'loading' ? (
             <p
               role="status"
               aria-live="polite"
               data-testid="dice-tray-provider-status"
             >
-              {loading
-                ? 'Loading controlled dice provider…'
-                : `Controlled dice provider unavailable. ${error}`}
+              Loading Original carved d20 provider…
             </p>
+          ) : (
+            <DiceTray3DConceptPanel
+              token={token}
+              reducedMotion={effectiveReducedMotion}
+            />
           )}
         </div>
       )}

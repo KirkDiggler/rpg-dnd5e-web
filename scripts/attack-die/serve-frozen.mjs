@@ -9,7 +9,12 @@ const arg = (name, fallback) => {
   return index >= 0 ? args[index + 1] : fallback;
 };
 const dist = resolve(arg('--dist', 'dist'));
-const assetRoot = resolve(arg('--asset-root', 'public/models/synty'));
+const syntyRoot = resolve(
+  arg('--synty-root', arg('--asset-root', 'public/models/synty'))
+);
+const customDiceRoot = resolve(
+  arg('--custom-dice-root', 'public/models/custom-dice')
+);
 const manifestPath = resolve(arg('--build-manifest'));
 const host = arg('--host', '127.0.0.1');
 const port = Number(arg('--port', '4173'));
@@ -40,7 +45,7 @@ async function safeFile(root, requested) {
       throw Object.assign(Error('symlink rejected'), { status: 403 });
     current = dirname(current);
   }
-  const info = await lstat(candidate);
+  await lstat(candidate);
   const actual = await realpath(candidate);
   const actualRel = relative(root, actual);
   if (actualRel === '..' || actualRel.startsWith(`..${sep}`))
@@ -58,7 +63,12 @@ const server = createServer(async (request, response) => {
       bytes = await readFile(manifestPath);
       typePath = '.json';
     } else if (rawPath.startsWith('/models/synty/')) {
-      bytes = await safeFile(assetRoot, rawPath.slice('/models/synty'.length));
+      bytes = await safeFile(syntyRoot, rawPath.slice('/models/synty'.length));
+    } else if (rawPath.startsWith('/models/custom-dice/')) {
+      bytes = await safeFile(
+        customDiceRoot,
+        rawPath.slice('/models/custom-dice'.length)
+      );
     } else {
       try {
         if (rawPath === '/') typePath = '/index.html';

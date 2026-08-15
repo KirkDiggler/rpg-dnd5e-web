@@ -1,5 +1,5 @@
 const PRESENTATION_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/;
-const PRESET_IDENTIFIER = /^[a-z][a-z0-9-]{0,63}$/;
+const PRESET_IDENTIFIER_SEGMENT = /^[a-z][a-z0-9-]{0,31}$/;
 const RELEASE_VARIATION_CARDINALITY = 997;
 const RELEASE_KEYS = [
   'schemaVersion',
@@ -87,7 +87,13 @@ export function isDicePresentationIdentifier(value: unknown): value is string {
 }
 
 export function isDicePresetIdentifier(value: unknown): value is string {
-  return typeof value === 'string' && PRESET_IDENTIFIER.test(value);
+  if (typeof value !== 'string' || value.length < 1 || value.length > 64)
+    return false;
+  const segments = value.split('.');
+  return (
+    segments.length <= 8 &&
+    segments.every((segment) => PRESET_IDENTIFIER_SEGMENT.test(segment))
+  );
 }
 
 function clampRuntimeNumber(value: number, minimum: number, maximum: number) {

@@ -32,9 +32,9 @@ function recursivelyCollectKeys(value: unknown, keys = new Set<string>()) {
   return keys;
 }
 
-function appendScheduledMonsterRelease(token: number) {
+function appendScheduledMonsterRelease(token: number, result = 10) {
   let events: readonly DicePresentationEvent[] =
-    createDiceTrayWitnessInitialEvents(token, 'monster');
+    createDiceTrayWitnessInitialEvents(token, 'monster', result);
   const append = (input: unknown) => {
     events = appendDiceTrayWitnessEvent(events, input);
   };
@@ -53,21 +53,21 @@ describe('dice tray witness fixture', () => {
     {
       mode: 'player' as const,
       token: 7,
-      presentationId: 'concept:witness:player:7',
-      eventId: 'concept:witness:request:player:7',
+      presentationId: 'concept:witness:player:7:result:10',
+      eventId: 'concept:witness:request:player:7:result:10',
       entityId: 'concept:player',
     },
     {
       mode: 'monster' as const,
       token: 8,
-      presentationId: 'concept:witness:monster:8',
-      eventId: 'concept:witness:request:monster:8',
+      presentationId: 'concept:witness:monster:8:result:10',
+      eventId: 'concept:witness:request:monster:8:result:10',
       entityId: 'concept:monster',
     },
   ])(
     'creates an exact recursively frozen, parser-valid $mode request-only list',
     ({ mode, token, presentationId, eventId, entityId }) => {
-      const events = createDiceTrayWitnessInitialEvents(token, mode);
+      const events = createDiceTrayWitnessInitialEvents(token, mode, 10);
 
       expect(events).toHaveLength(1);
       expect(events[0]).toEqual({
@@ -78,7 +78,7 @@ describe('dice tray witness fixture', () => {
         roller: { entityId, role: mode },
         die: {
           kind: 'd20',
-          presetId: 'lightning',
+          presetId: 'dice.original.carved.d20',
           authoritativeResult: 10,
         },
       });
@@ -87,17 +87,51 @@ describe('dice tray witness fixture', () => {
     }
   );
 
+  it.each(Array.from({ length: 20 }, (_, index) => index + 1))(
+    'accepts authoritative fixture result %i and binds it into request identity before delivery',
+    (result) => {
+      const events = createDiceTrayWitnessInitialEvents(10, 'player', result);
+      expect(events[0]).toMatchObject({
+        eventId: `concept:witness:request:player:10:result:${result}`,
+        presentationId: `concept:witness:player:10:result:${result}`,
+        die: {
+          presetId: 'dice.original.carved.d20',
+          authoritativeResult: result,
+        },
+      });
+      expect(parseDicePresentationEvent(events[0])).toEqual(events[0]);
+      expectRecursivelyFrozen(events);
+    }
+  );
+
+  it('changes request identity when the authoritative result changes before delivery', () => {
+    const first = createDiceTrayWitnessInitialEvents(10, 'player', 1)[0];
+    const second = createDiceTrayWitnessInitialEvents(10, 'player', 20)[0];
+
+    expect(second.eventId).not.toBe(first.eventId);
+    expect(second.presentationId).not.toBe(first.presentationId);
+  });
+
+  it.each([0, 21, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects invalid authoritative fixture result %s',
+    (result) => {
+      expect(() =>
+        createDiceTrayWitnessInitialEvents(10, 'player', result)
+      ).toThrow(/result.*1–20/i);
+    }
+  );
+
   it('strictly parses, reconstructs, freezes, and appends valid events in order', () => {
-    const current = createDiceTrayWitnessInitialEvents(11, 'player');
+    const current = createDiceTrayWitnessInitialEvents(11, 'player', 10);
     const inbound = {
       schemaVersion: 1,
       type: 'dice-presentation-released',
       eventId: 'fixture:release:11',
-      presentationId: 'concept:witness:player:11',
+      presentationId: 'concept:witness:player:11:result:10',
       release: {
         schemaVersion: 1,
-        presentationId: 'concept:witness:player:11',
-        presetId: 'lightning',
+        presentationId: 'concept:witness:player:11:result:10',
+        presetId: 'dice.original.carved.d20',
         variation: 3,
         vector: [0.5, -0.25],
         shake: 0.5,
@@ -115,14 +149,14 @@ describe('dice tray witness fixture', () => {
     if (appended[1].type === 'dice-presentation-released') {
       expect(appended[1].release).not.toBe(inbound.release);
       expect(dicePresentationReleaseKey(appended[1].release)).toBe(
-        'concept:witness:player:11'
+        'concept:witness:player:11:result:10'
       );
     }
     expectRecursivelyFrozen(appended);
   });
 
   it('returns the same array for malformed input, duplicate IDs, and duplicate release keys', () => {
-    const initial = createDiceTrayWitnessInitialEvents(12, 'player');
+    const initial = createDiceTrayWitnessInitialEvents(12, 'player', 10);
     expect(appendDiceTrayWitnessEvent(initial, { malformed: true })).toBe(
       initial
     );
@@ -134,10 +168,10 @@ describe('dice tray witness fixture', () => {
       schemaVersion: 1 as const,
       type: 'dice-presentation-released' as const,
       eventId: 'fixture:release:12',
-      presentationId: 'concept:witness:player:12',
+      presentationId: 'concept:witness:player:12:result:10',
       release: createDicePresentationRelease({
-        presentationId: 'concept:witness:player:12',
-        presetId: 'lightning',
+        presentationId: 'concept:witness:player:12:result:10',
+        presetId: 'dice.original.carved.d20',
         variation: 0,
       }),
     };
@@ -148,8 +182,8 @@ describe('dice tray witness fixture', () => {
         ...release,
         eventId: 'fixture:later-release:12',
         release: createDicePresentationRelease({
-          presentationId: 'concept:witness:player:12',
-          presetId: 'lightning',
+          presentationId: 'concept:witness:player:12:result:10',
+          presetId: 'dice.original.carved.d20',
           variation: 42,
         }),
       })
@@ -158,7 +192,7 @@ describe('dice tray witness fixture', () => {
 
   it('keeps player delivery request-only indefinitely', () => {
     vi.useFakeTimers();
-    const events = createDiceTrayWitnessInitialEvents(20, 'player');
+    const events = createDiceTrayWitnessInitialEvents(20, 'player', 10);
 
     vi.advanceTimersByTime(60 * 60 * 1000);
 
@@ -170,7 +204,7 @@ describe('dice tray witness fixture', () => {
   it('delivers the monster zero-gesture release at exactly 250ms', () => {
     vi.useFakeTimers();
     const host = appendScheduledMonsterRelease(21);
-    scheduleMonsterDiceTrayWitnessRelease(21, host.append);
+    scheduleMonsterDiceTrayWitnessRelease(21, 10, host.append);
 
     expect(host.events()).toHaveLength(1);
     vi.advanceTimersByTime(MONSTER_FIXTURE_RELEASE_DELAY_MS - 1);
@@ -185,12 +219,12 @@ describe('dice tray witness fixture', () => {
     expect(host.events()[1]).toEqual({
       schemaVersion: 1,
       type: 'dice-presentation-released',
-      eventId: 'concept:witness:release:monster:21',
-      presentationId: 'concept:witness:monster:21',
+      eventId: 'concept:witness:release:monster:21:result:10',
+      presentationId: 'concept:witness:monster:21:result:10',
       release: {
         schemaVersion: 1,
-        presentationId: 'concept:witness:monster:21',
-        presetId: 'lightning',
+        presentationId: 'concept:witness:monster:21:result:10',
+        presetId: 'dice.original.carved.d20',
         variation: 0,
         vector: [0, 0],
         shake: 0,
@@ -204,6 +238,7 @@ describe('dice tray witness fixture', () => {
     const cancelledHost = appendScheduledMonsterRelease(22);
     const cleanup = scheduleMonsterDiceTrayWitnessRelease(
       22,
+      10,
       cancelledHost.append
     );
     cleanup();
@@ -211,8 +246,8 @@ describe('dice tray witness fixture', () => {
     expect(cancelledHost.events()).toHaveLength(1);
 
     const duplicateHost = appendScheduledMonsterRelease(23);
-    scheduleMonsterDiceTrayWitnessRelease(23, duplicateHost.append);
-    scheduleMonsterDiceTrayWitnessRelease(23, duplicateHost.append);
+    scheduleMonsterDiceTrayWitnessRelease(23, 10, duplicateHost.append);
+    scheduleMonsterDiceTrayWitnessRelease(23, 10, duplicateHost.append);
     vi.advanceTimersByTime(MONSTER_FIXTURE_RELEASE_DELAY_MS);
     expect(duplicateHost.events()).toHaveLength(2);
     expect(
@@ -225,7 +260,7 @@ describe('dice tray witness fixture', () => {
   it('keeps fixture release presentation-only and all fixture events prose/URL/transport free', () => {
     vi.useFakeTimers();
     const host = appendScheduledMonsterRelease(24);
-    scheduleMonsterDiceTrayWitnessRelease(24, host.append);
+    scheduleMonsterDiceTrayWitnessRelease(24, 10, host.append);
     vi.advanceTimersByTime(MONSTER_FIXTURE_RELEASE_DELAY_MS);
 
     const allKeys = recursivelyCollectKeys(host.events());

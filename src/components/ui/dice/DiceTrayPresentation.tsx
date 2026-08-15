@@ -5,7 +5,11 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
+import type {
+  AttackDie3DProps,
+  AttackDieProvider,
+  AttackDieTelemetry,
+} from './AttackDie3D';
 import type { QuaternionTuple } from './attackDieContract';
 import {
   parseDicePresentationEvent,
@@ -26,13 +30,26 @@ export interface DiceTrayPresentationDevelopmentRenderer {
   calibrationPose: QuaternionTuple;
 }
 
+export interface DiceTrayPresentationBoundaryDiagnostic {
+  readonly events: readonly DicePresentationEvent[];
+  readonly provider: AttackDieProvider;
+}
+
 export interface DiceTrayPresentationProps {
   label: string;
   events: readonly DicePresentationEvent[];
   witnessRole: 'roller' | 'spectator';
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
+  onTelemetry?: AttackDie3DProps['onTelemetry'];
+  onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  /** Read-only development evidence emitted from this actual boundary. */
+  onBoundaryDiagnostic?: (
+    diagnostic: DiceTrayPresentationBoundaryDiagnostic
+  ) => void;
   reducedMotion?: boolean;
   developmentOnlyRenderer?: DiceTrayPresentationDevelopmentRenderer;
+  /** Development concept failure exercise; never supplied by production. */
+  forceFailure?: AttackDie3DProps['forceFailure'];
 }
 
 type PresentationPhase = 'armed' | 'rolling' | 'settled';
@@ -45,6 +62,7 @@ interface PresentationLifecycle {
   releaseIdentity?: string;
   phase: PresentationPhase;
   rendererFailed: boolean;
+  settlementRenderer: 'pending' | '3d' | 'svg';
   discontinuityObserved: boolean;
 }
 
@@ -67,8 +85,15 @@ interface PresentationInstanceProps {
   releaseIdentity?: string;
   witnessRole: 'roller' | 'spectator';
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
+  onTelemetry?: AttackDie3DProps['onTelemetry'];
+  onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  diagnosticEvents: readonly DicePresentationEvent[];
+  onBoundaryDiagnostic?: (
+    diagnostic: DiceTrayPresentationBoundaryDiagnostic
+  ) => void;
   reducedMotion: boolean;
   developmentOnlyRenderer?: DiceTrayPresentationDevelopmentRenderer;
+  forceFailure?: AttackDie3DProps['forceFailure'];
 }
 
 let nextRendererGeneration = -1;
@@ -173,6 +198,7 @@ function createLifecycle(input: {
     releaseIdentity: release ? input.releaseIdentity : undefined,
     phase: release ? 'settled' : 'armed',
     rendererFailed: false,
+    settlementRenderer: 'pending',
     discontinuityObserved: false,
   };
 }
@@ -185,18 +211,31 @@ function lifecycleReducer(
     return {
       ...state,
       rendererFailed: true,
+      settlementRenderer: 'svg',
       phase: state.acceptedRelease ? 'settled' : 'armed',
     };
   }
   if (action.type === 'renderer-observed') {
-    return state.phase === 'rolling' && state.acceptedRelease
-      ? { ...state, phase: 'settled' }
-      : state;
+    if (state.rendererFailed) return state;
+    return {
+      ...state,
+      settlementRenderer: '3d',
+      phase:
+        state.phase === 'rolling' && state.acceptedRelease
+          ? 'settled'
+          : state.phase,
+    };
   }
   if (action.type === 'fallback-complete') {
-    return state.phase === 'rolling' && state.acceptedRelease
-      ? { ...state, phase: 'settled' }
-      : state;
+    if (state.settlementRenderer === '3d') return state;
+    return {
+      ...state,
+      settlementRenderer: 'svg',
+      phase:
+        state.phase === 'rolling' && state.acceptedRelease
+          ? 'settled'
+          : state.phase,
+    };
   }
   if (
     action.acceptedDeliveryIdentity === state.acceptedDeliveryIdentity &&
@@ -263,8 +302,13 @@ function DiceTrayPresentationInstance({
   releaseIdentity,
   witnessRole,
   onReleaseRequest,
+  onTelemetry,
+  onRendererInfo,
+  diagnosticEvents,
+  onBoundaryDiagnostic,
   reducedMotion,
   developmentOnlyRenderer,
+  forceFailure,
 }: PresentationInstanceProps) {
   const [lifecycle, dispatch] = useReducer(
     lifecycleReducer,
@@ -350,19 +394,40 @@ function DiceTrayPresentationInstance({
       )
         return;
 
-      if (event.state === 'failed') {
+      onTelemetry?.(event);
+      if (event.renderer === 'svg' && event.state === 'failed') {
         dispatch({ type: 'renderer-failed' });
         return;
       }
-      if (event.state === 'observed' && event.exactTargetHeld)
+      if (
+        event.renderer === '3d' &&
+        event.state === 'observed' &&
+        event.exactTargetHeld &&
+        event.observedUpwardResult === result &&
+        event.observedUpDot !== undefined &&
+        Number.isFinite(event.observedUpDot) &&
+        event.observedUpDot > 0.999999 &&
+        event.observedUpMargin !== undefined &&
+        Number.isFinite(event.observedUpMargin) &&
+        event.observedUpMargin > 0.2 &&
+        event.angularErrorDegrees !== undefined &&
+        Number.isFinite(event.angularErrorDegrees) &&
+        event.angularErrorDegrees >= 0 &&
+        event.angularErrorDegrees <= 0.25
+      )
         dispatch({ type: 'renderer-observed' });
     },
-    [rendererGeneration, result]
+    [onTelemetry, rendererGeneration, result]
   );
 
   const handleFallbackPresentationComplete = useCallback(() => {
     dispatch({ type: 'fallback-complete' });
   }, []);
+  const handleProviderDiagnostic = useCallback(
+    (provider: AttackDieProvider) =>
+      onBoundaryDiagnostic?.({ events: diagnosticEvents, provider }),
+    [diagnosticEvents, onBoundaryDiagnostic]
+  );
 
   const phase = lifecycle.phase;
   const status =
@@ -370,9 +435,11 @@ function DiceTrayPresentationInstance({
       ? 'Dice presentation requested · waiting for release event'
       : phase === 'rolling'
         ? 'Dice release delivered · rolling'
-        : lifecycle.rendererFailed || presetId !== 'lightning'
-          ? `Result ${result} released · truthful SVG settled`
-          : `Result ${result} presented · roll settled`;
+        : lifecycle.settlementRenderer === '3d'
+          ? `Result ${result} presented · roll settled`
+          : lifecycle.settlementRenderer === 'svg'
+            ? `Result ${result} released · truthful SVG settled`
+            : `Result ${result} released · settled`;
 
   if (rendererGeneration === undefined)
     return (
@@ -404,6 +471,8 @@ function DiceTrayPresentationInstance({
         release={lifecycle.acceptedRelease?.release}
         onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
+        onRendererInfo={onRendererInfo}
+        onProviderDiagnostic={handleProviderDiagnostic}
         onFallbackPresentationComplete={handleFallbackPresentationComplete}
         reducedMotion={reducedMotion}
         sceneOverride={
@@ -421,6 +490,7 @@ function DiceTrayPresentationInstance({
             ? developmentOnlyRenderer.calibrationPose
             : undefined
         }
+        forceFailure={forceFailure}
       />
     </>
   );
@@ -431,8 +501,12 @@ export function DiceTrayPresentation({
   events,
   witnessRole,
   onReleaseRequest,
+  onTelemetry,
+  onRendererInfo,
+  onBoundaryDiagnostic,
   reducedMotion = false,
   developmentOnlyRenderer,
+  forceFailure,
 }: DiceTrayPresentationProps) {
   const snapshots: DicePresentationEvent[] = [];
   for (const event of events) {
@@ -466,8 +540,13 @@ export function DiceTrayPresentation({
       releaseIdentity={releaseIdentity}
       witnessRole={witnessRole}
       onReleaseRequest={onReleaseRequest}
+      onTelemetry={onTelemetry}
+      onRendererInfo={onRendererInfo}
+      diagnosticEvents={events}
+      onBoundaryDiagnostic={onBoundaryDiagnostic}
       reducedMotion={reducedMotion}
       developmentOnlyRenderer={developmentOnlyRenderer}
+      forceFailure={forceFailure}
     />
   );
 }

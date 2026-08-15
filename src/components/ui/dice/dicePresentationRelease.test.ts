@@ -15,27 +15,41 @@ const validRelease = () => ({
 });
 
 describe('dice presentation release', () => {
-  it('accepts bounded safe identifiers without requiring preset registry membership', () => {
-    expect(
-      createDicePresentationRelease({
+  it.each(['lightning', 'dice.original.carved.d20', 'newer-safe-preset'])(
+    'accepts the bounded segmented preset identifier %s without requiring registry membership',
+    (presetId) => {
+      expect(
+        createDicePresentationRelease({
+          presentationId: 'Encounter_7:attack-2',
+          presetId,
+          variation: 1,
+        })
+      ).toMatchObject({
         presentationId: 'Encounter_7:attack-2',
-        presetId: 'newer-safe-preset',
-        variation: 1,
-      })
-    ).toMatchObject({
-      presentationId: 'Encounter_7:attack-2',
-      presetId: 'newer-safe-preset',
-    });
-  });
+        presetId,
+      });
+    }
+  );
 
   it.each([
     ['', 'lightning'],
     [' attack', 'lightning'],
     ['https://example.test/presentation', 'lightning'],
     ['a'.repeat(129), 'lightning'],
-    ['attack:7', 'Lightning'],
-    ['attack:7', 'lightning.glb'],
-    ['attack:7', 'a'.repeat(65)],
+    ['attack:7', ''],
+    ['attack:7', '.lightning'],
+    ['attack:7', 'lightning.'],
+    ['attack:7', 'dice..d20'],
+    ['attack:7', 'dice/original'],
+    ['attack:7', 'dice\\original'],
+    ['attack:7', 'dice:original'],
+    ['attack:7', 'dice%2eoriginal'],
+    ['attack:7', 'https://evil.test'],
+    ['attack:7', '../dice'],
+    ['attack:7', 'Dice.original'],
+    ['attack:7', `dice.${'a'.repeat(33)}`],
+    ['attack:7', Array.from({ length: 8 }, () => 'abcdefgh').join('.')],
+    ['attack:7', 'a.a.a.a.a.a.a.a.a'],
   ])(
     'rejects malformed or URL-shaped identifiers (%s, %s)',
     (presentationId, presetId) => {

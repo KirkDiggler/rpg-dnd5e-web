@@ -30,10 +30,15 @@ async function fixture() {
   await mkdir(join(web, 'scripts'), { recursive: true });
   await mkdir(join(web, 'public/models/synty'), { recursive: true });
   await mkdir(join(assets, 'harness/models/synty'), { recursive: true });
+  await mkdir(join(assets, 'harness/models/custom-dice'), { recursive: true });
   await mkdir(bin);
-  await copyFile(
-    join(process.cwd(), 'scripts/sync-synty-assets.sh'),
-    join(web, 'scripts/sync-synty-assets.sh')
+  await Promise.all(
+    ['sync-synty-assets.sh', 'sync-game-assets.sh'].map((script) =>
+      copyFile(
+        join(process.cwd(), 'scripts', script),
+        join(web, 'scripts', script)
+      )
+    )
   );
   const forbiddenLog = join(root, 'forbidden.log');
   for (const command of ['git', 'ssh', 'curl', 'wget']) {

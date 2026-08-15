@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { startTransition, StrictMode, Suspense, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
@@ -60,7 +66,7 @@ function requested(
     roller: { entityId: 'character:1', role: 'player' as const },
     die: {
       kind: 'd20' as const,
-      presetId: 'lightning',
+      presetId: 'dice.original.carved.d20',
       authoritativeResult: 10,
     },
     ...overrides,
@@ -79,13 +85,39 @@ function released(
     release: {
       schemaVersion: 1 as const,
       presentationId,
-      presetId: 'lightning',
+      presetId: 'dice.original.carved.d20',
       variation: 7,
       vector: [0, 0] as const,
       shake: 0,
       ...releaseOverrides,
     },
   };
+}
+
+function lightningRequested(presentationId = 'attack:lightning') {
+  return requested(presentationId, {
+    die: {
+      kind: 'd20',
+      presetId: 'lightning',
+      authoritativeResult: 10,
+    },
+  });
+}
+
+function originalRequested(presentationId = 'attack:original') {
+  return requested(presentationId, {
+    die: {
+      kind: 'd20',
+      presetId: 'dice.original.carved.d20',
+      authoritativeResult: 10,
+    },
+  });
+}
+
+function originalReleased(presentationId = 'attack:original') {
+  return released(presentationId, {
+    presetId: 'dice.original.carved.d20',
+  });
 }
 
 function renderPresentation(
@@ -115,12 +147,52 @@ function matchingTelemetry(
     requestedResult: props.result,
     renderer: '3d',
     state: 'observed',
+    observedUpwardResult: props.result,
+    observedUpDot: 1,
+    observedUpMargin: 0.25,
+    angularErrorDegrees: 0,
     exactTargetHeld: true,
     ...overrides,
   };
 }
 
 describe('DiceTrayPresentation', () => {
+  it('reports the actual event-array and provider objects observed inside each presentation boundary', async () => {
+    const rollerEvents = Object.freeze([originalRequested('attack:boundary')]);
+    const spectatorEvents = Object.freeze([...rollerEvents]);
+    const rollerDiagnostic = vi.fn();
+    const spectatorDiagnostic = vi.fn();
+
+    render(
+      <>
+        <DiceTrayPresentation
+          label="Roller attack dice"
+          events={rollerEvents}
+          witnessRole="roller"
+          onBoundaryDiagnostic={rollerDiagnostic}
+        />
+        <DiceTrayPresentation
+          label="Spectator attack dice"
+          events={spectatorEvents}
+          witnessRole="spectator"
+          onBoundaryDiagnostic={spectatorDiagnostic}
+        />
+      </>
+    );
+
+    await waitFor(() => {
+      expect(rollerDiagnostic).toHaveBeenCalled();
+      expect(spectatorDiagnostic).toHaveBeenCalled();
+    });
+    const roller = rollerDiagnostic.mock.calls.at(-1)?.[0];
+    const spectator = spectatorDiagnostic.mock.calls.at(-1)?.[0];
+    expect(roller.events).toBe(rollerEvents);
+    expect(spectator.events).toBe(spectatorEvents);
+    expect(roller.events).not.toBe(spectator.events);
+    expect(roller.provider).toBe(spectator.provider);
+    expect(Object.isFrozen(roller.provider)).toBe(true);
+  });
+
   it('renders no tray without a valid request', () => {
     renderPresentation([]);
 
@@ -187,7 +259,7 @@ describe('DiceTrayPresentation', () => {
       presentationId: 'attack:7',
       release: {
         presentationId: 'attack:7',
-        presetId: 'lightning',
+        presetId: 'dice.original.carved.d20',
         vector: [0, 0],
         shake: 0,
       },
@@ -244,7 +316,7 @@ describe('DiceTrayPresentation', () => {
     expect(event.release).toEqual({
       schemaVersion: 1,
       presentationId: 'attack:7',
-      presetId: 'lightning',
+      presetId: 'dice.original.carved.d20',
       variation: event.release.variation,
       vector: [0.5, -0.25],
       shake: 0.5,
@@ -253,7 +325,7 @@ describe('DiceTrayPresentation', () => {
     expect(Object.isFrozen(event.release)).toBe(true);
     expect(Object.isFrozen(event.release.vector)).toBe(true);
     expect(JSON.stringify(event)).not.toMatch(
-      /origin|current|distance|pointer|presentationToken|renderer|result|hit|damage|target|transport|https?:\/\//i
+      /"(?:origin|current|distance|pointer|presentationToken|renderer|authoritativeResult|hit|damage|target|transport)"|https?:\/\//i
     );
     expect(JSON.stringify(events)).toBe(before);
     expect(attackDieProps.at(-1)?.phase).toBe('ready');
@@ -461,6 +533,18 @@ describe('DiceTrayPresentation', () => {
       rolling.onTelemetry?.(matchingTelemetry(rolling, { state: 'held' }))
     );
     expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+    for (const nonObservation of [
+      { observedUpwardResult: 9 },
+      { observedUpDot: 0.999999 },
+      { observedUpMargin: 0.2 },
+      { angularErrorDegrees: 0.250001 },
+      { exactTargetHeld: false },
+    ]) {
+      act(() =>
+        rolling.onTelemetry?.(matchingTelemetry(rolling, nonObservation))
+      );
+      expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+    }
 
     act(() => rolling.onTelemetry?.(matchingTelemetry(rolling)));
 
@@ -468,11 +552,106 @@ describe('DiceTrayPresentation', () => {
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
   });
 
+  it('drives settled accessibility truth from matching Original renderer observation, not preset name', () => {
+    const request = originalRequested();
+    const release = originalReleased();
+    const view = renderPresentation([request]);
+    const armed = attackDieProps.at(-1)!;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[request, release]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    const rolling = attackDieProps.at(-1)!;
+    expect(rolling.presentationToken).toBe(armed.presentationToken);
+    expect(screen.getByRole('status').textContent).toMatch(/rolling/i);
+
+    act(() =>
+      rolling.onTelemetry?.(
+        matchingTelemetry(rolling, { renderer: 'svg', state: 'observed' })
+      )
+    );
+    expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+
+    act(() => rolling.onTelemetry?.(matchingTelemetry(rolling)));
+    expect(attackDieProps.at(-1)?.phase).toBe('settled');
+    expect(screen.getByRole('status').textContent).toMatch(
+      /result 10 presented · roll settled/i
+    );
+    expect(screen.getByRole('status').textContent).not.toMatch(/SVG/i);
+  });
+
+  it('records matching Original renderer failure as semantic fallback but conceals it until release', () => {
+    const request = originalRequested('attack:original-failed');
+    const release = originalReleased('attack:original-failed');
+    const view = renderPresentation([request]);
+    const armed = attackDieProps.at(-1)!;
+
+    act(() =>
+      armed.onTelemetry?.(
+        matchingTelemetry(armed, {
+          renderer: 'svg',
+          state: 'failed',
+          exactTargetHeld: false,
+          failureCode: 'provider-load',
+        })
+      )
+    );
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+    expect(screen.getByRole('status').textContent).not.toContain('10');
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[request, release]}
+        witnessRole="roller"
+        reducedMotion
+      />
+    );
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+    expect(screen.getByRole('status').textContent).toMatch(
+      /truthful SVG settled/i
+    );
+  });
+
+  it('gives roller and spectator one provider identity with independent generations and telemetry sinks', () => {
+    const request = originalRequested('attack:shared-witness');
+    attackDieProps.length = 0;
+    render(
+      <>
+        <DiceTrayPresentation
+          label="Roller dice"
+          events={[request]}
+          witnessRole="roller"
+          reducedMotion
+        />
+        <DiceTrayPresentation
+          label="Spectator dice"
+          events={[request]}
+          witnessRole="spectator"
+          reducedMotion
+        />
+      </>
+    );
+
+    expect(attackDieProps).toHaveLength(2);
+    const [roller, spectator] = attackDieProps as Array<
+      AttackDie3DProps & { provider?: unknown }
+    >;
+    expect(roller.provider).toBe(spectator.provider);
+    expect(roller.presentationToken).not.toBe(spectator.presentationToken);
+    expect(roller.onTelemetry).not.toBe(spectator.onTelemetry);
+  });
+
   it('allocates collision-free renderer generations and resets for a new presentation id', () => {
     const scene = {} as AttackDie3DProps['sceneOverride'];
     const sidecar = {} as NonNullable<AttackDie3DProps['sidecarOverride']>;
     const calibrationPose = [0.1, 0.2, 0.3, 0.9] as const;
-    const first = renderPresentation([requested()], {
+    const first = renderPresentation([lightningRequested()], {
       developmentOnlyRenderer: { scene, sidecar, calibrationPose },
     });
     const firstToken = attackDieProps.at(-1)!.presentationToken;
@@ -480,7 +659,7 @@ describe('DiceTrayPresentation', () => {
     first.rerender(
       <DiceTrayPresentation
         label="Player attack dice"
-        events={[requested('attack:8')]}
+        events={[lightningRequested('attack:8')]}
         witnessRole="roller"
         reducedMotion
         developmentOnlyRenderer={{ scene, sidecar, calibrationPose }}
@@ -520,12 +699,8 @@ describe('DiceTrayPresentation', () => {
       { developmentOnlyRenderer }
     );
 
-    expect(attackDieProps.at(-1)).toMatchObject({
-      result: 9,
-      sceneOverride: undefined,
-      sidecarOverride: undefined,
-      calibrationPose: undefined,
-    });
+    expect(attackDieProps).toHaveLength(0);
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
   });
 
   it('hydrates request plus release directly as settled without replay', () => {
@@ -535,6 +710,29 @@ describe('DiceTrayPresentation', () => {
     expect(attackDieProps.at(-1)?.phase).toBe('settled');
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(onReleaseRequest).not.toHaveBeenCalled();
+  });
+
+  it('hydrates an unknown safe preset directly as truthful settled SVG', () => {
+    const presentationId = 'attack:hydrated-unknown';
+    const request = requested(presentationId, {
+      die: {
+        kind: 'd20',
+        presetId: 'newer-safe-preset',
+        authoritativeResult: 14,
+      },
+    });
+    const release = released(presentationId, {
+      presetId: 'newer-safe-preset',
+    });
+
+    renderPresentation([request, release]);
+
+    expect(attackDieProps).toHaveLength(0);
+    expect(screen.getByTestId('dice-face').textContent).toBe('14');
+    expect(screen.getByRole('status').textContent).toMatch(
+      /result 14 released · truthful SVG settled/i
+    );
+    expect(document.body.innerHTML).not.toMatch(/https?:\/\/|\.glb/i);
   });
 
   it('rejects an initial release before its request but rolls for a later post-request release', () => {
@@ -617,13 +815,13 @@ describe('DiceTrayPresentation', () => {
       onTelemetry: armed.onTelemetry,
       result: 10,
       phase: 'ready',
-      sceneOverride: scene,
-      sidecarOverride: sidecar,
-      calibrationPose,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
     });
-    expect(attackDieProps.at(-1)?.sceneOverride).toBe(scene);
-    expect(attackDieProps.at(-1)?.sidecarOverride).toBe(sidecar);
-    expect(attackDieProps.at(-1)?.calibrationPose).toBe(calibrationPose);
+    expect(attackDieProps.at(-1)?.sceneOverride).toBeUndefined();
+    expect(attackDieProps.at(-1)?.sidecarOverride).toBeUndefined();
+    expect(attackDieProps.at(-1)?.calibrationPose).toBeUndefined();
     expect(screen.getByTestId('dice-face').textContent).toBe('?');
     expect(screen.getByRole('status').textContent).toMatch(
       /waiting for release/i
@@ -639,7 +837,7 @@ describe('DiceTrayPresentation', () => {
       presentationId: 'attack:7',
       release: {
         presentationId: 'attack:7',
-        presetId: 'lightning',
+        presetId: 'dice.original.carved.d20',
       },
     });
     expect(Object.isFrozen(emittedReleaseA)).toBe(true);
@@ -662,13 +860,13 @@ describe('DiceTrayPresentation', () => {
       result: 10,
       phase: 'settled',
       decorativeRelease: emittedReleaseA.release,
-      sceneOverride: scene,
-      sidecarOverride: sidecar,
-      calibrationPose,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
     });
-    expect(attackDieProps.at(-1)?.sceneOverride).toBe(scene);
-    expect(attackDieProps.at(-1)?.sidecarOverride).toBe(sidecar);
-    expect(attackDieProps.at(-1)?.calibrationPose).toBe(calibrationPose);
+    expect(attackDieProps.at(-1)?.sceneOverride).toBeUndefined();
+    expect(attackDieProps.at(-1)?.sidecarOverride).toBeUndefined();
+    expect(attackDieProps.at(-1)?.calibrationPose).toBeUndefined();
     expect(
       attackDieProps
         .slice(appendRenderCount)
@@ -676,7 +874,7 @@ describe('DiceTrayPresentation', () => {
     ).toBe(true);
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(screen.getByRole('status').textContent).toMatch(
-      /result 10 presented/i
+      /result 10 released/i
     );
     expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
@@ -759,7 +957,7 @@ describe('DiceTrayPresentation', () => {
       roller: { entityId: 'monster:2', role: 'monster' },
       die: {
         kind: 'd20',
-        presetId: 'lightning',
+        presetId: 'dice.original.carved.d20',
         authoritativeResult: 20,
       },
     });
@@ -787,16 +985,16 @@ describe('DiceTrayPresentation', () => {
       presentationToken: armed.presentationToken,
       result: 10,
       phase: 'settled',
-      sceneOverride: scene,
-      sidecarOverride: sidecar,
-      calibrationPose,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
     });
-    expect(settled.sceneOverride).toBe(scene);
-    expect(settled.sidecarOverride).toBe(sidecar);
-    expect(settled.calibrationPose).toBe(calibrationPose);
+    expect(settled.sceneOverride).toBeUndefined();
+    expect(settled.sidecarOverride).toBeUndefined();
+    expect(settled.calibrationPose).toBeUndefined();
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(screen.getByRole('status').textContent).toMatch(
-      /result 10 presented/i
+      /result 10 released/i
     );
 
     act(() =>
@@ -810,7 +1008,7 @@ describe('DiceTrayPresentation', () => {
       )
     );
     expect(screen.getByRole('status').textContent).toMatch(
-      /result 10 presented/i
+      /result 10 released/i
     );
   });
 
@@ -854,16 +1052,16 @@ describe('DiceTrayPresentation', () => {
       result: 10,
       phase: 'settled',
       decorativeRelease: releaseA.release,
-      sceneOverride: scene,
-      sidecarOverride: sidecar,
-      calibrationPose,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
     });
-    expect(attackDieProps.at(-1)?.sceneOverride).toBe(scene);
-    expect(attackDieProps.at(-1)?.sidecarOverride).toBe(sidecar);
-    expect(attackDieProps.at(-1)?.calibrationPose).toBe(calibrationPose);
+    expect(attackDieProps.at(-1)?.sceneOverride).toBeUndefined();
+    expect(attackDieProps.at(-1)?.sidecarOverride).toBeUndefined();
+    expect(attackDieProps.at(-1)?.calibrationPose).toBeUndefined();
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(screen.getByRole('status').textContent).toMatch(
-      /result 10 presented/i
+      /result 10 released/i
     );
     expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
@@ -883,7 +1081,7 @@ describe('DiceTrayPresentation', () => {
       roller: { entityId: 'monster:2', role: 'monster' },
       die: {
         kind: 'd20',
-        presetId: 'lightning',
+        presetId: 'dice.original.carved.d20',
         authoritativeResult: 12,
       },
     });
@@ -1141,7 +1339,7 @@ describe('DiceTrayPresentation', () => {
     defineOneRead(roller, 'roller.role', 'player');
     const die: Record<string, unknown> = {};
     defineOneRead(die, 'die.kind', 'd20');
-    defineOneRead(die, 'die.presetId', 'lightning');
+    defineOneRead(die, 'die.presetId', 'dice.original.carved.d20');
     defineOneRead(die, 'die.authoritativeResult', 10);
     const requestEvent: Record<string, unknown> = {};
     defineOneRead(requestEvent, 'request.schemaVersion', 1);
@@ -1371,6 +1569,9 @@ describe('DiceTrayPresentation', () => {
       expect(screen.getByTestId('dice-face').textContent).not.toBe('14');
       act(() => vi.advanceTimersByTime(3000));
       expect(screen.getByTestId('dice-face').textContent).toBe('14');
+      expect(screen.getByRole('status').textContent).toMatch(
+        /truthful SVG settled/i
+      );
       expect(attackDieProps).toHaveLength(0);
       expect(document.body.innerHTML).not.toMatch(/https?:\/\/|\.glb/i);
     } finally {
