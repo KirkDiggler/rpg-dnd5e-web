@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
 import { Object3D } from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as runtimeProvider from './diceRuntimeProvider';
 import {
   __resetDiceRuntimeProviderForTests,
   getDiceRuntimePresetSnapshot,
   preloadDiceRuntimePreset,
 } from './diceRuntimeProvider';
 import {
+  FIXTURE_D20_BODY_TRIANGLE_COUNT,
   FIXTURE_INDEX_BYTE_OFFSET,
   FIXTURE_MODEL_BYTES,
   FIXTURE_MODEL_SHA256,
@@ -78,13 +80,14 @@ function digestBuffer(hex: string) {
 }
 
 function arrangeDigest(modelDigest = FIXTURE_MODEL_SHA256) {
+  let callIndex = 0;
   const digest = vi.fn(
     async (_algorithm: string, value: ArrayBuffer | ArrayBufferView) => {
       const bytes = ArrayBuffer.isView(value)
         ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
         : new Uint8Array(value);
       const hex =
-        bytes.byteLength === MODEL_BYTES.byteLength
+        callIndex++ === 0
           ? modelDigest
           : createHash('sha256').update(bytes).digest('hex');
       return digestBuffer(hex);
@@ -117,6 +120,130 @@ function arrangeFetches(
   return fetchMock;
 }
 
+interface FixtureGlbDocument {
+  accessors: Array<Record<string, unknown>>;
+  bufferViews: Array<Record<string, unknown>>;
+  buffers: Array<Record<string, unknown>>;
+  meshes: Array<{
+    primitives: Array<Record<string, unknown>>;
+  }>;
+}
+
+function fixtureGlbParts() {
+  const view = new DataView(
+    MODEL_BYTES.buffer,
+    MODEL_BYTES.byteOffset,
+    MODEL_BYTES.byteLength
+  );
+  const jsonLength = view.getUint32(12, true);
+  const document = JSON.parse(
+    new TextDecoder().decode(MODEL_BYTES.slice(20, 20 + jsonLength))
+  ) as FixtureGlbDocument;
+  const binaryHeader = 20 + jsonLength;
+  const binaryLength = view.getUint32(binaryHeader, true);
+  return {
+    document,
+    binary: MODEL_BYTES.slice(
+      binaryHeader + 8,
+      binaryHeader + 8 + binaryLength
+    ),
+  };
+}
+
+function paddedBytes(bytes: Uint8Array, paddingByte: number) {
+  const padded = new Uint8Array(Math.ceil(bytes.byteLength / 4) * 4);
+  padded.fill(paddingByte);
+  padded.set(bytes);
+  return padded;
+}
+
+function glbChunk(type: number, payload: Uint8Array) {
+  const chunk = new Uint8Array(8 + payload.byteLength);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, payload.byteLength, true);
+  view.setUint32(4, type, true);
+  chunk.set(payload, 8);
+  return chunk;
+}
+
+function rawGlb(chunks: readonly Uint8Array[]) {
+  const totalLength = 12 + chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const bytes = new Uint8Array(totalLength);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, 0x46546c67, true);
+  view.setUint32(4, 2, true);
+  view.setUint32(8, totalLength, true);
+  let offset = 12;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+}
+
+function rebuiltFixtureGlb(
+  mutate: (parts: {
+    document: FixtureGlbDocument;
+    binary: Uint8Array;
+  }) => void = () => undefined,
+  options: {
+    chunkOrder?: readonly ('JSON' | 'BIN' | 'UNKNOWN')[];
+    unalignedJson?: boolean;
+  } = {}
+) {
+  const parts = fixtureGlbParts();
+  mutate(parts);
+  const encodedJson = new TextEncoder().encode(JSON.stringify(parts.document));
+  let json = options.unalignedJson
+    ? encodedJson
+    : paddedBytes(encodedJson, 0x20);
+  if (options.unalignedJson && json.byteLength % 4 === 0) {
+    const extended = new Uint8Array(json.byteLength + 1);
+    extended.set(json);
+    extended[extended.length - 1] = 0x20;
+    json = extended;
+  }
+  const chunks = (options.chunkOrder ?? ['JSON', 'BIN']).map((kind) => {
+    if (kind === 'JSON') return glbChunk(0x4e4f534a, json);
+    if (kind === 'BIN') return glbChunk(0x004e4942, parts.binary);
+    return glbChunk(0x12345678, new Uint8Array(4));
+  });
+  return rawGlb(chunks);
+}
+
+function signatureDigestForRepeatedZTriangles(count: number) {
+  const signature = '[[0.0,0.0,3.0],[0.0,1.0,3.0],[1.0,0.0,3.0]]';
+  return createHash('sha256')
+    .update(`[${Array.from({ length: count }, () => signature).join(',')}]`)
+    .digest('hex');
+}
+
+function resizedBodyManifest(delta: -1 | 1) {
+  const manifest = validDiceRuntimeManifest();
+  const geometry = manifest.presets[0].model.geometry;
+  const lastWitness = manifest.presets[0].faceSettlementMap.entries['20']
+    .witness as {
+    triangleIndices: number[];
+    triangleSignatureSha256: string;
+  };
+  if (delta === -1) {
+    const removed = geometry.bodyTriangleIndices.pop();
+    if (removed === undefined) throw Error('fixture body unexpectedly empty');
+    geometry.numeralTriangleIndices.unshift(removed);
+    lastWitness.triangleIndices.pop();
+  } else {
+    const promoted = geometry.numeralTriangleIndices.pop();
+    if (promoted === undefined)
+      throw Error('fixture numeral unexpectedly empty');
+    geometry.bodyTriangleIndices.push(promoted);
+    lastWitness.triangleIndices.push(promoted);
+  }
+  lastWitness.triangleSignatureSha256 = signatureDigestForRepeatedZTriangles(
+    lastWitness.triangleIndices.length
+  );
+  return manifest;
+}
+
 function hostileFailureValue() {
   return new Proxy(new Error('untrusted failure'), {
     getPrototypeOf() {
@@ -141,8 +268,92 @@ beforeEach(() => {
 });
 
 describe('dice runtime provider', () => {
-  it('coalesces concurrent witnesses around exact contract bytes, hash, and one source scene', async () => {
+  it.each([
+    [
+      'sub-1e-4 exponents and normalized signed zero',
+      [0.000002, -0.000002, -0.0000004],
+      '[[[2e-06,-2e-06,0.0],[2e-06,-2e-06,0.0],[2e-06,-2e-06,0.0]]]',
+      'd6c6dfef6bbb57825d23bacbf80428aa3e58d6d09d16c0d899cd92a93dda9a82',
+    ],
+    [
+      'positive, negative, down, and up half-even ties',
+      [0.0078125, 0.0234375, -0.0078125],
+      '[[[0.007812,0.023438,-0.007812],[0.007812,0.023438,-0.007812],[0.007812,0.023438,-0.007812]]]',
+      '98bc16bc595258e183275433b01de37aac745fdbaa102f1895718536cb292617',
+    ],
+    [
+      'integral floats and positive/negative exponent spelling',
+      [1, 1e20, -1e20],
+      '[[[1.0,1e+20,-1e+20],[1.0,1e+20,-1e+20],[1.0,1e+20,-1e+20]]]',
+      'f365cbbde472947c873d98bd1a0889f7b807a93f35e4b014eb8e47193191da87',
+    ],
+  ])(
+    'matches producer-derived canonical signature bytes for %s',
+    (_name, vector, expectedBytes, expectedDigest) => {
+      type CanonicalSignatureEncoder = (
+        triangles: readonly (readonly [
+          readonly [number, number, number],
+          readonly [number, number, number],
+          readonly [number, number, number],
+        ])[]
+      ) => Uint8Array;
+      const canonical = (
+        runtimeProvider as unknown as {
+          __canonicalRuntimeTriangleSignaturesForTests?: CanonicalSignatureEncoder;
+        }
+      ).__canonicalRuntimeTriangleSignaturesForTests;
+      expect(canonical).toBeTypeOf('function');
+      if (!canonical) return;
+      const vertex = vector as [number, number, number];
+      const bytes = canonical([[vertex, vertex, vertex]]);
+
+      expect(new TextDecoder().decode(bytes)).toBe(expectedBytes);
+      expect(createHash('sha256').update(bytes).digest('hex')).toBe(
+        expectedDigest
+      );
+    }
+  );
+
+  it.each([
+    ['smaller', -1 as const, FIXTURE_D20_BODY_TRIANGLE_COUNT - 1],
+    ['larger', 1 as const, FIXTURE_D20_BODY_TRIANGLE_COUNT + 1],
+  ])(
+    'rejects a coherent %s carved-d20 body/witness union before model I/O',
+    async (_name, delta, expectedCount) => {
+      const manifest = resizedBodyManifest(delta);
+      expect(
+        manifest.presets[0].model.geometry.bodyTriangleIndices
+      ).toHaveLength(expectedCount);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(okBytesResponse(manifestBytes(manifest)));
+      vi.stubGlobal('fetch', fetchMock);
+      const digest = arrangeDigest();
+
+      const first = preloadDiceRuntimePreset(PRESET_ID);
+      const second = preloadDiceRuntimePreset(PRESET_ID);
+      await expect(first).rejects.toThrow(/carved d20 contract/i);
+      await expect(second).rejects.toThrow(/carved d20 contract/i);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(MANIFEST_URL);
+      expect(digest).not.toHaveBeenCalled();
+      expect(loader.parse).not.toHaveBeenCalled();
+      expect(getDiceRuntimePresetSnapshot(PRESET_ID).status).toBe('failed');
+    }
+  );
+
+  it('coalesces concurrent witnesses around the exact 2,684-triangle contract and one source scene', async () => {
     const fixture = validDiceRuntimeManifest();
+    const geometry = fixture.presets[0].model.geometry;
+    const witnessOrdinals = Object.values(
+      fixture.presets[0].faceSettlementMap.entries
+    ).flatMap((entry) => entry.witness.triangleIndices ?? []);
+    expect(geometry.bodyTriangleIndices).toHaveLength(
+      FIXTURE_D20_BODY_TRIANGLE_COUNT
+    );
+    expect(witnessOrdinals).toHaveLength(FIXTURE_D20_BODY_TRIANGLE_COUNT);
+    expect(new Set(witnessOrdinals).size).toBe(FIXTURE_D20_BODY_TRIANGLE_COUNT);
     const canonicalBytes = manifestBytes(fixture);
     const fetchMock = vi
       .fn()
@@ -546,7 +757,7 @@ describe('dice runtime provider', () => {
         const bytes = MODEL_BYTES.slice();
         new DataView(bytes.buffer).setUint16(
           FIXTURE_INDEX_BYTE_OFFSET,
-          3,
+          405,
           true
         );
         return { manifest: validDiceRuntimeManifest(), bytes };
@@ -628,10 +839,196 @@ describe('dice runtime provider', () => {
     }
   );
 
+  it.each([
+    [
+      'declared buffer longer than the BIN chunk',
+      () =>
+        rebuiltFixtureGlb(({ document, binary }) => {
+          document.buffers[0].byteLength = binary.byteLength + 1;
+        }),
+    ],
+    [
+      'short BIN chunk',
+      () =>
+        rebuiltFixtureGlb((parts) => {
+          parts.binary = parts.binary.slice(0, -4);
+        }),
+    ],
+    [
+      'excess BIN padding',
+      () =>
+        rebuiltFixtureGlb((parts) => {
+          const excess = new Uint8Array(parts.binary.byteLength + 4);
+          excess.set(parts.binary);
+          parts.binary = excess;
+        }),
+    ],
+    [
+      'nonzero BIN padding',
+      () =>
+        rebuiltFixtureGlb((parts) => {
+          parts.binary[parts.binary.length - 1] = 1;
+        }),
+    ],
+    [
+      'an unaligned BIN chunk',
+      () =>
+        rebuiltFixtureGlb((parts) => {
+          parts.binary = parts.binary.slice(0, -1);
+        }),
+    ],
+    [
+      'BIN before JSON',
+      () => rebuiltFixtureGlb(undefined, { chunkOrder: ['BIN', 'JSON'] }),
+    ],
+    [
+      'an unaligned JSON chunk',
+      () => rebuiltFixtureGlb(undefined, { unalignedJson: true }),
+    ],
+    [
+      'an extra unknown chunk',
+      () =>
+        rebuiltFixtureGlb(undefined, {
+          chunkOrder: ['JSON', 'UNKNOWN', 'BIN'],
+        }),
+    ],
+    [
+      'a misaligned POSITION bufferView offset',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.bufferViews[0].byteOffset = 2;
+        }),
+    ],
+    [
+      'a misaligned index bufferView offset',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.bufferViews[1].byteOffset =
+            Number(document.bufferViews[1].byteOffset) - 1;
+        }),
+    ],
+    [
+      'a misaligned POSITION accessor offset',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.accessors[0].byteOffset = 2;
+        }),
+    ],
+    [
+      'a nondivisible vertex stride',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.bufferViews[0].byteStride = 14;
+        }),
+    ],
+    [
+      'a vertex stride above the legal range',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.bufferViews[0].byteStride = 256;
+        }),
+    ],
+    [
+      'multiple embedded buffers',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.buffers.push({ byteLength: 0 });
+        }),
+    ],
+    [
+      'an external buffer URI',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.buffers[0].uri = 'external.bin';
+        }),
+    ],
+    [
+      'an out-of-range accessor index',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.meshes[0].primitives[0].indices = 99;
+        }),
+    ],
+    [
+      'an out-of-range bufferView index',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.accessors[0].bufferView = 99;
+        }),
+    ],
+    [
+      'an out-of-range decoded vertex index',
+      () =>
+        rebuiltFixtureGlb(({ document, binary }) => {
+          const indexOffset = Number(document.bufferViews[1].byteOffset);
+          new DataView(
+            binary.buffer,
+            binary.byteOffset,
+            binary.byteLength
+          ).setUint16(indexOffset, 65_535, true);
+        }),
+    ],
+    [
+      'a wrong POSITION bufferView target',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.bufferViews[0].target = 34963;
+        }),
+    ],
+    [
+      'a wrong POSITION component type',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.accessors[0].componentType = 5123;
+        }),
+    ],
+    [
+      'a wrong index accessor type',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.accessors[1].type = 'VEC2';
+        }),
+    ],
+    [
+      'a non-integer accessor count',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.accessors[0].count = '8055';
+        }),
+    ],
+    [
+      'a non-integer bufferView length',
+      () =>
+        rebuiltFixtureGlb(({ document }) => {
+          document.bufferViews[0].byteLength = '96660';
+        }),
+    ],
+  ])(
+    'rejects hostile embedded GLB layout: %s after GLTF parse and before witness hashing',
+    async (_name, arrange) => {
+      const bytes = arrange();
+      const manifest = validDiceRuntimeManifest();
+      manifest.presets[0].model.sizeBytes = bytes.byteLength;
+      const fetchMock = arrangeFetches(manifest, bytes);
+      const digest = arrangeDigest();
+      arrangeSuccessfulParse();
+
+      const first = preloadDiceRuntimePreset(PRESET_ID);
+      const second = preloadDiceRuntimePreset(PRESET_ID);
+      await expect(first).rejects.toThrow(/witness geometry/i);
+      await expect(second).rejects.toThrow(/witness geometry/i);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(digest).toHaveBeenCalledTimes(1);
+      expect(loader.parse).toHaveBeenCalledTimes(1);
+      expect(getDiceRuntimePresetSnapshot(PRESET_ID).status).toBe('failed');
+    }
+  );
+
   it('rejects witness body-membership drift during strict manifest validation', async () => {
     const manifest = validDiceRuntimeManifest();
     manifest.presets[0].faceSettlementMap.entries['1'].witness.triangleIndices =
-      [20];
+      [FIXTURE_D20_BODY_TRIANGLE_COUNT];
     const fetchMock = vi
       .fn()
       .mockResolvedValue(okBytesResponse(manifestBytes(manifest)));

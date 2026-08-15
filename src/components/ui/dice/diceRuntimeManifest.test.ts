@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseDiceRuntimeManifest } from './diceRuntimeManifest';
 import {
+  FIXTURE_D20_BODY_TRIANGLE_COUNT,
   FIXTURE_EXPECTED_RESULTS,
   validDiceRuntimeManifest,
   type FixtureDieKind,
@@ -91,7 +92,7 @@ describe('parseDiceRuntimeManifest', () => {
     expect(parseDiceRuntimeManifest(value).ok).toBe(true);
   });
 
-  it('preserves the alt-D4 three-vertex-label multi-node direction contract', () => {
+  function altD4Fixture() {
     const value = cloneFixture('d4');
     value.presets[0].model.selectors = {
       kind: 'multi-node',
@@ -100,14 +101,88 @@ describe('parseDiceRuntimeManifest', () => {
       numeralObjectNodeCount: 12,
     } as never;
     value.presets[0].model.geometry = { kind: 'multi-node' } as never;
-    value.presets[0].faceSettlementMap.entries['1'].witness = {
-      kind: 'runtime-direction',
-      readKind: 'vertex',
-      readIndex: 0,
-      readDirection: [0, 0, 1],
-    } as never;
+    for (const [readIndex, result] of [1, 2, 3, 4].entries()) {
+      value.presets[0].faceSettlementMap.entries[String(result)].witness = {
+        kind: 'runtime-direction',
+        readKind: 'vertex',
+        readIndex,
+        readDirection: [0, 0, 1],
+      } as never;
+    }
+    return value;
+  }
 
-    expect(parseDiceRuntimeManifest(value).ok).toBe(true);
+  it('preserves the complete alt-D4 three-vertex-label multi-node direction contract', () => {
+    expect(parseDiceRuntimeManifest(altD4Fixture()).ok).toBe(true);
+  });
+
+  it.each([
+    [
+      'ordinary face-read numeral count drift',
+      () => {
+        const value = cloneFixture();
+        value.presets[0].model.selectors = {
+          kind: 'multi-node',
+          rootObjectNode: 'root',
+          shellObjectNode: 'shell',
+          numeralObjectNodeCount: 19,
+        } as never;
+        value.presets[0].model.geometry = { kind: 'multi-node' } as never;
+        for (const entry of Object.values(
+          value.presets[0].faceSettlementMap.entries
+        )) {
+          entry.witness = {
+            kind: 'runtime-direction',
+            readKind: 'face',
+            readIndex: entry.witness.readIndex,
+            readDirection: [0, 0, 1],
+          } as never;
+        }
+        return value;
+      },
+    ],
+    [
+      'alt-D4 numeral count drift',
+      () => {
+        const value = altD4Fixture();
+        (
+          value.presets[0].model.selectors as unknown as {
+            numeralObjectNodeCount: number;
+          }
+        ).numeralObjectNodeCount = 4;
+        return value;
+      },
+    ],
+    [
+      'mixed alt-D4 face and vertex reads',
+      () => {
+        const value = altD4Fixture();
+        value.presets[0].faceSettlementMap.entries['4'].witness.readKind =
+          'face';
+        return value;
+      },
+    ],
+    [
+      'vertex-read shape for a non-D4 die',
+      () => {
+        const value = altD4Fixture();
+        value.presets[0].dieKind = 'd6';
+        value.presets[0].faceSettlementMap.supportedResults = [
+          1, 2, 3, 4, 5, 6,
+        ];
+        value.presets[0].faceSettlementMap.entries['5'] = structuredClone(
+          value.presets[0].faceSettlementMap.entries['1']
+        );
+        value.presets[0].faceSettlementMap.entries['5'].witness.readIndex = 4;
+        value.presets[0].faceSettlementMap.entries['6'] = structuredClone(
+          value.presets[0].faceSettlementMap.entries['1']
+        );
+        value.presets[0].faceSettlementMap.entries['6'].witness.readIndex = 5;
+        return value;
+      },
+    ],
+  ])('rejects an unsupported multi-node shape: %s', (_name, arrange) => {
+    expectRejected(arrange());
   });
 
   it.each([
@@ -356,7 +431,10 @@ describe('parseDiceRuntimeManifest', () => {
     [
       'partition overlap',
       (value: ManifestFixture) => {
-        value.presets[0].model.geometry.numeralTriangleIndices = [0, 20];
+        value.presets[0].model.geometry.numeralTriangleIndices = [
+          0,
+          FIXTURE_D20_BODY_TRIANGLE_COUNT,
+        ];
       },
     ],
     [
@@ -368,7 +446,9 @@ describe('parseDiceRuntimeManifest', () => {
     [
       'partition out of range',
       (value: ManifestFixture) => {
-        value.presets[0].model.geometry.numeralTriangleIndices = [21];
+        value.presets[0].model.geometry.numeralTriangleIndices = [
+          FIXTURE_D20_BODY_TRIANGLE_COUNT + 1,
+        ];
       },
     ],
     [
@@ -380,7 +460,8 @@ describe('parseDiceRuntimeManifest', () => {
     [
       'wrong geometry triangle total',
       (value: ManifestFixture) => {
-        value.presets[0].model.geometry.totalTriangles = 22;
+        value.presets[0].model.geometry.totalTriangles =
+          FIXTURE_D20_BODY_TRIANGLE_COUNT + 2;
       },
     ],
   ])('rejects a single-mesh geometry %s', (_name, mutate) => {
@@ -544,7 +625,7 @@ describe('parseDiceRuntimeManifest', () => {
       (value: ManifestFixture) => {
         value.presets[0].faceSettlementMap.entries[
           '1'
-        ].witness.triangleIndices = [21];
+        ].witness.triangleIndices = [FIXTURE_D20_BODY_TRIANGLE_COUNT + 1];
       },
     ],
     [
@@ -552,7 +633,7 @@ describe('parseDiceRuntimeManifest', () => {
       (value: ManifestFixture) => {
         value.presets[0].faceSettlementMap.entries[
           '1'
-        ].witness.triangleIndices = [20];
+        ].witness.triangleIndices = [FIXTURE_D20_BODY_TRIANGLE_COUNT];
       },
     ],
     [

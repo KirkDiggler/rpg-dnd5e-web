@@ -23,6 +23,7 @@ export interface DiceRuntimePresetSnapshot {
 const MANIFEST_URL = '/models/custom-dice/dice-tray-presets.json';
 const RUNTIME_MODEL_ROOT = '/models/custom-dice';
 const ORIGINAL_CARVED_D20_PRESET_ID = 'dice.original.carved.d20';
+const ORIGINAL_CARVED_D20_BODY_TRIANGLES = 2_684;
 const DISALLOWED_REASON = 'runtime preset is not allowlisted';
 const ALLOWLIST = new Set([ORIGINAL_CARVED_D20_PRESET_ID]);
 const IDLE_SNAPSHOT: DiceRuntimePresetSnapshot = Object.freeze({
@@ -128,6 +129,13 @@ function selectOriginalCarvedD20(
   const readIndices = new Set(
     settlementEntries.map((entry) => entry.witness.readIndex)
   );
+  const witnessedOrdinals = new Set(
+    settlementEntries.flatMap((entry) =>
+      entry.witness.kind === 'runtime-face-triangles'
+        ? entry.witness.triangleIndices
+        : []
+    )
+  );
   if (
     preset.presetId !== ORIGINAL_CARVED_D20_PRESET_ID ||
     preset.familyId !== 'dice.original.carved' ||
@@ -137,6 +145,9 @@ function selectOriginalCarvedD20(
     !settlementEntries.every(
       (entry) => entry.witness.kind === 'runtime-face-triangles'
     ) ||
+    preset.model.geometry.bodyTriangleIndices.length !==
+      ORIGINAL_CARVED_D20_BODY_TRIANGLES ||
+    witnessedOrdinals.size !== ORIGINAL_CARVED_D20_BODY_TRIANGLES ||
     readIndices.size !== 20 ||
     !settlementEntries.every(
       (entry) => entry.witness.readIndex >= 0 && entry.witness.readIndex < 20
@@ -278,37 +289,61 @@ function optionalJsonInteger(
 function parseGlbBytes(bytes: ArrayBuffer): ParsedGlbBytes {
   const view = new DataView(bytes);
   if (
-    view.byteLength < 12 ||
+    view.byteLength < 28 ||
+    view.byteLength % 4 !== 0 ||
     view.getUint32(0, true) !== 0x46546c67 ||
     view.getUint32(4, true) !== 2 ||
     view.getUint32(8, true) !== view.byteLength
   )
     return witnessGeometryFailure();
 
-  let document: Readonly<Record<string, unknown>> | undefined;
-  let binary: Uint8Array | undefined;
-  let offset = 12;
-  while (offset < view.byteLength) {
-    if (offset + 8 > view.byteLength) return witnessGeometryFailure();
-    const chunkLength = view.getUint32(offset, true);
-    const chunkType = view.getUint32(offset + 4, true);
-    offset += 8;
-    const end = offset + chunkLength;
-    if (end > view.byteLength) return witnessGeometryFailure();
-    if (chunkType === 0x4e4f534a) {
-      if (document) return witnessGeometryFailure();
-      const text = new TextDecoder('utf-8', { fatal: true }).decode(
-        new Uint8Array(bytes, offset, chunkLength)
-      );
-      document = jsonRecord(JSON.parse(text) as unknown);
-    } else if (chunkType === 0x004e4942) {
-      if (binary) return witnessGeometryFailure();
-      binary = new Uint8Array(bytes, offset, chunkLength);
-    }
-    offset = end;
-  }
-  if (!document || !binary || offset !== view.byteLength)
+  const jsonLength = view.getUint32(12, true);
+  const jsonType = view.getUint32(16, true);
+  const jsonStart = 20;
+  const jsonEnd = jsonStart + jsonLength;
+  if (
+    jsonType !== 0x4e4f534a ||
+    jsonLength === 0 ||
+    jsonLength % 4 !== 0 ||
+    !Number.isSafeInteger(jsonEnd) ||
+    jsonEnd + 8 > view.byteLength
+  )
     return witnessGeometryFailure();
+  const binaryLength = view.getUint32(jsonEnd, true);
+  const binaryType = view.getUint32(jsonEnd + 4, true);
+  const binaryStart = jsonEnd + 8;
+  const binaryEnd = binaryStart + binaryLength;
+  if (
+    binaryType !== 0x004e4942 ||
+    binaryLength === 0 ||
+    binaryLength % 4 !== 0 ||
+    !Number.isSafeInteger(binaryEnd) ||
+    binaryEnd !== view.byteLength
+  )
+    return witnessGeometryFailure();
+
+  const jsonText = new TextDecoder('utf-8', { fatal: true }).decode(
+    new Uint8Array(bytes, jsonStart, jsonLength)
+  );
+  const unpaddedJson = jsonText.replace(/ +$/, '');
+  if (
+    unpaddedJson.length === 0 ||
+    !unpaddedJson.endsWith('}') ||
+    !jsonText.startsWith(unpaddedJson)
+  )
+    return witnessGeometryFailure();
+  const document = jsonRecord(JSON.parse(unpaddedJson) as unknown);
+  const binary = new Uint8Array(bytes, binaryStart, binaryLength);
+  const buffers = jsonArray(document.buffers);
+  if (buffers.length !== 1) return witnessGeometryFailure();
+  const buffer = jsonRecord(buffers[0]);
+  if ('uri' in buffer) return witnessGeometryFailure();
+  const declaredLength = jsonInteger(buffer.byteLength);
+  const paddingLength = binary.byteLength - declaredLength;
+  if (paddingLength < 0 || paddingLength > 3) return witnessGeometryFailure();
+  for (let index = declaredLength; index < binary.byteLength; index += 1) {
+    if (binary[index] !== 0) return witnessGeometryFailure();
+  }
   return { document, binary };
 }
 
@@ -376,6 +411,11 @@ function readAccessor(
   if ('sparse' in accessor) return witnessGeometryFailure();
   if (optionalJsonInteger(bufferView.buffer, 0) !== 0)
     return witnessGeometryFailure();
+  if (
+    'target' in bufferView &&
+    bufferView.target !== (semantic === 'POSITION' ? 34962 : 34963)
+  )
+    return witnessGeometryFailure();
 
   const count = jsonInteger(accessor.count);
   const viewOffset = optionalJsonInteger(bufferView.byteOffset, 0);
@@ -388,18 +428,33 @@ function readAccessor(
   const declaredBufferLength = jsonInteger(buffer.byteLength);
   const viewEnd = viewOffset + viewLength;
   if (
+    !Number.isSafeInteger(viewEnd) ||
     viewEnd > declaredBufferLength ||
     viewEnd > binary.byteLength ||
     viewOffset > viewEnd
   )
     return witnessGeometryFailure();
   const elementSize = component.bytes * componentCount;
-  const stride = optionalJsonInteger(bufferView.byteStride, elementSize, 1);
-  if (stride < elementSize) return witnessGeometryFailure();
+  let stride = elementSize;
+  if (semantic === 'POSITION' && 'byteStride' in bufferView) {
+    stride = jsonInteger(bufferView.byteStride, 1);
+    if (stride < elementSize || stride > 252 || stride % component.bytes !== 0)
+      return witnessGeometryFailure();
+  } else if (semantic === 'index' && 'byteStride' in bufferView) {
+    return witnessGeometryFailure();
+  }
   const start = viewOffset + accessorOffset;
   const requiredEnd =
     count === 0 ? start : start + (count - 1) * stride + elementSize;
-  if (start < viewOffset || requiredEnd > viewEnd)
+  if (
+    viewOffset % component.bytes !== 0 ||
+    accessorOffset % component.bytes !== 0 ||
+    start % component.bytes !== 0 ||
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(requiredEnd) ||
+    start < viewOffset ||
+    requiredEnd > viewEnd
+  )
     return witnessGeometryFailure();
 
   const data = new DataView(
@@ -494,6 +549,8 @@ function compareVectors(left: RuntimeVector3, right: RuntimeVector3) {
 }
 
 function roundedCoordinate(value: number) {
+  if (!Number.isFinite(value)) return witnessGeometryFailure();
+  if (Math.abs(value) >= Number.MAX_SAFE_INTEGER / 1_000_000) return value;
   const scaled = value * 1_000_000;
   const floor = Math.floor(scaled);
   const fraction = scaled - floor;
@@ -509,9 +566,31 @@ function roundedCoordinate(value: number) {
   return rounded === 0 ? 0 : rounded;
 }
 
-function pythonFloat(value: number) {
+function pythonJsonFloat(value: number) {
+  if (!Number.isFinite(value)) return witnessGeometryFailure();
   if (value === 0) return '0.0';
-  return Number.isInteger(value) ? `${value}.0` : String(value);
+  const sign = value < 0 ? '-' : '';
+  const [coefficient, exponentText] = Math.abs(value)
+    .toExponential()
+    .split('e');
+  const exponent = Number(exponentText);
+  if (!Number.isSafeInteger(exponent)) return witnessGeometryFailure();
+  if (exponent < -4 || exponent >= 16) {
+    const exponentSign = exponent < 0 ? '-' : '+';
+    return `${sign}${coefficient}e${exponentSign}${String(
+      Math.abs(exponent)
+    ).padStart(2, '0')}`;
+  }
+
+  const digits = coefficient.replace('.', '');
+  const decimalPosition = exponent + 1;
+  if (decimalPosition <= 0)
+    return `${sign}0.${'0'.repeat(-decimalPosition)}${digits}`;
+  if (decimalPosition >= digits.length)
+    return `${sign}${digits}${'0'.repeat(decimalPosition - digits.length)}.0`;
+  return `${sign}${digits.slice(0, decimalPosition)}.${digits.slice(
+    decimalPosition
+  )}`;
 }
 
 function triangleSignature(triangle: RuntimeTriangle) {
@@ -537,11 +616,23 @@ function encodedTriangleSignatures(triangles: readonly RuntimeTriangle[]) {
     .map(
       (signature) =>
         `[${signature
-          .map((vertex) => `[${vertex.map(pythonFloat).join(',')}]`)
+          .map((vertex) => `[${vertex.map(pythonJsonFloat).join(',')}]`)
           .join(',')}]`
     )
     .join(',')}]`;
   return new TextEncoder().encode(serialized);
+}
+
+export function __canonicalRuntimeTriangleSignaturesForTests(
+  triangles: readonly (readonly [
+    RuntimeVector3,
+    RuntimeVector3,
+    RuntimeVector3,
+  ])[]
+) {
+  return encodedTriangleSignatures(
+    triangles.map((vertices, index) => ({ index, vertices }))
+  );
 }
 
 async function sha256Hex(bytes: Uint8Array) {
@@ -647,7 +738,12 @@ async function validateFaceWitnessGeometry(
       if (!Number.isFinite(agreement) || agreement < 0.999999)
         return witnessGeometryFailure();
     }
-    if (occupied.size !== body.size) return witnessGeometryFailure();
+    if (
+      body.size !== ORIGINAL_CARVED_D20_BODY_TRIANGLES ||
+      occupied.size !== ORIGINAL_CARVED_D20_BODY_TRIANGLES ||
+      occupied.size !== body.size
+    )
+      return witnessGeometryFailure();
   } catch {
     return witnessGeometryFailure();
   }

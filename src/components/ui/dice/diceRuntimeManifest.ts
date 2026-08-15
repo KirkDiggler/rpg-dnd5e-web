@@ -617,6 +617,40 @@ function parseSettlementMap(
   });
 }
 
+function validateMultiNodeSettlementShape(
+  selectors: Extract<RuntimeDiceSelectors, { kind: 'multi-node' }>,
+  dieKind: RuntimeDieKind,
+  settlementMap: DiceRuntimePreset['faceSettlementMap']
+) {
+  const witnesses = Object.values(settlementMap.entries).map(
+    (entry) => entry.witness
+  );
+  const ordinaryFaceShape = witnesses.every(
+    (witness) =>
+      witness.kind === 'runtime-direction' && witness.readKind === 'face'
+  );
+  if (ordinaryFaceShape) {
+    if (selectors.numeralObjectNodeCount !== EXPECTED_RESULTS[dieKind].length)
+      invalid('multi-node face-read numeral count does not match result count');
+    return;
+  }
+
+  const vertexIndices = new Set(witnesses.map((witness) => witness.readIndex));
+  const altD4VertexShape =
+    dieKind === 'd4' &&
+    witnesses.length === 4 &&
+    selectors.numeralObjectNodeCount === 12 &&
+    witnesses.every(
+      (witness) =>
+        witness.kind === 'runtime-direction' && witness.readKind === 'vertex'
+    ) &&
+    vertexIndices.size === 4 &&
+    witnesses.every(
+      (witness) => witness.readIndex >= 0 && witness.readIndex < 4
+    );
+  if (!altD4VertexShape) invalid('multi-node settlement shape is unsupported');
+}
+
 function parsePreset(value: unknown): DiceRuntimePreset {
   const preset = exactObject(
     value,
@@ -658,6 +692,13 @@ function parsePreset(value: unknown): DiceRuntimePreset {
     (geometry.kind === 'single-mesh-triangle-groups')
   )
     invalid('selector and geometry discriminators do not match');
+  const faceSettlementMap = parseSettlementMap(
+    preset.faceSettlementMap,
+    dieKind,
+    geometry
+  );
+  if (selectors.kind === 'multi-node')
+    validateMultiNodeSettlementShape(selectors, dieKind, faceSettlementMap);
   return Object.freeze({
     presetId: preset.presetId,
     displayName: boundedString(
@@ -677,11 +718,7 @@ function parsePreset(value: unknown): DiceRuntimePreset {
       meshFacts,
       geometry,
     }),
-    faceSettlementMap: parseSettlementMap(
-      preset.faceSettlementMap,
-      dieKind,
-      geometry
-    ),
+    faceSettlementMap,
   });
 }
 

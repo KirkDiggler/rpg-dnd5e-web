@@ -21,35 +21,52 @@ export const FIXTURE_EXPECTED_RESULTS: Readonly<
   d4: Array.from({ length: 4 }, (_, index) => index + 1),
 };
 
-const FIXTURE_DIRECTIONS = Array.from(
-  { length: 21 },
-  (_, triangleIndex) =>
-    (triangleIndex === 1
-      ? [1, 0, 0]
-      : triangleIndex === 20
-        ? [0, 0, -1]
-        : [0, 0, 1]) as [number, number, number]
+export const FIXTURE_D20_BODY_TRIANGLE_COUNT = 2_684;
+const FIXTURE_TOTAL_TRIANGLE_COUNT = FIXTURE_D20_BODY_TRIANGLE_COUNT + 1;
+const FIXTURE_RESULT_DIRECTIONS = Array.from(
+  { length: 20 },
+  (_, resultIndex) =>
+    (resultIndex === 1 ? [1, 0, 0] : [0, 0, 1]) as [number, number, number]
 );
 
-const FIXTURE_TRIANGLES = FIXTURE_DIRECTIONS.map(([x, , z]) =>
-  x === 1
-    ? ([
-        [3, 0, 0],
-        [3, 1, 0],
-        [3, 0, 1],
-      ] as const)
-    : z === -1
-      ? ([
-          [0, 0, -3],
-          [0, 1, -3],
-          [1, 0, -3],
-        ] as const)
-      : ([
-          [0, 0, 3],
-          [1, 0, 3],
-          [0, 1, 3],
-        ] as const)
-);
+export const FIXTURE_WITNESS_TRIANGLE_INDICES = (() => {
+  let nextOrdinal = 0;
+  return Object.freeze(
+    Array.from({ length: 20 }, (_, resultIndex) => {
+      const count =
+        Math.floor(FIXTURE_D20_BODY_TRIANGLE_COUNT / 20) +
+        (resultIndex < FIXTURE_D20_BODY_TRIANGLE_COUNT % 20 ? 1 : 0);
+      const ordinals = Object.freeze(
+        Array.from({ length: count }, () => nextOrdinal++)
+      );
+      return ordinals;
+    })
+  );
+})();
+
+const FIXTURE_TRIANGLES = [
+  ...FIXTURE_WITNESS_TRIANGLE_INDICES.flatMap((ordinals, resultIndex) => {
+    const [x] = FIXTURE_RESULT_DIRECTIONS[resultIndex];
+    const triangle =
+      x === 1
+        ? ([
+            [3, 0, 0],
+            [3, 1, 0],
+            [3, 0, 1],
+          ] as const)
+        : ([
+            [0, 0, 3],
+            [1, 0, 3],
+            [0, 1, 3],
+          ] as const);
+    return ordinals.map(() => triangle);
+  }),
+  [
+    [0, 0, 3],
+    [1, 0, 3],
+    [0, 1, 3],
+  ] as const,
+];
 
 function paddedLength(length: number) {
   return Math.ceil(length / 4) * 4;
@@ -164,22 +181,33 @@ function pythonFloat(value: number) {
   return Number.isInteger(value) ? `${value}.0` : String(value);
 }
 
-function fixtureTriangleDigest(triangleIndex: number) {
+function fixtureTriangleSignature(triangleIndex: number) {
   const vertices = [...FIXTURE_TRIANGLES[triangleIndex]].sort((left, right) => {
     for (let axis = 0; axis < 3; axis += 1) {
       if (left[axis] !== right[axis]) return left[axis] - right[axis];
     }
     return 0;
   });
-  const signature = `[${vertices
+  return `[${vertices
     .map((vertex) => `[${vertex.map(pythonFloat).join(',')}]`)
     .join(',')}]`;
-  return createHash('sha256').update(`[${signature}]`, 'ascii').digest('hex');
 }
+
+const FIXTURE_WITNESS_DIGESTS = FIXTURE_WITNESS_TRIANGLE_INDICES.map(
+  (ordinals) => {
+    const signatures = ordinals.map(fixtureTriangleSignature).sort().join(',');
+    return createHash('sha256')
+      .update(`[${signatures}]`, 'ascii')
+      .digest('hex');
+  }
+);
 
 export function validDiceRuntimeManifest(kind: FixtureDieKind = 'd20') {
   const supportedResults = [...FIXTURE_EXPECTED_RESULTS[kind]];
-  const bodyTriangleIndices = Array.from({ length: 20 }, (_, index) => index);
+  const bodyTriangleIndices = Array.from(
+    { length: FIXTURE_D20_BODY_TRIANGLE_COUNT },
+    (_, index) => index
+  );
   return {
     $schemaVersion: 2,
     contract: 'dice-runtime-presets',
@@ -215,15 +243,15 @@ export function validDiceRuntimeManifest(kind: FixtureDieKind = 'd20') {
           },
           meshFacts: {
             primitiveCount: 1,
-            triangles: 21,
+            triangles: FIXTURE_TOTAL_TRIANGLE_COUNT,
             materials: 0,
             textures: 0,
           },
           geometry: {
             kind: 'single-mesh-triangle-groups',
-            totalTriangles: 21,
+            totalTriangles: FIXTURE_TOTAL_TRIANGLE_COUNT,
             bodyTriangleIndices,
-            numeralTriangleIndices: [20],
+            numeralTriangleIndices: [FIXTURE_D20_BODY_TRIANGLE_COUNT],
           },
         },
         faceSettlementMap: {
@@ -239,10 +267,14 @@ export function validDiceRuntimeManifest(kind: FixtureDieKind = 'd20') {
                         kind: 'runtime-face-triangles',
                         readKind: 'face',
                         readIndex,
-                        readDirection: [...FIXTURE_DIRECTIONS[readIndex]],
-                        triangleIndices: [readIndex],
+                        readDirection: [
+                          ...FIXTURE_RESULT_DIRECTIONS[readIndex],
+                        ],
+                        triangleIndices: [
+                          ...FIXTURE_WITNESS_TRIANGLE_INDICES[readIndex],
+                        ],
                         triangleSignatureSha256:
-                          fixtureTriangleDigest(readIndex),
+                          FIXTURE_WITNESS_DIGESTS[readIndex],
                       }
                     : {
                         kind: 'runtime-direction',
