@@ -1,11 +1,35 @@
 #!/usr/bin/env node
+import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { parseDiceRuntimeManifest } from '../../src/components/ui/dice/diceRuntimeManifest.ts';
-import { assertSameManifest, validateServedBuild } from './evidenceProtocol.ts';
-import {
+
+async function bundleTsModule(path) {
+  const bundled = await build({
+    entryPoints: [resolve(path)],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    target: 'node22',
+    write: false,
+  });
+  const source = bundled.outputFiles[0]?.text;
+  if (!source) throw Error(`failed to bundle TypeScript module: ${path}`);
+  return import(
+    `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+  );
+}
+
+const [manifestModule, frozenEvidenceModule, stone0ProtocolModule] =
+  await Promise.all([
+    bundleTsModule('src/components/ui/dice/diceRuntimeManifest.ts'),
+    bundleTsModule('scripts/attack-die/evidenceProtocol.ts'),
+    bundleTsModule('scripts/attack-die/stone0TrayEvidenceProtocol.ts'),
+  ]);
+const { parseDiceRuntimeManifest } = manifestModule;
+const { assertSameManifest, validateServedBuild } = frozenEvidenceModule;
+const {
   ORIGINAL_D20_GLB_PATH,
   ORIGINAL_D20_GLB_SHA256,
   ORIGINAL_D20_MANIFEST_PATH,
@@ -15,7 +39,7 @@ import {
   assertStone0TrayEvidence,
   stone0ResultScreenshot,
   stone0ScenarioScreenshot,
-} from './stone0TrayEvidenceProtocol.ts';
+} = stone0ProtocolModule;
 
 const argv = process.argv.slice(2);
 const option = (name) => {

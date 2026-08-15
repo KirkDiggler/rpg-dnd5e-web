@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   ORIGINAL_D20_GLB_SHA256,
@@ -216,6 +217,16 @@ function cloneEvidence() {
 }
 
 describe('Stone 0 Tray evidence protocol', () => {
+  it('keeps the Node 22 capture entrypoint free of direct TypeScript imports with extensionless transitive dependencies', () => {
+    const source = readFileSync(
+      'scripts/attack-die/capture-stone0-tray-evidence.mjs',
+      'utf8'
+    );
+    expect(source).not.toMatch(/^import[\s\S]*?from ['"][^'"]+\.ts['"];?$/m);
+    expect(source).toMatch(/bundleTsModule/);
+    expect(source).toMatch(/import\(['"]esbuild['"]\)|from ['"]esbuild['"]/);
+  });
+
   it('accepts one exact complete immutable identity, result, and scenario matrix', () => {
     const evidence = validEvidence();
     expect(assertStone0TrayEvidence(evidence, identity)).toEqual(evidence);
