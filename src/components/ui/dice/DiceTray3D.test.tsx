@@ -744,11 +744,31 @@ describe('DiceTray3D', () => {
     }
   });
 
-  it('renders the truthful settled SVG result for an unknown safe preset', () => {
-    renderTray([{ ...die, presetId: 'newer-safe-preset' }]);
+  it('signals one local fallback completion when an unknown safe preset hydrates settled', () => {
+    const unknown = { ...die, presetId: 'newer-safe-preset' };
+    const onFallbackPresentationComplete = vi.fn();
+    const view = renderTray([unknown], {
+      onFallbackPresentationComplete,
+    });
 
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(attackDieProps).toHaveLength(0);
+    expect(onFallbackPresentationComplete).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <DiceTray3D
+        label="Player attack tray"
+        presentationId="attack:7"
+        rendererGeneration={-7}
+        rollerRole="player"
+        witnessRole="roller"
+        phase="settled"
+        dice={[unknown]}
+        reducedMotion
+        onFallbackPresentationComplete={onFallbackPresentationComplete}
+      />
+    );
+    expect(onFallbackPresentationComplete).toHaveBeenCalledTimes(1);
   });
 
   it.each([

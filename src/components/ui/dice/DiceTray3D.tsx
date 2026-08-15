@@ -122,8 +122,18 @@ export function DiceTray3D({
   const requestIdentity = valid
     ? `${presentationId}:${rendererGeneration}`
     : undefined;
+  const originalRuntime =
+    valid && item?.presetId === ORIGINAL_CARVED_D20_PRESET_ID;
+  const lightningDevelopment =
+    valid &&
+    item?.presetId === 'lightning' &&
+    sceneOverride !== undefined &&
+    sidecarOverride !== undefined &&
+    calibrationPose !== undefined;
+  const uses3DRenderer = originalRuntime || lightningDevelopment;
   const committedRequest = useRef<string | undefined>(undefined);
   const activeGesture = useRef<ActiveDiceGesture | undefined>(undefined);
+  const completedFallback = useRef<string | undefined>(undefined);
   const [grabbed, setGrabbed] = useState(false);
   const canInteract =
     valid &&
@@ -132,6 +142,16 @@ export function DiceTray3D({
     rollerRole === 'player' &&
     witnessRole === 'roller' &&
     onReleaseRequest !== undefined;
+  const completeFallback = useCallback(() => {
+    if (
+      !requestIdentity ||
+      !onFallbackPresentationComplete ||
+      completedFallback.current === requestIdentity
+    )
+      return;
+    completedFallback.current = requestIdentity;
+    onFallbackPresentationComplete();
+  }, [onFallbackPresentationComplete, requestIdentity]);
   const requestRelease = useCallback(
     (gesture?: DiceGestureSample) => {
       if (
@@ -295,6 +315,10 @@ export function DiceTray3D({
     []
   );
 
+  useEffect(() => {
+    if (!uses3DRenderer && phase === 'settled') completeFallback();
+  }, [completeFallback, phase, uses3DRenderer]);
+
   if (!valid) {
     return (
       <DiceTray3DShell label={label} phase={phase}>
@@ -324,13 +348,6 @@ export function DiceTray3D({
       reducedMotion={reducedMotion}
     />
   );
-  const originalRuntime = item.presetId === ORIGINAL_CARVED_D20_PRESET_ID;
-  const lightningDevelopment =
-    item.presetId === 'lightning' &&
-    sceneOverride !== undefined &&
-    sidecarOverride !== undefined &&
-    calibrationPose !== undefined;
-
   return (
     <DiceTray3DShell
       label={label}
@@ -370,7 +387,7 @@ export function DiceTray3D({
             outcome=""
             reducedMotion={reducedMotion}
             onPresentationComplete={
-              phase === 'rolling' ? onFallbackPresentationComplete : undefined
+              phase === 'rolling' ? completeFallback : undefined
             }
           />
         )}

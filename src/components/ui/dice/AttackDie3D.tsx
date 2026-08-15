@@ -368,9 +368,13 @@ function RuntimeDie({
         <group
           name="attack-die-runtime-normalization"
           scale={bundle.normalization.scale}
-          position={bundle.normalization.position}
         >
-          <primitive object={bundle.scene} />
+          <group
+            name="attack-die-runtime-recenter"
+            position={bundle.normalization.position}
+          >
+            <primitive object={bundle.scene} />
+          </group>
         </group>
       ) : (
         <primitive object={bundle.scene} />
@@ -516,12 +520,20 @@ function AttackDieToken({
     | undefined
   >(undefined);
   const poseValidated = useRef(false);
+  const releaseRenderer = useCallback(() => {
+    const current = listener.current;
+    if (!current) return;
+    listener.current = undefined;
+    current.gate.dispose();
+    current.lifecycle.requestRelease();
+  }, []);
   const fail = useCallback(
     (reason: string, failureCode?: AttackDieFailureCode) => {
       if (!active.current || failureSent.current) return;
       failureSent.current = true;
       legacyLock?.fail(reason);
       renderer.current = 'svg';
+      releaseRenderer();
       setTruthful(false);
       setFailed(true);
       onTelemetry?.({
@@ -534,7 +546,7 @@ function AttackDieToken({
         failureCode,
       });
     },
-    [legacyLock, onTelemetry, presentationToken, result]
+    [legacyLock, onTelemetry, presentationToken, releaseRenderer, result]
   );
   const handleSceneFailure = useCallback(
     (reason: string) =>
@@ -573,9 +585,7 @@ function AttackDieToken({
       );
     return () => {
       active.current = false;
-      const current = listener.current;
-      current?.gate.dispose();
-      current?.lifecycle.requestRelease();
+      releaseRenderer();
       if (!runtimeProvider) releaseAttackDieRenderer(presentationToken);
       onTelemetry?.({
         presentationToken,
@@ -592,6 +602,7 @@ function AttackDieToken({
     onRendererInfo,
     onTelemetry,
     presentationToken,
+    releaseRenderer,
     result,
     runtimeProvider,
   ]);
@@ -718,10 +729,8 @@ function AttackDieToken({
                   renderer: gl,
                   contextId: contextId.current,
                   sink: onRendererInfo,
-                  onUnexpectedLoss: () => {
-                    gate.fail('WebGL context lost');
-                    fail('WebGL context lost', 'context-loss');
-                  },
+                  onUnexpectedLoss: () =>
+                    fail('WebGL context lost', 'context-loss'),
                 });
                 listener.current = {
                   renderer: gl,

@@ -654,6 +654,29 @@ describe('DiceTrayPresentation', () => {
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
+  it('hydrates an unknown safe preset directly as truthful settled SVG', () => {
+    const presentationId = 'attack:hydrated-unknown';
+    const request = requested(presentationId, {
+      die: {
+        kind: 'd20',
+        presetId: 'newer-safe-preset',
+        authoritativeResult: 14,
+      },
+    });
+    const release = released(presentationId, {
+      presetId: 'newer-safe-preset',
+    });
+
+    renderPresentation([request, release]);
+
+    expect(attackDieProps).toHaveLength(0);
+    expect(screen.getByTestId('dice-face').textContent).toBe('14');
+    expect(screen.getByRole('status').textContent).toMatch(
+      /result 14 released · truthful SVG settled/i
+    );
+    expect(document.body.innerHTML).not.toMatch(/https?:\/\/|\.glb/i);
+  });
+
   it('rejects an initial release before its request but rolls for a later post-request release', () => {
     const onReleaseRequest = vi.fn();
     const earlyRelease = {

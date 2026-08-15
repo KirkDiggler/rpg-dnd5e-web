@@ -4,6 +4,7 @@ import {
   BufferGeometry,
   Float32BufferAttribute,
   Group,
+  Matrix4,
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
@@ -360,6 +361,8 @@ beforeEach(() => {
     if (mocks.shaderDiagnostic) mocks.gl.debug.onShaderError?.();
   });
   mocks.gl.render = vi.fn();
+  mocks.gl.dispose.mockClear();
+  mocks.gl.forceContextLoss.mockClear();
 });
 afterEach(() => {
   delete (HTMLElement.prototype as { position?: unknown }).position;
@@ -833,19 +836,40 @@ describe('Original carved runtime renderer', () => {
     const normalization = screen
       .getByTestId('canvas')
       .querySelector('group[name="attack-die-runtime-normalization"]');
+    const recenter = normalization?.querySelector(
+      ':scope > group[name="attack-die-runtime-recenter"]'
+    );
     expect(normalization?.getAttribute('scale')).toBe(String(0.55 / 10));
-    expect(normalization?.getAttribute('position')).toBe('-1,-3,-6');
+    expect(normalization?.getAttribute('position')).toBeNull();
+    expect(recenter?.getAttribute('position')).toBe('-1,-3,-6');
     expect(mocks.canvasProps?.style).toEqual({ visibility: 'hidden' });
     expect(JSON.stringify(mocks.canvasProps)).not.toMatch(
       /transform|translate|rotate/
     );
   });
 
-  it('uses a fixed responsive camera clearance while leaving normalization unchanged', () => {
+  it('transforms fixture bounds through the production matrix, centers their midpoint, and preserves responsive clearance', () => {
     const preset = runtimePreset();
     const normalized = runtimeDiceNormalization(preset);
     const height = 220;
     const requiredCanvasMargin = 12 + 8;
+    const normalizationMatrix = new Matrix4()
+      .makeScale(normalized.scale, normalized.scale, normalized.scale)
+      .multiply(new Matrix4().makeTranslation(...normalized.position));
+    const { bboxMin, bboxMax } = preset.model.bounds;
+    const sourceMidpoint = new Vector3(
+      (bboxMin[0] + bboxMax[0]) / 2,
+      (bboxMin[1] + bboxMax[1]) / 2,
+      (bboxMin[2] + bboxMax[2]) / 2
+    );
+    expect(sourceMidpoint.applyMatrix4(normalizationMatrix).length()).toBe(0);
+    const normalizedCorners: Vector3[] = [];
+    for (const x of [bboxMin[0], bboxMax[0]])
+      for (const y of [bboxMin[1], bboxMax[1]])
+        for (const z of [bboxMin[2], bboxMax[2]])
+          normalizedCorners.push(
+            new Vector3(x, y, z).applyMatrix4(normalizationMatrix)
+          );
 
     for (const width of [240, 356, 440]) {
       expect(runtimeDiceNormalization(preset)).toEqual(normalized);
@@ -862,18 +886,19 @@ describe('Original carved runtime renderer', () => {
         camera.updateMatrixWorld();
         const target =
           preset.faceSettlementMap.entries[String(result)].quaternion;
-        const xs: number[] = [];
-        const ys: number[] = [];
-        for (const x of [-0.275, 0.275])
-          for (const y of [-0.275, 0.275])
-            for (const z of [-0.275, 0.275]) {
-              const projected = new Vector3(x, y, z)
-                .applyQuaternion(new Quaternion(...target))
-                .add(new Vector3(-0.23, 0, 0))
-                .project(camera);
-              xs.push(((projected.x + 1) * width) / 2);
-              ys.push(((1 - projected.y) * height) / 2);
-            }
+        const projectedCorners = normalizedCorners.map((corner) =>
+          corner
+            .clone()
+            .applyQuaternion(new Quaternion(...target))
+            .add(new Vector3(-0.23, 0, 0))
+            .project(camera)
+        );
+        const xs = projectedCorners.map(
+          (corner) => ((corner.x + 1) * width) / 2
+        );
+        const ys = projectedCorners.map(
+          (corner) => ((1 - corner.y) * height) / 2
+        );
         expect(Math.min(...xs)).toBeGreaterThanOrEqual(requiredCanvasMargin);
         expect(width - Math.max(...xs)).toBeGreaterThanOrEqual(
           requiredCanvasMargin
@@ -931,6 +956,87 @@ describe('Original carved runtime renderer', () => {
       .map(([event]) => event)
       .filter((event) => event.state === 'disposed');
     expect(disposed).toHaveLength(2);
+  });
+
+  it.each(['geometry', 'motion'] as const)(
+    'releases the owned renderer immediately and exactly once on %s failure',
+    (failure) => {
+      const { geometry } = arrangeRuntimeReady();
+      if (failure === 'geometry') geometry.setIndex(null);
+      else mocks.motionFailure = true;
+      const rendererInfo = vi.fn();
+      const telemetry = vi.fn();
+      const view = render(
+        <AttackDie3D
+          {...props(565, 10)}
+          provider={originalProvider}
+          phase={failure === 'motion' ? 'rolling' : 'ready'}
+          onRendererInfo={rendererInfo}
+          onTelemetry={telemetry}
+        />
+      );
+      if (failure === 'motion') frame(-1, 0);
+
+      expect(screen.queryByTestId('canvas')).toBeNull();
+      expect(telemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: 'failed',
+          failureCode: 'provider-load',
+        })
+      );
+      expect(mocks.gl.dispose).toHaveBeenCalledTimes(1);
+      expect(mocks.gl.forceContextLoss).toHaveBeenCalledTimes(1);
+      expect(
+        rendererInfo.mock.calls.map(([event]) => event.lifecycle)
+      ).toContain('release-requested');
+
+      act(() =>
+        mocks.listeners.get('webglcontextlost')?.(
+          new Event('webglcontextlost', { cancelable: true })
+        )
+      );
+      expect(
+        rendererInfo.mock.calls.map(([event]) => event.lifecycle)
+      ).toContain('release-observed');
+      expect(
+        rendererInfo.mock.calls.map(([event]) => event.lifecycle)
+      ).not.toContain('unexpected-loss');
+
+      view.unmount();
+      expect(mocks.gl.dispose).toHaveBeenCalledTimes(1);
+      expect(mocks.gl.forceContextLoss).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('classifies an unrequested WebGL context loss before releasing terminal ownership', () => {
+    arrangeRuntimeReady();
+    const rendererInfo = vi.fn();
+    const telemetry = vi.fn();
+    render(
+      <AttackDie3D
+        {...props(566, 10)}
+        provider={originalProvider}
+        phase="ready"
+        onRendererInfo={rendererInfo}
+        onTelemetry={telemetry}
+      />
+    );
+
+    act(() =>
+      mocks.listeners.get('webglcontextlost')?.(
+        new Event('webglcontextlost', { cancelable: true })
+      )
+    );
+
+    expect(rendererInfo).toHaveBeenCalledWith(
+      expect.objectContaining({ lifecycle: 'unexpected-loss' })
+    );
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: 'failed',
+        failureCode: 'context-loss',
+      })
+    );
   });
 
   it('keeps reduced motion neutral until explicit release and then observes the exact mapped target', () => {
