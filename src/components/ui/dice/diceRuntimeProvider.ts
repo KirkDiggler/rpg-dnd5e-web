@@ -124,12 +124,23 @@ function selectOriginalCarvedD20(
     (candidate) => candidate.presetId === presetId
   );
   if (!preset) throw Error('allowlisted runtime preset is missing');
+  const settlementEntries = Object.values(preset.faceSettlementMap.entries);
+  const readIndices = new Set(
+    settlementEntries.map((entry) => entry.witness.readIndex)
+  );
   if (
     preset.presetId !== ORIGINAL_CARVED_D20_PRESET_ID ||
     preset.familyId !== 'dice.original.carved' ||
     preset.dieKind !== 'd20' ||
     preset.model.selectors.kind !== 'single-mesh' ||
-    preset.model.geometry.kind !== 'single-mesh-triangle-groups'
+    preset.model.geometry.kind !== 'single-mesh-triangle-groups' ||
+    !settlementEntries.every(
+      (entry) => entry.witness.kind === 'runtime-face-triangles'
+    ) ||
+    readIndices.size !== 20 ||
+    !settlementEntries.every(
+      (entry) => entry.witness.readIndex >= 0 && entry.witness.readIndex < 20
+    )
   )
     throw Error('allowlisted runtime preset is not the carved d20 contract');
   return preset;
@@ -155,8 +166,9 @@ async function fetchModelBytes(
   if (bytes.byteLength !== preset.model.sizeBytes)
     throw Error('model byte size mismatch');
 
+  const digestInput = new Uint8Array(bytes);
   const digestBytes = new Uint8Array(
-    await crypto.subtle.digest('SHA-256', bytes)
+    await crypto.subtle.digest('SHA-256', digestInput)
   );
   const digest = [...digestBytes]
     .map((byte) => byte.toString(16).padStart(2, '0'))
@@ -222,6 +234,425 @@ function prepareSingleMeshBinding(
   }
 }
 
+type RuntimeVector3 = readonly [number, number, number];
+
+interface RuntimeTriangle {
+  readonly index: number;
+  readonly vertices: readonly [RuntimeVector3, RuntimeVector3, RuntimeVector3];
+}
+
+interface ParsedGlbBytes {
+  readonly document: Readonly<Record<string, unknown>>;
+  readonly binary: Uint8Array;
+}
+
+function witnessGeometryFailure(): never {
+  throw Error('runtime witness geometry validation failed');
+}
+
+function jsonRecord(value: unknown): Readonly<Record<string, unknown>> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    return witnessGeometryFailure();
+  return value as Readonly<Record<string, unknown>>;
+}
+
+function jsonArray(value: unknown): readonly unknown[] {
+  if (!Array.isArray(value)) return witnessGeometryFailure();
+  return value;
+}
+
+function jsonInteger(value: unknown, minimum = 0): number {
+  if (!Number.isSafeInteger(value) || Number(value) < minimum)
+    return witnessGeometryFailure();
+  return Number(value);
+}
+
+function optionalJsonInteger(
+  value: unknown,
+  fallback: number,
+  minimum = 0
+): number {
+  return value === undefined ? fallback : jsonInteger(value, minimum);
+}
+
+function parseGlbBytes(bytes: ArrayBuffer): ParsedGlbBytes {
+  const view = new DataView(bytes);
+  if (
+    view.byteLength < 12 ||
+    view.getUint32(0, true) !== 0x46546c67 ||
+    view.getUint32(4, true) !== 2 ||
+    view.getUint32(8, true) !== view.byteLength
+  )
+    return witnessGeometryFailure();
+
+  let document: Readonly<Record<string, unknown>> | undefined;
+  let binary: Uint8Array | undefined;
+  let offset = 12;
+  while (offset < view.byteLength) {
+    if (offset + 8 > view.byteLength) return witnessGeometryFailure();
+    const chunkLength = view.getUint32(offset, true);
+    const chunkType = view.getUint32(offset + 4, true);
+    offset += 8;
+    const end = offset + chunkLength;
+    if (end > view.byteLength) return witnessGeometryFailure();
+    if (chunkType === 0x4e4f534a) {
+      if (document) return witnessGeometryFailure();
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(
+        new Uint8Array(bytes, offset, chunkLength)
+      );
+      document = jsonRecord(JSON.parse(text) as unknown);
+    } else if (chunkType === 0x004e4942) {
+      if (binary) return witnessGeometryFailure();
+      binary = new Uint8Array(bytes, offset, chunkLength);
+    }
+    offset = end;
+  }
+  if (!document || !binary || offset !== view.byteLength)
+    return witnessGeometryFailure();
+  return { document, binary };
+}
+
+interface AccessorComponent {
+  readonly bytes: number;
+  readonly read: (view: DataView, offset: number) => number;
+}
+
+const INDEX_COMPONENTS: Readonly<Record<number, AccessorComponent>> = {
+  5121: {
+    bytes: 1,
+    read: (view, offset) => view.getUint8(offset),
+  },
+  5123: {
+    bytes: 2,
+    read: (view, offset) => view.getUint16(offset, true),
+  },
+  5125: {
+    bytes: 4,
+    read: (view, offset) => view.getUint32(offset, true),
+  },
+};
+
+function readAccessor(
+  document: Readonly<Record<string, unknown>>,
+  binary: Uint8Array,
+  accessorIndexValue: unknown,
+  semantic: 'POSITION' | 'index'
+): readonly (readonly number[])[] {
+  const accessors = jsonArray(document.accessors);
+  const bufferViews = jsonArray(document.bufferViews);
+  const accessorIndex = jsonInteger(accessorIndexValue);
+  if (accessorIndex >= accessors.length) return witnessGeometryFailure();
+  const accessor = jsonRecord(accessors[accessorIndex]);
+  const viewIndex = jsonInteger(accessor.bufferView);
+  if (viewIndex >= bufferViews.length) return witnessGeometryFailure();
+  const bufferView = jsonRecord(bufferViews[viewIndex]);
+  const componentType = jsonInteger(accessor.componentType);
+  const accessorType = accessor.type;
+  let component: AccessorComponent;
+  let componentCount: number;
+  if (semantic === 'POSITION') {
+    if (
+      componentType !== 5126 ||
+      accessorType !== 'VEC3' ||
+      ('normalized' in accessor && accessor.normalized !== false)
+    )
+      return witnessGeometryFailure();
+    component = {
+      bytes: 4,
+      read: (view, offset) => view.getFloat32(offset, true),
+    };
+    componentCount = 3;
+  } else {
+    const indexComponent = INDEX_COMPONENTS[componentType];
+    if (
+      !indexComponent ||
+      accessorType !== 'SCALAR' ||
+      ('normalized' in accessor && accessor.normalized !== false)
+    )
+      return witnessGeometryFailure();
+    component = indexComponent;
+    componentCount = 1;
+  }
+  if ('sparse' in accessor) return witnessGeometryFailure();
+  if (optionalJsonInteger(bufferView.buffer, 0) !== 0)
+    return witnessGeometryFailure();
+
+  const count = jsonInteger(accessor.count);
+  const viewOffset = optionalJsonInteger(bufferView.byteOffset, 0);
+  const viewLength = jsonInteger(bufferView.byteLength);
+  const accessorOffset = optionalJsonInteger(accessor.byteOffset, 0);
+  const buffers = jsonArray(document.buffers);
+  if (buffers.length !== 1) return witnessGeometryFailure();
+  const buffer = jsonRecord(buffers[0]);
+  if ('uri' in buffer) return witnessGeometryFailure();
+  const declaredBufferLength = jsonInteger(buffer.byteLength);
+  const viewEnd = viewOffset + viewLength;
+  if (
+    viewEnd > declaredBufferLength ||
+    viewEnd > binary.byteLength ||
+    viewOffset > viewEnd
+  )
+    return witnessGeometryFailure();
+  const elementSize = component.bytes * componentCount;
+  const stride = optionalJsonInteger(bufferView.byteStride, elementSize, 1);
+  if (stride < elementSize) return witnessGeometryFailure();
+  const start = viewOffset + accessorOffset;
+  const requiredEnd =
+    count === 0 ? start : start + (count - 1) * stride + elementSize;
+  if (start < viewOffset || requiredEnd > viewEnd)
+    return witnessGeometryFailure();
+
+  const data = new DataView(
+    binary.buffer,
+    binary.byteOffset,
+    binary.byteLength
+  );
+  return Array.from({ length: count }, (_, itemIndex) => {
+    const elementOffset = start + itemIndex * stride;
+    const values = Array.from({ length: componentCount }, (_, componentIndex) =>
+      component.read(data, elementOffset + componentIndex * component.bytes)
+    );
+    if (!values.every(Number.isFinite)) return witnessGeometryFailure();
+    return values;
+  });
+}
+
+function boundRuntimeTriangles(
+  bytes: ArrayBuffer,
+  preset: DiceRuntimePreset,
+  binding: RuntimeMeshBinding
+): readonly RuntimeTriangle[] {
+  const { document, binary } = parseGlbBytes(bytes);
+  const nodes = jsonArray(document.nodes);
+  const meshes = jsonArray(document.meshes);
+  if (meshes.length !== 1 || binding.meshDefinitionIndex !== 0)
+    return witnessGeometryFailure();
+  const matchingNodes = nodes.filter((candidate) => {
+    const node = jsonRecord(candidate);
+    return node.name === binding.objectNode;
+  });
+  if (matchingNodes.length !== 1) return witnessGeometryFailure();
+  if (
+    jsonInteger(jsonRecord(matchingNodes[0]).mesh) !==
+    binding.meshDefinitionIndex
+  )
+    return witnessGeometryFailure();
+  const mesh = jsonRecord(meshes[binding.meshDefinitionIndex]);
+  if (mesh.name !== binding.meshDefinition) return witnessGeometryFailure();
+  const primitives = jsonArray(mesh.primitives);
+  if (primitives.length !== preset.model.meshFacts.primitiveCount)
+    return witnessGeometryFailure();
+
+  const triangles: RuntimeTriangle[] = [];
+  for (const primitiveValue of primitives) {
+    const primitive = jsonRecord(primitiveValue);
+    if (optionalJsonInteger(primitive.mode, 4) !== 4)
+      return witnessGeometryFailure();
+    const attributes = jsonRecord(primitive.attributes);
+    const positions = readAccessor(
+      document,
+      binary,
+      attributes.POSITION,
+      'POSITION'
+    );
+    if (!('indices' in primitive)) return witnessGeometryFailure();
+    const indices = readAccessor(
+      document,
+      binary,
+      primitive.indices,
+      'index'
+    ).map((value) => jsonInteger(value[0]));
+    if (indices.length % 3 !== 0) return witnessGeometryFailure();
+    for (let offset = 0; offset < indices.length; offset += 3) {
+      const vertices = indices.slice(offset, offset + 3).map((index) => {
+        if (index >= positions.length) return witnessGeometryFailure();
+        const position = positions[index];
+        if (position.length !== 3) return witnessGeometryFailure();
+        return [position[0], position[1], position[2]] as RuntimeVector3;
+      });
+      triangles.push({
+        index: triangles.length,
+        vertices: vertices as [RuntimeVector3, RuntimeVector3, RuntimeVector3],
+      });
+    }
+  }
+
+  if (
+    preset.model.geometry.kind !== 'single-mesh-triangle-groups' ||
+    triangles.length !== preset.model.meshFacts.triangles ||
+    triangles.length !== preset.model.geometry.totalTriangles
+  )
+    return witnessGeometryFailure();
+  return triangles;
+}
+
+function compareVectors(left: RuntimeVector3, right: RuntimeVector3) {
+  for (let axis = 0; axis < 3; axis += 1) {
+    if (left[axis] !== right[axis]) return left[axis] - right[axis];
+  }
+  return 0;
+}
+
+function roundedCoordinate(value: number) {
+  const scaled = value * 1_000_000;
+  const floor = Math.floor(scaled);
+  const fraction = scaled - floor;
+  const roundedInteger =
+    fraction < 0.5
+      ? floor
+      : fraction > 0.5
+        ? floor + 1
+        : Math.abs(floor) % 2 === 0
+          ? floor
+          : floor + 1;
+  const rounded = roundedInteger / 1_000_000;
+  return rounded === 0 ? 0 : rounded;
+}
+
+function pythonFloat(value: number) {
+  if (value === 0) return '0.0';
+  return Number.isInteger(value) ? `${value}.0` : String(value);
+}
+
+function triangleSignature(triangle: RuntimeTriangle) {
+  return [...triangle.vertices]
+    .map((vertex) => vertex.map(roundedCoordinate) as [number, number, number])
+    .sort(compareVectors);
+}
+
+function compareSignatures(
+  left: readonly RuntimeVector3[],
+  right: readonly RuntimeVector3[]
+) {
+  for (let index = 0; index < 3; index += 1) {
+    const compared = compareVectors(left[index], right[index]);
+    if (compared !== 0) return compared;
+  }
+  return 0;
+}
+
+function encodedTriangleSignatures(triangles: readonly RuntimeTriangle[]) {
+  const signatures = triangles.map(triangleSignature).sort(compareSignatures);
+  const serialized = `[${signatures
+    .map(
+      (signature) =>
+        `[${signature
+          .map((vertex) => `[${vertex.map(pythonFloat).join(',')}]`)
+          .join(',')}]`
+    )
+    .join(',')}]`;
+  return new TextEncoder().encode(serialized);
+}
+
+async function sha256Hex(bytes: Uint8Array) {
+  const digestInput = new Uint8Array(bytes);
+  const digest = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', digestInput)
+  );
+  return [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function triangleOutwardAreaNormal(triangle: RuntimeTriangle): RuntimeVector3 {
+  const [a, b, c] = triangle.vertices;
+  const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]] as const;
+  const ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]] as const;
+  let normal: RuntimeVector3 = [
+    ab[1] * ac[2] - ab[2] * ac[1],
+    ab[2] * ac[0] - ab[0] * ac[2],
+    ab[0] * ac[1] - ab[1] * ac[0],
+  ];
+  const center: RuntimeVector3 = [
+    (a[0] + b[0] + c[0]) / 3,
+    (a[1] + b[1] + c[1]) / 3,
+    (a[2] + b[2] + c[2]) / 3,
+  ];
+  if (normal[0] * center[0] + normal[1] * center[1] + normal[2] * center[2] < 0)
+    normal = [-normal[0], -normal[1], -normal[2]];
+  const magnitude = Math.hypot(...normal);
+  if (!Number.isFinite(magnitude) || magnitude === 0)
+    return witnessGeometryFailure();
+  return normal;
+}
+
+function witnessOutwardNormal(
+  triangles: readonly RuntimeTriangle[]
+): RuntimeVector3 {
+  let areaNormal: RuntimeVector3 = [0, 0, 0];
+  for (const triangle of triangles) {
+    const normal = triangleOutwardAreaNormal(triangle);
+    areaNormal = [
+      areaNormal[0] + normal[0],
+      areaNormal[1] + normal[1],
+      areaNormal[2] + normal[2],
+    ];
+  }
+  const magnitude = Math.hypot(...areaNormal);
+  if (!Number.isFinite(magnitude) || magnitude === 0)
+    return witnessGeometryFailure();
+  const normal: RuntimeVector3 = [
+    areaNormal[0] / magnitude,
+    areaNormal[1] / magnitude,
+    areaNormal[2] / magnitude,
+  ];
+  const projections = triangles.flatMap((triangle) =>
+    triangle.vertices.map(
+      (vertex) =>
+        vertex[0] * normal[0] + vertex[1] * normal[1] + vertex[2] * normal[2]
+    )
+  );
+  if (
+    projections.length === 0 ||
+    Math.max(...projections) - Math.min(...projections) > 0.00001
+  )
+    return witnessGeometryFailure();
+  return normal;
+}
+
+async function validateFaceWitnessGeometry(
+  bytes: ArrayBuffer,
+  preset: DiceRuntimePreset,
+  binding: RuntimeMeshBinding
+): Promise<void> {
+  try {
+    if (preset.model.geometry.kind !== 'single-mesh-triangle-groups')
+      return witnessGeometryFailure();
+    const triangles = boundRuntimeTriangles(bytes, preset, binding);
+    const body = new Set(preset.model.geometry.bodyTriangleIndices);
+    const occupied = new Set<number>();
+    for (const entry of Object.values(preset.faceSettlementMap.entries)) {
+      const witness = entry.witness;
+      if (witness.kind !== 'runtime-face-triangles')
+        return witnessGeometryFailure();
+      const witnessedTriangles = witness.triangleIndices.map((ordinal) => {
+        if (
+          !body.has(ordinal) ||
+          occupied.has(ordinal) ||
+          ordinal < 0 ||
+          ordinal >= triangles.length
+        )
+          return witnessGeometryFailure();
+        occupied.add(ordinal);
+        return triangles[ordinal];
+      });
+      const digest = await sha256Hex(
+        encodedTriangleSignatures(witnessedTriangles)
+      );
+      if (digest !== witness.triangleSignatureSha256)
+        return witnessGeometryFailure();
+      const normal = witnessOutwardNormal(witnessedTriangles);
+      const agreement =
+        normal[0] * witness.readDirection[0] +
+        normal[1] * witness.readDirection[1] +
+        normal[2] * witness.readDirection[2];
+      if (!Number.isFinite(agreement) || agreement < 0.999999)
+        return witnessGeometryFailure();
+    }
+    if (occupied.size !== body.size) return witnessGeometryFailure();
+  } catch {
+    return witnessGeometryFailure();
+  }
+}
+
 async function loadPresetEntry(
   entry: PresetCacheEntry,
   preset: DiceRuntimePreset
@@ -230,6 +661,7 @@ async function loadPresetEntry(
     const bytes = await fetchModelBytes(preset);
     const gltf = await parseGltf(bytes);
     const binding = prepareSingleMeshBinding(preset, gltf);
+    await validateFaceWitnessGeometry(bytes, preset, binding);
     entry.snapshot = Object.freeze({
       status: 'ready',
       preset,

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Object3D } from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -5,7 +6,13 @@ import {
   getDiceRuntimePresetSnapshot,
   preloadDiceRuntimePreset,
 } from './diceRuntimeProvider';
-import { validDiceRuntimeManifest } from './diceRuntimeTestFixtures';
+import {
+  FIXTURE_INDEX_BYTE_OFFSET,
+  FIXTURE_MODEL_BYTES,
+  FIXTURE_MODEL_SHA256,
+  FIXTURE_POSITION_BYTE_OFFSET,
+  validDiceRuntimeManifest,
+} from './diceRuntimeTestFixtures';
 
 const loader = vi.hoisted(() => ({ parse: vi.fn() }));
 
@@ -18,7 +25,7 @@ vi.mock('three/examples/jsm/loaders/GLTFLoader.js', () => ({
 const PRESET_ID = 'dice.original.carved.d20';
 const MANIFEST_URL = '/models/custom-dice/dice-tray-presets.json';
 const MODEL_URL = '/models/custom-dice/original-set/Original_D20_Source.glb';
-const MODEL_BYTES = new Uint8Array([1, 2, 3]);
+const MODEL_BYTES = FIXTURE_MODEL_BYTES;
 
 function manifestBytes(value: unknown = validDiceRuntimeManifest()) {
   return new TextEncoder().encode(JSON.stringify(value));
@@ -66,8 +73,23 @@ function validGltf(
   };
 }
 
-function arrangeDigest(hexByte = 0xaa) {
-  const digest = vi.fn(async () => new Uint8Array(32).fill(hexByte).buffer);
+function digestBuffer(hex: string) {
+  return Uint8Array.from(Buffer.from(hex, 'hex')).buffer;
+}
+
+function arrangeDigest(modelDigest = FIXTURE_MODEL_SHA256) {
+  const digest = vi.fn(
+    async (_algorithm: string, value: ArrayBuffer | ArrayBufferView) => {
+      const bytes = ArrayBuffer.isView(value)
+        ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+        : new Uint8Array(value);
+      const hex =
+        bytes.byteLength === MODEL_BYTES.byteLength
+          ? modelDigest
+          : createHash('sha256').update(bytes).digest('hex');
+      return digestBuffer(hex);
+    }
+  );
   vi.stubGlobal('crypto', { subtle: { digest } });
   return digest;
 }
@@ -83,11 +105,14 @@ function arrangeSuccessfulParse(gltf = validGltf()) {
   return gltf;
 }
 
-function arrangeFetches(manifest: unknown = validDiceRuntimeManifest()) {
+function arrangeFetches(
+  manifest: unknown = validDiceRuntimeManifest(),
+  modelBytes: Uint8Array = MODEL_BYTES
+) {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(okBytesResponse(manifestBytes(manifest)))
-    .mockResolvedValueOnce(okBytesResponse(MODEL_BYTES));
+    .mockResolvedValueOnce(okBytesResponse(modelBytes));
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
@@ -141,7 +166,7 @@ describe('dice runtime provider', () => {
       MODEL_URL,
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(digest).toHaveBeenCalledTimes(1);
+    expect(digest).toHaveBeenCalledTimes(21);
     expect(loader.parse).toHaveBeenCalledTimes(1);
     expect(loader.parse.mock.calls[0][0]).toBeInstanceOf(ArrayBuffer);
     const firstSnapshot = getDiceRuntimePresetSnapshot(PRESET_ID);
@@ -150,7 +175,10 @@ describe('dice runtime provider', () => {
       status: 'ready',
       preset: {
         presetId: PRESET_ID,
-        model: { sha256: 'a'.repeat(64), sizeBytes: 3 },
+        model: {
+          sha256: FIXTURE_MODEL_SHA256,
+          sizeBytes: MODEL_BYTES.byteLength,
+        },
       },
       binding: {
         objectNode: fixture.presets[0].model.selectors.objectNode,
@@ -166,7 +194,7 @@ describe('dice runtime provider', () => {
     expect(Object.isFrozen(firstSnapshot.preset)).toBe(true);
     expect(Object.isFrozen(firstSnapshot.binding)).toBe(true);
     expect(JSON.parse(new TextDecoder().decode(canonicalBytes))).toMatchObject({
-      generatedBy: 'build_dice_runtime_manifest@1.0.0',
+      generatedBy: 'build_dice_runtime_manifest@2.0.0',
       runtimeRoot: 'harness/models/custom-dice',
       coordinateContract: fixture.coordinateContract,
     });
@@ -361,7 +389,7 @@ describe('dice runtime provider', () => {
 
   it('checks SHA-256 before GLTF parsing and preserves digest failure', async () => {
     const fetchMock = arrangeFetches();
-    const digest = arrangeDigest(0xbb);
+    const digest = arrangeDigest('bb'.repeat(32));
 
     const first = preloadDiceRuntimePreset(PRESET_ID);
     const second = preloadDiceRuntimePreset(PRESET_ID);
@@ -371,7 +399,7 @@ describe('dice runtime provider', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(digest).toHaveBeenCalledTimes(1);
-    expect(digest).toHaveBeenCalledWith('SHA-256', expect.any(ArrayBuffer));
+    expect(digest).toHaveBeenCalledWith('SHA-256', expect.any(Uint8Array));
     expect(loader.parse).not.toHaveBeenCalled();
     expect(getDiceRuntimePresetSnapshot(PRESET_ID).status).toBe('failed');
   });
@@ -442,10 +470,20 @@ describe('dice runtime provider', () => {
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('crypto', {
       subtle: {
-        digest: vi.fn(async () => {
-          order.push('digest');
-          return new Uint8Array(32).fill(0xaa).buffer;
-        }),
+        digest: vi.fn(
+          async (_algorithm: string, value: ArrayBuffer | ArrayBufferView) => {
+            const bytes = ArrayBuffer.isView(value)
+              ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+              : new Uint8Array(value);
+            const modelDigest = bytes.byteLength === MODEL_BYTES.byteLength;
+            order.push(modelDigest ? 'digest:model' : 'digest:witness');
+            return digestBuffer(
+              modelDigest
+                ? FIXTURE_MODEL_SHA256
+                : createHash('sha256').update(bytes).digest('hex')
+            );
+          }
+        ),
       },
     });
     loader.parse.mockImplementation(
@@ -466,8 +504,9 @@ describe('dice runtime provider', () => {
       `bytes:${MANIFEST_URL}`,
       `fetch:${MODEL_URL}`,
       `bytes:${MODEL_URL}`,
-      'digest',
+      'digest:model',
       'parse',
+      ...Array.from({ length: 20 }, () => 'digest:witness'),
     ]);
   });
 
@@ -498,6 +537,115 @@ describe('dice runtime provider', () => {
     });
     expect(getObjectByName).toHaveBeenCalledWith(selectors.objectNode);
     expect(getObjectByName).not.toHaveBeenCalledWith(selectors.meshDefinition);
+  });
+
+  it.each([
+    [
+      'one runtime index byte',
+      () => {
+        const bytes = MODEL_BYTES.slice();
+        new DataView(bytes.buffer).setUint16(
+          FIXTURE_INDEX_BYTE_OFFSET,
+          3,
+          true
+        );
+        return { manifest: validDiceRuntimeManifest(), bytes };
+      },
+    ],
+    [
+      'one runtime vertex coordinate',
+      () => {
+        const bytes = MODEL_BYTES.slice();
+        new DataView(bytes.buffer).setFloat32(
+          FIXTURE_POSITION_BYTE_OFFSET,
+          0.25,
+          true
+        );
+        return { manifest: validDiceRuntimeManifest(), bytes };
+      },
+    ],
+    [
+      'one witness digest',
+      () => {
+        const manifest = validDiceRuntimeManifest();
+        manifest.presets[0].faceSettlementMap.entries[
+          '1'
+        ].witness.triangleSignatureSha256 = 'd'.repeat(64);
+        return { manifest, bytes: MODEL_BYTES };
+      },
+    ],
+    [
+      'coordinated witness ordinal and digest permutation',
+      () => {
+        const manifest = validDiceRuntimeManifest();
+        const first = manifest.presets[0].faceSettlementMap.entries['1'];
+        const second = manifest.presets[0].faceSettlementMap.entries['2'];
+        [first.witness.triangleIndices, second.witness.triangleIndices] = [
+          second.witness.triangleIndices,
+          first.witness.triangleIndices,
+        ];
+        [
+          first.witness.triangleSignatureSha256,
+          second.witness.triangleSignatureSha256,
+        ] = [
+          second.witness.triangleSignatureSha256,
+          first.witness.triangleSignatureSha256,
+        ];
+        return { manifest, bytes: MODEL_BYTES };
+      },
+    ],
+    [
+      'one read direction',
+      () => {
+        const manifest = validDiceRuntimeManifest();
+        manifest.presets[0].faceSettlementMap.entries[
+          '1'
+        ].witness.readDirection = [0, 1, 0];
+        return { manifest, bytes: MODEL_BYTES };
+      },
+    ],
+  ])(
+    'fails terminally on %s after exact GLTF binding and before readiness',
+    async (_name, arrange) => {
+      const { manifest, bytes } = arrange();
+      arrangeFetches(manifest, bytes);
+      arrangeDigest();
+      arrangeSuccessfulParse();
+
+      const first = preloadDiceRuntimePreset(PRESET_ID);
+      const second = preloadDiceRuntimePreset(PRESET_ID);
+      await expect(first).rejects.toThrow(/witness geometry/i);
+      await expect(second).rejects.toThrow(/witness geometry/i);
+      await expect(preloadDiceRuntimePreset(PRESET_ID)).rejects.toThrow(
+        /witness geometry/i
+      );
+
+      expect(loader.parse).toHaveBeenCalledTimes(1);
+      expect(getDiceRuntimePresetSnapshot(PRESET_ID)).toMatchObject({
+        status: 'failed',
+        failureReason: expect.stringMatching(/witness geometry/i),
+      });
+    }
+  );
+
+  it('rejects witness body-membership drift during strict manifest validation', async () => {
+    const manifest = validDiceRuntimeManifest();
+    manifest.presets[0].faceSettlementMap.entries['1'].witness.triangleIndices =
+      [20];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okBytesResponse(manifestBytes(manifest)));
+    vi.stubGlobal('fetch', fetchMock);
+    const digest = arrangeDigest();
+
+    await expect(preloadDiceRuntimePreset(PRESET_ID)).rejects.toThrow(
+      /manifest validation/i
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(digest).not.toHaveBeenCalled();
+    expect(loader.parse).not.toHaveBeenCalled();
+    expect(getDiceRuntimePresetSnapshot(PRESET_ID).status).toBe('failed');
   });
 
   it('fails when the declared glTF node references the wrong mesh index', async () => {

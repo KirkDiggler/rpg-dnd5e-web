@@ -24,9 +24,29 @@ export interface MultiNodeGeometry {
   readonly kind: 'multi-node';
 }
 
-export interface DiceSettlementFace {
-  readonly faceIndex: number;
+export interface RuntimeFaceTrianglesWitnessV2 {
+  readonly kind: 'runtime-face-triangles';
+  readonly readKind: 'face';
+  readonly readIndex: number;
+  readonly readDirection: readonly [number, number, number];
+  readonly triangleIndices: readonly number[];
+  readonly triangleSignatureSha256: string;
+}
+
+export interface RuntimeDirectionWitnessV2 {
+  readonly kind: 'runtime-direction';
+  readonly readKind: 'face' | 'vertex';
+  readonly readIndex: number;
+  readonly readDirection: readonly [number, number, number];
+}
+
+export type RuntimeResultWitnessV2 =
+  | RuntimeFaceTrianglesWitnessV2
+  | RuntimeDirectionWitnessV2;
+
+export interface DiceSettlementEntryV2 {
   readonly quaternion: readonly [number, number, number, number];
+  readonly witness: RuntimeResultWitnessV2;
 }
 
 export type RuntimeDieKind =
@@ -63,14 +83,14 @@ export interface DiceRuntimePreset {
   };
   readonly faceSettlementMap: {
     readonly supportedResults: readonly number[];
-    readonly entries: Readonly<Record<string, DiceSettlementFace>>;
+    readonly entries: Readonly<Record<string, DiceSettlementEntryV2>>;
   };
 }
 
 export interface DiceRuntimeManifest {
-  readonly $schemaVersion: 1;
+  readonly $schemaVersion: 2;
   readonly contract: 'dice-runtime-presets';
-  readonly generatedBy: 'build_dice_runtime_manifest@1.0.0';
+  readonly generatedBy: 'build_dice_runtime_manifest@2.0.0';
   readonly sourceManifestSha256: string;
   readonly runtimeRoot: 'harness/models/custom-dice';
   readonly coordinateContract: {
@@ -90,6 +110,7 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const MODEL_PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const BOUNDS_RECONCILIATION_TOLERANCE = 0.000001;
 const QUATERNION_NORMALIZATION_TOLERANCE = 0.000001;
+const READ_DIRECTION_NORMALIZATION_TOLERANCE = 0.000001;
 
 const EXPECTED_RESULTS: Readonly<Record<RuntimeDieKind, readonly number[]>> = {
   d20: Object.freeze(Array.from({ length: 20 }, (_, index) => index + 1)),
@@ -212,6 +233,20 @@ function parseTuple3(
     finiteNumber(tuple[1], `${label}[1]`),
     finiteNumber(tuple[2], `${label}[2]`),
   ]);
+}
+
+function parseReadDirection(
+  value: unknown,
+  label: string
+): readonly [number, number, number] {
+  const direction = parseTuple3(value, label);
+  const magnitude = Math.hypot(...direction);
+  if (
+    Math.abs(magnitude - 1) - READ_DIRECTION_NORMALIZATION_TOLERANCE >
+    Number.EPSILON * Math.max(1, magnitude)
+  )
+    invalid(`${label} must be normalized`);
+  return direction;
 }
 
 function parseQuaternion(
@@ -434,7 +469,8 @@ function parseDieKind(value: unknown): RuntimeDieKind {
 
 function parseSettlementMap(
   value: unknown,
-  dieKind: RuntimeDieKind
+  dieKind: RuntimeDieKind,
+  geometry: CarvedTriangleGroupGeometry | MultiNodeGeometry
 ): DiceRuntimePreset['faceSettlementMap'] {
   const map = exactObject(
     value,
@@ -459,24 +495,119 @@ function parseSettlementMap(
     expectedKeys,
     'faceSettlementMap.entries'
   );
-  const entries: Record<string, DiceSettlementFace> = {};
+  const entries: Record<string, DiceSettlementEntryV2> = {};
+  const occupiedWitnessTriangles = new Set<number>();
+  const occupiedFaceIndices = new Set<number>();
+  const bodyTriangles =
+    geometry.kind === 'single-mesh-triangle-groups'
+      ? new Set(geometry.bodyTriangleIndices)
+      : undefined;
+
   for (const result of expected) {
     const key = String(result);
+    const label = `faceSettlementMap.entries.${key}`;
     const entry = exactObject(
       entrySource[key],
-      ['faceIndex', 'quaternion'],
-      `faceSettlementMap.entries.${key}`
+      ['quaternion', 'witness'],
+      label
     );
+    const witnessSnapshot = snapshotObject(entry.witness, `${label}.witness`);
+    const readIndex = safeInteger(
+      witnessSnapshot.value.readIndex,
+      `${label}.witness.readIndex`,
+      0
+    );
+    const readDirection = parseReadDirection(
+      witnessSnapshot.value.readDirection,
+      `${label}.witness.readDirection`
+    );
+    let witness: RuntimeResultWitnessV2;
+
+    if (witnessSnapshot.value.kind === 'runtime-face-triangles') {
+      if (
+        !sameKeys(witnessSnapshot.keys, [
+          'kind',
+          'readKind',
+          'readIndex',
+          'readDirection',
+          'triangleIndices',
+          'triangleSignatureSha256',
+        ])
+      )
+        invalid(`${label}.witness must contain exact triangle witness keys`);
+      if (witnessSnapshot.value.readKind !== 'face')
+        invalid(`${label}.witness.readKind must be face`);
+      if (!bodyTriangles || geometry.kind !== 'single-mesh-triangle-groups')
+        invalid(`${label}.witness requires single-mesh triangle geometry`);
+      const triangleSource = snapshotArray(
+        witnessSnapshot.value.triangleIndices,
+        `${label}.witness.triangleIndices`
+      );
+      if (triangleSource.length === 0)
+        invalid(`${label}.witness.triangleIndices must not be empty`);
+      const triangleIndices = triangleSource.map((item, index) => {
+        const triangleIndex = safeInteger(
+          item,
+          `${label}.witness.triangleIndices[${index}]`,
+          0
+        );
+        if (triangleIndex >= geometry.totalTriangles)
+          invalid(`${label}.witness triangle index is out of range`);
+        if (!bodyTriangles.has(triangleIndex))
+          invalid(`${label}.witness triangle index is outside the body role`);
+        if (occupiedWitnessTriangles.has(triangleIndex))
+          invalid('result triangle witnesses overlap or contain duplicates');
+        occupiedWitnessTriangles.add(triangleIndex);
+        return triangleIndex;
+      });
+      if (
+        typeof witnessSnapshot.value.triangleSignatureSha256 !== 'string' ||
+        !SHA256.test(witnessSnapshot.value.triangleSignatureSha256)
+      )
+        invalid(
+          `${label}.witness.triangleSignatureSha256 must be lowercase SHA-256`
+        );
+      witness = Object.freeze({
+        kind: 'runtime-face-triangles',
+        readKind: 'face',
+        readIndex,
+        readDirection,
+        triangleIndices: Object.freeze(triangleIndices),
+        triangleSignatureSha256: witnessSnapshot.value.triangleSignatureSha256,
+      });
+    } else if (witnessSnapshot.value.kind === 'runtime-direction') {
+      if (
+        !sameKeys(witnessSnapshot.keys, [
+          'kind',
+          'readKind',
+          'readIndex',
+          'readDirection',
+        ])
+      )
+        invalid(`${label}.witness must contain exact direction witness keys`);
+      if (
+        witnessSnapshot.value.readKind !== 'face' &&
+        witnessSnapshot.value.readKind !== 'vertex'
+      )
+        invalid(`${label}.witness.readKind must be face or vertex`);
+      witness = Object.freeze({
+        kind: 'runtime-direction',
+        readKind: witnessSnapshot.value.readKind,
+        readIndex,
+        readDirection,
+      });
+    } else {
+      invalid(`${label}.witness has an unknown kind`);
+    }
+
+    if (witness.readKind === 'face') {
+      if (occupiedFaceIndices.has(readIndex))
+        invalid('faceSettlementMap reuses one face index for two results');
+      occupiedFaceIndices.add(readIndex);
+    }
     entries[key] = Object.freeze({
-      faceIndex: safeInteger(
-        entry.faceIndex,
-        `faceSettlementMap.entries.${key}.faceIndex`,
-        0
-      ),
-      quaternion: parseQuaternion(
-        entry.quaternion,
-        `faceSettlementMap.entries.${key}.quaternion`
-      ),
+      quaternion: parseQuaternion(entry.quaternion, `${label}.quaternion`),
+      witness,
     });
   }
 
@@ -527,12 +658,6 @@ function parsePreset(value: unknown): DiceRuntimePreset {
     (geometry.kind === 'single-mesh-triangle-groups')
   )
     invalid('selector and geometry discriminators do not match');
-  if (
-    selectors.kind === 'multi-node' &&
-    selectors.numeralObjectNodeCount !== EXPECTED_RESULTS[dieKind].length
-  )
-    invalid('multi-node numeral count does not match die kind');
-
   return Object.freeze({
     presetId: preset.presetId,
     displayName: boundedString(
@@ -552,7 +677,11 @@ function parsePreset(value: unknown): DiceRuntimePreset {
       meshFacts,
       geometry,
     }),
-    faceSettlementMap: parseSettlementMap(preset.faceSettlementMap, dieKind),
+    faceSettlementMap: parseSettlementMap(
+      preset.faceSettlementMap,
+      dieKind,
+      geometry
+    ),
   });
 }
 
@@ -570,10 +699,10 @@ function parseManifest(value: unknown): DiceRuntimeManifest {
     ],
     'manifest'
   );
-  if (manifest.$schemaVersion !== 1) invalid('unknown manifest schema version');
+  if (manifest.$schemaVersion !== 2) invalid('unknown manifest schema version');
   if (manifest.contract !== 'dice-runtime-presets')
     invalid('unknown manifest contract');
-  if (manifest.generatedBy !== 'build_dice_runtime_manifest@1.0.0')
+  if (manifest.generatedBy !== 'build_dice_runtime_manifest@2.0.0')
     invalid('unknown manifest generator');
   if (
     typeof manifest.sourceManifestSha256 !== 'string' ||
@@ -607,9 +736,9 @@ function parseManifest(value: unknown): DiceRuntimeManifest {
     invalid('manifest contains duplicate preset IDs');
 
   return Object.freeze({
-    $schemaVersion: 1,
+    $schemaVersion: 2,
     contract: 'dice-runtime-presets',
-    generatedBy: 'build_dice_runtime_manifest@1.0.0',
+    generatedBy: 'build_dice_runtime_manifest@2.0.0',
     sourceManifestSha256: manifest.sourceManifestSha256,
     runtimeRoot: 'harness/models/custom-dice',
     coordinateContract: Object.freeze({

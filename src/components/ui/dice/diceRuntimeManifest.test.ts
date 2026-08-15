@@ -29,7 +29,7 @@ describe('parseDiceRuntimeManifest', () => {
     expect(manifest).not.toBe(inbound);
     expect(manifest.presets).not.toBe(inbound.presets);
     expect(manifest.presets[0]).not.toBe(inbound.presets[0]);
-    expect(manifest.generatedBy).toBe('build_dice_runtime_manifest@1.0.0');
+    expect(manifest.generatedBy).toBe('build_dice_runtime_manifest@2.0.0');
     expect(manifest.runtimeRoot).toBe('harness/models/custom-dice');
     expect(manifest.coordinateContract).toEqual(inbound.coordinateContract);
     expect(Object.isFrozen(manifest)).toBe(true);
@@ -43,14 +43,15 @@ describe('parseDiceRuntimeManifest', () => {
     if (geometry.kind !== 'single-mesh-triangle-groups')
       throw Error('expected carved fixture geometry');
     expect(Object.isFrozen(geometry.bodyTriangleIndices)).toBe(true);
-    expect(
-      Object.isFrozen(manifest.presets[0].faceSettlementMap.entries['1'])
-    ).toBe(true);
-    expect(
-      Object.isFrozen(
-        manifest.presets[0].faceSettlementMap.entries['1'].quaternion
-      )
-    ).toBe(true);
+    const settlementEntry = manifest.presets[0].faceSettlementMap.entries['1'];
+    expect(Object.isFrozen(settlementEntry)).toBe(true);
+    expect(Object.isFrozen(settlementEntry.quaternion)).toBe(true);
+    expect(Object.isFrozen(settlementEntry.witness)).toBe(true);
+    expect(Object.isFrozen(settlementEntry.witness.readDirection)).toBe(true);
+    expect(settlementEntry.witness.kind).toBe('runtime-face-triangles');
+    if (settlementEntry.witness.kind !== 'runtime-face-triangles')
+      throw Error('expected direct face witness');
+    expect(Object.isFrozen(settlementEntry.witness.triangleIndices)).toBe(true);
     expect(Object.isFrozen(inbound)).toBe(false);
   });
 
@@ -76,6 +77,35 @@ describe('parseDiceRuntimeManifest', () => {
       numeralObjectNodeCount: 20,
     } as never;
     value.presets[0].model.geometry = { kind: 'multi-node' } as never;
+    for (const entry of Object.values(
+      value.presets[0].faceSettlementMap.entries
+    )) {
+      entry.witness = {
+        kind: 'runtime-direction',
+        readKind: 'face',
+        readIndex: entry.witness.readIndex,
+        readDirection: [0, 0, 1],
+      } as never;
+    }
+
+    expect(parseDiceRuntimeManifest(value).ok).toBe(true);
+  });
+
+  it('preserves the alt-D4 three-vertex-label multi-node direction contract', () => {
+    const value = cloneFixture('d4');
+    value.presets[0].model.selectors = {
+      kind: 'multi-node',
+      rootObjectNode: 'root',
+      shellObjectNode: 'shell',
+      numeralObjectNodeCount: 12,
+    } as never;
+    value.presets[0].model.geometry = { kind: 'multi-node' } as never;
+    value.presets[0].faceSettlementMap.entries['1'].witness = {
+      kind: 'runtime-direction',
+      readKind: 'vertex',
+      readIndex: 0,
+      readDirection: [0, 0, 1],
+    } as never;
 
     expect(parseDiceRuntimeManifest(value).ok).toBe(true);
   });
@@ -134,6 +164,13 @@ describe('parseDiceRuntimeManifest', () => {
           faceNormal: [0, 1, 0],
         }),
     ],
+    [
+      'result witness',
+      (value: ManifestFixture) =>
+        Object.assign(value.presets[0].faceSettlementMap.entries['1'].witness, {
+          resultTag: 'D20_Result_01',
+        }),
+    ],
   ])('rejects unknown or authoring keys in the %s', (_name, mutate) => {
     const value = cloneFixture();
     mutate(value);
@@ -141,9 +178,9 @@ describe('parseDiceRuntimeManifest', () => {
   });
 
   it.each([
-    ['$schemaVersion', 2],
+    ['$schemaVersion', 1],
     ['contract', 'dice-presets'],
-    ['generatedBy', 'build_dice_runtime_manifest@2.0.0'],
+    ['generatedBy', 'build_dice_runtime_manifest@1.0.0'],
     ['runtimeRoot', '/models/custom-dice'],
   ])('rejects a wrong %s contract literal', (key, replacement) => {
     const value = cloneFixture() as unknown as Record<string, unknown>;
@@ -319,7 +356,7 @@ describe('parseDiceRuntimeManifest', () => {
     [
       'partition overlap',
       (value: ManifestFixture) => {
-        value.presets[0].model.geometry.numeralTriangleIndices = [0, 1];
+        value.presets[0].model.geometry.numeralTriangleIndices = [0, 20];
       },
     ],
     [
@@ -331,7 +368,7 @@ describe('parseDiceRuntimeManifest', () => {
     [
       'partition out of range',
       (value: ManifestFixture) => {
-        value.presets[0].model.geometry.numeralTriangleIndices = [2];
+        value.presets[0].model.geometry.numeralTriangleIndices = [21];
       },
     ],
     [
@@ -343,7 +380,7 @@ describe('parseDiceRuntimeManifest', () => {
     [
       'wrong geometry triangle total',
       (value: ManifestFixture) => {
-        value.presets[0].model.geometry.totalTriangles = 3;
+        value.presets[0].model.geometry.totalTriangles = 22;
       },
     ],
   ])('rejects a single-mesh geometry %s', (_name, mutate) => {
@@ -377,9 +414,14 @@ describe('parseDiceRuntimeManifest', () => {
       'extra result key',
       (value: ManifestFixture) => {
         value.presets[0].faceSettlementMap.entries['21'] = {
-          faceIndex: 20,
           quaternion: [0, 0, 0, 1],
-        };
+          witness: {
+            kind: 'runtime-direction',
+            readKind: 'face',
+            readIndex: 20,
+            readDirection: [0, 0, 1],
+          },
+        } as never;
       },
     ],
     [
@@ -398,13 +440,13 @@ describe('parseDiceRuntimeManifest', () => {
     [
       'negative face index',
       (value: ManifestFixture) => {
-        value.presets[0].faceSettlementMap.entries['1'].faceIndex = -1;
+        value.presets[0].faceSettlementMap.entries['1'].witness.readIndex = -1;
       },
     ],
     [
       'fractional face index',
       (value: ManifestFixture) => {
-        value.presets[0].faceSettlementMap.entries['1'].faceIndex = 0.5;
+        value.presets[0].faceSettlementMap.entries['1'].witness.readIndex = 0.5;
       },
     ],
     [
@@ -431,6 +473,125 @@ describe('parseDiceRuntimeManifest', () => {
       },
     ],
   ])('rejects a settlement entry with %s', (_name, mutate) => {
+    const value = cloneFixture();
+    mutate(value);
+    expectRejected(value);
+  });
+
+  it('rejects a complete legacy v1 settlement contract', () => {
+    const value = cloneFixture();
+    value.$schemaVersion = 1 as never;
+    value.generatedBy = 'build_dice_runtime_manifest@1.0.0' as never;
+    for (const [key, entry] of Object.entries(
+      value.presets[0].faceSettlementMap.entries
+    )) {
+      value.presets[0].faceSettlementMap.entries[key] = {
+        faceIndex: entry.witness.readIndex,
+        quaternion: entry.quaternion,
+      } as never;
+    }
+    expectRejected(value);
+  });
+
+  it('accepts both exact v2 witness discriminators', () => {
+    const value = cloneFixture();
+    value.presets[0].faceSettlementMap.entries['1'].witness = {
+      kind: 'runtime-direction',
+      readKind: 'face',
+      readIndex: 0,
+      readDirection: [0, 0, 1],
+    } as never;
+
+    expect(parseDiceRuntimeManifest(value).ok).toBe(true);
+  });
+
+  it.each([
+    [
+      'missing witness',
+      (value: ManifestFixture) => {
+        delete (
+          value.presets[0].faceSettlementMap.entries['1'] as Partial<
+            (typeof value.presets)[number]['faceSettlementMap']['entries'][string]
+          >
+        ).witness;
+      },
+    ],
+    [
+      'wrong triangle witness read kind',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries['1'].witness.readKind =
+          'vertex' as never;
+      },
+    ],
+    [
+      'empty triangle witness',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries[
+          '1'
+        ].witness.triangleIndices = [];
+      },
+    ],
+    [
+      'duplicate triangle ordinal',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries[
+          '1'
+        ].witness.triangleIndices = [0, 0];
+      },
+    ],
+    [
+      'out-of-range triangle ordinal',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries[
+          '1'
+        ].witness.triangleIndices = [21];
+      },
+    ],
+    [
+      'triangle ordinal outside the body role',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries[
+          '1'
+        ].witness.triangleIndices = [20];
+      },
+    ],
+    [
+      'triangle ordinal shared by two results',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries[
+          '2'
+        ].witness.triangleIndices = [0];
+      },
+    ],
+    [
+      'malformed triangle digest',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries[
+          '1'
+        ].witness.triangleSignatureSha256 = 'A'.repeat(64);
+      },
+    ],
+    [
+      'face index reused by two results',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries['2'].witness.readIndex = 0;
+      },
+    ],
+    [
+      'non-unit read direction',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries['1'].witness.readDirection =
+          [0, 0, 2];
+      },
+    ],
+    [
+      'non-finite read direction',
+      (value: ManifestFixture) => {
+        value.presets[0].faceSettlementMap.entries['1'].witness.readDirection =
+          [0, Number.NaN, 1];
+      },
+    ],
+  ])('rejects a v2 witness with %s', (_name, mutate) => {
     const value = cloneFixture();
     mutate(value);
     expectRejected(value);
