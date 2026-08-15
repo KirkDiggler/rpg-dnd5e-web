@@ -561,6 +561,8 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).not.toContain('motionCounts = { tumble: 3');
     expect(source).toContain('heldMotion.length >= 1');
     expect(source).not.toContain('heldMotion.length >= 2');
+    expect(source).toContain('waitForReducedMotionSample(page, false)');
+    expect(source).toContain('waitForReducedMotionSample(page, true)');
     expect(source).toContain('observedFallbackFacts');
     expect(source).toContain('.filter(');
     expect(source).toContain('.slice(1)');

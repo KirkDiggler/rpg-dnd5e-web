@@ -917,6 +917,20 @@ try {
     });
   }
 
+  async function waitForReducedMotionSample(page, held) {
+    await page.waitForFunction(
+      (expectedHeld) =>
+        window.__stone1TrayEvidence?.witnesses.roller.motionSamples.some(
+          (sample) =>
+            sample.phase === 'ready' &&
+            sample.reducedMotion === true &&
+            sample.held === expectedHeld
+        ),
+      held,
+      { timeout: 10_000 }
+    );
+  }
+
   function changedTuple(first, second, indices) {
     return indices.some(
       (index) => Math.abs(first[index] - second[index]) > 1e-6
@@ -1043,6 +1057,8 @@ try {
     const scenario = await createScenario(id, { providerFailure });
     const { page, context, viewport, requestRecords } = scenario;
     try {
+      if (id === 'reduced-motion-held')
+        await waitForReducedMotionSample(page, false);
       const before = timelineState(await bridgeState(page, 'before'));
       const motionBefore = await renderedMotionSamples(page);
       const motionSequenceBefore = motionBefore.at(-1)?.sequence ?? 0;
@@ -1109,6 +1125,8 @@ try {
               ? 'lostpointercapture'
               : undefined;
         const grabState = await grab(page, moves, outside, nativeTerminalType);
+        if (id === 'reduced-motion-held')
+          await waitForReducedMotionSample(page, true);
         held = timelineState(await bridgeState(page, 'held'));
         outsideCaptureObserved = outside
           ? grabState.capture.captured && grabState.capture.grabbed
