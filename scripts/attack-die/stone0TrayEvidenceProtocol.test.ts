@@ -227,6 +227,15 @@ describe('Stone 0 Tray evidence protocol', () => {
     expect(source).toMatch(/import\(['"]esbuild['"]\)|from ['"]esbuild['"]/);
   });
 
+  it('targets the real R3F Canvas wrapper and nested canvas shape', () => {
+    const source = readFileSync(
+      'scripts/attack-die/capture-stone0-tray-evidence.mjs',
+      'utf8'
+    );
+    expect(source).not.toMatch(/canvas\.attack-die-3d__canvas/);
+    expect(source).toMatch(/\.attack-die-3d__canvas canvas/);
+  });
+
   it('accepts one exact complete immutable identity, result, and scenario matrix', () => {
     const evidence = validEvidence();
     expect(assertStone0TrayEvidence(evidence, identity)).toEqual(evidence);

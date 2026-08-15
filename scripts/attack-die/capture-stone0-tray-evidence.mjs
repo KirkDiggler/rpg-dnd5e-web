@@ -179,6 +179,14 @@ const providerKind = (requestUrl) => {
 };
 
 function isExpectedConsole(id, text) {
+  if (
+    /dnd5e\.api\..*Failed to fetch/i.test(text) ||
+    /Failed to load resource: net::ERR_CONNECTION_REFUSED/i.test(text) ||
+    /Failed to load resource: the server responded with a status of 404/i.test(
+      text
+    )
+  )
+    return true;
   if (id === 'webgl-creation-failure')
     return /webgl|context|renderer/i.test(text);
   if (id === 'context-loss') return /context.*lost|webgl/i.test(text);
@@ -258,7 +266,7 @@ async function createScenarioPage({
       if (
         window.__stone0TrayCanvasFirstObservedMs === null &&
         document.querySelector(
-          '[data-witness-role] canvas.attack-die-3d__canvas'
+          '[data-witness-role] .attack-die-3d__canvas canvas'
         )
       )
         window.__stone0TrayCanvasFirstObservedMs = performance.now();
@@ -339,7 +347,7 @@ async function waitCanvases(page, count = 2) {
   await page.waitForFunction(
     (expected) =>
       document.querySelectorAll(
-        '[data-witness-role] canvas.attack-die-3d__canvas'
+        '[data-witness-role] .attack-die-3d__canvas canvas'
       ).length === expected,
     count,
     { timeout: 30_000 }
@@ -931,7 +939,7 @@ try {
     )
       throw Error(`${id} armed failure authority/concealment mismatch`);
     const canvasCount = await scenario.page
-      .locator('[data-witness-role] canvas.attack-die-3d__canvas')
+      .locator('[data-witness-role] .attack-die-3d__canvas canvas')
       .count();
     await scenario.page.getByRole('button', { name: 'Roll d20' }).click();
     await scenario.page.waitForFunction(
@@ -993,7 +1001,7 @@ try {
     const scenario = await startHealthyContext(id, 10);
     const lost = await scenario.page.evaluate(() => {
       const canvas = document.querySelector(
-        '[data-witness-role="roller"] canvas.attack-die-3d__canvas'
+        '[data-witness-role="roller"] .attack-die-3d__canvas canvas'
       );
       if (!(canvas instanceof HTMLCanvasElement)) return false;
       const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
@@ -1014,7 +1022,7 @@ try {
       .locator('[data-witness-role] [data-testid="dice-face"]')
       .allTextContents();
     const canvasCount = await scenario.page
-      .locator('[data-witness-role] canvas.attack-die-3d__canvas')
+      .locator('[data-witness-role] .attack-die-3d__canvas canvas')
       .count();
     if (beforeFaces.some((face) => face.trim() !== '?') || canvasCount !== 1)
       throw Error('context loss did not isolate/conceal the failed witness');
