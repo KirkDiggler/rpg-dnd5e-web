@@ -1558,25 +1558,206 @@ it('updates live camera without remounting Canvas or changing token', async () =
   expect(mocks.createdCamera.updateProjectionMatrix).toHaveBeenCalledTimes(2);
 });
 
-it('keeps Canvas, renderer, and die wrappers free of CSS motion', () => {
-  const css = readFileSync('public/themes/base.css', 'utf8');
-  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
-  for (const selector of [
-    '.attack-die-3d__canvas',
-    '.attack-die-3d',
-    '.dice-tray-3d-renderer',
-  ]) {
-    const exactRules = rules.filter((match) =>
-      match[1]
-        .split(',')
-        .map((part) => part.trim())
-        .includes(selector)
-    );
-    expect(exactRules.length).toBeGreaterThan(0);
-    for (const [, , declarations] of exactRules) {
-      expect(declarations).not.toMatch(
-        /(?:^|;)\s*(?:transform|translate|rotate|animation(?:-\w+)?)\s*:/i
-      );
+interface CssRuleSnapshot {
+  selectors: readonly string[];
+  declarations: readonly { property: string; value: string }[];
+}
+
+function splitTopLevelSelectorList(value: string): string[] {
+  const selectors: string[] = [];
+  let start = 0;
+  let bracketDepth = 0;
+  let parenthesisDepth = 0;
+  let quote: string | undefined;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (quote) {
+      if (character === quote && value[index - 1] !== '\\') quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '[') bracketDepth += 1;
+    else if (character === ']') bracketDepth -= 1;
+    else if (character === '(') parenthesisDepth += 1;
+    else if (character === ')') parenthesisDepth -= 1;
+    else if (
+      character === ',' &&
+      bracketDepth === 0 &&
+      parenthesisDepth === 0
+    ) {
+      selectors.push(value.slice(start, index).trim());
+      start = index + 1;
     }
   }
+  selectors.push(value.slice(start).trim());
+  return selectors.filter(Boolean);
+}
+
+function cssRuleSnapshots(source: string): CssRuleSnapshot[] {
+  return [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
+    selectors: splitTopLevelSelectorList(match[1]),
+    declarations: match[2]
+      .split(';')
+      .map((declaration) => declaration.trim())
+      .filter(Boolean)
+      .map((declaration) => {
+        const separator = declaration.indexOf(':');
+        return {
+          property: declaration.slice(0, separator).trim().toLowerCase(),
+          value: declaration
+            .slice(separator + 1)
+            .trim()
+            .toLowerCase(),
+        };
+      }),
+  }));
+}
+
+function rightmostCompoundSelector(selector: string): string {
+  let start = 0;
+  let bracketDepth = 0;
+  let parenthesisDepth = 0;
+  let quote: string | undefined;
+  for (let index = 0; index < selector.length; index += 1) {
+    const character = selector[index];
+    if (quote) {
+      if (character === quote && selector[index - 1] !== '\\')
+        quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '[') bracketDepth += 1;
+    else if (character === ']') bracketDepth -= 1;
+    else if (character === '(') parenthesisDepth += 1;
+    else if (character === ')') parenthesisDepth -= 1;
+    else if (
+      bracketDepth === 0 &&
+      parenthesisDepth === 0 &&
+      (character === '>' ||
+        character === '+' ||
+        character === '~' ||
+        /\s/.test(character))
+    ) {
+      start = index + 1;
+    }
+  }
+  return selector.slice(start).trim();
+}
+
+const MOTION_PROPERTIES = new Set([
+  'filter',
+  'rotate',
+  'scale',
+  'transform',
+  'translate',
+]);
+
+function isMotionProperty(property: string): boolean {
+  return MOTION_PROPERTIES.has(property) || property.startsWith('animation-');
+}
+const PROTECTED_MOTION_TARGETS = [
+  '.attack-die-3d__canvas',
+  '.attack-die-3d',
+  '.dice-tray-3d-renderer',
+] as const;
+const GRAB_TARGET_SELECTOR =
+  '.dice-tray-3d-renderer > .dice-tray-3d-grab-target';
+
+function compoundTargetsClass(compound: string, className: string): boolean {
+  const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`${escaped}(?![A-Za-z0-9_-])`).test(compound);
+}
+
+function protectedMotionViolations(source: string): string[] {
+  const violations: string[] = [];
+  for (const rule of cssRuleSnapshots(source)) {
+    for (const selector of rule.selectors) {
+      const compound = rightmostCompoundSelector(selector);
+      const protectedTarget = PROTECTED_MOTION_TARGETS.find((className) =>
+        compoundTargetsClass(compound, className)
+      );
+      if (!protectedTarget) continue;
+      for (const declaration of rule.declarations) {
+        if (
+          declaration.property === 'animation' ||
+          isMotionProperty(declaration.property)
+        )
+          violations.push(`${selector} -> ${declaration.property}`);
+      }
+    }
+  }
+  return violations;
+}
+
+function invalidGrabTargetMotion(source: string): string[] {
+  const violations: string[] = [];
+  for (const rule of cssRuleSnapshots(source)) {
+    for (const selector of rule.selectors) {
+      if (
+        !compoundTargetsClass(
+          rightmostCompoundSelector(selector),
+          '.dice-tray-3d-grab-target'
+        )
+      )
+        continue;
+      for (const declaration of rule.declarations) {
+        if (
+          declaration.property !== 'animation' &&
+          !isMotionProperty(declaration.property)
+        )
+          continue;
+        const allowed =
+          selector === GRAB_TARGET_SELECTOR &&
+          declaration.property === 'transform' &&
+          declaration.value.replace(/\s+/g, '') === 'translate(-50%,-50%)';
+        if (!allowed) violations.push(`${selector} -> ${declaration.property}`);
+      }
+    }
+  }
+  return violations;
+}
+
+it('guards protected CSS targets across contextual and comma selectors', () => {
+  const css = readFileSync('public/themes/base.css', 'utf8');
+
+  expect(protectedMotionViolations(css)).toEqual([]);
+  expect(invalidGrabTargetMotion(css)).toEqual([]);
+
+  const contextualMutation = `${css}\n.scope .attack-die-3d { transform: translateX(1px); }`;
+  expect(protectedMotionViolations(contextualMutation)).toContain(
+    '.scope .attack-die-3d -> transform'
+  );
+
+  const commaMutation = `${css}\n.safe, .scope > .attack-die-3d__canvas { animation: drift 1s; }`;
+  expect(protectedMotionViolations(commaMutation)).toContain(
+    '.scope > .attack-die-3d__canvas -> animation'
+  );
+
+  const rendererMutation = `${css}\n.layout + .dice-tray-3d-renderer:hover { filter: blur(1px); }`;
+  expect(protectedMotionViolations(rendererMutation)).toContain(
+    '.layout + .dice-tray-3d-renderer:hover -> filter'
+  );
+
+  expect(
+    protectedMotionViolations(
+      `${css}\n.attack-die-3d .unprotected-child { transform: none; }`
+    )
+  ).toEqual([]);
+
+  expect(
+    invalidGrabTargetMotion(
+      `${css}\n${GRAB_TARGET_SELECTOR} { animation: pulse 1s; }`
+    )
+  ).toContain(`${GRAB_TARGET_SELECTOR} -> animation`);
+  expect(
+    invalidGrabTargetMotion(
+      `${css}\n${GRAB_TARGET_SELECTOR} { transform: translate(-40%, -50%); }`
+    )
+  ).toContain(`${GRAB_TARGET_SELECTOR} -> transform`);
 });

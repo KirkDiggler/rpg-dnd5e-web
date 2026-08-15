@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AttackDie3DProps } from './AttackDie3D';
@@ -116,6 +117,60 @@ afterEach(() => {
   delete (HTMLElement.prototype as Partial<HTMLElement>).releasePointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
 });
+
+function exactCssRuleBodies(source: string, exactSelector: string): string[] {
+  return [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter((match) =>
+      match[1]
+        .split(',')
+        .map((selector) => selector.trim())
+        .includes(exactSelector)
+    )
+    .map((match) => match[2]);
+}
+
+function cssDeclarations(body: string): ReadonlyMap<string, string> {
+  return new Map(
+    body
+      .split(';')
+      .map((declaration) => declaration.trim())
+      .filter(Boolean)
+      .map((declaration) => {
+        const separator = declaration.indexOf(':');
+        return [
+          declaration.slice(0, separator).trim().toLowerCase(),
+          declaration
+            .slice(separator + 1)
+            .trim()
+            .toLowerCase(),
+        ];
+      })
+  );
+}
+
+function grabTargetContractViolations(source: string): string[] {
+  const selector = '.dice-tray-3d-renderer > .dice-tray-3d-grab-target';
+  const bodies = exactCssRuleBodies(source, selector);
+  if (bodies.length !== 1) return [`expected one ${selector} rule`];
+  const declarations = cssDeclarations(bodies[0]);
+  const required = new Map([
+    ['position', 'absolute'],
+    ['top', '50%'],
+    ['left', '50%'],
+    ['width', 'min(58%,156px)'],
+    ['aspect-ratio', '1'],
+    ['transform', 'translate(-50%,-50%)'],
+  ]);
+  const violations: string[] = [];
+  for (const [property, expected] of required) {
+    const actual = declarations.get(property)?.replace(/\s+/g, '');
+    if (actual !== expected) violations.push(`${property}: ${actual}`);
+  }
+  for (const forbidden of ['inset', 'height']) {
+    if (declarations.has(forbidden)) violations.push(`forbidden ${forbidden}`);
+  }
+  return violations;
+}
 
 function renderTray(
   dice: readonly DiceTray3DItem[] = [die],
@@ -253,7 +308,44 @@ describe('DiceTray3D', () => {
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
   });
 
-  it('uses a die-sized hit target and lazily creates held state only after an eligible begin', () => {
+  it('locks the centered die-sized grab target in source CSS and rejects whole-tray regressions', () => {
+    const css = readFileSync('public/themes/base.css', 'utf8');
+    const selector = '.dice-tray-3d-renderer > .dice-tray-3d-grab-target';
+    const [body] = exactCssRuleBodies(css, selector);
+    const declarations = cssDeclarations(body);
+
+    expect(exactCssRuleBodies(css, selector)).toHaveLength(1);
+    expect(declarations.get('position')).toBe('absolute');
+    expect(declarations.get('top')).toBe('50%');
+    expect(declarations.get('left')).toBe('50%');
+    expect(declarations.get('width')?.replace(/\s+/g, '')).toBe(
+      'min(58%,156px)'
+    );
+    expect(declarations.get('aspect-ratio')).toBe('1');
+    expect(declarations.get('transform')?.replace(/\s+/g, '')).toBe(
+      'translate(-50%,-50%)'
+    );
+    expect(declarations.has('inset')).toBe(false);
+    expect(declarations.has('height')).toBe(false);
+    expect(grabTargetContractViolations(css)).toEqual([]);
+
+    const wholeTrayMutation = css.replace(
+      body,
+      body
+        .replace('width: min(58%, 156px)', 'width: 100%')
+        .replace('aspect-ratio: 1', 'height: 100%; inset: 0')
+    );
+    expect(grabTargetContractViolations(wholeTrayMutation)).toEqual(
+      expect.arrayContaining([
+        'width: 100%',
+        'aspect-ratio: undefined',
+        'forbidden inset',
+        'forbidden height',
+      ])
+    );
+  });
+
+  it('lazily creates held state and rejects begin beyond snapshotted hit bounds', () => {
     const onReleaseRequest = vi.fn();
     renderTray([die], { phase: 'armed', onReleaseRequest });
 
@@ -265,12 +357,6 @@ describe('DiceTray3D', () => {
     const renderer = screen.getByTestId('dice-tray-3d-renderer');
     const grab = screen.getByRole('button', { name: 'Grab d20' });
     expect(grab.closest('.dice-tray-3d-renderer')).toBe(renderer);
-    expect(grab.getBoundingClientRect().width).toBeLessThan(
-      renderer.getBoundingClientRect().width
-    );
-    expect(grab.getBoundingClientRect().height).toBeLessThan(
-      renderer.getBoundingClientRect().height
-    );
     expect(controllerMocks.creates).not.toHaveBeenCalled();
 
     fireEvent.pointerDown(grab, {
