@@ -166,7 +166,8 @@ Missing, substituted, reordered, or contradictory package artifacts fail.
 
 The driver starts on the dedicated `attackDieStage=tray` route, so historical
 Lightning loading remains dormant. Every exact `localhost:8080` RPC is fulfilled
-by a driver-owned deterministic JSON fixture; unknown URLs or methods fail. Each
+by a driver-owned deterministic successful gRPC-Web empty-protobuf envelope;
+unknown URLs or methods fail. Each
 console message records `consoleMessage.location()`, and only the exact
 missing-manifest 404 URL/message in that scenario is allowed. The two actual
 `DiceTrayPresentation` boundaries publish read-only event-array and provider

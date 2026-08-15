@@ -36,6 +36,7 @@ const {
   ORIGINAL_D20_PRESET_ID,
   ORIGINAL_D20_SIZE_BYTES,
   STONE0_LOCAL_API_FIXTURES,
+  STONE0_LOCAL_API_RESPONSE,
   STONE0_SCENARIO_IDS,
   assertStone0TrayEvidence,
   assertStone0TrayEvidencePackage,
@@ -310,7 +311,7 @@ async function createScenarioPage({
       return;
     }
     const requestBody = request.postDataBuffer() ?? Buffer.alloc(0);
-    const responseBody = '{}';
+    const responseBody = Buffer.from(STONE0_LOCAL_API_RESPONSE);
     record.apiFixtures.push({
       url: fixture.url,
       method: 'POST',
@@ -320,12 +321,11 @@ async function createScenarioPage({
     });
     await route.fulfill({
       status: 200,
-      contentType: 'application/json',
       body: responseBody,
       headers: {
+        'content-type': 'application/grpc-web+proto',
         'access-control-allow-origin': '*',
         'access-control-expose-headers': '*',
-        'connect-protocol-version': '1',
       },
     });
   });
@@ -876,19 +876,22 @@ try {
       };
       const carvedVisible = (role) => {
         const witness = document.querySelector(`[data-witness-role="${role}"]`);
+        const telemetry =
+          window.__stone0TrayEvidence?.witnesses[role]?.telemetry;
         const canvas = witness?.querySelector('.attack-die-3d__canvas canvas');
-        const face = witness?.querySelector('[data-testid="dice-face"]');
         const fallbackDie = witness?.querySelector('[data-testid="d20-die"]');
         if (
           !(canvas instanceof HTMLCanvasElement) ||
-          !(face instanceof SVGElement) ||
           !(fallbackDie instanceof SVGElement)
         )
           return false;
         const canvasStyle = getComputedStyle(canvas);
         const canvasRect = canvas.getBoundingClientRect();
         return (
-          face.textContent?.trim() === '10' &&
+          telemetry?.requestedResult === 10 &&
+          telemetry?.renderer === '3d' &&
+          telemetry?.state === 'observed' &&
+          telemetry?.exactTargetHeld === true &&
           getComputedStyle(fallbackDie).visibility === 'hidden' &&
           canvasStyle.display !== 'none' &&
           canvasStyle.visibility !== 'hidden' &&

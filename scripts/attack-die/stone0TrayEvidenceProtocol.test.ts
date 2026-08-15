@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ORIGINAL_D20_GLB_SHA256,
   STONE0_LOCAL_API_FIXTURES,
+  STONE0_LOCAL_API_RESPONSE,
   STONE0_SCENARIO_IDS,
   assertStone0TrayEvidence,
   assertStone0TrayEvidencePackage,
@@ -546,6 +547,33 @@ describe('Stone 0 Tray evidence protocol', () => {
     expect(source).toContain("attackDieStage', 'tray'");
     expect(source).not.toMatch(/ERR_CONNECTION_REFUSED/);
     expect(source).not.toMatch(/responded with a status of 404\/i/);
+    expect(source).toContain('STONE0_LOCAL_API_RESPONSE');
+    expect(source).not.toMatch(/const responseBody = ['"]\{\}['"]/);
+    expect(STONE0_LOCAL_API_RESPONSE).toEqual(
+      Uint8Array.from([
+        0, 0, 0, 0, 0, 128, 0, 0, 0, 16, 103, 114, 112, 99, 45, 115, 116, 97,
+        116, 117, 115, 58, 32, 48, 13, 10,
+      ])
+    );
+    expect(hash(STONE0_LOCAL_API_RESPONSE)).toBe(
+      STONE0_LOCAL_API_FIXTURES[0].responseSha256
+    );
+  });
+
+  it('uses held result telemetry plus the visible Canvas and hidden transient SVG, never the SVG animation face, as carved evidence', () => {
+    const source = readFileSync(
+      'scripts/attack-die/capture-stone0-tray-evidence.mjs',
+      'utf8'
+    );
+    const carvedStart = source.indexOf('const carvedVisible');
+    const carvedEnd = source.indexOf('\n      return {', carvedStart);
+    const carvedSource = source.slice(carvedStart, carvedEnd);
+    expect(carvedStart).toBeGreaterThan(0);
+    expect(carvedEnd).toBeGreaterThan(carvedStart);
+    expect(carvedSource).not.toMatch(/face\.textContent/);
+    expect(carvedSource).toMatch(
+      /telemetry\?\.requestedResult === 10[\s\S]*?telemetry\?\.exactTargetHeld === true/
+    );
   });
 
   it('accepts one exact complete immutable identity, result, and scenario matrix', () => {

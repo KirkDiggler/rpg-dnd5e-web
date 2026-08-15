@@ -10,6 +10,11 @@ export const ORIGINAL_D20_GLB_PATH =
   '/models/custom-dice/original-set/Original_D20_Source.glb';
 export const ORIGINAL_D20_SIZE_BYTES = 491312;
 
+export const STONE0_LOCAL_API_RESPONSE = Uint8Array.from([
+  0, 0, 0, 0, 0, 128, 0, 0, 0, 16, 103, 114, 112, 99, 45, 115, 116, 97, 116,
+  117, 115, 58, 32, 48, 13, 10,
+]);
+
 export const STONE0_LOCAL_API_FIXTURES = Object.freeze(
   [
     'http://localhost:8080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby',
@@ -20,7 +25,7 @@ export const STONE0_LOCAL_API_FIXTURES = Object.freeze(
     Object.freeze({
       url,
       responseSha256:
-        '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',
+        '4d24ea4a38be86462305aefe2489c7073b47641849f401d5d309ea67547419cd',
     })
   )
 );
