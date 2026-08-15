@@ -388,6 +388,30 @@ it('requires forced evidence to be repeated, exact, irreversible semantic SVG', 
 });
 
 const execFileAsync = promisify(execFile);
+const GIT_LOCAL_ENVIRONMENT = [
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_CONFIG',
+  'GIT_CONFIG_PARAMETERS',
+  'GIT_CONFIG_COUNT',
+  'GIT_OBJECT_DIRECTORY',
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_IMPLICIT_WORK_TREE',
+  'GIT_GRAFT_FILE',
+  'GIT_INDEX_FILE',
+  'GIT_NO_REPLACE_OBJECTS',
+  'GIT_REPLACE_REF_BASE',
+  'GIT_PREFIX',
+  'GIT_SHALLOW_FILE',
+  'GIT_COMMON_DIR',
+] as const;
+
+function isolatedGitEnvironment(overrides: NodeJS.ProcessEnv = {}) {
+  const environment = { ...process.env, ...overrides };
+  for (const name of GIT_LOCAL_ENVIRONMENT) delete environment[name];
+  return environment;
+}
+
 const serveFrozenScript = fileURLToPath(
   new URL('./serve-frozen.mjs', import.meta.url)
 );
@@ -469,16 +493,26 @@ async function makeFrozenBuildFixture(leak = '') {
     'public/models/synty/\npublic/models/custom-dice/\ndist/\n'
   );
   await put(join(repo, 'tracked.txt'), 'clean');
-  await execFileAsync('git', ['init', '--quiet'], { cwd: repo });
+  const gitEnvironment = isolatedGitEnvironment();
+  await execFileAsync('git', ['init', '--quiet'], {
+    cwd: repo,
+    env: gitEnvironment,
+  });
   await execFileAsync('git', ['config', 'user.name', 'Task Test'], {
     cwd: repo,
+    env: gitEnvironment,
   });
   await execFileAsync('git', ['config', 'user.email', 'task@example.test'], {
     cwd: repo,
+    env: gitEnvironment,
   });
-  await execFileAsync('git', ['add', '.'], { cwd: repo });
+  await execFileAsync('git', ['add', '.'], {
+    cwd: repo,
+    env: gitEnvironment,
+  });
   await execFileAsync('git', ['commit', '--quiet', '-m', 'fixture'], {
     cwd: repo,
+    env: gitEnvironment,
   });
   await put(join(repo, 'public', 'models', 'synty', 'provider.glb'), 'synty');
   await put(
@@ -631,12 +665,11 @@ describe('frozen private provider boundary', () => {
         [buildFrozenScript, '--out', fixture.manifest],
         {
           cwd: fixture.repo,
-          env: {
-            ...process.env,
+          env: isolatedGitEnvironment({
             FAKE_NPM_OBSERVATION: fixture.observation,
             PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
             VITE_ATTACK_DIE_WEB_COMMIT: 'a'.repeat(40),
-          },
+          }),
         }
       );
       await expect(readFile(fixture.observation, 'utf8')).resolves.toBe(
@@ -667,14 +700,13 @@ describe('frozen private provider boundary', () => {
         [buildFrozenScript, '--out', fixture.manifest],
         {
           cwd: fixture.repo,
-          env: {
-            ...process.env,
+          env: isolatedGitEnvironment({
             FAKE_NPM_OBSERVATION: fixture.observation,
             PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
             TEMP_LOCATION_MARKER: fixture.tempLocationMarker,
             TMPDIR: fixture.defaultTempRoot,
             VITE_ATTACK_DIE_WEB_COMMIT: 'a'.repeat(40),
-          },
+          }),
         }
       );
       const providerTemp = (
@@ -718,13 +750,12 @@ describe('frozen private provider boundary', () => {
             [buildFrozenScript, '--out', fixture.manifest],
             {
               cwd: fixture.repo,
-              env: {
-                ...process.env,
+              env: isolatedGitEnvironment({
                 PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
                 SIGNAL_AFTER_MOVE: signalAfterMove,
                 SIGNAL_MARKER: fixture.signalMarker,
                 VITE_ATTACK_DIE_WEB_COMMIT: 'a'.repeat(40),
-              },
+              }),
             }
           )
         ).rejects.toMatchObject({ code: 143 });
@@ -760,13 +791,12 @@ describe('frozen private provider boundary', () => {
             [buildFrozenScript, '--out', fixture.manifest],
             {
               cwd: fixture.repo,
-              env: {
-                ...process.env,
+              env: isolatedGitEnvironment({
                 FAKE_BUILD_LEAK: fixture.leak,
                 FAKE_NPM_OBSERVATION: fixture.observation,
                 PATH: `${fixture.fakeBin}:${process.env.PATH ?? ''}`,
                 VITE_ATTACK_DIE_WEB_COMMIT: 'a'.repeat(40),
-              },
+              }),
             }
           )
         ).rejects.toMatchObject({
