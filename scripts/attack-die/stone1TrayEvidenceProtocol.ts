@@ -144,6 +144,7 @@ export interface Stone1TerminalInputFact {
   eventType: 'pointercancel' | 'lostpointercapture';
   isTrusted: boolean;
   captureOwnedBefore: boolean;
+  captureOwnedDuring: boolean;
   captureOwnedAfter: boolean;
 }
 
@@ -367,6 +368,7 @@ const TERMINAL_INPUT_KEYS = [
   'eventType',
   'isTrusted',
   'captureOwnedBefore',
+  'captureOwnedDuring',
   'captureOwnedAfter',
 ] as const;
 const FAILURE_KEYS = [
@@ -817,6 +819,7 @@ function validateScenario(value: unknown, id: Stone1ScenarioId, index: number) {
         (id === 'pointer-cancel' ? 'pointercancel' : 'lostpointercapture') ||
       terminal.isTrusted !== true ||
       terminal.captureOwnedBefore !== true ||
+      typeof terminal.captureOwnedDuring !== 'boolean' ||
       terminal.captureOwnedAfter !== false
     )
       fail(`${label} terminal input trust/capture transition`);

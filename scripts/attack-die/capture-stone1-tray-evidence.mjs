@@ -674,7 +674,7 @@ try {
       const audit = {
         gotCaptureTrusted: false,
         captureOwnedBefore: false,
-        terminal: null,
+        terminalEvent: null,
       };
       Object.defineProperty(window, '__stone1NativeInputAudit', {
         configurable: true,
@@ -694,32 +694,51 @@ try {
           eventType,
           (event) => {
             if (event.type !== terminalType) return;
-            const eventIsTrusted = event.isTrusted;
-            queueMicrotask(() => {
-              audit.terminal = {
-                eventType: event.type,
-                isTrusted: eventIsTrusted,
-                captureOwnedBefore:
-                  audit.gotCaptureTrusted && audit.captureOwnedBefore,
-                captureOwnedAfter: element.hasPointerCapture(event.pointerId),
-              };
-            });
+            audit.terminalEvent = {
+              eventType: event.type,
+              pointerId: event.pointerId,
+              isTrusted: event.isTrusted,
+              captureOwnedBefore:
+                audit.gotCaptureTrusted && audit.captureOwnedBefore,
+              captureOwnedDuring: element.hasPointerCapture(event.pointerId),
+            };
           },
           { once: true }
         );
     }, expectedType);
   }
 
-  async function nativeTerminalInputFact(page, expectedType) {
+  async function nativeTerminalInputFact(page, target, expectedType) {
     await page.waitForFunction(
       (terminalType) =>
-        window.__stone1NativeInputAudit?.terminal?.eventType === terminalType,
+        window.__stone1NativeInputAudit?.terminalEvent?.eventType ===
+        terminalType,
       expectedType,
       { timeout: 10_000 }
     );
-    return page.evaluate(() =>
-      structuredClone(window.__stone1NativeInputAudit.terminal)
+    const terminalEvent = await page.evaluate(() => {
+      const audit = window.__stone1NativeInputAudit;
+      if (!audit?.terminalEvent)
+        throw Error('native terminal input event audit missing');
+      return structuredClone(audit.terminalEvent);
+    });
+    await page.evaluate(
+      () =>
+        new Promise((resolveFrame) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
+        )
     );
+    const captureOwnedAfter = await target.evaluate(
+      (element, pointerId) => element.hasPointerCapture(pointerId),
+      terminalEvent.pointerId
+    );
+    return {
+      eventType: terminalEvent.eventType,
+      isTrusted: terminalEvent.isTrusted,
+      captureOwnedBefore: terminalEvent.captureOwnedBefore,
+      captureOwnedDuring: terminalEvent.captureOwnedDuring,
+      captureOwnedAfter,
+    };
   }
 
   async function grab(
@@ -1152,7 +1171,11 @@ try {
             type: 'touchCancel',
             touchPoints: [],
           });
-          terminalInput = await nativeTerminalInputFact(page, 'pointercancel');
+          terminalInput = await nativeTerminalInputFact(
+            page,
+            grabState.target,
+            'pointercancel'
+          );
           cancellationObserved = terminalInput.isTrusted;
           await page.waitForFunction(
             () =>
@@ -1164,6 +1187,7 @@ try {
           await transferPointerCapture(page, grabState);
           terminalInput = await nativeTerminalInputFact(
             page,
+            grabState.target,
             'lostpointercapture'
           );
           cancellationObserved = terminalInput.isTrusted;

@@ -256,6 +256,7 @@ function scenario(id: (typeof STONE1_SCENARIO_IDS)[number], index: number) {
               : ('lostpointercapture' as const),
           isTrusted: true,
           captureOwnedBefore: true,
+          captureOwnedDuring: true,
           captureOwnedAfter: false,
         }
       : null,
@@ -516,7 +517,11 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain('event.type !== terminalType');
     expect(source).toContain('event.isTrusted');
     expect(source).toContain('captureOwnedBefore');
+    expect(source).toContain('captureOwnedDuring');
     expect(source).toContain('captureOwnedAfter');
+    expect(source).toContain('requestAnimationFrame(() =>');
+    expect(source).toContain('structuredClone(audit.terminalEvent)');
+    expect(source).toContain('element.hasPointerCapture(pointerId)');
     expect(source).toContain('transferPointerCapture');
     expect(source).not.toContain("dispatchEvent('pointercancel'");
     expect(source).not.toContain("dispatchEvent('lostpointercapture'");
@@ -706,11 +711,34 @@ describe('Stone 1 browser evidence protocol', () => {
         (value) =>
           (value.scenarios[index].terminalInput!.captureOwnedBefore = false)
       );
+      expectEvidenceFailure((value) => {
+        delete (
+          value.scenarios[index].terminalInput as unknown as Record<
+            string,
+            unknown
+          >
+        ).captureOwnedDuring;
+      });
+      expectEvidenceFailure(
+        (value) =>
+          ((
+            value.scenarios[index].terminalInput as unknown as Record<
+              string,
+              unknown
+            >
+          ).captureOwnedDuring = 'not-boolean')
+      );
       expectEvidenceFailure(
         (value) =>
           (value.scenarios[index].terminalInput!.captureOwnedAfter = true)
       );
     }
+    const duringOwnershipVaries = cloneEvidence();
+    duringOwnershipVaries.scenarios[8].terminalInput!.captureOwnedDuring = true;
+    duringOwnershipVaries.scenarios[9].terminalInput!.captureOwnedDuring = false;
+    expect(() =>
+      assertStone1TrayEvidence(duringOwnershipVaries, identity)
+    ).not.toThrow();
     for (const key of ['heldStateCleared'] as const)
       expectEvidenceFailure(
         (value) => (value.scenarios[10].failure![key] = false)
