@@ -418,7 +418,12 @@ try {
 
   function expectedRequest(requestUrl) {
     const parsed = new URL(requestUrl);
-    return parsed.origin === baseUrl.origin || expectedApiUrls.has(requestUrl);
+    return (
+      parsed.origin === baseUrl.origin ||
+      expectedApiUrls.has(requestUrl) ||
+      (parsed.origin === 'https://fonts.googleapis.com' &&
+        parsed.pathname === '/css2')
+    );
   }
 
   async function createScenario(id, options = {}) {
@@ -494,6 +499,13 @@ try {
     page.on('pageerror', (error) => {
       pageErrors.push(`${id}:${error.message}`);
     });
+    await page.route('https://fonts.googleapis.com/**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/css',
+        body: '/* Stone 1 deterministic empty web-font fixture */',
+      })
+    );
     await page.route('http://localhost:8080/**', async (route) => {
       const request = route.request();
       if (!expectedApiUrls.has(request.url()) || request.method() !== 'POST') {

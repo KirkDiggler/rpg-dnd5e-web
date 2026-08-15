@@ -410,6 +410,8 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain('includes(sourceSha)');
     expect(source).toContain('chromium.launch');
     expect(source).toContain('browser.newContext');
+    expect(source).toContain("page.route('https://fonts.googleapis.com/**'");
+    expect(source).toContain("contentType: 'text/css'");
     expect(source).toContain('page.mouse.down');
     expect(source).toContain('page.mouse.up');
     expect(source).toContain("dispatchEvent('pointercancel'");
