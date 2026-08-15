@@ -38,8 +38,9 @@ export function preloadAttackDieRuntime(
         verifyDigest: options.verifyContractDigest !== false,
       });
       if (!checked.ok) throw Error(checked.reason);
+      const digestBytes = new Uint8Array(bytes);
       const digest = [
-        ...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
+        ...new Uint8Array(await crypto.subtle.digest('SHA-256', digestBytes)),
       ]
         .map((x) => x.toString(16).padStart(2, '0'))
         .join('');
