@@ -1277,42 +1277,171 @@ function validateNetwork(
 
 const PROVIDER_FAILURE_CONSOLE_TEXT =
   'Failed to load resource: the server responded with a status of 503 (Service Unavailable)';
-const CONTEXT_LOSS_CONSOLE_TEXTS = new Set([
-  'THREE.WebGLRenderer: Context Lost.',
-  'WebGL context lost',
-]);
+const CONTEXT_LOSS_CONSOLE_TEXT = 'THREE.WebGLRenderer: Context Lost.';
+const APPLICATION_CONSOLE_HOST_TEXT = '📡 API Host: http://localhost:8080';
+const APPLICATION_CONSOLE_OUTSIDE_DISCORD_TEXT =
+  '📝 Running outside Discord - SDK not initialized';
+const APPLICATION_CONSOLE_REQUEST_TEXTS = Object.freeze([
+  '🔵 Request: dnd5e.api.lobby.v1alpha1.LobbyService.GetMyActiveLobby {$typeName: dnd5e.api.lobby.v1alpha1.GetMyActiveLobbyRequest}',
+  '🔵 Request: dnd5e.api.v1alpha1.CharacterService.ListRaces {$typeName: dnd5e.api.v1alpha1.ListRacesRequest, pageSize: 50, pageToken: , includeSubraces: false}',
+  '🔵 Request: dnd5e.api.v1alpha1.CharacterService.ListClasses {$typeName: dnd5e.api.v1alpha1.ListClassesRequest, pageSize: 50, pageToken: , includeSpellcastersOnly: false, includeFeatures: false}',
+  '🔵 Request: dnd5e.api.v1alpha1.CharacterService.ListBackgrounds {$typeName: dnd5e.api.v1alpha1.ListBackgroundsRequest, pageSize: 50, pageToken: }',
+] as const);
+const APPLICATION_CONSOLE_RESPONSE_SHAPES = Object.freeze([
+  {
+    prefix:
+      '🟢 Response: dnd5e.api.lobby.v1alpha1.LobbyService.GetMyActiveLobby (',
+    suffix:
+      'ms) {$typeName: dnd5e.api.lobby.v1alpha1.GetMyActiveLobbyResponse, lobbyId: , encounterId: , lobbyStatus: 0}',
+  },
+  {
+    prefix: '🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListRaces (',
+    suffix:
+      'ms) {$typeName: dnd5e.api.v1alpha1.ListRacesResponse, races: Array(0), nextPageToken: , totalSize: 0}',
+  },
+  {
+    prefix: '🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListClasses (',
+    suffix:
+      'ms) {$typeName: dnd5e.api.v1alpha1.ListClassesResponse, classes: Array(0), nextPageToken: , totalSize: 0}',
+  },
+  {
+    prefix:
+      '🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListBackgrounds (',
+    suffix:
+      'ms) {$typeName: dnd5e.api.v1alpha1.ListBackgroundsResponse, backgrounds: Array(0), nextPageToken: , totalSize: 0}',
+  },
+] as const);
+const READ_PIXELS_CONSOLE_TEXT =
+  /^\[\.WebGL-0x[0-9a-f]+\]GL Driver Message \(OpenGL, Performance, GL_CLOSE_PATH_NV, High\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/i;
+const MAX_READ_PIXELS_WARNINGS_PER_SCENARIO = 4;
+const MAX_APPLICATION_RESPONSE_MILLISECONDS = 60_000;
 
-function validateConsole(value: unknown, baseOrigin: string) {
+function applicationResponseCategory(text: string) {
+  for (
+    let index = 0;
+    index < APPLICATION_CONSOLE_RESPONSE_SHAPES.length;
+    index += 1
+  ) {
+    const shape = APPLICATION_CONSOLE_RESPONSE_SHAPES[index];
+    if (!text.startsWith(shape.prefix) || !text.endsWith(shape.suffix))
+      continue;
+    const milliseconds = text.slice(
+      shape.prefix.length,
+      text.length - shape.suffix.length
+    );
+    if (
+      !/^\d+$/.test(milliseconds) ||
+      Number(milliseconds) > MAX_APPLICATION_RESPONSE_MILLISECONDS
+    )
+      return null;
+    return `response:${index}`;
+  }
+  return null;
+}
+
+export function classifyStone1ConsoleEntry(
+  entry: Readonly<Record<string, unknown>>,
+  baseOrigin: string,
+  mainJsPath: string
+): string | null {
+  if (
+    !STONE1_SCENARIO_IDS.includes(entry.scenarioId as Stone1ScenarioId) ||
+    typeof entry.type !== 'string' ||
+    typeof entry.text !== 'string' ||
+    typeof entry.url !== 'string'
+  )
+    return null;
+  const scenarioId = entry.scenarioId as Stone1ScenarioId;
+  const mainJsUrl = `${baseOrigin}/${mainJsPath}`;
+  const trayUrl = `${baseOrigin}/?concept=attack-die-3d&attackDieStage=tray`;
+
+  if (entry.type === 'log' && entry.url === mainJsUrl) {
+    const requestIndex = APPLICATION_CONSOLE_REQUEST_TEXTS.indexOf(
+      entry.text as (typeof APPLICATION_CONSOLE_REQUEST_TEXTS)[number]
+    );
+    if (requestIndex >= 0) return `request:${requestIndex}`;
+    if (entry.text === APPLICATION_CONSOLE_HOST_TEXT) return 'host';
+    if (entry.text === APPLICATION_CONSOLE_OUTSIDE_DISCORD_TEXT)
+      return 'outside-discord';
+    const response = applicationResponseCategory(entry.text);
+    if (response) return response;
+    if (
+      scenarioId === 'context-loss' &&
+      entry.text === CONTEXT_LOSS_CONSOLE_TEXT
+    )
+      return 'context-loss';
+  }
+  if (
+    scenarioId === 'provider-failure' &&
+    entry.type === 'error' &&
+    entry.text === PROVIDER_FAILURE_CONSOLE_TEXT &&
+    entry.url === `${baseOrigin}${ORIGINAL_D20_MANIFEST_PATH}`
+  )
+    return 'provider-failure';
+  if (
+    entry.type === 'warning' &&
+    entry.url === trayUrl &&
+    READ_PIXELS_CONSOLE_TEXT.test(entry.text)
+  )
+    return 'read-pixels';
+  return null;
+}
+
+function validateConsole(
+  value: unknown,
+  baseOrigin: string,
+  build: ReturnType<typeof validateManifest>
+) {
   const artifact = exactObject(value, CONSOLE_KEYS, 'console log');
   if (artifact.schemaVersion !== 1 || artifact.kind !== 'stone1-console-log')
     fail('console log schema');
-  const entries = denseArray(artifact.entries, 'console entries');
-  entries.forEach((raw, index) => {
+  const mainJsPath = oneBuildPath(
+    build,
+    /^assets\/index-[^/]+\.js$/,
+    'main JS'
+  );
+  const counts = new Map<Stone1ScenarioId, Map<string, number>>(
+    STONE1_SCENARIO_IDS.map((id) => [id, new Map<string, number>()])
+  );
+  denseArray(artifact.entries, 'console entries').forEach((raw, index) => {
     const entry = exactObject(
       raw,
       CONSOLE_ENTRY_KEYS,
       `console entry ${index}`
     );
-    if (
-      !STONE1_SCENARIO_IDS.includes(entry.scenarioId as Stone1ScenarioId) ||
-      typeof entry.type !== 'string' ||
-      !['debug', 'info', 'log', 'warning', 'error'].includes(entry.type) ||
-      typeof entry.text !== 'string' ||
-      typeof entry.url !== 'string'
-    )
-      fail(`console entry ${index} schema`);
-    if (entry.type !== 'error') return;
-    const providerDiagnostic =
-      entry.scenarioId === 'provider-failure' &&
-      entry.text === PROVIDER_FAILURE_CONSOLE_TEXT &&
-      entry.url === `${baseOrigin}${ORIGINAL_D20_MANIFEST_PATH}`;
-    const contextDiagnostic =
-      entry.scenarioId === 'context-loss' &&
-      CONTEXT_LOSS_CONSOLE_TEXTS.has(String(entry.text)) &&
-      (entry.url === '' || String(entry.url).startsWith(`${baseOrigin}/`));
-    if (!providerDiagnostic && !contextDiagnostic)
-      fail(`console entry ${index} unowned severe diagnostic`);
+    const category = classifyStone1ConsoleEntry(entry, baseOrigin, mainJsPath);
+    if (!category) fail(`console entry ${index} exact allowlist`);
+    const scenarioCounts = counts.get(entry.scenarioId as Stone1ScenarioId)!;
+    scenarioCounts.set(category, (scenarioCounts.get(category) ?? 0) + 1);
   });
+  for (const id of STONE1_SCENARIO_IDS) {
+    const scenarioCounts = counts.get(id)!;
+    for (
+      let index = 0;
+      index < APPLICATION_CONSOLE_REQUEST_TEXTS.length;
+      index += 1
+    )
+      if (scenarioCounts.get(`request:${index}`) !== 1)
+        fail(`console ${id} exact application request ${index} count`);
+    for (
+      let index = 0;
+      index < APPLICATION_CONSOLE_RESPONSE_SHAPES.length;
+      index += 1
+    )
+      if (scenarioCounts.get(`response:${index}`) !== 1)
+        fail(`console ${id} exact application response ${index} count`);
+    if (
+      scenarioCounts.get('host') !== 4 ||
+      scenarioCounts.get('outside-discord') !== 1 ||
+      (scenarioCounts.get('provider-failure') ?? 0) !==
+        (id === 'provider-failure' ? 1 : 0) ||
+      (scenarioCounts.get('context-loss') ?? 0) !==
+        (id === 'context-loss' ? 2 : 0) ||
+      (scenarioCounts.get('read-pixels') ?? 0) >
+        MAX_READ_PIXELS_WARNINGS_PER_SCENARIO
+    )
+      fail(`console ${id} exact category/diagnostic counts`);
+  }
   emptyArray(artifact.pageErrors, 'console page errors');
   emptyArray(artifact.unexpectedErrors, 'console unexpected errors');
 }
@@ -1454,7 +1583,8 @@ export function assertStone1TrayEvidencePackage(
   );
   validateConsole(
     parseJsonBytes(artifactBytes.get('console.json')!, 'console'),
-    network.baseOrigin
+    network.baseOrigin,
+    build
   );
   const contextCount = network.contextCount;
 

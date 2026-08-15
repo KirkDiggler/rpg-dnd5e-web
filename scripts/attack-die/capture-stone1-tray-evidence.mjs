@@ -67,6 +67,7 @@ const {
   assertFrozenBuildSourceBinding,
   assertStone1TrayEvidence,
   assertStone1TrayEvidencePackage,
+  classifyStone1ConsoleEntry,
   stone1PhaseCloseupScreenshot,
   stone1ScenarioScreenshot,
 } = protocolModule;
@@ -444,18 +445,13 @@ try {
     );
   }
 
-  function ownedSevereConsole(id, type, text, url) {
-    if (type !== 'error') return true;
+  function ownedConsoleEntry(id, type, text, url) {
     return (
-      (id === 'provider-failure' &&
-        text ===
-          'Failed to load resource: the server responded with a status of 503 (Service Unavailable)' &&
-        url === new URL(ORIGINAL_D20_MANIFEST_PATH, baseUrl).href) ||
-      (id === 'context-loss' &&
-        ['THREE.WebGLRenderer: Context Lost.', 'WebGL context lost'].includes(
-          text
-        ) &&
-        (url === '' || url.startsWith(baseUrl.href)))
+      classifyStone1ConsoleEntry(
+        { scenarioId: id, type, text, url },
+        baseUrl.origin,
+        sourceBindingAssetPath
+      ) !== null
     );
   }
 
@@ -533,7 +529,7 @@ try {
       const text = message.text();
       const url = location.url || '';
       consoleEntries.push({ scenarioId: id, type, text, url });
-      if (!ownedSevereConsole(id, type, text, url))
+      if (!ownedConsoleEntry(id, type, text, url))
         consoleUnexpectedErrors.push(`${id}:${type}:${url}:${text}`);
     });
     page.on('pageerror', (error) => {

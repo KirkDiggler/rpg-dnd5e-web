@@ -396,11 +396,63 @@ function networkArtifact() {
   };
 }
 
+const fixtureConsoleScriptUrl = `${fixtureOrigin}/${sourceBindingAssetPath}`;
+const fixtureConsoleRequests = [
+  '🔵 Request: dnd5e.api.lobby.v1alpha1.LobbyService.GetMyActiveLobby {$typeName: dnd5e.api.lobby.v1alpha1.GetMyActiveLobbyRequest}',
+  '🔵 Request: dnd5e.api.v1alpha1.CharacterService.ListRaces {$typeName: dnd5e.api.v1alpha1.ListRacesRequest, pageSize: 50, pageToken: , includeSubraces: false}',
+  '🔵 Request: dnd5e.api.v1alpha1.CharacterService.ListClasses {$typeName: dnd5e.api.v1alpha1.ListClassesRequest, pageSize: 50, pageToken: , includeSpellcastersOnly: false, includeFeatures: false}',
+  '🔵 Request: dnd5e.api.v1alpha1.CharacterService.ListBackgrounds {$typeName: dnd5e.api.v1alpha1.ListBackgroundsRequest, pageSize: 50, pageToken: }',
+] as const;
+const fixtureConsoleResponses = [
+  '🟢 Response: dnd5e.api.lobby.v1alpha1.LobbyService.GetMyActiveLobby (42ms) {$typeName: dnd5e.api.lobby.v1alpha1.GetMyActiveLobbyResponse, lobbyId: , encounterId: , lobbyStatus: 0}',
+  '🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListRaces (42ms) {$typeName: dnd5e.api.v1alpha1.ListRacesResponse, races: Array(0), nextPageToken: , totalSize: 0}',
+  '🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListClasses (42ms) {$typeName: dnd5e.api.v1alpha1.ListClassesResponse, classes: Array(0), nextPageToken: , totalSize: 0}',
+  '🟢 Response: dnd5e.api.v1alpha1.CharacterService.ListBackgrounds (42ms) {$typeName: dnd5e.api.v1alpha1.ListBackgroundsResponse, backgrounds: Array(0), nextPageToken: , totalSize: 0}',
+] as const;
+const providerConsoleDiagnostic = {
+  scenarioId: 'provider-failure',
+  type: 'error',
+  text: 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)',
+  url: `${fixtureOrigin}/models/custom-dice/dice-tray-presets.json`,
+};
+const contextLossConsoleDiagnostic = {
+  scenarioId: 'context-loss',
+  type: 'log',
+  text: 'THREE.WebGLRenderer: Context Lost.',
+  url: fixtureConsoleScriptUrl,
+};
+function fixtureConsoleEntries(
+  scenarioId: (typeof STONE1_SCENARIO_IDS)[number]
+) {
+  const log = (text: string) => ({
+    scenarioId,
+    type: 'log',
+    text,
+    url: fixtureConsoleScriptUrl,
+  });
+  return [
+    ...fixtureConsoleRequests.map(log),
+    ...Array.from({ length: 4 }, () =>
+      log('📡 API Host: http://localhost:8080')
+    ),
+    log('📝 Running outside Discord - SDK not initialized'),
+    ...fixtureConsoleResponses.map(log),
+    ...(scenarioId === 'provider-failure'
+      ? [structuredClone(providerConsoleDiagnostic)]
+      : []),
+    ...(scenarioId === 'context-loss'
+      ? [
+          structuredClone(contextLossConsoleDiagnostic),
+          structuredClone(contextLossConsoleDiagnostic),
+        ]
+      : []),
+  ];
+}
 function consoleArtifact() {
   return {
     schemaVersion: 1,
     kind: 'stone1-console-log',
-    entries: [],
+    entries: STONE1_SCENARIO_IDS.flatMap(fixtureConsoleEntries),
     pageErrors: [],
     unexpectedErrors: [],
   };
@@ -503,6 +555,8 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain("page.on('requestfinished'");
     expect(source).toContain("page.on('requestfailed'");
     expect(source).not.toContain('expectedSevere');
+    expect(source).toContain('classifyStone1ConsoleEntry');
+    expect(source).not.toContain("if (type !== 'error') return true");
     expect(source).not.toContain('motionCounts = { tumble: 3');
     expect(source).toContain('heldMotion.length >= 1');
     expect(source).not.toContain('heldMotion.length >= 2');
@@ -976,8 +1030,109 @@ describe('Stone 1 exact package protocol', () => {
     mutateJson('network.json', (value) =>
       (value.unexpectedErrors as unknown[]).push('request')
     );
+    const consoleEntries = (value: Record<string, unknown>) =>
+      value.entries as Record<string, unknown>[];
+    const findConsole = (
+      value: Record<string, unknown>,
+      predicate: (entry: Record<string, unknown>) => boolean
+    ) => {
+      const entry = consoleEntries(value).find(predicate);
+      if (!entry) throw Error('console mutation fixture entry missing');
+      return entry;
+    };
+    const providerEntry = (value: Record<string, unknown>) =>
+      findConsole(
+        value,
+        (entry) =>
+          entry.scenarioId === 'provider-failure' && entry.type === 'error'
+      );
+    const contextEntries = (value: Record<string, unknown>) =>
+      consoleEntries(value).filter(
+        (entry) =>
+          entry.scenarioId === 'context-loss' &&
+          entry.text === 'THREE.WebGLRenderer: Context Lost.'
+      );
+
+    mutateJson('console.json', (value) => {
+      const entries = consoleEntries(value);
+      entries.splice(entries.indexOf(providerEntry(value)), 1);
+    });
     mutateJson('console.json', (value) =>
-      (value.entries as unknown[]).push({
+      consoleEntries(value).push(structuredClone(providerEntry(value)))
+    );
+    for (const [field, replacement] of [
+      ['scenarioId', 'held-desktop'],
+      ['type', 'log'],
+      ['text', 'arbitrary expected severe message'],
+      ['url', `${fixtureOrigin}/other.json`],
+    ] as const)
+      mutateJson('console.json', (value) => {
+        providerEntry(value)[field] = replacement;
+      });
+
+    mutateJson('console.json', (value) => {
+      const entries = consoleEntries(value);
+      entries.splice(entries.indexOf(contextEntries(value)[0]), 1);
+    });
+    mutateJson('console.json', (value) =>
+      consoleEntries(value).push(structuredClone(contextEntries(value)[0]))
+    );
+    for (const [field, replacement] of [
+      ['scenarioId', 'held-desktop'],
+      ['type', 'warning'],
+      ['text', 'WebGL context maybe lost'],
+      ['url', `${fixtureOrigin}/other.js`],
+    ] as const)
+      mutateJson('console.json', (value) => {
+        contextEntries(value)[0][field] = replacement;
+      });
+    mutateJson('console.json', (value) =>
+      consoleEntries(value).push({
+        ...structuredClone(contextLossConsoleDiagnostic),
+        scenarioId: 'quick-release',
+      })
+    );
+
+    mutateJson('console.json', (value) => {
+      const entries = consoleEntries(value);
+      const request = findConsole(
+        value,
+        (entry) => entry.text === fixtureConsoleRequests[0]
+      );
+      entries.splice(entries.indexOf(request), 1);
+    });
+    mutateJson('console.json', (value) => {
+      const host = findConsole(
+        value,
+        (entry) => entry.text === '📡 API Host: http://localhost:8080'
+      );
+      consoleEntries(value).push(structuredClone(host));
+    });
+    for (const [field, replacement] of [
+      ['scenarioId', 'quick-release'],
+      ['type', 'info'],
+      ['text', '🔵 Request: arbitrary expected RPC'],
+      ['url', `${fixtureOrigin}/other.js`],
+    ] as const)
+      mutateJson('console.json', (value) => {
+        const request = findConsole(
+          value,
+          (entry) =>
+            entry.scenarioId === 'held-desktop' &&
+            entry.text === fixtureConsoleRequests[0]
+        );
+        request[field] = replacement;
+      });
+    mutateJson('console.json', (value) =>
+      consoleEntries(value).push({
+        scenarioId: 'held-desktop',
+        type: 'log',
+        text: 'arbitrary expected application log',
+        url: fixtureConsoleScriptUrl,
+      })
+    );
+    mutateJson('console.json', (value) =>
+      consoleEntries(value).push({
         scenarioId: 'provider-failure',
         type: 'error',
         text: 'arbitrary expected severe message',
@@ -985,10 +1140,83 @@ describe('Stone 1 exact package protocol', () => {
       })
     );
     mutateJson('console.json', (value) =>
+      consoleEntries(value).push({
+        scenarioId: 'held-desktop',
+        type: 'warning',
+        text: 'arbitrary expected browser warning',
+        url: `${fixtureOrigin}/?concept=attack-die-3d&attackDieStage=tray`,
+      })
+    );
+    mutateJson('console.json', (value) =>
+      consoleEntries(value).push({
+        scenarioId: 'held-desktop',
+        type: 'log',
+        text: 'arbitrary expected-marked entry',
+        url: fixtureConsoleScriptUrl,
+        expected: true,
+      })
+    );
+    mutateJson('console.json', (value) => {
+      for (let index = 0; index < 5; index += 1)
+        consoleEntries(value).push({
+          scenarioId: 'held-desktop',
+          type: 'warning',
+          text: `[.WebGL-0x${index.toString(16)}a]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels`,
+          url: `${fixtureOrigin}/?concept=attack-die-3d&attackDieStage=tray`,
+        });
+    });
+    mutateJson('console.json', (value) => {
+      const response = findConsole(
+        value,
+        (entry) => entry.text === fixtureConsoleResponses[0]
+      );
+      response.text = String(response.text).replace('(42ms)', '(60001ms)');
+    });
+    mutateJson('console.json', (value) =>
       (value.pageErrors as unknown[]).push('boom')
     );
     mutateJson('console.json', (value) =>
       (value.unexpectedErrors as unknown[]).push('console')
     );
+  }, 30_000);
+
+  it('accepts only bounded exact-class Chrome ReadPixels warnings and variable RPC timing', () => {
+    const fixture = packageFixture();
+    const value = JSON.parse(
+      new TextDecoder().decode(fixture.artifactBytes.get('console.json')!)
+    ) as Record<string, unknown>;
+    const entries = value.entries as Record<string, unknown>[];
+    entries.push(
+      {
+        scenarioId: 'held-desktop',
+        type: 'warning',
+        text: '[.WebGL-0x1aB09]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels',
+        url: `${fixtureOrigin}/?concept=attack-die-3d&attackDieStage=tray`,
+      },
+      {
+        scenarioId: 'held-desktop',
+        type: 'warning',
+        text: '[.WebGL-0x2bC10]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)',
+        url: `${fixtureOrigin}/?concept=attack-die-3d&attackDieStage=tray`,
+      }
+    );
+    const response = entries.find(
+      (entry) => entry.text === fixtureConsoleResponses[0]
+    )!;
+    response.text = String(response.text).replace('(42ms)', '(1234ms)');
+    const replacement = new TextEncoder().encode(JSON.stringify(value));
+    fixture.artifactBytes.set('console.json', replacement);
+    const artifact = fixture.manifest.artifacts.find(
+      (entry) => entry.path === 'console.json'
+    )!;
+    artifact.sha256 = sha256(replacement);
+    artifact.sizeBytes = replacement.byteLength;
+    expect(() =>
+      assertStone1TrayEvidencePackage(
+        fixture.manifest,
+        identity,
+        fixture.artifactBytes
+      )
+    ).not.toThrow();
   });
 });
