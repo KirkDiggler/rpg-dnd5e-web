@@ -5,8 +5,9 @@
 # Usage: npm run assets:sync
 #   or:  sh scripts/sync-game-assets.sh
 #
-# Test/automation overrides:
-#   RPG_GAME_ASSETS_DIR     private provider checkout
+# Local/automation overrides:
+#   RPG_GAME_ASSETS_PATH    explicit private provider checkout (never updated)
+#   RPG_GAME_ASSETS_DIR     legacy private provider checkout override
 #   RPG_WEB_ROOT            destination web checkout
 #   ASSETS_SYNC_SKIP_UPDATE skip clone/pull when set to 1
 
@@ -19,9 +20,16 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DEFAULT_WEB_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 WEB_ROOT=${RPG_WEB_ROOT:-$DEFAULT_WEB_ROOT}
 PARENT_DIR=$(CDPATH= cd -- "$WEB_ROOT/.." && pwd)
-ASSETS_DIR=${RPG_GAME_ASSETS_DIR:-$PARENT_DIR/rpg-game-assets}
+if [ -n "${RPG_GAME_ASSETS_PATH:-}" ]; then
+  ASSETS_DIR=$RPG_GAME_ASSETS_PATH
+  EXPLICIT_ASSETS_SOURCE=1
+  echo "Using explicit rpg-game-assets source at $ASSETS_DIR"
+else
+  ASSETS_DIR=${RPG_GAME_ASSETS_DIR:-$PARENT_DIR/rpg-game-assets}
+  EXPLICIT_ASSETS_SOURCE=0
+fi
 
-if [ "${ASSETS_SYNC_SKIP_UPDATE:-0}" != "1" ]; then
+if [ "$EXPLICIT_ASSETS_SOURCE" != "1" ] && [ "${ASSETS_SYNC_SKIP_UPDATE:-0}" != "1" ]; then
   if [ -d "$ASSETS_DIR/.git" ]; then
     echo "Found existing rpg-game-assets checkout at $ASSETS_DIR — pulling latest..."
     git -C "$ASSETS_DIR" pull
