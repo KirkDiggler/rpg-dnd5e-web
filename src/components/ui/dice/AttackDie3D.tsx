@@ -61,6 +61,7 @@ import {
 import type { HeldRollGroupState } from './rollGroupGestureController';
 import {
   createNeutralVisualThrowProfile,
+  parseVisualThrowProfile,
   type VisualThrowProfileV1,
 } from './visualThrowProfile';
 
@@ -91,8 +92,14 @@ export interface AttackDieTelemetry {
   runtimeSourceId?: number;
   /** Runtime diagnostic identity: distinct for each owned witness clone. */
   runtimeCloneId?: number;
+  /** Safe deterministic motion contract emitted only with final 3D observation. */
+  motionRevision?: 'choreographed-v1';
+  /** Deeply frozen release profile emitted only with final 3D observation. */
+  throwProfile?: VisualThrowProfileV1;
 }
 export interface AttackDieRendererInfo {
+  /** Token fence added by AttackDie3D at the component boundary. */
+  presentationToken?: number;
   calls: number | null;
   triangles: number | null;
   geometries: number | null;
@@ -534,7 +541,9 @@ function AttackDieToken({
     provider?.kind === 'dice-runtime-preset' ? provider : undefined;
   const rendererVisuals = resolveAttackDieRendererVisuals(visual);
   const effectiveThrowProfile = useMemo(
-    () => throwProfile ?? createNeutralVisualThrowProfile(decorativeSeed),
+    () =>
+      (throwProfile ? parseVisualThrowProfile(throwProfile) : undefined) ??
+      createNeutralVisualThrowProfile(decorativeSeed),
     [decorativeSeed, throwProfile]
   );
   const effectiveResult = result;
@@ -639,6 +648,13 @@ function AttackDieToken({
     | undefined
   >(undefined);
   const poseValidated = useRef(false);
+  const handleRendererInfo = useCallback(
+    (info: AttackDieRendererInfo) =>
+      onRendererInfo?.(
+        Object.freeze({ ...info, presentationToken }) as AttackDieRendererInfo
+      ),
+    [onRendererInfo, presentationToken]
+  );
   const releaseRenderer = useCallback(() => {
     const current = listener.current;
     if (!current) return;
@@ -862,7 +878,7 @@ function AttackDieToken({
                 const lifecycle = ownAttackDieRendererLifecycle({
                   renderer: gl,
                   contextId: contextId.current,
-                  sink: onRendererInfo,
+                  sink: handleRendererInfo,
                   onUnexpectedLoss: () =>
                     fail('WebGL context lost', 'context-loss'),
                 });
@@ -956,6 +972,8 @@ function AttackDieToken({
                     observedUpMargin: observation.margin,
                     angularErrorDegrees,
                     exactTargetHeld: true,
+                    motionRevision: ChoreographedSolverV1.revision,
+                    throwProfile: effectiveThrowProfile,
                     ...runtimeIdentities,
                   });
                 }}

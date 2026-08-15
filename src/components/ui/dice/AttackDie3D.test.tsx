@@ -761,6 +761,42 @@ describe('AttackDie3D', () => {
     expect(mocks.gl.debug.onShaderError).toBe(originalShaderError);
     expect(mocks.gl.debug.checkShaderErrors).toBe(false);
   });
+  it('ignores late old-generation motion callbacks after a token remount', () => {
+    arrangeRuntimeReady();
+    const telemetry = vi.fn();
+    const view = render(
+      <AttackDie3D
+        {...props(290, 10)}
+        provider={originalProvider}
+        phase="rolling"
+        throwProfile={throwProfile(290)}
+        onTelemetry={telemetry}
+      />
+    );
+    const staleFrame = mocks.frames.at(-1)!;
+
+    view.rerender(
+      <AttackDie3D
+        {...props(291, 10)}
+        provider={originalProvider}
+        phase="ready"
+        onTelemetry={telemetry}
+      />
+    );
+    telemetry.mockClear();
+    act(() => {
+      staleFrame({ clock: { elapsedTime: 10 } });
+      staleFrame({ clock: { elapsedTime: 12 } });
+    });
+
+    expect(telemetry).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        presentationToken: 290,
+        state: 'observed',
+      })
+    );
+  });
+
   it('keeps ready neutral for different authoritative targets and emits no observation', () => {
     mocks.status = 'ready';
     const telemetry = vi.fn();
@@ -1133,6 +1169,66 @@ describe('Original carved runtime renderer', () => {
     }
   });
 
+  it('replays one parsed profile identically at fixed samples while paired runtime ownership stays distinct', () => {
+    arrangeRuntimeReady();
+    const profile = throwProfile(755);
+    const rollerTelemetry = vi.fn();
+    const spectatorTelemetry = vi.fn();
+    const rollerRenderer = vi.fn();
+    const spectatorRenderer = vi.fn();
+    render(
+      <>
+        <AttackDie3D
+          {...props(555, 10)}
+          provider={originalProvider}
+          phase="rolling"
+          throwProfile={profile}
+          onTelemetry={rollerTelemetry}
+          onRendererInfo={rollerRenderer}
+        />
+        <AttackDie3D
+          {...props(556, 10)}
+          provider={originalProvider}
+          phase="rolling"
+          throwProfile={structuredClone(profile)}
+          onTelemetry={spectatorTelemetry}
+          onRendererInfo={spectatorRenderer}
+        />
+      </>
+    );
+
+    for (const elapsedSeconds of [10, 10.333, 11.2, 11.9]) {
+      frame(-2, elapsedSeconds);
+      frame(-1, elapsedSeconds);
+      const [rollerPose, spectatorPose] = mocks.solverOutputs.slice(-2);
+      expect(rollerPose).toEqual(spectatorPose);
+    }
+
+    const rollerCreated = rollerRenderer.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.lifecycle === 'created');
+    const spectatorCreated = spectatorRenderer.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.lifecycle === 'created');
+    expect(rollerCreated).toMatchObject({ presentationToken: 555 });
+    expect(spectatorCreated).toMatchObject({ presentationToken: 556 });
+    expect(rollerCreated.contextId).not.toBe(spectatorCreated.contextId);
+
+    const rollerObserved = rollerTelemetry.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.state === 'observed');
+    const spectatorObserved = spectatorTelemetry.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.state === 'observed');
+    expect(rollerObserved.throwProfile).toEqual(spectatorObserved.throwProfile);
+    expect(rollerObserved.runtimeSourceId).toBe(
+      spectatorObserved.runtimeSourceId
+    );
+    expect(rollerObserved.runtimeCloneId).not.toBe(
+      spectatorObserved.runtimeCloneId
+    );
+  });
+
   it('shares one provider source while witnesses own separate clones, Canvas, telemetry, and disposal', () => {
     const { scene, geometry } = arrangeRuntimeReady();
     const sceneClone = vi.spyOn(scene, 'clone');
@@ -1301,10 +1397,19 @@ describe('Original carved runtime renderer', () => {
         provider={originalProvider}
         phase="ready"
         reducedMotion
+        heldRollGroup={heldRollGroup}
         onTelemetry={telemetry}
       />
     );
     frame(-1, 20);
+    const firstHeldCue = mocks.solverOutputs.at(-1);
+    frame(-1, 20.5);
+    expect(mocks.solverOutputs.at(-1)).toEqual(firstHeldCue);
+    expect(mocks.solverInputs.at(-1)).toMatchObject({
+      phase: 'ready',
+      reducedMotion: true,
+      held: heldRollGroup,
+    });
     expect(telemetry).not.toHaveBeenCalledWith(
       expect.objectContaining({ state: 'observed' })
     );
@@ -1333,6 +1438,8 @@ describe('Original carved runtime renderer', () => {
         observedUpMargin: expect.any(Number),
         angularErrorDegrees: expect.any(Number),
         exactTargetHeld: true,
+        motionRevision: 'choreographed-v1',
+        throwProfile: throwProfile(91),
       })
     );
     const observation = telemetry.mock.calls
@@ -1340,6 +1447,13 @@ describe('Original carved runtime renderer', () => {
       .find((event) => event.state === 'observed');
     expect(observation.observedUpDot).toBeGreaterThan(0.999999);
     expect(observation.observedUpMargin).toBeGreaterThan(0.2);
+    expect(Object.isFrozen(observation.throwProfile)).toBe(true);
+    expect(Object.isFrozen(observation.throwProfile.releasePosition)).toBe(
+      true
+    );
+    expect(Object.isFrozen(observation.throwProfile.releaseDirection)).toBe(
+      true
+    );
     expect(mocks.worldQuaternionReads).toHaveLength(1);
   });
 

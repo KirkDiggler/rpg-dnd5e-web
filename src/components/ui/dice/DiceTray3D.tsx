@@ -317,8 +317,17 @@ export function DiceTray3D({
     release.presetId === item.presetId
       ? release
       : undefined;
-  const controls = canInteract ? (
-    <button type="button" onClick={() => requestRelease(undefined)}>
+  const showsExplicitRollControl =
+    valid &&
+    rollerRole === 'player' &&
+    witnessRole === 'roller' &&
+    onReleaseRequest !== undefined;
+  const controls = showsExplicitRollControl ? (
+    <button
+      type="button"
+      aria-disabled={!canInteract}
+      onClick={() => requestRelease(undefined)}
+    >
       Roll d20
     </button>
   ) : undefined;

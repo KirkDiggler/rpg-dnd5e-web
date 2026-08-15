@@ -42,6 +42,15 @@ function presentationId(
   return `concept:witness:${mode}:${boundedToken(token)}:result:${boundedResult(result)}`;
 }
 
+function presentationHash(value: string) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
+}
+
 export function createDiceTrayWitnessInitialEvents(
   token: number,
   mode: DiceTrayWitnessMode,
@@ -112,7 +121,9 @@ export function scheduleMonsterDiceTrayWitnessRelease(
         release: createDicePresentationRelease({
           presentationId: monsterPresentationId,
           presetId: checkedPresetId,
-          throwProfile: createNeutralVisualThrowProfile(0),
+          throwProfile: createNeutralVisualThrowProfile(
+            presentationHash(monsterPresentationId)
+          ),
         }),
       })
     );

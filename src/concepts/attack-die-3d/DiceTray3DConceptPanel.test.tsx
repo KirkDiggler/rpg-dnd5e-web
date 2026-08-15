@@ -5,7 +5,9 @@ import type {
   AttackDie3DProps,
   AttackDieTelemetry,
 } from '../../components/ui/dice/AttackDie3D';
+import { ChoreographedSolverV1 } from '../../components/ui/dice/choreographedDiceMotion';
 import type { DiceTrayPresentationProps } from '../../components/ui/dice/DiceTrayPresentation';
+import { parseVisualThrowProfile } from '../../components/ui/dice/visualThrowProfile';
 import { DiceTray3DConceptPanel } from './DiceTray3DConceptPanel';
 import { MONSTER_FIXTURE_RELEASE_DELAY_MS } from './diceTrayWitnessFixture';
 
@@ -113,7 +115,24 @@ function observed(props: AttackDie3DProps): AttackDieTelemetry {
     observedUpMargin: 0.25,
     angularErrorDegrees: 0,
     exactTargetHeld: true,
+    motionRevision: 'choreographed-v1',
+    throwProfile: props.throwProfile,
   };
+}
+
+function expectRecursivelyFrozen(value: unknown): void {
+  if (value === null || typeof value !== 'object') return;
+  expect(Object.isFrozen(value)).toBe(true);
+  for (const child of Object.values(value)) expectRecursivelyFrozen(child);
+}
+
+function recursivelyCollectKeys(value: unknown, keys = new Set<string>()) {
+  if (value === null || typeof value !== 'object') return keys;
+  for (const [key, child] of Object.entries(value)) {
+    keys.add(key.toLowerCase());
+    recursivelyCollectKeys(child, keys);
+  }
+  return keys;
 }
 
 function drawer(label: 'Roller' | 'Spectator') {
@@ -293,37 +312,25 @@ describe('DiceTray3DConceptPanel', () => {
     ).toBeNull();
   });
 
-  it('publishes measured per-witness telemetry, context, shared-event, and request facts for private evidence', () => {
+  it('publishes only safe final Stone 1 evidence after a valid shared release', () => {
     render(<DiceTray3DConceptPanel token={90} reducedMotion={false} />);
-    const roller = latestPresentation('Roller');
-    const spectator = latestPresentation('Spectator');
     const rollerToken = tokenFor('Roller');
     const spectatorToken = tokenFor('Spectator');
 
+    const roll = within(drawer('Roller')).getByRole('button', {
+      name: 'Roll d20',
+    });
+    roll.focus();
+    fireEvent.click(roll);
+    expect(document.activeElement).toBe(roll);
+
+    const rollerAttack = latestAttack(rollerToken);
+    const spectatorAttack = latestAttack(spectatorToken);
+    expect(rollerAttack.throwProfile).toEqual(spectatorAttack.throwProfile);
+
     act(() => {
-      roller.onTelemetry?.({
+      rollerAttack.onRendererInfo?.({
         presentationToken: rollerToken,
-        requestedResult: 10,
-        renderer: '3d',
-        state: 'observed',
-        exactTargetHeld: true,
-        mappedTarget: [0, 0, 0, 1],
-        angularErrorDegrees: 0,
-        runtimeSourceId: 7,
-        runtimeCloneId: 8,
-      });
-      spectator.onTelemetry?.({
-        presentationToken: spectatorToken,
-        requestedResult: 10,
-        renderer: '3d',
-        state: 'observed',
-        exactTargetHeld: true,
-        mappedTarget: [0, 0, 0, 1],
-        angularErrorDegrees: 0,
-        runtimeSourceId: 7,
-        runtimeCloneId: 9,
-      });
-      roller.onRendererInfo?.({
         calls: 1,
         triangles: 1,
         geometries: 1,
@@ -332,7 +339,8 @@ describe('DiceTray3DConceptPanel', () => {
         lifecycle: 'sampled',
         contextId: 11,
       });
-      spectator.onRendererInfo?.({
+      spectatorAttack.onRendererInfo?.({
+        presentationToken: spectatorToken,
         calls: 1,
         triangles: 1,
         geometries: 1,
@@ -341,68 +349,114 @@ describe('DiceTray3DConceptPanel', () => {
         lifecycle: 'sampled',
         contextId: 12,
       });
+      rollerAttack.onTelemetry?.({
+        ...observed(rollerAttack),
+        runtimeSourceId: 7,
+        runtimeCloneId: 8,
+      });
+      spectatorAttack.onTelemetry?.({
+        ...observed(spectatorAttack),
+        runtimeSourceId: 7,
+        runtimeCloneId: 9,
+      });
     });
 
     const bridge = (
       window as unknown as {
-        __stone0TrayEvidence?: Record<string, unknown>;
+        __stone1TrayEvidence?: Record<string, unknown>;
       }
-    ).__stone0TrayEvidence as {
-      requestIdentity: string;
-      eventCount: number;
+    ).__stone1TrayEvidence as {
+      request: { identity: string; result: number; presetId: string };
+      shared: { eventArrayId: number; providerId: number };
+      releaseCount: number;
+      lifecyclePhase: string;
+      rollerGrabbed: boolean;
+      spectatorGrabbed: boolean;
       witnesses: Record<
-        string,
+        'roller' | 'spectator',
         {
-          boundary: {
-            eventArrayId: number;
-            providerId: number;
-            eventCount: number;
-            eventsFrozen: boolean;
-            providerFrozen: boolean;
-          };
-          telemetry: AttackDieTelemetry;
-          rendererInfo: { contextId: number };
+          rendererContextId: number;
+          runtimeSourceId: number;
+          runtimeCloneId: number;
+          releaseProfile: unknown;
+          finalTelemetry: Record<string, unknown>;
         }
       >;
     };
     expect(bridge).toMatchObject({
-      requestIdentity: 'concept:witness:player:90:result:10',
-      eventCount: 1,
+      request: {
+        identity: 'concept:witness:player:90:result:10',
+        result: 10,
+        presetId: 'dice.original.carved.d20',
+      },
+      releaseCount: 1,
+      lifecyclePhase: 'settled',
+      rollerGrabbed: false,
+      spectatorGrabbed: false,
       witnesses: {
         roller: {
-          boundary: {
-            eventCount: 1,
-            eventsFrozen: true,
-            providerFrozen: true,
+          rendererContextId: 11,
+          runtimeSourceId: 7,
+          runtimeCloneId: 8,
+          finalTelemetry: {
+            motionRevision: 'choreographed-v1',
+            requestedResult: 10,
+            observedUpwardResult: 10,
+            exactTargetHeld: true,
+            contextId: 11,
+            cloneId: 8,
           },
-          telemetry: {
-            presentationToken: rollerToken,
-            runtimeSourceId: 7,
-            runtimeCloneId: 8,
-          },
-          rendererInfo: { contextId: 11 },
         },
         spectator: {
-          boundary: {
-            eventCount: 1,
-            eventsFrozen: true,
-            providerFrozen: true,
+          rendererContextId: 12,
+          runtimeSourceId: 7,
+          runtimeCloneId: 9,
+          finalTelemetry: {
+            motionRevision: 'choreographed-v1',
+            requestedResult: 10,
+            observedUpwardResult: 10,
+            exactTargetHeld: true,
+            contextId: 12,
+            cloneId: 9,
           },
-          telemetry: {
-            presentationToken: spectatorToken,
-            runtimeSourceId: 7,
-            runtimeCloneId: 9,
-          },
-          rendererInfo: { contextId: 12 },
         },
       },
     });
-    expect(bridge.witnesses.roller.boundary.eventArrayId).toBe(
-      bridge.witnesses.spectator.boundary.eventArrayId
+    expect(bridge.shared.eventArrayId).toBeGreaterThan(0);
+    expect(bridge.shared.providerId).toBeGreaterThan(0);
+    expect(bridge.witnesses.roller.releaseProfile).toEqual(
+      bridge.witnesses.spectator.releaseProfile
     );
-    expect(bridge.witnesses.roller.boundary.providerId).toBe(
-      bridge.witnesses.spectator.boundary.providerId
-    );
+    expect(
+      parseVisualThrowProfile(bridge.witnesses.roller.releaseProfile)
+    ).toEqual(bridge.witnesses.roller.releaseProfile);
+    expectRecursivelyFrozen(bridge.witnesses.roller.releaseProfile);
+    expectRecursivelyFrozen(bridge.witnesses.roller.finalTelemetry);
+
+    const forbidden = [
+      'pointerid',
+      'pointertype',
+      'clientx',
+      'clienty',
+      'timems',
+      'timestamp',
+      'history',
+      'pathlength',
+      'domrect',
+      'normalizedposition',
+      'normalizedtilt',
+      'wobblephase',
+      'mappedtarget',
+      'observedquaternion',
+      'presentationtoken',
+      'failurereason',
+    ];
+    const keys = recursivelyCollectKeys(bridge);
+    for (const key of forbidden) expect(keys.has(key)).toBe(false);
+    expect(
+      (window as unknown as { __stone0TrayEvidence?: unknown })
+        .__stone0TrayEvidence
+    ).toBeUndefined();
   });
 
   it('keeps the current diagnostic bridge when a disposed witness publishes late telemetry', () => {
@@ -414,8 +468,8 @@ describe('DiceTray3DConceptPanel', () => {
       target: { value: '11' },
     });
     const currentBridge = (
-      window as unknown as { __stone0TrayEvidence?: object }
-    ).__stone0TrayEvidence;
+      window as unknown as { __stone1TrayEvidence?: object }
+    ).__stone1TrayEvidence;
     expect(currentBridge).toBeTruthy();
 
     act(() => {
@@ -427,6 +481,7 @@ describe('DiceTray3DConceptPanel', () => {
         exactTargetHeld: false,
       });
       oldRoller.onRendererInfo?.({
+        presentationToken: oldToken,
         calls: 0,
         triangles: 0,
         geometries: 0,
@@ -438,8 +493,8 @@ describe('DiceTray3DConceptPanel', () => {
     });
 
     expect(
-      (window as unknown as { __stone0TrayEvidence?: object })
-        .__stone0TrayEvidence
+      (window as unknown as { __stone1TrayEvidence?: object })
+        .__stone1TrayEvidence
     ).toBe(currentBridge);
   });
 
@@ -489,6 +544,141 @@ describe('DiceTray3DConceptPanel', () => {
     }
   });
 
+  it('releases a quick pointer down/up with no move exactly once', () => {
+    render(<DiceTray3DConceptPanel token={111} reducedMotion={false} />);
+    const grab = within(drawer('Roller')).getByRole('button', {
+      name: 'Grab d20',
+    });
+
+    fireEvent.pointerDown(grab, { pointerId: 31, clientX: 50, clientY: 50 });
+    fireEvent.pointerUp(grab, { pointerId: 31, clientX: 50, clientY: 50 });
+    fireEvent.pointerUp(grab, { pointerId: 31, clientX: 50, clientY: 50 });
+
+    const events = latestPresentation('Roller').events;
+    const releases = events.filter(
+      (event) => event.type === 'dice-presentation-released'
+    );
+    expect(releases).toHaveLength(1);
+    expect(releases[0]).toMatchObject({
+      release: {
+        throwProfile: {
+          releaseDirection: [0, 0],
+          releaseSpeed: 0,
+          shakeEnergy: 0,
+        },
+      },
+    });
+  });
+
+  it('compacts repeated shake and an outside-capture release into one bounded profile', () => {
+    render(<DiceTray3DConceptPanel token={112} reducedMotion={false} />);
+    const grab = within(drawer('Roller')).getByRole('button', {
+      name: 'Grab d20',
+    });
+
+    fireEvent.pointerDown(grab, { pointerId: 32, clientX: 50, clientY: 50 });
+    for (const [clientX, clientY] of [
+      [-100, 300],
+      [300, -100],
+      [-100, 300],
+      [300, -100],
+    ])
+      fireEvent.pointerMove(grab, { pointerId: 32, clientX, clientY });
+    fireEvent.pointerUp(grab, {
+      pointerId: 32,
+      clientX: 400,
+      clientY: -200,
+    });
+
+    const release = latestPresentation('Roller').events.find(
+      (event) => event.type === 'dice-presentation-released'
+    );
+    expect(release?.type).toBe('dice-presentation-released');
+    if (release?.type !== 'dice-presentation-released') return;
+    expect(release.release.throwProfile.releasePosition).toEqual([1, 0]);
+    expect(release.release.throwProfile.shakeEnergy).toBe(1);
+    expect(parseVisualThrowProfile(release.release.throwProfile)).toEqual(
+      release.release.throwProfile
+    );
+    expect(latestPresentation('Roller').events).toHaveLength(2);
+  });
+
+  it.each(['cancel', 'lost capture'] as const)(
+    'clears local held state without release on pointer %s',
+    (ending) => {
+      render(<DiceTray3DConceptPanel token={113} reducedMotion={false} />);
+      const grab = within(drawer('Roller')).getByRole('button', {
+        name: 'Grab d20',
+      });
+      fireEvent.pointerDown(grab, {
+        pointerId: 33,
+        clientX: 20,
+        clientY: 30,
+      });
+      if (ending === 'cancel') fireEvent.pointerCancel(grab, { pointerId: 33 });
+      else fireEvent.lostPointerCapture(grab, { pointerId: 33 });
+
+      expect(renderer('Roller').getAttribute('data-grabbed')).toBe('false');
+      expect(latestPresentation('Roller').events).toHaveLength(1);
+      expectPhases('armed', 'armed');
+    }
+  );
+
+  it('clears a failed held renderer and reveals truthful SVG only after release semantics', () => {
+    render(<DiceTray3DConceptPanel token={114} reducedMotion={false} />);
+    const grab = within(drawer('Roller')).getByRole('button', {
+      name: 'Grab d20',
+    });
+    fireEvent.pointerDown(grab, { pointerId: 34, clientX: 20, clientY: 30 });
+    const armed = latestAttack(tokenFor('Roller'));
+
+    act(() =>
+      armed.onTelemetry?.({
+        presentationToken: armed.presentationToken,
+        requestedResult: 10,
+        renderer: 'svg',
+        state: 'failed',
+        exactTargetHeld: false,
+        failureCode: 'provider-load',
+      })
+    );
+
+    expect(renderer('Roller').getAttribute('data-grabbed')).toBe('false');
+    expect(face('Roller').textContent).toBe('?');
+    expect(latestPresentation('Roller').events).toHaveLength(1);
+
+    fireEvent.click(
+      within(drawer('Roller')).getByRole('button', { name: 'Roll d20' })
+    );
+    expect(latestPresentation('Roller').events).toHaveLength(2);
+    expect(region('Roller').getAttribute('data-phase')).toBe('settled');
+    expect(face('Roller').textContent).toBe('10');
+  });
+
+  it('keeps keyboard Roll focused and emits a deeply frozen neutral profile', () => {
+    render(<DiceTray3DConceptPanel token={115} reducedMotion={false} />);
+    const roll = within(drawer('Roller')).getByRole('button', {
+      name: 'Roll d20',
+    });
+    roll.focus();
+    fireEvent.click(roll, { detail: 0 });
+
+    expect(document.activeElement).toBe(roll);
+    const release = latestPresentation('Roller').events.find(
+      (event) => event.type === 'dice-presentation-released'
+    );
+    expect(release?.type).toBe('dice-presentation-released');
+    if (release?.type !== 'dice-presentation-released') return;
+    expect(release.release.throwProfile).toMatchObject({
+      releasePosition: [0.5, 0.5],
+      releaseDirection: [0, 0],
+      releaseSpeed: 0,
+      shakeEnergy: 0,
+      spinBias: 0,
+    });
+    expectRecursivelyFrozen(release.release.throwProfile);
+  });
+
   it('keeps pointer motion Roller-local, then shares one deep-equal release and settles telemetry independently', () => {
     render(
       <DiceTray3DConceptPanel
@@ -513,6 +703,23 @@ describe('DiceTray3DConceptPanel', () => {
     expect(presentationCalls).toHaveLength(callsBeforeMove);
     expect(originalEvents).toHaveLength(1);
     expectPhases('armed', 'armed');
+    const heldBridge = (
+      window as unknown as {
+        __stone1TrayEvidence?: {
+          rollerGrabbed: boolean;
+          spectatorGrabbed: boolean;
+          releaseCount: number;
+          lifecyclePhase: string;
+          witnesses: Record<string, { finalTelemetry?: unknown }>;
+        };
+      }
+    ).__stone1TrayEvidence!;
+    expect(heldBridge.rollerGrabbed).toBe(true);
+    expect(heldBridge.spectatorGrabbed).toBe(false);
+    expect(heldBridge.releaseCount).toBe(0);
+    expect(heldBridge.lifecyclePhase).toBe('armed');
+    expect(heldBridge.witnesses.roller.finalTelemetry).toBeUndefined();
+    expect(heldBridge.witnesses.spectator.finalTelemetry).toBeUndefined();
 
     fireEvent.pointerUp(grab, {
       pointerId: 4,
@@ -551,6 +758,58 @@ describe('DiceTray3DConceptPanel', () => {
       spinBias: expect.any(Number),
       motionSeed: expect.any(Number),
     });
+    expect(parseVisualThrowProfile(rollingRoller.throwProfile)).toEqual(
+      rollingRoller.throwProfile
+    );
+    expect(parseVisualThrowProfile(rollingSpectator.throwProfile)).toEqual(
+      rollingSpectator.throwProfile
+    );
+    expectRecursivelyFrozen(rollingRoller.throwProfile);
+    expectRecursivelyFrozen(rollingSpectator.throwProfile);
+
+    const target = [0, 0, 0, 1] as const;
+    for (const elapsedMs of [0, 333, 1200, 1900]) {
+      const rollerPose = ChoreographedSolverV1.solve({
+        phase: 'rolling',
+        elapsedMs,
+        reducedMotion: false,
+        target,
+        throwProfile: rollingRoller.throwProfile!,
+        member: { memberIndex: 0, memberCount: 1 },
+      });
+      const spectatorPose = ChoreographedSolverV1.solve({
+        phase: 'rolling',
+        elapsedMs,
+        reducedMotion: false,
+        target,
+        throwProfile: rollingSpectator.throwProfile!,
+        member: { memberIndex: 0, memberCount: 1 },
+      });
+      expect(rollerPose).toEqual(spectatorPose);
+    }
+
+    act(() => {
+      rollingRoller.onRendererInfo?.({
+        presentationToken: rollerToken,
+        calls: 1,
+        triangles: 1,
+        geometries: 1,
+        textures: 0,
+        programs: 1,
+        lifecycle: 'sampled',
+        contextId: 1201,
+      });
+      rollingSpectator.onRendererInfo?.({
+        presentationToken: spectatorToken,
+        calls: 1,
+        triangles: 1,
+        geometries: 1,
+        textures: 0,
+        programs: 1,
+        lifecycle: 'sampled',
+        contextId: 1202,
+      });
+    });
 
     act(() =>
       rollingSpectator.onTelemetry?.({
@@ -560,15 +819,62 @@ describe('DiceTray3DConceptPanel', () => {
     );
     expectPhases('rolling', 'rolling');
 
-    act(() => rollingRoller.onTelemetry?.(observed(rollingRoller)));
+    act(() =>
+      rollingRoller.onTelemetry?.({
+        ...observed(rollingRoller),
+        runtimeSourceId: 1200,
+        runtimeCloneId: 1201,
+      })
+    );
     expectPhases('settled', 'rolling');
     expect(face('Roller').textContent).toBe('10');
     expect(face('Spectator').textContent).not.toBe('10');
 
-    act(() => rollingSpectator.onTelemetry?.(observed(rollingSpectator)));
+    act(() =>
+      rollingSpectator.onTelemetry?.({
+        ...observed(rollingSpectator),
+        runtimeSourceId: 1200,
+        runtimeCloneId: 1202,
+      })
+    );
     expectPhases('settled', 'settled');
     expect(face('Roller').textContent).toBe('10');
     expect(face('Spectator').textContent).toBe('10');
+
+    const settledBridge = (
+      window as unknown as {
+        __stone1TrayEvidence?: {
+          releaseCount: number;
+          lifecyclePhase: string;
+          witnesses: Record<
+            'roller' | 'spectator',
+            {
+              rendererContextId: number;
+              runtimeSourceId: number;
+              runtimeCloneId: number;
+              finalTelemetry: { observedUpwardResult: number };
+            }
+          >;
+        };
+      }
+    ).__stone1TrayEvidence!;
+    expect(settledBridge.releaseCount).toBe(1);
+    expect(settledBridge.lifecyclePhase).toBe('settled');
+    expect(settledBridge.witnesses.roller.runtimeSourceId).toBe(
+      settledBridge.witnesses.spectator.runtimeSourceId
+    );
+    expect(settledBridge.witnesses.roller.runtimeCloneId).not.toBe(
+      settledBridge.witnesses.spectator.runtimeCloneId
+    );
+    expect(settledBridge.witnesses.roller.rendererContextId).not.toBe(
+      settledBridge.witnesses.spectator.rendererContextId
+    );
+    expect(
+      settledBridge.witnesses.roller.finalTelemetry.observedUpwardResult
+    ).toBe(10);
+    expect(
+      settledBridge.witnesses.spectator.finalTelemetry.observedUpwardResult
+    ).toBe(10);
   });
 
   it('admits at most one Roll delivery and rejects old telemetry after mode/token resets', () => {

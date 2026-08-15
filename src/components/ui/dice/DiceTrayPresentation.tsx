@@ -34,6 +34,7 @@ export interface DiceTrayPresentationDevelopmentRenderer {
 export interface DiceTrayPresentationBoundaryDiagnostic {
   readonly events: readonly DicePresentationEvent[];
   readonly provider: AttackDieProvider;
+  readonly rendererGeneration: number;
 }
 
 export interface DiceTrayPresentationProps {
@@ -327,6 +328,21 @@ function DiceTrayPresentationInstance({
     number | undefined
   >(undefined);
   const requestedRelease = useRef(false);
+  const instanceActive = useRef(false);
+  const callbackFence = useRef<{
+    release?: (requestedProfile?: VisualThrowProfileV1) => void;
+    telemetry?: (event: AttackDieTelemetry) => void;
+    rendererInfo?: NonNullable<AttackDie3DProps['onRendererInfo']>;
+    provider?: (provider: AttackDieProvider) => void;
+  }>({});
+
+  useLayoutEffect(() => {
+    instanceActive.current = true;
+    return () => {
+      instanceActive.current = false;
+      callbackFence.current = {};
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (generationRef.current === undefined)
@@ -352,6 +368,8 @@ function DiceTrayPresentationInstance({
   const handleReleaseRequest = useCallback(
     (requestedProfile?: VisualThrowProfileV1) => {
       if (
+        !instanceActive.current ||
+        callbackFence.current.release !== handleReleaseRequest ||
         !onReleaseRequest ||
         lifecycle.phase !== 'armed' ||
         rollerRole !== 'player' ||
@@ -390,6 +408,8 @@ function DiceTrayPresentationInstance({
   const handleTelemetry = useCallback(
     (event: AttackDieTelemetry) => {
       if (
+        !instanceActive.current ||
+        callbackFence.current.telemetry !== handleTelemetry ||
         rendererGeneration === undefined ||
         event.presentationToken !== rendererGeneration ||
         event.requestedResult !== result
@@ -422,14 +442,58 @@ function DiceTrayPresentationInstance({
     [onTelemetry, rendererGeneration, result]
   );
 
+  const handleRendererInfo = useCallback<
+    NonNullable<AttackDie3DProps['onRendererInfo']>
+  >(
+    (info) => {
+      if (
+        !instanceActive.current ||
+        callbackFence.current.rendererInfo !== handleRendererInfo ||
+        rendererGeneration === undefined ||
+        info.presentationToken !== rendererGeneration
+      )
+        return;
+      onRendererInfo?.(info);
+    },
+    [onRendererInfo, rendererGeneration]
+  );
   const handleFallbackPresentationComplete = useCallback(() => {
-    dispatch({ type: 'fallback-complete' });
+    if (instanceActive.current) dispatch({ type: 'fallback-complete' });
   }, []);
   const handleProviderDiagnostic = useCallback(
-    (provider: AttackDieProvider) =>
-      onBoundaryDiagnostic?.({ events: diagnosticEvents, provider }),
-    [diagnosticEvents, onBoundaryDiagnostic]
+    (provider: AttackDieProvider) => {
+      if (
+        !instanceActive.current ||
+        callbackFence.current.provider !== handleProviderDiagnostic ||
+        rendererGeneration === undefined
+      )
+        return;
+      onBoundaryDiagnostic?.({
+        events: diagnosticEvents,
+        provider,
+        rendererGeneration,
+      });
+    },
+    [diagnosticEvents, onBoundaryDiagnostic, rendererGeneration]
   );
+
+  useLayoutEffect(() => {
+    callbackFence.current = {
+      release: handleReleaseRequest,
+      telemetry: handleTelemetry,
+      rendererInfo: handleRendererInfo,
+      provider: handleProviderDiagnostic,
+    };
+    return () => {
+      if (callbackFence.current.release === handleReleaseRequest)
+        callbackFence.current = {};
+    };
+  }, [
+    handleProviderDiagnostic,
+    handleReleaseRequest,
+    handleRendererInfo,
+    handleTelemetry,
+  ]);
 
   const phase = lifecycle.phase;
   const status =
@@ -474,7 +538,7 @@ function DiceTrayPresentationInstance({
         release={lifecycle.acceptedRelease?.release}
         onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
-        onRendererInfo={onRendererInfo}
+        onRendererInfo={handleRendererInfo}
         onProviderDiagnostic={handleProviderDiagnostic}
         onFallbackPresentationComplete={handleFallbackPresentationComplete}
         reducedMotion={reducedMotion}

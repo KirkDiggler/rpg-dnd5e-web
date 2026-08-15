@@ -18,6 +18,8 @@ import {
 
 const attackDieProps: AttackDie3DProps[] = [];
 const controllerProfiles = vi.hoisted(() => ({
+  creates: 0,
+  resets: 0,
   released: [] as VisualThrowProfileV1[],
 }));
 vi.mock('./AttackDie3D', () => ({
@@ -32,9 +34,14 @@ vi.mock('./rollGroupGestureController', async (importOriginal) => {
   return {
     ...actual,
     createRollGroupGestureController: () => {
+      controllerProfiles.creates += 1;
       const controller = actual.createRollGroupGestureController();
       return {
         ...controller,
+        reset: () => {
+          controllerProfiles.resets += 1;
+          controller.reset();
+        },
         release: (sample: Parameters<typeof controller.release>[0]) => {
           const profile = controller.release(sample);
           if (profile) controllerProfiles.released.push(profile);
@@ -48,6 +55,8 @@ vi.mock('./rollGroupGestureController', async (importOriginal) => {
 let capturedPointers: WeakMap<HTMLElement, Set<number>>;
 
 beforeEach(() => {
+  controllerProfiles.creates = 0;
+  controllerProfiles.resets = 0;
   controllerProfiles.released = [];
   capturedPointers = new WeakMap();
   Object.defineProperties(HTMLElement.prototype, {
@@ -249,6 +258,9 @@ describe('DiceTrayPresentation', () => {
     expect(roller.events).not.toBe(spectator.events);
     expect(roller.provider).toBe(spectator.provider);
     expect(Object.isFrozen(roller.provider)).toBe(true);
+    expect(Number.isSafeInteger(roller.rendererGeneration)).toBe(true);
+    expect(Number.isSafeInteger(spectator.rendererGeneration)).toBe(true);
+    expect(roller.rendererGeneration).not.toBe(spectator.rendererGeneration);
   });
 
   it('renders no tray without a valid request', () => {
@@ -345,6 +357,38 @@ describe('DiceTrayPresentation', () => {
     expect(JSON.stringify(events)).toBe(before);
     expect(attackDieProps.at(-1)?.phase).toBe('ready');
     expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+  });
+
+  it('requests one neutral-speed profile for a quick down/up without movement', () => {
+    const onReleaseRequest = vi.fn();
+    renderPresentation([requested('attack:quick')], {
+      reducedMotion: false,
+      onReleaseRequest,
+    });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+
+    fireEvent.pointerDown(grab, {
+      pointerId: 20,
+      clientX: 50,
+      clientY: 50,
+    });
+    fireEvent.pointerUp(grab, {
+      pointerId: 20,
+      clientX: 50,
+      clientY: 50,
+    });
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(controllerProfiles.released).toHaveLength(1);
+    expect(onReleaseRequest.mock.calls[0][0]).toMatchObject({
+      release: {
+        throwProfile: {
+          releaseDirection: [0, 0],
+          releaseSpeed: 0,
+          shakeEnergy: 0,
+        },
+      },
+    });
   });
 
   it('wraps one local gesture as one compact frozen event and forwards it unchanged only after append', () => {
@@ -459,7 +503,11 @@ describe('DiceTrayPresentation', () => {
       phase: 'rolling',
       throwProfile: event.release.throwProfile,
     });
-    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Roll d20' })
+        .getAttribute('aria-disabled')
+    ).toBe('true');
 
     view.rerender(
       <DiceTrayPresentation
@@ -589,6 +637,74 @@ describe('DiceTrayPresentation', () => {
     expect(screen.getByRole('region').getAttribute('data-phase')).toBe(
       'settled'
     );
+  });
+
+  it('rejects late old-generation telemetry and renderer callbacks after identity interruption', () => {
+    const oldTelemetry = vi.fn();
+    const oldRendererInfo = vi.fn();
+    const view = renderPresentation([requested()], {
+      onTelemetry: oldTelemetry,
+      onRendererInfo: oldRendererInfo,
+    });
+    const old = attackDieProps.at(-1)!;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+        onTelemetry={vi.fn()}
+        onRendererInfo={vi.fn()}
+      />
+    );
+
+    act(() => {
+      old.onTelemetry?.(matchingTelemetry(old));
+      old.onRendererInfo?.({
+        presentationToken: old.presentationToken,
+        calls: 0,
+        triangles: 0,
+        geometries: 0,
+        textures: 0,
+        programs: 0,
+        lifecycle: 'release-observed',
+        contextId: 81,
+      });
+    });
+    expect(oldTelemetry).not.toHaveBeenCalled();
+    expect(oldRendererInfo).not.toHaveBeenCalled();
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+  });
+
+  it('rejects a replaced callback identity while accepting the current one', () => {
+    const staleSink = vi.fn();
+    const currentSink = vi.fn();
+    const view = renderPresentation([requested()], {
+      onTelemetry: staleSink,
+    });
+    const staleCallback = attackDieProps.at(-1)!.onTelemetry!;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested()]}
+        witnessRole="roller"
+        reducedMotion
+        onTelemetry={currentSink}
+      />
+    );
+    const current = attackDieProps.at(-1)!;
+    expect(current.onTelemetry).not.toBe(staleCallback);
+
+    act(() => staleCallback(matchingTelemetry(current)));
+    expect(staleSink).not.toHaveBeenCalled();
+    expect(currentSink).not.toHaveBeenCalled();
+
+    act(() => current.onTelemetry?.(matchingTelemetry(current)));
+    expect(staleSink).not.toHaveBeenCalled();
+    expect(currentSink).toHaveBeenCalledTimes(1);
   });
 
   it('settles only from matching local-generation and result observation', () => {
@@ -960,7 +1076,11 @@ describe('DiceTrayPresentation', () => {
     expect(screen.getByRole('status').textContent).toMatch(
       /result 10 released/i
     );
-    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Roll d20' })
+        .getAttribute('aria-disabled')
+    ).toBe('true');
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
   });
@@ -1239,7 +1359,11 @@ describe('DiceTrayPresentation', () => {
     });
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(screen.getByRole('status').textContent).toContain('10');
-    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Roll d20' })
+        .getAttribute('aria-disabled')
+    ).toBe('true');
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
 
@@ -1337,6 +1461,32 @@ describe('DiceTrayPresentation', () => {
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
   });
 
+  it('resets an active local gesture when presentation identity is interrupted', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation([requested()], { onReleaseRequest });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, {
+      pointerId: 72,
+      clientX: 20,
+      clientY: 30,
+    });
+    const resetsBefore = controllerProfiles.resets;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(controllerProfiles.resets).toBeGreaterThan(resetsBefore);
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+    expect(screen.getByRole('region').getAttribute('data-phase')).toBe('armed');
+  });
+
   it('resets sticky release state only for a new presentation id', () => {
     const onReleaseRequest = vi.fn();
     const view = renderPresentation([requested(), released()], {
@@ -1383,6 +1533,7 @@ describe('DiceTrayPresentation', () => {
 
       expect(screen.queryByRole('button', { name: /roll/i })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+      expect(controllerProfiles.creates).toBe(0);
       expect(onReleaseRequest).not.toHaveBeenCalled();
     }
   );
@@ -1568,7 +1719,11 @@ describe('DiceTrayPresentation', () => {
     });
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(screen.getByRole('status').textContent).toContain('10');
-    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Roll d20' })
+        .getAttribute('aria-disabled')
+    ).toBe('true');
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
 
     view.rerender(

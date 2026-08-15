@@ -16,6 +16,10 @@ import {
   DiceTrayPresentation,
   type DiceTrayPresentationBoundaryDiagnostic,
 } from '../../components/ui/dice/DiceTrayPresentation';
+import {
+  parseVisualThrowProfile,
+  type VisualThrowProfileV1,
+} from '../../components/ui/dice/visualThrowProfile';
 import { DiceTrayEncounterPreview } from './DiceTrayEncounterPreview';
 import {
   appendDiceTrayWitnessEvent,
@@ -30,41 +34,47 @@ type DiceTrayEvidenceExercise =
   | 'unmapped-result'
   | 'shader-failure';
 
-interface Stone0TrayEvidenceBridge {
-  requestIdentity: string;
-  presetId: string;
-  result: number;
-  mode: DiceTrayWitnessMode;
-  eventCount: number;
-  witnesses: {
-    roller: {
-      boundary?: {
-        eventArrayId: number;
-        providerId: number;
-        eventCount: number;
-        eventsFrozen: boolean;
-        providerFrozen: boolean;
-      };
-      telemetry?: AttackDieTelemetry;
-      rendererInfo?: AttackDieRendererInfo;
-    };
-    spectator: {
-      boundary?: {
-        eventArrayId: number;
-        providerId: number;
-        eventCount: number;
-        eventsFrozen: boolean;
-        providerFrozen: boolean;
-      };
-      telemetry?: AttackDieTelemetry;
-      rendererInfo?: AttackDieRendererInfo;
-    };
+export interface Stone1WitnessMotionFact {
+  readonly motionRevision: 'choreographed-v1';
+  readonly throwProfile?: VisualThrowProfileV1;
+  readonly requestedResult: number;
+  readonly observedUpwardResult?: number;
+  readonly exactTargetHeld: boolean;
+  readonly contextId?: number;
+  readonly cloneId?: number;
+}
+
+interface Stone1WitnessEvidence {
+  readonly rendererContextId?: number;
+  readonly runtimeSourceId?: number;
+  readonly runtimeCloneId?: number;
+  readonly finalTelemetry?: Stone1WitnessMotionFact;
+  readonly releaseProfile?: VisualThrowProfileV1;
+}
+
+interface Stone1TrayEvidenceBridge {
+  readonly request: {
+    readonly identity: string;
+    readonly result: number;
+    readonly presetId: string;
   };
+  readonly shared: {
+    readonly eventArrayId: number;
+    readonly providerId?: number;
+  };
+  readonly witnesses: {
+    readonly roller: Stone1WitnessEvidence;
+    readonly spectator: Stone1WitnessEvidence;
+  };
+  readonly rollerGrabbed: boolean;
+  readonly spectatorGrabbed: boolean;
+  readonly releaseCount: number;
+  readonly lifecyclePhase: 'armed' | 'rolling' | 'settled' | 'mixed';
 }
 
 declare global {
   interface Window {
-    __stone0TrayEvidence?: Stone0TrayEvidenceBridge;
+    __stone1TrayEvidence?: Stone1TrayEvidenceBridge;
   }
 }
 
@@ -76,6 +86,52 @@ function evidenceObjectId(value: object) {
   const identity = nextEvidenceObjectId++;
   evidenceObjectIds.set(value, identity);
   return identity;
+}
+
+type WitnessIdentity = 'roller' | 'spectator';
+
+interface WitnessEvidenceData {
+  rendererGeneration?: number;
+  providerId?: number;
+  rendererContextId?: number;
+  runtimeSourceId?: number;
+  runtimeCloneId?: number;
+  finalObservation?: Omit<Stone1WitnessMotionFact, 'contextId' | 'cloneId'>;
+}
+
+function witnessRegion(
+  root: HTMLDivElement | null,
+  witness: WitnessIdentity
+): HTMLElement | undefined {
+  const label = witness === 'roller' ? 'Roller' : 'Spectator';
+  return (
+    root?.querySelector<HTMLElement>(
+      `[role="region"][aria-label="${label} attack dice"]`
+    ) ?? undefined
+  );
+}
+
+function localGrabbed(root: HTMLDivElement | null, witness: WitnessIdentity) {
+  return (
+    witnessRegion(root, witness)
+      ?.querySelector<HTMLElement>('[data-testid="dice-tray-3d-renderer"]')
+      ?.getAttribute('data-grabbed') === 'true'
+  );
+}
+
+function localLifecyclePhase(
+  root: HTMLDivElement | null
+): Stone1TrayEvidenceBridge['lifecyclePhase'] {
+  const roller = witnessRegion(root, 'roller')?.getAttribute('data-phase');
+  const spectator = witnessRegion(root, 'spectator')?.getAttribute(
+    'data-phase'
+  );
+  if (
+    roller === spectator &&
+    (roller === 'armed' || roller === 'rolling' || roller === 'settled')
+  )
+    return roller;
+  return 'mixed';
 }
 
 interface DiceTray3DConceptPanelProps {
@@ -210,128 +266,327 @@ function DiceTrayWitnessDeliveryHost({
   }, [append, mode, presetId, result, token]);
 
   const requestIdentity = events[0]?.presentationId ?? 'unavailable';
-  const bridgeRef = useRef<Stone0TrayEvidenceBridge | undefined>(undefined);
-  if (
-    !bridgeRef.current ||
-    bridgeRef.current.requestIdentity !== requestIdentity ||
-    bridgeRef.current.presetId !== presetId
-  )
-    bridgeRef.current = {
-      requestIdentity,
-      presetId,
-      result,
-      mode,
-      eventCount: events.length,
-      witnesses: { roller: {}, spectator: {} },
+  const evidenceRoot = useRef<HTMLDivElement>(null);
+  const evidenceActive = useRef(false);
+  const publishedBridge = useRef<Stone1TrayEvidenceBridge | undefined>(
+    undefined
+  );
+  const evidenceData = useRef<Record<WitnessIdentity, WitnessEvidenceData>>({
+    roller: {},
+    spectator: {},
+  });
+  const callbackFence = useRef<Record<string, unknown>>({});
+  const releaseProfile = (() => {
+    const released = events.find(
+      (event) => event.type === 'dice-presentation-released'
+    );
+    return released?.type === 'dice-presentation-released'
+      ? parseVisualThrowProfile(released.release.throwProfile)
+      : undefined;
+  })();
+  const releaseCount = events.filter(
+    (event) => event.type === 'dice-presentation-released'
+  ).length;
+  const currentDelivery = useRef({
+    events,
+    presetId,
+    releaseCount,
+    releaseProfile,
+    requestIdentity,
+    result,
+  });
+  currentDelivery.current = {
+    events,
+    presetId,
+    releaseCount,
+    releaseProfile,
+    requestIdentity,
+    result,
+  };
+
+  const publishEvidence = useCallback(() => {
+    if (!evidenceActive.current) return;
+    const delivery = currentDelivery.current;
+
+    const buildWitness = (witness: WitnessIdentity): Stone1WitnessEvidence => {
+      const data = evidenceData.current[witness];
+      const finalTelemetry = data.finalObservation
+        ? Object.freeze({
+            ...data.finalObservation,
+            ...(data.rendererContextId === undefined
+              ? {}
+              : { contextId: data.rendererContextId }),
+            ...(data.runtimeCloneId === undefined
+              ? {}
+              : { cloneId: data.runtimeCloneId }),
+          })
+        : undefined;
+      return Object.freeze({
+        ...(data.rendererContextId === undefined
+          ? {}
+          : { rendererContextId: data.rendererContextId }),
+        ...(data.runtimeSourceId === undefined
+          ? {}
+          : { runtimeSourceId: data.runtimeSourceId }),
+        ...(data.runtimeCloneId === undefined
+          ? {}
+          : { runtimeCloneId: data.runtimeCloneId }),
+        ...(finalTelemetry ? { finalTelemetry } : {}),
+        ...(delivery.releaseProfile
+          ? { releaseProfile: delivery.releaseProfile }
+          : {}),
+      });
     };
-  const bridge = bridgeRef.current;
-  bridge.eventCount = events.length;
+
+    const providerIds = (['roller', 'spectator'] as const)
+      .map((witness) => evidenceData.current[witness].providerId)
+      .filter((identity): identity is number => identity !== undefined);
+    const providerId =
+      providerIds.length > 0 &&
+      providerIds.every((identity) => identity === providerIds[0])
+        ? providerIds[0]
+        : undefined;
+    const root = evidenceRoot.current;
+    const bridge = {
+      request: Object.freeze({
+        identity: delivery.requestIdentity,
+        result: delivery.result,
+        presetId: delivery.presetId,
+      }),
+      shared: Object.freeze({
+        eventArrayId: evidenceObjectId(delivery.events as object),
+        ...(providerId === undefined ? {} : { providerId }),
+      }),
+      witnesses: Object.freeze({
+        roller: buildWitness('roller'),
+        spectator: buildWitness('spectator'),
+      }),
+      releaseCount: delivery.releaseCount,
+    } as Stone1TrayEvidenceBridge;
+    Object.defineProperties(bridge, {
+      rollerGrabbed: {
+        enumerable: true,
+        get: () => localGrabbed(root, 'roller'),
+      },
+      spectatorGrabbed: {
+        enumerable: true,
+        get: () => localGrabbed(root, 'spectator'),
+      },
+      lifecyclePhase: {
+        enumerable: true,
+        get: () => localLifecyclePhase(root),
+      },
+    });
+    Object.freeze(bridge);
+    publishedBridge.current = bridge;
+    window.__stone1TrayEvidence = bridge;
+  }, []);
 
   useLayoutEffect(() => {
-    window.__stone0TrayEvidence = bridge;
+    evidenceActive.current = true;
     return () => {
-      if (window.__stone0TrayEvidence === bridge)
-        delete window.__stone0TrayEvidence;
+      evidenceActive.current = false;
+      callbackFence.current = {};
+      if (window.__stone1TrayEvidence === publishedBridge.current)
+        delete window.__stone1TrayEvidence;
     };
-  }, [bridge]);
+  }, []);
+
+  useLayoutEffect(() => {
+    publishEvidence();
+  }, [events, publishEvidence]);
 
   const publishBoundaryDiagnostic = useCallback(
     (
-      witness: 'roller' | 'spectator',
-      diagnostic: DiceTrayPresentationBoundaryDiagnostic
+      witness: WitnessIdentity,
+      diagnostic: DiceTrayPresentationBoundaryDiagnostic,
+      callback: unknown
     ) => {
-      if (window.__stone0TrayEvidence !== bridge) return;
-      bridge.witnesses[witness].boundary = {
-        eventArrayId: evidenceObjectId(diagnostic.events),
-        providerId: evidenceObjectId(diagnostic.provider),
-        eventCount: diagnostic.events.length,
-        eventsFrozen: Object.isFrozen(diagnostic.events),
-        providerFrozen: Object.isFrozen(diagnostic.provider),
-      };
-      window.__stone0TrayEvidence = bridge;
+      if (
+        !evidenceActive.current ||
+        callbackFence.current[`${witness}Boundary`] !== callback ||
+        diagnostic.events !== currentDelivery.current.events ||
+        !Number.isSafeInteger(diagnostic.rendererGeneration)
+      )
+        return;
+      evidenceData.current[witness].rendererGeneration =
+        diagnostic.rendererGeneration;
+      evidenceData.current[witness].providerId = evidenceObjectId(
+        diagnostic.provider
+      );
+      publishEvidence();
     },
-    [bridge]
+    [publishEvidence]
   );
   const publishTelemetry = useCallback(
-    (witness: 'roller' | 'spectator', telemetry: AttackDieTelemetry) => {
-      if (window.__stone0TrayEvidence !== bridge) return;
-      bridge.witnesses[witness].telemetry = telemetry;
-      window.__stone0TrayEvidence = bridge;
+    (
+      witness: WitnessIdentity,
+      telemetry: AttackDieTelemetry,
+      callback: unknown
+    ) => {
+      const data = evidenceData.current[witness];
+      const delivery = currentDelivery.current;
+      const parsedProfile = parseVisualThrowProfile(telemetry.throwProfile);
+      if (
+        !evidenceActive.current ||
+        callbackFence.current[`${witness}Telemetry`] !== callback ||
+        data.rendererGeneration === undefined ||
+        telemetry.presentationToken !== data.rendererGeneration ||
+        telemetry.requestedResult !== delivery.result ||
+        delivery.releaseCount !== 1 ||
+        telemetry.renderer !== '3d' ||
+        telemetry.state !== 'observed' ||
+        telemetry.motionRevision !== 'choreographed-v1' ||
+        !parsedProfile ||
+        !telemetry.exactTargetHeld ||
+        telemetry.observedUpwardResult !== delivery.result ||
+        telemetry.observedUpDot === undefined ||
+        !Number.isFinite(telemetry.observedUpDot) ||
+        telemetry.observedUpDot <= 0.999999 ||
+        telemetry.observedUpMargin === undefined ||
+        !Number.isFinite(telemetry.observedUpMargin) ||
+        telemetry.observedUpMargin <= 0.2 ||
+        telemetry.angularErrorDegrees === undefined ||
+        !Number.isFinite(telemetry.angularErrorDegrees) ||
+        telemetry.angularErrorDegrees < 0 ||
+        telemetry.angularErrorDegrees > 0.25
+      )
+        return;
+
+      data.runtimeSourceId = telemetry.runtimeSourceId;
+      data.runtimeCloneId = telemetry.runtimeCloneId;
+      data.finalObservation = Object.freeze({
+        motionRevision: 'choreographed-v1',
+        throwProfile: parsedProfile,
+        requestedResult: telemetry.requestedResult,
+        observedUpwardResult: telemetry.observedUpwardResult,
+        exactTargetHeld: true,
+      });
+      publishEvidence();
     },
-    [bridge]
+    [publishEvidence]
   );
   const publishRendererInfo = useCallback(
-    (witness: 'roller' | 'spectator', rendererInfo: AttackDieRendererInfo) => {
-      if (window.__stone0TrayEvidence !== bridge) return;
-      bridge.witnesses[witness].rendererInfo = rendererInfo;
-      window.__stone0TrayEvidence = bridge;
+    (
+      witness: WitnessIdentity,
+      rendererInfo: AttackDieRendererInfo,
+      callback: unknown
+    ) => {
+      const data = evidenceData.current[witness];
+      if (
+        !evidenceActive.current ||
+        callbackFence.current[`${witness}Renderer`] !== callback ||
+        data.rendererGeneration === undefined ||
+        rendererInfo.presentationToken !== data.rendererGeneration
+      )
+        return;
+      data.rendererContextId = rendererInfo.contextId;
+      publishEvidence();
     },
-    [bridge]
+    [publishEvidence]
   );
   const publishRollerBoundaryDiagnostic = useCallback(
     (diagnostic: DiceTrayPresentationBoundaryDiagnostic) =>
-      publishBoundaryDiagnostic('roller', diagnostic),
+      publishBoundaryDiagnostic(
+        'roller',
+        diagnostic,
+        publishRollerBoundaryDiagnostic
+      ),
     [publishBoundaryDiagnostic]
   );
   const publishSpectatorBoundaryDiagnostic = useCallback(
     (diagnostic: DiceTrayPresentationBoundaryDiagnostic) =>
-      publishBoundaryDiagnostic('spectator', diagnostic),
+      publishBoundaryDiagnostic(
+        'spectator',
+        diagnostic,
+        publishSpectatorBoundaryDiagnostic
+      ),
     [publishBoundaryDiagnostic]
   );
   const publishRollerTelemetry = useCallback(
-    (telemetry: AttackDieTelemetry) => publishTelemetry('roller', telemetry),
+    (telemetry: AttackDieTelemetry) =>
+      publishTelemetry('roller', telemetry, publishRollerTelemetry),
     [publishTelemetry]
   );
   const publishSpectatorTelemetry = useCallback(
-    (telemetry: AttackDieTelemetry) => publishTelemetry('spectator', telemetry),
+    (telemetry: AttackDieTelemetry) =>
+      publishTelemetry('spectator', telemetry, publishSpectatorTelemetry),
     [publishTelemetry]
   );
   const publishRollerRendererInfo = useCallback(
     (rendererInfo: AttackDieRendererInfo) =>
-      publishRendererInfo('roller', rendererInfo),
+      publishRendererInfo('roller', rendererInfo, publishRollerRendererInfo),
     [publishRendererInfo]
   );
   const publishSpectatorRendererInfo = useCallback(
     (rendererInfo: AttackDieRendererInfo) =>
-      publishRendererInfo('spectator', rendererInfo),
+      publishRendererInfo(
+        'spectator',
+        rendererInfo,
+        publishSpectatorRendererInfo
+      ),
     [publishRendererInfo]
   );
 
+  useLayoutEffect(() => {
+    callbackFence.current = {
+      rollerBoundary: publishRollerBoundaryDiagnostic,
+      spectatorBoundary: publishSpectatorBoundaryDiagnostic,
+      rollerTelemetry: publishRollerTelemetry,
+      spectatorTelemetry: publishSpectatorTelemetry,
+      rollerRenderer: publishRollerRendererInfo,
+      spectatorRenderer: publishSpectatorRendererInfo,
+    };
+    return () => {
+      if (callbackFence.current.rollerTelemetry === publishRollerTelemetry)
+        callbackFence.current = {};
+    };
+  }, [
+    publishRollerBoundaryDiagnostic,
+    publishRollerRendererInfo,
+    publishRollerTelemetry,
+    publishSpectatorBoundaryDiagnostic,
+    publishSpectatorRendererInfo,
+    publishSpectatorTelemetry,
+  ]);
+
   return (
-    <DiceTrayEncounterPreview
-      trays={[
-        {
-          label: 'Roller',
-          content: (
-            <DiceTrayPresentation
-              label="Roller attack dice"
-              events={events}
-              witnessRole="roller"
-              onReleaseRequest={mode === 'player' ? append : undefined}
-              onTelemetry={publishRollerTelemetry}
-              onRendererInfo={publishRollerRendererInfo}
-              onBoundaryDiagnostic={publishRollerBoundaryDiagnostic}
-              reducedMotion={reducedMotion}
-              forceFailure={forceFailure}
-            />
-          ),
-        },
-        {
-          label: 'Spectator',
-          content: (
-            <DiceTrayPresentation
-              label="Spectator attack dice"
-              events={events}
-              witnessRole="spectator"
-              onTelemetry={publishSpectatorTelemetry}
-              onRendererInfo={publishSpectatorRendererInfo}
-              onBoundaryDiagnostic={publishSpectatorBoundaryDiagnostic}
-              reducedMotion={reducedMotion}
-              forceFailure={forceFailure}
-            />
-          ),
-        },
-      ]}
-    />
+    <div ref={evidenceRoot}>
+      <DiceTrayEncounterPreview
+        trays={[
+          {
+            label: 'Roller',
+            content: (
+              <DiceTrayPresentation
+                label="Roller attack dice"
+                events={events}
+                witnessRole="roller"
+                onReleaseRequest={mode === 'player' ? append : undefined}
+                onTelemetry={publishRollerTelemetry}
+                onRendererInfo={publishRollerRendererInfo}
+                onBoundaryDiagnostic={publishRollerBoundaryDiagnostic}
+                reducedMotion={reducedMotion}
+                forceFailure={forceFailure}
+              />
+            ),
+          },
+          {
+            label: 'Spectator',
+            content: (
+              <DiceTrayPresentation
+                label="Spectator attack dice"
+                events={events}
+                witnessRole="spectator"
+                onTelemetry={publishSpectatorTelemetry}
+                onRendererInfo={publishSpectatorRendererInfo}
+                onBoundaryDiagnostic={publishSpectatorBoundaryDiagnostic}
+                reducedMotion={reducedMotion}
+                forceFailure={forceFailure}
+              />
+            ),
+          },
+        ]}
+      />
+    </div>
   );
 }

@@ -36,6 +36,15 @@ function recursivelyCollectKeys(value: unknown, keys = new Set<string>()) {
   return keys;
 }
 
+function presentationHash(value: string) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
+}
+
 function appendScheduledMonsterRelease(token: number, result = 10) {
   let events: readonly DicePresentationEvent[] =
     createDiceTrayWitnessInitialEvents(token, 'monster', result);
@@ -210,7 +219,7 @@ describe('dice tray witness fixture', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('delivers the monster zero-gesture release at exactly 250ms', () => {
+  it('delivers a host-created Monster neutral release seeded from presentation identity at exactly 250ms', () => {
     vi.useFakeTimers();
     const host = appendScheduledMonsterRelease(21);
     scheduleMonsterDiceTrayWitnessRelease(21, 10, host.append);
@@ -241,7 +250,7 @@ describe('dice tray witness fixture', () => {
           releaseSpeed: 0,
           shakeEnergy: 0,
           spinBias: 0,
-          motionSeed: 0,
+          motionSeed: presentationHash('concept:witness:monster:21:result:10'),
         },
       },
     });
@@ -315,6 +324,38 @@ describe('dice tray witness fixture', () => {
       'transport',
     ])
       expect(releaseKeys.has(key)).toBe(false);
+
+    const profile = released.release.throwProfile;
+    expect(Reflect.ownKeys(profile)).toEqual([
+      'schemaVersion',
+      'releasePosition',
+      'releaseDirection',
+      'releaseSpeed',
+      'shakeEnergy',
+      'spinBias',
+      'motionSeed',
+    ]);
+    const profileKeys = recursivelyCollectKeys(profile);
+    for (const key of [
+      'clientx',
+      'clienty',
+      'pointerid',
+      'pointertype',
+      'timems',
+      'timestamp',
+      'samples',
+      'history',
+      'pathlength',
+      'held',
+      'normalizedposition',
+      'normalizedtilt',
+      'wobblephase',
+      'authoritativeresult',
+      'result',
+      'target',
+    ])
+      expect(profileKeys.has(key)).toBe(false);
+    expectRecursivelyFrozen(profile);
     expect(host.events()[0]).toMatchObject({
       die: { authoritativeResult: 10 },
     });
