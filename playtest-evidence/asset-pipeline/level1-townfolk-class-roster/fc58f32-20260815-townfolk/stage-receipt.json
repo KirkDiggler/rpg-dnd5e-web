@@ -1,0 +1,534 @@
+{
+  "schemaVersion": 1,
+  "providerCommit": "fc58f32848056dd40ca6ee3b546ffefeeead5962",
+  "stage": {
+    "root": "release",
+    "fileCount": 2257,
+    "treeSha256": "eb78d28f0209f2df37862c5ec4678bca05a9c04097fc3a89d393bc6faf65db37"
+  },
+  "rendererVersions": [
+    {
+      "name": "Blender",
+      "version": "5.0.1"
+    },
+    {
+      "name": "Python Pillow",
+      "version": "12.1.1"
+    },
+    {
+      "name": "Node",
+      "version": "v22.21.1"
+    },
+    {
+      "name": "ImageMagick",
+      "version": "7.1.2-18 Q16"
+    }
+  ],
+  "methodLabels": [
+    {
+      "category": "animation",
+      "label": "full-loop-28-plus-2-wrap-fixed-angles"
+    },
+    {
+      "category": "animation",
+      "label": "fixed-ground-walk-union-minimum-fixed-orthographic-cameras"
+    },
+    {
+      "category": "animation",
+      "label": "fixed-high-oblique-55-elevation-30-azimuth"
+    },
+    {
+      "category": "palettes",
+      "label": "fixed-order-a-b-c-standing-45-degree"
+    },
+    {
+      "category": "downed",
+      "label": "static-runtime-orthographic-camera-plus-low-side-profile-inset"
+    },
+    {
+      "category": "portraits",
+      "label": "native-512-rgba-on-checkerboard"
+    },
+    {
+      "category": "texture-resolution",
+      "label": "matched-fixed-scene-4096-source-vs-2048-runtime-close-up"
+    }
+  ],
+  "runtimeTargets": [
+    {
+      "path": "harness/models/synty/characters/fighter.glb",
+      "sha256": "cb3ad6ff4169bc4befd901e4f23f618498c3f9f895dfeaf4664d0131d20980ae",
+      "class": "fighter",
+      "palette": "a",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/fighter-b.glb",
+      "sha256": "9254eb2e34a40b35aaaf201f672958b749c8b988e9850b40f5c7ad0fddf1c633",
+      "class": "fighter",
+      "palette": "b",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/fighter-c.glb",
+      "sha256": "24123438798cb0e98bbc5a8bba0aa49b09d7e43446c194acc1ee49aebf926822",
+      "class": "fighter",
+      "palette": "c",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/fighter-downed.glb",
+      "sha256": "0b139ae89c392d97ade3bbb1fa3e7a7a338b277aae00ae3fe90e7f394d768bcd",
+      "class": "fighter",
+      "palette": "a",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/fighter-downed-b.glb",
+      "sha256": "10af6d0dd103dee29147176e95fc618d70f59d276eb0df16055805c6493f0fdb",
+      "class": "fighter",
+      "palette": "b",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/fighter-downed-c.glb",
+      "sha256": "391987ed6e7675bd271efc5a44e3f7219608da84187d0764f0c858bc8a6a3da5",
+      "class": "fighter",
+      "palette": "c",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/fighter.png",
+      "sha256": "74c76b7bf5f617e1e1c80074df26c771adab59c97ccb83bc780e55b5bdb51143",
+      "class": "fighter",
+      "palette": "a",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/fighter-b.png",
+      "sha256": "711439e27a46ea95a152021eedf56f02e97fcd9fea9d005c189bd1c915d94234",
+      "class": "fighter",
+      "palette": "b",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/fighter-c.png",
+      "sha256": "308c834b7aeb7c0a6a213194e5b320e1d7aae58446071a3ede9f921ebffcd9af",
+      "class": "fighter",
+      "palette": "c",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/monk.glb",
+      "sha256": "e2cf05639b1b825a71acf636a7025773545d08acc2b035285a6574dbd1c75260",
+      "class": "monk",
+      "palette": "a",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/monk-b.glb",
+      "sha256": "35328ac485cd0ee8492a823f45302c7aadad8068a2d6540349b82e480e8c7747",
+      "class": "monk",
+      "palette": "b",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/monk-c.glb",
+      "sha256": "0316b0ca17efc4d7e8cf02a7f39bd0bb32461d4109fb6afca2dbb36998f27819",
+      "class": "monk",
+      "palette": "c",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/monk-downed.glb",
+      "sha256": "0232c9f9c52115d04a647851ce5153e65a9d6ec3a9ce5b1c59c01e3c65fce9ac",
+      "class": "monk",
+      "palette": "a",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/monk-downed-b.glb",
+      "sha256": "1668ae08fd52711e8113fcb253a1f53fbe6e9d79ddc1d404af88a11a8024bd0e",
+      "class": "monk",
+      "palette": "b",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/monk-downed-c.glb",
+      "sha256": "fb9c79bfc090fc27900008b7cccefeae3a3cbf70c050f76c652897b501c712b9",
+      "class": "monk",
+      "palette": "c",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/monk.png",
+      "sha256": "0af40479f547ba887f60b566fa6b550cc948af6ba9bfddf5bb5c565f13f7a9ec",
+      "class": "monk",
+      "palette": "a",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/monk-b.png",
+      "sha256": "1ca4fee29faff9b6624f7076b8a059711311c41142431a887b827a51598ee37b",
+      "class": "monk",
+      "palette": "b",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/monk-c.png",
+      "sha256": "1f8c21432926911073b8d1c8d458723f99d76e0183a59f0ac1af20a0719f0c70",
+      "class": "monk",
+      "palette": "c",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/rogue.glb",
+      "sha256": "491a8f50b1db44f47f63443c557d461cd53b880895f9c53d3f4db28e8a3aca06",
+      "class": "rogue",
+      "palette": "a",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/rogue-b.glb",
+      "sha256": "00e9fccc635d4562d84399bb85735e3e354b7ea884dbe7b75be23f63d24ce4a1",
+      "class": "rogue",
+      "palette": "b",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/rogue-c.glb",
+      "sha256": "e4681baef1d69f0ecbfbef16aa2cdb75186963f03f80eb5833ee7c20eb485ecc",
+      "class": "rogue",
+      "palette": "c",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/rogue-downed.glb",
+      "sha256": "d0a63e9c13b1210fd38ed9555ec73eb5aa7cd7b1503a0b19ad088d06f9719764",
+      "class": "rogue",
+      "palette": "a",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/rogue-downed-b.glb",
+      "sha256": "ff8d2f7fdb9408a61ccc26dca15d25e0df1fe22e0ef5f4bef60e37372c2df991",
+      "class": "rogue",
+      "palette": "b",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/rogue-downed-c.glb",
+      "sha256": "2c35e4e2ee3f27798f21bc96dede47487067d0a736ef405edae9298780759a71",
+      "class": "rogue",
+      "palette": "c",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/rogue.png",
+      "sha256": "bd7ffbf970229eb8cfb0ae119638d21b11fdd37adb56c29b368d439ad086dec8",
+      "class": "rogue",
+      "palette": "a",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/rogue-b.png",
+      "sha256": "fb76a0eaa8adc54db4dcb36c93e93e7be64e2e68bab2b13ce818534338bed33e",
+      "class": "rogue",
+      "palette": "b",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/rogue-c.png",
+      "sha256": "826e640e2a12108e5957c3d0fc3ff394cf5fa205da145f1b9924e668ad3506bd",
+      "class": "rogue",
+      "palette": "c",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/barbarian.glb",
+      "sha256": "2dc20cf2b9339a2f8fef549f7feedcd65e256bc58aa2b8f2cab5f0c81ea18bd4",
+      "class": "barbarian",
+      "palette": "a",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/barbarian-b.glb",
+      "sha256": "d791ea70662246f813260fdf6aa0d466608b7062cc4f82be1ded5109ba869e8a",
+      "class": "barbarian",
+      "palette": "b",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/barbarian-c.glb",
+      "sha256": "a089efe92a9014737ad682a09102ececac975051d9576f5d5b3731cdff19ee0e",
+      "class": "barbarian",
+      "palette": "c",
+      "kind": "standing"
+    },
+    {
+      "path": "harness/models/synty/characters/barbarian-downed.glb",
+      "sha256": "20a22e1874ffa1bf91ef96aa120ab9fdf2ebfe52c8b3c5ddfd7d1576ad40e5be",
+      "class": "barbarian",
+      "palette": "a",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/barbarian-downed-b.glb",
+      "sha256": "398ba4e7795ad034bc46b130cd68a7936aea596d52f8d70342cf4a9fd97d8a17",
+      "class": "barbarian",
+      "palette": "b",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/barbarian-downed-c.glb",
+      "sha256": "8b0be99b78522991b972113f0d64f0a1fbd174e5832ac307f7ce0785e37585f3",
+      "class": "barbarian",
+      "palette": "c",
+      "kind": "downed"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/barbarian.png",
+      "sha256": "eb2b791262349f82141a98e65487c63ac4f1245503bdf4c5b1e1c5ca04cf389a",
+      "class": "barbarian",
+      "palette": "a",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/barbarian-b.png",
+      "sha256": "b742dedeec8bbe4abec5675c4b5acfa1321bfba2ccab0baa02163612ba1344cf",
+      "class": "barbarian",
+      "palette": "b",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/barbarian-c.png",
+      "sha256": "6038997dff8873ebf90a7bd4394566b3df04d2cc027fda52e153ff9cfdae58ff",
+      "class": "barbarian",
+      "palette": "c",
+      "kind": "portraits",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    }
+  ],
+  "portraitSources": [
+    {
+      "path": "harness/models/synty/characters/portraits/fighter.png",
+      "sha256": "74c76b7bf5f617e1e1c80074df26c771adab59c97ccb83bc780e55b5bdb51143",
+      "class": "fighter",
+      "palette": "a",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/fighter-b.png",
+      "sha256": "711439e27a46ea95a152021eedf56f02e97fcd9fea9d005c189bd1c915d94234",
+      "class": "fighter",
+      "palette": "b",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/fighter-c.png",
+      "sha256": "308c834b7aeb7c0a6a213194e5b320e1d7aae58446071a3ede9f921ebffcd9af",
+      "class": "fighter",
+      "palette": "c",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/monk.png",
+      "sha256": "0af40479f547ba887f60b566fa6b550cc948af6ba9bfddf5bb5c565f13f7a9ec",
+      "class": "monk",
+      "palette": "a",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/monk-b.png",
+      "sha256": "1ca4fee29faff9b6624f7076b8a059711311c41142431a887b827a51598ee37b",
+      "class": "monk",
+      "palette": "b",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/monk-c.png",
+      "sha256": "1f8c21432926911073b8d1c8d458723f99d76e0183a59f0ac1af20a0719f0c70",
+      "class": "monk",
+      "palette": "c",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/rogue.png",
+      "sha256": "bd7ffbf970229eb8cfb0ae119638d21b11fdd37adb56c29b368d439ad086dec8",
+      "class": "rogue",
+      "palette": "a",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/rogue-b.png",
+      "sha256": "fb76a0eaa8adc54db4dcb36c93e93e7be64e2e68bab2b13ce818534338bed33e",
+      "class": "rogue",
+      "palette": "b",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/rogue-c.png",
+      "sha256": "826e640e2a12108e5957c3d0fc3ff394cf5fa205da145f1b9924e668ad3506bd",
+      "class": "rogue",
+      "palette": "c",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/barbarian.png",
+      "sha256": "eb2b791262349f82141a98e65487c63ac4f1245503bdf4c5b1e1c5ca04cf389a",
+      "class": "barbarian",
+      "palette": "a",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/barbarian-b.png",
+      "sha256": "b742dedeec8bbe4abec5675c4b5acfa1321bfba2ccab0baa02163612ba1344cf",
+      "class": "barbarian",
+      "palette": "b",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    },
+    {
+      "path": "harness/models/synty/characters/portraits/barbarian-c.png",
+      "sha256": "6038997dff8873ebf90a7bd4394566b3df04d2cc027fda52e153ff9cfdae58ff",
+      "class": "barbarian",
+      "palette": "c",
+      "dimensions": [
+        512,
+        512
+      ],
+      "colorMode": "RGBA"
+    }
+  ],
+  "sourceAtlases": [
+    {
+      "palette": "a",
+      "basename": "PolygonFantasyKingdom_Texture_01_A.png",
+      "sha256": "521945a2e8e647730e09db3cfe0921ce7941d969209816e62c471a554b6470ee",
+      "dimensions": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "palette": "b",
+      "basename": "PolygonFantasyKingdom_Texture_01_B.png",
+      "sha256": "9f734c46451603bada0522ebda936350fb3b632bc84898683e8c6aec665a159a",
+      "dimensions": [
+        4096,
+        4096
+      ]
+    },
+    {
+      "palette": "c",
+      "basename": "PolygonFantasyKingdom_Texture_01_C.png",
+      "sha256": "e626e6b671e70525470baf58cef1b05344b99a36ea9285f57db828e22d7d2cba",
+      "dimensions": [
+        4096,
+        4096
+      ]
+    }
+  ]
+}

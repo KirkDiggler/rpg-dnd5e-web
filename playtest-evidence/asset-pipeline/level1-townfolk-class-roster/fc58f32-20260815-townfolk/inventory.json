@@ -1,0 +1,522 @@
+[
+  {
+    "filename": "animation/barbarian-Idle_Relaxed-0deg-strip.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "0 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/barbarian-Idle_Relaxed-180deg-strip.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "180 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/barbarian-Idle_Relaxed-45deg-strip.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/barbarian-Idle_Relaxed-90deg-strip.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "90 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/barbarian-Idle_Relaxed-Walk_Forward-high-oblique.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Idle_Relaxed and Walk_Forward",
+    "angle": "55-degree elevation, 30-degree azimuth",
+    "panelOrSequenceDescription": "Seven-panel high-oblique sheet: three idle samples followed by four walk samples."
+  },
+  {
+    "filename": "animation/barbarian-Walk_Forward-0deg-strip.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "0 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/barbarian-Walk_Forward-180deg-strip.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "180 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/barbarian-Walk_Forward-45deg-strip.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/barbarian-Walk_Forward-90deg-strip.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "90 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/barbarian-Walk_Forward-fixed-ground-contact.png",
+    "category": "animation",
+    "class": "barbarian",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "front, side, and three-quarter",
+    "panelOrSequenceDescription": "21-panel fixed-ground contact sheet: seven fixed walk samples across three fixed orthographic cameras."
+  },
+  {
+    "filename": "animation/fighter-Idle_Relaxed-0deg-strip.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "0 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/fighter-Idle_Relaxed-180deg-strip.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "180 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/fighter-Idle_Relaxed-45deg-strip.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/fighter-Idle_Relaxed-90deg-strip.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "90 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/fighter-Idle_Relaxed-Walk_Forward-high-oblique.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Idle_Relaxed and Walk_Forward",
+    "angle": "55-degree elevation, 30-degree azimuth",
+    "panelOrSequenceDescription": "Seven-panel high-oblique sheet: three idle samples followed by four walk samples."
+  },
+  {
+    "filename": "animation/fighter-Walk_Forward-0deg-strip.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "0 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/fighter-Walk_Forward-180deg-strip.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "180 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/fighter-Walk_Forward-45deg-strip.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/fighter-Walk_Forward-90deg-strip.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "90 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/fighter-Walk_Forward-fixed-ground-contact.png",
+    "category": "animation",
+    "class": "fighter",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "front, side, and three-quarter",
+    "panelOrSequenceDescription": "21-panel fixed-ground contact sheet: seven fixed walk samples across three fixed orthographic cameras."
+  },
+  {
+    "filename": "animation/monk-Idle_Relaxed-0deg-strip.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "0 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/monk-Idle_Relaxed-180deg-strip.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "180 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/monk-Idle_Relaxed-45deg-strip.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/monk-Idle_Relaxed-90deg-strip.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "90 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/monk-Idle_Relaxed-Walk_Forward-high-oblique.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Idle_Relaxed and Walk_Forward",
+    "angle": "55-degree elevation, 30-degree azimuth",
+    "panelOrSequenceDescription": "Seven-panel high-oblique sheet: three idle samples followed by four walk samples."
+  },
+  {
+    "filename": "animation/monk-Walk_Forward-0deg-strip.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "0 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/monk-Walk_Forward-180deg-strip.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "180 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/monk-Walk_Forward-45deg-strip.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/monk-Walk_Forward-90deg-strip.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "90 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/monk-Walk_Forward-fixed-ground-contact.png",
+    "category": "animation",
+    "class": "monk",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "front, side, and three-quarter",
+    "panelOrSequenceDescription": "21-panel fixed-ground contact sheet: seven fixed walk samples across three fixed orthographic cameras."
+  },
+  {
+    "filename": "animation/rogue-Idle_Relaxed-0deg-strip.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "0 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/rogue-Idle_Relaxed-180deg-strip.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "180 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/rogue-Idle_Relaxed-45deg-strip.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/rogue-Idle_Relaxed-90deg-strip.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Idle_Relaxed",
+    "angle": "90 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/rogue-Idle_Relaxed-Walk_Forward-high-oblique.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Idle_Relaxed and Walk_Forward",
+    "angle": "55-degree elevation, 30-degree azimuth",
+    "panelOrSequenceDescription": "Seven-panel high-oblique sheet: three idle samples followed by four walk samples."
+  },
+  {
+    "filename": "animation/rogue-Walk_Forward-0deg-strip.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "0 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/rogue-Walk_Forward-180deg-strip.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "180 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/rogue-Walk_Forward-45deg-strip.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/rogue-Walk_Forward-90deg-strip.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "90 degrees",
+    "panelOrSequenceDescription": "30-panel full-loop strip: 28 loop samples followed by 2 wrap samples."
+  },
+  {
+    "filename": "animation/rogue-Walk_Forward-fixed-ground-contact.png",
+    "category": "animation",
+    "class": "rogue",
+    "palette": "a",
+    "clip": "Walk_Forward",
+    "angle": "front, side, and three-quarter",
+    "panelOrSequenceDescription": "21-panel fixed-ground contact sheet: seven fixed walk samples across three fixed orthographic cameras."
+  },
+  {
+    "filename": "palettes/fighter-standing-downed.png",
+    "category": "palettes",
+    "class": "fighter",
+    "palette": "a, b, and c",
+    "angle": "runtime orthographic camera plus low side-profile inset for downed panels",
+    "panelOrSequenceDescription": "Nine-view class comparison: three standing panels, three downed runtime-camera main views, and three low side-profile insets."
+  },
+  {
+    "filename": "palettes/monk-standing-downed.png",
+    "category": "palettes",
+    "class": "monk",
+    "palette": "a, b, and c",
+    "angle": "runtime orthographic camera plus low side-profile inset for downed panels",
+    "panelOrSequenceDescription": "Nine-view class comparison: three standing panels, three downed runtime-camera main views, and three low side-profile insets."
+  },
+  {
+    "filename": "palettes/rogue-standing-downed.png",
+    "category": "palettes",
+    "class": "rogue",
+    "palette": "a, b, and c",
+    "angle": "runtime orthographic camera plus low side-profile inset for downed panels",
+    "panelOrSequenceDescription": "Nine-view class comparison: three standing panels, three downed runtime-camera main views, and three low side-profile insets."
+  },
+  {
+    "filename": "palettes/barbarian-standing-downed.png",
+    "category": "palettes",
+    "class": "barbarian",
+    "palette": "a, b, and c",
+    "angle": "runtime orthographic camera plus low side-profile inset for downed panels",
+    "panelOrSequenceDescription": "Nine-view class comparison: three standing panels, three downed runtime-camera main views, and three low side-profile insets."
+  },
+  {
+    "filename": "palettes/townfolk-abc-standing.png",
+    "category": "palettes",
+    "class": "fighter, monk, rogue, and barbarian",
+    "palette": "a, b, and c",
+    "angle": "45 degrees",
+    "panelOrSequenceDescription": "Twelve-panel standing roster in four-class by three-palette order."
+  },
+  {
+    "filename": "downed/townfolk-abc-downed.png",
+    "category": "downed",
+    "class": "fighter, monk, rogue, and barbarian",
+    "palette": "a, b, and c",
+    "angle": "runtime orthographic camera plus low side-profile inset",
+    "panelOrSequenceDescription": "Twelve-character static downed roster with a runtime orthographic camera main view and low side-profile inset per character."
+  },
+  {
+    "filename": "portraits/townfolk-abc-portraits.png",
+    "category": "portraits",
+    "class": "fighter, monk, rogue, and barbarian",
+    "palette": "a, b, and c",
+    "angle": "front portrait",
+    "panelOrSequenceDescription": "Twelve-panel portrait roster composited at native size over transparency checkerboards."
+  },
+  {
+    "filename": "texture-resolution/fighter-a-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "fighter",
+    "palette": "a",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/fighter-b-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "fighter",
+    "palette": "b",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/fighter-c-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "fighter",
+    "palette": "c",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/monk-a-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "monk",
+    "palette": "a",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/monk-b-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "monk",
+    "palette": "b",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/monk-c-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "monk",
+    "palette": "c",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/rogue-a-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "rogue",
+    "palette": "a",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/rogue-b-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "rogue",
+    "palette": "b",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/rogue-c-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "rogue",
+    "palette": "c",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/barbarian-a-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "barbarian",
+    "palette": "a",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/barbarian-b-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "barbarian",
+    "palette": "b",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/barbarian-c-4096-vs-2048.png",
+    "category": "texture-resolution",
+    "class": "barbarian",
+    "palette": "c",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Two-panel matched-camera close-up comparing pinned 4096 source texture with embedded 2048 runtime texture."
+  },
+  {
+    "filename": "texture-resolution/townfolk-4096-vs-2048-index.png",
+    "category": "texture-resolution",
+    "class": "fighter, monk, rogue, and barbarian",
+    "palette": "a, b, and c",
+    "angle": "fixed matched close-up",
+    "panelOrSequenceDescription": "Twelve-panel index of the matched source-versus-runtime close-up pairs."
+  }
+]
