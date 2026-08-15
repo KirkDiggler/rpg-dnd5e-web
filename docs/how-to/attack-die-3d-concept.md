@@ -28,9 +28,10 @@ production transport, profile, or asset-ownership surface. `CombatPresentation`,
 > not production transport.
 >
 > **SCOPE:** The lab renders one attack d20. It contains no production combat
-> FIFO, encounter, network, profile/loadout, ownership, inventory, persistence,
-> or damage-dice wiring. Tactile roll-group gesture/profile graduation remains
-> Stone 1.
+> FIFO, encounter, network, loadout, inventory, persistence, or damage-dice
+> wiring. Stone 1 graduates only the local tactile controller, compact shared
+> visual throw profile, deterministic visual solver, and paired witness proof;
+> it does not move authoritative result or transport ownership.
 
 ## Stages
 
@@ -229,11 +230,68 @@ commit that fix, and capture only into the new exact-SHA directory. A machine
 PASS does not claim Kirk review or independent visual approval; those reviews
 remain explicitly pending until performed.
 
+## Exact-commit Stone 1 tactile evidence
+
+Stone 1 keeps pointer samples, capture IDs, timestamps, DOM bounds, held pose,
+and sample history local to the eligible Player Roller controller. Before
+release, Roller alone may be grabbed and no release/profile is shared.
+Pointer-up appends one release-schema-2 event carrying one
+`VisualThrowProfile@1`; Roller and Spectator strictly parse deep-equal frozen
+snapshots while retaining distinct renderer contexts, runtime clones, and final
+observations. The controller and renderer never choose the authoritative result.
+The deterministic solver owns decorative die/shadow motion and converges to the
+provider settlement selected for the unchanged authoritative result.
+
+The profile has only these fields and bounds:
+
+- `schemaVersion: 1`;
+- `releasePosition: [x, y]`, with each member in `[0, 1]`;
+- `releaseDirection: [x, y]`, either canonical `[0, 0]` with zero speed or a
+  unit vector within `0.000001`;
+- `releaseSpeed` and `shakeEnergy` in `[0, 1]`;
+- `spinBias` in `[-1, 1]`; and
+- integer `motionSeed` in `[0, 4294967295]`.
+
+The explicit **Roll d20** keyboard/button path creates the neutral profile
+(center position, zero direction/speed/shake/spin). The Monster path has no local
+controller: the fixture host creates one presentation-identity-seeded neutral
+profile and emits one release after 250 ms. Cancel and lost-capture clear only
+local held state and emit no release. Reduced motion keeps a static lifted held
+cue and removes tumble, shake, and bounce samples while retaining explicit input
+and exact final settlement.
+
+Provider failure and WebGL context loss clear capture/held motion and converge to
+truthful SVG settlement after valid release semantics; stale 3D held/profile
+telemetry cannot satisfy the evidence bridge. Neutral, unknown-safe-preset, and
+synthetic unmapped-result behavior remain the fail-closed development paths
+described above. Neither SVG fallback nor a visual profile becomes result
+truth, provider authority, or transport authority.
+
+Commit the tracked candidate first, leave the tracked tree clean, synchronize
+only the corrected private runtime provider, and capture the exact committed
+HEAD with:
+
+```bash
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome \
+  npm run attack-die:stone1-evidence
+```
+
+The command freezes and hashes the tracked build, serves it on a dedicated
+loopback port, drives twelve real Chromium contexts, validates screenshot PNGs
+sequentially below a 512 MiB RSS ceiling, and writes only under
+`/home/kirk/game-dev/.verification/interactive-dice-tray/stone-1/<HEAD>/`.
+An accepted directory has `PASS`, `package-manifest.json`, browser/network/
+console facts, 12 scenario screenshots, six held/release/settled witness
+close-ups, and readable private contact sheets. A failed capture has
+`FAILED.txt`; a superseded recapture has `INVALIDATED-PASS.txt` and cannot
+satisfy the protocol. Any tracked source change requires a new commit and a new
+exact-SHA package. Machine `PASS` does not claim human visual approval.
+
 ## Deferred promotion evidence
 
-Stone 0 proves authoritative visual settlement in the Concepts Lab. It does not
-claim tactile motion, production transport/profile ownership, formal performance
-graduation, physical touch hardware, real Discord/mobile/low-GPU device support,
-or merged-route completion. The paired performance driver's final-context
-binding caveat remains separate work. Tactile roll-group gesture and
-`VisualThrowProfile@1` begin only in a new Stone 1 plan.
+Stone 1 does **not** graduate production transport or reconnect behavior,
+equipped-preset projection, physical touch hardware, a real Discord Activity,
+low-GPU/mobile coverage, multi-die groups, rigid-body settlement, or formal
+paired performance while the final-context flaw remains. Those areas require
+separate ownership and evidence. The Concepts Lab proof also does not claim a
+merged production route.

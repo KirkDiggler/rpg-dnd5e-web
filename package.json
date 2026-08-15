@@ -27,6 +27,7 @@
     "attack-die:preview": "node scripts/attack-die/serve-frozen.mjs",
     "attack-die:evidence": "node scripts/attack-die/capture-evidence.mjs",
     "attack-die:stone0-evidence": "node scripts/attack-die/capture-stone0-tray-evidence.mjs",
+    "attack-die:stone1-evidence": "node scripts/attack-die/capture-stone1-tray-evidence.mjs",
     "perf:attack-die": "node scripts/perf/attack_die_paired.mjs",
     "perf:sweep-solo": "node scripts/perf/sweep_solo.mjs",
     "perf:sweep-party": "node scripts/perf/sweep_party.mjs"
