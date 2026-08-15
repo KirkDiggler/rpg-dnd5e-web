@@ -40,13 +40,17 @@ import {
 import { ATTACK_DIE_VISUAL_CONFIG } from './attackDieVisualConfig';
 import { resolveAttackDieRendererVisuals } from './attackDieVisualRuntime';
 import type { AttackDieDecorativeRelease } from './dicePresentationRelease';
-import type { DiceRuntimePreset } from './diceRuntimeManifest';
+import type {
+  DiceRuntimePreset,
+  DiceSettlementEntryV2,
+} from './diceRuntimeManifest';
 import {
   getDiceRuntimePresetSnapshot,
   preloadDiceRuntimePreset,
   type DiceRuntimePresetSnapshot,
   type RuntimeMeshBinding,
 } from './diceRuntimeProvider';
+import { observeUpwardResult } from './diceSettlementObservation';
 import {
   ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE,
   prepareMaterialFreeCarvedScene,
@@ -60,7 +64,8 @@ export type AttackDieFailureCode =
   | 'shader-failure'
   | 'context-loss'
   | 'invalid-result'
-  | 'unmapped-result';
+  | 'unmapped-result'
+  | 'settlement-observation';
 export interface AttackDieTelemetry {
   presentationToken: number;
   requestedResult: number;
@@ -68,6 +73,9 @@ export interface AttackDieTelemetry {
   state: 'locked' | 'tumbling' | 'observed' | 'held' | 'failed' | 'disposed';
   mappedTarget?: QuaternionTuple;
   observedQuaternion?: QuaternionTuple;
+  observedUpwardResult?: number;
+  observedUpDot?: number;
+  observedUpMargin?: number;
   angularErrorDegrees?: number;
   exactTargetHeld: boolean;
   failureReason?: string;
@@ -300,6 +308,7 @@ function RuntimeDie({
   reducedMotion: boolean;
   onFrame: (
     frame: AttackDieMotionFrame,
+    worldQuaternion: QuaternionTuple,
     runtimeIdentities?: {
       runtimeSourceId: number;
       runtimeCloneId: number;
@@ -390,9 +399,20 @@ function RuntimeDie({
       const observeNow =
         (frame.observeNow || (phase === 'settled' && frame.exactTargetHeld)) &&
         !observationSent.current;
-      if (observeNow) observationSent.current = true;
+      if (!observeNow) return;
+      observationSent.current = true;
+      const finalWorldQuaternion = selectedGroup.getWorldQuaternion(
+        new Quaternion()
+      );
+      const worldQuaternion: QuaternionTuple = [
+        finalWorldQuaternion.x,
+        finalWorldQuaternion.y,
+        finalWorldQuaternion.z,
+        finalWorldQuaternion.w,
+      ];
       onFrame(
         observeNow === frame.observeNow ? frame : { ...frame, observeNow },
+        worldQuaternion,
         bundle?.runtimeSourceId !== undefined &&
           bundle.runtimeCloneId !== undefined
           ? {
@@ -522,10 +542,13 @@ function AttackDieToken({
     runtimeSnapshot?.scene,
     runtimeSnapshot?.status,
   ]);
+  const settlementEntries:
+    | Readonly<Record<string, DiceSettlementEntryV2>>
+    | undefined = runtimeProvider
+    ? runtimeSnapshot?.preset?.faceSettlementMap.entries
+    : undefined;
   const mappedTarget: QuaternionTuple | undefined = runtimeProvider
-    ? runtimeSnapshot?.preset?.faceSettlementMap.entries[
-        String(effectiveResult)
-      ]?.quaternion
+    ? settlementEntries?.[String(effectiveResult)]?.quaternion
     : sidecar?.faces.find((face) => face.result === effectiveResult)
         ?.quaternion;
   const target = runtimeProvider
@@ -835,20 +858,57 @@ function AttackDieToken({
                 magicalAnimation={magicalAnimation}
                 phase={phase}
                 release={release}
-                onFrame={(frame, runtimeIdentities) => {
+                onFrame={(frame, worldQuaternion, runtimeIdentities) => {
                   if (!active.current || !frame.observeNow) return;
+                  if (!settlementEntries) {
+                    fail(
+                      'settlement observation witnesses unavailable',
+                      'settlement-observation'
+                    );
+                    return;
+                  }
+                  const angularErrorDegrees = angularDistanceDegrees(
+                    worldQuaternion,
+                    target!
+                  );
+                  let observation;
+                  try {
+                    observation = observeUpwardResult(
+                      settlementEntries,
+                      worldQuaternion
+                    );
+                  } catch {
+                    fail(
+                      'settlement observation was invalid or ambiguous',
+                      'settlement-observation'
+                    );
+                    return;
+                  }
+                  if (
+                    !frame.exactTargetHeld ||
+                    angularErrorDegrees > 0.25 ||
+                    observation.result !== result ||
+                    observation.upDot <= 0.999999 ||
+                    observation.margin <= 0.2
+                  ) {
+                    fail(
+                      'settlement observation did not match the authoritative result',
+                      'settlement-observation'
+                    );
+                    return;
+                  }
                   onTelemetry?.({
                     presentationToken,
                     requestedResult: result,
                     renderer: '3d',
                     state: 'observed',
                     mappedTarget: target,
-                    observedQuaternion: frame.quaternion,
-                    angularErrorDegrees: angularDistanceDegrees(
-                      frame.quaternion,
-                      target!
-                    ),
-                    exactTargetHeld: frame.exactTargetHeld,
+                    observedQuaternion: worldQuaternion,
+                    observedUpwardResult: observation.result,
+                    observedUpDot: observation.upDot,
+                    observedUpMargin: observation.margin,
+                    angularErrorDegrees,
+                    exactTargetHeld: true,
                     ...runtimeIdentities,
                   });
                 }}

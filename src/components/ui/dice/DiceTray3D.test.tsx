@@ -693,6 +693,10 @@ describe('DiceTray3D', () => {
       requestedResult: 10,
       renderer: '3d' as const,
       state: 'observed' as const,
+      observedUpwardResult: 10,
+      observedUpDot: 1,
+      observedUpMargin: 0.25,
+      angularErrorDegrees: 0,
       exactTargetHeld: true,
     };
 

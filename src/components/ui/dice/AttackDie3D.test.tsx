@@ -45,6 +45,14 @@ const mocks = vi.hoisted(() => ({
   motionFailure: false,
   poseCopy: vi.fn(),
   positionSet: vi.fn(),
+  groupQuaternions: new WeakMap<
+    object,
+    { x: number; y: number; z: number; w: number }
+  >(),
+  worldQuaternionReads: [] as object[],
+  worldQuaternionOverride: undefined as
+    | readonly [number, number, number, number]
+    | undefined,
   canvasProps: null as Record<string, unknown> | null,
   createdScene: { environment: 'unexpected' } as { environment: unknown },
   canvasCreates: 0,
@@ -240,13 +248,33 @@ function runtimePreset(): DiceRuntimePreset {
   preset.model.geometry.totalTriangles = 4;
   preset.model.geometry.bodyTriangleIndices = [2, 0];
   preset.model.geometry.numeralTriangleIndices = [3, 1];
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
   for (const result of preset.faceSettlementMap.supportedResults) {
-    const angle = (result * Math.PI) / 42;
-    preset.faceSettlementMap.entries[String(result)].quaternion = [
-      Math.sin(angle / 2),
+    const index = result - 1;
+    const y = 1 - (2 * (index + 0.5)) / 20;
+    const radius = Math.sqrt(1 - y * y);
+    const angle = index * goldenAngle;
+    const direction = [
+      radius * Math.cos(angle),
+      y,
+      radius * Math.sin(angle),
+    ] as const;
+    const unnormalized = [
+      -direction[2],
       0,
-      0,
-      Math.cos(angle / 2),
+      direction[0],
+      1 + direction[1],
+    ] as const;
+    const magnitude = Math.hypot(...unnormalized);
+    preset.faceSettlementMap.entries[String(result)].quaternion =
+      unnormalized.map((value) => value / magnitude) as [
+        number,
+        number,
+        number,
+        number,
+      ];
+    preset.faceSettlementMap.entries[String(result)].witness.readDirection = [
+      ...direction,
     ];
   }
   return preset as unknown as DiceRuntimePreset;
@@ -307,6 +335,19 @@ const fallbackCovered = () =>
     ?.classList.contains('attack-die-3d__fallback--covered');
 const frame = (index = -1, time = 0) =>
   act(() => mocks.frames.at(index)?.({ clock: { elapsedTime: time } }));
+function multiplyQuaternions(
+  left: readonly [number, number, number, number],
+  right: readonly [number, number, number, number]
+): readonly [number, number, number, number] {
+  const [ax, ay, az, aw] = left;
+  const [bx, by, bz, bw] = right;
+  return [
+    aw * bx + ax * bw + ay * bz - az * by,
+    aw * by - ax * bz + ay * bw + az * bx,
+    aw * bz + ax * by - ay * bx + az * bw,
+    aw * bw - ax * bx - ay * by - az * bz,
+  ];
+}
 beforeEach(() => {
   mocks.frames = [];
   mocks.canvasCreates = 0;
@@ -331,6 +372,9 @@ beforeEach(() => {
   mocks.motionFailure = false;
   mocks.poseCopy.mockReset();
   mocks.positionSet.mockReset();
+  mocks.groupQuaternions = new WeakMap();
+  mocks.worldQuaternionReads = [];
+  mocks.worldQuaternionOverride = undefined;
   Object.defineProperty(HTMLElement.prototype, 'position', {
     configurable: true,
     get() {
@@ -340,19 +384,29 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, 'quaternion', {
     configurable: true,
     get() {
-      return this.tagName === 'GROUP' && !mocks.groupMissing
-        ? { copy: mocks.poseCopy }
-        : undefined;
+      if (this.tagName !== 'GROUP' || mocks.groupMissing) return undefined;
+      return {
+        copy: (value: { x: number; y: number; z: number; w: number }) => {
+          mocks.groupQuaternions.set(this, {
+            x: value.x,
+            y: value.y,
+            z: value.z,
+            w: value.w,
+          });
+          mocks.poseCopy(value);
+        },
+      };
     },
-    set(value) {
-      Object.defineProperty(this, 'quaternion', {
-        configurable: true,
-        writable: true,
-        value:
-          this.tagName === 'GROUP' && !mocks.groupMissing
-            ? { copy: mocks.poseCopy }
-            : value,
-      });
+  });
+  Object.defineProperty(HTMLElement.prototype, 'getWorldQuaternion', {
+    configurable: true,
+    value(this: HTMLElement, target: Quaternion) {
+      mocks.worldQuaternionReads.push(this);
+      const override = mocks.worldQuaternionOverride;
+      const value = override
+        ? { x: override[0], y: override[1], z: override[2], w: override[3] }
+        : (mocks.groupQuaternions.get(this) ?? { x: 0, y: 0, z: 0, w: 1 });
+      return target.set(value.x, value.y, value.z, value.w);
     },
   });
   Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
@@ -373,6 +427,8 @@ beforeEach(() => {
 afterEach(() => {
   delete (HTMLElement.prototype as { position?: unknown }).position;
   delete (HTMLElement.prototype as { quaternion?: unknown }).quaternion;
+  delete (HTMLElement.prototype as { getWorldQuaternion?: unknown })
+    .getWorldQuaternion;
   delete (HTMLCanvasElement.prototype as { getContext?: unknown }).getContext;
 });
 describe('AttackDie3D', () => {
@@ -719,7 +775,7 @@ describe('AttackDie3D', () => {
     expect(mocks.positionSet).toHaveBeenLastCalledWith(-0.23, 0, 0);
   });
 
-  it('keeps reduced motion neutral until release and observes matching target once', () => {
+  it('keeps reduced motion neutral until release and fails closed without v2 witnesses', () => {
     mocks.status = 'ready';
     const telemetry = vi.fn();
     const view = render(
@@ -755,16 +811,19 @@ describe('AttackDie3D', () => {
     frame(-1, 12.016);
     frame(-1, 12.032);
 
-    const observed = telemetry.mock.calls.filter(
-      ([event]) => event.state === 'observed'
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presentationToken: 304,
+        requestedResult: 1,
+        renderer: 'svg',
+        state: 'failed',
+        failureCode: 'settlement-observation',
+        exactTargetHeld: false,
+      })
     );
-    expect(observed).toHaveLength(1);
-    expect(observed[0][0]).toMatchObject({
-      presentationToken: 304,
-      requestedResult: 1,
-      observedQuaternion: [1, 0, 0, 0],
-      exactTargetHeld: true,
-    });
+    expect(telemetry).not.toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'observed' })
+    );
   });
 
   it('preserves the renderer lock across phase-only rerenders', () => {
@@ -981,13 +1040,27 @@ describe('Original carved runtime renderer', () => {
       .map(([event]) => event)
       .find((event) => event.state === 'observed');
     expect(rollerObserved).toMatchObject({
+      observedUpwardResult: 10,
+      observedUpDot: expect.any(Number),
+      observedUpMargin: expect.any(Number),
       runtimeSourceId: expect.any(Number),
       runtimeCloneId: expect.any(Number),
     });
     expect(spectatorObserved).toMatchObject({
+      observedUpwardResult: 10,
+      observedUpDot: expect.any(Number),
+      observedUpMargin: expect.any(Number),
       runtimeSourceId: rollerObserved.runtimeSourceId,
       runtimeCloneId: expect.any(Number),
     });
+    expect(rollerObserved.observedUpDot).toBeGreaterThan(0.999999);
+    expect(spectatorObserved.observedUpDot).toBeGreaterThan(0.999999);
+    expect(rollerObserved.observedUpMargin).toBeGreaterThan(0.2);
+    expect(spectatorObserved.observedUpMargin).toBeGreaterThan(0.2);
+    expect(mocks.worldQuaternionReads).toHaveLength(2);
+    expect(mocks.worldQuaternionReads[0]).not.toBe(
+      mocks.worldQuaternionReads[1]
+    );
     expect(spectatorObserved.runtimeCloneId).not.toBe(
       rollerObserved.runtimeCloneId
     );
@@ -1119,11 +1192,153 @@ describe('Original carved runtime renderer', () => {
         requestedResult: 7,
         mappedTarget: preset.faceSettlementMap.entries['7'].quaternion,
         observedQuaternion: preset.faceSettlementMap.entries['7'].quaternion,
-        angularErrorDegrees: 0,
+        observedUpwardResult: 7,
+        observedUpDot: expect.any(Number),
+        observedUpMargin: expect.any(Number),
+        angularErrorDegrees: expect.any(Number),
         exactTargetHeld: true,
       })
     );
+    const observation = telemetry.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.state === 'observed');
+    expect(observation.observedUpDot).toBeGreaterThan(0.999999);
+    expect(observation.observedUpMargin).toBeGreaterThan(0.2);
+    expect(mocks.worldQuaternionReads).toHaveLength(1);
   });
+
+  it('fails closed when a synthetically permuted target physically presents another result', () => {
+    const { preset } = arrangeRuntimeReady();
+    const mutableEntries = preset.faceSettlementMap
+      .entries as unknown as Record<
+      string,
+      { quaternion: [number, number, number, number] }
+    >;
+    mutableEntries['3'].quaternion = [
+      ...preset.faceSettlementMap.entries['5'].quaternion,
+    ];
+    const telemetry = vi.fn();
+
+    render(
+      <AttackDie3D
+        {...props(571, 3)}
+        provider={originalProvider}
+        phase="settled"
+        onTelemetry={telemetry}
+      />
+    );
+    frame(-1, 0);
+
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presentationToken: 571,
+        requestedResult: 3,
+        renderer: 'svg',
+        state: 'failed',
+        failureCode: 'settlement-observation',
+        exactTargetHeld: false,
+      })
+    );
+    expect(telemetry).not.toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'observed' })
+    );
+    expect(screen.queryByTestId('canvas')).toBeNull();
+    expect(fallbackCovered()).toBe(false);
+  });
+
+  it('observes a final rendered world pose inside every success threshold', () => {
+    const { preset } = arrangeRuntimeReady();
+    const target = preset.faceSettlementMap.entries['8'].quaternion;
+    const allowedWorldOffset = [
+      0,
+      Math.sin((0.2 * Math.PI) / 360),
+      0,
+      Math.cos((0.2 * Math.PI) / 360),
+    ] as const;
+    mocks.worldQuaternionOverride = multiplyQuaternions(
+      allowedWorldOffset,
+      target
+    );
+    const telemetry = vi.fn();
+
+    render(
+      <AttackDie3D
+        {...props(572, 8)}
+        provider={originalProvider}
+        phase="settled"
+        onTelemetry={telemetry}
+      />
+    );
+    frame(-1, 0);
+
+    const observed = telemetry.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.state === 'observed');
+    expect(observed).toMatchObject({
+      requestedResult: 8,
+      observedUpwardResult: 8,
+      observedUpDot: expect.any(Number),
+      observedUpMargin: expect.any(Number),
+      angularErrorDegrees: expect.any(Number),
+      exactTargetHeld: true,
+    });
+    expect(observed.angularErrorDegrees).toBeGreaterThan(0.19);
+    expect(observed.angularErrorDegrees).toBeLessThanOrEqual(0.25);
+    expect(observed.observedUpDot).toBeGreaterThan(0.999999);
+    expect(observed.observedUpMargin).toBeGreaterThan(0.2);
+  });
+
+  it.each([
+    [
+      'angular error',
+      [
+        0,
+        Math.sin((0.3 * Math.PI) / 360),
+        0,
+        Math.cos((0.3 * Math.PI) / 360),
+      ] as const,
+    ],
+    [
+      'upward alignment',
+      [
+        Math.sin((0.1 * Math.PI) / 360),
+        0,
+        0,
+        Math.cos((0.1 * Math.PI) / 360),
+      ] as const,
+    ],
+  ])(
+    'requires the final rendered world pose to satisfy %s threshold',
+    (_name, worldOffset) => {
+      const { preset } = arrangeRuntimeReady();
+      const target = preset.faceSettlementMap.entries['8'].quaternion;
+      mocks.worldQuaternionOverride = multiplyQuaternions(worldOffset, target);
+      const telemetry = vi.fn();
+
+      render(
+        <AttackDie3D
+          {...props(572, 8)}
+          provider={originalProvider}
+          phase="settled"
+          onTelemetry={telemetry}
+        />
+      );
+      frame(-1, 0);
+
+      expect(telemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          renderer: 'svg',
+          state: 'failed',
+          failureCode: 'settlement-observation',
+          exactTargetHeld: false,
+        })
+      );
+      expect(telemetry).not.toHaveBeenCalledWith(
+        expect.objectContaining({ state: 'observed' })
+      );
+      expect(mocks.worldQuaternionReads).toHaveLength(1);
+    }
+  );
 
   it('fails a still-pending provider to concealed SVG only after release', () => {
     mocks.runtimeSnapshot = { status: 'loading' };

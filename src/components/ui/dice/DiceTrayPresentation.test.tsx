@@ -147,6 +147,10 @@ function matchingTelemetry(
     requestedResult: props.result,
     renderer: '3d',
     state: 'observed',
+    observedUpwardResult: props.result,
+    observedUpDot: 1,
+    observedUpMargin: 0.25,
+    angularErrorDegrees: 0,
     exactTargetHeld: true,
     ...overrides,
   };
@@ -529,6 +533,18 @@ describe('DiceTrayPresentation', () => {
       rolling.onTelemetry?.(matchingTelemetry(rolling, { state: 'held' }))
     );
     expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+    for (const nonObservation of [
+      { observedUpwardResult: 9 },
+      { observedUpDot: 0.999999 },
+      { observedUpMargin: 0.2 },
+      { angularErrorDegrees: 0.250001 },
+      { exactTargetHeld: false },
+    ]) {
+      act(() =>
+        rolling.onTelemetry?.(matchingTelemetry(rolling, nonObservation))
+      );
+      expect(attackDieProps.at(-1)?.phase).toBe('rolling');
+    }
 
     act(() => rolling.onTelemetry?.(matchingTelemetry(rolling)));
 

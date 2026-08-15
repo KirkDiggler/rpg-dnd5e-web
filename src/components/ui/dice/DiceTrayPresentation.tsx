@@ -402,7 +402,18 @@ function DiceTrayPresentationInstance({
       if (
         event.renderer === '3d' &&
         event.state === 'observed' &&
-        event.exactTargetHeld
+        event.exactTargetHeld &&
+        event.observedUpwardResult === result &&
+        event.observedUpDot !== undefined &&
+        Number.isFinite(event.observedUpDot) &&
+        event.observedUpDot > 0.999999 &&
+        event.observedUpMargin !== undefined &&
+        Number.isFinite(event.observedUpMargin) &&
+        event.observedUpMargin > 0.2 &&
+        event.angularErrorDegrees !== undefined &&
+        Number.isFinite(event.angularErrorDegrees) &&
+        event.angularErrorDegrees >= 0 &&
+        event.angularErrorDegrees <= 0.25
       )
         dispatch({ type: 'renderer-observed' });
     },
