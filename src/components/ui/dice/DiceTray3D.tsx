@@ -7,7 +7,11 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { AttackDie3D, type AttackDie3DProps } from './AttackDie3D';
+import {
+  AttackDie3D,
+  type AttackDie3DProps,
+  type AttackDieProvider,
+} from './AttackDie3D';
 import type { QuaternionTuple } from './attackDieContract';
 import {
   isDicePresentationIdentifier,
@@ -17,6 +21,15 @@ import {
 } from './dicePresentationRelease';
 import { DiceTray } from './DiceTray';
 import { DiceTray3DShell } from './DiceTray3DShell';
+
+const ORIGINAL_CARVED_D20_PRESET_ID = 'dice.original.carved.d20';
+const ORIGINAL_CARVED_D20_PROVIDER: AttackDieProvider = Object.freeze({
+  kind: 'dice-runtime-preset',
+  presetId: ORIGINAL_CARVED_D20_PRESET_ID,
+});
+const LIGHTNING_DEVELOPMENT_PROVIDER: AttackDieProvider = Object.freeze({
+  kind: 'lightning-development',
+});
 
 export interface DiceTray3DItem {
   kind: 'd20';
@@ -311,6 +324,12 @@ export function DiceTray3D({
       reducedMotion={reducedMotion}
     />
   );
+  const originalRuntime = item.presetId === ORIGINAL_CARVED_D20_PRESET_ID;
+  const lightningDevelopment =
+    item.presetId === 'lightning' &&
+    sceneOverride !== undefined &&
+    sidecarOverride !== undefined &&
+    calibrationPose !== undefined;
 
   return (
     <DiceTray3DShell
@@ -324,19 +343,25 @@ export function DiceTray3D({
         data-testid="dice-tray-3d-renderer"
         data-grabbed={reviewGrabbed ? 'true' : 'false'}
       >
-        {item.presetId === 'lightning' ? (
+        {originalRuntime || lightningDevelopment ? (
           <AttackDie3D
             result={item.authoritativeResult}
             presentationToken={rendererGeneration}
             phase={rendererPhase}
-            materialMode="magical"
+            materialMode={originalRuntime ? 'raw' : 'magical'}
             reducedMotion={reducedMotion}
+            magicalAnimation={!originalRuntime}
             decorativeRelease={effectiveRelease}
+            provider={
+              originalRuntime
+                ? ORIGINAL_CARVED_D20_PROVIDER
+                : LIGHTNING_DEVELOPMENT_PROVIDER
+            }
             onTelemetry={onTelemetry}
             fallback={fallback}
-            sceneOverride={sceneOverride}
-            sidecarOverride={sidecarOverride}
-            calibrationPose={calibrationPose}
+            sceneOverride={lightningDevelopment ? sceneOverride : undefined}
+            sidecarOverride={lightningDevelopment ? sidecarOverride : undefined}
+            calibrationPose={lightningDevelopment ? calibrationPose : undefined}
           />
         ) : (
           <DiceTray

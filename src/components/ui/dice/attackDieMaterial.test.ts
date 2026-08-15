@@ -1,9 +1,54 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createMaterialFreeDiceMaterials,
   patchAttackDieMaterials,
   resolveAttackDieMaterials,
 } from './attackDieMaterial';
 describe('attack die material', () => {
+  it('creates independent runtime-owned body and numeral material treatments', () => {
+    const materials = createMaterialFreeDiceMaterials({
+      bodyColor: '#15233b',
+      numeralColor: '#f5eddc',
+      roughness: 0.72,
+      metalness: 0.08,
+    });
+
+    expect(materials.body).not.toBe(materials.numeral);
+    expect(materials.body.name).toBe('attack-die-runtime-body');
+    expect(materials.numeral.name).toBe('attack-die-runtime-numeral');
+    expect(materials.body.color.getHexString()).toBe('15233b');
+    expect(materials.numeral.color.getHexString()).toBe('f5eddc');
+    expect(materials.body.roughness).toBe(0.72);
+    expect(materials.numeral.roughness).toBe(0.72);
+    expect(materials.body.metalness).toBe(0.08);
+    expect(materials.numeral.metalness).toBe(0.08);
+  });
+
+  it.each([
+    [{ bodyColor: '', numeralColor: '#fff', roughness: 0.5, metalness: 0.5 }],
+    [
+      {
+        bodyColor: '#fff',
+        numeralColor: '#000',
+        roughness: Number.NaN,
+        metalness: 0.5,
+      },
+    ],
+    [
+      {
+        bodyColor: '#fff',
+        numeralColor: '#000',
+        roughness: -1,
+        metalness: 0.5,
+      },
+    ],
+    [{ bodyColor: '#fff', numeralColor: '#000', roughness: 0.5, metalness: 2 }],
+  ])('rejects an unsafe runtime material treatment', (treatment) => {
+    expect(() => createMaterialFreeDiceMaterials(treatment)).toThrow(
+      /treatment/i
+    );
+  });
+
   it('requires unique normalized body and numeral selectors', () => {
     expect(() =>
       resolveAttackDieMaterials(

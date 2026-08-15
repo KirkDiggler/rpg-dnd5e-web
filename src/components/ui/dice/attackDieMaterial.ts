@@ -1,4 +1,4 @@
-import type { Material } from 'three';
+import { MeshStandardMaterial, type Material } from 'three';
 import type { AttackDieMaterialMode } from './attackDieContract';
 import { normalizeSelectorName } from './attackDieContract';
 type CompiledShader = Parameters<NonNullable<Material['onBeforeCompile']>>[0];
@@ -6,6 +6,54 @@ export interface AttackDieMaterialSelectors {
   bodyMaterial: string;
   numeralMaterial: string;
 }
+
+export interface DiceMaterialTreatment {
+  readonly bodyColor: string;
+  readonly numeralColor: string;
+  readonly roughness: number;
+  readonly metalness: number;
+}
+
+function validMaterialTreatment(treatment: DiceMaterialTreatment) {
+  return (
+    typeof treatment.bodyColor === 'string' &&
+    treatment.bodyColor.trim().length > 0 &&
+    typeof treatment.numeralColor === 'string' &&
+    treatment.numeralColor.trim().length > 0 &&
+    Number.isFinite(treatment.roughness) &&
+    treatment.roughness >= 0 &&
+    treatment.roughness <= 1 &&
+    Number.isFinite(treatment.metalness) &&
+    treatment.metalness >= 0 &&
+    treatment.metalness <= 1
+  );
+}
+
+export function createMaterialFreeDiceMaterials(
+  treatment: DiceMaterialTreatment,
+  sourceMaterial?: Material
+) {
+  if (!validMaterialTreatment(treatment))
+    throw Error('invalid material-free dice treatment');
+
+  const treatedClone = (color: string, name: string) => {
+    const material =
+      sourceMaterial instanceof MeshStandardMaterial
+        ? sourceMaterial.clone()
+        : new MeshStandardMaterial();
+    material.color.set(color);
+    material.roughness = treatment.roughness;
+    material.metalness = treatment.metalness;
+    material.name = name;
+    material.needsUpdate = true;
+    return material;
+  };
+  return {
+    body: treatedClone(treatment.bodyColor, 'attack-die-runtime-body'),
+    numeral: treatedClone(treatment.numeralColor, 'attack-die-runtime-numeral'),
+  };
+}
+
 export function resolveAttackDieMaterials(
   materials: Material[],
   bodyName: string,

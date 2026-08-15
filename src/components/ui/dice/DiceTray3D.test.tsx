@@ -23,6 +23,11 @@ const die: DiceTray3DItem = {
   presetId: 'lightning',
   authoritativeResult: 10,
 };
+const originalDie: DiceTray3DItem = {
+  kind: 'd20',
+  presetId: 'dice.original.carved.d20',
+  authoritativeResult: 10,
+};
 const release: DicePresentationRelease = Object.freeze({
   schemaVersion: 1,
   presentationId: 'attack:7',
@@ -119,6 +124,64 @@ describe('DiceTray3D', () => {
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
   });
 
+  it('allowlists Original carved d20 through one shared provider identity', () => {
+    const firstTelemetry = vi.fn();
+    const secondTelemetry = vi.fn();
+    const first = renderTray([originalDie], {
+      rendererGeneration: -101,
+      onTelemetry: firstTelemetry,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+    });
+    const firstProps = attackDieProps.at(-1)! as AttackDie3DProps & {
+      provider?: unknown;
+    };
+    expect(firstProps).toMatchObject({
+      result: 10,
+      presentationToken: -101,
+      materialMode: 'raw',
+      provider: {
+        kind: 'dice-runtime-preset',
+        presetId: 'dice.original.carved.d20',
+      },
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+    });
+
+    first.unmount();
+    renderTray([originalDie], {
+      rendererGeneration: -102,
+      witnessRole: 'spectator',
+      onTelemetry: secondTelemetry,
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+    });
+    const secondProps = attackDieProps.at(-1)! as AttackDie3DProps & {
+      provider?: unknown;
+    };
+    expect(secondProps.presentationToken).not.toBe(
+      firstProps.presentationToken
+    );
+    expect(secondProps.provider).toBe(firstProps.provider);
+    expect(firstProps.onTelemetry).toBe(firstTelemetry);
+    expect(secondProps.onTelemetry).toBe(secondTelemetry);
+    expect(secondProps.onTelemetry).not.toBe(firstProps.onTelemetry);
+  });
+
+  it('keeps historical Lightning only for explicit development injection', () => {
+    renderTray([die], {
+      sceneOverride: undefined,
+      sidecarOverride: undefined,
+      calibrationPose: undefined,
+    });
+
+    expect(attackDieProps).toHaveLength(0);
+    expect(screen.getByTestId('dice-face').textContent).toBe('10');
+  });
+
   it('arms a player roller with separate Roll and Grab controls without revealing the result', () => {
     const onReleaseRequest = vi.fn();
     renderTray([die], { phase: 'armed', onReleaseRequest });
@@ -183,6 +246,9 @@ describe('DiceTray3D', () => {
         dice={[die]}
         release={release}
         onReleaseRequest={onReleaseRequest}
+        sceneOverride={sceneOverride}
+        sidecarOverride={sidecarOverride}
+        calibrationPose={calibrationPose}
       />
     );
     expect(attackDieProps.at(-1)).toMatchObject({

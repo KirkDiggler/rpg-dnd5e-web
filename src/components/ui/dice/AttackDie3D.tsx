@@ -20,7 +20,10 @@ import type {
   AttackDieRuntimeSidecar,
   QuaternionTuple,
 } from './attackDieContract';
-import { patchAttackDieMaterials } from './attackDieMaterial';
+import {
+  patchAttackDieMaterials,
+  type DiceMaterialTreatment,
+} from './attackDieMaterial';
 import {
   angularDistanceDegrees,
   attackDiePoseForPhase,
@@ -37,6 +40,18 @@ import {
 import { ATTACK_DIE_VISUAL_CONFIG } from './attackDieVisualConfig';
 import { resolveAttackDieRendererVisuals } from './attackDieVisualRuntime';
 import type { AttackDieDecorativeRelease } from './dicePresentationRelease';
+import type { DiceRuntimePreset } from './diceRuntimeManifest';
+import {
+  getDiceRuntimePresetSnapshot,
+  preloadDiceRuntimePreset,
+  type DiceRuntimePresetSnapshot,
+  type RuntimeMeshBinding,
+} from './diceRuntimeProvider';
+import {
+  ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE,
+  prepareMaterialFreeCarvedScene,
+  runtimeDiceNormalization,
+} from './materialFreeCarvedMesh';
 
 export type AttackDieFailureCode =
   | 'provider-load'
@@ -73,6 +88,13 @@ export interface AttackDieRendererInfo {
     | 'unexpected-loss';
   contextId: number;
 }
+export type AttackDieProvider =
+  | {
+      readonly kind: 'dice-runtime-preset';
+      readonly presetId: string;
+    }
+  | { readonly kind: 'lightning-development' };
+
 export interface AttackDie3DProps {
   result: number;
   presentationToken: number;
@@ -83,6 +105,7 @@ export interface AttackDie3DProps {
   decorativeSeed?: number;
   decorativeRelease?: AttackDieDecorativeRelease;
   fallback: React.ReactNode;
+  provider?: AttackDieProvider;
   onTelemetry?: (event: AttackDieTelemetry) => void;
   /** Development concept camera; omitted in production-intent usage. */
   cameraView?: 'top' | 'three-quarter';
@@ -101,6 +124,29 @@ export interface AttackDie3DProps {
 
 import { installAttackDieRenderGate } from './attackDieRenderGate';
 
+const ORIGINAL_RUNTIME_TREATMENT: DiceMaterialTreatment = Object.freeze({
+  bodyColor: '#15233b',
+  numeralColor: '#f5eddc',
+  roughness: 0.72,
+  metalness: 0.08,
+});
+
+const runtimeCameraVisual = Object.freeze({
+  ...ATTACK_DIE_VISUAL_CONFIG,
+  topCamera: Object.freeze({
+    ...ATTACK_DIE_VISUAL_CONFIG.topCamera,
+    position: ATTACK_DIE_VISUAL_CONFIG.topCamera.position.map(
+      (value) => value * ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE
+    ) as [number, number, number],
+  }),
+  threeQuarterCamera: Object.freeze({
+    ...ATTACK_DIE_VISUAL_CONFIG.threeQuarterCamera,
+    position: ATTACK_DIE_VISUAL_CONFIG.threeQuarterCamera.position.map(
+      (value) => value * ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE
+    ) as [number, number, number],
+  }),
+});
+
 class RenderBoundary extends Component<
   { onError: (reason: string) => void; children: React.ReactNode },
   { failed: boolean }
@@ -117,12 +163,35 @@ class RenderBoundary extends Component<
   }
 }
 
+interface RuntimePresetSceneSource {
+  readonly preset: DiceRuntimePreset;
+  readonly scene: NonNullable<DiceRuntimePresetSnapshot['scene']>;
+  readonly binding: RuntimeMeshBinding;
+}
+
 function cloneTokenScene(
-  sidecar: AttackDieRuntimeSidecar,
+  sidecar: AttackDieRuntimeSidecar | undefined,
   mode: AttackDieMaterialMode,
   reducedMotion: boolean,
-  sourceOverride?: ReturnType<typeof getAttackDieRuntimeScene>
+  sourceOverride?: ReturnType<typeof getAttackDieRuntimeScene>,
+  runtimeSource?: RuntimePresetSceneSource
 ) {
+  if (runtimeSource) {
+    const prepared = prepareMaterialFreeCarvedScene(
+      runtimeSource.scene,
+      runtimeSource.preset,
+      runtimeSource.binding,
+      ORIGINAL_RUNTIME_TREATMENT
+    );
+    return {
+      scene: prepared.scene,
+      normalization: runtimeDiceNormalization(runtimeSource.preset),
+      updateShaderTime: () => undefined,
+      dispose: prepared.dispose,
+    };
+  }
+
+  if (!sidecar) throw Error('Lightning runtime sidecar unavailable');
   const source = sourceOverride ?? getAttackDieRuntimeScene();
   if (!source) throw Error('runtime scene unavailable');
   if (source.name === sidecar.selectors.node && !source.parent) {
@@ -165,6 +234,7 @@ function cloneTokenScene(
   let disposed = false;
   return {
     scene,
+    normalization: undefined,
     updateShaderTime(time: number) {
       patched.setTime(time);
     },
@@ -178,6 +248,7 @@ function cloneTokenScene(
 
 function RuntimeDie({
   sidecar,
+  runtimeSource,
   target,
   mode,
   reducedMotion,
@@ -189,7 +260,8 @@ function RuntimeDie({
   phase,
   release,
 }: {
-  sidecar: AttackDieRuntimeSidecar;
+  sidecar?: AttackDieRuntimeSidecar;
+  runtimeSource?: RuntimePresetSceneSource;
   target: QuaternionTuple;
   mode: AttackDieMaterialMode;
   reducedMotion: boolean;
@@ -219,7 +291,13 @@ function RuntimeDie({
   const [bundle, setBundle] = useState<ReturnType<typeof cloneTokenScene>>();
   useEffect(() => {
     try {
-      const next = cloneTokenScene(sidecar, mode, reducedMotion, sceneOverride);
+      const next = cloneTokenScene(
+        sidecar,
+        mode,
+        reducedMotion,
+        sceneOverride,
+        runtimeSource
+      );
       setBundle(next);
       return () => next.dispose();
     } catch (error) {
@@ -227,7 +305,7 @@ function RuntimeDie({
         `render setup failed: ${error instanceof Error ? error.message : 'unknown'}`
       );
     }
-  }, [mode, onFailure, reducedMotion, sceneOverride, sidecar]);
+  }, [mode, onFailure, reducedMotion, runtimeSource, sceneOverride, sidecar]);
   useFrame(({ clock }) => {
     poseValidated.current = false;
     const now = clock.elapsedTime * 1000;
@@ -270,7 +348,9 @@ function RuntimeDie({
       poseValidated.current = true;
       if (magicalAnimation && !reducedMotion)
         bundle?.updateShaderTime(clock.elapsedTime);
-      const observeNow = frame.observeNow && !observationSent.current;
+      const observeNow =
+        (frame.observeNow || (phase === 'settled' && frame.exactTargetHeld)) &&
+        !observationSent.current;
       if (observeNow) observationSent.current = true;
       onFrame(
         observeNow === frame.observeNow ? frame : { ...frame, observeNow }
@@ -284,20 +364,39 @@ function RuntimeDie({
   if (!bundle) return null;
   return (
     <group ref={group} quaternion={initial}>
-      <primitive object={bundle.scene} />
+      {bundle.normalization ? (
+        <group
+          name="attack-die-runtime-normalization"
+          scale={bundle.normalization.scale}
+          position={bundle.normalization.position}
+        >
+          <primitive object={bundle.scene} />
+        </group>
+      ) : (
+        <primitive object={bundle.scene} />
+      )}
     </group>
   );
 }
 
 function AttackDieCameraController({
   cameraView,
+  runtimePreset,
 }: {
   cameraView: 'top' | 'three-quarter';
+  runtimePreset: boolean;
 }) {
   const camera = useThree((state) => state.camera);
   useEffect(
-    () => applyAttackDieCamera(camera, cameraView, ATTACK_DIE_VISUAL_CONFIG),
-    [camera, cameraView]
+    () =>
+      applyAttackDieCamera(
+        camera,
+        cameraView,
+        runtimePreset
+          ? (runtimeCameraVisual as unknown as typeof ATTACK_DIE_VISUAL_CONFIG)
+          : ATTACK_DIE_VISUAL_CONFIG
+      ),
+    [camera, cameraView, runtimePreset]
   );
   return null;
 }
@@ -313,6 +412,7 @@ function AttackDieToken({
   decorativeSeed = presentationToken,
   decorativeRelease,
   fallback,
+  provider,
   onTelemetry,
   cameraView = 'three-quarter',
   calibrationPose,
@@ -323,6 +423,8 @@ function AttackDieToken({
   onRendererInfo,
 }: AttackDie3DProps) {
   const visual = ATTACK_DIE_VISUAL_CONFIG;
+  const runtimeProvider =
+    provider?.kind === 'dice-runtime-preset' ? provider : undefined;
   const rendererVisuals = resolveAttackDieRendererVisuals(visual);
   const release = useMemo<AttackDieDecorativeRelease>(
     () =>
@@ -334,31 +436,76 @@ function AttackDieToken({
     [decorativeRelease, decorativeSeed]
   );
   const effectiveResult = result;
-  const lock = useMemo(
-    () => lockAttackDieRenderer(presentationToken, effectiveResult),
-    [presentationToken, effectiveResult]
+  const legacyLock = useMemo(
+    () =>
+      runtimeProvider
+        ? undefined
+        : lockAttackDieRenderer(presentationToken, effectiveResult),
+    [effectiveResult, presentationToken, runtimeProvider]
   );
-  const sidecar = sidecarOverride ?? lock.sidecar;
-  const mappedTarget = sidecar?.faces.find(
-    (face) => face.result === effectiveResult
-  )?.quaternion;
-  const target = calibrationPose ?? mappedTarget;
+  const [runtimeSnapshot, setRuntimeSnapshot] = useState<
+    DiceRuntimePresetSnapshot | undefined
+  >(() =>
+    runtimeProvider
+      ? getDiceRuntimePresetSnapshot(runtimeProvider.presetId)
+      : undefined
+  );
+  const sidecar = runtimeProvider
+    ? undefined
+    : (sidecarOverride ?? legacyLock?.sidecar);
+  const runtimeSource = useMemo<RuntimePresetSceneSource | undefined>(() => {
+    if (
+      runtimeSnapshot?.status !== 'ready' ||
+      !runtimeSnapshot.preset ||
+      !runtimeSnapshot.scene ||
+      !runtimeSnapshot.binding
+    )
+      return undefined;
+    return {
+      preset: runtimeSnapshot.preset,
+      scene: runtimeSnapshot.scene,
+      binding: runtimeSnapshot.binding,
+    };
+  }, [
+    runtimeSnapshot?.binding,
+    runtimeSnapshot?.preset,
+    runtimeSnapshot?.scene,
+    runtimeSnapshot?.status,
+  ]);
+  const mappedTarget: QuaternionTuple | undefined = runtimeProvider
+    ? runtimeSnapshot?.preset?.faceSettlementMap.entries[
+        String(effectiveResult)
+      ]?.quaternion
+    : sidecar?.faces.find((face) => face.result === effectiveResult)
+        ?.quaternion;
+  const target = runtimeProvider
+    ? mappedTarget
+    : (calibrationPose ?? mappedTarget);
   const forced = forceFailure !== undefined;
   const authoringEligible =
+    !runtimeProvider &&
     calibrationPose !== undefined &&
     sidecarOverride !== undefined &&
     sceneOverride !== undefined;
-  const eligible =
-    (authoringEligible || lock.renderer === '3d') &&
-    !!sidecar &&
-    !!target &&
-    effectiveResult >= 1 &&
-    effectiveResult <= 20 &&
-    effectiveResult >= 1 &&
-    effectiveResult <= 20;
+  const eligible = runtimeProvider
+    ? runtimeSnapshot?.status === 'ready' &&
+      runtimeSource !== undefined &&
+      target !== undefined &&
+      Number.isInteger(effectiveResult) &&
+      effectiveResult >= 1 &&
+      effectiveResult <= 20
+    : (authoringEligible || legacyLock?.renderer === '3d') &&
+      !!sidecar &&
+      !!target &&
+      Number.isInteger(effectiveResult) &&
+      effectiveResult >= 1 &&
+      effectiveResult <= 20;
   const [truthful, setTruthful] = useState(false);
   const [failed, setFailed] = useState(false);
   const active = useRef(true);
+  const failureSent = useRef(false);
+  const renderer = useRef<'3d' | 'svg'>('svg');
+  renderer.current = eligible && !failed ? '3d' : 'svg';
   const contextId = useRef<number | undefined>(undefined);
   const listener = useRef<
     | {
@@ -371,8 +518,10 @@ function AttackDieToken({
   const poseValidated = useRef(false);
   const fail = useCallback(
     (reason: string, failureCode?: AttackDieFailureCode) => {
-      if (!active.current) return;
-      lock.fail(reason);
+      if (!active.current || failureSent.current) return;
+      failureSent.current = true;
+      legacyLock?.fail(reason);
+      renderer.current = 'svg';
       setTruthful(false);
       setFailed(true);
       onTelemetry?.({
@@ -385,11 +534,38 @@ function AttackDieToken({
         failureCode,
       });
     },
-    [lock, onTelemetry, presentationToken, result]
+    [legacyLock, onTelemetry, presentationToken, result]
   );
+  const handleSceneFailure = useCallback(
+    (reason: string) =>
+      fail(reason, runtimeProvider ? 'provider-load' : undefined),
+    [fail, runtimeProvider]
+  );
+
+  useEffect(() => {
+    if (!runtimeProvider || forced) return;
+    let subscribed = true;
+    const refresh = () => {
+      if (subscribed)
+        setRuntimeSnapshot(
+          getDiceRuntimePresetSnapshot(runtimeProvider.presetId)
+        );
+    };
+    const initial = getDiceRuntimePresetSnapshot(runtimeProvider.presetId);
+    setRuntimeSnapshot(initial);
+    if (initial.status === 'idle' || initial.status === 'loading')
+      void preloadDiceRuntimePreset(runtimeProvider.presetId).then(
+        refresh,
+        refresh
+      );
+    return () => {
+      subscribed = false;
+    };
+  }, [forced, runtimeProvider]);
+
   useEffect(() => {
     active.current = true;
-    if (!forced && !authoringEligible)
+    if (!runtimeProvider && !forced && !authoringEligible)
       void preloadAttackDieRuntime().catch((error) =>
         fail(
           `runtime load failed: ${error instanceof Error ? error.message : 'unknown'}`
@@ -400,11 +576,11 @@ function AttackDieToken({
       const current = listener.current;
       current?.gate.dispose();
       current?.lifecycle.requestRelease();
-      releaseAttackDieRenderer(presentationToken);
+      if (!runtimeProvider) releaseAttackDieRenderer(presentationToken);
       onTelemetry?.({
         presentationToken,
         requestedResult: result,
-        renderer: lock.renderer,
+        renderer: renderer.current,
         state: 'disposed',
         exactTargetHeld: false,
       });
@@ -413,29 +589,69 @@ function AttackDieToken({
     authoringEligible,
     fail,
     forced,
-    lock,
     onRendererInfo,
     onTelemetry,
     presentationToken,
     result,
+    runtimeProvider,
   ]);
+
   useEffect(() => {
-    if (providerFailureReason)
+    if (providerFailureReason) {
       fail(
         `provider failure: ${providerFailureReason}`,
         /hash|digest/i.test(providerFailureReason)
           ? 'provider-hash'
           : 'provider-load'
       );
+      return;
+    }
     if (
       !Number.isInteger(effectiveResult) ||
       effectiveResult < 1 ||
       effectiveResult > 20
-    )
+    ) {
       fail('invalid authoritative result: expected 1–20', 'invalid-result');
+      return;
+    }
+    if (runtimeProvider) {
+      if (runtimeSnapshot?.status === 'failed') {
+        const reason = runtimeSnapshot.failureReason ?? 'runtime preset failed';
+        fail(
+          `runtime preset failed: ${reason}`,
+          /hash|digest/i.test(reason) ? 'provider-hash' : 'provider-load'
+        );
+        return;
+      }
+      if (runtimeSnapshot?.status === 'ready') {
+        if (!runtimeSource) {
+          fail('runtime preset ready snapshot is incomplete', 'provider-load');
+          return;
+        }
+        if (!target)
+          fail(
+            'authoritative result has no verified mapping',
+            'unmapped-result'
+          );
+        return;
+      }
+      if (phase === 'rolling' || phase === 'settled' || phase === 'exiting')
+        fail('runtime preset was not ready at release', 'provider-load');
+      return;
+    }
     if (!target)
       fail('authoritative result has no verified mapping', 'unmapped-result');
-  }, [effectiveResult, fail, providerFailureReason, target]);
+  }, [
+    effectiveResult,
+    fail,
+    phase,
+    providerFailureReason,
+    runtimeProvider,
+    runtimeSnapshot?.failureReason,
+    runtimeSnapshot?.status,
+    runtimeSource,
+    target,
+  ]);
   const canvasVisible = eligible && !failed && phase !== 'hidden';
   return (
     <div className="attack-die-3d">
@@ -458,10 +674,13 @@ function AttackDieToken({
             className="attack-die-3d__canvas"
             style={{ visibility: truthful ? 'visible' : 'hidden' }}
             camera={(() => {
+              const cameraVisual = runtimeProvider
+                ? runtimeCameraVisual
+                : visual;
               const c =
                 cameraView === 'top'
-                  ? visual.topCamera
-                  : visual.threeQuarterCamera;
+                  ? cameraVisual.topCamera
+                  : cameraVisual.threeQuarterCamera;
               return {
                 fov: c.fov,
                 near: c.near,
@@ -516,7 +735,10 @@ function AttackDieToken({
               }
             }}
           >
-            <AttackDieCameraController cameraView={cameraView} />
+            <AttackDieCameraController
+              cameraView={cameraView}
+              runtimePreset={runtimeProvider !== undefined}
+            />
             <ambientLight intensity={visual.ambientIntensity} />
             <directionalLight
               position={visual.keyLight.position}
@@ -526,14 +748,15 @@ function AttackDieToken({
               position={visual.fillLight.position}
               intensity={visual.fillLight.intensity}
             />
-            <group scale={visual.dieScale}>
+            <group scale={runtimeProvider ? 1 : visual.dieScale}>
               <RuntimeDie
-                sidecar={sidecar!}
+                sidecar={sidecar}
+                runtimeSource={runtimeSource}
                 target={target!}
                 mode={materialMode}
                 reducedMotion={reducedMotion}
                 poseValidated={poseValidated}
-                onFailure={fail}
+                onFailure={handleSceneFailure}
                 sceneOverride={sceneOverride}
                 magicalAnimation={magicalAnimation}
                 phase={phase}

@@ -45,6 +45,7 @@ interface PresentationLifecycle {
   releaseIdentity?: string;
   phase: PresentationPhase;
   rendererFailed: boolean;
+  settlementRenderer: 'pending' | '3d' | 'svg';
   discontinuityObserved: boolean;
 }
 
@@ -173,6 +174,7 @@ function createLifecycle(input: {
     releaseIdentity: release ? input.releaseIdentity : undefined,
     phase: release ? 'settled' : 'armed',
     rendererFailed: false,
+    settlementRenderer: 'pending',
     discontinuityObserved: false,
   };
 }
@@ -185,18 +187,31 @@ function lifecycleReducer(
     return {
       ...state,
       rendererFailed: true,
+      settlementRenderer: 'svg',
       phase: state.acceptedRelease ? 'settled' : 'armed',
     };
   }
   if (action.type === 'renderer-observed') {
-    return state.phase === 'rolling' && state.acceptedRelease
-      ? { ...state, phase: 'settled' }
-      : state;
+    if (state.rendererFailed) return state;
+    return {
+      ...state,
+      settlementRenderer: '3d',
+      phase:
+        state.phase === 'rolling' && state.acceptedRelease
+          ? 'settled'
+          : state.phase,
+    };
   }
   if (action.type === 'fallback-complete') {
-    return state.phase === 'rolling' && state.acceptedRelease
-      ? { ...state, phase: 'settled' }
-      : state;
+    if (state.settlementRenderer === '3d') return state;
+    return {
+      ...state,
+      settlementRenderer: 'svg',
+      phase:
+        state.phase === 'rolling' && state.acceptedRelease
+          ? 'settled'
+          : state.phase,
+    };
   }
   if (
     action.acceptedDeliveryIdentity === state.acceptedDeliveryIdentity &&
@@ -350,11 +365,15 @@ function DiceTrayPresentationInstance({
       )
         return;
 
-      if (event.state === 'failed') {
+      if (event.renderer === 'svg' && event.state === 'failed') {
         dispatch({ type: 'renderer-failed' });
         return;
       }
-      if (event.state === 'observed' && event.exactTargetHeld)
+      if (
+        event.renderer === '3d' &&
+        event.state === 'observed' &&
+        event.exactTargetHeld
+      )
         dispatch({ type: 'renderer-observed' });
     },
     [rendererGeneration, result]
@@ -370,9 +389,11 @@ function DiceTrayPresentationInstance({
       ? 'Dice presentation requested · waiting for release event'
       : phase === 'rolling'
         ? 'Dice release delivered · rolling'
-        : lifecycle.rendererFailed || presetId !== 'lightning'
-          ? `Result ${result} released · truthful SVG settled`
-          : `Result ${result} presented · roll settled`;
+        : lifecycle.settlementRenderer === '3d'
+          ? `Result ${result} presented · roll settled`
+          : lifecycle.settlementRenderer === 'svg'
+            ? `Result ${result} released · truthful SVG settled`
+            : `Result ${result} released · settled`;
 
   if (rendererGeneration === undefined)
     return (
