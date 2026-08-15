@@ -114,6 +114,7 @@ function scenario(id: (typeof STONE0_SCENARIO_IDS)[number]) {
         effectiveAncestorOpacity: 1,
         statusContrastRatio: 7,
         paintedAfterStabilization: true,
+        statusRegion: { left: 0, top: 0, width: 2, height: 1 },
       },
     };
   if (id === 'player-armed')
@@ -353,6 +354,14 @@ function pngBytes(width = 1, height = 1) {
   return bytes;
 }
 
+function readableStatusPng() {
+  return pngFromRows(2, 1, Uint8Array.from([0, 0, 0, 0, 255, 255, 255]));
+}
+
+function nearBlackStatusPng() {
+  return pngFromRows(2, 1, Uint8Array.from([0, 10, 10, 10, 11, 11, 11]));
+}
+
 function truncatedPseudoPng(width: number, height: number) {
   const bytes = new Uint8Array(24);
   bytes.set(PNG_SIGNATURE, 0);
@@ -535,7 +544,9 @@ function packageFixture() {
       path,
       closeup
         ? pngBytes(closeup.physicalWidth, closeup.physicalHeight)
-        : pngBytes()
+        : path === stone0ScenarioScreenshot('pending-provider')
+          ? readableStatusPng()
+          : pngBytes()
     );
   }
   const kind = (path: string) =>
@@ -865,6 +876,8 @@ describe('Stone 0 Tray evidence protocol v2', () => {
       (facts: Record<string, unknown>) => (facts.statusContrastRatio = 4.49),
       (facts: Record<string, unknown>) =>
         (facts.paintedAfterStabilization = false),
+      (facts: Record<string, unknown>) =>
+        ((facts.statusRegion as { width: number }).width = 0),
     ]) {
       const value = cloneEvidence();
       const pending = value.scenarios.find(
@@ -875,6 +888,21 @@ describe('Stone 0 Tray evidence protocol v2', () => {
         /pending|opacity|paint|contrast|readable/i
       );
     }
+  });
+
+  it('rejects a valid but near-black pending-provider PNG even when browser facts claim readable contrast', () => {
+    const fixture = packageFixture();
+    const path = stone0ScenarioScreenshot('pending-provider');
+    fixture.files.set(path, nearBlackStatusPng());
+    refreshArtifact(fixture, path);
+    expect(() =>
+      assertStone0TrayEvidencePackage(
+        fixture.packageManifest,
+        fixture.packageIdentity,
+        fixture.files,
+        ['PASS']
+      )
+    ).toThrow(/pending|screenshot|contrast|readable/i);
   });
 
   it('retains the complete pending, release, reduced-motion, failure, context-loss, and shader matrix', () => {

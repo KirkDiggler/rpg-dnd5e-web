@@ -186,9 +186,10 @@ The driver starts on the dedicated `attackDieStage=tray` route, so historical
 Lightning loading remains dormant. Before the pending-provider screenshot it
 waits for the effective opacity of the status and every ancestor to reach full
 opacity, waits a double animation frame so at least one paint occurs after
-stabilization, and requires at least 4.5:1 computed status contrast. Near-black
-mid-transition loading evidence cannot package-pass. Every exact
-`localhost:8080` RPC is fulfilled
+stabilization, and requires at least 4.5:1 computed status contrast. It binds
+the physical status region, and package validation independently decodes that
+PNG region and requires a 4.5:1 luminance range. Near-black mid-transition
+loading evidence cannot package-pass. Every exact `localhost:8080` RPC is fulfilled
 by a driver-owned deterministic successful gRPC-Web empty-protobuf envelope;
 unknown URLs or methods fail. Each
 console message records `consoleMessage.location()`, and only the exact

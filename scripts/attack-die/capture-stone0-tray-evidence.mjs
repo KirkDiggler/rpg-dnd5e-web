@@ -710,20 +710,26 @@ async function waitForReadablePendingProvider(page, status) {
       (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
       (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
     const rect = element.getBoundingClientRect();
+    const left = Math.floor(rect.left + scrollX);
+    const top = Math.floor(rect.top + scrollY);
     return {
       effectiveAncestorOpacity,
       statusContrastRatio,
       paintedAfterStabilization: true,
-      statusWidth: rect.width,
-      statusHeight: rect.height,
+      statusRegion: {
+        left,
+        top,
+        width: Math.ceil(rect.right + scrollX) - left,
+        height: Math.ceil(rect.bottom + scrollY) - top,
+      },
     };
   });
   if (
     !readability ||
     readability.effectiveAncestorOpacity < 0.9999 ||
     readability.statusContrastRatio < 4.5 ||
-    readability.statusWidth <= 0 ||
-    readability.statusHeight <= 0
+    readability.statusRegion.width <= 0 ||
+    readability.statusRegion.height <= 0
   )
     throw Error(
       `pending provider status is not fully opaque and readable: ${JSON.stringify(readability)}`
@@ -732,6 +738,7 @@ async function waitForReadablePendingProvider(page, status) {
     effectiveAncestorOpacity: readability.effectiveAncestorOpacity,
     statusContrastRatio: readability.statusContrastRatio,
     paintedAfterStabilization: readability.paintedAfterStabilization,
+    statusRegion: readability.statusRegion,
   };
 }
 

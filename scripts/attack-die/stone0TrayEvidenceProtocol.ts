@@ -724,6 +724,7 @@ function validateScenario(
         'effectiveAncestorOpacity',
         'statusContrastRatio',
         'paintedAfterStabilization',
+        'statusRegion',
       ],
       'pending provider scenario'
     );
@@ -752,6 +753,36 @@ function validateScenario(
       true,
       'pending provider painted-after-stabilization witness'
     );
+    const statusRegion = exactObject(
+      facts.statusRegion,
+      ['left', 'top', 'width', 'height'],
+      'pending provider status region'
+    );
+    const left = safeInteger(
+      statusRegion.left,
+      'pending provider status region left'
+    );
+    const top = safeInteger(
+      statusRegion.top,
+      'pending provider status region top'
+    );
+    const width = safeInteger(
+      statusRegion.width,
+      'pending provider status region width'
+    );
+    const height = safeInteger(
+      statusRegion.height,
+      'pending provider status region height'
+    );
+    if (
+      left < 0 ||
+      top < 0 ||
+      width < 1 ||
+      height < 1 ||
+      left + width > 1440 ||
+      top + height > 1080
+    )
+      fail('pending provider status region dimensions');
   } else if (id === 'player-armed') {
     validateViewport(scenario.viewport, 1440, 1080, id);
     validateFacts(
@@ -1445,6 +1476,7 @@ function pngDimensions(bytes: Uint8Array, label: string) {
   if (inflated.byteLength !== inflatedLength)
     fail(`${label} PNG inflated image-data length mismatch`);
 
+  const pixels = new Uint8Array(width * height * 3);
   let previous = new Uint8Array(rowBytes);
   for (let row = 0; row < height; row += 1) {
     const scanlineOffset = row * (rowBytes + 1);
@@ -1468,9 +1500,18 @@ function pngDimensions(bytes: Uint8Array, label: string) {
                 : paethPredictor(left, above, upperLeft);
       current[column] = (encoded + predictor) & 0xff;
     }
+    pixels.set(current, row * rowBytes);
     previous = current;
   }
-  return { width, height };
+  return { width, height, pixels };
+}
+
+function relativeLuminance(red: number, green: number, blue: number) {
+  const channels = [red, green, blue].map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }
 
 export function assertStone0TrayEvidencePackage(
@@ -1527,6 +1568,10 @@ export function assertStone0TrayEvidencePackage(
     artifactBytes.size !== expectedPaths.length
   )
     fail('package exact artifact count mismatch');
+  const decodedScreenshots = new Map<
+    string,
+    ReturnType<typeof pngDimensions>
+  >();
   artifacts.forEach((artifact, index) => {
     const path = expectedPaths[index];
     const expectedKind =
@@ -1551,7 +1596,10 @@ export function assertStone0TrayEvidencePackage(
     )
       fail(`package artifact digest/size mismatch: ${path}`);
     if (expectedKind === 'screenshot')
-      pngDimensions(bytes, `package screenshot ${path}`);
+      decodedScreenshots.set(
+        path,
+        pngDimensions(bytes, `package screenshot ${path}`)
+      );
   });
   for (const path of artifactBytes.keys())
     if (!expectedPaths.includes(path))
@@ -1570,6 +1618,41 @@ export function assertStone0TrayEvidencePackage(
     ),
     identity
   );
+  const pending = evidence.scenarios.find(
+    (scenario) => scenario.id === 'pending-provider'
+  )!;
+  const pendingFacts = object(
+    pending.facts,
+    'pending provider screenshot readability facts'
+  );
+  const statusRegion = object(
+    pendingFacts.statusRegion,
+    'pending provider screenshot status region'
+  );
+  const pendingImage = decodedScreenshots.get(pending.screenshot)!;
+  const left = Number(statusRegion.left);
+  const top = Number(statusRegion.top);
+  const width = Number(statusRegion.width);
+  const height = Number(statusRegion.height);
+  if (left + width > pendingImage.width || top + height > pendingImage.height)
+    fail('pending provider screenshot status region containment');
+  let darkest = 1;
+  let lightest = 0;
+  for (let y = top; y < top + height; y += 1)
+    for (let x = left; x < left + width; x += 1) {
+      const pixel = (y * pendingImage.width + x) * 3;
+      const luminance = relativeLuminance(
+        pendingImage.pixels[pixel],
+        pendingImage.pixels[pixel + 1],
+        pendingImage.pixels[pixel + 2]
+      );
+      darkest = Math.min(darkest, luminance);
+      lightest = Math.max(lightest, luminance);
+    }
+  const screenshotContrast = (lightest + 0.05) / (darkest + 0.05);
+  if (screenshotContrast < 4.5)
+    fail('pending provider screenshot status region is not readable at 4.5:1');
+
   const network = validateNetwork(
     parseJsonBytes(artifactBytes.get('network.json')!, 'network'),
     evidence
