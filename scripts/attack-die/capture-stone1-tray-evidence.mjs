@@ -909,9 +909,15 @@ try {
   }
 
   function observedMotionCounts(samples, afterSequence = 0) {
-    const rolling = samples.filter(
-      (sample) => sample.sequence > afterSequence && sample.phase === 'rolling'
-    );
+    // The first rolling pose is the immediate phase handoff. Count only
+    // subsequent rendered changes so reduced motion's instant settle is not
+    // mislabeled as animation.
+    const rolling = samples
+      .filter(
+        (sample) =>
+          sample.sequence > afterSequence && sample.phase === 'rolling'
+      )
+      .slice(1);
     let tumble = 0;
     let shake = 0;
     let bounce = 0;
