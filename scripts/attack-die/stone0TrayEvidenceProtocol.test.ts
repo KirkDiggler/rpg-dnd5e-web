@@ -246,6 +246,16 @@ describe('Stone 0 Tray evidence protocol', () => {
     );
   });
 
+  it('waits for renderer lifecycle ownership before invoking real context loss', () => {
+    const source = readFileSync(
+      'scripts/attack-die/capture-stone0-tray-evidence.mjs',
+      'utf8'
+    );
+    expect(source).toMatch(
+      /await waitRendererOwnership\(scenario\.page\);\s*const lost =/
+    );
+  });
+
   it('accepts one exact complete immutable identity, result, and scenario matrix', () => {
     const evidence = validEvidence();
     expect(assertStone0TrayEvidence(evidence, identity)).toEqual(evidence);

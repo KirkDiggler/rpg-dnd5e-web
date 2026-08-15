@@ -354,6 +354,19 @@ async function waitCanvases(page, count = 2) {
   );
 }
 
+async function waitRendererOwnership(page) {
+  await page.waitForFunction(
+    () =>
+      ['roller', 'spectator'].every((role) =>
+        Number.isSafeInteger(
+          window.__stone0TrayEvidence?.witnesses[role]?.rendererInfo?.contextId
+        )
+      ),
+    undefined,
+    { timeout: 10_000 }
+  );
+}
+
 async function waitHealthy(page, result) {
   await page.waitForFunction(
     (expected) => {
@@ -1000,6 +1013,7 @@ try {
   {
     const id = 'context-loss';
     const scenario = await startHealthyContext(id, 10);
+    await waitRendererOwnership(scenario.page);
     const lost = await scenario.page.evaluate(() => {
       const canvas = document.querySelector(
         '[data-witness-role="roller"] .attack-die-3d__canvas canvas'
