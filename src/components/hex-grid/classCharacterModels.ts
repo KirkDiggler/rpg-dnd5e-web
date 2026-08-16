@@ -60,29 +60,18 @@ export function resolveClassCharacterModelUrl(
  * for a downed variant or any model with no baked animation at all —
  * callers treat that as "leave the static pose alone", never a crash.
  *
- * Re-verified against current asset reality (rebased post assets#4-#10,
- * then re-checked again post rpg-game-assets#11): on `main` today,
- * fighter/barbarian.glb ship 0 animation clips (junk stripped during the
- * asset cleanup; a Big-Rig retarget is pending) — `resolveIdleClipName`
- * returns undefined for both, which is the correct, expected,
- * no-op-the-animation behavior for clip-less models, not a gap.
- * monk.glb/rogue.glb, following the merge of rpg-game-assets#11 (idle
- * retarget for rpg-dnd5e-web#522), now ship 3 clips each — monk:
- * `Idle_Drinking`/`Idle_Meditative`/`Idle_Relaxed`; rogue:
- * `Idle_CheckWatch`/`Idle_Drinking`/`Idle_Relaxed`. Every clip in that set
- * matches the `/idle/i` filter, so this function picks whichever comes
- * first in the GLB's animation array — an arbitrary but always-correct
- * choice among interchangeable idle variants. Naming a *specific*
- * preferred variant (e.g. always "Relaxed") is out of scope for this PR;
- * that's the char-creation animation-picker slice's job.
+ * The merged Townfolk provider contract (provider PR #61, merge commit
+ * 4fac080) gives every standing Fighter/Monk/Rogue/Barbarian class alias
+ * exactly two clips in this order: `Idle_Relaxed`, then `Walk_Forward`.
+ * This resolver therefore returns `Idle_Relaxed` for every standing file.
+ * Every downed variant is static with zero clips, so it returns undefined.
  *
  * @example
  * ```typescript
- * resolveIdleClipName(['Idle_Drinking', 'Idle_Meditative', 'Idle_Relaxed']);
- * // 'Idle_Drinking' — first idle-matching clip, current monk/rogue reality
+ * resolveIdleClipName(['Idle_Relaxed', 'Walk_Forward']);
+ * // 'Idle_Relaxed' — exact merged standing Townfolk release shape
  * resolveIdleClipName(['Walk', 'Idle_Loop']); // 'Idle_Loop'
- * resolveIdleClipName([]); // undefined — today's fighter/barbarian on
- *                          // `main` (0 clips), and every downed variant
+ * resolveIdleClipName([]); // undefined — static downed Townfolk variant
  * ```
  */
 export function resolveIdleClipName(names: string[]): string | undefined {
@@ -102,16 +91,15 @@ export function resolveIdleClipName(names: string[]): string | undefined {
  * than just staying on the resolved idle clip, which is what callers should
  * fall back to instead (see `ClassCharacterModel.tsx`'s usage: `isMoving`
  * prefers `resolveWalkClipName`, falling back to `resolveIdleClipName` only
- * if that's undefined — e.g. fighter/barbarian before a Walk_* clip ships
- * for them, or any future clip-less model).
+ * if that's undefined — e.g. a future model without a Walk_* clip, or a
+ * static downed variant with no clips).
  *
  * @example
  * ```typescript
- * resolveWalkClipName(['Idle_Relaxed', 'Idle_Drinking', 'Walk_Forward']);
- * // 'Walk_Forward'
- * resolveWalkClipName(['Idle_Relaxed', 'Idle_Drinking']);
- * // undefined — no Walk_* clip shipped for this model yet; caller falls
- * //             back to resolveIdleClipName instead of guessing
+ * resolveWalkClipName(['Idle_Relaxed', 'Walk_Forward']);
+ * // 'Walk_Forward' — exact merged standing Townfolk release shape
+ * resolveWalkClipName(['Idle_Relaxed']);
+ * // undefined — no Walk_* clip; caller falls back to resolveIdleClipName
  * ```
  */
 export function resolveWalkClipName(names: string[]): string | undefined {

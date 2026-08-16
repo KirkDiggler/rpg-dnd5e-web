@@ -61,30 +61,23 @@ describe('resolveIdleClipName', () => {
     expect(resolveIdleClipName(['Walk', 'Run', 'Attack'])).toBe('Walk');
   });
 
-  it("returns undefined for an empty clip list — today's real case for main's fighter/barbarian.glb (0 clips shipped) and every downed variant", () => {
+  it('returns undefined for an empty clip list', () => {
     expect(resolveIdleClipName([])).toBeUndefined();
   });
 
-  it('picks the first idle-named clip when every clip is idle-named (monk/rogue\'s real multi-clip shape on main since rpg-game-assets#11 — all variants match "idle", so the "first available" fallback effectively decides)', () => {
-    expect(
-      resolveIdleClipName(['Idle_Drinking', 'Idle_Meditative', 'Idle_Relaxed'])
-    ).toBe('Idle_Drinking');
-    expect(
-      resolveIdleClipName(['Idle_CheckWatch', 'Idle_Drinking', 'Idle_Relaxed'])
-    ).toBe('Idle_CheckWatch');
+  it('picks the first idle-named clip when multiple clips are idle-named', () => {
+    expect(resolveIdleClipName(['Idle_Alert', 'Idle_Relaxed'])).toBe(
+      'Idle_Alert'
+    );
   });
 });
 
 describe('resolveWalkClipName', () => {
-  it('picks the clip whose name contains "walk" — today\'s real 4-class shape on main since rpg-game-assets#20', () => {
-    expect(
-      resolveWalkClipName([
-        'Idle_Drinking',
-        'Idle_Meditative',
-        'Idle_Relaxed',
-        'Walk_Forward',
-      ])
-    ).toBe('Walk_Forward');
+  it('resolves the exact merged Townfolk standing release shape', () => {
+    const releaseClipNames = ['Idle_Relaxed', 'Walk_Forward'];
+
+    expect(resolveIdleClipName(releaseClipNames)).toBe('Idle_Relaxed');
+    expect(resolveWalkClipName(releaseClipNames)).toBe('Walk_Forward');
   });
 
   it('matches "walk" case-insensitively', () => {
