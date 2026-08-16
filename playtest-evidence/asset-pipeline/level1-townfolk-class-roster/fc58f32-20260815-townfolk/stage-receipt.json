@@ -1,10 +1,22 @@
 {
   "schemaVersion": 1,
-  "providerCommit": "fc58f32848056dd40ca6ee3b546ffefeeead5962",
+  "providerCommit": "5dd2960e3aec86336c263bd5914069da553d499d",
   "stage": {
     "root": "release",
     "fileCount": 2257,
-    "treeSha256": "eb78d28f0209f2df37862c5ec4678bca05a9c04097fc3a89d393bc6faf65db37"
+    "treeSha256": "cc57e148922e7a774f8428d6040e7fdb51a43a5450e2fea2a1a219583ed6207d"
+  },
+  "amendment": {
+    "previousEvidenceCommit": "8a80ab509e2d982d169191c3358fc5e03013ec53",
+    "previousProviderCommit": "fc58f32848056dd40ca6ee3b546ffefeeead5962",
+    "previousStageTreeSha256": "eb78d28f0209f2df37862c5ec4678bca05a9c04097fc3a89d393bc6faf65db37",
+    "changedStagePaths": [
+      "harness/catalogs/synty-complete-inventory.json",
+      "harness/models/synty/characters/manifest.json"
+    ],
+    "runtimeBinaryChangeCount": 0,
+    "publicRasterChangeCount": 0,
+    "rasterHashManifestSha256": "25bdeb70a35f2f22d056e0a6d628a90c30806cd82a7cc1013f31471ae322de53"
   },
   "rendererVersions": [
     {

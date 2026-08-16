@@ -1,11 +1,17 @@
 # Level 1 Townfolk Class Roster Evidence
 
-This public-safe evidence was rendered from the sealed stage at provider commit `fc58f32848056dd40ca6ee3b546ffefeeead5962`.
+This public-safe evidence is bound to the corrected sealed stage at provider code head `5dd2960e3aec86336c263bd5914069da553d499d`.
 
 - Stage root label: `release`
 - Stage file count: 2,257
-- Stage tree SHA-256: `eb78d28f0209f2df37862c5ec4678bca05a9c04097fc3a89d393bc6faf65db37`
+- Stage tree SHA-256: `cc57e148922e7a774f8428d6040e7fdb51a43a5450e2fea2a1a219583ed6207d`
 - Creative approval: **PASS** — Kirk, 2026-08-15, after downed evidence fix round 1: “they look great now”
+
+## Evidence amendment
+
+Evidence commit `8a80ab509e2d982d169191c3358fc5e03013ec53` originally bound provider commit `fc58f32848056dd40ca6ee3b546ffefeeead5962` and stage digest `eb78d28f0209f2df37862c5ec4678bca05a9c04097fc3a89d393bc6faf65db37`. This manifest-comment-only reseal binds the same reviewed visual payload to provider correction code head `5dd2960e3aec86336c263bd5914069da553d499d` and corrected stage digest `cc57e148922e7a774f8428d6040e7fdb51a43a5450e2fea2a1a219583ed6207d`.
+
+The only changed sealed stage paths are `harness/catalogs/synty-complete-inventory.json` and `harness/models/synty/characters/manifest.json`. There are 0 runtime binary changes and 0 public raster changes: all 60 PNGs are byte-identical to the previous evidence commit. Creative approval is inherited because the reviewed visual bytes are unchanged.
 
 ## Public raster inventory
 
