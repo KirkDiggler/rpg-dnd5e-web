@@ -210,6 +210,18 @@ function observations(index: number) {
   } as const;
 }
 
+const safeMotion = (overrides: Record<string, boolean> = {}) => ({
+  motionRevision: 'choreographed-v1' as const,
+  heldPoseApplied: false,
+  heldPoseMoved: false,
+  heldPoseRepeated: false,
+  rollingPoseApplied: false,
+  rollingPoseMoved: false,
+  reducedHeldPoseRepeated: false,
+  unexpectedMotion: false,
+  ...overrides,
+});
+
 const successIds = new Set(STONE1_SCENARIO_IDS.slice(0, 8));
 const pointerHeldIds = new Set([
   'held-desktop',
@@ -233,6 +245,16 @@ function scenario(id: (typeof STONE1_SCENARIO_IDS)[number], index: number) {
     id === 'responsive-narrow'
       ? { width: 760, height: 900 }
       : { width: 1440, height: 1080 };
+  const pointerHeld = pointerHeldIds.has(id);
+  const reduced = id === 'reduced-motion-held';
+  const heldRoller = pointerHeld
+    ? safeMotion({
+        heldPoseApplied: true,
+        heldPoseMoved: !reduced && id !== 'quick-release',
+        heldPoseRepeated: true,
+        reducedHeldPoseRepeated: reduced,
+      })
+    : null;
   return {
     id,
     passed: true,
@@ -240,12 +262,29 @@ function scenario(id: (typeof STONE1_SCENARIO_IDS)[number], index: number) {
     viewport,
     deviceScaleFactor: 1,
     authoritativeResult: 10,
-    timeline: timeline(release, pointerHeldIds.has(id)),
-    heldCue: {
-      staticLifted: id === 'reduced-motion-held',
-      tumbleSampleCount: id === 'reduced-motion-held' ? 0 : success ? 3 : 0,
-      shakeSampleCount: id === 'reduced-motion-held' ? 0 : success ? 2 : 0,
-      bounceSampleCount: id === 'reduced-motion-held' ? 0 : success ? 1 : 0,
+    timeline: timeline(release, pointerHeld),
+    motionProof: {
+      heldRoller,
+      heldSpectator: null,
+      afterReleaseRoller: success
+        ? safeMotion({
+            heldPoseApplied: pointerHeld,
+            heldPoseMoved: pointerHeld && !reduced && id !== 'quick-release',
+            heldPoseRepeated: pointerHeld,
+            rollingPoseApplied: true,
+            rollingPoseMoved: true,
+            reducedHeldPoseRepeated: reduced,
+          })
+        : heldRoller,
+      afterReleaseSpectator: success
+        ? safeMotion({
+            rollingPoseApplied: true,
+            rollingPoseMoved: true,
+          })
+        : null,
+      heldAggregateFrozen: heldRoller !== null,
+      afterReleaseAggregatesFrozen: success || heldRoller !== null,
+      reducedHeldPixelsChangedAndStable: reduced,
     },
     outsideCaptureObserved: id === 'held-outside-capture',
     cancellationObserved: cancelled,
@@ -558,14 +597,16 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).not.toContain('expectedSevere');
     expect(source).toContain('classifyStone1ConsoleEntry');
     expect(source).not.toContain("if (type !== 'error') return true");
-    expect(source).not.toContain('motionCounts = { tumble: 3');
-    expect(source).toContain('heldMotion.length >= 1');
-    expect(source).not.toContain('heldMotion.length >= 2');
-    expect(source).toContain('waitForReducedMotionSample(page, false)');
-    expect(source).toContain('waitForReducedMotionSample(page, true)');
+    expect(source).not.toMatch(
+      /motionSamples|renderedMotionSamples|translation|quaternion|observedMotionCounts|tumbleSampleCount|shakeSampleCount|bounceSampleCount/
+    );
+    expect(source).toContain('waitForSafeMotionFact');
+    expect(source).toContain('heldPoseApplied');
+    expect(source).toContain('rollingPoseMoved');
+    expect(source).toContain('reducedHeldPoseRepeated');
+    expect(source).toContain('unexpectedMotion');
     expect(source).toContain('observedFallbackFacts');
     expect(source).toContain('.filter(');
-    expect(source).toContain('.slice(1)');
     expect(source).toContain('[data-testid="d20-die"]');
     expect(source).toContain('[data-testid="dice-face"]');
     expect(source).not.toContain('failureTelemetry.every');
@@ -596,8 +637,14 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain('assertStone1TrayEvidencePackage');
     expect(source).toContain('FAILED.txt');
     expect(source).toContain('INVALIDATED-PASS.txt');
+    expect(source).toContain('markTerminalFailure');
+    expect(source).toContain('await rm(passPath, { force: true })');
+    expect(source).toContain('await rename(temporary, failedPath)');
     expect(source.indexOf("process.once('SIGINT'")).toBeLessThan(
       source.indexOf('preview = spawn(')
+    );
+    expect(source.indexOf('await markTerminalFailure')).toBeLessThan(
+      source.indexOf('await cleanup()')
     );
     expect(source.indexOf('assertStone1TrayEvidencePackage(')).toBeLessThan(
       source.indexOf('await rename(passTemporary, passPath)')
@@ -742,15 +789,60 @@ describe('Stone 1 browser evidence protocol', () => {
     );
   });
 
-  it('rejects reduced-motion animation, cancellation release, outside-capture loss, or stale failure cleanup', () => {
+  it('rejects every safe live aggregate boolean and any per-frame pose addition', () => {
+    const booleanKeys = [
+      'heldPoseApplied',
+      'heldPoseMoved',
+      'heldPoseRepeated',
+      'rollingPoseApplied',
+      'rollingPoseMoved',
+      'reducedHeldPoseRepeated',
+      'unexpectedMotion',
+    ] as const;
+    for (const key of booleanKeys)
+      expectEvidenceFailure((value) => {
+        const aggregate = value.scenarios[0].motionProof.heldRoller!;
+        aggregate[key] = !aggregate[key];
+      });
+    for (const key of booleanKeys)
+      expectEvidenceFailure((value) => {
+        const aggregate = value.scenarios[0].motionProof.afterReleaseSpectator!;
+        aggregate[key] = !aggregate[key];
+      });
+    expectEvidenceFailure((value) => {
+      (
+        value.scenarios[0].motionProof.heldRoller as unknown as Record<
+          string,
+          unknown
+        >
+      ).translation = [0, 0, 0];
+    });
+  });
+
+  it('rejects unsafe/missing live motion facts, cancellation release, outside-capture loss, or stale failure cleanup', () => {
     for (const key of [
-      'tumbleSampleCount',
-      'shakeSampleCount',
-      'bounceSampleCount',
+      'heldPoseApplied',
+      'heldPoseRepeated',
+      'reducedHeldPoseRepeated',
     ] as const)
-      expectEvidenceFailure((value) => (value.scenarios[6].heldCue[key] = 1));
+      expectEvidenceFailure(
+        (value) => (value.scenarios[6].motionProof.heldRoller![key] = false)
+      );
     expectEvidenceFailure(
-      (value) => (value.scenarios[6].heldCue.staticLifted = false)
+      (value) =>
+        (value.scenarios[6].motionProof.heldRoller!.heldPoseMoved = true)
+    );
+    expectEvidenceFailure(
+      (value) =>
+        (value.scenarios[6].motionProof.afterReleaseRoller!.unexpectedMotion = true)
+    );
+    expectEvidenceFailure(
+      (value) =>
+        (value.scenarios[6].motionProof.reducedHeldPixelsChangedAndStable = false)
+    );
+    expectEvidenceFailure(
+      (value) =>
+        (value.scenarios[0].motionProof.afterReleaseSpectator!.rollingPoseMoved = false)
     );
     expectEvidenceFailure(
       (value) => (value.scenarios[1].outsideCaptureObserved = false)

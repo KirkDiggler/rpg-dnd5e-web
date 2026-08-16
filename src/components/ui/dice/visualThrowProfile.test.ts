@@ -74,7 +74,7 @@ describe('createVisualThrowProfile', () => {
     expect(parseVisualThrowProfile(neutral)).toEqual(neutral);
   });
 
-  it('clamps every bounded finite scalar and maps integer seeds to uint32', () => {
+  it('clamps bounded scalars and maps finite signed integers to uint32', () => {
     expect(
       createVisualThrowProfile({
         releasePosition: [-2, 2],
@@ -99,9 +99,26 @@ describe('createVisualThrowProfile', () => {
         ...validInput(),
         releasePosition: [2, -2],
         spinBias: -4,
+        motionSeed: -0x1_0000_0001,
       })
-    ).toMatchObject({ releasePosition: [1, 0], spinBias: -1 });
+    ).toMatchObject({
+      releasePosition: [1, 0],
+      spinBias: -1,
+      motionSeed: 0xffff_ffff,
+    });
   });
+
+  it.each([1.5, -0.25, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects non-integer or non-finite producer seed %s before unsigned mapping',
+    (motionSeed) => {
+      expect(() =>
+        createVisualThrowProfile({ ...validInput(), motionSeed })
+      ).toThrow(RangeError);
+      expect(() => createNeutralVisualThrowProfile(motionSeed)).toThrow(
+        RangeError
+      );
+    }
+  );
 
   it('normalizes nonzero directions', () => {
     const profile = createVisualThrowProfile({

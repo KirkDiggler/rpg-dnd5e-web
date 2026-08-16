@@ -72,8 +72,10 @@ export function createVisualThrowProfile(
     spinBias,
     motionSeed,
   ];
-  if (!values.every(Number.isFinite)) {
-    throw new RangeError('Visual throw profile values must be finite');
+  if (!values.every(Number.isFinite) || !Number.isInteger(motionSeed)) {
+    throw new RangeError(
+      'Visual throw profile values must be finite and motion seed must be an integer'
+    );
   }
 
   const directionLength = Math.hypot(directionX, directionY);

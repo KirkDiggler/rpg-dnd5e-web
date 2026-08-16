@@ -48,15 +48,6 @@ export interface Stone1WitnessMotionFact {
   readonly cloneId?: number;
 }
 
-interface Stone1RenderedMotionFact {
-  readonly sequence: number;
-  readonly phase: AttackDieMotionDiagnostic['phase'];
-  readonly reducedMotion: boolean;
-  readonly held: boolean;
-  readonly translation: AttackDieMotionDiagnostic['translation'];
-  readonly quaternion: AttackDieMotionDiagnostic['quaternion'];
-}
-
 interface Stone1FailureTelemetryFact {
   readonly renderer: 'svg';
   readonly state: 'failed';
@@ -70,7 +61,7 @@ interface Stone1WitnessEvidence {
   readonly runtimeCloneId?: number;
   readonly finalTelemetry?: Stone1WitnessMotionFact;
   readonly releaseProfile?: VisualThrowProfileV1;
-  readonly motionSamples: readonly Stone1RenderedMotionFact[];
+  readonly motion?: AttackDieMotionDiagnostic;
   readonly failureTelemetry?: Stone1FailureTelemetryFact;
 }
 
@@ -120,7 +111,7 @@ interface WitnessEvidenceData {
   runtimeSourceId?: number;
   runtimeCloneId?: number;
   finalObservation?: Omit<Stone1WitnessMotionFact, 'contextId' | 'cloneId'>;
-  motionSamples: Stone1RenderedMotionFact[];
+  motion?: AttackDieMotionDiagnostic;
   failureTelemetry?: Stone1FailureTelemetryFact;
 }
 
@@ -161,6 +152,59 @@ function localLifecyclePhase(
 
 function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+const SAFE_MOTION_KEYS = [
+  'motionRevision',
+  'heldPoseApplied',
+  'heldPoseMoved',
+  'heldPoseRepeated',
+  'rollingPoseApplied',
+  'rollingPoseMoved',
+  'reducedHeldPoseRepeated',
+  'unexpectedMotion',
+] as const;
+
+function snapshotSafeMotionDiagnostic(
+  value: unknown
+): AttackDieMotionDiagnostic | undefined {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      return undefined;
+    const keys = Reflect.ownKeys(value);
+    if (
+      keys.length !== SAFE_MOTION_KEYS.length ||
+      !keys.every(
+        (key) =>
+          typeof key === 'string' &&
+          SAFE_MOTION_KEYS.includes(key as (typeof SAFE_MOTION_KEYS)[number])
+      )
+    )
+      return undefined;
+    const diagnostic = value as Record<
+      (typeof SAFE_MOTION_KEYS)[number],
+      unknown
+    >;
+    if (
+      diagnostic.motionRevision !== 'choreographed-v1' ||
+      SAFE_MOTION_KEYS.slice(1).some(
+        (key) => typeof diagnostic[key] !== 'boolean'
+      )
+    )
+      return undefined;
+    return Object.freeze({
+      motionRevision: 'choreographed-v1',
+      heldPoseApplied: diagnostic.heldPoseApplied as boolean,
+      heldPoseMoved: diagnostic.heldPoseMoved as boolean,
+      heldPoseRepeated: diagnostic.heldPoseRepeated as boolean,
+      rollingPoseApplied: diagnostic.rollingPoseApplied as boolean,
+      rollingPoseMoved: diagnostic.rollingPoseMoved as boolean,
+      reducedHeldPoseRepeated: diagnostic.reducedHeldPoseRepeated as boolean,
+      unexpectedMotion: diagnostic.unexpectedMotion as boolean,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 function sameVisualThrowProfile(
@@ -318,8 +362,8 @@ function DiceTrayWitnessDeliveryHost({
     undefined
   );
   const evidenceData = useRef<Record<WitnessIdentity, WitnessEvidenceData>>({
-    roller: { motionSamples: [] },
-    spectator: { motionSamples: [] },
+    roller: {},
+    spectator: {},
   });
   const callbackFence = useRef<Record<string, unknown>>({});
   const acceptedRelease = events.find(
@@ -389,11 +433,8 @@ function DiceTrayWitnessDeliveryHost({
         ...(delivery.releaseProfile
           ? { releaseProfile: delivery.releaseProfile }
           : {}),
+        ...(data.motion ? { motion: data.motion } : {}),
       } as Stone1WitnessEvidence;
-      Object.defineProperty(bridge, 'motionSamples', {
-        enumerable: true,
-        get: () => data.motionSamples.slice(),
-      });
       return Object.freeze(bridge);
     };
 
@@ -401,8 +442,7 @@ function DiceTrayWitnessDeliveryHost({
       .map((witness) => evidenceData.current[witness].providerId)
       .filter((identity): identity is number => identity !== undefined);
     const providerId =
-      providerIds.length > 0 &&
-      providerIds.every((identity) => identity === providerIds[0])
+      providerIds.length === 2 && providerIds[0] === providerIds[1]
         ? providerIds[0]
         : undefined;
     const root = evidenceRoot.current;
@@ -479,7 +519,6 @@ function DiceTrayWitnessDeliveryHost({
         evidenceData.current[witness] = {
           rendererGeneration: diagnostic.rendererGeneration,
           providerId,
-          motionSamples: [],
         };
       } else {
         evidenceData.current[witness].providerId = providerId;
@@ -570,26 +609,15 @@ function DiceTrayWitnessDeliveryHost({
       if (
         !evidenceActive.current ||
         callbackFence.current[`${witness}Motion`] !== callback ||
-        data.rendererGeneration === undefined ||
-        diagnostic.presentationToken !== data.rendererGeneration
+        data.rendererGeneration === undefined
       )
         return;
-      const sample = Object.freeze({
-        sequence: diagnostic.sequence,
-        phase: diagnostic.phase,
-        reducedMotion: diagnostic.reducedMotion,
-        held: diagnostic.held,
-        translation: Object.freeze([
-          ...diagnostic.translation,
-        ]) as AttackDieMotionDiagnostic['translation'],
-        quaternion: Object.freeze([
-          ...diagnostic.quaternion,
-        ]) as AttackDieMotionDiagnostic['quaternion'],
-      });
-      data.motionSamples.push(sample);
-      if (data.motionSamples.length > 240) data.motionSamples.shift();
+      const safe = snapshotSafeMotionDiagnostic(diagnostic);
+      if (!safe) return;
+      data.motion = safe;
+      publishEvidence();
     },
-    []
+    [publishEvidence]
   );
   const publishRendererInfo = useCallback(
     (

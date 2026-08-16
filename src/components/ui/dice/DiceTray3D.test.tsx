@@ -64,6 +64,7 @@ let setPointerCapture: ReturnType<typeof vi.fn>;
 let hasPointerCapture: ReturnType<typeof vi.fn>;
 let releasePointerCapture: ReturnType<typeof vi.fn>;
 let emitLostCaptureOnRelease: boolean;
+let grabBounds: { left: number; top: number; width: number; height: number };
 
 function capturePointer(this: HTMLElement, pointerId: number) {
   const captured = capturedPointers.get(this) ?? new Set<number>();
@@ -85,6 +86,7 @@ beforeEach(() => {
   controllerMocks.creates.mockClear();
   capturedPointers = new WeakMap();
   emitLostCaptureOnRelease = false;
+  grabBounds = { left: 0, top: 0, width: 100, height: 100 };
   setPointerCapture = vi.fn(capturePointer);
   hasPointerCapture = vi.fn(pointerIsCaptured);
   releasePointerCapture = vi.fn(releaseCapturedPointer);
@@ -96,7 +98,7 @@ beforeEach(() => {
       configurable: true,
       value(this: HTMLElement) {
         const bounds = this.classList.contains('dice-tray-3d-grab-target')
-          ? { left: 0, top: 0, width: 100, height: 100 }
+          ? grabBounds
           : { left: 0, top: 0, width: 240, height: 220 };
         return {
           ...bounds,
@@ -391,32 +393,72 @@ describe('DiceTray3D', () => {
     expect(onReleaseRequest).not.toHaveBeenCalled();
   });
 
-  it('uses 14px mouse padding and 24px touch padding at the snapshotted hit bounds', () => {
-    const mouseRequest = vi.fn();
-    const mouse = renderTray([die], {
-      phase: 'armed',
-      onReleaseRequest: mouseRequest,
-    });
-    let grab = screen.getByRole('button', { name: 'Grab d20' });
-    fireEvent.pointerDown(grab, {
-      pointerId: 18,
-      pointerType: 'mouse',
-      clientX: -20,
-      clientY: 50,
-    });
-    expect(setPointerCapture).not.toHaveBeenCalled();
-    mouse.unmount();
+  it.each([
+    ['mouse exact padding', 'mouse', 56, true],
+    ['mouse beyond padding', 'mouse', 55.99, false],
+    ['touch exact padding', 'touch', 46, true],
+    ['touch beyond padding', 'touch', 45.99, false],
+  ] as const)(
+    'makes browser-reachable surrounding renderer starts honor %s',
+    (_label, pointerType, clientX, accepted) => {
+      grabBounds = { left: 70, top: 60, width: 100, height: 100 };
+      const view = renderTray([die], {
+        phase: 'armed',
+        onReleaseRequest: vi.fn(),
+      });
+      const renderer = screen.getByTestId('dice-tray-3d-renderer');
+      const grab = screen.getByRole('button', { name: 'Grab d20' });
 
-    renderTray([die], { phase: 'armed', onReleaseRequest: vi.fn() });
-    grab = screen.getByRole('button', { name: 'Grab d20' });
-    fireEvent.pointerDown(grab, {
+      fireEvent.pointerDown(renderer, {
+        pointerId: 18,
+        pointerType,
+        clientX,
+        clientY: 100,
+      });
+
+      expect(setPointerCapture).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      expect(pointerIsCaptured.call(renderer, 18)).toBe(accepted);
+      expect(pointerIsCaptured.call(grab, 18)).toBe(false);
+      expect(renderer.getAttribute('data-grabbed')).toBe(String(accepted));
+      view.unmount();
+    }
+  );
+
+  it('owns captured move and outside release on the renderer surface exactly once', () => {
+    grabBounds = { left: 70, top: 60, width: 100, height: 100 };
+    const onReleaseRequest = vi.fn();
+    renderTray([die], { phase: 'armed', onReleaseRequest });
+    const renderer = screen.getByTestId('dice-tray-3d-renderer');
+
+    fireEvent.pointerDown(renderer, {
       pointerId: 19,
-      pointerType: 'touch',
-      clientX: -20,
-      clientY: 50,
+      pointerType: 'mouse',
+      clientX: 60,
+      clientY: 100,
     });
-    expect(setPointerCapture).toHaveBeenCalledWith(19);
-    expect(grab.getAttribute('data-grabbed')).toBe('true');
+    fireEvent.pointerMove(renderer, {
+      pointerId: 19,
+      pointerType: 'mouse',
+      clientX: 220,
+      clientY: 200,
+    });
+    fireEvent.pointerUp(renderer, {
+      pointerId: 19,
+      pointerType: 'mouse',
+      clientX: 260,
+      clientY: 230,
+    });
+    fireEvent.pointerUp(renderer, {
+      pointerId: 19,
+      pointerType: 'mouse',
+      clientX: 260,
+      clientY: 230,
+    });
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(releasePointerCapture).toHaveBeenCalledTimes(1);
+    expect(releasePointerCapture).toHaveBeenCalledWith(19);
+    expect(renderer.getAttribute('data-grabbed')).toBe('false');
   });
 
   it('hides Roll without a host callback and preserves authority when one is installed later', () => {

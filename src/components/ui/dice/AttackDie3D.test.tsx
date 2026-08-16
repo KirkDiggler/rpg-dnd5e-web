@@ -842,6 +842,57 @@ describe('AttackDie3D', () => {
     });
   });
 
+  it('fails closed to truthful SVG and failed telemetry for a malformed supplied profile', () => {
+    arrangeRuntimeReady();
+    const telemetry = vi.fn();
+    const malformed = {
+      ...throwProfile(17),
+      releaseSpeed: 1.5,
+    } as unknown as ReturnType<typeof throwProfile>;
+
+    render(
+      <AttackDie3D
+        {...props(299, 10)}
+        provider={originalProvider}
+        phase="rolling"
+        throwProfile={malformed}
+        onTelemetry={telemetry}
+      />
+    );
+
+    expect(screen.queryByTestId('canvas')).toBeNull();
+    expect(fallbackCovered()).toBe(false);
+    expect(mocks.solverInputs).toHaveLength(0);
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presentationToken: 299,
+        renderer: 'svg',
+        state: 'failed',
+        failureCode: 'invalid-throw-profile',
+        exactTargetHeld: false,
+      })
+    );
+  });
+
+  it('synthesizes neutral choreography only when the standalone profile is absent', () => {
+    mocks.status = 'ready';
+    render(<AttackDie3D {...props(301)} phase="ready" />);
+    frame(-1, 10);
+
+    expect(screen.queryByTestId('canvas')).not.toBeNull();
+    expect(mocks.solverInputs.at(-1)).toMatchObject({
+      throwProfile: {
+        schemaVersion: 1,
+        releasePosition: [0.5, 0.5],
+        releaseDirection: [0, 0],
+        releaseSpeed: 0,
+        shakeEnergy: 0,
+        spinBias: 0,
+        motionSeed: 301,
+      },
+    });
+  });
+
   it('feeds profile facts and continuous elapsed time to the solver without previous-frame quaternion state', () => {
     mocks.status = 'ready';
     const profile = throwProfile(17);
@@ -1457,7 +1508,7 @@ describe('Original carved runtime renderer', () => {
     expect(mocks.worldQuaternionReads).toHaveLength(1);
   });
 
-  it('reports actual applied rendered poses only through the explicit Concepts diagnostic', () => {
+  it('publishes only a current frozen monotonic boolean aggregate after applying renderer-local poses', () => {
     arrangeRuntimeReady();
     const diagnostic = vi.fn();
     render(
@@ -1476,17 +1527,32 @@ describe('Original carved runtime renderer', () => {
 
     expect(diagnostic).toHaveBeenCalledTimes(2);
     expect(diagnostic).toHaveBeenLastCalledWith({
-      presentationToken: 571,
-      sequence: 2,
-      phase: 'ready',
-      reducedMotion: true,
-      held: true,
-      translation: [0, 0.28, 0],
-      quaternion: [0.31, -0.47, 0.19, 0.805],
+      motionRevision: 'choreographed-v1',
+      heldPoseApplied: true,
+      heldPoseMoved: false,
+      heldPoseRepeated: true,
+      rollingPoseApplied: false,
+      rollingPoseMoved: false,
+      reducedHeldPoseRepeated: true,
+      unexpectedMotion: false,
     });
-    expect(Object.isFrozen(diagnostic.mock.calls[1][0])).toBe(true);
-    expect(Object.isFrozen(diagnostic.mock.calls[1][0].translation)).toBe(true);
-    expect(Object.isFrozen(diagnostic.mock.calls[1][0].quaternion)).toBe(true);
+    const aggregate = diagnostic.mock.calls[1][0] as Record<string, unknown>;
+    expect(Object.isFrozen(aggregate)).toBe(true);
+    expect(Object.keys(aggregate).sort()).toEqual(
+      [
+        'heldPoseApplied',
+        'heldPoseMoved',
+        'heldPoseRepeated',
+        'motionRevision',
+        'reducedHeldPoseRepeated',
+        'rollingPoseApplied',
+        'rollingPoseMoved',
+        'unexpectedMotion',
+      ].sort()
+    );
+    expect(JSON.stringify(diagnostic.mock.calls)).not.toMatch(
+      /translation|quaternion|coordinate|velocity|tilt|timestamp|count|sequence|sample|path|history/i
+    );
   });
 
   it('fails closed when a synthetically permuted target physically presents another result', () => {

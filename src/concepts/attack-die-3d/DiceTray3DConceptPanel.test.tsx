@@ -16,6 +16,7 @@ import { MONSTER_FIXTURE_RELEASE_DELAY_MS } from './diceTrayWitnessFixture';
 
 const attackDieProps: AttackDie3DProps[] = [];
 const presentationCalls: DiceTrayPresentationProps[] = [];
+let suppressSpectatorBoundary = false;
 
 vi.mock('../../components/ui/dice/DiceTrayPresentation', async (original) => {
   const actual =
@@ -27,7 +28,16 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', async (original) => {
     ...actual,
     DiceTrayPresentation: (props: DiceTrayPresentationProps) => {
       presentationCalls.push(props);
-      return <ActualDiceTrayPresentation {...props} />;
+      return (
+        <ActualDiceTrayPresentation
+          {...props}
+          onBoundaryDiagnostic={
+            suppressSpectatorBoundary && props.witnessRole === 'spectator'
+              ? undefined
+              : props.onBoundaryDiagnostic
+          }
+        />
+      );
     },
   };
 });
@@ -67,6 +77,7 @@ beforeEach(() => {
   attackDieProps.length = 0;
   presentationCalls.length = 0;
   capturedPointers = new WeakMap();
+  suppressSpectatorBoundary = false;
   Object.defineProperties(HTMLElement.prototype, {
     setPointerCapture: {
       configurable: true,
@@ -122,6 +133,17 @@ function observed(props: AttackDie3DProps): AttackDieTelemetry {
     throwProfile: props.throwProfile,
   };
 }
+
+const safeRollingMotionAggregate = () => ({
+  motionRevision: 'choreographed-v1' as const,
+  heldPoseApplied: false,
+  heldPoseMoved: false,
+  heldPoseRepeated: false,
+  rollingPoseApplied: true,
+  rollingPoseMoved: true,
+  reducedHeldPoseRepeated: false,
+  unexpectedMotion: false,
+});
 
 function expectRecursivelyFrozen(value: unknown): void {
   if (value === null || typeof value !== 'object') return;
@@ -315,6 +337,17 @@ describe('DiceTray3DConceptPanel', () => {
     ).toBeNull();
   });
 
+  it('withholds shared provider identity until exactly two defined equal witness contributions exist', () => {
+    suppressSpectatorBoundary = true;
+    render(<DiceTray3DConceptPanel token={89} reducedMotion={false} />);
+
+    const bridge = window.__stone1TrayEvidence;
+    expect(latestPresentation('Roller').onBoundaryDiagnostic).toBeDefined();
+    expect(latestPresentation('Spectator').onBoundaryDiagnostic).toBeDefined();
+    expect(bridge?.shared.eventArrayId).toBeGreaterThan(0);
+    expect(bridge?.shared).not.toHaveProperty('providerId');
+  });
+
   it('publishes only safe final Stone 1 evidence after a valid shared release', () => {
     render(<DiceTray3DConceptPanel token={90} reducedMotion={false} />);
     const rollerToken = tokenFor('Roller');
@@ -362,24 +395,8 @@ describe('DiceTray3DConceptPanel', () => {
         runtimeSourceId: 7,
         runtimeCloneId: 9,
       });
-      rollerAttack.onMotionDiagnostic?.({
-        presentationToken: rollerToken,
-        sequence: 41,
-        phase: 'rolling',
-        reducedMotion: false,
-        held: false,
-        translation: [0.1, 0.2, 0.3],
-        quaternion: [0, 0, 0, 1],
-      });
-      spectatorAttack.onMotionDiagnostic?.({
-        presentationToken: spectatorToken,
-        sequence: 42,
-        phase: 'rolling',
-        reducedMotion: false,
-        held: false,
-        translation: [0.2, 0.3, 0.4],
-        quaternion: [0, 0.1, 0, 0.995],
-      });
+      rollerAttack.onMotionDiagnostic?.(safeRollingMotionAggregate());
+      spectatorAttack.onMotionDiagnostic?.(safeRollingMotionAggregate());
     });
 
     const bridge = (
@@ -402,7 +419,7 @@ describe('DiceTray3DConceptPanel', () => {
           runtimeCloneId: number;
           releaseProfile: unknown;
           finalTelemetry: Record<string, unknown>;
-          motionSamples: readonly Record<string, unknown>[];
+          motion: Record<string, unknown>;
         }
       >;
     };
@@ -452,17 +469,14 @@ describe('DiceTray3DConceptPanel', () => {
         },
       },
     });
-    expect(bridge.witnesses.roller.motionSamples).toEqual([
-      {
-        sequence: 41,
-        phase: 'rolling',
-        reducedMotion: false,
-        held: false,
-        translation: [0.1, 0.2, 0.3],
-        quaternion: [0, 0, 0, 1],
-      },
-    ]);
-    expect(bridge.witnesses.spectator.motionSamples).toHaveLength(1);
+    expect(bridge.witnesses.roller.motion).toEqual(
+      safeRollingMotionAggregate()
+    );
+    expect(bridge.witnesses.spectator.motion).toEqual(
+      safeRollingMotionAggregate()
+    );
+    expectRecursivelyFrozen(bridge.witnesses.roller.motion);
+    expectRecursivelyFrozen(bridge.witnesses.spectator.motion);
     expect(bridge.shared.eventArrayId).toBeGreaterThan(0);
     expect(bridge.shared.providerId).toBeGreaterThan(0);
     expect(bridge.witnesses.roller.releaseProfile).toEqual(
@@ -483,6 +497,13 @@ describe('DiceTray3DConceptPanel', () => {
       'timestamp',
       'history',
       'pathlength',
+      'translation',
+      'quaternion',
+      'velocity',
+      'tilt',
+      'sequence',
+      'sample',
+      'motionsamples',
       'domrect',
       'normalizedposition',
       'normalizedtilt',
@@ -549,7 +570,6 @@ describe('DiceTray3DConceptPanel', () => {
     expect(window.__stone1TrayEvidence).toBe(before);
     expect(window.__stone1TrayEvidence?.witnesses.roller).toEqual({
       releaseProfile: rollerAttack.throwProfile,
-      motionSamples: [],
     });
     const keys = recursivelyCollectKeys(window.__stone1TrayEvidence);
     for (const key of ['pointerid', 'history', 'clientx', 'clienty'])
@@ -649,7 +669,6 @@ describe('DiceTray3DConceptPanel', () => {
     const clearedBridge = window.__stone1TrayEvidence;
     expect(clearedBridge?.witnesses.roller).toEqual({
       releaseProfile: rollerAttack.throwProfile,
-      motionSamples: [],
     });
 
     act(() => {
@@ -672,7 +691,6 @@ describe('DiceTray3DConceptPanel', () => {
     expect(window.__stone1TrayEvidence).toBe(clearedBridge);
     expect(window.__stone1TrayEvidence?.witnesses.roller).toEqual({
       releaseProfile: rollerAttack.throwProfile,
-      motionSamples: [],
     });
   });
 

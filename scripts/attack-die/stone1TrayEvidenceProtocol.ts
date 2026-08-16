@@ -36,6 +36,12 @@ export const STONE1_DENIED_PROFILE_KEYS = [
   'mappedTarget',
   'target',
   'quaternion',
+  'translation',
+  'velocity',
+  'tilt',
+  'sequence',
+  'sample',
+  'motionSamples',
   'pointerId',
   'pointerType',
   'clientX',
@@ -148,6 +154,17 @@ export interface Stone1TerminalInputFact {
   captureOwnedAfter: boolean;
 }
 
+export interface Stone1SafeMotionAggregate {
+  motionRevision: 'choreographed-v1';
+  heldPoseApplied: boolean;
+  heldPoseMoved: boolean;
+  heldPoseRepeated: boolean;
+  rollingPoseApplied: boolean;
+  rollingPoseMoved: boolean;
+  reducedHeldPoseRepeated: boolean;
+  unexpectedMotion: boolean;
+}
+
 export interface Stone1ScenarioFact {
   id: Stone1ScenarioId;
   passed: boolean;
@@ -160,11 +177,14 @@ export interface Stone1ScenarioFact {
     held: Stone1TimelineState;
     afterRelease: Stone1AfterReleaseState;
   };
-  heldCue: {
-    staticLifted: boolean;
-    tumbleSampleCount: number;
-    shakeSampleCount: number;
-    bounceSampleCount: number;
+  motionProof: {
+    heldRoller: Stone1SafeMotionAggregate | null;
+    heldSpectator: Stone1SafeMotionAggregate | null;
+    afterReleaseRoller: Stone1SafeMotionAggregate | null;
+    afterReleaseSpectator: Stone1SafeMotionAggregate | null;
+    heldAggregateFrozen: boolean;
+    afterReleaseAggregatesFrozen: boolean;
+    reducedHeldPixelsChangedAndStable: boolean;
   };
   outsideCaptureObserved: boolean;
   cancellationObserved: boolean;
@@ -289,7 +309,7 @@ const SCENARIO_KEYS = [
   'deviceScaleFactor',
   'authoritativeResult',
   'timeline',
-  'heldCue',
+  'motionProof',
   'outsideCaptureObserved',
   'cancellationObserved',
   'terminalInput',
@@ -319,11 +339,24 @@ const AFTER_RELEASE_KEYS = [
   'profilePresent',
   'profileSchemaVersion',
 ] as const;
-const HELD_CUE_KEYS = [
-  'staticLifted',
-  'tumbleSampleCount',
-  'shakeSampleCount',
-  'bounceSampleCount',
+const MOTION_PROOF_KEYS = [
+  'heldRoller',
+  'heldSpectator',
+  'afterReleaseRoller',
+  'afterReleaseSpectator',
+  'heldAggregateFrozen',
+  'afterReleaseAggregatesFrozen',
+  'reducedHeldPixelsChangedAndStable',
+] as const;
+const SAFE_MOTION_KEYS = [
+  'motionRevision',
+  'heldPoseApplied',
+  'heldPoseMoved',
+  'heldPoseRepeated',
+  'rollingPoseApplied',
+  'rollingPoseMoved',
+  'reducedHeldPoseRepeated',
+  'unexpectedMotion',
 ] as const;
 const OBSERVATION_PAIR_KEYS = [
   'profilesDeepEqual',
@@ -422,6 +455,16 @@ const POINTER_HELD_IDS = new Set<Stone1ScenarioId>([
   'repeated-shake',
   'paired-shared-release',
   'reduced-motion-held',
+  'responsive-narrow',
+  'pointer-cancel',
+  'lost-pointer-capture',
+  'context-loss',
+]);
+const MOVED_HELD_IDS = new Set<Stone1ScenarioId>([
+  'held-desktop',
+  'held-outside-capture',
+  'repeated-shake',
+  'paired-shared-release',
   'responsive-narrow',
   'pointer-cancel',
   'lost-pointer-capture',
@@ -641,6 +684,22 @@ function validateObservation(
   return observation as unknown as Stone1FinalObservation;
 }
 
+function validateSafeMotion(
+  value: unknown,
+  label: string,
+  expected: Omit<Stone1SafeMotionAggregate, 'motionRevision'>
+) {
+  const motion = exactObject(value, SAFE_MOTION_KEYS, label);
+  exactString(
+    motion.motionRevision,
+    'choreographed-v1',
+    `${label} motion revision`
+  );
+  for (const key of SAFE_MOTION_KEYS.slice(1) as Array<keyof typeof expected>)
+    exactBoolean(motion[key], expected[key], `${label} ${key}`);
+  return motion;
+}
+
 function validateObservations(value: unknown, label: string) {
   const pair = exactObject(value, OBSERVATION_PAIR_KEYS, label);
   for (const key of [
@@ -766,38 +825,93 @@ function validateScenario(value: unknown, id: Stone1ScenarioId, index: number) {
   )
     fail(`${label} release/profile schema mismatch`);
 
-  const cue = exactObject(scenario.heldCue, HELD_CUE_KEYS, `${label} held cue`);
-  for (const key of [
-    'tumbleSampleCount',
-    'shakeSampleCount',
-    'bounceSampleCount',
-  ] as const)
-    nonnegativeSafeInteger(cue[key], `${label} ${key}`);
-  if (id === 'reduced-motion-held') {
-    exactBoolean(cue.staticLifted, true, `${label} static lifted cue`);
-    if (
-      cue.tumbleSampleCount !== 0 ||
-      cue.shakeSampleCount !== 0 ||
-      cue.bounceSampleCount !== 0
-    )
-      fail(`${label} reduced motion animated samples`);
+  const motionProof = exactObject(
+    scenario.motionProof,
+    MOTION_PROOF_KEYS,
+    `${label} motion proof`
+  );
+  const pointerHeld = POINTER_HELD_IDS.has(id);
+  const movedHeld = MOVED_HELD_IDS.has(id);
+  const reducedHeld = id === 'reduced-motion-held';
+  const emptyMotion = {
+    heldPoseApplied: false,
+    heldPoseMoved: false,
+    heldPoseRepeated: false,
+    rollingPoseApplied: false,
+    rollingPoseMoved: false,
+    reducedHeldPoseRepeated: false,
+    unexpectedMotion: false,
+  } as const;
+  const heldMotion = pointerHeld
+    ? {
+        ...emptyMotion,
+        heldPoseApplied: true,
+        heldPoseMoved: movedHeld,
+        heldPoseRepeated: true,
+        reducedHeldPoseRepeated: reducedHeld,
+      }
+    : undefined;
+  if (heldMotion)
+    validateSafeMotion(
+      motionProof.heldRoller,
+      `${label} held Roller motion`,
+      heldMotion
+    );
+  else if (motionProof.heldRoller !== null)
+    fail(`${label} unexpected held Roller motion`);
+  if (motionProof.heldSpectator !== null)
+    fail(`${label} Spectator moved before release`);
+
+  if (SUCCESS_IDS.has(id)) {
+    validateSafeMotion(
+      motionProof.afterReleaseRoller,
+      `${label} after-release Roller motion`,
+      {
+        ...emptyMotion,
+        heldPoseApplied: pointerHeld,
+        heldPoseMoved: movedHeld,
+        heldPoseRepeated: pointerHeld,
+        rollingPoseApplied: true,
+        rollingPoseMoved: true,
+        reducedHeldPoseRepeated: reducedHeld,
+      }
+    );
+    validateSafeMotion(
+      motionProof.afterReleaseSpectator,
+      `${label} after-release Spectator motion`,
+      {
+        ...emptyMotion,
+        rollingPoseApplied: true,
+        rollingPoseMoved: true,
+      }
+    );
   } else {
-    exactBoolean(cue.staticLifted, false, `${label} static lifted cue`);
-    if (
-      SUCCESS_IDS.has(id) &&
-      (Number(cue.tumbleSampleCount) < 1 ||
-        Number(cue.shakeSampleCount) < 1 ||
-        Number(cue.bounceSampleCount) < 1)
-    )
-      fail(`${label} tactile motion samples missing`);
-    if (
-      !SUCCESS_IDS.has(id) &&
-      (cue.tumbleSampleCount !== 0 ||
-        cue.shakeSampleCount !== 0 ||
-        cue.bounceSampleCount !== 0)
-    )
-      fail(`${label} unexpected motion samples`);
+    if (heldMotion)
+      validateSafeMotion(
+        motionProof.afterReleaseRoller,
+        `${label} terminal Roller motion`,
+        heldMotion
+      );
+    else if (motionProof.afterReleaseRoller !== null)
+      fail(`${label} unexpected terminal Roller motion`);
+    if (motionProof.afterReleaseSpectator !== null)
+      fail(`${label} unexpected terminal Spectator motion`);
   }
+  exactBoolean(
+    motionProof.heldAggregateFrozen,
+    pointerHeld,
+    `${label} held aggregate frozen`
+  );
+  exactBoolean(
+    motionProof.afterReleaseAggregatesFrozen,
+    SUCCESS_IDS.has(id) || pointerHeld,
+    `${label} after-release aggregates frozen`
+  );
+  exactBoolean(
+    motionProof.reducedHeldPixelsChangedAndStable,
+    reducedHeld,
+    `${label} reduced held pixel change/stability`
+  );
   exactBoolean(
     scenario.outsideCaptureObserved,
     id === 'held-outside-capture',

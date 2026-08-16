@@ -127,48 +127,71 @@ await mkdir(tempRoot, { recursive: false });
 let browser;
 let preview;
 let previewLog;
-let shuttingDown = false;
+let cleanupPromise;
+let terminalFailurePromise;
 let port;
 async function cleanup() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  if (browser) {
-    await browser.close().catch(() => undefined);
-    browser = undefined;
-  }
-  if (preview && preview.exitCode === null) {
-    preview.kill('SIGTERM');
-    await new Promise((resolveExit) => {
-      const timer = setTimeout(() => {
-        preview?.kill('SIGKILL');
-        resolveExit();
-      }, 5_000);
-      preview.once('exit', () => {
-        clearTimeout(timer);
-        resolveExit();
+  if (cleanupPromise) return cleanupPromise;
+  cleanupPromise = (async () => {
+    if (browser) {
+      await browser.close().catch(() => undefined);
+      browser = undefined;
+    }
+    if (preview && preview.exitCode === null) {
+      preview.kill('SIGTERM');
+      await new Promise((resolveExit) => {
+        const timer = setTimeout(() => {
+          preview?.kill('SIGKILL');
+          resolveExit();
+        }, 5_000);
+        preview.once('exit', () => {
+          clearTimeout(timer);
+          resolveExit();
+        });
       });
-    });
-  }
-  preview = undefined;
-  if (previewLog) {
-    await new Promise((resolveClose) => previewLog.end(resolveClose));
-    previewLog = undefined;
-  }
+    }
+    preview = undefined;
+    if (previewLog) {
+      await new Promise((resolveClose) => previewLog.end(resolveClose));
+      previewLog = undefined;
+    }
+  })();
+  return cleanupPromise;
 }
+
+async function markTerminalFailure(reason) {
+  if (terminalFailurePromise) return terminalFailurePromise;
+  terminalFailurePromise = (async () => {
+    const temporary = resolve(out, `.FAILED-${process.pid}.tmp`);
+    await writeFile(temporary, `${reason}\n`);
+    await rm(passPath, { force: true });
+    await rename(temporary, failedPath);
+  })();
+  return terminalFailurePromise;
+}
+
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'])
   process.once(signal, () => {
-    void cleanup().finally(() => process.exit(signal === 'SIGINT' ? 130 : 143));
+    void (async () => {
+      await markTerminalFailure(`capture terminated by ${signal}`);
+      await cleanup();
+      process.exit(signal === 'SIGINT' ? 130 : 143);
+    })();
   });
 process.once('uncaughtException', (error) => {
-  void writeFile(failedPath, `${error.stack ?? error}\n`)
-    .catch(() => undefined)
-    .finally(() => cleanup().finally(() => process.exit(1)));
+  void (async () => {
+    await markTerminalFailure(String(error.stack ?? error));
+    await cleanup();
+    process.exit(1);
+  })();
 });
 process.once('unhandledRejection', (error) => {
-  const message = error instanceof Error ? error.stack : String(error);
-  void writeFile(failedPath, `${message}\n`)
-    .catch(() => undefined)
-    .finally(() => cleanup().finally(() => process.exit(1)));
+  void (async () => {
+    const message = error instanceof Error ? error.stack : String(error);
+    await markTerminalFailure(message);
+    await cleanup();
+    process.exit(1);
+  })();
 });
 
 async function atomicProviderCopy(source, destination) {
@@ -743,15 +766,15 @@ try {
     outside = false,
     nativeTerminalType = undefined
   ) {
-    const target = page
-      .locator('[data-witness-role="roller"]')
-      .getByRole('button', { name: 'Grab d20' });
+    const witness = page.locator('[data-witness-role="roller"]');
+    const target = witness.getByRole('button', { name: 'Grab d20' });
+    const captureOwner = witness.getByTestId('dice-tray-3d-renderer');
     await target.scrollIntoViewIfNeeded();
     const box = await target.boundingBox();
     if (!box) throw Error('Roller grab target has no bounds');
     const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
     if (nativeTerminalType)
-      await installNativeInputAudit(target, nativeTerminalType);
+      await installNativeInputAudit(captureOwner, nativeTerminalType);
     let cdp;
     if (nativeTerminalType === 'pointercancel') {
       cdp = await page.context().newCDPSession(page);
@@ -759,6 +782,15 @@ try {
         type: 'touchStart',
         touchPoints: [{ x: start.x, y: start.y }],
       });
+    } else {
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+    }
+    await page.waitForFunction(
+      () => window.__stone1TrayEvidence?.rollerGrabbed === true
+    );
+    await waitForSafeMotionFact(page, 'roller', 'heldPoseRepeated');
+    if (nativeTerminalType === 'pointercancel') {
       const touchMoves = moves.length > 0 ? moves : [[1, 1, 1]];
       for (const move of touchMoves)
         await cdp.send('Input.dispatchTouchEvent', {
@@ -766,18 +798,13 @@ try {
           touchPoints: [{ x: start.x + move[0], y: start.y + move[1] }],
         });
     } else {
-      await page.mouse.move(start.x, start.y);
-      await page.mouse.down();
       for (const move of moves)
         await page.mouse.move(start.x + move[0], start.y + move[1], {
           steps: move[2] ?? 1,
         });
       if (outside) await page.mouse.move(4, 4, { steps: 3 });
     }
-    await page.waitForFunction(
-      () => window.__stone1TrayEvidence?.rollerGrabbed === true
-    );
-    const capture = await target.evaluate(
+    const capture = await captureOwner.evaluate(
       (element, terminalType) => ({
         captured:
           terminalType === 'pointercancel'
@@ -787,16 +814,14 @@ try {
       }),
       nativeTerminalType
     );
-    return { target, start, capture, cdp };
+    return { target, captureOwner, start, capture, cdp };
   }
 
   async function transferPointerCapture(page, grabState) {
-    await grabState.target.evaluate((element) => {
+    await grabState.captureOwner.evaluate((element) => {
       if (!element.hasPointerCapture(1))
         throw Error('lost-capture fixture did not own active pointer 1');
-      const transferTarget = element.closest(
-        '[data-testid="dice-tray-3d-renderer"]'
-      );
+      const transferTarget = element.querySelector('.dice-tray-3d-grab-target');
       if (!(transferTarget instanceof HTMLElement))
         throw Error('lost-capture transfer target missing');
       transferTarget.setPointerCapture(1);
@@ -909,74 +934,34 @@ try {
     });
   }
 
-  async function renderedMotionSamples(page) {
-    return page.evaluate(() => {
-      const bridge = window.__stone1TrayEvidence;
-      if (!bridge) throw Error('Stone 1 motion bridge missing');
-      return structuredClone(bridge.witnesses.roller.motionSamples);
-    });
-  }
-
-  async function waitForReducedMotionSample(page, held) {
+  async function waitForSafeMotionFact(page, role, fact) {
     await page.waitForFunction(
-      (expectedHeld) =>
-        window.__stone1TrayEvidence?.witnesses.roller.motionSamples.some(
-          (sample) =>
-            sample.phase === 'ready' &&
-            sample.reducedMotion === true &&
-            sample.held === expectedHeld
-        ),
-      held,
+      ({ witnessRole, factName }) =>
+        window.__stone1TrayEvidence?.witnesses[witnessRole]?.motion?.[
+          factName
+        ] === true,
+      { witnessRole: role, factName: fact },
       { timeout: 10_000 }
     );
   }
 
-  function changedTuple(first, second, indices) {
-    return indices.some(
-      (index) => Math.abs(first[index] - second[index]) > 1e-6
-    );
-  }
-
-  function observedMotionCounts(samples, afterSequence = 0) {
-    // The first rolling pose is the immediate phase handoff. Count only
-    // subsequent rendered changes so reduced motion's instant settle is not
-    // mislabeled as animation.
-    const rolling = samples
-      .filter(
-        (sample) =>
-          sample.sequence > afterSequence && sample.phase === 'rolling'
-      )
-      .slice(1);
-    let tumble = 0;
-    let shake = 0;
-    let bounce = 0;
-    for (let index = 1; index < rolling.length; index += 1) {
-      if (
-        changedTuple(
-          rolling[index - 1].quaternion,
-          rolling[index].quaternion,
-          [0, 1, 2, 3]
-        )
-      )
-        tumble += 1;
-      if (
-        changedTuple(
-          rolling[index - 1].translation,
-          rolling[index].translation,
-          [0, 2]
-        )
-      )
-        shake += 1;
-      if (
-        changedTuple(
-          rolling[index - 1].translation,
-          rolling[index].translation,
-          [1]
-        )
-      )
-        bounce += 1;
-    }
-    return { tumble, shake, bounce };
+  async function safeMotionState(page) {
+    return page.evaluate(() => {
+      const bridge = window.__stone1TrayEvidence;
+      if (!bridge) throw Error('Stone 1 safe motion bridge missing');
+      const roller = bridge.witnesses.roller.motion;
+      const spectator = bridge.witnesses.spectator.motion;
+      const current = [roller, spectator].filter(
+        (aggregate) => aggregate !== undefined
+      );
+      return {
+        roller: roller ? structuredClone(roller) : null,
+        spectator: spectator ? structuredClone(spectator) : null,
+        aggregatesFrozen:
+          current.length > 0 &&
+          current.every((aggregate) => Object.isFrozen(aggregate)),
+      };
+    });
   }
 
   async function observedFallbackFacts(page, origin) {
@@ -1057,23 +1042,20 @@ try {
     const scenario = await createScenario(id, { providerFailure });
     const { page, context, viewport, requestRecords } = scenario;
     try {
-      if (id === 'reduced-motion-held')
-        await waitForReducedMotionSample(page, false);
       const before = timelineState(await bridgeState(page, 'before'));
-      const motionBefore = await renderedMotionSamples(page);
-      const motionSequenceBefore = motionBefore.at(-1)?.sequence ?? 0;
-      const reducedBeforePose = motionBefore
-        .filter((sample) => sample.phase === 'ready' && !sample.held)
-        .at(-1);
       let held = before;
+      let heldMotionState = {
+        roller: null,
+        spectator: null,
+        aggregatesFrozen: false,
+      };
       let outsideCaptureObserved = false;
       let cancellationObserved = false;
       let terminalInput = null;
       let observations = null;
       let failure = null;
       let mainCaptured = false;
-      let motionCounts = { tumble: 0, shake: 0, bounce: 0 };
-      let reducedStaticLifted = false;
+      let reducedHeldPixelsChangedAndStable = false;
 
       if (providerFailure) {
         await page
@@ -1125,9 +1107,18 @@ try {
               ? 'lostpointercapture'
               : undefined;
         const grabState = await grab(page, moves, outside, nativeTerminalType);
+        await waitForSafeMotionFact(page, 'roller', 'heldPoseApplied');
+        await waitForSafeMotionFact(page, 'roller', 'heldPoseRepeated');
         if (id === 'reduced-motion-held')
-          await waitForReducedMotionSample(page, true);
+          await waitForSafeMotionFact(
+            page,
+            'roller',
+            'reducedHeldPoseRepeated'
+          );
+        else if (id !== 'quick-release')
+          await waitForSafeMotionFact(page, 'roller', 'heldPoseMoved');
         held = timelineState(await bridgeState(page, 'held'));
+        heldMotionState = await safeMotionState(page);
         outsideCaptureObserved = outside
           ? grabState.capture.captured && grabState.capture.grabbed
           : false;
@@ -1151,32 +1142,17 @@ try {
           const firstHeld = await heldLocator.screenshot();
           await page.waitForTimeout(100);
           const secondHeld = await heldLocator.screenshot();
-          const heldMotion = (await renderedMotionSamples(page)).filter(
-            (sample) =>
-              sample.sequence > motionSequenceBefore &&
-              sample.phase === 'ready' &&
-              sample.held
-          );
-          const firstHeldPose = heldMotion[0];
-          reducedStaticLifted =
+          reducedHeldPixelsChangedAndStable =
             sha256(beforeRegion) !== sha256(firstHeld) &&
             sha256(firstHeld) === sha256(secondHeld) &&
-            reducedBeforePose !== undefined &&
-            firstHeldPose !== undefined &&
-            heldMotion.length >= 1 &&
-            firstHeldPose.reducedMotion === true &&
-            firstHeldPose.translation[1] >
-              reducedBeforePose.translation[1] + 0.05 &&
-            heldMotion.every(
-              (sample) =>
-                JSON.stringify(sample.translation) ===
-                  JSON.stringify(firstHeldPose.translation) &&
-                JSON.stringify(sample.quaternion) ===
-                  JSON.stringify(firstHeldPose.quaternion)
-            );
-          if (!reducedStaticLifted)
+            heldMotionState.roller?.heldPoseApplied === true &&
+            heldMotionState.roller?.heldPoseRepeated === true &&
+            heldMotionState.roller?.heldPoseMoved === false &&
+            heldMotionState.roller?.reducedHeldPoseRepeated === true &&
+            heldMotionState.roller?.unexpectedMotion === false;
+          if (!reducedHeldPixelsChangedAndStable)
             throw Error(
-              'reduced-motion held cue was not changed, static, and lifted'
+              'reduced-motion held cue did not have changed/stable pixels and safe static facts'
             );
         }
 
@@ -1187,7 +1163,7 @@ try {
           });
           terminalInput = await nativeTerminalInputFact(
             page,
-            grabState.target,
+            grabState.captureOwner,
             'pointercancel'
           );
           cancellationObserved = terminalInput.isTrusted;
@@ -1201,7 +1177,7 @@ try {
           await transferPointerCapture(page, grabState);
           terminalInput = await nativeTerminalInputFact(
             page,
-            grabState.target,
+            grabState.captureOwner,
             'lostpointercapture'
           );
           cancellationObserved = terminalInput.isTrusted;
@@ -1258,15 +1234,15 @@ try {
         }
       }
 
+      if (STONE1_SCENARIO_IDS.indexOf(id) < 8) {
+        await waitForSafeMotionFact(page, 'roller', 'rollingPoseMoved');
+        await waitForSafeMotionFact(page, 'spectator', 'rollingPoseMoved');
+      }
       const afterRaw = await bridgeState(page, 'after');
       const after = afterReleaseState(afterRaw);
+      const afterMotionState = await safeMotionState(page);
       if (!mainCaptured)
         await page.screenshot({ path: mainScreenshotPath(id) });
-      if (STONE1_SCENARIO_IDS.indexOf(id) < 8)
-        motionCounts = observedMotionCounts(
-          await renderedMotionSamples(page),
-          motionSequenceBefore
-        );
       const fact = {
         id,
         passed: true,
@@ -1275,11 +1251,14 @@ try {
         deviceScaleFactor: 1,
         authoritativeResult: 10,
         timeline: { beforeRelease: before, held, afterRelease: after },
-        heldCue: {
-          staticLifted: reducedStaticLifted,
-          tumbleSampleCount: motionCounts.tumble,
-          shakeSampleCount: motionCounts.shake,
-          bounceSampleCount: motionCounts.bounce,
+        motionProof: {
+          heldRoller: heldMotionState.roller,
+          heldSpectator: heldMotionState.spectator,
+          afterReleaseRoller: afterMotionState.roller,
+          afterReleaseSpectator: afterMotionState.spectator,
+          heldAggregateFrozen: heldMotionState.aggregatesFrozen,
+          afterReleaseAggregatesFrozen: afterMotionState.aggregatesFrozen,
+          reducedHeldPixelsChangedAndStable,
         },
         outsideCaptureObserved,
         cancellationObserved,
@@ -1572,10 +1551,9 @@ try {
   );
   console.log(`cleanup: browser/server closed; port ${port} closed`);
 } catch (error) {
-  await writeFile(failedPath, `${error.stack ?? error}\n`).catch(
+  await markTerminalFailure(String(error.stack ?? error)).catch(
     () => undefined
   );
-  await rm(passPath, { force: true }).catch(() => undefined);
   await cleanup();
   console.error(error);
   process.exitCode = 1;

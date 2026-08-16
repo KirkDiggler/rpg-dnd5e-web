@@ -80,7 +80,7 @@ function snapshotBounds(rect: DOMRect): ClientBounds {
 }
 
 function pointerSample(
-  event: ReactPointerEvent<HTMLButtonElement>
+  event: ReactPointerEvent<HTMLElement>
 ): RollGroupPointerSample {
   return {
     pointerId: event.pointerId,
@@ -161,6 +161,7 @@ export function DiceTray3D({
     undefined
   );
   const rendererTarget = useRef<HTMLDivElement>(null);
+  const grabTarget = useRef<HTMLButtonElement>(null);
   const gestureIdentity = useRef(requestIdentity);
   const completedFallback = useRef<string | undefined>(undefined);
   const [heldRollGroup, setHeldRollGroup] = useState<
@@ -210,7 +211,7 @@ export function DiceTray3D({
   );
 
   const handlePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (
         !canInteract ||
         !requestIdentity ||
@@ -218,7 +219,8 @@ export function DiceTray3D({
       )
         return;
       const trayTarget = rendererTarget.current;
-      if (!trayTarget) return;
+      const hitTarget = grabTarget.current;
+      if (!trayTarget || !hitTarget) return;
 
       const controller =
         gestureController.current ?? createRollGroupGestureController();
@@ -227,7 +229,7 @@ export function DiceTray3D({
         sample: pointerSample(event),
         captureTarget: event.currentTarget,
         trayBounds: snapshotBounds(trayTarget.getBoundingClientRect()),
-        hitBounds: snapshotBounds(event.currentTarget.getBoundingClientRect()),
+        hitBounds: snapshotBounds(hitTarget.getBoundingClientRect()),
         hitPaddingPx: event.pointerType === 'touch' ? 24 : 14,
         motionSeed,
       });
@@ -237,7 +239,7 @@ export function DiceTray3D({
   );
 
   const handlePointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       const controller = gestureController.current;
       if (!controller) return;
       const held = controller.move(pointerSample(event));
@@ -248,7 +250,7 @@ export function DiceTray3D({
   );
 
   const handlePointerUp = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       const controller = gestureController.current;
       if (!controller) return;
       const throwProfile = controller.release(pointerSample(event));
@@ -264,7 +266,7 @@ export function DiceTray3D({
   );
 
   const handlePointerCancel = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (gestureController.current?.cancel(event.pointerId))
         setHeldRollGroup(undefined);
     },
@@ -355,6 +357,11 @@ export function DiceTray3D({
         className="dice-tray-3d-renderer"
         data-testid="dice-tray-3d-renderer"
         data-grabbed={grabbed ? 'true' : 'false'}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={handlePointerCancel}
       >
         {originalRuntime || lightningDevelopment ? (
           <AttackDie3D
@@ -389,15 +396,11 @@ export function DiceTray3D({
         )}
         {canInteract && (
           <button
+            ref={grabTarget}
             type="button"
             className="dice-tray-3d-grab-target"
             aria-label="Grab d20"
             data-grabbed={grabbed ? 'true' : 'false'}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerCancel}
-            onLostPointerCapture={handlePointerCancel}
             onClick={handleGrabClick}
           />
         )}

@@ -1967,6 +1967,7 @@
 }
 .dice-tray-3d-renderer {
   position: relative;
+  touch-action: none;
 }
 .dice-tray-3d-renderer > .dice-tray-3d-grab-target {
   position: absolute;

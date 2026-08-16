@@ -72,6 +72,7 @@ export type AttackDieFailureCode =
   | 'shader-failure'
   | 'context-loss'
   | 'invalid-result'
+  | 'invalid-throw-profile'
   | 'unmapped-result'
   | 'settlement-observation';
 export interface AttackDieTelemetry {
@@ -98,13 +99,14 @@ export interface AttackDieTelemetry {
   throwProfile?: VisualThrowProfileV1;
 }
 export interface AttackDieMotionDiagnostic {
-  readonly presentationToken: number;
-  readonly sequence: number;
-  readonly phase: DiceTrayPhase;
-  readonly reducedMotion: boolean;
-  readonly held: boolean;
-  readonly translation: DiceMotionPose['translation'];
-  readonly quaternion: QuaternionTuple;
+  readonly motionRevision: 'choreographed-v1';
+  readonly heldPoseApplied: boolean;
+  readonly heldPoseMoved: boolean;
+  readonly heldPoseRepeated: boolean;
+  readonly rollingPoseApplied: boolean;
+  readonly rollingPoseMoved: boolean;
+  readonly reducedHeldPoseRepeated: boolean;
+  readonly unexpectedMotion: boolean;
 }
 export interface AttackDieRendererInfo {
   /** Token fence added by AttackDie3D at the component boundary. */
@@ -156,7 +158,7 @@ export interface AttackDie3DProps {
   /** Development-only inspected candidate sidecar metadata. */
   sidecarOverride?: AttackDieRuntimeSidecar;
   onRendererInfo?: (info: AttackDieRendererInfo) => void;
-  /** Concepts-only rendered-pose diagnostic; never carries pointer samples. */
+  /** Concepts-only current frozen safe-boolean renderer aggregate. */
   onMotionDiagnostic?: (diagnostic: AttackDieMotionDiagnostic) => void;
 }
 
@@ -313,6 +315,47 @@ function cloneTokenScene(
   };
 }
 
+const EMPTY_MOTION_DIAGNOSTIC: AttackDieMotionDiagnostic = Object.freeze({
+  motionRevision: 'choreographed-v1',
+  heldPoseApplied: false,
+  heldPoseMoved: false,
+  heldPoseRepeated: false,
+  rollingPoseApplied: false,
+  rollingPoseMoved: false,
+  reducedHeldPoseRepeated: false,
+  unexpectedMotion: false,
+});
+
+function motionDiagnosticChanged(
+  first: AttackDieMotionDiagnostic,
+  second: AttackDieMotionDiagnostic
+) {
+  return (
+    first.heldPoseApplied !== second.heldPoseApplied ||
+    first.heldPoseMoved !== second.heldPoseMoved ||
+    first.heldPoseRepeated !== second.heldPoseRepeated ||
+    first.rollingPoseApplied !== second.rollingPoseApplied ||
+    first.rollingPoseMoved !== second.rollingPoseMoved ||
+    first.reducedHeldPoseRepeated !== second.reducedHeldPoseRepeated ||
+    first.unexpectedMotion !== second.unexpectedMotion
+  );
+}
+
+function renderedPoseChanged(
+  previous: DiceMotionPose | undefined,
+  current: DiceMotionPose
+) {
+  if (!previous) return false;
+  return (
+    previous.translation.some(
+      (value, index) => !Object.is(value, current.translation[index])
+    ) ||
+    previous.quaternion.some(
+      (value, index) => !Object.is(value, current.quaternion[index])
+    )
+  );
+}
+
 function RuntimeDie({
   sidecar,
   runtimeSource,
@@ -349,9 +392,7 @@ function RuntimeDie({
   phase: DiceTrayPhase;
   throwProfile: VisualThrowProfileV1;
   heldRollGroup?: HeldRollGroupState;
-  onMotionDiagnostic?: (
-    diagnostic: Omit<AttackDieMotionDiagnostic, 'presentationToken'>
-  ) => void;
+  onMotionDiagnostic?: (diagnostic: AttackDieMotionDiagnostic) => void;
 }) {
   const group = useRef<Group>(null);
   const shadow = useRef<Mesh>(null);
@@ -359,7 +400,9 @@ function RuntimeDie({
   const rollStartedAt = useRef<number | undefined>(undefined);
   const previousPhase = useRef<DiceTrayPhase>(phase);
   const observationSent = useRef(false);
-  const diagnosticSequence = useRef(0);
+  const appliedPose = useRef<DiceMotionPose | undefined>(undefined);
+  const motionDiagnostic = useRef(EMPTY_MOTION_DIAGNOSTIC);
+  const reducedRollingTargetApplied = useRef(false);
 
   const initialPose = ChoreographedSolverV1.solve({
     phase,
@@ -430,19 +473,50 @@ function RuntimeDie({
       ownedShadowMaterial.opacity = frame.shadow.opacity;
       poseValidated.current = true;
       if (onMotionDiagnostic) {
-        diagnosticSequence.current += 1;
-        onMotionDiagnostic(
-          Object.freeze({
-            sequence: diagnosticSequence.current,
-            phase,
-            reducedMotion,
-            held: heldRollGroup !== undefined,
-            translation: Object.freeze([
-              ...frame.translation,
-            ]) as DiceMotionPose['translation'],
-            quaternion: Object.freeze([...frame.quaternion]) as QuaternionTuple,
-          })
-        );
+        const previousDiagnostic = motionDiagnostic.current;
+        const moved = renderedPoseChanged(appliedPose.current, frame);
+        const heldApplied =
+          (phase === 'ready' || phase === 'entering') &&
+          heldRollGroup !== undefined;
+        const rollingApplied = phase === 'rolling';
+        const nextDiagnostic: AttackDieMotionDiagnostic = Object.freeze({
+          motionRevision: 'choreographed-v1',
+          heldPoseApplied: previousDiagnostic.heldPoseApplied || heldApplied,
+          heldPoseMoved:
+            previousDiagnostic.heldPoseMoved ||
+            (heldApplied && previousDiagnostic.heldPoseApplied && moved),
+          heldPoseRepeated:
+            previousDiagnostic.heldPoseRepeated ||
+            (heldApplied && previousDiagnostic.heldPoseApplied),
+          rollingPoseApplied:
+            previousDiagnostic.rollingPoseApplied || rollingApplied,
+          rollingPoseMoved:
+            previousDiagnostic.rollingPoseMoved ||
+            (rollingApplied && previousDiagnostic.rollingPoseApplied && moved),
+          reducedHeldPoseRepeated:
+            previousDiagnostic.reducedHeldPoseRepeated ||
+            (reducedMotion &&
+              heldApplied &&
+              previousDiagnostic.heldPoseApplied),
+          unexpectedMotion:
+            previousDiagnostic.unexpectedMotion ||
+            (reducedMotion &&
+              heldApplied &&
+              previousDiagnostic.heldPoseApplied &&
+              moved) ||
+            (reducedMotion &&
+              rollingApplied &&
+              elapsedMs > 0 &&
+              reducedRollingTargetApplied.current &&
+              moved),
+        });
+        appliedPose.current = frame;
+        if (reducedMotion && rollingApplied && elapsedMs > 0)
+          reducedRollingTargetApplied.current = true;
+        if (motionDiagnosticChanged(previousDiagnostic, nextDiagnostic)) {
+          motionDiagnostic.current = nextDiagnostic;
+          onMotionDiagnostic(nextDiagnostic);
+        }
       }
       if (magicalAnimation && !reducedMotion)
         bundle?.updateShaderTime(clock.elapsedTime);
@@ -572,11 +646,22 @@ function AttackDieToken({
   const runtimeProvider =
     provider?.kind === 'dice-runtime-preset' ? provider : undefined;
   const rendererVisuals = resolveAttackDieRendererVisuals(visual);
+  const parsedThrowProfile = useMemo(
+    () =>
+      throwProfile === undefined
+        ? undefined
+        : parseVisualThrowProfile(throwProfile),
+    [throwProfile]
+  );
+  const invalidSuppliedThrowProfile =
+    throwProfile !== undefined && parsedThrowProfile === undefined;
   const effectiveThrowProfile = useMemo(
     () =>
-      (throwProfile ? parseVisualThrowProfile(throwProfile) : undefined) ??
-      createNeutralVisualThrowProfile(decorativeSeed),
-    [decorativeSeed, throwProfile]
+      parsedThrowProfile ??
+      (throwProfile === undefined
+        ? createNeutralVisualThrowProfile(decorativeSeed)
+        : undefined),
+    [decorativeSeed, parsedThrowProfile, throwProfile]
   );
   const effectiveResult = result;
   const legacyLock = useMemo(
@@ -647,19 +732,21 @@ function AttackDieToken({
       ? calibrationPose
       : developmentTarget;
   const forced = forceFailure !== undefined;
-  const eligible = runtimeProvider
-    ? runtimeSnapshot?.status === 'ready' &&
-      runtimeSource !== undefined &&
-      target !== undefined &&
-      Number.isInteger(effectiveResult) &&
-      effectiveResult >= 1 &&
-      effectiveResult <= 20
-    : (authoringEligible || legacyLock?.renderer === '3d') &&
-      !!sidecar &&
-      !!target &&
-      Number.isInteger(effectiveResult) &&
-      effectiveResult >= 1 &&
-      effectiveResult <= 20;
+  const eligible = effectiveThrowProfile
+    ? runtimeProvider
+      ? runtimeSnapshot?.status === 'ready' &&
+        runtimeSource !== undefined &&
+        target !== undefined &&
+        Number.isInteger(effectiveResult) &&
+        effectiveResult >= 1 &&
+        effectiveResult <= 20
+      : (authoringEligible || legacyLock?.renderer === '3d') &&
+        !!sidecar &&
+        !!target &&
+        Number.isInteger(effectiveResult) &&
+        effectiveResult >= 1 &&
+        effectiveResult <= 20
+    : false;
   const webglAvailable = useMemo(
     () => !eligible || canCreateWebGLContext(),
     [eligible]
@@ -681,9 +768,10 @@ function AttackDieToken({
   >(undefined);
   const poseValidated = useRef(false);
   const handleMotionDiagnostic = useCallback(
-    (diagnostic: Omit<AttackDieMotionDiagnostic, 'presentationToken'>) =>
-      onMotionDiagnostic?.(Object.freeze({ ...diagnostic, presentationToken })),
-    [onMotionDiagnostic, presentationToken]
+    (diagnostic: AttackDieMotionDiagnostic) => {
+      if (active.current) onMotionDiagnostic?.(diagnostic);
+    },
+    [onMotionDiagnostic]
   );
   const handleRendererInfo = useCallback(
     (info: AttackDieRendererInfo) =>
@@ -780,6 +868,13 @@ function AttackDieToken({
   ]);
 
   useEffect(() => {
+    if (invalidSuppliedThrowProfile) {
+      fail(
+        'supplied throw profile failed strict parsing',
+        'invalid-throw-profile'
+      );
+      return;
+    }
     if (eligible && !webglAvailable) {
       fail('WebGL creation failed', 'webgl-unavailable');
       return;
@@ -841,6 +936,7 @@ function AttackDieToken({
     fail,
     phase,
     forceFailure,
+    invalidSuppliedThrowProfile,
     providerFailureReason,
     runtimeProvider,
     runtimeSnapshot?.failureReason,
@@ -956,7 +1052,7 @@ function AttackDieToken({
                 sceneOverride={sceneOverride}
                 magicalAnimation={magicalAnimation}
                 phase={phase}
-                throwProfile={effectiveThrowProfile}
+                throwProfile={effectiveThrowProfile!}
                 heldRollGroup={heldRollGroup}
                 onMotionDiagnostic={
                   onMotionDiagnostic ? handleMotionDiagnostic : undefined
