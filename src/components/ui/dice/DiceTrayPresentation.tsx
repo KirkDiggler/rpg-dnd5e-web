@@ -18,11 +18,12 @@ import {
   type DicePresentationReleasedEvent,
   type DicePresentationRequestedEvent,
 } from './dicePresentationEvent';
-import {
-  createDicePresentationRelease,
-  type DiceGestureSample,
-} from './dicePresentationRelease';
+import { createDicePresentationRelease } from './dicePresentationRelease';
 import { DiceTray3D } from './DiceTray3D';
+import {
+  createNeutralVisualThrowProfile,
+  type VisualThrowProfileV1,
+} from './visualThrowProfile';
 
 export interface DiceTrayPresentationDevelopmentRenderer {
   scene: AttackDie3DProps['sceneOverride'];
@@ -33,6 +34,7 @@ export interface DiceTrayPresentationDevelopmentRenderer {
 export interface DiceTrayPresentationBoundaryDiagnostic {
   readonly events: readonly DicePresentationEvent[];
   readonly provider: AttackDieProvider;
+  readonly rendererGeneration: number;
 }
 
 export interface DiceTrayPresentationProps {
@@ -42,6 +44,8 @@ export interface DiceTrayPresentationProps {
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  /** Concepts-only rendered-pose diagnostic; never carries pointer samples. */
+  onMotionDiagnostic?: AttackDie3DProps['onMotionDiagnostic'];
   /** Read-only development evidence emitted from this actual boundary. */
   onBoundaryDiagnostic?: (
     diagnostic: DiceTrayPresentationBoundaryDiagnostic
@@ -87,6 +91,7 @@ interface PresentationInstanceProps {
   onReleaseRequest?: (event: DicePresentationReleasedEvent) => void;
   onTelemetry?: AttackDie3DProps['onTelemetry'];
   onRendererInfo?: AttackDie3DProps['onRendererInfo'];
+  onMotionDiagnostic?: AttackDie3DProps['onMotionDiagnostic'];
   diagnosticEvents: readonly DicePresentationEvent[];
   onBoundaryDiagnostic?: (
     diagnostic: DiceTrayPresentationBoundaryDiagnostic
@@ -304,6 +309,7 @@ function DiceTrayPresentationInstance({
   onReleaseRequest,
   onTelemetry,
   onRendererInfo,
+  onMotionDiagnostic,
   diagnosticEvents,
   onBoundaryDiagnostic,
   reducedMotion,
@@ -326,6 +332,21 @@ function DiceTrayPresentationInstance({
     number | undefined
   >(undefined);
   const requestedRelease = useRef(false);
+  const instanceActive = useRef(false);
+  const callbackFence = useRef<{
+    release?: (requestedProfile?: VisualThrowProfileV1) => void;
+    telemetry?: (event: AttackDieTelemetry) => void;
+    rendererInfo?: NonNullable<AttackDie3DProps['onRendererInfo']>;
+    provider?: (provider: AttackDieProvider) => void;
+  }>({});
+
+  useLayoutEffect(() => {
+    instanceActive.current = true;
+    return () => {
+      instanceActive.current = false;
+      callbackFence.current = {};
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (generationRef.current === undefined)
@@ -349,8 +370,10 @@ function DiceTrayPresentationInstance({
   const rollerRole = acceptedRequest.roller.role;
 
   const handleReleaseRequest = useCallback(
-    (gesture?: DiceGestureSample) => {
+    (requestedProfile?: VisualThrowProfileV1) => {
       if (
+        !instanceActive.current ||
+        callbackFence.current.release !== handleReleaseRequest ||
         !onReleaseRequest ||
         lifecycle.phase !== 'armed' ||
         rollerRole !== 'player' ||
@@ -359,7 +382,9 @@ function DiceTrayPresentationInstance({
       )
         return;
 
-      const variation = presentationHash(presentationId) % 997;
+      const throwProfile =
+        requestedProfile ??
+        createNeutralVisualThrowProfile(presentationHash(presentationId));
       const next: DicePresentationReleasedEvent = Object.freeze({
         schemaVersion: 1,
         type: 'dice-presentation-released',
@@ -368,8 +393,7 @@ function DiceTrayPresentationInstance({
         release: createDicePresentationRelease({
           presentationId,
           presetId,
-          variation,
-          gesture,
+          throwProfile,
         }),
       });
       requestedRelease.current = true;
@@ -388,6 +412,8 @@ function DiceTrayPresentationInstance({
   const handleTelemetry = useCallback(
     (event: AttackDieTelemetry) => {
       if (
+        !instanceActive.current ||
+        callbackFence.current.telemetry !== handleTelemetry ||
         rendererGeneration === undefined ||
         event.presentationToken !== rendererGeneration ||
         event.requestedResult !== result
@@ -420,14 +446,58 @@ function DiceTrayPresentationInstance({
     [onTelemetry, rendererGeneration, result]
   );
 
+  const handleRendererInfo = useCallback<
+    NonNullable<AttackDie3DProps['onRendererInfo']>
+  >(
+    (info) => {
+      if (
+        !instanceActive.current ||
+        callbackFence.current.rendererInfo !== handleRendererInfo ||
+        rendererGeneration === undefined ||
+        info.presentationToken !== rendererGeneration
+      )
+        return;
+      onRendererInfo?.(info);
+    },
+    [onRendererInfo, rendererGeneration]
+  );
   const handleFallbackPresentationComplete = useCallback(() => {
-    dispatch({ type: 'fallback-complete' });
+    if (instanceActive.current) dispatch({ type: 'fallback-complete' });
   }, []);
   const handleProviderDiagnostic = useCallback(
-    (provider: AttackDieProvider) =>
-      onBoundaryDiagnostic?.({ events: diagnosticEvents, provider }),
-    [diagnosticEvents, onBoundaryDiagnostic]
+    (provider: AttackDieProvider) => {
+      if (
+        !instanceActive.current ||
+        callbackFence.current.provider !== handleProviderDiagnostic ||
+        rendererGeneration === undefined
+      )
+        return;
+      onBoundaryDiagnostic?.({
+        events: diagnosticEvents,
+        provider,
+        rendererGeneration,
+      });
+    },
+    [diagnosticEvents, onBoundaryDiagnostic, rendererGeneration]
   );
+
+  useLayoutEffect(() => {
+    callbackFence.current = {
+      release: handleReleaseRequest,
+      telemetry: handleTelemetry,
+      rendererInfo: handleRendererInfo,
+      provider: handleProviderDiagnostic,
+    };
+    return () => {
+      if (callbackFence.current.release === handleReleaseRequest)
+        callbackFence.current = {};
+    };
+  }, [
+    handleProviderDiagnostic,
+    handleReleaseRequest,
+    handleRendererInfo,
+    handleTelemetry,
+  ]);
 
   const phase = lifecycle.phase;
   const status =
@@ -464,6 +534,7 @@ function DiceTrayPresentationInstance({
         label={label}
         presentationId={presentationId}
         rendererGeneration={rendererGeneration}
+        motionSeed={presentationHash(presentationId)}
         rollerRole={rollerRole}
         witnessRole={witnessRole}
         phase={phase}
@@ -471,7 +542,8 @@ function DiceTrayPresentationInstance({
         release={lifecycle.acceptedRelease?.release}
         onReleaseRequest={onReleaseRequest ? handleReleaseRequest : undefined}
         onTelemetry={handleTelemetry}
-        onRendererInfo={onRendererInfo}
+        onRendererInfo={handleRendererInfo}
+        onMotionDiagnostic={onMotionDiagnostic}
         onProviderDiagnostic={handleProviderDiagnostic}
         onFallbackPresentationComplete={handleFallbackPresentationComplete}
         reducedMotion={reducedMotion}
@@ -503,6 +575,7 @@ export function DiceTrayPresentation({
   onReleaseRequest,
   onTelemetry,
   onRendererInfo,
+  onMotionDiagnostic,
   onBoundaryDiagnostic,
   reducedMotion = false,
   developmentOnlyRenderer,
@@ -542,6 +615,7 @@ export function DiceTrayPresentation({
       onReleaseRequest={onReleaseRequest}
       onTelemetry={onTelemetry}
       onRendererInfo={onRendererInfo}
+      onMotionDiagnostic={onMotionDiagnostic}
       diagnosticEvents={events}
       onBoundaryDiagnostic={onBoundaryDiagnostic}
       reducedMotion={reducedMotion}

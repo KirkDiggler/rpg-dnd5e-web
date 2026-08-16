@@ -663,22 +663,27 @@ function historicalResult3ObserverEntries(): Record<
 }
 
 describe('Stone 0 Tray evidence protocol v2', () => {
-  it('preflights an aggregate PNG budget and decodes sequentially without retaining full reconstructed images', () => {
+  it('delegates unchanged aggregate preflight and sequential scalar-only PNG inspection to the generic validator', () => {
     const source = readFileSync(
       'scripts/attack-die/stone0TrayEvidenceProtocol.ts',
       'utf8'
     );
-    expect(source).toMatch(/PNG_MAX_AGGREGATE_DECODED_BYTES/);
-    expect(source).toMatch(/aggregateDecodedBytes/);
-    expect(source).toMatch(
-      /PNG_MAX_AGGREGATE_DECODED_BYTES = 1536 \* 1024 \* 1024/
+    const generic = readFileSync(
+      'scripts/attack-die/pngEvidenceValidation.ts',
+      'utf8'
     );
-    expect(source).toMatch(/for \(const path of expectedScreenshotPaths\)/);
-    expect(source.match(/\bdecodePng\(/g)).toHaveLength(2);
-    expect(source.match(/\binflateSync\(/g)).toHaveLength(1);
+    expect(source).toContain("from './pngEvidenceValidation'");
+    expect(source).toMatch(/validatePngEvidenceSequence\(/);
+    expect(generic).toMatch(/PNG_EVIDENCE_MAX_AGGREGATE_DECODED_BYTES/);
+    expect(generic).toMatch(/aggregateDecodedBytes/);
+    expect(generic).toMatch(
+      /PNG_EVIDENCE_MAX_AGGREGATE_DECODED_BYTES = 1536 \* 1024 \* 1024/
+    );
+    expect(generic).toMatch(/for \(let index = 0; index < inputs\.length/);
+    expect(generic.match(/\binflateSync\(/g)).toHaveLength(1);
     expect(source).toMatch(/screenshotDimensions/);
     expect(source).not.toMatch(/decodedScreenshots/);
-    expect(source).not.toMatch(/const pixels = new Uint8Array/);
+    expect(generic).not.toMatch(/const pixels = new Uint8Array/);
     expect(source).toMatch(
       /closeup[\s\S]*screenshotDimensions\.get\(closeup\.screenshot\)/
     );

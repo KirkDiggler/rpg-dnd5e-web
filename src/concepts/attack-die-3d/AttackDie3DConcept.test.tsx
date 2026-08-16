@@ -217,11 +217,18 @@ describe('AttackDie3D staged concept', () => {
     );
   });
 
-  it('publishes each renderer upward observation without deriving identity from its held mapped target', async () => {
+  it('publishes only final safe witness facts after release without deriving identity from targets', async () => {
     stubReadyProvider();
     render(<AttackDie3DConcept />);
     fireEvent.click(screen.getByRole('tab', { name: 'Tray' }));
-    const witnesses = await expectReadyWitnessMotion(false);
+    const armedWitnesses = await expectReadyWitnessMotion(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    const witnesses = armedWitnesses.map(
+      (armed) =>
+        [...props]
+          .reverse()
+          .find((value) => value.presentationToken === armed.presentationToken)!
+    );
     const target = [0, 0, 0, 1] as const;
 
     for (const [index, witness] of witnesses.entries())
@@ -231,31 +238,42 @@ describe('AttackDie3D staged concept', () => {
         renderer: '3d',
         state: 'observed',
         mappedTarget: target,
-        observedUpwardResult: index === 0 ? 5 : 10,
+        observedQuaternion: target,
+        observedUpwardResult: 10,
         observedUpDot: 1,
         observedUpMargin: 0.25,
         angularErrorDegrees: 0,
         exactTargetHeld: true,
+        motionRevision: 'choreographed-v1',
+        throwProfile: witness.throwProfile,
         runtimeSourceId: 1,
         runtimeCloneId: index + 1,
       });
 
     expect(
-      window.__stone0TrayEvidence?.witnesses.roller.telemetry
+      window.__stone1TrayEvidence?.witnesses.roller.finalTelemetry
     ).toMatchObject({
+      motionRevision: 'choreographed-v1',
       requestedResult: 10,
-      mappedTarget: target,
-      observedUpwardResult: 5,
-      exactTargetHeld: true,
-    });
-    expect(
-      window.__stone0TrayEvidence?.witnesses.spectator.telemetry
-    ).toMatchObject({
-      requestedResult: 10,
-      mappedTarget: target,
       observedUpwardResult: 10,
       exactTargetHeld: true,
+      cloneId: 1,
     });
+    expect(
+      window.__stone1TrayEvidence?.witnesses.spectator.finalTelemetry
+    ).toMatchObject({
+      motionRevision: 'choreographed-v1',
+      requestedResult: 10,
+      observedUpwardResult: 10,
+      exactTargetHeld: true,
+      cloneId: 2,
+    });
+    expect(
+      window.__stone1TrayEvidence?.witnesses.roller.finalTelemetry
+    ).not.toHaveProperty('mappedTarget');
+    expect(
+      window.__stone1TrayEvidence?.witnesses.spectator.finalTelemetry
+    ).not.toHaveProperty('observedQuaternion');
   });
 
   it('passes the explicit lab reduced-motion preference to both ready Tray witnesses', async () => {

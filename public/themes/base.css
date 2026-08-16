@@ -1967,31 +1967,32 @@
 }
 .dice-tray-3d-renderer {
   position: relative;
+  touch-action: none;
 }
 .dice-tray-3d-renderer > .dice-tray-3d-grab-target {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 50%;
   z-index: 2;
-  width: 100%;
-  height: 100%;
+  width: min(58%, 156px);
+  aspect-ratio: 1;
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: inherit;
+  border-radius: 50%;
   background: transparent;
   box-shadow: none;
-  appearance: none;
+  transform: translate(-50%, -50%);
   touch-action: none;
   cursor: grab;
 }
 .dice-tray-3d-renderer > .dice-tray-3d-grab-target[data-grabbed='true'] {
-  box-shadow: inset 0 0 0 2px
-    color-mix(in srgb, var(--accent-primary) 58%, transparent);
+  box-shadow: none;
   cursor: grabbing;
 }
 .dice-tray-3d-renderer > .dice-tray-3d-grab-target:focus-visible {
   outline: 3px solid var(--accent-primary);
-  outline-offset: -3px;
+  outline-offset: 6px;
 }
 .dice-tray-3d-renderer .dice-tray {
   width: 100%;

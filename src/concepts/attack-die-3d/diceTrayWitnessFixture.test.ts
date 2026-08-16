@@ -8,6 +8,10 @@ import {
   createDicePresentationRelease,
   dicePresentationReleaseKey,
 } from '../../components/ui/dice/dicePresentationRelease';
+import {
+  createNeutralVisualThrowProfile,
+  createVisualThrowProfile,
+} from '../../components/ui/dice/visualThrowProfile';
 import type { CombatLogEntry } from '../../hooks/useCombatLog';
 import { CONCEPT_LOG_ENTRIES } from '../combat-panel/logFixtures';
 import {
@@ -30,6 +34,15 @@ function recursivelyCollectKeys(value: unknown, keys = new Set<string>()) {
     recursivelyCollectKeys(child, keys);
   }
   return keys;
+}
+
+function presentationHash(value: string) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
 }
 
 function appendScheduledMonsterRelease(token: number, result = 10) {
@@ -129,12 +142,17 @@ describe('dice tray witness fixture', () => {
       eventId: 'fixture:release:11',
       presentationId: 'concept:witness:player:11:result:10',
       release: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         presentationId: 'concept:witness:player:11:result:10',
         presetId: 'dice.original.carved.d20',
-        variation: 3,
-        vector: [0.5, -0.25],
-        shake: 0.5,
+        throwProfile: createVisualThrowProfile({
+          releasePosition: [0.5, 0.5],
+          releaseDirection: [0.5, -0.25],
+          releaseSpeed: 0.5,
+          shakeEnergy: 0.5,
+          spinBias: 0,
+          motionSeed: 3,
+        }),
       },
     };
 
@@ -172,7 +190,7 @@ describe('dice tray witness fixture', () => {
       release: createDicePresentationRelease({
         presentationId: 'concept:witness:player:12:result:10',
         presetId: 'dice.original.carved.d20',
-        variation: 0,
+        throwProfile: createNeutralVisualThrowProfile(0),
       }),
     };
     const accepted = appendDiceTrayWitnessEvent(initial, release);
@@ -184,7 +202,7 @@ describe('dice tray witness fixture', () => {
         release: createDicePresentationRelease({
           presentationId: 'concept:witness:player:12:result:10',
           presetId: 'dice.original.carved.d20',
-          variation: 42,
+          throwProfile: createNeutralVisualThrowProfile(42),
         }),
       })
     ).toBe(accepted);
@@ -201,7 +219,7 @@ describe('dice tray witness fixture', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('delivers the monster zero-gesture release at exactly 250ms', () => {
+  it('delivers a host-created Monster neutral release seeded from presentation identity at exactly 250ms', () => {
     vi.useFakeTimers();
     const host = appendScheduledMonsterRelease(21);
     scheduleMonsterDiceTrayWitnessRelease(21, 10, host.append);
@@ -222,12 +240,18 @@ describe('dice tray witness fixture', () => {
       eventId: 'concept:witness:release:monster:21:result:10',
       presentationId: 'concept:witness:monster:21:result:10',
       release: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         presentationId: 'concept:witness:monster:21:result:10',
         presetId: 'dice.original.carved.d20',
-        variation: 0,
-        vector: [0, 0],
-        shake: 0,
+        throwProfile: {
+          schemaVersion: 1,
+          releasePosition: [0.5, 0.5],
+          releaseDirection: [0, 0],
+          releaseSpeed: 0,
+          shakeEnergy: 0,
+          spinBias: 0,
+          motionSeed: presentationHash('concept:witness:monster:21:result:10'),
+        },
       },
     });
     expectRecursivelyFrozen(host.events());
@@ -300,6 +324,38 @@ describe('dice tray witness fixture', () => {
       'transport',
     ])
       expect(releaseKeys.has(key)).toBe(false);
+
+    const profile = released.release.throwProfile;
+    expect(Reflect.ownKeys(profile)).toEqual([
+      'schemaVersion',
+      'releasePosition',
+      'releaseDirection',
+      'releaseSpeed',
+      'shakeEnergy',
+      'spinBias',
+      'motionSeed',
+    ]);
+    const profileKeys = recursivelyCollectKeys(profile);
+    for (const key of [
+      'clientx',
+      'clienty',
+      'pointerid',
+      'pointertype',
+      'timems',
+      'timestamp',
+      'samples',
+      'history',
+      'pathlength',
+      'held',
+      'normalizedposition',
+      'normalizedtilt',
+      'wobblephase',
+      'authoritativeresult',
+      'result',
+      'target',
+    ])
+      expect(profileKeys.has(key)).toBe(false);
+    expectRecursivelyFrozen(profile);
     expect(host.events()[0]).toMatchObject({
       die: { authoritativeResult: 10 },
     });

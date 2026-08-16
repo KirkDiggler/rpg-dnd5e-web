@@ -11,18 +11,53 @@ import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
 import { parseDicePresentationEvent } from './dicePresentationEvent';
 import type { DicePresentationRelease } from './dicePresentationRelease';
 import { DiceTrayPresentation } from './DiceTrayPresentation';
+import {
+  createVisualThrowProfile,
+  type VisualThrowProfileV1,
+} from './visualThrowProfile';
 
 const attackDieProps: AttackDie3DProps[] = [];
+const controllerProfiles = vi.hoisted(() => ({
+  creates: 0,
+  resets: 0,
+  released: [] as VisualThrowProfileV1[],
+}));
 vi.mock('./AttackDie3D', () => ({
   AttackDie3D: (props: AttackDie3DProps) => {
     attackDieProps.push(props);
     return <div data-testid="attack-die-3d-mock">{props.fallback}</div>;
   },
 }));
+vi.mock('./rollGroupGestureController', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('./rollGroupGestureController')>();
+  return {
+    ...actual,
+    createRollGroupGestureController: () => {
+      controllerProfiles.creates += 1;
+      const controller = actual.createRollGroupGestureController();
+      return {
+        ...controller,
+        reset: () => {
+          controllerProfiles.resets += 1;
+          controller.reset();
+        },
+        release: (sample: Parameters<typeof controller.release>[0]) => {
+          const profile = controller.release(sample);
+          if (profile) controllerProfiles.released.push(profile);
+          return profile;
+        },
+      };
+    },
+  };
+});
 
 let capturedPointers: WeakMap<HTMLElement, Set<number>>;
 
 beforeEach(() => {
+  controllerProfiles.creates = 0;
+  controllerProfiles.resets = 0;
+  controllerProfiles.released = [];
   capturedPointers = new WeakMap();
   Object.defineProperties(HTMLElement.prototype, {
     setPointerCapture: {
@@ -45,6 +80,22 @@ beforeEach(() => {
         capturedPointers.get(this)?.delete(pointerId);
       },
     },
+    getBoundingClientRect: {
+      configurable: true,
+      value(this: HTMLElement) {
+        const bounds = this.classList.contains('dice-tray-3d-grab-target')
+          ? { left: 0, top: 0, width: 100, height: 100 }
+          : { left: 0, top: 0, width: 240, height: 220 };
+        return {
+          ...bounds,
+          right: bounds.left + bounds.width,
+          bottom: bounds.top + bounds.height,
+          x: bounds.left,
+          y: bounds.top,
+          toJSON: () => bounds,
+        };
+      },
+    },
   });
 });
 
@@ -52,6 +103,7 @@ afterEach(() => {
   delete (HTMLElement.prototype as Partial<HTMLElement>).setPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).hasPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).releasePointerCapture;
+  delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
 });
 
 function requested(
@@ -73,23 +125,38 @@ function requested(
   };
 }
 
+type ReleaseOverrides = Partial<DicePresentationRelease> & {
+  variation?: number;
+  vector?: readonly [number, number];
+  shake?: number;
+};
+
 function released(
   presentationId = 'attack:7',
-  releaseOverrides: Partial<DicePresentationRelease> = {}
+  releaseOverrides: ReleaseOverrides = {}
 ) {
+  const { variation, vector, shake, throwProfile, ...releaseFacts } =
+    releaseOverrides;
   return {
     schemaVersion: 1 as const,
     type: 'dice-presentation-released' as const,
     eventId: `release:${presentationId}`,
     presentationId,
     release: {
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       presentationId,
       presetId: 'dice.original.carved.d20',
-      variation: 7,
-      vector: [0, 0] as const,
-      shake: 0,
-      ...releaseOverrides,
+      ...releaseFacts,
+      throwProfile:
+        throwProfile ??
+        createVisualThrowProfile({
+          releasePosition: [0.5, 0.5],
+          releaseDirection: vector ?? [0, 0],
+          releaseSpeed: vector && Math.hypot(...vector) > 0 ? 1 : 0,
+          shakeEnergy: shake ?? 0,
+          spinBias: 0,
+          motionSeed: variation ?? 7,
+        }),
     },
   };
 }
@@ -191,6 +258,9 @@ describe('DiceTrayPresentation', () => {
     expect(roller.events).not.toBe(spectator.events);
     expect(roller.provider).toBe(spectator.provider);
     expect(Object.isFrozen(roller.provider)).toBe(true);
+    expect(Number.isSafeInteger(roller.rendererGeneration)).toBe(true);
+    expect(Number.isSafeInteger(spectator.rendererGeneration)).toBe(true);
+    expect(roller.rendererGeneration).not.toBe(spectator.rendererGeneration);
   });
 
   it('renders no tray without a valid request', () => {
@@ -258,21 +328,67 @@ describe('DiceTrayPresentation', () => {
       type: 'dice-presentation-released',
       presentationId: 'attack:7',
       release: {
+        schemaVersion: 2,
         presentationId: 'attack:7',
         presetId: 'dice.original.carved.d20',
-        vector: [0, 0],
-        shake: 0,
+        throwProfile: {
+          schemaVersion: 1,
+          releasePosition: [0.5, 0.5],
+          releaseDirection: [0, 0],
+          releaseSpeed: 0,
+          shakeEnergy: 0,
+          spinBias: 0,
+          motionSeed: expect.any(Number),
+        },
       },
     });
     expect(Object.isFrozen(event)).toBe(true);
     expect(Object.isFrozen(event.release)).toBe(true);
-    expect(Object.isFrozen(event.release.vector)).toBe(true);
+    expect(Object.isFrozen(event.release.throwProfile)).toBe(true);
+    expect(Object.isFrozen(event.release.throwProfile.releasePosition)).toBe(
+      true
+    );
+    expect(Object.isFrozen(event.release.throwProfile.releaseDirection)).toBe(
+      true
+    );
     expect(JSON.stringify(event)).not.toMatch(
       /presentationToken|renderer|result|hit|damage|target|https?:\/\//i
     );
     expect(JSON.stringify(events)).toBe(before);
     expect(attackDieProps.at(-1)?.phase).toBe('ready');
     expect(screen.getByRole('button', { name: 'Roll d20' })).toBeTruthy();
+  });
+
+  it('requests one neutral-speed profile for a quick down/up without movement', () => {
+    const onReleaseRequest = vi.fn();
+    renderPresentation([requested('attack:quick')], {
+      reducedMotion: false,
+      onReleaseRequest,
+    });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+
+    fireEvent.pointerDown(grab, {
+      pointerId: 20,
+      clientX: 50,
+      clientY: 50,
+    });
+    fireEvent.pointerUp(grab, {
+      pointerId: 20,
+      clientX: 50,
+      clientY: 50,
+    });
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(controllerProfiles.released).toHaveLength(1);
+    expect(onReleaseRequest.mock.calls[0][0]).toMatchObject({
+      release: {
+        throwProfile: {
+          releaseDirection: [0, 0],
+          releaseSpeed: 0,
+          shakeEnergy: 0,
+        },
+      },
+    });
   });
 
   it('wraps one local gesture as one compact frozen event and forwards it unchanged only after append', () => {
@@ -312,18 +428,28 @@ describe('DiceTrayPresentation', () => {
 
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
     const event = onReleaseRequest.mock.calls[0][0];
+    const profileFromController = controllerProfiles.released.at(-1)!;
     expect(parseDicePresentationEvent(event)).toEqual(event);
+    expect(event.release.schemaVersion).toBe(2);
+    expect(event.release.throwProfile).toEqual(profileFromController);
+    expect(event.presentationId).toBe(requested().presentationId);
+    expect(event.release.presentationId).toBe(requested().presentationId);
+    expect(event.release.throwProfile).not.toHaveProperty('result');
     expect(event.release).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       presentationId: 'attack:7',
       presetId: 'dice.original.carved.d20',
-      variation: event.release.variation,
-      vector: [0.5, -0.25],
-      shake: 0.5,
+      throwProfile: profileFromController,
     });
     expect(Object.isFrozen(event)).toBe(true);
     expect(Object.isFrozen(event.release)).toBe(true);
-    expect(Object.isFrozen(event.release.vector)).toBe(true);
+    expect(Object.isFrozen(event.release.throwProfile)).toBe(true);
+    expect(Object.isFrozen(event.release.throwProfile.releasePosition)).toBe(
+      true
+    );
+    expect(Object.isFrozen(event.release.throwProfile.releaseDirection)).toBe(
+      true
+    );
     expect(JSON.stringify(event)).not.toMatch(
       /"(?:origin|current|distance|pointer|presentationToken|renderer|authoritativeResult|hit|damage|target|transport)"|https?:\/\//i
     );
@@ -344,11 +470,13 @@ describe('DiceTrayPresentation', () => {
     expect(attackDieProps.at(-1)).toMatchObject({
       result: 10,
       phase: 'rolling',
-      decorativeRelease: event.release,
+      throwProfile: event.release.throwProfile,
       presentationToken: armed.presentationToken,
       onTelemetry: armed.onTelemetry,
     });
-    expect(attackDieProps.at(-1)?.decorativeRelease).toEqual(event.release);
+    expect(attackDieProps.at(-1)?.throwProfile).toEqual(
+      event.release.throwProfile
+    );
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
   });
 
@@ -373,9 +501,13 @@ describe('DiceTrayPresentation', () => {
     expect(attackDieProps.at(-1)).toMatchObject({
       result: 10,
       phase: 'rolling',
-      decorativeRelease: event.release,
+      throwProfile: event.release.throwProfile,
     });
-    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Roll d20' })
+        .getAttribute('aria-disabled')
+    ).toBe('true');
 
     view.rerender(
       <DiceTrayPresentation
@@ -505,6 +637,74 @@ describe('DiceTrayPresentation', () => {
     expect(screen.getByRole('region').getAttribute('data-phase')).toBe(
       'settled'
     );
+  });
+
+  it('rejects late old-generation telemetry and renderer callbacks after identity interruption', () => {
+    const oldTelemetry = vi.fn();
+    const oldRendererInfo = vi.fn();
+    const view = renderPresentation([requested()], {
+      onTelemetry: oldTelemetry,
+      onRendererInfo: oldRendererInfo,
+    });
+    const old = attackDieProps.at(-1)!;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+        onTelemetry={vi.fn()}
+        onRendererInfo={vi.fn()}
+      />
+    );
+
+    act(() => {
+      old.onTelemetry?.(matchingTelemetry(old));
+      old.onRendererInfo?.({
+        presentationToken: old.presentationToken,
+        calls: 0,
+        triangles: 0,
+        geometries: 0,
+        textures: 0,
+        programs: 0,
+        lifecycle: 'release-observed',
+        contextId: 81,
+      });
+    });
+    expect(oldTelemetry).not.toHaveBeenCalled();
+    expect(oldRendererInfo).not.toHaveBeenCalled();
+    expect(attackDieProps.at(-1)?.phase).toBe('ready');
+    expect(screen.getByTestId('dice-face').textContent).toBe('?');
+  });
+
+  it('rejects a replaced callback identity while accepting the current one', () => {
+    const staleSink = vi.fn();
+    const currentSink = vi.fn();
+    const view = renderPresentation([requested()], {
+      onTelemetry: staleSink,
+    });
+    const staleCallback = attackDieProps.at(-1)!.onTelemetry!;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested()]}
+        witnessRole="roller"
+        reducedMotion
+        onTelemetry={currentSink}
+      />
+    );
+    const current = attackDieProps.at(-1)!;
+    expect(current.onTelemetry).not.toBe(staleCallback);
+
+    act(() => staleCallback(matchingTelemetry(current)));
+    expect(staleSink).not.toHaveBeenCalled();
+    expect(currentSink).not.toHaveBeenCalled();
+
+    act(() => current.onTelemetry?.(matchingTelemetry(current)));
+    expect(staleSink).not.toHaveBeenCalled();
+    expect(currentSink).toHaveBeenCalledTimes(1);
   });
 
   it('settles only from matching local-generation and result observation', () => {
@@ -752,7 +952,7 @@ describe('DiceTrayPresentation', () => {
     const armed = attackDieProps.at(-1)!;
 
     expect(armed.phase).toBe('ready');
-    expect(armed.decorativeRelease).toBeUndefined();
+    expect(armed.throwProfile).toBeUndefined();
     expect(screen.getByTestId('dice-face').textContent).toBe('?');
     expect(onReleaseRequest).not.toHaveBeenCalled();
 
@@ -769,7 +969,7 @@ describe('DiceTrayPresentation', () => {
     expect(attackDieProps.at(-1)).toMatchObject({
       presentationToken: armed.presentationToken,
       phase: 'rolling',
-      decorativeRelease: laterRelease.release,
+      throwProfile: laterRelease.release.throwProfile,
     });
     expect(screen.getByTestId('dice-face').textContent).not.toBe('10');
     expect(onReleaseRequest).not.toHaveBeenCalled();
@@ -859,7 +1059,7 @@ describe('DiceTrayPresentation', () => {
       onTelemetry: armed.onTelemetry,
       result: 10,
       phase: 'settled',
-      decorativeRelease: emittedReleaseA.release,
+      throwProfile: emittedReleaseA.release.throwProfile,
       sceneOverride: undefined,
       sidecarOverride: undefined,
       calibrationPose: undefined,
@@ -876,7 +1076,11 @@ describe('DiceTrayPresentation', () => {
     expect(screen.getByRole('status').textContent).toMatch(
       /result 10 released/i
     );
-    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Roll d20' })
+        .getAttribute('aria-disabled')
+    ).toBe('true');
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
   });
@@ -915,7 +1119,7 @@ describe('DiceTrayPresentation', () => {
       presentationToken: generation,
       result: 10,
       phase: 'ready',
-      decorativeRelease: undefined,
+      throwProfile: undefined,
     });
     expect(screen.getByTestId('dice-face').textContent).toBe('?');
     expect(screen.getByRole('status').textContent).not.toContain('10');
@@ -936,7 +1140,7 @@ describe('DiceTrayPresentation', () => {
       presentationToken: generation,
       result: 10,
       phase: 'settled',
-      decorativeRelease: releaseA.release,
+      throwProfile: releaseA.release.throwProfile,
     });
     expect(
       attackDieProps
@@ -1051,7 +1255,7 @@ describe('DiceTrayPresentation', () => {
       presentationToken: settled.presentationToken,
       result: 10,
       phase: 'settled',
-      decorativeRelease: releaseA.release,
+      throwProfile: releaseA.release.throwProfile,
       sceneOverride: undefined,
       sidecarOverride: undefined,
       calibrationPose: undefined,
@@ -1151,11 +1355,15 @@ describe('DiceTrayPresentation', () => {
     expect(attackDieProps.at(-1)).toMatchObject({
       presentationToken: generation,
       phase: 'settled',
-      decorativeRelease: event.release,
+      throwProfile: event.release.throwProfile,
     });
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(screen.getByRole('status').textContent).toContain('10');
-    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Roll d20' })
+        .getAttribute('aria-disabled')
+    ).toBe('true');
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
     expect(onReleaseRequest).toHaveBeenCalledTimes(1);
 
@@ -1171,7 +1379,7 @@ describe('DiceTrayPresentation', () => {
     expect(attackDieProps.at(-1)).toMatchObject({
       presentationToken: generation,
       phase: 'settled',
-      decorativeRelease: event.release,
+      throwProfile: event.release.throwProfile,
     });
     expect(
       attackDieProps
@@ -1187,7 +1395,7 @@ describe('DiceTrayPresentation', () => {
     const generation = attackDieProps.at(-1)!.presentationToken;
     expect(attackDieProps.at(-1)).toMatchObject({
       phase: 'settled',
-      decorativeRelease: firstRelease.release,
+      throwProfile: firstRelease.release.throwProfile,
     });
 
     for (const events of [
@@ -1206,7 +1414,7 @@ describe('DiceTrayPresentation', () => {
       expect(attackDieProps.at(-1)).toMatchObject({
         presentationToken: generation,
         phase: 'settled',
-        decorativeRelease: firstRelease.release,
+        throwProfile: firstRelease.release.throwProfile,
       });
       expect(screen.getByTestId('dice-face').textContent).toBe('10');
     }
@@ -1245,12 +1453,38 @@ describe('DiceTrayPresentation', () => {
     expect(attackDieProps.at(-1)).toMatchObject({
       presentationToken: generation,
       phase: 'settled',
-      decorativeRelease: firstRelease.release,
+      throwProfile: firstRelease.release.throwProfile,
     });
-    expect(attackDieProps.at(-1)?.decorativeRelease).not.toEqual(
-      conflictingRelease.release
+    expect(attackDieProps.at(-1)?.throwProfile).not.toEqual(
+      conflictingRelease.release.throwProfile
     );
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
+  });
+
+  it('resets an active local gesture when presentation identity is interrupted', () => {
+    const onReleaseRequest = vi.fn();
+    const view = renderPresentation([requested()], { onReleaseRequest });
+    const grab = screen.getByRole('button', { name: 'Grab d20' });
+    fireEvent.pointerDown(grab, {
+      pointerId: 72,
+      clientX: 20,
+      clientY: 30,
+    });
+    const resetsBefore = controllerProfiles.resets;
+
+    view.rerender(
+      <DiceTrayPresentation
+        label="Player attack dice"
+        events={[requested('attack:8')]}
+        witnessRole="roller"
+        reducedMotion
+        onReleaseRequest={onReleaseRequest}
+      />
+    );
+
+    expect(controllerProfiles.resets).toBeGreaterThan(resetsBefore);
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+    expect(screen.getByRole('region').getAttribute('data-phase')).toBe('armed');
   });
 
   it('resets sticky release state only for a new presentation id', () => {
@@ -1299,6 +1533,7 @@ describe('DiceTrayPresentation', () => {
 
       expect(screen.queryByRole('button', { name: /roll/i })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+      expect(controllerProfiles.creates).toBe(0);
       expect(onReleaseRequest).not.toHaveBeenCalled();
     }
   );
@@ -1320,13 +1555,19 @@ describe('DiceTrayPresentation', () => {
         },
       });
 
+    const profileValue: Record<string, unknown> = {};
+    defineOneRead(profileValue, 'profile.schemaVersion', 1);
+    defineOneRead(profileValue, 'profile.releasePosition', [0.5, 0.5]);
+    defineOneRead(profileValue, 'profile.releaseDirection', [0, 0]);
+    defineOneRead(profileValue, 'profile.releaseSpeed', 0);
+    defineOneRead(profileValue, 'profile.shakeEnergy', 0);
+    defineOneRead(profileValue, 'profile.spinBias', 0);
+    defineOneRead(profileValue, 'profile.motionSeed', 7);
     const releaseValue: Record<string, unknown> = {};
-    defineOneRead(releaseValue, 'release.schemaVersion', 1);
+    defineOneRead(releaseValue, 'release.schemaVersion', 2);
     defineOneRead(releaseValue, 'release.presentationId', 'attack:7');
     defineOneRead(releaseValue, 'release.presetId', 'lightning');
-    defineOneRead(releaseValue, 'release.variation', 7);
-    defineOneRead(releaseValue, 'release.vector', [0, 0]);
-    defineOneRead(releaseValue, 'release.shake', 0);
+    defineOneRead(releaseValue, 'release.throwProfile', profileValue);
     const releaseEvent: Record<string, unknown> = {};
     defineOneRead(releaseEvent, 'early.schemaVersion', 1);
     defineOneRead(releaseEvent, 'early.type', 'dice-presentation-released');
@@ -1367,7 +1608,7 @@ describe('DiceTrayPresentation', () => {
     renderPresentation([releaseEvent, requestEvent, hostile]);
 
     expect([...reads.values()].every((count) => count === 1)).toBe(true);
-    expect(reads).toHaveProperty('size', 22);
+    expect(reads).toHaveProperty('size', 27);
     expect(attackDieProps.at(-1)).toMatchObject({ result: 10, phase: 'ready' });
     expect(screen.getByTestId('dice-face').textContent).toBe('?');
   });
@@ -1474,11 +1715,15 @@ describe('DiceTrayPresentation', () => {
     expect(attackDieProps.at(-1)).toMatchObject({
       presentationToken: token,
       phase: 'settled',
-      decorativeRelease: event.release,
+      throwProfile: event.release.throwProfile,
     });
     expect(screen.getByTestId('dice-face').textContent).toBe('10');
     expect(screen.getByRole('status').textContent).toContain('10');
-    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Roll d20' })
+        .getAttribute('aria-disabled')
+    ).toBe('true');
     expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
 
     view.rerender(

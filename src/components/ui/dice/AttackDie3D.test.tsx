@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { StrictMode } from 'react';
 import {
   BufferGeometry,
@@ -28,6 +29,8 @@ import {
   ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE,
   runtimeDiceNormalization,
 } from './materialFreeCarvedMesh';
+import type { HeldRollGroupState } from './rollGroupGestureController';
+import { createVisualThrowProfile } from './visualThrowProfile';
 const mocks = vi.hoisted(() => ({
   frames: [] as Array<(state: { clock: { elapsedTime: number } }) => void>,
   release: vi.fn(),
@@ -43,8 +46,14 @@ const mocks = vi.hoisted(() => ({
   compileFailure: false,
   groupMissing: false,
   motionFailure: false,
+  solverInputs: [] as unknown[],
+  solverOutputs: [] as unknown[],
+  settlementInputs: [] as unknown[],
   poseCopy: vi.fn(),
   positionSet: vi.fn(),
+  shadowPositionSet: vi.fn(),
+  shadowScaleSet: vi.fn(),
+  shadowOpacityValues: [] as number[],
   groupQuaternions: new WeakMap<
     object,
     { x: number; y: number; z: number; w: number }
@@ -132,28 +141,48 @@ vi.mock('@react-three/fiber', () => ({
       ? selector({ camera: mocks.createdCamera })
       : { gl: mocks.gl, scene: {}, camera: mocks.createdCamera },
 }));
-vi.mock('./attackDieMotion', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./attackDieMotion')>();
-  const failedFrame = (current: readonly [number, number, number, number]) => ({
-    quaternion: current,
-    observeNow: false,
-    exactTargetHeld: false,
-    failed: true,
-  });
+vi.mock('./choreographedDiceMotion', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('./choreographedDiceMotion')>();
   return {
     ...actual,
-    stepAttackDieMotion: (
-      input: Parameters<typeof actual.stepAttackDieMotion>[0]
-    ) =>
-      mocks.motionFailure
-        ? failedFrame(input.current)
-        : actual.stepAttackDieMotion(input),
-    attackDiePoseForPhase: (
-      input: Parameters<typeof actual.attackDiePoseForPhase>[0]
-    ) =>
-      mocks.motionFailure
-        ? { ...failedFrame(input.current), translation: [0, 0, 0] }
-        : actual.attackDiePoseForPhase(input),
+    ChoreographedSolverV1: {
+      ...actual.ChoreographedSolverV1,
+      solve: (
+        input: Parameters<typeof actual.ChoreographedSolverV1.solve>[0]
+      ) => {
+        mocks.solverInputs.push(input);
+        const output = mocks.motionFailure
+          ? {
+              quaternion: [0.31, -0.47, 0.19, 0.805] as const,
+              translation: [0, 0.16, 0] as const,
+              shadow: {
+                translation: [0, 0, 0] as const,
+                scale: 1,
+                opacity: 0.2,
+              },
+              observeNow: false,
+              exactTargetHeld: false,
+              failed: true,
+            }
+          : actual.ChoreographedSolverV1.solve(input);
+        mocks.solverOutputs.push(output);
+        return output;
+      },
+    },
+  };
+});
+vi.mock('./diceSettlementResolver', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('./diceSettlementResolver')>();
+  return {
+    ...actual,
+    resolveRuntimeDiceSettlement: (
+      input: Parameters<typeof actual.resolveRuntimeDiceSettlement>[0]
+    ) => {
+      mocks.settlementInputs.push(input);
+      return actual.resolveRuntimeDiceSettlement(input);
+    },
   };
 });
 vi.mock('./diceRuntimeProvider', () => ({
@@ -328,6 +357,21 @@ const props = (token: number, result = 20) => ({
     </output>
   ),
 });
+const throwProfile = (motionSeed: number) =>
+  createVisualThrowProfile({
+    releasePosition: [0.75, 0.25],
+    releaseDirection: [0.6, -0.8],
+    releaseSpeed: 0.7,
+    shakeEnergy: 0.4,
+    spinBias: -0.3,
+    motionSeed,
+  });
+const heldRollGroup: HeldRollGroupState = Object.freeze({
+  normalizedPosition: Object.freeze([0.75, 0.25] as const),
+  normalizedTilt: Object.freeze([0.4, -0.2] as const),
+  shakeEnergy: 0.35,
+  wobblePhase: 0.25,
+});
 const fallbackCovered = () =>
   screen
     .getByTestId('fallback-svg')
@@ -370,30 +414,57 @@ beforeEach(() => {
   mocks.compileFailure = false;
   mocks.groupMissing = false;
   mocks.motionFailure = false;
+  mocks.solverInputs = [];
+  mocks.solverOutputs = [];
+  mocks.settlementInputs = [];
   mocks.poseCopy.mockReset();
   mocks.positionSet.mockReset();
+  mocks.shadowPositionSet.mockReset();
+  mocks.shadowScaleSet.mockReset();
+  mocks.shadowOpacityValues = [];
   mocks.groupQuaternions = new WeakMap();
   mocks.worldQuaternionReads = [];
   mocks.worldQuaternionOverride = undefined;
   Object.defineProperty(HTMLElement.prototype, 'position', {
     configurable: true,
     get() {
-      return this.tagName === 'GROUP' ? { set: mocks.positionSet } : undefined;
+      if (this.getAttribute('name') === 'attack-die-selected-group')
+        return { set: mocks.positionSet };
+      if (this.getAttribute('name') === 'attack-die-shadow')
+        return { set: mocks.shadowPositionSet };
+      return undefined;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'scale', {
+    configurable: true,
+    get() {
+      return this.getAttribute('name') === 'attack-die-shadow'
+        ? { setScalar: mocks.shadowScaleSet }
+        : undefined;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'opacity', {
+    configurable: true,
+    get() {
+      return mocks.shadowOpacityValues.at(-1);
+    },
+    set(value: number) {
+      if (this.getAttribute('name') === 'attack-die-shadow-material')
+        mocks.shadowOpacityValues.push(value);
     },
   });
   Object.defineProperty(HTMLElement.prototype, 'quaternion', {
     configurable: true,
     get() {
-      if (this.tagName !== 'GROUP' || mocks.groupMissing) return undefined;
+      if (
+        this.getAttribute('name') !== 'attack-die-selected-group' ||
+        mocks.groupMissing
+      )
+        return undefined;
       return {
-        copy: (value: { x: number; y: number; z: number; w: number }) => {
-          mocks.groupQuaternions.set(this, {
-            x: value.x,
-            y: value.y,
-            z: value.z,
-            w: value.w,
-          });
-          mocks.poseCopy(value);
+        set: (x: number, y: number, z: number, w: number) => {
+          mocks.groupQuaternions.set(this, { x, y, z, w });
+          mocks.poseCopy({ x, y, z, w });
         },
       };
     },
@@ -427,6 +498,8 @@ beforeEach(() => {
 afterEach(() => {
   delete (HTMLElement.prototype as { position?: unknown }).position;
   delete (HTMLElement.prototype as { quaternion?: unknown }).quaternion;
+  delete (HTMLElement.prototype as { scale?: unknown }).scale;
+  delete (HTMLElement.prototype as { opacity?: unknown }).opacity;
   delete (HTMLElement.prototype as { getWorldQuaternion?: unknown })
     .getWorldQuaternion;
   delete (HTMLCanvasElement.prototype as { getContext?: unknown }).getContext;
@@ -688,6 +761,42 @@ describe('AttackDie3D', () => {
     expect(mocks.gl.debug.onShaderError).toBe(originalShaderError);
     expect(mocks.gl.debug.checkShaderErrors).toBe(false);
   });
+  it('ignores late old-generation motion callbacks after a token remount', () => {
+    arrangeRuntimeReady();
+    const telemetry = vi.fn();
+    const view = render(
+      <AttackDie3D
+        {...props(290, 10)}
+        provider={originalProvider}
+        phase="rolling"
+        throwProfile={throwProfile(290)}
+        onTelemetry={telemetry}
+      />
+    );
+    const staleFrame = mocks.frames.at(-1)!;
+
+    view.rerender(
+      <AttackDie3D
+        {...props(291, 10)}
+        provider={originalProvider}
+        phase="ready"
+        onTelemetry={telemetry}
+      />
+    );
+    telemetry.mockClear();
+    act(() => {
+      staleFrame({ clock: { elapsedTime: 10 } });
+      staleFrame({ clock: { elapsedTime: 12 } });
+    });
+
+    expect(telemetry).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        presentationToken: 290,
+        state: 'observed',
+      })
+    );
+  });
+
   it('keeps ready neutral for different authoritative targets and emits no observation', () => {
     mocks.status = 'ready';
     const telemetry = vi.fn();
@@ -719,46 +828,156 @@ describe('AttackDie3D', () => {
     expect(
       telemetry.mock.calls.some(([event]) => event.state === 'observed')
     ).toBe(false);
+    expect(mocks.solverInputs.at(-1)).toMatchObject({
+      phase: 'ready',
+      throwProfile: {
+        schemaVersion: 1,
+        releasePosition: [0.5, 0.5],
+        releaseDirection: [0, 0],
+        releaseSpeed: 0,
+        shakeEnergy: 0,
+        spinBias: 0,
+        motionSeed: 301,
+      },
+    });
   });
 
-  it('resets roll elapsed once on ready-to-rolling without restarting on rolling rerender', () => {
+  it('fails closed to truthful SVG and failed telemetry for a malformed supplied profile', () => {
+    arrangeRuntimeReady();
+    const telemetry = vi.fn();
+    const malformed = {
+      ...throwProfile(17),
+      releaseSpeed: 1.5,
+    } as unknown as ReturnType<typeof throwProfile>;
+
+    render(
+      <AttackDie3D
+        {...props(299, 10)}
+        provider={originalProvider}
+        phase="rolling"
+        throwProfile={malformed}
+        onTelemetry={telemetry}
+      />
+    );
+
+    expect(screen.queryByTestId('canvas')).toBeNull();
+    expect(fallbackCovered()).toBe(false);
+    expect(mocks.solverInputs).toHaveLength(0);
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presentationToken: 299,
+        renderer: 'svg',
+        state: 'failed',
+        failureCode: 'invalid-throw-profile',
+        exactTargetHeld: false,
+      })
+    );
+  });
+
+  it.each([1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'fails closed without throwing when absent-profile decorative seed %s is invalid',
+    (decorativeSeed) => {
+      arrangeRuntimeReady();
+      const telemetry = vi.fn();
+
+      expect(() =>
+        render(
+          <AttackDie3D
+            {...props(300, 10)}
+            provider={originalProvider}
+            phase="ready"
+            decorativeSeed={decorativeSeed}
+            onTelemetry={telemetry}
+          />
+        )
+      ).not.toThrow();
+
+      expect(screen.queryByTestId('canvas')).toBeNull();
+      expect(fallbackCovered()).toBe(false);
+      expect(mocks.solverInputs).toHaveLength(0);
+      expect(telemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          presentationToken: 300,
+          renderer: 'svg',
+          state: 'failed',
+          failureCode: 'invalid-motion-seed',
+          exactTargetHeld: false,
+        })
+      );
+    }
+  );
+
+  it('does not consume an invalid decorative seed when a valid profile is supplied', () => {
+    arrangeRuntimeReady();
+    const profile = throwProfile(301);
+
+    render(
+      <AttackDie3D
+        {...props(301, 10)}
+        provider={originalProvider}
+        phase="ready"
+        decorativeSeed={1.5}
+        throwProfile={profile}
+      />
+    );
+    frame(-1, 10);
+
+    expect(screen.queryByTestId('canvas')).not.toBeNull();
+    expect(mocks.solverInputs.at(-1)).toMatchObject({ throwProfile: profile });
+  });
+
+  it('synthesizes neutral choreography only when the standalone profile is absent', () => {
     mocks.status = 'ready';
-    const release = {
-      variation: 17,
-      vector: [0, 0] as const,
-      shake: 0,
-    };
+    render(<AttackDie3D {...props(301)} phase="ready" />);
+    frame(-1, 10);
+
+    expect(screen.queryByTestId('canvas')).not.toBeNull();
+    expect(mocks.solverInputs.at(-1)).toMatchObject({
+      throwProfile: {
+        schemaVersion: 1,
+        releasePosition: [0.5, 0.5],
+        releaseDirection: [0, 0],
+        releaseSpeed: 0,
+        shakeEnergy: 0,
+        spinBias: 0,
+        motionSeed: 301,
+      },
+    });
+  });
+
+  it('feeds profile facts and continuous elapsed time to the solver without previous-frame quaternion state', () => {
+    mocks.status = 'ready';
+    const profile = throwProfile(17);
     const view = render(
-      <AttackDie3D {...props(302)} phase="ready" decorativeRelease={release} />
+      <AttackDie3D {...props(302)} phase="ready" throwProfile={profile} />
     );
     frame(-1, 10);
 
     view.rerender(
-      <AttackDie3D
-        {...props(302)}
-        phase="rolling"
-        decorativeRelease={release}
-      />
+      <AttackDie3D {...props(302)} phase="rolling" throwProfile={profile} />
     );
-    mocks.positionSet.mockClear();
     frame(-1, 10.5);
-    const atRelease = mocks.positionSet.mock.calls.at(-1);
+    const atRelease = mocks.solverInputs.at(-1) as Record<string, unknown>;
     frame(-1, 11);
-    const inFlight = mocks.positionSet.mock.calls.at(-1);
+    const inFlight = mocks.solverInputs.at(-1) as Record<string, unknown>;
 
     view.rerender(
-      <AttackDie3D
-        {...props(302)}
-        phase="rolling"
-        decorativeRelease={release}
-      />
+      <AttackDie3D {...props(302)} phase="rolling" throwProfile={profile} />
     );
     frame(-1, 11.1);
-    const afterRerender = mocks.positionSet.mock.calls.at(-1);
+    const afterRerender = mocks.solverInputs.at(-1) as Record<string, unknown>;
 
-    expect(atRelease).toEqual([1.05, 0, -0]);
-    expect(inFlight?.[0]).toBeLessThan(atRelease?.[0]);
-    expect(afterRerender?.[0]).toBeLessThan(inFlight?.[0]);
+    const frameInputs = [atRelease, inFlight, afterRerender];
+    expect(frameInputs.map((input) => input.elapsedMs)).toEqual([0, 500, 600]);
+    for (const input of frameInputs) {
+      expect(input).toMatchObject({
+        phase: 'rolling',
+        reducedMotion: false,
+        throwProfile: profile,
+        member: { memberIndex: 0, memberCount: 1 },
+      });
+      expect(input).not.toHaveProperty('current');
+    }
   });
 
   it('applies the exact settled target and resting position immediately', () => {
@@ -803,7 +1022,7 @@ describe('AttackDie3D', () => {
         {...props(304, 1)}
         phase="rolling"
         reducedMotion
-        decorativeRelease={{ variation: 304, vector: [0, 0], shake: 0 }}
+        throwProfile={throwProfile(304)}
         onTelemetry={telemetry}
       />
     );
@@ -888,17 +1107,18 @@ describe('Original carved runtime renderer', () => {
           provider={originalProvider}
           phase="settled"
           calibrationPose={[0, 1, 0, 0]}
-          decorativeRelease={{
-            variation: 996 - result,
-            vector: [1, -1],
-            shake: 1,
-          }}
+          throwProfile={throwProfile(996 - result)}
         />
       );
 
       frame(-1, 0);
       const expected =
         preset.faceSettlementMap.entries[String(result)].quaternion;
+      expect(mocks.settlementInputs.at(-1)).toMatchObject({
+        preset,
+        expectedPresetId: ORIGINAL_PRESET_ID,
+        authoritativeResult: result,
+      });
       expect(mocks.poseCopy.mock.calls.at(-1)?.[0]).toMatchObject({
         x: expected[0],
         y: expected[1],
@@ -907,6 +1127,61 @@ describe('Original carved runtime renderer', () => {
       });
     }
   );
+
+  it('applies solver die and independently owned shadow poses only to sibling Three.js objects', () => {
+    arrangeRuntimeReady();
+    render(
+      <AttackDie3D
+        {...props(549, 12)}
+        provider={originalProvider}
+        phase="ready"
+        throwProfile={throwProfile(549)}
+        heldRollGroup={heldRollGroup}
+      />
+    );
+
+    const canvas = screen.getByTestId('canvas');
+    const selectedGroup = canvas.querySelector(
+      'group[name="attack-die-selected-group"]'
+    );
+    const shadow = canvas.querySelector('mesh[name="attack-die-shadow"]');
+    expect(selectedGroup).toBeTruthy();
+    expect(shadow).toBeTruthy();
+    expect(selectedGroup?.parentElement).toBe(shadow?.parentElement);
+    expect(selectedGroup?.contains(shadow)).toBe(false);
+
+    frame(-1, 0);
+    const pose = mocks.solverOutputs.at(-1) as {
+      quaternion: readonly [number, number, number, number];
+      translation: readonly [number, number, number];
+      shadow: {
+        translation: readonly [number, number, number];
+        scale: number;
+        opacity: number;
+      };
+    };
+    expect(mocks.solverInputs.at(-1)).toMatchObject({
+      phase: 'ready',
+      held: heldRollGroup,
+      member: { memberIndex: 0, memberCount: 1 },
+    });
+    expect(mocks.poseCopy).toHaveBeenLastCalledWith({
+      x: pose.quaternion[0],
+      y: pose.quaternion[1],
+      z: pose.quaternion[2],
+      w: pose.quaternion[3],
+    });
+    expect(mocks.positionSet).toHaveBeenLastCalledWith(...pose.translation);
+    expect(mocks.shadowPositionSet).toHaveBeenLastCalledWith(
+      ...pose.shadow.translation
+    );
+    expect(mocks.shadowScaleSet).toHaveBeenLastCalledWith(pose.shadow.scale);
+    expect(mocks.shadowOpacityValues.at(-1)).toBe(pose.shadow.opacity);
+    expect(mocks.canvasProps?.style).toEqual({ visibility: 'hidden' });
+    expect(JSON.stringify(mocks.canvasProps)).not.toMatch(
+      /transform|translate|rotate/
+    );
+  });
 
   it('applies the exact model normalization as a Three.js group without Canvas transforms', () => {
     arrangeRuntimeReady();
@@ -995,6 +1270,66 @@ describe('Original carved runtime renderer', () => {
         );
       }
     }
+  });
+
+  it('replays one parsed profile identically at fixed samples while paired runtime ownership stays distinct', () => {
+    arrangeRuntimeReady();
+    const profile = throwProfile(755);
+    const rollerTelemetry = vi.fn();
+    const spectatorTelemetry = vi.fn();
+    const rollerRenderer = vi.fn();
+    const spectatorRenderer = vi.fn();
+    render(
+      <>
+        <AttackDie3D
+          {...props(555, 10)}
+          provider={originalProvider}
+          phase="rolling"
+          throwProfile={profile}
+          onTelemetry={rollerTelemetry}
+          onRendererInfo={rollerRenderer}
+        />
+        <AttackDie3D
+          {...props(556, 10)}
+          provider={originalProvider}
+          phase="rolling"
+          throwProfile={structuredClone(profile)}
+          onTelemetry={spectatorTelemetry}
+          onRendererInfo={spectatorRenderer}
+        />
+      </>
+    );
+
+    for (const elapsedSeconds of [10, 10.333, 11.2, 11.9]) {
+      frame(-2, elapsedSeconds);
+      frame(-1, elapsedSeconds);
+      const [rollerPose, spectatorPose] = mocks.solverOutputs.slice(-2);
+      expect(rollerPose).toEqual(spectatorPose);
+    }
+
+    const rollerCreated = rollerRenderer.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.lifecycle === 'created');
+    const spectatorCreated = spectatorRenderer.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.lifecycle === 'created');
+    expect(rollerCreated).toMatchObject({ presentationToken: 555 });
+    expect(spectatorCreated).toMatchObject({ presentationToken: 556 });
+    expect(rollerCreated.contextId).not.toBe(spectatorCreated.contextId);
+
+    const rollerObserved = rollerTelemetry.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.state === 'observed');
+    const spectatorObserved = spectatorTelemetry.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.state === 'observed');
+    expect(rollerObserved.throwProfile).toEqual(spectatorObserved.throwProfile);
+    expect(rollerObserved.runtimeSourceId).toBe(
+      spectatorObserved.runtimeSourceId
+    );
+    expect(rollerObserved.runtimeCloneId).not.toBe(
+      spectatorObserved.runtimeCloneId
+    );
   });
 
   it('shares one provider source while witnesses own separate clones, Canvas, telemetry, and disposal', () => {
@@ -1165,10 +1500,19 @@ describe('Original carved runtime renderer', () => {
         provider={originalProvider}
         phase="ready"
         reducedMotion
+        heldRollGroup={heldRollGroup}
         onTelemetry={telemetry}
       />
     );
     frame(-1, 20);
+    const firstHeldCue = mocks.solverOutputs.at(-1);
+    frame(-1, 20.5);
+    expect(mocks.solverOutputs.at(-1)).toEqual(firstHeldCue);
+    expect(mocks.solverInputs.at(-1)).toMatchObject({
+      phase: 'ready',
+      reducedMotion: true,
+      held: heldRollGroup,
+    });
     expect(telemetry).not.toHaveBeenCalledWith(
       expect.objectContaining({ state: 'observed' })
     );
@@ -1179,7 +1523,7 @@ describe('Original carved runtime renderer', () => {
         provider={originalProvider}
         phase="rolling"
         reducedMotion
-        decorativeRelease={{ variation: 91, vector: [1, -1], shake: 1 }}
+        throwProfile={throwProfile(91)}
         onTelemetry={telemetry}
       />
     );
@@ -1197,6 +1541,8 @@ describe('Original carved runtime renderer', () => {
         observedUpMargin: expect.any(Number),
         angularErrorDegrees: expect.any(Number),
         exactTargetHeld: true,
+        motionRevision: 'choreographed-v1',
+        throwProfile: throwProfile(91),
       })
     );
     const observation = telemetry.mock.calls
@@ -1204,7 +1550,63 @@ describe('Original carved runtime renderer', () => {
       .find((event) => event.state === 'observed');
     expect(observation.observedUpDot).toBeGreaterThan(0.999999);
     expect(observation.observedUpMargin).toBeGreaterThan(0.2);
+    expect(Object.isFrozen(observation.throwProfile)).toBe(true);
+    expect(Object.isFrozen(observation.throwProfile.releasePosition)).toBe(
+      true
+    );
+    expect(Object.isFrozen(observation.throwProfile.releaseDirection)).toBe(
+      true
+    );
     expect(mocks.worldQuaternionReads).toHaveLength(1);
+  });
+
+  it('publishes only a current frozen monotonic boolean aggregate after applying renderer-local poses', () => {
+    arrangeRuntimeReady();
+    const diagnostic = vi.fn();
+    render(
+      <AttackDie3D
+        {...props(571, 7)}
+        provider={originalProvider}
+        phase="ready"
+        reducedMotion
+        heldRollGroup={heldRollGroup}
+        onMotionDiagnostic={diagnostic}
+      />
+    );
+
+    frame(-1, 22);
+    frame(-1, 22.016);
+
+    expect(diagnostic).toHaveBeenCalledTimes(2);
+    expect(diagnostic).toHaveBeenLastCalledWith({
+      presentationToken: 571,
+      motionRevision: 'choreographed-v1',
+      heldPoseApplied: true,
+      heldPoseMoved: false,
+      heldPoseRepeated: true,
+      rollingPoseApplied: false,
+      rollingPoseMoved: false,
+      reducedHeldPoseRepeated: true,
+      unexpectedMotion: false,
+    });
+    const aggregate = diagnostic.mock.calls[1][0] as Record<string, unknown>;
+    expect(Object.isFrozen(aggregate)).toBe(true);
+    expect(Object.keys(aggregate).sort()).toEqual(
+      [
+        'heldPoseApplied',
+        'heldPoseMoved',
+        'heldPoseRepeated',
+        'motionRevision',
+        'presentationToken',
+        'reducedHeldPoseRepeated',
+        'rollingPoseApplied',
+        'rollingPoseMoved',
+        'unexpectedMotion',
+      ].sort()
+    );
+    expect(JSON.stringify(diagnostic.mock.calls)).not.toMatch(
+      /translation|quaternion|coordinate|velocity|tilt|timestamp|count|sequence|sample|path|history/i
+    );
   });
 
   it('fails closed when a synthetically permuted target physically presents another result', () => {
@@ -1420,4 +1822,208 @@ it('updates live camera without remounting Canvas or changing token', async () =
   );
   expect(mocks.createdCamera.fov).toBe(v.topCamera.fov);
   expect(mocks.createdCamera.updateProjectionMatrix).toHaveBeenCalledTimes(2);
+});
+
+interface CssRuleSnapshot {
+  selectors: readonly string[];
+  declarations: readonly { property: string; value: string }[];
+}
+
+function splitTopLevelSelectorList(value: string): string[] {
+  const selectors: string[] = [];
+  let start = 0;
+  let bracketDepth = 0;
+  let parenthesisDepth = 0;
+  let quote: string | undefined;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (quote) {
+      if (character === quote && value[index - 1] !== '\\') quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '[') bracketDepth += 1;
+    else if (character === ']') bracketDepth -= 1;
+    else if (character === '(') parenthesisDepth += 1;
+    else if (character === ')') parenthesisDepth -= 1;
+    else if (
+      character === ',' &&
+      bracketDepth === 0 &&
+      parenthesisDepth === 0
+    ) {
+      selectors.push(value.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  selectors.push(value.slice(start).trim());
+  return selectors.filter(Boolean);
+}
+
+function cssRuleSnapshots(source: string): CssRuleSnapshot[] {
+  return [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
+    selectors: splitTopLevelSelectorList(match[1]),
+    declarations: match[2]
+      .split(';')
+      .map((declaration) => declaration.trim())
+      .filter(Boolean)
+      .map((declaration) => {
+        const separator = declaration.indexOf(':');
+        return {
+          property: declaration.slice(0, separator).trim().toLowerCase(),
+          value: declaration
+            .slice(separator + 1)
+            .trim()
+            .toLowerCase(),
+        };
+      }),
+  }));
+}
+
+function rightmostCompoundSelector(selector: string): string {
+  let start = 0;
+  let bracketDepth = 0;
+  let parenthesisDepth = 0;
+  let quote: string | undefined;
+  for (let index = 0; index < selector.length; index += 1) {
+    const character = selector[index];
+    if (quote) {
+      if (character === quote && selector[index - 1] !== '\\')
+        quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '[') bracketDepth += 1;
+    else if (character === ']') bracketDepth -= 1;
+    else if (character === '(') parenthesisDepth += 1;
+    else if (character === ')') parenthesisDepth -= 1;
+    else if (
+      bracketDepth === 0 &&
+      parenthesisDepth === 0 &&
+      (character === '>' ||
+        character === '+' ||
+        character === '~' ||
+        /\s/.test(character))
+    ) {
+      start = index + 1;
+    }
+  }
+  return selector.slice(start).trim();
+}
+
+const MOTION_PROPERTIES = new Set([
+  'filter',
+  'rotate',
+  'scale',
+  'transform',
+  'translate',
+]);
+
+function isMotionProperty(property: string): boolean {
+  return MOTION_PROPERTIES.has(property) || property.startsWith('animation-');
+}
+const PROTECTED_MOTION_TARGETS = [
+  '.attack-die-3d__canvas',
+  '.attack-die-3d',
+  '.dice-tray-3d-renderer',
+] as const;
+const GRAB_TARGET_SELECTOR =
+  '.dice-tray-3d-renderer > .dice-tray-3d-grab-target';
+
+function compoundTargetsClass(compound: string, className: string): boolean {
+  const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`${escaped}(?![A-Za-z0-9_-])`).test(compound);
+}
+
+function protectedMotionViolations(source: string): string[] {
+  const violations: string[] = [];
+  for (const rule of cssRuleSnapshots(source)) {
+    for (const selector of rule.selectors) {
+      const compound = rightmostCompoundSelector(selector);
+      const protectedTarget = PROTECTED_MOTION_TARGETS.find((className) =>
+        compoundTargetsClass(compound, className)
+      );
+      if (!protectedTarget) continue;
+      for (const declaration of rule.declarations) {
+        if (
+          declaration.property === 'animation' ||
+          isMotionProperty(declaration.property)
+        )
+          violations.push(`${selector} -> ${declaration.property}`);
+      }
+    }
+  }
+  return violations;
+}
+
+function invalidGrabTargetMotion(source: string): string[] {
+  const violations: string[] = [];
+  for (const rule of cssRuleSnapshots(source)) {
+    for (const selector of rule.selectors) {
+      if (
+        !compoundTargetsClass(
+          rightmostCompoundSelector(selector),
+          '.dice-tray-3d-grab-target'
+        )
+      )
+        continue;
+      for (const declaration of rule.declarations) {
+        if (
+          declaration.property !== 'animation' &&
+          !isMotionProperty(declaration.property)
+        )
+          continue;
+        const allowed =
+          selector === GRAB_TARGET_SELECTOR &&
+          declaration.property === 'transform' &&
+          declaration.value.replace(/\s+/g, '') === 'translate(-50%,-50%)';
+        if (!allowed) violations.push(`${selector} -> ${declaration.property}`);
+      }
+    }
+  }
+  return violations;
+}
+
+it('guards protected CSS targets across contextual and comma selectors', () => {
+  const css = readFileSync('public/themes/base.css', 'utf8');
+
+  expect(protectedMotionViolations(css)).toEqual([]);
+  expect(invalidGrabTargetMotion(css)).toEqual([]);
+
+  const contextualMutation = `${css}\n.scope .attack-die-3d { transform: translateX(1px); }`;
+  expect(protectedMotionViolations(contextualMutation)).toContain(
+    '.scope .attack-die-3d -> transform'
+  );
+
+  const commaMutation = `${css}\n.safe, .scope > .attack-die-3d__canvas { animation: drift 1s; }`;
+  expect(protectedMotionViolations(commaMutation)).toContain(
+    '.scope > .attack-die-3d__canvas -> animation'
+  );
+
+  const rendererMutation = `${css}\n.layout + .dice-tray-3d-renderer:hover { filter: blur(1px); }`;
+  expect(protectedMotionViolations(rendererMutation)).toContain(
+    '.layout + .dice-tray-3d-renderer:hover -> filter'
+  );
+
+  expect(
+    protectedMotionViolations(
+      `${css}\n.attack-die-3d .unprotected-child { transform: none; }`
+    )
+  ).toEqual([]);
+
+  expect(
+    invalidGrabTargetMotion(
+      `${css}\n${GRAB_TARGET_SELECTOR} { animation: pulse 1s; }`
+    )
+  ).toContain(`${GRAB_TARGET_SELECTOR} -> animation`);
+  expect(
+    invalidGrabTargetMotion(
+      `${css}\n${GRAB_TARGET_SELECTOR} { transform: translate(-40%, -50%); }`
+    )
+  ).toContain(`${GRAB_TARGET_SELECTOR} -> transform`);
 });

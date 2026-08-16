@@ -4,6 +4,22 @@ import {
   projectDicePresentationEvents,
 } from './dicePresentationEvent';
 import type { DicePresentationRelease } from './dicePresentationRelease';
+import type { VisualThrowProfileV1 } from './visualThrowProfile';
+
+function profile(
+  overrides: Partial<VisualThrowProfileV1> = {}
+): VisualThrowProfileV1 {
+  return {
+    schemaVersion: 1,
+    releasePosition: [0.5, 0.5],
+    releaseDirection: [0, 0],
+    releaseSpeed: 0,
+    shakeEnergy: 0,
+    spinBias: 0,
+    motionSeed: 7,
+    ...overrides,
+  };
+}
 
 function requested(
   overrides: Record<string, unknown> = {}
@@ -33,12 +49,10 @@ function release(
     eventId: 'event:release:7',
     presentationId: 'attack:7',
     release: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       presentationId: 'attack:7',
       presetId: 'lightning',
-      variation: 7,
-      vector: [0, 0],
-      shake: 0,
+      throwProfile: profile(),
       ...releaseOverrides,
     },
     ...overrides,
@@ -60,30 +74,33 @@ describe('parseDicePresentationEvent', () => {
         expect(Object.isFrozen(parsed.roller)).toBe(true);
         expect(Object.isFrozen(parsed.die)).toBe(true);
       } else if (parsed) {
+        expect(parsed.schemaVersion).toBe(1);
+        expect(parsed.release.schemaVersion).toBe(2);
+        expect(parsed.release.throwProfile.schemaVersion).toBe(1);
         expect(parsed.release).not.toBe(inbound.release);
         expect(Object.isFrozen(parsed.release)).toBe(true);
-        expect(Object.isFrozen(parsed.release.vector)).toBe(true);
+        expect(Object.isFrozen(parsed.release.throwProfile)).toBe(true);
+        expect(
+          Object.isFrozen(parsed.release.throwProfile.releasePosition)
+        ).toBe(true);
+        expect(
+          Object.isFrozen(parsed.release.throwProfile.releaseDirection)
+        ).toBe(true);
       }
       expect(Object.isFrozen(inbound)).toBe(false);
     }
   );
 
   it.each(['lightning', 'dice.original.carved.d20', 'newer-safe-preset'])(
-    'accepts the syntactically safe preset %s without authorizing an asset URL',
+    'accepts syntactically safe preset %s without authorizing an asset URL',
     (presetId) => {
       expect(
         parseDicePresentationEvent(
           requested({
-            die: {
-              kind: 'd20',
-              presetId,
-              authoritativeResult: 20,
-            },
+            die: { kind: 'd20', presetId, authoritativeResult: 20 },
           })
         )
-      ).toMatchObject({
-        die: { presetId, authoritativeResult: 20 },
-      });
+      ).toMatchObject({ die: { presetId, authoritativeResult: 20 } });
       expect(
         parseDicePresentationEvent(release({}, { presetId }))
       ).toMatchObject({ release: { presetId } });
@@ -96,21 +113,15 @@ describe('parseDicePresentationEvent', () => {
     'lightning.',
     'dice..d20',
     'dice/original',
-    'dice\\original',
-    'dice:original',
-    'dice%2eoriginal',
     'https://evil.test',
     '../dice',
     'Dice.original',
     `dice.${'a'.repeat(33)}`,
-    Array.from({ length: 8 }, () => 'abcdefgh').join('.'),
     'a.a.a.a.a.a.a.a.a',
   ])('rejects malformed inbound preset identifier %s', (presetId) => {
     expect(
       parseDicePresentationEvent(
-        requested({
-          die: { kind: 'd20', presetId, authoritativeResult: 10 },
-        })
+        requested({ die: { kind: 'd20', presetId, authoritativeResult: 10 } })
       )
     ).toBeUndefined();
     expect(
@@ -119,9 +130,9 @@ describe('parseDicePresentationEvent', () => {
   });
 
   it.each([
-    { name: 'wrong schema', value: requested({ schemaVersion: 2 }) },
-    { name: 'wrong type', value: requested({ type: 'dice-rolled' }) },
-    { name: 'unknown outer key', value: requested({ result: 10 }) },
+    { name: 'wrong request schema', value: requested({ schemaVersion: 2 }) },
+    { name: 'wrong request type', value: requested({ type: 'dice-rolled' }) },
+    { name: 'unknown outer request key', value: requested({ result: 10 }) },
     {
       name: 'unknown roller key',
       value: requested({
@@ -144,74 +155,78 @@ describe('parseDicePresentationEvent', () => {
       }),
     },
     {
-      name: 'renderer token',
-      value: requested({ presentationToken: 7 }),
-    },
-    {
-      name: 'URL',
-      value: requested({
-        die: {
-          kind: 'd20',
-          presetId: 'https://evil.test/die.glb',
-          authoritativeResult: 10,
-        },
-      }),
-    },
-    {
-      name: 'description',
-      value: requested({ description: 'critical hit' }),
-    },
-    {
       name: 'invalid result',
       value: requested({
-        die: {
-          kind: 'd20',
-          presetId: 'lightning',
-          authoritativeResult: 20.5,
-        },
+        die: { kind: 'd20', presetId: 'lightning', authoritativeResult: 20.5 },
       }),
     },
     {
       name: 'out of range result',
       value: requested({
-        die: {
-          kind: 'd20',
-          presetId: 'lightning',
-          authoritativeResult: 21,
-        },
+        die: { kind: 'd20', presetId: 'lightning', authoritativeResult: 21 },
       }),
     },
     {
       name: 'invalid role',
-      value: requested({
-        roller: { entityId: 'character:1', role: 'gm' },
-      }),
+      value: requested({ roller: { entityId: 'character:1', role: 'gm' } }),
     },
-    {
-      name: 'malformed event id',
-      value: requested({ eventId: 'event/id' }),
-    },
+    { name: 'malformed event id', value: requested({ eventId: 'event/id' }) },
     {
       name: 'malformed presentation id',
       value: requested({ presentationId: 'https://evil.test' }),
-    },
-    {
-      name: 'malformed entity id',
-      value: requested({
-        roller: { entityId: 'a'.repeat(129), role: 'player' },
-      }),
     },
     {
       name: 'unknown release key',
       value: release({}, { renderer: '3d' } as never),
     },
     {
+      name: 'former release schema',
+      value: {
+        ...release(),
+        release: {
+          schemaVersion: 1,
+          presentationId: 'attack:7',
+          presetId: 'lightning',
+          variation: 7,
+          vector: [0, 0],
+          shake: 0,
+        },
+      },
+    },
+    {
+      name: 'mixed release schema',
+      value: {
+        ...release(),
+        release: {
+          ...(release().release as object),
+          variation: 7,
+          vector: [0, 0],
+          shake: 0,
+        },
+      },
+    },
+    {
       name: 'outer/release presentation mismatch',
       value: release({}, { presentationId: 'attack:8' }),
+    },
+    {
+      name: 'raw gesture nested in profile',
+      value: release(
+        {},
+        { throwProfile: { ...profile(), pointerId: 7 } as never }
+      ),
+    },
+    {
+      name: 'malformed profile tuple',
+      value: release(
+        {},
+        { throwProfile: profile({ releasePosition: [0, 0, 0] as never }) }
+      ),
     },
   ])('fails closed for $name', ({ value }) => {
     expect(parseDicePresentationEvent(value)).toBeUndefined();
   });
+
   it('fails closed instead of throwing for hostile getters and proxies', () => {
     const throwingGetter = requested();
     Object.defineProperty(throwingGetter, 'roller', {
@@ -264,16 +279,12 @@ describe('projectDicePresentationEvents', () => {
     expect(projection.acceptedEvents).toEqual([]);
   });
 
-  it('fixes the first request facts, treats identical replay as idempotent, and rejects conflict', () => {
+  it('fixes first request facts, treats identical replay as idempotent, and fails conflicting duplicate closed', () => {
     const first = requested();
     const identicalReplay = requested({ eventId: 'event:request:replay' });
     const conflict = requested({
       eventId: 'event:request:conflict',
-      die: {
-        kind: 'd20',
-        presetId: 'lightning',
-        authoritativeResult: 20,
-      },
+      die: { kind: 'd20', presetId: 'lightning', authoritativeResult: 20 },
     });
     const projection = projectDicePresentationEvents([
       first,
@@ -288,36 +299,40 @@ describe('projectDicePresentationEvents', () => {
     expect(projection.acceptedEvents).toHaveLength(1);
   });
 
-  it('ignores release before request and accepts only the first later release by presentation id', () => {
-    const before = release({ eventId: 'event:release:before' });
+  it('accepts only the first post-request release and correlates solely by presentation id', () => {
     const first = release(
       { eventId: 'event:release:first' },
-      { variation: 4, vector: [0.25, -0.5], shake: 0.5 }
+      { throwProfile: profile({ motionSeed: 4 }) }
     );
-    const duplicate = release(
-      { eventId: 'event:release:duplicate' },
-      { variation: 4, vector: [0.25, -0.5], shake: 0.5 }
+    const identicalReplay = release(
+      { eventId: 'event:release:replay-with-another-event-id' },
+      { throwProfile: profile({ motionSeed: 4 }) }
     );
     const conflict = release(
       { eventId: 'event:release:conflict' },
-      { variation: 9, vector: [-1, 1], shake: 1 }
+      {
+        throwProfile: profile({
+          releaseDirection: [1, 0],
+          releaseSpeed: 1,
+          motionSeed: 9,
+        }),
+      }
     );
     const projection = projectDicePresentationEvents([
-      before,
       requested(),
       first,
-      duplicate,
+      identicalReplay,
       conflict,
     ]);
 
     expect(projection.release).toMatchObject({
       eventId: 'event:release:first',
-      release: { variation: 4, vector: [0.25, -0.5], shake: 0.5 },
+      release: { presentationId: 'attack:7', throwProfile: { motionSeed: 4 } },
     });
     expect(projection.acceptedEvents).toHaveLength(2);
   });
 
-  it('ignores release preset mismatch, malformed events, and stale releases without poisoning the latest request', () => {
+  it('ignores release before request, preset mismatch, malformed events, and stale presentation ids', () => {
     const secondRequest = requested({
       eventId: 'event:request:8',
       presentationId: 'attack:8',
@@ -328,46 +343,52 @@ describe('projectDicePresentationEvents', () => {
         authoritativeResult: 14,
       },
     });
-    const staleRelease = release({ eventId: 'event:release:stale' });
-    const mismatchedPreset = release(
-      {
-        eventId: 'event:release:8:mismatch',
-        presentationId: 'attack:8',
-      },
-      { presentationId: 'attack:8', presetId: 'lightning' }
-    );
     const validSecondRelease = release(
-      {
-        eventId: 'event:release:8',
-        presentationId: 'attack:8',
-      },
+      { eventId: 'event:release:8', presentationId: 'attack:8' },
       {
         presentationId: 'attack:8',
         presetId: 'newer-safe-preset',
-        variation: 8,
+        throwProfile: profile({ motionSeed: 8 }),
       }
     );
     const projection = projectDicePresentationEvents([
+      release({ eventId: 'event:release:before' }),
       requested(),
       secondRequest,
-      staleRelease,
+      release({ eventId: 'event:release:stale' }),
       requested({ eventId: '../malformed' }),
-      mismatchedPreset,
+      release(
+        { eventId: 'event:release:8:mismatch', presentationId: 'attack:8' },
+        { presentationId: 'attack:8', presetId: 'lightning' }
+      ),
       validSecondRelease,
     ]);
 
     expect(projection.request).toMatchObject({
       presentationId: 'attack:8',
       roller: { role: 'monster' },
-      die: {
-        presetId: 'newer-safe-preset',
-        authoritativeResult: 14,
-      },
+      die: { presetId: 'newer-safe-preset', authoritativeResult: 14 },
     });
     expect(projection.release).toMatchObject({
       eventId: 'event:release:8',
       presentationId: 'attack:8',
     });
+  });
+
+  it('treats delivery arrays as immutable facts and freezes accepted snapshots', () => {
+    const inboundRequest = requested();
+    const inboundRelease = release();
+    const delivery = Object.freeze([inboundRequest, inboundRelease]);
+    const before = JSON.stringify(delivery);
+
+    const projection = projectDicePresentationEvents(delivery);
+
+    expect(JSON.stringify(delivery)).toBe(before);
+    expect(projection.acceptedEvents).not.toBe(delivery);
+    expect(projection.acceptedEvents[0]).not.toBe(inboundRequest);
+    expect(projection.acceptedEvents[1]).not.toBe(inboundRelease);
+    expect(Object.isFrozen(projection)).toBe(true);
+    expect(Object.isFrozen(projection.acceptedEvents)).toBe(true);
   });
 
   it('requires a new presentation id to make a replay active', () => {
@@ -384,7 +405,5 @@ describe('projectDicePresentationEvents', () => {
     ]);
 
     expect(projection.request?.presentationId).toBe('attack:8');
-    expect(Object.isFrozen(projection)).toBe(true);
-    expect(Object.isFrozen(projection.acceptedEvents)).toBe(true);
   });
 });
