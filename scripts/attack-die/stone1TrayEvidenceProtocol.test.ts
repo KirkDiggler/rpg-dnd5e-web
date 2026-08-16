@@ -637,17 +637,21 @@ describe('Stone 1 browser evidence protocol', () => {
     expect(source).toContain('assertStone1TrayEvidencePackage');
     expect(source).toContain('FAILED.txt');
     expect(source).toContain('INVALIDATED-PASS.txt');
-    expect(source).toContain('markTerminalFailure');
-    expect(source).toContain('await rm(passPath, { force: true })');
-    expect(source).toContain('await rename(temporary, failedPath)');
+    expect(source).toContain('createStone1TerminalPublication');
+    expect(source).toContain('terminalPublication.latchFailure(reason)');
+    expect(source).toContain('await terminalPublication.publishFailure()');
+    expect(source).toContain('await terminalPublication.publishPass(');
+    expect(source.indexOf("process.once('SIGINT'")).toBeLessThan(
+      source.indexOf('await mkdir(tempRoot')
+    );
     expect(source.indexOf("process.once('SIGINT'")).toBeLessThan(
       source.indexOf('preview = spawn(')
     );
-    expect(source.indexOf('await markTerminalFailure')).toBeLessThan(
-      source.indexOf('await cleanup()')
-    );
+    expect(
+      source.indexOf('await terminalPublication.publishFailure()')
+    ).toBeLessThan(source.indexOf('await cleanup()'));
     expect(source.indexOf('assertStone1TrayEvidencePackage(')).toBeLessThan(
-      source.indexOf('await rename(passTemporary, passPath)')
+      source.indexOf('await terminalPublication.publishPass(')
     );
   });
 

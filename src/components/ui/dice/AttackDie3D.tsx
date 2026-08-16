@@ -72,6 +72,7 @@ export type AttackDieFailureCode =
   | 'shader-failure'
   | 'context-loss'
   | 'invalid-result'
+  | 'invalid-motion-seed'
   | 'invalid-throw-profile'
   | 'unmapped-result'
   | 'settlement-observation';
@@ -99,6 +100,8 @@ export interface AttackDieTelemetry {
   throwProfile?: VisualThrowProfileV1;
 }
 export interface AttackDieMotionDiagnostic {
+  /** Private callback fence; never published by the Concepts evidence bridge. */
+  readonly presentationToken: number;
   readonly motionRevision: 'choreographed-v1';
   readonly heldPoseApplied: boolean;
   readonly heldPoseMoved: boolean;
@@ -315,7 +318,12 @@ function cloneTokenScene(
   };
 }
 
-const EMPTY_MOTION_DIAGNOSTIC: AttackDieMotionDiagnostic = Object.freeze({
+type RuntimeMotionDiagnostic = Omit<
+  AttackDieMotionDiagnostic,
+  'presentationToken'
+>;
+
+const EMPTY_MOTION_DIAGNOSTIC: RuntimeMotionDiagnostic = Object.freeze({
   motionRevision: 'choreographed-v1',
   heldPoseApplied: false,
   heldPoseMoved: false,
@@ -327,8 +335,8 @@ const EMPTY_MOTION_DIAGNOSTIC: AttackDieMotionDiagnostic = Object.freeze({
 });
 
 function motionDiagnosticChanged(
-  first: AttackDieMotionDiagnostic,
-  second: AttackDieMotionDiagnostic
+  first: RuntimeMotionDiagnostic,
+  second: RuntimeMotionDiagnostic
 ) {
   return (
     first.heldPoseApplied !== second.heldPoseApplied ||
@@ -392,7 +400,7 @@ function RuntimeDie({
   phase: DiceTrayPhase;
   throwProfile: VisualThrowProfileV1;
   heldRollGroup?: HeldRollGroupState;
-  onMotionDiagnostic?: (diagnostic: AttackDieMotionDiagnostic) => void;
+  onMotionDiagnostic?: (diagnostic: RuntimeMotionDiagnostic) => void;
 }) {
   const group = useRef<Group>(null);
   const shadow = useRef<Mesh>(null);
@@ -479,7 +487,7 @@ function RuntimeDie({
           (phase === 'ready' || phase === 'entering') &&
           heldRollGroup !== undefined;
         const rollingApplied = phase === 'rolling';
-        const nextDiagnostic: AttackDieMotionDiagnostic = Object.freeze({
+        const nextDiagnostic: RuntimeMotionDiagnostic = Object.freeze({
           motionRevision: 'choreographed-v1',
           heldPoseApplied: previousDiagnostic.heldPoseApplied || heldApplied,
           heldPoseMoved:
@@ -655,13 +663,20 @@ function AttackDieToken({
   );
   const invalidSuppliedThrowProfile =
     throwProfile !== undefined && parsedThrowProfile === undefined;
+  const invalidAbsentProfileMotionSeed =
+    throwProfile === undefined && !Number.isInteger(decorativeSeed);
   const effectiveThrowProfile = useMemo(
     () =>
       parsedThrowProfile ??
-      (throwProfile === undefined
+      (throwProfile === undefined && !invalidAbsentProfileMotionSeed
         ? createNeutralVisualThrowProfile(decorativeSeed)
         : undefined),
-    [decorativeSeed, parsedThrowProfile, throwProfile]
+    [
+      decorativeSeed,
+      invalidAbsentProfileMotionSeed,
+      parsedThrowProfile,
+      throwProfile,
+    ]
   );
   const effectiveResult = result;
   const legacyLock = useMemo(
@@ -768,10 +783,13 @@ function AttackDieToken({
   >(undefined);
   const poseValidated = useRef(false);
   const handleMotionDiagnostic = useCallback(
-    (diagnostic: AttackDieMotionDiagnostic) => {
-      if (active.current) onMotionDiagnostic?.(diagnostic);
+    (diagnostic: RuntimeMotionDiagnostic) => {
+      if (active.current)
+        onMotionDiagnostic?.(
+          Object.freeze({ ...diagnostic, presentationToken })
+        );
     },
-    [onMotionDiagnostic]
+    [onMotionDiagnostic, presentationToken]
   );
   const handleRendererInfo = useCallback(
     (info: AttackDieRendererInfo) =>
@@ -868,6 +886,13 @@ function AttackDieToken({
   ]);
 
   useEffect(() => {
+    if (invalidAbsentProfileMotionSeed) {
+      fail(
+        'absent-profile motion seed must be an integer',
+        'invalid-motion-seed'
+      );
+      return;
+    }
     if (invalidSuppliedThrowProfile) {
       fail(
         'supplied throw profile failed strict parsing',
@@ -936,6 +961,7 @@ function AttackDieToken({
     fail,
     phase,
     forceFailure,
+    invalidAbsentProfileMotionSeed,
     invalidSuppliedThrowProfile,
     providerFailureReason,
     runtimeProvider,

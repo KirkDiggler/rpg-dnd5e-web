@@ -129,7 +129,7 @@ function isValidStart(input: RollGroupGestureStart): boolean {
     isValidBounds(input.hitBounds) &&
     Number.isFinite(input.hitPaddingPx) &&
     input.hitPaddingPx >= 0 &&
-    Number.isFinite(input.motionSeed)
+    Number.isInteger(input.motionSeed)
   );
 }
 

@@ -134,7 +134,19 @@ function observed(props: AttackDie3DProps): AttackDieTelemetry {
   };
 }
 
-const safeRollingMotionAggregate = () => ({
+const safeRollingMotionAggregate = (presentationToken: number) => ({
+  presentationToken,
+  motionRevision: 'choreographed-v1' as const,
+  heldPoseApplied: false,
+  heldPoseMoved: false,
+  heldPoseRepeated: false,
+  rollingPoseApplied: true,
+  rollingPoseMoved: true,
+  reducedHeldPoseRepeated: false,
+  unexpectedMotion: false,
+});
+
+const publishedMotionAggregate = () => ({
   motionRevision: 'choreographed-v1' as const,
   heldPoseApplied: false,
   heldPoseMoved: false,
@@ -395,8 +407,12 @@ describe('DiceTray3DConceptPanel', () => {
         runtimeSourceId: 7,
         runtimeCloneId: 9,
       });
-      rollerAttack.onMotionDiagnostic?.(safeRollingMotionAggregate());
-      spectatorAttack.onMotionDiagnostic?.(safeRollingMotionAggregate());
+      rollerAttack.onMotionDiagnostic?.(
+        safeRollingMotionAggregate(rollerToken)
+      );
+      spectatorAttack.onMotionDiagnostic?.(
+        safeRollingMotionAggregate(spectatorToken)
+      );
     });
 
     const bridge = (
@@ -469,11 +485,9 @@ describe('DiceTray3DConceptPanel', () => {
         },
       },
     });
-    expect(bridge.witnesses.roller.motion).toEqual(
-      safeRollingMotionAggregate()
-    );
+    expect(bridge.witnesses.roller.motion).toEqual(publishedMotionAggregate());
     expect(bridge.witnesses.spectator.motion).toEqual(
-      safeRollingMotionAggregate()
+      publishedMotionAggregate()
     );
     expectRecursivelyFrozen(bridge.witnesses.roller.motion);
     expectRecursivelyFrozen(bridge.witnesses.spectator.motion);
@@ -691,6 +705,97 @@ describe('DiceTray3DConceptPanel', () => {
     expect(window.__stone1TrayEvidence).toBe(clearedBridge);
     expect(window.__stone1TrayEvidence?.witnesses.roller).toEqual({
       releaseProfile: rollerAttack.throwProfile,
+    });
+  });
+
+  it('rejects stale motion generations and ORs regressive exact-key callbacks monotonically without publishing the token', () => {
+    render(<DiceTray3DConceptPanel token={905} reducedMotion={false} />);
+    const roller = latestPresentation('Roller');
+    const rollerAttack = latestAttack(tokenFor('Roller'));
+    const oldGeneration = rollerAttack.presentationToken;
+    const nextGeneration = oldGeneration - 1000;
+
+    act(() =>
+      roller.onBoundaryDiagnostic?.({
+        events: roller.events,
+        provider: rollerAttack.provider!,
+        rendererGeneration: nextGeneration,
+      })
+    );
+
+    const currentTruth = {
+      presentationToken: nextGeneration,
+      motionRevision: 'choreographed-v1' as const,
+      heldPoseApplied: true,
+      heldPoseMoved: true,
+      heldPoseRepeated: true,
+      rollingPoseApplied: false,
+      rollingPoseMoved: false,
+      reducedHeldPoseRepeated: false,
+      unexpectedMotion: false,
+    };
+    act(() => rollerAttack.onMotionDiagnostic?.(currentTruth));
+    expect(window.__stone1TrayEvidence?.witnesses.roller.motion).toEqual({
+      motionRevision: 'choreographed-v1',
+      heldPoseApplied: true,
+      heldPoseMoved: true,
+      heldPoseRepeated: true,
+      rollingPoseApplied: false,
+      rollingPoseMoved: false,
+      reducedHeldPoseRepeated: false,
+      unexpectedMotion: false,
+    });
+    expect(
+      window.__stone1TrayEvidence?.witnesses.roller.motion
+    ).not.toHaveProperty('presentationToken');
+    expectRecursivelyFrozen(
+      window.__stone1TrayEvidence?.witnesses.roller.motion
+    );
+
+    act(() =>
+      rollerAttack.onMotionDiagnostic?.({
+        presentationToken: nextGeneration,
+        motionRevision: 'choreographed-v1',
+        heldPoseApplied: false,
+        heldPoseMoved: false,
+        heldPoseRepeated: false,
+        rollingPoseApplied: true,
+        rollingPoseMoved: true,
+        reducedHeldPoseRepeated: false,
+        unexpectedMotion: false,
+      })
+    );
+    expect(window.__stone1TrayEvidence?.witnesses.roller.motion).toEqual({
+      motionRevision: 'choreographed-v1',
+      heldPoseApplied: true,
+      heldPoseMoved: true,
+      heldPoseRepeated: true,
+      rollingPoseApplied: true,
+      rollingPoseMoved: true,
+      reducedHeldPoseRepeated: false,
+      unexpectedMotion: false,
+    });
+
+    const afterRegression = window.__stone1TrayEvidence;
+    act(() =>
+      rollerAttack.onMotionDiagnostic?.({
+        presentationToken: oldGeneration,
+        motionRevision: 'choreographed-v1',
+        heldPoseApplied: false,
+        heldPoseMoved: false,
+        heldPoseRepeated: false,
+        rollingPoseApplied: false,
+        rollingPoseMoved: false,
+        reducedHeldPoseRepeated: true,
+        unexpectedMotion: true,
+      })
+    );
+    expect(window.__stone1TrayEvidence).toBe(afterRegression);
+    expect(window.__stone1TrayEvidence?.witnesses.roller.motion).toMatchObject({
+      heldPoseApplied: true,
+      rollingPoseApplied: true,
+      reducedHeldPoseRepeated: false,
+      unexpectedMotion: false,
     });
   });
 

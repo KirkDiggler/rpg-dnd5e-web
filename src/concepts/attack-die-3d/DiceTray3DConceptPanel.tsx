@@ -55,13 +55,18 @@ interface Stone1FailureTelemetryFact {
   readonly failureCode?: string;
 }
 
+type Stone1SafeMotionDiagnostic = Omit<
+  AttackDieMotionDiagnostic,
+  'presentationToken'
+>;
+
 interface Stone1WitnessEvidence {
   readonly rendererContextId?: number;
   readonly runtimeSourceId?: number;
   readonly runtimeCloneId?: number;
   readonly finalTelemetry?: Stone1WitnessMotionFact;
   readonly releaseProfile?: VisualThrowProfileV1;
-  readonly motion?: AttackDieMotionDiagnostic;
+  readonly motion?: Stone1SafeMotionDiagnostic;
   readonly failureTelemetry?: Stone1FailureTelemetryFact;
 }
 
@@ -111,7 +116,7 @@ interface WitnessEvidenceData {
   runtimeSourceId?: number;
   runtimeCloneId?: number;
   finalObservation?: Omit<Stone1WitnessMotionFact, 'contextId' | 'cloneId'>;
-  motion?: AttackDieMotionDiagnostic;
+  motion?: Stone1SafeMotionDiagnostic;
   failureTelemetry?: Stone1FailureTelemetryFact;
 }
 
@@ -155,6 +160,7 @@ function isPositiveSafeInteger(value: unknown): value is number {
 }
 
 const SAFE_MOTION_KEYS = [
+  'presentationToken',
   'motionRevision',
   'heldPoseApplied',
   'heldPoseMoved',
@@ -165,9 +171,12 @@ const SAFE_MOTION_KEYS = [
   'unexpectedMotion',
 ] as const;
 
-function snapshotSafeMotionDiagnostic(
-  value: unknown
-): AttackDieMotionDiagnostic | undefined {
+function snapshotSafeMotionDiagnostic(value: unknown):
+  | {
+      readonly presentationToken: number;
+      readonly motion: Stone1SafeMotionDiagnostic;
+    }
+  | undefined {
   try {
     if (value === null || typeof value !== 'object' || Array.isArray(value))
       return undefined;
@@ -186,25 +195,50 @@ function snapshotSafeMotionDiagnostic(
       unknown
     >;
     if (
+      !Number.isSafeInteger(diagnostic.presentationToken) ||
       diagnostic.motionRevision !== 'choreographed-v1' ||
-      SAFE_MOTION_KEYS.slice(1).some(
+      SAFE_MOTION_KEYS.slice(2).some(
         (key) => typeof diagnostic[key] !== 'boolean'
       )
     )
       return undefined;
     return Object.freeze({
-      motionRevision: 'choreographed-v1',
-      heldPoseApplied: diagnostic.heldPoseApplied as boolean,
-      heldPoseMoved: diagnostic.heldPoseMoved as boolean,
-      heldPoseRepeated: diagnostic.heldPoseRepeated as boolean,
-      rollingPoseApplied: diagnostic.rollingPoseApplied as boolean,
-      rollingPoseMoved: diagnostic.rollingPoseMoved as boolean,
-      reducedHeldPoseRepeated: diagnostic.reducedHeldPoseRepeated as boolean,
-      unexpectedMotion: diagnostic.unexpectedMotion as boolean,
+      presentationToken: diagnostic.presentationToken as number,
+      motion: Object.freeze({
+        motionRevision: 'choreographed-v1',
+        heldPoseApplied: diagnostic.heldPoseApplied as boolean,
+        heldPoseMoved: diagnostic.heldPoseMoved as boolean,
+        heldPoseRepeated: diagnostic.heldPoseRepeated as boolean,
+        rollingPoseApplied: diagnostic.rollingPoseApplied as boolean,
+        rollingPoseMoved: diagnostic.rollingPoseMoved as boolean,
+        reducedHeldPoseRepeated: diagnostic.reducedHeldPoseRepeated as boolean,
+        unexpectedMotion: diagnostic.unexpectedMotion as boolean,
+      }),
     });
   } catch {
     return undefined;
   }
+}
+
+function mergeSafeMotionDiagnostic(
+  current: Stone1SafeMotionDiagnostic | undefined,
+  next: Stone1SafeMotionDiagnostic
+): Stone1SafeMotionDiagnostic {
+  return Object.freeze({
+    motionRevision: 'choreographed-v1',
+    heldPoseApplied: current?.heldPoseApplied === true || next.heldPoseApplied,
+    heldPoseMoved: current?.heldPoseMoved === true || next.heldPoseMoved,
+    heldPoseRepeated:
+      current?.heldPoseRepeated === true || next.heldPoseRepeated,
+    rollingPoseApplied:
+      current?.rollingPoseApplied === true || next.rollingPoseApplied,
+    rollingPoseMoved:
+      current?.rollingPoseMoved === true || next.rollingPoseMoved,
+    reducedHeldPoseRepeated:
+      current?.reducedHeldPoseRepeated === true || next.reducedHeldPoseRepeated,
+    unexpectedMotion:
+      current?.unexpectedMotion === true || next.unexpectedMotion,
+  });
 }
 
 function sameVisualThrowProfile(
@@ -613,8 +647,8 @@ function DiceTrayWitnessDeliveryHost({
       )
         return;
       const safe = snapshotSafeMotionDiagnostic(diagnostic);
-      if (!safe) return;
-      data.motion = safe;
+      if (!safe || safe.presentationToken !== data.rendererGeneration) return;
+      data.motion = mergeSafeMotionDiagnostic(data.motion, safe.motion);
       publishEvidence();
     },
     [publishEvidence]

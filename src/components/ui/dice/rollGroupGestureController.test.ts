@@ -208,6 +208,7 @@ describe('createRollGroupGestureController', () => {
       { sample: { ...START_SAMPLE, timeMs: Number.NaN } },
     ],
     ['non-finite motion seed', { motionSeed: Number.POSITIVE_INFINITY }],
+    ['fractional motion seed', { motionSeed: 12.5 }],
   ] satisfies ReadonlyArray<readonly [string, Partial<RollGroupGestureStart>]>)(
     'rejects invalid begin input: %s',
     (_label, overrides) => {

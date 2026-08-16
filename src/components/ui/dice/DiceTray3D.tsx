@@ -100,7 +100,7 @@ function validDieInput(
   return (
     isDicePresentationIdentifier(presentationId) &&
     Number.isSafeInteger(rendererGeneration) &&
-    Number.isFinite(motionSeed) &&
+    Number.isInteger(motionSeed) &&
     dice.length === 1 &&
     item?.kind === 'd20' &&
     isDicePresetIdentifier(item.presetId) &&

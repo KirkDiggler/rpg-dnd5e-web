@@ -1143,6 +1143,24 @@ describe('DiceTray3D', () => {
     expect(attackDieProps).toHaveLength(0);
   });
 
+  it('rejects a fractional motion seed before interaction or release can begin', () => {
+    const onReleaseRequest = vi.fn();
+
+    expect(() =>
+      renderTray([die], {
+        phase: 'armed',
+        motionSeed: 0x755 + 0.5,
+        onReleaseRequest,
+      })
+    ).not.toThrow();
+
+    expect(screen.getByText(/Unable to display this dice tray/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Grab d20' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Roll d20' })).toBeNull();
+    expect(controllerMocks.creates).not.toHaveBeenCalled();
+    expect(onReleaseRequest).not.toHaveBeenCalled();
+  });
+
   it('fails closed for an invalid external presentation id or renderer generation', () => {
     const view = renderTray([die], { presentationId: '../attack' });
     expect(screen.getByText(/Unable to display this dice tray/)).toBeTruthy();

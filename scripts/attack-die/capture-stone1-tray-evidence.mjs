@@ -15,6 +15,7 @@ import {
 import { createServer } from 'node:net';
 import { basename, dirname, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { createStone1TerminalPublication } from './stone1TerminalPublication.mjs';
 
 const ROOT = resolve(new URL('../..', import.meta.url).pathname);
 if (process.cwd() !== ROOT)
@@ -122,13 +123,16 @@ const buildManifestPath = resolve(out, 'build-manifest.json');
 const previewLogPath = resolve(out, 'preview.log');
 const buildLogPath = resolve(out, 'build.log');
 const tempRoot = resolve(out, `.stone1-package-${process.pid}-${Date.now()}`);
-await mkdir(tempRoot, { recursive: false });
+const terminalPublication = createStone1TerminalPublication({
+  out,
+  passPath,
+  failedPath,
+});
 
 let browser;
 let preview;
 let previewLog;
 let cleanupPromise;
-let terminalFailurePromise;
 let port;
 async function cleanup() {
   if (cleanupPromise) return cleanupPromise;
@@ -159,40 +163,33 @@ async function cleanup() {
   return cleanupPromise;
 }
 
-async function markTerminalFailure(reason) {
-  if (terminalFailurePromise) return terminalFailurePromise;
-  terminalFailurePromise = (async () => {
-    const temporary = resolve(out, `.FAILED-${process.pid}.tmp`);
-    await writeFile(temporary, `${reason}\n`);
-    await rm(passPath, { force: true });
-    await rename(temporary, failedPath);
+function terminateCapture(reason, exitCode) {
+  terminalPublication.latchFailure(reason);
+  void (async () => {
+    try {
+      await terminalPublication.publishFailure();
+    } finally {
+      await cleanup();
+      process.exit(exitCode);
+    }
   })();
-  return terminalFailurePromise;
 }
 
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'])
-  process.once(signal, () => {
-    void (async () => {
-      await markTerminalFailure(`capture terminated by ${signal}`);
-      await cleanup();
-      process.exit(signal === 'SIGINT' ? 130 : 143);
-    })();
-  });
-process.once('uncaughtException', (error) => {
-  void (async () => {
-    await markTerminalFailure(String(error.stack ?? error));
-    await cleanup();
-    process.exit(1);
-  })();
-});
-process.once('unhandledRejection', (error) => {
-  void (async () => {
-    const message = error instanceof Error ? error.stack : String(error);
-    await markTerminalFailure(message);
-    await cleanup();
-    process.exit(1);
-  })();
-});
+  process.once(signal, () =>
+    terminateCapture(
+      `capture terminated by ${signal}`,
+      signal === 'SIGINT' ? 130 : 143
+    )
+  );
+process.once('uncaughtException', (error) =>
+  terminateCapture(String(error.stack ?? error), 1)
+);
+process.once('unhandledRejection', (error) =>
+  terminateCapture(error instanceof Error ? error.stack : String(error), 1)
+);
+
+await mkdir(tempRoot, { recursive: false });
 
 async function atomicProviderCopy(source, destination) {
   await mkdir(dirname(destination), { recursive: true });
@@ -1464,9 +1461,7 @@ try {
     `${JSON.stringify(packageManifest, null, 2)}\n`
   );
   await rename(packageManifestTemporary, resolve(out, 'package-manifest.json'));
-  const passTemporary = resolve(out, `.PASS-${process.pid}.tmp`);
-  await writeFile(passTemporary, `${sourceSha}\n`);
-  await rename(passTemporary, passPath);
+  await terminalPublication.publishPass(`${sourceSha}\n`);
 
   const publishedBytes = new Map();
   for (const filename of packagePaths)
@@ -1551,9 +1546,8 @@ try {
   );
   console.log(`cleanup: browser/server closed; port ${port} closed`);
 } catch (error) {
-  await markTerminalFailure(String(error.stack ?? error)).catch(
-    () => undefined
-  );
+  terminalPublication.latchFailure(String(error.stack ?? error));
+  await terminalPublication.publishFailure().catch(() => undefined);
   await cleanup();
   console.error(error);
   process.exitCode = 1;

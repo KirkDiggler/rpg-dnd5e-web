@@ -874,6 +874,58 @@ describe('AttackDie3D', () => {
     );
   });
 
+  it.each([1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'fails closed without throwing when absent-profile decorative seed %s is invalid',
+    (decorativeSeed) => {
+      arrangeRuntimeReady();
+      const telemetry = vi.fn();
+
+      expect(() =>
+        render(
+          <AttackDie3D
+            {...props(300, 10)}
+            provider={originalProvider}
+            phase="ready"
+            decorativeSeed={decorativeSeed}
+            onTelemetry={telemetry}
+          />
+        )
+      ).not.toThrow();
+
+      expect(screen.queryByTestId('canvas')).toBeNull();
+      expect(fallbackCovered()).toBe(false);
+      expect(mocks.solverInputs).toHaveLength(0);
+      expect(telemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          presentationToken: 300,
+          renderer: 'svg',
+          state: 'failed',
+          failureCode: 'invalid-motion-seed',
+          exactTargetHeld: false,
+        })
+      );
+    }
+  );
+
+  it('does not consume an invalid decorative seed when a valid profile is supplied', () => {
+    arrangeRuntimeReady();
+    const profile = throwProfile(301);
+
+    render(
+      <AttackDie3D
+        {...props(301, 10)}
+        provider={originalProvider}
+        phase="ready"
+        decorativeSeed={1.5}
+        throwProfile={profile}
+      />
+    );
+    frame(-1, 10);
+
+    expect(screen.queryByTestId('canvas')).not.toBeNull();
+    expect(mocks.solverInputs.at(-1)).toMatchObject({ throwProfile: profile });
+  });
+
   it('synthesizes neutral choreography only when the standalone profile is absent', () => {
     mocks.status = 'ready';
     render(<AttackDie3D {...props(301)} phase="ready" />);
@@ -1527,6 +1579,7 @@ describe('Original carved runtime renderer', () => {
 
     expect(diagnostic).toHaveBeenCalledTimes(2);
     expect(diagnostic).toHaveBeenLastCalledWith({
+      presentationToken: 571,
       motionRevision: 'choreographed-v1',
       heldPoseApplied: true,
       heldPoseMoved: false,
@@ -1544,6 +1597,7 @@ describe('Original carved runtime renderer', () => {
         'heldPoseMoved',
         'heldPoseRepeated',
         'motionRevision',
+        'presentationToken',
         'reducedHeldPoseRepeated',
         'rollingPoseApplied',
         'rollingPoseMoved',
