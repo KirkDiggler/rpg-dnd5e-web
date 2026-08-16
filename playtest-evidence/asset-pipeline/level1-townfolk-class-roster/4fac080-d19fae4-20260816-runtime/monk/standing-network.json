@@ -1,0 +1,197 @@
+{
+  "requests": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/StreamEncounter",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/MoveEntity",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/MoveEntity",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "charli"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/StreamEncounter",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/MoveEntity",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/MoveEntity",
+      "status": 200,
+      "ok": true
+    }
+  ],
+  "requestFinished": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:3301/models/synty/characters/monk.glb",
+      "method": "GET"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/MoveEntity",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/MoveEntity",
+      "method": "POST"
+    }
+  ],
+  "requestFailed": [],
+  "authObserved": [
+    {
+      "scheme": "Dev",
+      "player": "charli"
+    }
+  ],
+  "canonicalAsset": {
+    "urlPath": "/models/synty/characters/monk.glb",
+    "status": 200,
+    "magic": "glTF",
+    "version": 2,
+    "size": 1306960,
+    "sha256": "e2cf05639b1b825a71acf636a7025773545d08acc2b035285a6574dbd1c75260",
+    "animations": [
+      "Idle_Relaxed",
+      "Walk_Forward"
+    ]
+  }
+}

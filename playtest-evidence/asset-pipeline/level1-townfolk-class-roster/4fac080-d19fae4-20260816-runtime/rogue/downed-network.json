@@ -1,0 +1,160 @@
+{
+  "requests": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "alice"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "alice"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "alice"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "alice"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "alice"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "alice"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "alice"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/StreamEncounter",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "alice"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/StreamEncounter",
+      "status": 200,
+      "ok": true
+    }
+  ],
+  "requestFinished": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:3301/models/synty/characters/rogue-downed.glb",
+      "method": "GET"
+    }
+  ],
+  "requestFailed": [],
+  "authObserved": [
+    {
+      "scheme": "Dev",
+      "player": "alice"
+    }
+  ],
+  "canonicalAsset": {
+    "urlPath": "/models/synty/characters/rogue-downed.glb",
+    "status": 200,
+    "magic": "glTF",
+    "version": 2,
+    "size": 1028136,
+    "sha256": "d0a63e9c13b1210fd38ed9555ec73eb5aa7cd7b1503a0b19ad088d06f9719764",
+    "animations": []
+  }
+}

@@ -1,0 +1,233 @@
+{
+  "classId": "barbarian",
+  "fixture": "wave-3-barbarian",
+  "encounterId": "townfolk-barbarian",
+  "playerId": "bob",
+  "entityId": "char-bob",
+  "preflightGetEncounter": {
+    "encounterId": "townfolk-barbarian",
+    "mode": "ENCOUNTER_MODE_TURN_BASED",
+    "turnState": {
+      "activeEntityId": "char-bob",
+      "round": 1,
+      "initiativeOrder": [
+        "char-bob",
+        "goblin-1"
+      ],
+      "movementRemaining": 30
+    },
+    "target": {
+      "entityId": "char-bob",
+      "playerId": "bob",
+      "displayName": "Bob the Barbarian",
+      "classRef": {
+        "module": "dnd5e",
+        "type": "class",
+        "id": "barbarian"
+      },
+      "hp": {
+        "current": 14,
+        "max": 14,
+        "temp": 0
+      },
+      "statusRefs": [],
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "participants": [
+      {
+        "entityId": "char-bob",
+        "type": "ENTITY_TYPE_CHARACTER",
+        "hp": {
+          "current": 14,
+          "max": 14,
+          "temp": 0
+        },
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "statusRefs": []
+      },
+      {
+        "entityId": "goblin-1",
+        "type": "ENTITY_TYPE_MONSTER",
+        "hp": {
+          "current": 30,
+          "max": 30,
+          "temp": 0
+        },
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": -1
+        },
+        "statusRefs": []
+      }
+    ]
+  },
+  "browserSnapshot": {
+    "encounterId": "townfolk-barbarian",
+    "entityId": "char-bob",
+    "classRef": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Ref",
+      "module": "dnd5e",
+      "type": "class",
+      "id": "barbarian"
+    },
+    "hp": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.HitPoints",
+      "current": 14,
+      "max": 14,
+      "temp": 0
+    },
+    "statusRefs": [],
+    "position": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "activeEntityId": "char-bob",
+    "round": 1
+  },
+  "headerText": "Playtest townfolk-barbarian as bob\nconnection: connected\nentityId: char-bob\nmode: TURN_BASED\nactive: char-bob\nround: 1\nHP: 14/14\nrage: off\ninitiative: char-bob → goblin-1",
+  "eventLogText": "[22:43:28] VisualMove → (0,0,0) via 3-step path\n[22:43:28] TurnStateChanged (8 action(s) in menu)\n[22:43:28] HexKnowledgeChanged hexes=372 entities=2\n[22:43:28] EntityMoved char-bob → (0,0,0)\n[22:43:24] VisualMove → (2,-1,-1) via 3-step path\n[22:43:24] TurnStateChanged (8 action(s) in menu)\n[22:43:24] HexKnowledgeChanged hexes=41 entities=0\n[22:43:24] HexKnowledgeChanged hexes=372 entities=2\n[22:43:24] EntityMoved char-bob → (2,-1,-1)\n[22:43:20] HexKnowledgeChanged hexes=331 entities=2\n[22:43:20] SnapshotDelivered (stream up)",
+  "routeQuery": "?encounterId=townfolk-barbarian&playerId=bob&pitchCurve=0&zoomStart=60&zoomMin=60&zoomMax=60",
+  "canonicalAsset": {
+    "urlPath": "/models/synty/characters/barbarian.glb",
+    "status": 200,
+    "magic": "glTF",
+    "version": 2,
+    "size": 1412608,
+    "sha256": "2dc20cf2b9339a2f8fef549f7feedcd65e256bc58aa2b8f2cab5f0c81ea18bd4",
+    "animations": [
+      "Idle_Relaxed",
+      "Walk_Forward"
+    ]
+  },
+  "movement": [
+    {
+      "plannedPath": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "x": 2,
+          "y": -1,
+          "z": -1
+        }
+      ],
+      "expectedLegHeadingsDegrees": [
+        90,
+        150
+      ],
+      "clickPixel": {
+        "x": 973.87,
+        "y": 471.55
+      },
+      "actualPath": [
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 2,
+          "y": -1,
+          "z": -1
+        }
+      ],
+      "actualPathMatchesPlanned": true
+    },
+    {
+      "plannedPath": [
+        {
+          "x": 2,
+          "y": -1,
+          "z": -1
+        },
+        {
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "expectedLegHeadingsDegrees": [
+        330,
+        270
+      ],
+      "clickPixel": {
+        "x": 626.13,
+        "y": 413.45
+      },
+      "actualPath": [
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 2,
+          "y": -1,
+          "z": -1
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "actualPathMatchesPlanned": true
+    }
+  ],
+  "authObserved": [
+    {
+      "scheme": "Dev",
+      "player": "bob"
+    }
+  ],
+  "visualMoveConsoleEntries": [],
+  "errors": {
+    "expectedStrictModeAbortCount": 1,
+    "forbiddenConsole": [],
+    "pageErrors": [],
+    "canonicalFailures": []
+  },
+  "files": [
+    "standing-idle-before.png",
+    "standing-move-1-mid.png",
+    "standing-idle-between.png",
+    "standing-move-2-mid.png",
+    "standing-idle-after.png",
+    "standing-event-log.png",
+    "standing.webm"
+  ]
+}

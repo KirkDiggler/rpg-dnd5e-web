@@ -1,0 +1,233 @@
+{
+  "classId": "monk",
+  "fixture": "wave-2-monk",
+  "encounterId": "townfolk-monk",
+  "playerId": "charli",
+  "entityId": "char-charli",
+  "preflightGetEncounter": {
+    "encounterId": "townfolk-monk",
+    "mode": "ENCOUNTER_MODE_TURN_BASED",
+    "turnState": {
+      "activeEntityId": "char-charli",
+      "round": 1,
+      "initiativeOrder": [
+        "goblin-1",
+        "char-charli"
+      ],
+      "movementRemaining": 30
+    },
+    "target": {
+      "entityId": "char-charli",
+      "playerId": "charli",
+      "displayName": "Charli the Monk",
+      "classRef": {
+        "module": "dnd5e",
+        "type": "class",
+        "id": "monk"
+      },
+      "hp": {
+        "current": 10,
+        "max": 10,
+        "temp": 0
+      },
+      "statusRefs": [],
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "participants": [
+      {
+        "entityId": "char-charli",
+        "type": "ENTITY_TYPE_CHARACTER",
+        "hp": {
+          "current": 10,
+          "max": 10,
+          "temp": 0
+        },
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "statusRefs": []
+      },
+      {
+        "entityId": "goblin-1",
+        "type": "ENTITY_TYPE_MONSTER",
+        "hp": {
+          "current": 7,
+          "max": 7,
+          "temp": 0
+        },
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": -1
+        },
+        "statusRefs": []
+      }
+    ]
+  },
+  "browserSnapshot": {
+    "encounterId": "townfolk-monk",
+    "entityId": "char-charli",
+    "classRef": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Ref",
+      "module": "dnd5e",
+      "type": "class",
+      "id": "monk"
+    },
+    "hp": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.HitPoints",
+      "current": 10,
+      "max": 10,
+      "temp": 0
+    },
+    "statusRefs": [],
+    "position": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "activeEntityId": "char-charli",
+    "round": 1
+  },
+  "headerText": "Playtest townfolk-monk as charli\nconnection: connected\nentityId: char-charli\nmode: TURN_BASED\nactive: char-charli\nround: 1\nHP: 10/10\nrage: off\ninitiative: goblin-1 → char-charli",
+  "eventLogText": "[22:42:48] VisualMove → (0,0,0) via 3-step path\n[22:42:48] TurnStateChanged (7 action(s) in menu)\n[22:42:48] HexKnowledgeChanged hexes=372 entities=2\n[22:42:48] EntityMoved char-charli → (0,0,0)\n[22:42:44] VisualMove → (2,-1,-1) via 3-step path\n[22:42:44] TurnStateChanged (7 action(s) in menu)\n[22:42:44] HexKnowledgeChanged hexes=41 entities=0\n[22:42:44] HexKnowledgeChanged hexes=372 entities=2\n[22:42:44] EntityMoved char-charli → (2,-1,-1)\n[22:42:40] HexKnowledgeChanged hexes=331 entities=2\n[22:42:40] SnapshotDelivered (stream up)",
+  "routeQuery": "?encounterId=townfolk-monk&playerId=charli&pitchCurve=0&zoomStart=60&zoomMin=60&zoomMax=60",
+  "canonicalAsset": {
+    "urlPath": "/models/synty/characters/monk.glb",
+    "status": 200,
+    "magic": "glTF",
+    "version": 2,
+    "size": 1306960,
+    "sha256": "e2cf05639b1b825a71acf636a7025773545d08acc2b035285a6574dbd1c75260",
+    "animations": [
+      "Idle_Relaxed",
+      "Walk_Forward"
+    ]
+  },
+  "movement": [
+    {
+      "plannedPath": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "x": 2,
+          "y": -1,
+          "z": -1
+        }
+      ],
+      "expectedLegHeadingsDegrees": [
+        90,
+        150
+      ],
+      "clickPixel": {
+        "x": 973.87,
+        "y": 471.55
+      },
+      "actualPath": [
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 2,
+          "y": -1,
+          "z": -1
+        }
+      ],
+      "actualPathMatchesPlanned": true
+    },
+    {
+      "plannedPath": [
+        {
+          "x": 2,
+          "y": -1,
+          "z": -1
+        },
+        {
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "expectedLegHeadingsDegrees": [
+        330,
+        270
+      ],
+      "clickPixel": {
+        "x": 626.13,
+        "y": 413.45
+      },
+      "actualPath": [
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 2,
+          "y": -1,
+          "z": -1
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "actualPathMatchesPlanned": true
+    }
+  ],
+  "authObserved": [
+    {
+      "scheme": "Dev",
+      "player": "charli"
+    }
+  ],
+  "visualMoveConsoleEntries": [],
+  "errors": {
+    "expectedStrictModeAbortCount": 1,
+    "forbiddenConsole": [],
+    "pageErrors": [],
+    "canonicalFailures": []
+  },
+  "files": [
+    "standing-idle-before.png",
+    "standing-move-1-mid.png",
+    "standing-idle-between.png",
+    "standing-move-2-mid.png",
+    "standing-idle-after.png",
+    "standing-event-log.png",
+    "standing.webm"
+  ]
+}

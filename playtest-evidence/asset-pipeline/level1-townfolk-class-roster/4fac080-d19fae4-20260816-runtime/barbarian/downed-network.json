@@ -1,0 +1,160 @@
+{
+  "requests": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "bob"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "bob"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "bob"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "bob"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "bob"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "bob"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "bob"
+      }
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/StreamEncounter",
+      "method": "POST",
+      "auth": {
+        "scheme": "Dev",
+        "player": "bob"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha2.encounter.EncounterService/StreamEncounter",
+      "status": 200,
+      "ok": true
+    }
+  ],
+  "requestFinished": [
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListRaces",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListClasses",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:58080/dnd5e.api.v1alpha1.CharacterService/ListBackgrounds",
+      "method": "POST"
+    },
+    {
+      "url": "http://127.0.0.1:3301/models/synty/characters/barbarian-downed.glb",
+      "method": "GET"
+    }
+  ],
+  "requestFailed": [],
+  "authObserved": [
+    {
+      "scheme": "Dev",
+      "player": "bob"
+    }
+  ],
+  "canonicalAsset": {
+    "urlPath": "/models/synty/characters/barbarian-downed.glb",
+    "status": 200,
+    "magic": "glTF",
+    "version": 2,
+    "size": 1117516,
+    "sha256": "20a22e1874ffa1bf91ef96aa120ab9fdf2ebfe52c8b3c5ddfd7d1576ad40e5be",
+    "animations": []
+  }
+}

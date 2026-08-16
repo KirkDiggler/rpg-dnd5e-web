@@ -1,0 +1,298 @@
+{
+  "classId": "rogue",
+  "fixture": "wave-1-rogue",
+  "encounterId": "townfolk-rogue",
+  "playerId": "alice",
+  "entityId": "char-alice",
+  "authenticState": {
+    "encounterId": "townfolk-rogue",
+    "mode": "ENCOUNTER_MODE_TURN_BASED",
+    "turnState": {
+      "activeEntityId": "char-bob",
+      "round": 2,
+      "initiativeOrder": [
+        "goblin-1",
+        "char-bob",
+        "char-alice"
+      ],
+      "movementRemaining": 0
+    },
+    "target": {
+      "entityId": "char-alice",
+      "playerId": "alice",
+      "displayName": "Alice the Rogue",
+      "classRef": {
+        "module": "dnd5e",
+        "type": "class",
+        "id": "rogue"
+      },
+      "hp": {
+        "current": 0,
+        "max": 10,
+        "temp": 0
+      },
+      "statusRefs": [
+        {
+          "module": "dnd5e",
+          "type": "features",
+          "id": "sneak_attack",
+          "normalized": "dnd5e:features:sneak_attack"
+        },
+        {
+          "module": "dnd5e",
+          "type": "conditions",
+          "id": "unconscious",
+          "normalized": "dnd5e:conditions:unconscious"
+        }
+      ],
+      "position": {
+        "x": 2,
+        "y": 0,
+        "z": -2
+      }
+    },
+    "participants": [
+      {
+        "entityId": "char-alice",
+        "type": "ENTITY_TYPE_CHARACTER",
+        "hp": {
+          "current": 0,
+          "max": 10,
+          "temp": 0
+        },
+        "position": {
+          "x": 2,
+          "y": 0,
+          "z": -2
+        },
+        "statusRefs": [
+          {
+            "module": "dnd5e",
+            "type": "features",
+            "id": "sneak_attack",
+            "normalized": "dnd5e:features:sneak_attack"
+          },
+          {
+            "module": "dnd5e",
+            "type": "conditions",
+            "id": "unconscious",
+            "normalized": "dnd5e:conditions:unconscious"
+          }
+        ]
+      },
+      {
+        "entityId": "char-bob",
+        "type": "ENTITY_TYPE_CHARACTER",
+        "hp": {
+          "current": 0,
+          "max": 14,
+          "temp": 0
+        },
+        "position": {
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        "statusRefs": [
+          {
+            "module": "dnd5e",
+            "type": "conditions",
+            "id": "unconscious",
+            "normalized": "dnd5e:conditions:unconscious"
+          }
+        ]
+      },
+      {
+        "entityId": "goblin-1",
+        "type": "ENTITY_TYPE_MONSTER",
+        "hp": {
+          "current": 7,
+          "max": 7,
+          "temp": 0
+        },
+        "position": {
+          "x": 3,
+          "y": -1,
+          "z": -2
+        },
+        "statusRefs": []
+      }
+    ]
+  },
+  "rpcEvidence": {
+    "attempts": [
+      {
+        "attempt": 1,
+        "outcome": "unconscious",
+        "turns": [
+          {
+            "turn": 0,
+            "activeEntityId": "char-bob",
+            "round": 1,
+            "hp": {
+              "current": 10,
+              "max": 10,
+              "temp": 0
+            },
+            "statusRefs": [
+              {
+                "module": "dnd5e",
+                "type": "features",
+                "id": "sneak_attack",
+                "normalized": "dnd5e:features:sneak_attack"
+              }
+            ]
+          },
+          {
+            "turn": 1,
+            "activeEntityId": "char-alice",
+            "round": 1,
+            "hp": {
+              "current": 10,
+              "max": 10,
+              "temp": 0
+            },
+            "statusRefs": [
+              {
+                "module": "dnd5e",
+                "type": "features",
+                "id": "sneak_attack",
+                "normalized": "dnd5e:features:sneak_attack"
+              }
+            ]
+          },
+          {
+            "turn": 2,
+            "activeEntityId": "char-bob",
+            "round": 2,
+            "hp": {
+              "current": 0,
+              "max": 10,
+              "temp": 0
+            },
+            "statusRefs": [
+              {
+                "module": "dnd5e",
+                "type": "features",
+                "id": "sneak_attack",
+                "normalized": "dnd5e:features:sneak_attack"
+              },
+              {
+                "module": "dnd5e",
+                "type": "conditions",
+                "id": "unconscious",
+                "normalized": "dnd5e:conditions:unconscious"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "rpcAuth": [
+      {
+        "scheme": "Dev",
+        "player": "bob",
+        "method": "EndTurn"
+      },
+      {
+        "scheme": "Dev",
+        "player": "alice",
+        "method": "EndTurn"
+      }
+    ],
+    "rogueMovement": [
+      {
+        "attempt": 1,
+        "playerId": "bob",
+        "entityId": "char-bob",
+        "proposedPath": [
+          {
+            "x": 1,
+            "y": -1,
+            "z": 0
+          }
+        ]
+      },
+      {
+        "attempt": 1,
+        "playerId": "alice",
+        "entityId": "char-alice",
+        "proposedPath": [
+          {
+            "x": 1,
+            "y": 0,
+            "z": -1
+          },
+          {
+            "x": 2,
+            "y": 0,
+            "z": -2
+          }
+        ]
+      }
+    ]
+  },
+  "browserSnapshot": {
+    "encounterId": "townfolk-rogue",
+    "entityId": "char-alice",
+    "classRef": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Ref",
+      "module": "dnd5e",
+      "type": "class",
+      "id": "rogue"
+    },
+    "hp": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.HitPoints",
+      "current": 0,
+      "max": 10,
+      "temp": 0
+    },
+    "statusRefs": [
+      {
+        "module": "dnd5e",
+        "type": "features",
+        "id": "sneak_attack"
+      },
+      {
+        "module": "dnd5e",
+        "type": "conditions",
+        "id": "unconscious"
+      }
+    ],
+    "position": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+      "x": 2,
+      "y": 0,
+      "z": -2
+    },
+    "activeEntityId": "char-bob",
+    "round": 2
+  },
+  "canonicalAsset": {
+    "urlPath": "/models/synty/characters/rogue-downed.glb",
+    "status": 200,
+    "magic": "glTF",
+    "version": 2,
+    "size": 1028136,
+    "sha256": "d0a63e9c13b1210fd38ed9555ec73eb5aa7cd7b1503a0b19ad088d06f9719764",
+    "animations": []
+  },
+  "authObserved": [
+    {
+      "scheme": "Dev",
+      "player": "alice"
+    }
+  ],
+  "errors": {
+    "expectedStrictModeAbortCount": 1,
+    "forbiddenConsole": [],
+    "pageErrors": [],
+    "canonicalFailures": []
+  },
+  "files": [
+    "downed.png",
+    "downed-hold.png",
+    "downed.webm",
+    "downed-provenance.json"
+  ]
+}

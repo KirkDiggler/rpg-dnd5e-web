@@ -1,0 +1,181 @@
+{
+  "dockerNetwork": {
+    "name": "townfolk-225-ODSF5D",
+    "id": "43bbd9d27b38c6fab4ca0887f052ce55c9b310cd51065dc8a05f8592d3da288f"
+  },
+  "images": {
+    "api": {
+      "configuredReference": "ghcr.io/kirkdiggler/rpg-api@sha256:b559b27f33ac94264b8919cd85a2fbee60bab2e40ddd71727d5b0df414ad77cd",
+      "registry": {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "indexDigest": "sha256:b559b27f33ac94264b8919cd85a2fbee60bab2e40ddd71727d5b0df414ad77cd",
+        "linuxAmd64ManifestDigest": "sha256:1d3f755709edb1ab24b464e9530b19a1952c8be16d05e6e503b313c20e0c46b8"
+      },
+      "localImageId": "sha256:3aad1351d325f8f2ad292cf7da2b498fb9875bbdae7b55014aaad01abc080b55",
+      "repoDigests": [
+        "ghcr.io/kirkdiggler/rpg-api@sha256:b559b27f33ac94264b8919cd85a2fbee60bab2e40ddd71727d5b0df414ad77cd"
+      ],
+      "container": {
+        "name": "townfolk-225-ODSF5D-api",
+        "containerId": "a89e528a0103fee685fe4805e1bf7fd3bfd8018b83b603bce9bd685731a235c3",
+        "localImageId": "sha256:3aad1351d325f8f2ad292cf7da2b498fb9875bbdae7b55014aaad01abc080b55",
+        "configImage": "ghcr.io/kirkdiggler/rpg-api@sha256:b559b27f33ac94264b8919cd85a2fbee60bab2e40ddd71727d5b0df414ad77cd",
+        "state": {
+          "status": "running",
+          "running": true,
+          "startedAt": "2026-08-16T05:26:07.450821046Z"
+        },
+        "ports": {
+          "50051/tcp": [
+            {
+              "hostIp": "127.0.0.1",
+              "hostPort": "55051"
+            }
+          ]
+        },
+        "networks": {
+          "townfolk-225-ODSF5D": {
+            "networkId": "43bbd9d27b38c6fab4ca0887f052ce55c9b310cd51065dc8a05f8592d3da288f",
+            "aliases": [
+              "a89e528a0103"
+            ],
+            "ipAddress": "172.31.0.3"
+          }
+        }
+      }
+    },
+    "redis": {
+      "configuredReference": "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2",
+      "registry": {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "indexDigest": "sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2",
+        "linuxAmd64ManifestDigest": "sha256:9702d01c1f10c3ea9f48211b4362e44f154ff02d063e6f7268eba804059f53bf"
+      },
+      "localImageId": "sha256:2a51817f79255c8b69f86a974459c2e0359aff81417d80158f2b9e541e6f4b33",
+      "repoDigests": [
+        "redis@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
+      ],
+      "container": {
+        "name": "townfolk-225-ODSF5D-redis",
+        "containerId": "f84f7617ec3e36341b539bccfbcbc8b1205c1fd685247862871f161ad13bf2e2",
+        "localImageId": "sha256:2a51817f79255c8b69f86a974459c2e0359aff81417d80158f2b9e541e6f4b33",
+        "configImage": "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2",
+        "state": {
+          "status": "running",
+          "running": true,
+          "startedAt": "2026-08-16T05:26:07.072450484Z"
+        },
+        "ports": {
+          "6379/tcp": [
+            {
+              "hostIp": "127.0.0.1",
+              "hostPort": "56379"
+            }
+          ]
+        },
+        "networks": {
+          "townfolk-225-ODSF5D": {
+            "networkId": "43bbd9d27b38c6fab4ca0887f052ce55c9b310cd51065dc8a05f8592d3da288f",
+            "aliases": [
+              "f84f7617ec3e"
+            ],
+            "ipAddress": "172.31.0.2"
+          }
+        }
+      }
+    },
+    "envoy": {
+      "configuredReference": "envoyproxy/envoy:v1.31-latest@sha256:caa5b411be1633b90023592a34a7e010c933d6e60206c758f631485e53006865",
+      "registry": {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "indexDigest": "sha256:caa5b411be1633b90023592a34a7e010c933d6e60206c758f631485e53006865",
+        "linuxAmd64ManifestDigest": "sha256:e97ed0c5db1b6ac991e1f286500e5b4b4c425699aeb4bb137f963ede470913c0"
+      },
+      "localImageId": "sha256:31fb9010a82c9bf69bfe853a3b9dd3bbc837a8f32bd418fbe217a8ae6839efe1",
+      "repoDigests": [
+        "envoyproxy/envoy@sha256:caa5b411be1633b90023592a34a7e010c933d6e60206c758f631485e53006865"
+      ],
+      "container": {
+        "name": "townfolk-225-ODSF5D-envoy",
+        "containerId": "344c4cc7b714c53df80f5cbd57b4e8d188a21b3811a01334453b0af2f3660599",
+        "localImageId": "sha256:31fb9010a82c9bf69bfe853a3b9dd3bbc837a8f32bd418fbe217a8ae6839efe1",
+        "configImage": "envoyproxy/envoy:v1.31-latest@sha256:caa5b411be1633b90023592a34a7e010c933d6e60206c758f631485e53006865",
+        "state": {
+          "status": "running",
+          "running": true,
+          "startedAt": "2026-08-16T05:26:09.75405654Z"
+        },
+        "ports": {
+          "10000/tcp": [],
+          "8080/tcp": [
+            {
+              "hostIp": "127.0.0.1",
+              "hostPort": "58080"
+            }
+          ]
+        },
+        "networks": {
+          "townfolk-225-ODSF5D": {
+            "networkId": "43bbd9d27b38c6fab4ca0887f052ce55c9b310cd51065dc8a05f8592d3da288f",
+            "aliases": [
+              "344c4cc7b714"
+            ],
+            "ipAddress": "172.31.0.4"
+          }
+        }
+      }
+    }
+  },
+  "web": {
+    "commit": "d19fae4c176f2353842e55509d5529f0a66fddc4",
+    "host": "127.0.0.1",
+    "port": 3301,
+    "apiHost": "http://127.0.0.1:58080",
+    "processGroupId": 178369,
+    "processes": [
+      {
+        "pid": 178369,
+        "ppid": 1785,
+        "pgid": 178369,
+        "started": "Sat Aug 15 22:26:09 2026",
+        "command": "npm run dev --host 127.0.0.1 --port 3301 --strictPort"
+      },
+      {
+        "pid": 178432,
+        "ppid": 178369,
+        "pgid": 178369,
+        "started": "Sat Aug 15 22:26:09 2026",
+        "command": "sh -c vite --host 127.0.0.1 --port 3301 --strictPort"
+      },
+      {
+        "pid": 178433,
+        "ppid": 178432,
+        "pgid": 178369,
+        "started": "Sat Aug 15 22:26:09 2026",
+        "command": "node $RUN_ROOT/web/node_modules/.bin/vite --host 127.0.0.1 --port 3301 --strictPort"
+      },
+      {
+        "pid": 178501,
+        "ppid": 178433,
+        "pgid": 178369,
+        "started": "Sat Aug 15 22:26:09 2026",
+        "command": "$RUN_ROOT/web/node_modules/@esbuild/linux-x64/bin/esbuild --service=0.27.7 --ping"
+      }
+    ],
+    "health": "SERVING"
+  },
+  "health": {
+    "redis": "PONG",
+    "api": {
+      "status": "SERVING"
+    },
+    "envoyPreflight": "SERVING",
+    "webHttpStatus": "200"
+  },
+  "hostPorts": {
+    "redis": "127.0.0.1:56379",
+    "api": "127.0.0.1:55051",
+    "envoy": "127.0.0.1:58080",
+    "web": "127.0.0.1:3301"
+  }
+}

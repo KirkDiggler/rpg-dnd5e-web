@@ -1,0 +1,48 @@
+# Variables
+RUN_ROOT=<prepared-run-root>
+API_IMAGE=ghcr.io/kirkdiggler/rpg-api@sha256:b559b27f33ac94264b8919cd85a2fbee60bab2e40ddd71727d5b0df414ad77cd
+REDIS_IMAGE=redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+ENVOY_IMAGE=envoyproxy/envoy:v1.31-latest@sha256:caa5b411be1633b90023592a34a7e010c933d6e60206c758f631485e53006865
+
+# Preflight and mirror receipts
+git -C "$RUN_ROOT/{assets,web,api}" rev-parse HEAD
+git -C "$RUN_ROOT/{assets,web,api}" status --porcelain=v1 --untracked-files=no
+git -C "$RUN_ROOT/{assets,web,api}" diff --cached --name-only
+rsync -aicn --delete --delete-excluded --exclude='*.blend' --exclude='evidence/' --exclude='*/evidence/' <provider-root>/ <web-root>/
+
+# Pinned images and isolated services
+docker pull "$API_IMAGE"
+docker pull "$REDIS_IMAGE"
+docker pull "$ENVOY_IMAGE"
+docker network create townfolk-225-ODSF5D
+docker run -d --name townfolk-225-ODSF5D-redis --network townfolk-225-ODSF5D -p 127.0.0.1:56379:6379 "$REDIS_IMAGE"
+docker run -d --name townfolk-225-ODSF5D-api --network townfolk-225-ODSF5D -p 127.0.0.1:55051:50051 -e AUTH_DEV_MODE=true -e REDIS_ADDR=townfolk-225-ODSF5D-redis:6379 "$API_IMAGE"
+docker run -d --name townfolk-225-ODSF5D-envoy --network townfolk-225-ODSF5D -p 127.0.0.1:58080:8080 -v "$RUN_ROOT/runtime-support/envoy.yaml:/etc/envoy/envoy.yaml:ro" "$ENVOY_IMAGE"
+VITE_API_HOST=http://127.0.0.1:58080 npm run dev -- --host 127.0.0.1 --port 3301 --strictPort
+
+# Source-built seeding helper and browser runtime
+go build -o "$RUN_ROOT/runtime-support/devseed" ./cmd/devseed
+PLAYWRIGHT_BROWSERS_PATH="$RUN_ROOT/runtime-support/ms-playwright" npx playwright install ffmpeg
+PLAYWRIGHT_BROWSERS_PATH="$RUN_ROOT/runtime-support/ms-playwright" PHASES=standing,downed node "$RUN_ROOT/runtime-support/capture.mjs"
+
+# Fixture commands (repeated immediately before standing and destructive passes)
+devseed --redis-addr=127.0.0.1:56379 --fixture=equip-demo --encounter-id=townfolk-fighter
+devseed --redis-addr=127.0.0.1:56379 --fixture=wave-2-monk --encounter-id=townfolk-monk
+devseed --redis-addr=127.0.0.1:56379 --fixture=wave-1-rogue --encounter-id=townfolk-rogue
+devseed --redis-addr=127.0.0.1:56379 --fixture=wave-3-barbarian --encounter-id=townfolk-barbarian
+
+# Authentic destructive flow
+GetEncounter and EndTurn used the real v1alpha2 EncounterService with Dev scheme + the recorded player.
+Rogue additionally used real MoveEntity for Bob (away) and Alice (adjacent), then Bob/Alice-owned EndTurn calls.
+No attack against the goblin, direct Redis mutation, resolver/prop alteration, hook invocation, or fake stream event occurred.
+
+# Media and validation
+ffprobe -v error -show_entries format=filename,duration,size -of json <video>
+ffmpeg -hide_banner -loglevel error -ss <representative-time> -i <video> -frames:v 1 <frame.png>
+ffmpeg -v error -i <video> -f null -
+python3 "$RUN_ROOT/runtime-support/validate-candidate.py"
+sha256sum <all candidate files except evidence.sha256> > evidence.sha256
+sha256sum -c evidence.sha256
+
+# Cleanup (not executed)
+bash "$RUN_ROOT/runtime-support/cleanup.sh"

@@ -1,0 +1,161 @@
+{
+  "finalGetEncounter": {
+    "encounterId": "townfolk-barbarian",
+    "mode": "ENCOUNTER_MODE_TURN_BASED",
+    "turnState": {
+      "activeEntityId": "char-bob",
+      "round": 4,
+      "initiativeOrder": [
+        "goblin-1",
+        "char-bob"
+      ],
+      "movementRemaining": 0
+    },
+    "target": {
+      "entityId": "char-bob",
+      "playerId": "bob",
+      "displayName": "Bob the Barbarian",
+      "classRef": {
+        "module": "dnd5e",
+        "type": "class",
+        "id": "barbarian"
+      },
+      "hp": {
+        "current": 0,
+        "max": 14,
+        "temp": 0
+      },
+      "statusRefs": [
+        {
+          "module": "dnd5e",
+          "type": "conditions",
+          "id": "unconscious",
+          "normalized": "dnd5e:conditions:unconscious"
+        }
+      ],
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "participants": [
+      {
+        "entityId": "char-bob",
+        "type": "ENTITY_TYPE_CHARACTER",
+        "hp": {
+          "current": 0,
+          "max": 14,
+          "temp": 0
+        },
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "statusRefs": [
+          {
+            "module": "dnd5e",
+            "type": "conditions",
+            "id": "unconscious",
+            "normalized": "dnd5e:conditions:unconscious"
+          }
+        ]
+      },
+      {
+        "entityId": "goblin-1",
+        "type": "ENTITY_TYPE_MONSTER",
+        "hp": {
+          "current": 30,
+          "max": 30,
+          "temp": 0
+        },
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": -1
+        },
+        "statusRefs": []
+      }
+    ]
+  },
+  "rpcEvidence": {
+    "attempts": [
+      {
+        "attempt": 1,
+        "outcome": "unconscious",
+        "turns": [
+          {
+            "turn": 0,
+            "activeEntityId": "char-bob",
+            "round": 1,
+            "hp": {
+              "current": 8,
+              "max": 14,
+              "temp": 0
+            },
+            "statusRefs": []
+          },
+          {
+            "turn": 1,
+            "activeEntityId": "char-bob",
+            "round": 2,
+            "hp": {
+              "current": 2,
+              "max": 14,
+              "temp": 0
+            },
+            "statusRefs": []
+          },
+          {
+            "turn": 2,
+            "activeEntityId": "char-bob",
+            "round": 3,
+            "hp": {
+              "current": 1,
+              "max": 14,
+              "temp": 0
+            },
+            "statusRefs": []
+          },
+          {
+            "turn": 3,
+            "activeEntityId": "char-bob",
+            "round": 4,
+            "hp": {
+              "current": 0,
+              "max": 14,
+              "temp": 0
+            },
+            "statusRefs": [
+              {
+                "module": "dnd5e",
+                "type": "conditions",
+                "id": "unconscious",
+                "normalized": "dnd5e:conditions:unconscious"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "rpcAuth": [
+      {
+        "scheme": "Dev",
+        "player": "bob",
+        "method": "EndTurn"
+      },
+      {
+        "scheme": "Dev",
+        "player": "bob",
+        "method": "EndTurn"
+      },
+      {
+        "scheme": "Dev",
+        "player": "bob",
+        "method": "EndTurn"
+      }
+    ],
+    "rogueMovement": []
+  }
+}

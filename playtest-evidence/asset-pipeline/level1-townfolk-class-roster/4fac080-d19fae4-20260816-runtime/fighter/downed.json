@@ -1,0 +1,240 @@
+{
+  "classId": "fighter",
+  "fixture": "equip-demo",
+  "encounterId": "townfolk-fighter",
+  "playerId": "aldric",
+  "entityId": "char-aldric",
+  "authenticState": {
+    "encounterId": "townfolk-fighter",
+    "mode": "ENCOUNTER_MODE_TURN_BASED",
+    "turnState": {
+      "activeEntityId": "char-aldric",
+      "round": 5,
+      "initiativeOrder": [
+        "goblin-1",
+        "char-aldric"
+      ],
+      "movementRemaining": 0
+    },
+    "target": {
+      "entityId": "char-aldric",
+      "playerId": "aldric",
+      "displayName": "Sir Aldric",
+      "classRef": {
+        "module": "dnd5e",
+        "type": "class",
+        "id": "fighter"
+      },
+      "hp": {
+        "current": 0,
+        "max": 13,
+        "temp": 0
+      },
+      "statusRefs": [
+        {
+          "module": "dnd5e",
+          "type": "conditions",
+          "id": "unconscious",
+          "normalized": "dnd5e:conditions:unconscious"
+        }
+      ],
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "participants": [
+      {
+        "entityId": "char-aldric",
+        "type": "ENTITY_TYPE_CHARACTER",
+        "hp": {
+          "current": 0,
+          "max": 13,
+          "temp": 0
+        },
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "statusRefs": [
+          {
+            "module": "dnd5e",
+            "type": "conditions",
+            "id": "unconscious",
+            "normalized": "dnd5e:conditions:unconscious"
+          }
+        ]
+      },
+      {
+        "entityId": "goblin-1",
+        "type": "ENTITY_TYPE_MONSTER",
+        "hp": {
+          "current": 7,
+          "max": 7,
+          "temp": 0
+        },
+        "position": {
+          "x": 1,
+          "y": 0,
+          "z": -1
+        },
+        "statusRefs": []
+      }
+    ]
+  },
+  "rpcEvidence": {
+    "attempts": [
+      {
+        "attempt": 1,
+        "outcome": "unconscious",
+        "turns": [
+          {
+            "turn": 0,
+            "activeEntityId": "char-aldric",
+            "round": 1,
+            "hp": {
+              "current": 13,
+              "max": 13,
+              "temp": 0
+            },
+            "statusRefs": []
+          },
+          {
+            "turn": 1,
+            "activeEntityId": "char-aldric",
+            "round": 2,
+            "hp": {
+              "current": 13,
+              "max": 13,
+              "temp": 0
+            },
+            "statusRefs": []
+          },
+          {
+            "turn": 2,
+            "activeEntityId": "char-aldric",
+            "round": 3,
+            "hp": {
+              "current": 13,
+              "max": 13,
+              "temp": 0
+            },
+            "statusRefs": []
+          },
+          {
+            "turn": 3,
+            "activeEntityId": "char-aldric",
+            "round": 4,
+            "hp": {
+              "current": 2,
+              "max": 13,
+              "temp": 0
+            },
+            "statusRefs": []
+          },
+          {
+            "turn": 4,
+            "activeEntityId": "char-aldric",
+            "round": 5,
+            "hp": {
+              "current": 0,
+              "max": 13,
+              "temp": 0
+            },
+            "statusRefs": [
+              {
+                "module": "dnd5e",
+                "type": "conditions",
+                "id": "unconscious",
+                "normalized": "dnd5e:conditions:unconscious"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "rpcAuth": [
+      {
+        "scheme": "Dev",
+        "player": "aldric",
+        "method": "EndTurn"
+      },
+      {
+        "scheme": "Dev",
+        "player": "aldric",
+        "method": "EndTurn"
+      },
+      {
+        "scheme": "Dev",
+        "player": "aldric",
+        "method": "EndTurn"
+      },
+      {
+        "scheme": "Dev",
+        "player": "aldric",
+        "method": "EndTurn"
+      }
+    ],
+    "rogueMovement": []
+  },
+  "browserSnapshot": {
+    "encounterId": "townfolk-fighter",
+    "entityId": "char-aldric",
+    "classRef": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Ref",
+      "module": "dnd5e",
+      "type": "class",
+      "id": "fighter"
+    },
+    "hp": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.HitPoints",
+      "current": 0,
+      "max": 13,
+      "temp": 0
+    },
+    "statusRefs": [
+      {
+        "module": "dnd5e",
+        "type": "conditions",
+        "id": "unconscious"
+      }
+    ],
+    "position": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "activeEntityId": "char-aldric",
+    "round": 5
+  },
+  "canonicalAsset": {
+    "urlPath": "/models/synty/characters/fighter-downed.glb",
+    "status": 200,
+    "magic": "glTF",
+    "version": 2,
+    "size": 941444,
+    "sha256": "0b139ae89c392d97ade3bbb1fa3e7a7a338b277aae00ae3fe90e7f394d768bcd",
+    "animations": []
+  },
+  "authObserved": [
+    {
+      "scheme": "Dev",
+      "player": "aldric"
+    }
+  ],
+  "errors": {
+    "expectedStrictModeAbortCount": 1,
+    "forbiddenConsole": [],
+    "pageErrors": [],
+    "canonicalFailures": []
+  },
+  "files": [
+    "downed.png",
+    "downed-hold.png",
+    "downed.webm",
+    "downed-provenance.json"
+  ]
+}

@@ -1,0 +1,265 @@
+{
+  "classId": "rogue",
+  "fixture": "wave-1-rogue",
+  "encounterId": "townfolk-rogue",
+  "playerId": "alice",
+  "entityId": "char-alice",
+  "preflightGetEncounter": {
+    "encounterId": "townfolk-rogue",
+    "mode": "ENCOUNTER_MODE_TURN_BASED",
+    "turnState": {
+      "activeEntityId": "char-alice",
+      "round": 1,
+      "initiativeOrder": [
+        "char-bob",
+        "goblin-1",
+        "char-alice"
+      ],
+      "movementRemaining": 30
+    },
+    "target": {
+      "entityId": "char-alice",
+      "playerId": "alice",
+      "displayName": "Alice the Rogue",
+      "classRef": {
+        "module": "dnd5e",
+        "type": "class",
+        "id": "rogue"
+      },
+      "hp": {
+        "current": 10,
+        "max": 10,
+        "temp": 0
+      },
+      "statusRefs": [
+        {
+          "module": "dnd5e",
+          "type": "features",
+          "id": "sneak_attack",
+          "normalized": "dnd5e:features:sneak_attack"
+        }
+      ],
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    "participants": [
+      {
+        "entityId": "char-alice",
+        "type": "ENTITY_TYPE_CHARACTER",
+        "hp": {
+          "current": 10,
+          "max": 10,
+          "temp": 0
+        },
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "statusRefs": [
+          {
+            "module": "dnd5e",
+            "type": "features",
+            "id": "sneak_attack",
+            "normalized": "dnd5e:features:sneak_attack"
+          }
+        ]
+      },
+      {
+        "entityId": "char-bob",
+        "type": "ENTITY_TYPE_CHARACTER",
+        "hp": {
+          "current": 14,
+          "max": 14,
+          "temp": 0
+        },
+        "position": null,
+        "statusRefs": []
+      },
+      {
+        "entityId": "goblin-1",
+        "type": "ENTITY_TYPE_MONSTER",
+        "hp": {
+          "current": 7,
+          "max": 7,
+          "temp": 0
+        },
+        "position": {
+          "x": 3,
+          "y": -1,
+          "z": -2
+        },
+        "statusRefs": []
+      }
+    ]
+  },
+  "browserSnapshot": {
+    "encounterId": "townfolk-rogue",
+    "entityId": "char-alice",
+    "classRef": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Ref",
+      "module": "dnd5e",
+      "type": "class",
+      "id": "rogue"
+    },
+    "hp": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.HitPoints",
+      "current": 10,
+      "max": 10,
+      "temp": 0
+    },
+    "statusRefs": [
+      {
+        "module": "dnd5e",
+        "type": "features",
+        "id": "sneak_attack"
+      }
+    ],
+    "position": {
+      "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "activeEntityId": "char-alice",
+    "round": 1
+  },
+  "headerText": "Playtest townfolk-rogue as alice\nconnection: connected\nentityId: char-alice\nmode: TURN_BASED\nactive: char-alice\nround: 1\nHP: 10/10\nrage: off\ninitiative: char-bob → goblin-1 → char-alice",
+  "eventLogText": "[22:43:09] VisualMove → (0,0,0) via 3-step path\n[22:43:09] TurnStateChanged (7 action(s) in menu)\n[22:43:09] HexKnowledgeChanged hexes=373 entities=3\n[22:43:09] EntityMoved char-alice → (0,0,0)\n[22:43:09] AttackResolved char-bob → char-alice: MISS (roll 4+5 vs AC 14)\n[22:43:05] VisualMove → (2,-2,0) via 3-step path\n[22:43:04] TurnStateChanged (7 action(s) in menu)\n[22:43:04] HexKnowledgeChanged hexes=42 entities=0\n[22:43:04] HexKnowledgeChanged hexes=373 entities=3\n[22:43:04] EntityMoved char-alice → (2,-2,0)\n[22:43:00] HexKnowledgeChanged hexes=331 entities=3\n[22:43:00] SnapshotDelivered (stream up)",
+  "routeQuery": "?encounterId=townfolk-rogue&playerId=alice&pitchCurve=0&zoomStart=60&zoomMin=60&zoomMax=60",
+  "canonicalAsset": {
+    "urlPath": "/models/synty/characters/rogue.glb",
+    "status": 200,
+    "magic": "glTF",
+    "version": 2,
+    "size": 1372088,
+    "sha256": "491a8f50b1db44f47f63443c557d461cd53b880895f9c53d3f4db28e8a3aca06",
+    "animations": [
+      "Idle_Relaxed",
+      "Walk_Forward"
+    ]
+  },
+  "movement": [
+    {
+      "plannedPath": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "x": 2,
+          "y": -2,
+          "z": 0
+        }
+      ],
+      "expectedLegHeadingsDegrees": [
+        90,
+        90
+      ],
+      "clickPixel": {
+        "x": 946.97,
+        "y": 577.63
+      },
+      "actualPath": [
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 2,
+          "y": -2,
+          "z": 0
+        }
+      ],
+      "actualPathMatchesPlanned": true
+    },
+    {
+      "plannedPath": [
+        {
+          "x": 2,
+          "y": -2,
+          "z": 0
+        },
+        {
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "expectedLegHeadingsDegrees": [
+        270,
+        270
+      ],
+      "clickPixel": {
+        "x": 653.03,
+        "y": 394.37
+      },
+      "actualPath": [
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 2,
+          "y": -2,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 1,
+          "y": -1,
+          "z": 0
+        },
+        {
+          "$typeName": "dnd5e.api.v1alpha2.encounter.Position",
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      ],
+      "actualPathMatchesPlanned": true
+    }
+  ],
+  "authObserved": [
+    {
+      "scheme": "Dev",
+      "player": "alice"
+    }
+  ],
+  "visualMoveConsoleEntries": [],
+  "errors": {
+    "expectedStrictModeAbortCount": 1,
+    "forbiddenConsole": [],
+    "pageErrors": [],
+    "canonicalFailures": []
+  },
+  "files": [
+    "standing-idle-before.png",
+    "standing-move-1-mid.png",
+    "standing-idle-between.png",
+    "standing-move-2-mid.png",
+    "standing-idle-after.png",
+    "standing-event-log.png",
+    "standing.webm"
+  ]
+}

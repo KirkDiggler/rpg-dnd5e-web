@@ -1,0 +1,17 @@
+PASS: provider/web/API are exact detached commits with zero tracked or staged changes
+PASS: live delete-aware rsync checks are empty for Synty and custom-dice mirrors
+PASS: receipt binds expected immutable commits, image digests, and exact-sync record digests
+PASS: eight exact ordered non-overlapping accepted UTC windows align to final-run anchors; the sole 05:37 rejected MoveEntity is discarded/outside and accepted windows contain zero rejected RPCs
+PASS: fighter: fixture/class, two real paths/headings, standing clips/bytes, authentic HP0+unconscious, static downed clips/bytes, auth, and errors
+PASS: monk: fixture/class, two real paths/headings, standing clips/bytes, authentic HP0+unconscious, static downed clips/bytes, auth, and errors
+PASS: rogue: fixture/class, two real paths/headings, standing clips/bytes, authentic HP0+unconscious, static downed clips/bytes, auth, and errors
+PASS: barbarian: fixture/class, two real paths/headings, standing clips/bytes, authentic HP0+unconscious, static downed clips/bytes, auth, and errors
+PASS: fighter: all key screenshots/frames are nonblank 1600x1000 and both original WebMs fully decode
+PASS: monk: all key screenshots/frames are nonblank 1600x1000 and both original WebMs fully decode
+PASS: rogue: all key screenshots/frames are nonblank 1600x1000 and both original WebMs fully decode
+PASS: barbarian: all key screenshots/frames are nonblank 1600x1000 and both original WebMs fully decode
+PASS: registry/platform/local image/container/network/port identities recorded and exact Redis/API/Envoy/web health remains PONG/SERVING/200/200
+PASS: candidate contains only allowed evidence types, no source assets/GLBs/textures/Redis dumps, private absolute paths, symlinks, or arbitrary credentials
+PASS: discarded diagnostic, zero accepted errors, StrictMode/ReadPixels, and Redis/Envoy infrastructure noise are explicitly classified with no observed capture impact
+PASS: four-class receipt matrix is complete PASS
+VALIDATION: PASS

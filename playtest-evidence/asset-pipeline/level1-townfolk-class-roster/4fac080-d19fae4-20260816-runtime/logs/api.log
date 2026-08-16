@@ -1,0 +1,2620 @@
+2026/08/16 05:26:07 ⚠️  AUTH_DEV_MODE enabled - Dev authentication scheme allowed
+2026/08/16 05:26:07 INFO connecting to Redis address=townfolk-225-ODSF5D-redis:6379
+2026/08/16 05:26:07 INFO successfully connected to Redis address=townfolk-225-ODSF5D-redis:6379
+2026/08/16 05:26:07 gRPC server starting on port 50051...
+2026/08/16 05:26:09 → ServerReflectionInfo started
+2026/08/16 05:26:09 → Check started
+2026/08/16 05:26:09 ✓ Check completed in 0.00ms
+2026/08/16 05:26:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:31:20 → ServerReflectionInfo started
+2026/08/16 05:31:20 → GetEncounter started
+2026/08/16 05:31:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:31:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:32:30 → GetMyActiveLobby started
+2026/08/16 05:32:30 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:32:30 → ListRaces started
+2026/08/16 05:32:30 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:32:30 → ListRaces started
+2026/08/16 05:32:30 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:32:30 → ListBackgrounds started
+2026/08/16 05:32:30 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:32:30 → ListClasses started
+2026/08/16 05:32:30 → ListBackgrounds started
+2026/08/16 05:32:30 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:32:30 → ListClasses started
+2026/08/16 05:32:30 → StreamEncounter started
+2026/08/16 05:32:30 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:32:30 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:32:35 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:33:16 → GetMyActiveLobby started
+2026/08/16 05:33:16 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:33:16 → ListClasses started
+2026/08/16 05:33:16 → ListClasses started
+2026/08/16 05:33:16 → ListRaces started
+2026/08/16 05:33:16 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:33:16 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:33:16 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:33:16 → ListRaces started
+2026/08/16 05:33:16 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:33:16 → ListBackgrounds started
+2026/08/16 05:33:16 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:33:16 → ListBackgrounds started
+2026/08/16 05:33:16 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:33:16 → StreamEncounter started
+2026/08/16 05:33:21 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:33:47 → ServerReflectionInfo started
+2026/08/16 05:33:47 → EndTurn started
+2026/08/16 05:33:47 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:33:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:36:38 → ServerReflectionInfo started
+2026/08/16 05:36:38 → GetEncounter started
+2026/08/16 05:36:38 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:36:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:36:38 → ServerReflectionInfo started
+2026/08/16 05:36:38 → GetEncounter started
+2026/08/16 05:36:38 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:36:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:36:50 → ServerReflectionInfo started
+2026/08/16 05:36:50 → GetEncounter started
+2026/08/16 05:36:50 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:36:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:36:51 → ServerReflectionInfo started
+2026/08/16 05:36:51 → GetEncounter started
+2026/08/16 05:36:51 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:36:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:36:52 → GetMyActiveLobby started
+2026/08/16 05:36:52 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:36:52 → ListBackgrounds started
+2026/08/16 05:36:52 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:36:52 → ListBackgrounds started
+2026/08/16 05:36:52 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:36:52 → ListRaces started
+2026/08/16 05:36:52 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:36:52 → ListClasses started
+2026/08/16 05:36:52 → ListClasses started
+2026/08/16 05:36:52 → StreamEncounter started
+2026/08/16 05:36:52 → ListRaces started
+2026/08/16 05:36:52 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:36:52 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:36:52 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:36:56 → MoveEntity started
+2026/08/16 05:36:56 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:37:00 → MoveEntity started
+2026/08/16 05:37:00 ✗ MoveEntity failed (FailedPrecondition) in 0.00ms: rpc error: code = FailedPrecondition desc = move refused: insufficient movement remaining: path costs 10ft, 0ft remaining
+2026/08/16 05:37:15 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:37:50 → ServerReflectionInfo started
+2026/08/16 05:37:50 → GetEncounter started
+2026/08/16 05:37:50 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:37:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:37:50 → ServerReflectionInfo started
+2026/08/16 05:37:50 → GetEncounter started
+2026/08/16 05:37:50 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:37:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:37:51 → GetMyActiveLobby started
+2026/08/16 05:37:51 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:37:51 → ListRaces started
+2026/08/16 05:37:51 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:37:51 → ListRaces started
+2026/08/16 05:37:51 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:37:51 → ListClasses started
+2026/08/16 05:37:51 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:37:51 → ListBackgrounds started
+2026/08/16 05:37:51 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:37:51 → ListClasses started
+2026/08/16 05:37:51 → StreamEncounter started
+2026/08/16 05:37:51 → ListBackgrounds started
+2026/08/16 05:37:51 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:37:51 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:37:55 → MoveEntity started
+2026/08/16 05:37:55 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:37:59 → MoveEntity started
+2026/08/16 05:37:59 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:38:02 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:39:42 → ServerReflectionInfo started
+2026/08/16 05:39:42 → GetEncounter started
+2026/08/16 05:39:42 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:39:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:39:42 → ServerReflectionInfo started
+2026/08/16 05:39:42 → GetEncounter started
+2026/08/16 05:39:42 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:39:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:39:43 → GetMyActiveLobby started
+2026/08/16 05:39:43 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:39:43 → ListRaces started
+2026/08/16 05:39:43 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:39:43 → ListClasses started
+2026/08/16 05:39:43 → ListClasses started
+2026/08/16 05:39:43 → ListRaces started
+2026/08/16 05:39:43 → ListBackgrounds started
+2026/08/16 05:39:43 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:39:43 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:39:43 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:39:43 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:39:43 → StreamEncounter started
+2026/08/16 05:39:43 → ListBackgrounds started
+2026/08/16 05:39:43 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:39:47 → MoveEntity started
+2026/08/16 05:39:47 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:39:51 → MoveEntity started
+2026/08/16 05:39:51 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:39:54 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:40:09 → ServerReflectionInfo started
+2026/08/16 05:40:09 → GetEncounter started
+2026/08/16 05:40:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:09 → ServerReflectionInfo started
+2026/08/16 05:40:09 → EndTurn started
+2026/08/16 05:40:09 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:09 → ServerReflectionInfo started
+2026/08/16 05:40:09 → GetEncounter started
+2026/08/16 05:40:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:09 → ServerReflectionInfo started
+2026/08/16 05:40:09 → EndTurn started
+2026/08/16 05:40:09 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:09 → ServerReflectionInfo started
+2026/08/16 05:40:09 → GetEncounter started
+2026/08/16 05:40:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:09 → ServerReflectionInfo started
+2026/08/16 05:40:09 → EndTurn started
+2026/08/16 05:40:09 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:09 → ServerReflectionInfo started
+2026/08/16 05:40:09 → GetEncounter started
+2026/08/16 05:40:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:10 → ServerReflectionInfo started
+2026/08/16 05:40:10 → EndTurn started
+2026/08/16 05:40:10 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:10 → ServerReflectionInfo started
+2026/08/16 05:40:10 → GetEncounter started
+2026/08/16 05:40:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:10 → ServerReflectionInfo started
+2026/08/16 05:40:10 → EndTurn started
+2026/08/16 05:40:10 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:10 → ServerReflectionInfo started
+2026/08/16 05:40:10 → GetEncounter started
+2026/08/16 05:40:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:10 → ServerReflectionInfo started
+2026/08/16 05:40:10 → EndTurn started
+2026/08/16 05:40:10 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:10 → ServerReflectionInfo started
+2026/08/16 05:40:10 → GetEncounter started
+2026/08/16 05:40:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:10 → ServerReflectionInfo started
+2026/08/16 05:40:10 → EndTurn started
+2026/08/16 05:40:10 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:11 → ServerReflectionInfo started
+2026/08/16 05:40:11 → GetEncounter started
+2026/08/16 05:40:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:11 → ServerReflectionInfo started
+2026/08/16 05:40:11 → EndTurn started
+2026/08/16 05:40:11 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:11 → ServerReflectionInfo started
+2026/08/16 05:40:11 → GetEncounter started
+2026/08/16 05:40:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:11 → ServerReflectionInfo started
+2026/08/16 05:40:11 → EndTurn started
+2026/08/16 05:40:11 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:11 → ServerReflectionInfo started
+2026/08/16 05:40:11 → GetEncounter started
+2026/08/16 05:40:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:11 → ServerReflectionInfo started
+2026/08/16 05:40:11 → EndTurn started
+2026/08/16 05:40:11 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:11 → ServerReflectionInfo started
+2026/08/16 05:40:11 → GetEncounter started
+2026/08/16 05:40:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:11 → ServerReflectionInfo started
+2026/08/16 05:40:11 → EndTurn started
+2026/08/16 05:40:11 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:12 → ServerReflectionInfo started
+2026/08/16 05:40:12 → GetEncounter started
+2026/08/16 05:40:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:12 → ServerReflectionInfo started
+2026/08/16 05:40:12 → EndTurn started
+2026/08/16 05:40:12 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:12 → ServerReflectionInfo started
+2026/08/16 05:40:12 → GetEncounter started
+2026/08/16 05:40:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:12 → ServerReflectionInfo started
+2026/08/16 05:40:12 → EndTurn started
+2026/08/16 05:40:12 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:12 → ServerReflectionInfo started
+2026/08/16 05:40:12 → GetEncounter started
+2026/08/16 05:40:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:12 → ServerReflectionInfo started
+2026/08/16 05:40:12 → EndTurn started
+2026/08/16 05:40:12 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:12 → ServerReflectionInfo started
+2026/08/16 05:40:12 → GetEncounter started
+2026/08/16 05:40:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:13 → ServerReflectionInfo started
+2026/08/16 05:40:13 → EndTurn started
+2026/08/16 05:40:13 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:13 → ServerReflectionInfo started
+2026/08/16 05:40:13 → GetEncounter started
+2026/08/16 05:40:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:13 → ServerReflectionInfo started
+2026/08/16 05:40:13 → EndTurn started
+2026/08/16 05:40:13 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:13 → ServerReflectionInfo started
+2026/08/16 05:40:13 → GetEncounter started
+2026/08/16 05:40:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:13 → ServerReflectionInfo started
+2026/08/16 05:40:13 → EndTurn started
+2026/08/16 05:40:13 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:13 → ServerReflectionInfo started
+2026/08/16 05:40:13 → GetEncounter started
+2026/08/16 05:40:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:13 → ServerReflectionInfo started
+2026/08/16 05:40:13 → EndTurn started
+2026/08/16 05:40:13 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:13 → ServerReflectionInfo started
+2026/08/16 05:40:13 → GetEncounter started
+2026/08/16 05:40:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:14 → ServerReflectionInfo started
+2026/08/16 05:40:14 → EndTurn started
+2026/08/16 05:40:14 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:14 → ServerReflectionInfo started
+2026/08/16 05:40:14 → GetEncounter started
+2026/08/16 05:40:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:14 → ServerReflectionInfo started
+2026/08/16 05:40:14 → EndTurn started
+2026/08/16 05:40:14 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:14 → ServerReflectionInfo started
+2026/08/16 05:40:14 → GetEncounter started
+2026/08/16 05:40:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:14 → ServerReflectionInfo started
+2026/08/16 05:40:14 → EndTurn started
+2026/08/16 05:40:14 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:14 → ServerReflectionInfo started
+2026/08/16 05:40:14 → GetEncounter started
+2026/08/16 05:40:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:14 → ServerReflectionInfo started
+2026/08/16 05:40:14 → EndTurn started
+2026/08/16 05:40:14 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:15 → ServerReflectionInfo started
+2026/08/16 05:40:15 → GetEncounter started
+2026/08/16 05:40:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:15 → ServerReflectionInfo started
+2026/08/16 05:40:15 → EndTurn started
+2026/08/16 05:40:15 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:15 → ServerReflectionInfo started
+2026/08/16 05:40:15 → GetEncounter started
+2026/08/16 05:40:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:15 → ServerReflectionInfo started
+2026/08/16 05:40:15 → EndTurn started
+2026/08/16 05:40:15 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:15 → ServerReflectionInfo started
+2026/08/16 05:40:15 → GetEncounter started
+2026/08/16 05:40:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:15 → ServerReflectionInfo started
+2026/08/16 05:40:15 → EndTurn started
+2026/08/16 05:40:15 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:15 → ServerReflectionInfo started
+2026/08/16 05:40:15 → GetEncounter started
+2026/08/16 05:40:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:16 → ServerReflectionInfo started
+2026/08/16 05:40:16 → EndTurn started
+2026/08/16 05:40:16 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:16 → ServerReflectionInfo started
+2026/08/16 05:40:16 → GetEncounter started
+2026/08/16 05:40:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:16 → ServerReflectionInfo started
+2026/08/16 05:40:16 → EndTurn started
+2026/08/16 05:40:16 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:16 → ServerReflectionInfo started
+2026/08/16 05:40:16 → GetEncounter started
+2026/08/16 05:40:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:16 → ServerReflectionInfo started
+2026/08/16 05:40:16 → EndTurn started
+2026/08/16 05:40:16 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:16 → ServerReflectionInfo started
+2026/08/16 05:40:16 → GetEncounter started
+2026/08/16 05:40:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:16 → ServerReflectionInfo started
+2026/08/16 05:40:16 → EndTurn started
+2026/08/16 05:40:16 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:16 → ServerReflectionInfo started
+2026/08/16 05:40:16 → GetEncounter started
+2026/08/16 05:40:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:17 → ServerReflectionInfo started
+2026/08/16 05:40:17 → EndTurn started
+2026/08/16 05:40:17 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:17 → ServerReflectionInfo started
+2026/08/16 05:40:17 → GetEncounter started
+2026/08/16 05:40:17 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:17 → ServerReflectionInfo started
+2026/08/16 05:40:17 → EndTurn started
+2026/08/16 05:40:17 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:17 → ServerReflectionInfo started
+2026/08/16 05:40:17 → GetEncounter started
+2026/08/16 05:40:17 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:17 → ServerReflectionInfo started
+2026/08/16 05:40:17 → EndTurn started
+2026/08/16 05:40:17 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:17 → ServerReflectionInfo started
+2026/08/16 05:40:17 → GetEncounter started
+2026/08/16 05:40:17 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:17 → ServerReflectionInfo started
+2026/08/16 05:40:17 → EndTurn started
+2026/08/16 05:40:17 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:18 → ServerReflectionInfo started
+2026/08/16 05:40:18 → GetEncounter started
+2026/08/16 05:40:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:18 → ServerReflectionInfo started
+2026/08/16 05:40:18 → EndTurn started
+2026/08/16 05:40:18 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:18 → ServerReflectionInfo started
+2026/08/16 05:40:18 → GetEncounter started
+2026/08/16 05:40:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:18 → ServerReflectionInfo started
+2026/08/16 05:40:18 → EndTurn started
+2026/08/16 05:40:18 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:18 → ServerReflectionInfo started
+2026/08/16 05:40:18 → GetEncounter started
+2026/08/16 05:40:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:18 → ServerReflectionInfo started
+2026/08/16 05:40:18 → EndTurn started
+2026/08/16 05:40:18 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:18 → ServerReflectionInfo started
+2026/08/16 05:40:18 → GetEncounter started
+2026/08/16 05:40:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:18 → ServerReflectionInfo started
+2026/08/16 05:40:18 → EndTurn started
+2026/08/16 05:40:18 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:19 → ServerReflectionInfo started
+2026/08/16 05:40:19 → GetEncounter started
+2026/08/16 05:40:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:19 → ServerReflectionInfo started
+2026/08/16 05:40:19 → EndTurn started
+2026/08/16 05:40:19 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:19 → ServerReflectionInfo started
+2026/08/16 05:40:19 → GetEncounter started
+2026/08/16 05:40:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:19 → ServerReflectionInfo started
+2026/08/16 05:40:19 → EndTurn started
+2026/08/16 05:40:19 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:19 → ServerReflectionInfo started
+2026/08/16 05:40:19 → GetEncounter started
+2026/08/16 05:40:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:19 → ServerReflectionInfo started
+2026/08/16 05:40:19 → EndTurn started
+2026/08/16 05:40:19 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:19 → ServerReflectionInfo started
+2026/08/16 05:40:19 → GetEncounter started
+2026/08/16 05:40:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:20 → ServerReflectionInfo started
+2026/08/16 05:40:20 → EndTurn started
+2026/08/16 05:40:20 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:20 → ServerReflectionInfo started
+2026/08/16 05:40:20 → GetEncounter started
+2026/08/16 05:40:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:20 → ServerReflectionInfo started
+2026/08/16 05:40:20 → EndTurn started
+2026/08/16 05:40:20 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:20 → ServerReflectionInfo started
+2026/08/16 05:40:20 → GetEncounter started
+2026/08/16 05:40:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:20 → ServerReflectionInfo started
+2026/08/16 05:40:20 → EndTurn started
+2026/08/16 05:40:20 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:20 → ServerReflectionInfo started
+2026/08/16 05:40:20 → GetEncounter started
+2026/08/16 05:40:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:20 → ServerReflectionInfo started
+2026/08/16 05:40:20 → EndTurn started
+2026/08/16 05:40:20 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:20 → ServerReflectionInfo started
+2026/08/16 05:40:20 → GetEncounter started
+2026/08/16 05:40:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:21 → ServerReflectionInfo started
+2026/08/16 05:40:21 → EndTurn started
+2026/08/16 05:40:21 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:21 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:21 → ServerReflectionInfo started
+2026/08/16 05:40:21 → GetEncounter started
+2026/08/16 05:40:21 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:21 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:21 → ServerReflectionInfo started
+2026/08/16 05:40:21 → EndTurn started
+2026/08/16 05:40:21 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:21 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:21 → ServerReflectionInfo started
+2026/08/16 05:40:21 → GetEncounter started
+2026/08/16 05:40:21 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:21 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:21 → ServerReflectionInfo started
+2026/08/16 05:40:21 → EndTurn started
+2026/08/16 05:40:21 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:21 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:21 → ServerReflectionInfo started
+2026/08/16 05:40:21 → GetEncounter started
+2026/08/16 05:40:21 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:21 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:21 → ServerReflectionInfo started
+2026/08/16 05:40:21 → EndTurn started
+2026/08/16 05:40:21 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:21 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:22 → ServerReflectionInfo started
+2026/08/16 05:40:22 → GetEncounter started
+2026/08/16 05:40:22 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:22 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:22 → ServerReflectionInfo started
+2026/08/16 05:40:22 → EndTurn started
+2026/08/16 05:40:22 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:22 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:22 → ServerReflectionInfo started
+2026/08/16 05:40:22 → GetEncounter started
+2026/08/16 05:40:22 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:22 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:22 → ServerReflectionInfo started
+2026/08/16 05:40:22 → EndTurn started
+2026/08/16 05:40:22 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:22 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:22 → ServerReflectionInfo started
+2026/08/16 05:40:22 → GetEncounter started
+2026/08/16 05:40:22 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:22 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:22 → ServerReflectionInfo started
+2026/08/16 05:40:22 → EndTurn started
+2026/08/16 05:40:22 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:22 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:22 → ServerReflectionInfo started
+2026/08/16 05:40:22 → GetEncounter started
+2026/08/16 05:40:22 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:22 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:22 → ServerReflectionInfo started
+2026/08/16 05:40:22 → EndTurn started
+2026/08/16 05:40:22 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:22 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:23 → ServerReflectionInfo started
+2026/08/16 05:40:23 → GetEncounter started
+2026/08/16 05:40:23 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:23 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:23 → ServerReflectionInfo started
+2026/08/16 05:40:23 → EndTurn started
+2026/08/16 05:40:23 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:23 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:23 → ServerReflectionInfo started
+2026/08/16 05:40:23 → GetEncounter started
+2026/08/16 05:40:23 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:23 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:23 → ServerReflectionInfo started
+2026/08/16 05:40:23 → EndTurn started
+2026/08/16 05:40:23 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:23 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:23 → ServerReflectionInfo started
+2026/08/16 05:40:23 → GetEncounter started
+2026/08/16 05:40:23 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:23 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:23 → ServerReflectionInfo started
+2026/08/16 05:40:23 → EndTurn started
+2026/08/16 05:40:23 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:23 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:23 → ServerReflectionInfo started
+2026/08/16 05:40:23 → GetEncounter started
+2026/08/16 05:40:23 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:23 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:24 → ServerReflectionInfo started
+2026/08/16 05:40:24 → EndTurn started
+2026/08/16 05:40:24 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:24 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:24 → ServerReflectionInfo started
+2026/08/16 05:40:24 → GetEncounter started
+2026/08/16 05:40:24 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:24 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:24 → ServerReflectionInfo started
+2026/08/16 05:40:24 → EndTurn started
+2026/08/16 05:40:24 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:24 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:24 → ServerReflectionInfo started
+2026/08/16 05:40:24 → GetEncounter started
+2026/08/16 05:40:24 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:24 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:24 → ServerReflectionInfo started
+2026/08/16 05:40:24 → EndTurn started
+2026/08/16 05:40:24 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:24 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:24 → ServerReflectionInfo started
+2026/08/16 05:40:24 → GetEncounter started
+2026/08/16 05:40:24 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:24 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:24 → ServerReflectionInfo started
+2026/08/16 05:40:24 → EndTurn started
+2026/08/16 05:40:24 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:24 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:24 → ServerReflectionInfo started
+2026/08/16 05:40:24 → GetEncounter started
+2026/08/16 05:40:24 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:24 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:25 → ServerReflectionInfo started
+2026/08/16 05:40:25 → EndTurn started
+2026/08/16 05:40:25 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:25 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:25 → ServerReflectionInfo started
+2026/08/16 05:40:25 → GetEncounter started
+2026/08/16 05:40:25 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:25 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:25 → ServerReflectionInfo started
+2026/08/16 05:40:25 → EndTurn started
+2026/08/16 05:40:25 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:25 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:25 → ServerReflectionInfo started
+2026/08/16 05:40:25 → GetEncounter started
+2026/08/16 05:40:25 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:25 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:25 → ServerReflectionInfo started
+2026/08/16 05:40:25 → EndTurn started
+2026/08/16 05:40:25 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:25 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:25 → ServerReflectionInfo started
+2026/08/16 05:40:25 → GetEncounter started
+2026/08/16 05:40:25 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:25 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:25 → ServerReflectionInfo started
+2026/08/16 05:40:25 → EndTurn started
+2026/08/16 05:40:25 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:25 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:26 → ServerReflectionInfo started
+2026/08/16 05:40:26 → GetEncounter started
+2026/08/16 05:40:26 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:26 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:26 → ServerReflectionInfo started
+2026/08/16 05:40:26 → EndTurn started
+2026/08/16 05:40:26 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:26 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:26 → ServerReflectionInfo started
+2026/08/16 05:40:26 → GetEncounter started
+2026/08/16 05:40:26 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:26 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:26 → ServerReflectionInfo started
+2026/08/16 05:40:26 → EndTurn started
+2026/08/16 05:40:26 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:26 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:26 → ServerReflectionInfo started
+2026/08/16 05:40:26 → GetEncounter started
+2026/08/16 05:40:26 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:26 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:26 → ServerReflectionInfo started
+2026/08/16 05:40:26 → EndTurn started
+2026/08/16 05:40:26 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:26 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:26 → ServerReflectionInfo started
+2026/08/16 05:40:26 → GetEncounter started
+2026/08/16 05:40:26 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:26 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:26 → ServerReflectionInfo started
+2026/08/16 05:40:26 → EndTurn started
+2026/08/16 05:40:26 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:26 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:27 → ServerReflectionInfo started
+2026/08/16 05:40:27 → GetEncounter started
+2026/08/16 05:40:27 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:27 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:27 → ServerReflectionInfo started
+2026/08/16 05:40:27 → EndTurn started
+2026/08/16 05:40:27 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:27 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:27 → ServerReflectionInfo started
+2026/08/16 05:40:27 → GetEncounter started
+2026/08/16 05:40:27 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:27 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:27 → ServerReflectionInfo started
+2026/08/16 05:40:27 → EndTurn started
+2026/08/16 05:40:27 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:27 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:27 → ServerReflectionInfo started
+2026/08/16 05:40:27 → GetEncounter started
+2026/08/16 05:40:27 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:27 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:27 → ServerReflectionInfo started
+2026/08/16 05:40:27 → EndTurn started
+2026/08/16 05:40:27 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:27 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:27 → ServerReflectionInfo started
+2026/08/16 05:40:27 → GetEncounter started
+2026/08/16 05:40:27 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:27 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:28 → ServerReflectionInfo started
+2026/08/16 05:40:28 → EndTurn started
+2026/08/16 05:40:28 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:28 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:28 → ServerReflectionInfo started
+2026/08/16 05:40:28 → GetEncounter started
+2026/08/16 05:40:28 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:28 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:28 → ServerReflectionInfo started
+2026/08/16 05:40:28 → EndTurn started
+2026/08/16 05:40:28 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:28 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:28 → ServerReflectionInfo started
+2026/08/16 05:40:28 → GetEncounter started
+2026/08/16 05:40:28 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:28 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:28 → ServerReflectionInfo started
+2026/08/16 05:40:28 → EndTurn started
+2026/08/16 05:40:28 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:28 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:28 → ServerReflectionInfo started
+2026/08/16 05:40:28 → GetEncounter started
+2026/08/16 05:40:28 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:28 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:28 → ServerReflectionInfo started
+2026/08/16 05:40:28 → EndTurn started
+2026/08/16 05:40:28 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:28 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:28 → ServerReflectionInfo started
+2026/08/16 05:40:28 → GetEncounter started
+2026/08/16 05:40:28 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:28 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:29 → ServerReflectionInfo started
+2026/08/16 05:40:29 → EndTurn started
+2026/08/16 05:40:29 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:29 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:29 → ServerReflectionInfo started
+2026/08/16 05:40:29 → GetEncounter started
+2026/08/16 05:40:29 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:29 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:29 → ServerReflectionInfo started
+2026/08/16 05:40:29 → EndTurn started
+2026/08/16 05:40:29 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:29 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:29 → ServerReflectionInfo started
+2026/08/16 05:40:29 → GetEncounter started
+2026/08/16 05:40:29 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:29 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:29 → ServerReflectionInfo started
+2026/08/16 05:40:29 → EndTurn started
+2026/08/16 05:40:29 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:29 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:29 → ServerReflectionInfo started
+2026/08/16 05:40:29 → GetEncounter started
+2026/08/16 05:40:29 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:29 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:29 → ServerReflectionInfo started
+2026/08/16 05:40:29 → EndTurn started
+2026/08/16 05:40:29 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:29 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:30 → ServerReflectionInfo started
+2026/08/16 05:40:30 → GetEncounter started
+2026/08/16 05:40:30 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:30 → ServerReflectionInfo started
+2026/08/16 05:40:30 → EndTurn started
+2026/08/16 05:40:30 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:30 → ServerReflectionInfo started
+2026/08/16 05:40:30 → GetEncounter started
+2026/08/16 05:40:30 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:30 → ServerReflectionInfo started
+2026/08/16 05:40:30 → EndTurn started
+2026/08/16 05:40:30 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:30 → ServerReflectionInfo started
+2026/08/16 05:40:30 → GetEncounter started
+2026/08/16 05:40:30 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:30 → ServerReflectionInfo started
+2026/08/16 05:40:30 → EndTurn started
+2026/08/16 05:40:30 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:30 → ServerReflectionInfo started
+2026/08/16 05:40:30 → GetEncounter started
+2026/08/16 05:40:30 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:30 → ServerReflectionInfo started
+2026/08/16 05:40:30 → EndTurn started
+2026/08/16 05:40:30 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:31 → ServerReflectionInfo started
+2026/08/16 05:40:31 → GetEncounter started
+2026/08/16 05:40:31 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:31 → ServerReflectionInfo started
+2026/08/16 05:40:31 → EndTurn started
+2026/08/16 05:40:31 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:31 → ServerReflectionInfo started
+2026/08/16 05:40:31 → GetEncounter started
+2026/08/16 05:40:31 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:31 → ServerReflectionInfo started
+2026/08/16 05:40:31 → EndTurn started
+2026/08/16 05:40:31 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:31 → ServerReflectionInfo started
+2026/08/16 05:40:31 → GetEncounter started
+2026/08/16 05:40:31 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:31 → ServerReflectionInfo started
+2026/08/16 05:40:31 → EndTurn started
+2026/08/16 05:40:31 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:31 → ServerReflectionInfo started
+2026/08/16 05:40:31 → GetEncounter started
+2026/08/16 05:40:31 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:32 → ServerReflectionInfo started
+2026/08/16 05:40:32 → EndTurn started
+2026/08/16 05:40:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:32 → ServerReflectionInfo started
+2026/08/16 05:40:32 → GetEncounter started
+2026/08/16 05:40:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:32 → ServerReflectionInfo started
+2026/08/16 05:40:32 → EndTurn started
+2026/08/16 05:40:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:32 → ServerReflectionInfo started
+2026/08/16 05:40:32 → GetEncounter started
+2026/08/16 05:40:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:32 → ServerReflectionInfo started
+2026/08/16 05:40:32 → EndTurn started
+2026/08/16 05:40:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:32 → ServerReflectionInfo started
+2026/08/16 05:40:32 → GetEncounter started
+2026/08/16 05:40:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:32 → ServerReflectionInfo started
+2026/08/16 05:40:32 → EndTurn started
+2026/08/16 05:40:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:32 → ServerReflectionInfo started
+2026/08/16 05:40:32 → GetEncounter started
+2026/08/16 05:40:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:33 → ServerReflectionInfo started
+2026/08/16 05:40:33 → EndTurn started
+2026/08/16 05:40:33 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:33 → ServerReflectionInfo started
+2026/08/16 05:40:33 → GetEncounter started
+2026/08/16 05:40:33 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:33 → ServerReflectionInfo started
+2026/08/16 05:40:33 → EndTurn started
+2026/08/16 05:40:33 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:33 → ServerReflectionInfo started
+2026/08/16 05:40:33 → GetEncounter started
+2026/08/16 05:40:33 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:33 → ServerReflectionInfo started
+2026/08/16 05:40:33 → EndTurn started
+2026/08/16 05:40:33 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:33 → ServerReflectionInfo started
+2026/08/16 05:40:33 → GetEncounter started
+2026/08/16 05:40:33 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:33 → ServerReflectionInfo started
+2026/08/16 05:40:33 → EndTurn started
+2026/08/16 05:40:33 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:33 → ServerReflectionInfo started
+2026/08/16 05:40:33 → GetEncounter started
+2026/08/16 05:40:33 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:34 → ServerReflectionInfo started
+2026/08/16 05:40:34 → EndTurn started
+2026/08/16 05:40:34 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:34 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:34 → ServerReflectionInfo started
+2026/08/16 05:40:34 → GetEncounter started
+2026/08/16 05:40:34 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:34 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:34 → ServerReflectionInfo started
+2026/08/16 05:40:34 → EndTurn started
+2026/08/16 05:40:34 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:34 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:34 → ServerReflectionInfo started
+2026/08/16 05:40:34 → GetEncounter started
+2026/08/16 05:40:34 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:34 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:34 → ServerReflectionInfo started
+2026/08/16 05:40:34 → EndTurn started
+2026/08/16 05:40:34 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:34 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:34 → ServerReflectionInfo started
+2026/08/16 05:40:34 → GetEncounter started
+2026/08/16 05:40:34 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:34 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:34 → ServerReflectionInfo started
+2026/08/16 05:40:34 → EndTurn started
+2026/08/16 05:40:34 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:34 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:35 → ServerReflectionInfo started
+2026/08/16 05:40:35 → GetEncounter started
+2026/08/16 05:40:35 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:35 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:35 → ServerReflectionInfo started
+2026/08/16 05:40:35 → EndTurn started
+2026/08/16 05:40:35 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:35 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:35 → ServerReflectionInfo started
+2026/08/16 05:40:35 → GetEncounter started
+2026/08/16 05:40:35 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:35 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:35 → ServerReflectionInfo started
+2026/08/16 05:40:35 → EndTurn started
+2026/08/16 05:40:35 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:35 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:35 → ServerReflectionInfo started
+2026/08/16 05:40:35 → GetEncounter started
+2026/08/16 05:40:35 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:35 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:35 → ServerReflectionInfo started
+2026/08/16 05:40:35 → EndTurn started
+2026/08/16 05:40:35 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:35 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:35 → ServerReflectionInfo started
+2026/08/16 05:40:35 → GetEncounter started
+2026/08/16 05:40:35 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:35 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:35 → ServerReflectionInfo started
+2026/08/16 05:40:35 → EndTurn started
+2026/08/16 05:40:35 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:35 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:36 → ServerReflectionInfo started
+2026/08/16 05:40:36 → GetEncounter started
+2026/08/16 05:40:36 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:36 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:36 → ServerReflectionInfo started
+2026/08/16 05:40:36 → EndTurn started
+2026/08/16 05:40:36 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:36 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:36 → ServerReflectionInfo started
+2026/08/16 05:40:36 → GetEncounter started
+2026/08/16 05:40:36 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:36 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:36 → ServerReflectionInfo started
+2026/08/16 05:40:36 → EndTurn started
+2026/08/16 05:40:36 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:36 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:36 → ServerReflectionInfo started
+2026/08/16 05:40:36 → GetEncounter started
+2026/08/16 05:40:36 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:36 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:36 → ServerReflectionInfo started
+2026/08/16 05:40:36 → EndTurn started
+2026/08/16 05:40:36 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:36 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:36 → ServerReflectionInfo started
+2026/08/16 05:40:36 → GetEncounter started
+2026/08/16 05:40:36 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:36 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:37 → ServerReflectionInfo started
+2026/08/16 05:40:37 → EndTurn started
+2026/08/16 05:40:37 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:37 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:37 → ServerReflectionInfo started
+2026/08/16 05:40:37 → GetEncounter started
+2026/08/16 05:40:37 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:37 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:37 → ServerReflectionInfo started
+2026/08/16 05:40:37 → EndTurn started
+2026/08/16 05:40:37 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:37 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:37 → ServerReflectionInfo started
+2026/08/16 05:40:37 → GetEncounter started
+2026/08/16 05:40:37 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:37 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:37 → ServerReflectionInfo started
+2026/08/16 05:40:37 → EndTurn started
+2026/08/16 05:40:37 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:37 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:37 → ServerReflectionInfo started
+2026/08/16 05:40:37 → GetEncounter started
+2026/08/16 05:40:37 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:37 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:37 → ServerReflectionInfo started
+2026/08/16 05:40:37 → EndTurn started
+2026/08/16 05:40:37 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:37 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:37 → ServerReflectionInfo started
+2026/08/16 05:40:37 → GetEncounter started
+2026/08/16 05:40:37 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:38 → ServerReflectionInfo started
+2026/08/16 05:40:38 → EndTurn started
+2026/08/16 05:40:38 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:38 → ServerReflectionInfo started
+2026/08/16 05:40:38 → GetEncounter started
+2026/08/16 05:40:38 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:38 → ServerReflectionInfo started
+2026/08/16 05:40:38 → EndTurn started
+2026/08/16 05:40:38 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:38 → ServerReflectionInfo started
+2026/08/16 05:40:38 → GetEncounter started
+2026/08/16 05:40:38 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:38 → ServerReflectionInfo started
+2026/08/16 05:40:38 → EndTurn started
+2026/08/16 05:40:38 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:38 → ServerReflectionInfo started
+2026/08/16 05:40:38 → GetEncounter started
+2026/08/16 05:40:38 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:38 → ServerReflectionInfo started
+2026/08/16 05:40:38 → EndTurn started
+2026/08/16 05:40:38 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:38 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:39 → ServerReflectionInfo started
+2026/08/16 05:40:39 → GetEncounter started
+2026/08/16 05:40:39 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:39 → ServerReflectionInfo started
+2026/08/16 05:40:39 → EndTurn started
+2026/08/16 05:40:39 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:39 → ServerReflectionInfo started
+2026/08/16 05:40:39 → GetEncounter started
+2026/08/16 05:40:39 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:39 → ServerReflectionInfo started
+2026/08/16 05:40:39 → EndTurn started
+2026/08/16 05:40:39 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:39 → ServerReflectionInfo started
+2026/08/16 05:40:39 → GetEncounter started
+2026/08/16 05:40:39 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:39 → ServerReflectionInfo started
+2026/08/16 05:40:39 → EndTurn started
+2026/08/16 05:40:39 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:39 → ServerReflectionInfo started
+2026/08/16 05:40:39 → GetEncounter started
+2026/08/16 05:40:39 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:40 → ServerReflectionInfo started
+2026/08/16 05:40:40 → EndTurn started
+2026/08/16 05:40:40 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:40 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:40 → ServerReflectionInfo started
+2026/08/16 05:40:40 → GetEncounter started
+2026/08/16 05:40:40 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:40 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:40 → ServerReflectionInfo started
+2026/08/16 05:40:40 → EndTurn started
+2026/08/16 05:40:40 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:40 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:40 → ServerReflectionInfo started
+2026/08/16 05:40:40 → GetEncounter started
+2026/08/16 05:40:40 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:40 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:40 → ServerReflectionInfo started
+2026/08/16 05:40:40 → EndTurn started
+2026/08/16 05:40:40 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:40 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:40 → ServerReflectionInfo started
+2026/08/16 05:40:40 → GetEncounter started
+2026/08/16 05:40:40 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:40 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:40 → ServerReflectionInfo started
+2026/08/16 05:40:40 → EndTurn started
+2026/08/16 05:40:40 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:40 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:40 → ServerReflectionInfo started
+2026/08/16 05:40:40 → GetEncounter started
+2026/08/16 05:40:40 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:40 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:41 → ServerReflectionInfo started
+2026/08/16 05:40:41 → EndTurn started
+2026/08/16 05:40:41 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:41 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:41 → ServerReflectionInfo started
+2026/08/16 05:40:41 → GetEncounter started
+2026/08/16 05:40:41 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:41 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:41 → ServerReflectionInfo started
+2026/08/16 05:40:41 → EndTurn started
+2026/08/16 05:40:41 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:41 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:41 → ServerReflectionInfo started
+2026/08/16 05:40:41 → GetEncounter started
+2026/08/16 05:40:41 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:41 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:41 → ServerReflectionInfo started
+2026/08/16 05:40:41 → EndTurn started
+2026/08/16 05:40:41 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:41 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:41 → ServerReflectionInfo started
+2026/08/16 05:40:41 → GetEncounter started
+2026/08/16 05:40:41 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:41 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:41 → ServerReflectionInfo started
+2026/08/16 05:40:41 → EndTurn started
+2026/08/16 05:40:41 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:41 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:42 → ServerReflectionInfo started
+2026/08/16 05:40:42 → GetEncounter started
+2026/08/16 05:40:42 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:42 → ServerReflectionInfo started
+2026/08/16 05:40:42 → EndTurn started
+2026/08/16 05:40:42 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:42 → ServerReflectionInfo started
+2026/08/16 05:40:42 → GetEncounter started
+2026/08/16 05:40:42 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:42 → ServerReflectionInfo started
+2026/08/16 05:40:42 → EndTurn started
+2026/08/16 05:40:42 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:42 → ServerReflectionInfo started
+2026/08/16 05:40:42 → GetEncounter started
+2026/08/16 05:40:42 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:42 → ServerReflectionInfo started
+2026/08/16 05:40:42 → EndTurn started
+2026/08/16 05:40:42 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:42 → ServerReflectionInfo started
+2026/08/16 05:40:42 → GetEncounter started
+2026/08/16 05:40:42 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:42 → ServerReflectionInfo started
+2026/08/16 05:40:42 → EndTurn started
+2026/08/16 05:40:42 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:42 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:43 → ServerReflectionInfo started
+2026/08/16 05:40:43 → GetEncounter started
+2026/08/16 05:40:43 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:43 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:43 → ServerReflectionInfo started
+2026/08/16 05:40:43 → EndTurn started
+2026/08/16 05:40:43 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:43 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:43 → ServerReflectionInfo started
+2026/08/16 05:40:43 → GetEncounter started
+2026/08/16 05:40:43 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:43 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:43 → ServerReflectionInfo started
+2026/08/16 05:40:43 → EndTurn started
+2026/08/16 05:40:43 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:43 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:43 → ServerReflectionInfo started
+2026/08/16 05:40:43 → GetEncounter started
+2026/08/16 05:40:43 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:43 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:43 → ServerReflectionInfo started
+2026/08/16 05:40:43 → EndTurn started
+2026/08/16 05:40:43 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:43 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:43 → ServerReflectionInfo started
+2026/08/16 05:40:43 → GetEncounter started
+2026/08/16 05:40:43 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:43 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:44 → ServerReflectionInfo started
+2026/08/16 05:40:44 → EndTurn started
+2026/08/16 05:40:44 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:44 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:44 → ServerReflectionInfo started
+2026/08/16 05:40:44 → GetEncounter started
+2026/08/16 05:40:44 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:44 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:44 → ServerReflectionInfo started
+2026/08/16 05:40:44 → EndTurn started
+2026/08/16 05:40:44 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:44 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:44 → ServerReflectionInfo started
+2026/08/16 05:40:44 → GetEncounter started
+2026/08/16 05:40:44 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:44 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:44 → ServerReflectionInfo started
+2026/08/16 05:40:44 → EndTurn started
+2026/08/16 05:40:44 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:44 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:44 → ServerReflectionInfo started
+2026/08/16 05:40:44 → GetEncounter started
+2026/08/16 05:40:44 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:44 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:44 → ServerReflectionInfo started
+2026/08/16 05:40:44 → EndTurn started
+2026/08/16 05:40:44 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:44 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:45 → ServerReflectionInfo started
+2026/08/16 05:40:45 → GetEncounter started
+2026/08/16 05:40:45 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:45 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:45 → ServerReflectionInfo started
+2026/08/16 05:40:45 → EndTurn started
+2026/08/16 05:40:45 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:45 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:45 → ServerReflectionInfo started
+2026/08/16 05:40:45 → GetEncounter started
+2026/08/16 05:40:45 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:45 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:45 → ServerReflectionInfo started
+2026/08/16 05:40:45 → EndTurn started
+2026/08/16 05:40:45 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:45 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:45 → ServerReflectionInfo started
+2026/08/16 05:40:45 → GetEncounter started
+2026/08/16 05:40:45 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:45 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:45 → ServerReflectionInfo started
+2026/08/16 05:40:45 → EndTurn started
+2026/08/16 05:40:45 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:45 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:45 → ServerReflectionInfo started
+2026/08/16 05:40:45 → GetEncounter started
+2026/08/16 05:40:45 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:45 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:46 → ServerReflectionInfo started
+2026/08/16 05:40:46 → EndTurn started
+2026/08/16 05:40:46 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:46 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:46 → ServerReflectionInfo started
+2026/08/16 05:40:46 → GetEncounter started
+2026/08/16 05:40:46 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:46 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:46 → ServerReflectionInfo started
+2026/08/16 05:40:46 → EndTurn started
+2026/08/16 05:40:46 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:46 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:46 → ServerReflectionInfo started
+2026/08/16 05:40:46 → GetEncounter started
+2026/08/16 05:40:46 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:46 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:46 → ServerReflectionInfo started
+2026/08/16 05:40:46 → EndTurn started
+2026/08/16 05:40:46 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:46 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:46 → ServerReflectionInfo started
+2026/08/16 05:40:46 → GetEncounter started
+2026/08/16 05:40:46 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:46 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:46 → ServerReflectionInfo started
+2026/08/16 05:40:46 → EndTurn started
+2026/08/16 05:40:46 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:46 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:47 → ServerReflectionInfo started
+2026/08/16 05:40:47 → GetEncounter started
+2026/08/16 05:40:47 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:47 → ServerReflectionInfo started
+2026/08/16 05:40:47 → EndTurn started
+2026/08/16 05:40:47 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:47 → ServerReflectionInfo started
+2026/08/16 05:40:47 → GetEncounter started
+2026/08/16 05:40:47 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:47 → ServerReflectionInfo started
+2026/08/16 05:40:47 → EndTurn started
+2026/08/16 05:40:47 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:47 → ServerReflectionInfo started
+2026/08/16 05:40:47 → GetEncounter started
+2026/08/16 05:40:47 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:47 → ServerReflectionInfo started
+2026/08/16 05:40:47 → EndTurn started
+2026/08/16 05:40:47 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:47 → ServerReflectionInfo started
+2026/08/16 05:40:47 → GetEncounter started
+2026/08/16 05:40:47 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:47 → ServerReflectionInfo started
+2026/08/16 05:40:47 → EndTurn started
+2026/08/16 05:40:47 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:47 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:48 → ServerReflectionInfo started
+2026/08/16 05:40:48 → GetEncounter started
+2026/08/16 05:40:48 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:48 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:48 → ServerReflectionInfo started
+2026/08/16 05:40:48 → EndTurn started
+2026/08/16 05:40:48 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:48 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:48 → ServerReflectionInfo started
+2026/08/16 05:40:48 → GetEncounter started
+2026/08/16 05:40:48 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:48 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:48 → ServerReflectionInfo started
+2026/08/16 05:40:48 → EndTurn started
+2026/08/16 05:40:48 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:48 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:48 → ServerReflectionInfo started
+2026/08/16 05:40:48 → GetEncounter started
+2026/08/16 05:40:48 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:48 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:48 → ServerReflectionInfo started
+2026/08/16 05:40:48 → EndTurn started
+2026/08/16 05:40:48 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:48 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:48 → ServerReflectionInfo started
+2026/08/16 05:40:48 → GetEncounter started
+2026/08/16 05:40:48 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:48 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:49 → ServerReflectionInfo started
+2026/08/16 05:40:49 → EndTurn started
+2026/08/16 05:40:49 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:49 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:49 → ServerReflectionInfo started
+2026/08/16 05:40:49 → GetEncounter started
+2026/08/16 05:40:49 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:49 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:49 → ServerReflectionInfo started
+2026/08/16 05:40:49 → EndTurn started
+2026/08/16 05:40:49 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:49 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:49 → ServerReflectionInfo started
+2026/08/16 05:40:49 → GetEncounter started
+2026/08/16 05:40:49 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:49 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:49 → ServerReflectionInfo started
+2026/08/16 05:40:49 → EndTurn started
+2026/08/16 05:40:49 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:49 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:49 → ServerReflectionInfo started
+2026/08/16 05:40:49 → GetEncounter started
+2026/08/16 05:40:49 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:49 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:49 → ServerReflectionInfo started
+2026/08/16 05:40:49 → EndTurn started
+2026/08/16 05:40:49 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:49 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:49 → ServerReflectionInfo started
+2026/08/16 05:40:49 → GetEncounter started
+2026/08/16 05:40:49 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:49 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:50 → ServerReflectionInfo started
+2026/08/16 05:40:50 → EndTurn started
+2026/08/16 05:40:50 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:50 → ServerReflectionInfo started
+2026/08/16 05:40:50 → GetEncounter started
+2026/08/16 05:40:50 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:50 → ServerReflectionInfo started
+2026/08/16 05:40:50 → EndTurn started
+2026/08/16 05:40:50 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:50 → ServerReflectionInfo started
+2026/08/16 05:40:50 → GetEncounter started
+2026/08/16 05:40:50 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:50 → ServerReflectionInfo started
+2026/08/16 05:40:50 → EndTurn started
+2026/08/16 05:40:50 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:50 → ServerReflectionInfo started
+2026/08/16 05:40:50 → GetEncounter started
+2026/08/16 05:40:50 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:50 → ServerReflectionInfo started
+2026/08/16 05:40:50 → EndTurn started
+2026/08/16 05:40:50 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:50 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:51 → ServerReflectionInfo started
+2026/08/16 05:40:51 → GetEncounter started
+2026/08/16 05:40:51 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:51 → ServerReflectionInfo started
+2026/08/16 05:40:51 → EndTurn started
+2026/08/16 05:40:51 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:51 → ServerReflectionInfo started
+2026/08/16 05:40:51 → GetEncounter started
+2026/08/16 05:40:51 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:51 → ServerReflectionInfo started
+2026/08/16 05:40:51 → EndTurn started
+2026/08/16 05:40:51 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:51 → ServerReflectionInfo started
+2026/08/16 05:40:51 → GetEncounter started
+2026/08/16 05:40:51 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:51 → ServerReflectionInfo started
+2026/08/16 05:40:51 → EndTurn started
+2026/08/16 05:40:51 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:51 → ServerReflectionInfo started
+2026/08/16 05:40:51 → GetEncounter started
+2026/08/16 05:40:51 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:51 → ServerReflectionInfo started
+2026/08/16 05:40:51 → EndTurn started
+2026/08/16 05:40:51 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:52 → ServerReflectionInfo started
+2026/08/16 05:40:52 → GetEncounter started
+2026/08/16 05:40:52 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:52 → ServerReflectionInfo started
+2026/08/16 05:40:52 → EndTurn started
+2026/08/16 05:40:52 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:52 → ServerReflectionInfo started
+2026/08/16 05:40:52 → GetEncounter started
+2026/08/16 05:40:52 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:52 → ServerReflectionInfo started
+2026/08/16 05:40:52 → EndTurn started
+2026/08/16 05:40:52 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:52 → ServerReflectionInfo started
+2026/08/16 05:40:52 → GetEncounter started
+2026/08/16 05:40:52 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:52 → ServerReflectionInfo started
+2026/08/16 05:40:52 → EndTurn started
+2026/08/16 05:40:52 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:52 → ServerReflectionInfo started
+2026/08/16 05:40:52 → GetEncounter started
+2026/08/16 05:40:52 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:53 → ServerReflectionInfo started
+2026/08/16 05:40:53 → EndTurn started
+2026/08/16 05:40:53 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:53 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:53 → ServerReflectionInfo started
+2026/08/16 05:40:53 → GetEncounter started
+2026/08/16 05:40:53 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:53 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:53 → ServerReflectionInfo started
+2026/08/16 05:40:53 → EndTurn started
+2026/08/16 05:40:53 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:53 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:53 → ServerReflectionInfo started
+2026/08/16 05:40:53 → GetEncounter started
+2026/08/16 05:40:53 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:53 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:53 → ServerReflectionInfo started
+2026/08/16 05:40:53 → EndTurn started
+2026/08/16 05:40:53 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:53 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:53 → ServerReflectionInfo started
+2026/08/16 05:40:53 → GetEncounter started
+2026/08/16 05:40:53 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:53 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:53 → ServerReflectionInfo started
+2026/08/16 05:40:53 → EndTurn started
+2026/08/16 05:40:53 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:53 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:53 → ServerReflectionInfo started
+2026/08/16 05:40:53 → GetEncounter started
+2026/08/16 05:40:53 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:53 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:54 → ServerReflectionInfo started
+2026/08/16 05:40:54 → EndTurn started
+2026/08/16 05:40:54 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:54 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:54 → ServerReflectionInfo started
+2026/08/16 05:40:54 → GetEncounter started
+2026/08/16 05:40:54 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:54 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:54 → ServerReflectionInfo started
+2026/08/16 05:40:54 → EndTurn started
+2026/08/16 05:40:54 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:54 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:54 → ServerReflectionInfo started
+2026/08/16 05:40:54 → GetEncounter started
+2026/08/16 05:40:54 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:54 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:54 → ServerReflectionInfo started
+2026/08/16 05:40:54 → EndTurn started
+2026/08/16 05:40:54 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:54 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:54 → ServerReflectionInfo started
+2026/08/16 05:40:54 → GetEncounter started
+2026/08/16 05:40:54 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:54 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:54 → ServerReflectionInfo started
+2026/08/16 05:40:54 → EndTurn started
+2026/08/16 05:40:54 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:54 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:55 → ServerReflectionInfo started
+2026/08/16 05:40:55 → GetEncounter started
+2026/08/16 05:40:55 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:55 → ServerReflectionInfo started
+2026/08/16 05:40:55 → EndTurn started
+2026/08/16 05:40:55 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:55 → ServerReflectionInfo started
+2026/08/16 05:40:55 → GetEncounter started
+2026/08/16 05:40:55 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:55 → ServerReflectionInfo started
+2026/08/16 05:40:55 → EndTurn started
+2026/08/16 05:40:55 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:55 → ServerReflectionInfo started
+2026/08/16 05:40:55 → GetEncounter started
+2026/08/16 05:40:55 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:55 → ServerReflectionInfo started
+2026/08/16 05:40:55 → EndTurn started
+2026/08/16 05:40:55 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:55 → ServerReflectionInfo started
+2026/08/16 05:40:55 → GetEncounter started
+2026/08/16 05:40:55 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:55 → ServerReflectionInfo started
+2026/08/16 05:40:56 → EndTurn started
+2026/08/16 05:40:56 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:56 → ServerReflectionInfo started
+2026/08/16 05:40:56 → GetEncounter started
+2026/08/16 05:40:56 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:56 → ServerReflectionInfo started
+2026/08/16 05:40:56 → EndTurn started
+2026/08/16 05:40:56 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:56 → ServerReflectionInfo started
+2026/08/16 05:40:56 → GetEncounter started
+2026/08/16 05:40:56 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:56 → ServerReflectionInfo started
+2026/08/16 05:40:56 → EndTurn started
+2026/08/16 05:40:56 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:56 → ServerReflectionInfo started
+2026/08/16 05:40:56 → GetEncounter started
+2026/08/16 05:40:56 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:56 → ServerReflectionInfo started
+2026/08/16 05:40:56 → EndTurn started
+2026/08/16 05:40:56 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:56 → ServerReflectionInfo started
+2026/08/16 05:40:56 → GetEncounter started
+2026/08/16 05:40:56 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:57 → ServerReflectionInfo started
+2026/08/16 05:40:57 → EndTurn started
+2026/08/16 05:40:57 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:57 → ServerReflectionInfo started
+2026/08/16 05:40:57 → GetEncounter started
+2026/08/16 05:40:57 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:57 → ServerReflectionInfo started
+2026/08/16 05:40:57 → EndTurn started
+2026/08/16 05:40:57 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:57 → ServerReflectionInfo started
+2026/08/16 05:40:57 → GetEncounter started
+2026/08/16 05:40:57 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:57 → ServerReflectionInfo started
+2026/08/16 05:40:57 → EndTurn started
+2026/08/16 05:40:57 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:57 → ServerReflectionInfo started
+2026/08/16 05:40:57 → GetEncounter started
+2026/08/16 05:40:57 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:57 → ServerReflectionInfo started
+2026/08/16 05:40:57 → EndTurn started
+2026/08/16 05:40:57 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:57 → ServerReflectionInfo started
+2026/08/16 05:40:57 → GetEncounter started
+2026/08/16 05:40:57 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:58 → ServerReflectionInfo started
+2026/08/16 05:40:58 → EndTurn started
+2026/08/16 05:40:58 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:58 → ServerReflectionInfo started
+2026/08/16 05:40:58 → GetEncounter started
+2026/08/16 05:40:58 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:58 → ServerReflectionInfo started
+2026/08/16 05:40:58 → EndTurn started
+2026/08/16 05:40:58 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:58 → ServerReflectionInfo started
+2026/08/16 05:40:58 → GetEncounter started
+2026/08/16 05:40:58 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:58 → ServerReflectionInfo started
+2026/08/16 05:40:58 → EndTurn started
+2026/08/16 05:40:58 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:58 → ServerReflectionInfo started
+2026/08/16 05:40:58 → GetEncounter started
+2026/08/16 05:40:58 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:58 → ServerReflectionInfo started
+2026/08/16 05:40:58 → EndTurn started
+2026/08/16 05:40:58 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:59 → ServerReflectionInfo started
+2026/08/16 05:40:59 → GetEncounter started
+2026/08/16 05:40:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:59 → ServerReflectionInfo started
+2026/08/16 05:40:59 → EndTurn started
+2026/08/16 05:40:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:59 → ServerReflectionInfo started
+2026/08/16 05:40:59 → GetEncounter started
+2026/08/16 05:40:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:59 → ServerReflectionInfo started
+2026/08/16 05:40:59 → EndTurn started
+2026/08/16 05:40:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:59 → ServerReflectionInfo started
+2026/08/16 05:40:59 → GetEncounter started
+2026/08/16 05:40:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:59 → ServerReflectionInfo started
+2026/08/16 05:40:59 → EndTurn started
+2026/08/16 05:40:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:59 → ServerReflectionInfo started
+2026/08/16 05:40:59 → GetEncounter started
+2026/08/16 05:40:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:40:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:40:59 → ServerReflectionInfo started
+2026/08/16 05:40:59 → EndTurn started
+2026/08/16 05:40:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:40:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:00 → ServerReflectionInfo started
+2026/08/16 05:41:00 → GetEncounter started
+2026/08/16 05:41:00 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:00 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:00 → ServerReflectionInfo started
+2026/08/16 05:41:00 → EndTurn started
+2026/08/16 05:41:00 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:00 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:00 → ServerReflectionInfo started
+2026/08/16 05:41:00 → GetEncounter started
+2026/08/16 05:41:00 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:00 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:00 → ServerReflectionInfo started
+2026/08/16 05:41:00 → EndTurn started
+2026/08/16 05:41:00 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:00 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:00 → ServerReflectionInfo started
+2026/08/16 05:41:00 → GetEncounter started
+2026/08/16 05:41:00 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:00 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:00 → ServerReflectionInfo started
+2026/08/16 05:41:00 → EndTurn started
+2026/08/16 05:41:00 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:00 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:00 → ServerReflectionInfo started
+2026/08/16 05:41:00 → GetEncounter started
+2026/08/16 05:41:00 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:00 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:00 → ServerReflectionInfo started
+2026/08/16 05:41:00 → EndTurn started
+2026/08/16 05:41:00 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:00 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:01 → ServerReflectionInfo started
+2026/08/16 05:41:01 → GetEncounter started
+2026/08/16 05:41:01 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:01 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:01 → ServerReflectionInfo started
+2026/08/16 05:41:01 → EndTurn started
+2026/08/16 05:41:01 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:01 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:01 → ServerReflectionInfo started
+2026/08/16 05:41:01 → GetEncounter started
+2026/08/16 05:41:01 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:01 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:01 → ServerReflectionInfo started
+2026/08/16 05:41:01 → EndTurn started
+2026/08/16 05:41:01 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:01 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:01 → ServerReflectionInfo started
+2026/08/16 05:41:01 → GetEncounter started
+2026/08/16 05:41:01 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:01 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:01 → ServerReflectionInfo started
+2026/08/16 05:41:01 → EndTurn started
+2026/08/16 05:41:01 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:01 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:01 → ServerReflectionInfo started
+2026/08/16 05:41:01 → GetEncounter started
+2026/08/16 05:41:01 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:01 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:02 → ServerReflectionInfo started
+2026/08/16 05:41:02 → EndTurn started
+2026/08/16 05:41:02 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:02 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:02 → ServerReflectionInfo started
+2026/08/16 05:41:02 → GetEncounter started
+2026/08/16 05:41:02 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:02 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:02 → ServerReflectionInfo started
+2026/08/16 05:41:02 → EndTurn started
+2026/08/16 05:41:02 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:02 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:02 → ServerReflectionInfo started
+2026/08/16 05:41:02 → GetEncounter started
+2026/08/16 05:41:02 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:02 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:02 → ServerReflectionInfo started
+2026/08/16 05:41:02 → EndTurn started
+2026/08/16 05:41:02 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:02 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:02 → ServerReflectionInfo started
+2026/08/16 05:41:02 → GetEncounter started
+2026/08/16 05:41:02 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:02 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:02 → ServerReflectionInfo started
+2026/08/16 05:41:02 → EndTurn started
+2026/08/16 05:41:02 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:02 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:02 → ServerReflectionInfo started
+2026/08/16 05:41:02 → GetEncounter started
+2026/08/16 05:41:02 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:02 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:03 → ServerReflectionInfo started
+2026/08/16 05:41:03 → EndTurn started
+2026/08/16 05:41:03 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:03 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:03 → ServerReflectionInfo started
+2026/08/16 05:41:03 → GetEncounter started
+2026/08/16 05:41:03 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:03 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:03 → ServerReflectionInfo started
+2026/08/16 05:41:03 → EndTurn started
+2026/08/16 05:41:03 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:03 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:03 → ServerReflectionInfo started
+2026/08/16 05:41:03 → GetEncounter started
+2026/08/16 05:41:03 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:03 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:03 → ServerReflectionInfo started
+2026/08/16 05:41:03 → EndTurn started
+2026/08/16 05:41:03 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:03 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:03 → ServerReflectionInfo started
+2026/08/16 05:41:03 → GetEncounter started
+2026/08/16 05:41:03 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:03 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:03 → ServerReflectionInfo started
+2026/08/16 05:41:03 → GetEncounter started
+2026/08/16 05:41:03 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:03 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:04 → ServerReflectionInfo started
+2026/08/16 05:41:04 → GetEncounter started
+2026/08/16 05:41:04 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:04 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:04 → ServerReflectionInfo started
+2026/08/16 05:41:04 → GetEncounter started
+2026/08/16 05:41:04 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:04 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:04 → ServerReflectionInfo started
+2026/08/16 05:41:04 → GetEncounter started
+2026/08/16 05:41:04 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:04 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:04 → ServerReflectionInfo started
+2026/08/16 05:41:04 → GetEncounter started
+2026/08/16 05:41:04 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:04 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:04 → ServerReflectionInfo started
+2026/08/16 05:41:04 → GetEncounter started
+2026/08/16 05:41:04 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:04 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:05 → ServerReflectionInfo started
+2026/08/16 05:41:05 → GetEncounter started
+2026/08/16 05:41:05 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:05 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:05 → ServerReflectionInfo started
+2026/08/16 05:41:05 → GetEncounter started
+2026/08/16 05:41:05 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:05 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:05 → ServerReflectionInfo started
+2026/08/16 05:41:05 → GetEncounter started
+2026/08/16 05:41:05 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:05 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:05 → ServerReflectionInfo started
+2026/08/16 05:41:05 → GetEncounter started
+2026/08/16 05:41:05 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:05 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:05 → ServerReflectionInfo started
+2026/08/16 05:41:05 → GetEncounter started
+2026/08/16 05:41:05 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:05 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:05 → ServerReflectionInfo started
+2026/08/16 05:41:05 → GetEncounter started
+2026/08/16 05:41:05 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:05 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:06 → ServerReflectionInfo started
+2026/08/16 05:41:06 → GetEncounter started
+2026/08/16 05:41:06 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:06 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:06 → ServerReflectionInfo started
+2026/08/16 05:41:06 → GetEncounter started
+2026/08/16 05:41:06 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:06 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:06 → ServerReflectionInfo started
+2026/08/16 05:41:06 → GetEncounter started
+2026/08/16 05:41:06 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:06 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:06 → ServerReflectionInfo started
+2026/08/16 05:41:06 → GetEncounter started
+2026/08/16 05:41:06 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:06 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:06 → ServerReflectionInfo started
+2026/08/16 05:41:06 → GetEncounter started
+2026/08/16 05:41:06 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:06 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:07 → ServerReflectionInfo started
+2026/08/16 05:41:07 → GetEncounter started
+2026/08/16 05:41:07 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:07 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:07 → ServerReflectionInfo started
+2026/08/16 05:41:07 → GetEncounter started
+2026/08/16 05:41:07 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:07 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:07 → ServerReflectionInfo started
+2026/08/16 05:41:07 → GetEncounter started
+2026/08/16 05:41:07 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:07 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:07 → ServerReflectionInfo started
+2026/08/16 05:41:07 → GetEncounter started
+2026/08/16 05:41:07 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:07 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:07 → ServerReflectionInfo started
+2026/08/16 05:41:07 → GetEncounter started
+2026/08/16 05:41:07 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:07 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:07 → ServerReflectionInfo started
+2026/08/16 05:41:07 → GetEncounter started
+2026/08/16 05:41:07 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:07 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:08 → ServerReflectionInfo started
+2026/08/16 05:41:08 → GetEncounter started
+2026/08/16 05:41:08 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:08 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:08 → ServerReflectionInfo started
+2026/08/16 05:41:08 → GetEncounter started
+2026/08/16 05:41:08 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:08 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:08 → ServerReflectionInfo started
+2026/08/16 05:41:08 → GetEncounter started
+2026/08/16 05:41:08 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:08 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:08 → ServerReflectionInfo started
+2026/08/16 05:41:08 → GetEncounter started
+2026/08/16 05:41:08 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:08 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:08 → ServerReflectionInfo started
+2026/08/16 05:41:08 → GetEncounter started
+2026/08/16 05:41:08 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:08 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:09 → ServerReflectionInfo started
+2026/08/16 05:41:09 → GetEncounter started
+2026/08/16 05:41:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:09 → ServerReflectionInfo started
+2026/08/16 05:41:09 → GetEncounter started
+2026/08/16 05:41:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:09 → ServerReflectionInfo started
+2026/08/16 05:41:09 → GetEncounter started
+2026/08/16 05:41:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:09 → ServerReflectionInfo started
+2026/08/16 05:41:09 → GetEncounter started
+2026/08/16 05:41:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:09 → ServerReflectionInfo started
+2026/08/16 05:41:09 → GetEncounter started
+2026/08/16 05:41:09 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:09 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:09 → ServerReflectionInfo started
+2026/08/16 05:41:10 → GetEncounter started
+2026/08/16 05:41:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:10 → ServerReflectionInfo started
+2026/08/16 05:41:10 → GetEncounter started
+2026/08/16 05:41:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:10 → ServerReflectionInfo started
+2026/08/16 05:41:10 → GetEncounter started
+2026/08/16 05:41:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:10 → ServerReflectionInfo started
+2026/08/16 05:41:10 → GetEncounter started
+2026/08/16 05:41:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:10 → ServerReflectionInfo started
+2026/08/16 05:41:10 → GetEncounter started
+2026/08/16 05:41:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:10 → ServerReflectionInfo started
+2026/08/16 05:41:10 → GetEncounter started
+2026/08/16 05:41:10 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:10 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:11 → ServerReflectionInfo started
+2026/08/16 05:41:11 → GetEncounter started
+2026/08/16 05:41:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:11 → ServerReflectionInfo started
+2026/08/16 05:41:11 → GetEncounter started
+2026/08/16 05:41:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:11 → ServerReflectionInfo started
+2026/08/16 05:41:11 → GetEncounter started
+2026/08/16 05:41:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:11 → ServerReflectionInfo started
+2026/08/16 05:41:11 → GetEncounter started
+2026/08/16 05:41:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:11 → ServerReflectionInfo started
+2026/08/16 05:41:11 → GetEncounter started
+2026/08/16 05:41:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:12 → ServerReflectionInfo started
+2026/08/16 05:41:12 → GetEncounter started
+2026/08/16 05:41:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:12 → ServerReflectionInfo started
+2026/08/16 05:41:12 → GetEncounter started
+2026/08/16 05:41:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:12 → ServerReflectionInfo started
+2026/08/16 05:41:12 → GetEncounter started
+2026/08/16 05:41:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:12 → ServerReflectionInfo started
+2026/08/16 05:41:12 → GetEncounter started
+2026/08/16 05:41:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:12 → ServerReflectionInfo started
+2026/08/16 05:41:12 → GetEncounter started
+2026/08/16 05:41:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:12 → ServerReflectionInfo started
+2026/08/16 05:41:12 → GetEncounter started
+2026/08/16 05:41:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:13 → ServerReflectionInfo started
+2026/08/16 05:41:13 → GetEncounter started
+2026/08/16 05:41:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:13 → ServerReflectionInfo started
+2026/08/16 05:41:13 → GetEncounter started
+2026/08/16 05:41:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:13 → ServerReflectionInfo started
+2026/08/16 05:41:13 → GetEncounter started
+2026/08/16 05:41:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:13 → ServerReflectionInfo started
+2026/08/16 05:41:13 → GetEncounter started
+2026/08/16 05:41:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:13 → ServerReflectionInfo started
+2026/08/16 05:41:13 → GetEncounter started
+2026/08/16 05:41:13 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:13 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:14 → ServerReflectionInfo started
+2026/08/16 05:41:14 → GetEncounter started
+2026/08/16 05:41:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:14 → ServerReflectionInfo started
+2026/08/16 05:41:14 → GetEncounter started
+2026/08/16 05:41:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:14 → ServerReflectionInfo started
+2026/08/16 05:41:14 → GetEncounter started
+2026/08/16 05:41:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:14 → ServerReflectionInfo started
+2026/08/16 05:41:14 → GetEncounter started
+2026/08/16 05:41:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:14 → ServerReflectionInfo started
+2026/08/16 05:41:14 → GetEncounter started
+2026/08/16 05:41:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:14 → ServerReflectionInfo started
+2026/08/16 05:41:14 → GetEncounter started
+2026/08/16 05:41:14 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:14 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:15 → ServerReflectionInfo started
+2026/08/16 05:41:15 → GetEncounter started
+2026/08/16 05:41:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:15 → ServerReflectionInfo started
+2026/08/16 05:41:15 → GetEncounter started
+2026/08/16 05:41:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:15 → ServerReflectionInfo started
+2026/08/16 05:41:15 → GetEncounter started
+2026/08/16 05:41:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:15 → ServerReflectionInfo started
+2026/08/16 05:41:15 → GetEncounter started
+2026/08/16 05:41:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:15 → ServerReflectionInfo started
+2026/08/16 05:41:15 → GetEncounter started
+2026/08/16 05:41:15 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:15 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:16 → ServerReflectionInfo started
+2026/08/16 05:41:16 → GetEncounter started
+2026/08/16 05:41:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:16 → ServerReflectionInfo started
+2026/08/16 05:41:16 → GetEncounter started
+2026/08/16 05:41:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:16 → ServerReflectionInfo started
+2026/08/16 05:41:16 → GetEncounter started
+2026/08/16 05:41:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:16 → ServerReflectionInfo started
+2026/08/16 05:41:16 → GetEncounter started
+2026/08/16 05:41:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:16 → ServerReflectionInfo started
+2026/08/16 05:41:16 → GetEncounter started
+2026/08/16 05:41:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:16 → ServerReflectionInfo started
+2026/08/16 05:41:16 → GetEncounter started
+2026/08/16 05:41:16 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:16 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:17 → ServerReflectionInfo started
+2026/08/16 05:41:17 → GetEncounter started
+2026/08/16 05:41:17 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:17 → ServerReflectionInfo started
+2026/08/16 05:41:17 → GetEncounter started
+2026/08/16 05:41:17 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:17 → ServerReflectionInfo started
+2026/08/16 05:41:17 → GetEncounter started
+2026/08/16 05:41:17 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:17 → ServerReflectionInfo started
+2026/08/16 05:41:17 → GetEncounter started
+2026/08/16 05:41:17 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:17 → ServerReflectionInfo started
+2026/08/16 05:41:17 → GetEncounter started
+2026/08/16 05:41:17 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:17 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:18 → ServerReflectionInfo started
+2026/08/16 05:41:18 → GetEncounter started
+2026/08/16 05:41:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:18 → ServerReflectionInfo started
+2026/08/16 05:41:18 → GetEncounter started
+2026/08/16 05:41:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:18 → ServerReflectionInfo started
+2026/08/16 05:41:18 → GetEncounter started
+2026/08/16 05:41:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:18 → ServerReflectionInfo started
+2026/08/16 05:41:18 → GetEncounter started
+2026/08/16 05:41:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:18 → ServerReflectionInfo started
+2026/08/16 05:41:18 → GetEncounter started
+2026/08/16 05:41:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:18 → ServerReflectionInfo started
+2026/08/16 05:41:18 → GetEncounter started
+2026/08/16 05:41:18 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:18 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:19 → ServerReflectionInfo started
+2026/08/16 05:41:19 → GetEncounter started
+2026/08/16 05:41:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:19 → ServerReflectionInfo started
+2026/08/16 05:41:19 → GetEncounter started
+2026/08/16 05:41:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:19 → ServerReflectionInfo started
+2026/08/16 05:41:19 → GetEncounter started
+2026/08/16 05:41:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:19 → ServerReflectionInfo started
+2026/08/16 05:41:19 → GetEncounter started
+2026/08/16 05:41:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:19 → ServerReflectionInfo started
+2026/08/16 05:41:19 → GetEncounter started
+2026/08/16 05:41:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:19 → ServerReflectionInfo started
+2026/08/16 05:41:19 → GetEncounter started
+2026/08/16 05:41:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:20 → ServerReflectionInfo started
+2026/08/16 05:41:20 → GetEncounter started
+2026/08/16 05:41:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:20 → ServerReflectionInfo started
+2026/08/16 05:41:20 → GetEncounter started
+2026/08/16 05:41:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:20 → ServerReflectionInfo started
+2026/08/16 05:41:20 → GetEncounter started
+2026/08/16 05:41:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:20 → ServerReflectionInfo started
+2026/08/16 05:41:20 → GetEncounter started
+2026/08/16 05:41:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:20 → ServerReflectionInfo started
+2026/08/16 05:41:20 → GetEncounter started
+2026/08/16 05:41:20 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:20 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:21 → ServerReflectionInfo started
+2026/08/16 05:41:21 → GetEncounter started
+2026/08/16 05:41:21 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:21 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:30 → ServerReflectionInfo started
+2026/08/16 05:41:30 → GetEncounter started
+2026/08/16 05:41:30 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:30 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:55 → ServerReflectionInfo started
+2026/08/16 05:41:55 → GetEncounter started
+2026/08/16 05:41:55 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:55 → ServerReflectionInfo started
+2026/08/16 05:41:55 → EndTurn started
+2026/08/16 05:41:55 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:55 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:56 → ServerReflectionInfo started
+2026/08/16 05:41:56 → GetEncounter started
+2026/08/16 05:41:56 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:56 → ServerReflectionInfo started
+2026/08/16 05:41:56 → EndTurn started
+2026/08/16 05:41:56 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:56 → ServerReflectionInfo started
+2026/08/16 05:41:56 → GetEncounter started
+2026/08/16 05:41:56 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:56 → ServerReflectionInfo started
+2026/08/16 05:41:56 → EndTurn started
+2026/08/16 05:41:56 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:56 → ServerReflectionInfo started
+2026/08/16 05:41:56 → GetEncounter started
+2026/08/16 05:41:56 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:56 → ServerReflectionInfo started
+2026/08/16 05:41:56 → EndTurn started
+2026/08/16 05:41:56 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:56 → ServerReflectionInfo started
+2026/08/16 05:41:56 → GetEncounter started
+2026/08/16 05:41:56 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:56 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:57 → ServerReflectionInfo started
+2026/08/16 05:41:57 → EndTurn started
+2026/08/16 05:41:57 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:57 → ServerReflectionInfo started
+2026/08/16 05:41:57 → GetEncounter started
+2026/08/16 05:41:57 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:57 → ServerReflectionInfo started
+2026/08/16 05:41:57 → EndTurn started
+2026/08/16 05:41:57 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:57 → ServerReflectionInfo started
+2026/08/16 05:41:57 → GetEncounter started
+2026/08/16 05:41:57 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:57 → ServerReflectionInfo started
+2026/08/16 05:41:57 → EndTurn started
+2026/08/16 05:41:57 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:57 → ServerReflectionInfo started
+2026/08/16 05:41:57 → GetEncounter started
+2026/08/16 05:41:57 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:57 → ServerReflectionInfo started
+2026/08/16 05:41:57 → EndTurn started
+2026/08/16 05:41:57 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:57 → ServerReflectionInfo started
+2026/08/16 05:41:57 → GetEncounter started
+2026/08/16 05:41:57 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:57 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:58 → ServerReflectionInfo started
+2026/08/16 05:41:58 → EndTurn started
+2026/08/16 05:41:58 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:58 → ServerReflectionInfo started
+2026/08/16 05:41:58 → GetEncounter started
+2026/08/16 05:41:58 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:58 → ServerReflectionInfo started
+2026/08/16 05:41:58 → EndTurn started
+2026/08/16 05:41:58 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:58 → ServerReflectionInfo started
+2026/08/16 05:41:58 → GetEncounter started
+2026/08/16 05:41:58 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:58 → ServerReflectionInfo started
+2026/08/16 05:41:58 → EndTurn started
+2026/08/16 05:41:58 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:58 → ServerReflectionInfo started
+2026/08/16 05:41:58 → GetEncounter started
+2026/08/16 05:41:58 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:58 → ServerReflectionInfo started
+2026/08/16 05:41:58 → EndTurn started
+2026/08/16 05:41:58 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:58 → ServerReflectionInfo started
+2026/08/16 05:41:58 → GetEncounter started
+2026/08/16 05:41:58 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:58 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:59 → ServerReflectionInfo started
+2026/08/16 05:41:59 → EndTurn started
+2026/08/16 05:41:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:59 → ServerReflectionInfo started
+2026/08/16 05:41:59 → GetEncounter started
+2026/08/16 05:41:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:59 → ServerReflectionInfo started
+2026/08/16 05:41:59 → EndTurn started
+2026/08/16 05:41:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:59 → ServerReflectionInfo started
+2026/08/16 05:41:59 → GetEncounter started
+2026/08/16 05:41:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:59 → ServerReflectionInfo started
+2026/08/16 05:41:59 → EndTurn started
+2026/08/16 05:41:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:59 → ServerReflectionInfo started
+2026/08/16 05:41:59 → GetEncounter started
+2026/08/16 05:41:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:59 → ServerReflectionInfo started
+2026/08/16 05:41:59 → EndTurn started
+2026/08/16 05:41:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:41:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:41:59 → ServerReflectionInfo started
+2026/08/16 05:41:59 → GetEncounter started
+2026/08/16 05:41:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:41:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:01 → GetMyActiveLobby started
+2026/08/16 05:42:01 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:42:01 → ListRaces started
+2026/08/16 05:42:01 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:01 → ListRaces started
+2026/08/16 05:42:01 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:01 → ListClasses started
+2026/08/16 05:42:01 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:01 → ListBackgrounds started
+2026/08/16 05:42:01 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:01 → ListBackgrounds started
+2026/08/16 05:42:01 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:01 → ListClasses started
+2026/08/16 05:42:01 → StreamEncounter started
+2026/08/16 05:42:01 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:06 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:42:19 → ServerReflectionInfo started
+2026/08/16 05:42:19 → GetEncounter started
+2026/08/16 05:42:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:19 → ServerReflectionInfo started
+2026/08/16 05:42:19 → GetEncounter started
+2026/08/16 05:42:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:20 → GetMyActiveLobby started
+2026/08/16 05:42:20 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:42:20 → ListRaces started
+2026/08/16 05:42:20 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:20 → ListRaces started
+2026/08/16 05:42:20 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:20 → ListClasses started
+2026/08/16 05:42:20 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:20 → ListClasses started
+2026/08/16 05:42:20 → ListBackgrounds started
+2026/08/16 05:42:20 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:20 → ListBackgrounds started
+2026/08/16 05:42:20 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:20 → StreamEncounter started
+2026/08/16 05:42:20 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:24 → MoveEntity started
+2026/08/16 05:42:24 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:42:28 → MoveEntity started
+2026/08/16 05:42:28 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:42:31 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:42:32 → ServerReflectionInfo started
+2026/08/16 05:42:32 → GetEncounter started
+2026/08/16 05:42:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:32 → ServerReflectionInfo started
+2026/08/16 05:42:32 → EndTurn started
+2026/08/16 05:42:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:32 → ServerReflectionInfo started
+2026/08/16 05:42:32 → GetEncounter started
+2026/08/16 05:42:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:32 → ServerReflectionInfo started
+2026/08/16 05:42:32 → EndTurn started
+2026/08/16 05:42:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:32 → ServerReflectionInfo started
+2026/08/16 05:42:32 → GetEncounter started
+2026/08/16 05:42:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:32 → ServerReflectionInfo started
+2026/08/16 05:42:32 → EndTurn started
+2026/08/16 05:42:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:32 → ServerReflectionInfo started
+2026/08/16 05:42:32 → GetEncounter started
+2026/08/16 05:42:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:32 → ServerReflectionInfo started
+2026/08/16 05:42:32 → EndTurn started
+2026/08/16 05:42:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:33 → ServerReflectionInfo started
+2026/08/16 05:42:33 → GetEncounter started
+2026/08/16 05:42:33 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:33 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:34 → GetMyActiveLobby started
+2026/08/16 05:42:34 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:42:34 → ListRaces started
+2026/08/16 05:42:34 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:34 → ListClasses started
+2026/08/16 05:42:34 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:34 → ListRaces started
+2026/08/16 05:42:34 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:34 → ListClasses started
+2026/08/16 05:42:34 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:34 → ListBackgrounds started
+2026/08/16 05:42:34 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:34 → StreamEncounter started
+2026/08/16 05:42:34 → ListBackgrounds started
+2026/08/16 05:42:34 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:39 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:42:39 → ServerReflectionInfo started
+2026/08/16 05:42:39 → GetEncounter started
+2026/08/16 05:42:39 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:39 → ServerReflectionInfo started
+2026/08/16 05:42:39 → GetEncounter started
+2026/08/16 05:42:39 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:39 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:40 → GetMyActiveLobby started
+2026/08/16 05:42:40 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:42:40 → ListRaces started
+2026/08/16 05:42:40 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:40 → ListRaces started
+2026/08/16 05:42:40 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:40 → ListClasses started
+2026/08/16 05:42:40 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:40 → ListClasses started
+2026/08/16 05:42:40 → ListBackgrounds started
+2026/08/16 05:42:40 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:40 → ListBackgrounds started
+2026/08/16 05:42:40 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:40 → StreamEncounter started
+2026/08/16 05:42:40 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:44 → MoveEntity started
+2026/08/16 05:42:44 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:42:48 → MoveEntity started
+2026/08/16 05:42:48 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:42:51 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:42:51 → ServerReflectionInfo started
+2026/08/16 05:42:51 → GetEncounter started
+2026/08/16 05:42:51 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:51 → ServerReflectionInfo started
+2026/08/16 05:42:51 → EndTurn started
+2026/08/16 05:42:51 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:51 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:52 → ServerReflectionInfo started
+2026/08/16 05:42:52 → GetEncounter started
+2026/08/16 05:42:52 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:52 → ServerReflectionInfo started
+2026/08/16 05:42:52 → EndTurn started
+2026/08/16 05:42:52 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:52 → ServerReflectionInfo started
+2026/08/16 05:42:52 → GetEncounter started
+2026/08/16 05:42:52 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:52 → ServerReflectionInfo started
+2026/08/16 05:42:52 → EndTurn started
+2026/08/16 05:42:52 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:52 → ServerReflectionInfo started
+2026/08/16 05:42:52 → GetEncounter started
+2026/08/16 05:42:52 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:52 → ServerReflectionInfo started
+2026/08/16 05:42:52 → EndTurn started
+2026/08/16 05:42:52 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:52 → ServerReflectionInfo started
+2026/08/16 05:42:52 → GetEncounter started
+2026/08/16 05:42:52 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:52 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:53 → GetMyActiveLobby started
+2026/08/16 05:42:53 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:42:53 → ListRaces started
+2026/08/16 05:42:53 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:53 → ListRaces started
+2026/08/16 05:42:53 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:42:53 → ListClasses started
+2026/08/16 05:42:53 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:53 → StreamEncounter started
+2026/08/16 05:42:53 → ListBackgrounds started
+2026/08/16 05:42:53 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:53 → ListClasses started
+2026/08/16 05:42:53 → ListBackgrounds started
+2026/08/16 05:42:53 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:42:53 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:42:58 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:42:59 → ServerReflectionInfo started
+2026/08/16 05:42:59 → GetEncounter started
+2026/08/16 05:42:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:59 → ServerReflectionInfo started
+2026/08/16 05:42:59 → GetEncounter started
+2026/08/16 05:42:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:59 → ServerReflectionInfo started
+2026/08/16 05:42:59 → EndTurn started
+2026/08/16 05:42:59 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:42:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:42:59 → ServerReflectionInfo started
+2026/08/16 05:42:59 → GetEncounter started
+2026/08/16 05:42:59 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:42:59 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:00 → GetMyActiveLobby started
+2026/08/16 05:43:00 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:43:00 → ListRaces started
+2026/08/16 05:43:00 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:43:00 → ListRaces started
+2026/08/16 05:43:00 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:43:00 → ListClasses started
+2026/08/16 05:43:00 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:43:00 → ListClasses started
+2026/08/16 05:43:00 → ListBackgrounds started
+2026/08/16 05:43:00 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:43:00 → StreamEncounter started
+2026/08/16 05:43:00 → ListBackgrounds started
+2026/08/16 05:43:00 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:43:00 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:43:04 → MoveEntity started
+2026/08/16 05:43:04 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:43:08 → MoveEntity started
+2026/08/16 05:43:08 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:43:11 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:43:11 → ServerReflectionInfo started
+2026/08/16 05:43:11 → GetEncounter started
+2026/08/16 05:43:11 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:11 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:11 → ServerReflectionInfo started
+2026/08/16 05:43:12 → MoveEntity started
+2026/08/16 05:43:12 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:43:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:12 → ServerReflectionInfo started
+2026/08/16 05:43:12 → EndTurn started
+2026/08/16 05:43:12 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:43:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:12 → ServerReflectionInfo started
+2026/08/16 05:43:12 → GetEncounter started
+2026/08/16 05:43:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:12 → ServerReflectionInfo started
+2026/08/16 05:43:12 → MoveEntity started
+2026/08/16 05:43:12 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:43:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:12 → ServerReflectionInfo started
+2026/08/16 05:43:12 → EndTurn started
+2026/08/16 05:43:12 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:43:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:12 → ServerReflectionInfo started
+2026/08/16 05:43:12 → GetEncounter started
+2026/08/16 05:43:12 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:12 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:13 → GetMyActiveLobby started
+2026/08/16 05:43:13 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:43:13 → ListClasses started
+2026/08/16 05:43:13 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:43:13 → ListClasses started
+2026/08/16 05:43:13 → ListBackgrounds started
+2026/08/16 05:43:13 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:43:13 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:43:13 → ListRaces started
+2026/08/16 05:43:13 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:43:13 → StreamEncounter started
+2026/08/16 05:43:13 → ListRaces started
+2026/08/16 05:43:13 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:43:13 → ListBackgrounds started
+2026/08/16 05:43:13 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:43:19 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:43:19 → ServerReflectionInfo started
+2026/08/16 05:43:19 → GetEncounter started
+2026/08/16 05:43:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:19 → ServerReflectionInfo started
+2026/08/16 05:43:19 → GetEncounter started
+2026/08/16 05:43:19 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:19 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:20 → GetMyActiveLobby started
+2026/08/16 05:43:20 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:43:20 → ListRaces started
+2026/08/16 05:43:20 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:43:20 → ListRaces started
+2026/08/16 05:43:20 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:43:20 → ListClasses started
+2026/08/16 05:43:20 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:43:20 → StreamEncounter started
+2026/08/16 05:43:20 → ListBackgrounds started
+2026/08/16 05:43:20 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:43:20 → ListClasses started
+2026/08/16 05:43:20 → ListBackgrounds started
+2026/08/16 05:43:20 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:43:20 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:43:24 → MoveEntity started
+2026/08/16 05:43:24 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:43:28 → MoveEntity started
+2026/08/16 05:43:28 ✓ MoveEntity completed in 0.00ms
+2026/08/16 05:43:31 ✓ StreamEncounter completed in 0.00ms
+2026/08/16 05:43:31 → ServerReflectionInfo started
+2026/08/16 05:43:31 → GetEncounter started
+2026/08/16 05:43:31 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:31 → ServerReflectionInfo started
+2026/08/16 05:43:31 → EndTurn started
+2026/08/16 05:43:31 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:43:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:31 → ServerReflectionInfo started
+2026/08/16 05:43:31 → GetEncounter started
+2026/08/16 05:43:31 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:31 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:32 → ServerReflectionInfo started
+2026/08/16 05:43:32 → EndTurn started
+2026/08/16 05:43:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:43:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:32 → ServerReflectionInfo started
+2026/08/16 05:43:32 → GetEncounter started
+2026/08/16 05:43:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:32 → ServerReflectionInfo started
+2026/08/16 05:43:32 → EndTurn started
+2026/08/16 05:43:32 ✓ EndTurn completed in 0.00ms
+2026/08/16 05:43:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:32 → ServerReflectionInfo started
+2026/08/16 05:43:32 → GetEncounter started
+2026/08/16 05:43:32 ✓ GetEncounter completed in 0.00ms
+2026/08/16 05:43:32 ✓ ServerReflectionInfo completed in 0.00ms
+2026/08/16 05:43:33 → GetMyActiveLobby started
+2026/08/16 05:43:33 ✓ GetMyActiveLobby completed in 0.00ms
+2026/08/16 05:43:33 → ListRaces started
+2026/08/16 05:43:33 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:43:33 → ListRaces started
+2026/08/16 05:43:33 ✓ ListRaces completed in 0.00ms
+2026/08/16 05:43:33 → ListClasses started
+2026/08/16 05:43:33 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:43:33 → ListBackgrounds started
+2026/08/16 05:43:33 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:43:33 → ListBackgrounds started
+2026/08/16 05:43:33 ✓ ListBackgrounds completed in 0.00ms
+2026/08/16 05:43:33 → StreamEncounter started
+2026/08/16 05:43:33 → ListClasses started
+2026/08/16 05:43:33 ✓ ListClasses completed in 0.00ms
+2026/08/16 05:43:38 ✓ StreamEncounter completed in 0.00ms
