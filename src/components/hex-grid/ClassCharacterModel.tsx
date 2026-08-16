@@ -26,16 +26,11 @@
  * fetched 200 OK, nothing rendered). `SkeletonUtils.clone()` fixed this
  * and shipped separately via #517; this file wires up the animation
  * playback on top of that already-landed fix, not the clone itself.
- * Current asset reality (re-verified against assets#4-#10, then again
- * post rpg-game-assets#11): fighter/barbarian.glb ship 0 baked clips
- * (junk stripped; Big-Rig retarget pending) — `resolveIdleClipName`
- * returning undefined for a clip-less model is a normal, expected case,
- * not an error; the animation effects below and the frameloop-invalidate
- * heartbeat all no-op cleanly for it. monk/rogue.glb now ship 3 idle
- * clips each (rpg-game-assets#11, closing rpg-dnd5e-web#522) and play
- * one on loop. Downed variants ship with no animation data at all —
- * `SkeletonUtils.clone()` still works for a static mesh, so one clone
- * path covers both cases.
+ * Merged Townfolk contract (provider PR #61, merge commit 4fac080): every
+ * standing Fighter/Monk/Rogue/Barbarian class alias ships exactly two baked
+ * clips, in order: `Idle_Relaxed`, then `Walk_Forward`. Every downed variant
+ * is static and ships zero animation clips. `SkeletonUtils.clone()` works
+ * for both animated and static meshes, so one clone path covers both cases.
  *
  * `isMoving` (rpg-dnd5e-web#542): HexEntity computes this from whether it's
  * currently stepping the entity's rendered position through a real
@@ -203,10 +198,10 @@ export function ClassCharacterModel({
   // prefer a `Walk_*` clip (resolveWalkClipName), falling back to idle if
   // this model has no walk clip yet; stationary always plays idle
   // (resolveIdleClipName — prefers an "idle"-named clip, falls back to the
-  // first available). Today's `main` fighter/barbarian/monk/rogue.glb all
-  // ship 4 clips (3 idle variants + Walk_Forward, rpg-game-assets#20);
-  // downed variants ship 0, so `names` is empty and `resolvedClipName` is
-  // undefined — this effect no-ops cleanly for those, same as before #542.
+  // first available). The merged standing Townfolk files all ship exactly
+  // `Idle_Relaxed`, then `Walk_Forward`; downed variants ship 0 clips, so
+  // `names` is empty and `resolvedClipName` is undefined — this effect
+  // no-ops cleanly for those, same as before #542.
   const { actions, names } = useAnimations(animations, cloned);
   const resolvedClipName = isMoving
     ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
