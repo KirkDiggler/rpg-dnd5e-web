@@ -38,10 +38,32 @@ import type {
  * a diagonal staircase under the other.
  *
  * So a client must choose, and today it must choose by knowing something the
- * server did not tell it. Filed upstream; `POINTY` is this concept's documented
- * assumption because it is what the reference tomb is authored as.
+ * server did not tell it.
+ *
+ * WORSE THAN THAT, AND MEASURED RATHER THAN ASSUMED: the authored word and the
+ * right render layout ARE NOT THE SAME WORD. The reference tomb is authored
+ * `orientation: pointy`, and drawing its cells pointy-topped produces a
+ * diagonal staircase. Drawing them FLAT-topped reproduces what the author drew
+ * — three chambers side by side, 28 cells by 8. The atlas's own numbers say so:
+ * over the tomb's 224 real cells the flat layout gives a bounding box of aspect
+ * 3.12, against the ~3.5 a 28x8 chain should have, while pointy gives 1.29.
+ * See atlas.test.ts, which pins it against the atlas this server actually
+ * served.
+ *
+ * The practical consequence is that a client cannot recover this by reading the
+ * content either: the obvious inference from `orientation: pointy` is the wrong
+ * answer. `DEFAULT_LAYOUT` below is what measurement says, not what the word
+ * says.
  */
 export type HexLayout = 'pointy' | 'flat';
+
+/**
+ * DEFAULT_LAYOUT is what draws the reference tomb the way it was authored.
+ *
+ * Chosen by measuring the served atlas, not by reading the dungeon's
+ * `orientation:` field — see [HexLayout] for why those disagree.
+ */
+export const DEFAULT_LAYOUT: HexLayout = 'flat';
 
 /** A point in SVG user space. */
 export interface Point {

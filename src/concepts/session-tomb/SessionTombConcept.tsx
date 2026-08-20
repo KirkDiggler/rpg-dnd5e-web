@@ -33,12 +33,13 @@
  * reports rather than swallowing.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { sessionClient } from '@/api/client';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   buildScene,
   cellKey,
+  DEFAULT_LAYOUT,
   hexCenter,
   type AtlasScene,
   type HexLayout,
@@ -46,17 +47,33 @@ import {
 
 const HEX_SIZE = 10;
 
+/**
+ * Deep-link params, matching the `?concept=` convention ConceptsView already
+ * uses and for the same stated reason: visual evidence should be reproducible
+ * from a URL rather than from a sequence of clicks somebody has to describe.
+ *
+ * `?session=<id>&member=<id>` fills the form and loads immediately. Pair it
+ * with `?playerId=<id>` (the app's dev auth override) or every call comes back
+ * Unauthenticated.
+ */
+const paramOf = (name: string): string =>
+  typeof window === 'undefined'
+    ? ''
+    : (new URLSearchParams(window.location.search).get(name) ?? '');
+
 interface Loaded {
   scene: AtlasScene;
   cellCount: number;
 }
 
 export function SessionTombConcept() {
-  const [session, setSession] = useState('');
-  const [member, setMember] = useState('');
-  const [layout, setLayout] = useState<HexLayout>('pointy');
+  const [session, setSession] = useState(() => paramOf('session'));
+  const [member, setMember] = useState(() => paramOf('member'));
+  const [layout, setLayout] = useState<HexLayout>(DEFAULT_LAYOUT);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [rawAtlas, setRawAtlas] = useState<Parameters<typeof buildScene>[0] | null>(null);
+  const [rawAtlas, setRawAtlas] = useState<
+    Parameters<typeof buildScene>[0] | null
+  >(null);
   const [me, setMe] = useState<Position | null>(null);
   const [seen, setSeen] = useState<string[]>([]);
   const [log, setLog] = useState<string[]>([]);
@@ -135,7 +152,9 @@ export function SessionTombConcept() {
         );
         await refreshMember(session, member);
       } catch (err) {
-        say(`move refused: ${err instanceof Error ? err.message : String(err)}`);
+        say(
+          `move refused: ${err instanceof Error ? err.message : String(err)}`
+        );
       } finally {
         setBusy(false);
       }
@@ -162,23 +181,40 @@ export function SessionTombConcept() {
       }
     } catch (err) {
       if (!ctrl.signal.aborted) {
-        say(`stream error: ${err instanceof Error ? err.message : String(err)}`);
+        say(
+          `stream error: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
   }, [session, member, say]);
 
   useEffect(() => () => streamAbort.current?.abort(), []);
 
+  // A deep-linked session loads itself, once. Guarded by a ref rather than by
+  // the dependency list so that editing the field afterwards does not re-fire
+  // the automatic load underneath the person typing.
+  const autoLoaded = useRef(false);
+  useEffect(() => {
+    if (autoLoaded.current || !paramOf('session')) {
+      return;
+    }
+    autoLoaded.current = true;
+    void load();
+  }, [load]);
+
   const myKey = me ? cellKey(me) : null;
 
   return (
     <div className="space-y-4">
       <header className="space-y-1">
-        <h2 className="text-xl font-bold">Session Tomb — the new wire, drawn</h2>
+        <h2 className="text-xl font-bold">
+          Session Tomb — the new wire, drawn
+        </h2>
         <p className="text-sm opacity-70">
           Reads <code>dnd5e.api.session.v1alpha1</code> from the live server.
           Needs <code>RPG_SESSION_STACK_ENABLED</code> on the API, or
-          StartEncounter builds on the old stack and this session will not exist.
+          StartEncounter builds on the old stack and this session will not
+          exist.
         </p>
       </header>
 
@@ -232,8 +268,11 @@ export function SessionTombConcept() {
         The layout switch is here because the wire does not carry one.
         <code> GridKind</code> says SQUARE or HEX and stops there, so which way
         the hexes point is a client-side assumption — and the two choices draw
-        genuinely different maps. Pointy is what the reference tomb is authored
-        as.
+        genuinely different maps. Flat is the default because it is what
+        MEASURES right against the served atlas: the tomb is authored{' '}
+        <code>orientation: pointy</code> and drawing it pointy gives a diagonal
+        staircase, so the authored word and the render layout are not the same
+        word. Switch it and see.
       </p>
 
       {loaded && (
@@ -313,8 +352,8 @@ export function SessionTombConcept() {
       {loaded && (
         <div className="text-sm opacity-80">
           {loaded.cellCount} cells · {loaded.scene.walls.length} walls ·{' '}
-          {loaded.scene.doorways.length} doorways ·{' '}
-          {loaded.scene.props.length} props
+          {loaded.scene.doorways.length} doorways · {loaded.scene.props.length}{' '}
+          props
           {seen.length > 0 && <> · sees: {seen.join(', ')}</>}
         </div>
       )}

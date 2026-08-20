@@ -10,12 +10,14 @@ import { describe, expect, it } from 'vitest';
 import {
   buildScene,
   cellKey,
+  DEFAULT_LAYOUT,
   edgeBetween,
   hexCenter,
   propName,
   viewBoxOf,
   type HexLayout,
 } from './atlas';
+import referenceTombCells from './referenceTombCells.json';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
 const SIZE = 10;
@@ -130,8 +132,18 @@ describe('buildScene', () => {
   it('drops a boundary with a missing endpoint instead of drawing it at the origin', () => {
     const s = scene({
       boundaries: [
-        { from: pos(0, 0), to: undefined, blocksMovement: true, blocksLineOfSight: true },
-        { from: pos(0, 0), to: pos(1, 0), blocksMovement: true, blocksLineOfSight: true },
+        {
+          from: pos(0, 0),
+          to: undefined,
+          blocksMovement: true,
+          blocksLineOfSight: true,
+        },
+        {
+          from: pos(0, 0),
+          to: pos(1, 0),
+          blocksMovement: true,
+          blocksLineOfSight: true,
+        },
       ],
     });
     expect(s.walls).toHaveLength(1);
@@ -176,5 +188,60 @@ describe('naming', () => {
   it('keys an absent cell as empty rather than as the origin', () => {
     expect(cellKey(undefined)).toBe('');
     expect(cellKey(pos(0, 0))).toBe('0,0');
+  });
+});
+
+/**
+ * The layout choice, pinned against the atlas the server actually served.
+ *
+ * `referenceTombCells.json` is a capture of GetAtlas from a live rpg-api with
+ * RPG_SESSION_STACK_ENABLED, playing the reference tomb — real wire data, not a
+ * hand-built guess, in the spirit of this repo's other real-wire fixtures.
+ *
+ * The tomb is three chambers in a row: 6 + 10 + 12 cells wide and 8 tall. So
+ * whichever layout is right has to draw something roughly three and a half
+ * times wider than it is tall. That is a property of the AUTHORED DUNGEON, not
+ * of the renderer, which is what makes it a fair test of the renderer.
+ */
+describe('which way the hexes point', () => {
+  const boundsUnder = (layout: HexLayout) => {
+    const pts = (referenceTombCells.cells as { x: number; y: number }[]).map(
+      (c) => hexCenter(c as never, SIZE, layout)
+    );
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    return {
+      w: Math.max(...xs) - Math.min(...xs),
+      h: Math.max(...ys) - Math.min(...ys),
+    };
+  };
+
+  it('serves the whole tomb: 28 columns by 8 rows', () => {
+    expect(referenceTombCells.cells).toHaveLength((6 + 10 + 12) * 8);
+  });
+
+  it('draws the authored shape flat-topped', () => {
+    const { w, h } = boundsUnder('flat');
+    // A 28x8 chain of hexes, so comfortably wider than tall.
+    expect(w / h).toBeGreaterThan(2.5);
+  });
+
+  /**
+   * THE FINDING. The tomb is authored `orientation: pointy`, so reading the
+   * content and believing it is the obvious thing to do -- and it draws a
+   * diagonal staircase. This asserts the wrong answer is genuinely wrong rather
+   * than merely different, which is what makes the missing wire field worth
+   * reporting instead of shrugging at.
+   */
+  it('does not draw the authored shape pointy-topped, despite the authored word', () => {
+    const { w, h } = boundsUnder('pointy');
+    expect(w / h).toBeLessThan(2);
+  });
+
+  it('defaults to the one that measures right', () => {
+    const flat = boundsUnder('flat');
+    const pointy = boundsUnder('pointy');
+    const better = flat.w / flat.h > pointy.w / pointy.h ? 'flat' : 'pointy';
+    expect(DEFAULT_LAYOUT).toBe(better);
   });
 });
