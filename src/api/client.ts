@@ -7,6 +7,7 @@ import { LobbyService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { CharacterService as CharacterServiceV2 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/character/service_pb';
 import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
+import { SessionService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 
 import { getDiscordToken, getPlayerId } from './auth';
 import { wrapStreamResponseForLogging } from './streamLogging';
@@ -110,6 +111,24 @@ export const diceClient = createClient(DiceService, transport);
 
 // Create the encounter service client
 export const encounterClient = createClient(EncounterService, transport);
+
+// Create the session service client (dnd5e.api.session.v1alpha1 — the NEW
+// stack: one map of absolute cells, walls that are declared rather than
+// implied, props that say what they are.
+//
+// It is NOT a newer version of `encounterClient` above and there is no
+// migration path between them. The old EncounterService is shaped by the old
+// toolkit's vocabulary and has RPCs this one simply does not have
+// (SubmitCheck, SetReactionReady, ActivateFeature); this one has ten the web
+// has never called. Reimplementation, not a port — keeping the old surface
+// over the new stack is the wrapper the server side already refused
+// (rpg-project#227).
+//
+// Like `authoringClient` below, it is only live when the server enables it:
+// StartEncounter builds on the new stack only under RPG_SESSION_STACK_ENABLED,
+// so against a default server every call here answers about a session that was
+// never created on this stack. Probe and fall back rather than assuming.
+export const sessionClient = createClient(SessionService, transport);
 
 // Create the lobby service client (dnd5e.api.lobby.v1alpha1 — party
 // assembly, GameView slice 2). Distinct service from the old v1alpha1
