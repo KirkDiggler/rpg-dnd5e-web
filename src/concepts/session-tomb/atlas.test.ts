@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  axialDistance,
   buildScene,
   cellKey,
   DEFAULT_LAYOUT,
@@ -84,6 +85,60 @@ describe('edgeBetween', () => {
   it('refuses a degenerate pair rather than drawing a wall of no length', () => {
     expect(edgeBetween(pos(2, 2), pos(2, 2), SIZE, 'pointy')).toBeNull();
   });
+
+  /**
+   * The doc on edgeBetween promises non-neighbours get null, and the
+   * perpendicular-bisector construction will happily produce a segment for ANY
+   * two distinct cells -- so without an explicit adjacency check the promise
+   * was prose the code did not keep.
+   *
+   * This matters more than a missing endpoint does: a dropped wall is absent,
+   * but a wall built from a non-adjacent pair is DRAWN, somewhere
+   * plausible-looking and halfway across a chamber, and nothing about it looks
+   * wrong.
+   */
+  it('refuses a non-adjacent pair instead of inventing a wall between them', () => {
+    expect(edgeBetween(pos(0, 0), pos(3, 0), SIZE, 'pointy')).toBeNull();
+    expect(edgeBetween(pos(0, 0), pos(2, -1), SIZE, 'flat')).toBeNull();
+  });
+
+  it('still draws every genuine neighbour', () => {
+    const neighbours = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, -1],
+      [-1, 1],
+    ];
+    for (const [dq, dr] of neighbours) {
+      expect(
+        edgeBetween(pos(4, 4), pos(4 + dq, 4 + dr), SIZE, 'flat')
+      ).not.toBeNull();
+    }
+  });
+});
+
+describe('axialDistance', () => {
+  it('counts a neighbour as one step in every direction', () => {
+    for (const [dq, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, -1],
+      [-1, 1],
+    ]) {
+      expect(axialDistance(pos(0, 0), pos(dq, dr))).toBe(1);
+    }
+  });
+
+  it('measures in cube space, not as a plain coordinate difference', () => {
+    // (1,1) is TWO steps away in cube space even though both axial components
+    // differ by one -- the case a naive max(|dq|,|dr|) gets wrong.
+    expect(axialDistance(pos(0, 0), pos(1, 1))).toBe(2);
+    expect(axialDistance(pos(0, 0), pos(0, 0))).toBe(0);
+  });
 });
 
 describe('buildScene', () => {
@@ -147,6 +202,20 @@ describe('buildScene', () => {
       ],
     });
     expect(s.walls).toHaveLength(1);
+  });
+
+  it('drops a boundary between cells that do not touch', () => {
+    const s2 = scene({
+      boundaries: [
+        {
+          from: pos(0, 0),
+          to: pos(4, 0),
+          blocksMovement: true,
+          blocksLineOfSight: true,
+        },
+      ],
+    });
+    expect(s2.walls).toHaveLength(0);
   });
 
   it('drops a doorway with a missing endpoint for the same reason', () => {

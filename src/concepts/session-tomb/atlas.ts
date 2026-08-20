@@ -113,6 +113,19 @@ export interface AtlasScene {
   viewBox: string;
 }
 
+/**
+ * axialDistance is how many steps apart two cells are, in cube space.
+ *
+ * Axial (q,r) with s = -(q+r) derived, which is what the atlas's `GRID_KIND_HEX`
+ * means by "addressed in axial coordinates, where distance is measured in cube
+ * space".
+ */
+export function axialDistance(a: Position, b: Position): number {
+  const dq = a.x - b.x;
+  const dr = a.y - b.y;
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+}
+
 /** cellKey names a cell the way a Map wants it. */
 export const cellKey = (p: Position | undefined): string =>
   p ? `${p.x},${p.y}` : '';
@@ -169,6 +182,13 @@ export function hexCorners(
  *
  * Cells that are not neighbours have no shared edge, and passing them here is a
  * caller's mistake rather than something to approximate: it returns null.
+ *
+ * ADJACENCY IS CHECKED, not assumed. The perpendicular-bisector construction
+ * above happily produces a segment for any two distinct cells, so without this
+ * an invalid boundary would be DRAWN -- somewhere plausible-looking and wrong,
+ * halfway across a chamber -- rather than dropped. That is the same failure the
+ * missing-endpoint guard in buildScene exists to prevent, and it is worse here
+ * because the result looks like a real wall.
  */
 export function edgeBetween(
   from: Position,
@@ -181,7 +201,7 @@ export function edgeBetween(
   const dx = B.x - A.x;
   const dy = B.y - A.y;
   const dist = Math.hypot(dx, dy);
-  if (dist === 0) {
+  if (dist === 0 || axialDistance(from, to) !== 1) {
     return null;
   }
   const mid = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };

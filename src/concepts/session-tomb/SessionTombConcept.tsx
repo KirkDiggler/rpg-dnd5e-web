@@ -78,6 +78,11 @@ export function SessionTombConcept() {
   const [seen, setSeen] = useState<string[]>([]);
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  // The controller lives in a ref because aborting it is an imperative act, but
+  // whether a stream is RUNNING is state: a ref read during render never
+  // re-renders, so a button labelled from the ref would be stale in both
+  // directions. Two things, two homes.
+  const [streaming, setStreaming] = useState(false);
   const streamAbort = useRef<AbortController | null>(null);
 
   const say = useCallback((line: string) => {
@@ -166,11 +171,13 @@ export function SessionTombConcept() {
     if (streamAbort.current) {
       streamAbort.current.abort();
       streamAbort.current = null;
+      setStreaming(false);
       say('stream: stopped');
       return;
     }
     const ctrl = new AbortController();
     streamAbort.current = ctrl;
+    setStreaming(true);
     say('stream: listening');
     try {
       for await (const event of sessionClient.streamEvents(
@@ -179,11 +186,27 @@ export function SessionTombConcept() {
       )) {
         say(`event: kind=${event.kind} seq=${event.seq}`);
       }
+      // Reached when the SERVER closes the stream, which is an ordinary end
+      // rather than a failure -- said out loud so a silently-dropped
+      // subscription does not look like a quiet world.
+      if (!ctrl.signal.aborted) {
+        say('stream: closed by server');
+      }
     } catch (err) {
       if (!ctrl.signal.aborted) {
         say(
           `stream error: ${err instanceof Error ? err.message : String(err)}`
         );
+      }
+    } finally {
+      // Every exit clears BOTH, including the two this used to leave behind --
+      // a server close and an error -- which stranded the button reading "Stop
+      // stream" over a stream that had already ended, so reconnecting took a
+      // pointless stop-then-start. Guarded on identity so a stream that was
+      // already replaced by a newer one cannot clear its successor's state.
+      if (streamAbort.current === ctrl) {
+        streamAbort.current = null;
+        setStreaming(false);
       }
     }
   }, [session, member, say]);
@@ -249,7 +272,7 @@ export function SessionTombConcept() {
           onClick={toggleStream}
           disabled={!session || !member}
         >
-          {streamAbort.current ? 'Stop stream' : 'Stream events'}
+          {streaming ? 'Stop stream' : 'Stream events'}
         </button>
         <label className="text-sm flex items-center gap-2">
           <span className="opacity-70">layout</span>
