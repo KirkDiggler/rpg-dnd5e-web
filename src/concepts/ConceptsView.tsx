@@ -11,6 +11,7 @@ import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
+import { SessionTombConcept } from './session-tomb/SessionTombConcept';
 
 type ConceptPage =
   | 'attack-die-3d'
@@ -21,6 +22,7 @@ type ConceptPage =
   | 'combat-pacing'
   | 'just-roll'
   | 'fog-of-war'
+  | 'session-tomb'
   | 'dungeon-builder'
   | 'prop-composition'
   | 'asset-anchor-lab';
@@ -34,6 +36,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'combat-pacing', label: 'Combat Pacing' },
   { id: 'just-roll', label: 'Just Roll' },
   { id: 'fog-of-war', label: 'Fog of War' },
+  { id: 'session-tomb', label: 'Session Tomb' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'prop-composition', label: 'Prop Composition' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
@@ -123,6 +126,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
         {activePage === 'just-roll' && <JustRollConcept />}
         {activePage === 'fog-of-war' && <FogOfWarConcept />}
+        {activePage === 'session-tomb' && <SessionTombConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
             `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
             tab is the dev sandbox — same component tree, `forceFixtures`
