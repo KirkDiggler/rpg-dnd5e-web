@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { getPlayerId } from './api/auth';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
@@ -101,9 +102,16 @@ function AppContent() {
   // Sync dev override into gRPC auth store so outbound RPCs carry the right
   // player ID. useLayoutEffect fires before child effects, preventing races.
   useDevPlayerIdAuth(devPlayerIdOverride);
+  // The UI's identity must be the SAME id the auth interceptor sends, or the
+  // lobby roster can't find "me": the server stamps members with the header
+  // id, and a UI that believes it is someone else hides Ready state and the
+  // host's Start button. getPlayerId() already falls back to
+  // VITE_DEV_PLAYER_ID the way the interceptor does, so ask it rather than
+  // re-deriving a second (and previously disagreeing) fallback here.
   const playerId =
     discord.user?.id ||
     devPlayerIdOverride ||
+    getPlayerId() ||
     (isDevelopment ? 'test-player' : null);
 
   // Resume-after-refresh (#444): ask the server, once, whether this player
