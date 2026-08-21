@@ -21,6 +21,7 @@
  * lifecycle) have their own focused coverage in atlasPath.test.ts,
  * useSessionWalk.test.ts and useSessionEventStream.test.ts.
  */
+import { Code, ConnectError } from '@connectrpc/connect';
 import {
   EventKind,
   type Event as SessionEvent,
@@ -56,6 +57,7 @@ const hoisted = vi.hoisted(() => ({
   getCharacterFn: vi.fn(),
   moveFn: vi.fn(),
   streamEventsFn: vi.fn(),
+  getViewFn: vi.fn(),
 }));
 
 vi.mock('./SessionCanvas', () => ({
@@ -85,6 +87,7 @@ vi.mock('@/api/client', () => ({
   sessionClient: {
     move: hoisted.moveFn,
     streamEvents: hoisted.streamEventsFn,
+    getView: hoisted.getViewFn,
   },
 }));
 
@@ -135,6 +138,8 @@ beforeEach(() => {
   hoisted.moveFn.mockReset();
   hoisted.streamEventsFn.mockReset();
   hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
+  hoisted.getViewFn.mockReset();
+  hoisted.getViewFn.mockResolvedValue({ sightings: [] });
 });
 
 const noop = () => {};
@@ -509,5 +514,105 @@ describe('SessionEncounterView', () => {
     await waitFor(() =>
       expect(hoisted.whereResult.refetch).toHaveBeenCalledTimes(1)
     );
+  });
+
+  describe('drawing other perceived members (rpg-dnd5e-web#762 slice 3)', () => {
+    it('turns a GetView sighting into an otherMembers entry passed to SessionCanvas', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.getViewFn.mockResolvedValue({
+        sightings: [
+          {
+            subject: 'skeleton-1',
+            payload: new Uint8Array(),
+            channel: 'sight',
+            at: 1n,
+            currentVia: ['sight'],
+            status: 'live',
+            seen: { position: { x: 10, y: 3 } },
+          },
+        ],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.otherMembers).toHaveLength(1)
+      );
+      expect(hoisted.lastCanvasProps.current!.otherMembers).toEqual([
+        {
+          subject: 'skeleton-1',
+          monsterRefId: 'skeleton',
+          // positionBridge.positionToCube(q=10, r=3): x=q, y=-q-r, z=r
+          position: { x: 10, y: -13, z: 3 },
+          remembered: false,
+        },
+      ]);
+    });
+
+    it('a MOVED stream event (e.g. the skeleton itself moving) also refetches GetView, not just GetWhere', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([{ kind: EventKind.MOVED } as SessionEvent])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(hoisted.whereResult.refetch).toHaveBeenCalledTimes(1)
+      );
+      // GetView piggybacks on every GetWhere refresh (see
+      // SessionEncounterView.tsx's own effect comment) -- at least the
+      // initial mount plus one more after the MOVED-triggered refetch
+      // changes wherePosition's reference.
+      await waitFor(() =>
+        expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThanOrEqual(1)
+      );
+    });
+
+    it('a fight-lock Move rejection (session.ErrInBubble) shows the friendly status line, not raw RPC text', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.moveFn.mockRejectedValue(
+        new ConnectError('member is in a fight', Code.FailedPrecondition)
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+
+      await waitFor(() => screen.getByText(/in a fight — movement is locked/i));
+    });
   });
 });
