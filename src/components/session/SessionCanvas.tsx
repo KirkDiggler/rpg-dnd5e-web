@@ -18,14 +18,20 @@
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { type CubeCoord, cubeToWorld } from '../hex-grid/hexMath';
 import { SyntyHexFloor } from '../hex-grid/SyntyHexFloor';
 import { useCameraControls } from '../hex-grid/useCameraControls';
+import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import type { Scene3D } from './atlasToScene3D';
 import { AtlasWalls } from './AtlasWalls';
+
+/** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
+ * cover any dungeon this route draws; only its raycast target, never
+ * rendered. */
+const GROUND_PLANE_SIZE = 200;
 
 export interface SessionCanvasProps {
   scene: Scene3D;
@@ -35,6 +41,24 @@ export interface SessionCanvasProps {
   character: Character | undefined;
   classRefId: string | undefined;
   myPosition: CubeCoord;
+  /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
+   * (`MoveResponse.steps`, already bridged to cube coords) — passed
+   * straight through to `HexEntity.movePath`. `undefined` when no walk
+   * has happened yet this mount. */
+  movePath?: CubeCoord[];
+  /** Bumped once per genuine walk — passed straight through to
+   * `HexEntity.moveSeq`, which is what actually triggers the animation
+   * (see `useHexMovePath.ts`). */
+  moveSeq?: number;
+  /** Fires when a floor hex is clicked — the request-shaping/pathfinding
+   * and the `Move` RPC itself live in the caller (`useSessionWalk`), not
+   * here; this component only owns the raycast. */
+  onHexClick?: (coord: CubeCoord) => void;
+  /** Fires once the local player's walk ANIMATION finishes painting
+   * `movePath` for the given `moveSeq` — presentation-only, matches
+   * `HexEntity`'s own `onMovementPresentationComplete` contract (entityId
+   * dropped here since this route only ever animates the local player). */
+  onMovementPresentationComplete?: (moveSeq: number) => void;
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -48,6 +72,10 @@ export function SessionScene({
   character,
   classRefId,
   myPosition,
+  movePath,
+  moveSeq,
+  onHexClick,
+  onMovementPresentationComplete,
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
@@ -57,21 +85,52 @@ export function SessionScene({
   // `new THREE.Vector3(...)` built inline on every render (Copilot review,
   // PR #764) would snap the camera back to the character on any unrelated
   // re-render, silently discarding whatever the player just panned to.
-  // Slice 1 has no movement yet, so unlike HexGrid's `focusTarget` (which
-  // continuously follows a moving player), a single frozen seed is the
-  // whole fix; a later slice that adds walking re-introduces
-  // `focusTarget`-style continuous following, not this ref.
   const target = cubeToWorld(myPosition, hexSize);
   const initialTargetRef = useRef<THREE.Vector3 | null>(null);
   if (initialTargetRef.current === null) {
     initialTargetRef.current = new THREE.Vector3(target.x, 0, target.z);
   }
-  useCameraControls({ target: initialTargetRef.current });
+
+  // Slice 2: the camera now CONTINUOUSLY follows the local player
+  // (`focusTarget`, HexGrid.tsx's own pattern — `useCameraControls` lerps
+  // its target toward this whenever the reference changes, and a manual
+  // pan clears it) instead of the slice-1 frozen seed alone, so a walk
+  // across the tomb stays in frame rather than leaving the character to
+  // exit-stage as they cross into another room.
+  const focusTarget = useMemo(
+    () => new THREE.Vector3(target.x, 0, target.z),
+    [target.x, target.z]
+  );
+  useCameraControls({ target: initialTargetRef.current, focusTarget });
+
+  // Click-to-walk: the raycast/hover/validity machinery is the SAME
+  // ground-plane convention `HexGrid`'s own `useHexInteraction` already
+  // established (worldToCube, floor-membership gating) — reused rather
+  // than re-derived, since it's convention-independent geometry, not
+  // anything specific to the OLD wire's movement rules. This route
+  // ignores the hook's own path-preview/attack fields (those are node-
+  // only, per-hex; the atlas's real reachability is edge-aware and lives
+  // in `atlasPath.ts`/`useSessionWalk`, the caller of `onHexClick`).
+  const { groundPlaneProps } = useHexInteraction({
+    hexSize,
+    floorTiles: scene.floorTiles,
+    onHexClick,
+  });
 
   return (
     <>
       <ambientLight intensity={0.6} />
       <directionalLight intensity={0.8} position={[10, 20, 10]} />
+      {/* Invisible ground plane for hit detection — HexGrid.tsx's own
+          convention, unchanged. */}
+      <mesh
+        position={[0, 0, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        {...groundPlaneProps}
+      >
+        <planeGeometry args={[GROUND_PLANE_SIZE, GROUND_PLANE_SIZE]} />
+        <meshBasicMaterial visible={false} />
+      </mesh>
       <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={hexSize} />
       <AtlasWalls
         envelopeRuns={scene.envelopeRuns}
@@ -86,6 +145,11 @@ export function SessionScene({
         hexSize={hexSize}
         character={character}
         classRefId={classRefId}
+        movePath={movePath}
+        moveSeq={moveSeq}
+        onMovementPresentationComplete={(_entityId, completedMoveSeq) =>
+          onMovementPresentationComplete?.(completedMoveSeq)
+        }
       />
     </>
   );
