@@ -20,7 +20,9 @@ export interface UseSessionWhereResult {
  * polling this RPC).
  *
  * `session`/`member` empty/falsy is the "not ready yet" state, same
- * convention as `useSessionAtlas`.
+ * convention as `useSessionAtlas` — `loading`/`error` both clear rather
+ * than leaving a stale error visible from a previous session/member pair
+ * (Copilot review, PR #764).
  */
 export function useSessionWhere(
   session: string,
@@ -33,6 +35,7 @@ export function useSessionWhere(
   const fetchWhere = useCallback(async () => {
     if (!session || !member) {
       setPosition(null);
+      setError(null);
       setLoading(false);
       return;
     }

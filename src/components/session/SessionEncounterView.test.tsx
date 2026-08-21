@@ -13,7 +13,7 @@ import {
   GridKind,
   HexLayout,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionCanvasProps } from './SessionCanvas';
 
@@ -175,6 +175,38 @@ describe('SessionEncounterView', () => {
     );
     await waitFor(() => screen.getByText(/can't draw this map yet/i));
     screen.getByText(/layout/i);
+  });
+
+  it('Retry also re-attempts a failed character fetch, not just atlas/where (Copilot review, PR #764)', async () => {
+    hoisted.atlasResult.atlas = pointyAtlas();
+    hoisted.atlasResult.loading = false;
+    hoisted.whereResult.position = { x: 0, y: 0 };
+    hoisted.whereResult.loading = false;
+    hoisted.getCharacterFn.mockReset();
+    hoisted.getCharacterFn
+      .mockRejectedValueOnce(new Error('character unreachable'))
+      .mockResolvedValueOnce({
+        character: { name: 'Toolkit Sandbox Fighter', class: 5 },
+      });
+
+    render(
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={noop}
+      />
+    );
+
+    await waitFor(() => screen.getByText(/couldn't load the session/i));
+    screen.getByText(/character unreachable/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+    await waitFor(() =>
+      expect(hoisted.getCharacterFn).toHaveBeenCalledTimes(2)
+    );
+    await waitFor(() => screen.getByTestId('session-canvas'));
   });
 
   it('renders the canvas with the built scene, the resolved class, and the fetched position', async () => {

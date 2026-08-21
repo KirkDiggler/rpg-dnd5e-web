@@ -70,6 +70,19 @@ describe('useSessionWhere', () => {
     expect(result.current.position).toBeNull();
   });
 
+  it('clears a previous error when session/member becomes empty (Copilot review, PR #764)', async () => {
+    hoisted.getWhereFn.mockRejectedValue(new Error('transport error'));
+    const { result, rerender } = renderHook(
+      ({ session, member }) => useSessionWhere(session, member),
+      { initialProps: { session: 'enc-1', member: 'char-1' } }
+    );
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    rerender({ session: 'enc-1', member: '' });
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
   it('refetch re-calls GetWhere and can recover from a previous error', async () => {
     hoisted.getWhereFn
       .mockRejectedValueOnce(new Error('transport error'))

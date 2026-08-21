@@ -15,7 +15,11 @@
  * `onEncounterStarted` receives is a SESSION id, not an old-wire encounter
  * id. This mounts `SessionEncounterView` (the new wire's renderer) instead
  * of `EncounterView` (the old wire's, left in place and untouched —
- * deleting it is a later slice, not this one).
+ * deleting it is a later slice, not this one). The local state below is
+ * named `sessionId` (not `encounterId`) to say so — it holds a session id
+ * from mount to unmount, and `LobbyFlow`'s own `onEncounterStarted` prop
+ * name is the one piece of the old vocabulary left, since renaming it is
+ * LobbyFlow's own call, not this component's (Copilot review, PR #764).
  */
 
 import { useState } from 'react';
@@ -56,14 +60,14 @@ export function GameView({
   initialEncounterId,
   initialLobbyId,
 }: GameViewProps) {
-  const [encounterId, setEncounterId] = useState<string | null>(
+  const [sessionId, setSessionId] = useState<string | null>(
     initialEncounterId ?? null
   );
 
-  if (encounterId) {
+  if (sessionId) {
     return (
       <SessionEncounterView
-        sessionId={encounterId}
+        sessionId={sessionId}
         characterId={characterId}
         playerId={playerId}
         onBack={onBack}
@@ -75,7 +79,7 @@ export function GameView({
     <LobbyFlow
       characterId={characterId}
       playerId={playerId}
-      onEncounterStarted={setEncounterId}
+      onEncounterStarted={setSessionId}
       onBack={onBack}
       initialLobbyId={initialLobbyId}
     />

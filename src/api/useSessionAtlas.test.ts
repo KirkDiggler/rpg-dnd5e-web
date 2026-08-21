@@ -75,6 +75,18 @@ describe('useSessionAtlas', () => {
     expect(hoisted.getAtlasFn).toHaveBeenCalledTimes(2);
   });
 
+  it('clears a previous error when the session id becomes empty (Copilot review, PR #764)', async () => {
+    hoisted.getAtlasFn.mockRejectedValue(new Error('transport error'));
+    const { result, rerender } = renderHook(({ id }) => useSessionAtlas(id), {
+      initialProps: { id: 'enc-1' },
+    });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    rerender({ id: '' });
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
   it('refetch re-calls GetAtlas and can recover from a previous error', async () => {
     hoisted.getAtlasFn
       .mockRejectedValueOnce(new Error('transport error'))

@@ -50,7 +50,7 @@ import {
   GetCharacterRequestSchema,
   type Character,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useGetCharacter } from '../../api/characterHooks';
 import { useSessionAtlas } from '../../api/useSessionAtlas';
@@ -161,38 +161,37 @@ export function SessionEncounterView({
   const [characterLoading, setCharacterLoading] = useState(!!characterId);
   const [characterError, setCharacterError] = useState<Error | null>(null);
 
-  useEffect(() => {
+  // A plain callback (not folded into the mount effect below) so the
+  // blocking-error retry button can re-invoke it directly, the same way it
+  // already re-invokes refetchAtlas/refetchWhere — before this split, a
+  // GetCharacter failure was permanent: Retry only re-ran the other two
+  // fetches, and characterError never cleared (Copilot review, PR #764).
+  const fetchCharacter = useCallback(async () => {
     if (!characterId) {
       setCharacter(null);
       setCharacterLoading(false);
       setCharacterError(null);
       return;
     }
-    let cancelled = false;
     setCharacterLoading(true);
     setCharacterError(null);
-    getCharacter(create(GetCharacterRequestSchema, { characterId }))
-      .then((response) => {
-        if (!cancelled) {
-          setCharacter(response.character ?? null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setCharacterError(
-            err instanceof Error ? err : new Error('GetCharacter RPC failed')
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setCharacterLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const response = await getCharacter(
+        create(GetCharacterRequestSchema, { characterId })
+      );
+      setCharacter(response.character ?? null);
+    } catch (err) {
+      setCharacterError(
+        err instanceof Error ? err : new Error('GetCharacter RPC failed')
+      );
+    } finally {
+      setCharacterLoading(false);
+    }
   }, [characterId, getCharacter]);
+
+  useEffect(() => {
+    void fetchCharacter();
+  }, [fetchCharacter]);
 
   const layoutOutcome = useMemo(
     () => resolveLayout(atlas?.layout, atlas?.grid),
@@ -237,6 +236,7 @@ export function SessionEncounterView({
           onRetry={() => {
             void refetchAtlas();
             void refetchWhere();
+            void fetchCharacter();
           }}
         />
         <Button variant="ghost" size="sm" onClick={onBack}>

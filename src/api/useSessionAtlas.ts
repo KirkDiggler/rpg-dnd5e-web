@@ -19,7 +19,8 @@ export interface UseSessionAtlasResult {
  *
  * `session` empty/falsy is the "not ready yet" state (mirrors
  * useListDungeons/useMyActiveLobby's own guarded-fetch convention): no
- * request goes out, and `loading` clears rather than spinning forever.
+ * request goes out, and `loading`/`error` both clear rather than leaving a
+ * stale error visible from a previous session id (Copilot review, PR #764).
  */
 export function useSessionAtlas(session: string): UseSessionAtlasResult {
   const [atlas, setAtlas] = useState<GetAtlasResponse | null>(null);
@@ -29,6 +30,7 @@ export function useSessionAtlas(session: string): UseSessionAtlasResult {
   const fetchAtlas = useCallback(async () => {
     if (!session) {
       setAtlas(null);
+      setError(null);
       setLoading(false);
       return;
     }

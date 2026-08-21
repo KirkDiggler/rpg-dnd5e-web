@@ -18,6 +18,7 @@
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
+import { useRef } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { type CubeCoord, cubeToWorld } from '../hex-grid/hexMath';
@@ -36,6 +37,9 @@ export interface SessionCanvasProps {
   myPosition: CubeCoord;
 }
 
+/** Renders inside the Canvas — `useCameraControls` needs the R3F context
+ * (`useThree`), so it cannot run in the component that owns `<Canvas>`
+ * itself. */
 export function SessionScene({
   hexSize,
   scene,
@@ -45,10 +49,24 @@ export function SessionScene({
   classRefId,
   myPosition,
 }: SessionCanvasProps) {
+  // Stable base target, seeded ONCE from the character's starting position
+  // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
+  // see its doc comment). `useCameraControls` mutates this same object in
+  // place as the player pans (WASD/right-drag), and its own effects
+  // re-initialize whenever the TARGET REFERENCE changes — a fresh
+  // `new THREE.Vector3(...)` built inline on every render (Copilot review,
+  // PR #764) would snap the camera back to the character on any unrelated
+  // re-render, silently discarding whatever the player just panned to.
+  // Slice 1 has no movement yet, so unlike HexGrid's `focusTarget` (which
+  // continuously follows a moving player), a single frozen seed is the
+  // whole fix; a later slice that adds walking re-introduces
+  // `focusTarget`-style continuous following, not this ref.
   const target = cubeToWorld(myPosition, hexSize);
-  useCameraControls({
-    target: new THREE.Vector3(target.x, 0, target.z),
-  });
+  const initialTargetRef = useRef<THREE.Vector3 | null>(null);
+  if (initialTargetRef.current === null) {
+    initialTargetRef.current = new THREE.Vector3(target.x, 0, target.z);
+  }
+  useCameraControls({ target: initialTargetRef.current });
 
   return (
     <>
