@@ -31,7 +31,7 @@ import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/sess
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
 import { findAtlasPath } from './atlasPath';
-import { formatMoveError } from './moveErrorMessage';
+import { formatMoveError, isFightLockError } from './moveErrorMessage';
 import { cubeToPosition, positionToCube } from './positionBridge';
 
 function sameCube(a: CubeCoord | null, b: CubeCoord | null): boolean {
@@ -62,6 +62,15 @@ export interface UseSessionWalkResult {
   /** The most recent move-RPC failure message, or `null`. Cleared at the
    * start of the next `walkTo`. */
   moveError: string | null;
+  /** True exactly when `moveError` is the fight-lock refusal
+   * (`session.ErrInBubble`, "member is in a fight" —
+   * `moveErrorMessage.ts`'s `isFightLockError`) rather than some other
+   * rejection. The move indicator (slice 4, rpg-dnd5e-web#762) reuses this
+   * instead of re-parsing `moveError`'s already-friendly text or issuing a
+   * probe RPC: a member can't walk anywhere while fight-locked, so every
+   * hover should read as locked, not path/invalid depending on the cell.
+   * Cleared at the start of the next `walkTo`, same as `moveError`. */
+  fightLocked: boolean;
 }
 
 export function useSessionWalk(
@@ -78,6 +87,7 @@ export function useSessionWalk(
   const [moveSeq, setMoveSeq] = useState<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [fightLocked, setFightLocked] = useState(false);
   const nextSeqRef = useRef(0);
 
   // GetWhere is the source of truth. While idle, the display position
@@ -116,6 +126,7 @@ export function useSessionWalk(
 
       setBusy(true);
       setMoveError(null);
+      setFightLocked(false);
 
       void (async () => {
         try {
@@ -147,7 +158,11 @@ export function useSessionWalk(
           // formatMoveError.ts's own doc comment: rewrites the fight-lock
           // FailedPrecondition (session.ErrInBubble) into a friendly line;
           // every other rejection passes through unchanged, same as before.
+          // isFightLockError parses the SAME caught error the same way
+          // (one sentinel-matching implementation, see moveErrorMessage.ts)
+          // to set the boolean the move indicator reads.
           setMoveError(formatMoveError(err));
+          setFightLocked(isFightLockError(err));
           setBusy(false);
         }
       })();
@@ -177,5 +192,6 @@ export function useSessionWalk(
     walkTo,
     onWalkAnimationComplete,
     moveError,
+    fightLocked,
   };
 }

@@ -219,6 +219,44 @@ describe('useSessionWalk', () => {
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
     expect(result.current.moveError).toBe('In a fight — movement is locked.');
+    expect(result.current.fightLocked).toBe(true);
+  });
+
+  it('a plain (non-fight-lock) Move RPC failure leaves fightLocked false', async () => {
+    hoisted.moveFn.mockRejectedValue(new Error('no doorway joins those cells'));
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn()
+      )
+    );
+    act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
+    await waitFor(() => expect(result.current.busy).toBe(false));
+    expect(result.current.fightLocked).toBe(false);
+  });
+
+  it('fightLocked clears at the start of the next walkTo, same as moveError', async () => {
+    hoisted.moveFn.mockRejectedValueOnce(
+      new ConnectError('member is in a fight', Code.FailedPrecondition)
+    );
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn()
+      )
+    );
+    act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
+    await waitFor(() => expect(result.current.fightLocked).toBe(true));
+
+    hoisted.moveFn.mockReturnValue(new Promise(() => {})); // never resolves
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+    expect(result.current.fightLocked).toBe(false);
   });
 
   it('onWalkAnimationComplete for the current moveSeq reconciles via refetchWhere and then clears busy', async () => {

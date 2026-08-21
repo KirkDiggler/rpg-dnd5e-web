@@ -628,6 +628,32 @@ describe('SessionEncounterView', () => {
       });
 
       await waitFor(() => screen.getByText(/in a fight — movement is locked/i));
+      // fightLocked (rpg-dnd5e-web#762 slice 4) flows to SessionCanvas from
+      // the SAME useSessionWalk state the friendly status line reads —
+      // the move indicator reuses it rather than re-parsing moveError.
+      expect(hoisted.lastCanvasProps.current!.fightLocked).toBe(true);
+    });
+  });
+
+  describe('move indicator wiring (rpg-dnd5e-web#762 slice 4)', () => {
+    it('passes the atlas path index to SessionCanvas once the atlas has loaded', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      expect(hoisted.lastCanvasProps.current!.pathIndex).not.toBeNull();
+      expect(hoisted.lastCanvasProps.current!.fightLocked).toBe(false);
     });
   });
 });

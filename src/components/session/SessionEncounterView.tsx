@@ -11,10 +11,17 @@
  * 3, ADR-0041 / rpg-toolkit#1157's `Seen` seam): `useSessionView` polls
  * `GetView`, `sightingEntities.ts` turns its `sightings` into monster
  * `HexEntity`s at their reported cell (or a faded "remembered" one for a
- * held memory, `currentVia` empty), and a fight-locked `Move` rejection
+ * held memory, `currentVia` empty), a fight-locked `Move` rejection
  * (`session.ErrInBubble`) surfaces as a friendly status line instead of
- * raw RPC text (`moveErrorMessage.ts`). Still no combat resolution itself
- * — this is presence and refusal-messaging only.
+ * raw RPC text (`moveErrorMessage.ts`), and now (slice 4) a hover/path
+ * indicator on the 3D floor itself: `useSessionWalk`'s `fightLocked` flag
+ * and the atlas's own `pathIndex` both flow down into `SessionCanvas` so
+ * hovering shows a walk preview, an unreachable-cell refusal, or the same
+ * fight lock — computed by the SAME `atlasPath.ts` call `walkTo` itself
+ * makes, so the preview can never diverge from what a click actually
+ * does (`moveIndicator.ts`'s own doc comment). Still no combat resolution
+ * itself — this is presence, refusal-messaging, and movement preview
+ * only.
  *
  * # Why this exists beside `EncounterView`, not inside it
  *
@@ -252,6 +259,7 @@ export function SessionEncounterView({
     walkTo,
     onWalkAnimationComplete,
     moveError,
+    fightLocked,
   } = useSessionWalk(sessionId, member, pathIndex, wherePosition, refetchWhere);
 
   // MOVED is the only event kind this slice acts on — a signal to refetch
@@ -403,6 +411,8 @@ export function SessionEncounterView({
           onHexClick={walkTo}
           onMovementPresentationComplete={onWalkAnimationComplete}
           otherMembers={otherMembers}
+          pathIndex={pathIndex}
+          fightLocked={fightLocked}
         />
         <div
           style={{

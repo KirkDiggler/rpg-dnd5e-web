@@ -1,6 +1,6 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describe, expect, it } from 'vitest';
-import { formatMoveError } from './moveErrorMessage';
+import { formatMoveError, isFightLockError } from './moveErrorMessage';
 
 describe('formatMoveError', () => {
   it('maps the fight-lock FailedPrecondition (session.ErrInBubble, "member is in a fight") to a friendly status line', () => {
@@ -51,5 +51,42 @@ describe('formatMoveError', () => {
   it('falls back to a generic message for a non-Error throw', () => {
     expect(formatMoveError('boom')).toBe('Move RPC failed');
     expect(formatMoveError(undefined)).toBe('Move RPC failed');
+  });
+});
+
+describe('isFightLockError', () => {
+  it('is true for the exact fight-lock sentinel (session.ErrInBubble, FailedPrecondition)', () => {
+    expect(
+      isFightLockError(
+        new ConnectError('member is in a fight', Code.FailedPrecondition)
+      )
+    ).toBe(true);
+  });
+
+  it('is false for a sibling FailedPrecondition sentinel', () => {
+    expect(
+      isFightLockError(
+        new ConnectError('member is not in a fight', Code.FailedPrecondition)
+      )
+    ).toBe(false);
+    expect(
+      isFightLockError(
+        new ConnectError('member is downed', Code.FailedPrecondition)
+      )
+    ).toBe(false);
+  });
+
+  it('is false when the text matches but the code does not (defensive — never actually issued this way server-side)', () => {
+    expect(
+      isFightLockError(
+        new ConnectError('member is in a fight', Code.InvalidArgument)
+      )
+    ).toBe(false);
+  });
+
+  it('is false for a non-ConnectError throw', () => {
+    expect(isFightLockError(new Error('member is in a fight'))).toBe(false);
+    expect(isFightLockError('boom')).toBe(false);
+    expect(isFightLockError(undefined)).toBe(false);
   });
 });

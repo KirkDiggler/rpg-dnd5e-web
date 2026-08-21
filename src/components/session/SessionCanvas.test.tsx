@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { cubeToWorld } from '../hex-grid/hexMath';
+import { buildAtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import type { DoorGapPiece } from './atlasWallRuns';
 
@@ -340,6 +341,206 @@ describe('SessionScene', () => {
         />
       );
       expect(renderer.scene.children.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('move indicator (rpg-dnd5e-web#762 slice 4)', () => {
+    /** scene()'s floor as an atlas path index: (0,0,0)/(1,-1,0)/(1,0,-1) —
+     * axial q,r such that positionToCube(q,r) lands on each cube (no
+     * boundaries/doorways/props, so every declared pair is open floor). */
+    function fullPathIndex() {
+      return buildAtlasPathIndex({
+        cells: [
+          { x: 0, y: 0 } as never,
+          { x: 1, y: 0 } as never,
+          { x: 1, y: -1 } as never,
+        ],
+        boundaries: [],
+        doorways: [],
+        props: [],
+      });
+    }
+
+    /** Only the local player's own cell declared as floor — any OTHER
+     * scene() floor tile is still a valid raycast hover (it's in
+     * `scene.floorTiles`) but has no route in this index, so it selects
+     * 'invalid'. */
+    function myCellOnlyPathIndex() {
+      return buildAtlasPathIndex({
+        cells: [{ x: 0, y: 0 } as never],
+        boundaries: [],
+        doorways: [],
+        props: [],
+      });
+    }
+
+    /** Same lookup `SessionCanvas.test.tsx`'s ground-plane click tests
+     * already use — finds the invisible raycast plane's own props by its
+     * geometry type. */
+    function findGroundPlaneProps(renderer: {
+      scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+    }) {
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          (node as { instance: THREE.Mesh }).instance.geometry?.type ===
+          'PlaneGeometry'
+      ) as Array<{ fiber: { props: Record<string, unknown> } }>;
+      return nodes[0]!.fiber.props;
+    }
+
+    // Firing the raw prop handler (matching this file's own ground-plane
+    // click helper above) updates `hoveredHex` React state outside of
+    // React's own event system, so — unlike the click tests, which only
+    // assert a callback was called — reading the resulting scene graph
+    // needs an explicit `act` to flush that update AND the R3F
+    // test-renderer's own re-render before `renderer.scene` reflects it.
+    async function hoverAt(
+      renderer: {
+        scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+      },
+      cube: { x: number; y: number; z: number }
+    ) {
+      const planeProps = findGroundPlaneProps(renderer);
+      const onPointerMove = planeProps.onPointerMove as (event: {
+        point: THREE.Vector3;
+        stopPropagation: () => void;
+      }) => void;
+      const worldPos = cubeToWorld(cube, 1);
+      await ReactThreeTestRenderer.act(async () => {
+        onPointerMove({
+          point: new THREE.Vector3(worldPos.x, 0, worldPos.z),
+          stopPropagation: () => {},
+        });
+      });
+    }
+
+    /** `PathPreview`'s own `PATH_Y_OFFSET` (0.21) — the indicator's
+     * meshes live at this Y regardless of which color/kind they render,
+     * distinct from the floor (0.2) and every other mesh in this scene. */
+    function indicatorMeshes(renderer: {
+      scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+    }) {
+      return renderer.scene.findAll(
+        (node) =>
+          (node as { instance: THREE.Mesh }).instance.type === 'Mesh' &&
+          Math.abs(
+            (node as { instance: THREE.Mesh }).instance.position.y - 0.21
+          ) < 0.001
+      ) as Array<{ instance: THREE.Mesh }>;
+    }
+
+    it('nothing is drawn before any hover', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+        />
+      );
+      expect(indicatorMeshes(renderer)).toHaveLength(0);
+    });
+
+    it('hovering a reachable floor cell draws a path-colored preview through the route', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+        />
+      );
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
+      const meshes = indicatorMeshes(renderer);
+      // (0,0,0) is adjacent to (1,-1,0) in this fixture -> a 2-cell route
+      // (start + destination), each rendered as its own PathPreview hex.
+      expect(meshes).toHaveLength(2);
+      const color = (
+        (meshes[0]!.instance as THREE.Mesh).material as THREE.MeshBasicMaterial
+      ).color;
+      expect(color.getHexString()).toBe('3b82f6'); // MoveIndicator's PATH_COLOR
+    });
+
+    it('hovering a floor cell with no route in the current pathIndex draws a single invalid-colored hex', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={myCellOnlyPathIndex()}
+        />
+      );
+      // (1,-1,0) is real scene() floor (a valid raycast hover) but is NOT
+      // in this test's deliberately-narrow pathIndex.
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
+      const meshes = indicatorMeshes(renderer);
+      expect(meshes).toHaveLength(1);
+      const color = (
+        (meshes[0]!.instance as THREE.Mesh).material as THREE.MeshBasicMaterial
+      ).color;
+      expect(color.getHexString()).toBe('ef4444'); // MoveIndicator's INVALID_COLOR
+    });
+
+    it('fightLocked overrides an otherwise-reachable hover with a single locked-colored hex, not a path', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          fightLocked
+        />
+      );
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
+      const meshes = indicatorMeshes(renderer);
+      expect(meshes).toHaveLength(1);
+      const color = (
+        (meshes[0]!.instance as THREE.Mesh).material as THREE.MeshBasicMaterial
+      ).color;
+      expect(color.getHexString()).toBe('a855f7'); // MoveIndicator's LOCKED_COLOR
+    });
+
+    it('mode="target" draws the target-colored hex regardless of pathIndex/fightLocked', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          mode="target"
+        />
+      );
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
+      const meshes = indicatorMeshes(renderer);
+      expect(meshes).toHaveLength(1);
+      const color = (
+        (meshes[0]!.instance as THREE.Mesh).material as THREE.MeshBasicMaterial
+      ).color;
+      expect(color.getHexString()).toBe('f97316'); // MoveIndicator's TARGET_COLOR
     });
   });
 });
