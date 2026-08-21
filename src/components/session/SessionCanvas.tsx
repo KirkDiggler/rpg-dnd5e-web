@@ -21,18 +21,27 @@ import { Canvas } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
-import { type CubeCoord, cubeToWorld } from '../hex-grid/hexMath';
+import { type CubeCoord, coordToKey, cubeToWorld } from '../hex-grid/hexMath';
 import { SyntyHexFloor } from '../hex-grid/SyntyHexFloor';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
+import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { AtlasWalls } from './AtlasWalls';
+import { MoveIndicator } from './MoveIndicator';
+import type { MoveIndicatorMode } from './moveIndicator';
 import type { SightedMember } from './sightingEntities';
+import { useMoveIndicator } from './useMoveIndicator';
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
  * cover any dungeon this route draws; only its raycast target, never
  * rendered. */
 const GROUND_PLANE_SIZE = 200;
+
+// Slice 4 (rpg-dnd5e-web#762) adds the hover/path indicator: hovering the
+// ground plane highlights the cell under the cursor and, for a reachable
+// one, previews the exact route a click would walk (`useMoveIndicator`/
+// `moveIndicator.ts` own the decision; `MoveIndicator` only draws it).
 
 export interface SessionCanvasProps {
   scene: Scene3D;
@@ -70,6 +79,26 @@ export interface SessionCanvasProps {
    * next render — no animation plumbing needed for this slice. Undefined/
    * empty draws nothing extra, matching every pre-#762-slice-3 caller. */
   otherMembers?: SightedMember[];
+  /** The atlas's movement graph (`atlasPath.ts`'s `buildAtlasPathIndex`) —
+   * the SAME index `useSessionWalk` builds its `MoveRequest` path from.
+   * Feeds the hover/path indicator (rpg-dnd5e-web#762 slice 4) via
+   * `useMoveIndicator`. `undefined`/`null` simply means nothing is drawn
+   * under the cursor yet (`moveIndicator.ts`'s own doc comment: that's a
+   * DIFFERENT answer from a computed `'invalid'`). `SessionEncounterView`
+   * pins this to the last successfully-loaded atlas rather than passing a
+   * live one straight through (rpg-dnd5e-web#768 fix), so in practice this
+   * is only ever null before the FIRST atlas load — a later background
+   * `GetAtlas` refetch failure does not fall back to it. */
+  pathIndex?: AtlasPathIndex | null;
+  /** Mirrors `useSessionWalk`'s `fightLocked` — when true, every hover
+   * shows the indicator's locked state instead of a path preview. Defaults
+   * to `false` (every pre-slice-4 caller, including this file's own
+   * tests). */
+  fightLocked?: boolean;
+  /** `'move'` (default) shows a walk path preview; `'target'` is the
+   * combat seam (rpg-dnd5e-web#762 slice 4's own brief) — a trivial
+   * reticle-color branch only, not an attack flow. */
+  mode?: MoveIndicatorMode;
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -88,6 +117,9 @@ export function SessionScene({
   onHexClick,
   onMovementPresentationComplete,
   otherMembers,
+  pathIndex = null,
+  fightLocked = false,
+  mode = 'move',
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
@@ -123,10 +155,38 @@ export function SessionScene({
   // ignores the hook's own path-preview/attack fields (those are node-
   // only, per-hex; the atlas's real reachability is edge-aware and lives
   // in `atlasPath.ts`/`useSessionWalk`, the caller of `onHexClick`).
-  const { groundPlaneProps } = useHexInteraction({
+  const { groundPlaneProps, hoveredHex } = useHexInteraction({
     hexSize,
     floorTiles: scene.floorTiles,
     onHexClick,
+  });
+
+  // 'target' mode's own trivial seam (moveIndicator.ts's module doc
+  // comment): which OTHER member, if any, sits under the hovered cell.
+  // Cheap — otherMembers is small (everyone currently perceived) — and
+  // reuses the position this component already draws each HexEntity at,
+  // no new lookup structure.
+  const hoveredEntityId = useMemo(() => {
+    if (!hoveredHex || !otherMembers) return null;
+    const key = coordToKey(hoveredHex);
+    return (
+      otherMembers.find((m) => coordToKey(m.position) === key)?.subject ?? null
+    );
+  }, [hoveredHex, otherMembers]);
+
+  // Slice 4 (rpg-dnd5e-web#762): the hover/path indicator. `from` is
+  // `myPosition` — the SAME cube this scene draws the local player's own
+  // `HexEntity` at, so the preview always matches where a click would
+  // actually walk from. Memoized inside the hook on exactly these inputs,
+  // so pathfinding never runs on an unrelated re-render (a camera pan,
+  // say).
+  const moveIndicatorSelection = useMoveIndicator({
+    mode,
+    hovered: hoveredHex,
+    from: myPosition,
+    pathIndex,
+    fightLocked,
+    hoveredEntityId,
   });
 
   return (
@@ -148,6 +208,11 @@ export function SessionScene({
         envelopeRuns={scene.envelopeRuns}
         connectorRuns={scene.connectorRuns}
         doorGaps={scene.doorGaps}
+      />
+      <MoveIndicator
+        selection={moveIndicatorSelection}
+        hexSize={hexSize}
+        hovered={hoveredHex}
       />
       <HexEntity
         entityId={characterId}

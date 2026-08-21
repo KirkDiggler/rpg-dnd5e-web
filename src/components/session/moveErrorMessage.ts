@@ -21,7 +21,11 @@
  *
  * Parses this string in exactly one place — nowhere else in this codebase
  * matches against it — so a future rename of the sentinel's wire text only
- * needs updating here.
+ * needs updating here. `isFightLockError` is that one place, exported
+ * separately from `formatMoveError` (slice 4, rpg-dnd5e-web#762) so the
+ * move indicator can ask "is this THE fight lock" as a boolean without
+ * re-deriving the same code+text match against the RPC rejection a second
+ * time — `useSessionWalk` calls both on the same caught error.
  */
 import { Code, ConnectError } from '@connectrpc/connect';
 
@@ -33,12 +37,19 @@ const FIGHT_LOCK_SENTINEL_TEXT = 'member is in a fight';
 
 const FIGHT_LOCK_MESSAGE = 'In a fight — movement is locked.';
 
-export function formatMoveError(err: unknown): string {
+/** True exactly when `err` is the fight-lock refusal (FailedPrecondition +
+ * the ErrInBubble wire text) — see this module's own doc comment for why
+ * the code alone isn't enough. */
+export function isFightLockError(err: unknown): boolean {
   const connectErr = ConnectError.from(err);
-  if (
+  return (
     connectErr.code === Code.FailedPrecondition &&
     connectErr.rawMessage.includes(FIGHT_LOCK_SENTINEL_TEXT)
-  ) {
+  );
+}
+
+export function formatMoveError(err: unknown): string {
+  if (isFightLockError(err)) {
     return FIGHT_LOCK_MESSAGE;
   }
   return err instanceof Error ? err.message : 'Move RPC failed';
