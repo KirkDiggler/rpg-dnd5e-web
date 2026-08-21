@@ -324,8 +324,8 @@ export function SessionTombConcept() {
         <code>GetAtlasResponse.layout</code>, session v0.20.0, rpg-toolkit#1140
         — so the layout is read, not guessed. The override is here only to show
         the other picture: the two choices draw genuinely different maps, and
-        this page is where that was first seen. Open question on the picture you
-        get from the wire today: rpg-toolkit#1150.
+        this page is where that was first seen — twice (rpg-toolkit#1140, then
+        #1150). What you get from the wire now is what the author drew.
       </p>
 
       {loaded && (

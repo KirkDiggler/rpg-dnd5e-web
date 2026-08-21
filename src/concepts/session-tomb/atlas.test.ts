@@ -307,18 +307,11 @@ describe('which way the hexes point', () => {
     expect(referenceTombCells.layout).toBe('POINTY_TOP');
   });
 
-  /**
-   * HELD RED ON PURPOSE — rpg-toolkit#1150. With the wire saying pointy_top,
-   * drawing these cells as axial (q,r) pointy-top gives aspect 0.69, not the
-   * ~4.5 a 28x8 chain must have. The cells are right; the basis is not: spatial
-   * emits cube (x,y), whose second axis is s, while every standard formula and
-   * spatial's own hexPixel take r = z. Reading the fixture as (q, s) draws 4.54.
-   * This test states what the wire PROMISES (ADR-0040: layout + standard
-   * formula draws the authored shape) and will pass when the toolkit's axial
-   * basis is (X, Z) and the fixture is recaptured. It is skipped, not deleted,
-   * so the promise stays written down where the renderer can see it.
-   */
-  it.skip('draws the authored shape under the layout the wire names (rpg-toolkit#1150)', () => {
+  it('draws the authored shape under the layout the wire names', () => {
+    // ADR-0040's promise, kept: Atlas.Layout + the standard formula for it
+    // draws what the author drew, with no private knowledge of the toolkit.
+    // This was held skipped while rpg-toolkit#1150 stood — the served cells
+    // were cube (x, y), not axial (q, r), and drew as a diagonal band.
     const { w, h } = boundsUnder(
       layoutFromWire(HexLayoutPb.POINTY_TOP, GridKind.HEX) as HexLayout
     );
@@ -326,17 +319,9 @@ describe('which way the hexes point', () => {
     expect(w / h).toBeGreaterThan(2.5);
   });
 
-  it('today, the served cells only draw the authored shape if y is read as s, not r (rpg-toolkit#1150)', () => {
-    const asQR = boundsUnder('pointy');
-    const pts = (referenceTombCells.cells as { x: number; y: number }[]).map(
-      (c) => hexCenter({ x: c.x, y: -c.x - c.y } as never, SIZE, 'pointy')
-    );
-    const xs = pts.map((p) => p.x);
-    const ys = pts.map((p) => p.y);
-    const asQS =
-      (Math.max(...xs) - Math.min(...xs)) / (Math.max(...ys) - Math.min(...ys));
-    expect(asQR.w / asQR.h).toBeLessThan(1);
-    expect(asQS).toBeGreaterThan(4);
+  it('the other layout is the diagonal staircase, still', () => {
+    const { w, h } = boundsUnder('flat');
+    expect(w / h).toBeLessThan(2);
   });
 });
 
