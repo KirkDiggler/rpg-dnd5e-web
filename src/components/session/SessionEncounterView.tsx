@@ -308,7 +308,14 @@ export function SessionEncounterView({
     lastGoodSceneRef.current = scene;
     lastGoodPositionRef.current = positionToCube(wherePosition!);
   }
-  const canDrawScene = lastGoodSceneRef.current !== null;
+  // Tied to BOTH refs, not just the scene one (Copilot review, PR #766) —
+  // the two are always set together above, but checking only one and
+  // relying on that coupling staying true forever is exactly the kind of
+  // invariant a later edit silently breaks. Checking both here makes the
+  // render branch's own `lastGoodPositionRef.current!` assertion actually
+  // safe rather than merely usually-true.
+  const canDrawScene =
+    lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
 
   let content: React.ReactNode;
   if (!characterId) {
