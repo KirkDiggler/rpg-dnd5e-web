@@ -1,11 +1,16 @@
 /**
- * SessionEncounterView — the real 3D game route's slice-1 render of a
+ * SessionEncounterView — the real 3D game route's render of a
  * `dnd5e.api.session.v1alpha1` session: the reference tomb, drawn from the
  * atlas, with the local player's character standing where `GetWhere` says
- * they are. No movement, no combat, no `StreamEvents` yet (rpg-project#227
- * W3 slice 2, issue #762's first small victory) — those are follow-up
- * slices once this one is verified live.
+ * they are, and now able to WALK it (rpg-project#227 W3 slice 2, issue
+ * #762's second small victory) — click a floor hex, `useSessionWalk`
+ * builds a `MoveRequest` from `atlasPath.ts`'s edge-aware route over the
+ * atlas, and the returned steps drive `HexEntity`'s existing move-path
+ * animation (`useHexMovePath`, unchanged from the old `HexGrid` route).
+ * Still no combat, and `StreamEvents` here only triggers a `GetWhere`
+ * refetch on a MOVED event — those are follow-up slices.
  *
+
  * # Why this exists beside `EncounterView`, not inside it
  *
  * `EncounterView` speaks the OLD `EncounterService` (v1alpha2), which
@@ -47,6 +52,10 @@
 import { errorMessage } from '@/utils/combatFormat';
 import { create } from '@bufbuild/protobuf';
 import {
+  EventKind,
+  type Event as SessionEvent,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
   GetCharacterRequestSchema,
   type Character,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
@@ -60,8 +69,11 @@ import { CLASS_TEXTURE_SUFFIXES } from '../../config/characterTextures';
 import { HEX_SIZE } from '../hex-grid/hexMath';
 import { Button } from '../ui/Button';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
+import { buildAtlasPathIndex } from './atlasPath';
 import { buildScene3D, positionToCube } from './atlasToScene3D';
 import { SessionCanvas } from './SessionCanvas';
+import { useSessionEventStream } from './useSessionEventStream';
+import { useSessionWalk } from './useSessionWalk';
 
 export interface SessionEncounterViewProps {
   /** The session/encounter id `StartEncounter` returned. */
@@ -205,6 +217,43 @@ export function SessionEncounterView({
     return buildScene3D(atlas, HEX_SIZE);
   }, [atlas, layoutOutcome]);
 
+  // The atlas's own movement graph (floor mask + declared boundaries/
+  // doorways/props) — layout-agnostic (it works in axial/cube space, not
+  // screen space), so unlike `scene` this doesn't gate on `layoutOutcome`;
+  // it just has nothing to build from before the atlas itself arrives.
+  const pathIndex = useMemo(
+    () => (atlas ? buildAtlasPathIndex(atlas) : null),
+    [atlas]
+  );
+
+  const member = characterId ?? '';
+  const {
+    displayPosition,
+    movePath,
+    moveSeq,
+    busy: walking,
+    walkTo,
+    onWalkAnimationComplete,
+    moveError,
+  } = useSessionWalk(sessionId, member, pathIndex, wherePosition, refetchWhere);
+
+  // MOVED is the only event kind this slice acts on — a signal to refetch
+  // GetWhere (this is how another member's move will eventually reach this
+  // client too, once more than one member walks the same session; today
+  // it's a harmless re-fetch of the same answer the Move RPC's own
+  // response already reconciled). Every other kind is ignored here, not
+  // because they don't matter, but because interpreting FIGHT_STARTED,
+  // STRUCK, etc. is combat's job, out of scope for this slice.
+  const handleSessionEvent = useCallback(
+    (event: SessionEvent) => {
+      if (event.kind === EventKind.MOVED) {
+        void refetchWhere();
+      }
+    },
+    [refetchWhere]
+  );
+  useSessionEventStream(sessionId, member, handleSessionEvent);
+
   const classRefId = character
     ? CLASS_TEXTURE_SUFFIXES[character.class]
     : undefined;
@@ -278,12 +327,41 @@ export function SessionEncounterView({
           characterName={character?.name ?? 'You'}
           character={character ?? undefined}
           classRefId={classRefId}
-          myPosition={positionToCube(wherePosition)}
+          // Falls back to the GetWhere position directly on the very
+          // first render after loading completes — useSessionWalk's own
+          // displayPosition state seeds from wherePosition via an effect,
+          // which lags one tick behind the render that first sees
+          // wherePosition become non-null. The gate above already
+          // guarantees wherePosition is non-null in this branch.
+          myPosition={displayPosition ?? positionToCube(wherePosition)}
+          movePath={movePath}
+          moveSeq={moveSeq}
+          onHexClick={walkTo}
+          onMovementPresentationComplete={onWalkAnimationComplete}
         />
-        <div style={{ position: 'absolute', top: 12, left: 12 }}>
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
           <Button variant="ghost" size="sm" onClick={onBack}>
             Back
           </Button>
+          {walking && (
+            <span style={{ color: 'var(--text-secondary, #aaa)' }}>
+              Walking…
+            </span>
+          )}
+          {moveError && !walking && (
+            <span style={{ color: 'var(--color-error, #f87171)' }}>
+              {moveError}
+            </span>
+          )}
         </div>
       </div>
     );
