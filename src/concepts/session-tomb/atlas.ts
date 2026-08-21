@@ -21,49 +21,64 @@ import type {
   AtlasProp,
   Position,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  GridKind,
+  HexLayout as HexLayoutPb,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
 /**
- * HexLayout is which way the hexes point.
+ * HexLayout is which way the hexes point — the render word.
  *
- * IT IS NOT ON THE WIRE, and that is the first thing W3 found. `GridKind` has
- * exactly two values, SQUARE and HEX, and the session package documents
- * `Orientation` as deliberately omitted because "a client that receives cells
- * never performs the conversion a frame is for".
+ * IT IS ON THE WIRE: `GetAtlasResponse.layout` (session v0.20.0,
+ * rpg-toolkit#1140, toolkit ADR-0040). Read it. Do not infer it from the cells,
+ * from the dungeon's `orientation:` field, or from a bounding box.
  *
- * That reasoning is right about COORDINATES and does not cover DRAWING. Axial
- * (q,r) fixes the topology — the same six neighbours either way — but not the
- * picture: laying the same cells out pointy-topped and flat-topped produces two
- * different images, one roughly the other rotated. A dungeon authored as three
- * chambers side by side renders as three chambers side by side under one and as
- * a diagonal staircase under the other.
+ * Why that sentence needs saying: this client was the one that found the field
+ * missing. Axial (q,r) fixes the topology — the same six neighbours either way —
+ * but not the picture: the same cells laid out pointy-topped and flat-topped are
+ * two different images, one roughly the other rotated. Drawing the reference
+ * tomb the obvious way, from its authored `orientation: pointy`, produced a
+ * diagonal staircase; MEASURING said flat; and the two disagreeing was the
+ * report. Chasing it found `tools/spatial` running the two orientations through
+ * each other's offset schemes — swapped identically both ways, so every
+ * round-trip cancelled it and only a drawing could see it. Corrected in
+ * rpg-toolkit#1141 → #1145; with that, the authored word and the right layout
+ * agree, and the wire says which so no client has to measure again.
  *
- * So a client must choose, and today it must choose by knowing something the
- * server did not tell it.
- *
- * WORSE THAN THAT, AND MEASURED RATHER THAN ASSUMED: the authored word and the
- * right render layout ARE NOT THE SAME WORD. The reference tomb is authored
- * `orientation: pointy`, and drawing its cells pointy-topped produces a
- * diagonal staircase. Drawing them FLAT-topped reproduces what the author drew
- * — three chambers side by side, 28 cells by 8. The atlas's own numbers say so:
- * over the tomb's 224 real cells the flat layout gives a bounding box of aspect
- * 3.12, against the ~3.5 a 28x8 chain should have, while pointy gives 1.29.
- * See atlas.test.ts, which pins it against the atlas this server actually
- * served.
- *
- * The practical consequence is that a client cannot recover this by reading the
- * content either: the obvious inference from `orientation: pointy` is the wrong
- * answer. `DEFAULT_LAYOUT` below is what measurement says, not what the word
- * says.
+ * The wire calls it `layout`, not `orientation`, on purpose: the composition
+ * keeps `orientation` as the frame an author typed cells in, and this is what a
+ * client does with the cells it receives. Same two values, a different question
+ * — and the staircase happened because the two questions shared one word.
  */
 export type HexLayout = 'pointy' | 'flat';
 
 /**
- * DEFAULT_LAYOUT is what draws the reference tomb the way it was authored.
+ * layoutFromWire turns the atlas's layout into the render word.
  *
- * Chosen by measuring the served atlas, not by reading the dungeon's
- * `orientation:` field — see [HexLayout] for why those disagree.
+ * A hex map that arrives without one is a server defect, and this THROWS rather
+ * than guessing: capabilities are supplied, never defaulted, and a default here
+ * is exactly how the staircase got drawn. A square map has no layout and gets
+ * null — the wire mirrors the composition's law that a square field must not
+ * declare one.
  */
-export const DEFAULT_LAYOUT: HexLayout = 'flat';
+export function layoutFromWire(
+  layout: HexLayoutPb,
+  grid: GridKind
+): HexLayout | null {
+  if (grid !== GridKind.HEX) {
+    return null;
+  }
+  switch (layout) {
+    case HexLayoutPb.POINTY_TOP:
+      return 'pointy';
+    case HexLayoutPb.FLAT_TOP:
+      return 'flat';
+    default:
+      throw new Error(
+        'atlas is hex but carries no layout: the server must say which way the hexes point (rpg-toolkit#1140)'
+      );
+  }
+}
 
 /** A point in SVG user space. */
 export interface Point {
