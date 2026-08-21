@@ -133,6 +133,24 @@ describe('SessionEncounterView', () => {
     screen.getByText(/atlas unreachable/i);
   });
 
+  it('shows "nothing to draw" for an atlas with zero cells instead of rendering an empty canvas (Copilot review, PR #764)', async () => {
+    hoisted.atlasResult.atlas = pointyAtlas({ cells: [] });
+    hoisted.atlasResult.loading = false;
+    hoisted.whereResult.position = { x: 0, y: 0 };
+    hoisted.whereResult.loading = false;
+
+    render(
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={noop}
+      />
+    );
+    await waitFor(() => screen.getByText(/nothing to draw/i));
+    expect(screen.queryByTestId('session-canvas')).toBeNull();
+  });
+
   /**
    * The load-bearing property this slice exists to guarantee: hexMath's 3D
    * placement is pointy-top only, so a flat-top or square atlas must be a

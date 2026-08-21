@@ -256,7 +256,7 @@ export function SessionEncounterView({
         </Button>
       </CenteredCard>
     );
-  } else if (!scene || !wherePosition) {
+  } else if (!scene || scene.floorTiles.size === 0 || !wherePosition) {
     content = (
       <CenteredCard>
         <ErrorDisplay
