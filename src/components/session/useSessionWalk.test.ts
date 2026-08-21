@@ -1,3 +1,4 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAtlasPathIndex } from './atlasPath';
@@ -200,6 +201,24 @@ describe('useSessionWalk', () => {
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
     expect(result.current.moveError).toBe('no doorway joins those cells');
+  });
+
+  it('a Move RPC refused with the fight-lock FailedPrecondition (session.ErrInBubble) surfaces the friendly "in a fight" message, not the raw sentinel text', async () => {
+    hoisted.moveFn.mockRejectedValue(
+      new ConnectError('member is in a fight', Code.FailedPrecondition)
+    );
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn()
+      )
+    );
+    act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
+    await waitFor(() => expect(result.current.busy).toBe(false));
+    expect(result.current.moveError).toBe('In a fight — movement is locked.');
   });
 
   it('onWalkAnimationComplete for the current moveSeq reconciles via refetchWhere and then clears busy', async () => {

@@ -31,6 +31,7 @@ import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/sess
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
 import { findAtlasPath } from './atlasPath';
+import { formatMoveError } from './moveErrorMessage';
 import { cubeToPosition, positionToCube } from './positionBridge';
 
 function sameCube(a: CubeCoord | null, b: CubeCoord | null): boolean {
@@ -143,7 +144,10 @@ export function useSessionWalk(
           // busy stays true — released by onWalkAnimationComplete once
           // the presentation finishes AND GetWhere reconciles.
         } catch (err) {
-          setMoveError(err instanceof Error ? err.message : 'Move RPC failed');
+          // formatMoveError.ts's own doc comment: rewrites the fight-lock
+          // FailedPrecondition (session.ErrInBubble) into a friendly line;
+          // every other rejection passes through unchanged, same as before.
+          setMoveError(formatMoveError(err));
           setBusy(false);
         }
       })();

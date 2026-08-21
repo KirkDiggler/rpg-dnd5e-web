@@ -275,4 +275,71 @@ describe('SessionScene', () => {
       expect(onHexClick).not.toHaveBeenCalled();
     });
   });
+
+  describe('otherMembers (rpg-dnd5e-web#762 slice 3)', () => {
+    it('mounts one extra entity per otherMembers entry, beyond the local player alone', async () => {
+      const withoutOthers = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+        />
+      );
+      const baselineMeshes = withoutOthers.scene.findAll(
+        (node) => node.type === 'Mesh'
+      ).length;
+
+      const withOthers = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+            },
+          ]}
+        />
+      );
+      const withOthersMeshes = withOthers.scene.findAll(
+        (node) => node.type === 'Mesh'
+      ).length;
+
+      expect(withOthersMeshes).toBeGreaterThan(baselineMeshes);
+    });
+
+    it('mounts without throwing for a remembered (faded-memory) other member', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: true,
+            },
+          ]}
+        />
+      );
+      expect(renderer.scene.children.length).toBeGreaterThan(0);
+    });
+  });
 });

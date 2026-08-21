@@ -27,6 +27,7 @@ import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import type { Scene3D } from './atlasToScene3D';
 import { AtlasWalls } from './AtlasWalls';
+import type { SightedMember } from './sightingEntities';
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
  * cover any dungeon this route draws; only its raycast target, never
@@ -59,6 +60,16 @@ export interface SessionCanvasProps {
    * `HexEntity`'s own `onMovementPresentationComplete` contract (entityId
    * dropped here since this route only ever animates the local player). */
   onMovementPresentationComplete?: (moveSeq: number) => void;
+  /** Every OTHER member the local player currently perceives
+   * (`GetView.sightings`, mapped by `sightingsToEntities` — rpg-dnd5e-web
+   * #762 slice 3). Drawn as monster `HexEntity`s with no `movePath`/
+   * `moveSeq` of their own: `useHexMovePath` already snaps an entity
+   * straight to a new `position` when `moveSeq` never advances (its own
+   * doc comment's "initial mount / non-move position change" branch), so a
+   * `GetView` refetch that moves one of these simply relocates it on the
+   * next render — no animation plumbing needed for this slice. Undefined/
+   * empty draws nothing extra, matching every pre-#762-slice-3 caller. */
+  otherMembers?: SightedMember[];
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -76,6 +87,7 @@ export function SessionScene({
   moveSeq,
   onHexClick,
   onMovementPresentationComplete,
+  otherMembers,
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
@@ -151,6 +163,18 @@ export function SessionScene({
           onMovementPresentationComplete?.(completedMoveSeq)
         }
       />
+      {otherMembers?.map((member) => (
+        <HexEntity
+          key={member.subject}
+          entityId={member.subject}
+          name={member.subject}
+          position={member.position}
+          type="monster"
+          hexSize={hexSize}
+          monsterRefId={member.monsterRefId}
+          knowledgeState={member.remembered ? 'remembered' : undefined}
+        />
+      ))}
     </>
   );
 }

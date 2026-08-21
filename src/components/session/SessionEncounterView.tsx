@@ -2,13 +2,19 @@
  * SessionEncounterView — the real 3D game route's render of a
  * `dnd5e.api.session.v1alpha1` session: the reference tomb, drawn from the
  * atlas, with the local player's character standing where `GetWhere` says
- * they are, and now able to WALK it (rpg-project#227 W3 slice 2, issue
- * #762's second small victory) — click a floor hex, `useSessionWalk`
- * builds a `MoveRequest` from `atlasPath.ts`'s edge-aware route over the
- * atlas, and the returned steps drive `HexEntity`'s existing move-path
- * animation (`useHexMovePath`, unchanged from the old `HexGrid` route).
- * Still no combat, and `StreamEvents` here only triggers a `GetWhere`
- * refetch on a MOVED event — those are follow-up slices.
+ * they are, able to WALK it (rpg-project#227 W3 slice 2, issue #762's
+ * second small victory) — click a floor hex, `useSessionWalk` builds a
+ * `MoveRequest` from `atlasPath.ts`'s edge-aware route over the atlas, and
+ * the returned steps drive `HexEntity`'s existing move-path animation
+ * (`useHexMovePath`, unchanged from the old `HexGrid` route) — and now
+ * drawing every OTHER member the local player currently perceives (slice
+ * 3, ADR-0041 / rpg-toolkit#1157's `Seen` seam): `useSessionView` polls
+ * `GetView`, `sightingEntities.ts` turns its `sightings` into monster
+ * `HexEntity`s at their reported cell (or a faded "remembered" one for a
+ * held memory, `currentVia` empty), and a fight-locked `Move` rejection
+ * (`session.ErrInBubble`) surfaces as a friendly status line instead of
+ * raw RPC text (`moveErrorMessage.ts`). Still no combat resolution itself
+ * — this is presence and refusal-messaging only.
  *
  * # Why this exists beside `EncounterView`, not inside it
  *
@@ -62,6 +68,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useGetCharacter } from '../../api/characterHooks';
 import { useSessionAtlas } from '../../api/useSessionAtlas';
+import { useSessionView } from '../../api/useSessionView';
 import { useSessionWhere } from '../../api/useSessionWhere';
 import { layoutFromWire } from '../../concepts/session-tomb/atlas';
 import { CLASS_TEXTURE_SUFFIXES } from '../../config/characterTextures';
@@ -71,6 +78,7 @@ import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { buildAtlasPathIndex } from './atlasPath';
 import { buildScene3D, positionToCube } from './atlasToScene3D';
 import { SessionCanvas } from './SessionCanvas';
+import { sightingsToEntities } from './sightingEntities';
 import { useSessionEventStream } from './useSessionEventStream';
 import { useSessionWalk } from './useSessionWalk';
 
@@ -166,6 +174,16 @@ export function SessionEncounterView({
     error: whereError,
     refetch: refetchWhere,
   } = useSessionWhere(sessionId, characterId ?? '');
+  // GetView — "what do I hold of everyone else" (rpg-dnd5e-web#762 slice
+  // 3). Deliberately NOT folded into loading/blockingError below: an other-
+  // member sighting is additive to an already-drawable scene, not a
+  // precondition for one, so a slow/failed GetView degrades to "draw the
+  // tomb and the local player, nobody else yet" rather than blocking the
+  // whole route the way a failed atlas/position/character fetch does.
+  const { sightings, refetch: refetchView } = useSessionView(
+    sessionId,
+    characterId ?? ''
+  );
 
   const { getCharacter } = useGetCharacter();
   const [character, setCharacter] = useState<Character | null>(null);
@@ -253,9 +271,37 @@ export function SessionEncounterView({
   );
   useSessionEventStream(sessionId, member, handleSessionEvent);
 
+  // GetView's refresh policy piggybacks on GetWhere's: every completed
+  // The view FOLLOWS where. This effect is the single owner of every
+  // GetView fetch — useSessionView deliberately has no mount fetch (Copilot
+  // review, PR #767): a perception snapshot only means something relative
+  // to a known position. Every GetWhere answer — initial load, the
+  // reconciliation after the local player's own walk (useSessionWalk's
+  // onWalkAnimationComplete), and every MOVED-triggered refetch above
+  // (which fires for ANY member's move this observer is told about) — sets
+  // `wherePosition` to a FRESH object reference (useSessionWhere.ts's
+  // fetchWhere always calls `setPosition` with a new response, even when
+  // the cell is unchanged), so this runs exactly once per landed position
+  // and never while `wherePosition` is still null. This is deliberately the
+  // "simplest authoritative loop" over hand-decoding
+  // `MoveResponse.discovered` at each call site.
+  useEffect(() => {
+    if (!wherePosition) return;
+    void refetchView();
+  }, [wherePosition, refetchView]);
+
   const classRefId = character
     ? CLASS_TEXTURE_SUFFIXES[character.class]
     : undefined;
+
+  // Every other member the local player currently perceives, ready for
+  // SessionCanvas — sightingEntities.ts owns the seen-unset/memory/own-
+  // subject rules (see its own doc comment); this route just renders what
+  // it returns.
+  const otherMembers = useMemo(
+    () => sightingsToEntities(sightings, characterId ?? ''),
+    [sightings, characterId]
+  );
 
   const loading = atlasLoading || whereLoading || characterLoading;
   const blockingError = atlasError ?? whereError ?? characterError;
@@ -356,6 +402,7 @@ export function SessionEncounterView({
           moveSeq={moveSeq}
           onHexClick={walkTo}
           onMovementPresentationComplete={onWalkAnimationComplete}
+          otherMembers={otherMembers}
         />
         <div
           style={{
