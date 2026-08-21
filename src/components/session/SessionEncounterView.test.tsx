@@ -568,7 +568,9 @@ describe('SessionEncounterView', () => {
         fakeStream([{ kind: EventKind.MOVED } as SessionEvent])
       );
 
-      render(
+      // A factory, not a shared element: React bails out of re-rendering
+      // when handed the identical element object.
+      const view = () => (
         <SessionEncounterView
           sessionId="enc-1"
           characterId="char-1"
@@ -576,17 +578,30 @@ describe('SessionEncounterView', () => {
           onBack={noop}
         />
       );
+      const { rerender } = render(view());
       await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // The view follows where: exactly ONE GetView for the initial
+      // wherePosition (useSessionView has no mount fetch of its own).
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+
+      // MOVED -> GetWhere refetch requested ...
       await waitFor(() =>
         expect(hoisted.whereResult.refetch).toHaveBeenCalledTimes(1)
       );
-      // GetView piggybacks on every GetWhere refresh (see
-      // SessionEncounterView.tsx's own effect comment) -- at least the
-      // initial mount plus one more after the MOVED-triggered refetch
-      // changes wherePosition's reference.
-      await waitFor(() =>
-        expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThanOrEqual(1)
-      );
+      // ... but the mocked useSessionWhere cannot land a new position by
+      // itself, so nothing else has fired yet. This is what makes the
+      // assertion below discriminating: the count must MOVE from 1 to 2
+      // only once the refetched position lands.
+      expect(hoisted.getViewFn).toHaveBeenCalledTimes(1);
+
+      // Simulate the GetWhere refetch landing: a FRESH position reference
+      // (useSessionWhere always sets a new object, even for an unchanged
+      // cell) and the re-render it causes.
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      rerender(view());
+
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
     });
 
     it('a fight-lock Move rejection (session.ErrInBubble) shows the friendly status line, not raw RPC text', async () => {

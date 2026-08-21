@@ -272,19 +272,19 @@ export function SessionEncounterView({
   useSessionEventStream(sessionId, member, handleSessionEvent);
 
   // GetView's refresh policy piggybacks on GetWhere's: every completed
-  // GetWhere fetch — initial load, the reconciliation after the local
-  // player's own walk (useSessionWalk's onWalkAnimationComplete), and every
-  // MOVED-triggered refetch above (which fires for ANY member's move this
-  // observer is told about, not just their own, per handleSessionEvent's
-  // own comment) — sets `wherePosition` to a FRESH object reference
-  // (useSessionWhere.ts's fetchWhere always calls `setPosition` with a new
-  // response, even when the value is unchanged), so this effect re-runs on
-  // every one of those triggers without needing a duplicate refetchView()
-  // call at each site. Skipped while `wherePosition` is still null (before
-  // the very first GetWhere answer lands) — nothing useful to correlate a
-  // view against yet. This is deliberately the "simplest authoritative
-  // loop" the review brief asks for over hand-decoding `MoveResponse.
-  // discovered` at each call site.
+  // The view FOLLOWS where. This effect is the single owner of every
+  // GetView fetch — useSessionView deliberately has no mount fetch (Copilot
+  // review, PR #767): a perception snapshot only means something relative
+  // to a known position. Every GetWhere answer — initial load, the
+  // reconciliation after the local player's own walk (useSessionWalk's
+  // onWalkAnimationComplete), and every MOVED-triggered refetch above
+  // (which fires for ANY member's move this observer is told about) — sets
+  // `wherePosition` to a FRESH object reference (useSessionWhere.ts's
+  // fetchWhere always calls `setPosition` with a new response, even when
+  // the cell is unchanged), so this runs exactly once per landed position
+  // and never while `wherePosition` is still null. This is deliberately the
+  // "simplest authoritative loop" over hand-decoding
+  // `MoveResponse.discovered` at each call site.
   useEffect(() => {
     if (!wherePosition) return;
     void refetchView();
