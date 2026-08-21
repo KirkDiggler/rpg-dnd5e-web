@@ -25,6 +25,21 @@
  * into the same `'invalid'` reading rather than inventing a fourth kind
  * ("here") the click handler doesn't distinguish either.
  *
+ * # `null` means "nothing to judge yet", not "invalid"
+ *
+ * `'invalid'` is a COMPUTED answer — it asserts "I looked, and there is no
+ * route." Missing inputs (`from`/`pathIndex` not `null` — no `GetWhere`
+ * answer yet, or the atlas hasn't loaded) are not that: there is nothing
+ * to look UP yet, so `selectMoveIndicator` returns `null` (draw nothing)
+ * rather than a false `'invalid'` (rpg-dnd5e-web#768, Copilot review on
+ * PR #768 — `SessionCanvas.tsx`'s own `pathIndex` doc comment already said
+ * "null...simply means nothing is drawn," but this file's code
+ * contradicted it before this fix). `SessionEncounterView.tsx` now also
+ * pins `pathIndex` to the last successfully-loaded atlas rather than the
+ * live (possibly refetch-nulled) one, so in practice this `null` branch is
+ * only ever reached before the FIRST successful atlas load — a background
+ * refetch failure after that no longer routes through it at all.
+ *
  * # Fight lock overrides everything in 'move' mode
  *
  * A fight-locked member cannot walk anywhere, full stop — so `fightLocked`
@@ -82,7 +97,10 @@ export function selectMoveIndicator(
   }
 
   if (fightLocked) return { kind: 'locked' };
-  if (!from || !pathIndex) return { kind: 'invalid' };
+  // Not enough to judge yet (no GetWhere answer, or no atlas) — draw
+  // nothing rather than a false 'invalid'. See this module's own doc
+  // comment ("`null` means 'nothing to judge yet'").
+  if (!from || !pathIndex) return null;
 
   const path = findAtlasPath(pathIndex, from, hovered);
   if (path.length === 0) return { kind: 'invalid' };

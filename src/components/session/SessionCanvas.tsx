@@ -82,8 +82,13 @@ export interface SessionCanvasProps {
   /** The atlas's movement graph (`atlasPath.ts`'s `buildAtlasPathIndex`) —
    * the SAME index `useSessionWalk` builds its `MoveRequest` path from.
    * Feeds the hover/path indicator (rpg-dnd5e-web#762 slice 4) via
-   * `useMoveIndicator`. `undefined`/`null` before the atlas has loaded
-   * simply means nothing is drawn under the cursor yet. */
+   * `useMoveIndicator`. `undefined`/`null` simply means nothing is drawn
+   * under the cursor yet (`moveIndicator.ts`'s own doc comment: that's a
+   * DIFFERENT answer from a computed `'invalid'`). `SessionEncounterView`
+   * pins this to the last successfully-loaded atlas rather than passing a
+   * live one straight through (rpg-dnd5e-web#768 fix), so in practice this
+   * is only ever null before the FIRST atlas load — a later background
+   * `GetAtlas` refetch failure does not fall back to it. */
   pathIndex?: AtlasPathIndex | null;
   /** Mirrors `useSessionWalk`'s `fightLocked` — when true, every hover
    * shows the indicator's locked state instead of a path preview. Defaults

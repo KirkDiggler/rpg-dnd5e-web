@@ -183,7 +183,12 @@ describe('selectMoveIndicator', () => {
     expect(selection).toEqual({ kind: 'locked' });
   });
 
-  it('no known player position or atlas index yet is invalid, not a crash', () => {
+  it('no known player position or atlas index yet draws nothing (null), not a false "invalid" and not a crash', () => {
+    // Distinguishes "I looked and there is no route" (a real 'invalid')
+    // from "there is nothing to look up yet" (rpg-dnd5e-web#768, Copilot
+    // review on PR #768) — SessionCanvas.tsx's pathIndex doc comment has
+    // always said null means "nothing is drawn," so this pins the
+    // selector's behavior to match it.
     expect(
       selectMoveIndicator({
         mode: 'move',
@@ -192,7 +197,7 @@ describe('selectMoveIndicator', () => {
         pathIndex: corridorIndex(),
         fightLocked: false,
       })
-    ).toEqual({ kind: 'invalid' });
+    ).toBeNull();
     expect(
       selectMoveIndicator({
         mode: 'move',
@@ -201,7 +206,7 @@ describe('selectMoveIndicator', () => {
         pathIndex: null,
         fightLocked: false,
       })
-    ).toEqual({ kind: 'invalid' });
+    ).toBeNull();
   });
 
   it('target mode is a trivial seam: threads the hovered entity id through, ignoring path/lock state entirely', () => {

@@ -655,5 +655,58 @@ describe('SessionEncounterView', () => {
       expect(hoisted.lastCanvasProps.current!.pathIndex).not.toBeNull();
       expect(hoisted.lastCanvasProps.current!.fightLocked).toBe(false);
     });
+
+    it('a GetAtlas refetch error after a good load keeps the indicator/path working (rpg-dnd5e-web#768 Copilot review)', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      // A factory, not a shared element (this file's own established
+      // pattern, see the GetView-refetch test above): React bails out of
+      // re-rendering when handed the identical element object, so a
+      // `rerender` that's meant to pick up MUTATED hoisted state needs a
+      // fresh element each time.
+      const view = () => (
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      const { rerender } = render(view());
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.pathIndex).not.toBeNull()
+      );
+      const goodPathIndex = hoisted.lastCanvasProps.current!.pathIndex;
+
+      // Simulate a background GetAtlas refetch that fails — useSessionAtlas
+      // .ts's own doc comment: a failed refetch nulls `atlas` (and clears
+      // `loading`). Before rpg-dnd5e-web#768's fix, `pathIndex` was derived
+      // straight from this live (now-null) atlas, so it went null right
+      // along with it even though the canvas keeps drawing the OLD
+      // encounter (`lastGoodSceneRef`/`lastGoodPositionRef`, unaffected by
+      // this same failure).
+      hoisted.atlasResult.atlas = null;
+      hoisted.atlasResult.error = new Error('GetAtlas RPC failed');
+      rerender(view());
+
+      // The atlas path index — and by extension the indicator and
+      // click-to-walk — keeps working off the SAME last-good snapshot
+      // (literally the same object, not just "some non-null index"),
+      // rather than silently going dead over what is really just a
+      // transient refetch failure. GetAtlas's own doc comment: the atlas
+      // is CONSTRUCTION TRUTH, static for the whole encounter.
+      expect(hoisted.lastCanvasProps.current!.pathIndex).toBe(goodPathIndex);
+
+      // And walking still actually works: a click still dispatches a real
+      // Move RPC rather than silently no-opping.
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      await waitFor(() => expect(hoisted.moveFn).toHaveBeenCalled());
+    });
   });
 });

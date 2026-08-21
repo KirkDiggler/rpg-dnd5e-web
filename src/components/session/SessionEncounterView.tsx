@@ -245,10 +245,89 @@ export function SessionEncounterView({
   // doorways/props) — layout-agnostic (it works in axial/cube space, not
   // screen space), so unlike `scene` this doesn't gate on `layoutOutcome`;
   // it just has nothing to build from before the atlas itself arrives.
+  // Recomputes only when the ATLAS REFERENCE changes (buildAtlasPathIndex
+  // is real work — several Sets built from cells/boundaries/doorways/
+  // props), same as `scene` above.
   const pathIndex = useMemo(
     () => (atlas ? buildAtlasPathIndex(atlas) : null),
     [atlas]
   );
+
+  // Whether a FULLY clean paint is possible RIGHT NOW: atlas, position AND
+  // character all present, nothing still loading, nothing errored. This is
+  // the same bar the original loading/blockingError gate enforced before
+  // slice 2 — preserved exactly for the FIRST paint (a character-fetch
+  // failure, say, still blocks the very first render with the existing
+  // error card, per SessionEncounterView.test.tsx's own "Retry also
+  // re-attempts a failed character fetch" case). Computed here, ABOVE
+  // `useSessionWalk`, so the last-good refs immediately below are settled
+  // before that hook (and the JSX far below) read them — see those refs'
+  // own comment for why this ordering is load-bearing, not cosmetic.
+  const canDrawSceneNow =
+    !!scene &&
+    scene.floorTiles.size > 0 &&
+    !!wherePosition &&
+    !characterLoading &&
+    !characterError;
+
+  // Sticky "shown once, stays shown" — set the FIRST time canDrawSceneNow
+  // is true and never cleared after (the `initialTargetRef.current ===
+  // null` lazy-init idiom SessionCanvas.tsx already uses). Deliberately
+  // NOT re-derived from the current loading/error flags on every render:
+  // `useSessionAtlas`/`useSessionWhere` don't clear their last-good data
+  // just because a REFETCH is in flight (only a FAILED refetch clears
+  // it — see each hook's own doc comment), so once the scene has
+  // everything it needs, it keeps having everything it needs through a
+  // background refresh, and once it has been SHOWN once, a later refetch
+  // (even one that clears wherePosition on failure) must not un-show it.
+  // Load-bearing as of slice 2: a MOVED stream event refetches GetWhere
+  // below, which now fires routinely WHILE a walk is still animating (the
+  // event arrives once the server commits the move, well before the
+  // client-side walk animation finishes) — gating the canvas on the bare
+  // `loading` flag here reproduced a real bug: `SessionCanvas` unmounted
+  // on every such refetch, tearing down HexEntity's in-progress walk
+  // animation state and the camera's frozen seed mid-walk (the walk would
+  // silently restart partway through, and the camera-follow added this
+  // slice never got a chance to run — every remount re-seeded it already
+  // at the destination).
+  // The scene, position AND atlas path index are all captured into refs
+  // the moment they're known-good, rather than read live inside the
+  // render branch below (or, for `pathIndex`, passed straight through as
+  // the live `useMemo` above) — a LATER failed refetch clears
+  // `wherePosition` to null (and `atlas`, so `scene`/`pathIndex` too) even
+  // after `canDrawSceneNow` has been true before, and reading those live
+  // values in that window would pass `null` where `SessionCanvas` expects
+  // a real `Scene3D`/position/index. THIS is the fix for rpg-dnd5e-web#768
+  // (Copilot review on PR #768, slice 4's own follow-up): before it,
+  // `pathIndex` was passed to both `useSessionWalk` and `SessionCanvas`
+  // straight from the LIVE memo above, so a background `GetAtlas` refetch
+  // failure (which nulls `atlas` — `useSessionAtlas.ts`'s own doc comment)
+  // silently went dead — every hover read `'invalid'`, and clicks no-opped
+  // — while the canvas kept drawing the OLD encounter via
+  // `lastGoodSceneRef`/`lastGoodPositionRef`, contradicting what was drawn.
+  // `GetAtlas`'s own doc comment is explicit the atlas is CONSTRUCTION
+  // TRUTH, static for the whole encounter, so a refetch failure is never a
+  // reason to distrust data already successfully in hand — pinning all
+  // three to ONE last-good snapshot makes that guarantee structural rather
+  // than three independently-derived values that happen to agree today.
+  const lastGoodSceneRef = useRef<typeof scene>(null);
+  const lastGoodPositionRef = useRef<ReturnType<typeof positionToCube> | null>(
+    null
+  );
+  const lastGoodPathIndexRef = useRef<typeof pathIndex>(null);
+  if (canDrawSceneNow) {
+    lastGoodSceneRef.current = scene;
+    lastGoodPositionRef.current = positionToCube(wherePosition!);
+    lastGoodPathIndexRef.current = pathIndex;
+  }
+  // Tied to BOTH scene/position refs, not just the scene one (Copilot
+  // review, PR #766) — the two are always set together above, but checking
+  // only one and relying on that coupling staying true forever is exactly
+  // the kind of invariant a later edit silently breaks. Checking both here
+  // makes the render branch's own `lastGoodPositionRef.current!` assertion
+  // actually safe rather than merely usually-true.
+  const canDrawScene =
+    lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
 
   const member = characterId ?? '';
   const {
@@ -260,7 +339,13 @@ export function SessionEncounterView({
     onWalkAnimationComplete,
     moveError,
     fightLocked,
-  } = useSessionWalk(sessionId, member, pathIndex, wherePosition, refetchWhere);
+  } = useSessionWalk(
+    sessionId,
+    member,
+    lastGoodPathIndexRef.current,
+    wherePosition,
+    refetchWhere
+  );
 
   // MOVED is the only event kind this slice acts on — a signal to refetch
   // GetWhere (this is how another member's move will eventually reach this
@@ -314,63 +399,6 @@ export function SessionEncounterView({
   const loading = atlasLoading || whereLoading || characterLoading;
   const blockingError = atlasError ?? whereError ?? characterError;
 
-  // Whether a FULLY clean first paint is possible right now: atlas,
-  // position AND character all present, nothing still loading, nothing
-  // errored. This is the same bar the original loading/blockingError gate
-  // enforced before slice 2 — preserved exactly for the FIRST paint (a
-  // character-fetch failure, say, still blocks the very first render with
-  // the existing error card, per SessionEncounterView.test.tsx's own
-  // "Retry also re-attempts a failed character fetch" case).
-  const canDrawSceneNow =
-    !!scene &&
-    scene.floorTiles.size > 0 &&
-    !!wherePosition &&
-    !characterLoading &&
-    !characterError;
-
-  // Sticky "shown once, stays shown" — set the FIRST time canDrawSceneNow
-  // is true and never cleared after (the `initialTargetRef.current ===
-  // null` lazy-init idiom SessionCanvas.tsx already uses). Deliberately
-  // NOT re-derived from the current loading/error flags on every render:
-  // `useSessionAtlas`/`useSessionWhere` don't clear their last-good data
-  // just because a REFETCH is in flight (only a FAILED refetch clears
-  // it — see each hook's own doc comment), so once the scene has
-  // everything it needs, it keeps having everything it needs through a
-  // background refresh, and once it has been SHOWN once, a later refetch
-  // (even one that clears wherePosition on failure) must not un-show it.
-  // Load-bearing as of slice 2: a MOVED stream event refetches GetWhere
-  // below, which now fires routinely WHILE a walk is still animating (the
-  // event arrives once the server commits the move, well before the
-  // client-side walk animation finishes) — gating the canvas on the bare
-  // `loading` flag here reproduced a real bug: `SessionCanvas` unmounted
-  // on every such refetch, tearing down HexEntity's in-progress walk
-  // animation state and the camera's frozen seed mid-walk (the walk would
-  // silently restart partway through, and the camera-follow added this
-  // slice never got a chance to run — every remount re-seeded it already
-  // at the destination).
-  // The scene and position themselves are captured into refs the moment
-  // they're known-good, rather than read live inside the render branch
-  // below — a LATER failed refetch clears `wherePosition` to null (and
-  // `atlas`, so `scene` too) even after `hasShownCanvasRef.current` has
-  // latched true, and reading those live values in that window would
-  // pass `null` where `SessionCanvas` expects a real `Scene3D`/position.
-  const lastGoodSceneRef = useRef<typeof scene>(null);
-  const lastGoodPositionRef = useRef<ReturnType<typeof positionToCube> | null>(
-    null
-  );
-  if (canDrawSceneNow) {
-    lastGoodSceneRef.current = scene;
-    lastGoodPositionRef.current = positionToCube(wherePosition!);
-  }
-  // Tied to BOTH refs, not just the scene one (Copilot review, PR #766) —
-  // the two are always set together above, but checking only one and
-  // relying on that coupling staying true forever is exactly the kind of
-  // invariant a later edit silently breaks. Checking both here makes the
-  // render branch's own `lastGoodPositionRef.current!` assertion actually
-  // safe rather than merely usually-true.
-  const canDrawScene =
-    lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
-
   let content: React.ReactNode;
   if (!characterId) {
     content = (
@@ -411,7 +439,7 @@ export function SessionEncounterView({
           onHexClick={walkTo}
           onMovementPresentationComplete={onWalkAnimationComplete}
           otherMembers={otherMembers}
-          pathIndex={pathIndex}
+          pathIndex={lastGoodPathIndexRef.current}
           fightLocked={fightLocked}
         />
         <div
