@@ -6,14 +6,18 @@
  * to assume because the wire does not say it.
  */
 
+import {
+  GridKind,
+  HexLayout as HexLayoutPb,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import {
   axialDistance,
   buildScene,
   cellKey,
-  DEFAULT_LAYOUT,
   edgeBetween,
   hexCenter,
+  layoutFromWire,
   propName,
   viewBoxOf,
   type HexLayout,
@@ -261,16 +265,26 @@ describe('naming', () => {
 });
 
 /**
- * The layout choice, pinned against the atlas the server actually served.
+ * The layout, pinned against the atlas the server actually served.
  *
- * `referenceTombCells.json` is a capture of GetAtlas from a live rpg-api with
- * RPG_SESSION_STACK_ENABLED, playing the reference tomb — real wire data, not a
- * hand-built guess, in the spirit of this repo's other real-wire fixtures.
+ * `referenceTombCells.json` is a capture of GetAtlas from a live rpg-api
+ * (scripts/capture-reference-tomb.test.ts — CreateLobby → StartEncounter →
+ * GetAtlas, the path a player takes), real wire data, not a hand-built guess.
  *
  * The tomb is three chambers in a row: 6 + 10 + 12 cells wide and 8 tall. So
  * whichever layout is right has to draw something roughly three and a half
  * times wider than it is tall. That is a property of the AUTHORED DUNGEON, not
  * of the renderer, which is what makes it a fair test of the renderer.
+ *
+ * HISTORY, because the inversion below is the whole point: the first capture
+ * measured FLAT as the right answer for a tomb authored `orientation: pointy`,
+ * and that contradiction was the finding (rpg-toolkit#1140). Chasing it found
+ * tools/spatial running the two hex orientations through each other's offset
+ * schemes — a bug invisible to every round-trip and visible only when drawn.
+ * With that corrected (rpg-toolkit#1141 → #1145) the authored word and the
+ * right layout agree, and the wire now says which (session v0.20.0,
+ * ADR-0040). So this file asserts two things: that the wire's word draws the
+ * authored shape, and that a client reads it rather than measuring.
  */
 describe('which way the hexes point', () => {
   const boundsUnder = (layout: HexLayout) => {
@@ -289,28 +303,58 @@ describe('which way the hexes point', () => {
     expect(referenceTombCells.cells).toHaveLength((6 + 10 + 12) * 8);
   });
 
-  it('draws the authored shape flat-topped', () => {
-    const { w, h } = boundsUnder('flat');
+  it('the server says pointy-top, the authored word', () => {
+    expect(referenceTombCells.layout).toBe('POINTY_TOP');
+  });
+
+  /**
+   * HELD RED ON PURPOSE — rpg-toolkit#1150. With the wire saying pointy_top,
+   * drawing these cells as axial (q,r) pointy-top gives aspect 0.69, not the
+   * ~4.5 a 28x8 chain must have. The cells are right; the basis is not: spatial
+   * emits cube (x,y), whose second axis is s, while every standard formula and
+   * spatial's own hexPixel take r = z. Reading the fixture as (q, s) draws 4.54.
+   * This test states what the wire PROMISES (ADR-0040: layout + standard
+   * formula draws the authored shape) and will pass when the toolkit's axial
+   * basis is (X, Z) and the fixture is recaptured. It is skipped, not deleted,
+   * so the promise stays written down where the renderer can see it.
+   */
+  it.skip('draws the authored shape under the layout the wire names (rpg-toolkit#1150)', () => {
+    const { w, h } = boundsUnder(
+      layoutFromWire(HexLayoutPb.POINTY_TOP, GridKind.HEX) as HexLayout
+    );
     // A 28x8 chain of hexes, so comfortably wider than tall.
     expect(w / h).toBeGreaterThan(2.5);
   });
 
-  /**
-   * THE FINDING. The tomb is authored `orientation: pointy`, so reading the
-   * content and believing it is the obvious thing to do -- and it draws a
-   * diagonal staircase. This asserts the wrong answer is genuinely wrong rather
-   * than merely different, which is what makes the missing wire field worth
-   * reporting instead of shrugging at.
-   */
-  it('does not draw the authored shape pointy-topped, despite the authored word', () => {
-    const { w, h } = boundsUnder('pointy');
-    expect(w / h).toBeLessThan(2);
+  it('today, the served cells only draw the authored shape if y is read as s, not r (rpg-toolkit#1150)', () => {
+    const asQR = boundsUnder('pointy');
+    const pts = (referenceTombCells.cells as { x: number; y: number }[]).map(
+      (c) => hexCenter({ x: c.x, y: -c.x - c.y } as never, SIZE, 'pointy')
+    );
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const asQS =
+      (Math.max(...xs) - Math.min(...xs)) / (Math.max(...ys) - Math.min(...ys));
+    expect(asQR.w / asQR.h).toBeLessThan(1);
+    expect(asQS).toBeGreaterThan(4);
+  });
+});
+
+describe('layoutFromWire', () => {
+  it('maps both wire values onto the render layout', () => {
+    expect(layoutFromWire(HexLayoutPb.POINTY_TOP, GridKind.HEX)).toBe('pointy');
+    expect(layoutFromWire(HexLayoutPb.FLAT_TOP, GridKind.HEX)).toBe('flat');
   });
 
-  it('defaults to the one that measures right', () => {
-    const flat = boundsUnder('flat');
-    const pointy = boundsUnder('pointy');
-    const better = flat.w / flat.h > pointy.w / pointy.h ? 'flat' : 'pointy';
-    expect(DEFAULT_LAYOUT).toBe(better);
+  it('refuses to guess when a hex map arrives without one', () => {
+    // Capabilities are supplied, never defaulted: an unspecified layout on a
+    // hex grid is a server defect, and guessing is how the staircase happened.
+    expect(() => layoutFromWire(HexLayoutPb.UNSPECIFIED, GridKind.HEX)).toThrow(
+      /layout/
+    );
+  });
+
+  it('has nothing to say about a square map', () => {
+    expect(layoutFromWire(HexLayoutPb.UNSPECIFIED, GridKind.SQUARE)).toBeNull();
   });
 });

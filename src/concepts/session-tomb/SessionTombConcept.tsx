@@ -27,20 +27,20 @@
  *
  * # Running it
  *
- * The server only builds encounters on this stack under
- * RPG_SESSION_STACK_ENABLED. Without it, StartEncounter uses the old stack and
- * every call here answers about a session that does not exist — which the page
- * reports rather than swallowing.
+ * Since rpg-api#801 the server has no other stack: every StartEncounter builds
+ * a session, and its encounter id is what goes in the box below. A session that
+ * does not exist is reported, not swallowed.
  */
 
 import { sessionClient } from '@/api/client';
+import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   buildScene,
   cellKey,
-  DEFAULT_LAYOUT,
   hexCenter,
+  layoutFromWire,
   type AtlasScene,
   type HexLayout,
 } from './atlas';
@@ -69,11 +69,13 @@ interface Loaded {
 export function SessionTombConcept() {
   const [session, setSession] = useState(() => paramOf('session'));
   const [member, setMember] = useState(() => paramOf('member'));
-  const [layout, setLayout] = useState<HexLayout>(DEFAULT_LAYOUT);
+  // The wire says which way the hexes point (GetAtlasResponse.layout,
+  // session v0.20.0). `override` exists only so the other picture can be seen
+  // on demand — it is never the default, because defaulting is how the
+  // staircase got drawn.
+  const [override, setOverride] = useState<HexLayout | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [rawAtlas, setRawAtlas] = useState<
-    Parameters<typeof buildScene>[0] | null
-  >(null);
+  const [rawAtlas, setRawAtlas] = useState<GetAtlasResponse | null>(null);
   const [me, setMe] = useState<Position | null>(null);
   const [seen, setSeen] = useState<string[]>([]);
   const [log, setLog] = useState<string[]>([]);
@@ -90,17 +92,42 @@ export function SessionTombConcept() {
   }, []);
 
   // Re-laying out an already-loaded atlas must not need another round trip:
-  // the layout is a CLIENT decision (see HexLayout — the wire does not carry
-  // it), so flipping it is pure geometry over data we already have.
+  // the layout is read off the atlas we already have, so flipping the
+  // override is pure geometry over data in hand.
+  //
+  // The wire is consulted FIRST, every time. The override only ever replaces a
+  // valid hex layout: a square atlas has nothing to override (null stays
+  // null), and a hex atlas that arrives without a layout is a server defect
+  // that layoutFromWire throws on — reported in the log, never drawn with a
+  // stale choice. Either way a scene that cannot be drawn is cleared rather
+  // than left showing the previous atlas's cells.
+  const [layout, setLayout] = useState<HexLayout | null>(null);
   useEffect(() => {
     if (!rawAtlas) {
+      setLayout(null);
+      setLoaded(null);
+      return;
+    }
+    let wire: HexLayout | null;
+    try {
+      wire = layoutFromWire(rawAtlas.layout, rawAtlas.grid);
+    } catch (err) {
+      say(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
+      setLayout(null);
+      setLoaded(null);
+      return;
+    }
+    const chosen = wire === null ? null : (override ?? wire);
+    setLayout(chosen);
+    if (chosen === null) {
+      setLoaded(null);
       return;
     }
     setLoaded({
-      scene: buildScene(rawAtlas, HEX_SIZE, layout),
+      scene: buildScene(rawAtlas, HEX_SIZE, chosen),
       cellCount: rawAtlas.cells.length,
     });
-  }, [rawAtlas, layout]);
+  }, [rawAtlas, override, say]);
 
   const refreshMember = useCallback(
     async (sessionID: string, memberID: string) => {
@@ -235,9 +262,7 @@ export function SessionTombConcept() {
         </h2>
         <p className="text-sm opacity-70">
           Reads <code>dnd5e.api.session.v1alpha1</code> from the live server.
-          Needs <code>RPG_SESSION_STACK_ENABLED</code> on the API, or
-          StartEncounter builds on the old stack and this session will not
-          exist.
+          Paste the encounter id a StartEncounter returned.
         </p>
       </header>
 
@@ -278,24 +303,29 @@ export function SessionTombConcept() {
           <span className="opacity-70">layout</span>
           <select
             className="px-2 py-1 rounded border bg-transparent"
-            value={layout}
-            onChange={(e) => setLayout(e.target.value as HexLayout)}
+            value={override ?? 'wire'}
+            onChange={(e) =>
+              setOverride(
+                e.target.value === 'wire' ? null : (e.target.value as HexLayout)
+              )
+            }
           >
-            <option value="pointy">pointy</option>
-            <option value="flat">flat</option>
+            <option value="wire">
+              from the wire{rawAtlas && layout ? ` (${layout})` : ''}
+            </option>
+            <option value="pointy">override: pointy</option>
+            <option value="flat">override: flat</option>
           </select>
         </label>
       </div>
 
       <p className="text-xs opacity-60 max-w-3xl">
-        The layout switch is here because the wire does not carry one.
-        <code> GridKind</code> says SQUARE or HEX and stops there, so which way
-        the hexes point is a client-side assumption — and the two choices draw
-        genuinely different maps. Flat is the default because it is what
-        MEASURES right against the served atlas: the tomb is authored{' '}
-        <code>orientation: pointy</code> and drawing it pointy gives a diagonal
-        staircase, so the authored word and the render layout are not the same
-        word. Switch it and see.
+        The wire says which way the hexes point now —{' '}
+        <code>GetAtlasResponse.layout</code>, session v0.20.0, rpg-toolkit#1140
+        — so the layout is read, not guessed. The override is here only to show
+        the other picture: the two choices draw genuinely different maps, and
+        this page is where that was first seen. Open question on the picture you
+        get from the wire today: rpg-toolkit#1150.
       </p>
 
       {loaded && (
@@ -361,7 +391,7 @@ export function SessionTombConcept() {
             </g>
           ))}
 
-          {me && (
+          {me && layout && (
             <circle
               cx={hexCenter(me, HEX_SIZE, layout).x}
               cy={hexCenter(me, HEX_SIZE, layout).y}
