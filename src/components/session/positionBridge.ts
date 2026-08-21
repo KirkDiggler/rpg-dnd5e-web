@@ -19,3 +19,17 @@ export function positionToCube(position: Position): CubeCoord {
 export function worldPositionOf(position: Position, hexSize: number) {
   return cubeToWorld(positionToCube(position), hexSize);
 }
+
+/**
+ * The inverse of `positionToCube`: cube.x is the wire's q, cube.z is the
+ * wire's r, cube.y is dropped (it's derived, not carried on the wire).
+ * Returned as a plain `{x, y}` shape rather than a real `Position` message
+ * (no `$typeName`) — every cube coordinate this bridges is one `atlasPath`
+ * already validated against `atlas.cells`, so the RPC client's own
+ * `MessageInitShape` typing (which accepts bare data for nested message
+ * fields, no `create()` call required) is what actually consumes this, not
+ * a hand-typed `Position`.
+ */
+export function cubeToPosition(cube: CubeCoord): { x: number; y: number } {
+  return { x: cube.x, y: cube.z };
+}
