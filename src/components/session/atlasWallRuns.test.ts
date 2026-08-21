@@ -313,4 +313,19 @@ describe('boundariesToWallRuns — small hand-built shapes', () => {
     // disconnected-looking bounding box in col/row terms), not zero.
     expect(scene.envelopeRuns).toHaveLength(4);
   });
+
+  it('gives an empty atlas empty runs instead of Infinity/NaN geometry (Copilot review, PR #764)', () => {
+    // boundsOf([]) would report Infinity on every field with no guard —
+    // every downstream corner/segment computation would silently produce
+    // NaN world positions rather than an obviously-empty scene.
+    const scene = boundariesToWallRuns(
+      { cells: [] as never, boundaries: [] as never, doorways: [] as never },
+      1
+    );
+    expect(scene).toEqual({
+      envelopeRuns: [],
+      connectorRuns: [],
+      doorGaps: [],
+    });
+  });
 });
