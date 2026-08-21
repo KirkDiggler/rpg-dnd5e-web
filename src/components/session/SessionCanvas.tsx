@@ -73,7 +73,11 @@ export function SessionScene({
       <ambientLight intensity={0.6} />
       <directionalLight intensity={0.8} position={[10, 20, 10]} />
       <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={hexSize} />
-      <AtlasWalls walls={scene.walls} doors={scene.doors} />
+      <AtlasWalls
+        envelopeRuns={scene.envelopeRuns}
+        connectorRuns={scene.connectorRuns}
+        doorGaps={scene.doorGaps}
+      />
       <HexEntity
         entityId={characterId}
         name={characterName}
