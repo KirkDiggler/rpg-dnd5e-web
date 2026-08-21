@@ -92,20 +92,42 @@ export function SessionTombConcept() {
   }, []);
 
   // Re-laying out an already-loaded atlas must not need another round trip:
-  // the layout is read off the atlas we already have (or overridden), so
-  // flipping it is pure geometry over data in hand.
-  const layout: HexLayout | null = rawAtlas
-    ? (override ?? layoutFromWire(rawAtlas.layout, rawAtlas.grid))
-    : null;
+  // the layout is read off the atlas we already have, so flipping the
+  // override is pure geometry over data in hand.
+  //
+  // The wire is consulted FIRST, every time. The override only ever replaces a
+  // valid hex layout: a square atlas has nothing to override (null stays
+  // null), and a hex atlas that arrives without a layout is a server defect
+  // that layoutFromWire throws on — reported in the log, never drawn with a
+  // stale choice. Either way a scene that cannot be drawn is cleared rather
+  // than left showing the previous atlas's cells.
+  const [layout, setLayout] = useState<HexLayout | null>(null);
   useEffect(() => {
-    if (!rawAtlas || !layout) {
+    if (!rawAtlas) {
+      setLayout(null);
+      setLoaded(null);
+      return;
+    }
+    let wire: HexLayout | null;
+    try {
+      wire = layoutFromWire(rawAtlas.layout, rawAtlas.grid);
+    } catch (err) {
+      say(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
+      setLayout(null);
+      setLoaded(null);
+      return;
+    }
+    const chosen = wire === null ? null : (override ?? wire);
+    setLayout(chosen);
+    if (chosen === null) {
+      setLoaded(null);
       return;
     }
     setLoaded({
-      scene: buildScene(rawAtlas, HEX_SIZE, layout),
+      scene: buildScene(rawAtlas, HEX_SIZE, chosen),
       cellCount: rawAtlas.cells.length,
     });
-  }, [rawAtlas, layout]);
+  }, [rawAtlas, override, say]);
 
   const refreshMember = useCallback(
     async (sessionID: string, memberID: string) => {
