@@ -10,6 +10,40 @@ import { boundariesToWallRuns } from './atlasWallRuns';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
 
+type P = { x: number; z: number };
+type Seg = { start: P; end: P };
+
+/** Distance from a point to a finite segment (0 when the point is on it). */
+function distanceToSegment(p: P, seg: Seg): number {
+  const dx = seg.end.x - seg.start.x;
+  const dz = seg.end.z - seg.start.z;
+  const len2 = dx * dx + dz * dz;
+  const t =
+    len2 === 0
+      ? 0
+      : Math.max(
+          0,
+          Math.min(
+            1,
+            ((p.x - seg.start.x) * dx + (p.z - seg.start.z) * dz) / len2
+          )
+        );
+  const cx = seg.start.x + t * dx;
+  const cz = seg.start.z + t * dz;
+  return Math.hypot(p.x - cx, p.z - cz);
+}
+
+function lineIntersectionOf(a: Seg, b: Seg): P | undefined {
+  const d1 = { x: a.end.x - a.start.x, z: a.end.z - a.start.z };
+  const d2 = { x: b.end.x - b.start.x, z: b.end.z - b.start.z };
+  const det = d2.x * d1.z - d1.x * d2.z;
+  if (Math.abs(det) < 1e-9) return undefined;
+  const dx = b.start.x - a.start.x;
+  const dz = b.start.z - a.start.z;
+  const t = (dx * -d2.z - -d2.x * dz) / det;
+  return { x: a.start.x + t * d1.x, z: a.start.z + t * d1.z };
+}
+
 /** The real reference-tomb atlas shape: three chambers (6/10/12 wide, 8
  * tall) in a row, two interior seams (28 boundary edges: 14 each — see
  * atlasToScene3D.test.ts's own perimeter test for how these numbers were
@@ -155,6 +189,52 @@ describe('boundariesToWallRuns — the real reference tomb', () => {
     // x≈47.6 (the far edge) — not swapped, not both on the same side.
     expect(left.start.x).toBeLessThan(5);
     expect(right.start.x).toBeGreaterThan(40);
+  });
+
+  it('every seam run MEETS the perimeter: both endpoints lie ON a top/bottom envelope segment (Kirk: "the walls do not touch")', () => {
+    // Before this fix each seam stopped at the row-0/row-7 cell centre
+    // while the envelope sits one envelope-offset (1.0 world unit at
+    // hexSize 1) further out — a 1.0-unit gap at both ends of both seams.
+    const top = scene.envelopeRuns.find((r) => r.side === 'top')!;
+    const bottom = scene.envelopeRuns.find((r) => r.side === 'bottom')!;
+    for (const run of scene.connectorRuns) {
+      const ends = run.segments.flatMap((s) => [s.start, s.end]);
+      const zs = ends.map((e) => e.z);
+      const topEnd = ends[zs.indexOf(Math.min(...zs))]!;
+      const bottomEnd = ends[zs.indexOf(Math.max(...zs))]!;
+      expect(distanceToSegment(topEnd, top)).toBeLessThan(1e-6);
+      expect(distanceToSegment(bottomEnd, bottom)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('keeps each door gap at its cell-centre row even though the run now reaches further', () => {
+    // Extending the run must not drag the doorway with it: row 4 of
+    // 0..7 at hexSize 1 is world z = 6 exactly.
+    for (const door of scene.doorGaps) {
+      expect(door.position.z).toBeCloseTo(6, 6);
+    }
+  });
+
+  it('closes every perimeter corner: adjacent envelope runs both pass through their shared corner point', () => {
+    const bySide = Object.fromEntries(
+      scene.envelopeRuns.map((r) => [r.side, r])
+    );
+    const corners: Array<['top' | 'bottom', 'left' | 'right']> = [
+      ['top', 'left'],
+      ['top', 'right'],
+      ['bottom', 'left'],
+      ['bottom', 'right'],
+    ];
+    for (const [h, v] of corners) {
+      const a = bySide[h]!;
+      const b = bySide[v]!;
+      const corner = lineIntersectionOf(a, b);
+      expect(corner).toBeDefined();
+      // The corner point lies on BOTH segments (not just both lines) —
+      // neither run stops short of it, so there is no gap.
+      expect(distanceToSegment(corner!, a)).toBeLessThan(1e-6);
+      expect(distanceToSegment(corner!, b)).toBeLessThan(1e-6);
+    }
   });
 
   it('every envelope run faces outward, away from the combined floor’s own center', () => {

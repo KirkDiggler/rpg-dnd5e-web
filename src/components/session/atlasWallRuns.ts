@@ -206,6 +206,24 @@ function lerp(a: WorldPos, b: WorldPos, t: number): WorldPos {
 }
 
 /**
+ * Where the infinite line through `point` along `dir` crosses the
+ * infinite line an envelope run lies on — the point a seam run has to
+ * reach to touch that perimeter wall. Returns `point` itself when the
+ * two lines are parallel (no crossing to snap to).
+ */
+function snapToRunLine(
+  point: WorldPos,
+  dir: WorldPos,
+  run: WallRunSegment
+): WorldPos {
+  const runDir: WorldPos = {
+    x: run.end.x - run.start.x,
+    z: run.end.z - run.start.z,
+  };
+  return lineIntersection(point, dir, run.start, runDir) ?? point;
+}
+
+/**
  * The four straight envelope runs for the WHOLE floor mask's outer edge
  * — one combined rectangle in (col, row) space, not one per chamber
  * (three side-by-side chambers' shared interior seams are the
@@ -457,6 +475,11 @@ export function boundariesToWallRuns(
     doorwaysByPair.set(`${near.id}|${far.id}`, d);
   }
 
+  const combinedBounds = boundsOf(cubes);
+  const envelopeRuns = envelopeRunsForFloor(combinedBounds, hexSize, 'tomb');
+  const envelopeTop = envelopeRuns.find((r) => r.side === 'top')!;
+  const envelopeBottom = envelopeRuns.find((r) => r.side === 'bottom')!;
+
   const connectorRuns: ConnectorRun[] = [];
   const doorGaps: DoorGapPiece[] = [];
 
@@ -468,15 +491,32 @@ export function boundariesToWallRuns(
     const minRow = Math.min(...rows);
     const maxRow = Math.max(...rows);
 
-    const topWorld = midpoint(
+    // The seam's own row-range in world space: cell-centre to
+    // cell-centre. This is the line the DOORWAY is placed along (a door
+    // row's `t` is a fraction of THIS span) — but not where the rendered
+    // run ends.
+    const topCentre = midpoint(
       worldCorner(nearCol, minRow, hexSize),
       worldCorner(farCol, minRow, hexSize)
     );
-    const bottomWorld = midpoint(
+    const bottomCentre = midpoint(
       worldCorner(nearCol, maxRow, hexSize),
       worldCorner(farCol, maxRow, hexSize)
     );
-    const dir = unitDirection(topWorld, bottomWorld);
+    const dir = unitDirection(topCentre, bottomCentre);
+    // Kirk's live finding (PR #764): "the walls do not touch — half-hex
+    // gaps between the inner and outer walls." A seam that stops at the
+    // last row's cell centre never reaches the envelope, which sits
+    // `envelopeOffset` further out at the floor's outer edge. So the
+    // rendered run's endpoints are the seam line's intersections with
+    // the top/bottom envelope runs' own lines — the seam MEETS the
+    // perimeter it terminates against. Authority is unchanged: the
+    // boundaries still decide the seam exists and where its midline is;
+    // only the presentation segment's reach changes. (Falls back to the
+    // cell-centre endpoint only if the lines are parallel, which a seam
+    // crossing its own floor's top/bottom edge never is.)
+    const topWorld = snapToRunLine(topCentre, dir, envelopeTop);
+    const bottomWorld = snapToRunLine(bottomCentre, dir, envelopeBottom);
     const rotationY = Math.atan2(-dir.z, dir.x);
     const facing = unitDirection(chamberCenter(near), chamberCenter(far));
     const runLength = distance(topWorld, bottomWorld);
@@ -489,7 +529,7 @@ export function boundariesToWallRuns(
       const doorRow = (authoredRow(doorway.from) + authoredRow(doorway.to)) / 2;
       const t =
         maxRow === minRow ? 0.5 : (doorRow - minRow) / (maxRow - minRow);
-      const doorCenter = lerp(topWorld, bottomWorld, t);
+      const doorCenter = lerp(topCentre, bottomCentre, t);
       const halfGap = DOOR_FRAME_CALIBRATED_WIDTH / 2;
       const gapStart = {
         x: doorCenter.x - dir.x * halfGap,
@@ -523,9 +563,6 @@ export function boundariesToWallRuns(
       facing,
     });
   }
-
-  const combinedBounds = boundsOf(cubes);
-  const envelopeRuns = envelopeRunsForFloor(combinedBounds, hexSize, 'tomb');
 
   return { envelopeRuns, connectorRuns, doorGaps };
 }
