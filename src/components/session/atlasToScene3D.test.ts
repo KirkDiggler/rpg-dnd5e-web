@@ -16,6 +16,7 @@ import { hexCenter } from '../../concepts/session-tomb/atlas';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import {
   buildScene3D,
+  perimeterWalls,
   positionToCube,
   worldPositionOf,
 } from './atlasToScene3D';
@@ -86,6 +87,59 @@ describe('worldPositionOf agrees with the SVG concept page', () => {
   });
 });
 
+/**
+ * perimeterWalls — the outer boundary the atlas does NOT declare (see
+ * atlasToScene3D.ts's module doc comment for why that omission is correct
+ * wire behaviour, not a gap this file papers over). Found missing live
+ * (PR #764 review, Kirk walking the real route): the reference tomb's two
+ * declared seams rendered, but nothing marked where the floor simply
+ * stopped.
+ */
+describe('perimeterWalls', () => {
+  it('gives a single isolated cell all six of its edges', () => {
+    const walls = perimeterWalls([pos(0, 0)], 1);
+    expect(walls).toHaveLength(6);
+    for (const w of walls) {
+      expect(w.key.startsWith('perimeter:')).toBe(true);
+      expect(w.blocksMovement).toBe(true);
+      expect(w.blocksLineOfSight).toBe(true);
+    }
+  });
+
+  /**
+   * Two adjacent cells share one edge — that edge is INTERIOR (both sides
+   * are floor) and must NOT appear as perimeter, even though this function
+   * never sees `atlas.boundaries` and has no idea a wall might already be
+   * declared there. Two hexes have 6 edges each (12 raw), minus the one
+   * shared edge counted from each side (2), leaves 10.
+   */
+  it('excludes the shared edge between two adjacent floor cells', () => {
+    const walls = perimeterWalls([pos(0, 0), pos(1, 0)], 1);
+    expect(walls).toHaveLength(10);
+    const sharedEdge = hexEdgeBetween(
+      positionToCube(pos(0, 0)),
+      positionToCube(pos(1, 0)),
+      1
+    );
+    for (const w of walls) {
+      expect(w.edge).not.toEqual(sharedEdge);
+    }
+  });
+
+  /**
+   * The load-bearing number: a deterministic property of the real
+   * reference-tomb shape (three chambers, 6+10+12 wide, 8 tall), computed
+   * independently (not derived from this function) and pinned here so a
+   * future change to the fixture OR to this function's own logic is
+   * caught either way.
+   */
+  it('gives the real reference tomb exactly 142 perimeter edges', () => {
+    const cells = referenceTombCells.cells as { x: number; y: number }[];
+    const walls = perimeterWalls(cells as never, 1);
+    expect(walls).toHaveLength(142);
+  });
+});
+
 describe('buildScene3D', () => {
   it('places every cell as a floor tile keyed by its cube coordinate', () => {
     const scene = buildScene3D(
@@ -100,7 +154,7 @@ describe('buildScene3D', () => {
     });
   });
 
-  it('builds one edge-aligned wall per declared boundary between real neighbours', () => {
+  it('builds one edge-aligned wall per declared boundary between real neighbours, alongside the implicit perimeter', () => {
     const scene = buildScene3D(
       {
         cells: [pos(0, 0), pos(1, 0)],
@@ -116,15 +170,25 @@ describe('buildScene3D', () => {
       } as never,
       1
     );
-    expect(scene.walls).toHaveLength(1);
+    const declaredKey = `${coordToKey(positionToCube(pos(0, 0)))}->${coordToKey(
+      positionToCube(pos(1, 0))
+    )}`;
+    const declared = scene.walls.find((w) => w.key === declaredKey);
+    expect(declared).toBeDefined();
     const expectedEdge = hexEdgeBetween(
       positionToCube(pos(0, 0)),
       positionToCube(pos(1, 0)),
       1
     );
-    expect(scene.walls[0]!.edge).toEqual(expectedEdge);
-    expect(scene.walls[0]!.blocksMovement).toBe(true);
-    expect(scene.walls[0]!.blocksLineOfSight).toBe(true);
+    expect(declared!.edge).toEqual(expectedEdge);
+    expect(declared!.blocksMovement).toBe(true);
+    expect(declared!.blocksLineOfSight).toBe(true);
+    // The declared seam plus the implicit perimeter for these two cells —
+    // cross-checked against perimeterWalls directly rather than a
+    // hardcoded count, so the two can never silently drift apart.
+    expect(scene.walls).toHaveLength(
+      1 + perimeterWalls([pos(0, 0), pos(1, 0)], 1).length
+    );
   });
 
   it('builds one edge-aligned door per declared doorway', () => {
@@ -144,7 +208,9 @@ describe('buildScene3D', () => {
    * Same discipline as atlas.ts's buildScene: a wall/door silently drawn
    * from a missing endpoint would land somewhere plausible-looking and
    * wrong (the origin, or wherever the geometric construction happens to
-   * put it) — dropped instead.
+   * put it) — dropped instead. The lone cell still gets its own implicit
+   * perimeter (6 edges), which is the correct outcome, not evidence the
+   * drop failed.
    */
   it('drops a boundary with a missing endpoint', () => {
     const scene = buildScene3D(
@@ -162,7 +228,7 @@ describe('buildScene3D', () => {
       } as never,
       1
     );
-    expect(scene.walls).toHaveLength(0);
+    expect(scene.walls).toHaveLength(perimeterWalls([pos(0, 0)], 1).length);
   });
 
   it('drops a doorway with a missing endpoint', () => {
@@ -182,7 +248,9 @@ describe('buildScene3D', () => {
    * "hexDistance must be 1 — callers get this for free... always adjacent
    * by construction") — it will happily compute a geometrically
    * plausible-looking edge for any two cube coordinates. This is the
-   * check that keeps a non-adjacent boundary from being drawn anyway.
+   * check that keeps a non-adjacent boundary from being drawn anyway; the
+   * two (non-adjacent, so mutually perimeter-only) cells still get their
+   * own implicit perimeter walls.
    */
   it('drops a boundary between cells that are not adjacent', () => {
     const scene = buildScene3D(
@@ -200,6 +268,12 @@ describe('buildScene3D', () => {
       } as never,
       1
     );
-    expect(scene.walls).toHaveLength(0);
+    const badKey = `${coordToKey(positionToCube(pos(0, 0)))}->${coordToKey(
+      positionToCube(pos(4, 0))
+    )}`;
+    expect(scene.walls.find((w) => w.key === badKey)).toBeUndefined();
+    expect(scene.walls).toHaveLength(
+      perimeterWalls([pos(0, 0), pos(4, 0)], 1).length
+    );
   });
 });

@@ -80,7 +80,6 @@ vi.mock('../../api/useLobbyStream', () => ({
         ],
       } as LobbySnapshot);
       optionsRef.current.onHostChanged?.({ playerId } as HostChanged);
-       
     }, [lobbyId]);
     return { connectionState: 'connected' as const, error: null };
   },

@@ -24,20 +24,33 @@
  * that a swapped-both-ways conversion passes every round-trip test and is
  * only caught by actually drawing the shape).
  *
- * # Walls are declared, not derived
+ * # Walls: declared interior seams, and an IMPLICIT perimeter
  *
  * `boundaries`/`doorways` are DECLARED on the wire (rpg-toolkit#1130) —
  * unlike the old `EncounterService`, which had no walls at all and forced
  * `wallRuns.ts` to derive room envelopes from hex membership. This file
- * does no such derivation: one edge-aligned piece per declared boundary,
- * one per declared doorway, matching `atlas.ts`'s `buildScene` for the SVG
- * page. `wallRuns.ts`/`SyntyHexWall`'s wall-hex-membership algorithm is
- * for the OLD wire's blocked-cell walls and is not reused here.
+ * does no such derivation for the INTERIOR seams: one edge-aligned piece
+ * per declared boundary, one per declared doorway, matching `atlas.ts`'s
+ * `buildScene` for the SVG page.
+ *
+ * The OUTER perimeter is a different case, and `perimeterWalls` below is
+ * not the same kind of derivation `wallRuns.ts` did for the old wire. The
+ * atlas declares only the 28 INTERIOR boundaries (the two seams) for the
+ * reference tomb — it says nothing about the tomb's outer edge, because it
+ * doesn't need to: per rpg-toolkit's one-projection law, the floor CELL
+ * MASK (`atlas.cells`) is the single authoritative source of where the
+ * world is, and "outside" is simply "not a floor cell." An edge between a
+ * floor cell and a non-floor neighbour IS the boundary, as a fact of the
+ * atlas rather than a rule a client applies — no room/zone concept, no
+ * connector-column heuristics, just cell-membership adjacency. Found live
+ * (PR #764 review): the first version of this file drew the two seams
+ * correctly and left the tomb with no outer walls at all.
  */
 
 import {
   coordToKey,
   cubeToWorld,
+  getHexNeighbors,
   hexDistance,
   hexEdgeBetween,
   type CubeCoord,
@@ -87,8 +100,48 @@ export interface Scene3D {
 }
 
 /**
+ * perimeterWalls derives one wall piece for every edge between a floor
+ * cell and a NON-floor neighbour — the tomb's outer boundary, which the
+ * atlas does not declare (see this file's module doc comment for why that
+ * is correct wire behaviour, not a gap). Pure function of `cells` alone,
+ * unit-tested directly against the real 224-cell reference-tomb fixture
+ * (`atlasToScene3D.test.ts`): the perimeter edge count is a deterministic
+ * property of that fixed shape.
+ *
+ * Each qualifying edge is visited exactly once: it is only ever found by
+ * iterating a FLOOR cell's neighbours (the non-floor side never iterates
+ * its own neighbours, since it is not in `cells`), so there is no
+ * companion pass and no de-duplication to do.
+ */
+export function perimeterWalls(
+  cells: readonly Position[],
+  hexSize: number
+): WallEdgePiece[] {
+  const cubes = cells.map(positionToCube);
+  const floorKeys = new Set(cubes.map(coordToKey));
+
+  const walls: WallEdgePiece[] = [];
+  for (const cube of cubes) {
+    for (const neighbor of getHexNeighbors(cube)) {
+      const neighborKey = coordToKey(neighbor);
+      if (floorKeys.has(neighborKey)) {
+        continue; // an interior edge, not the perimeter
+      }
+      walls.push({
+        key: `perimeter:${coordToKey(cube)}->${neighborKey}`,
+        edge: hexEdgeBetween(cube, neighbor, hexSize),
+        blocksMovement: true,
+        blocksLineOfSight: true,
+      });
+    }
+  }
+  return walls;
+}
+
+/**
  * buildScene3D lays out the whole atlas once, in hexMath's world-space
- * cube coordinates.
+ * cube coordinates: the floor, the DECLARED interior seams (boundaries and
+ * doorways), and the IMPLICIT outer perimeter (`perimeterWalls`).
  *
  * Boundaries/doorways with a missing endpoint, or whose two cells are not
  * actually adjacent, are DROPPED rather than drawn somewhere plausible —
@@ -126,6 +179,7 @@ export function buildScene3D(
       blocksLineOfSight: b.blocksLineOfSight,
     });
   }
+  walls.push(...perimeterWalls(atlas.cells, hexSize));
 
   const doors: DoorEdgePiece[] = [];
   for (const d of atlas.doorways as AtlasDoorway[]) {
