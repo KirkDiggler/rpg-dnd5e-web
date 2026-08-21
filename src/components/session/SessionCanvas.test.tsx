@@ -10,6 +10,7 @@ import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
+import { cubeToWorld } from '../hex-grid/hexMath';
 import type { Scene3D } from './atlasToScene3D';
 import type { DoorGapPiece } from './atlasWallRuns';
 
@@ -169,5 +170,109 @@ describe('SessionScene', () => {
     // outside this component (SessionCanvas owns the actual <Canvas>), so
     // this only asserts the hook ran without error and content mounted.
     expect(renderer.scene.children.length).toBeGreaterThan(0);
+  });
+
+  it('mounts without throwing when a walk is in flight (movePath/moveSeq/onMovementPresentationComplete wired)', async () => {
+    const onMovementPresentationComplete = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Toolkit Sandbox Fighter"
+        character={undefined}
+        classRefId={undefined}
+        myPosition={{ x: 1, y: 0, z: -1 }}
+        movePath={[
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: -1 },
+        ]}
+        moveSeq={1}
+        onMovementPresentationComplete={onMovementPresentationComplete}
+      />
+    );
+    expect(renderer.scene.children.length).toBeGreaterThan(0);
+  });
+
+  describe('ground-plane click', () => {
+    /** Finds the invisible raycast plane by its geometry's `.type`
+     * (`'PlaneGeometry'`, distinct from every other mesh in the scene:
+     * floor tiles, walls and HexEntity's own invisible raycast-proxy
+     * capsule all use different geometry types). Compared by `.type`
+     * string rather than `instanceof THREE.PlaneGeometry` — R3F's
+     * internal `three` module resolution and this test file's own `three`
+     * import aren't guaranteed to be the same module instance (see the
+     * "Multiple instances of Three.js being imported" warning this suite
+     * already emits), which would make `instanceof` silently false. */
+    function findGroundPlane(renderer: {
+      scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+    }) {
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          (node as { instance: THREE.Mesh }).instance.geometry?.type ===
+          'PlaneGeometry'
+      ) as Array<{ fiber: { props: Record<string, unknown> } }>;
+      expect(nodes).toHaveLength(1);
+      return nodes[0]!.fiber.props;
+    }
+
+    it('a click on a valid floor cell calls onHexClick with its cube coordinate', async () => {
+      const onHexClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          onHexClick={onHexClick}
+        />
+      );
+      const planeProps = findGroundPlane(renderer);
+      const onClick = planeProps.onClick as (event: {
+        point: THREE.Vector3;
+        stopPropagation: () => void;
+      }) => void;
+
+      // scene()'s floor includes cube (1, -1, 0) — click at its world
+      // center (hexSize 1).
+      const worldPos = cubeToWorld({ x: 1, y: -1, z: 0 }, 1);
+      onClick({
+        point: new THREE.Vector3(worldPos.x, 0, worldPos.z),
+        stopPropagation: () => {},
+      });
+
+      expect(onHexClick).toHaveBeenCalledWith({ x: 1, y: -1, z: 0 });
+    });
+
+    it('a click well outside the floor mask does not call onHexClick', async () => {
+      const onHexClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          onHexClick={onHexClick}
+        />
+      );
+      const planeProps = findGroundPlane(renderer);
+      const onClick = planeProps.onClick as (event: {
+        point: THREE.Vector3;
+        stopPropagation: () => void;
+      }) => void;
+
+      onClick({
+        point: new THREE.Vector3(500, 0, 500),
+        stopPropagation: () => {},
+      });
+
+      expect(onHexClick).not.toHaveBeenCalled();
+    });
   });
 });

@@ -230,7 +230,12 @@ export function LobbyFlow({
       : hostPlayerId === playerId;
   const allReady = members.length > 0 && members.every((m) => m.isReady);
   const me = members.find((m) => m.playerId === playerId);
-  myCharacterIdRef.current = me?.characterId || characterId;
+  const myCharacterId = me?.characterId || characterId;
+  // Cache the latest seat for the imperative start handlers (stream event +
+  // StartEncounter response) without mutating a ref during render.
+  useEffect(() => {
+    myCharacterIdRef.current = myCharacterId;
+  }, [myCharacterId]);
 
   if (!lobbyId) {
     return (

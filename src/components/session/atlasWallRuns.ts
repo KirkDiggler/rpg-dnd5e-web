@@ -381,6 +381,15 @@ export function boundariesToWallRuns(
   atlas: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways'>,
   hexSize: number
 ): WallRunScene {
+  // An empty floor has no columns/rows to derive a bounding box from —
+  // boundsOf([]) would return Infinity on every field, and every
+  // downstream corner/segment computation would silently produce NaN
+  // world positions rather than an obviously-empty scene (Copilot review,
+  // PR #764).
+  if (atlas.cells.length === 0) {
+    return { envelopeRuns: [], connectorRuns: [], doorGaps: [] };
+  }
+
   const cubes = atlas.cells.map(positionToCube);
 
   const separators = new Set<string>();
