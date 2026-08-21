@@ -307,6 +307,86 @@ describe('SessionEncounterView', () => {
     expect(props.myPosition).toEqual({ x: 1, y: -1, z: 0 });
   });
 
+  describe('a background GetWhere refetch does not unmount an already-shown canvas', () => {
+    // Regression coverage for a real, live-reproduced bug: a MOVED stream
+    // event (fired routinely while a walk is still animating — see
+    // SessionEncounterView.tsx's own `canDrawSceneNow`/`canDrawScene`
+    // doc comment) calls `refetchWhere()`, which sets `useSessionWhere`'s
+    // `loading` true for the round trip. Before the fix, the top-level
+    // `loading` gate switched `content` back to `<LoadingOverlay>` for
+    // that whole window, unmounting `SessionCanvas` (and with it,
+    // HexEntity's in-progress walk animation refs and the camera's
+    // frozen seed) every single time — a walk would silently restart
+    // partway through and the camera-follow this slice added never got a
+    // chance to run. Asserted here via DOM node IDENTITY: the mocked
+    // `SessionCanvas` renders a `<div data-testid="session-canvas" />`,
+    // so an unmount+remount produces a DIFFERENT DOM node even though
+    // `getByTestId` would still find *a* matching element either way.
+
+    function renderReady() {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      return render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+    }
+
+    it('a GetWhere refetch in flight (loading=true) keeps the same canvas DOM node mounted', async () => {
+      const { rerender } = renderReady();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      const nodeBefore = screen.getByTestId('session-canvas');
+
+      hoisted.whereResult.loading = true;
+      rerender(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+
+      expect(screen.getByTestId('session-canvas')).toBe(nodeBefore);
+    });
+
+    it('a FAILED background refetch (position cleared to null) still keeps the canvas mounted, using the last known-good position', async () => {
+      const { rerender } = renderReady();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      const nodeBefore = screen.getByTestId('session-canvas');
+
+      // useSessionWhere's own contract: a failed fetch clears position to
+      // null and sets loading back to false.
+      hoisted.whereResult.position = null;
+      hoisted.whereResult.loading = false;
+      hoisted.whereResult.error = new Error('transient GetWhere failure');
+      rerender(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+
+      expect(screen.getByTestId('session-canvas')).toBe(nodeBefore);
+      // Still the last known-good position, not a crash from
+      // positionToCube(null). y is -0 here (positionToCube's `-q - r` at
+      // q=0,r=0), mathematically 0 but distinct under toEqual.
+      expect(hoisted.lastCanvasProps.current!.myPosition).toEqual({
+        x: 0,
+        y: -0,
+        z: 0,
+      });
+    });
+  });
+
   describe('click to walk', () => {
     /** pointyAtlas()'s two cells, (0,0) and (1,0), are open floor and
      * hex-adjacent — a click on the far one is a direct, unobstructed

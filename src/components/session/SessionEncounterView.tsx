@@ -10,7 +10,6 @@
  * Still no combat, and `StreamEvents` here only triggers a `GetWhere`
  * refetch on a MOVED event — those are follow-up slices.
  *
-
  * # Why this exists beside `EncounterView`, not inside it
  *
  * `EncounterView` speaks the OLD `EncounterService` (v1alpha2), which
@@ -59,7 +58,7 @@ import {
   GetCharacterRequestSchema,
   type Character,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useGetCharacter } from '../../api/characterHooks';
 import { useSessionAtlas } from '../../api/useSessionAtlas';
@@ -261,6 +260,56 @@ export function SessionEncounterView({
   const loading = atlasLoading || whereLoading || characterLoading;
   const blockingError = atlasError ?? whereError ?? characterError;
 
+  // Whether a FULLY clean first paint is possible right now: atlas,
+  // position AND character all present, nothing still loading, nothing
+  // errored. This is the same bar the original loading/blockingError gate
+  // enforced before slice 2 — preserved exactly for the FIRST paint (a
+  // character-fetch failure, say, still blocks the very first render with
+  // the existing error card, per SessionEncounterView.test.tsx's own
+  // "Retry also re-attempts a failed character fetch" case).
+  const canDrawSceneNow =
+    !!scene &&
+    scene.floorTiles.size > 0 &&
+    !!wherePosition &&
+    !characterLoading &&
+    !characterError;
+
+  // Sticky "shown once, stays shown" — set the FIRST time canDrawSceneNow
+  // is true and never cleared after (the `initialTargetRef.current ===
+  // null` lazy-init idiom SessionCanvas.tsx already uses). Deliberately
+  // NOT re-derived from the current loading/error flags on every render:
+  // `useSessionAtlas`/`useSessionWhere` don't clear their last-good data
+  // just because a REFETCH is in flight (only a FAILED refetch clears
+  // it — see each hook's own doc comment), so once the scene has
+  // everything it needs, it keeps having everything it needs through a
+  // background refresh, and once it has been SHOWN once, a later refetch
+  // (even one that clears wherePosition on failure) must not un-show it.
+  // Load-bearing as of slice 2: a MOVED stream event refetches GetWhere
+  // below, which now fires routinely WHILE a walk is still animating (the
+  // event arrives once the server commits the move, well before the
+  // client-side walk animation finishes) — gating the canvas on the bare
+  // `loading` flag here reproduced a real bug: `SessionCanvas` unmounted
+  // on every such refetch, tearing down HexEntity's in-progress walk
+  // animation state and the camera's frozen seed mid-walk (the walk would
+  // silently restart partway through, and the camera-follow added this
+  // slice never got a chance to run — every remount re-seeded it already
+  // at the destination).
+  // The scene and position themselves are captured into refs the moment
+  // they're known-good, rather than read live inside the render branch
+  // below — a LATER failed refetch clears `wherePosition` to null (and
+  // `atlas`, so `scene` too) even after `hasShownCanvasRef.current` has
+  // latched true, and reading those live values in that window would
+  // pass `null` where `SessionCanvas` expects a real `Scene3D`/position.
+  const lastGoodSceneRef = useRef<typeof scene>(null);
+  const lastGoodPositionRef = useRef<ReturnType<typeof positionToCube> | null>(
+    null
+  );
+  if (canDrawSceneNow) {
+    lastGoodSceneRef.current = scene;
+    lastGoodPositionRef.current = positionToCube(wherePosition!);
+  }
+  const canDrawScene = lastGoodSceneRef.current !== null;
+
   let content: React.ReactNode;
   if (!characterId) {
     content = (
@@ -273,6 +322,59 @@ export function SessionEncounterView({
           Back
         </Button>
       </CenteredCard>
+    );
+  } else if (canDrawScene) {
+    // Non-null assertions below are exactly what `canDrawScene` (just
+    // checked) already established — `lastGoodSceneRef`/
+    // `lastGoodPositionRef` are both populated in this branch, per
+    // `canDrawScene`'s own definition above.
+    content = (
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <SessionCanvas
+          scene={lastGoodSceneRef.current!}
+          hexSize={HEX_SIZE}
+          characterId={characterId}
+          characterName={character?.name ?? 'You'}
+          character={character ?? undefined}
+          classRefId={classRefId}
+          // Falls back to the last known-good GetWhere position — see
+          // `lastGoodPositionRef`'s own comment above for why this reads
+          // from that ref rather than a live `wherePosition`.
+          // useSessionWalk's own displayPosition state seeds from
+          // wherePosition via an effect, which lags one tick behind the
+          // render that first sees wherePosition become non-null, hence
+          // still falling back to the ref on that very first render too.
+          myPosition={displayPosition ?? lastGoodPositionRef.current!}
+          movePath={movePath}
+          moveSeq={moveSeq}
+          onHexClick={walkTo}
+          onMovementPresentationComplete={onWalkAnimationComplete}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            Back
+          </Button>
+          {walking && (
+            <span style={{ color: 'var(--text-secondary, #aaa)' }}>
+              Walking…
+            </span>
+          )}
+          {moveError && !walking && (
+            <span style={{ color: 'var(--color-error, #f87171)' }}>
+              {moveError}
+            </span>
+          )}
+        </div>
+      </div>
     );
   } else if (loading) {
     content = <LoadingOverlay visible text="Loading the tomb…" />;
@@ -305,7 +407,7 @@ export function SessionEncounterView({
         </Button>
       </CenteredCard>
     );
-  } else if (!scene || scene.floorTiles.size === 0 || !wherePosition) {
+  } else {
     content = (
       <CenteredCard>
         <ErrorDisplay
@@ -316,54 +418,6 @@ export function SessionEncounterView({
           Back
         </Button>
       </CenteredCard>
-    );
-  } else {
-    content = (
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        <SessionCanvas
-          scene={scene}
-          hexSize={HEX_SIZE}
-          characterId={characterId}
-          characterName={character?.name ?? 'You'}
-          character={character ?? undefined}
-          classRefId={classRefId}
-          // Falls back to the GetWhere position directly on the very
-          // first render after loading completes — useSessionWalk's own
-          // displayPosition state seeds from wherePosition via an effect,
-          // which lags one tick behind the render that first sees
-          // wherePosition become non-null. The gate above already
-          // guarantees wherePosition is non-null in this branch.
-          myPosition={displayPosition ?? positionToCube(wherePosition)}
-          movePath={movePath}
-          moveSeq={moveSeq}
-          onHexClick={walkTo}
-          onMovementPresentationComplete={onWalkAnimationComplete}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            top: 12,
-            left: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            Back
-          </Button>
-          {walking && (
-            <span style={{ color: 'var(--text-secondary, #aaa)' }}>
-              Walking…
-            </span>
-          )}
-          {moveError && !walking && (
-            <span style={{ color: 'var(--color-error, #f87171)' }}>
-              {moveError}
-            </span>
-          )}
-        </div>
-      </div>
     );
   }
 
