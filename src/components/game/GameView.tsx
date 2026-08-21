@@ -8,10 +8,18 @@
  *
  * Slice 3 (#447) deleted LobbyView.tsx, which App.tsx no longer referenced
  * once it was mounting GameView on the same route.
+ *
+ * W3 slice 2 (rpg-project#227, issue #762 slice 1): `StartEncounter` now
+ * builds a session on `dnd5e.api.session.v1alpha1` — rpg-api#801 deleted
+ * the old `EncounterService` stack `dev` used to serve, so the id
+ * `onEncounterStarted` receives is a SESSION id, not an old-wire encounter
+ * id. This mounts `SessionEncounterView` (the new wire's renderer) instead
+ * of `EncounterView` (the old wire's, left in place and untouched —
+ * deleting it is a later slice, not this one).
  */
 
 import { useState } from 'react';
-import { EncounterView } from './EncounterView';
+import { SessionEncounterView } from '../session/SessionEncounterView';
 import { LobbyFlow } from './LobbyFlow';
 
 export interface GameViewProps {
@@ -19,10 +27,10 @@ export interface GameViewProps {
    * The character selected on the home screen. Optional: resume-after-
    * refresh (#444) mounts this component with only playerId — GetMyActiveLobby
    * carries no characterId, so this is undefined on that path and each child
-   * resolves what it needs from server state instead (EncounterView from the
-   * encounter's own roster; LobbyFlow doesn't need it at all once
-   * initialLobbyId is set, since it skips the create/join RPCs that are the
-   * only place characterId is used).
+   * resolves what it needs from server state instead (SessionEncounterView
+   * shows a clear "no character selected" state; LobbyFlow doesn't need it
+   * at all once initialLobbyId is set, since it skips the create/join RPCs
+   * that are the only place characterId is used).
    */
   characterId?: string;
   playerId: string;
@@ -54,8 +62,8 @@ export function GameView({
 
   if (encounterId) {
     return (
-      <EncounterView
-        encounterId={encounterId}
+      <SessionEncounterView
+        sessionId={encounterId}
         characterId={characterId}
         playerId={playerId}
         onBack={onBack}
