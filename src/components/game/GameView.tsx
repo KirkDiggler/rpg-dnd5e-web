@@ -30,11 +30,12 @@ export interface GameViewProps {
   /**
    * The character selected on the home screen. Optional: resume-after-
    * refresh (#444) mounts this component with only playerId — GetMyActiveLobby
-   * carries no characterId, so this is undefined on that path and each child
-   * resolves what it needs from server state instead (SessionEncounterView
-   * shows a clear "no character selected" state; LobbyFlow doesn't need it
-   * at all once initialLobbyId is set, since it skips the create/join RPCs
-   * that are the only place characterId is used).
+   * carries no characterId, so this is undefined on that path. LobbyFlow
+   * recovers it from the roster (`LobbyMember.characterId`) and reports it
+   * with the encounter start, so the session view is placed correctly even
+   * on resume; only the initialEncounterId path (a RUNNING encounter, no
+   * lobby to read) still reaches SessionEncounterView without one, and it
+   * shows a clear "no character selected" state there.
    */
   characterId?: string;
   playerId: string;
@@ -63,12 +64,22 @@ export function GameView({
   const [sessionId, setSessionId] = useState<string | null>(
     initialEncounterId ?? null
   );
+  // The lobby roster's answer for "which character am I" wins over the
+  // home-screen prop: on resume-after-refresh the prop is undefined, and the
+  // roster is where the server said which seat is ours.
+  const [lobbyCharacterId, setLobbyCharacterId] = useState<string | undefined>(
+    undefined
+  );
+  const handleEncounterStarted = (id: string, memberCharacterId?: string) => {
+    setLobbyCharacterId(memberCharacterId);
+    setSessionId(id);
+  };
 
   if (sessionId) {
     return (
       <SessionEncounterView
         sessionId={sessionId}
-        characterId={characterId}
+        characterId={lobbyCharacterId ?? characterId}
         playerId={playerId}
         onBack={onBack}
       />
@@ -79,7 +90,7 @@ export function GameView({
     <LobbyFlow
       characterId={characterId}
       playerId={playerId}
-      onEncounterStarted={setSessionId}
+      onEncounterStarted={handleEncounterStarted}
       onBack={onBack}
       initialLobbyId={initialLobbyId}
     />

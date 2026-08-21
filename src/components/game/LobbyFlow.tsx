@@ -49,7 +49,13 @@ export interface LobbyFlowProps {
    */
   characterId?: string;
   playerId: string;
-  onEncounterStarted: (encounterId: string) => void;
+  /**
+   * Fired when the encounter starts. `characterId` is the caller's own seat
+   * in the lobby roster (`LobbyMember.characterId`) — the resume-after-
+   * refresh path mounts LobbyFlow with no characterId prop, and the session
+   * route needs one to ask GetWhere, so the roster is the source of truth.
+   */
+  onEncounterStarted: (encounterId: string, characterId?: string) => void;
   onBack: () => void;
   /**
    * Resume-after-refresh (#444): an already-existing WAITING lobby the
@@ -73,6 +79,9 @@ export function LobbyFlow({
   const [joinRef, setJoinRef] = useState<string | null>(null);
   const [hostPlayerId, setHostPlayerId] = useState<string | null>(null);
   const [members, setMembers] = useState<LobbyMember[]>([]);
+  // The caller's own seat, kept in a ref so the StreamLobby callbacks (bound
+  // once) and handleStart both see the latest roster without re-subscribing.
+  const myCharacterIdRef = useRef<string | undefined>(characterId);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   // '' means "let the server fall back to its own caller->env->default
@@ -160,7 +169,7 @@ export function LobbyFlow({
     },
     onEncounterStarted: (e) => {
       setLobbyId(null); // drop the lobby stream — encounter_started is terminal
-      onEncounterStarted(e.encounterId);
+      onEncounterStarted(e.encounterId, myCharacterIdRef.current);
     },
   });
 
@@ -186,6 +195,7 @@ export function LobbyFlow({
   const handleToggleReady = async () => {
     if (!lobbyId) return;
     const me = members.find((m) => m.playerId === playerId);
+    myCharacterIdRef.current = me?.characterId || characterId;
     const nextReady = !(me?.isReady ?? false);
     setError(null);
     try {
@@ -208,7 +218,7 @@ export function LobbyFlow({
       // broadcast should reach every member including the host, but the
       // host doesn't need to wait for its own echo).
       setLobbyId(null);
-      onEncounterStarted(resp.encounterId);
+      onEncounterStarted(resp.encounterId, myCharacterIdRef.current);
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -220,6 +230,7 @@ export function LobbyFlow({
       : hostPlayerId === playerId;
   const allReady = members.length > 0 && members.every((m) => m.isReady);
   const me = members.find((m) => m.playerId === playerId);
+  myCharacterIdRef.current = me?.characterId || characterId;
 
   if (!lobbyId) {
     return (

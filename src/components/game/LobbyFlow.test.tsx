@@ -80,7 +80,7 @@ vi.mock('../../api/useLobbyStream', () => ({
         ],
       } as LobbySnapshot);
       optionsRef.current.onHostChanged?.({ playerId } as HostChanged);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
     }, [lobbyId]);
     return { connectionState: 'connected' as const, error: null };
   },
@@ -198,5 +198,26 @@ describe('LobbyFlow — dungeon picker (rpg-project#131)', () => {
       lobbyId: 'lobby-1',
       dungeonKey: '',
     });
+  });
+});
+
+describe('LobbyFlow — the seat survives resume (web#762 slice 1)', () => {
+  it('reports the roster character id with the encounter start when mounted without a characterId prop', async () => {
+    hoisted.hostPlayerId = 'alice';
+    const onEncounterStarted = vi.fn();
+
+    render(
+      <LobbyFlow
+        playerId="alice"
+        onEncounterStarted={onEncounterStarted}
+        onBack={vi.fn()}
+        initialLobbyId="lobby-1"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('start-encounter-button'));
+    await vi.waitFor(() =>
+      expect(onEncounterStarted).toHaveBeenCalledWith('enc-1', 'char-1')
+    );
   });
 });
