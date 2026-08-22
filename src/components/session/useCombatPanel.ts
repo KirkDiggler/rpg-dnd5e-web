@@ -314,8 +314,18 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
       }
       if (
         event.body?.case === 'fightStarted' ||
-        event.body?.case === 'fightEnded'
+        event.body?.case === 'fightEnded' ||
+        event.body?.case === 'downed'
       ) {
+        // `downed` changes a participant's `Standing` -- Turn.participants
+        // is what the roster chip / isDowned display and the beat-name
+        // fallback read, and it does NOT refresh on its own until some
+        // OTHER kind (fightStarted/fightEnded, or the player's own
+        // Move/Attack/EndTurn round-trip) happens to refetch it. Left
+        // unrefetched, a just-downed member's Turn.participants entry
+        // (and anything a fresh render derives from it) can read stale
+        // until one of those other triggers fires -- rpg-project#251
+        // web#772.
         void refetchTurn();
       }
       // VIEW refresh: only `downed`/`fightEnded` change a sighted

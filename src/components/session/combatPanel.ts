@@ -117,10 +117,16 @@ export type CombatPanelSelection =
       participants: CombatPanelParticipant[];
       shapes: TurnHudShape[];
       movement: CombatPanelMovement | null;
-      /** `Math.floor(movement.remainingFeet / 5)`, or `0` when
-       * `movement` is `null` — the bound `SessionCanvas`'s path preview
-       * passes to `moveIndicator.ts`'s `maxCells`. */
-      moveMaxCells: number;
+      /** `Math.floor(movement.remainingFeet / 5)` when a `remaining`
+       * figure is known; `0` when `movement` is `null` BECAUSE the Move
+       * declaration is unaffordable or absent; `undefined` (unbounded)
+       * when it's `null` because Move is `affordable: true` but the
+       * server omitted `remaining` — a real wire gap (rpg-project#251
+       * web#770), never treated as "0 left" against the server's own
+       * affordable answer. The bound `SessionCanvas`'s path preview
+       * passes straight to `moveIndicator.ts`'s own `maxCells`, which
+       * already documents `undefined` as its unbounded reading. */
+      moveMaxCells: number | undefined;
       /** Every in-reach candidate Afford named this turn, whether or not
        * this member can currently pay for it — see this module's own
        * doc comment on why Attack is a floor gesture. Empty means
@@ -234,9 +240,11 @@ export function selectCombatPanel(
         }
       : null;
   const MOVE_CELL_FEET = 5;
-  const moveMaxCells = movement
+  const moveMaxCells: number | undefined = movement
     ? Math.floor(movement.remainingFeet / MOVE_CELL_FEET)
-    : 0;
+    : moveDeclaration?.affordable
+      ? undefined // affordable but no `remaining` -- trust affordable:true over a missing figure; see this interface field's own doc comment
+      : 0;
 
   const attackDeclarations = allDeclarations.filter(
     (d) => d.verb === Verb.ATTACK

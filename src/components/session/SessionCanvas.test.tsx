@@ -706,6 +706,109 @@ describe('SessionScene', () => {
       ).color;
       expect(color.getHexString()).toBe('3b82f6'); // PATH_COLOR, not TARGET_COLOR
     });
+
+    it('a stale mesh-hover on a target that\'s no longer offered (fight ended, otherMembers dropped attackableTargets) never pins the indicator to that entity\'s OLD cell -- a later floor hover elsewhere draws normally (rpg-project#251 web#771: caught live as "the path looks like it continues from the downed skeleton")', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+          attackableTargets={['skeleton-1']}
+        />
+      );
+
+      // Hover the entity's OWN mesh (not the floor beside it) -- sets
+      // `meshHoveredSubject`, same trigger `onHoverEntity`'s own "over the
+      // model" test above uses.
+      const overNodes = renderer.scene.findAll(
+        (node) =>
+          typeof (node as { props: Record<string, unknown> }).props
+            ?.onPointerOver === 'function'
+      ) as Array<{ props: Record<string, unknown> }>;
+      expect(overNodes.length).toBeGreaterThan(0);
+      await ReactThreeTestRenderer.act(async () => {
+        for (const node of overNodes) {
+          (
+            node.props.onPointerOver as (e: {
+              stopPropagation: () => void;
+            }) => void
+          )({ stopPropagation: () => {} });
+        }
+      });
+
+      // Fight ends: the caller drops attackableTargets to undefined (free
+      // roam) -- deliberately WITHOUT ever firing onPointerOut first,
+      // reproducing the live gap (the downed pose's geometry doesn't
+      // overlap the standing pose's, so pointer-out never re-fires
+      // naturally either).
+      await renderer.update(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.DOWNED,
+            },
+          ]}
+        />
+      );
+
+      // A later floor hover, on a DIFFERENT reachable cell than the
+      // downed skeleton's own -- both are one step from the player, so
+      // EITHER destination draws a legitimate 2-mesh path (start +
+      // destination, same as the plain "reachable floor cell" test
+      // above); the mesh COUNT alone can't distinguish correct from
+      // stuck, only the destination's actual world position can.
+      await hoverAt(renderer, { x: 1, y: 0, z: -1 });
+
+      const meshes = indicatorMeshes(renderer);
+      expect(meshes).toHaveLength(2);
+      const colors = meshes.map(
+        (m) =>
+          ((m.instance as THREE.Mesh).material as THREE.MeshBasicMaterial).color
+      );
+      expect(colors.every((c) => c.getHexString() === '3b82f6')).toBe(true); // PATH_COLOR throughout, never TARGET/INVALID
+
+      const newHoverWorld = cubeToWorld({ x: 1, y: 0, z: -1 }, 1);
+      const staleEntityWorld = cubeToWorld({ x: 1, y: -1, z: 0 }, 1);
+      const positions = meshes.map((m) => (m.instance as THREE.Mesh).position);
+      const closeTo = (
+        a: { x: number; z: number },
+        b: { x: number; z: number }
+      ) => Math.abs(a.x - b.x) < 0.001 && Math.abs(a.z - b.z) < 0.001;
+      // The path's destination is the NEW hovered cell...
+      expect(positions.some((p) => closeTo(p, newHoverWorld))).toBe(true);
+      // ...and NEVER the stale mesh-hovered entity's own cell -- the bug,
+      // unfixed, pins the whole path to that cell regardless of where
+      // the floor is actually hovered next.
+      expect(positions.some((p) => closeTo(p, staleEntityWorld))).toBe(false);
+    });
   });
 
   describe('click routing: attack vs walk (rpg-project#249)', () => {
