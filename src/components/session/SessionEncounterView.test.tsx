@@ -1167,23 +1167,31 @@ describe('SessionEncounterView', () => {
       expect(hoisted.endTurnFn).not.toHaveBeenCalled();
     });
 
-    it("a DOWNED stream event attributes a beat line to the currently selected target (typed-data-only — see useCombatPanel's own doc comment)", async () => {
+    it('a DOWNED stream event renders an unnamed beat line — the wire has no typed "who" for DOWNED yet (toolkit#1137), so this never guesses one from the panel\'s own selected target', async () => {
       readyOnYourTurn();
-      // A gated stream: the DOWNED event only yields once this test
-      // releases it, so it can be timed to arrive AFTER target selection
-      // (the realistic order — the player targets, then something dies)
-      // rather than racing the mount effect (fakeStream's own events
-      // would otherwise land before there's any chance to interact).
-      let releaseDowned: () => void = () => {};
-      const gate = new Promise<void>((resolve) => {
-        releaseDowned = resolve;
-      });
-      hoisted.streamEventsFn.mockReturnValue({
-        [Symbol.asyncIterator]: async function* () {
-          await gate;
-          yield { kind: EventKind.DOWNED } as SessionEvent;
-        },
-      });
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([{ kind: EventKind.DOWNED } as SessionEvent])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
+      screen.getByText(/^a member is downed\.$/i);
+    });
+
+    it('a DOWNED stream event renders the same unnamed beat line even with a target already selected — it is not attributed to the target', async () => {
+      readyOnYourTurn();
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([{ kind: EventKind.DOWNED } as SessionEvent])
+      );
 
       render(
         <SessionEncounterView
@@ -1200,33 +1208,9 @@ describe('SessionEncounterView', () => {
       });
       await waitFor(() => screen.getByText(/target: skeleton-1/i));
 
-      await act(async () => {
-        releaseDowned();
-        await Promise.resolve();
-      });
-
       await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
-      screen.getByText(/skeleton-1 is downed/i);
-    });
-
-    it('a DOWNED stream event with no target ever selected shows no beat line (nothing to attribute it to)', async () => {
-      readyOnYourTurn();
-      hoisted.streamEventsFn.mockReturnValue(
-        fakeStream([{ kind: EventKind.DOWNED } as SessionEvent])
-      );
-
-      render(
-        <SessionEncounterView
-          sessionId="enc-1"
-          characterId="char-1"
-          playerId="player-1"
-          onBack={noop}
-        />
-      );
-      await waitFor(() => screen.getByTestId('session-canvas'));
-      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2)); // bootstrap + DOWNED refetch
-
-      expect(screen.queryByTestId('combat-panel-beat-line')).toBeNull();
+      screen.getByText(/^a member is downed\.$/i);
+      expect(screen.queryByText(/skeleton-1 is downed/i)).toBeNull();
     });
 
     it('refetches Afford AND Turn on FIGHT_STARTED/FIGHT_ENDED/TURN_ENDED', async () => {

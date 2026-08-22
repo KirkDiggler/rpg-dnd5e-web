@@ -80,12 +80,17 @@ are what's below.
   miss beat line" test.
 - **A DOWNED beat line** — the reference tomb's skeleton was never
   successfully struck in this pass. Covered by
-  `SessionEncounterView.test.tsx`'s two DOWNED-event tests (attributed to
-  the current target; no beat line when nothing was ever targeted) and
-  documented in `useCombatPanel.ts`'s own doc comment as typed-data-only
-  (never a decode of the opaque `Event.payload` — see that comment for the
-  full reasoning, including why a multi-monster fight would need toolkit#941
-  before this client could do better).
+  `SessionEncounterView.test.tsx`'s two DOWNED-event tests. **Gate review
+  correction (rpg-dnd5e-web#769)**: the first version of this attributed
+  the beat to the panel's currently selected target ("skeleton-1 is
+  downed") — a guess rendered as a fact, which violates this panel's own
+  "render only what the API said" contract. The wire has no typed "who"
+  for DOWNED anywhere today: `Event` carries only the opaque passthrough
+  payload (never decoded — see `useCombatPanel.ts`'s own doc comment), and
+  `Sighting` has no downed state either. That gap is toolkit#1137 (open:
+  "a cold client cannot learn who is DOWNED — the state exists only as a
+  stream beat"). Fixed to render the honestly-anonymous "A member is
+  downed." until that lands.
 - **The full refetch-trigger matrix** (Afford's 7 kinds vs Turn's narrower
   3, `MOVED` triggering neither, the own-move/own-Attack/own-EndTurn round-
   trips, the fight-lock transition) — exercised end-to-end against the real

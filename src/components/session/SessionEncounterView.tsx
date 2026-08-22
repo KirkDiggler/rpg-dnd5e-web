@@ -447,7 +447,7 @@ export function SessionEncounterView({
   // Destructured for handleSessionEvent's dependency array below — a bare
   // identifier keeps eslint's exhaustive-deps rule happy without pulling
   // in the whole (freshly-returned-every-render) combatPanel object.
-  const { noteTargetDowned } = combatPanel;
+  const { noteDowned } = combatPanel;
 
   // MOVED refetches GetWhere for ANY member's move (this is how another
   // member's move will eventually reach this client too — today it's a
@@ -457,9 +457,10 @@ export function SessionEncounterView({
   // questions (turn economy, whose go it is) that a bare MOVED never
   // answers on its own; see those constants' own comments for why
   // FIGHT_STARTED already covers "a move formed a fight" without MOVED
-  // needing to. DOWNED also attributes a beat-line entry to the panel's
-  // currently selected target — see `useCombatPanel`'s own doc comment
-  // for why that's typed-data-only, never a decode of `event.payload`.
+  // needing to. DOWNED also renders an unnamed beat-line entry — see
+  // `useCombatPanel`'s own doc comment for why it never names who
+  // (toolkit#1137: no typed "who" for DOWNED exists on the wire yet) and
+  // never decodes `event.payload` to guess one.
   const handleSessionEvent = useCallback(
     (event: SessionEvent) => {
       if (event.kind === EventKind.MOVED) {
@@ -472,10 +473,10 @@ export function SessionEncounterView({
         void refetchTurn();
       }
       if (event.kind === EventKind.DOWNED) {
-        noteTargetDowned();
+        noteDowned();
       }
     },
-    [refetchWhere, refetchAfford, refetchTurn, noteTargetDowned]
+    [refetchWhere, refetchAfford, refetchTurn, noteDowned]
   );
   useSessionEventStream(sessionId, member, handleSessionEvent);
 

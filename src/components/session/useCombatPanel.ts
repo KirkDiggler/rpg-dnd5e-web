@@ -38,12 +38,15 @@
  *    typed proto fields) plus the target `attackSelectedTarget` itself
  *    chose — formatted the instant the RPC resolves, no stream needed.
  *  - A DOWNED beat arriving on the stream: `event.kind` alone (no decode)
- *    tells us SOMETHING died; `noteTargetDowned` attributes it to
- *    `selectedTargetId` — correct for the reference tomb's one-monster
- *    fight, and honestly wrong the day a second monster is in play at
- *    once. Documented here rather than guessed away: a multi-monster
- *    fight needs a typed "who" on the wire (toolkit#941), not a client
- *    decoding an internal format to get one early.
+ *    tells us SOMETHING died, but NOT WHO — `noteDowned` renders the
+ *    honestly-anonymous "A member is downed." rather than guessing it was
+ *    whatever this player currently has targeted. There is no typed "who"
+ *    for DOWNED anywhere on the wire today: `Event` carries only the
+ *    opaque passthrough payload (see above), and `Sighting` has no downed
+ *    state either — that gap is toolkit#1137 (open: "a cold client cannot
+ *    learn who is DOWNED — the state exists only as a stream beat"). This
+ *    renders unnamed until that lands, never a guess dressed as a fact
+ *    (gate review, rpg-dnd5e-web#769).
  */
 import {
   ClockKind,
@@ -79,9 +82,9 @@ export interface UseCombatPanelResult {
   attackSelectedTarget: () => void;
   /** No-ops when `selection.endTurn` isn't enabled. */
   endTurn: () => void;
-  /** Attributes an observed DOWNED beat to the current target — see this
-   * module's own doc comment for the single-monster limitation. */
-  noteTargetDowned: () => void;
+  /** Renders an unnamed "A member is downed." beat — see this module's
+   * own doc comment for why it never names who (toolkit#1137). */
+  noteDowned: () => void;
   attacking: boolean;
   endingTurn: boolean;
 }
@@ -204,17 +207,16 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     })();
   }, [selection, dispatchEndTurn, session, member, refetchAfford, refetchTurn]);
 
-  const noteTargetDowned = useCallback(() => {
-    if (!selectedTargetId) return;
-    setLastBeat(`${selectedTargetId} is downed`);
-  }, [selectedTargetId]);
+  const noteDowned = useCallback(() => {
+    setLastBeat('A member is downed.');
+  }, []);
 
   return {
     selection,
     selectTarget,
     attackSelectedTarget,
     endTurn,
-    noteTargetDowned,
+    noteDowned,
     attacking,
     endingTurn,
   };
