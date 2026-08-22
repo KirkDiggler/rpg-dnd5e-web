@@ -632,13 +632,19 @@ export function SessionEncounterView({
 
   // Attack is a floor gesture now, not a separate canvas mode
   // (rpg-project#249, `combatPanel.ts`'s own doc comment) — walking and
-  // attacking coexist on the SAME floor at all times. `attackableTargets`
-  // is `combatPanel.ts`'s own in-reach list, passed straight through so
-  // `SessionCanvas` can highlight them and route a click on one to
-  // `combatPanel.attackTarget` instead of a walk.
+  // attacking coexist on the SAME floor at all times. Narrowed to the
+  // AFFORDABLE candidates only (Kirk's own live-walk ruling): an
+  // in-reach target that's already been spent this turn still gets its
+  // own shortfall text on hover (`combatPanel.ts`'s `hoverLabel`, which
+  // reads the unfiltered `attackTargets` list), but must NOT keep
+  // swallowing floor clicks near it once it can no longer actually be
+  // attacked — movement is independent of the action economy in 5e, and
+  // the floor has to keep offering it.
   const attackableTargets =
     combatPanel.selection.mode === 'turn'
-      ? combatPanel.selection.attackTargets.map((t) => t.id)
+      ? combatPanel.selection.attackTargets
+          .filter((t) => t.affordable)
+          .map((t) => t.id)
       : undefined;
   const canvasMaxCells =
     combatPanel.selection.mode === 'turn'
@@ -729,8 +735,9 @@ export function SessionEncounterView({
           }
         />
         {equipmentData && (
-          // A full-width, ZERO-HEIGHT anchor strip pinned to the bottom —
-          // not a sibling of the full-viewport canvas wrapper.
+          // A full-width, ZERO-HEIGHT anchor strip pinned to the bottom
+          // of the VIEWPORT (`position: fixed`, not `absolute` — see
+          // below) — not a sibling of the full-viewport canvas wrapper.
           // EquipmentPopover's own CSS (`.equip-popover { bottom:
           // calc(100% + 10px); right: 8px; width: min(560px, 60%) }`,
           // base.css) needs BOTH a viewport-scale WIDTH (for the 60% max-
@@ -747,10 +754,15 @@ export function SessionEncounterView({
           // child is itself `position: absolute`, contributing nothing to
           // its parent's intrinsic size) — the popover rendered as a
           // sliver against the right edge because `60%` had nothing
-          // meaningful to be 60% of.
+          // meaningful to be 60% of. `fixed` (rather than `absolute`,
+          // which worked in a controlled 1280x900 headless check but is
+          // only ever as reliable as every ancestor between here and the
+          // viewport staying un-transformed) pins this to the viewport
+          // unconditionally — the strictly safer choice given this tree
+          // is already portaled to `document.body`.
           <div
             style={{
-              position: 'absolute',
+              position: 'fixed',
               left: 0,
               right: 0,
               bottom: 12,

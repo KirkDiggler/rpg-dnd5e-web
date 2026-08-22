@@ -16,17 +16,38 @@
  *
  * # Attack is a floor gesture (rpg-project#249)
  *
- * `attackableTargets` names every subject `combatPanel.ts` currently
- * offers as an in-reach, this-turn candidate — drawn with a persistent
- * highlight (`HexEntity.isSelected`, unused elsewhere on this route) so
- * "what can I hit" reads at a glance, per the design's own walkthrough.
- * Hovering one of them (not a separate mode — see `moveIndicator.ts`'s
- * own doc comment) shows the "Attack <name>" ground marker and fires
- * `onHoverEntity`; clicking one fires `onEntityClick` directly — no
- * intermediate "arm" step. Clicking a NON-attackable entity's cell is a
- * no-op (never treated as a walk target either — an occupied cell was
- * never a legitimate destination); every other click is the ordinary
- * `onHexClick` walk.
+ * `attackableTargets` names every subject the caller currently offers as
+ * an in-reach, AFFORDABLE, this-turn candidate (`SessionEncounterView`
+ * filters `combatPanel.ts`'s own `attackTargets` down to the affordable
+ * ones before handing them here — an unaffordable in-reach target still
+ * gets its own shortfall text on hover via `onHoverEntity`, but is not
+ * "attackable" for click-routing purposes, per Kirk's own live-walk
+ * ruling: "the floor must keep walking... regardless of whether Attack
+ * has been spent"). Drawn with a QUIET, persistent ground ring (reusing
+ * `PathPreview`, the same flat hex overlay `MoveIndicator` already uses
+ * for the hover states — never a full-body color/material swap, which
+ * made the model unreadable in Kirk's own live walk) so "what can I hit"
+ * reads at a glance without obscuring the model. Hovering one of them
+ * (not a separate mode — see `moveIndicator.ts`'s own doc comment) adds a
+ * BRIGHTER ring at the same spot (via `MoveIndicator`'s own `'target'`
+ * kind) and shows the "Attack <name>" ground marker via `onHoverEntity`;
+ * clicking one fires `onEntityClick` directly — no intermediate "arm"
+ * step. Clicking a NON-attackable entity's cell is a no-op (never a walk
+ * attempt either — an occupied cell was never a legitimate destination);
+ * every other click is the ordinary `onHexClick` walk.
+ *
+ * BOTH the ground-plane raycast AND each entity's OWN mesh route through
+ * the SAME `handleTargetClick`/`handleGroundClick` resolution — `HexEntity`
+ * has its own `onClick` (wired here to `handleTargetClick`, unlike the old
+ * `HexGrid` route's per-entity selection flow) specifically because its
+ * model geometry sits in front of the invisible ground plane along the
+ * click ray, and `HexEntity`'s own `handleClick` unconditionally calls
+ * `event.stopPropagation()` — without a handler wired here, EVERY click
+ * landing on an entity's mesh was swallowed into a no-op, entity and floor
+ * alike (caught live: hovering resolved correctly throughout, because
+ * `HexEntity` never registers an `onPointerMove` handler — only
+ * `onPointerOver`/`onPointerOut` — so pointer-move events pass straight
+ * through to the ground plane behind it; `onClick` does not).
  */
 
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
@@ -36,6 +57,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
+import { PathPreview } from '../hex-grid/PathPreview';
 import { SyntyHexFloor } from '../hex-grid/SyntyHexFloor';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
@@ -50,6 +72,19 @@ import { useMoveIndicator } from './useMoveIndicator';
  * cover any dungeon this route draws; only its raycast target, never
  * rendered. */
 const GROUND_PLANE_SIZE = 200;
+
+/** The passive, persistent in-reach ring — the SAME hue `MoveIndicator`'s
+ * own `'target'` kind uses for the hover state, at a much quieter
+ * opacity so it reads as "you can hit this" without competing with the
+ * model itself. Kirk's own ruling: "leaves the model readable... hover
+ * state can add a little more, the passive in-reach state should be
+ * quiet." */
+const ATTACKABLE_RING_COLOR = '#f97316';
+// `PathPreview` treats a single-cell path's one cell as its own
+// "destination" and multiplies the opacity it's given by 1.5x (its own
+// per-path emphasis rule, designed for a multi-cell walk preview) — this
+// is the BASE value so the rendered ring lands at the intended ~0.22.
+const ATTACKABLE_RING_OPACITY = 0.15;
 
 export interface SessionCanvasProps {
   scene: Scene3D;
@@ -94,8 +129,9 @@ export interface SessionCanvasProps {
    * of these simply relocates it on the next render. Undefined/empty
    * draws nothing extra. */
   otherMembers?: SightedMember[];
-  /** Subject ids `combatPanel.ts` currently offers as in-reach Attack
-   * candidates (rpg-project#249) — see this component's own doc comment.
+  /** Subject ids the caller currently offers as in-reach, AFFORDABLE
+   * Attack candidates (rpg-project#249) — see this component's own doc
+   * comment on why this is narrower than every in-reach candidate.
    * Undefined/empty means nothing is attackable right now. */
   attackableTargets?: string[];
   /** The atlas's movement graph (`atlasPath.ts`'s `buildAtlasPathIndex`) —
@@ -174,13 +210,28 @@ export function SessionScene({
     [attackableTargets]
   );
 
-  // Click-to-walk/click-to-attack: the raycast/hover/validity machinery is
-  // the SAME ground-plane convention `HexGrid`'s own `useHexInteraction`
-  // already established (worldToCube, floor-membership gating) — reused
-  // rather than re-derived. A click on an attackable entity's cell attacks
-  // it (`onEntityClick`); a click on any OTHER entity's cell is a no-op
-  // (never a walk attempt either — see this component's own doc comment);
-  // every other floor click is the ordinary walk (`onHexClick`).
+  // The ONE place a target click is resolved — both the ground plane's
+  // own fallback (a click that lands on an entity's cell without going
+  // through the entity's own mesh, e.g. a remembered/inert entity with no
+  // handlers of its own) and each live entity's `HexEntity.onClick` call
+  // this directly. See this module's own doc comment on why the entity
+  // mesh needs its own wired handler at all.
+  const handleTargetClick = useCallback(
+    (subject: string) => {
+      if (attackableSet.has(subject)) onEntityClick?.(subject);
+    },
+    [attackableSet, onEntityClick]
+  );
+
+  // Click-to-walk: the raycast/hover/validity machinery is the SAME
+  // ground-plane convention `HexGrid`'s own `useHexInteraction` already
+  // established (worldToCube, floor-membership gating) — reused rather
+  // than re-derived. In practice a click that lands on a LIVE entity's
+  // cell is caught by that entity's own `onClick` (wired below) before
+  // it ever reaches the ground plane at all; this `hit` check remains as
+  // the fallback for an entity with no handlers of its own (remembered/
+  // inert — see `HexEntity`'s own `interactionProps`), so its cell still
+  // never falls through to a walk attempt.
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
       const key = coordToKey(coord);
@@ -188,12 +239,12 @@ export function SessionScene({
         (member) => coordToKey(member.position) === key
       );
       if (hit) {
-        if (attackableSet.has(hit.subject)) onEntityClick?.(hit.subject);
+        handleTargetClick(hit.subject);
         return;
       }
       onHexClick?.(coord);
     },
-    [otherMembers, attackableSet, onEntityClick, onHexClick]
+    [otherMembers, handleTargetClick, onHexClick]
   );
 
   const { groundPlaneProps, hoveredHex } = useHexInteraction({
@@ -235,6 +286,20 @@ export function SessionScene({
     maxCells,
   });
 
+  // The passive, persistent in-reach rings — every attackable target's
+  // own cell, at the quiet opacity (see this module's own doc comment).
+  // The hovered one additionally gets `MoveIndicator`'s own brighter
+  // 'target' ring on top (rendered separately below), which is the
+  // "hover can add a little more" Kirk asked for — no extra state needed
+  // here, the two simply layer.
+  const attackableRingPositions = useMemo(
+    () =>
+      (otherMembers ?? []).filter(
+        (m) => !m.remembered && attackableSet.has(m.subject)
+      ),
+    [otherMembers, attackableSet]
+  );
+
   return (
     <>
       <ambientLight intensity={0.6} />
@@ -255,6 +320,15 @@ export function SessionScene({
         connectorRuns={scene.connectorRuns}
         doorGaps={scene.doorGaps}
       />
+      {attackableRingPositions.map((member) => (
+        <PathPreview
+          key={`attackable-ring-${member.subject}`}
+          path={[member.position]}
+          hexSize={hexSize}
+          color={ATTACKABLE_RING_COLOR}
+          opacity={ATTACKABLE_RING_OPACITY}
+        />
+      ))}
       <MoveIndicator
         selection={moveIndicatorSelection}
         hexSize={hexSize}
@@ -285,7 +359,7 @@ export function SessionScene({
           monsterRefId={member.monsterRefId}
           knowledgeState={member.remembered ? 'remembered' : undefined}
           isDead={isSightedDowned(member.standing)}
-          isSelected={!member.remembered && attackableSet.has(member.subject)}
+          onClick={handleTargetClick}
         />
       ))}
     </>

@@ -1111,6 +1111,47 @@ describe('SessionEncounterView', () => {
       expect(hoisted.attackFn).not.toHaveBeenCalled();
     });
 
+    it("once the Attack action is spent (in-reach target now unaffordable), attackableTargets drops it -- the floor must keep walking regardless of what's been spent (Kirk's own live-walk ruling)", async () => {
+      readyOnYourTurn({
+        attackAffordable: false,
+        shortfallText: 'action: 1 needed, 0 left',
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // skeleton-1 is still IN REACH (a declaration still names it -- its
+      // own shortfall text is what a hover would show) but no longer
+      // AFFORDABLE, so it must not appear in the narrower list that
+      // drives floor click-routing.
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([])
+      );
+
+      // Clicking that entity is now a pure no-op (nothing to attack)...
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+      expect(hoisted.attackFn).not.toHaveBeenCalled();
+
+      // ...and, critically, the floor itself is untouched by the spent
+      // action -- a walk click still dispatches Move normally.
+      hoisted.moveFn.mockResolvedValue({
+        steps: [{ position: { x: 1, y: 0 }, seq: 1n }],
+      });
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      await waitFor(() => expect(hoisted.moveFn).toHaveBeenCalled());
+    });
+
     it('the beat line renders ONLY from a typed Struck stream event — "You hit <name> — N vs AC M, D word." (rpg-project#249 §1, gate review: no more reading AttackResponse fields directly)', async () => {
       readyOnYourTurn();
       hoisted.streamEventsFn.mockReturnValue(
@@ -1870,6 +1911,64 @@ describe('SessionEncounterView', () => {
 
       await waitFor(() => screen.getByTestId('equipment-popover'));
       screen.getByText(/16/);
+    });
+
+    it('also opens mid-combat (turn mode) — Kirk\'s own live-walk report: "the equipment button does nothing" happened during a fight, not free roam', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', { name: 'Aldric', active: true }),
+          participant('skeleton-1', { name: 'skeleton-1' }),
+        ],
+      });
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            affordable: true,
+            shortfall: '',
+            target: 'skeleton-1',
+          },
+        ],
+      });
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: {
+          classRef: undefined,
+          raceRef: undefined,
+          playerId: 'player-1',
+          equipped: {},
+          inventory: [],
+          slots: [],
+          armorClassDetail: { total: 14, note: '10 + 2 DEX + 2 shield' },
+          mainHandDamage: '1d8 slashing',
+        },
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('combat-panel-round'));
+      await waitFor(() => screen.getByTestId('combat-panel-equipment-button'));
+
+      fireEvent.click(screen.getByTestId('combat-panel-equipment-button'));
+
+      await waitFor(() => screen.getByTestId('equipment-popover'));
+      screen.getByText(/14/);
     });
   });
 });
