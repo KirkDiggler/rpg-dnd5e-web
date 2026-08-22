@@ -213,11 +213,40 @@ started; only one `rpg-api` container exists, so Kirk and I are hitting
 the identical binary). Team-lead relayed that Kirk's own walk saw
 attacks resolve cleanly ("miss, End Turn, hit"). I cannot reconcile
 "100% reproducible for me, apparently clean for Kirk, same binary" from
-the client side — it reads like a genuine intermittent/request-shaped
-race in the server's own context propagation (worth a second look
-server-side with BOTH outcomes in hand), not a client bug: the beat
-line correctly surfaced the real server message every time, and the
-panel stayed fully interactive and correct throughout. **Fix 1's own
-re-verification (the mesh click reaching the right handler) is
-unaffected by this** — the click resolves to the right subject and
-dispatches Attack every time; what happens after that is server-side.
+the client side — the beat line correctly surfaced the real server
+message every time, and the panel stayed fully interactive and correct
+throughout. **Fix 1's own re-verification (the mesh click reaching the
+right handler) is unaffected by this** — the click resolves to the
+right subject and dispatches Attack every time; what happens after that
+is server-side.
+
+**Follow-up diagnosis from team-lead**: deterministic, not intermittent
+— I had the longsword equipped; Kirk punched. An armed swing triggers a
+weapon-only subscriber on the attack chain that still uses the old
+GameContext registry -> Internal; unarmed never fires it. Toolkit team
+fixing at the source (issue number to follow).
+
+**Third pass (same day, minutes later): does NOT reproduce for me.**
+Went to punch through per that diagnosis and found my character STILL
+had the longsword equipped — equipment is character-level state via
+`CharacterService`, so it persisted across my earlier sessions/lobbies
+rather than resetting with a fresh lobby. Unequipped it properly
+(confirmed via `docker logs`: `UnequipItem completed`), then attacked
+while genuinely unarmed (confirmed via the equipment popover showing
+"Main hand — empty —" immediately beforehand). **Still failed, identical
+error, 3/3 attempts after the confirmed unequip:**
+
+```
+11:25:58 -> Attack started
+11:25:58 X Attack failed (Internal): rpc error: code = Internal desc = attack: publish attack chain: no GameContext found in context
+11:26:18 -> Attack started
+11:26:18 X Attack failed (Internal): rpc error: code = Internal desc = attack: publish attack chain: no GameContext found in context
+```
+
+So the armed/unarmed diagnosis doesn't hold for my own session, at
+least not on its own — genuinely unarmed still fails the same way here.
+Reported back to team-lead; the finishing-the-skeleton / fight-over part
+of the gate remains unverified live pending whatever the toolkit fix
+(or further diagnosis) turns out to be. Everything through Round 2 /
+the monster's-turn pacing / the four bug fixes above is unaffected and
+stands as verified.
