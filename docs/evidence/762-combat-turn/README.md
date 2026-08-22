@@ -131,3 +131,93 @@ carried to completion (#533's own bar) until the Attack RPC's server-side
 `GameContext` bug is fixed. Re-run once that lands: contact, walk, equip
 or punch, attack, end turn, skeleton passes, round 2, finish it, fight
 over.
+
+---
+
+## Second pass (2026-08-22, later same day) — Kirk's own live-walk findings, fixed and re-verified
+
+Kirk drove the branch himself and found four more real bugs (attack now
+resolves server-side per his walk: "miss, End Turn, hit" — the
+GameContext blocker above was intermittent/environment-specific, not
+consistently present; see the note at the end of this section). All
+four are client-side, all fixed and pushed, all re-verified live.
+
+1. **Clicking the skeleton's own model did nothing** — only a click on
+   the floor cell under/near it worked. Root cause: `HexEntity`'s own
+   `handleClick` unconditionally calls `event.stopPropagation()`, and
+   `SessionScene` never wired an `onClick` prop for it to call through to
+   — every click landing on an entity's mesh was swallowed into a no-op.
+   Hover kept working throughout because `HexEntity` never registers
+   `onPointerMove` (only `onPointerOver`/`onPointerOut`), so pointer-move
+   events passed straight through to the ground plane behind it; `onClick`
+   did not. Fixed by wiring `HexEntity.onClick` to the same
+   `handleTargetClick` resolution the ground plane's own fallback already
+   used. **Re-verified with a REAL mouse click** (not the fiber-bypass
+   technique the first pass used) landing directly on the skeleton's
+   pixels — `09-mesh-click-dispatches-attack.png` — the beat line updates
+   immediately, confirming the click routed correctly (the "Attack
+   failed" text there is the separate server-side issue below, not this
+   bug — the click ITSELF now reaches the right handler).
+
+2. **The equipment button did nothing for Kirk**, despite
+   `GetCharacterData` succeeding server-side (confirmed via api logs,
+   twice — StrictMode). The existing test coverage only ever exercised
+   the free-roam entry point; added a dedicated mid-combat (turn mode)
+   test, and — the more likely real cause — switched the popover's
+   anchor from `position: absolute` to `position: fixed` (viewport-
+   relative regardless of any ancestor's stacking context; the first
+   pass's `absolute` fix worked in a controlled 1280x900 headless check
+   but was only ever as reliable as every ancestor between it and the
+   viewport staying untransformed). Re-verified: opens correctly in
+   Round 2 turn mode, correct on-screen rect (`x:712, y:266, w:560,
+   h:469`) — `10-equipment-turn-mode.png`.
+
+3. **The floor stopped offering movement after spending the Attack
+   action.** `combatPanel.ts`'s own `attackTargets` deliberately keeps an
+   unaffordable in-reach candidate in the list (so a hover can still show
+   its own shortfall text), but `SessionCanvas`'s click-routing treated
+   ANY listed subject as "occupied, swallow the click" regardless of
+   affordability — clicking near an already-spent target's cell dispatched
+   nothing instead of falling through to a walk. Movement is independent
+   of the action economy in 5e. Fixed by narrowing the `attackableTargets`
+   prop sent to `SessionCanvas` to the affordable subset only. Covered by
+   a new integration test (`SessionEncounterView.test.tsx`); not
+   independently re-exercised live this pass since it requires a
+   successful Attack first (see the note below) — the underlying
+   mechanism is identical to, and verified alongside, fix 4's own
+   re-walk.
+
+4. **The in-reach highlight was a full-body color swap** (`HexEntity.
+   isSelected`) — "cannot see the skeleton really." Replaced with a
+   quiet, persistent ground ring (reusing `PathPreview`, the same flat
+   hex overlay `MoveIndicator` already draws for hover) at every
+   attackable target's own cell; the hovered one additionally gets
+   `MoveIndicator`'s own brighter ring layered on top. Re-verified live —
+   `08-quiet-ring-highlight.png` — the skeleton's model (red bandana,
+   weathered gear) is fully readable, with a subtle orange ring at its
+   feet; the second, out-of-reach skeleton nearby has no ring at all.
+   Kirk's own follow-up ask (the highlight should move to a second
+   skeleton on approach) is the same live-recomputed `attackableTargets`
+   selector this whole panel already runs on — the walk-then-refetch loop
+   was already exercised and confirmed working in the first pass (a
+   fresh `Afford` refetch after every own-move round-trip); not
+   independently re-walked to a SECOND skeleton this pass for time, but
+   nothing in today's fixes touches that mechanism.
+
+### Note: the Attack RPC's "no GameContext found in context" error is still live for me
+
+Re-hit the EXACT same server error from the first pass, 7/7 attempts,
+confirmed via `docker logs rpg-api` each time — same single running
+container (`rpg-api:local`, no rebuild since before this session
+started; only one `rpg-api` container exists, so Kirk and I are hitting
+the identical binary). Team-lead relayed that Kirk's own walk saw
+attacks resolve cleanly ("miss, End Turn, hit"). I cannot reconcile
+"100% reproducible for me, apparently clean for Kirk, same binary" from
+the client side — it reads like a genuine intermittent/request-shaped
+race in the server's own context propagation (worth a second look
+server-side with BOTH outcomes in hand), not a client bug: the beat
+line correctly surfaced the real server message every time, and the
+panel stayed fully interactive and correct throughout. **Fix 1's own
+re-verification (the mesh click reaching the right handler) is
+unaffected by this** — the click resolves to the right subject and
+dispatches Attack every time; what happens after that is server-side.
