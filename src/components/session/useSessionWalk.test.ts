@@ -203,9 +203,9 @@ describe('useSessionWalk', () => {
     expect(result.current.moveError).toBe('no doorway joins those cells');
   });
 
-  it('a Move RPC refused with the fight-lock FailedPrecondition (session.ErrInBubble) surfaces the friendly "in a fight" message, not the raw sentinel text', async () => {
+  it('a Move RPC refused with the not-your-turn FailedPrecondition (toolkit#1169 session.ErrNotYourTurn) surfaces the friendly line AND sets notYourTurn too', async () => {
     hoisted.moveFn.mockRejectedValue(
-      new ConnectError('member is in a fight', Code.FailedPrecondition)
+      new ConnectError('not your turn', Code.FailedPrecondition)
     );
     const { result } = renderHook(() =>
       useSessionWalk(
@@ -218,11 +218,13 @@ describe('useSessionWalk', () => {
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
-    expect(result.current.moveError).toBe('In a fight — movement is locked.');
-    expect(result.current.fightLocked).toBe(true);
+    expect(result.current.moveError).toBe(
+      'Not your turn — movement is locked.'
+    );
+    expect(result.current.notYourTurn).toBe(true);
   });
 
-  it('a plain (non-fight-lock) Move RPC failure leaves fightLocked false', async () => {
+  it('a plain (non-turn-lock) Move RPC failure leaves notYourTurn false', async () => {
     hoisted.moveFn.mockRejectedValue(new Error('no doorway joins those cells'));
     const { result } = renderHook(() =>
       useSessionWalk(
@@ -235,12 +237,12 @@ describe('useSessionWalk', () => {
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
-    expect(result.current.fightLocked).toBe(false);
+    expect(result.current.notYourTurn).toBe(false);
   });
 
-  it('fightLocked clears at the start of the next walkTo, same as moveError', async () => {
+  it('notYourTurn clears at the start of the next walkTo, same as moveError', async () => {
     hoisted.moveFn.mockRejectedValueOnce(
-      new ConnectError('member is in a fight', Code.FailedPrecondition)
+      new ConnectError('not your turn', Code.FailedPrecondition)
     );
     const { result } = renderHook(() =>
       useSessionWalk(
@@ -252,11 +254,11 @@ describe('useSessionWalk', () => {
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
-    await waitFor(() => expect(result.current.fightLocked).toBe(true));
+    await waitFor(() => expect(result.current.notYourTurn).toBe(true));
 
     hoisted.moveFn.mockReturnValue(new Promise(() => {})); // never resolves
     act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
-    expect(result.current.fightLocked).toBe(false);
+    expect(result.current.notYourTurn).toBe(false);
   });
 
   it('onWalkAnimationComplete for the current moveSeq reconciles via refetchWhere and then clears busy', async () => {

@@ -6,6 +6,7 @@
  * rather than nesting a second `<Canvas>` inside it.
  */
 import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
+import { Standing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
@@ -306,9 +307,11 @@ describe('SessionScene', () => {
           otherMembers={[
             {
               subject: 'skeleton-1',
+              name: 'skeleton-1',
               monsterRefId: 'skeleton',
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
+              standing: Standing.UP,
             },
           ]}
         />
@@ -333,9 +336,36 @@ describe('SessionScene', () => {
           otherMembers={[
             {
               subject: 'skeleton-1',
+              name: 'skeleton-1',
               monsterRefId: 'skeleton',
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
+              standing: Standing.UP,
+            },
+          ]}
+        />
+      );
+      expect(renderer.scene.children.length).toBeGreaterThan(0);
+    });
+
+    it('mounts without throwing for a downed other member (Standing.DOWNED)', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.DOWNED,
             },
           ]}
         />
@@ -515,7 +545,7 @@ describe('SessionScene', () => {
       expect(color.getHexString()).toBe('ef4444'); // MoveIndicator's INVALID_COLOR
     });
 
-    it('fightLocked overrides an otherwise-reachable hover with a single locked-colored hex, not a path', async () => {
+    it('turnLocked overrides an otherwise-reachable hover with a single locked-colored hex, not a path', async () => {
       const renderer = await ReactThreeTestRenderer.create(
         <SessionScene
           scene={scene()}
@@ -526,7 +556,7 @@ describe('SessionScene', () => {
           classRefId={undefined}
           myPosition={{ x: 0, y: 0, z: 0 }}
           pathIndex={fullPathIndex()}
-          fightLocked
+          turnLocked
         />
       );
       await hoverAt(renderer, { x: 1, y: -1, z: 0 });
@@ -539,7 +569,7 @@ describe('SessionScene', () => {
       expect(color.getHexString()).toBe('a855f7'); // MoveIndicator's LOCKED_COLOR
     });
 
-    it('mode="target" draws the target-colored hex regardless of pathIndex/fightLocked', async () => {
+    it('hovering an attackable entity draws the target-colored hex regardless of pathIndex/turnLocked (rpg-project#249: Attack is a hover state, not a mode)', async () => {
       const renderer = await ReactThreeTestRenderer.create(
         <SessionScene
           scene={scene()}
@@ -550,17 +580,428 @@ describe('SessionScene', () => {
           classRefId={undefined}
           myPosition={{ x: 0, y: 0, z: 0 }}
           pathIndex={fullPathIndex()}
-          mode="target"
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+          attackableTargets={['skeleton-1']}
         />
       );
       await hoverAt(renderer, { x: 1, y: -1, z: 0 });
 
+      // TWO meshes at the indicator's own Y offset now: the persistent,
+      // quiet in-reach ring (SessionScene's own ATTACKABLE_RING_OPACITY)
+      // PLUS MoveIndicator's own brighter 'target' ring for the specific
+      // hovered entity — Kirk's own ruling: "hover state can add a
+      // little more" on top of an always-visible passive ring, not a
+      // single mesh that only exists on hover.
+      const meshes = indicatorMeshes(renderer);
+      expect(meshes).toHaveLength(2);
+      const materials = meshes.map(
+        (m) => (m.instance as THREE.Mesh).material as THREE.MeshBasicMaterial
+      );
+      expect(
+        materials.every((mat) => mat.color.getHexString() === 'f97316')
+      ).toBe(true); // both share MoveIndicator's own TARGET_COLOR hue
+      const opacities = materials
+        .map((mat) => mat.opacity)
+        .sort((a, b) => a - b);
+      expect(opacities[0]).toBeLessThan(opacities[1]!); // quiet ring, then the brighter hover ring
+    });
+
+    it('an attackable target draws its own quiet ring even when nothing is hovered at all (the passive, persistent state)', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+          attackableTargets={['skeleton-1']}
+        />
+      );
+      // No hover at all -- indicatorMeshes still finds the passive ring.
       const meshes = indicatorMeshes(renderer);
       expect(meshes).toHaveLength(1);
+      const material = (meshes[0]!.instance as THREE.Mesh)
+        .material as THREE.MeshBasicMaterial;
+      expect(material.color.getHexString()).toBe('f97316');
+      expect(material.opacity).toBeLessThan(0.3); // quiet, not an emissive wash
+    });
+
+    it('a remembered (faded-memory) entity never draws an attackable ring, even if listed in attackableTargets', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: true,
+              standing: Standing.UP,
+            },
+          ]}
+          attackableTargets={['skeleton-1']}
+        />
+      );
+      expect(indicatorMeshes(renderer)).toHaveLength(0);
+    });
+
+    it('hovering an entity that is present but NOT in attackableTargets falls through to the ordinary walk preview', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          pathIndex={fullPathIndex()}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+        />
+      );
+      await hoverAt(renderer, { x: 1, y: -1, z: 0 });
+
       const color = (
-        (meshes[0]!.instance as THREE.Mesh).material as THREE.MeshBasicMaterial
+        (indicatorMeshes(renderer)[0]!.instance as THREE.Mesh)
+          .material as THREE.MeshBasicMaterial
       ).color;
-      expect(color.getHexString()).toBe('f97316'); // MoveIndicator's TARGET_COLOR
+      expect(color.getHexString()).toBe('3b82f6'); // PATH_COLOR, not TARGET_COLOR
+    });
+  });
+
+  describe('click routing: attack vs walk (rpg-project#249)', () => {
+    function findGroundPlaneProps(renderer: {
+      scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+    }) {
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          (node as { instance: THREE.Mesh }).instance.geometry?.type ===
+          'PlaneGeometry'
+      ) as Array<{ fiber: { props: Record<string, unknown> } }>;
+      return nodes[0]!.fiber.props;
+    }
+
+    function clickAt(
+      props: Record<string, unknown>,
+      cube: { x: number; y: number; z: number }
+    ) {
+      const onClick = props.onClick as (event: {
+        point: THREE.Vector3;
+        stopPropagation: () => void;
+      }) => void;
+      const worldPos = cubeToWorld(cube, 1);
+      onClick({
+        point: new THREE.Vector3(worldPos.x, 0, worldPos.z),
+        stopPropagation: () => {},
+      });
+    }
+
+    const oneMember = [
+      {
+        subject: 'skeleton-1',
+        name: 'skeleton-1',
+        monsterRefId: 'skeleton',
+        position: { x: 1, y: -1, z: 0 },
+        remembered: false,
+        standing: Standing.UP,
+      },
+    ];
+
+    /** Finds a node with its OWN `onClick` handler that is NOT the ground
+     * plane (`PlaneGeometry`) — i.e. the entity's own model wrapper,
+     * exactly the node whose click a raycast actually hits first when the
+     * cursor is over the model (rpg-project#249, Kirk's own live-walk
+     * finding: clicking the skeleton itself did nothing; only a click on
+     * the floor cell under/near it worked, because `HexEntity`'s own
+     * `handleClick` unconditionally stops propagation and, before this
+     * fix, `SessionScene` never wired an `onClick` for it to call). */
+    /** Every node with its OWN `onClick` handler that is NOT the ground
+     * plane (`PlaneGeometry`) — i.e. each entity's own model wrapper,
+     * exactly the node whose click a raycast actually hits first when the
+     * cursor is over a model (rpg-project#249, Kirk's own live-walk
+     * finding: clicking the skeleton itself did nothing; only a click on
+     * the floor cell under/near it worked, because `HexEntity`'s own
+     * `handleClick` unconditionally stops propagation and, before this
+     * fix, `SessionScene` never wired an `onClick` for it to call). The
+     * local player's OWN `HexEntity` is one of these too (`HexEntity`
+     * builds its own `handleClick` regardless of whether an `onClick`
+     * prop was ever passed to it — it simply no-ops on the inner call
+     * when there's nothing to call) — this fires EVERY match, not just
+     * the first, so the assertion is robust to render order rather than
+     * assuming which one is the skeleton's. */
+    function fireEveryEntityClick(renderer: {
+      scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+    }) {
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          typeof (node as { props: Record<string, unknown> }).props?.onClick ===
+            'function' &&
+          (node as { instance?: THREE.Mesh }).instance?.geometry?.type !==
+            'PlaneGeometry'
+      ) as Array<{ props: Record<string, unknown> }>;
+      expect(nodes.length).toBeGreaterThan(0);
+      for (const node of nodes) {
+        const onClick = node.props.onClick as (event: {
+          stopPropagation: () => void;
+        }) => void;
+        onClick({ stopPropagation: () => {} });
+      }
+    }
+
+    it("clicking an ENTITY'S OWN mesh (not the floor underneath it) fires onEntityClick — the exact raycast-order bug caught live", async () => {
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={oneMember}
+          attackableTargets={['skeleton-1']}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      fireEveryEntityClick(renderer);
+
+      // The skeleton's own mesh click resolved to onEntityClick exactly
+      // once; the local player's own (unwired) click handler safely
+      // no-oped, same as it does in the live app.
+      expect(onEntityClick).toHaveBeenCalledTimes(1);
+      expect(onEntityClick).toHaveBeenCalledWith('skeleton-1');
+      expect(onHexClick).not.toHaveBeenCalled();
+    });
+
+    it('clicking an attackable entity fires onEntityClick, not onHexClick', async () => {
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={oneMember}
+          attackableTargets={['skeleton-1']}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+
+      expect(onEntityClick).toHaveBeenCalledWith('skeleton-1');
+      expect(onHexClick).not.toHaveBeenCalled();
+    });
+
+    it('clicking a non-attackable entity is a no-op — never onEntityClick, never onHexClick either', async () => {
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={oneMember}
+          attackableTargets={[]}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+
+      expect(onEntityClick).not.toHaveBeenCalled();
+      expect(onHexClick).not.toHaveBeenCalled();
+    });
+
+    it('clicking empty floor still walks, unaffected by attackableTargets', async () => {
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={oneMember}
+          attackableTargets={['skeleton-1']}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: 0, z: -1 });
+
+      expect(onHexClick).toHaveBeenCalledWith({ x: 1, y: 0, z: -1 });
+      expect(onEntityClick).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onHoverEntity', () => {
+    async function hoverAtPlane(
+      renderer: {
+        scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+      },
+      cube: { x: number; y: number; z: number }
+    ) {
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          (node as { instance: THREE.Mesh }).instance.geometry?.type ===
+          'PlaneGeometry'
+      ) as Array<{ fiber: { props: Record<string, unknown> } }>;
+      const onPointerMove = nodes[0]!.fiber.props.onPointerMove as (event: {
+        point: THREE.Vector3;
+        stopPropagation: () => void;
+      }) => void;
+      const worldPos = cubeToWorld(cube, 1);
+      await ReactThreeTestRenderer.act(async () => {
+        onPointerMove({
+          point: new THREE.Vector3(worldPos.x, 0, worldPos.z),
+          stopPropagation: () => {},
+        });
+      });
+    }
+
+    it('reports the subject under the cursor, and null once the pointer leaves it', async () => {
+      const onHoverEntity = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+          onHoverEntity={onHoverEntity}
+        />
+      );
+
+      await hoverAtPlane(renderer, { x: 1, y: -1, z: 0 });
+      expect(onHoverEntity).toHaveBeenLastCalledWith('skeleton-1');
+
+      await hoverAtPlane(renderer, { x: 0, y: 0, z: 0 });
+      expect(onHoverEntity).toHaveBeenLastCalledWith(null);
+    });
+
+    it("reports the subject when the pointer is over the ENTITY'S OWN mesh, not just the bare hex beside it — Kirk's own live-walk finding: the hover affordance only ever worked over the floor, never over the model", async () => {
+      const onHoverEntity = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+          onHoverEntity={onHoverEntity}
+        />
+      );
+
+      // Every node with its OWN onPointerOver handler (the local
+      // player's included — HexEntity builds one regardless of whether a
+      // prop was ever passed, same as onClick) — fire all of them, same
+      // robust-to-render-order approach the entity click test uses.
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          typeof (node as { props: Record<string, unknown> }).props
+            ?.onPointerOver === 'function'
+      ) as Array<{ props: Record<string, unknown> }>;
+      expect(nodes.length).toBeGreaterThan(0);
+      await ReactThreeTestRenderer.act(async () => {
+        for (const node of nodes) {
+          const onPointerOver = node.props.onPointerOver as (event: {
+            stopPropagation: () => void;
+          }) => void;
+          onPointerOver({ stopPropagation: () => {} });
+        }
+      });
+
+      expect(onHoverEntity).toHaveBeenLastCalledWith('skeleton-1');
+
+      const outNodes = renderer.scene.findAll(
+        (node) =>
+          typeof (node as { props: Record<string, unknown> }).props
+            ?.onPointerOut === 'function'
+      ) as Array<{ props: Record<string, unknown> }>;
+      await ReactThreeTestRenderer.act(async () => {
+        for (const node of outNodes) {
+          (node.props.onPointerOut as () => void)();
+        }
+      });
+      expect(onHoverEntity).toHaveBeenLastCalledWith(null);
     });
   });
 });

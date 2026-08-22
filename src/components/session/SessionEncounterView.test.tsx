@@ -10,16 +10,18 @@
  * "can Three.js draw it" that this file owns. `SessionCanvas.test.tsx`
  * covers the other side with a real (mocked-GLB) R3F render.
  *
- * `useSessionWalk`/`useSessionEventStream` run FOR REAL here (only
- * `sessionClient.move`/`.streamEvents` are mocked, at the `@/api/client`
- * boundary — the same boundary those two hooks' own dedicated test files
- * mock) rather than being replaced wholesale: this file is what proves
- * the click -> pathfind -> Move RPC -> animation-prop -> MOVED-event ->
- * refetch chain is actually WIRED, not just that each link works in
+ * `useSessionWalk`/`useSessionEventStream`/`useSessionAfford` run FOR REAL
+ * here (only `sessionClient.move`/`.streamEvents`/`.afford` are mocked, at
+ * the `@/api/client` boundary — the same boundary those hooks' own
+ * dedicated test files mock) rather than being replaced wholesale: this
+ * file is what proves the click -> pathfind -> Move RPC -> animation-prop
+ * -> MOVED-event -> refetch chain (and, slice 5a, the Afford refetch
+ * triggers) is actually WIRED, not just that each link works in
  * isolation. The pure mechanics of each link (pathfinding, the RPC
  * orchestration's busy/reconcile state machine, the stream subscription
- * lifecycle) have their own focused coverage in atlasPath.test.ts,
- * useSessionWalk.test.ts and useSessionEventStream.test.ts.
+ * lifecycle, the Afford fetch/last-good state machine) have their own
+ * focused coverage in atlasPath.test.ts, useSessionWalk.test.ts,
+ * useSessionEventStream.test.ts and useSessionAfford.test.ts.
  */
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
@@ -27,8 +29,17 @@ import {
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
+  ClockKind,
+  Currency,
+  DissolveKind,
   GridKind,
   HexLayout,
+  MemberKind,
+  ShortfallReason,
+  Slot,
+  Standing,
+  Verb,
+  type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   act,
@@ -58,6 +69,13 @@ const hoisted = vi.hoisted(() => ({
   moveFn: vi.fn(),
   streamEventsFn: vi.fn(),
   getViewFn: vi.fn(),
+  affordFn: vi.fn(),
+  turnFn: vi.fn(),
+  attackFn: vi.fn(),
+  endTurnFn: vi.fn(),
+  getCharacterDataFn: vi.fn(),
+  equipItemFn: vi.fn(),
+  unequipItemFn: vi.fn(),
 }));
 
 vi.mock('./SessionCanvas', () => ({
@@ -88,6 +106,15 @@ vi.mock('@/api/client', () => ({
     move: hoisted.moveFn,
     streamEvents: hoisted.streamEventsFn,
     getView: hoisted.getViewFn,
+    afford: hoisted.affordFn,
+    turn: hoisted.turnFn,
+    attack: hoisted.attackFn,
+    endTurn: hoisted.endTurnFn,
+  },
+  characterV2Client: {
+    getCharacterData: hoisted.getCharacterDataFn,
+    equipItem: hoisted.equipItemFn,
+    unequipItem: hoisted.unequipItemFn,
   },
 }));
 
@@ -121,6 +148,29 @@ function fakeStream(events: SessionEvent[]) {
   };
 }
 
+/** Same as `fakeStream`, but withholds every event until `release()` is
+ * called — for tests that need the roster (Turn's own mount-bootstrap
+ * fetch) to have landed BEFORE a stream event arrives, so a race between
+ * the two microtask queues can't deliver the event against a still-empty
+ * `participants` list. */
+function deferredStream(events: SessionEvent[]) {
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    stream: {
+      [Symbol.asyncIterator]: async function* () {
+        await gate;
+        for (const event of events) {
+          yield event;
+        }
+      },
+    },
+    release,
+  };
+}
+
 beforeEach(() => {
   hoisted.lastCanvasProps.current = null;
   hoisted.atlasResult.atlas = null;
@@ -140,7 +190,55 @@ beforeEach(() => {
   hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
   hoisted.getViewFn.mockReset();
   hoisted.getViewFn.mockResolvedValue({ sightings: [] });
+  hoisted.affordFn.mockReset();
+  // Free roam by default — matches a freshly-spawned member on the
+  // world clock, so existing tests that don't care about the combat
+  // panel keep passing unchanged.
+  hoisted.affordFn.mockResolvedValue({
+    clock: ClockKind.WORLD,
+    declarations: [],
+  });
+  hoisted.turnFn.mockReset();
+  hoisted.turnFn.mockResolvedValue({
+    clock: ClockKind.WORLD,
+    active: '',
+    round: 0,
+    order: [],
+    participants: [],
+  });
+  hoisted.attackFn.mockReset();
+  hoisted.endTurnFn.mockReset();
+  hoisted.getCharacterDataFn.mockReset();
+  hoisted.getCharacterDataFn.mockResolvedValue({ character: undefined });
+  hoisted.equipItemFn.mockReset();
+  hoisted.unequipItemFn.mockReset();
 });
+
+/** One `Participant` — mirrors combatPanel.test.ts's own helper. */
+function participant(
+  member: string,
+  overrides: Partial<Participant> = {}
+): Participant {
+  return {
+    member,
+    name: member,
+    kind: member === 'char-1' ? MemberKind.PLAYER : MemberKind.MONSTER,
+    standing: Standing.UP,
+    active: false,
+    ...overrides,
+  } as Participant;
+}
+
+/** A realistic `Event` fixture — every stream test fixture in this file
+ * used to get away with a bare `{ kind }` cast; the typed-body redesign
+ * (rpg-project#249) means `handleEvent` actually reads `body.case`, so
+ * these need a real (if minimal) body shape from here on. */
+function event(
+  kind: EventKind,
+  body: SessionEvent['body'] = { case: undefined }
+): SessionEvent {
+  return { kind, body } as SessionEvent;
+}
 
 const noop = () => {};
 
@@ -531,7 +629,8 @@ describe('SessionEncounterView', () => {
             at: 1n,
             currentVia: ['sight'],
             status: 'live',
-            seen: { position: { x: 10, y: 3 } },
+            name: 'skeleton-1',
+            seen: { position: { x: 10, y: 3 }, standing: Standing.UP },
           },
         ],
       });
@@ -551,10 +650,12 @@ describe('SessionEncounterView', () => {
       expect(hoisted.lastCanvasProps.current!.otherMembers).toEqual([
         {
           subject: 'skeleton-1',
+          name: 'skeleton-1',
           monsterRefId: 'skeleton',
           // positionBridge.positionToCube(q=10, r=3): x=q, y=-q-r, z=r
           position: { x: 10, y: -13, z: 3 },
           remembered: false,
+          standing: Standing.UP,
         },
       ]);
     });
@@ -604,13 +705,13 @@ describe('SessionEncounterView', () => {
       await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
     });
 
-    it('a fight-lock Move rejection (session.ErrInBubble) shows the friendly status line, not raw RPC text', async () => {
+    it('a not-your-turn Move rejection (toolkit#1169 session.ErrNotYourTurn) shows the friendly status line, not raw RPC text', async () => {
       hoisted.atlasResult.atlas = pointyAtlas();
       hoisted.atlasResult.loading = false;
       hoisted.whereResult.position = { x: 0, y: 0 };
       hoisted.whereResult.loading = false;
       hoisted.moveFn.mockRejectedValue(
-        new ConnectError('member is in a fight', Code.FailedPrecondition)
+        new ConnectError('not your turn', Code.FailedPrecondition)
       );
 
       render(
@@ -627,11 +728,16 @@ describe('SessionEncounterView', () => {
         hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
       });
 
-      await waitFor(() => screen.getByText(/in a fight — movement is locked/i));
-      // fightLocked (rpg-dnd5e-web#762 slice 4) flows to SessionCanvas from
-      // the SAME useSessionWalk state the friendly status line reads —
-      // the move indicator reuses it rather than re-parsing moveError.
-      expect(hoisted.lastCanvasProps.current!.fightLocked).toBe(true);
+      await waitFor(() =>
+        screen.getByText(/not your turn — movement is locked/i)
+      );
+      // SessionCanvas's own `turnLocked` prop is not sourced from this
+      // attempt-driven state at all (see SessionEncounterView.tsx's
+      // `turnLocked` var — computed fresh from live Turn state instead, so
+      // it can't go stale). useSessionWalk's own `notYourTurn` still
+      // exists, but only to drive the refetch-on-refusal effect now —
+      // covered by the "combat panel wiring" describe block's own
+      // dedicated refetch tests below, not here.
     });
   });
 
@@ -653,7 +759,7 @@ describe('SessionEncounterView', () => {
       await waitFor(() => screen.getByTestId('session-canvas'));
 
       expect(hoisted.lastCanvasProps.current!.pathIndex).not.toBeNull();
-      expect(hoisted.lastCanvasProps.current!.fightLocked).toBe(false);
+      expect(hoisted.lastCanvasProps.current!.turnLocked).toBe(false);
     });
 
     it('a GetAtlas refetch error after a good load keeps the indicator/path working (rpg-dnd5e-web#768 Copilot review)', async () => {
@@ -707,6 +813,1273 @@ describe('SessionEncounterView', () => {
         hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
       });
       await waitFor(() => expect(hoisted.moveFn).toHaveBeenCalled());
+    });
+  });
+  describe('combat panel wiring (rpg-project#249 "the combat turn on the session stack")', () => {
+    // No jest-dom matchers in this repo's vitest config (see
+    // TurnHud.test.tsx's own note) — disabled state reads the plain DOM
+    // property.
+    function isDisabled(el: HTMLElement): boolean {
+      return (el as HTMLButtonElement).disabled;
+    }
+
+    /** Atlas/position ready, Turn on the fight clock with `char-1` (the
+     * local player) and `skeleton-1` (a monster) as the two participants,
+     * a single in-reach Attack declaration naming `skeleton-1` — the
+     * "your turn, ready to swing" baseline most of these tests start
+     * from. */
+    function readyOnYourTurn(
+      overrides: {
+        active?: string;
+        round?: number;
+        attackAffordable?: boolean;
+        shortfallText?: string;
+        participants?: Participant[];
+      } = {}
+    ) {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      const active = overrides.active ?? 'char-1';
+      const participants = overrides.participants ?? [
+        participant('char-1', { name: 'Aldric', active: active === 'char-1' }),
+        participant('skeleton-1', {
+          name: 'skeleton-1',
+          active: active === 'skeleton-1',
+        }),
+      ];
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active,
+        round: overrides.round ?? 1,
+        order: participants.map((p) => p.member),
+        participants,
+      });
+      const affordable = overrides.attackAffordable ?? true;
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            affordable,
+            shortfall: affordable ? '' : (overrides.shortfallText ?? ''),
+            target: 'skeleton-1',
+            why: affordable
+              ? undefined
+              : {
+                  reason: ShortfallReason.NO_BUDGET,
+                  currency: Currency.ACTION,
+                  needed: 1,
+                  left: 0,
+                  text: overrides.shortfallText ?? '',
+                },
+          },
+        ],
+      });
+    }
+
+    it('fetches Afford AND Turn once the member is known and renders the free-roam pill (neither hook has a mount fetch of its own)', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        expect(hoisted.affordFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          member: 'char-1',
+        })
+      );
+      expect(hoisted.affordFn).toHaveBeenCalledTimes(1);
+      await waitFor(() =>
+        expect(hoisted.turnFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          member: 'char-1',
+        })
+      );
+      expect(hoisted.turnFn).toHaveBeenCalledTimes(1);
+      await waitFor(() => screen.getByTestId('turn-hud-free-roam-pill'));
+    });
+
+    it('the panel MODE is keyed on Turn.clock, not Afford.clock: an affordable turn-clock Afford answer alone still renders free-roam until Turn agrees', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            affordable: true,
+            shortfall: '',
+            target: 'skeleton-1',
+          },
+        ],
+      });
+      // hoisted.turnFn keeps its beforeEach default: CLOCK_KIND_WORLD.
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('turn-hud-free-roam-pill'));
+      expect(screen.queryByTestId('combat-panel-round')).toBeNull();
+    });
+
+    it('on the turn clock, renders round + participant chips by NAME (active/you marked) + the action shape lit', async () => {
+      readyOnYourTurn({ round: 2 });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() => screen.getByTestId('combat-panel-round'));
+      screen.getByText(/round 2/i);
+
+      const chips = screen.getAllByTestId('combat-panel-participant');
+      expect(chips).toHaveLength(2);
+      expect(chips[0]!.textContent).toContain('Aldric');
+      expect(chips[0]!.getAttribute('data-active')).toBe('true');
+      expect(chips[0]!.getAttribute('data-you')).toBe('true');
+      expect(chips[1]!.textContent).toContain('skeleton-1');
+      expect(chips[1]!.getAttribute('data-active')).toBe('false');
+      expect(chips[1]!.getAttribute('data-you')).toBe('false');
+
+      expect(
+        screen.getByTestId('turn-hud-shape-action').getAttribute('data-lit')
+      ).toBe('true');
+      expect(screen.queryByTestId('combat-panel-waiting-on')).toBeNull();
+    });
+
+    it("when it is NOT your turn: shapes read dim, End Turn disabled, and a '<name>'s turn.' line — even though Afford still reports the action affordable", async () => {
+      readyOnYourTurn({ active: 'skeleton-1', attackAffordable: true });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('combat-panel-waiting-on'));
+
+      screen.getByText(/skeleton-1.s turn\./i);
+      expect(
+        screen.getByTestId('turn-hud-shape-action').getAttribute('data-lit')
+      ).toBe('false');
+      expect(
+        isDisabled(screen.getByTestId('combat-panel-end-turn-button'))
+      ).toBe(true);
+      // Attack is a floor gesture now — nothing in reach is even offered
+      // while it isn't your turn (combatPanel.ts's own turn-ownership gate).
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    });
+
+    it('hovering an unaffordable in-reach target shows its own shortfall text, not a generic label', async () => {
+      readyOnYourTurn({
+        attackAffordable: false,
+        shortfallText: 'action: 1 needed, 0 left',
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('combat-panel-round'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHoverEntity!('skeleton-1');
+      });
+
+      await waitFor(() => screen.getByText(/action: 1 needed, 0 left/i));
+    });
+
+    it('an in-reach target is offered to SessionCanvas as attackable, and hovering it shows "Attack <name>"', async () => {
+      readyOnYourTurn();
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+          'skeleton-1',
+        ])
+      );
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHoverEntity!('skeleton-1');
+      });
+
+      await waitFor(() => screen.getByText(/attack skeleton-1/i));
+    });
+
+    it('clicking an attackable entity (SessionCanvas.onEntityClick) dispatches Attack immediately — no intermediate select-then-confirm step', async () => {
+      readyOnYourTurn();
+      hoisted.attackFn.mockResolvedValue({
+        roll: 17,
+        total: 20,
+        against: 13,
+        hit: true,
+        critical: false,
+        damage: 6,
+        seq: 1n,
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+
+      expect(hoisted.attackFn).toHaveBeenCalledWith({
+        session: 'enc-1',
+        attacker: 'char-1',
+        target: 'skeleton-1',
+      });
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    });
+
+    it("also refetches GetView after the player's own Attack round-trip (a live-gate-found gap: sightings only refreshed on Move before this, so a just-defeated target stayed clickable until the next walk)", async () => {
+      readyOnYourTurn();
+      hoisted.attackFn.mockResolvedValue({
+        roll: 17,
+        total: 20,
+        against: 13,
+        hit: true,
+        critical: false,
+        damage: 6,
+        seq: 1n,
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      // Exactly ONE GetView for the initial wherePosition, same baseline
+      // the MOVED test above establishes.
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('also refetches GetView after a REFUSED Attack round-trip -- the sighting refresh does not depend on the swing landing', async () => {
+      readyOnYourTurn();
+      hoisted.attackFn.mockRejectedValue(new Error('failed_precondition'));
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('clicking an entity that is not in attackableTargets never dispatches Attack', async () => {
+      readyOnYourTurn({ active: 'skeleton-1' }); // not your turn -> nothing is attackable
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([])
+      );
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+
+      expect(hoisted.attackFn).not.toHaveBeenCalled();
+    });
+
+    it("once the Attack action is spent (in-reach target now unaffordable), attackableTargets drops it -- the floor must keep walking regardless of what's been spent (Kirk's own live-walk ruling)", async () => {
+      readyOnYourTurn({
+        attackAffordable: false,
+        shortfallText: 'action: 1 needed, 0 left',
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // skeleton-1 is still IN REACH (a declaration still names it -- its
+      // own shortfall text is what a hover would show) but no longer
+      // AFFORDABLE, so it must not appear in the narrower list that
+      // drives floor click-routing.
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([])
+      );
+
+      // Clicking that entity is now a pure no-op (nothing to attack)...
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+      expect(hoisted.attackFn).not.toHaveBeenCalled();
+
+      // ...and, critically, the floor itself is untouched by the spent
+      // action -- a walk click still dispatches Move normally.
+      hoisted.moveFn.mockResolvedValue({
+        steps: [{ position: { x: 1, y: 0 }, seq: 1n }],
+      });
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      await waitFor(() => expect(hoisted.moveFn).toHaveBeenCalled());
+    });
+
+    it('the beat line renders ONLY from a typed Struck stream event — "You hit <name> — N vs AC M, D word." (rpg-project#249 §1, gate review: no more reading AttackResponse fields directly)', async () => {
+      readyOnYourTurn();
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.STRUCK, {
+            case: 'struck',
+            value: {
+              attacker: 'char-1',
+              target: 'skeleton-1',
+              roll: 14,
+              total: 17,
+              against: 13,
+              damage: 6,
+              attack: { ref: 'longsword', name: 'Longsword', damageType: 12 },
+              critical: false,
+            },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        screen.getByText(/you hit skeleton-1 — 17 vs ac 13, 6 slashing\./i)
+      );
+    });
+
+    it('a Missed stream event renders the miss beat, no damage number', async () => {
+      readyOnYourTurn();
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.MISSED, {
+            case: 'missed',
+            value: {
+              attacker: 'char-1',
+              target: 'skeleton-1',
+              roll: 3,
+              total: 5,
+              against: 13,
+            },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        screen.getByText(/you miss skeleton-1 — 5 vs ac 13\./i)
+      );
+    });
+
+    it('a Downed stream event names WHO (rpg-toolkit#1137) — no anonymous placeholder anymore', async () => {
+      readyOnYourTurn();
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.DOWNED, {
+            case: 'downed',
+            value: { member: 'skeleton-1' },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
+      screen.getByText(/^skeleton-1 is downed\.$/i);
+    });
+
+    it("also refetches GetView on a Downed stream event -- the just-defeated subject's sighted standing must not lag behind the beat that already announced it", async () => {
+      readyOnYourTurn();
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.DOWNED, {
+            case: 'downed',
+            value: { member: 'skeleton-1' },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
+
+      // The stream delivers eagerly (`fakeStream`), so the mount's own
+      // baseline GetView and the downed-triggered one can both have
+      // already landed by the time we look -- assert the FINAL count
+      // directly rather than an intermediate step that may already be
+      // stale (same reasoning as the Struck/Missed beat tests above,
+      // which never check an intermediate GetView count either).
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('also refetches GetView on a FightEnded stream event', async () => {
+      readyOnYourTurn();
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.FIGHT_ENDED, {
+            case: 'fightEnded',
+            value: { cause: DissolveKind.BY_DEFEAT },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // Same reasoning as the Downed test above -- assert the final
+      // count, not an intermediate baseline that may already be stale.
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('clicking End Turn dispatches the RPC and refetches Afford + Turn', async () => {
+      readyOnYourTurn();
+      hoisted.endTurnFn.mockResolvedValue({
+        next: 'skeleton-1',
+        roundWrapped: false,
+        seq: 2n,
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+      expect(
+        isDisabled(screen.getByTestId('combat-panel-end-turn-button'))
+      ).toBe(false);
+
+      fireEvent.click(screen.getByTestId('combat-panel-end-turn-button'));
+
+      expect(hoisted.endTurnFn).toHaveBeenCalledWith({
+        session: 'enc-1',
+        member: 'char-1',
+      });
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('clicking End Turn while disabled never dispatches the RPC', async () => {
+      readyOnYourTurn({ active: 'skeleton-1' }); // not your turn
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(
+          isDisabled(screen.getByTestId('combat-panel-end-turn-button'))
+        ).toBe(true)
+      );
+
+      fireEvent.click(screen.getByTestId('combat-panel-end-turn-button'));
+
+      expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    });
+
+    it("refetches Afford AND Turn on FIGHT_STARTED/FIGHT_ENDED/TURN_ENDED (the local player's own turn ending, no pacing)", async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.FIGHT_STARTED, {
+            case: 'fightStarted',
+            value: { members: ['char-1', 'skeleton-1'] },
+          } as SessionEvent['body']),
+          event(EventKind.FIGHT_ENDED, {
+            case: 'fightEnded',
+            value: { cause: DissolveKind.BY_DEFEAT },
+          } as SessionEvent['body']),
+          event(EventKind.TURN_ENDED, {
+            case: 'turnEnded',
+            value: { member: 'char-1', next: 'skeleton-1' },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // 1 mount-bootstrap call + 3 listed kinds.
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(4));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(4));
+    });
+
+    it('refetches Afford but NOT Turn on STRUCK/MISSED/DOWNED/ENDED — those change what you can pay, never whose turn it is', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.STRUCK, {
+            case: 'struck',
+            value: {
+              attacker: 'skeleton-1',
+              target: 'char-1',
+              roll: 10,
+              total: 12,
+              against: 15,
+              damage: 4,
+              attack: { ref: 'claw', name: 'Claw', damageType: 12 },
+              critical: false,
+            },
+          } as SessionEvent['body']),
+          event(EventKind.MISSED, {
+            case: 'missed',
+            value: {
+              attacker: 'skeleton-1',
+              target: 'char-1',
+              roll: 2,
+              total: 4,
+              against: 15,
+            },
+          } as SessionEvent['body']),
+          event(EventKind.DOWNED, {
+            case: 'downed',
+            value: { member: 'skeleton-1' },
+          } as SessionEvent['body']),
+          event(EventKind.ENDED),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // 1 mount-bootstrap call + 4 listed kinds.
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(5));
+      // Turn only ever gets its own mount-bootstrap call — none of these
+      // four kinds refetch it.
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    });
+
+    it('a MOVED stream event refetches neither Afford nor Turn', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.MOVED, {
+            case: 'moved',
+            value: { member: 'char-1', to: { x: 1, y: 0 } },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(hoisted.affordFn).toHaveBeenCalledTimes(1);
+      expect(hoisted.turnFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("the local player's own completed walk also refetches Afford AND Turn (own-move round-trip)", async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.moveFn.mockResolvedValue({
+        steps: [{ position: { x: 1, y: 0 }, seq: 9n }],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current!.moveSeq).toBe(1)
+      );
+
+      hoisted.whereResult.refetch.mockResolvedValue(undefined);
+      await act(async () => {
+        hoisted.lastCanvasProps.current!.onMovementPresentationComplete!(1);
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('a presentation-complete callback for a seq that is not the current move does not refetch Afford or Turn', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+
+      // No walk has happened yet, so moveSeq is still undefined — this
+      // mirrors useSessionWalk's own guard (completedSeq !== moveSeq).
+      await act(async () => {
+        hoisted.lastCanvasProps.current!.onMovementPresentationComplete!(1);
+        await Promise.resolve();
+      });
+
+      expect(hoisted.affordFn).toHaveBeenCalledTimes(1);
+      expect(hoisted.turnFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('a not-your-turn Move rejection also refetches Afford AND Turn — without it the panel would keep showing free-roam', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.moveFn.mockRejectedValue(
+        new ConnectError('not your turn', Code.FailedPrecondition)
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+
+      await waitFor(() =>
+        screen.getByText(/not your turn — movement is locked/i)
+      );
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    });
+
+    it("SessionCanvas's turnLocked prop is computed from live Turn state, true the instant it is NOT your turn — no failed Move attempt needed", async () => {
+      readyOnYourTurn({ active: 'skeleton-1' }); // not your turn from the start
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // No onHexClick/Move attempt happened at all -- turnLocked reads
+      // true purely from turnActive !== member.
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true)
+      );
+      expect(hoisted.moveFn).not.toHaveBeenCalled();
+    });
+
+    it('SessionCanvas.turnLocked is false on your own turn even though useSessionWalk has never attempted a Move', async () => {
+      readyOnYourTurn(); // your turn from the start
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false)
+      );
+    });
+
+    it('SessionCanvas.maxCells is floor(remaining/5) from the Move declaration on your turn', async () => {
+      readyOnYourTurn();
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            affordable: true,
+            shortfall: '',
+            target: 'skeleton-1',
+          },
+          {
+            verb: Verb.MOVE,
+            slot: Slot.NONE,
+            affordable: true,
+            shortfall: '',
+            remaining: 17,
+          },
+        ],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.maxCells).toBe(3)
+      );
+    });
+
+    it('SessionCanvas.maxCells is undefined on the world clock (free roam is unbounded)', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('turn-hud-free-roam-pill'));
+
+      expect(hoisted.lastCanvasProps.current?.maxCells).toBeUndefined();
+    });
+
+    it('the "Your turn!" teaching banner shows when the active member first becomes you (web#533)', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      // Starts on the world clock (beforeEach default) — the view then
+      // re-renders once Turn resolves the fight starting on this member.
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.FIGHT_STARTED, {
+            case: 'fightStarted',
+            value: { members: ['char-1', 'skeleton-1'] },
+          } as SessionEvent['body']),
+        ])
+      );
+      hoisted.turnFn
+        .mockResolvedValueOnce({
+          clock: ClockKind.WORLD,
+          active: '',
+          round: 0,
+          order: [],
+          participants: [],
+        })
+        .mockResolvedValue({
+          clock: ClockKind.TURN,
+          active: 'char-1',
+          round: 1,
+          order: ['char-1', 'skeleton-1'],
+          participants: [
+            participant('char-1', { name: 'Aldric', active: true }),
+            participant('skeleton-1', { name: 'skeleton-1' }),
+          ],
+        });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() => screen.getByTestId('combat-panel-turn-started'));
+      screen.getByText(/your turn!/i);
+    });
+
+    it('the monster\'s turn is a paced moment: "<name>\'s turn." then "<name> does nothing." before the panel flips back (web#561)', async () => {
+      readyOnYourTurn();
+      // Withheld until the roster (participants) has actually landed —
+      // otherwise this test races Turn's own mount-bootstrap fetch
+      // against stream delivery, and the pacing check (which reads
+      // Participant.kind off the CURRENT roster) can't tell skeleton-1
+      // is a monster yet.
+      const { stream, release } = deferredStream([
+        event(EventKind.TURN_ENDED, {
+          case: 'turnEnded',
+          value: { member: 'skeleton-1', next: 'char-1' },
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(stream);
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      // Mount-bootstrap fetch only — the roster is now known.
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => screen.getAllByTestId('combat-panel-participant'));
+
+      release();
+
+      await waitFor(() => screen.getByText(/^skeleton-1.s turn\.$/i), {
+        timeout: 2000,
+      });
+      // Still just the mount-bootstrap call — the pacing timer hasn't
+      // fired yet.
+      expect(hoisted.turnFn).toHaveBeenCalledTimes(1);
+      await waitFor(() => screen.getByText(/^skeleton-1 does nothing\.$/i), {
+        timeout: 2000,
+      });
+      // Only now does the pacing sequence refetch Turn/Afford.
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2), {
+        timeout: 2000,
+      });
+    }, 10000);
+  });
+
+  describe("a fight-start beat before Turn's own roster fetch has landed (live-gate regression)", () => {
+    it('resolves the FightStarted roster from a sighted member\'s own name, not Turn.participants alone -- caught live: "A fight begins: skeleton-1, You." (the raw id) instead of "A fight begins: You, Skeleton."', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      // A live sighting already names the skeleton -- exactly what makes
+      // a fight form in the first place.
+      hoisted.getViewFn.mockResolvedValue({
+        sightings: [
+          {
+            subject: 'skeleton-1',
+            payload: new Uint8Array(),
+            channel: 'sight',
+            at: 1n,
+            currentVia: ['sight'],
+            status: 'live',
+            name: 'Skeleton',
+            seen: { position: { x: 5, y: 0 }, standing: Standing.UP },
+          },
+        ],
+      });
+      // The mount-bootstrap Turn fetch resolves with the clock already
+      // on TURN (so the panel leaves free-roam and actually renders a
+      // beat line) but an EMPTY participants list -- reproducing the
+      // live race where the beat is computed before Turn's own roster
+      // catches up. Any LATER refetch (the one FIGHT_STARTED itself
+      // triggers) resolves with the real roster, but `lastBeat` is a
+      // one-shot format-then-store, not a live-recomputing selector, so
+      // a stale name baked in at computation time is never corrected
+      // retroactively -- which is exactly what this regression pins.
+      hoisted.turnFn.mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: [],
+        participants: [],
+      });
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', { name: 'Aldric', active: true }),
+          participant('skeleton-1', { name: 'Skeleton' }),
+        ],
+      });
+      // Withheld until the sighting has actually landed in otherMembers
+      // -- GetView and StreamEvents are two independent fetches with no
+      // ordering guarantee between them; this pins the case where the
+      // sighting wins the race (the common one: GetView fires the moment
+      // position is known, typically well before a monster's own
+      // fight-triggering beat streams in).
+      const { stream, release } = deferredStream([
+        event(EventKind.FIGHT_STARTED, {
+          case: 'fightStarted',
+          value: { members: ['char-1', 'skeleton-1'] },
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(stream);
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.otherMembers).toHaveLength(1)
+      );
+
+      release();
+
+      await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
+      screen.getByText(/^a fight begins: you, skeleton\.$/i);
+      expect(screen.queryByText(/skeleton-1/i)).toBeNull();
+    });
+
+    it('falls back to the raw subject id (never blank, same documented convention as participantNames.ts elsewhere) when NEITHER Turn.participants NOR a sighting has named it yet', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.getViewFn.mockResolvedValue({ sightings: [] });
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: [],
+        participants: [],
+      });
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.FIGHT_STARTED, {
+            case: 'fightStarted',
+            value: { members: ['char-1', 'skeleton-1'] },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
+      screen.getByText(/^a fight begins: you, skeleton-1\.$/i);
+    });
+  });
+
+  describe('equipment screen (rpg-project#249 §4, reusing web#571)', () => {
+    it('fetches GetCharacterData once the character is known', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn).toHaveBeenCalledWith(
+          expect.objectContaining({ characterId: 'char-1' })
+        )
+      );
+    });
+
+    it('no entry point when GetCharacterData has not resolved any data yet', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByTestId('combat-panel-equipment-button')).toBeNull();
+    });
+
+    it('shows the entry point once real CharacterData arrives, and opens the popover with the server-composed AC', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: {
+          classRef: undefined,
+          raceRef: undefined,
+          playerId: 'player-1',
+          equipped: {},
+          inventory: [],
+          slots: [],
+          armorClassDetail: { total: 16, note: 'chain shirt + shield' },
+          mainHandDamage: '1d8 slashing',
+        },
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('combat-panel-equipment-button'));
+
+      fireEvent.click(screen.getByTestId('combat-panel-equipment-button'));
+
+      await waitFor(() => screen.getByTestId('equipment-popover'));
+      screen.getByText(/16/);
+    });
+
+    it('also opens mid-combat (turn mode) — Kirk\'s own live-walk report: "the equipment button does nothing" happened during a fight, not free roam', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', { name: 'Aldric', active: true }),
+          participant('skeleton-1', { name: 'skeleton-1' }),
+        ],
+      });
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            affordable: true,
+            shortfall: '',
+            target: 'skeleton-1',
+          },
+        ],
+      });
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: {
+          classRef: undefined,
+          raceRef: undefined,
+          playerId: 'player-1',
+          equipped: {},
+          inventory: [],
+          slots: [],
+          armorClassDetail: { total: 14, note: '10 + 2 DEX + 2 shield' },
+          mainHandDamage: '1d8 slashing',
+        },
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('combat-panel-round'));
+      await waitFor(() => screen.getByTestId('combat-panel-equipment-button'));
+
+      fireEvent.click(screen.getByTestId('combat-panel-equipment-button'));
+
+      await waitFor(() => screen.getByTestId('equipment-popover'));
+      screen.getByText(/14/);
     });
   });
 });

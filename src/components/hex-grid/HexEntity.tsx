@@ -53,6 +53,17 @@ export interface HexEntityProps {
   hexSize: number;
   isSelected?: boolean;
   onClick?: (entityId: string) => void;
+  /** Fires when the pointer enters this entity's own model geometry —
+   * rpg-project#249, Kirk's own live-walk finding: the hover affordance
+   * ("Attack <name>" / its shortfall) only resolved over the raw hex,
+   * never over the model itself, because nothing reported hover at the
+   * entity level; a caller reading only the ground plane's own
+   * `onPointerMove` never learns the cursor is over a mesh sitting in
+   * front of it along the same ray. Same reasoning as `onClick`'s own
+   * doc comment below — one resolution path, not two. */
+  onPointerOver?: (entityId: string) => void;
+  /** Fires when the pointer leaves this entity's own model geometry. */
+  onPointerOut?: () => void;
   /** Character data for texture/shader customization */
   character?: Character;
   /** Monster data for texture selection (includes monsterType) */
@@ -280,6 +291,8 @@ export function HexEntity({
   hexSize,
   isSelected = false,
   onClick,
+  onPointerOver: onPointerOverProp,
+  onPointerOut: onPointerOutProp,
   character,
   monster,
   monsterRefId,
@@ -416,9 +429,11 @@ export function HexEntity({
           onPointerOver: (e: { stopPropagation: () => void }) => {
             e.stopPropagation();
             document.body.style.cursor = 'pointer';
+            onPointerOverProp?.(entityId);
           },
           onPointerOut: () => {
             document.body.style.cursor = 'auto';
+            onPointerOutProp?.();
           },
         };
 
