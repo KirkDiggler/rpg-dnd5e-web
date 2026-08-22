@@ -70,8 +70,8 @@ export interface Scene3D {
 /**
  * buildScene3D lays out the whole atlas once, in hexMath's world-space
  * cube coordinates: per-cell floor tiles and opaque prop references, plus
- * the straight wall runs `atlasWallRuns.boundariesToWallRuns` derives from
- * the declared boundaries and the floor mask.
+ * the straight wall runs derived from the declared boundaries and floor mask
+ * by `atlasWallRuns.boundariesToWallRuns`.
  */
 export function buildScene3D(
   atlas: Pick<GetAtlasResponse, 'cells' | 'props' | 'boundaries' | 'doorways'>,
