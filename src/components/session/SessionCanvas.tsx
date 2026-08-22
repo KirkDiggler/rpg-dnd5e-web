@@ -18,7 +18,7 @@
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { type CubeCoord, coordToKey, cubeToWorld } from '../hex-grid/hexMath';
@@ -64,6 +64,12 @@ export interface SessionCanvasProps {
    * and the `Move` RPC itself live in the caller (`useSessionWalk`), not
    * here; this component only owns the raycast. */
   onHexClick?: (coord: CubeCoord) => void;
+  /** `'target'` mode only (rpg-dnd5e-web#762 combat panel) — fires when a
+   * click lands on the hex an `otherMembers` entity currently occupies.
+   * `onHexClick` is NOT also called in that case (clicking a floor cell
+   * with nothing on it does nothing in `'target'` mode either — a fight
+   * member cannot walk, so there is no Move to send). */
+  onEntityClick?: (subject: string) => void;
   /** Fires once the local player's walk ANIMATION finishes painting
    * `movePath` for the given `moveSeq` — presentation-only, matches
    * `HexEntity`'s own `onMovementPresentationComplete` contract (entityId
@@ -115,6 +121,7 @@ export function SessionScene({
   movePath,
   moveSeq,
   onHexClick,
+  onEntityClick,
   onMovementPresentationComplete,
   otherMembers,
   pathIndex = null,
@@ -155,10 +162,32 @@ export function SessionScene({
   // ignores the hook's own path-preview/attack fields (those are node-
   // only, per-hex; the atlas's real reachability is edge-aware and lives
   // in `atlasPath.ts`/`useSessionWalk`, the caller of `onHexClick`).
+  // 'target' mode's click handling (rpg-dnd5e-web#762 combat panel):
+  // a click that lands on an `otherMembers` entity's cell selects it
+  // (`onEntityClick`) instead of walking there. A click on empty floor in
+  // this mode does nothing — deliberately: a fight member cannot walk
+  // (`useSessionWalk`'s fight-lock refusal), so sending a `Move` that the
+  // server would just refuse is pointless. `'move'` mode is entirely
+  // unchanged (the original `onHexClick` pass-through).
+  const handleGroundClick = useCallback(
+    (coord: CubeCoord) => {
+      if (mode === 'target') {
+        const key = coordToKey(coord);
+        const hit = otherMembers?.find(
+          (member) => coordToKey(member.position) === key
+        );
+        if (hit) onEntityClick?.(hit.subject);
+        return;
+      }
+      onHexClick?.(coord);
+    },
+    [mode, otherMembers, onEntityClick, onHexClick]
+  );
+
   const { groundPlaneProps, hoveredHex } = useHexInteraction({
     hexSize,
     floorTiles: scene.floorTiles,
-    onHexClick,
+    onHexClick: handleGroundClick,
   });
 
   // 'target' mode's own trivial seam (moveIndicator.ts's module doc

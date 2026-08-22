@@ -6,7 +6,10 @@
  * nice." This component only turns `useTurnHud`'s pure `TurnHudSelection`
  * into three CSS silhouettes (lit vs dim) and a declaration list — every
  * decision about WHAT to light lives in `turnHud.ts`, the same split
- * `MoveIndicator`/`moveIndicator.ts` already use on this route.
+ * `MoveIndicator`/`moveIndicator.ts` already use on this route. The
+ * silhouettes/row text themselves live in `turnShapes.tsx`, shared with
+ * `CombatPanel.tsx` (rpg-dnd5e-web#762's later "grow the HUD into a
+ * panel" pass) so the two never draw "lit" two different ways.
  *
  * HTML overlay, not inside the Canvas (unlike `MoveIndicator`, which
  * decorates the 3D floor) — a turn-economy readout is UI chrome, not a
@@ -14,47 +17,15 @@
  * competes with `SessionEncounterView`'s own top-left Back/Walking status
  * line for the same screen region.
  *
- * Not yet interactive: this slice only LIGHTS a shape, it doesn't let a
- * player click one to declare a verb (there is no Attack RPC in the web
- * yet — see `turnHud.ts`'s own doc comment and issue #762 slice 5b).
+ * STILL USED STANDALONE where a caller wants just the shapes (no turn
+ * order/actions/beat line) — `CombatPanel` is the fuller picture
+ * `SessionEncounterView` actually renders on the session route today; this
+ * component and its own tests stay as the focused, independently-verified
+ * building block underneath it.
  */
-import { Verb } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import type {
-  TurnHudDeclarationRow,
-  TurnHudSelection,
-  TurnHudSlotName,
-} from './turnHud';
-
-const SHAPE_ORDER: TurnHudSlotName[] = ['action', 'bonus', 'reaction'];
-
-const SHAPE_LABEL: Record<TurnHudSlotName, string> = {
-  action: 'Action',
-  bonus: 'Bonus',
-  reaction: 'Reaction',
-};
-
-// Only VERB_ATTACK exists on the wire today (Verb's own doc comment: "one
-// value because v1 has exactly one gated verb"). A verb this client
-// doesn't recognise (a future addition, or VERB_UNSPECIFIED) falls back
-// to its raw number rather than rendering blank or throwing — the same
-// "deliver it, don't drop it" spirit `EventKind.UNKNOWN` keeps on the
-// stream side.
-const VERB_LABEL: Partial<Record<Verb, string>> = {
-  [Verb.ATTACK]: 'Attack',
-};
-
-function verbLabel(verb: Verb): string {
-  return VERB_LABEL[verb] ?? `Verb ${verb}`;
-}
-
-/** "Attack — ready" when affordable, "Attack — action: 1 needed, 0 left"
- * otherwise — `shortfall` is already the server's own refusal wording
- * (`Declaration.shortfall`'s own doc comment), so this never invents
- * currency language of its own. */
-function declarationRowText(row: TurnHudDeclarationRow): string {
-  const label = verbLabel(row.verb);
-  return row.affordable ? `${label} — ready` : `${label} — ${row.shortfall}`;
-}
+import { Shape } from './Shape';
+import type { TurnHudSelection } from './turnHud';
+import { declarationRowText, SHAPE_ORDER } from './turnShapeText';
 
 const overlayStyle: React.CSSProperties = {
   position: 'absolute',
@@ -72,71 +43,6 @@ const overlayStyle: React.CSSProperties = {
   minWidth: 168,
   pointerEvents: 'none',
 };
-
-function Shape({ slot, lit }: { slot: TurnHudSlotName; lit: boolean }) {
-  const color = lit
-    ? 'var(--accent-primary, #facc15)'
-    : 'var(--text-muted, rgba(255, 255, 255, 0.25))';
-  const label = `${SHAPE_LABEL[slot]} — ${lit ? 'ready' : 'not available'}`;
-
-  let shape: React.ReactNode;
-  if (slot === 'action') {
-    // Circle.
-    shape = (
-      <div
-        style={{
-          width: 16,
-          height: 16,
-          borderRadius: '50%',
-          background: color,
-        }}
-      />
-    );
-  } else if (slot === 'bonus') {
-    // Triangle — a CSS border trick, no SVG/deps needed.
-    shape = (
-      <div
-        style={{
-          width: 0,
-          height: 0,
-          borderLeft: '8px solid transparent',
-          borderRight: '8px solid transparent',
-          borderBottom: `16px solid ${color}`,
-        }}
-      />
-    );
-  } else {
-    // Diamond — a rotated square.
-    shape = (
-      <div
-        style={{
-          width: 12,
-          height: 12,
-          transform: 'rotate(45deg)',
-          background: color,
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      data-testid={`turn-hud-shape-${slot}`}
-      data-lit={lit}
-      title={label}
-      aria-label={label}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 20,
-        height: 20,
-      }}
-    >
-      {shape}
-    </div>
-  );
-}
 
 export interface TurnHudProps {
   selection: TurnHudSelection;

@@ -1,0 +1,188 @@
+import type { TurnResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import { ClockKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { act, renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const hoisted = vi.hoisted(() => ({
+  turnFn: vi.fn<() => Promise<TurnResponse>>(),
+}));
+
+vi.mock('./client', () => ({
+  sessionClient: {
+    turn: hoisted.turnFn,
+  },
+}));
+
+// Import AFTER vi.mock so the mock is applied
+import { useSessionTurn } from './useSessionTurn';
+
+beforeEach(() => {
+  hoisted.turnFn.mockReset();
+});
+
+describe('useSessionTurn', () => {
+  it('does not call Turn on mount — the caller owns every fetch via refetch', () => {
+    const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
+    expect(hoisted.turnFn).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
+    expect(result.current.active).toBe('');
+    expect(result.current.round).toBe(0);
+    expect(result.current.order).toEqual([]);
+  });
+
+  it('refetch is a no-op while session or member is empty', async () => {
+    const { result: noSession } = renderHook(() =>
+      useSessionTurn('', 'char-1')
+    );
+    const { result: noMember } = renderHook(() => useSessionTurn('enc-1', ''));
+    await act(async () => {
+      await noSession.current.refetch();
+      await noMember.current.refetch();
+    });
+    expect(hoisted.turnFn).not.toHaveBeenCalled();
+    expect(noSession.current.loading).toBe(false);
+    expect(noSession.current.clock).toBe(ClockKind.UNSPECIFIED);
+  });
+
+  it('refetch calls Turn for the given session/member and stores clock/active/round/order', async () => {
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 1,
+      order: ['char-1', 'skeleton-1'],
+    } as unknown as TurnResponse);
+
+    const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(hoisted.turnFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.turnFn).toHaveBeenCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+    });
+    expect(result.current.clock).toBe(ClockKind.TURN);
+    expect(result.current.active).toBe('char-1');
+    expect(result.current.round).toBe(1);
+    expect(result.current.order).toEqual(['char-1', 'skeleton-1']);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('a world-clock response resolves to empty active/zero round/empty order, not an error', async () => {
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.WORLD,
+      active: '',
+      round: 0,
+      order: [],
+    } as unknown as TurnResponse);
+
+    const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(result.current.clock).toBe(ClockKind.WORLD);
+    expect(result.current.active).toBe('');
+    expect(result.current.order).toEqual([]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('sets error on RPC failure, loading=false, and clock/active/round/order stay at their unfetched defaults on the FIRST fetch', async () => {
+    const rpcError = new Error('transport error');
+    hoisted.turnFn.mockRejectedValue(rpcError);
+
+    const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(result.current.error).toBe(rpcError);
+    expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
+    expect(result.current.active).toBe('');
+    expect(result.current.round).toBe(0);
+    expect(result.current.order).toEqual([]);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('KEEPS the last-good clock/active/round/order on a refetch error, same last-good discipline as useSessionAfford', async () => {
+    hoisted.turnFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 2,
+        order: ['char-1', 'skeleton-1'],
+      } as unknown as TurnResponse)
+      .mockRejectedValueOnce(new Error('transport error'));
+
+    const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.active).toBe('char-1');
+    expect(result.current.round).toBe(2);
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(result.current.error).not.toBeNull();
+    // The LAST GOOD answer, not cleared.
+    expect(result.current.clock).toBe(ClockKind.TURN);
+    expect(result.current.active).toBe('char-1');
+    expect(result.current.round).toBe(2);
+    expect(result.current.order).toEqual(['char-1', 'skeleton-1']);
+  });
+
+  it('clears clock/active/round/order/error when session/member becomes empty', async () => {
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 1,
+      order: ['char-1'],
+    } as unknown as TurnResponse);
+    const { result, rerender } = renderHook(
+      ({ session, member }) => useSessionTurn(session, member),
+      { initialProps: { session: 'enc-1', member: 'char-1' } }
+    );
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.clock).toBe(ClockKind.TURN);
+
+    rerender({ session: 'enc-1', member: '' });
+    expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
+    expect(result.current.active).toBe('');
+    expect(result.current.round).toBe(0);
+    expect(result.current.order).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('refetch re-calls Turn and can recover from a previous error', async () => {
+    hoisted.turnFn
+      .mockRejectedValueOnce(new Error('transport error'))
+      .mockResolvedValueOnce({
+        clock: ClockKind.WORLD,
+        active: '',
+        round: 0,
+        order: [],
+      } as unknown as TurnResponse);
+
+    const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.error).not.toBeNull();
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(hoisted.turnFn).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBeNull();
+    expect(result.current.clock).toBe(ClockKind.WORLD);
+  });
+});
