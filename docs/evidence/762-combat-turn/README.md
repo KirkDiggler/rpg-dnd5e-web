@@ -333,3 +333,58 @@ Symptom without the fix: a defeated target can be "attacked" again
 (cosmetically — no further game effect) until the player's next movement
 happens to refresh sightings. Recommend a new web issue against
 `useSessionAttack`'s post-attack refetch chain.
+
+## Fifth pass — the stale-sighting gap, fixed and live-verified
+
+The fourth pass's "known follow-up" is fixed on this branch, not just
+documented. Team-lead's gate review: attacking a corpse fails web#533's
+bar directly, so this needed a real fix, not a deferred issue.
+
+**What changed** (TDD — failing tests first, then minimal code):
+
+- `useCombatPanel.ts`: `attackTarget`'s Attack round-trip now also calls
+  `refetchView()` in its `finally` block — success or refusal, either
+  way the swing is over and sightings may be stale. `handleEvent` now
+  also calls `refetchView()` on a `downed` or `fightEnded` event body
+  (the only two bodies that change a sighted member's `Standing`;
+  `struck`/`missed`/`fightStarted` don't need one).
+- `combatPanel.ts`: `attackTargets` now cross-checks each in-reach
+  candidate against `sightedMembers` — a subject this observer has
+  actually SIGHTED as `Standing.DOWNED` is excluded even if Afford's own
+  per-target declaration hasn't caught up yet for one render (belt-and-
+  suspenders on top of the refetch triggers above, never the other
+  direction: an unsighted subject is left to Afford's own answer, not
+  guessed at).
+
+**Tests** (8 new, all failing red before the fix): `combatPanel.test.ts`
+gained four pure cases (a sighted DOWNED target drops out even when
+Afford still lists it; a sighted UP target is untouched; an unsighted
+target is untouched; several candidates with only one DOWNED drops only
+that one). `SessionEncounterView.test.tsx` gained four integration
+cases: GetView refetches once after a successful Attack, once after a
+refused Attack, once on a Downed event, once on a FightEnded event.
+
+**Live re-verification** (fresh lobby, `:3003` against the same
+toolkit#1179-fixed api branch): walked to skeleton-1, attacked it to
+death across several rounds. The instant the killing blow's beat read
+*"Skeleton is downed."*, a direct fiber read showed
+`otherMembers[skeleton-1].standing` already `STANDING_DOWNED` —
+**before any Move call** (`21-downed-beat-fifth-pass.png`). Advanced to
+the next round (still zero Moves since the kill) and confirmed the
+STRONGER claim team-lead asked for: with a full, unspent action economy
+available, `attackableTargets` is empty and the action hint reads
+*"Click the floor to move."* (not "Click a highlighted enemy to
+attack") — the corpse is excluded because it's genuinely known dead,
+not merely because the action happened to be spent
+(`22-no-ring-fresh-round-no-move.png`). The panel's roster also dropped
+to a single `Skeleton` chip, confirming the defeated participant left
+the active roster the same render.
+
+One cosmetic residue noticed, not chased (out of this fix's scope): a
+faint red hex lingers near the corpse's fallen position in
+`22-no-ring-fresh-round-no-move.png` — a stale hover/path-preview
+artifact from the last attack click, not an attackable ring (no orange,
+not clickable, panel text confirms nothing is attackable). Worth a
+follow-up if it bothers a real playtest; doesn't affect correctness.
+
+Full suite: 3722 passed, 2 skipped. `npm run ci-check` green.

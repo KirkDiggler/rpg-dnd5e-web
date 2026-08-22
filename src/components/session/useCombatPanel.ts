@@ -89,6 +89,14 @@ export interface UseCombatPanelArgs {
    * every Afford/Turn fetch. */
   refetchAfford: () => Promise<void>;
   refetchTurn: () => Promise<void>;
+  /** Owned by the caller (`useSessionView`'s `refetch`) — this hook fires
+   * it after the player's own Attack round-trip (success or refusal) and
+   * on a `downed`/`fightEnded` event body, so sightings never lag behind
+   * what the beat line has already announced. GetView otherwise only
+   * refreshes on `GetWhere` landing (a live-gate-found gap: a just-
+   * defeated target kept reporting `Standing.UP` and stayed clickable
+   * until the player's NEXT walk happened to refresh it). */
+  refetchView: () => Promise<void>;
 }
 
 export interface UseCombatPanelResult {
@@ -127,6 +135,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     affordDeclarations,
     refetchAfford,
     refetchTurn,
+    refetchView,
   } = args;
 
   const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null);
@@ -151,6 +160,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
         member,
         hoveredEntityId,
         lastBeat,
+        sightedMembers,
       }),
     [
       turnClock,
@@ -162,6 +172,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
       member,
       hoveredEntityId,
       lastBeat,
+      sightedMembers,
     ]
   );
 
@@ -208,10 +219,22 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
         } finally {
           void refetchAfford();
           void refetchTurn();
+          // Own-Attack-round-trip GetView refresh (see this hook's own
+          // doc comment on `refetchView`) — success or refusal, either
+          // way the swing is over and sightings may now be stale.
+          void refetchView();
         }
       })();
     },
-    [selection, dispatchAttack, session, member, refetchAfford, refetchTurn]
+    [
+      selection,
+      dispatchAttack,
+      session,
+      member,
+      refetchAfford,
+      refetchTurn,
+      refetchView,
+    ]
   );
 
   const endTurn = useCallback(() => {
@@ -295,8 +318,23 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
       ) {
         void refetchTurn();
       }
+      // VIEW refresh: only `downed`/`fightEnded` change a sighted
+      // member's `Standing` — see this hook's own doc comment on
+      // `refetchView`. `struck`/`missed`/`fightStarted` never do, so
+      // they don't need one (the own-Attack-round-trip refresh in
+      // `attackTarget` above already covers the attacker's own swing).
+      if (event.body?.case === 'downed' || event.body?.case === 'fightEnded') {
+        void refetchView();
+      }
     },
-    [participants, member, refetchAfford, refetchTurn]
+    [
+      participants,
+      member,
+      sightedMembers,
+      refetchAfford,
+      refetchTurn,
+      refetchView,
+    ]
   );
 
   return {

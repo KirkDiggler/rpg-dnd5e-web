@@ -1088,6 +1088,60 @@ describe('SessionEncounterView', () => {
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     });
 
+    it("also refetches GetView after the player's own Attack round-trip (a live-gate-found gap: sightings only refreshed on Move before this, so a just-defeated target stayed clickable until the next walk)", async () => {
+      readyOnYourTurn();
+      hoisted.attackFn.mockResolvedValue({
+        roll: 17,
+        total: 20,
+        against: 13,
+        hit: true,
+        critical: false,
+        damage: 6,
+        seq: 1n,
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      // Exactly ONE GetView for the initial wherePosition, same baseline
+      // the MOVED test above establishes.
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('also refetches GetView after a REFUSED Attack round-trip -- the sighting refresh does not depend on the swing landing', async () => {
+      readyOnYourTurn();
+      hoisted.attackFn.mockRejectedValue(new Error('failed_precondition'));
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    });
+
     it('clicking an entity that is not in attackableTargets never dispatches Attack', async () => {
       readyOnYourTurn({ active: 'skeleton-1' }); // not your turn -> nothing is attackable
 
@@ -1242,6 +1296,63 @@ describe('SessionEncounterView', () => {
 
       await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
       screen.getByText(/^skeleton-1 is downed\.$/i);
+    });
+
+    it("also refetches GetView on a Downed stream event -- the just-defeated subject's sighted standing must not lag behind the beat that already announced it", async () => {
+      readyOnYourTurn();
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.DOWNED, {
+            case: 'downed',
+            value: { member: 'skeleton-1' },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
+
+      // The stream delivers eagerly (`fakeStream`), so the mount's own
+      // baseline GetView and the downed-triggered one can both have
+      // already landed by the time we look -- assert the FINAL count
+      // directly rather than an intermediate step that may already be
+      // stale (same reasoning as the Struck/Missed beat tests above,
+      // which never check an intermediate GetView count either).
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('also refetches GetView on a FightEnded stream event', async () => {
+      readyOnYourTurn();
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.FIGHT_ENDED, {
+            case: 'fightEnded',
+            value: { cause: DissolveKind.BY_DEFEAT },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // Same reasoning as the Downed test above -- assert the final
+      // count, not an intermediate baseline that may already be stale.
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
     });
 
     it('clicking End Turn dispatches the RPC and refetches Afford + Turn', async () => {

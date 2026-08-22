@@ -11,6 +11,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import { selectCombatPanel, type SelectCombatPanelArgs } from './combatPanel';
+import type { SightedMember } from './sightingEntities';
 
 function participant(overrides: Partial<Participant> = {}): Participant {
   return {
@@ -66,6 +67,21 @@ function noTargetDeclaration(
     },
     ...overrides,
   } as Declaration;
+}
+
+/** A `GetView` sighting of another member, in the shape
+ * `sightingsToEntities` produces — used to test `attackTargets`'
+ * DOWNED cross-check against Afford's own (possibly stale) answer. */
+function sightedMember(overrides: Partial<SightedMember> = {}): SightedMember {
+  return {
+    subject: 'skeleton-1',
+    name: 'skeleton-1',
+    monsterRefId: 'skeleton',
+    position: { x: 0, y: 0, z: 0 },
+    remembered: false,
+    standing: Standing.UP,
+    ...overrides,
+  };
 }
 
 /** Mirrors the toolkit's own `affordMove`: always `Slot.NONE`, always
@@ -461,6 +477,112 @@ describe('selectCombatPanel', () => {
       if (result.mode !== 'turn') throw new Error('unreachable');
       expect(result.attackTargets).toEqual([]);
       expect(result.noTargetInReachText).toBeNull();
+    });
+
+    it("a sighted DOWNED target is excluded from attackTargets even when Afford's own declaration still names it (belt-and-suspenders — GetView can be fresher than a lagging Afford answer, never the other way)", () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              attackDeclaration('skeleton-1', { affordable: true }),
+            ],
+          },
+          sightedMembers: [sightedMember({ standing: Standing.DOWNED })],
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.attackTargets).toEqual([]);
+    });
+
+    it('a sighted UP (or unresolved) target is unaffected -- the DOWNED cross-check never removes a live target', () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              attackDeclaration('skeleton-1', { affordable: true }),
+            ],
+          },
+          sightedMembers: [sightedMember({ standing: Standing.UP })],
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.attackTargets).toEqual([
+        {
+          id: 'skeleton-1',
+          name: 'skeleton-1',
+          affordable: true,
+          whyText: null,
+        },
+      ]);
+    });
+
+    it('a target Afford names but this observer has never sighted at all is unaffected -- no sighting is never treated as downed', () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              attackDeclaration('skeleton-1', { affordable: true }),
+            ],
+          },
+          sightedMembers: [],
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.attackTargets).toHaveLength(1);
+    });
+
+    it('several in-reach candidates, only one sighted DOWNED -- that one alone drops, the rest are untouched', () => {
+      const result = selectCombatPanel(
+        args({
+          turn: {
+            clock: ClockKind.TURN,
+            active: 'char-1',
+            round: 1,
+            participants: [
+              participant(),
+              participant({
+                member: 'skeleton-1',
+                name: 'skeleton-1',
+                kind: MemberKind.MONSTER,
+                active: false,
+              }),
+              participant({
+                member: 'skeleton-2',
+                name: 'skeleton-2',
+                kind: MemberKind.MONSTER,
+                active: false,
+              }),
+            ],
+          },
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              attackDeclaration('skeleton-1', { affordable: true }),
+              attackDeclaration('skeleton-2', { affordable: true }),
+            ],
+          },
+          sightedMembers: [
+            sightedMember({
+              subject: 'skeleton-1',
+              standing: Standing.DOWNED,
+            }),
+            sightedMember({
+              subject: 'skeleton-2',
+              name: 'skeleton-2',
+              standing: Standing.UP,
+            }),
+          ],
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.attackTargets.map((t) => t.id)).toEqual(['skeleton-2']);
     });
   });
 

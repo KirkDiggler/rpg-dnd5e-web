@@ -70,6 +70,7 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { participantNameMap, resolveName } from './participantNames';
+import { isSightedDowned, type SightedMember } from './sightingEntities';
 import {
   selectTurnHud,
   type TurnHudDeclarationRow,
@@ -160,6 +161,17 @@ export interface SelectCombatPanelArgs {
    * bodies — `combatBeat.ts`) — this module never decodes
    * `Event.payload`. */
   lastBeat: string | null;
+  /** `GetView.sightings`, via `sightingsToEntities` — a belt-and-suspenders
+   * cross-check on top of Afford's own per-target declarations. Afford and
+   * GetView are two independent server reads; a target this observer has
+   * SIGHTED as `Standing.DOWNED` is never offered as attackable here even
+   * if Afford's own answer hasn't caught up yet (a real, live-gate-found
+   * gap — GetView only refreshed on Move until rpg-dnd5e-web#769's gate
+   * review added an Attack/downed/fightEnded refetch trigger too, but a
+   * lagging Afford answer is still possible for one render). A subject
+   * this observer has never sighted at all is left untouched — no
+   * sighting is never treated as downed, only an explicit one is. */
+  sightedMembers?: SightedMember[];
 }
 
 const NOT_YOUR_TURN = 'Not your turn.';
@@ -173,7 +185,8 @@ function shortfallText(row: TurnHudDeclarationRow): string {
 export function selectCombatPanel(
   args: SelectCombatPanelArgs
 ): CombatPanelSelection {
-  const { turn, afford, member, hoveredEntityId, lastBeat } = args;
+  const { turn, afford, member, hoveredEntityId, lastBeat, sightedMembers } =
+    args;
 
   if (turn.clock !== ClockKind.TURN) {
     // Free roam — the existing quiet pill, nothing else. Deliberately
@@ -228,7 +241,18 @@ export function selectCombatPanel(
   const attackDeclarations = allDeclarations.filter(
     (d) => d.verb === Verb.ATTACK
   );
-  const targeted = attackDeclarations.filter((d) => d.target !== undefined);
+  // Downed-sighting cross-check (see this module's own doc comment on
+  // `SelectCombatPanelArgs.sightedMembers`) — only a subject this observer
+  // has ACTUALLY sighted as downed is excluded; an unsighted subject is
+  // left to Afford's own answer.
+  const downedSightedSubjects = new Set(
+    (sightedMembers ?? [])
+      .filter((m) => isSightedDowned(m.standing))
+      .map((m) => m.subject)
+  );
+  const targeted = attackDeclarations.filter(
+    (d) => d.target !== undefined && !downedSightedSubjects.has(d.target)
+  );
   const untargeted = attackDeclarations.find((d) => d.target === undefined);
 
   const attackTargets: CombatPanelAttackTarget[] = isYourTurn

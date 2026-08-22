@@ -517,6 +517,7 @@ export function SessionEncounterView({
     affordDeclarations,
     refetchAfford,
     refetchTurn,
+    refetchView,
   });
   // Destructured for handleSessionEvent's dependency array below — a bare
   // identifier keeps eslint's exhaustive-deps rule happy without pulling
