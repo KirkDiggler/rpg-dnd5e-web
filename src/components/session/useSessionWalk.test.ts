@@ -222,6 +222,27 @@ describe('useSessionWalk', () => {
     expect(result.current.fightLocked).toBe(true);
   });
 
+  it('a Move RPC refused with the not-your-turn FailedPrecondition (toolkit#1169 session.ErrNotYourTurn) surfaces the friendly line AND sets fightLocked too', async () => {
+    hoisted.moveFn.mockRejectedValue(
+      new ConnectError('not your turn', Code.FailedPrecondition)
+    );
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn()
+      )
+    );
+    act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
+    await waitFor(() => expect(result.current.busy).toBe(false));
+    expect(result.current.moveError).toBe(
+      'Not your turn — movement is locked.'
+    );
+    expect(result.current.fightLocked).toBe(true);
+  });
+
   it('a plain (non-fight-lock) Move RPC failure leaves fightLocked false', async () => {
     hoisted.moveFn.mockRejectedValue(new Error('no doorway joins those cells'));
     const { result } = renderHook(() =>

@@ -1,11 +1,11 @@
 /**
  * useCombatPanel — the React seam between the session route's live RPC
- * state and `combatPanel.ts`'s pure selection, PLUS the panel's own two
- * pieces of local state (`selectedTargetId`, `lastBeat`) and its two
- * dispatch actions (Attack, EndTurn). Same shape as `useMoveIndicator`/
- * `useTurnHud`, grown to own imperative actions the way `useSessionWalk`
- * owns `walkTo` — a panel has buttons, a pure selector cannot dispatch
- * RPCs.
+ * state and `combatPanel.ts`'s pure selection, PLUS the panel's own
+ * local state (`selectedTargetId`, `targetingRequested`, `lastBeat`) and
+ * its imperative actions (Attack, End Turn, entering target mode). Same
+ * shape as `useMoveIndicator`/`useTurnHud`, grown to own imperative
+ * actions the way `useSessionWalk` owns `walkTo` — a panel has buttons, a
+ * pure selector cannot dispatch RPCs.
  *
  * FLAT PRIMITIVE ARGS, not a nested `{turn, afford}` object — same reason
  * `useMoveIndicator`'s own args are flat: an object literal built fresh at
@@ -16,6 +16,20 @@
  * turn/afford state actually changes. The nested shape only exists inside
  * `combatPanel.ts`'s own pure function, built fresh inside the memoized
  * callback where a fresh object costs nothing.
+ *
+ * # Target mode is explicit, and clears itself after a pick
+ *
+ * toolkit#1169 made `'move'` the default floor mode on your own turn (you
+ * can walk AND fight in the same turn), so `'target'` mode can no longer
+ * be entered automatically just because Attack is affordable — a player
+ * who wants to walk first would find the floor stuck in targeting mode
+ * with no way to just click a hex. `enterTargetMode` is the one explicit
+ * trigger (wired to the Attack button's own `'pick-target'` state,
+ * `combatPanel.ts`'s own doc comment on why there is no second button);
+ * `selectTarget` clears the request once a pick lands, returning the
+ * floor to `'move'` on its own — no separate "exit targeting" affordance
+ * needed. The clock leaving TURN (a fight ending) also clears it, same as
+ * `selectedTargetId`.
  *
  * # The beat line never decodes `Event.payload`
  *
@@ -75,10 +89,13 @@ export interface UseCombatPanelArgs {
 
 export interface UseCombatPanelResult {
   selection: CombatPanelSelection;
-  /** Wire straight to the canvas's entity click in `'target'` mode. */
+  /** Wire straight to the canvas's entity click in `'target'` mode. Also
+   * clears `targetingRequested` — see this module's own doc comment. */
   selectTarget: (subject: string) => void;
-  /** No-ops when `selection.attack` isn't enabled — callers may still
-   * wire it unconditionally to the button's `onClick`. */
+  /** Wire to the Attack button when `selection.attack.kind ===
+   * 'pick-target'`. */
+  enterTargetMode: () => void;
+  /** No-ops unless `selection.attack.kind === 'attack' && .enabled`. */
   attackSelectedTarget: () => void;
   /** No-ops when `selection.endTurn` isn't enabled. */
   endTurn: () => void;
@@ -104,14 +121,17 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
   } = args;
 
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+  const [targetingRequested, setTargetingRequested] = useState(false);
   const [lastBeat, setLastBeat] = useState<string | null>(null);
 
-  // A fight ending (clock leaves TURN) drops any stale target from the
-  // fight that just ended — the free-roam pill renders next either way,
-  // but this keeps state honest for whenever the NEXT fight starts.
+  // A fight ending (clock leaves TURN) drops any stale target/targeting-
+  // request from the fight that just ended — the free-roam pill renders
+  // next either way, but this keeps state honest for whenever the NEXT
+  // fight starts.
   useEffect(() => {
     if (turnClock !== ClockKind.TURN) {
       setSelectedTargetId(null);
+      setTargetingRequested(false);
     }
   }, [turnClock]);
 
@@ -130,6 +150,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
         afford: { clock: affordClock, declarations: affordDeclarations },
         member,
         selectedTargetId,
+        targetingRequested,
         lastBeat,
       }),
     [
@@ -141,17 +162,26 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
       affordDeclarations,
       member,
       selectedTargetId,
+      targetingRequested,
       lastBeat,
     ]
   );
 
+  const enterTargetMode = useCallback(() => {
+    setTargetingRequested(true);
+  }, []);
+
   const selectTarget = useCallback((subject: string) => {
     setSelectedTargetId(subject);
+    // Picked — return the floor to 'move' on its own (this module's own
+    // doc comment: no separate "exit targeting" affordance).
+    setTargetingRequested(false);
   }, []);
 
   const attackSelectedTarget = useCallback(() => {
     if (
       selection.mode !== 'turn' ||
+      selection.attack.kind !== 'attack' ||
       !selection.attack.enabled ||
       !selectedTargetId
     ) {
@@ -214,6 +244,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
   return {
     selection,
     selectTarget,
+    enterTargetMode,
     attackSelectedTarget,
     endTurn,
     noteDowned,

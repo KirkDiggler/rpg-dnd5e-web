@@ -70,6 +70,14 @@ export interface TurnHudDeclarationRow {
   slot: Slot;
   affordable: boolean;
   shortfall: string;
+  /** How much of this verb's own currency is left, in feet — PRESENT for
+   * `VERB_MOVE`, `undefined` for every other verb (`Declaration.remaining`'s
+   * own doc comment: a number, not a price, and absent-not-zero when a
+   * verb carries no such currency at all — rpg-toolkit#1169). `turnHud.ts`
+   * itself never reads this (Move draws `SLOT_NONE`, so it never lights a
+   * shape); it passes through for `combatPanel.ts`'s own dedicated
+   * movement row. */
+  remaining?: number;
 }
 
 export type TurnHudSelection =
@@ -126,6 +134,7 @@ export function selectTurnHud(args: SelectTurnHudArgs): TurnHudSelection {
     slot: d.slot,
     affordable: d.affordable,
     shortfall: d.shortfall,
+    remaining: d.remaining,
   }));
 
   return { mode: 'turn', shapes, declarations: rows };

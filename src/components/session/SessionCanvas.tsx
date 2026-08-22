@@ -105,6 +105,13 @@ export interface SessionCanvasProps {
    * combat seam (rpg-dnd5e-web#762 slice 4's own brief) — a trivial
    * reticle-color branch only, not an attack flow. */
   mode?: MoveIndicatorMode;
+  /** The server's own movement bound for this turn, already rounded down
+   * to whole cells (toolkit#1169, `combatPanel.ts`'s own `moveMaxCells`)
+   * — a path preview longer than this reads `'invalid'`. `undefined`
+   * means unbounded (free roam). Ignored in `'target'` mode. See
+   * `moveIndicator.ts`'s own doc comment on why this is a courtesy bound,
+   * never a substitute for the server's own refusal. */
+  maxCells?: number;
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -127,6 +134,7 @@ export function SessionScene({
   pathIndex = null,
   fightLocked = false,
   mode = 'move',
+  maxCells,
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
@@ -216,6 +224,7 @@ export function SessionScene({
     pathIndex,
     fightLocked,
     hoveredEntityId,
+    maxCells,
   });
 
   return (

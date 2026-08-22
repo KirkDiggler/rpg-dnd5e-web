@@ -3,8 +3,9 @@
  * player's own target selection into what the combat panel draws
  * (rpg-dnd5e-web#762, "grow the HUD into a panel" — Kirk, live-walking
  * PR #769: "I do not have a panel, I cannot end turn or even see whose
- * turn it is"). Framework-free, same split `turnHud.ts`/`moveIndicator.ts`
- * already use.
+ * turn it is"; then "operating in the new clock: take turn, move maybe,
+ * end turn, monster takes turn" — toolkit#1169 — added movement).
+ * Framework-free, same split `turnHud.ts`/`moveIndicator.ts` already use.
  *
  * # Composes `turnHud.ts`, does not re-derive it
  *
@@ -18,8 +19,10 @@
  * through, but nothing on this seam lets a client act out of turn, and a
  * lit-but-unusable shape would be a lie the panel is telling on its own,
  * not one the server told it. `declarations` (the text rows) are left
- * UNCHANGED — the affordability/shortfall text is still true, only the
- * shape shouldn't glow as if it's actionable this instant.
+ * UNCHANGED for every OTHER verb — the affordability/shortfall text is
+ * still true, only the shape shouldn't glow as if it's actionable this
+ * instant. Move is the one exception: pulled out of `declarations`
+ * entirely into its own `movement` field (below), never double-shown.
  *
  * # Attack/End Turn gates, and why the priority order is what it is
  *
@@ -37,6 +40,30 @@
  * on rather than pretending the shapes are actionable — today that is
  * always a monster with no driver yet (toolkit work item B), so
  * `waitingOn` is the only forward progress the panel can honestly show.
+ *
+ * # Movement (toolkit#1169) — a currency, not a slot
+ *
+ * A Move declaration always carries `Slot.NONE` (it draws no per-turn
+ * shape — the toolkit's own `affordMove` sets `Slot: SlotNone`
+ * unconditionally) and always carries `remaining` (feet), never absent
+ * on the turn clock. `movement` reports that verbatim; `moveMaxCells` is
+ * the SAME figure floor-divided by five (`Declaration.remaining`'s own
+ * doc comment: a client may round down to whole cells for a preview,
+ * nothing more) — the bound `SessionCanvas`'s path preview must respect,
+ * never a client-derived speed rule.
+ *
+ * # Attack's dual-purpose button and why there is no separate "pick
+ * target" affordance
+ *
+ * "Pick the simplest honest interaction" (the brief's own words): rather
+ * than a second button competing for the same panel space, the Attack
+ * button itself becomes the target-picking affordance exactly when there
+ * is nothing else stopping it — your turn, Attack affordable, no target
+ * chosen yet. `CombatPanelAttackState`'s `'pick-target'` variant is that
+ * state; `CombatPanel.tsx` relabels the SAME button "Pick a target" and
+ * wires it to enter `'target'` mode instead of dispatching `Attack`. Once
+ * a target is chosen the button reverts to `'attack'` on its own — no
+ * second piece of state to keep in sync.
  */
 import {
   ClockKind,
@@ -57,9 +84,23 @@ export interface CombatPanelOrderEntry {
 
 export interface CombatPanelGate {
   enabled: boolean;
-  /** Why the button is disabled — the Afford shortfall verbatim, "Not
-   * your turn.", or "Pick a target." `null` when `enabled`. */
+  /** Why the button is disabled — the Afford shortfall verbatim or "Not
+   * your turn." `null` when `enabled`. */
   reason: string | null;
+}
+
+/** The Attack button's own state — see this module's doc comment on why
+ * "pick a target" is a variant of this button rather than a second one. */
+export type CombatPanelAttackState =
+  | { kind: 'attack'; enabled: boolean; reason: string | null }
+  | { kind: 'pick-target'; enabled: true };
+
+export interface CombatPanelMovement {
+  /** `Declaration.remaining`, verbatim — feet. */
+  remainingFeet: number;
+  /** `Declaration.affordable` — true iff at least one cell (5 ft) is
+   * still reachable this turn. */
+  affordable: boolean;
 }
 
 export type CombatPanelSelection =
@@ -69,11 +110,25 @@ export type CombatPanelSelection =
       round: number;
       order: CombatPanelOrderEntry[];
       shapes: TurnHudShape[];
+      /** Every OTHER verb's declaration row (Attack today) — Move is
+       * never in this list, see `movement` below. */
       declarations: TurnHudDeclarationRow[];
-      attack: CombatPanelGate;
+      /** `null` when the turn-clock Afford answer carries no Move
+       * declaration at all (a stale server predating toolkit#1169) —
+       * the honest "nothing to report" reading, not a guessed zero. */
+      movement: CombatPanelMovement | null;
+      /** `Math.floor(movement.remainingFeet / 5)`, or `0` when
+       * `movement` is `null` — the bound `SessionCanvas`'s path preview
+       * passes to `moveIndicator.ts`'s `maxCells`. Zero already reads
+       * correctly there (every hover but your own cell shows
+       * `'invalid'`), so no separate "no movement left" mode is needed. */
+      moveMaxCells: number;
+      attack: CombatPanelAttackState;
       endTurn: CombatPanelGate;
       /** Whether the canvas should be in target-selection mode right
-       * now — your turn AND Attack is economically affordable. Reused
+       * now — an explicit request (`enterTargetMode`), forced back to
+       * `false` whenever it is not this member's turn regardless of the
+       * raw request (see `selectCombatPanel`'s own body). Reused
        * verbatim as `SessionCanvas`'s `mode` prop. */
       targeting: boolean;
       selectedTargetId: string | null;
@@ -100,6 +155,12 @@ export interface SelectCombatPanelArgs {
    * `'target'` mode, or `null` — lives in `useCombatPanel`'s own state,
    * not here; this module only reads it. */
   selectedTargetId: string | null;
+  /** Whether the player has explicitly asked to enter targeting (the
+   * Attack button's `'pick-target'` click, or re-entering after End Turn
+   * cycles back to their turn) — lives in `useCombatPanel`'s own state.
+   * Forced to `false` in the output whenever it is not this member's
+   * turn, regardless of this raw value — see `selectCombatPanel`'s body. */
+  targetingRequested: boolean;
   /** Pre-formatted by the caller from typed data only (the local
    * player's own `AttackResponse` plus the target they chose) — this
    * module never decodes `Event.payload`, same "never decode; render
@@ -109,13 +170,20 @@ export interface SelectCombatPanelArgs {
 }
 
 const NOT_YOUR_TURN = 'Not your turn.';
-const PICK_A_TARGET = 'Pick a target.';
 const ATTACK_UNAVAILABLE = 'Attack unavailable.';
+const MOVE_CELL_FEET = 5;
 
 export function selectCombatPanel(
   args: SelectCombatPanelArgs
 ): CombatPanelSelection {
-  const { turn, afford, member, selectedTargetId, lastBeat } = args;
+  const {
+    turn,
+    afford,
+    member,
+    selectedTargetId,
+    targetingRequested,
+    lastBeat,
+  } = args;
 
   if (turn.clock !== ClockKind.TURN) {
     // Free roam — the existing quiet pill, nothing else (brief's own
@@ -144,7 +212,7 @@ export function selectCombatPanel(
           { slot: 'bonus', lit: false },
           { slot: 'reaction', lit: false },
         ];
-  const declarations: TurnHudDeclarationRow[] =
+  const allDeclarations: TurnHudDeclarationRow[] =
     hudSelection.mode === 'turn' ? hudSelection.declarations : [];
 
   const shapes: TurnHudShape[] = rawShapes.map((shape) => ({
@@ -152,28 +220,51 @@ export function selectCombatPanel(
     lit: shape.lit && isYourTurn,
   }));
 
+  const moveDeclaration =
+    allDeclarations.find((d) => d.verb === Verb.MOVE) ?? null;
+  const movement: CombatPanelMovement | null =
+    moveDeclaration && moveDeclaration.remaining !== undefined
+      ? {
+          remainingFeet: moveDeclaration.remaining,
+          affordable: moveDeclaration.affordable,
+        }
+      : null;
+  const moveMaxCells = movement
+    ? Math.floor(movement.remainingFeet / MOVE_CELL_FEET)
+    : 0;
+
+  // Every OTHER verb's row — Move never appears here, it has its own
+  // dedicated `movement` field above.
+  const declarations = allDeclarations.filter((d) => d.verb !== Verb.MOVE);
+
   const attackDeclaration =
     declarations.find((d) => d.verb === Verb.ATTACK) ?? null;
 
-  let attack: CombatPanelGate;
+  let attack: CombatPanelAttackState;
   if (!isYourTurn) {
-    attack = { enabled: false, reason: NOT_YOUR_TURN };
+    attack = { kind: 'attack', enabled: false, reason: NOT_YOUR_TURN };
   } else if (!attackDeclaration || !attackDeclaration.affordable) {
     attack = {
+      kind: 'attack',
       enabled: false,
       reason: attackDeclaration?.shortfall || ATTACK_UNAVAILABLE,
     };
   } else if (!selectedTargetId) {
-    attack = { enabled: false, reason: PICK_A_TARGET };
+    attack = { kind: 'pick-target', enabled: true };
   } else {
-    attack = { enabled: true, reason: null };
+    attack = { kind: 'attack', enabled: true, reason: null };
   }
 
   const endTurn: CombatPanelGate = isYourTurn
     ? { enabled: true, reason: null }
     : { enabled: false, reason: NOT_YOUR_TURN };
 
-  const targeting = isYourTurn && !!attackDeclaration?.affordable;
+  // Forced false whenever it is not this member's turn, regardless of
+  // the raw request — `moveIndicator.ts`'s own `'target'` branch is
+  // checked BEFORE `fightLocked`, so a stale `targetingRequested` left
+  // over from a turn that just ended would otherwise keep showing the
+  // target reticle instead of the honest 'locked' floor.
+  const targeting = isYourTurn && targetingRequested;
 
   const order: CombatPanelOrderEntry[] = turn.order.map((id) => ({
     id,
@@ -187,6 +278,8 @@ export function selectCombatPanel(
     order,
     shapes,
     declarations,
+    movement,
+    moveMaxCells,
     attack,
     endTurn,
     targeting,

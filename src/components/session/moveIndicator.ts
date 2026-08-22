@@ -52,6 +52,22 @@
  * threads through which entity (if any) sits under the cursor. Deciding
  * what a target hover MEANS (can attack? in range? whose turn?) is out of
  * scope for this slice and stays combat's job when it lands.
+ *
+ * # `maxCells` — the server's movement bound, never a client rule
+ *
+ * On the turn clock, a Move declaration's `remaining` (feet) bounds how
+ * far a path preview may run (rpg-dnd5e-web#762, toolkit#1169). `maxCells`
+ * is that figure ALREADY converted to whole cells by the caller
+ * (`Math.floor(remaining / 5)` — `Declaration.remaining`'s own doc comment:
+ * "a client may round this figure down to whole cells to grey out a
+ * preview, and nothing more" — five feet per cell is the server's own
+ * arithmetic, not a rule this module derives). A path longer than the
+ * bound reads `'invalid'`, same as an unreachable cell — the PREVIEW is a
+ * courtesy; `useSessionWalk`'s real `Move` call still gets refused whole by
+ * the server if a race lets a stale bound through, and that refusal names
+ * the actual shortfall ("movement: 20 ft needed, 15 ft left"), not this
+ * module's guess. `undefined` means unbounded (free roam, or `'target'`
+ * mode, where this check never runs).
  */
 import type { CubeCoord } from '@/components/hex-grid/hexMath';
 import type { AtlasPathIndex } from './atlasPath';
@@ -83,12 +99,24 @@ export interface SelectMoveIndicatorArgs {
   /** `'target'` mode only — the entity id under the hovered cell, if any.
    * Ignored in `'move'` mode. */
   hoveredEntityId?: string | null;
+  /** The server's own movement bound for THIS turn, already rounded down
+   * to whole cells — see this module's own doc comment. `undefined` means
+   * unbounded (free roam). Ignored in `'target'` mode. */
+  maxCells?: number;
 }
 
 export function selectMoveIndicator(
   args: SelectMoveIndicatorArgs
 ): MoveIndicatorSelection | null {
-  const { mode, hovered, from, pathIndex, fightLocked, hoveredEntityId } = args;
+  const {
+    mode,
+    hovered,
+    from,
+    pathIndex,
+    fightLocked,
+    hoveredEntityId,
+    maxCells,
+  } = args;
 
   if (!hovered) return null;
 
@@ -104,6 +132,13 @@ export function selectMoveIndicator(
 
   const path = findAtlasPath(pathIndex, from, hovered);
   if (path.length === 0) return { kind: 'invalid' };
+
+  // path[0] is the start cell (findAtlasPath's own convention), so
+  // path.length - 1 is the number of cells actually walked — the figure
+  // maxCells bounds. See this module's own doc comment on `maxCells`.
+  if (maxCells !== undefined && path.length - 1 > maxCells) {
+    return { kind: 'invalid' };
+  }
 
   return { kind: 'path', path };
 }

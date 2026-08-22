@@ -17,6 +17,19 @@ function attackDeclaration(overrides: Partial<Declaration> = {}): Declaration {
   } as Declaration;
 }
 
+/** Mirrors the toolkit's own `affordMove`: always `Slot.NONE`, always
+ * carries `remaining`. */
+function moveDeclaration(overrides: Partial<Declaration> = {}): Declaration {
+  return {
+    verb: Verb.MOVE,
+    slot: Slot.NONE,
+    affordable: true,
+    shortfall: '',
+    remaining: 30,
+    ...overrides,
+  } as Declaration;
+}
+
 function args(
   overrides: Partial<SelectCombatPanelArgs> = {}
 ): SelectCombatPanelArgs {
@@ -30,6 +43,10 @@ function args(
     afford: { clock: ClockKind.TURN, declarations: [attackDeclaration()] },
     member: 'char-1',
     selectedTargetId: null,
+    // Defaults to true so the many existing "targeting" assertions below
+    // keep testing the isYourTurn-AND-requested gate meaningfully — the
+    // dedicated "explicit request" describe block covers `false`.
+    targetingRequested: true,
     lastBeat: null,
     ...overrides,
   };
@@ -134,11 +151,12 @@ describe('selectCombatPanel', () => {
           slot: Slot.ACTION,
           affordable: true,
           shortfall: '',
+          remaining: undefined,
         },
       ]);
     });
 
-    it("Afford's own clock disagreeing with Turn's (should-never-happen) falls back to every shape dim, no declarations, rather than trusting the mismatch", () => {
+    it("Afford's own clock disagreeing with Turn's (should-never-happen) falls back to every shape dim, no declarations, no movement, rather than trusting the mismatch", () => {
       const result = selectCombatPanel(
         args({ afford: { clock: ClockKind.WORLD, declarations: [] } })
       );
@@ -146,17 +164,94 @@ describe('selectCombatPanel', () => {
       if (result.mode !== 'turn') throw new Error('unreachable');
       expect(result.shapes.every((s) => !s.lit)).toBe(true);
       expect(result.declarations).toEqual([]);
+      expect(result.movement).toBeNull();
+      expect(result.moveMaxCells).toBe(0);
     });
   });
 
-  describe('attack gate', () => {
-    it('enabled: your turn + affordable + a target selected', () => {
+  describe('movement (toolkit#1169) — a currency, not a slot', () => {
+    it('reports remainingFeet/affordable verbatim from the Move declaration, and floor-divides by 5 for moveMaxCells', () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              attackDeclaration(),
+              moveDeclaration({ remaining: 17 }),
+            ],
+          },
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.movement).toEqual({ remainingFeet: 17, affordable: true });
+      expect(result.moveMaxCells).toBe(3); // floor(17/5)
+    });
+
+    it('an unaffordable Move (fewer than 5 ft left) still reports the real number, moveMaxCells 0', () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              moveDeclaration({
+                remaining: 3,
+                affordable: false,
+                shortfall: 'movement: 3 ft left',
+              }),
+            ],
+          },
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.movement).toEqual({ remainingFeet: 3, affordable: false });
+      expect(result.moveMaxCells).toBe(0);
+    });
+
+    it('null when no Move declaration is present at all (a stale server predating toolkit#1169) — the honest "nothing to report" reading, not a guessed zero', () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [attackDeclaration()],
+          },
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.movement).toBeNull();
+      expect(result.moveMaxCells).toBe(0);
+    });
+
+    it('Move never appears in the generic declarations list — it has its own dedicated field', () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [attackDeclaration(), moveDeclaration()],
+          },
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.declarations).toHaveLength(1);
+      expect(result.declarations[0]!.verb).toBe(Verb.ATTACK);
+    });
+  });
+
+  describe('attack gate/button state', () => {
+    it("kind: 'attack', enabled: your turn + affordable + a target selected", () => {
       const result = selectCombatPanel(
         args({ selectedTargetId: 'skeleton-1' })
       );
       expect(result.mode).toBe('turn');
       if (result.mode !== 'turn') throw new Error('unreachable');
-      expect(result.attack).toEqual({ enabled: true, reason: null });
+      expect(result.attack).toEqual({
+        kind: 'attack',
+        enabled: true,
+        reason: null,
+      });
     });
 
     it('"Not your turn." wins first, even if unaffordable AND no target', () => {
@@ -180,6 +275,7 @@ describe('selectCombatPanel', () => {
       expect(result.mode).toBe('turn');
       if (result.mode !== 'turn') throw new Error('unreachable');
       expect(result.attack).toEqual({
+        kind: 'attack',
         enabled: false,
         reason: 'Not your turn.',
       });
@@ -203,6 +299,7 @@ describe('selectCombatPanel', () => {
       expect(result.mode).toBe('turn');
       if (result.mode !== 'turn') throw new Error('unreachable');
       expect(result.attack).toEqual({
+        kind: 'attack',
         enabled: false,
         reason: 'action: 1 needed, 0 left',
       });
@@ -218,19 +315,17 @@ describe('selectCombatPanel', () => {
       expect(result.mode).toBe('turn');
       if (result.mode !== 'turn') throw new Error('unreachable');
       expect(result.attack).toEqual({
+        kind: 'attack',
         enabled: false,
         reason: 'Attack unavailable.',
       });
     });
 
-    it('affordable + your turn but no target -> "Pick a target."', () => {
+    it("affordable + your turn but no target -> kind: 'pick-target', always enabled", () => {
       const result = selectCombatPanel(args({ selectedTargetId: null }));
       expect(result.mode).toBe('turn');
       if (result.mode !== 'turn') throw new Error('unreachable');
-      expect(result.attack).toEqual({
-        enabled: false,
-        reason: 'Pick a target.',
-      });
+      expect(result.attack).toEqual({ kind: 'pick-target', enabled: true });
     });
   });
 
@@ -262,11 +357,13 @@ describe('selectCombatPanel', () => {
     });
   });
 
-  describe('targeting', () => {
-    it('true exactly when your turn AND Attack is affordable — independent of whether a target is already picked', () => {
-      const noTarget = selectCombatPanel(args({ selectedTargetId: null }));
+  describe('targeting — an explicit request (toolkit#1169), not auto-derived', () => {
+    it('true when requested AND your turn — independent of whether a target is already picked', () => {
+      const noTarget = selectCombatPanel(
+        args({ selectedTargetId: null, targetingRequested: true })
+      );
       const withTarget = selectCombatPanel(
-        args({ selectedTargetId: 'skeleton-1' })
+        args({ selectedTargetId: 'skeleton-1', targetingRequested: true })
       );
       if (noTarget.mode !== 'turn' || withTarget.mode !== 'turn') {
         throw new Error('unreachable');
@@ -275,7 +372,14 @@ describe('selectCombatPanel', () => {
       expect(withTarget.targeting).toBe(true);
     });
 
-    it('false when not your turn, even if Afford reports affordable', () => {
+    it('false when NOT requested, even on your turn with Attack affordable', () => {
+      const result = selectCombatPanel(args({ targetingRequested: false }));
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.targeting).toBe(false);
+    });
+
+    it('false when not your turn, even if requested AND Afford reports affordable — a stale request never leaks the target reticle into a locked turn', () => {
       const result = selectCombatPanel(
         args({
           turn: {
@@ -284,6 +388,7 @@ describe('selectCombatPanel', () => {
             round: 1,
             order: ['char-1', 'skeleton-1'],
           },
+          targetingRequested: true,
         })
       );
       expect(result.mode).toBe('turn');
@@ -291,7 +396,7 @@ describe('selectCombatPanel', () => {
       expect(result.targeting).toBe(false);
     });
 
-    it('false when your turn but Attack is unaffordable', () => {
+    it('true even when Attack is unaffordable — targeting no longer depends on Attack affordability at all, only the explicit request + turn ownership', () => {
       const result = selectCombatPanel(
         args({
           afford: {
@@ -300,11 +405,12 @@ describe('selectCombatPanel', () => {
               attackDeclaration({ affordable: false, shortfall: 'x' }),
             ],
           },
+          targetingRequested: true,
         })
       );
       expect(result.mode).toBe('turn');
       if (result.mode !== 'turn') throw new Error('unreachable');
-      expect(result.targeting).toBe(false);
+      expect(result.targeting).toBe(true);
     });
   });
 

@@ -234,4 +234,105 @@ describe('selectMoveIndicator', () => {
       })
     ).toEqual({ kind: 'target', entityId: null });
   });
+
+  describe("maxCells — the server's movement bound (toolkit#1169)", () => {
+    // corridorIndex: (0,0) -- (1,0) -- (2,-1). From (0,0), hovering (1,0)
+    // is a 1-cell path; hovering (2,-1) is a 2-cell path.
+    it('a path within the bound still reads as a normal preview', () => {
+      expect(
+        selectMoveIndicator({
+          mode: 'move',
+          hovered: { x: 1, y: -1, z: 0 },
+          from: { x: 0, y: 0, z: 0 },
+          pathIndex: corridorIndex(),
+          fightLocked: false,
+          maxCells: 1,
+        })
+      ).toEqual({
+        kind: 'path',
+        path: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: -1, z: 0 },
+        ],
+      });
+    });
+
+    it('a path exactly AT the bound is still valid — not exceeded, not exclusive', () => {
+      expect(
+        selectMoveIndicator({
+          mode: 'move',
+          hovered: { x: 2, y: -1, z: -1 },
+          from: { x: 0, y: 0, z: 0 },
+          pathIndex: corridorIndex(),
+          fightLocked: false,
+          maxCells: 2,
+        })
+      ).toMatchObject({ kind: 'path' });
+    });
+
+    it("a path longer than the bound reads 'invalid' — the same reading as unreachable, never a client rule beyond the round-down", () => {
+      expect(
+        selectMoveIndicator({
+          mode: 'move',
+          hovered: { x: 2, y: -1, z: -1 },
+          from: { x: 0, y: 0, z: 0 },
+          pathIndex: corridorIndex(),
+          fightLocked: false,
+          maxCells: 1,
+        })
+      ).toEqual({ kind: 'invalid' });
+    });
+
+    it("maxCells: 0 invalidates every hover but the player's own cell", () => {
+      expect(
+        selectMoveIndicator({
+          mode: 'move',
+          hovered: { x: 1, y: -1, z: 0 },
+          from: { x: 0, y: 0, z: 0 },
+          pathIndex: corridorIndex(),
+          fightLocked: false,
+          maxCells: 0,
+        })
+      ).toEqual({ kind: 'invalid' });
+    });
+
+    it("undefined maxCells is unbounded — free roam's own baseline behavior, unchanged", () => {
+      expect(
+        selectMoveIndicator({
+          mode: 'move',
+          hovered: { x: 2, y: -1, z: -1 },
+          from: { x: 0, y: 0, z: 0 },
+          pathIndex: corridorIndex(),
+          fightLocked: false,
+        })
+      ).toMatchObject({ kind: 'path' });
+    });
+
+    it('fightLocked still overrides maxCells entirely — checked first, same precedence as always', () => {
+      expect(
+        selectMoveIndicator({
+          mode: 'move',
+          hovered: { x: 1, y: -1, z: 0 },
+          from: { x: 0, y: 0, z: 0 },
+          pathIndex: corridorIndex(),
+          fightLocked: true,
+          maxCells: 5,
+        })
+      ).toEqual({ kind: 'locked' });
+    });
+
+    it("'target' mode ignores maxCells entirely", () => {
+      expect(
+        selectMoveIndicator({
+          mode: 'target',
+          hovered: { x: 2, y: -1, z: -1 },
+          from: { x: 0, y: 0, z: 0 },
+          pathIndex: corridorIndex(),
+          fightLocked: false,
+          maxCells: 0,
+          hoveredEntityId: 'skeleton-1',
+        })
+      ).toEqual({ kind: 'target', entityId: 'skeleton-1' });
+    });
+  });
 });

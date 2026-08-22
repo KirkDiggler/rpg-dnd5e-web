@@ -44,6 +44,25 @@
  * the clock sits on the monster and the panel says so ("Waiting on
  * skeleton-1.") rather than pretending there's more to do.
  *
+ * # Move on the turn clock (toolkit#1169)
+ *
+ * Kirk's direction: "operating in the new clock. take turn, move maybe,
+ * end turn monster takes turn." The OLD blanket fight lock (`ErrInBubble`,
+ * every fight member refused `Move` outright) is gone — on your own turn,
+ * the floor works exactly like free roam (same `findAtlasPath`, same
+ * `useSessionWalk`), just bounded to `combatPanel.ts`'s own `moveMaxCells`
+ * (the server's `remaining` feet, floor-divided by five — a courtesy
+ * preview bound, never a client rule; see `moveIndicator.ts`'s own doc
+ * comment). `'target'` mode is no longer entered automatically just
+ * because Attack is affordable (a player must be able to walk AND target
+ * in the same turn) — it's the Attack button's own `'pick-target'` state,
+ * an explicit click (`combatPanel.ts`'s doc comment on why there's no
+ * second button). The floor's `fightLocked` prop is now computed fresh
+ * from live Turn state (`floorLocked` below) rather than from
+ * `useSessionWalk`'s own attempt-driven flag — see that variable's own
+ * comment for why a state-derived signal can't go stale the way an
+ * error-driven one can when the turn cycles back mid-session.
+ *
  * # Why this exists beside `EncounterView`, not inside it
  *
  * `EncounterView` speaks the OLD `EncounterService` (v1alpha2), which
@@ -90,6 +109,7 @@ import {
   EventKind,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import { ClockKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   GetCharacterRequestSchema,
   type Character,
@@ -428,6 +448,14 @@ export function SessionEncounterView({
     refetchWhere
   );
 
+  // The floor's own lock signal — computed FRESH from live Turn state on
+  // every render, not from `useSessionWalk`'s `fightLocked` (an attempt-
+  // driven flag that only updates on a NEW walkTo, so it would otherwise
+  // keep reading true for a beat after the turn order cycles back to this
+  // member — toolkit#1169's own module-doc-comment section explains why).
+  // `false` on the world clock: free roam is never locked.
+  const floorLocked = turnClock === ClockKind.TURN && turnActive !== member;
+
   // The combat panel (rpg-dnd5e-web#762) — turn order, the three shapes,
   // Attack/End Turn gates, target selection, the beat line. See its own
   // doc comment for why the args are flat primitives rather than a
@@ -515,15 +543,19 @@ export function SessionEncounterView({
     void refetchTurn();
   }, [member, refetchAfford, refetchTurn]);
 
-  // A fight-lock Move refusal is, today, how a fight FIRST reaches this
-  // client (rpg-dnd5e-web#762) — `fightLocked` flips false -> true
-  // exactly then (`useSessionWalk`'s own doc comment: "cleared at the
-  // start of the next walkTo, same as moveError"), so re-running only on
-  // that transition (not on every render) is exactly "refetch when a Move
-  // is refused with the fight-lock error." Turn refetches alongside
-  // Afford here too: without it, the panel would keep showing the
-  // free-roam pill (its MODE is keyed off `turn.clock`) even once the
-  // player is demonstrably fight-locked.
+  // A turn-lock Move refusal (either sentinel `useSessionWalk`'s own
+  // `fightLocked` now covers — the old blanket lock, or toolkit#1169's
+  // not-your-turn) is, today, how a fight FIRST reaches this client
+  // (rpg-dnd5e-web#762) — `fightLocked` flips false -> true exactly then
+  // (`useSessionWalk`'s own doc comment: "cleared at the start of the
+  // next walkTo, same as moveError"), so re-running only on that
+  // transition (not on every render) is exactly "refetch when a Move is
+  // refused." This is `useSessionWalk.fightLocked`'s OWN remaining job —
+  // NOT the same variable as `floorLocked` above, which drives the
+  // canvas prop instead. Turn refetches alongside Afford here too:
+  // without it, the panel would keep showing the free-roam pill (its
+  // MODE is keyed off `turn.clock`) even once the player is demonstrably
+  // turn-locked.
   useEffect(() => {
     if (!fightLocked) return;
     void refetchAfford();
@@ -566,15 +598,26 @@ export function SessionEncounterView({
     [sightings, characterId]
   );
 
-  // 'target' mode exactly when it's this member's turn and Attack is
-  // economically affordable (combatPanel.ts's own `targeting` field) —
-  // passed straight through to SessionCanvas, which reuses slice 4's
-  // `mode: 'target'` seam (hover highlights a sighted entity, click
-  // selects it) rather than inventing a second targeting UI.
+  // 'target' mode exactly when the player has explicitly asked to enter
+  // targeting (combatPanel.ts's own `targeting` field, toolkit#1169: no
+  // longer automatic just because Attack is affordable — a player must be
+  // able to walk AND target in the same turn) — passed straight through
+  // to SessionCanvas, which reuses slice 4's `mode: 'target'` seam (hover
+  // highlights a sighted entity, click selects it) rather than inventing
+  // a second targeting UI. 'move' is the default everywhere else,
+  // INCLUDING when it's not your turn — `floorLocked` (not a third mode
+  // value) is what makes that state read as the purple 'locked' hover
+  // rather than a normal path preview (`moveIndicator.ts`'s own
+  // precedence: `fightLocked` is checked before pathfinding in 'move'
+  // mode).
   const canvasMode =
     combatPanel.selection.mode === 'turn' && combatPanel.selection.targeting
       ? 'target'
       : 'move';
+  const canvasMaxCells =
+    combatPanel.selection.mode === 'turn'
+      ? combatPanel.selection.moveMaxCells
+      : undefined;
 
   const loading = atlasLoading || whereLoading || characterLoading;
   const blockingError = atlasError ?? whereError ?? characterError;
@@ -621,8 +664,9 @@ export function SessionEncounterView({
           onMovementPresentationComplete={handleWalkAnimationComplete}
           otherMembers={otherMembers}
           pathIndex={lastGoodPathIndexRef.current}
-          fightLocked={fightLocked}
+          fightLocked={floorLocked}
           mode={canvasMode}
+          maxCells={canvasMaxCells}
         />
         <div
           style={{
@@ -651,6 +695,7 @@ export function SessionEncounterView({
         <CombatPanel
           selection={combatPanel.selection}
           onAttackClick={combatPanel.attackSelectedTarget}
+          onPickTargetClick={combatPanel.enterTargetMode}
           onEndTurnClick={combatPanel.endTurn}
           attacking={combatPanel.attacking}
           endingTurn={combatPanel.endingTurn}

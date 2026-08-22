@@ -3,12 +3,13 @@
  * combat UI (rpg-dnd5e-web#762, "grow the HUD into a panel" — Kirk,
  * live-walking PR #769: "well I am 4 spaces away but it stays attack
  * ready and i see nothign happen. what was our plan here? I do not have
- * a panel, I cannot end turn or even see whose turn it is"). Every
- * decision about what's enabled/lit/shown lives in `combatPanel.ts`
- * (composing `turnHud.ts`) and `useCombatPanel.ts`; this component only
- * draws `CombatPanelSelection` and reports clicks — same split every
- * other piece of this route keeps (`MoveIndicator`/`moveIndicator.ts`,
- * `TurnHud`/`turnHud.ts`).
+ * a panel, I cannot end turn or even see whose turn it is"; then
+ * toolkit#1169: "operating in the new clock: take turn, move maybe, end
+ * turn, monster takes turn"). Every decision about what's enabled/lit/
+ * shown lives in `combatPanel.ts` (composing `turnHud.ts`) and
+ * `useCombatPanel.ts`; this component only draws `CombatPanelSelection`
+ * and reports clicks — same split every other piece of this route keeps
+ * (`MoveIndicator`/`moveIndicator.ts`, `TurnHud`/`turnHud.ts`).
  *
  * Replaces `TurnHud` in `SessionEncounterView`'s own render (that
  * component and its tests stay as the focused building block underneath
@@ -21,6 +22,12 @@
  * the server currently allows, so the Attack button is never disabled for
  * distance. The client renders what the API allows; it does not
  * calculate rules.
+ *
+ * ATTACK IS ALSO THE "PICK A TARGET" AFFORDANCE. `combatPanel.ts`'s own
+ * doc comment: rather than a second button, the same button relabels
+ * itself and enters `'target'` mode when nothing is stopping an attack
+ * except having no target chosen yet — `selection.attack.kind ===
+ * 'pick-target'`.
  */
 import type {
   CombatPanelOrderEntry,
@@ -77,13 +84,15 @@ function OrderChip({ entry }: { entry: CombatPanelOrderEntry }) {
 function ActionButton({
   testId,
   label,
-  gate,
+  enabled,
+  reason,
   onClick,
   busy,
 }: {
   testId: string;
   label: string;
-  gate: { enabled: boolean; reason: string | null };
+  enabled: boolean;
+  reason: string | null;
   onClick: () => void;
   busy: boolean;
 }) {
@@ -91,22 +100,22 @@ function ActionButton({
     <button
       type="button"
       data-testid={testId}
-      disabled={!gate.enabled || busy}
-      title={gate.reason ?? undefined}
+      disabled={!enabled || busy}
+      title={reason ?? undefined}
       onClick={onClick}
       style={{
         padding: '4px 10px',
         borderRadius: 6,
         border: '1px solid var(--border-primary, rgba(255, 255, 255, 0.2))',
         background:
-          gate.enabled && !busy
+          enabled && !busy
             ? 'var(--accent-primary, #facc15)'
             : 'var(--bg-tertiary, rgba(255, 255, 255, 0.08))',
         color:
-          gate.enabled && !busy
+          enabled && !busy
             ? 'var(--bg-primary, #0a0a0a)'
             : 'var(--text-muted, rgba(255, 255, 255, 0.4))',
-        cursor: gate.enabled && !busy ? 'pointer' : 'not-allowed',
+        cursor: enabled && !busy ? 'pointer' : 'not-allowed',
         fontSize: 13,
         fontWeight: 600,
       }}
@@ -116,9 +125,36 @@ function ActionButton({
   );
 }
 
+/** "Movement: 15 ft", dim ("Movement: 0 ft") once fewer than five feet
+ * remain — combatPanel.ts's own `moveMaxCells` already reads 0 there, so
+ * this only needs the display text, no extra threshold logic. `null`
+ * (no Move declaration on the wire yet) renders nothing, the same
+ * "nothing to report" treatment the rest of this panel gives absent
+ * data. */
+function MovementRow({
+  movement,
+}: {
+  movement: { remainingFeet: number; affordable: boolean } | null;
+}) {
+  if (!movement) return null;
+  return (
+    <div
+      data-testid="combat-panel-movement"
+      style={{
+        color: movement.affordable
+          ? 'var(--text-primary, #e5e7eb)'
+          : 'var(--text-muted, rgba(255, 255, 255, 0.4))',
+      }}
+    >
+      Movement: {movement.remainingFeet} ft
+    </div>
+  );
+}
+
 export interface CombatPanelProps {
   selection: CombatPanelSelection;
   onAttackClick: () => void;
+  onPickTargetClick: () => void;
   onEndTurnClick: () => void;
   attacking: boolean;
   endingTurn: boolean;
@@ -127,6 +163,7 @@ export interface CombatPanelProps {
 export function CombatPanel({
   selection,
   onAttackClick,
+  onPickTargetClick,
   onEndTurnClick,
   attacking,
   endingTurn,
@@ -149,6 +186,21 @@ export function CombatPanel({
       </div>
     );
   }
+
+  const attackButton =
+    selection.attack.kind === 'pick-target'
+      ? {
+          label: 'Pick a target',
+          enabled: true,
+          reason: null as string | null,
+          onClick: onPickTargetClick,
+        }
+      : {
+          label: 'Attack',
+          enabled: selection.attack.enabled,
+          reason: selection.attack.reason,
+          onClick: onAttackClick,
+        };
 
   return (
     <div data-testid="combat-panel" style={overlayStyle}>
@@ -182,6 +234,7 @@ export function CombatPanel({
           );
         })}
       </div>
+      <MovementRow movement={selection.movement} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {selection.declarations.map((row, i) => (
           <span
@@ -210,15 +263,17 @@ export function CombatPanel({
       <div style={{ display: 'flex', gap: 8 }}>
         <ActionButton
           testId="combat-panel-attack-button"
-          label="Attack"
-          gate={selection.attack}
-          onClick={onAttackClick}
+          label={attackButton.label}
+          enabled={attackButton.enabled}
+          reason={attackButton.reason}
+          onClick={attackButton.onClick}
           busy={attacking}
         />
         <ActionButton
           testId="combat-panel-end-turn-button"
           label="End Turn"
-          gate={selection.endTurn}
+          enabled={selection.endTurn.enabled}
+          reason={selection.endTurn.reason}
           onClick={onEndTurnClick}
           busy={endingTurn}
         />

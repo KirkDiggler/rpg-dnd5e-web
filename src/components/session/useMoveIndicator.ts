@@ -22,6 +22,9 @@ export interface UseMoveIndicatorArgs {
   pathIndex: AtlasPathIndex | null;
   fightLocked: boolean;
   hoveredEntityId?: string | null;
+  /** The server's movement bound for this turn, in whole cells
+   * (toolkit#1169) — see `moveIndicator.ts`'s own doc comment. */
+  maxCells?: number;
 }
 
 export function useMoveIndicator({
@@ -31,6 +34,7 @@ export function useMoveIndicator({
   pathIndex,
   fightLocked,
   hoveredEntityId,
+  maxCells,
 }: UseMoveIndicatorArgs): MoveIndicatorSelection | null {
   return useMemo(
     () =>
@@ -41,7 +45,8 @@ export function useMoveIndicator({
         pathIndex,
         fightLocked,
         hoveredEntityId,
+        maxCells,
       }),
-    [mode, hovered, from, pathIndex, fightLocked, hoveredEntityId]
+    [mode, hovered, from, pathIndex, fightLocked, hoveredEntityId, maxCells]
   );
 }

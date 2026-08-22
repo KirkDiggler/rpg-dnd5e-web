@@ -22,6 +22,11 @@ export const SHAPE_ORDER: TurnHudSlotName[] = ['action', 'bonus', 'reaction'];
 // stream side.
 const VERB_LABEL: Partial<Record<Verb, string>> = {
   [Verb.ATTACK]: 'Attack',
+  // Move has its own dedicated "Movement: X ft" row in CombatPanel.tsx
+  // (`combatPanel.ts` filters it out of the generic declaration list) —
+  // this label only matters for `TurnHud.tsx`'s standalone, unfiltered
+  // rendering, so a Move declaration reaching it still reads sensibly.
+  [Verb.MOVE]: 'Move',
 };
 
 export function verbLabel(verb: Verb): string {

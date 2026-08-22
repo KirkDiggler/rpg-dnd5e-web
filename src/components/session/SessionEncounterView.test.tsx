@@ -658,10 +658,13 @@ describe('SessionEncounterView', () => {
       });
 
       await waitFor(() => screen.getByText(/in a fight — movement is locked/i));
-      // fightLocked (rpg-dnd5e-web#762 slice 4) flows to SessionCanvas from
-      // the SAME useSessionWalk state the friendly status line reads —
-      // the move indicator reuses it rather than re-parsing moveError.
-      expect(hoisted.lastCanvasProps.current!.fightLocked).toBe(true);
+      // As of toolkit#1169, SessionCanvas's own `fightLocked` prop is no
+      // longer sourced from this attempt-driven state (see
+      // SessionEncounterView.tsx's `floorLocked` — computed fresh from
+      // live Turn state instead, so it can't go stale). useSessionWalk's
+      // own `fightLocked` still exists, but only to drive the fight-lock
+      // refetch effect now — covered by the "combat panel wiring" describe
+      // block's own dedicated refetch tests below, not here.
     });
   });
 
@@ -953,7 +956,7 @@ describe('SessionEncounterView', () => {
       );
     });
 
-    it('Attack is disabled with "Pick a target." when affordable and your turn but nothing selected yet', async () => {
+    it('the Attack button becomes the "Pick a target" affordance (enabled) when affordable and your turn but nothing selected yet — toolkit#1169, no separate button', async () => {
       readyOnYourTurn();
 
       render(
@@ -968,36 +971,15 @@ describe('SessionEncounterView', () => {
       await waitFor(() => screen.getByTestId('combat-panel-attack-button'));
 
       expect(isDisabled(screen.getByTestId('combat-panel-attack-button'))).toBe(
-        true
+        false
       );
-      expect(screen.getByTestId('combat-panel-attack-button').title).toMatch(
-        /pick a target/i
+      expect(screen.getByTestId('combat-panel-attack-button').textContent).toBe(
+        'Pick a target'
       );
       screen.getByText(/no target selected/i);
     });
 
-    it("SessionCanvas enters 'target' mode exactly when it is your turn and Attack is affordable, and onEntityClick is wired", async () => {
-      readyOnYourTurn();
-
-      render(
-        <SessionEncounterView
-          sessionId="enc-1"
-          characterId="char-1"
-          playerId="player-1"
-          onBack={noop}
-        />
-      );
-      await waitFor(() => screen.getByTestId('session-canvas'));
-
-      await waitFor(() =>
-        expect(hoisted.lastCanvasProps.current?.mode).toBe('target')
-      );
-      expect(hoisted.lastCanvasProps.current?.onEntityClick).toBeTypeOf(
-        'function'
-      );
-    });
-
-    it('clicking an entity in target mode selects it, enabling Attack once affordable + your turn + a target', async () => {
+    it("the canvas stays in 'move' mode on your own turn by default (toolkit#1169: walk AND target in the same turn) — target mode only after the explicit 'Pick a target' click", async () => {
       readyOnYourTurn();
 
       render(
@@ -1010,8 +992,34 @@ describe('SessionEncounterView', () => {
       );
       await waitFor(() => screen.getByTestId('session-canvas'));
       await waitFor(() => screen.getByTestId('combat-panel-attack-button'));
-      expect(isDisabled(screen.getByTestId('combat-panel-attack-button'))).toBe(
-        true
+
+      expect(hoisted.lastCanvasProps.current?.mode).toBe('move');
+      expect(hoisted.lastCanvasProps.current?.onEntityClick).toBeTypeOf(
+        'function'
+      );
+
+      fireEvent.click(screen.getByTestId('combat-panel-attack-button'));
+
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.mode).toBe('target')
+      );
+    });
+
+    it('clicking an entity selects it, flipping the button from "Pick a target" to "Attack" (enabled, once affordable + your turn + a target)', async () => {
+      readyOnYourTurn();
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('combat-panel-attack-button'));
+      expect(screen.getByTestId('combat-panel-attack-button').textContent).toBe(
+        'Pick a target'
       );
 
       act(() => {
@@ -1021,9 +1029,16 @@ describe('SessionEncounterView', () => {
       await waitFor(() => screen.getByText(/target: skeleton-1/i));
       await waitFor(() =>
         expect(
-          isDisabled(screen.getByTestId('combat-panel-attack-button'))
-        ).toBe(false)
+          screen.getByTestId('combat-panel-attack-button').textContent
+        ).toBe('Attack')
       );
+      expect(isDisabled(screen.getByTestId('combat-panel-attack-button'))).toBe(
+        false
+      );
+      // Picking a target also returns the floor to 'move' on its own —
+      // useCombatPanel's own doc comment: no separate "exit targeting"
+      // affordance needed.
+      expect(hoisted.lastCanvasProps.current?.mode).toBe('move');
     });
 
     it('clicking Attack dispatches the RPC with attacker/target, shows the hit beat line, and refetches Afford + Turn', async () => {
@@ -1395,6 +1410,101 @@ describe('SessionEncounterView', () => {
       await waitFor(() => screen.getByText(/in a fight — movement is locked/i));
       await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    });
+
+    it("SessionCanvas's fightLocked prop is computed from live Turn state, true the instant it is NOT your turn — no failed Move attempt needed (toolkit#1169's floorLocked)", async () => {
+      readyOnYourTurn({ active: 'skeleton-1' }); // not your turn from the start
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // No onHexClick/Move attempt happened at all -- floorLocked reads
+      // true purely from turnActive !== member.
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.fightLocked).toBe(true)
+      );
+      expect(hoisted.moveFn).not.toHaveBeenCalled();
+    });
+
+    it('SessionCanvas.fightLocked is false on your own turn even though useSessionWalk has never attempted a Move', async () => {
+      readyOnYourTurn(); // your turn from the start
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.fightLocked).toBe(false)
+      );
+    });
+
+    it('SessionCanvas.maxCells is floor(remaining/5) from the Move declaration on your turn', async () => {
+      readyOnYourTurn();
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            affordable: true,
+            shortfall: '',
+          },
+          {
+            verb: Verb.MOVE,
+            slot: Slot.NONE,
+            affordable: true,
+            shortfall: '',
+            remaining: 17,
+          },
+        ],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.maxCells).toBe(3)
+      );
+    });
+
+    it('SessionCanvas.maxCells is undefined on the world clock (free roam is unbounded)', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => screen.getByTestId('turn-hud-free-roam-pill'));
+
+      expect(hoisted.lastCanvasProps.current?.maxCells).toBeUndefined();
     });
   });
 });
