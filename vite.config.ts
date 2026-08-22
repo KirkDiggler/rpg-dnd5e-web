@@ -64,5 +64,15 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    // Vitest's own default (5000ms) is tight enough that a borderline-slow
+    // render/interaction test occasionally times out purely from shared-
+    // machine scheduling jitter, not a real hang — observed 2026-08-22
+    // hitting a DIFFERENT test file each run (AssetAnchorLabConcept,
+    // DungeonBuilderConcept, scripts/attack-die's Stone 1 protocol test),
+    // never the same one twice, which is the signature of contention
+    // rather than a genuine regression. A modest bump costs nothing for a
+    // real hang (it still fails, just later) and stops false negatives
+    // from a busy box.
+    testTimeout: 15000,
   },
 });
