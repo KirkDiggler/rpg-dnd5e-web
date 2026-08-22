@@ -6,7 +6,8 @@ export interface AttackParams {
   session: string;
   /** Who swings — the local player's own member id. */
   attacker: string;
-  /** Who they swing at — the panel's currently selected target. */
+  /** Who they swing at — one of `combatPanel.ts`'s own `attackTargets`
+   * (a subject the player clicked directly on the floor). */
   target: string;
 }
 
@@ -22,13 +23,13 @@ export interface UseAttackResult {
  * set on failure (cleared on the next successful call), the returned
  * promise rejects so the caller decides what to show.
  *
- * NO REACH/ADJACENCY CHECK HAPPENS HERE, on purpose. `AttackRequest`'s own
- * doc comment: the engine does not enforce reach/adjacency today
- * (toolkit#1010, deferred to the movement wave) — attacking from across
- * the room is exactly what the server currently allows, so this hook (and
- * `useCombatPanel`, which decides when the button is enabled) never
- * re-derives a range rule the client has no business inventing. The
- * client renders what the API allows; it does not calculate rules.
+ * NO REACH CHECK HAPPENS HERE, on purpose — reach is the server's own
+ * gate now (rpg-toolkit#1010, rpg-project#249 §3): `Afford` prices one
+ * `Declaration` per candidate target actually in reach, and
+ * `combatPanel.ts`'s `attackTargets` is exactly that list. This hook (and
+ * `useCombatPanel.attackTarget`, which calls it directly off a floor
+ * click) never re-derives a range rule of its own — the client renders
+ * what the API allows; it does not calculate rules.
  */
 export function useSessionAttack(): UseAttackResult {
   const [loading, setLoading] = useState(false);

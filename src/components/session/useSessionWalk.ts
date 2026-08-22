@@ -31,11 +31,7 @@ import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/sess
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
 import { findAtlasPath } from './atlasPath';
-import {
-  formatMoveError,
-  isFightLockError,
-  isNotYourTurnError,
-} from './moveErrorMessage';
+import { formatMoveError, isNotYourTurnError } from './moveErrorMessage';
 import { cubeToPosition, positionToCube } from './positionBridge';
 
 function sameCube(a: CubeCoord | null, b: CubeCoord | null): boolean {
@@ -64,33 +60,31 @@ export interface UseSessionWalkResult {
    * a wrapper that drops the entityId argument). */
   onWalkAnimationComplete: (completedSeq: number) => void;
   /** The most recent move-RPC failure message, or `null`. Cleared at the
-   * start of the next `walkTo`. */
+   * start of the next `walkTo` — rendered verbatim by
+   * `SessionEncounterView` as a status line (rpg-project#249's own "the
+   * two Move refusals render as status lines"). */
   moveError: string | null;
-  /** True exactly when `moveError` is one of the two turn-lock refusals
-   * (`session.ErrInBubble` "member is in a fight", OR toolkit#1169's
-   * `session.ErrNotYourTurn` "not your turn" — `moveErrorMessage.ts`'s
-   * `isFightLockError`/`isNotYourTurnError`) rather than some other
+  /** True exactly when `moveError` is the turn-lock refusal
+   * (toolkit#1169's `session.ErrNotYourTurn` "not your turn" —
+   * `moveErrorMessage.ts`'s `isNotYourTurnError`) rather than some other
    * rejection.
    *
-   * NOT wired to the canvas hover indicator directly (as of toolkit#1169)
-   * — `SessionEncounterView` computes that from live Turn state instead
-   * (`turnActive !== member`), which can never go stale the way an
-   * attempt-driven flag can: this field only updates on a NEW `walkTo`
-   * attempt (cleared at its start, set from its own rejection), so it
-   * would otherwise keep reading `true` for a beat after the turn order
-   * actually cycles back to this member, until the player tried another
-   * click. The state-driven signal has no such window — it is simply
-   * recomputed correct on every render.
+   * NOT wired to the canvas hover indicator directly — `SessionEncounter
+   * View` computes that from live Turn state instead (`turnActive !==
+   * member`), which can never go stale the way an attempt-driven flag
+   * can: this field only updates on a NEW `walkTo` attempt (cleared at
+   * its start, set from its own rejection), so it would otherwise keep
+   * reading `true` for a beat after the turn order actually cycles back
+   * to this member, until the player tried another click. The
+   * state-driven signal has no such window — it is simply recomputed
+   * correct on every render.
    *
-   * Still meaningful for its own two callers: `SessionEncounterView`'s
-   * fight-lock-refetch effect (a click refused for either reason is a
-   * signal this client's Turn/Afford state is stale and worth refreshing
-   * immediately, not waiting for the next stream event), and the top-left
-   * status line, which reads `moveError` — this flag exists alongside it
-   * only so a caller can ask "was THAT refusal one of the turn locks" as a
-   * boolean without re-deriving the same match a second time. Cleared at
-   * the start of the next `walkTo`, same as `moveError`. */
-  fightLocked: boolean;
+   * Still meaningful for its own caller: `SessionEncounterView`'s
+   * refetch-on-refusal effect (a click refused this way is a signal this
+   * client's Turn/Afford state is stale and worth refreshing immediately,
+   * not waiting for the next stream event). Cleared at the start of the
+   * next `walkTo`, same as `moveError`. */
+  notYourTurn: boolean;
 }
 
 export function useSessionWalk(
@@ -107,7 +101,7 @@ export function useSessionWalk(
   const [moveSeq, setMoveSeq] = useState<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
-  const [fightLocked, setFightLocked] = useState(false);
+  const [notYourTurn, setNotYourTurn] = useState(false);
   const nextSeqRef = useRef(0);
 
   // GetWhere is the source of truth. While idle, the display position
@@ -146,7 +140,7 @@ export function useSessionWalk(
 
       setBusy(true);
       setMoveError(null);
-      setFightLocked(false);
+      setNotYourTurn(false);
 
       void (async () => {
         try {
@@ -175,17 +169,15 @@ export function useSessionWalk(
           // busy stays true — released by onWalkAnimationComplete once
           // the presentation finishes AND GetWhere reconciles.
         } catch (err) {
-          // formatMoveError.ts's own doc comment: rewrites either turn-lock
-          // FailedPrecondition (session.ErrInBubble OR toolkit#1169's
-          // ErrNotYourTurn) into a friendly line; every other rejection
-          // passes through unchanged, same as before. isFightLockError/
-          // isNotYourTurnError parse the SAME caught error the same way
-          // (one sentinel-matching implementation each, see
-          // moveErrorMessage.ts) to set the boolean this hook's own two
-          // callers read — see `fightLocked`'s own doc comment above for
-          // who those are now.
+          // formatMoveError.ts's own doc comment: rewrites the turn-lock
+          // FailedPrecondition (toolkit#1169's ErrNotYourTurn) into a
+          // friendly line; every other rejection (including the movement-
+          // shortfall one, ErrCannotAfford) passes through unchanged.
+          // isNotYourTurnError parses the SAME caught error to set the
+          // boolean this hook's own caller reads — see `notYourTurn`'s
+          // own doc comment above.
           setMoveError(formatMoveError(err));
-          setFightLocked(isFightLockError(err) || isNotYourTurnError(err));
+          setNotYourTurn(isNotYourTurnError(err));
           setBusy(false);
         }
       })();
@@ -215,6 +207,6 @@ export function useSessionWalk(
     walkTo,
     onWalkAnimationComplete,
     moveError,
-    fightLocked,
+    notYourTurn,
   };
 }

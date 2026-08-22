@@ -1,4 +1,7 @@
-import { ClockKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ClockKind,
+  type Participant,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { sessionClient } from './client';
 
@@ -9,8 +12,14 @@ export interface UseSessionTurnResult {
   /** Which round the clock is in — zero on the world clock. */
   round: number;
   /** The fight's initiative order, first to act first — empty on the
-   * world clock. */
+   * world clock. Kept alongside `participants` (same ids, same order) for
+   * any caller that only needs ids; `participants` is the richer answer
+   * (name/kind/standing/active) the combat panel actually renders from. */
   order: string[];
+  /** One entry per member of the fight the asker is in — name, kind,
+   * standing, and which one is active (rpg-project#249 §3's `Participant`,
+   * landed rpg-toolkit#1137). Empty on the world clock, same as `order`. */
+  participants: Participant[];
   loading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
@@ -45,6 +54,7 @@ export function useSessionTurn(
   const [active, setActive] = useState('');
   const [round, setRound] = useState(0);
   const [order, setOrder] = useState<string[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -54,6 +64,7 @@ export function useSessionTurn(
       setActive('');
       setRound(0);
       setOrder([]);
+      setParticipants([]);
       setError(null);
       setLoading(false);
       return;
@@ -66,9 +77,10 @@ export function useSessionTurn(
       setActive(response.active);
       setRound(response.round);
       setOrder(response.order);
+      setParticipants(response.participants);
     } catch (err) {
-      // Last-good clock/active/round/order deliberately untouched — see
-      // this module's own doc comment.
+      // Last-good clock/active/round/order/participants deliberately
+      // untouched — see this module's own doc comment.
       setError(err instanceof Error ? err : new Error('Turn RPC failed'));
     } finally {
       setLoading(false);
@@ -81,10 +93,20 @@ export function useSessionTurn(
       setActive('');
       setRound(0);
       setOrder([]);
+      setParticipants([]);
       setError(null);
       setLoading(false);
     }
   }, [session, member]);
 
-  return { clock, active, round, order, loading, error, refetch: fetchTurn };
+  return {
+    clock,
+    active,
+    round,
+    order,
+    participants,
+    loading,
+    error,
+    refetch: fetchTurn,
+  };
 }

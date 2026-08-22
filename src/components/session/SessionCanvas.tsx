@@ -13,15 +13,29 @@
  * `@react-three/test-renderer`, the same way `SyntyHexWall.test.tsx`
  * renders `SyntyHexWall` directly rather than nesting a second `<Canvas>`
  * inside the test renderer's own root.
+ *
+ * # Attack is a floor gesture (rpg-project#249)
+ *
+ * `attackableTargets` names every subject `combatPanel.ts` currently
+ * offers as an in-reach, this-turn candidate — drawn with a persistent
+ * highlight (`HexEntity.isSelected`, unused elsewhere on this route) so
+ * "what can I hit" reads at a glance, per the design's own walkthrough.
+ * Hovering one of them (not a separate mode — see `moveIndicator.ts`'s
+ * own doc comment) shows the "Attack <name>" ground marker and fires
+ * `onHoverEntity`; clicking one fires `onEntityClick` directly — no
+ * intermediate "arm" step. Clicking a NON-attackable entity's cell is a
+ * no-op (never treated as a walk target either — an occupied cell was
+ * never a legitimate destination); every other click is the ordinary
+ * `onHexClick` walk.
  */
 
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
-import { type CubeCoord, coordToKey, cubeToWorld } from '../hex-grid/hexMath';
+import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import { SyntyHexFloor } from '../hex-grid/SyntyHexFloor';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
@@ -29,19 +43,13 @@ import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { AtlasWalls } from './AtlasWalls';
 import { MoveIndicator } from './MoveIndicator';
-import type { MoveIndicatorMode } from './moveIndicator';
-import type { SightedMember } from './sightingEntities';
+import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { useMoveIndicator } from './useMoveIndicator';
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
  * cover any dungeon this route draws; only its raycast target, never
  * rendered. */
 const GROUND_PLANE_SIZE = 200;
-
-// Slice 4 (rpg-dnd5e-web#762) adds the hover/path indicator: hovering the
-// ground plane highlights the cell under the cursor and, for a reachable
-// one, previews the exact route a click would walk (`useMoveIndicator`/
-// `moveIndicator.ts` own the decision; `MoveIndicator` only draws it).
 
 export interface SessionCanvasProps {
   scene: Scene3D;
@@ -60,57 +68,55 @@ export interface SessionCanvasProps {
    * `HexEntity.moveSeq`, which is what actually triggers the animation
    * (see `useHexMovePath.ts`). */
   moveSeq?: number;
-  /** Fires when a floor hex is clicked — the request-shaping/pathfinding
-   * and the `Move` RPC itself live in the caller (`useSessionWalk`), not
+  /** Fires when a floor hex is clicked (and it isn't an attack — see this
+   * component's own doc comment) — the request-shaping/pathfinding and
+   * the `Move` RPC itself live in the caller (`useSessionWalk`), not
    * here; this component only owns the raycast. */
   onHexClick?: (coord: CubeCoord) => void;
-  /** `'target'` mode only (rpg-dnd5e-web#762 combat panel) — fires when a
-   * click lands on the hex an `otherMembers` entity currently occupies.
-   * `onHexClick` is NOT also called in that case (clicking a floor cell
-   * with nothing on it does nothing in `'target'` mode either — a fight
-   * member cannot walk, so there is no Move to send). */
+  /** Fires when a click lands on an `attackableTargets` entity's cell —
+   * see this component's own doc comment. `onHexClick` is NOT also
+   * called in that case. */
   onEntityClick?: (subject: string) => void;
+  /** Fires with the subject under the cursor, or `null` — presentation
+   * only (drives the panel's "Attack <name>" hover label); this
+   * component makes no affordability judgment of its own. */
+  onHoverEntity?: (subject: string | null) => void;
   /** Fires once the local player's walk ANIMATION finishes painting
    * `movePath` for the given `moveSeq` — presentation-only, matches
    * `HexEntity`'s own `onMovementPresentationComplete` contract (entityId
    * dropped here since this route only ever animates the local player). */
   onMovementPresentationComplete?: (moveSeq: number) => void;
   /** Every OTHER member the local player currently perceives
-   * (`GetView.sightings`, mapped by `sightingsToEntities` — rpg-dnd5e-web
-   * #762 slice 3). Drawn as monster `HexEntity`s with no `movePath`/
-   * `moveSeq` of their own: `useHexMovePath` already snaps an entity
-   * straight to a new `position` when `moveSeq` never advances (its own
-   * doc comment's "initial mount / non-move position change" branch), so a
-   * `GetView` refetch that moves one of these simply relocates it on the
-   * next render — no animation plumbing needed for this slice. Undefined/
-   * empty draws nothing extra, matching every pre-#762-slice-3 caller. */
+   * (`GetView.sightings`, mapped by `sightingsToEntities`). Drawn as
+   * monster `HexEntity`s with no `movePath`/`moveSeq` of their own:
+   * `useHexMovePath` already snaps an entity straight to a new `position`
+   * when `moveSeq` never advances, so a `GetView` refetch that moves one
+   * of these simply relocates it on the next render. Undefined/empty
+   * draws nothing extra. */
   otherMembers?: SightedMember[];
+  /** Subject ids `combatPanel.ts` currently offers as in-reach Attack
+   * candidates (rpg-project#249) — see this component's own doc comment.
+   * Undefined/empty means nothing is attackable right now. */
+  attackableTargets?: string[];
   /** The atlas's movement graph (`atlasPath.ts`'s `buildAtlasPathIndex`) —
    * the SAME index `useSessionWalk` builds its `MoveRequest` path from.
-   * Feeds the hover/path indicator (rpg-dnd5e-web#762 slice 4) via
-   * `useMoveIndicator`. `undefined`/`null` simply means nothing is drawn
-   * under the cursor yet (`moveIndicator.ts`'s own doc comment: that's a
-   * DIFFERENT answer from a computed `'invalid'`). `SessionEncounterView`
-   * pins this to the last successfully-loaded atlas rather than passing a
-   * live one straight through (rpg-dnd5e-web#768 fix), so in practice this
-   * is only ever null before the FIRST atlas load — a later background
-   * `GetAtlas` refetch failure does not fall back to it. */
+   * Feeds the hover/path indicator via `useMoveIndicator`. `undefined`/
+   * `null` simply means nothing is drawn under the cursor yet
+   * (`moveIndicator.ts`'s own doc comment). `SessionEncounterView` pins
+   * this to the last successfully-loaded atlas rather than passing a
+   * live one straight through, so in practice this is only ever null
+   * before the FIRST atlas load. */
   pathIndex?: AtlasPathIndex | null;
-  /** Mirrors `useSessionWalk`'s `fightLocked` — when true, every hover
-   * shows the indicator's locked state instead of a path preview. Defaults
-   * to `false` (every pre-slice-4 caller, including this file's own
-   * tests). */
-  fightLocked?: boolean;
-  /** `'move'` (default) shows a walk path preview; `'target'` is the
-   * combat seam (rpg-dnd5e-web#762 slice 4's own brief) — a trivial
-   * reticle-color branch only, not an attack flow. */
-  mode?: MoveIndicatorMode;
+  /** Not this member's turn (`combatPanel.ts`'s own turn-ownership gate)
+   * — when true, every non-attackable hover shows the indicator's locked
+   * state instead of a path preview, and floor clicks are ignored
+   * upstream (`onHexClick` simply isn't wired to dispatch anything by the
+   * caller in that state). Defaults to `false`. */
+  turnLocked?: boolean;
   /** The server's own movement bound for this turn, already rounded down
    * to whole cells (toolkit#1169, `combatPanel.ts`'s own `moveMaxCells`)
    * — a path preview longer than this reads `'invalid'`. `undefined`
-   * means unbounded (free roam). Ignored in `'target'` mode. See
-   * `moveIndicator.ts`'s own doc comment on why this is a courtesy bound,
-   * never a substitute for the server's own refusal. */
+   * means unbounded (free roam). */
   maxCells?: number;
 }
 
@@ -129,11 +135,12 @@ export function SessionScene({
   moveSeq,
   onHexClick,
   onEntityClick,
+  onHoverEntity,
   onMovementPresentationComplete,
   otherMembers,
+  attackableTargets,
   pathIndex = null,
-  fightLocked = false,
-  mode = 'move',
+  turnLocked = false,
   maxCells,
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
@@ -162,34 +169,31 @@ export function SessionScene({
   );
   useCameraControls({ target: initialTargetRef.current, focusTarget });
 
-  // Click-to-walk: the raycast/hover/validity machinery is the SAME
-  // ground-plane convention `HexGrid`'s own `useHexInteraction` already
-  // established (worldToCube, floor-membership gating) — reused rather
-  // than re-derived, since it's convention-independent geometry, not
-  // anything specific to the OLD wire's movement rules. This route
-  // ignores the hook's own path-preview/attack fields (those are node-
-  // only, per-hex; the atlas's real reachability is edge-aware and lives
-  // in `atlasPath.ts`/`useSessionWalk`, the caller of `onHexClick`).
-  // 'target' mode's click handling (rpg-dnd5e-web#762 combat panel):
-  // a click that lands on an `otherMembers` entity's cell selects it
-  // (`onEntityClick`) instead of walking there. A click on empty floor in
-  // this mode does nothing — deliberately: a fight member cannot walk
-  // (`useSessionWalk`'s fight-lock refusal), so sending a `Move` that the
-  // server would just refuse is pointless. `'move'` mode is entirely
-  // unchanged (the original `onHexClick` pass-through).
+  const attackableSet = useMemo(
+    () => new Set(attackableTargets ?? []),
+    [attackableTargets]
+  );
+
+  // Click-to-walk/click-to-attack: the raycast/hover/validity machinery is
+  // the SAME ground-plane convention `HexGrid`'s own `useHexInteraction`
+  // already established (worldToCube, floor-membership gating) — reused
+  // rather than re-derived. A click on an attackable entity's cell attacks
+  // it (`onEntityClick`); a click on any OTHER entity's cell is a no-op
+  // (never a walk attempt either — see this component's own doc comment);
+  // every other floor click is the ordinary walk (`onHexClick`).
   const handleGroundClick = useCallback(
     (coord: CubeCoord) => {
-      if (mode === 'target') {
-        const key = coordToKey(coord);
-        const hit = otherMembers?.find(
-          (member) => coordToKey(member.position) === key
-        );
-        if (hit) onEntityClick?.(hit.subject);
+      const key = coordToKey(coord);
+      const hit = otherMembers?.find(
+        (member) => coordToKey(member.position) === key
+      );
+      if (hit) {
+        if (attackableSet.has(hit.subject)) onEntityClick?.(hit.subject);
         return;
       }
       onHexClick?.(coord);
     },
-    [mode, otherMembers, onEntityClick, onHexClick]
+    [otherMembers, attackableSet, onEntityClick, onHexClick]
   );
 
   const { groundPlaneProps, hoveredHex } = useHexInteraction({
@@ -198,11 +202,10 @@ export function SessionScene({
     onHexClick: handleGroundClick,
   });
 
-  // 'target' mode's own trivial seam (moveIndicator.ts's module doc
-  // comment): which OTHER member, if any, sits under the hovered cell.
-  // Cheap — otherMembers is small (everyone currently perceived) — and
-  // reuses the position this component already draws each HexEntity at,
-  // no new lookup structure.
+  // Which OTHER member, if any, sits under the hovered cell. Cheap —
+  // otherMembers is small (everyone currently perceived) — and reuses the
+  // position this component already draws each HexEntity at, no new
+  // lookup structure.
   const hoveredEntityId = useMemo(() => {
     if (!hoveredHex || !otherMembers) return null;
     const key = coordToKey(hoveredHex);
@@ -211,19 +214,24 @@ export function SessionScene({
     );
   }, [hoveredHex, otherMembers]);
 
-  // Slice 4 (rpg-dnd5e-web#762): the hover/path indicator. `from` is
-  // `myPosition` — the SAME cube this scene draws the local player's own
-  // `HexEntity` at, so the preview always matches where a click would
-  // actually walk from. Memoized inside the hook on exactly these inputs,
-  // so pathfinding never runs on an unrelated re-render (a camera pan,
-  // say).
+  // Presentation-only: report the hovered subject up so the panel can
+  // show "Attack <name>" (or its shortfall) — this component makes no
+  // affordability judgment of its own. Only fires on an actual change so
+  // a caller's state setter doesn't churn every render.
+  const lastReportedHoverRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastReportedHoverRef.current === hoveredEntityId) return;
+    lastReportedHoverRef.current = hoveredEntityId;
+    onHoverEntity?.(hoveredEntityId);
+  }, [hoveredEntityId, onHoverEntity]);
+
   const moveIndicatorSelection = useMoveIndicator({
-    mode,
     hovered: hoveredHex,
     from: myPosition,
     pathIndex,
-    fightLocked,
+    locked: turnLocked,
     hoveredEntityId,
+    attackable: hoveredEntityId ? attackableSet.has(hoveredEntityId) : false,
     maxCells,
   });
 
@@ -270,12 +278,14 @@ export function SessionScene({
         <HexEntity
           key={member.subject}
           entityId={member.subject}
-          name={member.subject}
+          name={member.name}
           position={member.position}
           type="monster"
           hexSize={hexSize}
           monsterRefId={member.monsterRefId}
           knowledgeState={member.remembered ? 'remembered' : undefined}
+          isDead={isSightedDowned(member.standing)}
+          isSelected={!member.remembered && attackableSet.has(member.subject)}
         />
       ))}
     </>

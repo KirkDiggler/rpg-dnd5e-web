@@ -2,66 +2,59 @@
  * SessionEncounterView — the real 3D game route's render of a
  * `dnd5e.api.session.v1alpha1` session: the reference tomb, drawn from the
  * atlas, with the local player's character standing where `GetWhere` says
- * they are, able to WALK it (rpg-project#227 W3 slice 2, issue #762's
- * second small victory) — click a floor hex, `useSessionWalk` builds a
+ * they are, able to WALK it — click a floor hex, `useSessionWalk` builds a
  * `MoveRequest` from `atlasPath.ts`'s edge-aware route over the atlas, and
  * the returned steps drive `HexEntity`'s existing move-path animation
- * (`useHexMovePath`, unchanged from the old `HexGrid` route) — and now
- * drawing every OTHER member the local player currently perceives (slice
- * 3, ADR-0041 / rpg-toolkit#1157's `Seen` seam): `useSessionView` polls
- * `GetView`, `sightingEntities.ts` turns its `sightings` into monster
- * `HexEntity`s at their reported cell (or a faded "remembered" one for a
- * held memory, `currentVia` empty), a fight-locked `Move` rejection
- * (`session.ErrInBubble`) surfaces as a friendly status line instead of
- * raw RPC text (`moveErrorMessage.ts`), and now (slice 4) a hover/path
- * indicator on the 3D floor itself: `useSessionWalk`'s `fightLocked` flag
- * and the atlas's own `pathIndex` both flow down into `SessionCanvas` so
- * hovering shows a walk preview, an unreachable-cell refusal, or the same
- * fight lock — computed by the SAME `atlasPath.ts` call `walkTo` itself
- * makes, so the preview can never diverge from what a click actually
- * does (`moveIndicator.ts`'s own doc comment).
+ * (`useHexMovePath`, unchanged from the old `HexGrid` route) — and draws
+ * every OTHER member the local player currently perceives (ADR-0041 /
+ * rpg-toolkit#1157's `Seen` seam): `useSessionView` polls `GetView`,
+ * `sightingEntities.ts` turns its `sightings` into monster `HexEntity`s at
+ * their reported cell, name, and standing (or a faded "remembered" one for
+ * a held memory, `currentVia` empty), a turn-lock `Move` rejection
+ * (`session.ErrNotYourTurn`) surfaces as a friendly status line instead of
+ * raw RPC text (`moveErrorMessage.ts`), and a hover/path indicator on the
+ * 3D floor itself: `turnLocked` (computed fresh from live Turn state) and
+ * the atlas's own `pathIndex` both flow down into `SessionCanvas` so
+ * hovering shows a walk preview, an unreachable-cell refusal, an Attack
+ * affordance, or the turn lock — the walk preview computed by the SAME
+ * `atlasPath.ts` call `walkTo` itself makes, so it can never diverge from
+ * what a click actually does (`moveIndicator.ts`'s own doc comment).
  *
- * # The combat panel (rpg-dnd5e-web#762, "grow the HUD into a panel")
+ * # The combat panel (rpg-project#249 "the combat turn on the session
+ * stack"; rpg-dnd5e-web#762/#525/#533)
  *
- * Slice 5a's `TurnHud` shipped only the three shapes — Kirk walked it and
- * said, verbatim: "well I am 4 spaces away but it stays attack ready and
- * i see nothign happen. what was our plan here? I do not have a panel, I
- * cannot end turn or even see whose turn it is." This is that panel:
  * `useSessionTurn` reads `SessionService.Turn` (whose go is it, what
- * round, the initiative order), `useCombatPanel`/`combatPanel.ts` compose
- * it with Afford into turn order + shapes + Attack/End Turn gates +
- * target selection + a beat line, and `CombatPanel` draws it, replacing
- * `TurnHud` in this view's own render (that component and its tests stay
- * as the focused building block underneath — see its own doc comment).
- * `SessionCanvas` flips into `'target'` mode (slice 4's own seam) exactly
- * when it is this member's turn and Attack is affordable, so hovering a
- * sighted entity highlights it and clicking one selects it as the
- * `Attack` target — `onEntityClick` is new; `onHexClick` is unchanged and
- * does nothing in `'target'` mode (a fight member cannot walk anyway).
+ * round, the roster by name and standing — `Participant`), `useCombat
+ * Panel`/`combatPanel.ts` compose it with Afford into the roster + shapes
+ * + movement bound + in-reach Attack targets + End Turn gate + a beat
+ * line built ONLY from typed stream events, and `CombatPanel` draws it.
  *
- * Still honest about what it doesn't know: a monster's turn has no driver
- * yet (toolkit work item B, in flight) — after this member's own EndTurn,
- * the clock sits on the monster and the panel says so ("Waiting on
- * skeleton-1.") rather than pretending there's more to do.
+ * ATTACK IS A FLOOR GESTURE, NOT A PANEL BUTTON (`combatPanel.ts`'s own
+ * doc comment): `SessionCanvas` highlights every subject in
+ * `combatPanel.selection.attackTargets` persistently, hovering one shows
+ * "Attack <name>" (or its own shortfall text), and clicking one fires
+ * `combatPanel.attackTarget` directly — no "arm, then confirm" step.
+ * `onHexClick` still walks; a click on any OTHER (non-attackable)
+ * entity's cell is a no-op (see `SessionCanvas`'s own doc comment).
+ *
+ * Still honest about what it doesn't know: a monster's turn is a real
+ * driven beat (the design's own "the monster's turn as a moment," web
+ * #561) rather than a guess — `useCombatPanel`'s own `handleEvent` paces
+ * "<name>'s turn." then "<name> does nothing." from the stream's typed
+ * `turnEnded` event before refetching, so the panel never claims more
+ * than the wire has actually told it.
  *
  * # Move on the turn clock (toolkit#1169)
  *
- * Kirk's direction: "operating in the new clock. take turn, move maybe,
- * end turn monster takes turn." The OLD blanket fight lock (`ErrInBubble`,
- * every fight member refused `Move` outright) is gone — on your own turn,
- * the floor works exactly like free roam (same `findAtlasPath`, same
- * `useSessionWalk`), just bounded to `combatPanel.ts`'s own `moveMaxCells`
- * (the server's `remaining` feet, floor-divided by five — a courtesy
- * preview bound, never a client rule; see `moveIndicator.ts`'s own doc
- * comment). `'target'` mode is no longer entered automatically just
- * because Attack is affordable (a player must be able to walk AND target
- * in the same turn) — it's the Attack button's own `'pick-target'` state,
- * an explicit click (`combatPanel.ts`'s doc comment on why there's no
- * second button). The floor's `fightLocked` prop is now computed fresh
- * from live Turn state (`floorLocked` below) rather than from
- * `useSessionWalk`'s own attempt-driven flag — see that variable's own
- * comment for why a state-derived signal can't go stale the way an
- * error-driven one can when the turn cycles back mid-session.
+ * On your own turn, the floor works exactly like free roam (same
+ * `findAtlasPath`, same `useSessionWalk`), just bounded to
+ * `combatPanel.ts`'s own `moveMaxCells` (the server's `remaining` feet,
+ * floor-divided by five — a courtesy preview bound, never a client rule;
+ * see `moveIndicator.ts`'s own doc comment). `turnLocked` is computed
+ * fresh from live Turn state on every render rather than from
+ * `useSessionWalk`'s own attempt-driven `notYourTurn` flag — see that
+ * variable's own comment for why a state-derived signal can't go stale
+ * the way an error-driven one can when the turn cycles back mid-session.
  *
  * # Why this exists beside `EncounterView`, not inside it
  *
@@ -83,9 +76,9 @@
  * relocated into the client. It reuses only the LEAF 3D renderers
  * (`SyntyHexFloor`, `HexEntity`, `useCameraControls`, and — via
  * `AtlasWalls` — `GlbInstance`) with a thin atlas -> leaf-props mapping
- * (`atlasToScene3D.ts`). It does not enforce Attack's reach/adjacency
- * either — the engine doesn't (toolkit#1010) — see `useAttack.ts`'s own
- * doc comment.
+ * (`atlasToScene3D.ts`). It computes no reach/adjacency of its own either
+ * — every `attackTargets` entry already reflects the server's own reach
+ * gate (rpg-toolkit#1010, rpg-project#249 §3).
  *
  * # Full-viewport portal
  *
@@ -114,16 +107,23 @@ import {
   GetCharacterRequestSchema,
   type Character,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useGetCharacter } from '../../api/characterHooks';
+import { useEquipItem } from '../../api/useEquipItem';
+import { useGetCharacterData } from '../../api/useGetCharacterData';
 import { useSessionAfford } from '../../api/useSessionAfford';
 import { useSessionAtlas } from '../../api/useSessionAtlas';
 import { useSessionTurn } from '../../api/useSessionTurn';
 import { useSessionView } from '../../api/useSessionView';
 import { useSessionWhere } from '../../api/useSessionWhere';
+import { useUnequipItem } from '../../api/useUnequipItem';
 import { layoutFromWire } from '../../concepts/session-tomb/atlas';
 import { CLASS_TEXTURE_SUFFIXES } from '../../config/characterTextures';
+import { classLabel } from '../game/encounterDockHelpers';
+import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
+import type { EquipIntent } from '../game/equipment/equipmentTypes';
 import { HEX_SIZE } from '../hex-grid/hexMath';
 import { Button } from '../ui/Button';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
@@ -146,33 +146,6 @@ export interface SessionEncounterViewProps {
   playerId: string;
   onBack: () => void;
 }
-
-// The `StreamEvents` kinds that can change what a member can still
-// declare this turn (rpg-dnd5e-web#762 slice 5a). Deliberately NOT
-// MOVED — a move by itself never changes the economy; a move that forms
-// a fight arrives as its own FIGHT_STARTED beat (every member of the
-// encounter hears it, per that kind's own doc comment), so listening for
-// FIGHT_STARTED already covers the case MOVED alone does not.
-const AFFORD_REFRESH_EVENT_KINDS: ReadonlySet<EventKind> = new Set([
-  EventKind.FIGHT_STARTED,
-  EventKind.FIGHT_ENDED,
-  EventKind.TURN_ENDED,
-  EventKind.STRUCK,
-  EventKind.MISSED,
-  EventKind.DOWNED,
-  EventKind.ENDED,
-]);
-
-// The `StreamEvents` kinds that can change WHOSE turn it is (rpg-dnd5e-
-// web#762 combat panel). A narrower set than Afford's above: a strike or
-// a downing changes what a member can still PAY for, but never changes
-// whose go it is — only a fight starting, ending, or a turn ending does
-// that. Also never MOVED, for the same reason as Afford.
-const TURN_REFRESH_EVENT_KINDS: ReadonlySet<EventKind> = new Set([
-  EventKind.FIGHT_STARTED,
-  EventKind.FIGHT_ENDED,
-  EventKind.TURN_ENDED,
-]);
 
 type LayoutOutcome =
   | { ok: true; layout: 'pointy' }
@@ -289,7 +262,7 @@ export function SessionEncounterView({
     clock: turnClock,
     active: turnActive,
     round: turnRound,
-    order: turnOrder,
+    participants: turnParticipants,
     refetch: refetchTurn,
   } = useSessionTurn(sessionId, characterId ?? '');
 
@@ -329,6 +302,67 @@ export function SessionEncounterView({
   useEffect(() => {
     void fetchCharacter();
   }, [fetchCharacter]);
+
+  // Equipment (rpg-project#249 §4, reusing web#571's popover): the
+  // session stack carries no encounter snapshot to seed it from (unlike
+  // the old route — see `GetCharacterDataRequest`'s own doc comment), so
+  // this is its own read, fetched alongside the v1alpha1 character above.
+  // A READ, not an action — fetching it eagerly is not "auto-equip"
+  // (Kirk's ruling): nothing about the character changes until the
+  // player opens the popover and clicks something themselves.
+  const { getCharacterData } = useGetCharacterData();
+  const { equipItem, loading: equipping } = useEquipItem();
+  const { unequipItem, loading: unequipping } = useUnequipItem();
+  const [equipmentData, setEquipmentData] = useState<CharacterData | undefined>(
+    undefined
+  );
+  const [equipmentOpen, setEquipmentOpen] = useState(false);
+
+  const fetchEquipment = useCallback(async () => {
+    if (!characterId) {
+      setEquipmentData(undefined);
+      return;
+    }
+    try {
+      const response = await getCharacterData(characterId);
+      setEquipmentData(response.character);
+    } catch {
+      // Not blocking (same treatment as GetView) — the equipment entry
+      // simply stays hidden (CombatPanel only shows it when
+      // `equipmentData` is defined) rather than surfacing a second error
+      // card on top of the scene.
+    }
+  }, [characterId, getCharacterData]);
+
+  useEffect(() => {
+    void fetchEquipment();
+  }, [fetchEquipment]);
+
+  // EquipItem/UnequipItem's own response carries the full recomputed
+  // CharacterData (occupancy changes, AC, everything) — mirrored straight
+  // into local state, same as EncounterDock's own handleEquipIntent. No
+  // stream push for this RPC's effect on OTHER clients (rpg-api#681,
+  // out of scope), so only the acting player's own view updates here.
+  const handleEquipIntent = useCallback(
+    async (intent: EquipIntent) => {
+      if (!characterId) return;
+      try {
+        const response =
+          intent.kind === 'EquipItem'
+            ? await equipItem({
+                characterId,
+                item: intent.ref,
+                slotKey: intent.slotKey,
+              })
+            : await unequipItem({ characterId, slotKey: intent.slotKey });
+        setEquipmentData(response.character);
+      } catch {
+        // Surfaced via equipItem/unequipItem's own `error` if a caller
+        // needs it; the popover simply keeps showing the last-good state.
+      }
+    },
+    [characterId, equipItem, unequipItem]
+  );
 
   const layoutOutcome = useMemo(
     () => resolveLayout(atlas?.layout, atlas?.grid),
@@ -439,7 +473,7 @@ export function SessionEncounterView({
     walkTo,
     onWalkAnimationComplete,
     moveError,
-    fightLocked,
+    notYourTurn,
   } = useSessionWalk(
     sessionId,
     member,
@@ -449,12 +483,12 @@ export function SessionEncounterView({
   );
 
   // The floor's own lock signal — computed FRESH from live Turn state on
-  // every render, not from `useSessionWalk`'s `fightLocked` (an attempt-
+  // every render, not from `useSessionWalk`'s `notYourTurn` (an attempt-
   // driven flag that only updates on a NEW walkTo, so it would otherwise
   // keep reading true for a beat after the turn order cycles back to this
   // member — toolkit#1169's own module-doc-comment section explains why).
   // `false` on the world clock: free roam is never locked.
-  const floorLocked = turnClock === ClockKind.TURN && turnActive !== member;
+  const turnLocked = turnClock === ClockKind.TURN && turnActive !== member;
 
   // The combat panel (rpg-dnd5e-web#762) — turn order, the three shapes,
   // Attack/End Turn gates, target selection, the beat line. See its own
@@ -466,7 +500,7 @@ export function SessionEncounterView({
     turnClock,
     turnActive,
     turnRound,
-    turnOrder,
+    participants: turnParticipants,
     affordClock,
     affordDeclarations,
     refetchAfford,
@@ -475,7 +509,7 @@ export function SessionEncounterView({
   // Destructured for handleSessionEvent's dependency array below — a bare
   // identifier keeps eslint's exhaustive-deps rule happy without pulling
   // in the whole (freshly-returned-every-render) combatPanel object.
-  const { noteDowned } = combatPanel;
+  const { handleEvent: handleCombatEvent } = combatPanel;
 
   // MOVED refetches GetWhere for ANY member's move (this is how another
   // member's move will eventually reach this client too — today it's a
@@ -494,17 +528,13 @@ export function SessionEncounterView({
       if (event.kind === EventKind.MOVED) {
         void refetchWhere();
       }
-      if (AFFORD_REFRESH_EVENT_KINDS.has(event.kind)) {
-        void refetchAfford();
-      }
-      if (TURN_REFRESH_EVENT_KINDS.has(event.kind)) {
-        void refetchTurn();
-      }
-      if (event.kind === EventKind.DOWNED) {
-        noteDowned();
-      }
+      // Beat-line formatting, monster-turn pacing, and every Afford/Turn
+      // refetch trigger besides MOVED's own GetWhere refresh above now
+      // live in `useCombatPanel`'s own `handleEvent` — see its doc
+      // comment for the single-funnel reasoning.
+      handleCombatEvent(event);
     },
-    [refetchWhere, refetchAfford, refetchTurn, noteDowned]
+    [refetchWhere, handleCombatEvent]
   );
   useSessionEventStream(sessionId, member, handleSessionEvent);
 
@@ -543,29 +573,28 @@ export function SessionEncounterView({
     void refetchTurn();
   }, [member, refetchAfford, refetchTurn]);
 
-  // A turn-lock Move refusal (either sentinel `useSessionWalk`'s own
-  // `fightLocked` now covers — the old blanket lock, or toolkit#1169's
-  // not-your-turn) is, today, how a fight FIRST reaches this client
-  // (rpg-dnd5e-web#762) — `fightLocked` flips false -> true exactly then
-  // (`useSessionWalk`'s own doc comment: "cleared at the start of the
-  // next walkTo, same as moveError"), so re-running only on that
-  // transition (not on every render) is exactly "refetch when a Move is
-  // refused." This is `useSessionWalk.fightLocked`'s OWN remaining job —
-  // NOT the same variable as `floorLocked` above, which drives the
+  // A turn-lock Move refusal (toolkit#1169's not-your-turn — the old
+  // blanket fight lock is gone entirely, rpg-project#249) is, today, how
+  // a fight FIRST reaches this client — `notYourTurn` flips false -> true
+  // exactly then (`useSessionWalk`'s own doc comment: "cleared at the
+  // start of the next walkTo, same as moveError"), so re-running only on
+  // that transition (not on every render) is exactly "refetch when a Move
+  // is refused." This is `useSessionWalk.notYourTurn`'s OWN remaining job
+  // — NOT the same variable as `turnLocked` above, which drives the
   // canvas prop instead. Turn refetches alongside Afford here too:
   // without it, the panel would keep showing the free-roam pill (its
   // MODE is keyed off `turn.clock`) even once the player is demonstrably
   // turn-locked.
   useEffect(() => {
-    if (!fightLocked) return;
+    if (!notYourTurn) return;
     void refetchAfford();
     void refetchTurn();
-  }, [fightLocked, refetchAfford, refetchTurn]);
+  }, [notYourTurn, refetchAfford, refetchTurn]);
 
   // The local player's own Move round-trip also refetches Afford/Turn —
   // walking can be what forms a fight, and while FIGHT_STARTED (above)
   // should cover that, StreamEvents delivery is best-effort (design rule
-  // 6), so this is the same belt-and-suspenders the fight-lock effect
+  // 6), so this is the same belt-and-suspenders the turn-lock effect
   // above already is. Guarded by the SAME completed-seq check
   // `useSessionWalk.onWalkAnimationComplete` uses internally, so a stale
   // animation callback (one that isn't the CURRENT walk) doesn't trigger
@@ -598,22 +627,16 @@ export function SessionEncounterView({
     [sightings, characterId]
   );
 
-  // 'target' mode exactly when the player has explicitly asked to enter
-  // targeting (combatPanel.ts's own `targeting` field, toolkit#1169: no
-  // longer automatic just because Attack is affordable — a player must be
-  // able to walk AND target in the same turn) — passed straight through
-  // to SessionCanvas, which reuses slice 4's `mode: 'target'` seam (hover
-  // highlights a sighted entity, click selects it) rather than inventing
-  // a second targeting UI. 'move' is the default everywhere else,
-  // INCLUDING when it's not your turn — `floorLocked` (not a third mode
-  // value) is what makes that state read as the purple 'locked' hover
-  // rather than a normal path preview (`moveIndicator.ts`'s own
-  // precedence: `fightLocked` is checked before pathfinding in 'move'
-  // mode).
-  const canvasMode =
-    combatPanel.selection.mode === 'turn' && combatPanel.selection.targeting
-      ? 'target'
-      : 'move';
+  // Attack is a floor gesture now, not a separate canvas mode
+  // (rpg-project#249, `combatPanel.ts`'s own doc comment) — walking and
+  // attacking coexist on the SAME floor at all times. `attackableTargets`
+  // is `combatPanel.ts`'s own in-reach list, passed straight through so
+  // `SessionCanvas` can highlight them and route a click on one to
+  // `combatPanel.attackTarget` instead of a walk.
+  const attackableTargets =
+    combatPanel.selection.mode === 'turn'
+      ? combatPanel.selection.attackTargets.map((t) => t.id)
+      : undefined;
   const canvasMaxCells =
     combatPanel.selection.mode === 'turn'
       ? combatPanel.selection.moveMaxCells
@@ -660,12 +683,13 @@ export function SessionEncounterView({
           movePath={movePath}
           moveSeq={moveSeq}
           onHexClick={walkTo}
-          onEntityClick={combatPanel.selectTarget}
+          onEntityClick={combatPanel.attackTarget}
+          onHoverEntity={combatPanel.onHoverEntity}
           onMovementPresentationComplete={handleWalkAnimationComplete}
           otherMembers={otherMembers}
+          attackableTargets={attackableTargets}
           pathIndex={lastGoodPathIndexRef.current}
-          fightLocked={floorLocked}
-          mode={canvasMode}
+          turnLocked={turnLocked}
           maxCells={canvasMaxCells}
         />
         <div
@@ -694,12 +718,39 @@ export function SessionEncounterView({
         </div>
         <CombatPanel
           selection={combatPanel.selection}
-          onAttackClick={combatPanel.attackSelectedTarget}
-          onPickTargetClick={combatPanel.enterTargetMode}
+          turnStartedBanner={combatPanel.turnStartedBanner}
           onEndTurnClick={combatPanel.endTurn}
-          attacking={combatPanel.attacking}
           endingTurn={combatPanel.endingTurn}
+          onOpenEquipment={
+            equipmentData ? () => setEquipmentOpen((o) => !o) : undefined
+          }
         />
+        {equipmentData && (
+          <EquipmentPopover
+            open={equipmentOpen}
+            characterName={character?.name ?? 'You'}
+            classLabel={classLabel(classRefId) ?? undefined}
+            slots={equipmentData.slots}
+            equipped={equipmentData.equipped}
+            items={equipmentData.inventory.filter(
+              (
+                item
+              ): item is typeof item & { ref: NonNullable<typeof item.ref> } =>
+                item.ref !== undefined
+            )}
+            armorClass={
+              equipmentData.armorClassDetail
+                ? {
+                    total: equipmentData.armorClassDetail.total,
+                    note: equipmentData.armorClassDetail.note,
+                  }
+                : undefined
+            }
+            mainHandDamage={equipmentData.mainHandDamage}
+            onIntent={(intent) => void handleEquipIntent(intent)}
+            busy={equipping || unequipping}
+          />
+        )}
       </div>
     );
   } else if (loading) {

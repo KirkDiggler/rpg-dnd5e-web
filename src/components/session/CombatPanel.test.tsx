@@ -1,7 +1,6 @@
 /**
- * No jest-dom matchers — this repo's vitest config has no such setup
- * (`vite.config.ts`'s `test` block, per `YamlPane.test.tsx`'s own note),
- * so assertions use plain DOM properties. `combatPanel.test.ts` owns the
+ * No jest-dom matchers — this repo's vitest config has no such setup, so
+ * assertions use plain DOM properties. `combatPanel.test.ts` owns the
  * enabled/disabled/lit LOGIC exhaustively; this file just checks the
  * component draws a `CombatPanelSelection` correctly.
  */
@@ -16,15 +15,49 @@ function isDisabled(el: HTMLElement): boolean {
 
 const noop = () => {};
 
+const baseTurnSelection: CombatPanelSelection = {
+  mode: 'turn',
+  round: 2,
+  participants: [
+    {
+      id: 'char-1',
+      name: 'Aldric',
+      isActive: true,
+      isYou: true,
+      isDowned: false,
+    },
+    {
+      id: 'skeleton-1',
+      name: 'skeleton-1',
+      isActive: false,
+      isYou: false,
+      isDowned: false,
+    },
+  ],
+  shapes: [
+    { slot: 'action', lit: true },
+    { slot: 'bonus', lit: false },
+    { slot: 'reaction', lit: false },
+  ],
+  movement: { remainingFeet: 15, affordable: true },
+  moveMaxCells: 3,
+  attackTargets: [
+    { id: 'skeleton-1', name: 'skeleton-1', affordable: true, whyText: null },
+  ],
+  noTargetInReachText: null,
+  hoverLabel: null,
+  endTurn: { enabled: true, reason: null },
+  waitingOnName: null,
+  lastBeat: null,
+};
+
 describe('CombatPanel', () => {
-  it('free-roam renders the quiet pill, no round/order/actions', () => {
+  it('free-roam renders the quiet pill, no round/participants/actions', () => {
     render(
       <CombatPanel
         selection={{ mode: 'free-roam' }}
-        onAttackClick={noop}
-        onPickTargetClick={noop}
+        turnStartedBanner={null}
         onEndTurnClick={noop}
-        attacking={false}
         endingTurn={false}
       />
     );
@@ -33,42 +66,42 @@ describe('CombatPanel', () => {
       'Free roam'
     );
     expect(screen.queryByTestId('combat-panel-round')).toBeNull();
-    expect(screen.queryByTestId('combat-panel-attack-button')).toBeNull();
+    expect(screen.queryByTestId('combat-panel-end-turn-button')).toBeNull();
   });
 
-  it('turn mode renders round, order chips, shapes, movement row, declarations, target line, and both buttons', () => {
-    const selection: CombatPanelSelection = {
-      mode: 'turn',
-      round: 2,
-      order: [
-        { id: 'char-1', isActive: true, isYou: true },
-        { id: 'skeleton-1', isActive: false, isYou: false },
-      ],
-      shapes: [
-        { slot: 'action', lit: true },
-        { slot: 'bonus', lit: false },
-        { slot: 'reaction', lit: false },
-      ],
-      declarations: [
-        { verb: 1, slot: 2, affordable: true, shortfall: '' } as never,
-      ],
-      movement: { remainingFeet: 15, affordable: true },
-      moveMaxCells: 3,
-      attack: { kind: 'pick-target', enabled: true },
-      endTurn: { enabled: true, reason: null },
-      targeting: true,
-      selectedTargetId: null,
-      waitingOn: null,
-      lastBeat: null,
-    };
-
+  it('free-roam does not show an equipment entry when onOpenEquipment is not provided', () => {
     render(
       <CombatPanel
-        selection={selection}
-        onAttackClick={noop}
-        onPickTargetClick={noop}
+        selection={{ mode: 'free-roam' }}
+        turnStartedBanner={null}
         onEndTurnClick={noop}
-        attacking={false}
+        endingTurn={false}
+      />
+    );
+    expect(screen.queryByTestId('combat-panel-equipment-button')).toBeNull();
+  });
+
+  it('free-roam shows the equipment entry when onOpenEquipment IS provided, and clicking it fires the callback', () => {
+    const onOpenEquipment = vi.fn();
+    render(
+      <CombatPanel
+        selection={{ mode: 'free-roam' }}
+        turnStartedBanner={null}
+        onEndTurnClick={noop}
+        endingTurn={false}
+        onOpenEquipment={onOpenEquipment}
+      />
+    );
+    fireEvent.click(screen.getByTestId('combat-panel-equipment-button'));
+    expect(onOpenEquipment).toHaveBeenCalledTimes(1);
+  });
+
+  it('turn mode renders round, participant chips by name, shapes, movement row, and End Turn', () => {
+    render(
+      <CombatPanel
+        selection={baseTurnSelection}
+        turnStartedBanner={null}
+        onEndTurnClick={noop}
         endingTurn={false}
       />
     );
@@ -76,277 +109,212 @@ describe('CombatPanel', () => {
     expect(screen.getByTestId('combat-panel-round').textContent).toBe(
       'Round 2'
     );
-    const chips = screen.getAllByTestId('combat-panel-order-chip');
+    const chips = screen.getAllByTestId('combat-panel-participant');
     expect(chips).toHaveLength(2);
-    expect(chips[0]!.textContent).toContain('char-1');
+    expect(chips[0]!.textContent).toContain('Aldric');
     expect(chips[0]!.textContent).toContain('(you)');
+    expect(chips[1]!.textContent).toBe('skeleton-1');
     expect(
       screen.getByTestId('turn-hud-shape-action').getAttribute('data-lit')
     ).toBe('true');
     expect(screen.getByTestId('combat-panel-movement').textContent).toBe(
       'Movement: 15 ft'
     );
-    expect(screen.getByTestId('turn-hud-declaration-row').textContent).toBe(
-      'Attack — ready'
-    );
-    expect(screen.getByTestId('combat-panel-target').textContent).toBe(
-      'No target selected'
-    );
-    // kind: 'pick-target' relabels the same button — enabled, no title.
-    expect(isDisabled(screen.getByTestId('combat-panel-attack-button'))).toBe(
-      false
-    );
-    expect(screen.getByTestId('combat-panel-attack-button').textContent).toBe(
-      'Pick a target'
-    );
     expect(isDisabled(screen.getByTestId('combat-panel-end-turn-button'))).toBe(
       false
     );
     expect(screen.queryByTestId('combat-panel-waiting-on')).toBeNull();
     expect(screen.queryByTestId('combat-panel-beat-line')).toBeNull();
+    // No Attack button anywhere -- Attack is a floor gesture (rpg-project#249).
+    expect(screen.queryByTestId('combat-panel-attack-button')).toBeNull();
   });
 
-  it('no Move declaration on the wire yet -> no movement row at all', () => {
-    const selection: CombatPanelSelection = {
-      mode: 'turn',
-      round: 1,
-      order: [{ id: 'char-1', isActive: true, isYou: true }],
-      shapes: [
-        { slot: 'action', lit: false },
-        { slot: 'bonus', lit: false },
-        { slot: 'reaction', lit: false },
-      ],
-      declarations: [],
-      movement: null,
-      moveMaxCells: 0,
-      attack: { kind: 'pick-target', enabled: true },
-      endTurn: { enabled: true, reason: null },
-      targeting: false,
-      selectedTargetId: null,
-      waitingOn: null,
-      lastBeat: null,
-    };
-
+  it('a downed participant renders with the downed marker', () => {
     render(
       <CombatPanel
-        selection={selection}
-        onAttackClick={noop}
-        onPickTargetClick={noop}
+        selection={{
+          ...baseTurnSelection,
+          participants: [
+            {
+              id: 'skeleton-1',
+              name: 'skeleton-1',
+              isActive: false,
+              isYou: false,
+              isDowned: true,
+            },
+          ],
+        }}
+        turnStartedBanner={null}
         onEndTurnClick={noop}
-        attacking={false}
         endingTurn={false}
       />
     );
+    const chip = screen.getByTestId('combat-panel-participant');
+    expect(chip.getAttribute('data-downed')).toBe('true');
+    expect(chip.textContent).toContain('downed');
+  });
 
+  it('no Move declaration on the wire yet -> no movement row at all', () => {
+    render(
+      <CombatPanel
+        selection={{ ...baseTurnSelection, movement: null, moveMaxCells: 0 }}
+        turnStartedBanner={null}
+        onEndTurnClick={noop}
+        endingTurn={false}
+      />
+    );
     expect(screen.queryByTestId('combat-panel-movement')).toBeNull();
   });
 
   it('an unaffordable movement row dims but still shows the real number', () => {
-    const selection: CombatPanelSelection = {
-      mode: 'turn',
-      round: 1,
-      order: [{ id: 'char-1', isActive: true, isYou: true }],
-      shapes: [
-        { slot: 'action', lit: false },
-        { slot: 'bonus', lit: false },
-        { slot: 'reaction', lit: false },
-      ],
-      declarations: [],
-      movement: { remainingFeet: 0, affordable: false },
-      moveMaxCells: 0,
-      attack: { kind: 'pick-target', enabled: true },
-      endTurn: { enabled: true, reason: null },
-      targeting: false,
-      selectedTargetId: null,
-      waitingOn: null,
-      lastBeat: null,
-    };
-
     render(
       <CombatPanel
-        selection={selection}
-        onAttackClick={noop}
-        onPickTargetClick={noop}
+        selection={{
+          ...baseTurnSelection,
+          movement: { remainingFeet: 0, affordable: false },
+          moveMaxCells: 0,
+        }}
+        turnStartedBanner={null}
         onEndTurnClick={noop}
-        attacking={false}
         endingTurn={false}
       />
     );
-
-    const row = screen.getByTestId('combat-panel-movement');
-    expect(row.textContent).toBe('Movement: 0 ft');
+    expect(screen.getByTestId('combat-panel-movement').textContent).toBe(
+      'Movement: 0 ft'
+    );
   });
 
-  it('shows "Target: X", the waitingOn line, and the beat line when present', () => {
-    const selection: CombatPanelSelection = {
-      mode: 'turn',
-      round: 1,
-      order: [{ id: 'skeleton-1', isActive: true, isYou: false }],
-      shapes: [
-        { slot: 'action', lit: false },
-        { slot: 'bonus', lit: false },
-        { slot: 'reaction', lit: false },
-      ],
-      declarations: [],
-      movement: null,
-      moveMaxCells: 0,
-      attack: { kind: 'attack', enabled: false, reason: 'Not your turn.' },
-      endTurn: { enabled: false, reason: 'Not your turn.' },
-      targeting: false,
-      selectedTargetId: 'skeleton-1',
-      waitingOn: 'skeleton-1',
-      lastBeat: 'You hit skeleton-1: 17 vs AC 13 for 6',
-    };
-
+  it("shows the hover label when present, the waitingOn line when it's not your turn, and the beat line", () => {
     render(
       <CombatPanel
-        selection={selection}
-        onAttackClick={noop}
-        onPickTargetClick={noop}
+        selection={{
+          ...baseTurnSelection,
+          hoverLabel: 'Attack skeleton-1',
+          waitingOnName: 'skeleton-1',
+          endTurn: { enabled: false, reason: 'Not your turn.' },
+          lastBeat: 'You hit skeleton-1 — 17 vs AC 13, 6 slashing.',
+        }}
+        turnStartedBanner={null}
         onEndTurnClick={noop}
-        attacking={false}
         endingTurn={false}
       />
     );
 
-    expect(screen.getByTestId('combat-panel-target').textContent).toBe(
-      'Target: skeleton-1'
+    expect(screen.getByTestId('combat-panel-hover').textContent).toBe(
+      'Attack skeleton-1'
     );
     expect(screen.getByTestId('combat-panel-waiting-on').textContent).toBe(
-      'Waiting on skeleton-1.'
+      'skeleton-1’s turn.'
     );
     expect(screen.getByTestId('combat-panel-beat-line').textContent).toBe(
-      'You hit skeleton-1: 17 vs AC 13 for 6'
-    );
-    // kind: 'attack', disabled -> the label stays "Attack", not "Pick a target".
-    expect(screen.getByTestId('combat-panel-attack-button').textContent).toBe(
-      'Attack'
-    );
-    expect(screen.getByTestId('combat-panel-attack-button').title).toBe(
-      'Not your turn.'
-    );
-  });
-
-  it("clicking the Attack button in 'pick-target' state calls onPickTargetClick, not onAttackClick", () => {
-    const onAttackClick = vi.fn();
-    const onPickTargetClick = vi.fn();
-    const selection: CombatPanelSelection = {
-      mode: 'turn',
-      round: 1,
-      order: [{ id: 'char-1', isActive: true, isYou: true }],
-      shapes: [
-        { slot: 'action', lit: true },
-        { slot: 'bonus', lit: false },
-        { slot: 'reaction', lit: false },
-      ],
-      declarations: [],
-      movement: null,
-      moveMaxCells: 0,
-      attack: { kind: 'pick-target', enabled: true },
-      endTurn: { enabled: true, reason: null },
-      targeting: true,
-      selectedTargetId: null,
-      waitingOn: null,
-      lastBeat: null,
-    };
-
-    render(
-      <CombatPanel
-        selection={selection}
-        onAttackClick={onAttackClick}
-        onPickTargetClick={onPickTargetClick}
-        onEndTurnClick={noop}
-        attacking={false}
-        endingTurn={false}
-      />
-    );
-
-    fireEvent.click(screen.getByTestId('combat-panel-attack-button'));
-
-    expect(onPickTargetClick).toHaveBeenCalledTimes(1);
-    expect(onAttackClick).not.toHaveBeenCalled();
-  });
-
-  it("clicking the Attack button in 'attack' state calls onAttackClick, not onPickTargetClick", () => {
-    const onAttackClick = vi.fn();
-    const onPickTargetClick = vi.fn();
-    const onEndTurnClick = vi.fn();
-    const selection: CombatPanelSelection = {
-      mode: 'turn',
-      round: 1,
-      order: [{ id: 'char-1', isActive: true, isYou: true }],
-      shapes: [
-        { slot: 'action', lit: true },
-        { slot: 'bonus', lit: false },
-        { slot: 'reaction', lit: false },
-      ],
-      declarations: [],
-      movement: null,
-      moveMaxCells: 0,
-      attack: { kind: 'attack', enabled: true, reason: null },
-      endTurn: { enabled: true, reason: null },
-      targeting: false,
-      selectedTargetId: 'skeleton-1',
-      waitingOn: null,
-      lastBeat: null,
-    };
-
-    render(
-      <CombatPanel
-        selection={selection}
-        onAttackClick={onAttackClick}
-        onPickTargetClick={onPickTargetClick}
-        onEndTurnClick={onEndTurnClick}
-        attacking={false}
-        endingTurn={false}
-      />
-    );
-
-    fireEvent.click(screen.getByTestId('combat-panel-attack-button'));
-    fireEvent.click(screen.getByTestId('combat-panel-end-turn-button'));
-
-    expect(onAttackClick).toHaveBeenCalledTimes(1);
-    expect(onPickTargetClick).not.toHaveBeenCalled();
-    expect(onEndTurnClick).toHaveBeenCalledTimes(1);
-  });
-
-  it('attacking/endingTurn disable their own button even when the gate says enabled', () => {
-    const selection: CombatPanelSelection = {
-      mode: 'turn',
-      round: 1,
-      order: [{ id: 'char-1', isActive: true, isYou: true }],
-      shapes: [
-        { slot: 'action', lit: true },
-        { slot: 'bonus', lit: false },
-        { slot: 'reaction', lit: false },
-      ],
-      declarations: [],
-      movement: null,
-      moveMaxCells: 0,
-      attack: { kind: 'attack', enabled: true, reason: null },
-      endTurn: { enabled: true, reason: null },
-      targeting: false,
-      selectedTargetId: 'skeleton-1',
-      waitingOn: null,
-      lastBeat: null,
-    };
-
-    render(
-      <CombatPanel
-        selection={selection}
-        onAttackClick={noop}
-        onPickTargetClick={noop}
-        onEndTurnClick={noop}
-        attacking={true}
-        endingTurn={true}
-      />
-    );
-
-    expect(isDisabled(screen.getByTestId('combat-panel-attack-button'))).toBe(
-      true
+      'You hit skeleton-1 — 17 vs AC 13, 6 slashing.'
     );
     expect(isDisabled(screen.getByTestId('combat-panel-end-turn-button'))).toBe(
       true
     );
+    expect(screen.getByTestId('combat-panel-end-turn-button').title).toBe(
+      'Not your turn.'
+    );
+  });
+
+  it('falls back to noTargetInReachText when nothing is hovered and nothing is in reach', () => {
+    render(
+      <CombatPanel
+        selection={{
+          ...baseTurnSelection,
+          attackTargets: [],
+          hoverLabel: null,
+          noTargetInReachText: 'no target in reach',
+        }}
+        turnStartedBanner={null}
+        onEndTurnClick={noop}
+        endingTurn={false}
+      />
+    );
+    expect(screen.getByTestId('combat-panel-hover').textContent).toBe(
+      'no target in reach'
+    );
+  });
+
+  it('clicking End Turn calls onEndTurnClick', () => {
+    const onEndTurnClick = vi.fn();
+    render(
+      <CombatPanel
+        selection={baseTurnSelection}
+        turnStartedBanner={null}
+        onEndTurnClick={onEndTurnClick}
+        endingTurn={false}
+      />
+    );
+    fireEvent.click(screen.getByTestId('combat-panel-end-turn-button'));
+    expect(onEndTurnClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('endingTurn disables the End Turn button even when the gate says enabled', () => {
+    render(
+      <CombatPanel
+        selection={baseTurnSelection}
+        turnStartedBanner={null}
+        onEndTurnClick={noop}
+        endingTurn={true}
+      />
+    );
+    expect(isDisabled(screen.getByTestId('combat-panel-end-turn-button'))).toBe(
+      true
+    );
+  });
+
+  it('the turn-started banner renders when present (web#533 teaching moment)', () => {
+    render(
+      <CombatPanel
+        selection={baseTurnSelection}
+        turnStartedBanner="Your turn!"
+        onEndTurnClick={noop}
+        endingTurn={false}
+      />
+    );
+    expect(screen.getByTestId('combat-panel-turn-started').textContent).toBe(
+      'Your turn!'
+    );
+  });
+
+  it('the action hint teaches the click-to-attack/click-to-move flow on your own turn', () => {
+    render(
+      <CombatPanel
+        selection={baseTurnSelection}
+        turnStartedBanner={null}
+        onEndTurnClick={noop}
+        endingTurn={false}
+      />
+    );
+    expect(screen.getByTestId('combat-panel-action-hint').textContent).toBe(
+      'Click a highlighted enemy to attack, or click the floor to move.'
+    );
+  });
+
+  it('the action hint drops the attack half when nothing is in reach', () => {
+    render(
+      <CombatPanel
+        selection={{ ...baseTurnSelection, attackTargets: [] }}
+        turnStartedBanner={null}
+        onEndTurnClick={noop}
+        endingTurn={false}
+      />
+    );
+    expect(screen.getByTestId('combat-panel-action-hint').textContent).toBe(
+      'Click the floor to move.'
+    );
+  });
+
+  it('no action hint when it is not your turn (waitingOnName set)', () => {
+    render(
+      <CombatPanel
+        selection={{ ...baseTurnSelection, waitingOnName: 'skeleton-1' }}
+        turnStartedBanner={null}
+        onEndTurnClick={noop}
+        endingTurn={false}
+      />
+    );
+    expect(screen.queryByTestId('combat-panel-action-hint')).toBeNull();
   });
 });

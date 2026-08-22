@@ -33,6 +33,12 @@
  * `Slot`'s own doc comment) never light any of the three shapes, because
  * they draw from no per-turn shape, but they are still listed in
  * `declarations` below with their own affordability and shortfall text.
+ * PER-TARGET ATTACK DECLARATIONS (rpg-project#249 §3, rpg-toolkit#1010):
+ * Afford now emits one ATTACK declaration per candidate target in reach,
+ * so several rows can share the same slot — `.some(...)` already reads
+ * correctly there (the shape lights the moment ANY one of them is
+ * affordable), no change needed for this module to stay correct under
+ * that shape.
  *
  * # SLOT_UNSPECIFIED is a producer bug, not a fourth shape
  *
@@ -48,6 +54,7 @@ import {
   ClockKind,
   Slot,
   type Declaration,
+  type Shortfall,
   type Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
@@ -69,6 +76,9 @@ export interface TurnHudDeclarationRow {
   verb: Verb;
   slot: Slot;
   affordable: boolean;
+  /** KEPT FOR v0.1.131 READERS (`Declaration.shortfall`'s own doc
+   * comment) — `TurnHud.tsx` (the standalone slice-5a building block)
+   * still reads this. New code reads `why` instead. */
   shortfall: string;
   /** How much of this verb's own currency is left, in feet — PRESENT for
    * `VERB_MOVE`, `undefined` for every other verb (`Declaration.remaining`'s
@@ -78,6 +88,17 @@ export interface TurnHudDeclarationRow {
    * shape); it passes through for `combatPanel.ts`'s own dedicated
    * movement row. */
   remaining?: number;
+  /** ATTACK only: the candidate target this declaration prices — one row
+   * per target in reach, `undefined` for Move and for the single "no
+   * target in reach" row (`Declaration.target`'s own doc comment,
+   * rpg-toolkit#1010). Passed through for `combatPanel.ts`'s own
+   * per-target affordance list; this module makes no per-target
+   * judgment of its own. */
+  target?: string;
+  /** The structured reason this row is unaffordable — present exactly
+   * when `affordable` is false (`Declaration.why`'s own doc comment).
+   * Passed through verbatim for `combatPanel.ts`'s disabled-state copy. */
+  why?: Shortfall;
 }
 
 export type TurnHudSelection =
@@ -135,6 +156,8 @@ export function selectTurnHud(args: SelectTurnHudArgs): TurnHudSelection {
     affordable: d.affordable,
     shortfall: d.shortfall,
     remaining: d.remaining,
+    target: d.target,
+    why: d.why,
   }));
 
   return { mode: 'turn', shapes, declarations: rows };

@@ -1,5 +1,9 @@
 import type { TurnResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
-import { ClockKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  ClockKind,
+  MemberKind,
+  Standing,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -29,6 +33,7 @@ describe('useSessionTurn', () => {
     expect(result.current.active).toBe('');
     expect(result.current.round).toBe(0);
     expect(result.current.order).toEqual([]);
+    expect(result.current.participants).toEqual([]);
   });
 
   it('refetch is a no-op while session or member is empty', async () => {
@@ -45,12 +50,29 @@ describe('useSessionTurn', () => {
     expect(noSession.current.clock).toBe(ClockKind.UNSPECIFIED);
   });
 
-  it('refetch calls Turn for the given session/member and stores clock/active/round/order', async () => {
+  it('refetch calls Turn for the given session/member and stores clock/active/round/order/participants', async () => {
+    const participants = [
+      {
+        member: 'char-1',
+        name: 'Aldric',
+        kind: MemberKind.PLAYER,
+        standing: Standing.UP,
+        active: true,
+      },
+      {
+        member: 'skeleton-1',
+        name: 'skeleton-1',
+        kind: MemberKind.MONSTER,
+        standing: Standing.UP,
+        active: false,
+      },
+    ] as unknown as TurnResponse['participants'];
     hoisted.turnFn.mockResolvedValue({
       clock: ClockKind.TURN,
       active: 'char-1',
       round: 1,
       order: ['char-1', 'skeleton-1'],
+      participants,
     } as unknown as TurnResponse);
 
     const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
@@ -67,6 +89,7 @@ describe('useSessionTurn', () => {
     expect(result.current.active).toBe('char-1');
     expect(result.current.round).toBe(1);
     expect(result.current.order).toEqual(['char-1', 'skeleton-1']);
+    expect(result.current.participants).toEqual(participants);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
   });

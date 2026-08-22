@@ -1,40 +1,25 @@
 /**
  * CombatPanel — render-only HTML overlay, the session route's actual
- * combat UI (rpg-dnd5e-web#762, "grow the HUD into a panel" — Kirk,
- * live-walking PR #769: "well I am 4 spaces away but it stays attack
- * ready and i see nothign happen. what was our plan here? I do not have
- * a panel, I cannot end turn or even see whose turn it is"; then
- * toolkit#1169: "operating in the new clock: take turn, move maybe, end
- * turn, monster takes turn"). Every decision about what's enabled/lit/
- * shown lives in `combatPanel.ts` (composing `turnHud.ts`) and
- * `useCombatPanel.ts`; this component only draws `CombatPanelSelection`
- * and reports clicks — same split every other piece of this route keeps
- * (`MoveIndicator`/`moveIndicator.ts`, `TurnHud`/`turnHud.ts`).
+ * combat UI (rpg-project#249, rpg-dnd5e-web#762/#525/#533). Every
+ * decision about what's enabled/lit/shown lives in `combatPanel.ts`
+ * (composing `turnHud.ts`) and `useCombatPanel.ts`; this component only
+ * draws `CombatPanelSelection` and reports clicks — same split every
+ * other piece of this route keeps (`MoveIndicator`/`moveIndicator.ts`,
+ * `TurnHud`/`turnHud.ts`).
  *
- * Replaces `TurnHud` in `SessionEncounterView`'s own render (that
- * component and its tests stay as the focused building block underneath
- * this one — see its own doc comment). Same bottom-left anchor, same
- * free-roam pill when there's nothing to fight.
- *
- * ATTACK HAS NO REACH CHECK. `AttackRequest`'s own doc comment: the
- * engine does not enforce reach/adjacency today (toolkit#1010, deferred
- * to the movement wave) — attacking from across the room is exactly what
- * the server currently allows, so the Attack button is never disabled for
- * distance. The client renders what the API allows; it does not
- * calculate rules.
- *
- * ATTACK IS ALSO THE "PICK A TARGET" AFFORDANCE. `combatPanel.ts`'s own
- * doc comment: rather than a second button, the same button relabels
- * itself and enters `'target'` mode when nothing is stopping an attack
- * except having no target chosen yet — `selection.attack.kind ===
- * 'pick-target'`.
+ * ATTACK IS A FLOOR GESTURE, NOT A PANEL BUTTON (`combatPanel.ts`'s own
+ * doc comment) — this panel shows the shapes, the movement bound, who's
+ * in reach (via the floor highlight, not drawn here), the hover/target
+ * label, and End Turn as the one consequential button. Reach is never
+ * computed here or anywhere client-side — every affordance in
+ * `selection` already answers "can I" from the wire.
  */
 import type {
-  CombatPanelOrderEntry,
+  CombatPanelParticipant,
   CombatPanelSelection,
 } from './combatPanel';
 import { Shape } from './Shape';
-import { declarationRowText, SHAPE_ORDER } from './turnShapeText';
+import { SHAPE_ORDER } from './turnShapeText';
 
 const overlayStyle: React.CSSProperties = {
   position: 'absolute',
@@ -53,12 +38,13 @@ const overlayStyle: React.CSSProperties = {
   maxWidth: 320,
 };
 
-function OrderChip({ entry }: { entry: CombatPanelOrderEntry }) {
+function ParticipantChip({ entry }: { entry: CombatPanelParticipant }) {
   return (
     <span
-      data-testid="combat-panel-order-chip"
+      data-testid="combat-panel-participant"
       data-active={entry.isActive}
       data-you={entry.isYou}
+      data-downed={entry.isDowned}
       style={{
         padding: '2px 8px',
         borderRadius: 999,
@@ -73,10 +59,13 @@ function OrderChip({ entry }: { entry: CombatPanelOrderEntry }) {
         border: entry.isYou
           ? '1px solid var(--accent-primary, #facc15)'
           : '1px solid transparent',
+        textDecoration: entry.isDowned ? 'line-through' : undefined,
+        opacity: entry.isDowned ? 0.6 : 1,
       }}
     >
-      {entry.id}
+      {entry.name}
       {entry.isYou ? ' (you)' : ''}
+      {entry.isDowned ? ' — downed' : ''}
     </span>
   );
 }
@@ -125,12 +114,10 @@ function ActionButton({
   );
 }
 
-/** "Movement: 15 ft", dim ("Movement: 0 ft") once fewer than five feet
- * remain — combatPanel.ts's own `moveMaxCells` already reads 0 there, so
- * this only needs the display text, no extra threshold logic. `null`
- * (no Move declaration on the wire yet) renders nothing, the same
- * "nothing to report" treatment the rest of this panel gives absent
- * data. */
+/** "Movement: 15 ft", dim once fewer than five feet remain —
+ * `combatPanel.ts`'s own `moveMaxCells` already reads 0 there, so this
+ * only needs the display text. `null` (no Move declaration on the wire
+ * yet) renders nothing. */
 function MovementRow({
   movement,
 }: {
@@ -153,20 +140,22 @@ function MovementRow({
 
 export interface CombatPanelProps {
   selection: CombatPanelSelection;
-  onAttackClick: () => void;
-  onPickTargetClick: () => void;
+  /** "Your turn!" for a beat when your own turn starts — `null`
+   * otherwise (web#533's turn-start orientation). */
+  turnStartedBanner: string | null;
   onEndTurnClick: () => void;
-  attacking: boolean;
   endingTurn: boolean;
+  /** Opens the equipment screen (rpg-project#249 §4, reusing web#571's
+   * component). `undefined` hides the entry point entirely. */
+  onOpenEquipment?: () => void;
 }
 
 export function CombatPanel({
   selection,
-  onAttackClick,
-  onPickTargetClick,
+  turnStartedBanner,
   onEndTurnClick,
-  attacking,
   endingTurn,
+  onOpenEquipment,
 }: CombatPanelProps) {
   if (selection.mode === 'free-roam') {
     return (
@@ -183,27 +172,54 @@ export function CombatPanel({
         >
           Free roam
         </span>
+        {onOpenEquipment && (
+          <button
+            type="button"
+            data-testid="combat-panel-equipment-button"
+            onClick={onOpenEquipment}
+            style={{
+              alignSelf: 'flex-start',
+              padding: '4px 10px',
+              borderRadius: 6,
+              border:
+                '1px solid var(--border-primary, rgba(255, 255, 255, 0.2))',
+              background: 'var(--bg-tertiary, rgba(255, 255, 255, 0.08))',
+              color: 'var(--text-primary, #e5e7eb)',
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            Equipment
+          </button>
+        )}
       </div>
     );
   }
 
-  const attackButton =
-    selection.attack.kind === 'pick-target'
-      ? {
-          label: 'Pick a target',
-          enabled: true,
-          reason: null as string | null,
-          onClick: onPickTargetClick,
-        }
-      : {
-          label: 'Attack',
-          enabled: selection.attack.enabled,
-          reason: selection.attack.reason,
-          onClick: onAttackClick,
-        };
+  // The hover label wins over the generic "no target in reach" note —
+  // both are "what happens if I click right now" style text, and only
+  // one applies at a time (a hover only exists when something's under
+  // the cursor, which is exactly when attackTargets is non-empty).
+  const affordanceLine = selection.hoverLabel ?? selection.noTargetInReachText;
+
+  const actionHint = selection.attackTargets.some((t) => t.affordable)
+    ? 'Click a highlighted enemy to attack, or click the floor to move.'
+    : 'Click the floor to move.';
 
   return (
     <div data-testid="combat-panel" style={overlayStyle}>
+      {turnStartedBanner && (
+        <div
+          data-testid="combat-panel-turn-started"
+          style={{
+            fontWeight: 700,
+            color: 'var(--accent-primary, #facc15)',
+          }}
+        >
+          {turnStartedBanner}
+        </div>
+      )}
+
       <div
         data-testid="combat-panel-round"
         style={{ fontSize: 12, color: 'var(--text-secondary, #aaa)' }}
@@ -212,17 +228,17 @@ export function CombatPanel({
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {selection.order.map((entry) => (
-          <OrderChip key={entry.id} entry={entry} />
+        {selection.participants.map((entry) => (
+          <ParticipantChip key={entry.id} entry={entry} />
         ))}
       </div>
 
-      {selection.waitingOn && (
+      {selection.waitingOnName && (
         <div
           data-testid="combat-panel-waiting-on"
           style={{ color: 'var(--text-secondary, #aaa)' }}
         >
-          Waiting on {selection.waitingOn}.
+          {selection.waitingOnName}&rsquo;s turn.
         </div>
       )}
 
@@ -235,40 +251,26 @@ export function CombatPanel({
         })}
       </div>
       <MovementRow movement={selection.movement} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {selection.declarations.map((row, i) => (
-          <span
-            key={i}
-            data-testid="turn-hud-declaration-row"
-            style={{
-              color: row.affordable
-                ? 'var(--text-primary, #e5e7eb)'
-                : 'var(--color-error, #f87171)',
-            }}
-          >
-            {declarationRowText(row)}
-          </span>
-        ))}
-      </div>
 
-      <div
-        data-testid="combat-panel-target"
-        style={{ color: 'var(--text-secondary, #aaa)' }}
-      >
-        {selection.selectedTargetId
-          ? `Target: ${selection.selectedTargetId}`
-          : 'No target selected'}
-      </div>
+      {!selection.waitingOnName && (
+        <div
+          data-testid="combat-panel-action-hint"
+          style={{ color: 'var(--text-secondary, #aaa)', fontSize: 12 }}
+        >
+          {actionHint}
+        </div>
+      )}
+
+      {affordanceLine && (
+        <div
+          data-testid="combat-panel-hover"
+          style={{ color: 'var(--text-primary, #e5e7eb)', fontWeight: 600 }}
+        >
+          {affordanceLine}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8 }}>
-        <ActionButton
-          testId="combat-panel-attack-button"
-          label={attackButton.label}
-          enabled={attackButton.enabled}
-          reason={attackButton.reason}
-          onClick={attackButton.onClick}
-          busy={attacking}
-        />
         <ActionButton
           testId="combat-panel-end-turn-button"
           label="End Turn"
@@ -277,6 +279,25 @@ export function CombatPanel({
           onClick={onEndTurnClick}
           busy={endingTurn}
         />
+        {onOpenEquipment && (
+          <button
+            type="button"
+            data-testid="combat-panel-equipment-button"
+            onClick={onOpenEquipment}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 6,
+              border:
+                '1px solid var(--border-primary, rgba(255, 255, 255, 0.2))',
+              background: 'var(--bg-tertiary, rgba(255, 255, 255, 0.08))',
+              color: 'var(--text-primary, #e5e7eb)',
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            Equipment
+          </button>
+        )}
       </div>
 
       {selection.lastBeat && (

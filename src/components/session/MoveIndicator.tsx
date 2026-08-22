@@ -20,7 +20,7 @@ import type { MoveIndicatorSelection } from './moveIndicator';
 const PATH_COLOR = '#3b82f6'; // blue — a walkable route.
 const INVALID_COLOR = '#ef4444'; // red — unreachable (wall/off-atlas/self).
 const LOCKED_COLOR = '#a855f7'; // purple — fight-locked, distinct from both.
-const TARGET_COLOR = '#f97316'; // orange — combat seam only; not exercised by any attack flow yet.
+const TARGET_COLOR = '#f97316'; // orange — an in-reach, hovered Attack target (rpg-project#249).
 
 export interface MoveIndicatorProps {
   selection: MoveIndicatorSelection | null;
@@ -73,7 +73,7 @@ export function MoveIndicator({
           path={[hovered]}
           hexSize={hexSize}
           color={TARGET_COLOR}
-          opacity={0.45}
+          opacity={0.55}
         />
       );
     default:

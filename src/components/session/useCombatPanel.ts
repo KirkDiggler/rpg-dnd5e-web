@@ -1,75 +1,68 @@
 /**
  * useCombatPanel — the React seam between the session route's live RPC
- * state and `combatPanel.ts`'s pure selection, PLUS the panel's own
- * local state (`selectedTargetId`, `targetingRequested`, `lastBeat`) and
- * its imperative actions (Attack, End Turn, entering target mode). Same
- * shape as `useMoveIndicator`/`useTurnHud`, grown to own imperative
- * actions the way `useSessionWalk` owns `walkTo` — a panel has buttons, a
+ * state and `combatPanel.ts`'s pure selection, PLUS the panel's own local
+ * state (hover, the beat line, the turn-start teaching banner) and its
+ * imperative actions (Attack-by-click, End Turn, the stream handler).
+ * Same shape as `useMoveIndicator`/`useTurnHud`, grown to own imperative
+ * actions the way `useSessionWalk` owns `walkTo` — a panel has actions, a
  * pure selector cannot dispatch RPCs.
  *
- * FLAT PRIMITIVE ARGS, not a nested `{turn, afford}` object — same reason
- * `useMoveIndicator`'s own args are flat: an object literal built fresh at
- * the call site (`SessionEncounterView` would otherwise write `turn:
- * {clock, active, round, order}` inline on every render) has a new
- * identity every render even when every field is unchanged, which would
- * defeat the `useMemo` below on every single re-render, not just when the
- * turn/afford state actually changes. The nested shape only exists inside
- * `combatPanel.ts`'s own pure function, built fresh inside the memoized
- * callback where a fresh object costs nothing.
+ * # Attack fires straight from a floor click (rpg-project#249)
  *
- * # Target mode is explicit, and clears itself after a pick
+ * `attackTarget` is wired directly to `SessionCanvas.onEntityClick` — no
+ * "arm, then confirm" two-step (see `combatPanel.ts`'s own doc comment on
+ * why Attack is a floor gesture, not a panel button). It re-checks the
+ * CURRENT `selection.attackTargets` before dispatching (never trusts a
+ * stale click), and never re-derives reach/affordability of its own.
  *
- * toolkit#1169 made `'move'` the default floor mode on your own turn (you
- * can walk AND fight in the same turn), so `'target'` mode can no longer
- * be entered automatically just because Attack is affordable — a player
- * who wants to walk first would find the floor stuck in targeting mode
- * with no way to just click a hex. `enterTargetMode` is the one explicit
- * trigger (wired to the Attack button's own `'pick-target'` state,
- * `combatPanel.ts`'s own doc comment on why there is no second button);
- * `selectTarget` clears the request once a pick lands, returning the
- * floor to `'move'` on its own — no separate "exit targeting" affordance
- * needed. The clock leaving TURN (a fight ending) also clears it, same as
- * `selectedTargetId`.
+ * # The beat line renders ONLY from `Event.body` (gate review, PR #769)
  *
- * # The beat line never decodes `Event.payload`
+ * Every beat — including the local player's OWN swing — comes from the
+ * stream's typed events (`combatBeat.ts`'s `formatBeat`), never from
+ * `AttackResponse`'s own fields and never from `Event.payload`. One
+ * source of truth means "you hit" and "you were told someone else hit"
+ * are formatted by the exact same code, and a `Downed` beat finally names
+ * who (`Downed.member`, rpg-toolkit#1137) instead of the old anonymous
+ * "A member is downed." placeholder this module used to render.
  *
- * `sightingEntities.ts` already keeps a "never decode; render only from
- * typed fields" rule for `Sighting.payload` — this hook keeps the same
- * rule for `Event.payload`, which is EVEN LESS safe to decode: it is
- * explicitly a JSON blob the toolkit's own doc comments call a "TEMPORARY
- * SHAPE... worth being uncomfortable about" (`rpg-toolkit`
- * `rulebooks/dnd5e/session/events.go`), pending toolkit#941 giving events
- * a properly typed, versioned payload. `rpg-api` itself never builds or
- * inspects it (`events.proto`'s own doc comment: "PASSTHROUGH"). Reaching
- * past that boundary to parse an internal, unversioned wire format would
- * be exactly the kind of coupling this whole seam's design rules exist to
- * prevent — a payload shape change would silently break narration with no
- * proto bump to catch it.
+ * # The monster's turn as a moment (web#561, rpg-project#249 §4)
  *
- * So the beat line is built ONLY from data this client already has with a
- * real contract:
- *  - MY OWN swing: `AttackResponse` (`roll`/`against`/`hit`/`damage`, all
- *    typed proto fields) plus the target `attackSelectedTarget` itself
- *    chose — formatted the instant the RPC resolves, no stream needed.
- *  - A DOWNED beat arriving on the stream: `event.kind` alone (no decode)
- *    tells us SOMETHING died, but NOT WHO — `noteDowned` renders the
- *    honestly-anonymous "A member is downed." rather than guessing it was
- *    whatever this player currently has targeted. There is no typed "who"
- *    for DOWNED anywhere on the wire today: `Event` carries only the
- *    opaque passthrough payload (see above), and `Sighting` has no downed
- *    state either — that gap is toolkit#1137 (open: "a cold client cannot
- *    learn who is DOWNED — the state exists only as a stream beat"). This
- *    renders unnamed until that lands, never a guess dressed as a fact
- *    (gate review, rpg-dnd5e-web#769).
+ * A `turn_ended` event for a MONSTER participant (`Participant.kind ===
+ * MONSTER`, read off the SAME roster the panel renders) is a two-stage
+ * presentation pace, not an instant refetch: "<name>'s turn." then, after
+ * `MONSTER_TURN_PACING_MS`, "<name> does nothing." — and ONLY THEN does
+ * this hook refetch Turn/Afford, which is what actually flips the panel
+ * back to the player. A `turn_ended` for anyone else (the local player's
+ * own turn ending, or another player's) refetches immediately — there is
+ * nothing to pace there. A `downed` beat immediately followed by a
+ * `fight_ended` beat reads as one combined sentence when they land close
+ * together ("skeleton-1 is downed. The fight is over.", the design's own
+ * §1 wording) rather than one silently overwriting the other.
  */
 import {
+  EventKind,
+  type Event as SessionEvent,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
   ClockKind,
+  MemberKind,
   type Declaration,
+  type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSessionAttack } from '../../api/useSessionAttack';
 import { useSessionEndTurn } from '../../api/useSessionEndTurn';
+import { formatBeat } from './combatBeat';
 import { selectCombatPanel, type CombatPanelSelection } from './combatPanel';
+import { participantNameMap } from './participantNames';
+
+/** How long the "<name>'s turn." / "<name> does nothing." pacing beats
+ * each stay up before the next stage — exported so a test can assert the
+ * exact timing rather than a magic number. */
+export const MONSTER_TURN_PACING_MS = 1100;
+
+/** How long the "Your turn!" teaching banner stays up. */
+export const TURN_STARTED_BANNER_MS = 2000;
 
 export interface UseCombatPanelArgs {
   session: string;
@@ -77,31 +70,34 @@ export interface UseCombatPanelArgs {
   turnClock: ClockKind;
   turnActive: string;
   turnRound: number;
-  turnOrder: string[];
+  participants: Participant[];
   affordClock: ClockKind;
   affordDeclarations: Declaration[];
   /** Owned by the caller — `SessionEncounterView` is the single owner of
-   * every Afford/Turn fetch, same discipline `useSessionWalk`'s own
-   * `refetchWhere` param already keeps for GetWhere. */
+   * every Afford/Turn fetch. */
   refetchAfford: () => Promise<void>;
   refetchTurn: () => Promise<void>;
 }
 
 export interface UseCombatPanelResult {
   selection: CombatPanelSelection;
-  /** Wire straight to the canvas's entity click in `'target'` mode. Also
-   * clears `targetingRequested` — see this module's own doc comment. */
-  selectTarget: (subject: string) => void;
-  /** Wire to the Attack button when `selection.attack.kind ===
-   * 'pick-target'`. */
-  enterTargetMode: () => void;
-  /** No-ops unless `selection.attack.kind === 'attack' && .enabled`. */
-  attackSelectedTarget: () => void;
+  /** The turn-start teaching moment (web#533) — "Your turn!" for
+   * `TURN_STARTED_BANNER_MS` on the render where `active` first becomes
+   * this member, `null` otherwise. */
+  turnStartedBanner: string | null;
+  /** Wire straight to `SessionCanvas.onHoverEntity`. */
+  onHoverEntity: (subject: string | null) => void;
+  /** Wire straight to `SessionCanvas.onEntityClick` — see this module's
+   * own doc comment on why Attack is a direct floor gesture. */
+  attackTarget: (subject: string) => void;
   /** No-ops when `selection.endTurn` isn't enabled. */
   endTurn: () => void;
-  /** Renders an unnamed "A member is downed." beat — see this module's
-   * own doc comment for why it never names who (toolkit#1137). */
-  noteDowned: () => void;
+  /** Wire straight to `useSessionEventStream`'s `onEvent` — the single
+   * funnel for beat-line formatting, monster-turn pacing, and Afford/Turn
+   * refetch triggers. `SessionEncounterView` still owns the position-only
+   * `MOVED -> refetchWhere` trigger separately (a different question this
+   * hook has no stake in). */
+  handleEvent: (event: SessionEvent) => void;
   attacking: boolean;
   endingTurn: boolean;
 }
@@ -113,27 +109,18 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     turnClock,
     turnActive,
     turnRound,
-    turnOrder,
+    participants,
     affordClock,
     affordDeclarations,
     refetchAfford,
     refetchTurn,
   } = args;
 
-  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
-  const [targetingRequested, setTargetingRequested] = useState(false);
+  const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null);
   const [lastBeat, setLastBeat] = useState<string | null>(null);
-
-  // A fight ending (clock leaves TURN) drops any stale target/targeting-
-  // request from the fight that just ended — the free-roam pill renders
-  // next either way, but this keeps state honest for whenever the NEXT
-  // fight starts.
-  useEffect(() => {
-    if (turnClock !== ClockKind.TURN) {
-      setSelectedTargetId(null);
-      setTargetingRequested(false);
-    }
-  }, [turnClock]);
+  const [turnStartedBanner, setTurnStartedBanner] = useState<string | null>(
+    null
+  );
 
   const { attack: dispatchAttack, loading: attacking } = useSessionAttack();
   const { endTurn: dispatchEndTurn, loading: endingTurn } = useSessionEndTurn();
@@ -145,81 +132,74 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
           clock: turnClock,
           active: turnActive,
           round: turnRound,
-          order: turnOrder,
+          participants,
         },
         afford: { clock: affordClock, declarations: affordDeclarations },
         member,
-        selectedTargetId,
-        targetingRequested,
+        hoveredEntityId,
         lastBeat,
       }),
     [
       turnClock,
       turnActive,
       turnRound,
-      turnOrder,
+      participants,
       affordClock,
       affordDeclarations,
       member,
-      selectedTargetId,
-      targetingRequested,
+      hoveredEntityId,
       lastBeat,
     ]
   );
 
-  const enterTargetMode = useCallback(() => {
-    setTargetingRequested(true);
-  }, []);
-
-  const selectTarget = useCallback((subject: string) => {
-    setSelectedTargetId(subject);
-    // Picked — return the floor to 'move' on its own (this module's own
-    // doc comment: no separate "exit targeting" affordance).
-    setTargetingRequested(false);
-  }, []);
-
-  const attackSelectedTarget = useCallback(() => {
-    if (
-      selection.mode !== 'turn' ||
-      selection.attack.kind !== 'attack' ||
-      !selection.attack.enabled ||
-      !selectedTargetId
-    ) {
-      return;
+  // Turn-start teaching moment (web#533): "Your turn!" for a beat on the
+  // FIRST render where `active` flips to this member — not on every
+  // render where it's already true (a re-render mid-turn, an unrelated
+  // Afford refresh, must not re-trigger it).
+  const prevActiveRef = useRef<string | null>(null);
+  const bannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const currentActive = turnClock === ClockKind.TURN ? turnActive : null;
+    const isYourTurnNow = currentActive === member && currentActive !== null;
+    const wasYourTurn = prevActiveRef.current === member;
+    if (isYourTurnNow && !wasYourTurn) {
+      setTurnStartedBanner('Your turn!');
+      if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
+      bannerTimeoutRef.current = setTimeout(() => {
+        setTurnStartedBanner(null);
+      }, TURN_STARTED_BANNER_MS);
     }
-    const target = selectedTargetId;
-    void (async () => {
-      try {
-        const response = await dispatchAttack({
-          session,
-          attacker: member,
-          target,
-        });
-        setLastBeat(
-          response.hit
-            ? `You hit ${target}: ${response.roll} vs AC ${response.against} for ${response.damage}`
-            : `You missed ${target}: ${response.roll} vs AC ${response.against}`
-        );
-      } catch (err) {
-        setLastBeat(
-          `Attack failed: ${err instanceof Error ? err.message : 'unknown error'}`
-        );
-      } finally {
-        // Named per rpg-dnd5e-web#762 slice 5a's own comment — the
-        // trigger it left for this handler to call.
-        void refetchAfford();
-        void refetchTurn();
-      }
-    })();
-  }, [
-    selection,
-    selectedTargetId,
-    dispatchAttack,
-    session,
-    member,
-    refetchAfford,
-    refetchTurn,
-  ]);
+    prevActiveRef.current = currentActive;
+  }, [turnClock, turnActive, member]);
+  useEffect(
+    () => () => {
+      if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
+    },
+    []
+  );
+
+  const attackTarget = useCallback(
+    (subject: string) => {
+      if (selection.mode !== 'turn') return;
+      const target = selection.attackTargets.find((t) => t.id === subject);
+      if (!target || !target.affordable) return;
+      void (async () => {
+        try {
+          await dispatchAttack({ session, attacker: member, target: subject });
+          // The beat line comes from the stream's own Struck/Missed event
+          // — see this module's own doc comment.
+        } catch (err) {
+          setLastBeat(
+            `Attack failed: ${err instanceof Error ? err.message : 'unknown error'}`
+          );
+        } finally {
+          void refetchAfford();
+          void refetchTurn();
+        }
+      })();
+    },
+    [selection, dispatchAttack, session, member, refetchAfford, refetchTurn]
+  );
 
   const endTurn = useCallback(() => {
     if (selection.mode !== 'turn' || !selection.endTurn.enabled) return;
@@ -237,17 +217,75 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     })();
   }, [selection, dispatchEndTurn, session, member, refetchAfford, refetchTurn]);
 
-  const noteDowned = useCallback(() => {
-    setLastBeat('A member is downed.');
-  }, []);
+  const handleEvent = useCallback(
+    (event: SessionEvent) => {
+      const names = participantNameMap(participants);
+
+      if (event.body?.case === 'turnEnded') {
+        const endedMember = event.body.value.member;
+        const endedIsMonster = participants.some(
+          (p) => p.member === endedMember && p.kind === MemberKind.MONSTER
+        );
+        if (endedMember !== member && endedIsMonster) {
+          const name = names.get(endedMember) ?? endedMember;
+          setLastBeat(`${name}'s turn.`);
+          setTimeout(() => {
+            setLastBeat(`${name} does nothing.`);
+            setTimeout(() => {
+              void refetchAfford();
+              void refetchTurn();
+            }, MONSTER_TURN_PACING_MS);
+          }, MONSTER_TURN_PACING_MS);
+          return;
+        }
+        if (endedMember === member) {
+          setLastBeat('Turn ended.');
+        }
+        void refetchAfford();
+        void refetchTurn();
+        return;
+      }
+
+      const text = formatBeat(event, member, names);
+      if (text !== null) {
+        setLastBeat((prev) =>
+          event.body?.case === 'fightEnded' && prev?.endsWith('is downed.')
+            ? `${prev} ${text}`
+            : text
+        );
+      }
+
+      // AFFORD refresh: every beat that can change what this member can
+      // still declare this turn, PLUS `EventKind.ENDED` (the whole
+      // session/encounter concluding — not a fight ending, and carries no
+      // typed body of its own, so this checks the raw kind directly).
+      if (
+        event.body?.case === 'struck' ||
+        event.body?.case === 'missed' ||
+        event.body?.case === 'downed' ||
+        event.body?.case === 'fightStarted' ||
+        event.body?.case === 'fightEnded' ||
+        event.kind === EventKind.ENDED
+      ) {
+        void refetchAfford();
+      }
+      if (
+        event.body?.case === 'fightStarted' ||
+        event.body?.case === 'fightEnded'
+      ) {
+        void refetchTurn();
+      }
+    },
+    [participants, member, refetchAfford, refetchTurn]
+  );
 
   return {
     selection,
-    selectTarget,
-    enterTargetMode,
-    attackSelectedTarget,
+    turnStartedBanner,
+    onHoverEntity: setHoveredEntityId,
+    attackTarget,
     endTurn,
-    noteDowned,
+    handleEvent,
     attacking,
     endingTurn,
   };
