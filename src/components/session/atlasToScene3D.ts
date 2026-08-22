@@ -25,6 +25,12 @@
  * that a swapped-both-ways conversion passes every round-trip test and is
  * only caught by actually drawing the shape).
  *
+ * # Props stay opaque
+ *
+ * Atlas props keep only the wire's reference and converted cell here. The
+ * renderer resolves that reference through the asset manifest; this adapter
+ * never derives collision or line-of-sight behavior from asset metadata.
+ *
  * # Walls live in atlasWallRuns.ts, not here
  *
  * The floor tiles this file builds are per-hex (`SyntyHexFloor` renders
@@ -39,7 +45,7 @@
  * even though the PRESENTATION is now straight runs.
  */
 
-import { coordToKey } from '@/components/hex-grid/hexMath';
+import { coordToKey, type CubeCoord } from '@/components/hex-grid/hexMath';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -48,8 +54,14 @@ import { positionToCube, worldPositionOf } from './positionBridge';
 
 export { positionToCube, worldPositionOf };
 
+export interface SceneProp3D {
+  ref: string;
+  position: CubeCoord;
+}
+
 export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
+  props: SceneProp3D[];
   envelopeRuns: EnvelopeRun[];
   connectorRuns: ConnectorRun[];
   doorGaps: DoorGapPiece[];
@@ -57,12 +69,12 @@ export interface Scene3D {
 
 /**
  * buildScene3D lays out the whole atlas once, in hexMath's world-space
- * cube coordinates: per-cell floor tiles, plus the straight wall runs
- * `atlasWallRuns.boundariesToWallRuns` derives from the declared
- * boundaries and the floor mask.
+ * cube coordinates: per-cell floor tiles and opaque prop references, plus
+ * the straight wall runs `atlasWallRuns.boundariesToWallRuns` derives from
+ * the declared boundaries and the floor mask.
  */
 export function buildScene3D(
-  atlas: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways'>,
+  atlas: Pick<GetAtlasResponse, 'cells' | 'props' | 'boundaries' | 'doorways'>,
   hexSize: number
 ): Scene3D {
   const floorTiles = new Map<string, AbsoluteFloorTile>();
@@ -71,10 +83,16 @@ export function buildScene3D(
     floorTiles.set(coordToKey(cube), { ...cube, roomId: '' });
   }
 
+  const props: SceneProp3D[] = [];
+  for (const prop of atlas.props) {
+    if (!prop.at) continue;
+    props.push({ ref: prop.ref, position: positionToCube(prop.at) });
+  }
+
   const { envelopeRuns, connectorRuns, doorGaps } = boundariesToWallRuns(
     atlas,
     hexSize
   );
 
-  return { floorTiles, envelopeRuns, connectorRuns, doorGaps };
+  return { floorTiles, props, envelopeRuns, connectorRuns, doorGaps };
 }

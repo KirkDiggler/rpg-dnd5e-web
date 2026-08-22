@@ -93,7 +93,12 @@ describe('worldPositionOf agrees with the SVG concept page', () => {
 describe('buildScene3D', () => {
   it('places every cell as a floor tile keyed by its cube coordinate', () => {
     const scene = buildScene3D(
-      { cells: [pos(0, 0), pos(1, 0)], boundaries: [], doorways: [] } as never,
+      {
+        cells: [pos(0, 0), pos(1, 0)],
+        props: [],
+        boundaries: [],
+        doorways: [],
+      } as never,
       1
     );
     expect(scene.floorTiles.size).toBe(2);
@@ -102,6 +107,42 @@ describe('buildScene3D', () => {
       ...cube,
       roomId: '',
     });
+  });
+
+  it('projects every positioned AtlasProp by its opaque ref and axial cell', () => {
+    const scene = buildScene3D(
+      {
+        cells: [pos(3, -2), pos(0, 1)],
+        boundaries: [],
+        doorways: [],
+        props: [
+          {
+            ref: 'dnd5e:props:pillar',
+            at: pos(3, -2),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+          },
+          {
+            ref: 'homebrew:props:unknown',
+            at: pos(0, 1),
+            blocksMovement: false,
+            blocksLineOfSight: false,
+          },
+        ],
+      } as never,
+      1
+    );
+
+    expect(scene.props).toEqual([
+      {
+        ref: 'dnd5e:props:pillar',
+        position: { x: 3, y: -1, z: -2 },
+      },
+      {
+        ref: 'homebrew:props:unknown',
+        position: { x: 0, y: -1, z: 1 },
+      },
+    ]);
   });
 
   /**
@@ -132,7 +173,10 @@ describe('buildScene3D', () => {
         blocksLineOfSight: true,
       },
     ];
-    const scene = buildScene3D({ cells, boundaries, doorways: [] } as never, 1);
+    const scene = buildScene3D(
+      { cells, props: [], boundaries, doorways: [] } as never,
+      1
+    );
     expect(scene.envelopeRuns).toHaveLength(4);
     expect(scene.connectorRuns).toHaveLength(1);
     expect(scene.doorGaps).toHaveLength(0);

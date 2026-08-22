@@ -60,16 +60,26 @@
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import { PathPreview } from '../hex-grid/PathPreview';
+import { resolvePropVariant } from '../hex-grid/propManifest';
+import { PropModel } from '../hex-grid/PropModel';
 import { SyntyHexFloor } from '../hex-grid/SyntyHexFloor';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
+import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import type { AtlasPathIndex } from './atlasPath';
-import type { Scene3D } from './atlasToScene3D';
+import type { Scene3D, SceneProp3D } from './atlasToScene3D';
 import { AtlasWalls } from './AtlasWalls';
 import { MoveIndicator } from './MoveIndicator';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
@@ -92,6 +102,36 @@ const ATTACKABLE_RING_COLOR = '#f97316';
 // per-path emphasis rule, designed for a multi-cell walk preview) — this
 // is the BASE value so the rendered ring lands at the intended ~0.22.
 const ATTACKABLE_RING_OPACITY = 0.15;
+
+/** Draw one server-declared prop through the shared reference-key manifest.
+ * The neutral hex prism is intentionally semantics-free: unknown, loading,
+ * and failed models remain visible without the client guessing whether the
+ * prop blocks movement or sight. */
+function AtlasPropModel({
+  prop,
+  hexSize,
+}: {
+  prop: SceneProp3D;
+  hexSize: number;
+}) {
+  const world = cubeToWorld(prop.position, hexSize);
+  const placeholder = (
+    <mesh position={[world.x, hexSize * 0.5, world.z]}>
+      <cylinderGeometry args={[hexSize * 0.3, hexSize * 0.3, hexSize, 6]} />
+      <meshStandardMaterial color="#a16207" />
+    </mesh>
+  );
+
+  const variant = resolvePropVariant(prop.ref);
+  if (!variant) return placeholder;
+  return (
+    <Suspense fallback={placeholder}>
+      <ErrorBoundary fallback={placeholder}>
+        <PropModel variant={variant} position={[world.x, 0, world.z]} />
+      </ErrorBoundary>
+    </Suspense>
+  );
+}
 
 export interface SessionCanvasProps {
   scene: Scene3D;
@@ -387,6 +427,13 @@ export function SessionScene({
         connectorRuns={scene.connectorRuns}
         doorGaps={scene.doorGaps}
       />
+      {scene.props.map((prop, index) => (
+        <AtlasPropModel
+          key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
+          prop={prop}
+          hexSize={hexSize}
+        />
+      ))}
       {attackableRingPositions.map((member) => (
         <PathPreview
           key={`attackable-ring-${member.subject}`}
