@@ -944,5 +944,64 @@ describe('SessionScene', () => {
       await hoverAtPlane(renderer, { x: 0, y: 0, z: 0 });
       expect(onHoverEntity).toHaveBeenLastCalledWith(null);
     });
+
+    it("reports the subject when the pointer is over the ENTITY'S OWN mesh, not just the bare hex beside it — Kirk's own live-walk finding: the hover affordance only ever worked over the floor, never over the model", async () => {
+      const onHoverEntity = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+          onHoverEntity={onHoverEntity}
+        />
+      );
+
+      // Every node with its OWN onPointerOver handler (the local
+      // player's included — HexEntity builds one regardless of whether a
+      // prop was ever passed, same as onClick) — fire all of them, same
+      // robust-to-render-order approach the entity click test uses.
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          typeof (node as { props: Record<string, unknown> }).props
+            ?.onPointerOver === 'function'
+      ) as Array<{ props: Record<string, unknown> }>;
+      expect(nodes.length).toBeGreaterThan(0);
+      await ReactThreeTestRenderer.act(async () => {
+        for (const node of nodes) {
+          const onPointerOver = node.props.onPointerOver as (event: {
+            stopPropagation: () => void;
+          }) => void;
+          onPointerOver({ stopPropagation: () => {} });
+        }
+      });
+
+      expect(onHoverEntity).toHaveBeenLastCalledWith('skeleton-1');
+
+      const outNodes = renderer.scene.findAll(
+        (node) =>
+          typeof (node as { props: Record<string, unknown> }).props
+            ?.onPointerOut === 'function'
+      ) as Array<{ props: Record<string, unknown> }>;
+      await ReactThreeTestRenderer.act(async () => {
+        for (const node of outNodes) {
+          (node.props.onPointerOut as () => void)();
+        }
+      });
+      expect(onHoverEntity).toHaveBeenLastCalledWith(null);
+    });
   });
 });

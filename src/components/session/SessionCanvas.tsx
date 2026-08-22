@@ -37,23 +37,30 @@
  * every other click is the ordinary `onHexClick` walk.
  *
  * BOTH the ground-plane raycast AND each entity's OWN mesh route through
- * the SAME `handleTargetClick`/`handleGroundClick` resolution — `HexEntity`
- * has its own `onClick` (wired here to `handleTargetClick`, unlike the old
- * `HexGrid` route's per-entity selection flow) specifically because its
- * model geometry sits in front of the invisible ground plane along the
- * click ray, and `HexEntity`'s own `handleClick` unconditionally calls
- * `event.stopPropagation()` — without a handler wired here, EVERY click
- * landing on an entity's mesh was swallowed into a no-op, entity and floor
- * alike (caught live: hovering resolved correctly throughout, because
- * `HexEntity` never registers an `onPointerMove` handler — only
- * `onPointerOver`/`onPointerOut` — so pointer-move events pass straight
- * through to the ground plane behind it; `onClick` does not).
+ * the SAME resolution, for click AND hover alike — `HexEntity` has its
+ * own `onClick`/`onPointerOver`/`onPointerOut` (wired here to
+ * `handleTargetClick`/`setMeshHoveredSubject`, unlike the old `HexGrid`
+ * route's per-entity selection flow) specifically because its model
+ * geometry sits in front of the invisible ground plane along the same
+ * ray the ground plane's own raycast uses, and — caught live, TWICE —
+ * neither a click NOR a hover on that geometry ever reached the ground
+ * plane behind it on its own: `HexEntity`'s own `handleClick`
+ * unconditionally calls `event.stopPropagation()`, and R3F simply never
+ * fires a synthetic pointer event on an object BEHIND the nearest
+ * intersected one, handler-or-not, for hover any more than for click.
+ * Without a handler wired here for BOTH event types, a click landing on
+ * a model was a no-op and a hover over one never resolved to "you're
+ * looking at this entity" at all — the affordance only ever worked over
+ * bare floor beside the model. `effectiveHoveredHex` prefers the
+ * entity's own KNOWN position while the mesh reports it hovered (no
+ * raycast intersection point needed — the position is already known),
+ * falling back to the ground plane's own hit otherwise.
  */
 
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
@@ -253,17 +260,43 @@ export function SessionScene({
     onHexClick: handleGroundClick,
   });
 
-  // Which OTHER member, if any, sits under the hovered cell. Cheap —
-  // otherMembers is small (everyone currently perceived) — and reuses the
-  // position this component already draws each HexEntity at, no new
-  // lookup structure.
+  // Which subject the pointer is directly over, reported by the entity's
+  // OWN mesh (`HexEntity.onPointerOver`/`onPointerOut`, wired below) —
+  // Kirk's own live-walk finding: the ground plane's `onPointerMove`
+  // never resolves while the cursor is over a model sitting in front of
+  // it along the same ray (the exact reason `onClick` needed the same
+  // fix), so the hex-based lookup below alone only ever caught a hover on
+  // bare floor, never the model itself.
+  const [meshHoveredSubject, setMeshHoveredSubject] = useState<string | null>(
+    null
+  );
+
+  // The EFFECTIVE hovered cell for both the indicator's rendering
+  // position and the entity lookup below: the entity's own known
+  // position while the pointer is over its mesh (no raycast needed — we
+  // already know exactly which cell it occupies), falling back to the
+  // ground plane's own raycast hit otherwise.
+  const effectiveHoveredHex = useMemo(() => {
+    if (meshHoveredSubject) {
+      return (
+        otherMembers?.find((m) => m.subject === meshHoveredSubject)?.position ??
+        hoveredHex
+      );
+    }
+    return hoveredHex;
+  }, [meshHoveredSubject, otherMembers, hoveredHex]);
+
+  // Which OTHER member, if any, sits under the hovered cell — the mesh's
+  // own report wins outright when present; otherwise the SAME geometric
+  // lookup this module has always used (cheap — otherMembers is small).
   const hoveredEntityId = useMemo(() => {
+    if (meshHoveredSubject) return meshHoveredSubject;
     if (!hoveredHex || !otherMembers) return null;
     const key = coordToKey(hoveredHex);
     return (
       otherMembers.find((m) => coordToKey(m.position) === key)?.subject ?? null
     );
-  }, [hoveredHex, otherMembers]);
+  }, [meshHoveredSubject, hoveredHex, otherMembers]);
 
   // Presentation-only: report the hovered subject up so the panel can
   // show "Attack <name>" (or its shortfall) — this component makes no
@@ -277,7 +310,7 @@ export function SessionScene({
   }, [hoveredEntityId, onHoverEntity]);
 
   const moveIndicatorSelection = useMoveIndicator({
-    hovered: hoveredHex,
+    hovered: effectiveHoveredHex,
     from: myPosition,
     pathIndex,
     locked: turnLocked,
@@ -332,7 +365,7 @@ export function SessionScene({
       <MoveIndicator
         selection={moveIndicatorSelection}
         hexSize={hexSize}
-        hovered={hoveredHex}
+        hovered={effectiveHoveredHex}
       />
       <HexEntity
         entityId={characterId}
@@ -360,6 +393,8 @@ export function SessionScene({
           knowledgeState={member.remembered ? 'remembered' : undefined}
           isDead={isSightedDowned(member.standing)}
           onClick={handleTargetClick}
+          onPointerOver={setMeshHoveredSubject}
+          onPointerOut={() => setMeshHoveredSubject(null)}
         />
       ))}
     </>

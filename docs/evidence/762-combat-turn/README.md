@@ -245,8 +245,17 @@ error, 3/3 attempts after the confirmed unequip:**
 
 So the armed/unarmed diagnosis doesn't hold for my own session, at
 least not on its own — genuinely unarmed still fails the same way here.
-Reported back to team-lead; the finishing-the-skeleton / fight-over part
-of the gate remains unverified live pending whatever the toolkit fix
-(or further diagnosis) turns out to be. Everything through Round 2 /
-the monster's-turn pacing / the four bug fixes above is unaffected and
-stands as verified.
+Reported back to team-lead.
+
+**Root cause confirmed by team-lead**: not the weapon at all — the
+character's FIGHTING STYLE. toolkit#1178/#1179: the `Protection`
+condition fires on the protector's OWN attacks (a bug) and calls the old
+GameContext registry on every attack chain; `Dueling` does the same on
+the damage chain. `toolkit-sandbox-fighter` (my character) carries one
+of those two fighting styles; Kirk's own character doesn't, which is
+why his punches landed cleanly on his own walk while every attempt of
+mine — armed or unarmed — hit the bug. **Nothing client-side; holding
+until the api image is rebuilt on toolkit#1179**, then finishing the
+walk (armed is fine at that point) and rebodying #769. Everything
+through Round 2 / the monster's-turn pacing / the four client bug fixes
+above is unaffected and stands as verified.
