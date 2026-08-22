@@ -1447,7 +1447,7 @@ describe('SessionEncounterView', () => {
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(4));
     });
 
-    it('refetches Afford but NOT Turn on STRUCK/MISSED/DOWNED/ENDED — those change what you can pay, never whose turn it is', async () => {
+    it('refetches Afford but NOT Turn on STRUCK/MISSED/ENDED — those change what you can pay, never whose turn it is', async () => {
       hoisted.atlasResult.atlas = pointyAtlas();
       hoisted.atlasResult.loading = false;
       hoisted.whereResult.position = { x: 0, y: 0 };
@@ -1477,10 +1477,6 @@ describe('SessionEncounterView', () => {
               against: 15,
             },
           } as SessionEvent['body']),
-          event(EventKind.DOWNED, {
-            case: 'downed',
-            value: { member: 'skeleton-1' },
-          } as SessionEvent['body']),
           event(EventKind.ENDED),
         ])
       );
@@ -1495,11 +1491,40 @@ describe('SessionEncounterView', () => {
       );
       await waitFor(() => screen.getByTestId('session-canvas'));
 
-      // 1 mount-bootstrap call + 4 listed kinds.
-      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(5));
+      // 1 mount-bootstrap call + 3 listed kinds.
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(4));
       // Turn only ever gets its own mount-bootstrap call — none of these
-      // four kinds refetch it.
+      // three kinds refetch it.
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    });
+
+    it("also refetches Turn on a Downed event -- a participant's standing changed, and Turn.participants (not Afford) is what the roster chip / isDowned display reads (rpg-project#251 web#772: without this, a just-downed member's roster entry -- and anything else keyed off Turn.participants -- stays stale until something ELSE happens to refetch Turn, e.g. End Turn)", async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.DOWNED, {
+            case: 'downed',
+            value: { member: 'skeleton-1' },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // 1 mount-bootstrap call + 1 for the Downed event.
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     });
 
     it('a MOVED stream event refetches neither Afford nor Turn', async () => {

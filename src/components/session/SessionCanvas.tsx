@@ -271,6 +271,40 @@ export function SessionScene({
     null
   );
 
+  // Clears the sticky mesh-hover the moment the subject it names STOPS
+  // being an attack target it PREVIOUSLY was one -- the fight ending
+  // (attackableTargets -> undefined) is the case caught live
+  // (rpg-project#251 web#771: "the path looks like it continues from the
+  // downed skeleton"), and a target dying/dropping out of reach mid-fight
+  // is the same shape one level narrower. Necessary because `onPointerOut`
+  // alone cannot be trusted to fire here: a downed/dead entity's mesh
+  // typically swaps to a different pose/geometry that no longer occupies
+  // the same screen space the standing pose did, so the pointer never
+  // technically "leaves" a mesh that's already gone -- see this module's
+  // own effectiveHoveredHex doc comment above for why a stale subject
+  // then pins the WHOLE indicator (path origin included) to that entity's
+  // last-known cell regardless of where the floor is hovered next.
+  //
+  // Deliberately keyed on "was attackable, now isn't" rather than "isn't
+  // currently attackable" -- the latter would ALSO fire for a plain
+  // free-roam hover (attackableTargets never defined at all, e.g. no
+  // fight in progress), which must keep reporting via onHoverEntity
+  // exactly as it always has. `prevAttackableRef` is this hook's only
+  // memory of "was" across renders.
+  const prevAttackableRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const wasAttackable = prevAttackableRef.current.has(
+      meshHoveredSubject ?? ''
+    );
+    const stillAttackable = meshHoveredSubject
+      ? (attackableTargets?.includes(meshHoveredSubject) ?? false)
+      : false;
+    if (meshHoveredSubject && wasAttackable && !stillAttackable) {
+      setMeshHoveredSubject(null);
+    }
+    prevAttackableRef.current = new Set(attackableTargets ?? []);
+  }, [attackableTargets, meshHoveredSubject]);
+
   // The EFFECTIVE hovered cell for both the indicator's rendering
   // position and the entity lookup below: the entity's own known
   // position while the pointer is over its mesh (no raycast needed — we

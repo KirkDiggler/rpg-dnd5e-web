@@ -191,6 +191,60 @@ describe('selectCombatPanel', () => {
       ]);
     });
 
+    it("two participants sharing the SAME name -- each keeps its OWN isDowned from ITS OWN member, never the other's (rpg-project#251 web#772)", () => {
+      const result = selectCombatPanel(
+        args({
+          turn: {
+            clock: ClockKind.TURN,
+            active: 'char-1',
+            round: 3,
+            participants: [
+              participant(),
+              participant({
+                member: 'skeleton-1',
+                name: 'Skeleton',
+                kind: MemberKind.MONSTER,
+                standing: Standing.DOWNED,
+                active: false,
+              }),
+              participant({
+                member: 'skeleton-2',
+                name: 'Skeleton',
+                kind: MemberKind.MONSTER,
+                standing: Standing.UP,
+                active: false,
+              }),
+            ],
+          },
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.participants).toEqual([
+        {
+          id: 'char-1',
+          name: 'Aldric',
+          isActive: true,
+          isYou: true,
+          isDowned: false,
+        },
+        {
+          id: 'skeleton-1',
+          name: 'Skeleton',
+          isActive: false,
+          isYou: false,
+          isDowned: true,
+        },
+        {
+          id: 'skeleton-2',
+          name: 'Skeleton',
+          isActive: false,
+          isYou: false,
+          isDowned: false,
+        },
+      ]);
+    });
+
     it('a single-member roster (degenerate but legal) still maps cleanly', () => {
       const result = selectCombatPanel(
         args({
@@ -304,6 +358,40 @@ describe('selectCombatPanel', () => {
           afford: {
             clock: ClockKind.TURN,
             declarations: [attackDeclaration('skeleton-1')],
+          },
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.movement).toBeNull();
+      expect(result.moveMaxCells).toBe(0);
+    });
+
+    it('an AFFORDABLE Move declaration with NO `remaining` figure at all -> moveMaxCells is undefined (unbounded), never a false 0 (rpg-project#251 web#770: a real wire gap caught live -- Afford answered affordable:true for Move but omitted `remaining` entirely, and the floor\'s own hover preview must never read a missing currency figure as "0 left" when the server\'s own affordable flag says otherwise -- a subsequent Move RPC to the SAME cell succeeded)', () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              moveDeclaration({ affordable: true, remaining: undefined }),
+            ],
+          },
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      expect(result.movement).toBeNull(); // still nothing to show in the "Movement: X ft" row -- we genuinely don't know the figure
+      expect(result.moveMaxCells).toBeUndefined(); // but the floor preview must not be bounded to zero
+    });
+
+    it('an UNAFFORDABLE Move declaration with no `remaining` figure -> moveMaxCells stays 0, same as ever (only affordable:true earns the unbounded reading above)', () => {
+      const result = selectCombatPanel(
+        args({
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              moveDeclaration({ affordable: false, remaining: undefined }),
+            ],
           },
         })
       );
@@ -535,6 +623,72 @@ describe('selectCombatPanel', () => {
       expect(result.mode).toBe('turn');
       if (result.mode !== 'turn') throw new Error('unreachable');
       expect(result.attackTargets).toHaveLength(1);
+    });
+
+    it('two sighted members sharing the SAME display name ("Skeleton") -- downing one never marks the other downed too (rpg-project#251 web#772: every lookup here is keyed by member id/subject, names are labels only)', () => {
+      const result = selectCombatPanel(
+        args({
+          turn: {
+            clock: ClockKind.TURN,
+            active: 'char-1',
+            round: 1,
+            participants: [
+              participant(),
+              participant({
+                member: 'skeleton-1',
+                name: 'Skeleton',
+                kind: MemberKind.MONSTER,
+                active: false,
+              }),
+              participant({
+                member: 'skeleton-2',
+                name: 'Skeleton',
+                kind: MemberKind.MONSTER,
+                active: false,
+              }),
+            ],
+          },
+          afford: {
+            clock: ClockKind.TURN,
+            declarations: [
+              attackDeclaration('skeleton-1', { affordable: true }),
+              attackDeclaration('skeleton-2', { affordable: true }),
+            ],
+          },
+          sightedMembers: [
+            sightedMember({
+              subject: 'skeleton-1',
+              name: 'Skeleton',
+              standing: Standing.DOWNED,
+            }),
+            sightedMember({
+              subject: 'skeleton-2',
+              name: 'Skeleton',
+              standing: Standing.UP,
+            }),
+          ],
+        })
+      );
+      expect(result.mode).toBe('turn');
+      if (result.mode !== 'turn') throw new Error('unreachable');
+      // attackTargets: skeleton-1 (downed, same name) drops; skeleton-2
+      // (same name, still up) stays -- keyed by id, never confused by
+      // the shared "Skeleton" label.
+      expect(result.attackTargets.map((t) => t.id)).toEqual(['skeleton-2']);
+      // participants (the roster chip source): each entry's isDowned
+      // comes from ITS OWN member's standing, not looked up by name.
+      const skeleton1Entry = result.participants.find(
+        (p) => p.id === 'skeleton-1'
+      );
+      const skeleton2Entry = result.participants.find(
+        (p) => p.id === 'skeleton-2'
+      );
+      expect(skeleton1Entry?.name).toBe('Skeleton');
+      expect(skeleton2Entry?.name).toBe('Skeleton');
+      // Turn.participants itself only reflects skeleton-1's OWN standing
+      // if the server has already updated it; this assertion is about
+      // the sightedMembers-driven attackTargets cross-check above, which
+      // is what proves the id-not-name keying for THIS module.
     });
 
     it('several in-reach candidates, only one sighted DOWNED -- that one alone drops, the rest are untouched', () => {
