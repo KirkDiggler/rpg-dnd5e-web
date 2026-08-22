@@ -490,6 +490,17 @@ export function SessionEncounterView({
   // `false` on the world clock: free roam is never locked.
   const turnLocked = turnClock === ClockKind.TURN && turnActive !== member;
 
+  // Every other member the local player currently perceives, ready for
+  // SessionCanvas — sightingEntities.ts owns the seen-unset/memory/own-
+  // subject rules (see its own doc comment); this route just renders what
+  // it returns. Computed BEFORE useCombatPanel below — it doubles as that
+  // hook's `sightedMembers` fallback name source (see its own doc
+  // comment on why `Turn.participants` alone races a fresh FightStarted).
+  const otherMembers = useMemo(
+    () => sightingsToEntities(sightings, characterId ?? ''),
+    [sightings, characterId]
+  );
+
   // The combat panel (rpg-dnd5e-web#762) — turn order, the three shapes,
   // Attack/End Turn gates, target selection, the beat line. See its own
   // doc comment for why the args are flat primitives rather than a
@@ -501,6 +512,7 @@ export function SessionEncounterView({
     turnActive,
     turnRound,
     participants: turnParticipants,
+    sightedMembers: otherMembers,
     affordClock,
     affordDeclarations,
     refetchAfford,
@@ -618,15 +630,6 @@ export function SessionEncounterView({
     ? CLASS_TEXTURE_SUFFIXES[character.class]
     : undefined;
 
-  // Every other member the local player currently perceives, ready for
-  // SessionCanvas — sightingEntities.ts owns the seen-unset/memory/own-
-  // subject rules (see its own doc comment); this route just renders what
-  // it returns.
-  const otherMembers = useMemo(
-    () => sightingsToEntities(sightings, characterId ?? ''),
-    [sightings, characterId]
-  );
-
   // Attack is a floor gesture now, not a separate canvas mode
   // (rpg-project#249, `combatPanel.ts`'s own doc comment) — walking and
   // attacking coexist on the SAME floor at all times. `attackableTargets`
@@ -726,30 +729,60 @@ export function SessionEncounterView({
           }
         />
         {equipmentData && (
-          <EquipmentPopover
-            open={equipmentOpen}
-            characterName={character?.name ?? 'You'}
-            classLabel={classLabel(classRefId) ?? undefined}
-            slots={equipmentData.slots}
-            equipped={equipmentData.equipped}
-            items={equipmentData.inventory.filter(
-              (
-                item
-              ): item is typeof item & { ref: NonNullable<typeof item.ref> } =>
-                item.ref !== undefined
-            )}
-            armorClass={
-              equipmentData.armorClassDetail
-                ? {
-                    total: equipmentData.armorClassDetail.total,
-                    note: equipmentData.armorClassDetail.note,
-                  }
-                : undefined
-            }
-            mainHandDamage={equipmentData.mainHandDamage}
-            onIntent={(intent) => void handleEquipIntent(intent)}
-            busy={equipping || unequipping}
-          />
+          // A full-width, ZERO-HEIGHT anchor strip pinned to the bottom —
+          // not a sibling of the full-viewport canvas wrapper.
+          // EquipmentPopover's own CSS (`.equip-popover { bottom:
+          // calc(100% + 10px); right: 8px; width: min(560px, 60%) }`,
+          // base.css) needs BOTH a viewport-scale WIDTH (for the 60% max-
+          // width to mean anything) and a SMALL height (so `100%` lands
+          // near the bottom, not off the top) from its positioned
+          // ancestor — exactly what EncounterDock's own dock bar gives it
+          // for free (full width, auto height sized to a single row of
+          // controls). `left/right: 0` gives this div the viewport's full
+          // width; `height: 0` collapses it to a line sitting at
+          // `bottom: 12`, so `calc(100% + 10px)` computes to just above
+          // that line, not the top of a tall container. An earlier
+          // `position: absolute` wrapper with no explicit size at all
+          // collapsed to near-zero in BOTH dimensions instead (its only
+          // child is itself `position: absolute`, contributing nothing to
+          // its parent's intrinsic size) — the popover rendered as a
+          // sliver against the right edge because `60%` had nothing
+          // meaningful to be 60% of.
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 12,
+              height: 0,
+            }}
+          >
+            <EquipmentPopover
+              open={equipmentOpen}
+              characterName={character?.name ?? 'You'}
+              classLabel={classLabel(classRefId) ?? undefined}
+              slots={equipmentData.slots}
+              equipped={equipmentData.equipped}
+              items={equipmentData.inventory.filter(
+                (
+                  item
+                ): item is typeof item & {
+                  ref: NonNullable<typeof item.ref>;
+                } => item.ref !== undefined
+              )}
+              armorClass={
+                equipmentData.armorClassDetail
+                  ? {
+                      total: equipmentData.armorClassDetail.total,
+                      note: equipmentData.armorClassDetail.note,
+                    }
+                  : undefined
+              }
+              mainHandDamage={equipmentData.mainHandDamage}
+              onIntent={(intent) => void handleEquipIntent(intent)}
+              busy={equipping || unequipping}
+            />
+          </div>
         )}
       </div>
     );

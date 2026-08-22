@@ -1672,6 +1672,125 @@ describe('SessionEncounterView', () => {
     }, 10000);
   });
 
+  describe("a fight-start beat before Turn's own roster fetch has landed (live-gate regression)", () => {
+    it('resolves the FightStarted roster from a sighted member\'s own name, not Turn.participants alone -- caught live: "A fight begins: skeleton-1, You." (the raw id) instead of "A fight begins: You, Skeleton."', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      // A live sighting already names the skeleton -- exactly what makes
+      // a fight form in the first place.
+      hoisted.getViewFn.mockResolvedValue({
+        sightings: [
+          {
+            subject: 'skeleton-1',
+            payload: new Uint8Array(),
+            channel: 'sight',
+            at: 1n,
+            currentVia: ['sight'],
+            status: 'live',
+            name: 'Skeleton',
+            seen: { position: { x: 5, y: 0 }, standing: Standing.UP },
+          },
+        ],
+      });
+      // The mount-bootstrap Turn fetch resolves with the clock already
+      // on TURN (so the panel leaves free-roam and actually renders a
+      // beat line) but an EMPTY participants list -- reproducing the
+      // live race where the beat is computed before Turn's own roster
+      // catches up. Any LATER refetch (the one FIGHT_STARTED itself
+      // triggers) resolves with the real roster, but `lastBeat` is a
+      // one-shot format-then-store, not a live-recomputing selector, so
+      // a stale name baked in at computation time is never corrected
+      // retroactively -- which is exactly what this regression pins.
+      hoisted.turnFn.mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: [],
+        participants: [],
+      });
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', { name: 'Aldric', active: true }),
+          participant('skeleton-1', { name: 'Skeleton' }),
+        ],
+      });
+      // Withheld until the sighting has actually landed in otherMembers
+      // -- GetView and StreamEvents are two independent fetches with no
+      // ordering guarantee between them; this pins the case where the
+      // sighting wins the race (the common one: GetView fires the moment
+      // position is known, typically well before a monster's own
+      // fight-triggering beat streams in).
+      const { stream, release } = deferredStream([
+        event(EventKind.FIGHT_STARTED, {
+          case: 'fightStarted',
+          value: { members: ['char-1', 'skeleton-1'] },
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(stream);
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.otherMembers).toHaveLength(1)
+      );
+
+      release();
+
+      await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
+      screen.getByText(/^a fight begins: you, skeleton\.$/i);
+      expect(screen.queryByText(/skeleton-1/i)).toBeNull();
+    });
+
+    it('falls back to the raw subject id (never blank, same documented convention as participantNames.ts elsewhere) when NEITHER Turn.participants NOR a sighting has named it yet', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.getViewFn.mockResolvedValue({ sightings: [] });
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: [],
+        participants: [],
+      });
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          event(EventKind.FIGHT_STARTED, {
+            case: 'fightStarted',
+            value: { members: ['char-1', 'skeleton-1'] },
+          } as SessionEvent['body']),
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() => screen.getByTestId('combat-panel-beat-line'));
+      screen.getByText(/^a fight begins: you, skeleton-1\.$/i);
+    });
+  });
+
   describe('equipment screen (rpg-project#249 §4, reusing web#571)', () => {
     it('fetches GetCharacterData once the character is known', async () => {
       hoisted.atlasResult.atlas = pointyAtlas();

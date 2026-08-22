@@ -55,6 +55,7 @@ import { useSessionEndTurn } from '../../api/useSessionEndTurn';
 import { formatBeat } from './combatBeat';
 import { selectCombatPanel, type CombatPanelSelection } from './combatPanel';
 import { participantNameMap } from './participantNames';
+import type { SightedMember } from './sightingEntities';
 
 /** How long the "<name>'s turn." / "<name> does nothing." pacing beats
  * each stay up before the next stage — exported so a test can assert the
@@ -71,6 +72,17 @@ export interface UseCombatPanelArgs {
   turnActive: string;
   turnRound: number;
   participants: Participant[];
+  /** Every OTHER member currently perceived (`GetView.sightings`, via
+   * `sightingsToEntities`) — a FALLBACK name source for a beat that
+   * arrives before Turn's own roster fetch has landed. `FightStarted`
+   * fires the instant a fight forms, and `Turn.participants` only knows
+   * the new fight's roster once its OWN refetch (triggered by that same
+   * event) resolves — a real race, not a hypothetical one (caught live:
+   * the beat read "A fight begins: skeleton-1, You." — the raw subject
+   * id — until this fallback was added). Sighting a subject is exactly
+   * what causes a fight to form, so `Sighting.name` is already known at
+   * that instant; it is never a guess. */
+  sightedMembers?: SightedMember[];
   affordClock: ClockKind;
   affordDeclarations: Declaration[];
   /** Owned by the caller — `SessionEncounterView` is the single owner of
@@ -110,6 +122,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     turnActive,
     turnRound,
     participants,
+    sightedMembers,
     affordClock,
     affordDeclarations,
     refetchAfford,
@@ -219,7 +232,14 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
 
   const handleEvent = useCallback(
     (event: SessionEvent) => {
+      // Participants first (the authoritative, standing-aware roster);
+      // sighted names fill in anyone Turn's own roster fetch hasn't
+      // caught up to yet — see this hook's own doc comment on
+      // `sightedMembers`.
       const names = participantNameMap(participants);
+      for (const m of sightedMembers ?? []) {
+        if (!names.has(m.subject)) names.set(m.subject, m.name);
+      }
 
       if (event.body?.case === 'turnEnded') {
         const endedMember = event.body.value.member;
