@@ -259,3 +259,77 @@ until the api image is rebuilt on toolkit#1179**, then finishing the
 walk (armed is fine at that point) and rebodying #769. Everything
 through Round 2 / the monster's-turn pacing / the four client bug fixes
 above is unaffected and stands as verified.
+## Fourth pass — armed, through to the kill and fight-over
+
+**Environment:** rpg-api `feat/session-combat-turn` rebuilt on
+toolkit#1179's fix (session `29882d7`, Dueling/Protection off the old
+GameContext registry). Fresh lobby (redis key cleared), longsword
+equipped from the panel (`14-armed-in-reach.png`).
+
+1. **Contact -> in reach, armed.** Walked to the skeleton, `attackableTargets`
+   picked up `skeleton-1` the instant reach allowed it — same clean
+   behavior as every prior pass.
+2. **First swing lands.** Clicked the highlighted mesh directly (the real
+   player gesture, not the fiber-walk shortcut used for movement).
+   **`toolkit#1179`'s fix confirmed live**: `Attack` resolves, beat line
+   reads *"You hit Skeleton — 23 vs AC 13, 11 slashing."*
+   (`15-first-hit-beat.png`). Ring correctly flips to red (unaffordable —
+   action spent) per the earlier bug-3 fix.
+3. **End Turn -> Round 2 -> second swing -> downed.** Monster-turn pacing
+   ("Skeleton's turn." -> "Skeleton does nothing.") still clean. Second
+   hit brings the beat line to *"Skeleton is downed."* (`16-skeleton1-downed.png`).
+4. **A second skeleton joins the fight.** `Turn.participants` swaps from
+   `skeleton-1` to `skeleton-2` — a genuine reinforcement, not a bug (the
+   tomb's sandbox encounter has two skeletons; the second was sighted but
+   not yet aggro'd). `17-reinforcement-skeleton2.png`.
+5. **Found and diagnosed a real bug: stale sighting after a kill.**
+   Continuing to click the same, still-highlighted mesh kept dispatching
+   `Attack` and getting plausible hit/miss beats (up to ~40 cumulative
+   damage) with no further effect — because that mesh was `skeleton-1`'s
+   **corpse**. `otherMembers`/sighting only refreshes on `GetView`, and
+   `GetView` is only re-triggered after a `Move` RPC in this client, never
+   after `Attack` — so a target that dies keeps reporting
+   `standing: STANDING_UP` (and staying in `attackableTargets`, since reach
+   is computed from that same stale sighting) until the player's next
+   walk happens to trigger a fresh `GetView`. The real `skeleton-2` sat the
+   whole time at a fixed, never-approached position, correctly still
+   `isDowned: false` in `Turn.participants` (the authoritative roster,
+   which *had* already dropped `skeleton-1`). Confirmed precisely via a
+   fiber read of `SessionScene`'s live props (`standing: 2` for
+   `skeleton-1` only appeared after the next `Move`) —
+   `18-corpse-stale-vs-live-target.png` shows the moment this resolved:
+   skeleton-1 rendering correctly prone in the background the instant a
+   fresh `GetView` landed. **This is a real, reproducible client gap**:
+   sighting/`otherMembers` should also refresh after `Attack` (any RPC
+   that can change a `Standing`), not only after `Move`. Did not block
+   finishing this walk once diagnosed, since walking toward the real
+   target forced the refresh naturally.
+6. **Walk to the real target, finish it, fight over.** Moved onto
+   `skeleton-2`'s position, attacked twice across two rounds (9 dmg, then
+   a killing 9 dmg), and the panel **dropped straight from combat mode to
+   `Free roam`** on the killing blow — no residual roster, no attackable
+   ring, `Equipment` still available (`19-fight-over.png`). Confirmed the
+   transition is real, not just visual, by walking further:
+   `otherMembers` shows **both** skeletons at `standing: STANDING_DOWNED`,
+   `attackableTargets` absent, `turnLocked: false`, movement working
+   normally (`20-free-roam-both-defeated.png`).
+
+**Full chain now verified live, start to finish**: fresh lobby -> free
+roam -> contact -> armed attack (click-to-swing, no arm/confirm step) ->
+hit/miss/downed beats rendered from typed events -> monster-turn pacing
+-> round advance -> reinforcement handled correctly -> kill -> fight-over
+-> free roam. This is web#533's bar, walked without any verbal
+instruction beyond "click the highlighted thing."
+
+### Follow-up filed: stale sighting after a kill
+
+**Not fixed on this branch** — reported instead of patched blind, since
+the fix belongs in the refetch-trigger wiring
+(`useCombatPanel.ts`/`SessionEncounterView.tsx`'s afford/turn refetch
+list) and deserves its own slice rather than a rushed addition at the
+tail of an already-large PR. The gap: only `Move` re-triggers `GetView`;
+`Attack` should too, since it can change a sighted member's `Standing`.
+Symptom without the fix: a defeated target can be "attacked" again
+(cosmetically — no further game effect) until the player's next movement
+happens to refresh sightings. Recommend a new web issue against
+`useSessionAttack`'s post-attack refetch chain.
