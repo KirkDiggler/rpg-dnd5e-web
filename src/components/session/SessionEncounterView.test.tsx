@@ -10,16 +10,18 @@
  * "can Three.js draw it" that this file owns. `SessionCanvas.test.tsx`
  * covers the other side with a real (mocked-GLB) R3F render.
  *
- * `useSessionWalk`/`useSessionEventStream` run FOR REAL here (only
- * `sessionClient.move`/`.streamEvents` are mocked, at the `@/api/client`
- * boundary — the same boundary those two hooks' own dedicated test files
- * mock) rather than being replaced wholesale: this file is what proves
- * the click -> pathfind -> Move RPC -> animation-prop -> MOVED-event ->
- * refetch chain is actually WIRED, not just that each link works in
+ * `useSessionWalk`/`useSessionEventStream`/`useSessionAfford` run FOR REAL
+ * here (only `sessionClient.move`/`.streamEvents`/`.afford` are mocked, at
+ * the `@/api/client` boundary — the same boundary those hooks' own
+ * dedicated test files mock) rather than being replaced wholesale: this
+ * file is what proves the click -> pathfind -> Move RPC -> animation-prop
+ * -> MOVED-event -> refetch chain (and, slice 5a, the Afford refetch
+ * triggers) is actually WIRED, not just that each link works in
  * isolation. The pure mechanics of each link (pathfinding, the RPC
  * orchestration's busy/reconcile state machine, the stream subscription
- * lifecycle) have their own focused coverage in atlasPath.test.ts,
- * useSessionWalk.test.ts and useSessionEventStream.test.ts.
+ * lifecycle, the Afford fetch/last-good state machine) have their own
+ * focused coverage in atlasPath.test.ts, useSessionWalk.test.ts,
+ * useSessionEventStream.test.ts and useSessionAfford.test.ts.
  */
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
@@ -27,8 +29,11 @@ import {
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
+  ClockKind,
   GridKind,
   HexLayout,
+  Slot,
+  Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   act,
@@ -58,6 +63,7 @@ const hoisted = vi.hoisted(() => ({
   moveFn: vi.fn(),
   streamEventsFn: vi.fn(),
   getViewFn: vi.fn(),
+  affordFn: vi.fn(),
 }));
 
 vi.mock('./SessionCanvas', () => ({
@@ -88,6 +94,7 @@ vi.mock('@/api/client', () => ({
     move: hoisted.moveFn,
     streamEvents: hoisted.streamEventsFn,
     getView: hoisted.getViewFn,
+    afford: hoisted.affordFn,
   },
 }));
 
@@ -140,6 +147,14 @@ beforeEach(() => {
   hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
   hoisted.getViewFn.mockReset();
   hoisted.getViewFn.mockResolvedValue({ sightings: [] });
+  hoisted.affordFn.mockReset();
+  // Free roam by default — matches a freshly-spawned member on the
+  // world clock, so existing tests that don't care about the HUD keep
+  // passing unchanged.
+  hoisted.affordFn.mockResolvedValue({
+    clock: ClockKind.WORLD,
+    declarations: [],
+  });
 });
 
 const noop = () => {};
@@ -707,6 +722,224 @@ describe('SessionEncounterView', () => {
         hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
       });
       await waitFor(() => expect(hoisted.moveFn).toHaveBeenCalled());
+    });
+  });
+  describe('turn HUD wiring (rpg-dnd5e-web#762 slice 5a)', () => {
+    it('fetches Afford once the member is known and renders the free-roam pill (Afford has no mount fetch of its own)', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        expect(hoisted.affordFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          member: 'char-1',
+        })
+      );
+      expect(hoisted.affordFn).toHaveBeenCalledTimes(1);
+      await waitFor(() => screen.getByTestId('turn-hud-free-roam-pill'));
+    });
+
+    it('a turn-clock Afford response renders the HUD with the action shape lit and "Attack — ready"', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            affordable: true,
+            shortfall: '',
+          },
+        ],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      await waitFor(() =>
+        expect(
+          screen.getByTestId('turn-hud-shape-action').getAttribute('data-lit')
+        ).toBe('true')
+      );
+      screen.getByText(/attack — ready/i);
+    });
+
+    it('refetches Afford on FIGHT_STARTED/FIGHT_ENDED/TURN_ENDED/STRUCK/MISSED/DOWNED/ENDED, not on MOVED', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          { kind: EventKind.MOVED } as SessionEvent,
+          { kind: EventKind.FIGHT_STARTED } as SessionEvent,
+          { kind: EventKind.FIGHT_ENDED } as SessionEvent,
+          { kind: EventKind.TURN_ENDED } as SessionEvent,
+          { kind: EventKind.STRUCK } as SessionEvent,
+          { kind: EventKind.MISSED } as SessionEvent,
+          { kind: EventKind.DOWNED } as SessionEvent,
+          { kind: EventKind.ENDED } as SessionEvent,
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      // 1 mount-bootstrap call + 7 listed kinds (MOVED excluded).
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(8));
+    });
+
+    it('a JOINED/EXITED/SCENE_OPENED/TICK stream event does not refetch Afford either', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.streamEventsFn.mockReturnValue(
+        fakeStream([
+          { kind: EventKind.JOINED } as SessionEvent,
+          { kind: EventKind.EXITED } as SessionEvent,
+          { kind: EventKind.SCENE_OPENED } as SessionEvent,
+          { kind: EventKind.TICK } as SessionEvent,
+        ])
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+
+      // Give any spurious refetch a chance to land before asserting it
+      // never did.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(hoisted.affordFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("the local player's own completed walk also refetches Afford (own-move round-trip)", async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.moveFn.mockResolvedValue({
+        steps: [{ position: { x: 1, y: 0 }, seq: 9n }],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current!.moveSeq).toBe(1)
+      );
+
+      hoisted.whereResult.refetch.mockResolvedValue(undefined);
+      await act(async () => {
+        hoisted.lastCanvasProps.current!.onMovementPresentationComplete!(1);
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('a presentation-complete callback for a seq that is not the current move does not refetch Afford', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+
+      // No walk has happened yet, so moveSeq is still undefined — this
+      // mirrors useSessionWalk's own guard (completedSeq !== moveSeq).
+      await act(async () => {
+        hoisted.lastCanvasProps.current!.onMovementPresentationComplete!(1);
+        await Promise.resolve();
+      });
+
+      expect(hoisted.affordFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('a fight-lock Move rejection also refetches Afford', async () => {
+      hoisted.atlasResult.atlas = pointyAtlas();
+      hoisted.atlasResult.loading = false;
+      hoisted.whereResult.position = { x: 0, y: 0 };
+      hoisted.whereResult.loading = false;
+      hoisted.moveFn.mockRejectedValue(
+        new ConnectError('member is in a fight', Code.FailedPrecondition)
+      );
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+
+      await waitFor(() => screen.getByText(/in a fight — movement is locked/i));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
     });
   });
 });

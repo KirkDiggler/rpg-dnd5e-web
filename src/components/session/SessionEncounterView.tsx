@@ -19,9 +19,20 @@
  * hovering shows a walk preview, an unreachable-cell refusal, or the same
  * fight lock — computed by the SAME `atlasPath.ts` call `walkTo` itself
  * makes, so the preview can never diverge from what a click actually
- * does (`moveIndicator.ts`'s own doc comment). Still no combat resolution
- * itself — this is presence, refusal-messaging, and movement preview
- * only.
+ * does (`moveIndicator.ts`'s own doc comment).
+ *
+ * Slice 5a (rpg-dnd5e-web#762) adds the turn HUD: `useSessionAfford`
+ * reads `SessionService.Afford` (Kirk's ruling, toolkit#1138: "backend
+ * tells dumb client what it can do"), `turnHud.ts` maps that into the
+ * three action/bonus/reaction shapes and a declaration list, and
+ * `TurnHud` draws it as an HTML overlay. This component owns EVERY Afford
+ * fetch (see `useSessionAfford`'s own doc comment — it has no mount fetch
+ * of its own): once when the member is first known, again on the
+ * `StreamEvents` kinds that can change a budget, after the local player's
+ * own Move round-trip, and after a fight-lock Move refusal. Still no
+ * combat resolution itself — this is presence, refusal-messaging,
+ * movement preview, and now a read-only economy readout; no Attack RPC
+ * exists in the web yet (slice 5b).
  *
  * # Why this exists beside `EncounterView`, not inside it
  *
@@ -74,6 +85,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useGetCharacter } from '../../api/characterHooks';
+import { useSessionAfford } from '../../api/useSessionAfford';
 import { useSessionAtlas } from '../../api/useSessionAtlas';
 import { useSessionView } from '../../api/useSessionView';
 import { useSessionWhere } from '../../api/useSessionWhere';
@@ -86,8 +98,10 @@ import { buildAtlasPathIndex } from './atlasPath';
 import { buildScene3D, positionToCube } from './atlasToScene3D';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
+import { TurnHud } from './TurnHud';
 import { useSessionEventStream } from './useSessionEventStream';
 import { useSessionWalk } from './useSessionWalk';
+import { useTurnHud } from './useTurnHud';
 
 export interface SessionEncounterViewProps {
   /** The session/encounter id `StartEncounter` returned. */
@@ -99,6 +113,22 @@ export interface SessionEncounterViewProps {
   playerId: string;
   onBack: () => void;
 }
+
+// The `StreamEvents` kinds that can change what a member can still
+// declare this turn (rpg-dnd5e-web#762 slice 5a). Deliberately NOT
+// MOVED — a move by itself never changes the economy; a move that FORMS
+// a fight arrives as its own FIGHT_STARTED beat (every member of the
+// encounter hears it, per that kind's own doc comment), so listening for
+// FIGHT_STARTED already covers the case MOVED alone does not.
+const AFFORD_REFRESH_EVENT_KINDS: ReadonlySet<EventKind> = new Set([
+  EventKind.FIGHT_STARTED,
+  EventKind.FIGHT_ENDED,
+  EventKind.TURN_ENDED,
+  EventKind.STRUCK,
+  EventKind.MISSED,
+  EventKind.DOWNED,
+  EventKind.ENDED,
+]);
 
 type LayoutOutcome =
   | { ok: true; layout: 'pointy' }
@@ -191,6 +221,17 @@ export function SessionEncounterView({
     sessionId,
     characterId ?? ''
   );
+  // Afford — "what can I still declare this turn" (slice 5a). Same
+  // additive-not-blocking treatment as GetView above: a turn-economy
+  // readout degrades to "no HUD data yet" (free-roam, per `turnHud.ts`'s
+  // own doc comment on its two-mode contract) rather than blocking the
+  // scene. See `useSessionAfford`'s own doc comment for the full
+  // refetch-ownership policy this component implements below.
+  const {
+    clock: affordClock,
+    declarations: affordDeclarations,
+    refetch: refetchAfford,
+  } = useSessionAfford(sessionId, characterId ?? '');
 
   const { getCharacter } = useGetCharacter();
   const [character, setCharacter] = useState<Character | null>(null);
@@ -302,7 +343,7 @@ export function SessionEncounterView({
   // `pathIndex` was passed to both `useSessionWalk` and `SessionCanvas`
   // straight from the LIVE memo above, so a background `GetAtlas` refetch
   // failure (which nulls `atlas` — `useSessionAtlas.ts`'s own doc comment)
-  // silently went dead — every hover read `'invalid'`, and clicks no-opped
+  // silently went dead — every hover read `'invalid'`, and clicks no-oped
   // — while the canvas kept drawing the OLD encounter via
   // `lastGoodSceneRef`/`lastGoodPositionRef`, contradicting what was drawn.
   // `GetAtlas`'s own doc comment is explicit the atlas is CONSTRUCTION
@@ -347,20 +388,24 @@ export function SessionEncounterView({
     refetchWhere
   );
 
-  // MOVED is the only event kind this slice acts on — a signal to refetch
-  // GetWhere (this is how another member's move will eventually reach this
-  // client too, once more than one member walks the same session; today
-  // it's a harmless re-fetch of the same answer the Move RPC's own
-  // response already reconciled). Every other kind is ignored here, not
-  // because they don't matter, but because interpreting FIGHT_STARTED,
-  // STRUCK, etc. is combat's job, out of scope for this slice.
+  // MOVED refetches GetWhere for ANY member's move (this is how another
+  // member's move will eventually reach this client too — today it's a
+  // harmless re-fetch of the same answer the local player's own Move
+  // response already reconciled). AFFORD_REFRESH_EVENT_KINDS refetches
+  // Afford instead — a different question (turn economy, not position)
+  // that a bare MOVED never answers on its own; see that constant's own
+  // comment for why FIGHT_STARTED already covers "a move formed a fight"
+  // without MOVED needing to.
   const handleSessionEvent = useCallback(
     (event: SessionEvent) => {
       if (event.kind === EventKind.MOVED) {
         void refetchWhere();
       }
+      if (AFFORD_REFRESH_EVENT_KINDS.has(event.kind)) {
+        void refetchAfford();
+      }
     },
-    [refetchWhere]
+    [refetchWhere, refetchAfford]
   );
   useSessionEventStream(sessionId, member, handleSessionEvent);
 
@@ -382,6 +427,58 @@ export function SessionEncounterView({
     if (!wherePosition) return;
     void refetchView();
   }, [wherePosition, refetchView]);
+
+  // Afford's own bootstrap — the very first read, fired once per bound
+  // member (mirrors `fetchCharacter`'s own effect above), NOT tied to
+  // `wherePosition` landing the way GetView is above: unlike a perception
+  // snapshot, a turn-economy answer has nothing to do with position, and
+  // piggybacking on that effect would also refetch on every OTHER
+  // member's MOVED-triggered position refresh, which
+  // `AFFORD_REFRESH_EVENT_KINDS` deliberately excludes. `useSessionAfford`
+  // has no mount fetch of its own (see its doc comment) — this is the
+  // "member is known, ask what they can do" trigger the free-roam pill
+  // needs on first paint.
+  useEffect(() => {
+    if (!member) return;
+    void refetchAfford();
+  }, [member, refetchAfford]);
+
+  // A fight-lock Move refusal is, today, how a fight FIRST reaches this
+  // client (rpg-dnd5e-web#762 slice 5a) — `fightLocked` flips false ->
+  // true exactly then (`useSessionWalk`'s own doc comment: "cleared at the
+  // start of the next walkTo, same as moveError"), so re-running only on
+  // that transition (not on every render) is exactly "refetch when a Move
+  // is refused with the fight-lock error".
+  useEffect(() => {
+    if (!fightLocked) return;
+    void refetchAfford();
+  }, [fightLocked, refetchAfford]);
+
+  // The local player's own Move round-trip also refetches Afford — walking
+  // can be what forms a fight, and while FIGHT_STARTED (above) should
+  // cover that, StreamEvents delivery is best-effort (design rule 6), so
+  // this is the same belt-and-suspenders the fight-lock effect above
+  // already is. Named explicitly (`refetchAffordAfterOwnAction`) so slice
+  // 5b's Attack handler has an obvious, already-tested trigger to call
+  // too — there is no Attack RPC in the web yet. Guarded by the SAME
+  // completed-seq check `useSessionWalk.onWalkAnimationComplete` uses
+  // internally, so a stale animation callback (one that isn't the
+  // CURRENT walk) doesn't trigger a spurious refetch.
+  const refetchAffordAfterOwnAction = useCallback(() => {
+    void refetchAfford();
+  }, [refetchAfford]);
+
+  const handleWalkAnimationComplete = useCallback(
+    (completedSeq: number) => {
+      onWalkAnimationComplete(completedSeq);
+      if (completedSeq === moveSeq) {
+        refetchAffordAfterOwnAction();
+      }
+    },
+    [onWalkAnimationComplete, moveSeq, refetchAffordAfterOwnAction]
+  );
+
+  const turnHudSelection = useTurnHud(affordClock, affordDeclarations);
 
   const classRefId = character
     ? CLASS_TEXTURE_SUFFIXES[character.class]
@@ -437,7 +534,7 @@ export function SessionEncounterView({
           movePath={movePath}
           moveSeq={moveSeq}
           onHexClick={walkTo}
-          onMovementPresentationComplete={onWalkAnimationComplete}
+          onMovementPresentationComplete={handleWalkAnimationComplete}
           otherMembers={otherMembers}
           pathIndex={lastGoodPathIndexRef.current}
           fightLocked={fightLocked}
@@ -466,6 +563,7 @@ export function SessionEncounterView({
             </span>
           )}
         </div>
+        <TurnHud selection={turnHudSelection} />
       </div>
     );
   } else if (loading) {
