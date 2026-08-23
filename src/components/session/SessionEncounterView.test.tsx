@@ -31,6 +31,7 @@ import {
 import {
   ClockKind,
   Currency,
+  DamageType,
   DissolveKind,
   GridKind,
   HexLayout,
@@ -47,6 +48,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionCanvasProps } from './SessionCanvas';
@@ -583,7 +585,7 @@ describe('SessionEncounterView', () => {
     });
   });
 
-  it('subscribes StreamEvents with the session/member and refetches GetWhere on a MOVED event, ignoring other kinds', async () => {
+  it("subscribes StreamEvents with the session/member and refetches GetWhere on the LOCAL PLAYER's own MOVED event, ignoring other kinds", async () => {
     hoisted.atlasResult.atlas = pointyAtlas();
     hoisted.atlasResult.loading = false;
     hoisted.whereResult.position = { x: 0, y: 0 };
@@ -591,7 +593,10 @@ describe('SessionEncounterView', () => {
     hoisted.streamEventsFn.mockReturnValue(
       fakeStream([
         { kind: EventKind.STRUCK } as SessionEvent,
-        { kind: EventKind.MOVED } as SessionEvent,
+        event(EventKind.MOVED, {
+          case: 'moved',
+          value: { member: 'char-1', to: { x: 1, y: 0 } },
+        } as SessionEvent['body']),
       ])
     );
 
@@ -660,18 +665,31 @@ describe('SessionEncounterView', () => {
       ]);
     });
 
-    it('a MOVED stream event (e.g. the skeleton itself moving) also refetches GetView, not just GetWhere', async () => {
+    it("another member's own MOVED (e.g. the skeleton itself moving, rpg-project#254) refetches GetView through the paced queue, never GetWhere", async () => {
       hoisted.atlasResult.atlas = pointyAtlas();
       hoisted.atlasResult.loading = false;
       hoisted.whereResult.position = { x: 0, y: 0 };
       hoisted.whereResult.loading = false;
+      hoisted.turnFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        active: 'skeleton-1',
+        round: 1,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', { name: 'Aldric' }),
+          participant('skeleton-1', { name: 'skeleton-1', active: true }),
+        ],
+      });
       hoisted.streamEventsFn.mockReturnValue(
-        fakeStream([{ kind: EventKind.MOVED } as SessionEvent])
+        fakeStream([
+          event(EventKind.MOVED, {
+            case: 'moved',
+            value: { member: 'skeleton-1', to: { x: 1, y: 0 } },
+          } as SessionEvent['body']),
+        ])
       );
 
-      // A factory, not a shared element: React bails out of re-rendering
-      // when handed the identical element object.
-      const view = () => (
+      render(
         <SessionEncounterView
           sessionId="enc-1"
           characterId="char-1"
@@ -679,30 +697,32 @@ describe('SessionEncounterView', () => {
           onBack={noop}
         />
       );
-      const { rerender } = render(view());
       await waitFor(() => screen.getByTestId('session-canvas'));
 
       // The view follows where: exactly ONE GetView for the initial
       // wherePosition (useSessionView has no mount fetch of its own).
       await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
 
-      // MOVED -> GetWhere refetch requested ...
+      // The queue announces the actor's turn before it touches the
+      // queued `moved` beat itself (monsterBeatQueue.ts's own doc
+      // comment) — this is also proof the beat reached the queue at
+      // all, not the immediate path. Scoped to the beat line specifically:
+      // `combat-panel-waiting-on` independently renders "skeleton-1's
+      // turn." any time it isn't the local player's turn, regardless of
+      // this queue, so an unscoped query matches both.
       await waitFor(() =>
-        expect(hoisted.whereResult.refetch).toHaveBeenCalledTimes(1)
+        within(screen.getByTestId('combat-panel-beat-line')).getByText(
+          /^skeleton-1.s turn\.$/i
+        )
       );
-      // ... but the mocked useSessionWhere cannot land a new position by
-      // itself, so nothing else has fired yet. This is what makes the
-      // assertion below discriminating: the count must MOVE from 1 to 2
-      // only once the refetched position lands.
-      expect(hoisted.getViewFn).toHaveBeenCalledTimes(1);
 
-      // Simulate the GetWhere refetch landing: a FRESH position reference
-      // (useSessionWhere always sets a new object, even for an unchanged
-      // cell) and the re-render it causes.
-      hoisted.whereResult.position = { x: 0, y: 0 };
-      rerender(view());
-
-      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+      // ... and only THEN (one pace delay later) refetches GetView
+      // directly — a second call, with GetWhere never touched. Another
+      // member's own move is never "where am I."
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2), {
+        timeout: 2000,
+      });
+      expect(hoisted.whereResult.refetch).not.toHaveBeenCalled();
     });
 
     it('a not-your-turn Move rejection (toolkit#1169 session.ErrNotYourTurn) shows the friendly status line, not raw RPC text', async () => {
@@ -1807,9 +1827,9 @@ describe('SessionEncounterView', () => {
       readyOnYourTurn();
       // Withheld until the roster (participants) has actually landed —
       // otherwise this test races Turn's own mount-bootstrap fetch
-      // against stream delivery, and the pacing check (which reads
-      // Participant.kind off the CURRENT roster) can't tell skeleton-1
-      // is a monster yet.
+      // against stream delivery, and the "<name>'s turn." announce step
+      // (monsterBeatQueue.ts) would resolve skeleton-1's display name
+      // from an empty roster.
       const { stream, release } = deferredStream([
         event(EventKind.TURN_ENDED, {
           case: 'turnEnded',
@@ -1843,6 +1863,101 @@ describe('SessionEncounterView', () => {
         timeout: 2000,
       });
       // Only now does the pacing sequence refetch Turn/Afford.
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2), {
+        timeout: 2000,
+      });
+    }, 10000);
+
+    it("a monster's driven turn narrates moved x N then a swing at a readable pace, refreshing GetView per beat and holding the HUD on the monster until it finishes (rpg-project#254, design rpg-project#252)", async () => {
+      readyOnYourTurn();
+      const { stream, release } = deferredStream([
+        event(EventKind.MOVED, {
+          case: 'moved',
+          value: { member: 'skeleton-1', to: { x: 1, y: 0 } },
+        } as SessionEvent['body']),
+        event(EventKind.MOVED, {
+          case: 'moved',
+          value: { member: 'skeleton-1', to: { x: 2, y: 0 } },
+        } as SessionEvent['body']),
+        event(EventKind.STRUCK, {
+          case: 'struck',
+          value: {
+            attacker: 'skeleton-1',
+            target: 'char-1',
+            roll: 18,
+            total: 23,
+            against: 13,
+            damage: 11,
+            attack: {
+              ref: 'bite',
+              name: 'Bite',
+              damageType: DamageType.PIERCING,
+            },
+            critical: false,
+          },
+        } as SessionEvent['body']),
+        event(EventKind.TURN_ENDED, {
+          case: 'turnEnded',
+          value: { member: 'skeleton-1', next: 'char-1' },
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(stream);
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => screen.getAllByTestId('combat-panel-participant'));
+      // One GetView from the initial wherePosition landing.
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+
+      release();
+
+      await waitFor(() => screen.getByText(/^skeleton-1.s turn\.$/i));
+
+      // Each queued `moved` refetches GetView in turn — the entity must
+      // be standing where the server says by the time its `struck` lands
+      // (rpg-project#252 §4).
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2), {
+        timeout: 2000,
+      });
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(3), {
+        timeout: 2000,
+      });
+
+      // The swing reads exactly like the player's own would — the SAME
+      // `formatBeat` (rpg-project#254's own "HUD" bullet).
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('combat-panel-beat-line').textContent).toBe(
+            'skeleton-1 hits you — 23 vs AC 13, 11 piercing.'
+          );
+        },
+        { timeout: 2000 }
+      );
+      expect(hoisted.getViewFn).toHaveBeenCalledTimes(4);
+
+      // The turn indicator holds on the monster through every beat above
+      // — only the mount-bootstrap Turn fetch has happened so far, even
+      // though the swing already rendered.
+      expect(hoisted.turnFn).toHaveBeenCalledTimes(1);
+
+      // turnEnded: a real action happened this turn, so no "does
+      // nothing" text — the swing's own line stands — but it still
+      // refreshes GetView once more before finalizing.
+      await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(5), {
+        timeout: 2000,
+      });
+      expect(screen.queryByText(/does nothing/i)).toBeNull();
+
+      // Only NOW (one more pace delay later) does the panel flip back —
+      // the trailing refetch after the closing beat.
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2), {
         timeout: 2000,
       });
