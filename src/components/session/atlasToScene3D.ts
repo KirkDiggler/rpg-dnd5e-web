@@ -49,6 +49,10 @@ import { coordToKey, type CubeCoord } from '@/components/hex-grid/hexMath';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import {
+  layoutFromWire,
+  type HexLayout,
+} from '../../concepts/session-tomb/atlas';
 import { boundariesToWallRuns, type DoorGapPiece } from './atlasWallRuns';
 import { positionToCube, worldPositionOf } from './positionBridge';
 
@@ -67,16 +71,73 @@ export interface Scene3D {
   doorGaps: DoorGapPiece[];
 }
 
+export type SceneLayoutOutcome =
+  | { ok: true; layout: HexLayout }
+  | { ok: false; message: string };
+
+/**
+ * Reads the wire's own answer for which way the hexes point and gates on
+ * it — never guesses (`layoutFromWire`'s own contract: capabilities are
+ * supplied, never defaulted). `hexMath.ts`'s 3D placement math is
+ * pointy-top only today, so a flat-top or square atlas is reported as a
+ * visible, named limitation rather than drawn wrong or silently dropped.
+ * ONE gate, shared by the game route (`SessionEncounterView`) and the
+ * builder's preview (`DungeonPreview3D`) so the two can never disagree
+ * about what is drawable.
+ */
+export function resolveSceneLayout(
+  atlas: Pick<GetAtlasResponse, 'layout' | 'grid'>
+): SceneLayoutOutcome {
+  let resolved: HexLayout | null;
+  try {
+    resolved = layoutFromWire(atlas.layout, atlas.grid);
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (resolved === 'pointy') {
+    return { ok: true, layout: 'pointy' };
+  }
+  if (resolved === 'flat') {
+    return {
+      ok: false,
+      message:
+        'This map is flat-top hex — the 3D renderer only draws ' +
+        'pointy-top today (hexMath.ts is pointy-top only; tracked as ' +
+        'rpg-dnd5e-web#763), not silently guessed.',
+    };
+  }
+  return {
+    ok: false,
+    message:
+      'This map is a square grid — the 3D renderer only draws hex maps today.',
+  };
+}
+
 /**
  * buildScene3D lays out the whole atlas once, in hexMath's world-space
  * cube coordinates: per-cell floor tiles and opaque prop references, plus
  * the straight wall runs derived from the declared boundaries and floor mask
  * by `atlasWallRuns.boundariesToWallRuns`.
+ *
+ * `layout` is the RESOLVED render word (`resolveSceneLayout`), passed
+ * explicitly rather than read off the atlas here so a caller cannot
+ * build a scene without having gated on it. `hexMath.ts` places pointy-top
+ * only (rpg-dnd5e-web#763); asking for `flat` throws by name rather than
+ * drawing the rotated picture ADR-0040 warns about.
  */
 export function buildScene3D(
   atlas: Pick<GetAtlasResponse, 'cells' | 'props' | 'boundaries' | 'doorways'>,
-  hexSize: number
+  hexSize: number,
+  layout: HexLayout
 ): Scene3D {
+  if (layout !== 'pointy') {
+    throw new Error(
+      `buildScene3D: hexMath.ts places pointy-top hexes only; got "${layout}" (rpg-dnd5e-web#763)`
+    );
+  }
   const floorTiles = new Map<string, AbsoluteFloorTile>();
   for (const cell of atlas.cells) {
     const cube = positionToCube(cell);

@@ -7,7 +7,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
 import { ListCharactersRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useRef, useState } from 'react';
-import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
+import { DungeonBuilder } from '../author/DungeonBuilder';
 import { toolkitSandboxClients as clients } from './clients';
 import {
   TOOLKIT_SANDBOX_BARBARIAN,
@@ -325,14 +325,13 @@ export function ToolkitContributorSandbox() {
   return (
     <main>
       <h1>Toolkit Contributor Sandbox</h1>
-      <DungeonBuilderConcept
+      <DungeonBuilder
         initialYaml={TOOLKIT_SANDBOX_YAML}
         authoringClient={clients.fighter.authoring}
         persistDraft={false}
         allowNewCanvas={false}
         allowYamlFileIO={false}
         onSaveSucceeded={handleSaveSucceeded}
-        showSaveResultLink={false}
       />
       <section aria-labelledby="toolkit-sandbox-party-heading">
         <h2 id="toolkit-sandbox-party-heading">Fixed party arrangements</h2>

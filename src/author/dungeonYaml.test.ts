@@ -7,13 +7,14 @@ import {
   paintCell,
   parseDungeon,
   placeAt,
+  resolveErrorPath,
   setStart,
   toggleDoorEdge,
   toggleWall,
   type DungeonDoc,
 } from './dungeonYaml';
 import { referenceTombDoc } from './fixtures/referenceTomb';
-import { fromOffset, type Axial } from './hexOffset';
+import { fromOffset, toOffset, type Axial } from './hexOffset';
 
 const p = (col: number, row: number): Axial => fromOffset('pointy', [col, row]);
 
@@ -40,7 +41,9 @@ describe('emitDungeon / parseDungeon', () => {
       'orientation: pointy',
       'void: opaque',
     ]);
-    expect(text).toContain('  - id: entrance\n    name: Entrance\n    archetype: crypt\n    lighting: { intensity: 0.6 }\n    cells:\n      - [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]]\n      - [[0,1],[1,1],[2,1],[3,1],[4,1],[5,1]]\n');
+    expect(text).toContain(
+      '  - id: entrance\n    name: Entrance\n    archetype: crypt\n    lighting: { intensity: 0.6 }\n    cells:\n      - [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]]\n      - [[0,1],[1,1],[2,1],[3,1],[4,1],[5,1]]\n'
+    );
     // eight rows per region, every row on its own line
     const entranceRows = lines.filter((l) => /^ {6}- \[\[[0-5],\d\]/.test(l));
     expect(entranceRows).toHaveLength(8);
@@ -71,7 +74,10 @@ describe('emitDungeon / parseDungeon', () => {
 
   it('the file is offset under the declared orientation: the same axial cell writes differently under flat', () => {
     const pointy = { ...emptyDungeon('pointy'), start: { q: -1, r: 3 } };
-    const flat: DungeonDoc = { ...emptyDungeon('flat'), start: { q: -1, r: 3 } };
+    const flat: DungeonDoc = {
+      ...emptyDungeon('flat'),
+      start: { q: -1, r: 3 },
+    };
     expect(emitDungeon(pointy)).toContain('start: [0, 3]'); // odd-r
     expect(emitDungeon(flat)).toContain('start: [-1, 2]'); // odd-q
     expect(parseDungeon(emitDungeon(flat)).start).toEqual({ q: -1, r: 3 });
@@ -85,12 +91,16 @@ describe('emitDungeon / parseDungeon', () => {
   });
 
   it('refuses version 1 by name', () => {
-    expect(() => parseDungeon('version: 1\nkey: x\n')).toThrow(/version 1 is deleted/);
+    expect(() => parseDungeon('version: 1\nkey: x\n')).toThrow(
+      /version 1 is deleted/
+    );
   });
 
   it('refuses unknown keys (the server is strict, so is the loader)', () => {
     expect(() =>
-      parseDungeon('version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nrooms: []\n')
+      parseDungeon(
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nrooms: []\n'
+      )
     ).toThrow(/unknown key "rooms"/);
   });
 });
@@ -98,7 +108,10 @@ describe('emitDungeon / parseDungeon', () => {
 describe('mutators', () => {
   it('the brush never paints a cell into two regions', () => {
     let doc = emptyDungeon();
-    doc = { ...doc, regions: [...doc.regions, { ...doc.regions[0], id: 'b', name: 'B' }] };
+    doc = {
+      ...doc,
+      regions: [...doc.regions, { ...doc.regions[0], id: 'b', name: 'B' }],
+    };
     doc = paintCell(doc, 'region-1', p(2, 2));
     doc = paintCell(doc, 'b', p(2, 2));
     expect(doc.regions[0].cells).toHaveLength(0);
@@ -144,7 +157,11 @@ describe('mutators', () => {
     doc = toggleWall(doc, [p(0, 0), p(1, 0)]);
     doc = toggleDoorEdge(doc, [p(1, 0), p(2, 0)]);
     doc = setStart(doc, p(1, 0));
-    doc = placeAt(doc, { ref: 'dnd5e:props:pillar', at: p(1, 0), blocksLos: true });
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(1, 0),
+      blocksLos: true,
+    });
     doc = eraseCell(doc, p(1, 0));
     expect(doc.walls).toHaveLength(0);
     expect(doc.doors).toHaveLength(0);
@@ -157,8 +174,16 @@ describe('mutators', () => {
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(0, 0));
     doc = paintCell(doc, 'region-1', p(1, 0));
-    doc = placeAt(doc, { ref: 'dnd5e:props:pillar', at: p(0, 0), blocksLos: true });
-    doc = placeAt(doc, { ref: 'dnd5e:monsters:zombie', at: p(1, 0), blocksLos: true });
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(0, 0),
+      blocksLos: true,
+    });
+    doc = placeAt(doc, {
+      ref: 'dnd5e:monsters:zombie',
+      at: p(1, 0),
+      blocksLos: true,
+    });
     expect(doc.place[0]).toEqual({
       ref: 'dnd5e:props:pillar',
       at: p(0, 0),
@@ -174,5 +199,48 @@ describe('mutators', () => {
   it('start must be floor', () => {
     const doc = emptyDungeon();
     expect(setStart(doc, p(4, 4))).toBe(doc);
+  });
+});
+
+describe('resolveErrorPath', () => {
+  it('names the thing the emitted order put at that path', () => {
+    const doc = referenceTombDoc();
+    // regions[1] is the hall; its row 0 is cols 6..15, so [0][3] is [9,0]
+    expect(resolveErrorPath(doc, 'regions[1].cells[0][3]')).toEqual({
+      kind: 'cell',
+      cell: p(9, 0),
+    });
+    expect(resolveErrorPath(doc, 'start')).toEqual({ kind: 'start' });
+    expect(resolveErrorPath(doc, 'place[3].boss')).toEqual({
+      kind: 'placement',
+      index: 3,
+      cell: p(23, 5),
+    });
+    expect(resolveErrorPath(doc, 'doors[1].edges[0]')).toEqual({
+      kind: 'edge',
+      edge: [p(15, 3), p(16, 3)],
+    });
+    expect(resolveErrorPath(doc, 'doors[1].locked.dc')).toEqual({
+      kind: 'door',
+      doorId: 'hall-tomb',
+    });
+    expect(resolveErrorPath(doc, 'regions[2].archetype')).toEqual({
+      kind: 'region',
+      regionId: 'tomb',
+    });
+    const text = emitDungeon(doc);
+    const wallLines = text.split('\n').filter((l) => l.startsWith('  - [['));
+    const walls3 = resolveErrorPath(doc, 'walls[3]');
+    expect(walls3.kind).toBe('edge');
+    if (walls3.kind === 'edge') {
+      const [a, b] = walls3.edge;
+      const pa = toOffset('pointy', a);
+      const pb = toOffset('pointy', b);
+      expect(wallLines[3]).toBe(
+        `  - [[${pa[0]},${pa[1]}],[${pb[0]},${pb[1]}]]`
+      );
+    }
+    expect(resolveErrorPath(doc, 'key')).toEqual({ kind: 'document' });
+    expect(resolveErrorPath(doc, 'walls[999]')).toEqual({ kind: 'document' });
   });
 });

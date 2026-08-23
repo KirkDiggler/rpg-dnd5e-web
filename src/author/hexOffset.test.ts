@@ -71,7 +71,11 @@ describe('toOffset / fromOffset pixel discriminator', () => {
     expect(world.x).toBeCloseTo(expected.x, 10);
     expect(world.z).toBeCloseTo(expected.y, 10);
     // and the 2D canvas agrees with the 3D placement for pointy
-    const center = hexCenter({ x: axial.q, y: axial.r } as never, SIZE, 'pointy');
+    const center = hexCenter(
+      { x: axial.q, y: axial.r } as never,
+      SIZE,
+      'pointy'
+    );
     expect(center.x).toBeCloseTo(expected.x, 10);
     expect(center.y).toBeCloseTo(expected.y, 10);
   });
@@ -98,7 +102,12 @@ describe('toOffset / fromOffset pixel discriminator', () => {
     '%s: every L cell maps to its own pixel and back (negative rows/cols too)',
     (orientation) => {
       const pixel = orientation === 'pointy' ? oddRPixel : oddQPixel;
-      for (const pair of [...L_SHAPE, [-3, -1], [-2, 3], [5, -4]] as OffsetPair[]) {
+      for (const pair of [
+        ...L_SHAPE,
+        [-3, -1],
+        [-2, 3],
+        [5, -4],
+      ] as OffsetPair[]) {
         const axial = fromOffset(orientation, pair);
         const center = hexCenter(
           { x: axial.q, y: axial.r } as never,

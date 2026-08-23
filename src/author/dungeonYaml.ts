@@ -148,7 +148,8 @@ function edge(v: unknown, path: string, o: Orientation): Edge {
 
 function list(v: unknown, path: string): unknown[] {
   if (v === undefined || v === null) return [];
-  if (!Array.isArray(v)) throw new DungeonParseError(`${path}: expected a list`);
+  if (!Array.isArray(v))
+    throw new DungeonParseError(`${path}: expected a list`);
   return v;
 }
 
@@ -333,16 +334,37 @@ function compareOffset(a: OffsetPair, b: OffsetPair): number {
   return a[1] - b[1] || a[0] - b[0];
 }
 
-/** Cells sorted by row then column, grouped one row per line. */
-function cellRows(o: Orientation, cells: Axial[]): OffsetPair[][] {
-  const sorted = cells.map((c) => toOffset(o, c)).sort(compareOffset);
-  const rows: OffsetPair[][] = [];
-  for (const p of sorted) {
-    const last = rows[rows.length - 1];
-    if (last && last[0][1] === p[1]) last.push(p);
-    else rows.push([p]);
-  }
-  return rows;
+/**
+ * The file's ORDER, computed once: cells sorted by row then column and
+ * grouped one row per line, walls sorted, door edges sorted. `emitDungeon`
+ * writes this and `resolveErrorPath` reads it, so a server path like
+ * `regions[1].cells[0][3]` names the same cell the emitter put there.
+ */
+export interface EmittedLayout {
+  regions: { region: RegionDoc; rows: Axial[][] }[];
+  walls: Edge[];
+  doors: { door: DoorDoc; edges: Edge[] }[];
+}
+
+export function emittedLayout(doc: DungeonDoc): EmittedLayout {
+  const o = doc.orientation;
+  const byOffset = (a: Axial, b: Axial) =>
+    compareOffset(toOffset(o, a), toOffset(o, b));
+  return {
+    regions: doc.regions.map((region) => {
+      const sorted = [...region.cells].sort(byOffset);
+      const rows: Axial[][] = [];
+      for (const cell of sorted) {
+        const last = rows[rows.length - 1];
+        if (last && toOffset(o, last[0])[1] === toOffset(o, cell)[1]) {
+          last.push(cell);
+        } else rows.push([cell]);
+      }
+      return { region, rows };
+    }),
+    walls: sortedEdges(doc.walls),
+    doors: doc.doors.map((door) => ({ door, edges: sortedEdges(door.edges) })),
+  };
 }
 
 function fmtEdge(o: Orientation, e: Edge): string {
@@ -358,6 +380,7 @@ function sortedEdges(edges: Edge[]): Edge[] {
 
 export function emitDungeon(doc: DungeonDoc): string {
   const o = doc.orientation;
+  const layout = emittedLayout(doc);
   const out: string[] = [];
   out.push('version: 2');
   out.push(`key: ${scalar(doc.key)}`);
@@ -369,18 +392,19 @@ export function emitDungeon(doc: DungeonDoc): string {
     out.push('regions: []');
   } else {
     out.push('regions:');
-    for (const region of doc.regions) {
+    for (const { region, rows } of layout.regions) {
       out.push(`  - id: ${scalar(region.id)}`);
       out.push(`    name: ${scalar(region.name)}`);
       out.push(`    archetype: ${scalar(region.archetype)}`);
       out.push(`    lighting: { intensity: ${region.lighting.intensity} }`);
-      const rows = cellRows(o, region.cells);
       if (rows.length === 0) {
         out.push('    cells: []');
       } else {
         out.push('    cells:');
         for (const row of rows) {
-          out.push(`      - [${row.map(fmtPair).join(',')}]`);
+          out.push(
+            `      - [${row.map((c) => fmtPair(toOffset(o, c))).join(',')}]`
+          );
         }
       }
     }
@@ -395,20 +419,16 @@ export function emitDungeon(doc: DungeonDoc): string {
     out.push('walls: []');
   } else {
     out.push('walls:');
-    for (const w of sortedEdges(doc.walls)) out.push(`  - ${fmtEdge(o, w)}`);
+    for (const w of layout.walls) out.push(`  - ${fmtEdge(o, w)}`);
   }
 
   if (doc.doors.length === 0) {
     out.push('doors: []');
   } else {
     out.push('doors:');
-    for (const d of doc.doors) {
+    for (const { door: d, edges } of layout.doors) {
       out.push(`  - id: ${scalar(d.id)}`);
-      out.push(
-        `    edges: [${sortedEdges(d.edges)
-          .map((e) => fmtEdge(o, e))
-          .join(',')}]`
-      );
+      out.push(`    edges: [${edges.map((e) => fmtEdge(o, e)).join(',')}]`);
       if (d.locked) {
         out.push(
           `    locked: { dc: ${d.locked.dc}, ability: ${scalar(d.locked.ability)} }`
@@ -631,9 +651,7 @@ export function toggleDoorEdge(
       ...doc,
       walls,
       doors: doc.doors.map((d) =>
-        d.id === target.id
-          ? { ...d, edges: [...d.edges, normalizeEdge(e)] }
-          : d
+        d.id === target.id ? { ...d, edges: [...d.edges, normalizeEdge(e)] } : d
       ),
     };
   }
@@ -670,10 +688,7 @@ export function setStart(doc: DungeonDoc, cell: Axial | null): DungeonDoc {
  * on an occupied cell replaces it. `blocks_*` are written explicitly for
  * props (prefilled by the caller from the catalog) and never for
  * monsters. */
-export function placeAt(
-  doc: DungeonDoc,
-  placement: PlacementDoc
-): DungeonDoc {
+export function placeAt(doc: DungeonDoc, placement: PlacementDoc): DungeonDoc {
   if (!isFloor(doc, placement.at)) return doc;
   const key = axialKey(placement.at);
   const clean: PlacementDoc = { ref: placement.ref, at: placement.at };
@@ -756,4 +771,70 @@ export function updateDungeon(
   patch: Partial<Pick<DungeonDoc, 'key' | 'name' | 'void'>>
 ): DungeonDoc {
   return { ...doc, ...patch };
+}
+
+// ---------------------------------------------------------------------------
+// Server error paths → the thing on the canvas
+// ---------------------------------------------------------------------------
+
+/** What a `FieldError.path` points at, resolved against the emitted
+ * order. `kind: 'document'` is a path the canvas has nothing to show for
+ * (`key`, `version`, an unparseable path) — it is listed, not drawn. */
+export type ErrorTarget =
+  | { kind: 'cell'; cell: Axial }
+  | { kind: 'edge'; edge: Edge }
+  | { kind: 'placement'; index: number; cell: Axial }
+  | { kind: 'region'; regionId: string }
+  | { kind: 'door'; doorId: string }
+  | { kind: 'start' }
+  | { kind: 'document' };
+
+export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
+  const layout = emittedLayout(doc);
+  if (path === 'start' || path.startsWith('start.')) return { kind: 'start' };
+
+  let m = /^regions\[(\d+)\]\.cells\[(\d+)\]\[(\d+)\]/.exec(path);
+  if (m) {
+    const cell = layout.regions[+m[1]]?.rows[+m[2]]?.[+m[3]];
+    return cell ? { kind: 'cell', cell } : { kind: 'document' };
+  }
+  m = /^regions\[(\d+)\]/.exec(path);
+  if (m) {
+    const region = layout.regions[+m[1]]?.region;
+    return region
+      ? { kind: 'region', regionId: region.id }
+      : { kind: 'document' };
+  }
+  m = /^walls\[(\d+)\]/.exec(path);
+  if (m) {
+    const edge = layout.walls[+m[1]];
+    return edge ? { kind: 'edge', edge } : { kind: 'document' };
+  }
+  m = /^doors\[(\d+)\]\.edges\[(\d+)\]/.exec(path);
+  if (m) {
+    const edge = layout.doors[+m[1]]?.edges[+m[2]];
+    return edge ? { kind: 'edge', edge } : { kind: 'document' };
+  }
+  m = /^doors\[(\d+)\]/.exec(path);
+  if (m) {
+    const door = layout.doors[+m[1]]?.door;
+    return door ? { kind: 'door', doorId: door.id } : { kind: 'document' };
+  }
+  m = /^place\[(\d+)\]/.exec(path);
+  if (m) {
+    const placement = doc.place[+m[1]];
+    return placement
+      ? { kind: 'placement', index: +m[1], cell: placement.at }
+      : { kind: 'document' };
+  }
+  return { kind: 'document' };
+}
+
+/** Resolve the compiler's paths ONCE, so the board and the error list are
+ * handed the same targets. */
+export function resolveErrorTargets(
+  doc: DungeonDoc,
+  paths: string[]
+): ErrorTarget[] {
+  return paths.map((p) => resolveErrorPath(doc, p));
 }

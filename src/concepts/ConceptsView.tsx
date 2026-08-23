@@ -1,8 +1,7 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
-import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
-import { PropCompositionConcept } from '../author/PropCompositionConcept';
+import { DungeonBuilderSandbox } from '../author/DungeonBuilderSandbox';
 import { AttackDie3DConcept } from './attack-die-3d/AttackDie3DConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
@@ -24,7 +23,6 @@ type ConceptPage =
   | 'fog-of-war'
   | 'session-tomb'
   | 'dungeon-builder'
-  | 'prop-composition'
   | 'asset-anchor-lab';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
@@ -38,7 +36,6 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'fog-of-war', label: 'Fog of War' },
   { id: 'session-tomb', label: 'Session Tomb' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
-  { id: 'prop-composition', label: 'Prop Composition' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
 ];
 
@@ -133,10 +130,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
             so it never calls PutDungeon and never depends on a running
             server, per Kirk's ask ("a dev one that is hooked to fixture
             data"). */}
-        {activePage === 'dungeon-builder' && (
-          <DungeonBuilderConcept forceFixtures />
-        )}
-        {activePage === 'prop-composition' && <PropCompositionConcept />}
+        {activePage === 'dungeon-builder' && <DungeonBuilderSandbox />}
         {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
       </motion.div>
     </div>

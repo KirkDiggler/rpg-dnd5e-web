@@ -122,7 +122,6 @@ import { useSessionTurn } from '../../api/useSessionTurn';
 import { useSessionView } from '../../api/useSessionView';
 import { useSessionWhere } from '../../api/useSessionWhere';
 import { useUnequipItem } from '../../api/useUnequipItem';
-import { layoutFromWire } from '../../concepts/session-tomb/atlas';
 import { CLASS_TEXTURE_SUFFIXES } from '../../config/characterTextures';
 import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
@@ -131,7 +130,11 @@ import { HEX_SIZE } from '../hex-grid/hexMath';
 import { Button } from '../ui/Button';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { buildAtlasPathIndex } from './atlasPath';
-import { buildScene3D, positionToCube } from './atlasToScene3D';
+import {
+  buildScene3D,
+  positionToCube,
+  resolveSceneLayout,
+} from './atlasToScene3D';
 import { CombatPanel } from './CombatPanel';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
@@ -148,49 +151,6 @@ export interface SessionEncounterViewProps {
   characterId?: string;
   playerId: string;
   onBack: () => void;
-}
-
-type LayoutOutcome =
-  | { ok: true; layout: 'pointy' }
-  | { ok: false; message: string };
-
-/**
- * Reads the wire's own answer for which way the hexes point and gates on
- * it — never guesses (`layoutFromWire`'s own contract: capabilities are
- * supplied, never defaulted). `hexMath.ts`'s 3D placement math is
- * pointy-top only today, so a flat-top or square atlas is reported as a
- * visible, named limitation rather than drawn wrong or silently dropped.
- */
-function resolveLayout(
-  layout: Parameters<typeof layoutFromWire>[0] | undefined,
-  grid: Parameters<typeof layoutFromWire>[1] | undefined
-): LayoutOutcome | null {
-  if (layout === undefined || grid === undefined) {
-    return null;
-  }
-  try {
-    const resolved = layoutFromWire(layout, grid);
-    if (resolved === 'pointy') {
-      return { ok: true, layout: 'pointy' };
-    }
-    if (resolved === 'flat') {
-      return {
-        ok: false,
-        message:
-          "This session's map is flat-top hex — the 3D route only draws " +
-          'pointy-top today (hexMath.ts is pointy-top only; tracked as ' +
-          'rpg-dnd5e-web#763), not silently guessed.',
-      };
-    }
-    return {
-      ok: false,
-      message:
-        "This session's map is a square grid — the 3D route only draws " +
-        'hex maps today.',
-    };
-  } catch (err) {
-    return { ok: false, message: errorMessage(err) };
-  }
 }
 
 /** A centered message card, matching the shape (not the fixed positioning)
@@ -368,7 +328,7 @@ export function SessionEncounterView({
   );
 
   const layoutOutcome = useMemo(
-    () => resolveLayout(atlas?.layout, atlas?.grid),
+    () => (atlas ? resolveSceneLayout(atlas) : null),
     [atlas]
   );
 
@@ -376,7 +336,7 @@ export function SessionEncounterView({
     if (!atlas || !layoutOutcome?.ok) {
       return null;
     }
-    return buildScene3D(atlas, HEX_SIZE);
+    return buildScene3D(atlas, HEX_SIZE, layoutOutcome.layout);
   }, [atlas, layoutOutcome]);
 
   // The atlas's own movement graph (floor mask + declared boundaries/

@@ -9,6 +9,7 @@
  * placements) so the round-trip and preview tests have a real-sized map
  * to chew on without a server.
  */
+import type { DungeonDoc, RegionDoc } from '../dungeonYaml';
 import {
   axialKey,
   axialNeighbors,
@@ -17,7 +18,6 @@ import {
   type Axial,
   type Edge,
 } from '../hexOffset';
-import type { DungeonDoc, RegionDoc } from '../dungeonYaml';
 
 function block(
   id: string,
