@@ -173,3 +173,10 @@
   font-size: 13px;
   z-index: 50;
 }
+.dg-picker {
+  min-width: 260px;
+  white-space: nowrap;
+}
+.dg-picker .dg-mini {
+  text-align: left;
+}

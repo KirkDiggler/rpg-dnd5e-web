@@ -65,7 +65,7 @@ function OpenMenu({ onOpen }: { onOpen: (key: string) => void }) {
   const dungeons = useListDungeons();
   return (
     <span
-      className="absolute left-0 top-full mt-1 flex flex-col gap-1 z-10 dg-col"
+      className="absolute left-0 top-full mt-1 flex flex-col gap-1 z-10 dg-col dg-picker"
       data-testid="dungeon-picker"
     >
       {dungeons.loading && <span className="text-xs">loading…</span>}
