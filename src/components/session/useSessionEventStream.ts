@@ -218,12 +218,32 @@ export function useSessionEventStream(
 
     const connect = () => {
       const myGeneration = ++generation;
-      const isCurrent = () => generation === myGeneration;
+      // Set the INSTANT this attempt decides to give up (inside
+      // `scheduleReconnect`, below) — not just when a LATER attempt's
+      // `connect()` call eventually bumps `generation`. Copilot review
+      // (PR #783): `scheduleReconnect` only ARMS a timer; the actual next
+      // `connect()` doesn't run, and `generation` doesn't change, until
+      // that timer fires. A `runCatchUp` already in flight at the moment
+      // the stream drops sits in that window — checking `generation`
+      // alone let it resolve successfully afterward and call
+      // `setState('live')` / reset `attempt` to 0 while the hook was
+      // genuinely mid-backoff, both lying to the caller (a debug log
+      // reading 'live' from a stream that IS reconnecting) and silently
+      // discarding the backoff schedule (the NEXT failure would then
+      // compute its delay from `attempt` 0 again instead of continuing
+      // the exponential climb). Folding this into `isCurrent` closes the
+      // window: every one of THIS attempt's async continuations —
+      // `runCatchUp` included — stops trusting its own results the
+      // moment `scheduleReconnect` runs, not only once a new attempt
+      // actually starts.
+      let superseded = false;
+      const isCurrent = () => generation === myGeneration && !superseded;
       const controller = new AbortController();
       abortController = controller;
 
       const scheduleReconnect = () => {
         if (!isCurrent()) return;
+        superseded = true;
         setState('reconnecting');
         if (attempt >= RECONNECT_CONFIG.maxAttempts) {
           // Out of attempts — stay 'reconnecting' rather than inventing a

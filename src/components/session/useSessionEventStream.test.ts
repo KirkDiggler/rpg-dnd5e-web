@@ -3,6 +3,7 @@ import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session
 import type { StoryEntry } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RECONNECT_CONFIG } from '../../api/streamReconnect';
 
 const hoisted = vi.hoisted(() => ({
   streamEventsFn: vi.fn(),
@@ -266,6 +267,73 @@ describe('useSessionEventStream', () => {
       5,
       expect.objectContaining({ seq: 5n })
     );
+  });
+
+  it('a catch-up that resolves AFTER the stream has already ended must not report live or reset backoff (Copilot review, PR #783)', async () => {
+    vi.useFakeTimers();
+    const firstStream = manualStream();
+    const secondStream = manualStream();
+    hoisted.streamEventsFn
+      .mockReturnValueOnce(firstStream.iterable)
+      .mockReturnValueOnce(secondStream.iterable);
+
+    // The initial connect's own catch-up — deliberately left pending so
+    // the test can resolve it AFTER the stream has already ended, the
+    // exact race Copilot's review found: `generation` alone doesn't
+    // change until the SCHEDULED reconnect's connect() call actually
+    // fires, so a stale catch-up resolving in the gap between
+    // `scheduleReconnect` arming its timer and that timer firing used to
+    // slip past the old `isCurrent()` check.
+    let resolveStaleCatchUp!: (v: {
+      entries: ReturnType<typeof fakeEntry>[];
+    }) => void;
+    hoisted.getStoryFn.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStaleCatchUp = resolve;
+        })
+    );
+
+    const onEvent = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await vi.waitFor(() => expect(result.current).toBe('resyncing'));
+
+    // The server closes the connection while that catch-up is STILL
+    // in flight — not our own abort.
+    firstStream.end();
+    await vi.waitFor(() => expect(result.current).toBe('reconnecting'));
+
+    // NOW the stale catch-up resolves, with a real entry it would
+    // otherwise have delivered.
+    resolveStaleCatchUp({ entries: [fakeEntry({ seq: 5n })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Must NOT have flipped back to 'live', and must NOT have delivered
+    // the stale entry — both would misrepresent a hook that is genuinely
+    // mid-backoff as connected.
+    expect(result.current).toBe('reconnecting');
+    expect(onEvent).not.toHaveBeenCalled();
+
+    // The scheduled reconnect still runs its OWN fresh catch-up rather
+    // than trusting the stale one — and since nothing was ever actually
+    // delivered (the stale entry was correctly discarded), it resumes
+    // from zero, not from seq 5.
+    hoisted.getStoryFn.mockResolvedValueOnce({ entries: [] });
+    await vi.advanceTimersByTimeAsync(RECONNECT_CONFIG.initialDelayMs);
+
+    await vi.waitFor(() =>
+      expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(2)
+    );
+    expect(hoisted.getStoryFn).toHaveBeenLastCalledWith(
+      { session: 'enc-1', member: 'char-1', fromSeq: 0n },
+      expect.anything()
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+
+    secondStream.push(fakeEvent({ seq: 1n }));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
   });
 
   it('reconnects with backoff when the stream ends for a reason other than our own abort, then resumes catch-up from last+1', async () => {
