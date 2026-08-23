@@ -133,6 +133,8 @@ import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { buildAtlasPathIndex } from './atlasPath';
 import { buildScene3D, positionToCube } from './atlasToScene3D';
 import { CombatPanel } from './CombatPanel';
+import { DebugCombatLog } from './DebugCombatLog';
+import { participantNameMap } from './participantNames';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
 import { useCombatPanel } from './useCombatPanel';
@@ -549,6 +551,15 @@ export function SessionEncounterView({
   // `useCombatPanel`'s own doc comment for why it never names who
   // (toolkit#1137: no typed "who" for DOWNED exists on the wire yet) and
   // never decodes `event.payload` to guess one.
+  // The debug combat log's own bounded buffer (rpg-dnd5e-web#740,
+  // rescoped 2026-08-23) — every stream event this component ever sees,
+  // oldest first, capped at 500 so a long session can't grow this
+  // unboundedly. `DebugCombatLog` renders exactly what it's given and
+  // never trims its own copy (see that component's own doc comment) —
+  // this is the ONE place the bound is enforced.
+  const DEBUG_LOG_MAX_EVENTS = 500;
+  const [debugEvents, setDebugEvents] = useState<SessionEvent[]>([]);
+
   const handleSessionEvent = useCallback(
     (event: SessionEvent) => {
       if (event.body?.case === 'moved' && event.body.value.member === member) {
@@ -559,9 +570,27 @@ export function SessionEncounterView({
       // refresh above now live in `useCombatPanel`'s own `handleEvent` —
       // see its doc comment for the single-funnel reasoning.
       handleCombatEvent(event);
+      setDebugEvents((prev) => {
+        const next = prev.length >= DEBUG_LOG_MAX_EVENTS ? prev.slice(1) : prev;
+        return [...next, event];
+      });
     },
     [member, refetchWhere, handleCombatEvent]
   );
+
+  // Names for the debug log — the SAME `participantNameMap` +
+  // sighted-member fallback `useCombatPanel`'s own `namesNow` builds
+  // internally (see that hook's doc comment on why a beat that arrives
+  // before Turn's own roster fetch lands still needs a name), computed
+  // here since the debug log is a sibling consumer of the same stream,
+  // not a child of `useCombatPanel`.
+  const debugLogNames = useMemo(() => {
+    const names = participantNameMap(turnParticipants);
+    for (const m of otherMembers) {
+      if (!names.has(m.subject)) names.set(m.subject, m.name);
+    }
+    return names;
+  }, [turnParticipants, otherMembers]);
   // Aged-out (rule 6, rpg-dnd5e-web#779): the resume point fell out of the
   // retention window, so the stream hook already resynced from zero on its
   // own — this callback is the piece only the caller can own, the same
@@ -744,19 +773,6 @@ export function SessionEncounterView({
           <Button variant="ghost" size="sm" onClick={onBack}>
             Back
           </Button>
-          {streamState !== 'live' && (
-            // Surfaces rule 6's stream state (rpg-dnd5e-web#779) — the
-            // debug log (#740) grows a proper header for this; this is
-            // the "make it visible at all" floor, hidden once live so
-            // normal play stays quiet. data-testid for the live-check
-            // evidence and for a component test to assert on directly.
-            <span
-              data-testid="stream-state"
-              style={{ color: 'var(--color-warning, #fbbf24)' }}
-            >
-              {streamState === 'reconnecting' ? 'Reconnecting…' : 'Resyncing…'}
-            </span>
-          )}
           {walking && (
             <span style={{ color: 'var(--text-secondary, #aaa)' }}>
               Walking…
@@ -775,6 +791,16 @@ export function SessionEncounterView({
           endingTurn={combatPanel.endingTurn}
           onOpenEquipment={
             equipmentData ? () => setEquipmentOpen((o) => !o) : undefined
+          }
+        />
+        <DebugCombatLog
+          events={debugEvents}
+          streamState={streamState}
+          names={debugLogNames}
+          storyLine={
+            combatPanel.selection.mode === 'turn'
+              ? combatPanel.selection.lastBeat
+              : null
           }
         />
         {equipmentData && (
