@@ -1,6 +1,8 @@
 import { Code, ConnectError } from '@connectrpc/connect';
-import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import type { StoryEntry } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  EventKind,
+  type Event,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECONNECT_CONFIG } from '../../api/streamReconnect';
@@ -32,17 +34,6 @@ function fakeEvent(overrides: Partial<Event> = {}): Event {
     body: { case: undefined },
     ...overrides,
   } as Event;
-}
-
-function fakeEntry(overrides: Partial<StoryEntry> = {}): StoryEntry {
-  return {
-    seq: 1n,
-    at: 0n,
-    correlation: '',
-    tags: {},
-    payload: new Uint8Array(),
-    ...overrides,
-  } as StoryEntry;
 }
 
 /** A push-driven async-iterable "stream" a test can feed events into (or
@@ -169,9 +160,10 @@ describe('useSessionEventStream', () => {
     );
   });
 
-  it('on the very first connect, catches up from zero before trusting live delivery, then delivers live events in order', async () => {
+  it('on the very first connect, catches up from zero before trusting live delivery, then delivers GetStory entries straight through — the same typed Event shape live delivery uses, not a reconstructed stand-in', async () => {
+    const catchUpEvent = fakeEvent({ seq: 1n, kind: EventKind.DOWNED });
     hoisted.getStoryFn.mockResolvedValueOnce({
-      entries: [fakeEntry({ seq: 1n })],
+      entries: [catchUpEvent],
     });
     const stream = manualStream();
     hoisted.streamEventsFn.mockReturnValue(stream.iterable);
@@ -188,13 +180,11 @@ describe('useSessionEventStream', () => {
       )
     );
     await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
-    // The catch-up entry, synthesized — no typed body (see module doc
-    // comment: StoryEntry carries none).
-    expect(onEvent.mock.calls[0][0]).toMatchObject({
-      seq: 1n,
-      kind: expect.anything(),
-      body: { case: undefined },
-    });
+    // Straight through — the exact object GetStory returned, typed body
+    // and all (rpg-api-protos v0.1.135: GetStoryResponse.entries is
+    // `repeated Event`, the same message StreamEvents sends), not a
+    // synthesized stand-in.
+    expect(onEvent.mock.calls[0][0]).toBe(catchUpEvent);
     await waitFor(() => expect(result.current).toBe('live'));
 
     stream.push(fakeEvent({ seq: 2n }));
@@ -205,7 +195,7 @@ describe('useSessionEventStream', () => {
     );
   });
 
-  it('gap detection: a mid-stream seq jump triggers GetStory catch-up, buffers concurrent live events, and delivers everything in order, de-duped in favor of the buffered (typed) copy', async () => {
+  it('gap detection: a mid-stream seq jump triggers GetStory catch-up, buffers concurrent live events, and delivers everything in order, de-duped by seq', async () => {
     const stream = manualStream();
     hoisted.streamEventsFn.mockReturnValue(stream.iterable);
     const onEvent = vi.fn();
@@ -224,7 +214,7 @@ describe('useSessionEventStream', () => {
     // Call 2: the gap catch-up, from_seq 2 — resolves seq 2 AND seq 3 (a
     // real GetStory answer has no upper bound), racing against seq 3 and
     // seq 4 already having arrived live in the meantime.
-    let resolveCatchUp!: (v: { entries: StoryEntry[] }) => void;
+    let resolveCatchUp!: (v: { entries: Event[] }) => void;
     hoisted.getStoryFn.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -237,9 +227,12 @@ describe('useSessionEventStream', () => {
     await waitFor(() => expect(result.current).toBe('resyncing'));
     stream.push(fakeEvent({ seq: 4n })); // arrives WHILE catch-up is in flight
 
-    resolveCatchUp({
-      entries: [fakeEntry({ seq: 2n }), fakeEntry({ seq: 3n })],
-    });
+    // A real GetStory answer has no upper bound, so this covers BOTH the
+    // genuine gap (seq 2) and a seq (3) the live stream ALSO already
+    // delivered while the RPC was in flight.
+    const catchUpSeq2 = fakeEvent({ seq: 2n });
+    const catchUpSeq3 = fakeEvent({ seq: 3n });
+    resolveCatchUp({ entries: [catchUpSeq2, catchUpSeq3] });
 
     await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(4));
     await waitFor(() => expect(result.current).toBe('live'));
@@ -250,15 +243,19 @@ describe('useSessionEventStream', () => {
       3n,
       4n,
     ]);
-    // seq 2 only ever existed via catch-up — synthetic, no typed body.
-    expect(onEvent.mock.calls[1][0]).toMatchObject({
-      body: { case: undefined },
-    });
-    // seq 3 arrived on BOTH paths — the buffered LIVE copy must win, not
-    // catch-up's synthetic duplicate. Asserting object IDENTITY (not just
-    // equal fields) proves it's the exact instance pushed onto the live
-    // stream, not a re-synthesized stand-in that merely looks the same.
-    expect(onEvent.mock.calls[2][0]).toBe(liveSeq3);
+    // Catch-up entries are ordinary typed Events now (rpg-api-protos
+    // v0.1.135) — delivered straight through, object identity intact.
+    expect(onEvent.mock.calls[1][0]).toBe(catchUpSeq2);
+    // seq 3 arrived on BOTH paths. applyCatchUpEntries runs BEFORE
+    // drainBuffer, so the catch-up's own copy is delivered first and the
+    // buffered live duplicate is then skipped by drainBuffer's identical
+    // `seq <= lastSeq` check — there is no synthetic-vs-typed precedence
+    // to arbitrate anymore (both are the same Event shape), just this
+    // ordering. Asserting identity against the catch-up copy (and NOT the
+    // live one) pins down which survives, so a regression that silently
+    // drops the gap catch-up's own results doesn't slip by unnoticed.
+    expect(onEvent.mock.calls[2][0]).toBe(catchUpSeq3);
+    expect(onEvent.mock.calls[2][0]).not.toBe(liveSeq3);
 
     // Live delivery resumes unbuffered afterward.
     stream.push(fakeEvent({ seq: 5n }));
@@ -285,7 +282,7 @@ describe('useSessionEventStream', () => {
     // `scheduleReconnect` arming its timer and that timer firing used to
     // slip past the old `isCurrent()` check.
     let resolveStaleCatchUp!: (v: {
-      entries: ReturnType<typeof fakeEntry>[];
+      entries: ReturnType<typeof fakeEvent>[];
     }) => void;
     hoisted.getStoryFn.mockImplementationOnce(
       () =>
@@ -307,7 +304,7 @@ describe('useSessionEventStream', () => {
 
     // NOW the stale catch-up resolves, with a real entry it would
     // otherwise have delivered.
-    resolveStaleCatchUp({ entries: [fakeEntry({ seq: 5n })] });
+    resolveStaleCatchUp({ entries: [fakeEvent({ seq: 5n })] });
     await vi.advanceTimersByTimeAsync(0);
 
     // Must NOT have flipped back to 'live', and must NOT have delivered
@@ -388,7 +385,7 @@ describe('useSessionEventStream', () => {
       .mockResolvedValueOnce({ entries: [] }) // initial connect
       .mockRejectedValueOnce(storyTrimmedError()); // the gap catch-up: aged out
     hoisted.getStoryFn.mockResolvedValueOnce({
-      entries: [fakeEntry({ seq: 50n })],
+      entries: [fakeEvent({ seq: 50n })],
     }); // the automatic from_seq:0 retry
 
     const { result } = renderHook(() =>

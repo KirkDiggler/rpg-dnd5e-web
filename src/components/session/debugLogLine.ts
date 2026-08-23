@@ -37,11 +37,14 @@
  * # Unknown bodies render their JSON
  *
  * Two situations reach the `default` branch: a kind with no typed body
- * member at all (`JOINED`, `EXITED`, `ENDED`, `SCENE_OPENED`, `TICK`,
- * and rule 6's own synthesized `UNKNOWN` for a catch-up-recovered entry
- * — see `useSessionEventStream.ts`'s `storyEntryToEvent`), and a FUTURE
- * typed `body` case this switch doesn't recognize yet. Both render
- * `kind=<name> body=<JSON>` — the typed body's own decoded `.value`
+ * member at all (`JOINED`, `EXITED`, `ENDED`, `SCENE_OPENED`, `TICK`, and
+ * the wire's own `UNKNOWN` — "delivered on purpose rather than dropped so
+ * the recipient still learns its sequence advanced", `EventKind.UNKNOWN`'s
+ * own doc comment; catch-up entries are ordinary typed `Event`s same as
+ * live ones since rpg-api-protos v0.1.135, so `UNKNOWN` here is never a
+ * catch-up artifact — see `useSessionEventStream.ts`'s own doc comment),
+ * and a FUTURE typed `body` case this switch doesn't recognize yet. Both
+ * render `kind=<name> body=<JSON>` — the typed body's own decoded `.value`
  * (never `Event.payload`, which stays exactly as forbidden to decode
  * here as everywhere else on this route) or `null` when there is none.
  * `JSON.stringify` on an already-decoded protobuf message is safe EXCEPT
