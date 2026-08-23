@@ -128,6 +128,28 @@ describe('formatDebugLine', () => {
     expect(line.text).toBe('seq=7 clock=42 downed member=Skeleton');
   });
 
+  it('joined — member, resolved name (rpg-project#260)', () => {
+    const event = baseEvent({
+      kind: EventKind.JOINED,
+      body: { case: 'joined', value: { member: 'char-1' } },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 joined member=Toolkit Sandbox Fighter'
+    );
+  });
+
+  it('exited — member, resolved name, the mirror of joined', () => {
+    const event = baseEvent({
+      kind: EventKind.EXITED,
+      body: { case: 'exited', value: { member: 'skeleton-1' } },
+    });
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['skeleton-1']);
+    expect(line.text).toBe('seq=7 clock=42 exited member=Skeleton');
+  });
+
   it('turn_ended — member and next, both resolved', () => {
     const event = baseEvent({
       kind: EventKind.TURN_ENDED,

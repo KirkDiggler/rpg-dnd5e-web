@@ -37,8 +37,8 @@
  * # Unknown bodies render their JSON
  *
  * Two situations reach the `default` branch: a kind with no typed body
- * member at all (`JOINED`, `EXITED`, `ENDED`, `SCENE_OPENED`, `TICK`, and
- * the wire's own `UNKNOWN` — "delivered on purpose rather than dropped so
+ * member at all (`ENDED`, `SCENE_OPENED`, `TICK`, and the wire's own
+ * `UNKNOWN` — "delivered on purpose rather than dropped so
  * the recipient still learns its sequence advanced", `EventKind.UNKNOWN`'s
  * own doc comment; catch-up entries are ordinary typed `Event`s same as
  * live ones since rpg-api-protos v0.1.135, so `UNKNOWN` here is never a
@@ -142,6 +142,22 @@ export function formatDebugLine(
         seq,
         ids: [b.member],
         text: `${prefix} downed member=${name(b.member)}`,
+      };
+    }
+    case 'joined': {
+      const b = event.body.value;
+      return {
+        seq,
+        ids: [b.member],
+        text: `${prefix} joined member=${name(b.member)}`,
+      };
+    }
+    case 'exited': {
+      const b = event.body.value;
+      return {
+        seq,
+        ids: [b.member],
+        text: `${prefix} exited member=${name(b.member)}`,
       };
     }
     case 'turnEnded': {
