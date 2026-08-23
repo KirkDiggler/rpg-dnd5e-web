@@ -645,6 +645,57 @@ describe('SessionEncounterView', () => {
     );
   });
 
+  it("clears the debug combat log's buffer on a session/member change (Copilot review, PR #784)", async () => {
+    hoisted.atlasResult.atlas = pointyAtlas();
+    hoisted.atlasResult.loading = false;
+    hoisted.whereResult.position = { x: 0, y: 0 };
+    hoisted.whereResult.loading = false;
+    hoisted.streamEventsFn.mockReturnValueOnce(
+      fakeStream([
+        event(EventKind.MOVED, {
+          case: 'moved',
+          value: { member: 'char-1', to: { x: 1, y: 0 } },
+        } as SessionEvent['body']),
+      ])
+    );
+
+    const { rerender } = render(
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={noop}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getAllByTestId('debug-combat-log-line')).toHaveLength(1)
+    );
+
+    // A different session for the SAME component instance (no `key`
+    // change) — GameView doesn't wire this today, but the buffer must
+    // not depend on that: nothing from `enc-1` may survive into `enc-2`'s
+    // log, and a fresh `seq` sequence starting over must not collide
+    // with the previous session's own React list keys.
+    hoisted.streamEventsFn.mockReturnValueOnce(fakeStream([]));
+    rerender(
+      <SessionEncounterView
+        sessionId="enc-2"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={noop}
+      />
+    );
+
+    await waitFor(() =>
+      expect(hoisted.streamEventsFn).toHaveBeenLastCalledWith(
+        { session: 'enc-2', member: 'char-1' },
+        expect.anything()
+      )
+    );
+    expect(screen.queryByTestId('debug-combat-log-line')).toBeNull();
+    screen.getByText('No events yet.');
+  });
+
   describe('drawing other perceived members (rpg-dnd5e-web#762 slice 3)', () => {
     it('turns a GetView sighting into an otherMembers entry passed to SessionCanvas', async () => {
       hoisted.atlasResult.atlas = pointyAtlas();

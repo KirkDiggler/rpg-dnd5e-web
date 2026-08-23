@@ -560,6 +560,19 @@ export function SessionEncounterView({
   const DEBUG_LOG_MAX_EVENTS = 500;
   const [debugEvents, setDebugEvents] = useState<SessionEvent[]>([]);
 
+  // Cleared on every session/member change (Copilot review, PR #784) —
+  // GameView mounts this component without a `key`, so a future wiring
+  // change that reassigns `sessionId`/`characterId` on an already-mounted
+  // instance must not carry one session's events into another's log, and
+  // a `seq` sequence that restarts at a new session would otherwise
+  // collide with `DebugCombatLog`'s own `seq`-keyed React list. Same
+  // "reset rather than trust a remount to happen" discipline
+  // `useSessionAfford`/`useSessionView` already apply to their own
+  // session/member-scoped state.
+  useEffect(() => {
+    setDebugEvents([]);
+  }, [sessionId, member]);
+
   const handleSessionEvent = useCallback(
     (event: SessionEvent) => {
       if (event.body?.case === 'moved' && event.body.value.member === member) {
