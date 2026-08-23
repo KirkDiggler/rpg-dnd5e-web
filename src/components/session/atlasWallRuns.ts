@@ -126,6 +126,16 @@ function unitDirection(a: WorldPos, b: WorldPos): WorldPos {
   return { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
 }
 
+/** A stable, order-independent key for an unordered pair of hex
+ * coordinates -- used to detect a doorway occupying the same cell pair
+ * as a declared boundary (see the doorway/boundary overlap guard
+ * above). */
+function pairKey(a: CubeCoord, b: CubeCoord): string {
+  const ka = coordToKey(a);
+  const kb = coordToKey(b);
+  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+}
+
 /**
  * boundariesToWallRuns is the module's one entry point: every declared
  * boundary, every doorway (as a chain break point), and every implied
@@ -147,15 +157,30 @@ export function boundariesToWallRuns(
   const cubes = atlas.cells.map(positionToCube);
   const floorKeys = new Set(cubes.map(coordToKey));
 
+  // A doorway "punches through" a boundary on the same cell pair -- a
+  // shape this codebase already treats as valid (Copilot review, PR
+  // #788). If both edges were fed to the chaining engine, the boundary
+  // would still tile as a normal wall (the engine only uses door edges
+  // as BREAK points; it doesn't remove an overlapping non-door edge),
+  // covering the door opening with wall geometry. Precomputing every
+  // doorway's own pair key lets the boundary loop below skip any
+  // boundary edge a doorway already occupies, while the doorway edge
+  // itself still goes in as `isDoor: true` so chaining trims/breaks
+  // correctly around it.
+  const doorwayPairs = new Set<string>();
+  for (const d of atlas.doorways as AtlasDoorway[]) {
+    if (!d.from || !d.to) continue;
+    doorwayPairs.add(pairKey(positionToCube(d.from), positionToCube(d.to)));
+  }
+
   const edges: AuthoredWallEdgeInput[] = [];
 
   for (const b of atlas.boundaries as AtlasBoundary[]) {
     if (!b.from || !b.to) continue;
-    edges.push({
-      from: positionToCube(b.from),
-      to: positionToCube(b.to),
-      isDoor: false,
-    });
+    const from = positionToCube(b.from);
+    const to = positionToCube(b.to);
+    if (doorwayPairs.has(pairKey(from, to))) continue;
+    edges.push({ from, to, isDoor: false });
   }
 
   for (const d of atlas.doorways as AtlasDoorway[]) {

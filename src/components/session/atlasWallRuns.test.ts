@@ -461,6 +461,53 @@ describe('boundariesToWallRuns — a non-rectangular floor', () => {
   });
 });
 
+describe('boundariesToWallRuns — a doorway declared on the same cell pair as a boundary (Copilot review, PR #788)', () => {
+  it('the boundary does not tile as wall geometry across the door opening', () => {
+    // A shape this codebase already treats as valid: the doorway "punches
+    // through" a declared boundary on the exact same adjacent cell pair.
+    // If both edges were fed to the chaining engine unfiltered, the
+    // boundary would still tile as a normal wall run and cover the door.
+    const cells = [pos(0, 0), pos(1, 0), pos(0, 1), pos(1, 1)];
+    const boundaries = [
+      {
+        from: pos(0, 0),
+        to: pos(1, 0),
+        blocksMovement: true,
+        blocksLineOfSight: true,
+      },
+    ];
+    const doorways = [{ connection: 'door-a', from: pos(0, 0), to: pos(1, 0) }];
+    const scene = boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: doorways as never,
+      },
+      1
+    );
+    expect(scene.doorGaps).toHaveLength(1);
+    const from = positionToCube(pos(0, 0));
+    const to = positionToCube(pos(1, 0));
+    const { a, b } = hexEdgeBetween(from, to, 1);
+    // No run may BE that boundary edge's own exact geometry — without
+    // the fix, this tiny fixture's only other declared boundary is the
+    // door's own pair, so the un-suppressed boundary would chain as its
+    // own isolated 1-edge run at exactly these two corner points (the
+    // same exact-match shape the partial-wall test above uses to prove
+    // an isolated edge DOES render — here it must NOT).
+    const tiledAcrossDoor = scene.wallRuns.some((r) => {
+      const forward =
+        Math.hypot(r.start.x - a.x, r.start.z - a.z) < 1e-6 &&
+        Math.hypot(r.end.x - b.x, r.end.z - b.z) < 1e-6;
+      const reverse =
+        Math.hypot(r.start.x - b.x, r.start.z - b.z) < 1e-6 &&
+        Math.hypot(r.end.x - a.x, r.end.z - a.z) < 1e-6;
+      return forward || reverse;
+    });
+    expect(tiledAcrossDoor).toBe(false);
+  });
+});
+
 describe('boundariesToWallRuns — small edge cases', () => {
   it('gives two chambers with no declared boundary between them zero interior wall geometry, only their own envelopes', () => {
     const cells = [pos(0, 0), pos(10, 0)];
