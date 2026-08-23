@@ -9,7 +9,7 @@ import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
 import { Standing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { cubeToWorld } from '../hex-grid/hexMath';
 import { buildAtlasPathIndex } from './atlasPath';
@@ -25,19 +25,36 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
   return { ...actual, useLoader };
 });
 
+const gltfMockState = vi.hoisted(() => ({
+  failedUrls: new Set<string>(),
+  pendingUrls: new Set<string>(),
+  pending: new Promise<never>(() => undefined),
+}));
+
+afterEach(() => {
+  gltfMockState.failedUrls.clear();
+  gltfMockState.pendingUrls.clear();
+});
+
 vi.mock('@react-three/drei', () => {
-  const make = () => {
+  const make = (name = '') => {
     const scene = new THREE.Group();
-    scene.add(
-      new THREE.Mesh(
-        new THREE.BoxGeometry(),
-        new THREE.MeshStandardMaterial({ color: 0xffffff })
-      )
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
     );
+    mesh.name = name;
+    scene.add(mesh);
     return scene;
   };
   return {
-    useGLTF: () => ({ scene: make(), animations: [] }),
+    useGLTF: (url: string) => {
+      if (gltfMockState.failedUrls.has(url)) {
+        throw new Error(`failed to load ${url}`);
+      }
+      if (gltfMockState.pendingUrls.has(url)) throw gltfMockState.pending;
+      return { scene: make(url), animations: [] };
+    },
     useTexture: () => new THREE.Texture(),
     useAnimations: () => ({
       actions: {},
@@ -112,10 +129,56 @@ function scene(): Scene3D {
   ];
   return {
     floorTiles: floorTiles([0, 0, 0], [1, -1, 0], [1, 0, -1]),
+    props: [],
     envelopeRuns,
     connectorRuns,
     doorGaps,
   };
+}
+
+function renderSession(scene3D = scene()) {
+  return ReactThreeTestRenderer.create(
+    <SessionScene
+      scene={scene3D}
+      hexSize={1}
+      characterId="char-1"
+      characterName="Toolkit Sandbox Fighter"
+      character={undefined}
+      classRefId={undefined}
+      myPosition={{ x: 0, y: 0, z: 0 }}
+    />
+  );
+}
+
+function sceneWithProp(ref: string, position = { x: 1, y: 0, z: -1 }) {
+  const propScene = scene();
+  propScene.props = [{ ref, position }];
+  return propScene;
+}
+
+function meshInstances(
+  renderer: Awaited<ReturnType<typeof renderSession>>
+): THREE.Mesh[] {
+  return renderer.scene
+    .findAllByType('Mesh')
+    .map((node) => (node as unknown as { instance: THREE.Mesh }).instance);
+}
+
+function expectOneVisiblePlaceholder(
+  renderer: Awaited<ReturnType<typeof renderSession>>,
+  baseMeshCount: number
+) {
+  const meshes = meshInstances(renderer);
+  expect(meshes).toHaveLength(baseMeshCount + 1);
+  const expected = cubeToWorld({ x: 1, y: 0, z: -1 }, 1);
+  expect(
+    meshes.some(
+      (mesh) =>
+        mesh.position.x === expected.x &&
+        mesh.position.y > 0.2 &&
+        mesh.position.z === expected.z
+    )
+  ).toBe(true);
 }
 
 describe('SessionScene', () => {
@@ -154,6 +217,68 @@ describe('SessionScene', () => {
     // the three floor tiles already counted.
     const allMeshes = renderer.scene.findAll((node) => node.type === 'Mesh');
     expect(allMeshes.length).toBeGreaterThan(floorMeshes.length);
+  });
+
+  it('renders a known AtlasProp model at the prop cell', async () => {
+    const position = { x: 1, y: -1, z: 0 };
+    const renderer = await renderSession(
+      sceneWithProp('dnd5e:props:pillar', position)
+    );
+
+    expect(meshInstances(renderer).map((mesh) => mesh.name)).toContain(
+      '/models/synty/props/SM_Env_Pillar_Round_01.glb'
+    );
+
+    const expected = cubeToWorld(position, 1);
+    const propGroup = renderer.scene
+      .findAllByType('Group')
+      .map((node) => (node as unknown as { instance: THREE.Group }).instance)
+      .find(
+        (group) =>
+          group.position.x === expected.x && group.position.z === expected.z
+      );
+    expect(propGroup?.position.toArray()).toEqual([expected.x, 0, expected.z]);
+  });
+
+  it('renders a visible placeholder at the cell when an AtlasProp ref is unknown', async () => {
+    const baseMeshCount = meshInstances(await renderSession()).length;
+    const renderer = await renderSession(
+      sceneWithProp('homebrew:props:unknown')
+    );
+
+    expectOneVisiblePlaceholder(renderer, baseMeshCount);
+  });
+
+  it('keeps a placeholder visible when a mapped AtlasProp model fails to load', async () => {
+    const baseMeshCount = meshInstances(await renderSession()).length;
+    gltfMockState.failedUrls.add(
+      '/models/synty/props/SM_Env_Pillar_Round_01.glb'
+    );
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const outcome = await renderSession(
+      sceneWithProp('dnd5e:props:pillar')
+    ).then(
+      (renderer) => ({ renderer }),
+      (error: unknown) => ({ error })
+    );
+    consoleError.mockRestore();
+
+    expect(outcome).toHaveProperty('renderer');
+    if ('renderer' in outcome) {
+      expectOneVisiblePlaceholder(outcome.renderer, baseMeshCount);
+    }
+  });
+
+  it('keeps a placeholder visible while a mapped AtlasProp model is loading', async () => {
+    const baseMeshCount = meshInstances(await renderSession()).length;
+    gltfMockState.pendingUrls.add(
+      '/models/synty/props/SM_Env_Pillar_Round_01.glb'
+    );
+    const renderer = await renderSession(sceneWithProp('dnd5e:props:pillar'));
+
+    expectOneVisiblePlaceholder(renderer, baseMeshCount);
   });
 
   it('places the local player and camera target at the given cube position', async () => {
