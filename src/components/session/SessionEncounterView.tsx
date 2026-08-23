@@ -562,7 +562,23 @@ export function SessionEncounterView({
     },
     [member, refetchWhere, handleCombatEvent]
   );
-  useSessionEventStream(sessionId, member, handleSessionEvent);
+  // Aged-out (rule 6, rpg-dnd5e-web#779): the resume point fell out of the
+  // retention window, so the stream hook already resynced from zero on its
+  // own — this callback is the piece only the caller can own, the same
+  // View/Turn/Afford refetch trio SessionEncounterView already owns every
+  // other trigger for (see this component's own doc comment).
+  const handleStreamAgedOut = useCallback(() => {
+    void refetchView();
+    void refetchTurn();
+    void refetchAfford();
+  }, [refetchView, refetchTurn, refetchAfford]);
+
+  const streamState = useSessionEventStream(
+    sessionId,
+    member,
+    handleSessionEvent,
+    handleStreamAgedOut
+  );
 
   // GetView's refresh policy piggybacks on GetWhere's: every completed
   // The view FOLLOWS where. This effect is the single owner of every
@@ -728,6 +744,19 @@ export function SessionEncounterView({
           <Button variant="ghost" size="sm" onClick={onBack}>
             Back
           </Button>
+          {streamState !== 'live' && (
+            // Surfaces rule 6's stream state (rpg-dnd5e-web#779) — the
+            // debug log (#740) grows a proper header for this; this is
+            // the "make it visible at all" floor, hidden once live so
+            // normal play stays quiet. data-testid for the live-check
+            // evidence and for a component test to assert on directly.
+            <span
+              data-testid="stream-state"
+              style={{ color: 'var(--color-warning, #fbbf24)' }}
+            >
+              {streamState === 'reconnecting' ? 'Reconnecting…' : 'Resyncing…'}
+            </span>
+          )}
           {walking && (
             <span style={{ color: 'var(--text-secondary, #aaa)' }}>
               Walking…

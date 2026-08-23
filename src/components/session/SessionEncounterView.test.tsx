@@ -70,6 +70,7 @@ const hoisted = vi.hoisted(() => ({
   getCharacterFn: vi.fn(),
   moveFn: vi.fn(),
   streamEventsFn: vi.fn(),
+  getStoryFn: vi.fn(),
   getViewFn: vi.fn(),
   affordFn: vi.fn(),
   turnFn: vi.fn(),
@@ -107,6 +108,7 @@ vi.mock('@/api/client', () => ({
   sessionClient: {
     move: hoisted.moveFn,
     streamEvents: hoisted.streamEventsFn,
+    getStory: hoisted.getStoryFn,
     getView: hoisted.getViewFn,
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
@@ -190,6 +192,15 @@ beforeEach(() => {
   hoisted.moveFn.mockReset();
   hoisted.streamEventsFn.mockReset();
   hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
+  hoisted.getStoryFn.mockReset();
+  // Rule 6 (rpg-dnd5e-web#779): every (re)connect now runs a GetStory
+  // catch-up before trusting the live stream. Nothing in this file's own
+  // scope (click -> RPC -> stream wiring) is testing rule 6 itself — that
+  // lives in useSessionEventStream.test.ts — so the default here is
+  // "nothing to catch up," matching the pre-rule-6 behavior every
+  // existing test in this file already assumes.
+  hoisted.getStoryFn.mockResolvedValue({ entries: [] });
+  nextEventSeq = 1n;
   hoisted.getViewFn.mockReset();
   hoisted.getViewFn.mockResolvedValue({ sightings: [] });
   hoisted.affordFn.mockReset();
@@ -231,15 +242,26 @@ function participant(
   } as Participant;
 }
 
+/** Auto-incrementing, reset per test (`beforeEach` above) — rule 6
+ * (rpg-dnd5e-web#779) means `useSessionEventStream` now reads `Event.seq`
+ * for real (gap detection against the last one delivered), so a fixture
+ * that always returned `seq: undefined` would either look like a gap on
+ * the SECOND event in any multi-event array this file builds, or crash
+ * outright trying `undefined + 1n`. `event()` below defaults every call
+ * to the next value unless a test has a reason to pass its own — none do
+ * today; seq-specific behavior is useSessionEventStream.test.ts's job. */
+let nextEventSeq = 1n;
+
 /** A realistic `Event` fixture — every stream test fixture in this file
  * used to get away with a bare `{ kind }` cast; the typed-body redesign
  * (rpg-project#249) means `handleEvent` actually reads `body.case`, so
  * these need a real (if minimal) body shape from here on. */
 function event(
   kind: EventKind,
-  body: SessionEvent['body'] = { case: undefined }
+  body: SessionEvent['body'] = { case: undefined },
+  seq?: bigint
 ): SessionEvent {
-  return { kind, body } as SessionEvent;
+  return { kind, body, seq: seq ?? nextEventSeq++ } as SessionEvent;
 }
 
 const noop = () => {};
@@ -592,7 +614,11 @@ describe('SessionEncounterView', () => {
     hoisted.whereResult.loading = false;
     hoisted.streamEventsFn.mockReturnValue(
       fakeStream([
-        { kind: EventKind.STRUCK } as SessionEvent,
+        // Via the shared `event()` helper (not a raw literal) so this
+        // multi-event array carries contiguous seq — rule 6's gap
+        // detection would otherwise misread the second event as a gap
+        // (see `event()`'s own doc comment).
+        event(EventKind.STRUCK),
         event(EventKind.MOVED, {
           case: 'moved',
           value: { member: 'char-1', to: { x: 1, y: 0 } },
