@@ -1,8 +1,9 @@
 /**
  * DungeonBuilderSandbox — the Concepts Lab mount of the builder: the
- * reference tomb loaded, fixtures mode (`fixtureAtlas` answers every
- * compile; `PutDungeon` is never called), no draft persistence. The
- * real `/author` mount is `AuthorView.tsx`.
+ * reference tomb loaded, fixtures mode (`fixtureCompile` shapes an atlas
+ * from the CURRENT document on every edit; `PutDungeon` is never
+ * called), no draft persistence. The real `/author` mount is
+ * `AuthorView.tsx`.
  */
 import { useMemo } from 'react';
 import { DungeonBuilder } from './DungeonBuilder';
@@ -11,12 +12,11 @@ import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
 import { referenceTombDoc } from './fixtures/referenceTomb';
 
 export function DungeonBuilderSandbox() {
-  const doc = useMemo(() => referenceTombDoc(), []);
-  const atlas = useMemo(() => fixtureAtlasOf(doc), [doc]);
+  const initialYaml = useMemo(() => emitDungeon(referenceTombDoc()), []);
   return (
     <DungeonBuilder
-      initialYaml={emitDungeon(doc)}
-      fixtureAtlas={atlas}
+      initialYaml={initialYaml}
+      fixtureCompile={fixtureAtlasOf}
       persistDraft={false}
       allowYamlFileIO
     />

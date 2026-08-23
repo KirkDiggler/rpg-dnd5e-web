@@ -13,7 +13,7 @@
 import { useCreateLobby } from '@/api/useCreateLobby';
 import { useSetLobbyReady } from '@/api/useSetLobbyReady';
 import { useStartLobbyEncounter } from '@/api/useStartLobbyEncounter';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DungeonBuilder } from './DungeonBuilder';
 
 /** Matches `LobbyFlow.tsx`'s own dev campaign. */
@@ -33,19 +33,38 @@ export function AuthorView({ onBack, characterId, onPlay }: AuthorViewProps) {
   const { setReady } = useSetLobbyReady();
   const { startEncounter } = useStartLobbyEncounter();
 
+  // A Save & Play that is still creating the lobby when the user leaves
+  // must not route them back into the encounter it then starts: Back is
+  // disabled while it runs, and a result arriving after unmount is
+  // dropped (Copilot review, PR #781).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [playing, setPlaying] = useState(false);
+
   const play = useCallback(
     async (dungeonKey: string) => {
       if (!characterId) return;
-      const lobby = await createLobby({
-        campaignId: DEV_CAMPAIGN_ID,
-        characterId,
-      });
-      await setReady({ lobbyId: lobby.lobbyId, ready: true });
-      const started = await startEncounter({
-        lobbyId: lobby.lobbyId,
-        dungeonKey,
-      });
-      onPlay(started.encounterId, characterId);
+      setPlaying(true);
+      try {
+        const lobby = await createLobby({
+          campaignId: DEV_CAMPAIGN_ID,
+          characterId,
+        });
+        await setReady({ lobbyId: lobby.lobbyId, ready: true });
+        const started = await startEncounter({
+          lobbyId: lobby.lobbyId,
+          dungeonKey,
+        });
+        if (!mounted.current) return;
+        onPlay(started.encounterId, characterId);
+      } finally {
+        if (mounted.current) setPlaying(false);
+      }
     },
     [characterId, createLobby, setReady, startEncounter, onPlay]
   );
@@ -55,7 +74,9 @@ export function AuthorView({ onBack, characterId, onPlay }: AuthorViewProps) {
       <div className="flex items-center gap-4 mb-4">
         <button
           onClick={onBack}
-          className="px-3 py-1.5 rounded text-sm"
+          disabled={playing}
+          title={playing ? 'Starting the encounter…' : undefined}
+          className="px-3 py-1.5 rounded text-sm disabled:opacity-50"
           style={{
             backgroundColor: 'var(--bg-secondary)',
             color: 'var(--text-primary)',

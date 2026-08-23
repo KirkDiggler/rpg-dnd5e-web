@@ -143,6 +143,9 @@ export interface SaveState {
   message: string | null;
   /** The key the last successful save wrote. */
   savedKey: string | null;
+  /** The exact text the last save submitted — `errors` describe THIS
+   * text, so a caller shows them only while the document still is it. */
+  submittedYaml: string | null;
 }
 
 export interface UseSaveDungeonResult extends SaveState {
@@ -158,11 +161,17 @@ export function useSaveDungeon(
     errors: [],
     message: null,
     savedKey: null,
+    submittedYaml: null,
   });
 
   const save = useCallback(
     async (key: string, yaml: string): Promise<boolean> => {
-      setState((s) => ({ ...s, status: 'saving', message: null }));
+      setState((s) => ({
+        ...s,
+        status: 'saving',
+        message: null,
+        submittedYaml: yaml,
+      }));
       try {
         const response = await client.putDungeon(
           create(PutDungeonRequestSchema, { key, yaml, validateOnly: false })
@@ -173,10 +182,17 @@ export function useSaveDungeon(
             errors: response.errors,
             message: null,
             savedKey: null,
+            submittedYaml: yaml,
           });
           return false;
         }
-        setState({ status: 'saved', errors: [], message: null, savedKey: key });
+        setState({
+          status: 'saved',
+          errors: [],
+          message: null,
+          savedKey: key,
+          submittedYaml: yaml,
+        });
         return true;
       } catch (err) {
         setState({
@@ -184,6 +200,7 @@ export function useSaveDungeon(
           errors: [],
           message: errorMessageOf(err),
           savedKey: null,
+          submittedYaml: yaml,
         });
         return false;
       }

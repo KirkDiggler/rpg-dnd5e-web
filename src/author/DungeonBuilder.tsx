@@ -10,7 +10,7 @@
  * the key and routes to the game).
  *
  * Props exist for the two other mounts: the Concepts Lab sandbox
- * (`fixtureAtlas`, never calls the server) and the toolkit-contributor
+ * (`fixtureCompile`, never calls the server) and the toolkit-contributor
  * sandbox (`authoringClient`, fixed `initialYaml`, no New/Open/file IO).
  */
 import { useListDungeons } from '@/api/useListDungeons';
@@ -91,9 +91,9 @@ function OpenMenu({ onOpen }: { onOpen: (key: string) => void }) {
 
 export interface DungeonBuilderProps {
   authoringClient?: AuthoringClient;
-  /** Fixtures mode: answer every compile with this atlas, never call
-   * the server. */
-  fixtureAtlas?: GetAtlasResponse | null;
+  /** Fixtures mode: answer every compile by shaping an atlas from the
+   * current document with this function, never calling the server. */
+  fixtureCompile?: (doc: DungeonDoc) => GetAtlasResponse;
   initialYaml?: string;
   persistDraft?: boolean;
   allowNewCanvas?: boolean;
@@ -142,7 +142,7 @@ function initialDoc(
 
 export function DungeonBuilder({
   authoringClient = defaultAuthoringClient,
-  fixtureAtlas,
+  fixtureCompile,
   initialYaml,
   persistDraft = true,
   allowNewCanvas = true,
@@ -168,10 +168,15 @@ export function DungeonBuilder({
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const yaml = useMemo(() => emitDungeon(doc), [doc]);
+  const fixtureAtlas = useMemo(
+    () => (fixtureCompile ? fixtureCompile(doc) : undefined),
+    [fixtureCompile, doc]
+  );
   const preview = usePutDungeonPreview(doc.key, yaml, {
     client: authoringClient,
     fixtureAtlas,
   });
+  const fixtures = fixtureCompile !== undefined;
   const saver = useSaveDungeon(authoringClient);
   const [listNonce, setListNonce] = useState(0);
 
@@ -196,10 +201,17 @@ export function DungeonBuilder({
     () =>
       preview.status === 'errors'
         ? preview.errors
-        : saver.status === 'invalid'
+        : saver.status === 'invalid' && saver.submittedYaml === yaml
           ? saver.errors
           : [],
-    [preview.status, preview.errors, saver.status, saver.errors]
+    [
+      preview.status,
+      preview.errors,
+      saver.status,
+      saver.errors,
+      saver.submittedYaml,
+      yaml,
+    ]
   );
   const errorTargets = useMemo(
     () =>
@@ -211,7 +223,12 @@ export function DungeonBuilder({
   );
   const hasErrors = errors.length > 0;
 
+  // Every document replacement bumps this; a late async Open whose
+  // generation is no longer current is dropped rather than overwriting a
+  // newer document (New, Load, or a second Open).
+  const docGeneration = useRef(0);
   const replaceDoc = (next: DungeonDoc) => {
+    docGeneration.current += 1;
     setDoc(next);
     setSelection({ kind: 'dungeon' });
     setActiveRegionId(next.regions[0]?.id ?? null);
@@ -225,10 +242,12 @@ export function DungeonBuilder({
 
   const handleOpen = async (key: string) => {
     setOpenMenu(false);
+    const generation = docGeneration.current;
     try {
       const response = await authoringClient.getDungeon(
         create(GetDungeonRequestSchema, { key })
       );
+      if (generation !== docGeneration.current) return; // superseded
       replaceDoc(parseDungeon(response.yaml));
       showToast(`Opened ${key}`);
     } catch (err) {
@@ -312,8 +331,7 @@ export function DungeonBuilder({
   };
 
   const statusLine = (() => {
-    if (fixtureAtlas !== undefined)
-      return 'fixtures mode — never calls the server';
+    if (fixtures) return 'fixtures mode — never calls the server';
     switch (preview.status) {
       case 'idle':
         return 'waiting for the first edit';
@@ -374,7 +392,7 @@ export function DungeonBuilder({
               type="button"
               className="dg-verb"
               onClick={() => setOpenMenu((v) => !v)}
-              disabled={fixtureAtlas !== undefined}
+              disabled={fixtures}
             >
               Open
             </button>
@@ -385,7 +403,7 @@ export function DungeonBuilder({
           type="button"
           className="dg-verb"
           onClick={() => void handleSave()}
-          disabled={saveDisabled || fixtureAtlas !== undefined}
+          disabled={saveDisabled || fixtures}
         >
           {saver.status === 'saving' ? 'Saving…' : 'Save'}
         </button>
@@ -394,9 +412,7 @@ export function DungeonBuilder({
             type="button"
             className="dg-verb dg-verb--primary"
             onClick={() => void handleSaveAndPlay()}
-            disabled={
-              saveDisabled || !!playDisabledReason || fixtureAtlas !== undefined
-            }
+            disabled={saveDisabled || !!playDisabledReason || fixtures}
             title={
               playDisabledReason ??
               'Save, then start an encounter on this dungeon'

@@ -141,3 +141,54 @@ describe('DungeonBuilder', () => {
     );
   });
 });
+
+describe('DungeonBuilder — review follow-ups (PR #781)', () => {
+  it('drops stale save errors once the document changes, so Save can be retried', async () => {
+    const client = fakeClient([]);
+    client.putDungeon.mockImplementation(
+      async (req: { validateOnly: boolean }) =>
+        req.validateOnly
+          ? { errors: [], atlas: fixtureAtlasOf(referenceTombDoc()) }
+          : { errors: [{ path: 'key', message: 'taken' }], atlas: undefined }
+    );
+    render(
+      <DungeonBuilder
+        authoringClient={client}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const save = screen.getByRole('button', {
+      name: /^Save$/,
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    fireEvent.click(save);
+    await waitFor(() => expect(save.disabled).toBe(true));
+    expect(screen.getByTestId('error-list').textContent).toContain('taken');
+    // edit the document: the stale save errors must clear
+    fireEvent.change(screen.getByDisplayValue('The Reference Tomb'), {
+      target: { value: 'Renamed' },
+    });
+    await waitFor(() => expect(save.disabled).toBe(false));
+    expect(screen.queryByTestId('error-list')).toBeNull();
+  });
+
+  it('fixtureCompile follows the current document', async () => {
+    const compile = vi.fn((doc: Parameters<typeof fixtureAtlasOf>[0]) =>
+      fixtureAtlasOf(doc)
+    );
+    render(
+      <DungeonBuilder
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+        fixtureCompile={compile}
+      />
+    );
+    expect(compile).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByDisplayValue('The Reference Tomb'), {
+      target: { value: 'Renamed' },
+    });
+    await waitFor(() => expect(compile).toHaveBeenCalledTimes(2));
+    expect(compile.mock.calls[1][0].name).toBe('Renamed');
+  });
+});

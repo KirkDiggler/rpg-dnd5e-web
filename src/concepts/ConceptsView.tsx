@@ -126,10 +126,10 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'session-tomb' && <SessionTombConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
             `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
-            tab is the dev sandbox — same component tree, `forceFixtures`
-            so it never calls PutDungeon and never depends on a running
-            server, per Kirk's ask ("a dev one that is hooked to fixture
-            data"). */}
+            tab is the dev sandbox — the same `DungeonBuilder` on a fixture
+            compile (`DungeonBuilderSandbox` hands it `fixtureCompile`), so
+            it never calls PutDungeon and never depends on a running server,
+            per Kirk's ask ("a dev one that is hooked to fixture data"). */}
         {activePage === 'dungeon-builder' && <DungeonBuilderSandbox />}
         {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
       </motion.div>
