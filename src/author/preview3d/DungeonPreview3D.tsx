@@ -132,7 +132,7 @@ export function DungeonPreview3D({
         ],
         near: 0.1,
         far: 1000,
-        zoom: 40,
+        zoom: 28,
       }}
       style={{ width: '100%', height: '100%' }}
       data-testid="preview-canvas"
