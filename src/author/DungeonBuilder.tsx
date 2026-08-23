@@ -474,6 +474,9 @@ export function DungeonBuilder({
         <div className="dg-center-body">
           {tab === 'board' ? (
             <CreationBoard
+              // Remount on New/Open/Load so the viewport re-centres on the
+              // new floor and its grown extent resets.
+              key={docGeneration.current}
               doc={doc}
               tool={tool}
               selection={selection}
