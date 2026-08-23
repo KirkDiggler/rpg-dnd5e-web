@@ -6,12 +6,18 @@ import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
   emptyDungeon,
+  eraseCell,
   paintCell,
   toggleWall,
   type DungeonDoc,
 } from '../dungeonYaml';
 import { axialKey, fromOffset, type Edge } from '../hexOffset';
-import { CreationBoard, type CreationBoardProps } from './CreationBoard';
+import { growBounds, neededBounds } from './canvasGeometry';
+import {
+  BOARD_SCALE,
+  CreationBoard,
+  type CreationBoardProps,
+} from './CreationBoard';
 
 const p = (c: number, r: number) => fromOffset('pointy', [c, r]);
 
@@ -110,5 +116,95 @@ describe('CreationBoard', () => {
     expect(container.querySelectorAll('[data-edge^="d:"]')).toHaveLength(1);
     expect(cellEl(container, 3, 1).getAttribute('stroke')).toBe('#ff3b30');
     expect(cellEl(container, 2, 1).getAttribute('stroke')).not.toBe('#ff3b30');
+  });
+});
+
+describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)', () => {
+  it('painting a cell at the left/top edge grows the grid without moving what is on screen', () => {
+    // Start with a floor at the far left of the starter grid, then paint
+    // one cell further left — the extent must grow leftwards, and the
+    // scroll position must move by exactly the origin shift so a fixed
+    // cell keeps its on-screen position.
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    const { container, rerender } = mount(doc);
+    const viewport = container.querySelector(
+      '[data-testid="creation-viewport"]'
+    ) as HTMLDivElement;
+    const svg = container.querySelector('svg')!;
+    const originOf = () => svg.getAttribute('viewBox')!.split(' ').map(Number);
+    const [x0, y0] = originOf();
+    // jsdom gives no layout; the initial centring lands on a clamped 0.
+    const sx0 = viewport.scrollLeft;
+    const sy0 = viewport.scrollTop;
+    const anchor = cellEl(container, 0, 0);
+    const anchorPoints = anchor.getAttribute('points');
+
+    doc = paintCell(doc, 'region-1', p(-4, -4)); // beyond the margin: extent must grow
+    rerender(
+      <CreationBoard
+        doc={doc}
+        tool="region"
+        selection={{ kind: 'dungeon' }}
+        activeRegionId="region-1"
+        errorTargets={[]}
+        onPaint={() => {}}
+        onErase={() => {}}
+        onEdgeClick={() => {}}
+        onCellClick={() => {}}
+        onSelect={() => {}}
+      />
+    );
+    const [x1, y1] = originOf();
+    expect(x1).toBeLessThan(x0);
+    expect(y1).toBeLessThan(y0);
+    // the anchor cell's own geometry is unchanged (absolute user space) …
+    expect(cellEl(container, 0, 0).getAttribute('points')).toBe(anchorPoints);
+    // … and the scroll moved by exactly the origin shift (× scale), so the
+    // screen position (user x − viewBox x) × scale − scrollLeft is constant.
+    // jsdom clamps scroll to 0 because nothing has size, so assert the
+    // intended delta through the compensation arithmetic instead.
+    const dx = (x0 - x1) * BOARD_SCALE;
+    const dy = (y0 - y1) * BOARD_SCALE;
+    expect(dx).toBeGreaterThan(0);
+    expect(dy).toBeGreaterThan(0);
+    expect(viewport.scrollLeft).toBe(
+      Math.max(0, sx0 + dx) === sx0 + dx ? sx0 + dx : 0
+    );
+    expect(viewport.scrollTop).toBe(
+      Math.max(0, sy0 + dy) === sy0 + dy ? sy0 + dy : 0
+    );
+  });
+
+  it('erasing at the edge never shrinks the grid (bounds only grow)', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(20, 0));
+    const { container, rerender } = mount(doc);
+    const before = container.querySelectorAll('[data-cell]').length;
+    doc = eraseCell(doc, p(20, 0));
+    rerender(
+      <CreationBoard
+        doc={doc}
+        tool="region"
+        selection={{ kind: 'dungeon' }}
+        activeRegionId="region-1"
+        errorTargets={[]}
+        onPaint={() => {}}
+        onErase={() => {}}
+        onEdgeClick={() => {}}
+        onCellClick={() => {}}
+        onSelect={() => {}}
+      />
+    );
+    expect(container.querySelectorAll('[data-cell]').length).toBe(before);
+  });
+
+  it('growBounds is monotonic and neededBounds keeps the margin', () => {
+    const a = neededBounds([p(0, 0)], 'pointy');
+    expect(a).toEqual({ minC: -4, maxC: 13, minR: -4, maxR: 8 });
+    const grown = growBounds(a, neededBounds([p(30, 0)], 'pointy'));
+    expect(grown.maxC).toBe(34);
+    expect(grown.minC).toBe(-4);
+    expect(growBounds(grown, a)).toBe(grown);
   });
 });

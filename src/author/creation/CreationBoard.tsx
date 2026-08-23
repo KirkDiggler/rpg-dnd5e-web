@@ -11,6 +11,7 @@
  */
 import {
   useCallback,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,14 +45,21 @@ import { thumbForRef } from '../paletteData';
 import type { BoardTool, Selection } from '../types';
 import {
   cellCenter,
+  cellsInBounds,
   cornersPath,
   edgeSegment,
+  growBounds,
   nearestEdge,
-  paintableGrid,
-  viewBoxFor,
+  neededBounds,
+  viewRectFor,
+  type GridBounds,
 } from './canvasGeometry';
 
 export const BOARD_HEX_SIZE = 24;
+
+/** Screen pixels per SVG user unit — fixed, so the canvas never rescales
+ * to fit; it scrolls. */
+export const BOARD_SCALE = 1.25;
 
 export interface CreationBoardProps {
   doc: DungeonDoc;
@@ -104,8 +112,62 @@ export function CreationBoard({
     () => doc.regions.flatMap((r) => r.cells),
     [doc.regions]
   );
-  const grid = useMemo(() => paintableGrid(floor, o), [floor, o]);
-  const viewBox = useMemo(() => viewBoxFor(grid, size, o), [grid, size, o]);
+  // The paintable extent only grows (see `growBounds`); it resets when the
+  // document's orientation changes, which only `New`/`Open` can do.
+  const boundsRef = useRef<{ o: string; bounds: GridBounds | null }>({
+    o,
+    bounds: null,
+  });
+  if (boundsRef.current.o !== o) boundsRef.current = { o, bounds: null };
+  const bounds = growBounds(boundsRef.current.bounds, neededBounds(floor, o));
+  boundsRef.current.bounds = bounds;
+  const grid = useMemo(() => cellsInBounds(bounds, o), [bounds, o]);
+  const view = useMemo(() => viewRectFor(grid, size, o), [grid, size, o]);
+  const viewBox = `${view.x} ${view.y} ${view.width} ${view.height}`;
+
+  // Scroll compensation: when the extent grows to the LEFT or UP the SVG's
+  // origin moves, which would shift everything under the pointer by the
+  // same amount. Move the scroll position by exactly that delta in the
+  // same layout pass so nothing on screen moves. Growth to the right or
+  // down needs nothing — it only lengthens the scrollable area.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const padRef = useRef<HTMLDivElement>(null);
+  const originRef = useRef<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const prev = originRef.current;
+    originRef.current = { x: view.x, y: view.y };
+    if (!el) return;
+    if (prev === null) {
+      // First layout: centre on the authored floor (or the origin).
+      const target =
+        floor.length > 0
+          ? floor.reduce(
+              (acc, c) => {
+                const p = cellCenter(c, size, o);
+                return {
+                  x: acc.x + p.x / floor.length,
+                  y: acc.y + p.y / floor.length,
+                };
+              },
+              { x: 0, y: 0 }
+            )
+          : cellCenter({ q: 0, r: 0 }, size, o);
+      const pad = padRef.current ? getComputedStyle(padRef.current) : null;
+      const padX = pad ? parseFloat(pad.paddingLeft) || 0 : 0;
+      const padY = pad ? parseFloat(pad.paddingTop) || 0 : 0;
+      el.scrollLeft =
+        padX + (target.x - view.x) * BOARD_SCALE - el.clientWidth / 2;
+      el.scrollTop =
+        padY + (target.y - view.y) * BOARD_SCALE - el.clientHeight / 2;
+      return;
+    }
+    const dx = (prev.x - view.x) * BOARD_SCALE;
+    const dy = (prev.y - view.y) * BOARD_SCALE;
+    if (dx !== 0) el.scrollLeft += dx;
+    if (dy !== 0) el.scrollTop += dy;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- centre once, then only compensate origin moves
+  }, [view.x, view.y]);
   const regionIndex = useMemo(
     () => new Map(doc.regions.map((r, i) => [r.id, i] as const)),
     [doc.regions]
@@ -250,174 +312,189 @@ export function CreationBoard({
   }
 
   return (
-    <svg
-      ref={svgRef}
-      data-testid="creation-board"
-      viewBox={viewBox}
-      className="w-full h-full select-none"
-      style={{
-        background: VOID_FILL,
-        touchAction: 'none',
-        cursor: cursorFor(tool),
-      }}
-      onPointerUp={endPaint}
-      onPointerLeave={() => {
-        endPaint();
-        setHoverEdge(null);
-        setHoverCell(null);
-      }}
-      onContextMenu={(e) => e.preventDefault()}
+    <div
+      ref={scrollRef}
+      data-testid="creation-viewport"
+      className="dg-viewport"
+      style={{ background: VOID_FILL }}
     >
-      <g data-layer="cells">
-        {grid.map((cell) => {
-          const key = axialKey(cell);
-          const ownerId = owners.get(key);
-          const region = ownerId ? regionById.get(ownerId) : undefined;
-          const index = ownerId ? (regionIndex.get(ownerId) ?? 0) : 0;
-          const fill = region
-            ? litColor(regionColor(index), region.lighting.intensity)
-            : VOID_FILL;
-          const isSelectedRegion = !!ownerId && ownerId === selectedRegion;
-          const isActive = !!ownerId && ownerId === activeRegionId;
-          const isError = errorCells.has(key);
-          const isHover = hoverCell && axialKey(hoverCell) === key;
-          return (
-            <polygon
-              key={key}
-              data-cell={key}
-              data-region={ownerId ?? ''}
-              points={cornersPath(cell, size, o)}
-              fill={fill}
-              stroke={
-                isError
-                  ? ERROR_STROKE
-                  : isSelectedRegion
-                    ? HOVER_STROKE
-                    : region
-                      ? regionColor(index)
-                      : VOID_STROKE
-              }
-              strokeWidth={isError ? 2.5 : isSelectedRegion ? 1.5 : 1}
-              strokeOpacity={region ? (isActive ? 1 : 0.6) : 1}
-              opacity={
-                isHover && (tool === 'region' || tool === 'erase') ? 0.8 : 1
-              }
-              onPointerDown={(e) => handleCellDown(cell, e)}
-              onPointerMove={(e) => handleCellMove(cell, e)}
-              onPointerEnter={(e) => handleCellMove(cell, e)}
-            />
-          );
-        })}
-      </g>
-      <g data-layer="start" pointerEvents="none">
-        {doc.start && (
-          <Start
-            cell={doc.start}
-            size={size}
-            o={o}
-            error={errorTargets.some((t) => t.kind === 'start')}
-          />
-        )}
-      </g>
-      <g data-layer="placements" pointerEvents="none">
-        {doc.place.map((p, i) => {
-          const c = cellCenter(p.at, size, o);
-          const thumb = thumbForRef(p.ref);
-          const monster = isMonsterRef(p.ref);
-          const color = monster
-            ? p.boss
-              ? BOSS_COLOR
-              : MONSTER_COLOR
-            : PROP_COLOR;
-          const r = size * 0.62;
-          const selected = i === selectedPlacement;
-          const error = errorTargets.some(
-            (t) => t.kind === 'placement' && t.index === i
-          );
-          return (
-            <g key={`${p.ref}:${axialKey(p.at)}`} data-placement={i}>
-              <circle
-                cx={c.x}
-                cy={c.y}
-                r={r}
-                fill={color}
-                stroke={
-                  error ? ERROR_STROKE : selected ? HOVER_STROKE : '#00000088'
-                }
-                strokeWidth={error || selected ? 3 : 1}
-              />
-              {thumb ? (
-                <image
-                  href={thumb}
-                  x={c.x - r * 0.85}
-                  y={c.y - r * 0.85}
-                  width={r * 1.7}
-                  height={r * 1.7}
-                  clipPath="circle(50%)"
+      <div ref={padRef} className="dg-viewport-pad">
+        <svg
+          ref={svgRef}
+          data-testid="creation-board"
+          viewBox={viewBox}
+          width={view.width * BOARD_SCALE}
+          height={view.height * BOARD_SCALE}
+          className="select-none block"
+          style={{
+            background: VOID_FILL,
+            touchAction: 'none',
+            cursor: cursorFor(tool),
+          }}
+          onPointerUp={endPaint}
+          onPointerLeave={() => {
+            endPaint();
+            setHoverEdge(null);
+            setHoverCell(null);
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <g data-layer="cells">
+            {grid.map((cell) => {
+              const key = axialKey(cell);
+              const ownerId = owners.get(key);
+              const region = ownerId ? regionById.get(ownerId) : undefined;
+              const index = ownerId ? (regionIndex.get(ownerId) ?? 0) : 0;
+              const fill = region
+                ? litColor(regionColor(index), region.lighting.intensity)
+                : VOID_FILL;
+              const isSelectedRegion = !!ownerId && ownerId === selectedRegion;
+              const isActive = !!ownerId && ownerId === activeRegionId;
+              const isError = errorCells.has(key);
+              const isHover = hoverCell && axialKey(hoverCell) === key;
+              return (
+                <polygon
+                  key={key}
+                  data-cell={key}
+                  data-region={ownerId ?? ''}
+                  points={cornersPath(cell, size, o)}
+                  fill={fill}
+                  stroke={
+                    isError
+                      ? ERROR_STROKE
+                      : isSelectedRegion
+                        ? HOVER_STROKE
+                        : region
+                          ? regionColor(index)
+                          : VOID_STROKE
+                  }
+                  strokeWidth={isError ? 2.5 : isSelectedRegion ? 1.5 : 1}
+                  strokeOpacity={region ? (isActive ? 1 : 0.6) : 1}
+                  opacity={
+                    isHover && (tool === 'region' || tool === 'erase') ? 0.8 : 1
+                  }
+                  onPointerDown={(e) => handleCellDown(cell, e)}
+                  onPointerMove={(e) => handleCellMove(cell, e)}
+                  onPointerEnter={(e) => handleCellMove(cell, e)}
                 />
-              ) : (
-                <text
-                  x={c.x}
-                  y={c.y + 4}
-                  textAnchor="middle"
-                  fontSize={size * 0.5}
-                  fill="#fff"
-                >
-                  {p.ref.split(':').pop()?.slice(0, 2).toUpperCase()}
-                </text>
-              )}
-              {p.boss && (
-                <text
-                  x={c.x}
-                  y={c.y - r - 2}
-                  textAnchor="middle"
-                  fontSize={size * 0.45}
-                  fill="#ffd166"
-                >
-                  ★
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </g>
-      <g data-layer="edges" pointerEvents="none" strokeLinecap="round">
-        {edgeLines.map((l) => {
-          const seg = edgeSegment(l.edge, size, o);
-          if (!seg) return null;
-          return (
-            <line
-              key={l.key}
-              data-edge={l.key}
-              x1={seg.a.x}
-              y1={seg.a.y}
-              x2={seg.b.x}
-              y2={seg.b.y}
-              stroke={l.stroke}
-              strokeWidth={l.width}
-              strokeDasharray={l.dash}
-            />
-          );
-        })}
-        {hoverEdge &&
-          (() => {
-            const seg = edgeSegment(hoverEdge, size, o);
-            if (!seg) return null;
-            return (
-              <line
-                data-edge="hover"
-                x1={seg.a.x}
-                y1={seg.a.y}
-                x2={seg.b.x}
-                y2={seg.b.y}
-                stroke={HOVER_STROKE}
-                strokeWidth={6}
-                strokeOpacity={0.55}
+              );
+            })}
+          </g>
+          <g data-layer="start" pointerEvents="none">
+            {doc.start && (
+              <Start
+                cell={doc.start}
+                size={size}
+                o={o}
+                error={errorTargets.some((t) => t.kind === 'start')}
               />
-            );
-          })()}
-      </g>
-    </svg>
+            )}
+          </g>
+          <g data-layer="placements" pointerEvents="none">
+            {doc.place.map((p, i) => {
+              const c = cellCenter(p.at, size, o);
+              const thumb = thumbForRef(p.ref);
+              const monster = isMonsterRef(p.ref);
+              const color = monster
+                ? p.boss
+                  ? BOSS_COLOR
+                  : MONSTER_COLOR
+                : PROP_COLOR;
+              const r = size * 0.62;
+              const selected = i === selectedPlacement;
+              const error = errorTargets.some(
+                (t) => t.kind === 'placement' && t.index === i
+              );
+              return (
+                <g key={`${p.ref}:${axialKey(p.at)}`} data-placement={i}>
+                  <circle
+                    cx={c.x}
+                    cy={c.y}
+                    r={r}
+                    fill={color}
+                    stroke={
+                      error
+                        ? ERROR_STROKE
+                        : selected
+                          ? HOVER_STROKE
+                          : '#00000088'
+                    }
+                    strokeWidth={error || selected ? 3 : 1}
+                  />
+                  {thumb ? (
+                    <image
+                      href={thumb}
+                      x={c.x - r * 0.85}
+                      y={c.y - r * 0.85}
+                      width={r * 1.7}
+                      height={r * 1.7}
+                      clipPath="circle(50%)"
+                    />
+                  ) : (
+                    <text
+                      x={c.x}
+                      y={c.y + 4}
+                      textAnchor="middle"
+                      fontSize={size * 0.5}
+                      fill="#fff"
+                    >
+                      {p.ref.split(':').pop()?.slice(0, 2).toUpperCase()}
+                    </text>
+                  )}
+                  {p.boss && (
+                    <text
+                      x={c.x}
+                      y={c.y - r - 2}
+                      textAnchor="middle"
+                      fontSize={size * 0.45}
+                      fill="#ffd166"
+                    >
+                      ★
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </g>
+          <g data-layer="edges" pointerEvents="none" strokeLinecap="round">
+            {edgeLines.map((l) => {
+              const seg = edgeSegment(l.edge, size, o);
+              if (!seg) return null;
+              return (
+                <line
+                  key={l.key}
+                  data-edge={l.key}
+                  x1={seg.a.x}
+                  y1={seg.a.y}
+                  x2={seg.b.x}
+                  y2={seg.b.y}
+                  stroke={l.stroke}
+                  strokeWidth={l.width}
+                  strokeDasharray={l.dash}
+                />
+              );
+            })}
+            {hoverEdge &&
+              (() => {
+                const seg = edgeSegment(hoverEdge, size, o);
+                if (!seg) return null;
+                return (
+                  <line
+                    data-edge="hover"
+                    x1={seg.a.x}
+                    y1={seg.a.y}
+                    x2={seg.b.x}
+                    y2={seg.b.y}
+                    stroke={HOVER_STROKE}
+                    strokeWidth={6}
+                    strokeOpacity={0.55}
+                  />
+                );
+              })()}
+          </g>
+        </svg>
+      </div>
+    </div>
   );
 }
 
