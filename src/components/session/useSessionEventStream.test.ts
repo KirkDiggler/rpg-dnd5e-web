@@ -1,14 +1,19 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import type { StoryEntry } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RECONNECT_CONFIG } from '../../api/streamReconnect';
 
 const hoisted = vi.hoisted(() => ({
   streamEventsFn: vi.fn(),
+  getStoryFn: vi.fn(),
 }));
 
 vi.mock('@/api/client', () => ({
   sessionClient: {
     streamEvents: hoisted.streamEventsFn,
+    getStory: hoisted.getStoryFn,
   },
 }));
 
@@ -24,48 +29,105 @@ function fakeEvent(overrides: Partial<Event> = {}): Event {
     recipient: 'char-1',
     kind: 1,
     payload: new Uint8Array(),
+    body: { case: undefined },
     ...overrides,
   } as Event;
 }
 
-/** An async-iterable stream that yields the given events then ends, like
- * a server-closed StreamEvents call — mirrors how the real connect-web
- * client's async generator behaves. */
-function fakeStream(events: Event[]) {
+function fakeEntry(overrides: Partial<StoryEntry> = {}): StoryEntry {
   return {
-    [Symbol.asyncIterator]: async function* () {
-      for (const event of events) {
-        yield event;
+    seq: 1n,
+    at: 0n,
+    correlation: '',
+    tags: {},
+    payload: new Uint8Array(),
+    ...overrides,
+  } as StoryEntry;
+}
+
+/** A push-driven async-iterable "stream" a test can feed events into (or
+ * end/error) at whatever pace it likes — unlike the static-array
+ * `fakeStream` the pre-rule-6 test file used, this lets a test prove
+ * ordering/buffering behavior that depends on WHEN an event arrives
+ * relative to an in-flight GetStory call, not just what arrives. */
+function manualStream() {
+  const queue: Event[] = [];
+  let pending: {
+    resolve: (r: IteratorResult<Event>) => void;
+    reject: (e: unknown) => void;
+  } | null = null;
+  let closed = false;
+
+  return {
+    iterable: {
+      [Symbol.asyncIterator]() {
+        return {
+          next(): Promise<IteratorResult<Event>> {
+            if (queue.length > 0) {
+              return Promise.resolve({ value: queue.shift()!, done: false });
+            }
+            if (closed) {
+              return Promise.resolve({
+                value: undefined,
+                done: true,
+              } as IteratorResult<Event>);
+            }
+            return new Promise<IteratorResult<Event>>((resolve, reject) => {
+              pending = { resolve, reject };
+            });
+          },
+        };
+      },
+    },
+    push(event: Event) {
+      if (pending) {
+        const p = pending;
+        pending = null;
+        p.resolve({ value: event, done: false });
+      } else {
+        queue.push(event);
+      }
+    },
+    end() {
+      closed = true;
+      if (pending) {
+        const p = pending;
+        pending = null;
+        p.resolve({ value: undefined, done: true } as IteratorResult<Event>);
+      }
+    },
+    error(err: unknown) {
+      if (pending) {
+        const p = pending;
+        pending = null;
+        p.reject(err);
+      } else {
+        closed = true;
       }
     },
   };
 }
 
+const storyTrimmedError = () =>
+  new ConnectError('story range trimmed', Code.OutOfRange);
+
 beforeEach(() => {
   hoisted.streamEventsFn.mockReset();
+  hoisted.getStoryFn.mockReset();
+  // Default: nothing to catch up — most tests override per-call as needed.
+  hoisted.getStoryFn.mockResolvedValue({ entries: [] });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('useSessionEventStream', () => {
-  it('does not subscribe while session or member is empty', () => {
+  it('does not subscribe or fetch while session or member is empty', () => {
     renderHook(() => useSessionEventStream('', 'char-1', () => {}));
     renderHook(() => useSessionEventStream('enc-1', '', () => {}));
     expect(hoisted.streamEventsFn).not.toHaveBeenCalled();
-  });
-
-  it('subscribes with the given session/member and delivers each event to onEvent', async () => {
-    const events = [fakeEvent({ seq: 1n }), fakeEvent({ seq: 2n })];
-    hoisted.streamEventsFn.mockReturnValue(fakeStream(events));
-    const onEvent = vi.fn();
-
-    renderHook(() => useSessionEventStream('enc-1', 'char-1', onEvent));
-
-    expect(hoisted.streamEventsFn).toHaveBeenCalledWith(
-      { session: 'enc-1', member: 'char-1' },
-      expect.objectContaining({ signal: expect.any(AbortSignal) })
-    );
-    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
-    expect(onEvent).toHaveBeenNthCalledWith(1, events[0]);
-    expect(onEvent).toHaveBeenNthCalledWith(2, events[1]);
+    expect(hoisted.getStoryFn).not.toHaveBeenCalled();
   });
 
   it('aborts the stream on unmount', async () => {
@@ -73,7 +135,7 @@ describe('useSessionEventStream', () => {
     hoisted.streamEventsFn.mockImplementation(
       (_req: unknown, opts: { signal: AbortSignal }) => {
         capturedSignal = opts.signal;
-        return fakeStream([]);
+        return manualStream().iterable;
       }
     );
 
@@ -87,12 +149,281 @@ describe('useSessionEventStream', () => {
     expect(capturedSignal!.aborted).toBe(true);
   });
 
+  it('re-subscribes when session/member changes', async () => {
+    hoisted.streamEventsFn.mockReturnValue(manualStream().iterable);
+    const { rerender } = renderHook(
+      ({ session, member }) => useSessionEventStream(session, member, () => {}),
+      { initialProps: { session: 'enc-1', member: 'char-1' } }
+    );
+    await waitFor(() =>
+      expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(1)
+    );
+
+    rerender({ session: 'enc-2', member: 'char-1' });
+    await waitFor(() =>
+      expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(2)
+    );
+    expect(hoisted.streamEventsFn).toHaveBeenLastCalledWith(
+      { session: 'enc-2', member: 'char-1' },
+      expect.anything()
+    );
+  });
+
+  it('on the very first connect, catches up from zero before trusting live delivery, then delivers live events in order', async () => {
+    hoisted.getStoryFn.mockResolvedValueOnce({
+      entries: [fakeEntry({ seq: 1n })],
+    });
+    const stream = manualStream();
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    const onEvent = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+
+    await waitFor(() =>
+      expect(hoisted.getStoryFn).toHaveBeenCalledWith(
+        { session: 'enc-1', member: 'char-1', fromSeq: 0n },
+        expect.anything()
+      )
+    );
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    // The catch-up entry, synthesized — no typed body (see module doc
+    // comment: StoryEntry carries none).
+    expect(onEvent.mock.calls[0][0]).toMatchObject({
+      seq: 1n,
+      kind: expect.anything(),
+      body: { case: undefined },
+    });
+    await waitFor(() => expect(result.current).toBe('live'));
+
+    stream.push(fakeEvent({ seq: 2n }));
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
+    expect(onEvent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ seq: 2n })
+    );
+  });
+
+  it('gap detection: a mid-stream seq jump triggers GetStory catch-up, buffers concurrent live events, and delivers everything in order, de-duped in favor of the buffered (typed) copy', async () => {
+    const stream = manualStream();
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    const onEvent = vi.fn();
+
+    // Call 1: initial connect, from_seq 0 — nothing held yet.
+    hoisted.getStoryFn.mockResolvedValueOnce({ entries: [] });
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await waitFor(() => expect(result.current).toBe('live'));
+
+    stream.push(fakeEvent({ seq: 1n }));
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+    // Call 2: the gap catch-up, from_seq 2 — resolves seq 2 AND seq 3 (a
+    // real GetStory answer has no upper bound), racing against seq 3 and
+    // seq 4 already having arrived live in the meantime.
+    let resolveCatchUp!: (v: { entries: StoryEntry[] }) => void;
+    hoisted.getStoryFn.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCatchUp = resolve;
+        })
+    );
+
+    const liveSeq3 = fakeEvent({ seq: 3n });
+    stream.push(liveSeq3); // the gap: 1 -> 3, expected 2
+    await waitFor(() => expect(result.current).toBe('resyncing'));
+    stream.push(fakeEvent({ seq: 4n })); // arrives WHILE catch-up is in flight
+
+    resolveCatchUp({
+      entries: [fakeEntry({ seq: 2n }), fakeEntry({ seq: 3n })],
+    });
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(result.current).toBe('live'));
+
+    expect(onEvent.mock.calls.map((call) => (call[0] as Event).seq)).toEqual([
+      1n,
+      2n,
+      3n,
+      4n,
+    ]);
+    // seq 2 only ever existed via catch-up — synthetic, no typed body.
+    expect(onEvent.mock.calls[1][0]).toMatchObject({
+      body: { case: undefined },
+    });
+    // seq 3 arrived on BOTH paths — the buffered LIVE copy must win, not
+    // catch-up's synthetic duplicate. Asserting object IDENTITY (not just
+    // equal fields) proves it's the exact instance pushed onto the live
+    // stream, not a re-synthesized stand-in that merely looks the same.
+    expect(onEvent.mock.calls[2][0]).toBe(liveSeq3);
+
+    // Live delivery resumes unbuffered afterward.
+    stream.push(fakeEvent({ seq: 5n }));
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(5));
+    expect(onEvent).toHaveBeenNthCalledWith(
+      5,
+      expect.objectContaining({ seq: 5n })
+    );
+  });
+
+  it('a catch-up that resolves AFTER the stream has already ended must not report live or reset backoff (Copilot review, PR #783)', async () => {
+    vi.useFakeTimers();
+    const firstStream = manualStream();
+    const secondStream = manualStream();
+    hoisted.streamEventsFn
+      .mockReturnValueOnce(firstStream.iterable)
+      .mockReturnValueOnce(secondStream.iterable);
+
+    // The initial connect's own catch-up — deliberately left pending so
+    // the test can resolve it AFTER the stream has already ended, the
+    // exact race Copilot's review found: `generation` alone doesn't
+    // change until the SCHEDULED reconnect's connect() call actually
+    // fires, so a stale catch-up resolving in the gap between
+    // `scheduleReconnect` arming its timer and that timer firing used to
+    // slip past the old `isCurrent()` check.
+    let resolveStaleCatchUp!: (v: {
+      entries: ReturnType<typeof fakeEntry>[];
+    }) => void;
+    hoisted.getStoryFn.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStaleCatchUp = resolve;
+        })
+    );
+
+    const onEvent = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await vi.waitFor(() => expect(result.current).toBe('resyncing'));
+
+    // The server closes the connection while that catch-up is STILL
+    // in flight — not our own abort.
+    firstStream.end();
+    await vi.waitFor(() => expect(result.current).toBe('reconnecting'));
+
+    // NOW the stale catch-up resolves, with a real entry it would
+    // otherwise have delivered.
+    resolveStaleCatchUp({ entries: [fakeEntry({ seq: 5n })] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Must NOT have flipped back to 'live', and must NOT have delivered
+    // the stale entry — both would misrepresent a hook that is genuinely
+    // mid-backoff as connected.
+    expect(result.current).toBe('reconnecting');
+    expect(onEvent).not.toHaveBeenCalled();
+
+    // The scheduled reconnect still runs its OWN fresh catch-up rather
+    // than trusting the stale one — and since nothing was ever actually
+    // delivered (the stale entry was correctly discarded), it resumes
+    // from zero, not from seq 5.
+    hoisted.getStoryFn.mockResolvedValueOnce({ entries: [] });
+    await vi.advanceTimersByTimeAsync(RECONNECT_CONFIG.initialDelayMs);
+
+    await vi.waitFor(() =>
+      expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(2)
+    );
+    expect(hoisted.getStoryFn).toHaveBeenLastCalledWith(
+      { session: 'enc-1', member: 'char-1', fromSeq: 0n },
+      expect.anything()
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+
+    secondStream.push(fakeEvent({ seq: 1n }));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+  });
+
+  it('reconnects with backoff when the stream ends for a reason other than our own abort, then resumes catch-up from last+1', async () => {
+    vi.useFakeTimers();
+    const firstStream = manualStream();
+    const secondStream = manualStream();
+    hoisted.streamEventsFn
+      .mockReturnValueOnce(firstStream.iterable)
+      .mockReturnValueOnce(secondStream.iterable);
+    hoisted.getStoryFn
+      .mockResolvedValueOnce({ entries: [] }) // initial connect
+      .mockResolvedValueOnce({ entries: [] }); // post-reconnect catch-up
+    const onEvent = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+
+    firstStream.push(fakeEvent({ seq: 1n }));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+    // Server closes the connection — not our own abort.
+    firstStream.end();
+    await vi.waitFor(() => expect(result.current).toBe('reconnecting'));
+    expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1000); // RECONNECT_CONFIG.initialDelayMs
+
+    await vi.waitFor(() =>
+      expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(2)
+    );
+    await vi.waitFor(() =>
+      expect(hoisted.getStoryFn).toHaveBeenLastCalledWith(
+        { session: 'enc-1', member: 'char-1', fromSeq: 2n }, // last(1) + 1
+        expect.anything()
+      )
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+
+    secondStream.push(fakeEvent({ seq: 2n }));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
+  });
+
+  it('aged-out: a trimmed resume point resyncs from zero and calls onAgedOut', async () => {
+    const stream = manualStream();
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    const onEvent = vi.fn();
+    const onAgedOut = vi.fn();
+
+    hoisted.getStoryFn
+      .mockResolvedValueOnce({ entries: [] }) // initial connect
+      .mockRejectedValueOnce(storyTrimmedError()); // the gap catch-up: aged out
+    hoisted.getStoryFn.mockResolvedValueOnce({
+      entries: [fakeEntry({ seq: 50n })],
+    }); // the automatic from_seq:0 retry
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent, onAgedOut)
+    );
+    await waitFor(() => expect(result.current).toBe('live'));
+
+    stream.push(fakeEvent({ seq: 1n }));
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+    stream.push(fakeEvent({ seq: 100n })); // gap far beyond retention
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(3));
+
+    expect(hoisted.getStoryFn).toHaveBeenNthCalledWith(
+      2,
+      { session: 'enc-1', member: 'char-1', fromSeq: 2n },
+      expect.anything()
+    );
+    expect(hoisted.getStoryFn).toHaveBeenNthCalledWith(
+      3,
+      { session: 'enc-1', member: 'char-1', fromSeq: 0n },
+      expect.anything()
+    );
+    expect(onEvent.mock.calls.map((call) => (call[0] as Event).seq)).toEqual([
+      1n,
+      50n,
+      100n,
+    ]);
+    expect(onAgedOut).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current).toBe('live'));
+  });
+
   it('does not throw when the stream rejects after abort (unmount race)', async () => {
     hoisted.streamEventsFn.mockImplementation(
       (_req: unknown, opts: { signal: AbortSignal }) => ({
-        // A plain async-iterator object (not a generator function) — this
-        // iterator never yields, only eventually rejects, and a generator
-        // with no `yield` at all trips eslint's require-yield rule.
         [Symbol.asyncIterator]: () => ({
           next: () =>
             new Promise<never>((_resolve, reject) => {
@@ -108,24 +439,6 @@ describe('useSessionEventStream', () => {
       useSessionEventStream('enc-1', 'char-1', () => {})
     );
     unmount();
-    // Nothing to assert beyond "this didn't crash the test run" — an
-    // unhandled rejection here would fail the suite.
     await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-
-  it('re-subscribes when session/member changes', async () => {
-    hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
-    const { rerender } = renderHook(
-      ({ session, member }) => useSessionEventStream(session, member, () => {}),
-      { initialProps: { session: 'enc-1', member: 'char-1' } }
-    );
-    expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(1);
-
-    rerender({ session: 'enc-2', member: 'char-1' });
-    expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(2);
-    expect(hoisted.streamEventsFn).toHaveBeenLastCalledWith(
-      { session: 'enc-2', member: 'char-1' },
-      expect.anything()
-    );
   });
 });
