@@ -712,7 +712,7 @@ describe('SessionEncounterView', () => {
       // this queue, so an unscoped query matches both.
       await waitFor(() =>
         within(screen.getByTestId('combat-panel-beat-line')).getByText(
-          /^skeleton-1.s turn\.$/i
+          /^skeleton-1's turn\.$/i
         )
       );
 
@@ -1919,7 +1919,7 @@ describe('SessionEncounterView', () => {
 
       release();
 
-      await waitFor(() => screen.getByText(/^skeleton-1.s turn\.$/i));
+      await waitFor(() => screen.getByText(/^skeleton-1's turn\.$/i));
 
       // Each queued `moved` refetches GetView in turn — the entity must
       // be standing where the server says by the time its `struck` lands
@@ -1961,6 +1961,48 @@ describe('SessionEncounterView', () => {
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2), {
         timeout: 2000,
       });
+    }, 10000);
+
+    it('a driven turn that only moves (never gets in reach) is never narrated as "does nothing" (Copilot review, PR #776)', async () => {
+      readyOnYourTurn();
+      const { stream, release } = deferredStream([
+        event(EventKind.MOVED, {
+          case: 'moved',
+          value: { member: 'skeleton-1', to: { x: 1, y: 0 } },
+        } as SessionEvent['body']),
+        event(EventKind.MOVED, {
+          case: 'moved',
+          value: { member: 'skeleton-1', to: { x: 2, y: 0 } },
+        } as SessionEvent['body']),
+        event(EventKind.TURN_ENDED, {
+          case: 'turnEnded',
+          value: { member: 'skeleton-1', next: 'char-1' },
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(stream);
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => screen.getAllByTestId('combat-panel-participant'));
+
+      release();
+
+      await waitFor(() => screen.getByText(/^skeleton-1's turn\.$/i));
+
+      // The turn closes (both moves processed, then turnEnded) without
+      // ever claiming the skeleton did nothing — it moved twice.
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2), {
+        timeout: 2000,
+      });
+      expect(screen.queryByText(/does nothing/i)).toBeNull();
     }, 10000);
   });
 

@@ -234,7 +234,11 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
   const queueRef = useRef<SessionEvent[]>([]);
   const drainingRef = useRef(false);
   const announcedActorRef = useRef<string | null>(null);
-  const sawActionRef = useRef(false);
+  // True once ANY beat has played for the currently-announced actor —
+  // moved included. A driven turn that only ever moves (never gets in
+  // reach this turn) must not be narrated as "does nothing" just
+  // because it never swung (Copilot review, PR #776).
+  const sawBeatRef = useRef(false);
   const drainTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const participantsRef = useRef(participants);
   const sightedMembersRef = useRef(sightedMembers);
@@ -261,7 +265,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
 
     if (step.type === 'announce') {
       announcedActorRef.current = step.actor;
-      sawActionRef.current = false;
+      sawBeatRef.current = false;
       const name = namesNow().get(step.actor) ?? step.actor;
       setLastBeat(`${name}'s turn.`);
       drainTimeoutRef.current = setTimeout(drainQueue, BEAT_PACE_MS);
@@ -278,12 +282,15 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     switch (event.body?.case) {
       case 'moved':
         // No beat text (`formatBeat` returns null for `moved` too, same
-        // as the local player's own walk) — just move the entity.
+        // as the local player's own walk) — just move the entity. Still
+        // counts as a beat: a turn that only ever moved (never got in
+        // reach) isn't "doing nothing."
+        sawBeatRef.current = true;
         void refetchView();
         break;
       case 'struck':
       case 'missed': {
-        sawActionRef.current = true;
+        sawBeatRef.current = true;
         const text = formatBeat(event, member, names);
         if (text !== null) setLastBeat(text);
         void refetchAfford();
@@ -291,17 +298,19 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
         break;
       }
       case 'turnEnded': {
-        if (!sawActionRef.current) {
+        if (!sawBeatRef.current) {
           const name = names.get(actor) ?? actor;
           setLastBeat(`${name} does nothing.`);
         }
-        // Otherwise the last struck/missed line stands untouched — the
-        // design's own walkthrough goes straight from "Skeleton attacks
-        // you..." to "Round 2, your turn." with no separate "turn ended"
-        // sentence in between (rpg-project#252 §1).
+        // Otherwise the last beat's own line stands untouched (a swing's
+        // text, or — a moved-but-never-in-reach turn — the announce's
+        // "<name>'s turn." itself) — the design's own walkthrough goes
+        // straight from "Skeleton attacks you..." to "Round 2, your
+        // turn." with no separate "turn ended" sentence in between
+        // (rpg-project#252 §1).
         void refetchView();
         announcedActorRef.current = null;
-        sawActionRef.current = false;
+        sawBeatRef.current = false;
         // One more pace delay before Turn/Afford refetch — this is what
         // actually flips the panel's turn indicator/shapes back to the
         // player, so it happens AFTER the closing beat has had a moment
