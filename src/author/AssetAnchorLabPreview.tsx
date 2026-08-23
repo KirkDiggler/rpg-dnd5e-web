@@ -33,7 +33,7 @@ import {
   type Vec3Tuple,
   type VisibleBounds,
 } from './assetAnchorExperiment';
-import { facingToRotationY } from './boardGeometry';
+import { facingToRotationY } from '@/components/hex-grid/authorGridHelpers';
 import {
   INITIAL_AZIMUTH,
   INITIAL_DISTANCE,
