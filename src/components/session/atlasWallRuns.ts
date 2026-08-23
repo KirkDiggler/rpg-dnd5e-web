@@ -1,73 +1,90 @@
 /**
- * atlasWallRuns — turns the session wire's DECLARED interior boundaries
- * and the floor cell mask into STRAIGHT modular wall runs, the same
- * presentation the old route used (`WallRunMesh`/`wallRuns.ts`'s
- * `EnvelopeRun`/`ConnectorRun`), replacing this route's first attempt at
- * per-hex-edge zigzag wall pieces.
+ * atlasWallRuns — turns the session wire's DECLARED interior boundaries,
+ * doorways, and floor cell mask into straight wall RUNS, by chaining the
+ * AUTHORED edges themselves (rpg-dnd5e-web#787) — not by reconstructing
+ * "chamber" geometry the wire never declares.
  *
- * Kirk's ruling (PR #762 live review): "walls look better but we had
- * straight walls in the game previously. I do not think making the walls
- * follow the hex shapes is a good idea." The AUTHORITY is unchanged —
- * `atlas.boundaries` still say which adjacent cell pairs are blocked, and
- * the floor cell mask still says where the outside is; nothing here is
- * derived from room membership the wire doesn't declare, and nothing
- * borrows `wallRuns.ts`'s reveal-fog widening or connector-suppression
- * (that machinery exists for the OLD wire's per-viewer partial reveal,
- * which this wire's atlas — fetched once, fully, per `GetAtlasResponse`'s
- * own "construction truth" doc comment — has no need of at all). Only the
- * PRESENTATION changes: a zigzag chain of boundary edges between two
- * chambers becomes ONE straight run along the seam's midline, and the
- * declared floor mask's outer edge becomes straight envelope runs instead
- * of a sawtooth perimeter piece per edge.
+ * # Why this is no longer chamber-based
  *
- * # Chambers are found, not declared
+ * The previous version of this module (PR #762/#764) recovered "chamber"
+ * membership via connected-components over the floor mask, then derived
+ * each seam as a straight line between two chambers' bounding-box
+ * columns and the outer envelope as one rectangle around the whole
+ * floor's bounding box. Kirk's live walk (#787) found the lie: "the
+ * walls I can place are not straight. The walls are assumed on a
+ * region — but we decided that regions do not necessarily have walls
+ * automatically." Three concrete failures fell out of the chamber
+ * reconstruction: an L-shaped or horizontal seam came out slanted (the
+ * bounding-box-column math only modeled a vertical seam spanning a full
+ * row range); a wall chain that didn't fully split the floor into two
+ * components was silently dropped (`chamberFrom.id === chamberTo.id` ->
+ * skip); and a non-rectangular floor's envelope followed its bounding
+ * RECTANGLE, not its real outline.
  *
- * The atlas has no "room"/"zone" concept at all — just `cells` (the flat
- * floor mask) and `boundaries` (which adjacent pairs are blocked). Chamber
- * membership is recovered client-side by connected-components: two floor
- * cells are in the same chamber iff a path of un-blocked, un-doored hex
- * adjacency connects them (a doorway is treated as a SEPARATOR for this
- * grouping even though a member can walk through it — the two chambers a
- * door joins are still two distinct spaces, not one).
+ * # The fix: chain the real edges, don't infer regions
  *
- * # This wire's dungeons are "odd-r", not `wallRuns.ts`'s "odd-q"
+ * `atlas.cells` + `atlas.boundaries` + `atlas.doorways` already carry
+ * everything needed. This module builds one flat list of hex-adjacency
+ * edges — every declared boundary, every doorway (as a break point, see
+ * below), and every floor-cell-vs-void edge (the envelope, implied
+ * exactly as the design ruling says: the author never draws it, it's
+ * derived from the floor mask) — and hands the whole thing to
+ * `authoredWallRuns.computeAuthoredWallRuns`, the chaining engine an
+ * earlier slice (rpg-dnd5e-web#723-family) already built and proved for
+ * exactly this problem: walk a graph of real hex edges into straight
+ * runs via a Douglas-Peucker-style distance tolerance (a real zigzag
+ * "eats" only a bounded amount before a chord across it stops matching
+ * every visited vertex; a genuine corner's deviation grows unboundedly
+ * the moment the walk is forced past it), breaking at branches, dead
+ * ends, and door-adjacent vertices. It already handles closed loops
+ * (Phase 2 of its own walk) — exactly what a floor's outer envelope is
+ * — and isolated single-edge chains (a partial interior wall that
+ * doesn't split anything renders as its own one-edge run, nothing to
+ * drop).
  *
- * `wallRuns.ts`'s own `hexColumn`/`hexRow`/`cubeAtColRow` encode the OLD
- * wire's procedural generator's own offset convention (that file's header
- * doc: "pointy-top/odd-q branch"). Checked against the real reference-tomb
- * fixture before writing a line of this module: every row of the combined
- * 28-wide floor spans exactly 28 consecutive axial q values, and each
- * row's own minimum q shifts by `-floor(row/2)` as row increases — the
- * textbook "odd-r offset" correction, not "odd-q". Reusing `wallRuns.ts`'s
- * own column/row functions here would silently group cells into the WRONG
- * chambers. `authoredCol`/`authoredRow`/`cubeAtAuthoredColRow` below are
- * this wire's own (verified) equivalent; only the genuinely
- * convention-independent pure geometry (`distance`, `unitDirection`,
- * `outwardNormal`, `lineIntersection`, `buildEnvelopeSegment`, exported
- * from `wallRuns.ts` starting with this change) is shared.
+ * Feeding interior boundaries AND envelope edges into the SAME chaining
+ * call (rather than two separate passes) is deliberate: they share the
+ * real hex-corner graph, so a seam that reaches the floor's outer edge
+ * MEETS the envelope run there by construction (the two runs share a
+ * vertex) — Kirk's earlier "the walls do not touch" finding (PR #764)
+ * doesn't need its own snapping step to not reappear; there's no seam
+ * between two independently-computed pieces of geometry for it to hide
+ * in anymore. `hexEdgeBetween`'s corner positions sit at the hex's own
+ * apothem, not a cell center — this codebase's own
+ * `DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES` doc comment (wallRuns.ts)
+ * already established that the bare apothem is sufficient clearance for
+ * the boundary hex's own footprint, with the old 1.0-hex value being
+ * "~0.134 more than the bare apothem, a modest safety margin" — so no
+ * additional outward push is applied here. If that reads as too tight
+ * in-game, it's a real follow-up (a small facing-aligned nudge), not a
+ * geometry bug this rewrite claims to rule out.
+ *
+ * # Doors are placed from their own edge, not a derived row fraction
+ *
+ * Every `atlas.doorways` entry gets its own gap + frame independently,
+ * computed straight from that doorway's own `hexEdgeBetween` geometry
+ * (mid + rotation) — no Map keyed by "chamber pair" to lose a second
+ * door on the same seam to (rpg-dnd5e-web#782), because there is no such
+ * Map anymore: every doorway is processed once, unconditionally. The
+ * chaining call above independently guarantees the wall runs stop short
+ * of every doorway's own vertex (the engine's own
+ * `DOOR_FRAME_CALIBRATED_WIDTH/2` trim), so the two never disagree about
+ * where the gap is.
  */
 
 import {
   coordToKey,
-  cubeToWorld,
   getHexNeighbors,
+  hexEdgeBetween,
   type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
 import { DOOR_FRAME_CALIBRATED_WIDTH } from '@/components/hex-grid/syntyHexWallHelpers';
 import {
-  buildEnvelopeSegment,
-  DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
-  DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES,
-  DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES,
-  distance,
-  lineIntersection,
-  unitDirection,
-  type ConnectorRun,
-  type EnvelopeRun,
-  type EnvelopeSide,
-  type WallRunSegment,
-} from '@/hooks/wallRuns';
+  computeAuthoredWallRuns,
+  type AuthoredWallEdgeInput,
+  type AuthoredWallRun,
+} from '@/hooks/authoredWallRuns';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
   AtlasBoundary,
@@ -75,13 +92,14 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { positionToCube } from './positionBridge';
 
-/** Where a door's frame+leaf go — the gap a `ConnectorRun`'s segments
- * leave, rendered separately by the caller (matches the old route's own
- * convention: `WallRunMesh` tiles the segments, it never places doors). */
+/** Where a door's frame+leaf go — the gap this run's own chained wall
+ * segments leave, rendered separately by the caller (matches the old
+ * route's own convention: `WallRunMesh` tiles the segments, it never
+ * places doors). */
 export interface DoorGapPiece {
   key: string;
   connection: string;
-  /** Frame placement — the gap's own center. */
+  /** Frame placement — the doorway's own edge midpoint. */
   position: WorldPos;
   /** Leaf placement — one end of the gap (the leaf's local pivot sits at
    * one end, like every other door piece in this codebase — see
@@ -91,487 +109,99 @@ export interface DoorGapPiece {
 }
 
 export interface WallRunScene {
-  envelopeRuns: EnvelopeRun[];
-  connectorRuns: ConnectorRun[];
+  /** Every straight wall run — envelope and interior seams alike, no
+   * longer a separate shape for each (see this module's own header doc
+   * for why unifying them is correct, not merely convenient): both are
+   * chained by the same engine off the same real-edge graph. Rendered by
+   * `WallRunMesh`'s own `authoredRuns` prop, the same tiled-Synty-piece
+   * path an unrelated (OLD wire) authored-dungeon route already proved
+   * out. */
+  wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
 }
 
-/**
- * This wire's own "odd-r" axial<->offset column, verified against the
- * real 224-cell reference-tomb fixture (see this file's module doc
- * comment) — NOT `wallRuns.ts`'s `hexColumn` (which is cube.x unchanged,
- * the OLD wire's "odd-q" convention's column).
- */
-function authoredCol(cube: CubeCoord): number {
-  return cube.x + Math.floor(cube.z / 2);
-}
-
-/** This wire's row is cube.z directly — verified against the fixture:
- * every chamber's raw z already spans a clean 0..7, no correction needed
- * (unlike `wallRuns.ts`'s own `hexRow`, which corrects ROW as a function
- * of column for the OLD wire's convention). */
-function authoredRow(cube: CubeCoord): number {
-  return cube.z;
-}
-
-/** Inverse of `authoredCol`/`authoredRow` — the cube coordinate at a given
- * (col, row), used to find the WORLD position of a chamber's geometric
- * corners/seam-line endpoints even when no real cell sits exactly there
- * (a seam's own midline is a fictional line BETWEEN two real columns). */
-function cubeAtAuthoredColRow(col: number, row: number): CubeCoord {
-  const z = row;
-  const x = col - Math.floor(row / 2);
-  const y = -x - z;
-  return { x, y, z };
-}
-
-interface Bounds {
-  minCol: number;
-  maxCol: number;
-  minRow: number;
-  maxRow: number;
-}
-
-function boundsOf(cubes: readonly CubeCoord[]): Bounds {
-  let minCol = Infinity;
-  let maxCol = -Infinity;
-  let minRow = Infinity;
-  let maxRow = -Infinity;
-  for (const cube of cubes) {
-    const col = authoredCol(cube);
-    const row = authoredRow(cube);
-    if (col < minCol) minCol = col;
-    if (col > maxCol) maxCol = col;
-    if (row < minRow) minRow = row;
-    if (row > maxRow) maxRow = row;
-  }
-  return { minCol, maxCol, minRow, maxRow };
-}
-
-/** A stable, order-independent key for an unordered pair of hex
- * coordinates — used both to mark an edge as a chamber-separator (a
- * declared boundary or a doorway) and to look boundaries/doorways back up
- * by which two cells they sit between. */
-function pairKey(a: CubeCoord, b: CubeCoord): string {
-  const ka = coordToKey(a);
-  const kb = coordToKey(b);
-  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+function unitDirection(a: WorldPos, b: WorldPos): WorldPos {
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  if (len === 0) return { x: 0, z: 0 };
+  return { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
 }
 
 /**
- * Chamber membership by connected-components: two floor cells are in the
- * same chamber iff hex-adjacent and NOT separated by a declared boundary
- * OR a doorway (a door joins two chambers; it does not merge them into
- * one for grouping purposes — see this file's module doc comment).
- */
-function chamberComponents(
-  cubes: readonly CubeCoord[],
-  separators: ReadonlySet<string>
-): CubeCoord[][] {
-  const cellSet = new Map(cubes.map((c) => [coordToKey(c), c]));
-  const visited = new Set<string>();
-  const components: CubeCoord[][] = [];
-  for (const [startKey, start] of cellSet) {
-    if (visited.has(startKey)) continue;
-    const comp: CubeCoord[] = [];
-    const stack = [start];
-    visited.add(startKey);
-    while (stack.length > 0) {
-      const cur = stack.pop()!;
-      comp.push(cur);
-      for (const neighbor of getHexNeighbors(cur)) {
-        const nKey = coordToKey(neighbor);
-        const real = cellSet.get(nKey);
-        if (!real || visited.has(nKey)) continue;
-        if (separators.has(pairKey(cur, real))) continue;
-        visited.add(nKey);
-        stack.push(real);
-      }
-    }
-    components.push(comp);
-  }
-  return components;
-}
-
-function worldCorner(col: number, row: number, hexSize: number): WorldPos {
-  return cubeToWorld(cubeAtAuthoredColRow(col, row), hexSize);
-}
-
-function midpoint(a: WorldPos, b: WorldPos): WorldPos {
-  return { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
-}
-
-function lerp(a: WorldPos, b: WorldPos, t: number): WorldPos {
-  return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
-}
-
-/**
- * Where the infinite line through `point` along `dir` crosses the
- * infinite line an envelope run lies on — the point a seam run has to
- * reach to touch that perimeter wall. Returns `point` itself when the
- * two lines are parallel (no crossing to snap to).
- */
-function snapToRunLine(
-  point: WorldPos,
-  dir: WorldPos,
-  run: WallRunSegment
-): WorldPos {
-  const runDir: WorldPos = {
-    x: run.end.x - run.start.x,
-    z: run.end.z - run.start.z,
-  };
-  return lineIntersection(point, dir, run.start, runDir) ?? point;
-}
-
-/**
- * The four straight envelope runs for the WHOLE floor mask's outer edge
- * — one combined rectangle in (col, row) space, not one per chamber
- * (three side-by-side chambers' shared interior seams are the
- * `connectorRuns`, computed separately; only the TRUE outer boundary
- * becomes an envelope run here). Corners are closed by extending each
- * run to the other's own line's exact intersection plus a small overlap
- * margin — the same two-pass approach `wallRuns.ts`'s
- * `envelopeGeometryForRegion` uses (not reused directly: that function is
- * entangled with per-region connector suppression this wire has no need
- * of), reusing only the exported pure line-math it's built from.
- *
- * Offset axis is SWAPPED relative to `wallRuns.ts`'s own top/bottom vs
- * left/right split: under THIS wire's odd-r convention, a constant-ROW
- * line (this function's top/bottom sides) is a straight hex principal
- * direction with no zigzag (`worldX` is linear in q at fixed row —
- * verified), while a constant-COLUMN line (left/right) is the one with a
- * small per-row zigzag riding on the linear trend (the `floor(row/2)`
- * term). `wallRuns.ts`'s LARGER top/bottom default therefore belongs to
- * THIS function's left/right sides, and its smaller left/right default to
- * THIS function's top/bottom sides.
- */
-function envelopeRunsForFloor(
-  bounds: Bounds,
-  hexSize: number,
-  regionId: string
-): EnvelopeRun[] {
-  const { minCol, maxCol, minRow, maxRow } = bounds;
-  const topLeft = worldCorner(minCol, minRow, hexSize);
-  const topRight = worldCorner(maxCol, minRow, hexSize);
-  const bottomLeft = worldCorner(minCol, maxRow, hexSize);
-  const bottomRight = worldCorner(maxCol, maxRow, hexSize);
-  const center: WorldPos = {
-    x: (topLeft.x + topRight.x + bottomLeft.x + bottomRight.x) / 4,
-    z: (topLeft.z + topRight.z + bottomLeft.z + bottomRight.z) / 4,
-  };
-
-  const offsetTopBottom = DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES * hexSize;
-  const offsetLeftRight = DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES * hexSize;
-
-  const sides: Array<{
-    side: EnvelopeSide;
-    a: WorldPos;
-    b: WorldPos;
-    offset: number;
-    cornerAtStart: string;
-    cornerAtEnd: string;
-  }> = [
-    {
-      side: 'top',
-      a: topLeft,
-      b: topRight,
-      offset: offsetTopBottom,
-      cornerAtStart: 'topLeft',
-      cornerAtEnd: 'topRight',
-    },
-    {
-      side: 'bottom',
-      a: bottomLeft,
-      b: bottomRight,
-      offset: offsetTopBottom,
-      cornerAtStart: 'bottomLeft',
-      cornerAtEnd: 'bottomRight',
-    },
-    {
-      side: 'left',
-      a: topLeft,
-      b: bottomLeft,
-      offset: offsetLeftRight,
-      cornerAtStart: 'topLeft',
-      cornerAtEnd: 'bottomLeft',
-    },
-    {
-      side: 'right',
-      a: topRight,
-      b: bottomRight,
-      offset: offsetLeftRight,
-      cornerAtStart: 'topRight',
-      cornerAtEnd: 'bottomRight',
-    },
-  ];
-
-  // Pass 1: zero-extension lines, purely to find each corner's exact
-  // position via line-intersection (a line's position/direction don't
-  // depend on how far a segment's endpoint reaches along it).
-  const zeroExtBySide = new Map(
-    sides.map(({ side, a, b, offset }) => [
-      side,
-      buildEnvelopeSegment(a, b, center, 0, 0, offset),
-    ])
-  );
-  const cornerRaw: Record<string, WorldPos> = {
-    topLeft,
-    topRight,
-    bottomLeft,
-    bottomRight,
-  };
-  const cornerPairs: Array<{
-    corner: string;
-    sideA: EnvelopeSide;
-    sideB: EnvelopeSide;
-  }> = [
-    { corner: 'topLeft', sideA: 'left', sideB: 'top' },
-    { corner: 'topRight', sideA: 'right', sideB: 'top' },
-    { corner: 'bottomLeft', sideA: 'left', sideB: 'bottom' },
-    { corner: 'bottomRight', sideA: 'right', sideB: 'bottom' },
-  ];
-  const cornerPositions = new Map<string, WorldPos>();
-  for (const { corner, sideA, sideB } of cornerPairs) {
-    const runA = zeroExtBySide.get(sideA)!;
-    const runB = zeroExtBySide.get(sideB)!;
-    const dirA: WorldPos = {
-      x: runA.end.x - runA.start.x,
-      z: runA.end.z - runA.start.z,
-    };
-    const dirB: WorldPos = {
-      x: runB.end.x - runB.start.x,
-      z: runB.end.z - runB.start.z,
-    };
-    cornerPositions.set(
-      corner,
-      lineIntersection(runA.start, dirA, runB.start, dirB) ?? cornerRaw[corner]!
-    );
-  }
-
-  // Pass 2: real runs, each endpoint extended to its own corner's exact
-  // position plus a small overlap margin so perpendicular runs visually
-  // close the joint.
-  return sides.map(({ side, a, b, offset, cornerAtStart, cornerAtEnd }) => {
-    const zeroExt = zeroExtBySide.get(side)!;
-    const startExtension =
-      distance(zeroExt.start, cornerPositions.get(cornerAtStart)!) +
-      DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN;
-    const endExtension =
-      distance(zeroExt.end, cornerPositions.get(cornerAtEnd)!) +
-      DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN;
-    const built = buildEnvelopeSegment(
-      a,
-      b,
-      center,
-      startExtension,
-      endExtension,
-      offset
-    );
-    return { regionId, side, ...built };
-  });
-}
-
-/**
- * boundariesToWallRuns is the module's one entry point: the declared
- * interior boundaries become straight connector runs (one per pair of
- * chambers they separate, split around that pair's doorway), and the
- * floor mask's own outer edge becomes four straight envelope runs.
+ * boundariesToWallRuns is the module's one entry point: every declared
+ * boundary, every doorway (as a chain break point), and every implied
+ * floor/void envelope edge become one straight-run scene, plus one
+ * DoorGapPiece per doorway.
  */
 export function boundariesToWallRuns(
   atlas: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways'>,
   hexSize: number
 ): WallRunScene {
-  // An empty floor has no columns/rows to derive a bounding box from —
-  // boundsOf([]) would return Infinity on every field, and every
-  // downstream corner/segment computation would silently produce NaN
-  // world positions rather than an obviously-empty scene (Copilot review,
-  // PR #764).
+  // An empty floor has no cells to derive envelope edges from at all —
+  // report an obviously-empty scene rather than let downstream geometry
+  // silently degenerate (Copilot review, PR #764, the same guard this
+  // module has always needed).
   if (atlas.cells.length === 0) {
-    return { envelopeRuns: [], connectorRuns: [], doorGaps: [] };
+    return { wallRuns: [], doorGaps: [] };
   }
 
   const cubes = atlas.cells.map(positionToCube);
+  const floorKeys = new Set(cubes.map(coordToKey));
 
-  const separators = new Set<string>();
-  const boundaryPairs: Array<{ from: CubeCoord; to: CubeCoord }> = [];
+  const edges: AuthoredWallEdgeInput[] = [];
+
   for (const b of atlas.boundaries as AtlasBoundary[]) {
     if (!b.from || !b.to) continue;
-    const from = positionToCube(b.from);
-    const to = positionToCube(b.to);
-    separators.add(pairKey(from, to));
-    boundaryPairs.push({ from, to });
+    edges.push({
+      from: positionToCube(b.from),
+      to: positionToCube(b.to),
+      isDoor: false,
+    });
   }
-  const doorways: Array<{
-    from: CubeCoord;
-    to: CubeCoord;
-    connection: string;
-  }> = [];
+
+  for (const d of atlas.doorways as AtlasDoorway[]) {
+    if (!d.from || !d.to) continue;
+    edges.push({
+      from: positionToCube(d.from),
+      to: positionToCube(d.to),
+      isDoor: true,
+    });
+  }
+
+  // The envelope: implied, never authored — every floor cell's edge
+  // against a neighbor that is NOT floor. Fed into the same chaining
+  // call as the interior boundaries above (see module doc comment for
+  // why that's what makes a seam MEET the envelope with no separate
+  // snapping step).
+  for (const cube of cubes) {
+    for (const neighbor of getHexNeighbors(cube)) {
+      if (floorKeys.has(coordToKey(neighbor))) continue;
+      edges.push({ from: cube, to: neighbor, isDoor: false });
+    }
+  }
+
+  const wallRuns = computeAuthoredWallRuns(edges, hexSize, cubes);
+
+  const doorGaps: DoorGapPiece[] = [];
   for (const d of atlas.doorways as AtlasDoorway[]) {
     if (!d.from || !d.to) continue;
     const from = positionToCube(d.from);
     const to = positionToCube(d.to);
-    separators.add(pairKey(from, to));
-    doorways.push({ from, to, connection: d.connection });
-  }
-
-  const chambers = chamberComponents(cubes, separators);
-  // Stable ordering (by minCol) so ids/left-right conventions don't
-  // depend on Set/Map iteration order.
-  const chamberInfos = chambers
-    .map((cellsInChamber, index) => ({
-      index,
-      cells: cellsInChamber,
-      bounds: boundsOf(cellsInChamber),
-    }))
-    .sort((a, b) => a.bounds.minCol - b.bounds.minCol)
-    .map((info, orderedIndex) => ({ ...info, id: `chamber-${orderedIndex}` }));
-
-  const chamberOf = new Map<string, (typeof chamberInfos)[number]>();
-  for (const info of chamberInfos) {
-    for (const cell of info.cells) {
-      chamberOf.set(coordToKey(cell), info);
-    }
-  }
-  const chamberCenter = (info: (typeof chamberInfos)[number]): WorldPos => {
-    const { minCol, maxCol, minRow, maxRow } = info.bounds;
-    const corners = [
-      worldCorner(minCol, minRow, hexSize),
-      worldCorner(maxCol, minRow, hexSize),
-      worldCorner(minCol, maxRow, hexSize),
-      worldCorner(maxCol, maxRow, hexSize),
-    ];
-    return {
-      x: corners.reduce((s, c) => s + c.x, 0) / 4,
-      z: corners.reduce((s, c) => s + c.z, 0) / 4,
-    };
-  };
-
-  // Group declared boundaries by the unordered pair of chambers they
-  // separate — one connector run per pair (the reference tomb's seams
-  // never split into more than one contiguous run per pair; a dungeon
-  // whose two chambers touch along more than one disjoint seam is out of
-  // this function's scope for now).
-  const rowsByPair = new Map<
-    string,
-    { a: string; b: string; rows: number[] }
-  >();
-  for (const { from, to } of boundaryPairs) {
-    const chamberFrom = chamberOf.get(coordToKey(from));
-    const chamberTo = chamberOf.get(coordToKey(to));
-    if (!chamberFrom || !chamberTo || chamberFrom.id === chamberTo.id) continue;
-    const [near, far] =
-      chamberFrom.bounds.minCol <= chamberTo.bounds.minCol
-        ? [chamberFrom, chamberTo]
-        : [chamberTo, chamberFrom];
-    const key = `${near.id}|${far.id}`;
-    const entry = rowsByPair.get(key) ?? { a: near.id, b: far.id, rows: [] };
-    entry.rows.push(authoredRow(from), authoredRow(to));
-    rowsByPair.set(key, entry);
-  }
-
-  const doorwaysByPair = new Map<
-    string,
-    { from: CubeCoord; to: CubeCoord; connection: string }
-  >();
-  for (const d of doorways) {
-    const chamberFrom = chamberOf.get(coordToKey(d.from));
-    const chamberTo = chamberOf.get(coordToKey(d.to));
-    if (!chamberFrom || !chamberTo || chamberFrom.id === chamberTo.id) continue;
-    const [near, far] =
-      chamberFrom.bounds.minCol <= chamberTo.bounds.minCol
-        ? [chamberFrom, chamberTo]
-        : [chamberTo, chamberFrom];
-    doorwaysByPair.set(`${near.id}|${far.id}`, d);
-  }
-
-  const combinedBounds = boundsOf(cubes);
-  const envelopeRuns = envelopeRunsForFloor(combinedBounds, hexSize, 'tomb');
-  const envelopeTop = envelopeRuns.find((r) => r.side === 'top')!;
-  const envelopeBottom = envelopeRuns.find((r) => r.side === 'bottom')!;
-
-  const connectorRuns: ConnectorRun[] = [];
-  const doorGaps: DoorGapPiece[] = [];
-
-  for (const [key, { a: nearId, b: farId, rows }] of rowsByPair) {
-    const near = chamberInfos.find((c) => c.id === nearId)!;
-    const far = chamberInfos.find((c) => c.id === farId)!;
-    const nearCol = near.bounds.maxCol;
-    const farCol = far.bounds.minCol;
-    const minRow = Math.min(...rows);
-    const maxRow = Math.max(...rows);
-
-    // The seam's own row-range in world space: cell-centre to
-    // cell-centre. This is the line the DOORWAY is placed along (a door
-    // row's `t` is a fraction of THIS span) — but not where the rendered
-    // run ends.
-    const topCentre = midpoint(
-      worldCorner(nearCol, minRow, hexSize),
-      worldCorner(farCol, minRow, hexSize)
-    );
-    const bottomCentre = midpoint(
-      worldCorner(nearCol, maxRow, hexSize),
-      worldCorner(farCol, maxRow, hexSize)
-    );
-    const dir = unitDirection(topCentre, bottomCentre);
-    // Kirk's live finding (PR #764): "the walls do not touch — half-hex
-    // gaps between the inner and outer walls." A seam that stops at the
-    // last row's cell centre never reaches the envelope, which sits
-    // `envelopeOffset` further out at the floor's outer edge. So the
-    // rendered run's endpoints are the seam line's intersections with
-    // the top/bottom envelope runs' own lines — the seam MEETS the
-    // perimeter it terminates against. Authority is unchanged: the
-    // boundaries still decide the seam exists and where its midline is;
-    // only the presentation segment's reach changes. (Falls back to the
-    // cell-centre endpoint only if the lines are parallel, which a seam
-    // crossing its own floor's top/bottom edge never is.)
-    const topWorld = snapToRunLine(topCentre, dir, envelopeTop);
-    const bottomWorld = snapToRunLine(bottomCentre, dir, envelopeBottom);
-    const rotationY = Math.atan2(-dir.z, dir.x);
-    const facing = unitDirection(chamberCenter(near), chamberCenter(far));
-    const runLength = distance(topWorld, bottomWorld);
-
-    const doorway = doorwaysByPair.get(key);
-    const segments: WallRunSegment[] = [];
-    if (!doorway || runLength === 0) {
-      segments.push({ start: topWorld, end: bottomWorld });
-    } else {
-      const doorRow = (authoredRow(doorway.from) + authoredRow(doorway.to)) / 2;
-      const t =
-        maxRow === minRow ? 0.5 : (doorRow - minRow) / (maxRow - minRow);
-      const doorCenter = lerp(topCentre, bottomCentre, t);
-      const halfGap = DOOR_FRAME_CALIBRATED_WIDTH / 2;
-      const gapStart = {
-        x: doorCenter.x - dir.x * halfGap,
-        z: doorCenter.z - dir.z * halfGap,
-      };
-      const gapEnd = {
-        x: doorCenter.x + dir.x * halfGap,
-        z: doorCenter.z + dir.z * halfGap,
-      };
-      if (distance(topWorld, gapStart) > 1e-6) {
-        segments.push({ start: topWorld, end: gapStart });
-      }
-      if (distance(gapEnd, bottomWorld) > 1e-6) {
-        segments.push({ start: gapEnd, end: bottomWorld });
-      }
-      doorGaps.push({
-        key: doorway.connection || key,
-        connection: doorway.connection,
-        position: doorCenter,
-        leafPosition: gapStart,
-        rotationY,
-      });
-    }
-
-    connectorRuns.push({
-      doorId: doorway?.connection,
-      regionAId: nearId,
-      regionBId: farId,
-      segments,
-      coveredRows: { minRow, maxRow },
-      facing,
+    const { a, b, mid, rotationY } = hexEdgeBetween(from, to, hexSize);
+    const dir = unitDirection(a, b);
+    const halfGap = DOOR_FRAME_CALIBRATED_WIDTH / 2;
+    doorGaps.push({
+      key: d.connection || `door:${coordToKey(from)}|${coordToKey(to)}`,
+      connection: d.connection,
+      position: mid,
+      leafPosition: {
+        x: mid.x - dir.x * halfGap,
+        z: mid.z - dir.z * halfGap,
+      },
+      rotationY,
     });
   }
 
-  return { envelopeRuns, connectorRuns, doorGaps };
+  return { wallRuns, doorGaps };
 }
+
+export type { CubeCoord };

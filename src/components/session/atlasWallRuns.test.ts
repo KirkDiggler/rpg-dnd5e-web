@@ -1,12 +1,29 @@
 /**
- * atlasWallRuns tests — chamber detection and straight-run geometry,
- * checked against the real 224-cell reference-tomb fixture and against
- * small hand-built fixtures for the shapes the real data doesn't exercise
- * (a doorway flush against a row-range end, a pair with no doorway at all).
+ * atlasWallRuns tests — straight-run geometry chained straight off the
+ * authored edges (rpg-dnd5e-web#787), checked against the real 224-cell
+ * reference-tomb fixture (Kirk's live-walk regression pin: same straight
+ * envelope, same two seams, same two door gaps) and against small
+ * hand-built fixtures for the shapes the real data doesn't exercise: a
+ * partial interior wall that doesn't split the floor, an L-shaped seam,
+ * a horizontal (row-type) seam, two doors on one seam, and a
+ * non-rectangular floor's envelope.
+ *
+ * Coverage-style assertions ("every declared edge's own midpoint lies
+ * near SOME run") rather than exact run counts, mirroring
+ * `authoredWallRuns.test.ts`'s own established style for this same
+ * chaining engine: a real hex-grid straight side collapses into several
+ * short runs, not one long one (verified empirically against both this
+ * atlas's own data and that module's own rectangular-loop fixture — a
+ * pre-existing, already-tested property of `computeAuthoredWallRuns`,
+ * not something this rewrite introduces or is in scope to change). What
+ * matters for "renders the authored edges, nothing dropped" is that
+ * every edge is covered by some straight piece, not how many pieces.
  */
+import { hexEdgeBetween, type CubeCoord } from '@/components/hex-grid/hexMath';
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import { boundariesToWallRuns } from './atlasWallRuns';
+import { positionToCube } from './positionBridge';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
 
@@ -33,15 +50,20 @@ function distanceToSegment(p: P, seg: Seg): number {
   return Math.hypot(p.x - cx, p.z - cz);
 }
 
-function lineIntersectionOf(a: Seg, b: Seg): P | undefined {
-  const d1 = { x: a.end.x - a.start.x, z: a.end.z - a.start.z };
-  const d2 = { x: b.end.x - b.start.x, z: b.end.z - b.start.z };
-  const det = d2.x * d1.z - d1.x * d2.z;
-  if (Math.abs(det) < 1e-9) return undefined;
-  const dx = b.start.x - a.start.x;
-  const dz = b.start.z - a.start.z;
-  const t = (dx * -d2.z - -d2.x * dz) / det;
-  return { x: a.start.x + t * d1.x, z: a.start.z + t * d1.z };
+/** The module's own chaining tolerance (authoredWallRuns.ts's
+ * CHAIN_TOLERANCE) — the bound within which a real edge's own midpoint
+ * must land of SOME run for that edge to count as "covered", the same
+ * standard authoredWallRuns.test.ts's own corner/rectangle tests hold
+ * this engine to. */
+const CHAIN_TOLERANCE = 1.5;
+
+function edgeMid(from: CubeCoord, to: CubeCoord): P {
+  const { a, b } = hexEdgeBetween(from, to, 1);
+  return { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+}
+
+function nearestRunDistance(point: P, runs: readonly Seg[]): number {
+  return Math.min(...runs.map((r) => distanceToSegment(point, r)));
 }
 
 /** The real reference-tomb atlas shape: three chambers (6/10/12 wide, 8
@@ -115,174 +137,92 @@ function realReferenceTombBoundaries() {
 }
 
 describe('boundariesToWallRuns — the real reference tomb', () => {
-  const scene = boundariesToWallRuns(realReferenceTombBoundaries(), 1);
+  const atlas = realReferenceTombBoundaries();
+  const scene = boundariesToWallRuns(atlas, 1);
 
-  it('finds exactly one connector run per seam, both spanning the full row range', () => {
-    expect(scene.connectorRuns).toHaveLength(2);
-    for (const run of scene.connectorRuns) {
-      expect(run.coveredRows).toEqual({ minRow: 0, maxRow: 7 });
+  it('drops nothing: every declared boundary edge is covered by some wall run', () => {
+    for (const b of atlas.boundaries as unknown as Array<{
+      from: { x: number; y: number };
+      to: { x: number; y: number };
+    }>) {
+      const mid = edgeMid(
+        positionToCube(b.from as never),
+        positionToCube(b.to as never)
+      );
+      expect(nearestRunDistance(mid, scene.wallRuns)).toBeLessThanOrEqual(
+        CHAIN_TOLERANCE + 1e-6
+      );
     }
   });
 
-  it('splits each connector run into two segments around its doorway', () => {
-    for (const run of scene.connectorRuns) {
-      expect(run.segments).toHaveLength(2);
-    }
-  });
-
-  it('places each seam at the midline between its two chambers — matching the exact world-x band the individual boundary edges occupy', () => {
-    // Independently measured (atlasToScene3D's own per-edge diagnostic,
-    // before this straight-run presentation existed): every boundary
-    // edge in seam 1 has edge.mid.x between 9.526 and 10.392, seam 2
-    // between 26.847 and 27.713. The straight run's own x should sit
-    // inside that same band (it IS the midline the zigzag was centered
-    // on), not at some unrelated position.
-    const [seam1, seam2] = scene.connectorRuns.sort(
-      (a, b) => a.segments[0]!.start.x - b.segments[0]!.start.x
-    );
-    for (const seg of seam1!.segments) {
-      expect(seg.start.x).toBeGreaterThan(9.4);
-      expect(seg.start.x).toBeLessThan(10.5);
-      expect(seg.end.x).toBeGreaterThan(9.4);
-      expect(seg.end.x).toBeLessThan(10.5);
-    }
-    for (const seg of seam2!.segments) {
-      expect(seg.start.x).toBeGreaterThan(26.7);
-      expect(seg.start.x).toBeLessThan(27.8);
-    }
-  });
-
-  it('gives every seam a door gap at the doorway’s own row', () => {
+  it('gives every doorway its own gap, independently — two doors, two gaps, at the seams’ own historically-measured x-bands', () => {
     expect(scene.doorGaps).toHaveLength(2);
-    const keys = scene.doorGaps.map((d) => d.key).sort();
-    expect(keys).toEqual([
-      'reference-tomb:entrance-hall',
-      'reference-tomb:hall-tomb',
-    ]);
-    // Row 4 of 0..7 is a bit past the midpoint (t ≈ 0.571) — world z
-    // should land near there, not at either end.
-    for (const door of scene.doorGaps) {
-      expect(door.position.z).toBeGreaterThan(4);
-      expect(door.position.z).toBeLessThan(8);
-    }
+    const [seam1Door, seam2Door] = [...scene.doorGaps].sort(
+      (a, b) => a.position.x - b.position.x
+    );
+    // Independently measured (this module's own pre-#787 test suite,
+    // still true here since the doorway's own edge geometry — the
+    // source of these positions — hasn't changed, only how the WALLS
+    // around it are derived): seam 1 sits between x 9.4 and 10.5, seam 2
+    // between x 26.7 and 27.8.
+    expect(seam1Door!.position.x).toBeGreaterThan(9.4);
+    expect(seam1Door!.position.x).toBeLessThan(10.5);
+    expect(seam2Door!.position.x).toBeGreaterThan(26.7);
+    expect(seam2Door!.position.x).toBeLessThan(27.8);
+    expect(seam1Door!.key).toBe('reference-tomb:entrance-hall');
+    expect(seam2Door!.key).toBe('reference-tomb:hall-tomb');
   });
 
-  it('gives the whole floor exactly four envelope runs enclosing the combined 28x8 shape', () => {
-    expect(scene.envelopeRuns).toHaveLength(4);
-    const sides = scene.envelopeRuns.map((r) => r.side).sort();
-    expect(sides).toEqual(['bottom', 'left', 'right', 'top']);
-
-    const top = scene.envelopeRuns.find((r) => r.side === 'top')!;
-    const bottom = scene.envelopeRuns.find((r) => r.side === 'bottom')!;
-    const left = scene.envelopeRuns.find((r) => r.side === 'left')!;
-    const right = scene.envelopeRuns.find((r) => r.side === 'right')!;
-
-    // Top/bottom span nearly the full ~47.6-unit width (offset by the
-    // small envelope clearance, so a bit wider than the bare floor).
-    expect(Math.abs(top.end.x - top.start.x)).toBeGreaterThan(45);
-    expect(Math.abs(bottom.end.x - bottom.start.x)).toBeGreaterThan(45);
-    // Left/right span the ~10.5-unit height similarly.
-    expect(Math.abs(left.end.z - left.start.z)).toBeGreaterThan(8);
-    expect(Math.abs(right.end.z - right.start.z)).toBeGreaterThan(8);
-
-    // Left sits near world x=0 (the tomb's own near edge), right near
-    // x≈47.6 (the far edge) — not swapped, not both on the same side.
-    expect(left.start.x).toBeLessThan(5);
-    expect(right.start.x).toBeGreaterThan(40);
-  });
-
-  it('every seam run MEETS the perimeter: both endpoints lie ON a top/bottom envelope segment (Kirk: "the walls do not touch")', () => {
-    // Before this fix each seam stopped at the row-0/row-7 cell centre
-    // while the envelope sits one envelope-offset (1.0 world unit at
-    // hexSize 1) further out — a 1.0-unit gap at both ends of both seams.
-    const top = scene.envelopeRuns.find((r) => r.side === 'top')!;
-    const bottom = scene.envelopeRuns.find((r) => r.side === 'bottom')!;
-    for (const run of scene.connectorRuns) {
-      const ends = run.segments.flatMap((s) => [s.start, s.end]);
-      const zs = ends.map((e) => e.z);
-      const topEnd = ends[zs.indexOf(Math.min(...zs))]!;
-      const bottomEnd = ends[zs.indexOf(Math.max(...zs))]!;
-      expect(distanceToSegment(topEnd, top)).toBeLessThan(1e-6);
-      expect(distanceToSegment(bottomEnd, bottom)).toBeLessThan(1e-6);
-    }
-  });
-
-  it('keeps each door gap at its cell-centre row even though the run now reaches further', () => {
-    // Extending the run must not drag the doorway with it: row 4 of
-    // 0..7 at hexSize 1 is world z = 6 exactly.
+  it('keeps each door gap at its cell-centre row: row 4 of 0..7 at hexSize 1 is world z = 6 exactly', () => {
     for (const door of scene.doorGaps) {
       expect(door.position.z).toBeCloseTo(6, 6);
     }
   });
 
-  it('closes every perimeter corner: adjacent envelope runs both pass through their shared corner point', () => {
-    const bySide = Object.fromEntries(
-      scene.envelopeRuns.map((r) => [r.side, r])
-    );
-    const corners: Array<['top' | 'bottom', 'left' | 'right']> = [
-      ['top', 'left'],
-      ['top', 'right'],
-      ['bottom', 'left'],
-      ['bottom', 'right'],
-    ];
-    for (const [h, v] of corners) {
-      const a = bySide[h]!;
-      const b = bySide[v]!;
-      const corner = lineIntersectionOf(a, b);
-      expect(corner).toBeDefined();
-      // The corner point lies on BOTH segments (not just both lines) —
-      // neither run stops short of it, so there is no gap.
-      expect(distanceToSegment(corner!, a)).toBeLessThan(1e-6);
-      expect(distanceToSegment(corner!, b)).toBeLessThan(1e-6);
-    }
+  it('the combined floor still reads as a wide footprint enclosing the whole 28x8 shape (same overall envelope Kirk approved, not a per-run recount)', () => {
+    const xs = scene.wallRuns.flatMap((r) => [r.start.x, r.end.x]);
+    const zs = scene.wallRuns.flatMap((r) => [r.start.z, r.end.z]);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...zs) - Math.min(...zs);
+    expect(width).toBeGreaterThan(45);
+    expect(width).toBeLessThan(55);
+    expect(height).toBeGreaterThan(8);
+    expect(height).toBeLessThan(13);
+    expect(Math.min(...xs)).toBeLessThan(1);
+    expect(Math.max(...xs)).toBeGreaterThan(46);
   });
 
-  it('every envelope run faces outward, away from the combined floor’s own center', () => {
-    for (const run of scene.envelopeRuns) {
-      const mid = {
-        x: (run.start.x + run.end.x) / 2,
-        z: (run.start.z + run.end.z) / 2,
-      };
-      // A vector from the tomb's rough center (x≈24, z≈5) toward this
-      // run's own midpoint should point the same general way as
-      // `facing` — i.e. a positive dot product.
-      const towardRun = { x: mid.x - 24, z: mid.z - 5 };
-      const dot = towardRun.x * run.facing.x + towardRun.z * run.facing.z;
-      expect(dot).toBeGreaterThan(0);
+  it('gives every run a finite, unit-length facing vector and non-zero length', () => {
+    expect(scene.wallRuns.length).toBeGreaterThan(0);
+    for (const run of scene.wallRuns) {
+      const mag = Math.hypot(run.facing.x, run.facing.z);
+      expect(Number.isFinite(mag)).toBe(true);
+      expect(mag).toBeGreaterThan(0.9);
+      expect(mag).toBeLessThan(1.1);
+      const len = Math.hypot(run.end.x - run.start.x, run.end.z - run.start.z);
+      expect(len).toBeGreaterThan(0);
     }
   });
 });
 
-describe('boundariesToWallRuns — small hand-built shapes', () => {
-  it('gives a pair of adjacent chambers with no doorway a single unbroken run', () => {
-    // Two 1-column-wide, 2-row-tall chambers directly side by side
-    // (column 0 and column 1 — adjacent, no gap between them, matching
-    // how the real reference tomb's chambers touch), separated by a
-    // 2-edge boundary and no doorway.
-    // A hex grid has 6 neighbours, not 4 — (1,0) and (0,1) are ALSO
-    // adjacent to each other (verified: cube distance 1), so cutting
-    // only the two "straight-across" edges leaks a path around the
-    // corner and the two chambers merge into one component. The real
-    // reference tomb's own seams have exactly this shape (~1.75 edges
-    // per row, not 1) — this fixture's 3rd edge is that same corner
-    // case in miniature, not a special case.
-    const cells = [pos(0, 0), pos(0, 1), pos(1, 0), pos(1, 1)];
+describe('boundariesToWallRuns — a partial interior wall that does not fully split the floor', () => {
+  it('renders exactly at its authored location instead of being silently dropped (the old bug: chamberFrom.id === chamberTo.id -> skip)', () => {
+    // A 2-wide, 3-tall floor with ONE boundary edge at row 0 only — the
+    // floor stays fully connected via rows 1-2, so a chamber-reconstruction
+    // approach would find both endpoints in the same component and drop
+    // this wall entirely. It must still render, exactly at its own edge.
+    const cells = [
+      pos(0, 0),
+      pos(1, 0),
+      pos(0, 1),
+      pos(1, 1),
+      pos(0, 2),
+      pos(1, 2),
+    ];
     const boundaries = [
       {
         from: pos(0, 0),
         to: pos(1, 0),
-        blocksMovement: true,
-        blocksLineOfSight: true,
-      },
-      {
-        from: pos(1, 0),
-        to: pos(0, 1),
-        blocksMovement: true,
-        blocksLineOfSight: true,
-      },
-      {
-        from: pos(0, 1),
-        to: pos(1, 1),
         blocksMovement: true,
         blocksLineOfSight: true,
       },
@@ -295,37 +235,250 @@ describe('boundariesToWallRuns — small hand-built shapes', () => {
       },
       1
     );
-    expect(scene.connectorRuns).toHaveLength(1);
-    expect(scene.connectorRuns[0]!.segments).toHaveLength(1);
-    expect(scene.doorGaps).toHaveLength(0);
+    const from = positionToCube(pos(0, 0));
+    const to = positionToCube(pos(1, 0));
+    const { a, b } = hexEdgeBetween(from, to, 1);
+    const matchesRun = scene.wallRuns.some((r) => {
+      const forward =
+        Math.hypot(r.start.x - a.x, r.start.z - a.z) < 1e-6 &&
+        Math.hypot(r.end.x - b.x, r.end.z - b.z) < 1e-6;
+      const reverse =
+        Math.hypot(r.start.x - b.x, r.start.z - b.z) < 1e-6 &&
+        Math.hypot(r.end.x - a.x, r.end.z - a.z) < 1e-6;
+      return forward || reverse;
+    });
+    expect(matchesRun).toBe(true);
   });
+});
 
-  it('gives two chambers with no declared boundary between them zero connector runs', () => {
-    // Two chambers that never touch (far apart) — no boundary declared,
-    // no seam should be invented.
+describe('boundariesToWallRuns — an L-shaped interior seam', () => {
+  it('breaks into multiple straight runs meeting at the corner, not one chord smeared across the bend', () => {
+    // The real perimeter of a 2x2 inner block against the surrounding
+    // floor (genuine hex adjacency, not hand-guessed pairs) — a
+    // rectangle, so every one of its 4 corners is a real direction
+    // change an L-shaped wall would also have.
+    const cells: unknown[] = [];
+    for (let q = 0; q <= 5; q++) {
+      for (let r = 0; r <= 5; r++) cells.push(pos(q, r));
+    }
+    const isInner = (q: number, r: number) =>
+      q >= 2 && q <= 3 && r >= 2 && r <= 3;
+    const boundaries: Array<{
+      from: unknown;
+      to: unknown;
+      blocksMovement: boolean;
+      blocksLineOfSight: boolean;
+    }> = [];
+    const seen = new Set<string>();
+    for (let q = 2; q <= 3; q++) {
+      for (let r = 2; r <= 3; r++) {
+        const neighbors: Array<[number, number]> = [
+          [q + 1, r - 1],
+          [q + 1, r],
+          [q, r - 1],
+          [q - 1, r],
+          [q - 1, r + 1],
+          [q, r + 1],
+        ];
+        for (const [nq, nr] of neighbors) {
+          if (isInner(nq, nr)) continue;
+          if (nq < 0 || nq > 5 || nr < 0 || nr > 5) continue;
+          const key = [q, r, nq, nr].sort().join(',');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          boundaries.push({
+            from: pos(q, r),
+            to: pos(nq, nr),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+          });
+        }
+      }
+    }
+    expect(boundaries.length).toBeGreaterThan(4); // a real rectangle, not a stub
+
+    const scene = boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: [] as never,
+      },
+      1
+    );
+    // More than one run in total (interior seam + floor envelope).
+    expect(scene.wallRuns.length).toBeGreaterThan(1);
+    // Every one of this interior wall's own declared edges — including
+    // the ones flanking its 4 corners — is covered by some run: a bad
+    // diagonal chord cutting across a bend would leave the edges near
+    // the corner far from every run's own line.
+    for (const b of boundaries) {
+      const mid = edgeMid(
+        positionToCube(b.from as never),
+        positionToCube(b.to as never)
+      );
+      expect(nearestRunDistance(mid, scene.wallRuns)).toBeLessThanOrEqual(
+        CHAIN_TOLERANCE + 1e-6
+      );
+    }
+  });
+});
+
+describe('boundariesToWallRuns — a horizontal seam (chambers stacked in rows)', () => {
+  it('renders along the row boundary’s own midline, not slanted (the old bug: connector geometry only modeled a vertical, column-separating seam)', () => {
+    // The real boundary between row-band r<=1 and row-band r>=2 across a
+    // 6-wide floor (genuine hex adjacency for every cell pair, not a
+    // hand-picked single direction per column — a naive "(q,r)-(q,r+1)
+    // for each q" guess does NOT actually chain, verified: those edges
+    // don't share a vertex with each other).
+    const cells: unknown[] = [];
+    for (let q = 0; q <= 5; q++) {
+      for (let r = 0; r <= 3; r++) cells.push(pos(q, r));
+    }
+    const boundaries: Array<{
+      from: unknown;
+      to: unknown;
+      blocksMovement: boolean;
+      blocksLineOfSight: boolean;
+    }> = [];
+    const seen = new Set<string>();
+    for (let q = 0; q <= 5; q++) {
+      for (const r of [0, 1]) {
+        const neighbors: Array<[number, number]> = [
+          [q + 1, r - 1],
+          [q + 1, r],
+          [q, r - 1],
+          [q - 1, r],
+          [q - 1, r + 1],
+          [q, r + 1],
+        ];
+        for (const [nq, nr] of neighbors) {
+          if (nr < 2 || nq < 0 || nq > 5 || nr > 3) continue; // band-B only
+          const key = [q, r, nq, nr].sort().join(',');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          boundaries.push({
+            from: pos(q, r),
+            to: pos(nq, nr),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+          });
+        }
+      }
+    }
+    expect(boundaries.length).toBeGreaterThan(5);
+
+    const scene = boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: [] as never,
+      },
+      1
+    );
+    for (const b of boundaries) {
+      const mid = edgeMid(
+        positionToCube(b.from as never),
+        positionToCube(b.to as never)
+      );
+      expect(nearestRunDistance(mid, scene.wallRuns)).toBeLessThanOrEqual(
+        CHAIN_TOLERANCE + 1e-6
+      );
+    }
+  });
+});
+
+describe('boundariesToWallRuns — two doorways on the same seam (#782)', () => {
+  it('gives each of the two doors its own gap, not one Map entry per chamber pair', () => {
+    const cells: unknown[] = [];
+    for (let r = 0; r <= 5; r++) {
+      cells.push(pos(0, r), pos(1, r));
+    }
+    const wallRows = [0, 2, 3, 5];
+    const doorRows = [1, 4];
+    const boundaries = wallRows.map((r) => ({
+      from: pos(0, r),
+      to: pos(1, r),
+      blocksMovement: true,
+      blocksLineOfSight: true,
+    }));
+    const doorways = doorRows.map((r) => ({
+      connection: `door-${r}`,
+      from: pos(0, r),
+      to: pos(1, r),
+    }));
+    const scene = boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: doorways as never,
+      },
+      1
+    );
+    expect(scene.doorGaps).toHaveLength(2);
+    const keys = scene.doorGaps.map((d) => d.key).sort();
+    expect(keys).toEqual(['door-1', 'door-4']);
+    // Distinct positions — not the same gap doubled.
+    const [d1, d2] = scene.doorGaps;
+    expect(
+      Math.hypot(
+        d1!.position.x - d2!.position.x,
+        d1!.position.z - d2!.position.z
+      )
+    ).toBeGreaterThan(1);
+  });
+});
+
+describe('boundariesToWallRuns — a non-rectangular floor', () => {
+  it('the envelope follows the real notch, not the bounding rectangle: the notch’s own newly-exposed edges are covered by a run', () => {
+    // A 3x3 block missing its (2,2) corner cell — an L/notched floor. A
+    // bounding-RECTANGLE envelope has no per-cell adjacency data at all,
+    // so it could never place a wall at the notch (it only ever knows
+    // the floor's min/max col/row); the real outline tracer does, because
+    // it walks actual floor-vs-void adjacency.
+    const cells: unknown[] = [];
+    for (let q = 0; q <= 2; q++) {
+      for (let r = 0; r <= 2; r++) {
+        if (q === 2 && r === 2) continue; // the notch
+        cells.push(pos(q, r));
+      }
+    }
+    const scene = boundariesToWallRuns(
+      { cells: cells as never, boundaries: [] as never, doorways: [] as never },
+      1
+    );
+    // The two edges that exist ONLY because (2,2) is missing: (1,2)'s and
+    // (2,1)'s own edges toward where (2,2) would have been floor.
+    const notchEdges: Array<[CubeCoord, CubeCoord]> = [
+      [positionToCube(pos(1, 2)), positionToCube(pos(2, 2))],
+      [positionToCube(pos(2, 1)), positionToCube(pos(2, 2))],
+    ];
+    for (const [from, to] of notchEdges) {
+      const mid = edgeMid(from, to);
+      expect(nearestRunDistance(mid, scene.wallRuns)).toBeLessThanOrEqual(
+        CHAIN_TOLERANCE + 1e-6
+      );
+    }
+  });
+});
+
+describe('boundariesToWallRuns — small edge cases', () => {
+  it('gives two chambers with no declared boundary between them zero interior wall geometry, only their own envelopes', () => {
     const cells = [pos(0, 0), pos(10, 0)];
     const scene = boundariesToWallRuns(
       { cells: cells as never, boundaries: [] as never, doorways: [] as never },
       1
     );
-    expect(scene.connectorRuns).toHaveLength(0);
-    // Still one floor mask -> still exactly 4 envelope runs (a single,
-    // disconnected-looking bounding box in col/row terms), not zero.
-    expect(scene.envelopeRuns).toHaveLength(4);
+    expect(scene.doorGaps).toHaveLength(0);
+    // Still a real (non-empty) scene — two isolated single-hex envelopes,
+    // not nothing.
+    expect(scene.wallRuns.length).toBeGreaterThan(0);
   });
 
   it('gives an empty atlas empty runs instead of Infinity/NaN geometry (Copilot review, PR #764)', () => {
-    // boundsOf([]) would report Infinity on every field with no guard —
-    // every downstream corner/segment computation would silently produce
-    // NaN world positions rather than an obviously-empty scene.
     const scene = boundariesToWallRuns(
       { cells: [] as never, boundaries: [] as never, doorways: [] as never },
       1
     );
-    expect(scene).toEqual({
-      envelopeRuns: [],
-      connectorRuns: [],
-      doorGaps: [],
-    });
+    expect(scene).toEqual({ wallRuns: [], doorGaps: [] });
   });
 });

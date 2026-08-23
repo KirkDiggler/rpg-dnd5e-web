@@ -162,6 +162,13 @@ describe('buildScene3D', () => {
    * owns that) — just confirms buildScene3D actually calls through to it
    * and returns what it returns, so the two modules can't silently drift
    * apart (e.g. a future edit renaming a field in one without the other).
+   * Not an exact run count: this tiny 4-cell fixture's real hex-corner
+   * outline is a small irregular diamond, not a rectangle (a corner cell
+   * only has 2 of its 6 neighbors as other floor cells), so the real
+   * outline-tracing chain (rpg-dnd5e-web#787) legitimately produces more
+   * than the old bounding-rectangle envelope's fixed 4 — that fixed count
+   * was exactly the "envelope follows the bounding box, not the real
+   * outline" bug #787 fixed, so asserting it here would re-pin the bug.
    */
   it('wires atlasWallRuns.boundariesToWallRuns straight through', () => {
     const cells = [pos(0, 0), pos(0, 1), pos(1, 0), pos(1, 1)];
@@ -190,8 +197,7 @@ describe('buildScene3D', () => {
       1,
       'pointy'
     );
-    expect(scene.envelopeRuns).toHaveLength(4);
-    expect(scene.connectorRuns).toHaveLength(1);
+    expect(scene.wallRuns.length).toBeGreaterThan(0);
     expect(scene.doorGaps).toHaveLength(0);
   });
 });

@@ -422,11 +422,7 @@ export function SessionScene({
         <meshBasicMaterial visible={false} />
       </mesh>
       <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={hexSize} />
-      <AtlasWalls
-        envelopeRuns={scene.envelopeRuns}
-        connectorRuns={scene.connectorRuns}
-        doorGaps={scene.doorGaps}
-      />
+      <AtlasWalls wallRuns={scene.wallRuns} doorGaps={scene.doorGaps} />
       {scene.props.map((prop, index) => (
         <AtlasPropModel
           key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
