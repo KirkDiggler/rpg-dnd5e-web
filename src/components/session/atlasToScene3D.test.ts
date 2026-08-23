@@ -91,6 +91,16 @@ describe('worldPositionOf agrees with the SVG concept page', () => {
 });
 
 describe('buildScene3D', () => {
+  it('refuses a flat layout by name instead of drawing the rotated picture', () => {
+    expect(() =>
+      buildScene3D(
+        { cells: [], props: [], boundaries: [], doorways: [] } as never,
+        1,
+        'flat'
+      )
+    ).toThrow(/pointy-top hexes only.*#763/);
+  });
+
   it('places every cell as a floor tile keyed by its cube coordinate', () => {
     const scene = buildScene3D(
       {
@@ -99,7 +109,8 @@ describe('buildScene3D', () => {
         boundaries: [],
         doorways: [],
       } as never,
-      1
+      1,
+      'pointy'
     );
     expect(scene.floorTiles.size).toBe(2);
     const cube = positionToCube(pos(1, 0));
@@ -130,7 +141,8 @@ describe('buildScene3D', () => {
           },
         ],
       } as never,
-      1
+      1,
+      'pointy'
     );
 
     expect(scene.props).toEqual([
@@ -175,7 +187,8 @@ describe('buildScene3D', () => {
     ];
     const scene = buildScene3D(
       { cells, props: [], boundaries, doorways: [] } as never,
-      1
+      1,
+      'pointy'
     );
     expect(scene.envelopeRuns).toHaveLength(4);
     expect(scene.connectorRuns).toHaveLength(1);

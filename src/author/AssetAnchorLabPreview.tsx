@@ -1,3 +1,4 @@
+import { facingToRotationY } from '@/components/hex-grid/authorGridHelpers';
 import { GlbInstance } from '@/components/hex-grid/GlbInstance';
 import { HEX_SIZE, hexCorners } from '@/components/hex-grid/hexMath';
 import { SyntyHexFloor } from '@/components/hex-grid/SyntyHexFloor';
@@ -33,7 +34,6 @@ import {
   type Vec3Tuple,
   type VisibleBounds,
 } from './assetAnchorExperiment';
-import { facingToRotationY } from './boardGeometry';
 import {
   INITIAL_AZIMUTH,
   INITIAL_DISTANCE,

@@ -192,6 +192,16 @@ function AppContent() {
     setCurrentView('author');
   };
 
+  // Save & Play from the Dungeon Builder (rpg-project#256): the builder
+  // already started the encounter on the authored key; drop straight
+  // into it the same way resume-after-refresh does.
+  const handlePlayAuthored = (encounterId: string, characterId: string) => {
+    setResumeLobbyId(null);
+    setLobbyCharacterId(characterId);
+    setResumeEncounterId(encounterId);
+    setCurrentView('lobby');
+  };
+
   // Carousel selection handler
   const handleCarouselSelect = (id: string, type: 'character' | 'draft') => {
     setSelectedId(id);
@@ -318,7 +328,11 @@ function AppContent() {
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
         ) : currentView === 'author' ? (
-          <AuthorView onBack={handleBackToHome} />
+          <AuthorView
+            onBack={handleBackToHome}
+            characterId={selectedType === 'character' ? selectedId : null}
+            onPlay={handlePlayAuthored}
+          />
         ) : currentView === 'home' && myActiveLobby.loading ? (
           // Resume-after-refresh (#444): hold Home's content one beat while
           // GetMyActiveLobby resolves, so a resumable session (routed via

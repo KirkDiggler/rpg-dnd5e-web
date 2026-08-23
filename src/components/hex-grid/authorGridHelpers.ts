@@ -179,3 +179,18 @@ export const HEX_FACING_LABELS = ['E', 'NE', 'NW', 'W', 'SW', 'SE'] as const;
 export function facingDirection(index: number): CubeCoord {
   return HEX_DIRECTIONS[((index % 6) + 6) % 6]!;
 }
+
+/**
+ * The Y rotation that points a model's local +X at the neighbor in
+ * `facing`'s direction — the Kirk-approved reference mapping for a wire
+ * `facing` (0..5, E first, counter-clockwise — `HEX_FACING_LABELS`).
+ * Scale-invariant, so `cubeToWorld` is evaluated at size 1. Lived in the
+ * old dungeon builder's `boardGeometry.ts`; moved here when that dialect
+ * was deleted (rpg-project#256) because the GAME's prop renderer is the
+ * consumer that survived.
+ */
+export function facingToRotationY(facing: number): number {
+  const dir = facingDirection(facing);
+  const world = cubeToWorld(dir, 1);
+  return Math.atan2(-world.z, world.x);
+}

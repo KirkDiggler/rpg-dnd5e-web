@@ -17,7 +17,7 @@
  * boardGeometry.ts's facingToRotationY directly rather than reimplementing
  * it, and the test below pins that delegation for all 6 directions.
  */
-import { facingToRotationY } from '@/author/boardGeometry';
+import { facingToRotationY } from '@/components/hex-grid/authorGridHelpers';
 import { describe, expect, it } from 'vitest';
 import { resolvePropRotationY } from './HexGrid';
 

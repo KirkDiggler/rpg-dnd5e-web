@@ -54,8 +54,8 @@ function resetClients() {
     client.lobby.setReady.mockReset();
     client.lobby.startEncounter.mockReset();
     client.authoring.putDungeon.mockResolvedValue({
-      success: true,
-      fieldErrors: [],
+      errors: [],
+      atlas: undefined,
     });
     client.lobby.setReady.mockResolvedValue({});
     client.lobby.startEncounter.mockResolvedValue({ encounterId: 'enc-1' });
@@ -313,10 +313,10 @@ describe('ToolkitContributorSandbox', () => {
     fighter.authoring.putDungeon.mockImplementation((request) =>
       Promise.resolve(
         request.validateOnly
-          ? { success: true, fieldErrors: [] }
+          ? { errors: [], atlas: undefined }
           : {
-              success: false,
-              fieldErrors: [{ message: 'fixed template rejected' }],
+              atlas: undefined,
+              errors: [{ path: 'key', message: 'fixed template rejected' }],
             }
       )
     );
@@ -355,11 +355,11 @@ describe('ToolkitContributorSandbox', () => {
   });
 
   it('waits for a successful save callback before listing and ignores a stale list completion after a newer save', async () => {
-    const persisted = deferred<{ success: boolean; fieldErrors: never[] }>();
+    const persisted = deferred<{ errors: never[]; atlas: undefined }>();
     const staleFighterList = deferred<{ characters: Array<{ id: string }> }>();
     fighter.authoring.putDungeon.mockImplementation((request) =>
       request.validateOnly
-        ? Promise.resolve({ success: true, fieldErrors: [] })
+        ? Promise.resolve({ errors: [], atlas: undefined })
         : persisted.promise
     );
     fighter.character.listCharacters
@@ -371,7 +371,7 @@ describe('ToolkitContributorSandbox', () => {
     expect(fighter.character.listCharacters).not.toHaveBeenCalled();
 
     await act(async () => {
-      persisted.resolve({ success: true, fieldErrors: [] });
+      persisted.resolve({ errors: [], atlas: undefined });
       await persisted.promise;
     });
     await waitFor(() =>
@@ -577,10 +577,10 @@ describe('ToolkitContributorSandbox', () => {
   });
 
   it('ignores a late successful save callback after the sandbox unmounts', async () => {
-    const persisted = deferred<{ success: boolean; fieldErrors: never[] }>();
+    const persisted = deferred<{ errors: never[]; atlas: undefined }>();
     fighter.authoring.putDungeon.mockImplementation((request) =>
       request.validateOnly
-        ? Promise.resolve({ success: true, fieldErrors: [] })
+        ? Promise.resolve({ errors: [], atlas: undefined })
         : persisted.promise
     );
 
@@ -591,7 +591,7 @@ describe('ToolkitContributorSandbox', () => {
 
     unmount();
     await act(async () => {
-      persisted.resolve({ success: true, fieldErrors: [] });
+      persisted.resolve({ errors: [], atlas: undefined });
       await persisted.promise;
     });
     await settleDeferred();

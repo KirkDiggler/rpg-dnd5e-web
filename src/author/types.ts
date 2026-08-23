@@ -1,40 +1,37 @@
-export type PaletteSelection =
-  | { kind: 'prop'; ref: string }
-  | { kind: 'monster'; ref: string }
-  | { kind: 'boss'; ref: string };
-
-/** `roomId: null` on the non-boss variant means a TOP-LEVEL placement
- * (`doc.place[index]`, absolute [col,row]) rather than a room-scoped one
- * (`doc.rooms.find(r => r.id === roomId).place[index]`, room-local
- * [col,row]) — see dungeonYaml.ts's `DungeonDoc.place` doc comment and
- * TARGET-YAML.md's "top-level placement" section. A boss stays
- * room-scoped always (dungeonspec's `validateBossCardinality` needs an
- * owning room even in the target dialect), so `roomId` is non-nullable
- * on that variant. */
-export type PlacementSelection =
-  | { roomId: string | null; index: number; boss?: false }
-  | { roomId: string; boss: true };
-
-/** A board TOOL (as opposed to `PaletteSelection`'s draggable-item
- * selection) — target-dialect-only, proposed authoring actions from the
- * Structural (wall/door/hole/region) and Markers (start/end) palette
- * categories. See TARGET-YAML.md's "Structural palette category" section.
- * Mutually exclusive with `PaletteSelection`/`PlacementSelection`/connector
- * selection — `DungeonBuilderConcept.tsx`'s `clearOtherSelections` keeps
- * that invariant. `'region'` (rpg-project#180, "cell-authored semantic
- * room regions") is creation-mode-only this round — see
- * `creation/CreationBoard.tsx`'s region-painting handling and
- * `RegionPanel.tsx`; edit mode renders any authored `regions:` read-only,
- * with no tool to create/edit them there yet. `'straightWall'`
- * (creation-mode-only, same as `'region'`) draws a `WallLineDoc` —
- * a STRAIGHT segment with a footprint, distinct from `'wall'`'s
- * edge-painted zigzag — see `creation/straightWallGeometry.ts` and
- * TARGET-YAML.md's "Straight walls" section. */
+/** The palette's tools (design §1, left column) plus `select`, which
+ * the inspector needs: clicking a placement, a door edge or a region
+ * cell with it selects that thing. */
 export type BoardTool =
+  | 'select'
+  | 'region'
+  | 'erase'
   | 'wall'
-  | 'straightWall'
   | 'door'
-  | 'hole'
   | 'start'
-  | 'end'
-  | 'region';
+  | 'place';
+
+/** What the inspector is looking at. */
+export type Selection =
+  | { kind: 'dungeon' }
+  | { kind: 'region'; id: string }
+  | { kind: 'door'; id: string }
+  | { kind: 'placement'; index: number };
+
+/** The catalog item armed on the `place` tool. */
+export interface PaletteItem {
+  kind: 'prop' | 'monster';
+  ref: string;
+}
+
+/** The static archetype list (plan W: "a static list in W, the catalog
+ * is Not now"). A presentation ref the assets resolve; never mechanics. */
+export const ARCHETYPES = ['crypt', 'cave', 'sewer', 'ruin', 'hall'] as const;
+
+export const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
+
+export const TARGETINGS = [
+  'closest',
+  'lowest-health',
+  'highest-threat',
+  'random',
+] as const;
