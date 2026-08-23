@@ -69,27 +69,24 @@
  * entries through the SAME onEvent path in order... before resuming live
  * delivery" (issue #779) means operationally.
  *
- * # `StoryEntry` carries no typed body — catch-up events are honest about it
+ * # Catch-up entries are the same `Event` shape as live ones
  *
- * `Event.body` is a typed oneof rpg-api projects server-side for the LIVE
- * stream (rpg-toolkit#941), but `GetStoryResponse.StoryEntry` (as
- * generated today, rpg-api-protos main) carries only `seq`/`at`/
- * `correlation`/`tags`/`payload` — no `kind`, no typed `body`. There is no
- * server-side equivalent of the live projection for catch-up reads. Rather
- * than decode `payload` client-side (`Event.payload`'s own doc comment:
- * "A CLIENT READS body AND NEVER DECODES payload — not as a fallback, not
- * for a field it wishes were typed" — the same rule applies to
- * `StoryEntry.payload`, an identically-described passthrough blob) or
- * invent a fake typed body, `storyEntryToEvent` below synthesizes an
- * `Event` with `kind: EventKind.UNKNOWN` and `body` left unset — the exact
- * signal the wire already uses for "a beat this client cannot type"
- * (`EventKind.UNKNOWN`'s own doc: "delivered on purpose rather than
- * dropped so the recipient still learns its sequence advanced"). `seq`
- * accounting stays exact; `combatBeat.ts`'s `formatBeat` already returns
- * `null` for an unmatched case, and #740's debug log renders an unknown
- * body as JSON rather than nothing. A typed `StoryEntry` body is a real
- * gap worth closing in rpg-api-protos, not a defect in what this hook
- * does with what the wire gives it today.
+ * `GetStoryResponse.entries` is `repeated Event` (rpg-api-protos#239/#240,
+ * v0.1.135) — the exact message `StreamEvents` projects, kind and typed
+ * `body` and all, not a lossier stand-in this hook has to special-case.
+ * rpg-api's `GetStory` handler runs each stored beat through the SAME
+ * converter the live stream uses (rpg-toolkit session v0.23.0), so a
+ * client catching up after a gap sees exactly what it would have received
+ * live, seq for seq — no second, lossier projection to reconcile. This
+ * hook used to synthesize its own `Event` with `kind: EventKind.UNKNOWN`
+ * from the old `StoryEntry`'s untyped `payload` blob (`storyEntryToEvent`,
+ * deleted by issue #785, along with the "prefer the buffered live copy
+ * over catch-up's synthetic one" precedence special case that used to live
+ * in `applyCatchUpEntries` below) — that workaround is gone because the
+ * server-side gap it covered for is gone. `EventKind.UNKNOWN` can still
+ * arrive on the wire (see its own doc comment), but it is now always a
+ * genuine server signal for "a beat this client cannot type," never
+ * something this hook manufactures.
  *
  * # Aged-out
  *
@@ -108,14 +105,8 @@
  * `SessionEncounterView`'s own doc comment).
  */
 import { sessionClient } from '@/api/client';
-import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
-import {
-  EventKind,
-  EventSchema,
-  type Event,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import type { StoryEntry } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { useEffect, useRef, useState } from 'react';
 import { RECONNECT_CONFIG } from '../../api/streamReconnect';
 
@@ -136,25 +127,6 @@ function isStoryTrimmedError(err: unknown): boolean {
     connectErr.code === Code.OutOfRange &&
     connectErr.rawMessage.includes(STORY_TRIMMED_SENTINEL_TEXT)
   );
-}
-
-/** See module doc comment "`StoryEntry` carries no typed body" — `kind`
- * is `UNKNOWN` and `body` is left unset, deliberately, rather than
- * decoding `payload` or fabricating a typed case. */
-function storyEntryToEvent(
-  entry: StoryEntry,
-  session: string,
-  recipient: string
-): Event {
-  return create(EventSchema, {
-    session,
-    seq: entry.seq,
-    at: entry.at,
-    correlation: entry.correlation,
-    recipient,
-    kind: EventKind.UNKNOWN,
-    payload: entry.payload,
-  });
 }
 
 export function useSessionEventStream(
@@ -261,27 +233,23 @@ export function useSessionEventStream(
         retryTimeout = setTimeout(connect, delay);
       };
 
-      const applyCatchUpEntries = (entries: StoryEntry[]) => {
+      const applyCatchUpEntries = (entries: Event[]) => {
         // GetStoryResponse's entries arrive oldest-first, same order
-        // StreamEvents itself delivers — fed through the SAME `deliver`
-        // path live events use, in order, de-duped against what this
-        // connection has already seen.
+        // StreamEvents itself delivers — the SAME typed `Event` shape, fed
+        // through the SAME `deliver` path live events use, in order,
+        // de-duped against what this connection has already seen.
         //
-        // ALSO skips anything already sitting in `buffer` — `from_seq` has
-        // no upper bound, so a catch-up commonly returns entries the live
-        // stream ALSO already delivered while the RPC was in flight (that
-        // is exactly what got buffered). Those buffered copies are real
-        // `Event`s with a typed `body`; the catch-up's copy of the same
-        // seq is the untyped synthetic form (see module doc comment on
-        // `storyEntryToEvent`). Preferring the buffered version for a seq
-        // both sources carry keeps every recoverable beat at full
-        // fidelity — the synthetic/untyped form is reserved for seqs
-        // ONLY catch-up can supply, the genuine gap.
-        const bufferedSeqs = new Set(buffer.map((event) => event.seq));
+        // `from_seq` has no upper bound, so a catch-up commonly returns
+        // entries the live stream ALSO already delivered while the RPC was
+        // in flight (that is exactly what got buffered) — those duplicates
+        // are caught here by the `seq <= lastSeq` check, and the matching
+        // buffered copies are caught by the identical check in
+        // `drainBuffer` below once `lastSeq` has advanced past them. No
+        // precedence question between the two: catch-up and live are the
+        // same typed `Event`, so whichever copy is skipped loses nothing.
         for (const entry of entries) {
           if (lastSeq !== null && entry.seq <= lastSeq) continue;
-          if (bufferedSeqs.has(entry.seq)) continue;
-          deliver(storyEntryToEvent(entry, session, member));
+          deliver(entry);
         }
       };
 

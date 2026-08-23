@@ -175,7 +175,7 @@ describe('formatDebugLine', () => {
     expect(line.text).toBe('seq=7 clock=42 kind=SCENE_OPENED body=null');
   });
 
-  it("rule 6's synthesized UNKNOWN catch-up entries render honestly, never decoding payload", () => {
+  it('an UNKNOWN-kind event renders honestly, never decoding payload (a genuine wire signal since v0.1.135, not a catch-up artifact)', () => {
     const event = baseEvent({
       kind: EventKind.UNKNOWN,
       payload: new Uint8Array([1, 2, 3]),
