@@ -1,0 +1,64 @@
+Decoded story log entries (session-enc:v1alpha1:aa648551-60ed-4edd-b520-feee34665f52), read directly from redis via
+  docker exec rpg-redis-dev redis-cli GET "session-enc:v1alpha1:aa648551-60ed-4edd-b520-feee34665f52"
+captured 2026-08-23 during the live evidence walk for rpg-project#254.
+
+bubbles (fight): [{"order": ["char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b", "skeleton-1", "skeleton-2"], "round": 4}]
+
+seq=1 tag=scene audience=None
+  payload={"beat":"scene-opened"}
+seq=2 tag=membership audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b']
+  payload={"beat":"joined","member":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b"}
+seq=3 tag=membership audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1']
+  payload={"beat":"joined","member":"skeleton-1"}
+seq=4 tag=membership audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2']
+  payload={"beat":"joined","member":"skeleton-2"}
+seq=5 tag=membership audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"joined","member":"skeleton-captain-1"}
+seq=6 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","position":{"x":1,"y":3}}
+seq=7 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","position":{"x":2,"y":3}}
+seq=8 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","position":{"x":3,"y":3}}
+seq=9 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","position":{"x":3,"y":4}}
+seq=10 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"bubble-formed","order":["char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","skeleton-1","skeleton-2"]}
+seq=11 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","next":"skeleton-1"}
+seq=12 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"skeleton-1","position":{"x":9,"y":3}}
+seq=13 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"skeleton-1","position":{"x":8,"y":3}}
+seq=14 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"skeleton-1","position":{"x":7,"y":3}}
+seq=15 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"skeleton-1","position":{"x":6,"y":3}}
+seq=16 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"skeleton-1","position":{"x":5,"y":3}}
+seq=17 tag=movement audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"moved","member":"skeleton-1","position":{"x":4,"y":4}}
+seq=18 tag=outcome audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"actor":"skeleton-1","against":14,"attack":{"damage_type":"piercing","name":"shortsword","ref":"melee"},"beat":"missed","roll":9,"targets":["char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b"],"total":13}
+seq=19 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"skeleton-1","next":"skeleton-2"}
+seq=20 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"skeleton-2","next":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b"}
+seq=21 tag=outcome audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"actor":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","against":13,"amount":8,"attack":{"damage_type":"bludgeoning","name":"Unarmed Strike","ref":"unarmed-strike"},"beat":"struck","critical":false,"roll":17,"targets":["skeleton-1"],"total":22}
+seq=22 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","next":"skeleton-1"}
+seq=23 tag=outcome audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"actor":"skeleton-1","against":14,"amount":7,"attack":{"damage_type":"piercing","name":"shortsword","ref":"melee"},"beat":"struck","critical":false,"roll":17,"targets":["char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b"],"total":21}
+seq=24 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"skeleton-1","next":"skeleton-2"}
+seq=25 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"skeleton-2","next":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b"}
+seq=26 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b","next":"skeleton-1"}
+seq=27 tag=outcome audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"actor":"skeleton-1","against":14,"amount":3,"attack":{"damage_type":"piercing","name":"shortsword","ref":"melee"},"beat":"struck","critical":false,"roll":15,"targets":["char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b"],"total":19}
+seq=28 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"skeleton-1","next":"skeleton-2"}
+seq=29 tag=clock audience=['char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b', 'skeleton-1', 'skeleton-2', 'skeleton-captain-1']
+  payload={"beat":"turn-ended","member":"skeleton-2","next":"char_62a835de-1df6-44fb-a74c-c1fedb0f2d4b"}

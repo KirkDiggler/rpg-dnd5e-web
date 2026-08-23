@@ -38,11 +38,17 @@
  * entity's cell is a no-op (see `SessionCanvas`'s own doc comment).
  *
  * Still honest about what it doesn't know: a monster's turn is a real
- * driven beat (the design's own "the monster's turn as a moment," web
- * #561) rather than a guess — `useCombatPanel`'s own `handleEvent` paces
- * "<name>'s turn." then "<name> does nothing." from the stream's typed
- * `turnEnded` event before refetching, so the panel never claims more
- * than the wire has actually told it.
+ * driven beat, not a guess. Since rpg-project#254 (design rpg-project#252,
+ * journey #253/#91) the server drives an unplayed member's whole turn in
+ * one pass — walking it toward whoever it can see, swinging if it gets
+ * there — and narrates that as a burst of `moved`/`struck`/`missed`/
+ * `turnEnded` events that can land within milliseconds of each other.
+ * `useCombatPanel`'s own `handleEvent` queues those four kinds for any
+ * OTHER member and replays them at a fixed, human-followable pace
+ * (`monsterBeatQueue.ts`), refetching this component's OWN `GetView`
+ * (`refetchView` below, its single owner) as each `moved` lands so the
+ * entity is standing where the server says by the time its `struck`
+ * shows — see that hook's own doc comment for the full sequence.
  *
  * # Move on the turn clock (toolkit#1169)
  *
@@ -98,10 +104,7 @@
 
 import { errorMessage } from '@/utils/combatFormat';
 import { create } from '@bufbuild/protobuf';
-import {
-  EventKind,
-  type Event as SessionEvent,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { ClockKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   GetCharacterRequestSchema,
@@ -524,10 +527,20 @@ export function SessionEncounterView({
   // in the whole (freshly-returned-every-render) combatPanel object.
   const { handleEvent: handleCombatEvent } = combatPanel;
 
-  // MOVED refetches GetWhere for ANY member's move (this is how another
-  // member's move will eventually reach this client too — today it's a
-  // harmless re-fetch of the same answer the local player's own Move
-  // response already reconciled). AFFORD_REFRESH_EVENT_KINDS/
+  // MOVED refetches GetWhere for the LOCAL PLAYER's own move only
+  // (rpg-project#254 slice 2) — "where am I" is a question only a SELF
+  // move answers; another member's position lives in GetView/sightings,
+  // not GetWhere. Before this slice, ANY member's MOVED refetched
+  // GetWhere unconditionally (the doc comment here used to call that
+  // "harmless" — true only while a monster's driven turn could never
+  // actually move; now that it can, refetching the LOCAL player's own
+  // position on every one of a monster's four-cell approach would be
+  // both pointless and, via the wherePosition-changed effect below,
+  // an UNPACED GetView refresh racing ahead of `useCombatPanel`'s own
+  // paced one). Another member's moved/struck/missed/turnEnded now
+  // reaches GetView entirely through that hook's own queue (see its doc
+  // comment) — this is the "single owner of the fetch, more trigger
+  // sites" shape, not a second fetcher. AFFORD_REFRESH_EVENT_KINDS/
   // TURN_REFRESH_EVENT_KINDS refetch Afford/Turn instead — different
   // questions (turn economy, whose go it is) that a bare MOVED never
   // answers on its own; see those constants' own comments for why
@@ -538,16 +551,16 @@ export function SessionEncounterView({
   // never decodes `event.payload` to guess one.
   const handleSessionEvent = useCallback(
     (event: SessionEvent) => {
-      if (event.kind === EventKind.MOVED) {
+      if (event.body?.case === 'moved' && event.body.value.member === member) {
         void refetchWhere();
       }
-      // Beat-line formatting, monster-turn pacing, and every Afford/Turn
-      // refetch trigger besides MOVED's own GetWhere refresh above now
-      // live in `useCombatPanel`'s own `handleEvent` — see its doc
-      // comment for the single-funnel reasoning.
+      // Beat-line formatting, another member's turn pacing, and every
+      // Afford/Turn/View refetch trigger besides the self-MOVED GetWhere
+      // refresh above now live in `useCombatPanel`'s own `handleEvent` —
+      // see its doc comment for the single-funnel reasoning.
       handleCombatEvent(event);
     },
-    [refetchWhere, handleCombatEvent]
+    [member, refetchWhere, handleCombatEvent]
   );
   useSessionEventStream(sessionId, member, handleSessionEvent);
 

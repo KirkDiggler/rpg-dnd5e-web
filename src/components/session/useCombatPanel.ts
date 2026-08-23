@@ -25,19 +25,36 @@
  * who (`Downed.member`, rpg-toolkit#1137) instead of the old anonymous
  * "A member is downed." placeholder this module used to render.
  *
- * # The monster's turn as a moment (web#561, rpg-project#249 §4)
+ * # The monster's turn as a moment, replayed at a readable pace
+ * (rpg-project#254, design rpg-project#252, journey #253/#91)
  *
- * A `turn_ended` event for a MONSTER participant (`Participant.kind ===
- * MONSTER`, read off the SAME roster the panel renders) is a two-stage
- * presentation pace, not an instant refetch: "<name>'s turn." then, after
- * `MONSTER_TURN_PACING_MS`, "<name> does nothing." — and ONLY THEN does
- * this hook refetch Turn/Afford, which is what actually flips the panel
- * back to the player. A `turn_ended` for anyone else (the local player's
- * own turn ending, or another player's) refetches immediately — there is
- * nothing to pace there. A `downed` beat immediately followed by a
- * `fight_ended` beat reads as one combined sentence when they land close
- * together ("skeleton-1 is downed. The fight is over.", the design's own
- * §1 wording) rather than one silently overwriting the other.
+ * The server drives an unplayed member's whole turn in one pass and
+ * narrates it as a burst on the stream — `moved` (one per cell), then
+ * `struck`/`missed`, then `turn_ended` — which can land within
+ * milliseconds of each other (`useCombatPanel` used to only ever see a
+ * bare `turn_ended`, back when the driver could only Pass). Shown as fast
+ * as they arrive, a multi-cell approach and a swing would flash by
+ * unreadably, so `handleEvent` diverts those four kinds — whenever their
+ * actor isn't the local `member` — into a small queue
+ * (`monsterBeatQueue.ts`'s `needsPacing`/`nextBeatStep`) and
+ * `drainQueue` below replays them one at a time, `BEAT_PACE_MS` apart:
+ * "<name>'s turn." first (an `announce` step, before the actor's first
+ * real beat is even consumed), then each `moved` refetches GetView
+ * silently (the entity must be standing where the server says by the
+ * time its `struck` lands), each `struck`/`missed` sets the beat line
+ * (using the SAME `formatBeat` the player's own swings use, so "Skeleton
+ * hits Fighter — 23 vs AC 13, 11 slashing." reads no differently than the
+ * player's own "You hit Skeleton..."), and `turnEnded` finalizes — "<name>
+ * does nothing." only when nothing else played first (a driver that sees
+ * nobody), otherwise the last struck/missed line simply stands — then,
+ * after one more pace delay, refetches Turn/Afford, which is what
+ * actually flips the panel's turn indicator back to the player. Every
+ * OTHER kind (`downed`, `fightStarted`, `fightEnded`, `ENDED`, and any
+ * beat the local player caused themselves) bypasses the queue and is
+ * handled immediately below, exactly as before this slice.
+ *
+ * `monsterBeatQueue.ts`'s own doc comment covers why the gate is "not the
+ * local player," not `MemberKind.MONSTER` specifically.
  */
 import {
   EventKind,
@@ -45,7 +62,6 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   ClockKind,
-  MemberKind,
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -54,13 +70,15 @@ import { useSessionAttack } from '../../api/useSessionAttack';
 import { useSessionEndTurn } from '../../api/useSessionEndTurn';
 import { formatBeat } from './combatBeat';
 import { selectCombatPanel, type CombatPanelSelection } from './combatPanel';
+import { needsPacing, nextBeatStep } from './monsterBeatQueue';
 import { participantNameMap } from './participantNames';
 import type { SightedMember } from './sightingEntities';
 
-/** How long the "<name>'s turn." / "<name> does nothing." pacing beats
- * each stay up before the next stage — exported so a test can assert the
+/** How far apart the queue plays consecutive beats of another member's
+ * driven turn — the design's own "so a human can follow" bound
+ * (rpg-project#252 §4: 250-400ms). Exported so a test can assert the
  * exact timing rather than a magic number. */
-export const MONSTER_TURN_PACING_MS = 1100;
+export const BEAT_PACE_MS = 300;
 
 /** How long the "Your turn!" teaching banner stays up. */
 export const TURN_STARTED_BANNER_MS = 2000;
@@ -90,12 +108,16 @@ export interface UseCombatPanelArgs {
   refetchAfford: () => Promise<void>;
   refetchTurn: () => Promise<void>;
   /** Owned by the caller (`useSessionView`'s `refetch`) — this hook fires
-   * it after the player's own Attack round-trip (success or refusal) and
-   * on a `downed`/`fightEnded` event body, so sightings never lag behind
-   * what the beat line has already announced. GetView otherwise only
-   * refreshes on `GetWhere` landing (a live-gate-found gap: a just-
-   * defeated target kept reporting `Standing.UP` and stayed clickable
-   * until the player's NEXT walk happened to refresh it). */
+   * it after the player's own Attack round-trip (success or refusal), on
+   * a `downed`/`fightEnded` event body, and — this slice — for every
+   * queued `moved`/`struck`/`missed`/`turnEnded` beat belonging to
+   * another member, at the SAME paced tempo those beats render at (see
+   * this module's own doc comment). GetView otherwise only refreshed on
+   * `GetWhere` landing (a live-gate-found gap: a just-defeated target
+   * kept reporting `Standing.UP` and stayed clickable until the player's
+   * NEXT walk happened to refresh it; the same staleness was true of
+   * another member's position before this slice — nothing refreshed
+   * `GetView` for a monster's OWN move). */
   refetchView: () => Promise<void>;
 }
 
@@ -113,10 +135,10 @@ export interface UseCombatPanelResult {
   /** No-ops when `selection.endTurn` isn't enabled. */
   endTurn: () => void;
   /** Wire straight to `useSessionEventStream`'s `onEvent` — the single
-   * funnel for beat-line formatting, monster-turn pacing, and Afford/Turn
-   * refetch triggers. `SessionEncounterView` still owns the position-only
-   * `MOVED -> refetchWhere` trigger separately (a different question this
-   * hook has no stake in). */
+   * funnel for beat-line formatting, another member's turn pacing, and
+   * every Afford/Turn/View refetch trigger that isn't the position-only
+   * `MOVED -> refetchWhere` the caller still owns for the LOCAL player's
+   * own move (a different question this hook has no stake in). */
   handleEvent: (event: SessionEvent) => void;
   attacking: boolean;
   endingTurn: boolean;
@@ -202,6 +224,129 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     []
   );
 
+  // Another member's driven-turn queue (see this module's own doc
+  // comment). `participantsRef`/`sightedMembersRef` track the LATEST
+  // props across renders so a beat processed several timeouts after it
+  // was enqueued still resolves names from current data, not whatever
+  // was current the instant it arrived (`useSessionEventStream`'s own
+  // `onEventRef` is the same "read through a ref" idiom, for the same
+  // reason).
+  const queueRef = useRef<SessionEvent[]>([]);
+  const drainingRef = useRef(false);
+  const announcedActorRef = useRef<string | null>(null);
+  // True once ANY beat has played for the currently-announced actor —
+  // moved included. A driven turn that only ever moves (never gets in
+  // reach this turn) must not be narrated as "does nothing" just
+  // because it never swung (Copilot review, PR #776).
+  const sawBeatRef = useRef(false);
+  const drainTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const participantsRef = useRef(participants);
+  const sightedMembersRef = useRef(sightedMembers);
+  useEffect(() => {
+    participantsRef.current = participants;
+    sightedMembersRef.current = sightedMembers;
+  }, [participants, sightedMembers]);
+
+  const namesNow = useCallback((): Map<string, string> => {
+    const names = participantNameMap(participantsRef.current);
+    for (const m of sightedMembersRef.current ?? []) {
+      if (!names.has(m.subject)) names.set(m.subject, m.name);
+    }
+    return names;
+  }, []);
+
+  const drainQueue = useCallback(() => {
+    const step = nextBeatStep(queueRef.current, announcedActorRef.current);
+
+    if (step.type === 'idle') {
+      drainingRef.current = false;
+      return;
+    }
+
+    if (step.type === 'announce') {
+      announcedActorRef.current = step.actor;
+      sawBeatRef.current = false;
+      const name = namesNow().get(step.actor) ?? step.actor;
+      setLastBeat(`${name}'s turn.`);
+      drainTimeoutRef.current = setTimeout(drainQueue, BEAT_PACE_MS);
+      return;
+    }
+
+    // 'process' — consume the head and apply this beat's own side
+    // effects. `queueRef` is a plain array the queue owns exclusively;
+    // `monsterBeatQueue.ts` only ever reads it.
+    queueRef.current.shift();
+    const { event, actor } = step;
+    const names = namesNow();
+
+    switch (event.body?.case) {
+      case 'moved':
+        // No beat text (`formatBeat` returns null for `moved` too, same
+        // as the local player's own walk) — just move the entity. Still
+        // counts as a beat: a turn that only ever moved (never got in
+        // reach) isn't "doing nothing."
+        sawBeatRef.current = true;
+        void refetchView();
+        break;
+      case 'struck':
+      case 'missed': {
+        sawBeatRef.current = true;
+        const text = formatBeat(event, member, names);
+        if (text !== null) setLastBeat(text);
+        void refetchAfford();
+        void refetchView();
+        break;
+      }
+      case 'turnEnded': {
+        if (!sawBeatRef.current) {
+          const name = names.get(actor) ?? actor;
+          setLastBeat(`${name} does nothing.`);
+        }
+        // Otherwise the last beat's own line stands untouched (a swing's
+        // text, or — a moved-but-never-in-reach turn — the announce's
+        // "<name>'s turn." itself) — the design's own walkthrough goes
+        // straight from "Skeleton attacks you..." to "Round 2, your
+        // turn." with no separate "turn ended" sentence in between
+        // (rpg-project#252 §1).
+        void refetchView();
+        announcedActorRef.current = null;
+        sawBeatRef.current = false;
+        // One more pace delay before Turn/Afford refetch — this is what
+        // actually flips the panel's turn indicator/shapes back to the
+        // player, so it happens AFTER the closing beat has had a moment
+        // on screen, not the instant it's set. If a new actor's beats
+        // already queued up during this delay (should never happen today
+        // — the wire drives one member at a time — but never assume),
+        // resume draining rather than going idle with unplayed work.
+        drainTimeoutRef.current = setTimeout(() => {
+          void refetchAfford();
+          void refetchTurn();
+          if (queueRef.current.length > 0) {
+            drainQueue();
+          } else {
+            drainingRef.current = false;
+          }
+        }, BEAT_PACE_MS);
+        return;
+      }
+      default:
+        break;
+    }
+
+    if (queueRef.current.length > 0) {
+      drainTimeoutRef.current = setTimeout(drainQueue, BEAT_PACE_MS);
+    } else {
+      drainingRef.current = false;
+    }
+  }, [member, namesNow, refetchAfford, refetchTurn, refetchView]);
+
+  useEffect(
+    () => () => {
+      if (drainTimeoutRef.current) clearTimeout(drainTimeoutRef.current);
+    },
+    []
+  );
+
   const attackTarget = useCallback(
     (subject: string) => {
       if (selection.mode !== 'turn') return;
@@ -255,35 +400,29 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
 
   const handleEvent = useCallback(
     (event: SessionEvent) => {
-      // Participants first (the authoritative, standing-aware roster);
-      // sighted names fill in anyone Turn's own roster fetch hasn't
-      // caught up to yet — see this hook's own doc comment on
-      // `sightedMembers`.
+      if (needsPacing(event, member)) {
+        queueRef.current.push(event);
+        if (!drainingRef.current) {
+          drainingRef.current = true;
+          drainQueue();
+        }
+        return;
+      }
+
+      // Everything below is either the LOCAL player's own beat (moved,
+      // turnEnded, struck/missed as attacker or target) or a kind this
+      // module never paces (downed, fightStarted, fightEnded, ENDED) —
+      // see `monsterBeatQueue.ts`'s own doc comment for the paced/
+      // immediate split.
       const names = participantNameMap(participants);
       for (const m of sightedMembers ?? []) {
         if (!names.has(m.subject)) names.set(m.subject, m.name);
       }
 
       if (event.body?.case === 'turnEnded') {
-        const endedMember = event.body.value.member;
-        const endedIsMonster = participants.some(
-          (p) => p.member === endedMember && p.kind === MemberKind.MONSTER
-        );
-        if (endedMember !== member && endedIsMonster) {
-          const name = names.get(endedMember) ?? endedMember;
-          setLastBeat(`${name}'s turn.`);
-          setTimeout(() => {
-            setLastBeat(`${name} does nothing.`);
-            setTimeout(() => {
-              void refetchAfford();
-              void refetchTurn();
-            }, MONSTER_TURN_PACING_MS);
-          }, MONSTER_TURN_PACING_MS);
-          return;
-        }
-        if (endedMember === member) {
-          setLastBeat('Turn ended.');
-        }
+        // Reached only for the LOCAL player's own turn ending now —
+        // every OTHER member's turnEnded is routed into the queue above.
+        setLastBeat('Turn ended.');
         void refetchAfford();
         void refetchTurn();
         return;
@@ -338,9 +477,10 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
       }
     },
     [
-      participants,
       member,
+      participants,
       sightedMembers,
+      drainQueue,
       refetchAfford,
       refetchTurn,
       refetchView,
