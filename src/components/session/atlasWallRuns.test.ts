@@ -1,12 +1,25 @@
 /**
  * atlasWallRuns tests — straight-run geometry chained straight off the
  * authored edges (rpg-dnd5e-web#787), checked against the real 224-cell
- * reference-tomb fixture (Kirk's live-walk regression pin: same straight
- * envelope, same two seams, same two door gaps) and against small
- * hand-built fixtures for the shapes the real data doesn't exercise: a
- * partial interior wall that doesn't split the floor, an L-shaped seam,
- * a horizontal (row-type) seam, two doors on one seam, and a
- * non-rectangular floor's envelope.
+ * reference-tomb fixture (Kirk's live-walk regression pin: same two
+ * straight seams, same two door gaps — see the ruling-change note below
+ * for what changed about the PERIMETER) and against small hand-built
+ * fixtures for the shapes the real data doesn't exercise: a partial
+ * interior wall that doesn't split the floor, an L-shaped seam, a
+ * horizontal (row-type) seam, two doors on one seam, and a doorway
+ * overlapping a boundary on the same cell pair.
+ *
+ * # Ruling change, same day as #787
+ *
+ * Kirk, after seeing the first version (which traced the floor mask's
+ * real outline instead of a bounding rectangle) live: "draw nothing,
+ * floor ends into darkness. that seems more honest about the void." The
+ * floor's own outer edge draws NO wall geometry at all now, authored or
+ * implied — only `atlas.boundaries` and `atlas.doorways` render. An
+ * author who wants a visible outer wall draws one like any other
+ * boundary (see the "author-drawn wall at the floor's own edge"
+ * describe block below) — there is no special-cased "envelope" concept
+ * left to test.
  *
  * Coverage-style assertions ("every declared edge's own midpoint lies
  * near SOME run") rather than exact run counts, mirroring
@@ -179,17 +192,17 @@ describe('boundariesToWallRuns — the real reference tomb', () => {
     }
   });
 
-  it('the combined floor still reads as a wide footprint enclosing the whole 28x8 shape (same overall envelope Kirk approved, not a per-run recount)', () => {
+  it('draws nothing at the floor\'s own outer edge — ruling change, same day as #787 ("draw nothing, floor ends into darkness"): only the two interior seams render, not a perimeter', () => {
+    // The combined floor spans world x roughly 0..47.6 (28 columns *
+    // sqrt(3) hex spacing). If any perimeter wall geometry were still
+    // being drawn (the superseded outline-traced version), some run
+    // would sit near x=0 or x=47.6. With only the two interior seams
+    // (authored boundaries) rendering, every run's own geometry stays
+    // well inside that range, clustered around the two seams' own
+    // historically-measured x-bands (~9.5 and ~26.8).
     const xs = scene.wallRuns.flatMap((r) => [r.start.x, r.end.x]);
-    const zs = scene.wallRuns.flatMap((r) => [r.start.z, r.end.z]);
-    const width = Math.max(...xs) - Math.min(...xs);
-    const height = Math.max(...zs) - Math.min(...zs);
-    expect(width).toBeGreaterThan(45);
-    expect(width).toBeLessThan(55);
-    expect(height).toBeGreaterThan(8);
-    expect(height).toBeLessThan(13);
-    expect(Math.min(...xs)).toBeLessThan(1);
-    expect(Math.max(...xs)).toBeGreaterThan(46);
+    expect(Math.min(...xs)).toBeGreaterThan(5);
+    expect(Math.max(...xs)).toBeLessThan(35);
   });
 
   it('gives every run a finite, unit-length facing vector and non-zero length', () => {
@@ -305,7 +318,8 @@ describe('boundariesToWallRuns — an L-shaped interior seam', () => {
       },
       1
     );
-    // More than one run in total (interior seam + floor envelope).
+    // More than one run in total — the seam itself breaks into at least
+    // two legs at its corner (no floor envelope contributes anymore).
     expect(scene.wallRuns.length).toBeGreaterThan(1);
     // Every one of this interior wall's own declared edges — including
     // the ones flanking its 4 corners — is covered by some run: a bad
@@ -428,13 +442,13 @@ describe('boundariesToWallRuns — two doorways on the same seam (#782)', () => 
   });
 });
 
-describe('boundariesToWallRuns — a non-rectangular floor', () => {
-  it('the envelope follows the real notch, not the bounding rectangle: the notch’s own newly-exposed edges are covered by a run', () => {
-    // A 3x3 block missing its (2,2) corner cell — an L/notched floor. A
-    // bounding-RECTANGLE envelope has no per-cell adjacency data at all,
-    // so it could never place a wall at the notch (it only ever knows
-    // the floor's min/max col/row); the real outline tracer does, because
-    // it walks actual floor-vs-void adjacency.
+describe('boundariesToWallRuns — a non-rectangular floor with no declared walls', () => {
+  it('draws nothing at all, notch or no notch — there is no implied outline to trace anymore', () => {
+    // A 3x3 block missing its (2,2) corner cell — an L/notched floor,
+    // with NO boundaries or doorways declared. Before the ruling change
+    // this asserted the envelope traced the real notch instead of a
+    // bounding rectangle; now there is no envelope of any kind, so an
+    // undeclared floor edge (notched or straight) draws nothing at all.
     const cells: unknown[] = [];
     for (let q = 0; q <= 2; q++) {
       for (let r = 0; r <= 2; r++) {
@@ -446,18 +460,49 @@ describe('boundariesToWallRuns — a non-rectangular floor', () => {
       { cells: cells as never, boundaries: [] as never, doorways: [] as never },
       1
     );
-    // The two edges that exist ONLY because (2,2) is missing: (1,2)'s and
-    // (2,1)'s own edges toward where (2,2) would have been floor.
-    const notchEdges: Array<[CubeCoord, CubeCoord]> = [
-      [positionToCube(pos(1, 2)), positionToCube(pos(2, 2))],
-      [positionToCube(pos(2, 1)), positionToCube(pos(2, 2))],
+    expect(scene.wallRuns).toEqual([]);
+    expect(scene.doorGaps).toEqual([]);
+  });
+});
+
+describe('boundariesToWallRuns — an author-drawn wall at the floor’s own edge', () => {
+  it('renders exactly like any other boundary — no special-cased envelope path (ruling point 2: "if an author wants a visible outer wall, they draw it like any other wall")', () => {
+    // A single floor cell with ONE declared boundary against a NON-floor
+    // (void) neighbor — an author explicitly drawing an outer wall,
+    // using the exact same `atlas.boundaries` shape an interior wall
+    // uses. This module never checks whether a boundary's `to` is in
+    // the floor mask, so this is the same code path as any other
+    // boundary edge, proving the "no special casing" half of the ruling.
+    const cells = [pos(0, 0)];
+    const from = positionToCube(pos(0, 0));
+    const to = positionToCube(pos(1, 0)); // not in `cells` — a void neighbor
+    const boundaries = [
+      {
+        from: pos(0, 0),
+        to: pos(1, 0),
+        blocksMovement: true,
+        blocksLineOfSight: true,
+      },
     ];
-    for (const [from, to] of notchEdges) {
-      const mid = edgeMid(from, to);
-      expect(nearestRunDistance(mid, scene.wallRuns)).toBeLessThanOrEqual(
-        CHAIN_TOLERANCE + 1e-6
-      );
-    }
+    const scene = boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: [] as never,
+      },
+      1
+    );
+    const { a, b } = hexEdgeBetween(from, to, 1);
+    const matchesRun = scene.wallRuns.some((r) => {
+      const forward =
+        Math.hypot(r.start.x - a.x, r.start.z - a.z) < 1e-6 &&
+        Math.hypot(r.end.x - b.x, r.end.z - b.z) < 1e-6;
+      const reverse =
+        Math.hypot(r.start.x - b.x, r.start.z - b.z) < 1e-6 &&
+        Math.hypot(r.end.x - a.x, r.end.z - a.z) < 1e-6;
+      return forward || reverse;
+    });
+    expect(matchesRun).toBe(true);
   });
 });
 
@@ -467,11 +512,20 @@ describe('boundariesToWallRuns — a doorway declared on the same cell pair as a
     // through" a declared boundary on the exact same adjacent cell pair.
     // If both edges were fed to the chaining engine unfiltered, the
     // boundary would still tile as a normal wall run and cover the door.
+    // An unrelated second boundary elsewhere in the fixture keeps this a
+    // real discriminator (scene.wallRuns isn't simply empty) now that
+    // there's no floor envelope to also fall back on.
     const cells = [pos(0, 0), pos(1, 0), pos(0, 1), pos(1, 1)];
     const boundaries = [
       {
         from: pos(0, 0),
         to: pos(1, 0),
+        blocksMovement: true,
+        blocksLineOfSight: true,
+      },
+      {
+        from: pos(0, 1),
+        to: pos(1, 1),
         blocksMovement: true,
         blocksLineOfSight: true,
       },
@@ -486,6 +540,7 @@ describe('boundariesToWallRuns — a doorway declared on the same cell pair as a
       1
     );
     expect(scene.doorGaps).toHaveLength(1);
+    expect(scene.wallRuns.length).toBeGreaterThan(0); // the OTHER boundary still renders
     const from = positionToCube(pos(0, 0));
     const to = positionToCube(pos(1, 0));
     const { a, b } = hexEdgeBetween(from, to, 1);
@@ -509,16 +564,13 @@ describe('boundariesToWallRuns — a doorway declared on the same cell pair as a
 });
 
 describe('boundariesToWallRuns — small edge cases', () => {
-  it('gives two chambers with no declared boundary between them zero interior wall geometry, only their own envelopes', () => {
+  it('gives two chambers with no declared boundary between them nothing at all — no envelope to fall back on', () => {
     const cells = [pos(0, 0), pos(10, 0)];
     const scene = boundariesToWallRuns(
       { cells: cells as never, boundaries: [] as never, doorways: [] as never },
       1
     );
-    expect(scene.doorGaps).toHaveLength(0);
-    // Still a real (non-empty) scene — two isolated single-hex envelopes,
-    // not nothing.
-    expect(scene.wallRuns.length).toBeGreaterThan(0);
+    expect(scene).toEqual({ wallRuns: [], doorGaps: [] });
   });
 
   it('gives an empty atlas empty runs instead of Infinity/NaN geometry (Copilot review, PR #764)', () => {

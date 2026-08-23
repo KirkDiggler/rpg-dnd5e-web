@@ -13,18 +13,18 @@
  * straight walls in the game previously. I do not think making the walls
  * follow the hex shapes is a good idea." The wire's AUTHORITY is
  * unchanged — `atlas.boundaries` still say which cell pairs are blocked,
- * the floor cell mask still says where the outside is, nothing here is
- * derived from room membership the wire doesn't declare — only the
- * PRESENTATION changed, in `atlasWallRuns.ts` (see its own module doc
- * comment for the geometry: envelope and interior seams alike are now
- * chained straight off the real authored edges via
- * `authoredWallRuns.computeAuthoredWallRuns`, rpg-dnd5e-web#787).
+ * nothing here is derived from room membership the wire doesn't declare
+ * — only the PRESENTATION changed, in `atlasWallRuns.ts` (see its own
+ * module doc comment for the geometry: declared boundaries and doorways
+ * are chained straight off the real authored edges via
+ * `authoredWallRuns.computeAuthoredWallRuns`, rpg-dnd5e-web#787 — and
+ * for why the floor's own outer edge draws NOTHING now, Kirk's same-day
+ * ruling change: "draw nothing, floor ends into darkness").
  *
  * `WallRunMesh` itself (`../hex-grid/WallRunMesh`) is untouched — this
- * route now renders entirely through its `authoredRuns` prop (envelope
- * and connector runs are no longer a separate shape at all; see
- * `atlasWallRuns.ts`'s header doc for why unifying them is correct, not
- * merely convenient) rather than its older `envelopeRuns`/`connectorRuns`
+ * route now renders entirely through its `authoredRuns` prop (there is
+ * no separate "envelope" shape at all anymore; see `atlasWallRuns.ts`'s
+ * header doc) rather than its older `envelopeRuns`/`connectorRuns`
  * props, which this route passes empty. `WallRunMesh` does not place
  * doors — this component supplies the door frame+leaf the same way
  * `SyntyHexWall.tsx` always has.

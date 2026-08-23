@@ -1,8 +1,9 @@
 /**
- * atlasWallRuns — turns the session wire's DECLARED interior boundaries,
- * doorways, and floor cell mask into straight wall RUNS, by chaining the
- * AUTHORED edges themselves (rpg-dnd5e-web#787) — not by reconstructing
- * "chamber" geometry the wire never declares.
+ * atlasWallRuns — turns the session wire's DECLARED interior boundaries
+ * and doorways into straight wall RUNS, by chaining the AUTHORED edges
+ * themselves (rpg-dnd5e-web#787) — not by reconstructing "chamber"
+ * geometry the wire never declares, and NOT by inventing a wall at the
+ * floor's own outer edge.
  *
  * # Why this is no longer chamber-based
  *
@@ -21,43 +22,38 @@
  * skip); and a non-rectangular floor's envelope followed its bounding
  * RECTANGLE, not its real outline.
  *
- * # The fix: chain the real edges, don't infer regions
+ * # No more envelope at all (Kirk's ruling, same day, after seeing the
+ * outline-traced version live): "draw nothing, floor ends into
+ * darkness. that seems more honest about the void." The first fix for
+ * #787 (still traced from the real floor mask instead of a bounding
+ * rectangle) was itself superseded before merge — the floor's own
+ * outer edge draws NOTHING now, authored or implied. The void already
+ * blocks movement/sight mechanically (an opaque void blocks the whole
+ * hex, Kirk's separate standing ruling) with no visual masonry needed
+ * to sell it; a floor that just ends into darkness IS the honest
+ * picture. An author who wants a visible outer wall draws one like any
+ * other wall — `atlas.boundaries` — no special-cased "envelope" concept
+ * survives this file at all.
  *
- * `atlas.cells` + `atlas.boundaries` + `atlas.doorways` already carry
- * everything needed. This module builds one flat list of hex-adjacency
- * edges — every declared boundary, every doorway (as a break point, see
- * below), and every floor-cell-vs-void edge (the envelope, implied
- * exactly as the design ruling says: the author never draws it, it's
- * derived from the floor mask) — and hands the whole thing to
- * `authoredWallRuns.computeAuthoredWallRuns`, the chaining engine an
- * earlier slice (rpg-dnd5e-web#723-family) already built and proved for
- * exactly this problem: walk a graph of real hex edges into straight
- * runs via a Douglas-Peucker-style distance tolerance (a real zigzag
- * "eats" only a bounded amount before a chord across it stops matching
- * every visited vertex; a genuine corner's deviation grows unboundedly
- * the moment the walk is forced past it), breaking at branches, dead
- * ends, and door-adjacent vertices. It already handles closed loops
- * (Phase 2 of its own walk) — exactly what a floor's outer envelope is
- * — and isolated single-edge chains (a partial interior wall that
- * doesn't split anything renders as its own one-edge run, nothing to
- * drop).
+ * # The fix: chain the real authored edges, don't infer regions or an
+ * outer wall
  *
- * Feeding interior boundaries AND envelope edges into the SAME chaining
- * call (rather than two separate passes) is deliberate: they share the
- * real hex-corner graph, so a seam that reaches the floor's outer edge
- * MEETS the envelope run there by construction (the two runs share a
- * vertex) — Kirk's earlier "the walls do not touch" finding (PR #764)
- * doesn't need its own snapping step to not reappear; there's no seam
- * between two independently-computed pieces of geometry for it to hide
- * in anymore. `hexEdgeBetween`'s corner positions sit at the hex's own
- * apothem, not a cell center — this codebase's own
- * `DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES` doc comment (wallRuns.ts)
- * already established that the bare apothem is sufficient clearance for
- * the boundary hex's own footprint, with the old 1.0-hex value being
- * "~0.134 more than the bare apothem, a modest safety margin" — so no
- * additional outward push is applied here. If that reads as too tight
- * in-game, it's a real follow-up (a small facing-aligned nudge), not a
- * geometry bug this rewrite claims to rule out.
+ * `atlas.boundaries` + `atlas.doorways` already carry everything this
+ * module draws. It builds one flat list of hex-adjacency edges — every
+ * declared boundary, every doorway (as a break point, see below) — and
+ * hands the whole thing to `authoredWallRuns.computeAuthoredWallRuns`,
+ * the chaining engine an earlier slice (rpg-dnd5e-web#723-family)
+ * already built and proved for exactly this problem: walk a graph of
+ * real hex edges into straight runs via a Douglas-Peucker-style
+ * distance tolerance (a real zigzag "eats" only a bounded amount before
+ * a chord across it stops matching every visited vertex; a genuine
+ * corner's deviation grows unboundedly the moment the walk is forced
+ * past it), breaking at branches, dead ends, and door-adjacent
+ * vertices. It already handles isolated single-edge chains (a partial
+ * interior wall that doesn't split anything renders as its own one-edge
+ * run, nothing to drop) — the closed-loop handling it also has (its own
+ * Phase 2) simply never triggers here anymore, since there is no
+ * implied outer loop being fed in.
  *
  * # Doors are placed from their own edge, not a derived row fraction
  *
@@ -74,7 +70,6 @@
 
 import {
   coordToKey,
-  getHexNeighbors,
   hexEdgeBetween,
   type CubeCoord,
   type WorldPos,
@@ -138,15 +133,18 @@ function pairKey(a: CubeCoord, b: CubeCoord): string {
 
 /**
  * boundariesToWallRuns is the module's one entry point: every declared
- * boundary, every doorway (as a chain break point), and every implied
- * floor/void envelope edge become one straight-run scene, plus one
- * DoorGapPiece per doorway.
+ * boundary and every doorway (as a chain break point) become one
+ * straight-run scene, plus one DoorGapPiece per doorway. The floor's own
+ * outer edge draws nothing — Kirk's ruling, same day as #787: "draw
+ * nothing, floor ends into darkness. that seems more honest about the
+ * void." An author who wants a visible outer wall draws one via
+ * `atlas.boundaries`, same as any interior wall.
  */
 export function boundariesToWallRuns(
   atlas: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways'>,
   hexSize: number
 ): WallRunScene {
-  // An empty floor has no cells to derive envelope edges from at all —
+  // An empty floor has no doorway/boundary geometry worth deriving —
   // report an obviously-empty scene rather than let downstream geometry
   // silently degenerate (Copilot review, PR #764, the same guard this
   // module has always needed).
@@ -155,7 +153,6 @@ export function boundariesToWallRuns(
   }
 
   const cubes = atlas.cells.map(positionToCube);
-  const floorKeys = new Set(cubes.map(coordToKey));
 
   // A doorway "punches through" a boundary on the same cell pair -- a
   // shape this codebase already treats as valid (Copilot review, PR
@@ -190,18 +187,6 @@ export function boundariesToWallRuns(
       to: positionToCube(d.to),
       isDoor: true,
     });
-  }
-
-  // The envelope: implied, never authored — every floor cell's edge
-  // against a neighbor that is NOT floor. Fed into the same chaining
-  // call as the interior boundaries above (see module doc comment for
-  // why that's what makes a seam MEET the envelope with no separate
-  // snapping step).
-  for (const cube of cubes) {
-    for (const neighbor of getHexNeighbors(cube)) {
-      if (floorKeys.has(coordToKey(neighbor))) continue;
-      edges.push({ from: cube, to: neighbor, isDoor: false });
-    }
   }
 
   const wallRuns = computeAuthoredWallRuns(edges, hexSize, cubes);
