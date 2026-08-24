@@ -105,7 +105,15 @@ export interface AuthoredWallRun extends WallRunSegment {
   facing: WorldPos;
 }
 
-function vertexKey(p: WorldPos): string {
+/** Exported so a caller building the same `AuthoredWallEdgeInput[]` this
+ * module chains can recover, from a resulting run's own `key`, exactly
+ * WHICH of the caller's own edges (real cube `from`/`to` cell identity)
+ * contributed to that run -- by recomputing this SAME token for each of
+ * its own edges and matching against the key's own `;`-joined tokens
+ * (rpg-dnd5e-web#799: atlasWallRuns.ts's seam-fit needs each
+ * constituent boundary PAIR's cell identity, which a hex-CORNER vertex
+ * alone can't disambiguate -- a corner is shared by up to 3 cells). */
+export function vertexKey(p: WorldPos): string {
   // Hex-corner world positions are deterministic trig results (same
   // formula, same inputs -> bit-identical floats) for any two edges
   // genuinely sharing a vertex, but round anyway as a defensive tolerance
