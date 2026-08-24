@@ -44,6 +44,7 @@ import {
 } from '../markerStyle';
 import { thumbForRef } from '../paletteData';
 import type { BoardTool, Selection } from '../types';
+import { boardWallScene } from './boardWallRuns';
 import {
   cellCenter,
   cellsInBounds,
@@ -178,6 +179,18 @@ export function CreationBoard({
     [doc.regions]
   );
   const doorOwners = useMemo(() => doorEdgeOwners(doc), [doc]);
+  // The straightened picture (#800): existing walls and doors drawn as
+  // the SAME runs the 3D preview and game will render, via the shared
+  // geometry module — null on a flat-top document, where the board
+  // keeps its literal edge drawing (3D refuses flat-top by name, #763,
+  // so the literal edges ARE the honest picture there). Derived from
+  // the document directly, not the debounced server compile, so the
+  // wall the author just clicked straightens immediately.
+  const wallScene = useMemo(() => boardWallScene(doc, size), [doc, size]);
+  const doorById = useMemo(
+    () => new Map(doc.doors.map((d) => [d.id, d] as const)),
+    [doc.doors]
+  );
 
   const errorCells = useMemo(() => {
     const s = new Set<string>();
@@ -279,7 +292,12 @@ export function CreationBoard({
   const selectedPlacement =
     selection?.kind === 'placement' ? selection.index : null;
 
-  // Edges to draw: walls, door edges, the hover edge.
+  // Literal hex-edge lines. With the straightened picture on (pointy),
+  // walls and doors render as runs instead, and only ERROR edges stay
+  // literal, drawn on top of the runs — an error is edge-scoped truth
+  // about what the author clicked, not about the fitted line (#800).
+  // On a flat-top document everything stays literal, as before.
+  const straightened = wallScene !== null;
   const edgeLines: {
     key: string;
     edge: Edge;
@@ -288,20 +306,24 @@ export function CreationBoard({
     dash?: string;
   }[] = [];
   for (const w of doc.walls) {
+    const isError = errorEdges.has(edgeKey(w));
+    if (straightened && !isError) continue;
     edgeLines.push({
       key: `w:${edgeKey(w)}`,
       edge: w,
-      stroke: errorEdges.has(edgeKey(w)) ? ERROR_STROKE : WALL_STROKE,
+      stroke: isError ? ERROR_STROKE : WALL_STROKE,
       width: 4,
     });
   }
   for (const d of doc.doors) {
     for (const e of d.edges) {
       const k = edgeKey(e);
+      const isError = errorEdges.has(k);
+      if (straightened && !isError) continue;
       edgeLines.push({
         key: `d:${k}`,
         edge: e,
-        stroke: errorEdges.has(k)
+        stroke: isError
           ? ERROR_STROKE
           : d.locked
             ? DOOR_LOCKED_STROKE
@@ -481,6 +503,42 @@ export function CreationBoard({
             })}
           </g>
           <g data-layer="edges" pointerEvents="none" strokeLinecap="round">
+            {/* Straight runs first, then the gap-aligned doors, then any
+                literal (error) edges on top, then the hover edge. The
+                door keeps its stroke identity (locked/closed/selected)
+                but sits IN the run's gap, exactly where 3D will put it;
+                hit-testing stays edge-based (this layer takes no
+                pointer events). */}
+            {wallScene?.runs.map((r) => (
+              <line
+                key={`run:${r.key}`}
+                data-run={r.key}
+                x1={r.a.x}
+                y1={r.a.y}
+                x2={r.b.x}
+                y2={r.b.y}
+                stroke={WALL_STROKE}
+                strokeWidth={4}
+              />
+            ))}
+            {wallScene?.doors.map((d) => {
+              const doorDoc = doorById.get(d.doorId);
+              return (
+                <line
+                  key={`dr:${edgeKey(d.edge)}`}
+                  data-door-run={edgeKey(d.edge)}
+                  x1={d.a.x}
+                  y1={d.a.y}
+                  x2={d.b.x}
+                  y2={d.b.y}
+                  stroke={doorDoc?.locked ? DOOR_LOCKED_STROKE : DOOR_STROKE}
+                  strokeWidth={d.doorId === selectedDoor ? 6 : 4}
+                  strokeDasharray={
+                    doorDoc?.closed || doorDoc?.locked ? undefined : '4 3'
+                  }
+                />
+              );
+            })}
             {edgeLines.map((l) => {
               const seg = edgeSegment(l.edge, size, o);
               if (!seg) return null;
