@@ -39,6 +39,9 @@ export function fixtureAtlasOf(doc: DungeonDoc): GetAtlasResponse {
         at: pos(p.at),
         blocksMovement: !!p.blocksMovement,
         blocksLineOfSight: !!p.blocksLos,
+        facing: p.facing ?? '',
+        offsetX: p.offset?.[0] ?? 0,
+        offsetY: p.offset?.[1] ?? 0,
       })),
     boundaries: doc.walls.map(([a, b]) => ({
       from: pos(a),

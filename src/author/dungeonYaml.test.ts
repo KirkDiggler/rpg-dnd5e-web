@@ -11,6 +11,7 @@ import {
   setStart,
   toggleDoorEdge,
   toggleWall,
+  updatePlacement,
   type DungeonDoc,
 } from './dungeonYaml';
 import { referenceTombDoc } from './fixtures/referenceTomb';
@@ -102,6 +103,70 @@ describe('emitDungeon / parseDungeon', () => {
         'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nrooms: []\n'
       )
     ).toThrow(/unknown key "rooms"/);
+  });
+
+  it('round-trips facing and offset byte-for-byte', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:brazier',
+      at: p(1, 1),
+      blocksMovement: true,
+      blocksLos: false,
+    });
+    doc = {
+      ...doc,
+      place: [{ ...doc.place[0], facing: 'ne', offset: [0.2, -0.1] }],
+    };
+    const text = emitDungeon(doc);
+    expect(text).toContain(
+      '  - { ref: "dnd5e:props:brazier", at: [1,1], blocks_movement: true, blocks_los: false, facing: ne, offset: [0.2, -0.1] }'
+    );
+    const reparsed = parseDungeon(text);
+    expect(reparsed.place[0].facing).toBe('ne');
+    expect(reparsed.place[0].offset).toEqual([0.2, -0.1]);
+    expect(emitDungeon(reparsed)).toBe(text);
+  });
+
+  it('keeps an explicit offset [0, 0] distinct from omitted through a round trip', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    doc = placeAt(doc, { ref: 'dnd5e:props:brazier', at: p(1, 1) });
+    // Omitted: never written.
+    expect(emitDungeon(doc)).not.toContain('offset');
+    // Explicit zero: written, and survives the round trip as [0, 0] —
+    // not silently collapsed to omitted.
+    const withZero = {
+      ...doc,
+      place: [{ ...doc.place[0], offset: [0, 0] as [number, number] }],
+    };
+    const text = emitDungeon(withZero);
+    expect(text).toContain('offset: [0, 0]');
+    expect(parseDungeon(text).place[0].offset).toEqual([0, 0]);
+  });
+
+  it('refuses a non-string facing', () => {
+    expect(() =>
+      parseDungeon(
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nplace:\n  - { ref: "dnd5e:props:pillar", at: [0,0], facing: 3 }\n'
+      )
+    ).toThrow(/place\[0\]\.facing: expected a string/);
+  });
+
+  it('refuses a malformed offset', () => {
+    expect(() =>
+      parseDungeon(
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nplace:\n  - { ref: "dnd5e:props:pillar", at: [0,0], offset: [0.1] }\n'
+      )
+    ).toThrow(/place\[0\]\.offset: expected \[x,y\]/);
+  });
+
+  it('the reference tomb has no facing/offset anywhere — the additive fields change nothing absent', () => {
+    for (const placement of referenceTombDoc().place) {
+      expect(placement.facing).toBeUndefined();
+      expect(placement.offset).toBeUndefined();
+    }
+    expect(emitDungeon(referenceTombDoc())).not.toMatch(/facing:|offset:/);
   });
 });
 
@@ -196,9 +261,33 @@ describe('mutators', () => {
     );
   });
 
+  it('placeAt strips facing/offset from monster placements, same as blocks_*', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    doc = placeAt(doc, {
+      ref: 'dnd5e:monsters:zombie',
+      at: p(0, 0),
+      facing: 'ne',
+      offset: [0.2, 0.2],
+    });
+    expect(doc.place[0]).toEqual({ ref: 'dnd5e:monsters:zombie', at: p(0, 0) });
+  });
+
   it('start must be floor', () => {
     const doc = emptyDungeon();
     expect(setStart(doc, p(4, 4))).toBe(doc);
+  });
+
+  it('updatePlacement clears facing/offset back to omitted', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    doc = placeAt(doc, { ref: 'dnd5e:props:pillar', at: p(0, 0) });
+    doc = updatePlacement(doc, 0, { facing: 'ne', offset: [0.3, 0.1] });
+    expect(doc.place[0].facing).toBe('ne');
+    expect(doc.place[0].offset).toEqual([0.3, 0.1]);
+    doc = updatePlacement(doc, 0, { facing: undefined, offset: undefined });
+    expect(doc.place[0]).not.toHaveProperty('facing');
+    expect(doc.place[0]).not.toHaveProperty('offset');
   });
 });
 

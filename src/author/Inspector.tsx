@@ -4,12 +4,14 @@
  * writes straight into the document; the YAML pane below it is the
  * read-only mirror.
  */
+import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
   isMonsterRef,
   type DoorDoc,
   type DungeonDoc,
   type PlacementDoc,
 } from './dungeonYaml';
+import type { Orientation } from './hexOffset';
 import { RegionPanel } from './RegionPanel';
 import { ABILITIES, TARGETINGS, type Selection } from './types';
 
@@ -76,6 +78,7 @@ export function Inspector(props: InspectorProps) {
     return (
       <PlacementPanel
         placement={placement}
+        orientation={doc.orientation}
         onChange={(p) => props.onPlacement(selection.index, p)}
         onRemove={() => props.onRemovePlacement(selection.index)}
       />
@@ -228,10 +231,12 @@ function DoorPanel({
 
 function PlacementPanel({
   placement,
+  orientation,
   onChange,
   onRemove,
 }: {
   placement: PlacementDoc;
+  orientation: Orientation;
   onChange: (patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>) => void;
   onRemove: () => void;
 }) {
@@ -290,11 +295,130 @@ function PlacementPanel({
           <div className="text-xs opacity-70">
             Prefilled from the catalog; always written explicitly.
           </div>
+          <FacingControl
+            orientation={orientation}
+            facing={placement.facing}
+            onChange={(facing) => onChange({ facing })}
+          />
+          <OffsetControl
+            offset={placement.offset}
+            onChange={(offset) => onChange({ offset })}
+          />
         </>
       )}
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
         remove
       </button>
+    </div>
+  );
+}
+
+/** Six direction buttons, drawn rotated to match the dungeon's own
+ * orientation (design §"The panel") — the SAME `facingAngleDeg` table
+ * the 2D canvas tick and the 3D render use, so the compass points the
+ * same way the placement actually renders. A center "none" button
+ * clears to the asset's own default. */
+function FacingControl({
+  orientation,
+  facing,
+  onChange,
+}: {
+  orientation: Orientation;
+  facing?: string;
+  onChange: (facing: string | undefined) => void;
+}) {
+  const names = FACING_NAMES[orientation];
+  const radius = 34;
+  return (
+    <div className="dg-label">
+      facing
+      <div className="dg-facing-compass" data-testid="facing-compass">
+        <button
+          type="button"
+          data-testid="facing-none"
+          className={`dg-mini dg-facing-btn dg-facing-center${
+            facing === undefined ? ' dg-tool--on' : ''
+          }`}
+          style={{ left: '50%', top: '50%' }}
+          title="asset default"
+          onClick={() => onChange(undefined)}
+        >
+          •
+        </button>
+        {names.map((name) => {
+          const deg = facingAngleDeg(orientation, name) ?? 0;
+          const rad = (deg * Math.PI) / 180;
+          const left = `calc(50% + ${Math.cos(rad) * radius}px)`;
+          const top = `calc(50% + ${Math.sin(rad) * radius}px)`;
+          return (
+            <button
+              key={name}
+              type="button"
+              data-testid={`facing-${name}`}
+              className={`dg-mini dg-facing-btn${
+                facing === name ? ' dg-tool--on' : ''
+              }`}
+              style={{ left, top }}
+              onClick={() => onChange(name)}
+            >
+              {name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** A bounded within-cell nudge — X/Y steppers plus a "center" reset
+ * (design §"The panel": "a small 2D nudge pad (or X/Y steppers)").
+ * Values are clamped to [-0.5, 0.5] client-side for a sane control even
+ * though the server is the actual bounds judge. */
+function OffsetControl({
+  offset,
+  onChange,
+}: {
+  offset?: [number, number];
+  onChange: (offset: [number, number] | undefined) => void;
+}) {
+  const [x, y] = offset ?? [0, 0];
+  const clamp = (v: number) => Math.min(0.5, Math.max(-0.5, v));
+  return (
+    <div className="dg-label">
+      offset
+      <div className="flex gap-2 items-end">
+        <label className="dg-label flex-1">
+          x
+          <input
+            className="dg-input"
+            type="number"
+            min={-0.5}
+            max={0.5}
+            step={0.1}
+            value={x}
+            onChange={(e) => onChange([clamp(Number(e.target.value) || 0), y])}
+          />
+        </label>
+        <label className="dg-label flex-1">
+          y
+          <input
+            className="dg-input"
+            type="number"
+            min={-0.5}
+            max={0.5}
+            step={0.1}
+            value={y}
+            onChange={(e) => onChange([x, clamp(Number(e.target.value) || 0)])}
+          />
+        </label>
+        <button
+          type="button"
+          className="dg-mini"
+          onClick={() => onChange(undefined)}
+        >
+          center
+        </button>
+      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@
  * Tools act through the document mutators in `dungeonYaml.ts`; this
  * component never holds a `[col,row]` (see `hexOffset.ts`).
  */
+import { facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
   useCallback,
   useLayoutEffect,
@@ -392,7 +393,14 @@ export function CreationBoard({
           </g>
           <g data-layer="placements" pointerEvents="none">
             {doc.place.map((p, i) => {
-              const c = cellCenter(p.at, size, o);
+              const cell = cellCenter(p.at, size, o);
+              // Offset is a fraction of the cell size, visual only — the
+              // marker moves within its hex, the cell it's keyed to
+              // (selection, errors, deletion) never changes.
+              const c = {
+                x: cell.x + (p.offset?.[0] ?? 0) * size,
+                y: cell.y + (p.offset?.[1] ?? 0) * size,
+              };
               const thumb = thumbForRef(p.ref);
               const monster = isMonsterRef(p.ref);
               const color = monster
@@ -405,6 +413,10 @@ export function CreationBoard({
               const error = errorTargets.some(
                 (t) => t.kind === 'placement' && t.index === i
               );
+              const facingDeg =
+                p.facing !== undefined
+                  ? facingAngleDeg(o, p.facing)
+                  : undefined;
               return (
                 <g key={`${p.ref}:${axialKey(p.at)}`} data-placement={i}>
                   <circle
@@ -440,6 +452,18 @@ export function CreationBoard({
                     >
                       {p.ref.split(':').pop()?.slice(0, 2).toUpperCase()}
                     </text>
+                  )}
+                  {facingDeg !== undefined && (
+                    <line
+                      data-facing-tick={i}
+                      x1={c.x + Math.cos((facingDeg * Math.PI) / 180) * r}
+                      y1={c.y + Math.sin((facingDeg * Math.PI) / 180) * r}
+                      x2={c.x + Math.cos((facingDeg * Math.PI) / 180) * r * 1.6}
+                      y2={c.y + Math.sin((facingDeg * Math.PI) / 180) * r * 1.6}
+                      stroke={WALL_STROKE}
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                    />
                   )}
                   {p.boss && (
                     <text

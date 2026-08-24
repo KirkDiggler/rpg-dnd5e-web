@@ -27,9 +27,12 @@
  *
  * # Props stay opaque
  *
- * Atlas props keep only the wire's reference and converted cell here. The
- * renderer resolves that reference through the asset manifest; this adapter
- * never derives collision or line-of-sight behavior from asset metadata.
+ * Atlas props keep the wire's reference, converted cell, and authored
+ * `facing`/`offset` here (rpg-project#261) — verbatim words/fractions, no
+ * angle math. The renderer resolves the reference through the asset
+ * manifest and derives yaw itself (`facingYaw.ts`); this adapter never
+ * derives collision, line-of-sight, or render-angle behavior from asset
+ * metadata.
  *
  * # Walls live in atlasWallRuns.ts, not here
  *
@@ -45,7 +48,12 @@
  * even though the PRESENTATION is now straight runs.
  */
 
-import { coordToKey, type CubeCoord } from '@/components/hex-grid/hexMath';
+import {
+  coordToKey,
+  cubeToWorld,
+  type CubeCoord,
+  type WorldPos,
+} from '@/components/hex-grid/hexMath';
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -60,7 +68,37 @@ export { positionToCube, worldPositionOf };
 
 export interface SceneProp3D {
   ref: string;
+  /** The cell it stands on — mechanics stay cell-scoped (design's
+   * "presentation never decides mechanics" law): this is the position
+   * movement/LOS reason about, unaffected by `offset`. */
   position: CubeCoord;
+  /** The authored facing word, verbatim off the wire (`''` = none, the
+   * asset's own default orientation) — rpg-project#261. Yaw derivation
+   * is the renderer's job (`facingYaw.ts`'s `facingToYaw`), not this
+   * adapter's; the wire carries the word, never an angle. */
+  facing: string;
+  /** The authored within-cell visual nudge, verbatim off the wire —
+   * `{0, 0}` and "not authored" render identically, by design. VISUAL
+   * ONLY; never read by anything that computes rules. */
+  offset: { x: number; y: number };
+}
+
+/**
+ * A prop's actual render position: its cell center plus its authored
+ * `offset`, each component scaled by `hexSize` (design: "offset * HEX_SIZE
+ * applied in the shared scene path"). ONE place, so `DungeonPreview3D`'s
+ * prop path and the game route's (`SessionCanvas`) can never disagree —
+ * the same symmetric-bug discipline `hexOffset.ts` names.
+ */
+export function propWorldPosition(
+  prop: Pick<SceneProp3D, 'position' | 'offset'>,
+  hexSize: number
+): WorldPos {
+  const center = cubeToWorld(prop.position, hexSize);
+  return {
+    x: center.x + prop.offset.x * hexSize,
+    z: center.z + prop.offset.y * hexSize,
+  };
 }
 
 export interface Scene3D {
@@ -146,7 +184,12 @@ export function buildScene3D(
   const props: SceneProp3D[] = [];
   for (const prop of atlas.props) {
     if (!prop.at) continue;
-    props.push({ ref: prop.ref, position: positionToCube(prop.at) });
+    props.push({
+      ref: prop.ref,
+      position: positionToCube(prop.at),
+      facing: prop.facing,
+      offset: { x: prop.offsetX, y: prop.offsetY },
+    });
   }
 
   const { wallRuns, doorGaps } = boundariesToWallRuns(atlas, hexSize);

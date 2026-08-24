@@ -153,7 +153,7 @@ function renderSession(scene3D = scene()) {
 
 function sceneWithProp(ref: string, position = { x: 1, y: 0, z: -1 }) {
   const propScene = scene();
-  propScene.props = [{ ref, position }];
+  propScene.props = [{ ref, position, facing: '', offset: { x: 0, y: 0 } }];
   return propScene;
 }
 
