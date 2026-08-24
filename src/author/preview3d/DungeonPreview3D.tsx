@@ -140,11 +140,7 @@ export function DungeonPreview3D({
       <ambientLight intensity={0.6} />
       <directionalLight intensity={0.8} position={[10, 20, 10]} />
       <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={HEX_SIZE} />
-      <AtlasWalls
-        envelopeRuns={scene.envelopeRuns}
-        connectorRuns={scene.connectorRuns}
-        doorGaps={scene.doorGaps}
-      />
+      <AtlasWalls wallRuns={scene.wallRuns} doorGaps={scene.doorGaps} />
       {scene.props.map((prop, index) => (
         <PreviewProp
           key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}

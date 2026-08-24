@@ -5,7 +5,7 @@
  * Canvas-content component directly through the test renderer's own root
  * rather than nesting a second `<Canvas>` inside it.
  */
-import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
+import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import { Standing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
@@ -75,46 +75,45 @@ function floorTiles(...coords: Array<[number, number, number]>) {
 }
 
 function scene(): Scene3D {
-  const envelopeRuns: EnvelopeRun[] = [
+  // Four envelope-shaped runs plus the two segments a connector's own
+  // door gap would leave (rpg-dnd5e-web#787: envelope and interior seam
+  // runs are no longer separate shapes — both are just AuthoredWallRun
+  // entries now, see atlasWallRuns.ts's own module doc comment).
+  const wallRuns: AuthoredWallRun[] = [
     {
-      regionId: 'tomb',
-      side: 'left',
+      key: 'left',
       start: { x: -1, z: -1 },
       end: { x: -1, z: 1 },
       facing: { x: -1, z: 0 },
     },
     {
-      regionId: 'tomb',
-      side: 'right',
+      key: 'right',
       start: { x: 3, z: -1 },
       end: { x: 3, z: 1 },
       facing: { x: 1, z: 0 },
     },
     {
-      regionId: 'tomb',
-      side: 'top',
+      key: 'top',
       start: { x: -1, z: -1 },
       end: { x: 3, z: -1 },
       facing: { x: 0, z: -1 },
     },
     {
-      regionId: 'tomb',
-      side: 'bottom',
+      key: 'bottom',
       start: { x: -1, z: 1 },
       end: { x: 3, z: 1 },
       facing: { x: 0, z: 1 },
     },
-  ];
-  const connectorRuns: ConnectorRun[] = [
     {
-      doorId: 'hall-1',
-      regionAId: 'chamber-0',
-      regionBId: 'chamber-1',
-      segments: [
-        { start: { x: 1, z: -1 }, end: { x: 1, z: -0.5 } },
-        { start: { x: 1, z: 0.5 }, end: { x: 1, z: 1 } },
-      ],
-      coveredRows: { minRow: 0, maxRow: 1 },
+      key: 'hall-1-a',
+      start: { x: 1, z: -1 },
+      end: { x: 1, z: -0.5 },
+      facing: { x: 1, z: 0 },
+    },
+    {
+      key: 'hall-1-b',
+      start: { x: 1, z: 0.5 },
+      end: { x: 1, z: 1 },
       facing: { x: 1, z: 0 },
     },
   ];
@@ -130,8 +129,7 @@ function scene(): Scene3D {
   return {
     floorTiles: floorTiles([0, 0, 0], [1, -1, 0], [1, 0, -1]),
     props: [],
-    envelopeRuns,
-    connectorRuns,
+    wallRuns,
     doorGaps,
   };
 }
@@ -201,12 +199,12 @@ describe('SessionScene', () => {
       .filter((node) => (node.instance as THREE.Mesh).position.y === 0.2);
     expect(floorMeshes).toHaveLength(3);
 
-    // WallRunMesh tiles 4 envelope runs + 1 connector run (2 segments) into
-    // GLB pieces, plus the door frame + leaf = several <primitive>
-    // instances, each wrapping the mocked GLB scene's clone. `node.type`
-    // is the underlying THREE object's own `.type` (e.g. 'Group'/'Mesh');
-    // the JSX tag name lives on the raw fiber instead (`node.fiber.type`),
-    // which is what identifies a `<primitive>`.
+    // WallRunMesh tiles 6 authored wall runs into GLB pieces, plus the
+    // door frame + leaf = several <primitive> instances, each wrapping the
+    // mocked GLB scene's clone. `node.type` is the underlying THREE
+    // object's own `.type` (e.g. 'Group'/'Mesh'); the JSX tag name lives
+    // on the raw fiber instead (`node.fiber.type`), which is what
+    // identifies a `<primitive>`.
     const glbPrimitives = renderer.scene.findAll(
       (node) => node.fiber.type === 'primitive'
     );

@@ -30,13 +30,12 @@ describe('previewScene', () => {
 
     expect(preview.scene.floorTiles.size).toBe(224);
     expect(preview.scene.floorTiles).toEqual(game.floorTiles);
-    expect(preview.scene.envelopeRuns).toEqual(game.envelopeRuns);
-    expect(preview.scene.connectorRuns).toEqual(game.connectorRuns);
+    expect(preview.scene.wallRuns).toEqual(game.wallRuns);
     expect(preview.scene.doorGaps).toEqual(game.doorGaps);
     expect(preview.scene.props).toEqual(game.props);
     // two seams, one doorway each
     expect(preview.scene.doorGaps).toHaveLength(2);
-    expect(preview.scene.connectorRuns.length).toBeGreaterThan(0);
+    expect(preview.scene.wallRuns.length).toBeGreaterThan(0);
     expect(preview.scene.props.map((p) => p.ref)).toEqual([
       'dnd5e:props:brazier',
       'dnd5e:props:pillar',

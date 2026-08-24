@@ -46,8 +46,8 @@
  */
 
 import { coordToKey, type CubeCoord } from '@/components/hex-grid/hexMath';
+import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
-import type { ConnectorRun, EnvelopeRun } from '@/hooks/wallRuns';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   layoutFromWire,
@@ -66,8 +66,7 @@ export interface SceneProp3D {
 export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
   props: SceneProp3D[];
-  envelopeRuns: EnvelopeRun[];
-  connectorRuns: ConnectorRun[];
+  wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
 }
 
@@ -150,10 +149,7 @@ export function buildScene3D(
     props.push({ ref: prop.ref, position: positionToCube(prop.at) });
   }
 
-  const { envelopeRuns, connectorRuns, doorGaps } = boundariesToWallRuns(
-    atlas,
-    hexSize
-  );
+  const { wallRuns, doorGaps } = boundariesToWallRuns(atlas, hexSize);
 
-  return { floorTiles, props, envelopeRuns, connectorRuns, doorGaps };
+  return { floorTiles, props, wallRuns, doorGaps };
 }
