@@ -36,7 +36,7 @@ import { hexEdgeBetween, type CubeCoord } from '@/components/hex-grid/hexMath';
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
-import { boundariesToWallRuns } from './atlasWallRuns';
+import { boundariesToWallRuns, cornerJoint } from './atlasWallRuns';
 import { positionToCube } from './positionBridge';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
@@ -566,6 +566,362 @@ describe('boundariesToWallRuns — an L-shaped interior seam', () => {
         CHAIN_TOLERANCE + 1e-6
       );
     }
+  });
+});
+
+describe('boundariesToWallRuns — corners close by construction (rpg-dnd5e-web#793)', () => {
+  /** A real interior L-shaped partition (region B a plain rectangle,
+   * region A its complement within the floor -- the exact construction
+   * the merged L-shaped-seam test above already proves produces a
+   * genuine two-leg bend) with `mirrored` flipping which side is B, so
+   * the corner bends the other way -- "both orientations of the
+   * corner" per the issue. */
+  function lShapedScene(mirrored: boolean) {
+    const cells: unknown[] = [];
+    for (let q = 0; q <= 8; q++) {
+      for (let r = 0; r <= 7; r++) cells.push(pos(q, r));
+    }
+    const inB = mirrored
+      ? (q: number, r: number) => q <= 5 && r >= 4
+      : (q: number, r: number) => q >= 3 && r >= 4;
+    const edges: Array<[number, number, number, number]> = [];
+    const seen = new Set<string>();
+    for (let q = 0; q <= 8; q++) {
+      for (let r = 0; r <= 7; r++) {
+        const neighbors: Array<[number, number]> = [
+          [q + 1, r - 1],
+          [q + 1, r],
+          [q, r - 1],
+          [q - 1, r],
+          [q - 1, r + 1],
+          [q, r + 1],
+        ];
+        for (const [nq, nr] of neighbors) {
+          if (nq < 0 || nq > 8 || nr < 0 || nr > 7) continue;
+          if (inB(q, r) === inB(nq, nr)) continue;
+          const key = [q, r, nq, nr].sort().join(',');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          edges.push([q, r, nq, nr]);
+        }
+      }
+    }
+    const boundaries = edges.map(([q, r, nq, nr]) => ({
+      from: pos(q, r),
+      to: pos(nq, nr),
+      blocksMovement: true,
+      blocksLineOfSight: true,
+    }));
+    return boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: [] as never,
+      },
+      1
+    );
+  }
+
+  /** A genuine T-junction: three regions tiled by cube-axis dominance
+   * (region = whichever of a cell's own cube x/y/z is the strict
+   * maximum) around one small patch of floor -- a standard hex-grid
+   * tri-coloring, not a hand-picked shape, that reliably produces
+   * exactly one raw vertex where all three regions meet (verified: at
+   * this N, exactly one endpoint cluster of size 3 exists, and every
+   * other genuine corner in the fixture clusters at size 2).
+   * `computeAuthoredWallRuns` explicitly supports a branch vertex with
+   * 3+ runs meeting it (this module's own header doc, corners
+   * section) -- this is that shape. */
+  function tJunctionScene() {
+    const N = 2;
+    const regionOf = (q: number, r: number): 0 | 1 | 2 => {
+      const x = q;
+      const y = -q - r;
+      const z = r;
+      if (x >= y && x >= z) return 0;
+      if (y > x && y >= z) return 1;
+      return 2;
+    };
+    const inRange = (q: number, r: number) =>
+      Math.abs(q) <= N && Math.abs(r) <= N && Math.abs(-q - r) <= N;
+    const cells: unknown[] = [];
+    for (let q = -N; q <= N; q++) {
+      for (let r = -N; r <= N; r++) if (inRange(q, r)) cells.push(pos(q, r));
+    }
+    const boundaries: Array<{
+      from: unknown;
+      to: unknown;
+      blocksMovement: boolean;
+      blocksLineOfSight: boolean;
+    }> = [];
+    const seen = new Set<string>();
+    for (let q = -N; q <= N; q++) {
+      for (let r = -N; r <= N; r++) {
+        if (!inRange(q, r)) continue;
+        const neighbors: Array<[number, number]> = [
+          [q + 1, r - 1],
+          [q + 1, r],
+          [q, r - 1],
+          [q - 1, r],
+          [q - 1, r + 1],
+          [q, r + 1],
+        ];
+        for (const [nq, nr] of neighbors) {
+          if (!inRange(nq, nr)) continue;
+          if (regionOf(q, r) === regionOf(nq, nr)) continue;
+          const key = [q, r, nq, nr].sort().join(',');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          boundaries.push({
+            from: pos(q, r),
+            to: pos(nq, nr),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+          });
+        }
+      }
+    }
+    return boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: [] as never,
+      },
+      1
+    );
+  }
+
+  const CORNER_OVERLAP_MARGIN = 0.16;
+  const JOIN_RADIUS = 0.5;
+  // A real bend's two directions are never anywhere near parallel (the
+  // shallowest authored corner this codebase's hex geometry produces
+  // is still a clear angle change); a straight fragment-to-fragment
+  // join has directions pointing the SAME or OPPOSITE way. 0.9 sits
+  // well below any genuine corner's dot product and well above a
+  // collinear join's -- see the describe block's own header doc,
+  // Copilot review finding, for why this check exists at all.
+  const COLLINEAR_DOT_LIMIT = 0.9;
+
+  interface EndpointRef {
+    runIndex: number;
+    end: 'start' | 'end';
+    point: P;
+    dir: P;
+  }
+
+  /** Groups every run endpoint (both ends of every run) with every
+   * OTHER endpoint within `JOIN_RADIUS`, transitively (single-linkage,
+   * like the production clustering this test is verifying from the
+   * outside) -- then only accepts a group as real evidence of a
+   * corner/junction if EVERY pair of its members' directions forms a
+   * genuine bend (Copilot review, PR #794: a bare distance threshold
+   * alone can also match two independent fragments of what's
+   * geometrically one straight run -- the production margin is 0.16,
+   * so a straight tolerance-split join can land only 0.32 apart, well
+   * inside the old 0.5 radius, with no bend at all). Returns the one
+   * group of exactly `size` members satisfying both, or undefined if
+   * none exists -- callers assert a corner/junction actually exists
+   * before trusting anything about it. */
+  function findJunctionCluster(runs: readonly AuthoredWallRun[], size: number) {
+    const refs: EndpointRef[] = [];
+    for (let i = 0; i < runs.length; i++) {
+      refs.push({
+        runIndex: i,
+        end: 'start',
+        point: runs[i]!.start,
+        dir: unitDir(runs[i]!.end, runs[i]!.start),
+      });
+      refs.push({
+        runIndex: i,
+        end: 'end',
+        point: runs[i]!.end,
+        dir: unitDir(runs[i]!.start, runs[i]!.end),
+      });
+    }
+    const parent = refs.map((_, i) => i);
+    const find = (x: number): number =>
+      parent[x] === x ? x : (parent[x] = find(parent[x]!));
+    const union = (a: number, b: number) => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) parent[ra] = rb;
+    };
+    for (let i = 0; i < refs.length; i++) {
+      for (let j = i + 1; j < refs.length; j++) {
+        if (refs[i]!.runIndex === refs[j]!.runIndex) continue; // never join a run to its own other end
+        if (distanceBetween(refs[i]!.point, refs[j]!.point) < JOIN_RADIUS) {
+          union(i, j);
+        }
+      }
+    }
+    const groups = new Map<number, EndpointRef[]>();
+    for (let i = 0; i < refs.length; i++) {
+      const root = find(i);
+      const list = groups.get(root) ?? [];
+      list.push(refs[i]!);
+      groups.set(root, list);
+    }
+    for (const group of groups.values()) {
+      if (group.length !== size) continue;
+      const allBend = group.every((a, gi) =>
+        group.every(
+          (b, gj) =>
+            gi === gj ||
+            Math.abs(a.dir.x * b.dir.x + a.dir.z * b.dir.z) <
+              COLLINEAR_DOT_LIMIT
+        )
+      );
+      if (allBend) return group;
+    }
+    return undefined;
+  }
+
+  /** Each member's own TRUE corner/junction point -- the final
+   * endpoint pulled back by the named overlap margin along that run's
+   * OWN direction. Independent of `atlasWallRuns.ts`'s own internals:
+   * this is exactly what "the joint closes, then gets a visual margin
+   * on top" means from the outside. */
+  function trueCornersOf(group: readonly EndpointRef[]) {
+    return group.map((m) => ({
+      x: m.point.x - m.dir.x * CORNER_OVERLAP_MARGIN,
+      z: m.point.z - m.dir.z * CORNER_OVERLAP_MARGIN,
+    }));
+  }
+
+  it.each([false, true])(
+    'the true corner point coincides exactly, mirrored=%s',
+    (mirrored) => {
+      const scene = lShapedScene(mirrored);
+      const group = findJunctionCluster(scene.wallRuns, 2);
+      expect(group).toBeDefined(); // a real corner exists in this fixture
+      const [trueCornerI, trueCornerJ] = trueCornersOf(group!);
+      // Kirk's own finding: one side gapped, the other overlapped. The
+      // fix is distance(true corner, true corner) === 0 -- not "close",
+      // exact, the same way every other join in this module closes.
+      expect(distanceBetween(trueCornerI!, trueCornerJ!)).toBeLessThan(1e-6);
+    }
+  );
+
+  it.each([false, true])(
+    'each run extends exactly the named overlap margin past the true corner, mirrored=%s',
+    (mirrored) => {
+      const scene = lShapedScene(mirrored);
+      const group = findJunctionCluster(scene.wallRuns, 2);
+      expect(group).toBeDefined();
+      const trueCorners = trueCornersOf(group!);
+      // The visual-closure margin assertion: each run's own FINAL
+      // corner endpoint sits CORNER_OVERLAP_MARGIN past the shared true
+      // corner, along its OWN direction -- real wall-piece thickness
+      // overlapping the joint's outside face, not a coincidence of the
+      // fit.
+      for (let i = 0; i < group!.length; i++) {
+        expect(distanceBetween(group![i]!.point, trueCorners[i]!)).toBeCloseTo(
+          CORNER_OVERLAP_MARGIN,
+          6
+        );
+      }
+    }
+  );
+
+  /** The center and radius of the unique circle through 3 non-
+   * collinear points -- used below because, unlike a two-run corner
+   * (where the shared joint sits EXACTLY on both runs' own fitted
+   * lines, so pulling a final endpoint back by the margin along that
+   * run's own recomputed direction exactly recovers the joint), a
+   * three-run T-junction's least-squares joint generally does NOT sit
+   * exactly on any ONE of the three individual fitted lines (that's
+   * inherent to fitting 3 lines that don't happen to be exactly
+   * concurrent) -- each run's own final segment gets a tiny genuine
+   * bend over just its last `CORNER_OVERLAP_MARGIN` of length, so
+   * "pull back along the run's own direction" no longer exactly
+   * reconstructs the shared joint for 3+ runs the way it does for 2.
+   * What IS still exactly true by construction, for any number of
+   * runs: every final endpoint is `joint + unitDir * margin`, so every
+   * final endpoint sits at EXACTLY distance `margin` from `joint` --
+   * i.e., all of them lie on one common circle of that exact radius
+   * centered at `joint`. Three non-collinear points determine a unique
+   * circle, so recovering that circle from the three FINAL endpoints
+   * and checking its radius is `margin` is an exact, external proof
+   * that all three really did close to the same one shared joint,
+   * without needing to know that joint's coordinates independently. */
+  function circumcircle(p0: P, p1: P, p2: P): { center: P; radius: number } {
+    const d =
+      2 * (p0.x * (p1.z - p2.z) + p1.x * (p2.z - p0.z) + p2.x * (p0.z - p1.z));
+    const sq = (p: P) => p.x * p.x + p.z * p.z;
+    const ux =
+      (sq(p0) * (p1.z - p2.z) +
+        sq(p1) * (p2.z - p0.z) +
+        sq(p2) * (p0.z - p1.z)) /
+      d;
+    const uz =
+      (sq(p0) * (p2.x - p1.x) +
+        sq(p1) * (p0.x - p2.x) +
+        sq(p2) * (p1.x - p0.x)) /
+      d;
+    const center = { x: ux, z: uz };
+    return { center, radius: distanceBetween(center, p0) };
+  }
+
+  it('a T-junction (three runs meeting at one raw vertex) closes to one shared point, not three (Copilot review, PR #794)', () => {
+    // The pairwise-only version of this fix rewrote the same endpoint
+    // once per pair it appeared in -- order-dependent, and the three
+    // fitted centerlines never ended up sharing one joint. Grouping by
+    // raw vertex first closes the whole junction in one shot.
+    const scene = tJunctionScene();
+    const group = findJunctionCluster(scene.wallRuns, 3);
+    expect(group).toBeDefined(); // a real T-junction exists in this fixture
+    const [p0, p1, p2] = group!.map((m) => m.point);
+    const circle = circumcircle(p0!, p1!, p2!);
+    // All three final endpoints sit on ONE circle of exactly the named
+    // margin's radius -- possible only if all three really were
+    // extended `margin` past the SAME shared joint (see this helper's
+    // own doc comment for why this, not a per-run pull-back, is the
+    // exact invariant for 3+ runs).
+    expect(circle.radius).toBeCloseTo(CORNER_OVERLAP_MARGIN, 6);
+    expect(distanceBetween(circle.center, p0!)).toBeCloseTo(
+      CORNER_OVERLAP_MARGIN,
+      6
+    );
+    expect(distanceBetween(circle.center, p1!)).toBeCloseTo(
+      CORNER_OVERLAP_MARGIN,
+      6
+    );
+    expect(distanceBetween(circle.center, p2!)).toBeCloseTo(
+      CORNER_OVERLAP_MARGIN,
+      6
+    );
+  });
+
+  describe('cornerJoint — the near-parallel fallback (Copilot review, PR #794)', () => {
+    it('falls back to the shared raw vertex when two lines are too close to parallel to intersect reliably', () => {
+      // A first version of this fallback branch `continue`d without
+      // assigning anything, so the documented fallback was dead code:
+      // each endpoint stayed at its independently-fitted (disagreeing)
+      // position. This constructs the case directly -- unreachable
+      // through any real authored corner's own geometry (a genuine
+      // corner's two legs are never this close to parallel) -- rather
+      // than trying to coax it out of the full atlas pipeline.
+      const rawVertex: P = { x: 3, z: 5 };
+      const nearlyParallel = [
+        { point: { x: 0, z: 0 }, dir: { x: 1, z: 0 } },
+        {
+          point: { x: 1, z: 1 },
+          dir: { x: Math.cos(1e-10), z: Math.sin(1e-10) },
+        },
+      ];
+      expect(cornerJoint(rawVertex, nearlyParallel)).toEqual(rawVertex);
+    });
+
+    it('still returns the exact intersection for two genuinely non-parallel lines (unchanged happy path)', () => {
+      const rawVertex: P = { x: 3, z: 5 }; // never used -- provided for signature only
+      const perpendicular = [
+        { point: { x: 0, z: 2 }, dir: { x: 1, z: 0 } }, // line z=2
+        { point: { x: 4, z: 0 }, dir: { x: 0, z: 1 } }, // line x=4
+      ];
+      const joint = cornerJoint(rawVertex, perpendicular);
+      expect(joint.x).toBeCloseTo(4, 9);
+      expect(joint.z).toBeCloseTo(2, 9);
+    });
   });
 });
 
