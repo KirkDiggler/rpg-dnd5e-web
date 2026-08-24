@@ -155,17 +155,20 @@ function pair(v: unknown, path: string): OffsetPair {
 
 /** A within-cell offset — two numbers, unlike `pair`'s two integers.
  * Bounds (`[-0.5, 0.5]`) are the server's call, not checked here — see
- * `PlacementDoc.offset`'s own doc comment. */
+ * `PlacementDoc.offset`'s own doc comment. `Number.isFinite`, not
+ * `typeof === 'number'`: NaN/Infinity are still typeof "number" and
+ * would otherwise pass the shape check, then break the parse/emit
+ * round trip this module promises (Copilot review, PR #795). */
 function offsetPair(v: unknown, path: string): [number, number] {
   if (
     !Array.isArray(v) ||
     v.length !== 2 ||
-    typeof v[0] !== 'number' ||
-    typeof v[1] !== 'number'
+    !Number.isFinite(v[0]) ||
+    !Number.isFinite(v[1])
   ) {
     throw new DungeonParseError(`${path}: expected [x,y]`);
   }
-  return [v[0], v[1]];
+  return [v[0] as number, v[1] as number];
 }
 
 function edge(v: unknown, path: string, o: Orientation): Edge {
@@ -738,7 +741,10 @@ export function setStart(doc: DungeonDoc, cell: Axial | null): DungeonDoc {
 /** Drop a placement on a floor cell; one placement per cell — a drop
  * on an occupied cell replaces it. `blocks_*` are written explicitly for
  * props (prefilled by the caller from the catalog) and never for
- * monsters. */
+ * monsters. `facing`/`offset` are copied through when the caller
+ * supplies them (Copilot review, PR #795: silently dropping them here
+ * would strand a caller that prefills a facing/offset at drop time),
+ * REFUSED on monsters same as `blocks_*`. */
 export function placeAt(doc: DungeonDoc, placement: PlacementDoc): DungeonDoc {
   if (!isFloor(doc, placement.at)) return doc;
   const key = axialKey(placement.at);
@@ -749,6 +755,8 @@ export function placeAt(doc: DungeonDoc, placement: PlacementDoc): DungeonDoc {
   } else {
     clean.blocksMovement = placement.blocksMovement ?? false;
     clean.blocksLos = placement.blocksLos ?? false;
+    if (placement.facing !== undefined) clean.facing = placement.facing;
+    if (placement.offset !== undefined) clean.offset = placement.offset;
   }
   return {
     ...doc,
@@ -774,6 +782,14 @@ export function updatePlacement(
       if (next.targeting === '') delete next.targeting;
       if (next.facing === undefined) delete next.facing;
       if (next.offset === undefined) delete next.offset;
+      // Same REFUSED-on-monsters rule placeAt enforces at creation
+      // (Copilot review, PR #795): updatePlacement is the OTHER way a
+      // facing/offset patch reaches a placement, so it needs the same
+      // guard or a monster could pick one up post-creation.
+      if (isMonsterRef(next.ref)) {
+        delete next.facing;
+        delete next.offset;
+      }
       return next;
     }),
   };

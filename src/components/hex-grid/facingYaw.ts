@@ -82,21 +82,32 @@ const FACING_ANGLE_DEG: Record<Orientation, Record<string, number>> = {
 /** The world table-angle (degrees) `name` points to under `orientation`,
  * or `undefined` if it is not one of that orientation's six names.
  * Used for 2D layout (the Inspector's compass, the canvas tick) — the
- * geometry half only, with no asset calibration applied. */
+ * geometry half only, with no asset calibration applied.
+ *
+ * `Object.hasOwn` guarded, not a bare index: `facing` is an untrusted
+ * string all the way from the wire/a hand-edited YAML file (this
+ * module's own light-validation law), and a bare `FACING_ANGLE_DEG[o]
+ * [name]` returns an inherited `Object.prototype` member — a function,
+ * not `undefined` — for a name like `"constructor"`, which would go on
+ * to produce a NaN yaw instead of the documented 0 (Copilot review,
+ * PR #795). */
 export function facingAngleDeg(
   orientation: Orientation,
   name: string
 ): number | undefined {
-  return FACING_ANGLE_DEG[orientation][name];
+  const table = FACING_ANGLE_DEG[orientation];
+  return Object.hasOwn(table, name) ? table[name] : undefined;
 }
 
 /**
  * The authored `facing` word → a `PropModel` `rotationY`, in radians.
  * `''` or any name not valid under `orientation` yields 0 — the asset's
- * own default orientation.
+ * own default orientation. Routes through `facingAngleDeg` rather than
+ * re-indexing the table directly, so there is exactly one own-key guard
+ * to get right, not two.
  */
 export function facingToYaw(orientation: Orientation, facing: string): number {
-  const deg = FACING_ANGLE_DEG[orientation][facing];
+  const deg = facingAngleDeg(orientation, facing);
   if (deg === undefined) return 0;
   return -deg * DEG + FACING_YAW_OFFSET;
 }

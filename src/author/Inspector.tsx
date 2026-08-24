@@ -341,6 +341,8 @@ function FacingControl({
           }`}
           style={{ left: '50%', top: '50%' }}
           title="asset default"
+          aria-label="facing: asset default"
+          aria-pressed={facing === undefined}
           onClick={() => onChange(undefined)}
         >
           •
@@ -359,6 +361,8 @@ function FacingControl({
                 facing === name ? ' dg-tool--on' : ''
               }`}
               style={{ left, top }}
+              aria-label={`facing: ${name}`}
+              aria-pressed={facing === name}
               onClick={() => onChange(name)}
             >
               {name}

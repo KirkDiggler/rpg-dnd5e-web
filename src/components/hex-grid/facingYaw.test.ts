@@ -66,6 +66,12 @@ describe('facingAngleDeg', () => {
     expect(facingAngleDeg('flat', 'e')).toBeUndefined();
     expect(facingAngleDeg('pointy', '')).toBeUndefined();
   });
+
+  it('is undefined for an inherited Object.prototype key, not that member (Copilot review, PR #795)', () => {
+    expect(facingAngleDeg('pointy', 'constructor')).toBeUndefined();
+    expect(facingAngleDeg('pointy', 'toString')).toBeUndefined();
+    expect(facingAngleDeg('pointy', 'hasOwnProperty')).toBeUndefined();
+  });
 });
 
 describe('isValidFacing', () => {
@@ -83,6 +89,10 @@ describe('facingToYaw', () => {
     expect(facingToYaw('pointy', '')).toBe(0);
     expect(facingToYaw('pointy', 'n')).toBe(0);
     expect(facingToYaw('flat', 'bogus')).toBe(0);
+  });
+
+  it('is 0, not NaN, for an inherited Object.prototype key (Copilot review, PR #795)', () => {
+    expect(facingToYaw('pointy', 'constructor')).toBe(0);
   });
 
   it('FACING_YAW_OFFSET is the calibrated +90°, per docs/evidence', () => {

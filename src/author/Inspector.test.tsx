@@ -77,6 +77,24 @@ describe('PlacementPanel facing/offset (rpg-project#261)', () => {
     );
   });
 
+  it('every compass button carries aria-pressed and an accessible name (Copilot review, PR #795)', () => {
+    const doc = propDoc();
+    const faced = { ...doc, place: [{ ...doc.place[0], facing: 'sw' }] };
+    mountPlacement(faced);
+    expect(screen.getByTestId('facing-sw').getAttribute('aria-pressed')).toBe(
+      'true'
+    );
+    expect(screen.getByTestId('facing-none').getAttribute('aria-pressed')).toBe(
+      'false'
+    );
+    expect(screen.getByTestId('facing-none').getAttribute('aria-label')).toBe(
+      'facing: asset default'
+    );
+    expect(screen.getByTestId('facing-ne').getAttribute('aria-label')).toBe(
+      'facing: ne'
+    );
+  });
+
   it('offset steppers report a clamped [x, y] tuple; center clears it', () => {
     const onPlacement = vi.fn();
     mountPlacement(propDoc(), { onPlacement });

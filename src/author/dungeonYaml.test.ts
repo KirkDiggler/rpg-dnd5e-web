@@ -161,6 +161,19 @@ describe('emitDungeon / parseDungeon', () => {
     ).toThrow(/place\[0\]\.offset: expected \[x,y\]/);
   });
 
+  it('refuses a non-finite offset component (Copilot review, PR #795: NaN/Infinity are still typeof "number")', () => {
+    expect(() =>
+      parseDungeon(
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nplace:\n  - { ref: "dnd5e:props:pillar", at: [0,0], offset: [.nan, 0.1] }\n'
+      )
+    ).toThrow(/place\[0\]\.offset: expected \[x,y\]/);
+    expect(() =>
+      parseDungeon(
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nplace:\n  - { ref: "dnd5e:props:pillar", at: [0,0], offset: [.inf, 0.1] }\n'
+      )
+    ).toThrow(/place\[0\]\.offset: expected \[x,y\]/);
+  });
+
   it('the reference tomb has no facing/offset anywhere — the additive fields change nothing absent', () => {
     for (const placement of referenceTombDoc().place) {
       expect(placement.facing).toBeUndefined();
@@ -271,6 +284,35 @@ describe('mutators', () => {
       offset: [0.2, 0.2],
     });
     expect(doc.place[0]).toEqual({ ref: 'dnd5e:monsters:zombie', at: p(0, 0) });
+  });
+
+  it('placeAt copies a caller-supplied facing/offset through for props (Copilot review, PR #795)', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(0, 0),
+      facing: 'ne',
+      offset: [0.2, 0.2],
+    });
+    expect(doc.place[0]).toEqual({
+      ref: 'dnd5e:props:pillar',
+      at: p(0, 0),
+      blocksMovement: false,
+      blocksLos: false,
+      facing: 'ne',
+      offset: [0.2, 0.2],
+    });
+  });
+
+  it('updatePlacement never leaves facing/offset on a monster (Copilot review, PR #795)', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:zombie', at: p(0, 0) });
+    doc = updatePlacement(doc, 0, { facing: 'ne', offset: [0.2, 0.2] });
+    expect(doc.place[0]).not.toHaveProperty('facing');
+    expect(doc.place[0]).not.toHaveProperty('offset');
+    expect(emitDungeon(doc)).not.toMatch(/facing:|offset:/);
   });
 
   it('start must be floor', () => {
