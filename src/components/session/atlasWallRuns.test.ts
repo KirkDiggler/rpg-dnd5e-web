@@ -79,6 +79,62 @@ function nearestRunDistance(point: P, runs: readonly Seg[]): number {
   return Math.min(...runs.map((r) => distanceToSegment(point, r)));
 }
 
+function distanceBetween(a: P, b: P): number {
+  return Math.hypot(b.x - a.x, b.z - a.z);
+}
+
+function unitDir(a: P, b: P): P {
+  const len = distanceBetween(a, b);
+  if (len === 0) return { x: 0, z: 0 };
+  return { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
+}
+
+/** The exact half door-frame width atlasWallRuns.ts trims a run back by
+ * at a door-adjacent vertex — mirrored here (not imported) so this test
+ * independently re-derives the alignment atlasWallRuns.ts computes,
+ * rather than re-reading its own output back at itself. */
+const DOOR_TRIM = 0.5;
+
+/**
+ * Independently re-derives which run a doorway interrupts and that
+ * run's own oriented direction — the exact same "find the run trimmed
+ * at DOOR_TRIM from one of the door's own two corners, then orient it
+ * to agree with the door's raw edge direction" logic
+ * `atlasWallRuns.ts`'s `boundariesToWallRuns` uses internally, written
+ * separately here so the rotation pin below isn't circular (rpg-dnd5e-web#788
+ * walk finding: "walls look straight now but the door follows the hex
+ * edge" — this is the check that would have caught it).
+ */
+function interruptedRunDirection(
+  doorFrom: CubeCoord,
+  doorTo: CubeCoord,
+  wallRuns: readonly Seg[]
+): P | undefined {
+  const { a, b } = hexEdgeBetween(doorFrom, doorTo, 1);
+  const rawDir = unitDir(a, b);
+  for (const corner of [a, b]) {
+    for (const run of wallRuns) {
+      let lineDir: P | undefined;
+      if (Math.abs(distanceBetween(run.start, corner) - DOOR_TRIM) < 1e-6) {
+        lineDir = unitDir(run.end, run.start);
+      } else if (
+        Math.abs(distanceBetween(run.end, corner) - DOOR_TRIM) < 1e-6
+      ) {
+        lineDir = unitDir(run.start, run.end);
+      }
+      if (lineDir) {
+        const agrees = lineDir.x * rawDir.x + lineDir.z * rawDir.z >= 0;
+        return agrees ? lineDir : { x: -lineDir.x, z: -lineDir.z };
+      }
+    }
+  }
+  return undefined;
+}
+
+function rotationYOf(dir: P): number {
+  return Math.atan2(-dir.z, dir.x);
+}
+
 /** The real reference-tomb atlas shape: three chambers (6/10/12 wide, 8
  * tall) in a row, two interior seams (28 boundary edges: 14 each — see
  * atlasToScene3D.test.ts's own perimeter test for how these numbers were
@@ -186,9 +242,32 @@ describe('boundariesToWallRuns — the real reference tomb', () => {
     expect(seam2Door!.key).toBe('reference-tomb:hall-tomb');
   });
 
-  it('keeps each door gap at its cell-centre row: row 4 of 0..7 at hexSize 1 is world z = 6 exactly', () => {
+  it('keeps each door gap close to its cell-centre row (row 4 of 0..7 at hexSize 1 is world z = 6): now a projection onto the run it interrupts, not the raw hex-edge midpoint, so a small deliberate shift is expected', () => {
+    // rpg-dnd5e-web#788 walk finding ("walls look straight now but the
+    // door follows the hex edge"): the gap center is now the door's own
+    // raw edge midpoint PROJECTED onto the straightened run it
+    // interrupts, gluing it to the wall plane it actually renders in —
+    // see the "door frame rotation matches the run it interrupts"
+    // describe block below for the exact pin this trades off against.
     for (const door of scene.doorGaps) {
-      expect(door.position.z).toBeCloseTo(6, 6);
+      expect(door.position.z).toBeGreaterThan(5.9);
+      expect(door.position.z).toBeLessThan(6.1);
+    }
+  });
+
+  it('door frame rotation matches the run it interrupts, not its own raw hex-edge angle (rpg-dnd5e-web#788 walk finding: "walls look straight now but the door follows the hex edge")', () => {
+    const doors = [
+      { from: positionToCube(pos(3, 4)), to: positionToCube(pos(4, 4)) },
+      { from: positionToCube(pos(13, 4)), to: positionToCube(pos(14, 4)) },
+    ];
+    for (const d of doors) {
+      const dir = interruptedRunDirection(d.from, d.to, scene.wallRuns);
+      expect(dir).toBeDefined(); // both tomb doors sit on a real authored wall
+      const gap = scene.doorGaps.find(
+        (g) => distanceBetween(g.position, edgeMid(d.from, d.to)) < 1
+      )!;
+      expect(gap).toBeDefined();
+      expect(gap.rotationY).toBeCloseTo(rotationYOf(dir!), 6);
     }
   });
 
@@ -398,6 +477,94 @@ describe('boundariesToWallRuns — a horizontal seam (chambers stacked in rows)'
         CHAIN_TOLERANCE + 1e-6
       );
     }
+  });
+});
+
+describe("boundariesToWallRuns — a door mid-way along an L-run's leg", () => {
+  it('aligns rotation and gap position with the straightened leg it interrupts, not its own raw hex-edge angle', () => {
+    // A real interior L-shaped partition between two regions: region B is
+    // a plain rectangle (q>=3, r>=4); region A is everything else in the
+    // floor (an L wrapping the left column + top row). Every real
+    // hex-adjacent A/B pair becomes a boundary edge, giving a genuine
+    // bent wall with two legs meeting at one corner -- not a hand-picked
+    // guess. One edge well inside the horizontal leg (away from both the
+    // corner and the leg's own far end) is swapped for a doorway.
+    const cells: unknown[] = [];
+    for (let q = 0; q <= 8; q++) {
+      for (let r = 0; r <= 7; r++) cells.push(pos(q, r));
+    }
+    const inB = (q: number, r: number) => q >= 3 && r >= 4;
+    const edges: Array<[number, number, number, number]> = [];
+    const seen = new Set<string>();
+    for (let q = 0; q <= 8; q++) {
+      for (let r = 0; r <= 7; r++) {
+        const neighbors: Array<[number, number]> = [
+          [q + 1, r - 1],
+          [q + 1, r],
+          [q, r - 1],
+          [q - 1, r],
+          [q - 1, r + 1],
+          [q, r + 1],
+        ];
+        for (const [nq, nr] of neighbors) {
+          if (nq < 0 || nq > 8 || nr < 0 || nr > 7) continue;
+          if (inB(q, r) === inB(nq, nr)) continue; // only the A/B boundary
+          const key = [q, r, nq, nr].sort().join(',');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          edges.push([q, r, nq, nr]);
+        }
+      }
+    }
+    expect(edges.length).toBeGreaterThan(10); // a real two-leg wall
+
+    const doorEdge = edges.find(
+      ([q, r, nq, nr]) => q === 7 && r === 3 && nq === 7 && nr === 4
+    )!;
+    expect(doorEdge).toBeDefined();
+
+    const boundaries = edges
+      .filter((e) => e !== doorEdge)
+      .map(([q, r, nq, nr]) => ({
+        from: pos(q, r),
+        to: pos(nq, nr),
+        blocksMovement: true,
+        blocksLineOfSight: true,
+      }));
+    const doorways = [
+      {
+        connection: 'mid-leg-door',
+        from: pos(doorEdge[0], doorEdge[1]),
+        to: pos(doorEdge[2], doorEdge[3]),
+      },
+    ];
+
+    const scene = boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: doorways as never,
+      },
+      1
+    );
+
+    const from = positionToCube(pos(doorEdge[0], doorEdge[1]));
+    const to = positionToCube(pos(doorEdge[2], doorEdge[3]));
+    const dir = interruptedRunDirection(from, to, scene.wallRuns);
+    expect(dir).toBeDefined(); // a real leg flanks this door on at least one side
+
+    const gap = scene.doorGaps[0]!;
+    expect(gap.rotationY).toBeCloseTo(rotationYOf(dir!), 6);
+
+    // The gap center is a genuine projection, not the raw hex-edge
+    // midpoint used verbatim -- it should differ from the raw midpoint
+    // by a small, non-zero amount (proving the projection did something)
+    // while staying close to it (proving it didn't jump to an unrelated
+    // position).
+    const rawMid = edgeMid(from, to);
+    const shift = distanceBetween(gap.position, rawMid);
+    expect(shift).toBeGreaterThan(0);
+    expect(shift).toBeLessThan(1);
   });
 });
 

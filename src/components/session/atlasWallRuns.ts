@@ -55,17 +55,36 @@
  * Phase 2) simply never triggers here anymore, since there is no
  * implied outer loop being fed in.
  *
- * # Doors are placed from their own edge, not a derived row fraction
+ * # Doors are placed from their own edge, not a derived row fraction —
+ * but ALIGNED to the straightened run they interrupt, not their own raw
+ * hex-edge angle
  *
- * Every `atlas.doorways` entry gets its own gap + frame independently,
- * computed straight from that doorway's own `hexEdgeBetween` geometry
- * (mid + rotation) — no Map keyed by "chamber pair" to lose a second
- * door on the same seam to (rpg-dnd5e-web#782), because there is no such
- * Map anymore: every doorway is processed once, unconditionally. The
- * chaining call above independently guarantees the wall runs stop short
- * of every doorway's own vertex (the engine's own
- * `DOOR_FRAME_CALIBRATED_WIDTH/2` trim), so the two never disagree about
- * where the gap is.
+ * Every `atlas.doorways` entry gets its own gap + frame independently —
+ * no Map keyed by "chamber pair" to lose a second door on the same seam
+ * to (rpg-dnd5e-web#782), because there is no such Map anymore: every
+ * doorway is processed once, unconditionally.
+ *
+ * Kirk's live walk on this same PR, after the walls were straightened:
+ * "walls look straight now but the door follows the hex edge." The
+ * chaining call trims the run(s) flanking a door by exactly
+ * `DOOR_FRAME_CALIBRATED_WIDTH/2` back from the door's own hex corner
+ * (`computeAuthoredWallRuns`'s own `emitRun`) — so a run's trimmed
+ * endpoint sits at a KNOWN, exact distance from that corner. Finding
+ * whichever run has an endpoint at that exact distance from one of the
+ * door's own two corners recovers, from the outside, which run the door
+ * interrupts and on which side, with no change to the chaining engine
+ * itself. The door's gap CENTER is the door's own real edge midpoint
+ * PROJECTED onto that run's straightened line (not the run's own
+ * midpoint, and not the door's raw hex-edge midpoint used verbatim) —
+ * a straight run only approximates the real zigzag it replaces, so the
+ * two midpoints generally differ by a small amount; projecting keeps
+ * the door glued to the wall plane it actually renders in. Rotation
+ * matches the run's own direction, not the door's raw hex edge's — the
+ * defect Kirk found. A door whose edge touches no wall run's trimmed
+ * endpoint on EITHER side (a standalone doorway with no wall around it
+ * — legal: a doorway is a door with no state) falls back to its own raw
+ * `hexEdgeBetween` geometry, since nothing straighter exists to align
+ * with.
  */
 
 import {
@@ -115,8 +134,12 @@ export interface WallRunScene {
   doorGaps: DoorGapPiece[];
 }
 
+function distance(a: WorldPos, b: WorldPos): number {
+  return Math.hypot(b.x - a.x, b.z - a.z);
+}
+
 function unitDirection(a: WorldPos, b: WorldPos): WorldPos {
-  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  const len = distance(a, b);
   if (len === 0) return { x: 0, z: 0 };
   return { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
 }
@@ -129,6 +152,53 @@ function pairKey(a: CubeCoord, b: CubeCoord): string {
   const ka = coordToKey(a);
   const kb = coordToKey(b);
   return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+}
+
+/**
+ * Half the calibrated door-frame width -- the EXACT distance
+ * `computeAuthoredWallRuns`'s own `emitRun` trims a run's endpoint back
+ * from a door-adjacent hex corner (authoredWallRuns.ts's own doc
+ * comment: "a run whose end sits ON a door-touching vertex stops
+ * DOOR_FRAME_CALIBRATED_WIDTH/2 short of it"). Used below to recognize,
+ * from the OUTSIDE, which run's endpoint was trimmed against a given
+ * door corner -- no change to that engine needed.
+ */
+const DOOR_TRIM = DOOR_FRAME_CALIBRATED_WIDTH / 2;
+
+/** Whichever run in `wallRuns` has an endpoint at EXACTLY `DOOR_TRIM`
+ * from `corner` (one of a doorway's own two hex-edge corners) -- the run
+ * that corner's own trim pulled back, i.e. the run this door interrupts
+ * on that side. Returns the matched endpoint and the run's OTHER
+ * endpoint (enough to reconstruct the run's line without re-deriving
+ * direction ambiguity), or undefined if no run was trimmed against this
+ * corner (a standalone doorway with no wall on that side). */
+function runTrimmedAgainst(
+  corner: WorldPos,
+  wallRuns: readonly AuthoredWallRun[]
+): { near: WorldPos; far: WorldPos } | undefined {
+  for (const run of wallRuns) {
+    if (Math.abs(distance(run.start, corner) - DOOR_TRIM) < 1e-6) {
+      return { near: run.start, far: run.end };
+    }
+    if (Math.abs(distance(run.end, corner) - DOOR_TRIM) < 1e-6) {
+      return { near: run.end, far: run.start };
+    }
+  }
+  return undefined;
+}
+
+/** The point on the infinite line through `linePoint` along unit `dir`
+ * closest to `point` -- projects a door's own raw edge midpoint onto the
+ * straightened run line it should sit in, rather than using the raw
+ * midpoint (which sits on the zigzag the run only approximates)
+ * verbatim. */
+function projectOntoLine(
+  point: WorldPos,
+  linePoint: WorldPos,
+  dir: WorldPos
+): WorldPos {
+  const t = (point.x - linePoint.x) * dir.x + (point.z - linePoint.z) * dir.z;
+  return { x: linePoint.x + dir.x * t, z: linePoint.z + dir.z * t };
 }
 
 /**
@@ -197,17 +267,41 @@ export function boundariesToWallRuns(
     const from = positionToCube(d.from);
     const to = positionToCube(d.to);
     const { a, b, mid, rotationY } = hexEdgeBetween(from, to, hexSize);
-    const dir = unitDirection(a, b);
+    const rawDir = unitDirection(a, b);
+
+    // Prefer whichever side of the door has a real trimmed run to align
+    // with (the corner named `a` first, purely a deterministic tie-break
+    // when both sides do — the two flanking runs are parts of the same
+    // authored seam, so their lines are already close). Neither side
+    // found -> standalone doorway, fall back to the door's own raw edge.
+    const ref =
+      runTrimmedAgainst(a, wallRuns) ?? runTrimmedAgainst(b, wallRuns);
+
+    let gapCenter = mid;
+    let dir = rawDir;
+    if (ref) {
+      const lineDir = unitDirection(ref.far, ref.near);
+      // Orient the run's line direction to agree with the door's own
+      // raw edge direction (a run's start/end order is arbitrary --
+      // authoredWallRuns.ts's own doc: "the run's own start/end may
+      // match either direction the chain happened to walk from") so the
+      // gap/leaf convention below stays consistent with the untrimmed
+      // fallback path.
+      const agrees = lineDir.x * rawDir.x + lineDir.z * rawDir.z >= 0;
+      dir = agrees ? lineDir : { x: -lineDir.x, z: -lineDir.z };
+      gapCenter = projectOntoLine(mid, ref.near, dir);
+    }
+
     const halfGap = DOOR_FRAME_CALIBRATED_WIDTH / 2;
     doorGaps.push({
       key: d.connection || `door:${coordToKey(from)}|${coordToKey(to)}`,
       connection: d.connection,
-      position: mid,
+      position: gapCenter,
       leafPosition: {
-        x: mid.x - dir.x * halfGap,
-        z: mid.z - dir.z * halfGap,
+        x: gapCenter.x - dir.x * halfGap,
+        z: gapCenter.z - dir.z * halfGap,
       },
-      rotationY,
+      rotationY: ref ? Math.atan2(-dir.z, dir.x) : rotationY,
     });
   }
 
