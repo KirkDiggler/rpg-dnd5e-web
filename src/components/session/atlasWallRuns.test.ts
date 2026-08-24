@@ -569,6 +569,130 @@ describe('boundariesToWallRuns — an L-shaped interior seam', () => {
   });
 });
 
+describe('boundariesToWallRuns — corners close by construction (rpg-dnd5e-web#793)', () => {
+  /** A real interior L-shaped partition (region B a plain rectangle,
+   * region A its complement within the floor -- the exact construction
+   * the merged L-shaped-seam test above already proves produces a
+   * genuine two-leg bend) with `mirrored` flipping which side is B, so
+   * the corner bends the other way -- "both orientations of the
+   * corner" per the issue. */
+  function lShapedScene(mirrored: boolean) {
+    const cells: unknown[] = [];
+    for (let q = 0; q <= 8; q++) {
+      for (let r = 0; r <= 7; r++) cells.push(pos(q, r));
+    }
+    const inB = mirrored
+      ? (q: number, r: number) => q <= 5 && r >= 4
+      : (q: number, r: number) => q >= 3 && r >= 4;
+    const edges: Array<[number, number, number, number]> = [];
+    const seen = new Set<string>();
+    for (let q = 0; q <= 8; q++) {
+      for (let r = 0; r <= 7; r++) {
+        const neighbors: Array<[number, number]> = [
+          [q + 1, r - 1],
+          [q + 1, r],
+          [q, r - 1],
+          [q - 1, r],
+          [q - 1, r + 1],
+          [q, r + 1],
+        ];
+        for (const [nq, nr] of neighbors) {
+          if (nq < 0 || nq > 8 || nr < 0 || nr > 7) continue;
+          if (inB(q, r) === inB(nq, nr)) continue;
+          const key = [q, r, nq, nr].sort().join(',');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          edges.push([q, r, nq, nr]);
+        }
+      }
+    }
+    const boundaries = edges.map(([q, r, nq, nr]) => ({
+      from: pos(q, r),
+      to: pos(nq, nr),
+      blocksMovement: true,
+      blocksLineOfSight: true,
+    }));
+    return boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: [] as never,
+      },
+      1
+    );
+  }
+
+  const CORNER_OVERLAP_MARGIN = 0.16;
+
+  /** Finds the one pair of runs whose endpoints sit close together (a
+   * real corner join, post-margin) and, for each, the TRUE corner point
+   * its own margin extension was measured from -- pulling the final
+   * endpoint back by the margin along that run's own direction.
+   * Independent of `atlasWallRuns.ts`'s own internals: this is exactly
+   * what "the joint closes, then gets a visual margin on top" means
+   * from the outside. */
+  function findCornerJoin(runs: readonly AuthoredWallRun[]) {
+    for (let i = 0; i < runs.length; i++) {
+      for (let j = i + 1; j < runs.length; j++) {
+        for (const iEnd of ['start', 'end'] as const) {
+          for (const jEnd of ['start', 'end'] as const) {
+            const pi = runs[i]![iEnd];
+            const pj = runs[j]![jEnd];
+            if (distanceBetween(pi, pj) >= 0.5) continue;
+            const farI = iEnd === 'start' ? runs[i]!.end : runs[i]!.start;
+            const farJ = jEnd === 'start' ? runs[j]!.end : runs[j]!.start;
+            const dirI = unitDir(farI, pi);
+            const dirJ = unitDir(farJ, pj);
+            const trueCornerI = {
+              x: pi.x - dirI.x * CORNER_OVERLAP_MARGIN,
+              z: pi.z - dirI.z * CORNER_OVERLAP_MARGIN,
+            };
+            const trueCornerJ = {
+              x: pj.x - dirJ.x * CORNER_OVERLAP_MARGIN,
+              z: pj.z - dirJ.z * CORNER_OVERLAP_MARGIN,
+            };
+            return { pi, pj, dirI, dirJ, trueCornerI, trueCornerJ };
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  it.each([false, true])(
+    'the true corner point coincides exactly, mirrored=%s',
+    (mirrored) => {
+      const scene = lShapedScene(mirrored);
+      const join = findCornerJoin(scene.wallRuns);
+      expect(join).toBeDefined(); // a real corner exists in this fixture
+      // Kirk's own finding: one side gapped, the other overlapped. The
+      // fix is distance(true corner, true corner) === 0 -- not "close",
+      // exact, the same way every other join in this module closes.
+      expect(
+        distanceBetween(join!.trueCornerI, join!.trueCornerJ)
+      ).toBeLessThan(1e-6);
+    }
+  );
+
+  it.each([false, true])(
+    'each run extends exactly the named overlap margin past the true corner, mirrored=%s',
+    (mirrored) => {
+      const scene = lShapedScene(mirrored);
+      const join = findCornerJoin(scene.wallRuns);
+      expect(join).toBeDefined();
+      // The visual-closure margin assertion: each run's own FINAL
+      // corner endpoint sits CORNER_OVERLAP_MARGIN past the shared true
+      // corner, along its OWN direction -- real wall-piece thickness
+      // overlapping the joint's outside face, not a coincidence of the
+      // fit.
+      const distI = distanceBetween(join!.pi, join!.trueCornerI);
+      const distJ = distanceBetween(join!.pj, join!.trueCornerJ);
+      expect(distI).toBeCloseTo(CORNER_OVERLAP_MARGIN, 6);
+      expect(distJ).toBeCloseTo(CORNER_OVERLAP_MARGIN, 6);
+    }
+  );
+});
+
 describe('boundariesToWallRuns — a horizontal seam (chambers stacked in rows)', () => {
   it('renders along the row boundary’s own midline, not slanted (the old bug: connector geometry only modeled a vertical, column-separating seam)', () => {
     // The real boundary between row-band r<=1 and row-band r>=2 across a

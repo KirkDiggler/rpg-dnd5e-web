@@ -136,6 +136,49 @@
  * is a door with no state) falls back to its own raw `hexEdgeBetween`
  * geometry, since nothing straighter exists to align or close against.
  *
+ * # Corners: closed by construction too (rpg-dnd5e-web#793)
+ *
+ * Kirk, walking an authored dungeon on `dev` right after #788 merged:
+ * "the corners do not close consistently" — a screenshot of one walled
+ * room whose top wall gapped open against one side wall and overlapped
+ * past the other. Root cause: two runs of one chain that share a real
+ * authored corner vertex each get their OWN independent least-squares
+ * fit (finding 3's fit grouping is deliberately door-link-only, so a
+ * genuine corner's two legs are never merged into one fit) — nothing
+ * constrained the two fitted lines to still pass through the same
+ * point after fitting, so the shared vertex opens into a gap or an
+ * overlap depending on which side of each line it happened to fall.
+ * Fixed the same way every other seam in this module closes: not by
+ * tuning, by construction. Two runs whose RAW (pre-fit) endpoints
+ * coincide share an authored corner; both runs' corner endpoints are
+ * overwritten with the exact intersection of their two FITTED lines
+ * (`lineIntersection`, reused from `wallRuns.ts` rather than
+ * reimplemented) — falling back to the shared raw vertex, unchanged,
+ * when the two lines are too close to parallel to intersect reliably
+ * (not reachable for a real corner, but a defensive floor rather than
+ * a division by ~0). Each run is then extended a further
+ * `DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN` (also reused from
+ * `wallRuns.ts` — a named constant derived from real wall-piece
+ * thickness, not a tuning knob hidden in this module) past that exact
+ * intersection, along its OWN direction, so the OUTSIDE face of the
+ * corner has real wall-piece thickness overlapping the joint instead
+ * of a thickness-sized notch peeking through it — the same
+ * "overlap-miter" convention `WallRunMesh`'s own doc comment already
+ * documents for the OLD wire's chamber-based corners, reused here
+ * rather than invented fresh.
+ *
+ * Precedence where a corner and a door could ever compete for the same
+ * run endpoint: they never do, by construction, not by ordering — a
+ * door-adjacent endpoint is `computeAuthoredWallRuns`'s own
+ * `DOOR_TRIM`-inward trim from the door's corner, unique to that one
+ * run (finding 1's own doc comment), so it never coincides with
+ * ANOTHER run's raw endpoint the way a genuine corner's shared vertex
+ * does; corner-closure below only ever touches endpoints door
+ * force-closure never looks at, and vice versa. This pass still runs
+ * BEFORE door force-closure regardless, so if that invariant is ever
+ * wrong for some future wire shape, the door's own gap boundary is the
+ * one that wins (overwrites last).
+ *
  * Double-sided walls themselves (Kirk: "I think our walls should be
  * double sided") are explicitly OUT of scope here — filed as a
  * follow-up; this fix only makes the single face every run already has
@@ -154,6 +197,10 @@ import {
   type AuthoredWallEdgeInput,
   type AuthoredWallRun,
 } from '@/hooks/authoredWallRuns';
+import {
+  DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
+  lineIntersection,
+} from '@/hooks/wallRuns';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
   AtlasBoundary,
@@ -609,6 +656,53 @@ export function boundariesToWallRuns(
       facing: r.facing,
     };
   });
+
+  // Corner closure (rpg-dnd5e-web#793): two runs whose RAW (pre-fit)
+  // endpoints coincide share a real authored corner vertex -- each got
+  // its own independent least-squares fit above (finding 3's
+  // door-link-only grouping deliberately never merges a genuine
+  // corner's two legs into one fit), so nothing yet constrains their
+  // two fitted lines to still cross at that same point. Overwrite BOTH
+  // runs' corner endpoint with the exact intersection of their fitted
+  // lines -- closes by construction, not by tuning -- then extend each
+  // a further DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN past it, along its
+  // own direction, so real wall-piece thickness overlaps the joint on
+  // the corner's outside face (see this module's own header doc,
+  // corners section, for the full "why", including why this can never
+  // compete with door force-closure for the same endpoint).
+  const CORNER_EPS = 1e-6;
+  const cornerEnds: Array<'start' | 'end'> = ['start', 'end'];
+  for (let i = 0; i < rawRuns.length; i++) {
+    for (let j = i + 1; j < rawRuns.length; j++) {
+      for (const iEnd of cornerEnds) {
+        for (const jEnd of cornerEnds) {
+          if (distance(rawRuns[i]![iEnd], rawRuns[j]![jEnd]) >= CORNER_EPS) {
+            continue;
+          }
+          const runI = runs[i]!;
+          const runJ = runs[j]!;
+          const cornerI = runI[iEnd];
+          const farI = iEnd === 'start' ? runI.end : runI.start;
+          const dirI = unitDirection(farI, cornerI); // toward the corner
+          const cornerJ = runJ[jEnd];
+          const farJ = jEnd === 'start' ? runJ.end : runJ.start;
+          const dirJ = unitDirection(farJ, cornerJ);
+
+          const intersection = lineIntersection(cornerI, dirI, cornerJ, dirJ);
+          if (!intersection) continue; // near-parallel: leave the shared raw vertex position unchanged
+
+          runI[iEnd] = {
+            x: intersection.x + dirI.x * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
+            z: intersection.z + dirI.z * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
+          };
+          runJ[jEnd] = {
+            x: intersection.x + dirJ.x * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
+            z: intersection.z + dirJ.z * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
+          };
+        }
+      }
+    }
+  }
 
   // Pass 1: finalize every door's gap geometry against the FITTED
   // `runs` (the run INDEX each `DoorInfo` found is valid against both
