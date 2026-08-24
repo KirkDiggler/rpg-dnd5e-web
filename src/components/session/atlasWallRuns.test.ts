@@ -347,6 +347,107 @@ describe('boundariesToWallRuns — the real reference tomb', () => {
       expect(len).toBeGreaterThan(0);
     }
   });
+
+  it('the seam runs straight, not tilted (rpg-dnd5e-web#788 walk finding: "the wall from the top seems like it is at an angle") — a pixel-formula test, not just \'looks straight\'', () => {
+    // Every one of these runs belongs to one of the tomb's two seams
+    // (the reference-tomb fixture declares no other interior walls).
+    // Both seams are column-type -- their true direction is vertical
+    // (constant world x). Before this fix, the engine's own raw
+    // endpoint-to-endpoint chord carried real tilt inherited from
+    // whichever two hex-corner parities the chain's own first/last
+    // vertex happened to land on: up to ~11 degrees for a whole
+    // unsplit seam, and as much as ~80 degrees for the WORSE of a
+    // door-split seam's two short fragments, fit independently (both
+    // measured against this exact fixture during development). The
+    // least-squares fit over the seam's own combined vertex set (both
+    // sides of the door together, not each fragment alone) reduces
+    // this to ~1.6 degrees (|dirX| ~= 0.0273) -- not exactly zero,
+    // because the real captured boundary list's own near/far cell
+    // selection is not perfectly row-parity-balanced (verified: seam
+    // 1's 14 edges split 11-odd/3-even by their own "near" cell's row
+    // parity) -- forcing exactly zero here would mean snapping toward
+    // a preferred axis instead of fitting the real, slightly asymmetric
+    // data, which is exactly what this fix must NOT do (see the
+    // "genuinely diagonal chain" test below for the other direction of
+    // that same honesty requirement). 0.03 is comfortably above the
+    // measured 0.0273 and comfortably below every pre-fix value on
+    // this same fixture.
+    expect(scene.wallRuns.length).toBeGreaterThan(0);
+    for (const run of scene.wallRuns) {
+      const dx = run.end.x - run.start.x;
+      const dz = run.end.z - run.start.z;
+      const len = Math.hypot(dx, dz);
+      expect(Math.abs(dx / len)).toBeLessThan(0.03);
+    }
+  });
+});
+
+describe('boundariesToWallRuns — a genuinely diagonal authored chain is not snapped to an axis', () => {
+  it('fits its own true diagonal, not vertical or horizontal', () => {
+    // A real interior partition along a genuinely DIAGONAL cut (region
+    // B: q - r >= 0; region A: everything else) -- every real
+    // hex-adjacent A/B pair becomes a boundary edge. If the fit ever
+    // snapped toward a preferred axis (the failure mode the tomb-seam
+    // test above is deliberately lenient to avoid encouraging), this
+    // wall would come out vertical or horizontal instead of its own
+    // true ~30-degree diagonal (hex grids have no 45-degree principal
+    // direction; a "q - r" cut's natural angle is one of the grid's own
+    // 6 principal directions, verified empirically at dirX~=0.866,
+    // dirZ~=0.5 during development) -- the fit IS the rule, not a
+    // snap.
+    const cells: unknown[] = [];
+    for (let q = -3; q <= 6; q++) {
+      for (let r = -3; r <= 6; r++) cells.push(pos(q, r));
+    }
+    const inB = (q: number, r: number) => q - r >= 0;
+    const edges: Array<[number, number, number, number]> = [];
+    const seen = new Set<string>();
+    for (let q = -3; q <= 6; q++) {
+      for (let r = -3; r <= 6; r++) {
+        const neighbors: Array<[number, number]> = [
+          [q + 1, r - 1],
+          [q + 1, r],
+          [q, r - 1],
+          [q - 1, r],
+          [q - 1, r + 1],
+          [q, r + 1],
+        ];
+        for (const [nq, nr] of neighbors) {
+          if (nq < -3 || nq > 6 || nr < -3 || nr > 6) continue;
+          if (inB(q, r) === inB(nq, nr)) continue;
+          const key = [q, r, nq, nr].sort().join(',');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          edges.push([q, r, nq, nr]);
+        }
+      }
+    }
+    expect(edges.length).toBeGreaterThan(10);
+    const boundaries = edges.map(([q, r, nq, nr]) => ({
+      from: pos(q, r),
+      to: pos(nq, nr),
+      blocksMovement: true,
+      blocksLineOfSight: true,
+    }));
+    const scene = boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: [] as never,
+      },
+      1
+    );
+    expect(scene.wallRuns.length).toBeGreaterThan(0);
+    for (const run of scene.wallRuns) {
+      const dx = run.end.x - run.start.x;
+      const dz = run.end.z - run.start.z;
+      const len = Math.hypot(dx, dz);
+      // Neither component should be near-zero (that would mean this
+      // run got pulled toward a pure vertical or horizontal axis).
+      expect(Math.abs(dx / len)).toBeGreaterThan(0.3);
+      expect(Math.abs(dz / len)).toBeGreaterThan(0.3);
+    }
+  });
 });
 
 describe('boundariesToWallRuns — a partial interior wall that does not fully split the floor', () => {
