@@ -33,6 +33,7 @@
  * every edge is covered by some straight piece, not how many pieces.
  */
 import { hexEdgeBetween, type CubeCoord } from '@/components/hex-grid/hexMath';
+import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import { boundariesToWallRuns } from './atlasWallRuns';
@@ -89,46 +90,48 @@ function unitDir(a: P, b: P): P {
   return { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
 }
 
-/** The exact half door-frame width atlasWallRuns.ts trims a run back by
- * at a door-adjacent vertex — mirrored here (not imported) so this test
- * independently re-derives the alignment atlasWallRuns.ts computes,
- * rather than re-reading its own output back at itself. */
-const DOOR_TRIM = 0.5;
-
 /**
- * Independently re-derives which run a doorway interrupts and that
- * run's own oriented direction — the exact same "find the run trimmed
- * at DOOR_TRIM from one of the door's own two corners, then orient it
- * to agree with the door's raw edge direction" logic
- * `atlasWallRuns.ts`'s `boundariesToWallRuns` uses internally, written
- * separately here so the rotation pin below isn't circular (rpg-dnd5e-web#788
- * walk finding: "walls look straight now but the door follows the hex
- * edge" — this is the check that would have caught it).
+ * Independently finds whichever run has an endpoint EXACTLY (within
+ * 1e-6) at `point` and reconstructs that run's own direction from its
+ * OTHER (untouched) endpoint toward `point` — used below against a
+ * door's own reported gap boundary points, not against
+ * `atlasWallRuns.ts`'s internal DOOR_TRIM/raw-corner math (rpg-dnd5e-web#788
+ * second walk finding: "the gap is what I am most concerned with" — a
+ * screenshot showing bare floor between each flanking run's end and the
+ * door frame. The fix forces each flanking run's endpoint to sit AT the
+ * gap boundary exactly, so this exact-match search is itself the
+ * closure pin: if the fix regressed, no run would be found here.
  */
-function interruptedRunDirection(
-  doorFrom: CubeCoord,
-  doorTo: CubeCoord,
-  wallRuns: readonly Seg[]
-): P | undefined {
-  const { a, b } = hexEdgeBetween(doorFrom, doorTo, 1);
-  const rawDir = unitDir(a, b);
-  for (const corner of [a, b]) {
-    for (const run of wallRuns) {
-      let lineDir: P | undefined;
-      if (Math.abs(distanceBetween(run.start, corner) - DOOR_TRIM) < 1e-6) {
-        lineDir = unitDir(run.end, run.start);
-      } else if (
-        Math.abs(distanceBetween(run.end, corner) - DOOR_TRIM) < 1e-6
-      ) {
-        lineDir = unitDir(run.start, run.end);
-      }
-      if (lineDir) {
-        const agrees = lineDir.x * rawDir.x + lineDir.z * rawDir.z >= 0;
-        return agrees ? lineDir : { x: -lineDir.x, z: -lineDir.z };
-      }
+function findRunTouching(
+  point: P,
+  runs: readonly AuthoredWallRun[]
+): { run: AuthoredWallRun; dir: P } | undefined {
+  for (const run of runs) {
+    if (distanceBetween(run.start, point) < 1e-6) {
+      return { run, dir: unitDir(run.end, run.start) };
+    }
+    if (distanceBetween(run.end, point) < 1e-6) {
+      return { run, dir: unitDir(run.start, run.end) };
     }
   }
   return undefined;
+}
+
+/** A door gap's own two boundary points, reconstructed from its public
+ * `position`/`leafPosition` fields (`leafPosition` IS one boundary
+ * point by this module's own documented convention; the other is its
+ * mirror image through the center) — not by re-deriving the
+ * implementation's internal gapStart/gapEnd math. */
+function gapBoundaryPoints(gap: { position: P; leafPosition: P }): {
+  near: P;
+  far: P;
+} {
+  const near = gap.leafPosition;
+  const far = {
+    x: 2 * gap.position.x - near.x,
+    z: 2 * gap.position.z - near.z,
+  };
+  return { near, far };
 }
 
 function rotationYOf(dir: P): number {
@@ -255,19 +258,68 @@ describe('boundariesToWallRuns — the real reference tomb', () => {
     }
   });
 
-  it('door frame rotation matches the run it interrupts, not its own raw hex-edge angle (rpg-dnd5e-web#788 walk finding: "walls look straight now but the door follows the hex edge")', () => {
+  it('door frame rotation matches the run it interrupts, AND the gap closes EXACTLY on both sides (rpg-dnd5e-web#788 walk findings: "the door follows the hex edge", then "the gap is what I am most concerned with")', () => {
     const doors = [
       { from: positionToCube(pos(3, 4)), to: positionToCube(pos(4, 4)) },
       { from: positionToCube(pos(13, 4)), to: positionToCube(pos(14, 4)) },
     ];
     for (const d of doors) {
-      const dir = interruptedRunDirection(d.from, d.to, scene.wallRuns);
-      expect(dir).toBeDefined(); // both tomb doors sit on a real authored wall
       const gap = scene.doorGaps.find(
         (g) => distanceBetween(g.position, edgeMid(d.from, d.to)) < 1
       )!;
       expect(gap).toBeDefined();
-      expect(gap.rotationY).toBeCloseTo(rotationYOf(dir!), 6);
+      const { near, far } = gapBoundaryPoints(gap);
+      const nearRun = findRunTouching(near, scene.wallRuns);
+      const farRun = findRunTouching(far, scene.wallRuns);
+      // Both tomb doors sit on real authored wall on BOTH sides -- a run
+      // must be found touching each boundary point EXACTLY (findRunTouching
+      // itself only matches within 1e-6; a bare-floor gap the size Kirk
+      // screenshotted would leave this undefined).
+      expect(nearRun).toBeDefined();
+      expect(farRun).toBeDefined();
+      // The explicit distance(run endpoint, gap boundary) == 0 pin --
+      // named directly, not just implied by findRunTouching's own
+      // internal tolerance.
+      const nearEndpoint =
+        distanceBetween(nearRun!.run.start, near) < 1e-6
+          ? nearRun!.run.start
+          : nearRun!.run.end;
+      const farEndpoint =
+        distanceBetween(farRun!.run.start, far) < 1e-6
+          ? farRun!.run.start
+          : farRun!.run.end;
+      expect(distanceBetween(nearEndpoint, near)).toBeLessThan(1e-6);
+      expect(distanceBetween(farEndpoint, far)).toBeLessThan(1e-6);
+      const reference = nearRun ?? farRun!;
+      expect(gap.rotationY).toBeCloseTo(rotationYOf(reference.dir), 6);
+    }
+  });
+
+  it('both runs flanking one door report facing on the SAME side (rpg-dnd5e-web#788 walk finding: "one side is facing one way and the other is the other")', () => {
+    // "Same side", not bit-identical vectors: each run's own `facing` is
+    // (and must stay) perpendicular to THAT run's own geometry -- two
+    // flanking runs whose own directions differ by a few degrees
+    // (ordinary chaining fragmentation, not a bug) legitimately have
+    // slightly different exact facing vectors even when correctly
+    // agreeing on which side is outward. What the walk finding actually
+    // named -- a hard ~180-degree flip, textured face on one side and
+    // flat back on the other -- shows up as a strongly NEGATIVE dot
+    // product; a positive one is the real, meaningful pin.
+    const doors = [
+      { from: positionToCube(pos(3, 4)), to: positionToCube(pos(4, 4)) },
+      { from: positionToCube(pos(13, 4)), to: positionToCube(pos(14, 4)) },
+    ];
+    for (const d of doors) {
+      const gap = scene.doorGaps.find(
+        (g) => distanceBetween(g.position, edgeMid(d.from, d.to)) < 1
+      )!;
+      const { near, far } = gapBoundaryPoints(gap);
+      const nearRun = findRunTouching(near, scene.wallRuns)!;
+      const farRun = findRunTouching(far, scene.wallRuns)!;
+      const dot =
+        nearRun.run.facing.x * farRun.run.facing.x +
+        nearRun.run.facing.z * farRun.run.facing.z;
+      expect(dot).toBeGreaterThan(0);
     }
   });
 
@@ -550,11 +602,34 @@ describe("boundariesToWallRuns — a door mid-way along an L-run's leg", () => {
 
     const from = positionToCube(pos(doorEdge[0], doorEdge[1]));
     const to = positionToCube(pos(doorEdge[2], doorEdge[3]));
-    const dir = interruptedRunDirection(from, to, scene.wallRuns);
-    expect(dir).toBeDefined(); // a real leg flanks this door on at least one side
-
     const gap = scene.doorGaps[0]!;
-    expect(gap.rotationY).toBeCloseTo(rotationYOf(dir!), 6);
+
+    const { near, far } = gapBoundaryPoints(gap);
+    const nearRun = findRunTouching(near, scene.wallRuns);
+    const farRun = findRunTouching(far, scene.wallRuns);
+    expect(nearRun).toBeDefined(); // a real leg flanks this door on at least one side
+    expect(farRun).toBeDefined();
+    // The gap closes EXACTLY on the flanking leg's own end (rpg-dnd5e-web#788
+    // second walk finding) -- findRunTouching's own 1e-6 match already
+    // proves this; asserted again explicitly for a direct, named pin.
+    expect(
+      distanceBetween(nearRun!.run.start, near) < 1e-6 ||
+        distanceBetween(nearRun!.run.end, near) < 1e-6
+    ).toBe(true);
+    expect(
+      distanceBetween(farRun!.run.start, far) < 1e-6 ||
+        distanceBetween(farRun!.run.end, far) < 1e-6
+    ).toBe(true);
+    // Both flanking runs agree on which side is outward (rpg-dnd5e-web#788
+    // second walk finding) -- same-side, not bit-identical vectors; see
+    // the tomb-door facing test's own comment for why.
+    const facingDot =
+      nearRun!.run.facing.x * farRun!.run.facing.x +
+      nearRun!.run.facing.z * farRun!.run.facing.z;
+    expect(facingDot).toBeGreaterThan(0);
+
+    const reference = nearRun ?? farRun!;
+    expect(gap.rotationY).toBeCloseTo(rotationYOf(reference!.dir), 6);
 
     // The gap center is a genuine projection, not the raw hex-edge
     // midpoint used verbatim -- it should differ from the raw midpoint
