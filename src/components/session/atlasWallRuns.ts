@@ -149,18 +149,40 @@
  * point after fitting, so the shared vertex opens into a gap or an
  * overlap depending on which side of each line it happened to fall.
  * Fixed the same way every other seam in this module closes: not by
- * tuning, by construction. Two runs whose RAW (pre-fit) endpoints
- * coincide share an authored corner; both runs' corner endpoints are
- * overwritten with the exact intersection of their two FITTED lines
- * (`lineIntersection`, reused from `wallRuns.ts` rather than
- * reimplemented) — falling back to the shared raw vertex, unchanged,
- * when the two lines are too close to parallel to intersect reliably
- * (not reachable for a real corner, but a defensive floor rather than
- * a division by ~0). Each run is then extended a further
+ * tuning, by construction. Every run endpoint is clustered with every
+ * OTHER run endpoint whose RAW (pre-fit) position coincides — two
+ * clustered endpoints share an ordinary authored corner; three or more
+ * share a T-junction (`computeAuthoredWallRuns` explicitly supports a
+ * branch vertex with 3+ runs meeting it, see its own doc comment). A
+ * first version of this fix closed corners PAIRWISE instead of by
+ * cluster (Copilot review, PR #794): at a T-junction that rewrites the
+ * same endpoint once per pair it appears in — A/B moves A, then A/C
+ * moves A again, then B/C moves B and C — order-dependent, and the
+ * three fitted centerlines never end up sharing one joint. Clustering
+ * first, then closing the WHOLE cluster in one shot, removes the
+ * order-dependence entirely: a two-member cluster's shared joint is
+ * the exact intersection of its two fitted lines (`lineIntersection`,
+ * reused from `wallRuns.ts` rather than reimplemented); a three-or-
+ * more-member cluster's shared joint is the single point minimizing
+ * total squared perpendicular distance to every member's fitted line
+ * (`leastSquaresLineJoint` below — a deliberate, justified choice: it
+ * is the natural generalization of "the one point every line agrees
+ * on" when no single point is exactly on all of them, and it reduces
+ * to the same answer `lineIntersection` gives for exactly two
+ * non-parallel lines, since their exact crossing already has zero
+ * total squared distance). Either path falls back to the shared RAW
+ * vertex, unchanged, when the participating lines are too close to
+ * parallel (or otherwise degenerate) to solve reliably (not reachable
+ * for a real corner or T-junction, but a defensive floor rather than a
+ * division by ~0 — Copilot review, PR #794: an earlier version of this
+ * fallback `continue`d without assigning anything, so the documented
+ * fallback was dead code; it now explicitly assigns every member to
+ * the shared raw vertex, margin included, same as the solved case).
+ * Each run is then extended a further
  * `DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN` (also reused from
  * `wallRuns.ts` — a named constant derived from real wall-piece
- * thickness, not a tuning knob hidden in this module) past that exact
- * intersection, along its OWN direction, so the OUTSIDE face of the
+ * thickness, not a tuning knob hidden in this module) past that
+ * shared joint, along its OWN direction, so the OUTSIDE face of the
  * corner has real wall-piece thickness overlapping the joint instead
  * of a thickness-sized notch peeking through it — the same
  * "overlap-miter" convention `WallRunMesh`'s own doc comment already
@@ -244,6 +266,96 @@ function unitDirection(a: WorldPos, b: WorldPos): WorldPos {
   const len = distance(a, b);
   if (len === 0) return { x: 0, z: 0 };
   return { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
+}
+
+/**
+ * The single point minimizing the sum of squared perpendicular
+ * distances to every line in `lines` -- used below to close a
+ * T-junction (rpg-dnd5e-web#793, Copilot review PR #794) where three
+ * or more runs' fitted lines all pass NEAR one shared raw vertex but,
+ * after independent least-squares fitting, no longer pass through any
+ * single common point exactly. Standard least-squares line
+ * intersection: for each line, its unit NORMAL `n` (perpendicular to
+ * `dir`) and the scalar `c = n . point` describe every point ON that
+ * line as `{p : n . p = c}`; the minimizer of `sum((n_k . p - c_k)^2)`
+ * solves the 2x2 normal-equations system
+ * `sum(n_k n_k^T) * p = sum(c_k * n_k)` (Cramer's rule below). For
+ * exactly two non-parallel lines this is IDENTICAL to
+ * `lineIntersection` (their exact crossing has zero total squared
+ * distance, the global minimum), which is why corner-closure below
+ * only calls this for three-or-more-member clusters and keeps using
+ * the already-proven `lineIntersection` for the common two-run corner
+ * case. Returns undefined when the system is singular (every
+ * participating line the same direction) -- not reachable for a real
+ * corner or T-junction, but a defensive floor rather than a division
+ * by ~0. Note the least-squares joint generally does NOT sit exactly
+ * ON any one of the individual lines when 3+ of them aren't exactly
+ * concurrent (real hex-grid corners at a T-junction usually aren't) --
+ * each run's own final segment therefore gets a tiny genuine bend over
+ * just its last `DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN` of length,
+ * negligible visually (well inside the same margin already designed
+ * to absorb corner-joint slop) and NOT a defect: forcing every run's
+ * whole line to re-fit through one shared point would fight the
+ * per-run least-squares fit finding 3 already relies on.
+ */
+function leastSquaresLineJoint(
+  lines: ReadonlyArray<{ point: WorldPos; dir: WorldPos }>
+): WorldPos | undefined {
+  let sxx = 0;
+  let sxz = 0;
+  let szz = 0;
+  let bx = 0;
+  let bz = 0;
+  for (const { point, dir } of lines) {
+    const nx = -dir.z;
+    const nz = dir.x;
+    sxx += nx * nx;
+    sxz += nx * nz;
+    szz += nz * nz;
+    const c = nx * point.x + nz * point.z;
+    bx += c * nx;
+    bz += c * nz;
+  }
+  const det = sxx * szz - sxz * sxz;
+  if (Math.abs(det) < 1e-9) return undefined;
+  return {
+    x: (szz * bx - sxz * bz) / det,
+    z: (sxx * bz - sxz * bx) / det,
+  };
+}
+
+/**
+ * The single point two or more run endpoints sharing one raw vertex
+ * should close to: the exact line intersection for two members, the
+ * least-squares joint for three or more (a T-junction), falling back
+ * to `rawPoint` itself -- UNCONDITIONALLY, this always returns a
+ * point, never leaves a caller to decide whether "nothing changed" is
+ * an acceptable answer -- when the participating lines are too close
+ * to parallel to solve reliably. Exported (like
+ * `lineIntersection`/`DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN`, which
+ * this builds on) so the fallback path -- unreachable through any
+ * real authored corner's own geometry, by design, since a genuine
+ * corner's two legs are never near-parallel -- can still be pinned
+ * directly with a synthetic near-parallel pair rather than left
+ * untested (rpg-dnd5e-web#793, Copilot review PR #794: an earlier
+ * version of this fallback `continue`d without assigning anything,
+ * silently leaving the documented behavior unimplemented).
+ */
+export function cornerJoint(
+  rawPoint: WorldPos,
+  lines: ReadonlyArray<{ point: WorldPos; dir: WorldPos }>
+): WorldPos {
+  if (lines.length === 2) {
+    return (
+      lineIntersection(
+        lines[0]!.point,
+        lines[0]!.dir,
+        lines[1]!.point,
+        lines[1]!.dir
+      ) ?? rawPoint
+    );
+  }
+  return leastSquaresLineJoint(lines) ?? rawPoint;
 }
 
 /** A stable, order-independent key for an unordered pair of hex
@@ -657,50 +769,76 @@ export function boundariesToWallRuns(
     };
   });
 
-  // Corner closure (rpg-dnd5e-web#793): two runs whose RAW (pre-fit)
-  // endpoints coincide share a real authored corner vertex -- each got
-  // its own independent least-squares fit above (finding 3's
-  // door-link-only grouping deliberately never merges a genuine
-  // corner's two legs into one fit), so nothing yet constrains their
-  // two fitted lines to still cross at that same point. Overwrite BOTH
-  // runs' corner endpoint with the exact intersection of their fitted
-  // lines -- closes by construction, not by tuning -- then extend each
-  // a further DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN past it, along its
-  // own direction, so real wall-piece thickness overlaps the joint on
-  // the corner's outside face (see this module's own header doc,
-  // corners section, for the full "why", including why this can never
-  // compete with door force-closure for the same endpoint).
+  // Corner closure (rpg-dnd5e-web#793, and its T-junction fix from
+  // Copilot review on PR #794 -- see this module's own header doc,
+  // corners section, for the full "why"). Cluster every run endpoint
+  // (both ends of every run) by shared RAW (pre-fit) vertex position
+  // FIRST, then close each cluster of 2+ members in ONE shot -- the
+  // previous pairwise version rewrote the same endpoint once per pair
+  // it appeared in, which is order-dependent and never converges to
+  // one shared joint at a T-junction (3+ runs meeting one vertex,
+  // explicitly supported by computeAuthoredWallRuns). Each member's
+  // own fitted corner position and direction (toward the corner, from
+  // its run's OTHER/far endpoint) is captured HERE, before any
+  // cluster's joint is applied -- so a run whose far endpoint is
+  // itself part of a DIFFERENT cluster never has its direction
+  // computed from an already-moved neighbor.
   const CORNER_EPS = 1e-6;
   const cornerEnds: Array<'start' | 'end'> = ['start', 'end'];
+  interface CornerEndpointSnapshot {
+    runIndex: number;
+    end: 'start' | 'end';
+    corner: WorldPos;
+    dir: WorldPos;
+  }
+  const clusters: Array<{
+    rawPoint: WorldPos;
+    members: CornerEndpointSnapshot[];
+  }> = [];
   for (let i = 0; i < rawRuns.length; i++) {
-    for (let j = i + 1; j < rawRuns.length; j++) {
-      for (const iEnd of cornerEnds) {
-        for (const jEnd of cornerEnds) {
-          if (distance(rawRuns[i]![iEnd], rawRuns[j]![jEnd]) >= CORNER_EPS) {
-            continue;
-          }
-          const runI = runs[i]!;
-          const runJ = runs[j]!;
-          const cornerI = runI[iEnd];
-          const farI = iEnd === 'start' ? runI.end : runI.start;
-          const dirI = unitDirection(farI, cornerI); // toward the corner
-          const cornerJ = runJ[jEnd];
-          const farJ = jEnd === 'start' ? runJ.end : runJ.start;
-          const dirJ = unitDirection(farJ, cornerJ);
-
-          const intersection = lineIntersection(cornerI, dirI, cornerJ, dirJ);
-          if (!intersection) continue; // near-parallel: leave the shared raw vertex position unchanged
-
-          runI[iEnd] = {
-            x: intersection.x + dirI.x * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
-            z: intersection.z + dirI.z * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
-          };
-          runJ[jEnd] = {
-            x: intersection.x + dirJ.x * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
-            z: intersection.z + dirJ.z * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
-          };
-        }
+    for (const end of cornerEnds) {
+      const rawPoint = rawRuns[i]![end];
+      let cluster = clusters.find(
+        (c) => distance(c.rawPoint, rawPoint) < CORNER_EPS
+      );
+      if (!cluster) {
+        cluster = { rawPoint, members: [] };
+        clusters.push(cluster);
       }
+      const run = runs[i]!;
+      const corner = run[end];
+      const far = end === 'start' ? run.end : run.start;
+      cluster.members.push({
+        runIndex: i,
+        end,
+        corner,
+        dir: unitDirection(far, corner), // toward the corner
+      });
+    }
+  }
+
+  for (const cluster of clusters) {
+    if (cluster.members.length < 2) continue; // no corner/junction at this endpoint
+
+    // `cornerJoint` always returns a point -- the already-proven exact
+    // line intersection for a two-run corner, the least-squares joint
+    // for a three-or-more-run T-junction, or the shared RAW vertex
+    // itself when the lines are too close to parallel to solve
+    // reliably. Every member of the cluster gets assigned relative to
+    // THAT joint, unconditionally -- including the fallback case, so
+    // a near-parallel pair still closes as documented instead of
+    // silently keeping its independently-fitted (disagreeing)
+    // position.
+    const joint = cornerJoint(
+      cluster.rawPoint,
+      cluster.members.map((m) => ({ point: m.corner, dir: m.dir }))
+    );
+
+    for (const m of cluster.members) {
+      runs[m.runIndex]![m.end] = {
+        x: joint.x + m.dir.x * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
+        z: joint.z + m.dir.z * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN,
+      };
     }
   }
 
