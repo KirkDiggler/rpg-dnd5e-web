@@ -107,29 +107,107 @@
  *    parities the chain's own first/last vertex landed on, inheriting a
  *    few degrees of tilt from that essentially arbitrary pair instead
  *    of the seam's real direction. Fixed by re-deriving each run's line
- *    via a total-least-squares fit over EVERY vertex the chain actually
- *    passed through (recovered by parsing the run's own `key` — see
- *    `parseChainVertices`'s doc comment for why that's safe here — not
- *    just its two endpoints), then re-extending to the chain's own
- *    extreme vertices projected onto the fitted line. Fit over the
- *    WHOLE door-split chain's combined vertex set, not each post-split
+ *    via a total-least-squares fit, then re-extending to the chain's
+ *    own extreme vertices projected onto the fitted line. Fit over the
+ *    WHOLE door-split chain's combined input set, not each post-split
  *    run alone (see the fit-grouping comment at its own call site for
  *    why a short, door-truncated fragment's own parity mix can still be
- *    unbalanced on its own). The alternating +-half-hex parity offsets
- *    cancel MOSTLY in the fit — verified against the real reference-
- *    tomb data: reduced from up to ~80 degrees of tilt on the worse of
- *    a door-split seam's two per-run-only fragments down to ~1.6
- *    degrees for the fitted whole chain. Not exactly zero: the real
- *    authored edge list's own near/far cell selection is not perfectly
- *    parity-balanced (verified: seam1's 14 edges split 11-odd/3-even by
- *    row parity on their own "near" side) — an idealized, perfectly
- *    alternating zigzag would cancel to exactly vertical, but forcing
- *    that here would mean snapping toward a preferred axis instead of
- *    fitting the real, slightly asymmetric data, which is exactly what
- *    this fix must NOT do (a genuinely diagonal authored chain must
- *    still fit its own true diagonal). This replaces each run's
- *    start/end BEFORE door planning (finding 1) and force-closure
- *    (finding 2) run, so both inherit the corrected line for free.
+ *    unbalanced on its own). This replaces each run's start/end BEFORE
+ *    door planning (finding 1) and force-closure (finding 2) run, so
+ *    both inherit the corrected line for free. The fit's own INPUT
+ *    changed once more on #799 below — see that section for the current
+ *    mechanism and why finding 3's first version (fitting the chain's
+ *    raw hex-CORNER vertex cloud) still wasn't enough.
+ *
+ * # Seam fit, corrected again: recognize an authored axis, don't just
+ * fit closer to it (rpg-dnd5e-web#799)
+ *
+ * Finding 3's original fit (parsing the chain's own hex-CORNER vertex
+ * cloud out of each run's `key`, via the since-removed
+ * `parseChainVertices`) reduced the reference tomb's worst residual
+ * from up to ~80 degrees down to ~1.6 degrees (|dirX| ~= 0.0273,
+ * calibrated into a 0.03 test tolerance) — comfortably invisible on the
+ * tomb's own long seams, so the fix shipped. Kirk, walking his OWN
+ * authored dungeon the same evening: "walls are also not straight." The
+ * same residual, on his dungeon's shorter, more parity-skewed chains,
+ * was big enough to read as crooked. Root cause of the residual itself:
+ * a hex CORNER vertex's zigzag offset cancels in the fit only if the
+ * chain's own near/far cell selection happens to alternate evenly by
+ * row parity — real authored data usually doesn't (verified on the
+ * tomb: one seam's 14 edges split 11-odd/3-even by their own "near"
+ * cell's row parity), so the fit's TLS line still carried a real,
+ * data-dependent residual instead of landing exactly on-axis for an
+ * ordinary column/row wall. The 0.03 tolerance was a calibration
+ * against that residual, not a fix for it, and Kirk's finding retired
+ * it: "must render exactly axis-true."
+ *
+ * The fix has two tiers, tried in order, both keyed off the same
+ * per-edge data (`edgeFitDataByToken`, see its own doc comment for how
+ * a run's `key` is split back into the real cube cell pairs that
+ * produced it, without reverse-engineering cell identity out of
+ * hex-corner vertex positions the way the old `parseChainVertices`
+ * had to).
+ *
+ * Tier 1 — authored-axis RECOGNITION, not fitting at all
+ * (`authoredAxisLine`): if EVERY edge in a chain crosses the exact same
+ * pair of authored columns (`authoredCol`, the SAME `q + floor(r/2)`
+ * offset convention `FloorBuilder.ts`'s `getHexesInRect` already lays
+ * a rectangular hex area out in), that chain isn't approximately
+ * vertical — it IS one authored vertical wall, semantically, by the
+ * author's own hex-grid declaration: the zigzag CHAIN_TOLERANCE
+ * already collapsed into one run is the hex grid's own representation
+ * of that wall, not its true shape. Rendering it exactly vertical
+ * honors the authored data; the residual tilt was always the artifact,
+ * never the intent. Symmetric for a chain whose every edge crosses the
+ * same pair of ROWS (a declared horizontal wall — raw row numbers need
+ * no offset; world z is already a pure function of row alone, unlike
+ * world x for a column). Once recognized, the direction is exact by
+ * definition — `{0,1}` or `{1,0}`, no fitting needed — and the only
+ * remaining unknown is WHERE the wall stands, which is simply the 1-D
+ * least-squares completion of that already-declared direction: the
+ * mean x (or z) of the chain's own boundary-pair midpoints. This is
+ * why a chain's own INTERNAL edge-type balance (see tier 2) stops
+ * mattering once tier 1 fires — the direction was never being
+ * estimated from that data to begin with. Verified directly: the
+ * tomb's own seam1 (14 edges, an uncancelable 7-E-type/4-NE-type/
+ * 3-SE-type mix by hex-adjacency direction — see tier 2) crosses
+ * exactly one column pair, `5|6`, for every single edge, so it renders
+ * EXACTLY vertical now (|dirX| < 1e-6, the original, un-calibrated
+ * ask). A genuinely diagonal authored chain never crosses one shared
+ * column OR row pair across 2+ edges (verified directly, not just
+ * inferred: the "diagonal chain is not snapped" fixture's own edges,
+ * fed straight to `authoredAxisLine`, return undefined) — the
+ * diagonal-honesty law survives untouched, because the trigger simply
+ * cannot fire on it; there's no "snap toward the wrong axis" failure
+ * mode to guard against here at all.
+ *
+ * Tier 2 — the continuous fit, unchanged in kind but improved in
+ * input, for any chain tier 1 doesn't recognize (a genuine diagonal,
+ * or a fit-group of fewer than 2 edges): total-least-squares over the
+ * chain's own boundary-PAIRS' cell-center MIDPOINTS
+ * (`edgeFitDataByToken`'s own `mid`) instead of finding 3's original
+ * hex-CORNER vertex cloud. This is a real, verified improvement over
+ * finding 3, not a complete fix on its own — a pair's cell-center
+ * midpoint is `hexEdgeBetween`'s own edge `mid` (the two adjacent cell
+ * centers' average IS the shared edge's own midpoint, a standard
+ * hex-tiling identity), so it still carries a real, individually
+ * nonzero x deviation on any single diagonal-type edge; it does NOT
+ * collapse a whole column seam onto one exact world-x by construction
+ * the way an earlier draft of this doc claimed, and tier 1 exists
+ * precisely because tier 2 alone can't reach exactly zero on a real,
+ * finite, edge-type-imbalanced chain. What DOES hold, verified
+ * directly (a synthetic large symmetric column boundary's fitted
+ * |dirX| shrinks ~4x every time its length doubles — 0.0022 at 20
+ * rows, 0.00002 at 200 — consistent with a genuine statistical
+ * residual, not a fixed bias): the fit's residual is a property of how
+ * EVENLY balanced a chain's own left-leaning vs. right-leaning step
+ * edges happen to be (see `HEX_DIRECTIONS`), and midpoint data cancels
+ * that imbalance measurably better than finding 3's raw corner-vertex
+ * data did on the SAME real chains (verified on the tomb's seam1, in
+ * isolation from tier 1: 0.0273 -> 0.0189). A genuinely diagonal
+ * authored chain's pair midpoints still lie along its own true
+ * diagonal here too (no axis is preferred — see the "diagonal chain is
+ * not snapped" test).
  *
  * A door whose edge touches no wall run's trimmed endpoint on EITHER
  * side (a standalone doorway with no wall around it — legal: a doorway
@@ -209,6 +287,7 @@
 
 import {
   coordToKey,
+  cubeToWorld,
   hexEdgeBetween,
   type CubeCoord,
   type WorldPos,
@@ -216,6 +295,7 @@ import {
 import { DOOR_FRAME_CALIBRATED_WIDTH } from '@/components/hex-grid/syntyHexWallHelpers';
 import {
   computeAuthoredWallRuns,
+  vertexKey,
   type AuthoredWallEdgeInput,
   type AuthoredWallRun,
 } from '@/hooks/authoredWallRuns';
@@ -432,56 +512,161 @@ function projectOntoLine(
 }
 
 /**
- * Recovers every real hex-corner vertex a chained run actually passed
- * through, by parsing the run's own `key` -- `computeAuthoredWallRuns`'s
- * `emitRun` builds it as `chainEdges.map(g => g.input.id ?? (aKey+"|"+bKey)).sort().join(';')`,
- * and this module never sets `AuthoredWallEdgeInput.id` on any edge it
- * builds, so every token is guaranteed to be a real `vertexA|vertexB`
- * pair (each vertex `x.xxxxx,z.zzzzz` to 5 decimals, `vertexKey`'s own
- * format) rather than an opaque id. This is reading a field that field's
- * own doc already promises is "deterministic across renders for the
- * same input data" -- not reaching into a private implementation
- * detail, but it IS coupled to that key format staying vertex-pair
- * shaped for this caller; if a future edit to this module ever sets
- * `id` on an edge, this stops finding any vertices and the fit below
- * safely falls back to the original two-point chord (see `fitRunLine`).
+ * One token PER NON-DOOR EDGE, mapped to that edge's own authored
+ * boundary PAIR's cell-center midpoint -- the seam-fit input this
+ * module uses instead of the chain's raw hex-CORNER vertex cloud
+ * (rpg-dnd5e-web#799, see this file's own header doc, seam-fit
+ * section, for why). The token is EXACTLY the string
+ * `computeAuthoredWallRuns`'s own `emitRun` builds for that same edge
+ * inside a run's `key` (`chainEdges.map(g => g.input.id ??
+ * (aKey+"|"+bKey)).sort().join(';')`, and this module never sets
+ * `AuthoredWallEdgeInput.id` on any edge it builds) -- computed here
+ * independently from THIS module's own `edges` (real cube `from`/`to`
+ * cell identity, still in hand) via the exact same `hexEdgeBetween` +
+ * `vertexKey` (reused/exported from authoredWallRuns.ts rather than
+ * reimplemented) the engine itself uses, so the two computations are
+ * bit-identical for a shared edge and every token in a run's `key`
+ * reliably finds its entry here. This is genuinely THREADING the
+ * original boundary pairs through to the fit, not reverse-engineering
+ * cell identity out of a hex-corner vertex -- a corner is shared by up
+ * to 3 cells, so a vertex alone can't tell which pair produced it, the
+ * gap `parseChainVertices` (this function's now-removed predecessor)
+ * had no way to close.
  */
-function parseChainVertices(key: string): WorldPos[] {
-  const points: WorldPos[] = [];
-  const seen = new Set<string>();
-  for (const token of key.split(';')) {
-    const [aStr, bStr] = token.split('|');
-    for (const vertexStr of [aStr, bStr]) {
-      if (!vertexStr || seen.has(vertexStr)) continue;
-      const [xStr, zStr] = vertexStr.split(',');
-      const x = Number(xStr);
-      const z = Number(zStr);
-      if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
-      seen.add(vertexStr);
-      points.push({ x, z });
-    }
+export interface EdgeFitData {
+  mid: WorldPos;
+  from: CubeCoord;
+  to: CubeCoord;
+}
+
+function edgeFitDataByToken(
+  edges: readonly AuthoredWallEdgeInput[],
+  hexSize: number
+): Map<string, EdgeFitData> {
+  const byToken = new Map<string, EdgeFitData>();
+  for (const edge of edges) {
+    if (edge.isDoor) continue; // door edges never enter any run's chainEdges/key
+    const { a, b } = hexEdgeBetween(edge.from, edge.to, hexSize);
+    const token = `${vertexKey(a)}|${vertexKey(b)}`;
+    const fromWorld = cubeToWorld(edge.from, hexSize);
+    const toWorld = cubeToWorld(edge.to, hexSize);
+    byToken.set(token, {
+      mid: {
+        x: (fromWorld.x + toWorld.x) / 2,
+        z: (fromWorld.z + toWorld.z) / 2,
+      },
+      from: edge.from,
+      to: edge.to,
+    });
   }
-  return points;
+  return byToken;
+}
+
+/**
+ * The hex grid's own "offset column" index -- the SAME `q + floor(r/2)`
+ * convention `FloorBuilder.ts`'s `getHexesInRect` already uses to lay a
+ * rectangular hex area out in straight visual columns (reused here,
+ * not invented fresh). A single authored column's own cell centers
+ * still zigzag between two world-x values by row parity (an
+ * unavoidable property of ANY integer hex column -- verified directly,
+ * see this module's header doc, seam-fit section) -- `authoredCol`
+ * identifies WHICH column a cell belongs to, not its world position.
+ */
+function authoredCol(cube: CubeCoord): number {
+  return cube.x + Math.floor(cube.z / 2);
+}
+
+/** An unordered pair of numbers as a stable Set/Map key -- used below
+ * to ask "do every one of this chain's edges cross the SAME two
+ * authored columns (or rows)," regardless of which side of each
+ * individual edge happens to be "from" vs "to". */
+function unorderedPairKey(a: number, b: number): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/**
+ * Recognizes an authored-axis-declared wall and returns its EXACT
+ * (not fitted) line, or undefined if this chain doesn't declare one
+ * (rpg-dnd5e-web#799 — see this module's header doc, seam-fit
+ * section, for the full "why" and the semantics: this is recognizing
+ * what the author already declared, not snapping toward a preferred
+ * axis). If every edge in the chain crosses the exact same pair of
+ * authored columns, the chain IS one authored vertical wall by
+ * definition — its direction is exactly `{x:0, z:1}`, no fitting
+ * needed, and the only remaining unknown is WHERE it stands, which is
+ * the 1-D least-squares answer given that fixed direction: the mean x
+ * of the chain's own boundary-pair midpoints. Symmetric for a chain
+ * whose every edge crosses the same pair of ROWS (a declared
+ * horizontal wall; a raw row number needs no `authoredCol`-style
+ * offset — world z is already a pure function of row alone). A chain
+ * satisfying BOTH simultaneously (only possible in a degenerate
+ * single-edge-equivalent case) or NEITHER (a genuine diagonal, or any
+ * chain whose edges don't all cross one consistent pair) falls through
+ * to the continuous fit unchanged — a genuinely diagonal authored
+ * chain never has one shared column OR row pair across 2+ edges
+ * (verified: the "diagonal chain is not snapped" fixture triggers
+ * neither), so this can't misfire on it.
+ */
+export function authoredAxisLine(
+  edgeData: readonly EdgeFitData[],
+  rawAnchor: WorldPos
+): { dir: WorldPos; centroid: WorldPos } | undefined {
+  if (edgeData.length < 2) return undefined;
+  const colPairs = new Set(
+    edgeData.map((e) =>
+      unorderedPairKey(authoredCol(e.from), authoredCol(e.to))
+    )
+  );
+  const rowPairs = new Set(
+    edgeData.map((e) => unorderedPairKey(e.from.z, e.to.z))
+  );
+  const colConstant = colPairs.size === 1;
+  const rowConstant = rowPairs.size === 1;
+  if (colConstant && !rowConstant) {
+    let sumX = 0;
+    for (const e of edgeData) sumX += e.mid.x;
+    return {
+      dir: { x: 0, z: 1 },
+      centroid: { x: sumX / edgeData.length, z: rawAnchor.z },
+    };
+  }
+  if (rowConstant && !colConstant) {
+    let sumZ = 0;
+    for (const e of edgeData) sumZ += e.mid.z;
+    return {
+      dir: { x: 1, z: 0 },
+      centroid: { x: rawAnchor.x, z: sumZ / edgeData.length },
+    };
+  }
+  return undefined;
 }
 
 /**
  * Fits the TRUE direction of a straight chain via total-least-squares
- * (the principal axis of the vertex cloud, not a simple x-on-z or
+ * (the principal axis of the point cloud, not a simple x-on-z or
  * z-on-x regression, which fails for a near-vertical or near-horizontal
- * seam) over every vertex the chain actually passed through — Kirk's
- * live-walk finding: "the wall from the top seems like it is at an
- * angle." The engine's own run is only the CHORD between the chain's
- * first and last vertex; a hex-column seam's real vertices zigzag
- * +-half a hex by row parity, so that chord inherits a few degrees of
- * tilt from whichever two parities the endpoints happened to land on.
- * The fit's alternating offsets cancel over a large-enough, balanced
- * vertex set (see the module's own header doc, finding 3, for how
- * close this gets on the real reference-tomb data specifically, and
- * why it's not exactly zero there); a genuinely diagonal authored chain
- * still fits its own true diagonal (no axis is preferred). Returns
- * undefined for
- * a degenerate cloud (fewer than 2 distinct vertices, or all
- * coincident) — callers fall back to the engine's own raw chord.
+ * seam) — Kirk's live-walk finding: "the wall from the top seems like
+ * it is at an angle" (#788), then "walls are also not straight" again
+ * on his own dungeon's shorter chains (#799) once the fit's remaining
+ * ~0.03 residual, invisible on the tomb's long seams, read as crooked
+ * there. The engine's own run is only the CHORD between the chain's
+ * first and last vertex; a hex-column seam's real hex-CORNER vertices
+ * zigzag +-half a hex by row parity, so that chord inherits a few
+ * degrees of tilt from whichever two parities the endpoints happened to
+ * land on. `points` is now each constituent boundary PAIR's own
+ * cell-center MIDPOINT (rpg-dnd5e-web#799 — see `edgeMidpointsByToken`
+ * and this module's own header doc, seam-fit section), not the chain's
+ * raw hex-corner vertex cloud (#788's original input): a pair midpoint
+ * sits exactly on the seam's true midline by construction regardless of
+ * which side of the pair is "near"/"far", so a column seam now fits
+ * EXACTLY vertical and a row seam EXACTLY horizontal, without depending
+ * on the real data's own near/far split happening to be parity-balanced
+ * (#788's residual came from exactly that dependency); a genuinely
+ * diagonal authored chain still fits its own true diagonal (no axis is
+ * preferred — pair midpoints along a real diagonal still lie on that
+ * diagonal). Returns undefined for a degenerate cloud (fewer than 2
+ * distinct points, or all coincident) — callers fall back to the
+ * engine's own raw chord.
  */
 function fitLineDirection(
   vertices: readonly WorldPos[]
@@ -522,13 +707,14 @@ function fitLineDirection(
  * first and last vertex ARE its extremes by construction of the
  * chaining walk itself, so no extra vertex scan is needed here),
  * projected onto that line. Deliberately projects the engine's own
- * FULL-PRECISION endpoints rather than any of the `key`-parsed vertices
- * (only accurate to the 5 decimals `vertexKey` formats to, plenty for
- * fitting a DIRECTION by averaging over many points, nowhere near
- * enough for a single run's own final position -- an early version of
- * this function used parsed vertices for the extent too, and a
- * single-edge chain's fitted position landed ~2.5e-6 off the true hex
- * corner, well past this module's own 1e-6 exact-match tests). Falls
+ * FULL-PRECISION endpoints rather than any of the fit's own INPUT
+ * points (only accurate to the 5 decimals `vertexKey` formats to,
+ * plenty for fitting a DIRECTION by averaging over many points, nowhere
+ * near enough for a single run's own final position -- an early version
+ * of this function used the fit's rounded input points for the extent
+ * too, and a single-edge chain's fitted position landed ~2.5e-6 off the
+ * true hex corner, well past this module's own 1e-6 exact-match tests).
+ * Falls
  * back to the raw chord unchanged when no fitted `line` is available
  * (a degenerate cloud). Preserves the raw chord's own start/end
  * correspondence trivially, by construction (start always projects
@@ -715,28 +901,39 @@ export function boundariesToWallRuns(
       fitChainUf.union(info.aRef.runIndex, info.bRef.runIndex);
   }
 
-  // Direction fit input: the (5-decimal-rounded, see parseChainVertices'
-  // own doc comment) parsed vertices -- fine for a direction estimate
-  // averaged over many points, never used for a final position (see
-  // extentAlongLine's own doc comment for the precision bug that
-  // taught this).
-  const chainVerticesByRoot = new Map<number, WorldPos[]>();
+  // Fit input (rpg-dnd5e-web#799): each constituent edge's own
+  // boundary-PAIR data, recovered by splitting each run's own `key`
+  // back into its constituent edge tokens and looking each up in
+  // `edgeFitByToken` -- see `edgeFitDataByToken`'s own doc comment for
+  // why boundary-pair midpoints (not the old hex-corner vertex cloud)
+  // are the right fit input, and this module's header doc, seam-fit
+  // section, for the full mechanism below. A missing lookup (not
+  // expected: every non-door edge this module built was fed to
+  // `computeAuthoredWallRuns`, so every token in its own output's `key`
+  // has a matching entry here) is skipped rather than thrown --
+  // `fitLineDirection`'s own degenerate-cloud fallback (fewer than 2
+  // points) keeps this safe either way.
+  const edgeFitByToken = edgeFitDataByToken(edges, hexSize);
+  const chainEdgeDataByRoot = new Map<number, EdgeFitData[]>();
   for (let i = 0; i < rawRuns.length; i++) {
     const root = fitChainUf.find(i);
-    const list = chainVerticesByRoot.get(root) ?? [];
-    list.push(...parseChainVertices(rawRuns[i]!.key));
-    chainVerticesByRoot.set(root, list);
-  }
-  const directionByRoot = new Map<number, WorldPos>();
-  for (const [root, vertices] of chainVerticesByRoot) {
-    const fit = fitLineDirection(vertices);
-    if (fit) directionByRoot.set(root, fit.dir);
+    const list = chainEdgeDataByRoot.get(root) ?? [];
+    for (const token of rawRuns[i]!.key.split(';')) {
+      const data = edgeFitByToken.get(token);
+      if (data) list.push(data);
+    }
+    chainEdgeDataByRoot.set(root, list);
   }
 
   // Line anchor: the FULL-PRECISION mean of the chain's own real run
-  // endpoints (never the rounded parsed vertices) -- any point genuinely
-  // ON the fitted line works as an anchor for `projectOntoLine`, and
-  // this one costs no precision.
+  // endpoints (never a rounded or fit-input point) -- any point
+  // genuinely ON the chosen line works as an anchor for
+  // `projectOntoLine`, and this one costs no precision. Also the
+  // fallback centroid for whichever axis an authored-axis-constrained
+  // line (below) does NOT determine (its z for a vertical wall, x for
+  // a horizontal one) -- irrelevant to that line's own direction, which
+  // has zero component along it, but harmless and cheap to have on
+  // hand regardless.
   const anchorSumByRoot = new Map<number, WorldPos>();
   const anchorCountByRoot = new Map<number, number>();
   for (let i = 0; i < rawRuns.length; i++) {
@@ -748,19 +945,29 @@ export function boundariesToWallRuns(
     anchorCountByRoot.set(root, (anchorCountByRoot.get(root) ?? 0) + 2);
   }
 
+  // One line per fit-group: an authored-axis-constrained line
+  // (`authoredAxisLine`) when the group's own edges declare one, else
+  // the continuous total-least-squares fit over the same edges'
+  // boundary-pair midpoints -- rpg-dnd5e-web#799's two-tier mechanism,
+  // see this module's own header doc, seam-fit section.
+  const lineByRoot = new Map<number, { dir: WorldPos; centroid: WorldPos }>();
+  for (const [root, edgeData] of chainEdgeDataByRoot) {
+    const rawAnchor = {
+      x: anchorSumByRoot.get(root)!.x / anchorCountByRoot.get(root)!,
+      z: anchorSumByRoot.get(root)!.z / anchorCountByRoot.get(root)!,
+    };
+    const axisLine = authoredAxisLine(edgeData, rawAnchor);
+    if (axisLine) {
+      lineByRoot.set(root, axisLine);
+      continue;
+    }
+    const fit = fitLineDirection(edgeData.map((e) => e.mid));
+    if (fit) lineByRoot.set(root, { dir: fit.dir, centroid: rawAnchor });
+  }
+
   const runs: MutableRun[] = rawRuns.map((r, i) => {
     const root = fitChainUf.find(i);
-    const dir = directionByRoot.get(root);
-    const line = dir
-      ? {
-          dir,
-          centroid: {
-            x: anchorSumByRoot.get(root)!.x / anchorCountByRoot.get(root)!,
-            z: anchorSumByRoot.get(root)!.z / anchorCountByRoot.get(root)!,
-          },
-        }
-      : undefined;
-    const fitted = extentAlongLine(r.start, r.end, line);
+    const fitted = extentAlongLine(r.start, r.end, lineByRoot.get(root));
     return {
       start: fitted.start,
       end: fitted.end,

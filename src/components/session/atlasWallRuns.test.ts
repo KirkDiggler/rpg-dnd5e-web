@@ -36,7 +36,12 @@ import { hexEdgeBetween, type CubeCoord } from '@/components/hex-grid/hexMath';
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
-import { boundariesToWallRuns, cornerJoint } from './atlasWallRuns';
+import {
+  authoredAxisLine,
+  boundariesToWallRuns,
+  cornerJoint,
+  type EdgeFitData,
+} from './atlasWallRuns';
 import { positionToCube } from './positionBridge';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
@@ -352,53 +357,125 @@ describe('boundariesToWallRuns — the real reference tomb', () => {
     // Every one of these runs belongs to one of the tomb's two seams
     // (the reference-tomb fixture declares no other interior walls).
     // Both seams are column-type -- their true direction is vertical
-    // (constant world x). Before this fix, the engine's own raw
+    // (constant world x). Before #788, the engine's own raw
     // endpoint-to-endpoint chord carried real tilt inherited from
     // whichever two hex-corner parities the chain's own first/last
     // vertex happened to land on: up to ~11 degrees for a whole
     // unsplit seam, and as much as ~80 degrees for the WORSE of a
-    // door-split seam's two short fragments, fit independently (both
-    // measured against this exact fixture during development). The
-    // least-squares fit over the seam's own combined vertex set (both
-    // sides of the door together, not each fragment alone) reduces
-    // this to ~1.6 degrees (|dirX| ~= 0.0273) -- not exactly zero,
-    // because the real captured boundary list's own near/far cell
-    // selection is not perfectly row-parity-balanced (verified: seam
-    // 1's 14 edges split 11-odd/3-even by their own "near" cell's row
-    // parity) -- forcing exactly zero here would mean snapping toward
-    // a preferred axis instead of fitting the real, slightly asymmetric
-    // data, which is exactly what this fix must NOT do (see the
-    // "genuinely diagonal chain" test below for the other direction of
-    // that same honesty requirement). 0.03 is comfortably above the
-    // measured 0.0273 and comfortably below every pre-fix value on
-    // this same fixture.
+    // door-split seam's two short fragments, fit independently. #788's
+    // least-squares fit over the seam's own combined vertex set reduced
+    // this to ~1.6 degrees (|dirX| ~= 0.0273) but no further -- Kirk's
+    // #799 finding retired that as "close enough": a chain's fitted
+    // line only lands exactly on-axis when its own edges' hex-adjacency
+    // directions happen to be evenly balanced, and the tomb's own seam1
+    // isn't (verified: 14 edges split 7-E-type/4-NE-type/3-SE-type, an
+    // uncancelable remainder) -- no per-edge point choice closes that
+    // gap on its own (this module's own header doc, seam-fit section,
+    // measured five of them). #799's actual fix doesn't fit these seams
+    // closer to vertical at all: `authoredAxisLine` RECOGNIZES them as
+    // declared vertical walls (every edge in each seam crosses the
+    // identical authored-column pair) and renders the exact declared
+    // direction, `{0,1}`, with only the offset (mean x of the seam's
+    // own boundary-pair midpoints) left to compute -- so `dx` isn't
+    // "small," it's `0` by construction, up to floating-point roundoff.
+    // A genuinely diagonal chain never triggers this recognition (see
+    // the "genuinely diagonal chain" test below, including a direct
+    // pin on the trigger itself, not just its output) -- exactness here
+    // is never a snap toward a preferred axis.
     expect(scene.wallRuns.length).toBeGreaterThan(0);
     for (const run of scene.wallRuns) {
       const dx = run.end.x - run.start.x;
       const dz = run.end.z - run.start.z;
       const len = Math.hypot(dx, dz);
-      expect(Math.abs(dx / len)).toBeLessThan(0.03);
+      expect(Math.abs(dx / len)).toBeLessThan(1e-6);
+    }
+  });
+});
+
+describe("boundariesToWallRuns — Kirk's-dungeon-shaped short column chain (rpg-dnd5e-web#799)", () => {
+  it('renders exactly vertical even though the chain is short and its own edge-type mix is imbalanced', () => {
+    // Kirk, walking his own authored dungeon after the tomb's ~1.6-degree
+    // residual (#788) shipped as "close enough": "walls are also not
+    // straight" -- WORSE than the tomb, on a shorter chain. This
+    // reproduces that shape directly: a real region-complement column
+    // boundary (region B: 2q+r >= 10, the same "which side of a
+    // world-x-monotonic cut" rule as the tomb's own seams), restricted
+    // to a short 4-row band instead of the tomb's full 8. Verified
+    // (during development, via the exact same edge-classification this
+    // module's own `authoredAxisLine` uses) that this specific short
+    // band's 7 edges split 4 "E-type" / 2 "NE-type" / 1 "SE-type" by
+    // hex-adjacency direction -- an uncancelable remainder, same class
+    // as the tomb's own 7/4/3 split, not a hand-picked balanced case.
+    // Old behavior (a continuous least-squares fit over ANY per-edge
+    // point set, corner-vertex or boundary-pair-midpoint alike) could
+    // only ever get CLOSE on data shaped like this -- measured 0.0857
+    // during development, worse than the tomb's own 0.0189, matching
+    // Kirk's "worse than the tomb" report exactly. What actually fixes
+    // it: every one of these 7 edges crosses the identical authored
+    // column pair, so `authoredAxisLine` recognizes this as one
+    // declared vertical wall regardless of its own edge-type mix, and
+    // renders it exactly vertical by construction, not by a luckier
+    // average.
+    const cells: unknown[] = [];
+    for (let q = 0; q <= 10; q++) {
+      for (let r = 0; r <= 3; r++) cells.push(pos(q, r));
+    }
+    const inB = (q: number, r: number) => 2 * q + r >= 10;
+    const edges: Array<[number, number, number, number]> = [];
+    const seen = new Set<string>();
+    for (let q = 0; q <= 10; q++) {
+      for (let r = 0; r <= 3; r++) {
+        const neighbors: Array<[number, number]> = [
+          [q + 1, r - 1],
+          [q + 1, r],
+          [q, r - 1],
+          [q - 1, r],
+          [q - 1, r + 1],
+          [q, r + 1],
+        ];
+        for (const [nq, nr] of neighbors) {
+          if (nq < 0 || nq > 10 || nr < 0 || nr > 3) continue;
+          if (inB(q, r) === inB(nq, nr)) continue;
+          const key = [q, r, nq, nr].sort().join(',');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          edges.push([q, r, nq, nr]);
+        }
+      }
+    }
+    expect(edges.length).toBe(7); // the exact short, imbalanced chain this test is about
+
+    const boundaries = edges.map(([q, r, nq, nr]) => ({
+      from: pos(q, r),
+      to: pos(nq, nr),
+      blocksMovement: true,
+      blocksLineOfSight: true,
+    }));
+    const scene = boundariesToWallRuns(
+      {
+        cells: cells as never,
+        boundaries: boundaries as never,
+        doorways: [] as never,
+      },
+      1
+    );
+    expect(scene.wallRuns.length).toBeGreaterThan(0);
+    for (const run of scene.wallRuns) {
+      const dx = run.end.x - run.start.x;
+      const dz = run.end.z - run.start.z;
+      const len = Math.hypot(dx, dz);
+      expect(Math.abs(dx / len)).toBeLessThan(1e-6);
     }
   });
 });
 
 describe('boundariesToWallRuns — a genuinely diagonal authored chain is not snapped to an axis', () => {
-  it('fits its own true diagonal, not vertical or horizontal', () => {
-    // A real interior partition along a genuinely DIAGONAL cut (region
-    // B: q - r >= 0; region A: everything else) -- every real
-    // hex-adjacent A/B pair becomes a boundary edge. If the fit ever
-    // snapped toward a preferred axis (the failure mode the tomb-seam
-    // test above is deliberately lenient to avoid encouraging), this
-    // wall would come out vertical or horizontal instead of its own
-    // true ~30-degree diagonal (hex grids have no 45-degree principal
-    // direction; a "q - r" cut's natural angle is one of the grid's own
-    // 6 principal directions, verified empirically at dirX~=0.866,
-    // dirZ~=0.5 during development) -- the fit IS the rule, not a
-    // snap.
-    const cells: unknown[] = [];
-    for (let q = -3; q <= 6; q++) {
-      for (let r = -3; r <= 6; r++) cells.push(pos(q, r));
-    }
+  // A real interior partition along a genuinely DIAGONAL cut (region B:
+  // q - r >= 0; region A: everything else) -- every real hex-adjacent
+  // A/B pair becomes a boundary edge. Factored out so both tests below
+  // (the scene-level output, and a direct pin on the discrete trigger
+  // itself) exercise the exact same real edge set.
+  function diagonalChainEdges(): Array<[number, number, number, number]> {
     const inB = (q: number, r: number) => q - r >= 0;
     const edges: Array<[number, number, number, number]> = [];
     const seen = new Set<string>();
@@ -422,7 +499,24 @@ describe('boundariesToWallRuns — a genuinely diagonal authored chain is not sn
         }
       }
     }
+    return edges;
+  }
+
+  it('fits its own true diagonal, not vertical or horizontal', () => {
+    // If the fit ever snapped toward a preferred axis (the failure mode
+    // the tomb-seam test above is deliberately exact about avoiding),
+    // this wall would come out vertical or horizontal instead of its
+    // own true ~30-degree diagonal (hex grids have no 45-degree
+    // principal direction; a "q - r" cut's natural angle is one of the
+    // grid's own 6 principal directions, verified empirically at
+    // dirX~=0.866, dirZ~=0.5 during development) -- the fit IS the
+    // rule, not a snap.
+    const edges = diagonalChainEdges();
     expect(edges.length).toBeGreaterThan(10);
+    const cells: unknown[] = [];
+    for (let q = -3; q <= 6; q++) {
+      for (let r = -3; r <= 6; r++) cells.push(pos(q, r));
+    }
     const boundaries = edges.map(([q, r, nq, nr]) => ({
       from: pos(q, r),
       to: pos(nq, nr),
@@ -447,6 +541,25 @@ describe('boundariesToWallRuns — a genuinely diagonal authored chain is not sn
       expect(Math.abs(dx / len)).toBeGreaterThan(0.3);
       expect(Math.abs(dz / len)).toBeGreaterThan(0.3);
     }
+  });
+
+  it('the discrete authored-axis trigger (rpg-dnd5e-web#799) never fires on this chain -- a direct pin on the mechanism, not just its output', () => {
+    // authoredAxisLine's own contract: undefined means "no declared
+    // axis recognized, use the continuous fit" -- pinned directly here
+    // (not just inferred from the scene-level test above's diagonal
+    // output) because a future change to the continuous fit could
+    // coincidentally keep producing a diagonal-looking result even if
+    // the trigger itself started misfiring on this data; this test
+    // can't pass that way.
+    const edgeData: EdgeFitData[] = diagonalChainEdges().map(
+      ([q, r, nq, nr]) => {
+        const from = positionToCube(pos(q, r));
+        const to = positionToCube(pos(nq, nr));
+        return { mid: edgeMid(from, to), from, to };
+      }
+    );
+    expect(edgeData.length).toBeGreaterThan(10);
+    expect(authoredAxisLine(edgeData, { x: 0, z: 0 })).toBeUndefined();
   });
 });
 
@@ -1088,15 +1201,23 @@ describe("boundariesToWallRuns — a door mid-way along an L-run's leg", () => {
     const reference = nearRun ?? farRun!;
     expect(gap.rotationY).toBeCloseTo(rotationYOf(reference!.dir), 6);
 
-    // The gap center is a genuine projection, not the raw hex-edge
-    // midpoint used verbatim -- it should differ from the raw midpoint
-    // by a small, non-zero amount (proving the projection did something)
-    // while staying close to it (proving it didn't jump to an unrelated
-    // position).
+    // The gap center is a genuine PROJECTION onto the leg's own line,
+    // not the raw hex-edge midpoint used verbatim -- rpg-dnd5e-web#799
+    // makes that projection EXACT for this specific leg, not merely
+    // close: every edge crossing the row-4 band shares the identical
+    // row pair {3,4}, so this leg is authored-axis-declared horizontal
+    // (this module's own header doc, seam-fit section) -- and world z
+    // is already a PURE function of row alone (no offset/zigzag exists
+    // on that axis at all, unlike world x for a column), so every one
+    // of this leg's raw edge midpoints already sits at the exact same
+    // z the constrained fit computes. The projection still does real
+    // work (x stays exactly at the door's own raw position, only z is
+    // forced onto the leg's line) -- it just has nothing to correct
+    // for THIS axis, on THIS leg, which is the honest, better outcome
+    // #799 exists to produce: shift == 0 exactly.
     const rawMid = edgeMid(from, to);
     const shift = distanceBetween(gap.position, rawMid);
-    expect(shift).toBeGreaterThan(0);
-    expect(shift).toBeLessThan(1);
+    expect(shift).toBeLessThan(1e-6);
   });
 });
 
