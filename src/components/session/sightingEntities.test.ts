@@ -2,7 +2,10 @@ import type {
   Seen,
   Sighting,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { Standing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  MemberKind,
+  Standing,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import {
   isSightedDowned,
@@ -27,6 +30,7 @@ function sighting(overrides: Partial<Sighting> = {}): Sighting {
     currentVia: ['sight'],
     status: 'live',
     name: 'skeleton-1',
+    kind: MemberKind.MONSTER,
     ...overrides,
   } as Sighting;
 }
@@ -64,6 +68,7 @@ describe('sightingsToEntities', () => {
       {
         subject: 'skeleton-1',
         name: 'skeleton-1',
+        kind: MemberKind.MONSTER,
         monsterRefId: 'skeleton',
         // positionBridge.positionToCube(q=10, r=3): x=q, y=-q-r, z=r
         position: { x: 10, y: -13, z: 3 },
@@ -134,6 +139,42 @@ describe('sightingsToEntities', () => {
 
   it('an empty sightings list resolves to no entities', () => {
     expect(sightingsToEntities([], 'char-1')).toEqual([]);
+  });
+});
+
+describe('sightingsToEntities -- kind (rpg-dnd5e-web#792)', () => {
+  it('carries kind through verbatim for a MONSTER subject, and still derives a monster ref', () => {
+    const s = sighting({
+      subject: 'skeleton-1',
+      kind: MemberKind.MONSTER,
+      seen: seen({ position: { x: 0, y: 0 } as never }),
+    });
+    const entity = sightingsToEntities([s], 'char-1')[0]!;
+    expect(entity.kind).toBe(MemberKind.MONSTER);
+    expect(entity.monsterRefId).toBe('skeleton');
+  });
+
+  it('carries kind through verbatim for a PLAYER subject, and derives NO monster ref -- a character id has nothing to strip toward', () => {
+    const s = sighting({
+      subject: 'char-2',
+      name: 'Second Barbarian',
+      kind: MemberKind.PLAYER,
+      seen: seen({ position: { x: 0, y: 0 } as never }),
+    });
+    const entity = sightingsToEntities([s], 'char-1')[0]!;
+    expect(entity.kind).toBe(MemberKind.PLAYER);
+    expect(entity.monsterRefId).toBeUndefined();
+  });
+
+  it('MEMBER_KIND_UNSPECIFIED still derives a monster ref -- the ALREADY-ESTABLISHED default (this field predates kind), not a new one invented for the gap', () => {
+    const s = sighting({
+      subject: 'skeleton-1',
+      kind: MemberKind.UNSPECIFIED,
+      seen: seen({ position: { x: 0, y: 0 } as never }),
+    });
+    const entity = sightingsToEntities([s], 'char-1')[0]!;
+    expect(entity.kind).toBe(MemberKind.UNSPECIFIED);
+    expect(entity.monsterRefId).toBe('skeleton');
   });
 });
 
