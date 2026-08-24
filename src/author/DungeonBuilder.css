@@ -109,6 +109,22 @@
   font-size: 12px;
   opacity: 0.95;
 }
+.dg-facing-compass {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  margin: 6px auto 2px;
+}
+.dg-facing-btn {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 22px;
+  text-align: center;
+}
+.dg-facing-center {
+  font-size: 14px;
+  padding: 3px 6px;
+}
 .dg-check {
   display: flex;
   align-items: center;

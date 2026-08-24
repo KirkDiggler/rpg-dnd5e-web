@@ -14,6 +14,7 @@ import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
+import { facingToYaw } from '../hex-grid/facingYaw';
 import { cubeToWorld } from '../hex-grid/hexMath';
 import { buildAtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
@@ -151,9 +152,14 @@ function renderSession(scene3D = scene()) {
   );
 }
 
-function sceneWithProp(ref: string, position = { x: 1, y: 0, z: -1 }) {
+function sceneWithProp(
+  ref: string,
+  position = { x: 1, y: 0, z: -1 },
+  facing = '',
+  offset = { x: 0, y: 0 }
+) {
   const propScene = scene();
-  propScene.props = [{ ref, position }];
+  propScene.props = [{ ref, position, facing, offset }];
   return propScene;
 }
 
@@ -239,6 +245,27 @@ describe('SessionScene', () => {
           group.position.x === expected.x && group.position.z === expected.z
       );
     expect(propGroup?.position.toArray()).toEqual([expected.x, 0, expected.z]);
+  });
+
+  it('an authored offset/facing reaches the rendered PropModel (rpg-project#261, Copilot review PR #795: the JSX wiring, not just propWorldPosition/facingToYaw in isolation)', async () => {
+    const position = { x: 1, y: -1, z: 0 };
+    const renderer = await renderSession(
+      sceneWithProp('dnd5e:props:pillar', position, 'ne', { x: 0.2, y: -0.3 })
+    );
+
+    const cellCenter = cubeToWorld(position, 1);
+    const expectedX = cellCenter.x + 0.2 * 1;
+    const expectedZ = cellCenter.z + -0.3 * 1;
+    const expectedYaw = facingToYaw('pointy', 'ne');
+
+    const propGroup = renderer.scene
+      .findAllByType('Group')
+      .map((node) => (node as unknown as { instance: THREE.Group }).instance)
+      .find((group) => Math.abs(group.position.x - expectedX) < 1e-9);
+
+    expect(propGroup?.position.x).toBeCloseTo(expectedX, 9);
+    expect(propGroup?.position.z).toBeCloseTo(expectedZ, 9);
+    expect(propGroup?.rotation.y).toBeCloseTo(expectedYaw, 9);
   });
 
   it('renders a visible placeholder at the cell when an AtlasProp ref is unknown', async () => {

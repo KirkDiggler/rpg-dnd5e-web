@@ -21,6 +21,7 @@ import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.j
 import {
   buildScene3D,
   positionToCube,
+  propWorldPosition,
   worldPositionOf,
 } from './atlasToScene3D';
 
@@ -120,7 +121,7 @@ describe('buildScene3D', () => {
     });
   });
 
-  it('projects every positioned AtlasProp by its opaque ref and axial cell', () => {
+  it('projects every positioned AtlasProp by its opaque ref and axial cell, carrying facing/offset verbatim', () => {
     const scene = buildScene3D(
       {
         cells: [pos(3, -2), pos(0, 1)],
@@ -132,12 +133,18 @@ describe('buildScene3D', () => {
             at: pos(3, -2),
             blocksMovement: true,
             blocksLineOfSight: true,
+            facing: 'ne',
+            offsetX: 0.2,
+            offsetY: -0.1,
           },
           {
             ref: 'homebrew:props:unknown',
             at: pos(0, 1),
             blocksMovement: false,
             blocksLineOfSight: false,
+            facing: '',
+            offsetX: 0,
+            offsetY: 0,
           },
         ],
       } as never,
@@ -149,12 +156,51 @@ describe('buildScene3D', () => {
       {
         ref: 'dnd5e:props:pillar',
         position: { x: 3, y: -1, z: -2 },
+        facing: 'ne',
+        offset: { x: 0.2, y: -0.1 },
       },
       {
         ref: 'homebrew:props:unknown',
         position: { x: 0, y: -1, z: 1 },
+        facing: '',
+        offset: { x: 0, y: 0 },
       },
     ]);
+  });
+
+  it('coerces a schema-skewed AtlasProp (facing/offsetX/offsetY entirely absent, not just empty/zero) to the same "unfaced, centered" default a well-formed one gets — never a NaN-invisible prop (rpg-project#261, live-walk field report on PR #795)', () => {
+    // Simulates an older server / a stale client-side proto schema: the
+    // decoded AtlasProp is genuinely MISSING these three fields, not
+    // just carrying their zero values — a plain `as never` cast, same
+    // as this file's other AtlasProp fixtures, so TypeScript can't
+    // paper over the absence the way a real generated type would.
+    const scene = buildScene3D(
+      {
+        cells: [pos(1, 0)],
+        boundaries: [],
+        doorways: [],
+        props: [
+          {
+            ref: 'dnd5e:props:statue-reaper',
+            at: pos(1, 0),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+            // facing / offsetX / offsetY intentionally omitted.
+          },
+        ],
+      } as never,
+      1,
+      'pointy'
+    );
+
+    const prop = scene.props[0];
+    expect(prop.facing).toBe('');
+    expect(prop.offset).toEqual({ x: 0, y: 0 });
+
+    const world = propWorldPosition(prop, 1);
+    expect(Number.isFinite(world.x)).toBe(true);
+    expect(Number.isFinite(world.z)).toBe(true);
+    expect(world).toEqual(worldPositionOf(pos(1, 0), 1));
   });
 
   /**
@@ -199,5 +245,27 @@ describe('buildScene3D', () => {
     );
     expect(scene.wallRuns.length).toBeGreaterThan(0);
     expect(scene.doorGaps).toHaveLength(0);
+  });
+});
+
+describe('propWorldPosition', () => {
+  it('is exactly the cell center when offset is {0, 0}', () => {
+    const world = propWorldPosition(
+      { position: positionToCube(pos(2, -1)), offset: { x: 0, y: 0 } },
+      1
+    );
+    expect(world).toEqual(worldPositionOf(pos(2, -1), 1));
+  });
+
+  it('adds offset * hexSize to the cell center, exactly, on both axes', () => {
+    const hexSize = 1.75;
+    const cell = positionToCube(pos(-3, 5));
+    const center = worldPositionOf(pos(-3, 5), hexSize);
+    const world = propWorldPosition(
+      { position: cell, offset: { x: 0.2, y: -0.4 } },
+      hexSize
+    );
+    expect(world.x).toBeCloseTo(center.x + 0.2 * hexSize, 12);
+    expect(world.z).toBeCloseTo(center.z + -0.4 * hexSize, 12);
   });
 });

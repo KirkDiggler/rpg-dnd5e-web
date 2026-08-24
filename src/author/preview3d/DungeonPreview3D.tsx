@@ -18,6 +18,7 @@
  * (`CAMERA_OFFSET`, zoom 80 — `SessionCanvas`), so the preview reads as
  * the same game. `useCameraControls` is not required here.
  */
+import { facingToYaw } from '@/components/hex-grid/facingYaw';
 import { HexEntity } from '@/components/hex-grid/HexEntity';
 import {
   coordToKey,
@@ -29,7 +30,10 @@ import { PathPreview } from '@/components/hex-grid/PathPreview';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
 import { PropModel } from '@/components/hex-grid/PropModel';
 import { SyntyHexFloor } from '@/components/hex-grid/SyntyHexFloor';
-import { type SceneProp3D } from '@/components/session/atlasToScene3D';
+import {
+  propWorldPosition,
+  type SceneProp3D,
+} from '@/components/session/atlasToScene3D';
 import { AtlasWalls } from '@/components/session/AtlasWalls';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
@@ -59,7 +63,7 @@ function PreviewProp({
   prop: SceneProp3D;
   hexSize: number;
 }) {
-  const world = cubeToWorld(prop.position, hexSize);
+  const world = propWorldPosition(prop, hexSize);
   const placeholder = (
     <mesh position={[world.x, hexSize * 0.5, world.z]}>
       <cylinderGeometry args={[hexSize * 0.3, hexSize * 0.3, hexSize, 6]} />
@@ -71,7 +75,14 @@ function PreviewProp({
   return (
     <Suspense fallback={placeholder}>
       <ErrorBoundary fallback={placeholder}>
-        <PropModel variant={variant} position={[world.x, 0, world.z]} />
+        <PropModel
+          variant={variant}
+          position={[world.x, 0, world.z]}
+          // 'pointy' is safe unqualified: resolveSceneLayout already
+          // gated this whole scene to pointy-top before buildScene3D
+          // ran (hexMath.ts places pointy-top hexes only).
+          rotationY={facingToYaw('pointy', prop.facing)}
+        />
       </ErrorBoundary>
     </Suspense>
   );

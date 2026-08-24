@@ -70,6 +70,7 @@ import {
   useState,
 } from 'react';
 import * as THREE from 'three';
+import { facingToYaw } from '../hex-grid/facingYaw';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import { PathPreview } from '../hex-grid/PathPreview';
@@ -80,7 +81,11 @@ import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import type { AtlasPathIndex } from './atlasPath';
-import type { Scene3D, SceneProp3D } from './atlasToScene3D';
+import {
+  propWorldPosition,
+  type Scene3D,
+  type SceneProp3D,
+} from './atlasToScene3D';
 import { AtlasWalls } from './AtlasWalls';
 import { MoveIndicator } from './MoveIndicator';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
@@ -115,7 +120,7 @@ function AtlasPropModel({
   prop: SceneProp3D;
   hexSize: number;
 }) {
-  const world = cubeToWorld(prop.position, hexSize);
+  const world = propWorldPosition(prop, hexSize);
   const placeholder = (
     <mesh position={[world.x, hexSize * 0.5, world.z]}>
       <cylinderGeometry args={[hexSize * 0.3, hexSize * 0.3, hexSize, 6]} />
@@ -128,7 +133,14 @@ function AtlasPropModel({
   return (
     <Suspense fallback={placeholder}>
       <ErrorBoundary fallback={placeholder}>
-        <PropModel variant={variant} position={[world.x, 0, world.z]} />
+        <PropModel
+          variant={variant}
+          position={[world.x, 0, world.z]}
+          // 'pointy' is safe unqualified: resolveSceneLayout already
+          // gated this whole scene to pointy-top before buildScene3D
+          // ran (hexMath.ts places pointy-top hexes only).
+          rotationY={facingToYaw('pointy', prop.facing)}
+        />
       </ErrorBoundary>
     </Suspense>
   );

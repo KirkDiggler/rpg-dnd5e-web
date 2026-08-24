@@ -16,6 +16,24 @@ import { fixtureAtlasOf } from '../fixtures/fixtureAtlas';
 import { referenceTombDoc } from '../fixtures/referenceTomb';
 import { previewScene } from './previewScene';
 
+/** rpg-project#261: a dungeon with a faced+offset prop — round-trips
+ * YAML → (fixture) atlas → `SceneProp3D` with the authored words/values
+ * intact. Not a real server compile (`fixtureAtlasOf`'s own doc comment:
+ * "proves nothing about the real atlas"), but it IS the same wiring
+ * `PreviewProp`/`AtlasPropModel` consume, so it catches a broken
+ * passthrough anywhere in that chain. */
+function tombWithFacedProp() {
+  const tomb = referenceTombDoc();
+  return {
+    ...tomb,
+    place: tomb.place.map((p) =>
+      p.ref === 'dnd5e:props:pillar'
+        ? { ...p, facing: 'ne', offset: [0.2, -0.1] as [number, number] }
+        : p
+    ),
+  };
+}
+
 describe('previewScene', () => {
   const atlas = fixtureAtlasOf(referenceTombDoc());
 
@@ -40,6 +58,32 @@ describe('previewScene', () => {
       'dnd5e:props:brazier',
       'dnd5e:props:pillar',
     ]);
+    // rpg-project#261: the additive facing/offset fields change nothing
+    // absent — every tomb prop still renders at its asset default,
+    // centered. Named explicitly so a future field the golden equality
+    // above doesn't happen to catch can't go silently unverified.
+    for (const prop of preview.scene.props) {
+      expect(prop.facing).toBe('');
+      expect(prop.offset).toEqual({ x: 0, y: 0 });
+    }
+  });
+
+  it('carries an authored facing/offset intact through YAML → atlas → SceneProp3D', () => {
+    const doc = tombWithFacedProp();
+    const preview = previewScene(fixtureAtlasOf(doc));
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    const pillar = preview.scene.props.find(
+      (p) => p.ref === 'dnd5e:props:pillar'
+    );
+    expect(pillar?.facing).toBe('ne');
+    expect(pillar?.offset).toEqual({ x: 0.2, y: -0.1 });
+    // The unfaced brazier is untouched — the additive fields are opt-in.
+    const brazier = preview.scene.props.find(
+      (p) => p.ref === 'dnd5e:props:brazier'
+    );
+    expect(brazier?.facing).toBe('');
+    expect(brazier?.offset).toEqual({ x: 0, y: 0 });
   });
 
   it('refuses a flat-top atlas with the same named limitation as the game', () => {

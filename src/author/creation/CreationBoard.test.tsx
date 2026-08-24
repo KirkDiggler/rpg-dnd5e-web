@@ -8,12 +8,14 @@ import {
   emptyDungeon,
   eraseCell,
   paintCell,
+  placeAt,
   toggleWall,
   type DungeonDoc,
 } from '../dungeonYaml';
 import { axialKey, fromOffset, type Edge } from '../hexOffset';
-import { growBounds, neededBounds } from './canvasGeometry';
+import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
 import {
+  BOARD_HEX_SIZE,
   BOARD_SCALE,
   CreationBoard,
   type CreationBoardProps,
@@ -206,5 +208,55 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
     expect(grown.maxC).toBe(34);
     expect(grown.minC).toBe(-4);
     expect(growBounds(grown, a)).toBe(grown);
+  });
+
+  it('a placement offset moves its marker within the hex; facing draws a tick, unfaced does not', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    doc = paintCell(doc, 'region-1', p(2, 1));
+    doc = placeAt(doc, { ref: 'dnd5e:props:pillar', at: p(1, 1) });
+    doc = placeAt(doc, { ref: 'dnd5e:props:brazier', at: p(2, 1) });
+    doc = {
+      ...doc,
+      place: [
+        {
+          ...doc.place[0],
+          facing: 'ne',
+          offset: [0.2, -0.1] as [number, number],
+        },
+        doc.place[1],
+      ],
+    };
+    const { container } = mount(doc);
+
+    const cell = cellCenter(p(1, 1), BOARD_HEX_SIZE, 'pointy');
+    const circle = container.querySelector(
+      '[data-placement="0"] circle'
+    ) as SVGCircleElement;
+    expect(Number(circle.getAttribute('cx'))).toBeCloseTo(
+      cell.x + 0.2 * BOARD_HEX_SIZE,
+      6
+    );
+    expect(Number(circle.getAttribute('cy'))).toBeCloseTo(
+      cell.y + -0.1 * BOARD_HEX_SIZE,
+      6
+    );
+    expect(container.querySelector('[data-facing-tick="0"]')).not.toBeNull();
+
+    // The un-offset, un-faced brazier sits exactly at its cell center and
+    // draws no tick.
+    const brazierCell = cellCenter(p(2, 1), BOARD_HEX_SIZE, 'pointy');
+    const brazierCircle = container.querySelector(
+      '[data-placement="1"] circle'
+    ) as SVGCircleElement;
+    expect(Number(brazierCircle.getAttribute('cx'))).toBeCloseTo(
+      brazierCell.x,
+      6
+    );
+    expect(Number(brazierCircle.getAttribute('cy'))).toBeCloseTo(
+      brazierCell.y,
+      6
+    );
+    expect(container.querySelector('[data-facing-tick="1"]')).toBeNull();
   });
 });
