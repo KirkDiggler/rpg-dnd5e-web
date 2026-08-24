@@ -168,6 +168,41 @@ describe('buildScene3D', () => {
     ]);
   });
 
+  it('coerces a schema-skewed AtlasProp (facing/offsetX/offsetY entirely absent, not just empty/zero) to the same "unfaced, centered" default a well-formed one gets — never a NaN-invisible prop (rpg-project#261, live-walk field report on PR #795)', () => {
+    // Simulates an older server / a stale client-side proto schema: the
+    // decoded AtlasProp is genuinely MISSING these three fields, not
+    // just carrying their zero values — a plain `as never` cast, same
+    // as this file's other AtlasProp fixtures, so TypeScript can't
+    // paper over the absence the way a real generated type would.
+    const scene = buildScene3D(
+      {
+        cells: [pos(1, 0)],
+        boundaries: [],
+        doorways: [],
+        props: [
+          {
+            ref: 'dnd5e:props:statue-reaper',
+            at: pos(1, 0),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+            // facing / offsetX / offsetY intentionally omitted.
+          },
+        ],
+      } as never,
+      1,
+      'pointy'
+    );
+
+    const prop = scene.props[0];
+    expect(prop.facing).toBe('');
+    expect(prop.offset).toEqual({ x: 0, y: 0 });
+
+    const world = propWorldPosition(prop, 1);
+    expect(Number.isFinite(world.x)).toBe(true);
+    expect(Number.isFinite(world.z)).toBe(true);
+    expect(world).toEqual(worldPositionOf(pos(1, 0), 1));
+  });
+
   /**
    * Not a re-test of the wall-run geometry itself (atlasWallRuns.test.ts
    * owns that) — just confirms buildScene3D actually calls through to it

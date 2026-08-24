@@ -184,11 +184,23 @@ export function buildScene3D(
   const props: SceneProp3D[] = [];
   for (const prop of atlas.props) {
     if (!prop.at) continue;
+    // `?? ''` / `?? 0`: an older server or a stale client-side proto
+    // schema (the exact live-walk failure this guards, rpg-project#261
+    // PR #795 field report) hands back an AtlasProp with facing/
+    // offsetX/offsetY entirely ABSENT, not merely empty/zero — a plain
+    // `prop.facing`/`prop.offsetX` read is then `undefined`, which
+    // silently turns into NaN world coordinates in `propWorldPosition`
+    // and Three.js renders a NaN-positioned mesh as NOTHING, not even
+    // the placeholder. Coercing here, at construction, means every
+    // OTHER `SceneProp3D` consumer can assume it is always well-formed
+    // — "said nothing" and "said zero/center" render identically by
+    // design (the design doc's own words), and a schema skew degrades
+    // to that same "unfaced, centered" default instead of vanishing.
     props.push({
       ref: prop.ref,
       position: positionToCube(prop.at),
-      facing: prop.facing,
-      offset: { x: prop.offsetX, y: prop.offsetY },
+      facing: prop.facing ?? '',
+      offset: { x: prop.offsetX ?? 0, y: prop.offsetY ?? 0 },
     });
   }
 
