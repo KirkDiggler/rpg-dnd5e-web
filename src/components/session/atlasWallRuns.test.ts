@@ -357,26 +357,31 @@ describe('boundariesToWallRuns — the real reference tomb', () => {
     // Every one of these runs belongs to one of the tomb's two seams
     // (the reference-tomb fixture declares no other interior walls).
     // Both seams are column-type -- their true direction is vertical
-    // (constant world x). Before this fix, the engine's own raw
+    // (constant world x). Before #788, the engine's own raw
     // endpoint-to-endpoint chord carried real tilt inherited from
     // whichever two hex-corner parities the chain's own first/last
     // vertex happened to land on: up to ~11 degrees for a whole
     // unsplit seam, and as much as ~80 degrees for the WORSE of a
-    // door-split seam's two short fragments, fit independently (both
-    // measured against this exact fixture during development). The
-    // least-squares fit over the seam's own combined vertex set (both
-    // sides of the door together, not each fragment alone) reduces
-    // this to ~1.6 degrees (|dirX| ~= 0.0273) -- not exactly zero,
-    // because the real captured boundary list's own near/far cell
-    // selection is not perfectly row-parity-balanced (verified: seam
-    // 1's 14 edges split 11-odd/3-even by their own "near" cell's row
-    // parity) -- forcing exactly zero here would mean snapping toward
-    // a preferred axis instead of fitting the real, slightly asymmetric
-    // data, which is exactly what this fix must NOT do (see the
-    // "genuinely diagonal chain" test below for the other direction of
-    // that same honesty requirement). 0.03 is comfortably above the
-    // measured 0.0273 and comfortably below every pre-fix value on
-    // this same fixture.
+    // door-split seam's two short fragments, fit independently. #788's
+    // least-squares fit over the seam's own combined vertex set reduced
+    // this to ~1.6 degrees (|dirX| ~= 0.0273) but no further -- Kirk's
+    // #799 finding retired that as "close enough": a chain's fitted
+    // line only lands exactly on-axis when its own edges' hex-adjacency
+    // directions happen to be evenly balanced, and the tomb's own seam1
+    // isn't (verified: 14 edges split 7-E-type/4-NE-type/3-SE-type, an
+    // uncancelable remainder) -- no per-edge point choice closes that
+    // gap on its own (this module's own header doc, seam-fit section,
+    // measured five of them). #799's actual fix doesn't fit these seams
+    // closer to vertical at all: `authoredAxisLine` RECOGNIZES them as
+    // declared vertical walls (every edge in each seam crosses the
+    // identical authored-column pair) and renders the exact declared
+    // direction, `{0,1}`, with only the offset (mean x of the seam's
+    // own boundary-pair midpoints) left to compute -- so `dx` isn't
+    // "small," it's `0` by construction, up to floating-point roundoff.
+    // A genuinely diagonal chain never triggers this recognition (see
+    // the "genuinely diagonal chain" test below, including a direct
+    // pin on the trigger itself, not just its output) -- exactness here
+    // is never a snap toward a preferred axis.
     expect(scene.wallRuns.length).toBeGreaterThan(0);
     for (const run of scene.wallRuns) {
       const dx = run.end.x - run.start.x;
