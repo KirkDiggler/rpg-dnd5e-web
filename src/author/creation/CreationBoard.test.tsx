@@ -103,7 +103,7 @@ describe('CreationBoard', () => {
     expect(toggleWall(doc, [p(1, 1), p(5, 5)])).toBe(doc);
   });
 
-  it('draws a declared wall and a door edge, and highlights error targets in red', () => {
+  it('draws a declared wall as a straight RUN and a door in its gap — the picture 3D will render (#800)', () => {
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(1, 1));
     doc = paintCell(doc, 'region-1', p(2, 1));
@@ -114,10 +114,40 @@ describe('CreationBoard', () => {
       tool: 'select',
       errorTargets: [{ kind: 'cell', cell: p(3, 1) }],
     });
-    expect(container.querySelectorAll('[data-edge^="w:"]')).toHaveLength(1);
-    expect(container.querySelectorAll('[data-edge^="d:"]')).toHaveLength(1);
+    // The wall and door render as run geometry, not literal hex edges…
+    expect(container.querySelectorAll('[data-run]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-door-run]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-edge^="w:"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-edge^="d:"]')).toHaveLength(0);
+    // …and cell errors still highlight in red, as before.
     expect(cellEl(container, 3, 1).getAttribute('stroke')).toBe('#ff3b30');
     expect(cellEl(container, 2, 1).getAttribute('stroke')).not.toBe('#ff3b30');
+  });
+
+  it('an EDGE error stays a literal red hex edge on top of the runs — edge-scoped truth (#800)', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    doc = paintCell(doc, 'region-1', p(2, 1));
+    doc = toggleWall(doc, [p(1, 1), p(2, 1)]);
+    const { container } = mount(doc, {
+      errorTargets: [{ kind: 'edge', edge: [p(1, 1), p(2, 1)] }],
+    });
+    // The run still draws, and the literal error edge draws over it.
+    expect(container.querySelectorAll('[data-run]')).toHaveLength(1);
+    const literal = container.querySelectorAll('[data-edge^="w:"]');
+    expect(literal).toHaveLength(1);
+    expect(literal[0].getAttribute('stroke')).toBe('#ff3b30');
+  });
+
+  it('a flat-top document keeps the literal edge drawing — 3D refuses flat-top, so literal IS the honest picture (#763)', () => {
+    const f = (c: number, r: number) => fromOffset('flat', [c, r]);
+    let doc = emptyDungeon('flat');
+    doc = paintCell(doc, 'region-1', f(1, 1));
+    doc = paintCell(doc, 'region-1', f(2, 1));
+    doc = toggleWall(doc, [f(1, 1), f(2, 1)]);
+    const { container } = mount(doc);
+    expect(container.querySelectorAll('[data-run]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-edge^="w:"]')).toHaveLength(1);
   });
 });
 
