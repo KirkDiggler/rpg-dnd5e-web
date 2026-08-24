@@ -76,6 +76,7 @@ function sightedMember(overrides: Partial<SightedMember> = {}): SightedMember {
   return {
     subject: 'skeleton-1',
     name: 'skeleton-1',
+    kind: MemberKind.MONSTER,
     monsterRefId: 'skeleton',
     position: { x: 0, y: 0, z: 0 },
     remembered: false,

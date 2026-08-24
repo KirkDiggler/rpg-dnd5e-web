@@ -25,13 +25,29 @@
  *     standing`). `STANDING_UNSPECIFIED` (an observer who has never
  *     resolved this) reads as `Standing.UP` for rendering purposes — see
  *     `standing`'s own field comment below.
+ *   - `Sighting.kind` (protos#245/toolkit#1231, rpg-dnd5e-web#792) is which
+ *     render path the caller routes a sighted member down — PLAYER goes to
+ *     `HexEntity`'s player path, everything else (including
+ *     `MEMBER_KIND_UNSPECIFIED`) to its monster path. UNSPECIFIED stays on
+ *     the monster path rather than flipping to player because that is the
+ *     behavior this module already had BEFORE `kind` existed — a producer
+ *     bug that leaves `kind` unset degrades to the known, already-shipped
+ *     fallback (goblin-if-unmapped) rather than a NEW untested one (a real
+ *     monster silently rendering as a neutral human, which would be a
+ *     worse and less discoverable lie in a combat context than the
+ *     original goblin bug this issue fixes). Once toolkit#1231 lands fully,
+ *     UNSPECIFIED should not occur for a live sighting at all — same
+ *     "defensive, not primary" status as `standing`'s own UNSPECIFIED case.
  *
  * `payload` is never read here — position/name/standing come only from
  * typed fields, per the review brief's "NEVER decode; render only from
  * typed data" rule.
  */
 import type { Sighting } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { Standing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  MemberKind,
+  Standing,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { CubeCoord } from '../hex-grid/hexMath';
 import { positionToCube } from './positionBridge';
 
@@ -41,10 +57,23 @@ export interface SightedMember {
   subject: string;
   /** Display name (`Sighting.name`) — never empty for a drawn entity. */
   name: string;
+  /** `Sighting.kind`, verbatim — which render path the caller routes this
+   * member down (rpg-dnd5e-web#792: a sighted PLAYER is a person, not a
+   * monster wearing that player's name). `MEMBER_KIND_UNSPECIFIED` reads as
+   * MONSTER for rendering purposes — see `monsterRefId`'s own doc comment
+   * below, the same "producer bug is the server's, not a reason to invent a
+   * new default" reasoning `standing`'s doc comment already gives. */
+  kind: MemberKind;
   /** The toolkit monster ref id derived from `subject` (strips the
    * trailing `-<ordinal>`) — feeds `resolveMonsterModelUrl` via
-   * `HexEntity.monsterRefId`. */
-  monsterRefId: string;
+   * `HexEntity.monsterRefId`. Undefined for a PLAYER-kind subject: a
+   * character id has no monster ref to strip toward, and deriving one
+   * anyway is exactly the bug #792 exists to fix. `MEMBER_KIND_UNSPECIFIED`
+   * still gets one derived, same as MONSTER — the least-presumptuous
+   * reading is the ALREADY-ESTABLISHED behavior (this field predates
+   * `kind` entirely), not a new one; see this module's own top-of-file
+   * doc comment for the full reasoning. */
+  monsterRefId: string | undefined;
   position: CubeCoord;
   /** True when `currentVia` was empty — a held memory, not a live
    * sighting. Feeds `HexEntity.knowledgeState="remembered"`. */
@@ -83,10 +112,14 @@ export function sightingsToEntities(
   for (const sighting of sightings) {
     if (sighting.subject === ownMember) continue;
     if (!sighting.seen?.position) continue;
+    const isPlayer = sighting.kind === MemberKind.PLAYER;
     entities.push({
       subject: sighting.subject,
       name: sighting.name || sighting.subject,
-      monsterRefId: monsterRefIdFromSubject(sighting.subject),
+      kind: sighting.kind,
+      monsterRefId: isPlayer
+        ? undefined
+        : monsterRefIdFromSubject(sighting.subject),
       position: positionToCube(sighting.seen.position),
       remembered: sighting.currentVia.length === 0,
       standing: sighting.seen.standing,

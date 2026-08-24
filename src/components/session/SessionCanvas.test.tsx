@@ -6,7 +6,10 @@
  * rather than nesting a second `<Canvas>` inside it.
  */
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
-import { Standing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  MemberKind,
+  Standing,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -432,6 +435,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
@@ -461,6 +465,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
@@ -486,6 +491,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
@@ -493,6 +499,89 @@ describe('SessionScene', () => {
           ]}
         />
       );
+      expect(renderer.scene.children.length).toBeGreaterThan(0);
+    });
+
+    it('a MONSTER-kind member renders via the monster path -- its resolved npc GLB mounts', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'skeleton-1',
+              name: 'skeleton-1',
+              monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+        />
+      );
+      // The mocked useGLTF (top of file) names its mesh after the resolved
+      // URL -- resolveMonsterModelUrl('skeleton', ...) resolves a real npc
+      // GLB under monsterModels.ts's own MONSTER_MODEL_BASE, so its path
+      // shows up somewhere in the tree only when ClassCharacterModel
+      // actually mounted it.
+      const monsterGlbMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(
+            '/models/synty/npcs/skeleton'
+          )
+      );
+      expect(monsterGlbMeshes.length).toBeGreaterThan(0);
+    });
+
+    it('a PLAYER-kind member renders via the player path -- no monster ref is derived, and no monster GLB mounts', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              // A player subject id looks nothing like a monster ref --
+              // sightingEntities.ts already leaves monsterRefId undefined
+              // for PLAYER kind, so this member carries none, unlike every
+              // other case in this describe block.
+              subject: 'char-2',
+              name: 'Second Barbarian',
+              monsterRefId: undefined,
+              kind: MemberKind.PLAYER,
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+        />
+      );
+      // No classRefId/character is known for a sighted player (rpg-api#814:
+      // GetCharacterData is owner-gated), so the player path's own class-GLB
+      // resolution falls through to undefined and this entity mounts the
+      // MediumHumanoid placeholder instead. Scoped to the npc GLB base path
+      // (monsterModels.ts's MONSTER_MODEL_BASE) rather than "any named
+      // mesh" -- the floor/walls in `scene()` mount their own real GLBs via
+      // this same useGLTF mock, so a blanket non-empty-name check would
+      // false-fail on those, unrelated to this entity's own render path.
+      const monsterGlbMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes('/models/synty/npcs/')
+      );
+      expect(monsterGlbMeshes).toHaveLength(0);
+      // Still mounts something -- the neutral fallback, not a blank void.
       expect(renderer.scene.children.length).toBeGreaterThan(0);
     });
   });
@@ -708,6 +797,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
@@ -754,6 +844,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
@@ -787,6 +878,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: true,
               standing: Standing.UP,
@@ -814,6 +906,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
@@ -846,6 +939,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
@@ -894,6 +988,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.DOWNED,
@@ -966,6 +1061,7 @@ describe('SessionScene', () => {
         subject: 'skeleton-1',
         name: 'skeleton-1',
         monsterRefId: 'skeleton',
+        kind: MemberKind.MONSTER,
         position: { x: 1, y: -1, z: 0 },
         remembered: false,
         standing: Standing.UP,
@@ -1155,6 +1251,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,
@@ -1187,6 +1284,7 @@ describe('SessionScene', () => {
               subject: 'skeleton-1',
               name: 'skeleton-1',
               monsterRefId: 'skeleton',
+              kind: MemberKind.MONSTER,
               position: { x: 1, y: -1, z: 0 },
               remembered: false,
               standing: Standing.UP,

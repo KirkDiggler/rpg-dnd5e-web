@@ -58,6 +58,7 @@
  */
 
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
+import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
 import {
@@ -169,12 +170,14 @@ export interface SessionCanvasProps {
    * dropped here since this route only ever animates the local player). */
   onMovementPresentationComplete?: (moveSeq: number) => void;
   /** Every OTHER member the local player currently perceives
-   * (`GetView.sightings`, mapped by `sightingsToEntities`). Drawn as
-   * monster `HexEntity`s with no `movePath`/`moveSeq` of their own:
-   * `useHexMovePath` already snaps an entity straight to a new `position`
-   * when `moveSeq` never advances, so a `GetView` refetch that moves one
-   * of these simply relocates it on the next render. Undefined/empty
-   * draws nothing extra. */
+   * (`GetView.sightings`, mapped by `sightingsToEntities`). Drawn as a
+   * player or monster `HexEntity` per `member.kind` (rpg-dnd5e-web#792 —
+   * see this component's render below for the split), with no
+   * `movePath`/`moveSeq` of their own either way: `useHexMovePath` already
+   * snaps an entity straight to a new `position` when `moveSeq` never
+   * advances, so a `GetView` refetch that moves one of these simply
+   * relocates it on the next render. Undefined/empty draws nothing
+   * extra. */
   otherMembers?: SightedMember[];
   /** Subject ids the caller currently offers as in-reach, AFFORDABLE
    * Attack candidates (rpg-project#249) — see this component's own doc
@@ -459,12 +462,27 @@ export function SessionScene({
         }
       />
       {otherMembers?.map((member) => (
+        // rpg-dnd5e-web#792: a PLAYER-kind sighting routes to HexEntity's
+        // player path — same path the local player renders through below,
+        // just with no `character`/`classRefId` of its own (sighted
+        // players carry neither; GetCharacterData is owner-gated per
+        // rpg-api#814, so this component never fetches another player's
+        // sheet). HexEntity's own class-model resolution already treats a
+        // missing classRefId as "no class GLB mapped" and falls back to
+        // its MediumHumanoid placeholder in the NEUTRAL 'human' variant —
+        // the same degrade-to-known-placeholder rule #479 already
+        // established for an unmapped class, reused here for a genuinely
+        // absent one. Everything else (MONSTER, and UNSPECIFIED per
+        // `SightedMember.kind`'s own doc comment) keeps the monster path,
+        // `monsterRefId` included — `sightingEntities.ts` already leaves
+        // that field undefined for a PLAYER subject, so passing it through
+        // unconditionally is safe for both branches.
         <HexEntity
           key={member.subject}
           entityId={member.subject}
           name={member.name}
           position={member.position}
-          type="monster"
+          type={member.kind === MemberKind.PLAYER ? 'player' : 'monster'}
           hexSize={hexSize}
           monsterRefId={member.monsterRefId}
           knowledgeState={member.remembered ? 'remembered' : undefined}
