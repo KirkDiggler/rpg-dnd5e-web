@@ -68,3 +68,70 @@ Screenshots:
 `Save & Play` was attempted but stayed disabled in this pass (not
 investigated further — this evidence already answers the specific ask, a
 populated live atlas; `Save & Play`'s own gate is outside this PR's scope).
+
+## grpcurl confirmation (protocol-level, independent of the web client)
+
+The browser evidence above goes through this PR's own client code
+(`createGrpcWebTransport`), which is the right evidence for "does the PR
+work" but leaves one question open: is the field really on the wire, or
+could the client be papering over something? `grpcurl` answers that
+directly against the same `localhost:8080` — no web app, no TypeScript,
+plain gRPC/server reflection. (An earlier plain-JSON `curl` POST against
+this same endpoint returned 415 — that was a protocol mismatch in the
+probe, envoy speaks gRPC/gRPC-web here, not Connect's unary-JSON mode, not
+an availability gap. This grpcurl call and the browser's grpc-web calls
+both reach the same live server fine.)
+
+Schema, via server reflection (`grpcurl -plaintext localhost:8080 describe
+dnd5e.api.session.v1alpha1.AtlasProp`):
+
+```
+message AtlasProp {
+  string ref = 1;
+  .dnd5e.api.session.v1alpha1.Position at = 2;
+  bool blocks_movement = 3;
+  bool blocks_line_of_sight = 4;
+  string facing = 5;
+  float offset_x = 6;
+  float offset_y = 7;
+}
+```
+
+`PutDungeon(validate_only)` against a fresh dungeon (`grpcurl -plaintext -H
+"authorization: Dev web-261-evidence" -d @ localhost:8080
+dnd5e.api.authoring.v1alpha1.AuthoringService/PutDungeon`, `facing: ne`,
+`offset: [0.3, -0.1]` in the request YAML):
+
+```json
+{
+  "atlas": {
+    "grid": "GRID_KIND_HEX",
+    "cells": [{}, { "x": 1 }],
+    "props": [
+      {
+        "ref": "dnd5e:props:statue-reaper",
+        "at": { "x": 1 },
+        "blocksMovement": true,
+        "blocksLineOfSight": true,
+        "facing": "ne",
+        "offsetX": 0.3,
+        "offsetY": -0.1
+      }
+    ],
+    "layout": "HEX_LAYOUT_POINTY_TOP",
+    "regions": [
+      {
+        "id": "region-1",
+        "name": "Region 1",
+        "cells": [{}, { "x": 1 }],
+        "archetype": "crypt",
+        "lighting": { "intensity": 0.6 }
+      }
+    ]
+  }
+}
+```
+
+`facing`/`offsetX`/`offsetY` round-trip verbatim (`ne` / `0.3` / `-0.1`,
+matching the request exactly), confirmed at the protocol level, independent
+of anything this PR's own client code does.
