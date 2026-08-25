@@ -1,79 +1,50 @@
+import { CombatExperience } from '@/components/session/combat-experience/CombatExperience';
+import styles from '@/components/session/combat-experience/CombatExperience.module.css';
+import { selectCombatExperience } from '@/components/session/combat-experience/selection';
+import type {
+  CombatExperienceLogMode,
+  CombatExperiencePhase,
+  CombatExperiencePresentationState,
+} from '@/components/session/combat-experience/types';
 import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
+import {
+  TargetKind,
+  Verb,
+  type Declaration,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useEffect, useState } from 'react';
-import { ActionDock } from './ActionDock';
 import { ContractInspector } from './ContractInspector';
-import { DiceDrawer } from './DiceDrawer';
 import {
   appendSessionCombatDiceEvent,
   createSessionCombatDiceRequest,
   createSessionCombatNeutralRelease,
 } from './diceFixture';
 import { SESSION_COMBAT_FIXTURES } from './fixtures';
-import styles from './SessionCombatConcept.module.css';
-import {
-  selectOffer,
-  selectTarget,
-  type SessionCombatSelection,
-} from './sessionCombatSelection';
-import type {
-  SessionCombatEffect,
-  SessionCombatParticipant,
-} from './sessionCombatTypes';
-import { StoryLog, type SessionCombatLogMode } from './StoryLog';
-import { TargetSurface, type SessionCombatPhase } from './TargetSurface';
+import { SessionCombatMap } from './SessionCombatMap';
 
-function InitiativeEntry({
-  participant,
-}: {
-  participant: SessionCombatParticipant;
-}) {
-  return (
-    <div
-      className={`${styles.initiativeEntry} ${participant.active ? styles.initiativeEntryActive : ''} ${participant.standing === 'downed' ? styles.initiativeEntryDowned : ''}`}
-      title={`${participant.name}${participant.you ? ' (you)' : ''}${participant.standing === 'downed' ? ' · downed' : ''}`}
-      data-active={participant.active}
-    >
-      <span className={styles.initiativePortrait}>{participant.portrait}</span>
-      <span className={styles.initiativeName}>
-        {participant.you ? 'You' : participant.name}
-      </span>
-    </div>
-  );
-}
-
-function EffectBadge({ effect }: { effect: SessionCombatEffect }) {
-  return (
-    <span
-      className={`${styles.effectBadge} ${styles[`effect_${effect.tone}`]}`}
-      title={`${effect.label} · ${effect.detail}`}
-    >
-      <span aria-hidden="true">{effect.icon}</span>
-      {effect.label}
-    </span>
-  );
-}
+const EMPTY_PRESENTATION_STATE: CombatExperiencePresentationState = {
+  armedDeclarationId: null,
+  selectedCandidateMember: null,
+  changedOptionNotice: null,
+};
 
 export function SessionCombatConcept() {
   const [fixtureId, setFixtureId] = useState('fresh-turn');
   const fixture =
     SESSION_COMBAT_FIXTURES.find((candidate) => candidate.id === fixtureId) ??
-    SESSION_COMBAT_FIXTURES[0];
-  const [phase, setPhase] = useState<SessionCombatPhase>('fresh');
-  const [selection, setSelection] = useState<SessionCombatSelection | null>(
-    null
-  );
+    SESSION_COMBAT_FIXTURES[0]!;
+  const [phase, setPhase] = useState<CombatExperiencePhase>('fresh');
+  const [presentationState, setPresentationState] =
+    useState<CombatExperiencePresentationState>(EMPTY_PRESENTATION_STATE);
   const [showTurnNotice, setShowTurnNotice] = useState(true);
-  const [logMode, setLogMode] = useState<SessionCombatLogMode>('story');
+  const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
   const [contractOpen, setContractOpen] = useState(false);
   const [diceEvents, setDiceEvents] = useState<
     readonly DicePresentationEvent[]
   >([]);
-  const hpPercent = Math.round(
-    (fixture.viewer.hp.current / fixture.viewer.hp.max) * 100
-  );
 
   useEffect(() => {
     if (!showTurnNotice) return;
@@ -87,7 +58,7 @@ export function SessionCombatConcept() {
     );
     if (!next) return;
     setFixtureId(next.id);
-    setSelection(null);
+    setPresentationState(EMPTY_PRESENTATION_STATE);
     setDiceEvents([]);
     setPhase('fresh');
     setShowTurnNotice(next.id === 'fresh-turn');
@@ -100,44 +71,69 @@ export function SessionCombatConcept() {
       fixture.attackOutcome.d20
     );
 
-  const armOffer = (offerId: string) => {
-    const next = selectOffer(fixture, offerId);
-    if (!next) return;
+  const armDeclaration = (declaration: Declaration) => {
+    const nextState: CombatExperiencePresentationState = {
+      armedDeclarationId: declaration.id,
+      selectedCandidateMember: null,
+      changedOptionNotice: null,
+    };
+    const selected = selectCombatExperience(fixture.declarations, nextState);
+    if (!selected?.declaration) return;
     setShowTurnNotice(false);
     setDiceEvents([]);
-    setSelection(next);
-    setPhase(next.offer.targetMode === 'single' ? 'targeting' : 'fresh');
+    setPresentationState(nextState);
+    setPhase(
+      declaration.verb === Verb.ATTACK &&
+        declaration.targetKind === TargetKind.MEMBER
+        ? 'targeting'
+        : 'fresh'
+    );
   };
 
   const chooseTarget = (targetId: string) => {
-    if (!selection) return;
-    const next = selectTarget(selection, targetId);
-    if (!next.target) return;
-    setSelection(next);
+    const nextState = {
+      ...presentationState,
+      selectedCandidateMember: targetId,
+    };
+    const selected = selectCombatExperience(fixture.declarations, nextState);
+    if (!selected?.candidate) return;
+    setPresentationState(nextState);
     setDiceEvents(freshDiceEvents());
     setPhase('awaiting-roll');
   };
 
-  const showReviewPhase = (nextPhase: SessionCombatPhase) => {
+  const showReviewPhase = (nextPhase: CombatExperiencePhase) => {
     if (nextPhase === 'fresh') {
-      setSelection(null);
+      setPresentationState(EMPTY_PRESENTATION_STATE);
       setDiceEvents([]);
-      setShowTurnNotice(fixture.mode === 'turn' && fixture.isViewerTurn);
+      setShowTurnNotice(true);
       setPhase('fresh');
       return;
     }
-    const attack = selectOffer(fixture, 'attack:longsword');
+    const attack = fixture.declarations.find(
+      (declaration) => declaration.verb === Verb.ATTACK && declaration.available
+    );
     if (!attack) return;
+    const armedState: CombatExperiencePresentationState = {
+      armedDeclarationId: attack.id,
+      selectedCandidateMember: null,
+      changedOptionNotice: null,
+    };
     setShowTurnNotice(false);
     if (nextPhase === 'targeting') {
       setDiceEvents([]);
-      setSelection(attack);
+      setPresentationState(armedState);
       setPhase('targeting');
       return;
     }
-    const targeted = selectTarget(attack, 'skeleton-guard');
+    const target = attack.candidates.find((candidate) => candidate.available);
+    if (!target) return;
+    const targetedState = {
+      ...armedState,
+      selectedCandidateMember: target.member,
+    };
     const request = freshDiceEvents();
-    setSelection(targeted);
+    setPresentationState(targetedState);
     if (nextPhase === 'awaiting-roll') {
       setDiceEvents(request);
       setPhase('awaiting-roll');
@@ -159,7 +155,7 @@ export function SessionCombatConcept() {
       <header className={styles.reviewHeader}>
         <div>
           <span className={styles.eyebrow}>
-            Session encounter · UI/UX proposal
+            Session encounter · shared production shell
           </span>
           <h2 id="session-combat-title">The turn, all in one place</h2>
           <p>{fixture.description}</p>
@@ -182,42 +178,25 @@ export function SessionCombatConcept() {
           <div className={styles.reviewControls} aria-label="Interaction phase">
             {fixture.id === 'fresh-turn' && (
               <>
-                <button
-                  type="button"
-                  className={
-                    phase === 'fresh' ? styles.reviewControlActive : ''
-                  }
-                  onClick={() => showReviewPhase('fresh')}
-                >
-                  Idle
-                </button>
-                <button
-                  type="button"
-                  className={
-                    phase === 'targeting' ? styles.reviewControlActive : ''
-                  }
-                  onClick={() => showReviewPhase('targeting')}
-                >
-                  Targeting
-                </button>
-                <button
-                  type="button"
-                  className={
-                    phase === 'awaiting-roll' ? styles.reviewControlActive : ''
-                  }
-                  onClick={() => showReviewPhase('awaiting-roll')}
-                >
-                  Awaiting roll
-                </button>
-                <button
-                  type="button"
-                  className={
-                    phase === 'settled' ? styles.reviewControlActive : ''
-                  }
-                  onClick={() => showReviewPhase('settled')}
-                >
-                  Settled
-                </button>
+                {(
+                  [
+                    ['fresh', 'Idle'],
+                    ['targeting', 'Targeting'],
+                    ['awaiting-roll', 'Awaiting roll'],
+                    ['settled', 'Settled'],
+                  ] as const
+                ).map(([reviewPhase, label]) => (
+                  <button
+                    key={reviewPhase}
+                    type="button"
+                    className={
+                      phase === reviewPhase ? styles.reviewControlActive : ''
+                    }
+                    onClick={() => showReviewPhase(reviewPhase)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </>
             )}
             <button
@@ -238,162 +217,39 @@ export function SessionCombatConcept() {
         />
       )}
 
-      <div className={styles.gameFrame}>
-        <div
-          data-testid="session-combat-map"
-          className={styles.map}
-          aria-label="Encounter map"
-        >
-          <TargetSurface
-            phase={phase}
-            selection={selection}
-            movementRemainingFeet={fixture.viewer.movementRemainingFeet}
-            mode={fixture.mode}
-            isViewerTurn={fixture.isViewerTurn}
-            showTurnNotice={showTurnNotice}
-            onTargetClick={chooseTarget}
+      <CombatExperience
+        viewerMember={fixture.viewerMember}
+        clock={fixture.clock}
+        round={fixture.round}
+        participants={fixture.participants}
+        declarations={fixture.declarations}
+        characterData={fixture.characterData}
+        presentationState={presentationState}
+        phase={phase}
+        showTurnNotice={showTurnNotice}
+        logMode={logMode}
+        streamState={fixture.streamState}
+        story={fixture.story}
+        debug={fixture.debug}
+        result={
+          fixture.resultVisible || phase === 'settled'
+            ? fixture.attackOutcome
+            : undefined
+        }
+        diceEvents={diceEvents}
+        location={{ name: 'Reference Tomb', area: 'South reliquary' }}
+        renderMap={({ attackableTargets, onTargetClick }) => (
+          <SessionCombatMap
+            attackableTargets={attackableTargets}
+            onTargetClick={onTargetClick}
           />
-        </div>
-
-        {fixture.mode === 'turn' ? (
-          <div
-            data-testid="session-combat-initiative"
-            className={styles.initiative}
-            aria-label={`Round ${fixture.round} initiative`}
-          >
-            <span className={styles.roundMarker}>
-              <small>Round</small>
-              {fixture.round}
-            </span>
-            <div className={styles.initiativeOrder}>
-              {fixture.participants.map((participant) => (
-                <InitiativeEntry
-                  key={participant.id}
-                  participant={participant}
-                />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div
-            data-testid="session-combat-free-roam"
-            className={styles.freeRoamStatus}
-          >
-            <span>World clock</span>
-            <strong>Free roam</strong>
-          </div>
         )}
-
-        <StoryLog
-          story={fixture.story}
-          debug={fixture.debug}
-          mode={logMode}
-          streamState={fixture.streamState}
-          onModeChange={setLogMode}
-          result={
-            fixture.resultVisible || phase === 'settled'
-              ? fixture.attackOutcome
-              : undefined
-          }
-        />
-
-        <DiceDrawer
-          phase={phase}
-          events={diceEvents}
-          onReleaseRequest={handleDiceRelease}
-        />
-
-        <div data-testid="session-combat-dock" className={styles.dock}>
-          <div className={styles.identityRow}>
-            <div className={styles.viewerPortrait}>
-              {fixture.viewer.portrait}
-            </div>
-            <div className={styles.viewerIdentity}>
-              <strong>{fixture.viewer.name}</strong>
-              <span>
-                Level {fixture.viewer.level} {fixture.viewer.className}
-              </span>
-            </div>
-            <div className={styles.hpBlock}>
-              <div className={styles.hpLabel}>
-                <span>Hit points</span>
-                <strong>
-                  {fixture.viewer.hp.current}/{fixture.viewer.hp.max}
-                </strong>
-              </div>
-              <div className={styles.hpTrack}>
-                <span style={{ width: `${hpPercent}%` }} />
-              </div>
-            </div>
-            <div className={styles.statBlock}>
-              <small>Armor</small>
-              <strong>{fixture.viewer.armorClass}</strong>
-            </div>
-            <div className={styles.statBlock}>
-              <small>{fixture.isViewerTurn ? 'Move' : 'Speed'}</small>
-              <strong>{fixture.viewer.movementRemainingFeet} ft</strong>
-            </div>
-            {fixture.economy && (
-              <div className={styles.economy} aria-label="Turn resources">
-                <span
-                  className={
-                    fixture.economy.action
-                      ? styles.economyLit
-                      : styles.economySpent
-                  }
-                  title={
-                    fixture.economy.action ? 'Action available' : 'Action spent'
-                  }
-                >
-                  <b>A</b> Action
-                </span>
-                <span
-                  className={
-                    fixture.economy.bonus
-                      ? styles.economyLit
-                      : styles.economySpent
-                  }
-                  title={
-                    fixture.economy.bonus
-                      ? 'Bonus action available'
-                      : 'Bonus action spent'
-                  }
-                >
-                  <b>B</b> Bonus
-                </span>
-                <span
-                  className={
-                    fixture.economy.reaction
-                      ? styles.economyLit
-                      : styles.economySpent
-                  }
-                  title={
-                    fixture.economy.reaction
-                      ? 'Reaction available'
-                      : 'Reaction spent'
-                  }
-                >
-                  <b>R</b> Reaction
-                </span>
-              </div>
-            )}
-            <div className={styles.effects} aria-label="Active effects">
-              {fixture.effects.map((effect) => (
-                <EffectBadge key={effect.id} effect={effect} />
-              ))}
-            </div>
-          </div>
-
-          <ActionDock
-            offers={fixture.offers}
-            mode={fixture.mode}
-            isViewerTurn={fixture.isViewerTurn}
-            activeParticipantName={fixture.activeParticipantName}
-            armedOfferId={selection?.offer.id}
-            onSelectOffer={armOffer}
-          />
-        </div>
-      </div>
+        onSelectDeclaration={armDeclaration}
+        onTargetClick={chooseTarget}
+        onEndTurn={armDeclaration}
+        onLogModeChange={setLogMode}
+        onDiceReleaseRequest={handleDiceRelease}
+      />
     </section>
   );
 }

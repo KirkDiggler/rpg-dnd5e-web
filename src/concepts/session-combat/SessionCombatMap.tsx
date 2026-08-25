@@ -3,7 +3,7 @@ import { SessionCanvas } from '@/components/session/SessionCanvas';
 import { SESSION_COMBAT_MAP_FIXTURE } from './sessionCombatMapFixture';
 
 export interface SessionCombatMapProps {
-  attackableTargets?: string[];
+  attackableTargets?: readonly string[];
   onTargetClick?: (targetId: string) => void;
   onHoverTarget?: (targetId: string | null) => void;
 }
@@ -28,9 +28,8 @@ export function SessionCombatMap({
       classRefId="fighter"
       myPosition={SESSION_COMBAT_MAP_FIXTURE.playerPosition}
       otherMembers={[...SESSION_COMBAT_MAP_FIXTURE.members]}
-      attackableTargets={attackableTargets}
+      attackableTargets={attackableTargets ? [...attackableTargets] : undefined}
       pathIndex={SESSION_COMBAT_MAP_FIXTURE.pathIndex}
-      maxCells={5}
       onEntityClick={onTargetClick}
       onHoverEntity={onHoverTarget}
     />

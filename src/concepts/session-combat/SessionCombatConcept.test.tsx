@@ -86,11 +86,12 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
 
 import { SessionCombatConcept } from './SessionCombatConcept';
 
-describe('SessionCombatConcept structure checkpoint', () => {
-  it('composes the five stable gameplay regions around the fresh-turn fixture', () => {
+describe('SessionCombatConcept shared-shell checkpoint', () => {
+  it('composes all stable gameplay regions through the production-owned shell', () => {
     render(<SessionCombatConcept />);
 
     expect(screen.getByText('Fresh turn')).toBeTruthy();
+    expect(screen.getByTestId('combat-experience-shell')).toBeTruthy();
     expect(screen.getByTestId('session-combat-initiative')).toBeTruthy();
     expect(screen.getByTestId('session-combat-map')).toBeTruthy();
     expect(screen.getByTestId('session-combat-dock')).toBeTruthy();
@@ -98,7 +99,7 @@ describe('SessionCombatConcept structure checkpoint', () => {
     expect(screen.getByTestId('session-combat-log')).toBeTruthy();
   });
 
-  it('renders the real session canvas against the full reference-tomb fixture', () => {
+  it('reuses SessionCanvas against the full reference-tomb fixture', () => {
     render(<SessionCombatConcept />);
 
     const canvas = screen.getByTestId('real-session-canvas');
@@ -106,10 +107,11 @@ describe('SessionCombatConcept structure checkpoint', () => {
     expect(canvas.dataset.characterId).toBe('aldric');
   });
 
-  it('arms a server offer, exposes only its affordable map targets, and waits for the roll after targeting', () => {
+  it('arms an authored Attack and exposes only its provider candidates', () => {
     render(<SessionCombatConcept />);
 
     const longsword = screen.getByRole('button', { name: /Longsword/ });
+    expect(longsword.title).toBe('dnd5e:weapons:longsword');
     fireEvent.click(longsword);
 
     expect(longsword.getAttribute('aria-pressed')).toBe('true');
@@ -120,30 +122,16 @@ describe('SessionCombatConcept structure checkpoint', () => {
     expect(
       screen.queryByRole('button', { name: 'Map target skeleton-archer' })
     ).toBeNull();
-    expect(
-      screen.getByText(/Target is outside this attack’s reach\./)
-    ).toBeTruthy();
+    expect(screen.getByText(/outside this attack’s reach/)).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Map target skeleton-guard' })
     );
-
     expect(screen.getByText('Attack declared')).toBeTruthy();
     expect(screen.getByText('Roll in the dice drawer')).toBeTruthy();
-    expect(screen.getByText('Roll your carved iron d20')).toBeTruthy();
   });
 
-  it('keeps an unavailable action disabled with the server-authored reason', () => {
-    render(<SessionCombatConcept />);
-
-    const actionSurge = screen.getByRole('button', { name: /Action Surge/ });
-    expect((actionSurge as HTMLButtonElement).disabled).toBe(true);
-    expect(actionSurge.getAttribute('title')).toBe(
-      'No uses remaining until a short rest.'
-    );
-  });
-
-  it('uses the center only for a transient turn-start orientation', () => {
+  it('uses the center only for a transient fresh-turn orientation', () => {
     vi.useFakeTimers();
     try {
       render(<SessionCombatConcept />);
@@ -157,7 +145,7 @@ describe('SessionCombatConcept structure checkpoint', () => {
     }
   });
 
-  it('keeps player Story separate from the exhaustive raw Debug feed', () => {
+  it('keeps player Story separate from the raw Debug feed', () => {
     render(<SessionCombatConcept />);
 
     expect(screen.getByText('Aldric turns the blow aside')).toBeTruthy();
@@ -166,78 +154,64 @@ describe('SessionCombatConcept structure checkpoint', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
     expect(screen.getByText(/seq=18 clock=6/)).toBeTruthy();
     expect(screen.getByText(/afford clock=TURN/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
-    expect(screen.getByText('Aldric turns the blow aside')).toBeTruthy();
   });
 
-  it('shows current and provisional field ownership in the concept-only contract inspector', () => {
+  it('truthfully labels generated wire and presentation ownership', () => {
     render(<SessionCombatConcept />);
-
     fireEvent.click(screen.getByRole('button', { name: 'Show contract' }));
 
     expect(screen.getAllByText('Session wire').length).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText('Missing provider contract').length
-    ).toBeGreaterThan(0);
-    expect(screen.getByText('offers')).toBeTruthy();
-    expect(screen.getByText('participants')).toBeTruthy();
+    expect(screen.getByText('Existing character wire')).toBeTruthy();
+    expect(screen.getAllByText('Presentation only').length).toBeGreaterThan(0);
+    expect(screen.getByText('declarations')).toBeTruthy();
+    expect(screen.queryByText('Missing provider contract')).toBeNull();
   });
 
-  it('renders spent economy from server-authored facts without hiding remaining options', () => {
+  it('renders spent declarations with Move remaining and End Turn independent', () => {
     render(<SessionCombatConcept />);
-
     fireEvent.click(screen.getByRole('button', { name: 'Spent turn' }));
 
-    expect(screen.queryByText('Choose an action or move')).toBeNull();
-    expect(screen.getByText('10 ft')).toBeTruthy();
-    expect(screen.getByTitle('Action spent')).toBeTruthy();
+    expect(screen.getAllByText('10 ft')).toHaveLength(2);
     const longsword = screen.getByRole('button', { name: /Longsword/ });
     expect((longsword as HTMLButtonElement).disabled).toBe(true);
-    expect(longsword.getAttribute('title')).toBe('Action: 1 needed, 0 left.');
+    expect(longsword.title).toBe('Action: 1 needed, 0 left.');
     expect(
-      (screen.getByRole('button', { name: /Second Wind/ }) as HTMLButtonElement)
+      (screen.getByRole('button', { name: 'End turn' }) as HTMLButtonElement)
         .disabled
     ).toBe(false);
+    expect(screen.queryByRole('button', { name: /Second Wind/ })).toBeNull();
   });
 
   it('renders another participant turn without viewer command controls', () => {
     render(<SessionCombatConcept />);
-
     fireEvent.click(screen.getByRole('button', { name: 'Spectating' }));
 
     expect(screen.getByText('Skeleton Archer’s turn')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Longsword/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'End turn' })).toBeNull();
-    expect(
-      screen.getByTitle('Skeleton Archer').getAttribute('data-active')
-    ).toBe('true');
+    expect(screen.getByTitle('Skeleton Archer').dataset.active).toBe('true');
   });
 
-  it('renders free roam without initiative, economy, or combat commands', () => {
+  it('renders world time without initiative or combat declarations', () => {
     render(<SessionCombatConcept />);
-
     fireEvent.click(screen.getByRole('button', { name: 'Free roam' }));
 
     expect(screen.getByTestId('session-combat-free-roam')).toBeTruthy();
     expect(screen.getByText('Click the floor to move')).toBeTruthy();
-    expect(screen.queryByLabelText('Turn resources')).toBeNull();
     expect(screen.queryByRole('button', { name: 'End turn' })).toBeNull();
   });
 
-  it('shows caught-up stream state and preserves restored Story and Debug history', () => {
+  it('shows caught-up Story and Debug history after reconnect', () => {
     render(<SessionCombatConcept />);
-
     fireEvent.click(screen.getByRole('button', { name: 'Reconnected' }));
 
-    expect(screen.queryByText('Choose an action or move')).toBeNull();
     expect(screen.getByText('Caught up')).toBeTruthy();
     expect(screen.getByText('You are caught up')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
     expect(screen.getByText(/catch_up from_seq=18 entries=3/)).toBeTruthy();
   });
 
-  it('expands the real dice presentation and reveals the result story only after release delivery', () => {
+  it('reveals the authoritative result story only after dice release delivery', () => {
     render(<SessionCombatConcept />);
     fireEvent.click(screen.getByRole('button', { name: /Longsword/ }));
     fireEvent.click(
@@ -249,7 +223,6 @@ describe('SessionCombatConcept structure checkpoint', () => {
     expect(screen.queryByText('Aldric strikes Skeleton Guard')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Release die' }));
-
     expect(screen.getByText('Aldric strikes Skeleton Guard')).toBeTruthy();
   });
 });

@@ -1,21 +1,20 @@
-import styles from './SessionCombatConcept.module.css';
+import styles from './CombatExperience.module.css';
 import type {
-  SessionCombatAttackOutcome,
-  SessionCombatStoryExchange,
-} from './sessionCombatTypes';
-
-export type SessionCombatLogMode = 'story' | 'debug';
+  CombatExperienceAttackOutcome,
+  CombatExperienceLogMode,
+  CombatExperienceStoryExchange,
+} from './types';
 
 export interface StoryLogProps {
-  story: SessionCombatStoryExchange[];
-  debug: string[];
-  mode: SessionCombatLogMode;
+  story: readonly CombatExperienceStoryExchange[];
+  debug: readonly string[];
+  mode: CombatExperienceLogMode;
   streamState: 'live' | 'caught-up';
-  onModeChange: (mode: SessionCombatLogMode) => void;
-  result?: SessionCombatAttackOutcome;
+  onModeChange: (mode: CombatExperienceLogMode) => void;
+  result?: CombatExperienceAttackOutcome;
 }
 
-function StoryEntry({ entry }: { entry: SessionCombatStoryExchange }) {
+function StoryEntry({ entry }: { entry: CombatExperienceStoryExchange }) {
   return (
     <article
       className={`${styles.storyEntry} ${styles[`story_${entry.tone}`]}`}
@@ -27,7 +26,7 @@ function StoryEntry({ entry }: { entry: SessionCombatStoryExchange }) {
   );
 }
 
-function ResultEntry({ result }: { result: SessionCombatAttackOutcome }) {
+function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
   const verdict = result.critical
     ? 'Critical hit'
     : result.hit

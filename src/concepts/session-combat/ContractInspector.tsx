@@ -1,11 +1,10 @@
-import styles from './SessionCombatConcept.module.css';
+import styles from '@/components/session/combat-experience/CombatExperience.module.css';
 import type { SessionCombatFieldSource } from './sessionCombatTypes';
 
 const SOURCE_LABEL: Record<SessionCombatFieldSource, string> = {
   'session-wire': 'Session wire',
   'existing-other-wire': 'Existing character wire',
   presentation: 'Presentation only',
-  provisional: 'Missing provider contract',
 };
 
 export interface ContractInspectorProps {
@@ -22,7 +21,7 @@ export function ContractInspector({ fields, onClose }: ContractInspectorProps) {
       <header>
         <div>
           <span className={styles.eyebrow}>Concept contract</span>
-          <strong>What is real, reused, or still missing</strong>
+          <strong>Where each displayed fact comes from</strong>
         </div>
         <button type="button" onClick={onClose}>
           Hide contract

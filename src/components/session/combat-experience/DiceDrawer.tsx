@@ -3,18 +3,20 @@ import type {
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
 import { DiceTrayPresentation } from '@/components/ui/dice/DiceTrayPresentation';
-import styles from './SessionCombatConcept.module.css';
-import type { SessionCombatPhase } from './TargetSurface';
+import styles from './CombatExperience.module.css';
+import type { CombatExperiencePhase } from './types';
 
 export interface DiceDrawerProps {
-  phase: SessionCombatPhase;
+  phase: CombatExperiencePhase;
   events: readonly DicePresentationEvent[];
+  rollerName: string;
   onReleaseRequest: (event: DicePresentationReleasedEvent) => void;
 }
 
 export function DiceDrawer({
   phase,
   events,
+  rollerName,
   onReleaseRequest,
 }: DiceDrawerProps) {
   const expanded = phase === 'awaiting-roll' || phase === 'settled';
@@ -61,7 +63,7 @@ export function DiceDrawer({
       </header>
       <div className={styles.dicePresentationStage}>
         <DiceTrayPresentation
-          label="Aldric’s attack die"
+          label={`${rollerName}’s attack die`}
           witnessRole="roller"
           events={events}
           onReleaseRequest={onReleaseRequest}
