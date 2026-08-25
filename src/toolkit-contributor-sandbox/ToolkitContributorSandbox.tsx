@@ -325,14 +325,16 @@ export function ToolkitContributorSandbox() {
   return (
     <main>
       <h1>Toolkit Contributor Sandbox</h1>
-      <DungeonBuilder
-        initialYaml={TOOLKIT_SANDBOX_YAML}
-        authoringClient={clients.fighter.authoring}
-        persistDraft={false}
-        allowNewCanvas={false}
-        allowYamlFileIO={false}
-        onSaveSucceeded={handleSaveSucceeded}
-      />
+      <div className="dg-stage">
+        <DungeonBuilder
+          initialYaml={TOOLKIT_SANDBOX_YAML}
+          authoringClient={clients.fighter.authoring}
+          persistDraft={false}
+          allowNewCanvas={false}
+          allowYamlFileIO={false}
+          onSaveSucceeded={handleSaveSucceeded}
+        />
+      </div>
       <section aria-labelledby="toolkit-sandbox-party-heading">
         <h2 id="toolkit-sandbox-party-heading">Fixed party arrangements</h2>
         <button disabled={!partyChoicesEnabled} onClick={startFighter}>

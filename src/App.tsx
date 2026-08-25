@@ -253,18 +253,27 @@ function AppContent() {
     );
   }
 
+  // Views that own the whole window rather than sitting in a centred reading
+  // column. The character sheet was the first; the Dungeon Builder is the
+  // second — it is an application surface, and every pixel the shell reserves
+  // is a pixel its canvas never gets. Both draw their own chrome, so the
+  // shell's header row is theirs to skip as well.
+  const fullBleed =
+    currentView === 'character-sheet' || currentView === 'author';
+
   return (
     <div
-      className={`min-h-screen ${currentView === 'character-sheet' ? 'p-0' : 'p-8'}`}
+      className={`min-h-screen ${fullBleed ? 'p-0' : 'p-8'}`}
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className={currentView === 'character-sheet' ? '' : 'max-w-7xl mx-auto'}
+        className={fullBleed ? '' : 'max-w-7xl mx-auto'}
       >
-        {/* Header - Hide on character sheet and lobby */}
-        {currentView !== 'character-sheet' && currentView !== 'lobby' && (
+        {/* Header — full-bleed views draw their own chrome, and the lobby
+            has none. */}
+        {!fullBleed && currentView !== 'lobby' && (
           <div className="flex justify-end items-center mb-6">
             <ThemeSelector />
           </div>
