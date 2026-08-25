@@ -128,18 +128,23 @@ function strikeDetailText(
   const components = damageComponents ?? [];
   const advantage = advantageSources ?? [];
   const disadvantage = disadvantageSources ?? [];
-  if (
-    components.length === 0 &&
-    advantage.length === 0 &&
-    disadvantage.length === 0
-  ) {
-    return '';
+  const segments: string[] = [];
+  if (components.length > 0) {
+    segments.push(
+      `components=[${components.map(damageComponentText).join(', ')}]`
+    );
   }
-  return (
-    ` components=[${components.map(damageComponentText).join(', ')}]` +
-    ` advantage=[${advantage.map((source) => attackModifierSourceText(source, names)).join(', ')}]` +
-    ` disadvantage=[${disadvantage.map((source) => attackModifierSourceText(source, names)).join(', ')}]`
-  );
+  if (advantage.length > 0) {
+    segments.push(
+      `advantage=[${advantage.map((source) => attackModifierSourceText(source, names)).join(', ')}]`
+    );
+  }
+  if (disadvantage.length > 0) {
+    segments.push(
+      `disadvantage=[${disadvantage.map((source) => attackModifierSourceText(source, names)).join(', ')}]`
+    );
+  }
+  return segments.length === 0 ? '' : ` ${segments.join(' ')}`;
 }
 
 /** Safe JSON stringify for the `default` branch — see module doc comment

@@ -155,7 +155,7 @@ describe('formatDebugLine', () => {
         'components=[{source=weapon ref=dnd5e:weapons:longsword dice=1d8 final_rolls=[4] flat=0 type=SLASHING}, ' +
         '{source=ability ref=dnd5e:abilities:strength final_rolls=[] flat=3 type=SLASHING}, ' +
         '{source=monster_trait ref=dnd5e:monster_traits:immunity final_rolls=[] flat=0 type=SLASHING multiplier=0}] ' +
-        'advantage=[{ref=dnd5e:conditions:hidden source=Helper}] disadvantage=[]'
+        'advantage=[{ref=dnd5e:conditions:hidden source=Helper}]'
     );
   });
 
