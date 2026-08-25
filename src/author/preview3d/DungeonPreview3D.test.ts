@@ -12,6 +12,7 @@ import {
   resolveSceneLayout,
 } from '@/components/session/atlasToScene3D';
 import { describe, expect, it } from 'vitest';
+import { cryptPropShowcaseDoc } from '../fixtures/cryptPropShowcase';
 import { fixtureAtlasOf } from '../fixtures/fixtureAtlas';
 import { referenceTombDoc } from '../fixtures/referenceTomb';
 import { previewScene } from './previewScene';
@@ -84,6 +85,23 @@ describe('previewScene', () => {
     );
     expect(brazier?.facing).toBe('');
     expect(brazier?.offset).toEqual({ x: 0, y: 0 });
+  });
+
+  it('builds the crypt specimen showcase identically for preview and game', () => {
+    const atlas = fixtureAtlasOf(cryptPropShowcaseDoc());
+    const preview = previewScene(atlas);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    const gate = resolveSceneLayout(atlas);
+    expect(gate.ok).toBe(true);
+    if (!gate.ok) return;
+    const game = buildScene3D(atlas, HEX_SIZE, gate.layout);
+    expect(preview.scene.props).toEqual(game.props);
+    expect(preview.scene.props.map((p) => p.ref)).toEqual([
+      'dnd5e:props:skeleton-cage',
+      'dnd5e:props:skeleton-table',
+      'dnd5e:props:rug',
+    ]);
   });
 
   it('refuses a flat-top atlas with the same named limitation as the game', () => {

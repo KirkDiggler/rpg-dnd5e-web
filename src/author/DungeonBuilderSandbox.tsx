@@ -1,18 +1,30 @@
 /**
- * DungeonBuilderSandbox — the Concepts Lab mount of the builder: the
- * reference tomb loaded, fixtures mode (`fixtureCompile` shapes an atlas
- * from the CURRENT document on every edit; `PutDungeon` is never
- * called), no draft persistence. The real `/author` mount is
- * `AuthorView.tsx`.
+ * DungeonBuilderSandbox — the Concepts Lab mount of the builder: a
+ * query-selected fixture loaded (`reference-tomb` by default,
+ * `crypt-prop-showcase` for `?authorFixture=crypt-props`), fixtures mode
+ * (`fixtureCompile` shapes an atlas from the CURRENT document on every
+ * edit; `PutDungeon` is never called), no draft persistence. The real
+ * `/author` mount is `AuthorView.tsx`.
  */
 import { useMemo } from 'react';
 import { DungeonBuilder } from './DungeonBuilder';
-import { emitDungeon } from './dungeonYaml';
+import { emitDungeon, type DungeonDoc } from './dungeonYaml';
+import { cryptPropShowcaseDoc } from './fixtures/cryptPropShowcase';
 import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
 import { referenceTombDoc } from './fixtures/referenceTomb';
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function sandboxDocForSearch(search: string): DungeonDoc {
+  return new URLSearchParams(search).get('authorFixture') === 'crypt-props'
+    ? cryptPropShowcaseDoc()
+    : referenceTombDoc();
+}
+
 export function DungeonBuilderSandbox() {
-  const initialYaml = useMemo(() => emitDungeon(referenceTombDoc()), []);
+  const initialYaml = useMemo(
+    () => emitDungeon(sandboxDocForSearch(window.location.search)),
+    []
+  );
   return (
     <DungeonBuilder
       initialYaml={initialYaml}

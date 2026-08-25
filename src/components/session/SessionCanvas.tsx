@@ -65,32 +65,19 @@ import type {
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { facingToYaw } from '../hex-grid/facingYaw';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import { PathPreview } from '../hex-grid/PathPreview';
-import { resolvePropVariant } from '../hex-grid/propManifest';
-import { PropModel } from '../hex-grid/PropModel';
 import { SyntyHexFloor } from '../hex-grid/SyntyHexFloor';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
-import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import type { AtlasPathIndex } from './atlasPath';
-import {
-  propWorldPosition,
-  type Scene3D,
-  type SceneProp3D,
-} from './atlasToScene3D';
+import { AtlasPropModel } from './AtlasPropModel';
+import type { Scene3D } from './atlasToScene3D';
 import { AtlasWalls } from './AtlasWalls';
+import { DungeonSceneLights } from './DungeonSceneLights';
 import { MoveIndicator } from './MoveIndicator';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { useMoveIndicator } from './useMoveIndicator';
@@ -112,43 +99,6 @@ const ATTACKABLE_RING_COLOR = '#f97316';
 // per-path emphasis rule, designed for a multi-cell walk preview) — this
 // is the BASE value so the rendered ring lands at the intended ~0.22.
 const ATTACKABLE_RING_OPACITY = 0.15;
-
-/** Draw one server-declared prop through the shared reference-key manifest.
- * The neutral hex prism is intentionally semantics-free: unknown, loading,
- * and failed models remain visible without the client guessing whether the
- * prop blocks movement or sight. */
-function AtlasPropModel({
-  prop,
-  hexSize,
-}: {
-  prop: SceneProp3D;
-  hexSize: number;
-}) {
-  const world = propWorldPosition(prop, hexSize);
-  const placeholder = (
-    <mesh position={[world.x, hexSize * 0.5, world.z]}>
-      <cylinderGeometry args={[hexSize * 0.3, hexSize * 0.3, hexSize, 6]} />
-      <meshStandardMaterial color="#a16207" />
-    </mesh>
-  );
-
-  const variant = resolvePropVariant(prop.ref);
-  if (!variant) return placeholder;
-  return (
-    <Suspense fallback={placeholder}>
-      <ErrorBoundary fallback={placeholder}>
-        <PropModel
-          variant={variant}
-          position={[world.x, 0, world.z]}
-          // 'pointy' is safe unqualified: resolveSceneLayout already
-          // gated this whole scene to pointy-top before buildScene3D
-          // ran (hexMath.ts places pointy-top hexes only).
-          rotationY={facingToYaw('pointy', prop.facing)}
-        />
-      </ErrorBoundary>
-    </Suspense>
-  );
-}
 
 /**
  * The model-resolving id inside an authored monster ref —
@@ -459,8 +409,7 @@ export function SessionScene({
 
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <directionalLight intensity={0.8} position={[10, 20, 10]} />
+      <DungeonSceneLights />
       {/* Invisible ground plane for hit detection — HexGrid.tsx's own
           convention, unchanged. */}
       <mesh
@@ -483,6 +432,7 @@ export function SessionScene({
           key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
           prop={prop}
           hexSize={hexSize}
+          orientation="pointy"
         />
       ))}
       {attackableRingPositions.map((member) => (

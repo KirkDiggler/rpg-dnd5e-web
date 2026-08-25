@@ -4,9 +4,9 @@
  * renderer. `previewScene` runs the same `resolveSceneLayout` +
  * `buildScene3D` the session route runs (`SessionEncounterView`), then
  * the same leaf renderers draw it: `SyntyHexFloor`, `AtlasWalls`,
- * `PropModel`. There is no builder-side geometry; if the preview and the
- * game ever differ, one of them is lying and `DungeonPreview3D.test.ts`
- * says which.
+ * `AtlasPropModel`, `DungeonSceneLights`. There is no builder-side
+ * geometry; if the preview and the game ever differ, one of them is
+ * lying and `DungeonPreview3D.test.ts` says which.
  *
  * Two things the atlas does not carry are drawn from the document on
  * top, both through game renderers: the start cell as a `PathPreview`
@@ -18,7 +18,6 @@
  * (`CAMERA_OFFSET`, zoom 80 — `SessionCanvas`), so the preview reads as
  * the same game. `useCameraControls` is not required here.
  */
-import { facingToYaw } from '@/components/hex-grid/facingYaw';
 import { HexEntity } from '@/components/hex-grid/HexEntity';
 import {
   coordToKey,
@@ -27,20 +26,15 @@ import {
   type CubeCoord,
 } from '@/components/hex-grid/hexMath';
 import { PathPreview } from '@/components/hex-grid/PathPreview';
-import { resolvePropVariant } from '@/components/hex-grid/propManifest';
-import { PropModel } from '@/components/hex-grid/PropModel';
 import { SyntyHexFloor } from '@/components/hex-grid/SyntyHexFloor';
-import {
-  propWorldPosition,
-  type SceneProp3D,
-} from '@/components/session/atlasToScene3D';
+import { AtlasPropModel } from '@/components/session/AtlasPropModel';
 import { AtlasWalls } from '@/components/session/AtlasWalls';
-import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
+import { DungeonSceneLights } from '@/components/session/DungeonSceneLights';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import { Suspense, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   isMonsterRef,
   MONSTER_REF_PREFIX,
@@ -55,38 +49,6 @@ const axialToCube = (a: Axial): CubeCoord => ({
   y: -a.q - a.r,
   z: a.r,
 });
-
-function PreviewProp({
-  prop,
-  hexSize,
-}: {
-  prop: SceneProp3D;
-  hexSize: number;
-}) {
-  const world = propWorldPosition(prop, hexSize);
-  const placeholder = (
-    <mesh position={[world.x, hexSize * 0.5, world.z]}>
-      <cylinderGeometry args={[hexSize * 0.3, hexSize * 0.3, hexSize, 6]} />
-      <meshStandardMaterial color="#a16207" />
-    </mesh>
-  );
-  const variant = resolvePropVariant(prop.ref);
-  if (!variant) return placeholder;
-  return (
-    <Suspense fallback={placeholder}>
-      <ErrorBoundary fallback={placeholder}>
-        <PropModel
-          variant={variant}
-          position={[world.x, 0, world.z]}
-          // 'pointy' is safe unqualified: resolveSceneLayout already
-          // gated this whole scene to pointy-top before buildScene3D
-          // ran (hexMath.ts places pointy-top hexes only).
-          rotationY={facingToYaw('pointy', prop.facing)}
-        />
-      </ErrorBoundary>
-    </Suspense>
-  );
-}
 
 export interface DungeonPreview3DProps {
   atlas: GetAtlasResponse | null;
@@ -176,15 +138,15 @@ export function DungeonPreview3D({
         style={{ width: '100%', height: '100%' }}
         data-testid="preview-canvas"
       >
-        <ambientLight intensity={0.6} />
-        <directionalLight intensity={0.8} position={[10, 20, 10]} />
+        <DungeonSceneLights />
         <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={HEX_SIZE} />
         <AtlasWalls wallRuns={scene.wallRuns} doorGaps={scene.doorGaps} />
         {scene.props.map((prop, index) => (
-          <PreviewProp
+          <AtlasPropModel
             key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
             prop={prop}
             hexSize={HEX_SIZE}
+            orientation="pointy"
           />
         ))}
         {doc.start && (
