@@ -13,12 +13,17 @@ import { referenceTombDoc } from './fixtures/referenceTomb';
 
 export function DungeonBuilderSandbox() {
   const initialYaml = useMemo(() => emitDungeon(referenceTombDoc()), []);
+  // The Lab mounts the builder in ordinary document flow, so it hands it a
+  // definite box to fill; the real `/author` shell is a viewport-tall flex
+  // column and gives it the remaining height instead.
   return (
-    <DungeonBuilder
-      initialYaml={initialYaml}
-      fixtureCompile={fixtureAtlasOf}
-      persistDraft={false}
-      allowYamlFileIO
-    />
+    <div className="h-[80vh] min-h-[560px]">
+      <DungeonBuilder
+        initialYaml={initialYaml}
+        fixtureCompile={fixtureAtlasOf}
+        persistDraft={false}
+        allowYamlFileIO
+      />
+    </div>
   );
 }
