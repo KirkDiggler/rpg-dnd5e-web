@@ -58,6 +58,7 @@
  */
 
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
+import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
@@ -146,6 +147,20 @@ function AtlasPropModel({
   );
 }
 
+/**
+ * The model-resolving id inside an authored monster ref —
+ * "dnd5e:monsters:skeleton" -> "skeleton", the vocabulary
+ * `resolveMonsterModelUrl` already speaks (rpg-project#264: the roster's
+ * authored ref replaces deriving this by stripping the subject's ordinal;
+ * the derivation survives only as the missing-entry fallback above).
+ * `undefined` in, or a ref with no segments, is `undefined` out.
+ */
+function monsterRefIdFrom(monsterRef: string | undefined): string | undefined {
+  if (!monsterRef) return undefined;
+  const segment = monsterRef.split(':').pop();
+  return segment || undefined;
+}
+
 export interface SessionCanvasProps {
   scene: Scene3D;
   hexSize: number;
@@ -191,6 +206,13 @@ export interface SessionCanvasProps {
    * relocates it on the next render. Undefined/empty draws nothing
    * extra. */
   otherMembers?: SightedMember[];
+  /** The session roster keyed by member id (`useSessionRoster` —
+   * rpg-project#264): the PUBLIC identity each sighted member renders
+   * with. A missing map (fetch failed, not landed yet) or a missing
+   * entry degrades every lookup below to the pre-roster behavior —
+   * neutral placeholder for players, subject-derived ref for monsters —
+   * never a blocked render. */
+  roster?: ReadonlyMap<string, PublicMemberInfo>;
   /** Subject ids the caller currently offers as in-reach, AFFORDABLE
    * Attack candidates (rpg-project#249) — see this component's own doc
    * comment on why this is narrower than every in-reach candidate.
@@ -236,6 +258,7 @@ export function SessionScene({
   onHoverEntity,
   onMovementPresentationComplete,
   otherMembers,
+  roster,
   attackableTargets,
   pathIndex = null,
   turnLocked = false,
@@ -496,7 +519,15 @@ export function SessionScene({
           position={member.position}
           type={member.kind === MemberKind.PLAYER ? 'player' : 'monster'}
           hexSize={hexSize}
-          monsterRefId={member.monsterRefId}
+          classRefId={
+            member.kind === MemberKind.PLAYER
+              ? roster?.get(member.subject)?.classRef
+              : undefined
+          }
+          monsterRefId={
+            monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
+            member.monsterRefId
+          }
           knowledgeState={member.remembered ? 'remembered' : undefined}
           isDead={isSightedDowned(member.standing)}
           onClick={handleTargetClick}

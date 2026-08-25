@@ -6,6 +6,7 @@
  * rather than nesting a second `<Canvas>` inside it.
  */
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   MemberKind,
   Standing,
@@ -14,6 +15,7 @@ import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
+import { resolveClassCharacterModelUrl } from '../hex-grid/classCharacterModels';
 import { facingToYaw } from '../hex-grid/facingYaw';
 import { cubeToWorld } from '../hex-grid/hexMath';
 import { buildAtlasPathIndex } from './atlasPath';
@@ -428,6 +430,131 @@ describe('SessionScene', () => {
       });
 
       expect(onHexClick).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('roster identity (rpg-project#264, rpg-dnd5e-web#806)', () => {
+    const sightedPlayer = {
+      subject: 'char-bob',
+      name: 'Bob',
+      monsterRefId: undefined,
+      kind: MemberKind.PLAYER,
+      position: { x: 1, y: -1, z: 0 },
+      remembered: false,
+      standing: Standing.UP,
+    };
+
+    it('a PLAYER-kind member with a roster entry mounts their CLASS GLB, not the neutral placeholder', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[sightedPlayer]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'fighter',
+                  raceRef: 'human',
+                  monsterRef: '',
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+      // Mocked useGLTF names its mesh after the resolved URL — the fighter
+      // class GLB path appears only when the class model actually mounted.
+      const expectedUrl = resolveClassCharacterModelUrl('fighter', false);
+      expect(expectedUrl).toBeTruthy();
+      const classMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(expectedUrl as string)
+      );
+      expect(classMeshes.length).toBeGreaterThan(0);
+    });
+
+    it('a PLAYER-kind member with NO roster entry keeps the neutral placeholder — a missing row degrades, never blocks', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[sightedPlayer]}
+          roster={new Map()}
+        />
+      );
+      const expectedUrl = resolveClassCharacterModelUrl('fighter', false);
+      const classMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(expectedUrl as string)
+      );
+      expect(classMeshes).toHaveLength(0);
+      expect(renderer.scene.children.length).toBeGreaterThan(0);
+    });
+
+    it("a MONSTER-kind member's model resolves from the roster's authored ref — no subject-derived monsterRefId needed", async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          character={undefined}
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[
+            {
+              subject: 'bag-of-bones-7',
+              name: 'Skeleton',
+              // Deliberately NO derived ref: the roster's authored ref is
+              // the primary source now (rpg-project#264); derivation
+              // survives only as the missing-entry fallback.
+              monsterRefId: undefined,
+              kind: MemberKind.MONSTER,
+              position: { x: 1, y: -1, z: 0 },
+              remembered: false,
+              standing: Standing.UP,
+            },
+          ]}
+          roster={
+            new Map([
+              [
+                'bag-of-bones-7',
+                {
+                  id: 'bag-of-bones-7',
+                  kind: MemberKind.MONSTER,
+                  name: 'Skeleton',
+                  classRef: '',
+                  raceRef: '',
+                  monsterRef: 'dnd5e:monsters:skeleton',
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+      const skeletonMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes('skeleton')
+      );
+      expect(skeletonMeshes.length).toBeGreaterThan(0);
     });
   });
 
