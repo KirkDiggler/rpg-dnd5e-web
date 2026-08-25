@@ -13,6 +13,7 @@ const names = new Map([
   ['char-1', 'Toolkit Sandbox Fighter'],
   ['skeleton-1', 'Skeleton'],
   ['skeleton-2', 'Skeleton'],
+  ['helper-1', 'Helper'],
 ]);
 
 // `overrides` is deliberately untyped against the real `Event`/`Event['body']`
@@ -86,6 +87,75 @@ describe('formatDebugLine', () => {
       'seq=7 clock=42 struck attacker=Toolkit Sandbox Fighter target=Skeleton ' +
         'roll=17 total=20 against=13 damage=6 crit=false ' +
         'attack.ref=dnd5e:weapon:longsword attack.name="Longsword" type=SLASHING'
+    );
+  });
+
+  it('struck — ordered components and modifier attribution append without arithmetic', () => {
+    const event = baseEvent({
+      kind: EventKind.STRUCK,
+      body: {
+        case: 'struck',
+        value: {
+          attacker: 'char-1',
+          target: 'skeleton-1',
+          roll: 17,
+          total: 20,
+          against: 13,
+          damage: 6,
+          critical: false,
+          attack: {
+            ref: 'dnd5e:weapon:longsword',
+            name: 'Longsword',
+            damageType: DamageType.SLASHING,
+          },
+          damageComponents: [
+            {
+              source: 'weapon',
+              sourceRef: 'dnd5e:weapons:longsword',
+              dice: '1d8',
+              finalRolls: [4],
+              flatBonus: 0,
+              damageType: DamageType.SLASHING,
+            },
+            {
+              source: 'ability',
+              sourceRef: 'dnd5e:abilities:strength',
+              dice: '',
+              finalRolls: [],
+              flatBonus: 3,
+              damageType: DamageType.SLASHING,
+            },
+            {
+              source: 'monster_trait',
+              sourceRef: 'dnd5e:monster_traits:immunity',
+              dice: '',
+              finalRolls: [],
+              flatBonus: 0,
+              damageType: DamageType.SLASHING,
+              multiplier: 0,
+            },
+          ],
+          advantageSources: [
+            {
+              sourceRef: 'dnd5e:conditions:hidden',
+              sourceId: 'helper-1',
+            },
+          ],
+          disadvantageSources: [],
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+    expect(line.ids).toEqual(['char-1', 'skeleton-1', 'helper-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 struck attacker=Toolkit Sandbox Fighter target=Skeleton ' +
+        'roll=17 total=20 against=13 damage=6 crit=false ' +
+        'attack.ref=dnd5e:weapon:longsword attack.name="Longsword" type=SLASHING ' +
+        'components=[{source=weapon ref=dnd5e:weapons:longsword dice=1d8 final_rolls=[4] flat=0 type=SLASHING}, ' +
+        '{source=ability ref=dnd5e:abilities:strength final_rolls=[] flat=3 type=SLASHING}, ' +
+        '{source=monster_trait ref=dnd5e:monster_traits:immunity final_rolls=[] flat=0 type=SLASHING multiplier=0}] ' +
+        'advantage=[{ref=dnd5e:conditions:hidden source=Helper}]'
     );
   });
 

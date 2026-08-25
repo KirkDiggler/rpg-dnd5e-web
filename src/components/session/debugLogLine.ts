@@ -52,7 +52,11 @@
  * bodies carry one, but the `catch` fallback keeps a hypothetical future
  * one from crashing the whole log instead of one line.
  */
-import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import type {
+  AttackModifierSource,
+  DamageComponent,
+  Event,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   DamageType,
@@ -88,6 +92,61 @@ function attackText(
   return `attack.ref=${attack.ref} attack.name="${attack.name}" type=${typeName}`;
 }
 
+function damageComponentText(component: DamageComponent): string {
+  const fields = [`source=${component.source}`];
+  if (component.sourceRef) fields.push(`ref=${component.sourceRef}`);
+  if (component.dice) fields.push(`dice=${component.dice}`);
+  fields.push(`final_rolls=[${(component.finalRolls ?? []).join(',')}]`);
+  fields.push(`flat=${component.flatBonus}`);
+  fields.push(
+    `type=${DamageType[component.damageType] ?? String(component.damageType)}`
+  );
+  if (component.multiplier !== undefined) {
+    fields.push(`multiplier=${component.multiplier}`);
+  }
+  return `{${fields.join(' ')}}`;
+}
+
+function attackModifierSourceText(
+  source: AttackModifierSource,
+  names: Map<string, string>
+): string {
+  const fields: string[] = [];
+  if (source.sourceRef) fields.push(`ref=${source.sourceRef}`);
+  if (source.sourceId) {
+    fields.push(`source=${displayName(names, source.sourceId)}`);
+  }
+  return `{${fields.join(' ')}}`;
+}
+
+function strikeDetailText(
+  damageComponents: readonly DamageComponent[] | undefined,
+  advantageSources: readonly AttackModifierSource[] | undefined,
+  disadvantageSources: readonly AttackModifierSource[] | undefined,
+  names: Map<string, string>
+): string {
+  const components = damageComponents ?? [];
+  const advantage = advantageSources ?? [];
+  const disadvantage = disadvantageSources ?? [];
+  const segments: string[] = [];
+  if (components.length > 0) {
+    segments.push(
+      `components=[${components.map(damageComponentText).join(', ')}]`
+    );
+  }
+  if (advantage.length > 0) {
+    segments.push(
+      `advantage=[${advantage.map((source) => attackModifierSourceText(source, names)).join(', ')}]`
+    );
+  }
+  if (disadvantage.length > 0) {
+    segments.push(
+      `disadvantage=[${disadvantage.map((source) => attackModifierSourceText(source, names)).join(', ')}]`
+    );
+  }
+  return segments.length === 0 ? '' : ` ${segments.join(' ')}`;
+}
+
 /** Safe JSON stringify for the `default` branch — see module doc comment
  * on why a hypothetical future `bigint` field must not crash the whole
  * log over one unrenderable line. */
@@ -118,13 +177,19 @@ export function formatDebugLine(
     }
     case 'struck': {
       const b = event.body.value;
+      const advantage = b.advantageSources ?? [];
+      const disadvantage = b.disadvantageSources ?? [];
+      const modifierSourceIds = [...advantage, ...disadvantage]
+        .map((source) => source.sourceId)
+        .filter((id) => id !== '');
       return {
         seq,
-        ids: [b.attacker, b.target],
+        ids: [b.attacker, b.target, ...modifierSourceIds],
         text:
           `${prefix} struck attacker=${name(b.attacker)} target=${name(b.target)} ` +
           `roll=${b.roll} total=${b.total} against=${b.against} damage=${b.damage} ` +
-          `crit=${b.critical} ${attackText(b.attack)}`,
+          `crit=${b.critical} ${attackText(b.attack)}` +
+          strikeDetailText(b.damageComponents, advantage, disadvantage, names),
       };
     }
     case 'missed': {
