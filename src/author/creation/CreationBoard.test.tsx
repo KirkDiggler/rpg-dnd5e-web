@@ -22,8 +22,8 @@ import {
   CreationBoard,
   type CreationBoardProps,
 } from './CreationBoard';
-import { cornerPoint, type CornerRef } from './hexCorner';
-import { runVertices, tautPath } from './wallGesture';
+import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
+import { chainEndpoints, runVertices, tautPath } from './wallGesture';
 
 const p = (c: number, r: number) => fromOffset('pointy', [c, r]);
 
@@ -506,5 +506,151 @@ describe('gesture plumbing — press, drag, release (#804)', () => {
     fireEvent.pointerCancel(svg);
     fireEvent.pointerUp(svg); // a later unrelated release commits nothing
     expect(onWallDraw).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Kirk's round-2 walk finding ("I cannot get that upper right corner to
+ * snap in", again): verified NOT reproducible through the board's real
+ * pointer path at this head — these two scenarios pin the whole chain
+ * end-to-end (press snapping, move snapping, commit, and the rendered
+ * join), so a future preview/commit path that bypassed the magnetism
+ * would fail here, not on a walk.
+ */
+describe('corner capture through the real pointer path (#804 walk round 2)', () => {
+  const S = BOARD_HEX_SIZE;
+  const ref = (c: number, r: number, corner: number): CornerRef => ({
+    cell: p(c, r),
+    corner,
+  });
+  const pt = (r: CornerRef) => cornerPoint(r, S, 'pointy');
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'DOMPoint',
+      class {
+        x: number;
+        y: number;
+        constructor(x = 0, y = 0) {
+          this.x = x;
+          this.y = y;
+        }
+        matrixTransform() {
+          return { x: this.x, y: this.y };
+        }
+      }
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function bigFloor(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (let row = 0; row <= 8; row += 1) {
+      for (let col = 0; col <= 9; col += 1) {
+        doc = paintCell(doc, 'region-1', p(col, row));
+      }
+    }
+    return doc;
+  }
+
+  function boardDrag(
+    doc: DungeonDoc,
+    from: { x: number; y: number },
+    to: { x: number; y: number }
+  ): Edge[] {
+    const onWallDraw = vi.fn();
+    const { container, unmount } = mount(doc, { tool: 'wall', onWallDraw });
+    const svg = container.querySelector('svg')!;
+    (svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({
+      inverse: () => ({}),
+    });
+    const cell = cellEl(container, 2, 2);
+    fireEvent.pointerDown(cell, {
+      button: 0,
+      clientX: from.x,
+      clientY: from.y,
+    });
+    fireEvent.pointerMove(cell, { clientX: to.x, clientY: to.y });
+    fireEvent.pointerUp(svg);
+    unmount();
+    expect(onWallDraw).toHaveBeenCalledTimes(1);
+    return onWallDraw.mock.calls[0][0] as Edge[];
+  }
+
+  /** The diagonal chain's far end: its chain-end lattice ref, its
+   * rendered (drawn) endpoint, and the outward direction of the run. */
+  function drawnEndOf(doc: DungeonDoc, near: CornerRef) {
+    const scene = boardWallScene(doc, S)!;
+    expect(scene.runs).toHaveLength(1);
+    const run = scene.runs[0];
+    const nearP = pt(near);
+    const endRef = chainEndpoints(run.edges, S, 'pointy').reduce((acc, e) => {
+      const pe = cornerPoint(e, S, 'pointy');
+      const pa = cornerPoint(acc, S, 'pointy');
+      return Math.hypot(pe.x - nearP.x, pe.y - nearP.y) <
+        Math.hypot(pa.x - nearP.x, pa.y - nearP.y)
+        ? e
+        : acc;
+    });
+    const lp = cornerPoint(endRef, S, 'pointy');
+    const drawn =
+      Math.hypot(run.a.x - lp.x, run.a.y - lp.y) <
+      Math.hypot(run.b.x - lp.x, run.b.y - lp.y)
+        ? run.a
+        : run.b;
+    const other = drawn === run.a ? run.b : run.a;
+    const len = Math.hypot(drawn.x - other.x, drawn.y - other.y);
+    return {
+      endRef,
+      drawn,
+      dir: { x: (drawn.x - other.x) / len, y: (drawn.y - other.y) / len },
+    };
+  }
+
+  it('a second drag aimed just past a diagonal chain’s DRAWN end shares its vertex and the runs join', () => {
+    const doc = bigFloor();
+    const chain1 = boardDrag(doc, pt(ref(1, 1, 0)), pt(ref(5, 5, 1)));
+    const doc1 = addWalls(doc, chain1);
+    const { endRef, drawn, dir } = drawnEndOf(doc1, ref(5, 5, 1));
+    const aim = {
+      x: drawn.x + dir.x * 0.15 * S,
+      y: drawn.y + dir.y * 0.15 * S,
+    };
+    const chain2 = boardDrag(doc1, pt(ref(8, 7, 1)), aim);
+    expect(
+      chainEndpoints(chain2, S, 'pointy').some((e) =>
+        sameCorner(e, endRef, S, 'pointy')
+      )
+    ).toBe(true);
+    // The rendered picture closes: the two runs' facing endpoints meet
+    // within the corner-overlap miter, never a lateral gap.
+    const scene = boardWallScene(addWalls(doc1, chain2), S)!;
+    expect(scene.runs).toHaveLength(2);
+    let minGap = Infinity;
+    for (const q of [scene.runs[0].a, scene.runs[0].b]) {
+      for (const w of [scene.runs[1].a, scene.runs[1].b]) {
+        minGap = Math.min(minGap, Math.hypot(q.x - w.x, q.y - w.y));
+      }
+    }
+    expect(minGap).toBeLessThan(0.35 * S);
+  });
+
+  it('pressing ON a drawn end and dragging onward CONTINUES the wall — one merged run', () => {
+    const doc = bigFloor();
+    const chain1 = boardDrag(doc, pt(ref(1, 1, 0)), pt(ref(5, 5, 1)));
+    const doc1 = addWalls(doc, chain1);
+    const { endRef, drawn, dir } = drawnEndOf(doc1, ref(5, 5, 1));
+    const release = { x: drawn.x + dir.x * 3 * S, y: drawn.y + dir.y * 3 * S };
+    const chain2 = boardDrag(doc1, drawn, release);
+    expect(
+      chainEndpoints(chain2, S, 'pointy').some((e) =>
+        sameCorner(e, endRef, S, 'pointy')
+      )
+    ).toBe(true);
+    // Near-collinear + shared vertex: the shared module fuses the two
+    // chains into ONE straight run — continuation leaves no seam.
+    expect(boardWallScene(addWalls(doc1, chain2), S)!.runs).toHaveLength(1);
   });
 });

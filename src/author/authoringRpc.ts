@@ -135,6 +135,32 @@ export function usePutDungeonPreview(
   return state;
 }
 
+/**
+ * The 3D tab's staleness banner (#804 walk finding 2: "the 3d view
+ * bottom room is off"). The preview deliberately keeps the LAST
+ * compiled atlas through errors and transport failures so it never
+ * blanks mid-edit — but that means the 3D picture can silently lag the
+ * document (walls the author just drew missing from the render). This
+ * names the lag instead of leaving it to look like broken geometry:
+ * non-null whenever the atlas on screen is NOT the current document's
+ * own compile.
+ */
+export function staleAtlasNotice(state: PreviewState): string | null {
+  if (!state.atlas || state.status === 'compiled') return null;
+  switch (state.status) {
+    case 'validating':
+      return '3D shows the last compiled document — compiling the latest edits…';
+    case 'errors':
+      return '3D shows the last compiled document — the current file has problems (see the error list)';
+    case 'unreachable':
+      return `3D shows the last compiled document — authoring server unreachable${
+        state.message ? `: ${state.message}` : ''
+      }`;
+    default:
+      return null;
+  }
+}
+
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'invalid' | 'error';
 
 export interface SaveState {

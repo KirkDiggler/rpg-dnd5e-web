@@ -93,12 +93,19 @@ export interface DungeonPreview3DProps {
   doc: DungeonDoc;
   /** Why there is no atlas yet (errors, unreachable, validating). */
   status: string;
+  /** Non-null when `atlas` is NOT the current document's own compile
+   * (`staleAtlasNotice`) — rendered as a banner over the canvas so a
+   * lagging 3D picture reads as stale, never as broken geometry
+   * (#804 walk finding: freshly drawn walls missing from the 3D view
+   * looked like the views disagreeing). */
+  staleNotice?: string | null;
 }
 
 export function DungeonPreview3D({
   atlas,
   doc,
   status,
+  staleNotice = null,
 }: DungeonPreview3DProps) {
   const built = useMemo(() => (atlas ? previewScene(atlas) : null), [atlas]);
   const target = useMemo(() => {
@@ -132,53 +139,75 @@ export function DungeonPreview3D({
   const monsters = doc.place.filter((p) => isMonsterRef(p.ref));
 
   return (
-    <Canvas
-      orthographic
-      frameloop="demand"
-      camera={{
-        position: [
-          target[0] + CAMERA_OFFSET[0],
-          CAMERA_OFFSET[1],
-          target[2] + CAMERA_OFFSET[2],
-        ],
-        near: 0.1,
-        far: 1000,
-        zoom: 28,
-      }}
-      style={{ width: '100%', height: '100%' }}
-      data-testid="preview-canvas"
-    >
-      <ambientLight intensity={0.6} />
-      <directionalLight intensity={0.8} position={[10, 20, 10]} />
-      <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={HEX_SIZE} />
-      <AtlasWalls wallRuns={scene.wallRuns} doorGaps={scene.doorGaps} />
-      {scene.props.map((prop, index) => (
-        <PreviewProp
-          key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
-          prop={prop}
-          hexSize={HEX_SIZE}
-        />
-      ))}
-      {doc.start && (
-        <PathPreview
-          path={[axialToCube(doc.start)]}
-          hexSize={HEX_SIZE}
-          color={START_COLOR}
-          opacity={0.5}
-        />
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {staleNotice && (
+        <div
+          data-testid="preview-stale"
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            right: 8,
+            zIndex: 1,
+            padding: '4px 8px',
+            borderRadius: 4,
+            background: '#7c2d12cc',
+            color: '#fed7aa',
+            fontSize: 12,
+            pointerEvents: 'none',
+          }}
+        >
+          {staleNotice}
+        </div>
       )}
-      {monsters.map((m, i) => (
-        <HexEntity
-          key={`${m.ref}-${m.at.q},${m.at.r}-${i}`}
-          entityId={`preview-${i}`}
-          name={m.ref.slice(MONSTER_REF_PREFIX.length)}
-          position={axialToCube(m.at)}
-          type="monster"
-          hexSize={HEX_SIZE}
-          monsterRefId={m.ref.slice(MONSTER_REF_PREFIX.length)}
-        />
-      ))}
-      <OrbitControls makeDefault target={[target[0], 0, target[2]]} />
-    </Canvas>
+      <Canvas
+        orthographic
+        frameloop="demand"
+        camera={{
+          position: [
+            target[0] + CAMERA_OFFSET[0],
+            CAMERA_OFFSET[1],
+            target[2] + CAMERA_OFFSET[2],
+          ],
+          near: 0.1,
+          far: 1000,
+          zoom: 28,
+        }}
+        style={{ width: '100%', height: '100%' }}
+        data-testid="preview-canvas"
+      >
+        <ambientLight intensity={0.6} />
+        <directionalLight intensity={0.8} position={[10, 20, 10]} />
+        <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={HEX_SIZE} />
+        <AtlasWalls wallRuns={scene.wallRuns} doorGaps={scene.doorGaps} />
+        {scene.props.map((prop, index) => (
+          <PreviewProp
+            key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
+            prop={prop}
+            hexSize={HEX_SIZE}
+          />
+        ))}
+        {doc.start && (
+          <PathPreview
+            path={[axialToCube(doc.start)]}
+            hexSize={HEX_SIZE}
+            color={START_COLOR}
+            opacity={0.5}
+          />
+        )}
+        {monsters.map((m, i) => (
+          <HexEntity
+            key={`${m.ref}-${m.at.q},${m.at.r}-${i}`}
+            entityId={`preview-${i}`}
+            name={m.ref.slice(MONSTER_REF_PREFIX.length)}
+            position={axialToCube(m.at)}
+            type="monster"
+            hexSize={HEX_SIZE}
+            monsterRefId={m.ref.slice(MONSTER_REF_PREFIX.length)}
+          />
+        ))}
+        <OrbitControls makeDefault target={[target[0], 0, target[2]]} />
+      </Canvas>
+    </div>
   );
 }

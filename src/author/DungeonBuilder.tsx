@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   defaultAuthoringClient,
   errorMessageOf,
+  staleAtlasNotice,
   usePutDungeonPreview,
   useSaveDungeon,
   type AuthoringClient,
@@ -547,6 +548,7 @@ export function DungeonBuilder({
               atlas={preview.atlas}
               doc={doc}
               status={statusLine}
+              staleNotice={staleAtlasNotice(preview)}
             />
           )}
         </div>

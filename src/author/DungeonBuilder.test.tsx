@@ -7,6 +7,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthoringClient } from './authoringRpc';
+import { staleAtlasNotice } from './authoringRpc';
 import { DungeonBuilder } from './DungeonBuilder';
 import { emitDungeon } from './dungeonYaml';
 import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
@@ -190,5 +191,44 @@ describe('DungeonBuilder — review follow-ups (PR #781)', () => {
     });
     await waitFor(() => expect(compile).toHaveBeenCalledTimes(2));
     expect(compile.mock.calls[1][0].name).toBe('Renamed');
+  });
+});
+
+describe('staleAtlasNotice — the 3D tab names a lagging atlas (#804 walk finding)', () => {
+  const atlas = {} as never;
+  it('is null when the shown atlas IS the current compile (or there is nothing to show)', () => {
+    expect(
+      staleAtlasNotice({ status: 'compiled', errors: [], atlas, message: null })
+    ).toBeNull();
+    expect(
+      staleAtlasNotice({
+        status: 'errors',
+        errors: [],
+        atlas: null,
+        message: null,
+      })
+    ).toBeNull();
+  });
+
+  it('names the lag while validating, on errors, and when unreachable', () => {
+    expect(
+      staleAtlasNotice({
+        status: 'validating',
+        errors: [],
+        atlas,
+        message: null,
+      })
+    ).toMatch(/last compiled document/);
+    expect(
+      staleAtlasNotice({ status: 'errors', errors: [], atlas, message: null })
+    ).toMatch(/problems/);
+    expect(
+      staleAtlasNotice({
+        status: 'unreachable',
+        errors: [],
+        atlas,
+        message: 'boom',
+      })
+    ).toMatch(/unreachable: boom/);
   });
 });
