@@ -164,3 +164,34 @@ Vite remains on `:3012`.
   stayed byte-identical at SHA-256
   `a3927fdbf6b38fb886c55b72f58ad116dd8282917fb279a4f8c5f3c4a5e25542`, and the
   final builder/game evidence artifacts remain the hashed PNGs above.
+
+## Kirk final verdict, dev integration, and web PR
+
+- Docs/assets evidence commit: `e179e6d` — `docs(assets): record crypt prop real-path evidence (814)`.
+- Dev integration merge commit: `e18f2ce` — merged `origin/dev` into
+  `fix/814-crypt-prop-specimens` without rebasing.
+- Merge conflicts resolved only in `src/author/preview3d/DungeonPreview3D.tsx`,
+  `src/components/session/SessionCanvas.tsx`, and
+  `src/components/session/SessionCanvas.test.tsx`, preserving the feature's
+  shared `AtlasPropModel` → `PropModel` / `DungeonSceneLights` path and current
+  `dev`'s authored-facing coverage; shared follow-up touched
+  `src/components/session/AtlasPropModel.tsx` and
+  `src/components/session/AtlasPropModel.test.tsx` so the merged path matched
+  the current facing API and world-Y contract.
+- Fresh post-merge gates:
+  - `npm run ci-check` ❌ — format/lint passed; typecheck/build/tests failed.
+  - `npm run typecheck` / `npm run build` ❌ — merged `dev` now references
+    proto fields not present in resolved `@kirkdiggler/rpg-api-protos`
+    `v0.1.143` (`AtlasProp.offsetZ`, `AtlasBoundary.height`,
+    `Declaration.candidates`, `Declaration.available`).
+  - `npm run test:run` ❌ — `209 passed | 1 failed | 1 skipped` files,
+    `3442 passed | 1 failed | 1 skipped` tests; remaining failure:
+    `src/author/creation/boardWallRuns.test.ts`.
+  - Focused exact-path suites ✅ — `9 passed` files, `192 passed` tests
+    (`PropModel`, `SyntyHexFloor`, `floorOverlayHeights`, `propManifest`,
+    `AtlasPropModel`, `SessionCanvas`, `DungeonPreview3D`, `atlasToScene3D`,
+    `HexEntity`).
+  - `git diff --check` ✅.
+- Push/web PR status: blocked. `git push -u origin fix/814-crypt-prop-specimens`
+  was stopped by the mandatory husky pre-push hook because the merged `dev`
+  gate state above is red, so no web PR URL exists yet.
