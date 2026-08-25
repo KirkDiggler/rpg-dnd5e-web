@@ -195,3 +195,22 @@ Vite remains on `:3012`.
 - Push/web PR status: blocked. `git push -u origin fix/814-crypt-prop-specimens`
   was stopped by the mandatory husky pre-push hook because the merged `dev`
   gate state above is red, so no web PR URL exists yet.
+
+## Post-merge dependency recovery
+
+- Root cause: the merged provider SHA `6c24b198...` was correct, but the
+  installed runtime tree was stale. The committed `package.json` / `package-lock.json`
+  already pinned proto `v0.1.143` at commit `a7db07a`, while the pre-merge
+  `node_modules` install still reflected an older schema and lacked
+  `AtlasProp.offsetZ`, `AtlasBoundary.height`, `Declaration.candidates`, and
+  `Declaration.available`.
+- Recovery command: `rm -rf node_modules && npm ci` against the unchanged
+  committed lock file.
+- Unchanged-lock proof: `git diff -- package.json package-lock.json` stayed
+  empty after the reinstall.
+- Targeted results: `npm run typecheck` passed; `npm run test:run --
+  src/author/creation/boardWallRuns.test.ts` passed `8/8`; the wall-run failure
+  disappeared once the fresh install matched the committed lock.
+- Full gate: fresh `npm run ci-check` passed all seven checks.
+- Final verification: `git diff --check` clean; `git status --short` clean; no
+  package/lock diff remained.
