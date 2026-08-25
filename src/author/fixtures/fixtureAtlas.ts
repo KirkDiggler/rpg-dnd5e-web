@@ -42,12 +42,14 @@ export function fixtureAtlasOf(doc: DungeonDoc): GetAtlasResponse {
         facing: p.facing ?? '',
         offsetX: p.offset?.[0] ?? 0,
         offsetY: p.offset?.[1] ?? 0,
+        offsetZ: p.offset?.[2] ?? 0,
       })),
-    boundaries: doc.walls.map(([a, b]) => ({
+    boundaries: doc.walls.map(({ edge: [a, b], height }) => ({
       from: pos(a),
       to: pos(b),
       blocksMovement: true,
       blocksLineOfSight: true,
+      height: height ?? 0,
     })),
     doorways: doc.doors.flatMap((d) =>
       d.edges.map(([a, b]) => ({

@@ -367,11 +367,16 @@ export function WallRunMesh({
         // for why this run has no regionId to key fog-of-war memory
         // against yet.
         const height = effectiveWallHeight(run.facing, wallCutaway, wallHeight);
+        // The AUTHORED multiplier composes onto whatever the cutaway
+        // ladder chose (rpg-project#273): `run.height` is 0 when not
+        // authored — mapped to 1, never multiplied raw (the wire's own
+        // contract: "said nothing" and "said 1.0" render identically).
+        const authored = run.height > 0 ? run.height : 1;
         return (
           <group key={run.key}>
             <TiledWallRun
               segment={run}
-              wallHeight={height}
+              wallHeight={height * authored}
               tint={tint}
               facing={run.facing}
             />

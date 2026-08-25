@@ -1,13 +1,14 @@
 import {
-  ClockKind,
-  type Declaration,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+  expandDeclarations,
+  type DeclarationRow,
+} from '@/components/session/declarationRows';
+import { ClockKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useState } from 'react';
 import { sessionClient } from './client';
 
 export interface UseSessionAffordResult {
   clock: ClockKind;
-  declarations: Declaration[];
+  declarations: DeclarationRow[];
   loading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
@@ -58,7 +59,7 @@ export function useSessionAfford(
   member: string
 ): UseSessionAffordResult {
   const [clock, setClock] = useState<ClockKind>(ClockKind.UNSPECIFIED);
-  const [declarations, setDeclarations] = useState<Declaration[]>([]);
+  const [declarations, setDeclarations] = useState<DeclarationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -75,7 +76,7 @@ export function useSessionAfford(
     try {
       const response = await sessionClient.afford({ session, member });
       setClock(response.clock);
-      setDeclarations(response.declarations);
+      setDeclarations(expandDeclarations(response.declarations));
     } catch (err) {
       // Last-good `clock`/`declarations` are deliberately left untouched —
       // see this module's own doc comment.

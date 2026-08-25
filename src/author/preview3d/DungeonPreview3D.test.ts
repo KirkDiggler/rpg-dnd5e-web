@@ -64,7 +64,7 @@ describe('previewScene', () => {
     // above doesn't happen to catch can't go silently unverified.
     for (const prop of preview.scene.props) {
       expect(prop.facing).toBe('');
-      expect(prop.offset).toEqual({ x: 0, y: 0 });
+      expect(prop.offset).toEqual({ x: 0, y: 0, z: 0 });
     }
   });
 
@@ -77,13 +77,13 @@ describe('previewScene', () => {
       (p) => p.ref === 'dnd5e:props:pillar'
     );
     expect(pillar?.facing).toBe('ne');
-    expect(pillar?.offset).toEqual({ x: 0.2, y: -0.1 });
+    expect(pillar?.offset).toEqual({ x: 0.2, y: -0.1, z: 0 });
     // The unfaced brazier is untouched — the additive fields are opt-in.
     const brazier = preview.scene.props.find(
       (p) => p.ref === 'dnd5e:props:brazier'
     );
     expect(brazier?.facing).toBe('');
-    expect(brazier?.offset).toEqual({ x: 0, y: 0 });
+    expect(brazier?.offset).toEqual({ x: 0, y: 0, z: 0 });
   });
 
   it('refuses a flat-top atlas with the same named limitation as the game', () => {

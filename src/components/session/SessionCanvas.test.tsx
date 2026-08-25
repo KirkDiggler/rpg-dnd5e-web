@@ -91,36 +91,42 @@ function scene(): Scene3D {
       start: { x: -1, z: -1 },
       end: { x: -1, z: 1 },
       facing: { x: -1, z: 0 },
+      height: 0,
     },
     {
       key: 'right',
       start: { x: 3, z: -1 },
       end: { x: 3, z: 1 },
       facing: { x: 1, z: 0 },
+      height: 0,
     },
     {
       key: 'top',
       start: { x: -1, z: -1 },
       end: { x: 3, z: -1 },
       facing: { x: 0, z: -1 },
+      height: 0,
     },
     {
       key: 'bottom',
       start: { x: -1, z: 1 },
       end: { x: 3, z: 1 },
       facing: { x: 0, z: 1 },
+      height: 0,
     },
     {
       key: 'hall-1-a',
       start: { x: 1, z: -1 },
       end: { x: 1, z: -0.5 },
       facing: { x: 1, z: 0 },
+      height: 0,
     },
     {
       key: 'hall-1-b',
       start: { x: 1, z: 0.5 },
       end: { x: 1, z: 1 },
       facing: { x: 1, z: 0 },
+      height: 0,
     },
   ];
   const doorGaps: DoorGapPiece[] = [
@@ -158,7 +164,7 @@ function sceneWithProp(
   ref: string,
   position = { x: 1, y: 0, z: -1 },
   facing = '',
-  offset = { x: 0, y: 0 }
+  offset = { x: 0, y: 0, z: 0 }
 ) {
   const propScene = scene();
   propScene.props = [{ ref, position, facing, offset }];
@@ -252,13 +258,18 @@ describe('SessionScene', () => {
   it('an authored offset/facing reaches the rendered PropModel (rpg-project#261, Copilot review PR #795: the JSX wiring, not just propWorldPosition/facingToYaw in isolation)', async () => {
     const position = { x: 1, y: -1, z: 0 };
     const renderer = await renderSession(
-      sceneWithProp('dnd5e:props:pillar', position, 'ne', { x: 0.2, y: -0.3 })
+      sceneWithProp('dnd5e:props:pillar', position, 'ne', {
+        x: 0.2,
+        y: -0.3,
+        z: 0.6,
+      })
     );
 
     const cellCenter = cubeToWorld(position, 1);
     const expectedX = cellCenter.x + 0.2 * 1;
     const expectedZ = cellCenter.z + -0.3 * 1;
-    const expectedYaw = facingToYaw('pointy', 'ne');
+    const expectedY = 0.6 * 1;
+    const expectedYaw = facingToYaw('ne');
 
     const propGroup = renderer.scene
       .findAllByType('Group')
@@ -266,6 +277,7 @@ describe('SessionScene', () => {
       .find((group) => Math.abs(group.position.x - expectedX) < 1e-9);
 
     expect(propGroup?.position.x).toBeCloseTo(expectedX, 9);
+    expect(propGroup?.position.y).toBeCloseTo(expectedY, 9);
     expect(propGroup?.position.z).toBeCloseTo(expectedZ, 9);
     expect(propGroup?.rotation.y).toBeCloseTo(expectedYaw, 9);
   });

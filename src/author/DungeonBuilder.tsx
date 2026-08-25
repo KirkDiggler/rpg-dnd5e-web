@@ -50,6 +50,7 @@ import {
   removeWalls,
   resolveErrorTargets,
   setStart,
+  setWallHeights,
   toggleDoorEdge,
   toggleWall,
   updateDoor,
@@ -323,11 +324,13 @@ export function DungeonBuilder({
           removeWalls(
             d,
             oldChains.flatMap((c) => c)
-          ).walls.map(edgeKey)
+          ).walls.map((w) => edgeKey(w.edge))
         );
         setSelection({
           kind: 'wall',
-          edges: next.walls.filter((w) => !untouched.has(edgeKey(w))),
+          edges: next.walls
+            .filter((w) => !untouched.has(edgeKey(w.edge)))
+            .map((w) => w.edge),
         });
       }
       return next;
@@ -579,6 +582,9 @@ export function DungeonBuilder({
             onRemoveWall={(edges) => {
               setDoc((d) => removeWalls(d, edges));
               setSelection({ kind: 'dungeon' });
+            }}
+            onSetWallHeight={(edges, height) => {
+              setDoc((d) => setWallHeights(d, edges, height));
             }}
             onRemoveDoor={(id) => {
               setDoc((d) => ({

@@ -62,7 +62,6 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   ClockKind,
-  type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -70,6 +69,7 @@ import { useSessionAttack } from '../../api/useSessionAttack';
 import { useSessionEndTurn } from '../../api/useSessionEndTurn';
 import { formatBeat } from './combatBeat';
 import { selectCombatPanel, type CombatPanelSelection } from './combatPanel';
+import type { DeclarationRow } from './declarationRows';
 import { needsPacing, nextBeatStep } from './monsterBeatQueue';
 import { participantNameMap } from './participantNames';
 import type { SightedMember } from './sightingEntities';
@@ -102,7 +102,7 @@ export interface UseCombatPanelArgs {
    * that instant; it is never a guess. */
   sightedMembers?: SightedMember[];
   affordClock: ClockKind;
-  affordDeclarations: Declaration[];
+  affordDeclarations: DeclarationRow[];
   /** Owned by the caller — `SessionEncounterView` is the single owner of
    * every Afford/Turn fetch. */
   refetchAfford: () => Promise<void>;

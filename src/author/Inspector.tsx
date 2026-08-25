@@ -11,8 +11,9 @@ import {
   type DoorDoc,
   type DungeonDoc,
   type PlacementDoc,
+  type PlacementOffset,
 } from './dungeonYaml';
-import { edgeKey, type Edge, type Orientation } from './hexOffset';
+import { edgeKey, type Edge } from './hexOffset';
 import { RegionPanel } from './RegionPanel';
 import { ABILITIES, TARGETINGS, type Selection } from './types';
 
@@ -44,6 +45,9 @@ export interface InspectorProps {
   onRemovePlacement: (index: number) => void;
   /** Delete every edge of the selected wall run (#804). */
   onRemoveWall: (edges: Edge[]) => void;
+  /** Stamp a height on every edge of the selected wall run — chain-level
+   * intent, `undefined` = back to standard (rpg-project#273). */
+  onSetWallHeight: (edges: Edge[], height: number | undefined) => void;
 }
 
 export function Inspector(props: InspectorProps) {
@@ -82,8 +86,16 @@ export function Inspector(props: InspectorProps) {
     const present = wallKeys(doc);
     const edges = selection.edges.filter((e) => present.has(edgeKey(e)));
     if (edges.length === 0) return <DungeonPanel {...props} />;
+    const heightByKey = new Map(
+      doc.walls.map((w) => [edgeKey(w.edge), w.height] as const)
+    );
     return (
-      <WallPanel edges={edges} onRemove={() => props.onRemoveWall(edges)} />
+      <WallPanel
+        edges={edges}
+        height={heightByKey.get(edgeKey(edges[0]))}
+        onHeight={(h) => props.onSetWallHeight(edges, h)}
+        onRemove={() => props.onRemoveWall(edges)}
+      />
     );
   }
   if (selection.kind === 'placement') {
@@ -92,7 +104,6 @@ export function Inspector(props: InspectorProps) {
     return (
       <PlacementPanel
         placement={placement}
-        orientation={doc.orientation}
         onChange={(p) => props.onPlacement(selection.index, p)}
         onRemove={() => props.onRemovePlacement(selection.index)}
       />
@@ -155,11 +166,19 @@ function DungeonPanel({ doc, onDungeon }: InspectorProps) {
 
 function WallPanel({
   edges,
+  height,
+  onHeight,
   onRemove,
 }: {
   edges: Edge[];
+  /** The selection's authored height (its first edge's — the stepper
+   * stamps every edge, so a stepper-authored chain is uniform), or
+   * `undefined` for standard. */
+  height?: number;
+  onHeight: (height: number | undefined) => void;
   onRemove: () => void;
 }) {
+  const clamp = (v: number) => Math.min(3, Math.max(1, v));
   return (
     <div className="flex flex-col gap-3" data-testid="wall-panel">
       <h3 className="dg-h">
@@ -168,6 +187,37 @@ function WallPanel({
       <div className="text-xs opacity-70">
         One straight run: the doc edges behind the line you clicked. There is no
         wall id in the file — this selection IS the edges.
+      </div>
+      <div className="dg-label">
+        height
+        <div className="flex gap-2 items-end">
+          <input
+            className="dg-input flex-1"
+            data-testid="wall-height"
+            type="number"
+            min={1}
+            max={3}
+            step={0.5}
+            value={height ?? 1}
+            onChange={(e) => {
+              const v = clamp(Number(e.target.value) || 1);
+              onHeight(v === 1 ? undefined : v);
+            }}
+          />
+          <button
+            type="button"
+            className="dg-mini"
+            data-testid="wall-height-standard"
+            onClick={() => onHeight(undefined)}
+          >
+            standard
+          </button>
+        </div>
+        <div className="text-xs opacity-70">
+          × standard wall height, 1–3. Raise-only, every edge of this wall takes
+          it; visual only — a wall blocks (and cannot be seen past) the same at
+          any height.
+        </div>
       </div>
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
         delete wall
@@ -268,12 +318,10 @@ function DoorPanel({
 
 function PlacementPanel({
   placement,
-  orientation,
   onChange,
   onRemove,
 }: {
   placement: PlacementDoc;
-  orientation: Orientation;
   onChange: (patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>) => void;
   onRemove: () => void;
 }) {
@@ -333,7 +381,6 @@ function PlacementPanel({
             Prefilled from the catalog; always written explicitly.
           </div>
           <FacingControl
-            orientation={orientation}
             facing={placement.facing}
             onChange={(facing) => onChange({ facing })}
           />
@@ -350,21 +397,20 @@ function PlacementPanel({
   );
 }
 
-/** Six direction buttons, drawn rotated to match the dungeon's own
- * orientation (design §"The panel") — the SAME `facingAngleDeg` table
- * the 2D canvas tick and the 3D render use, so the compass points the
- * same way the placement actually renders. A center "none" button
- * clears to the asset's own default. */
+/** Eight fixed compass buttons — the rose does NOT rotate with the
+ * dungeon's orientation, because the vocabulary is true compass in
+ * world space (rpg-project#272; the SAME `facingAngleDeg` table the 2D
+ * canvas tick and the 3D render use, so the compass points the same
+ * way the placement actually renders). A center "none" button clears
+ * to the asset's own default. */
 function FacingControl({
-  orientation,
   facing,
   onChange,
 }: {
-  orientation: Orientation;
   facing?: string;
   onChange: (facing: string | undefined) => void;
 }) {
-  const names = FACING_NAMES[orientation];
+  const names = FACING_NAMES;
   const radius = 34;
   return (
     <div className="dg-label">
@@ -385,7 +431,7 @@ function FacingControl({
           •
         </button>
         {names.map((name) => {
-          const deg = facingAngleDeg(orientation, name) ?? 0;
+          const deg = facingAngleDeg(name) ?? 0;
           const rad = (deg * Math.PI) / 180;
           const left = `calc(50% + ${Math.cos(rad) * radius}px)`;
           const top = `calc(50% + ${Math.sin(rad) * radius}px)`;
@@ -419,11 +465,17 @@ function OffsetControl({
   offset,
   onChange,
 }: {
-  offset?: [number, number];
-  onChange: (offset: [number, number] | undefined) => void;
+  offset?: PlacementOffset;
+  onChange: (offset: PlacementOffset | undefined) => void;
 }) {
-  const [x, y] = offset ?? [0, 0];
+  const [x, y, z = 0] = offset ?? [0, 0];
   const clamp = (v: number) => Math.min(0.5, Math.max(-0.5, v));
+  // Height's OWN range, deliberately not the planar ±0.5 clamp (Kirk's
+  // ruling, rpg-project#272: "height should be able to gun higher than
+  // the 5 ticks we allow on x and y").
+  const clampZ = (v: number) => Math.min(3, Math.max(0, v));
+  const emit = (nx: number, ny: number, nz: number) =>
+    onChange(nz === 0 ? [nx, ny] : [nx, ny, nz]);
   return (
     <div className="dg-label">
       offset
@@ -437,7 +489,7 @@ function OffsetControl({
             max={0.5}
             step={0.1}
             value={x}
-            onChange={(e) => onChange([clamp(Number(e.target.value) || 0), y])}
+            onChange={(e) => emit(clamp(Number(e.target.value) || 0), y, z)}
           />
         </label>
         <label className="dg-label flex-1">
@@ -449,7 +501,20 @@ function OffsetControl({
             max={0.5}
             step={0.1}
             value={y}
-            onChange={(e) => onChange([x, clamp(Number(e.target.value) || 0)])}
+            onChange={(e) => emit(x, clamp(Number(e.target.value) || 0), z)}
+          />
+        </label>
+        <label className="dg-label flex-1">
+          height
+          <input
+            className="dg-input"
+            data-testid="offset-height"
+            type="number"
+            min={0}
+            max={3}
+            step={0.1}
+            value={z}
+            onChange={(e) => emit(x, y, clampZ(Number(e.target.value) || 0))}
           />
         </label>
         <button

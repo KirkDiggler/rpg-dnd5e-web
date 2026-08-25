@@ -21,6 +21,7 @@ import {
   emitDungeon,
   emptyDungeon,
   paintCell,
+  setWallHeights,
   toggleDoorEdge,
   type DungeonDoc,
 } from '../dungeonYaml';
@@ -212,7 +213,9 @@ describe('derivation rules — floor filter, door break, dedup', () => {
     expect(keys(derived)).toEqual(keys(VERT.chain.slice(1)));
     // …and committing still yields the full seam exactly once.
     const committed = applyWallDraw(doc, tautPath(VERT.a, VERT.b, SIZE, o));
-    expect(keys(committed.walls).sort()).toEqual(keys(VERT.chain).sort());
+    expect(keys(committed.walls.map((w) => w.edge)).sort()).toEqual(
+      keys(VERT.chain).sort()
+    );
   });
 });
 
@@ -365,9 +368,28 @@ describe('shared-corner drag (ruling 4) — every incident chain re-derives to t
       keys([E([1, 1], [2, 0]), E([1, 1], [2, 1]), E([1, 1], [2, 2])])
     );
     const committed = applyReshape(doc, [chainA, chainB], [newA, newB]);
-    expect(keys(committed.walls).sort()).toEqual(
+    expect(keys(committed.walls.map((w) => w.edge)).sort()).toEqual(
       keys([...newA, ...newB]).sort()
     );
+  });
+
+  it("a reshaped chain's authored height survives onto EVERY re-derived edge — chain-level intent, per chain (rpg-project#273)", () => {
+    let doc = addWalls(fixtureDoc(), [...chainA, ...chainB]);
+    // Chain A raised, chain B standard: the drag must keep that split.
+    doc = setWallHeights(doc, chainA, 2);
+    const newVertex = ref(1, 1, 2);
+    const newA = tautPath(ref(0, 1, 3), newVertex, SIZE, o);
+    const newB = tautPath(ref(1, 0, 1), newVertex, SIZE, o);
+    const committed = applyReshape(doc, [chainA, chainB], [newA, newB]);
+    const byKey = new Map(
+      committed.walls.map((w) => [edgeKey(w.edge), w.height])
+    );
+    for (const e of newA) {
+      expect(byKey.get(edgeKey(e))).toBe(2);
+    }
+    for (const e of newB) {
+      expect(byKey.get(edgeKey(e))).toBeUndefined();
+    }
   });
 });
 

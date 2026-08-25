@@ -66,9 +66,9 @@ import {
   ClockKind,
   Standing,
   Verb,
-  type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { DeclarationRow } from './declarationRows';
 import { participantNameMap, resolveName } from './participantNames';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import {
@@ -156,7 +156,7 @@ export interface SelectCombatPanelArgs {
   };
   afford: {
     clock: ClockKind;
-    declarations: Declaration[];
+    declarations: DeclarationRow[];
   };
   /** The local player's own member id. */
   member: string;

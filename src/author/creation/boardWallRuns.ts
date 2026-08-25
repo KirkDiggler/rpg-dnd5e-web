@@ -110,6 +110,10 @@ export interface BoardWallRun {
   a: Point;
   b: Point;
   edges: Edge[];
+  /** The run's authored height multiplier, from the shared engine —
+   * 0 = standard. The 2D board stays schematic about it (a label, not
+   * scaled geometry — the design's own "Not now" line). */
+  height: number;
 }
 
 /** One door, drawn IN its run's gap (aligned to the straightened run,
@@ -154,7 +158,7 @@ export function docAtlasFacts(doc: DungeonDoc): {
     d.edges.map((edge) => ({ doorId: d.id, edge }))
   );
   const wallSourcesByToken = new Map<string, Edge>();
-  for (const edge of doc.walls) {
+  for (const { edge } of doc.walls) {
     const { a, b } = hexEdgeBetween(
       positionToCube({ x: edge[0].q, y: edge[0].r } as never),
       positionToCube({ x: edge[1].q, y: edge[1].r } as never),
@@ -167,11 +171,15 @@ export function docAtlasFacts(doc: DungeonDoc): {
       .flatMap((r) => r.cells)
       .sort(compareAxial)
       .map(pos),
-    boundaries: doc.walls.map(([a, b]) => ({
+    boundaries: doc.walls.map(({ edge: [a, b], height }) => ({
       from: pos(a),
       to: pos(b),
       blocksMovement: true,
       blocksLineOfSight: true,
+      // The authored multiplier, or 0 = not authored = standard — the
+      // SAME wire contract the server's atlas carries, so the shared
+      // engine sees one dialect from both producers (rpg-project#273).
+      height: height ?? 0,
     })),
     doorways: doorSources.map(({ doorId, edge: [a, b] }) => ({
       connection: `${doc.key}/${doorId}`,
@@ -203,6 +211,7 @@ export function boardWallScene(
     key: r.key,
     a: project(r.start),
     b: project(r.end),
+    height: r.height,
     // Every token in a run's key is one constituent non-door edge; a
     // missing lookup is never expected (every boundary fed to the
     // engine came from doc.walls above) and is dropped rather than
