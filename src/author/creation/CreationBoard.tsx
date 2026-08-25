@@ -311,7 +311,17 @@ export function CreationBoard({
         doc,
         gesture.chains.flatMap((c) => c.old)
       );
-      return chains.flatMap((c) => deriveWallAdd(base, c));
+      // Two re-derived chains can share an edge near the dragged
+      // vertex; dedup so the trace draws (and keys) each edge once.
+      const seen = new Set<string>();
+      return chains
+        .flatMap((c) => deriveWallAdd(base, c))
+        .filter((edge) => {
+          const key = edgeKey(edge);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
     }
     if (gesture.kind === 'erase') return deriveWallErase(doc, chains[0]);
     return gesture.tool === 'door'
