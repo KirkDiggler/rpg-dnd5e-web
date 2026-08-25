@@ -3,7 +3,7 @@ import {
   EventKind,
   type Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECONNECT_CONFIG } from '../../api/streamReconnect';
 
@@ -21,6 +21,7 @@ vi.mock('@/api/client', () => ({
 
 // Import AFTER vi.mock so the mock is applied
 import {
+  STORY_RECOVERY_ABORT_GRACE_MS,
   STORY_RECOVERY_INTERVAL_MS,
   useSessionEventStream,
 } from './useSessionEventStream';
@@ -104,6 +105,16 @@ function manualStream() {
 
 const storyTrimmedError = () =>
   new ConnectError('story range trimmed', Code.OutOfRange);
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 beforeEach(() => {
   hoisted.streamEventsFn.mockReset();
@@ -278,6 +289,66 @@ describe('useSessionEventStream', () => {
     );
   });
 
+  it('retains a buffered gap after a stale recovery, then drains out-of-order duplicates only after an immediate trailing recovery fills it', async () => {
+    const stream = manualStream();
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    const staleRecovery = deferred<{ entries: Event[] }>();
+    const trailingRecovery = deferred<{ entries: Event[] }>();
+    hoisted.getStoryFn
+      .mockResolvedValueOnce({ entries: [] })
+      .mockReturnValueOnce(staleRecovery.promise)
+      .mockReturnValueOnce(trailingRecovery.promise);
+    const onEvent = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await waitFor(() => expect(result.current).toBe('live'));
+
+    stream.push(fakeEvent({ seq: 1n }));
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+    stream.push(fakeEvent({ seq: 3n }));
+    await waitFor(() => expect(result.current).toBe('resyncing'));
+    stream.push(fakeEvent({ seq: 4n }));
+    stream.push(fakeEvent({ seq: 3n }));
+
+    staleRecovery.resolve({ entries: [fakeEvent({ seq: 1n })] });
+    await waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(3));
+    expect(hoisted.getStoryFn).toHaveBeenNthCalledWith(
+      3,
+      { session: 'enc-1', member: 'char-1', fromSeq: 2n },
+      expect.anything()
+    );
+    // The stale answer must not let buffered seq 3 advance lastSeq over seq 2.
+    expect(onEvent.mock.calls.map(([event]) => (event as Event).seq)).toEqual([
+      1n,
+    ]);
+
+    const catchUpSeq2 = fakeEvent({ seq: 2n });
+    const catchUpSeq3 = fakeEvent({ seq: 3n });
+    trailingRecovery.resolve({
+      entries: [catchUpSeq3, catchUpSeq2, fakeEvent({ seq: 2n })],
+    });
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(4));
+    expect(onEvent.mock.calls.map(([event]) => (event as Event).seq)).toEqual([
+      1n,
+      2n,
+      3n,
+      4n,
+    ]);
+    expect(onEvent.mock.calls.map((call) => call[1])).toEqual([
+      { source: 'live' },
+      { source: 'catchup' },
+      { source: 'catchup' },
+      { source: 'live' },
+    ]);
+    expect(onEvent.mock.calls[1]?.[0]).toBe(catchUpSeq2);
+    expect(onEvent.mock.calls[2]?.[0]).toBe(catchUpSeq3);
+    await waitFor(() => expect(result.current).toBe('live'));
+  });
+
   it('a catch-up that resolves AFTER the stream has already ended must not report live or reset backoff (Copilot review, PR #783)', async () => {
     vi.useFakeTimers();
     const firstStream = manualStream();
@@ -345,6 +416,59 @@ describe('useSessionEventStream', () => {
     await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
   });
 
+  it('releases a reconnect after bounded abort grace when the superseded transport never settles and fences its late result', async () => {
+    vi.useFakeTimers();
+    const firstStream = manualStream();
+    const secondStream = manualStream();
+    hoisted.streamEventsFn
+      .mockReturnValueOnce(firstStream.iterable)
+      .mockReturnValueOnce(secondStream.iterable);
+    const stalledPredecessor = deferred<{ entries: Event[] }>();
+    const currentRecovery = deferred<{ entries: Event[] }>();
+    hoisted.getStoryFn
+      // Deliberately ignores its aborted signal and never settles until the
+      // test releases it after the successor has completed.
+      .mockReturnValueOnce(stalledPredecessor.promise)
+      .mockReturnValueOnce(currentRecovery.promise);
+    const onEvent = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await vi.waitFor(() => expect(result.current).toBe('resyncing'));
+    expect(hoisted.getStoryFn).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      firstStream.end();
+      await Promise.resolve();
+    });
+    expect(result.current).toBe('reconnecting');
+    await vi.advanceTimersByTimeAsync(RECONNECT_CONFIG.initialDelayMs);
+    expect(hoisted.streamEventsFn).toHaveBeenCalledTimes(2);
+    expect(hoisted.getStoryFn).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(STORY_RECOVERY_ABORT_GRACE_MS - 1);
+    expect(hoisted.getStoryFn).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(2));
+    expect(hoisted.getStoryFn).toHaveBeenLastCalledWith(
+      { session: 'enc-1', member: 'char-1', fromSeq: 0n },
+      expect.anything()
+    );
+
+    const current = fakeEvent({ seq: 1n });
+    currentRecovery.resolve({ entries: [current] });
+    await vi.waitFor(() =>
+      expect(onEvent).toHaveBeenCalledWith(current, { source: 'catchup' })
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+
+    stalledPredecessor.resolve({ entries: [fakeEvent({ seq: 2n })] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(result.current).toBe('live');
+  });
+
   it('reconnects with backoff when the stream ends for a reason other than our own abort, then resumes catch-up from last+1', async () => {
     vi.useFakeTimers();
     const firstStream = manualStream();
@@ -397,7 +521,9 @@ describe('useSessionEventStream', () => {
       .mockResolvedValueOnce({ entries: [] }) // initial connect
       .mockRejectedValueOnce(storyTrimmedError()); // the gap catch-up: aged out
     hoisted.getStoryFn.mockResolvedValueOnce({
-      entries: [fakeEvent({ seq: 50n })],
+      // The first retained entry rebases the acknowledged trimmed prefix and
+      // remains contiguous with the already-buffered live seq 100.
+      entries: [fakeEvent({ seq: 99n })],
     }); // the automatic from_seq:0 retry
 
     const { result } = renderHook(() =>
@@ -423,7 +549,7 @@ describe('useSessionEventStream', () => {
     );
     expect(onEvent.mock.calls.map((call) => (call[0] as Event).seq)).toEqual([
       1n,
-      50n,
+      99n,
       100n,
     ]);
     expect(onEvent.mock.calls.map((call) => call[1])).toEqual([
@@ -544,6 +670,50 @@ describe('useSessionEventStream', () => {
     }
   });
 
+  it('coalesces recovery triggers that arrive after an active RPC snapshot into one immediate trailing pass', async () => {
+    vi.useFakeTimers();
+    const stream = manualStream();
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    const snapshottedRecovery = deferred<{ entries: Event[] }>();
+    const trailingRecovery = deferred<{ entries: Event[] }>();
+    hoisted.getStoryFn
+      .mockResolvedValueOnce({ entries: [] })
+      .mockReturnValueOnce(snapshottedRecovery.promise)
+      .mockReturnValueOnce(trailingRecovery.promise);
+    const onEvent = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+    stream.push(fakeEvent({ seq: 1n }));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+    window.dispatchEvent(new globalThis.Event('focus'));
+    await vi.waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(2));
+
+    // The RPC's server-side snapshot is represented by its already-fixed empty
+    // result. Triggers after that snapshot must not disappear into its promise.
+    window.dispatchEvent(new globalThis.Event('focus'));
+    await vi.advanceTimersByTimeAsync(STORY_RECOVERY_INTERVAL_MS);
+    expect(hoisted.getStoryFn).toHaveBeenCalledTimes(2);
+
+    snapshottedRecovery.resolve({ entries: [] });
+    await vi.waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(3));
+    expect(hoisted.getStoryFn).toHaveBeenLastCalledWith(
+      { session: 'enc-1', member: 'char-1', fromSeq: 2n },
+      expect.anything()
+    );
+
+    const terminal = fakeEvent({ seq: 2n });
+    trailingRecovery.resolve({ entries: [terminal] });
+    await vi.waitFor(() =>
+      expect(onEvent).toHaveBeenCalledWith(terminal, { source: 'catchup' })
+    );
+    expect(hoisted.getStoryFn).toHaveBeenCalledTimes(3);
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+  });
+
   it('serializes interval, focus, and visibility catch-ups while one recovery is active', async () => {
     vi.useFakeTimers();
     const stream = manualStream();
@@ -572,11 +742,12 @@ describe('useSessionEventStream', () => {
     expect(hoisted.getStoryFn).toHaveBeenCalledTimes(2);
 
     resolveRecovery({ entries: [] });
+    await vi.waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(3));
     await vi.waitFor(() => expect(result.current).toBe('live'));
 
     window.dispatchEvent(new globalThis.Event('focus'));
     await vi.advanceTimersByTimeAsync(0);
-    await vi.waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(4));
   });
 
   it('retries a trimmed interval recovery from zero, marks recovered entries catch-up, then invokes onAgedOut', async () => {

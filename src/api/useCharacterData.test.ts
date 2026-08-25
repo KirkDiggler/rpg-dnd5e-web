@@ -7,10 +7,14 @@ import {
   type CharacterData,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { createElement, StrictMode, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
-  getCharacterDataFn: vi.fn<() => Promise<GetCharacterDataResponse>>(),
+  getCharacterDataFn:
+    vi.fn<
+      (request?: { characterId?: string }) => Promise<GetCharacterDataResponse>
+    >(),
 }));
 
 vi.mock('./client', () => ({
@@ -113,6 +117,38 @@ describe('useCharacterData', () => {
     expect(result.current.characterData).toBe(refreshed);
   });
 
+  it('keeps an authoritative replacement when an older owner read resolves after it', async () => {
+    const initial = character(3, 20);
+    const staleRead = character(3, 1);
+    const replaced = character(3, 24);
+    const pending = deferred<GetCharacterDataResponse>();
+    hoisted.getCharacterDataFn
+      .mockResolvedValueOnce(response(initial))
+      // This fake deliberately ignores AbortSignal, as a stalled transport may.
+      .mockReturnValueOnce(pending.promise);
+
+    const { result } = renderHook(() => useCharacterData('fighter-1'));
+    await waitFor(() => expect(result.current.characterData).toBe(initial));
+
+    act(() => {
+      void result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.loading).toBe(true));
+
+    act(() => result.current.replace(replaced));
+    expect(result.current.characterData).toBe(replaced);
+    expect(result.current.loading).toBe(false);
+
+    await act(async () => {
+      pending.resolve(response(staleRead));
+      await pending.promise;
+    });
+
+    expect(result.current.characterData).toBe(replaced);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
   it('keeps the last confirmed CharacterData when a refetch fails', async () => {
     const confirmed = character(3);
     const refetchError = new Error('temporary transport failure');
@@ -141,6 +177,98 @@ describe('useCharacterData', () => {
     await waitFor(() => expect(result.current.error).toBe(notFound));
     expect(result.current.characterData).toBeUndefined();
     expect(result.current.loading).toBe(false);
+  });
+
+  it('never exposes the previous key data or error during the first render of a nonempty key change', async () => {
+    const first = character(3);
+    const firstError = new Error('fighter-1 refresh failed');
+    const secondRequest = deferred<GetCharacterDataResponse>();
+    hoisted.getCharacterDataFn
+      .mockResolvedValueOnce(response(first))
+      .mockRejectedValueOnce(firstError)
+      .mockReturnValueOnce(secondRequest.promise);
+
+    const observations: Array<{
+      renderKey: string;
+      characterData: CharacterData | undefined;
+      loading: boolean;
+      error: Error | null;
+    }> = [];
+    const { result, rerender } = renderHook(
+      ({ characterId }) => {
+        const value = useCharacterData(characterId);
+        observations.push({ renderKey: characterId, ...value });
+        return value;
+      },
+      { initialProps: { characterId: 'fighter-1' } }
+    );
+    await waitFor(() => expect(result.current.characterData).toBe(first));
+    await act(async () => result.current.refetch());
+    expect(result.current.error).toBe(firstError);
+
+    observations.length = 0;
+    rerender({ characterId: 'fighter-2' });
+
+    const firstSecondKeyRender = observations.find(
+      ({ renderKey }) => renderKey === 'fighter-2'
+    );
+    expect(firstSecondKeyRender).toMatchObject({
+      characterData: undefined,
+      error: null,
+      loading: true,
+    });
+
+    await act(async () => {
+      secondRequest.resolve(response(character(4)));
+      await secondRequest.promise;
+    });
+  });
+
+  it('keeps render-time key isolation under React StrictMode', async () => {
+    const first = character(3);
+    const second = character(4);
+    hoisted.getCharacterDataFn.mockImplementation((request) =>
+      Promise.resolve(
+        response(request?.characterId === 'fighter-1' ? first : second)
+      )
+    );
+
+    const observations: Array<{
+      renderKey: string;
+      characterData: CharacterData | undefined;
+      error: Error | null;
+    }> = [];
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(StrictMode, null, children);
+    const { result, rerender } = renderHook(
+      ({ characterId }) => {
+        const value = useCharacterData(characterId);
+        observations.push({
+          renderKey: characterId,
+          characterData: value.characterData,
+          error: value.error,
+        });
+        return value;
+      },
+      {
+        initialProps: { characterId: 'fighter-1' },
+        wrapper,
+      }
+    );
+    await waitFor(() => expect(result.current.characterData).toBe(first));
+
+    observations.length = 0;
+    rerender({ characterId: 'fighter-2' });
+
+    const firstSecondKeyRender = observations.find(
+      ({ renderKey }) => renderKey === 'fighter-2'
+    );
+    expect(firstSecondKeyRender).toEqual({
+      renderKey: 'fighter-2',
+      characterData: undefined,
+      error: null,
+    });
+    await waitFor(() => expect(result.current.characterData).toBe(second));
   });
 
   it('resets on nonempty key changes and fences late data, errors, and loading from the old key', async () => {

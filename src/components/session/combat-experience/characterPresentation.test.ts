@@ -93,11 +93,13 @@ describe('character presentation', () => {
     ]);
   });
 
-  it('passes resource names and counts through unchanged without decrementing or calculating them', () => {
+  it('passes resource names and counts through unchanged and uses the exact generic fallback without interpreting the opaque key', () => {
     const data = create(CharacterDataSchema, {
       resources: [
         create(ResourceViewSchema, {
-          key: 'provider_key',
+          // ResourceView has no full Ref. Even a familiar-looking key must not
+          // opt into special presentation or be treated as a rules identity.
+          key: 'action_surge',
           name: 'Provider Resource Name',
           current: 7,
           maximum: 11,
@@ -107,10 +109,11 @@ describe('character presentation', () => {
 
     expect(presentCharacterData(data).resources).toEqual([
       expect.objectContaining({
-        key: 'provider_key',
+        key: 'action_surge',
         name: 'Provider Resource Name',
         current: 7,
         maximum: 11,
+        ...GENERIC_CHARACTER_PRESENTATION,
       }),
     ]);
   });

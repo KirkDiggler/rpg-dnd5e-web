@@ -20,6 +20,13 @@ interface InFlightRead {
   promise: Promise<void>;
 }
 
+interface CharacterDataCacheState {
+  characterId: string;
+  characterData: CharacterData | undefined;
+  loading: boolean;
+  error: Error | null;
+}
+
 const missingCharacterDataError = () =>
   new Error('GetCharacterData response did not include CharacterData');
 
@@ -36,11 +43,13 @@ const missingCharacterDataError = () =>
  */
 export function useCharacterData(characterId: string): UseCharacterDataResult {
   const { getCharacterData } = useGetCharacterData();
-  const [characterData, setCharacterData] = useState<
-    CharacterData | undefined
-  >();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [cache, setCache] = useState<CharacterDataCacheState>(() => ({
+    characterId,
+    characterData: undefined,
+    // A nonempty key schedules its automatic owner read after this render.
+    loading: Boolean(characterId),
+    error: null,
+  }));
 
   // Update during render so an old completion racing the key-reset effect is
   // already stale. `generationRef` also fences replacement and unmount.
@@ -64,8 +73,15 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
       keyRef.current === characterId &&
       !controller.signal.aborted;
 
-    setLoading(true);
-    setError(null);
+    setCache((previous) => ({
+      characterId,
+      characterData:
+        previous.characterId === characterId
+          ? previous.characterData
+          : undefined,
+      loading: true,
+      error: null,
+    }));
 
     const read: InFlightRead = {
       characterId,
@@ -80,17 +96,41 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
         });
         if (!isCurrent()) return;
         if (!response.character) throw missingCharacterDataError();
-        setCharacterData(response.character);
+        const confirmed = response.character;
+        setCache((previous) =>
+          isCurrent()
+            ? {
+                characterId,
+                characterData: confirmed,
+                loading: previous.loading,
+                error: null,
+              }
+            : previous
+        );
       } catch (err) {
         if (!isCurrent()) return;
-        // Keep the last confirmed value. ConnectError (including the owner
-        // gate's NOT_FOUND) is already an Error and is preserved verbatim.
-        setError(
-          err instanceof Error ? err : new Error('GetCharacterData RPC failed')
+        // Keep the last confirmed value for this exact key. ConnectError
+        // (including the owner gate's NOT_FOUND) is preserved verbatim.
+        const error =
+          err instanceof Error ? err : new Error('GetCharacterData RPC failed');
+        setCache((previous) =>
+          isCurrent()
+            ? {
+                characterId,
+                characterData:
+                  previous.characterId === characterId
+                    ? previous.characterData
+                    : undefined,
+                loading: previous.loading,
+                error,
+              }
+            : previous
         );
       } finally {
         if (inFlightRef.current === read) inFlightRef.current = null;
-        if (isCurrent()) setLoading(false);
+        setCache((previous) =>
+          isCurrent() ? { ...previous, characterId, loading: false } : previous
+        );
       }
     })();
 
@@ -105,9 +145,12 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
       generationRef.current += 1;
       inFlightRef.current?.controller.abort();
       inFlightRef.current = null;
-      setCharacterData(confirmed);
-      setError(null);
-      setLoading(false);
+      setCache({
+        characterId,
+        characterData: confirmed,
+        error: null,
+        loading: false,
+      });
     },
     [characterId]
   );
@@ -116,9 +159,12 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
     generationRef.current += 1;
     inFlightRef.current?.controller.abort();
     inFlightRef.current = null;
-    setCharacterData(undefined);
-    setError(null);
-    setLoading(false);
+    setCache({
+      characterId,
+      characterData: undefined,
+      error: null,
+      loading: Boolean(characterId),
+    });
 
     if (characterId) void refetch();
 
@@ -129,5 +175,15 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
     };
   }, [characterId, refetch]);
 
-  return { characterData, loading, error, refetch, replace };
+  // Effects reset/fetch after commit. Associate every published state with its
+  // key so the render that notices a key change cannot expose the old key's
+  // private data or error in that pre-effect window.
+  const cacheMatchesRenderKey = cache.characterId === characterId;
+  return {
+    characterData: cacheMatchesRenderKey ? cache.characterData : undefined,
+    loading: cacheMatchesRenderKey ? cache.loading : Boolean(characterId),
+    error: cacheMatchesRenderKey ? cache.error : null,
+    refetch,
+    replace,
+  };
 }

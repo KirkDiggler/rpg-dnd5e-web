@@ -19,11 +19,6 @@ export const GENERIC_CHARACTER_PRESENTATION: CharacterPresentationStyle =
     tone: 'neutral',
   });
 
-const RESOURCE_PRESENTATION: CharacterPresentationStyle = Object.freeze({
-  icon: '●',
-  tone: 'cool',
-});
-
 /**
  * Asset-owned presentation for refs already projected by the provider. The
  * full module/type/id key fails closed to a generic glyph; refs never become
@@ -85,9 +80,11 @@ export function presentCharacterData(
       ...condition,
       ...presentationForCharacterRef(condition.ref),
     })),
+    // ResourceView intentionally carries only an opaque key, not a full Ref.
+    // It therefore cannot opt into ref-specific presentation safely.
     resources: characterData.resources.map((resource) => ({
       ...resource,
-      ...RESOURCE_PRESENTATION,
+      ...GENERIC_CHARACTER_PRESENTATION,
     })),
   };
 }
