@@ -345,19 +345,30 @@ export function CreationBoard({
         : vertices.filter((v) => v.runs.some((i) => selectedRunIndices.has(i))),
     [vertices, selectedRunIndices]
   );
-  const hoverVertex = useMemo(() => {
-    if (tool !== 'select' || gesture || !hoverPoint) return null;
-    let best: RunVertex | null = null;
-    let bestDist = GESTURE_TUNING.cornerSnapRadius * size;
-    for (const v of handleVertices) {
-      const d = Math.hypot(v.point.x - hoverPoint.x, v.point.y - hoverPoint.y);
-      if (d <= bestDist) {
-        best = v;
-        bestDist = d;
+  // The selected wall's handle nearest `p`, within the pickup radius —
+  // used for the hover affordance AND hit-tested directly on pointer
+  // down (Copilot review, PR #808: gating the press on hover state
+  // misses direct-touch input, which presses without a hover pass).
+  const handleAt = useCallback(
+    (p: Point): RunVertex | null => {
+      let best: RunVertex | null = null;
+      let bestDist = GESTURE_TUNING.cornerSnapRadius * size;
+      for (const v of handleVertices) {
+        const d = Math.hypot(v.point.x - p.x, v.point.y - p.y);
+        if (d <= bestDist) {
+          best = v;
+          bestDist = d;
+        }
       }
-    }
-    return best;
-  }, [tool, gesture, hoverPoint, handleVertices, size]);
+      return best;
+    },
+    [handleVertices, size]
+  );
+  const hoverVertex = useMemo(
+    () =>
+      tool !== 'select' || gesture || !hoverPoint ? null : handleAt(hoverPoint),
+    [tool, gesture, hoverPoint, handleAt]
+  );
   useEffect(() => {
     if (!gesture) return;
     const onKey = (e: KeyboardEvent) => {
@@ -459,8 +470,12 @@ export function CreationBoard({
       // A handle on the selected wall grabs its incident chains
       // (rulings 2 + 4, riding selection): each re-derives from its own
       // far endpoint — the chain's OTHER odd-degree lattice vertex.
-      if (hoverVertex && wallScene) {
-        const grabbed = hoverVertex;
+      // Hit-tested against the press point itself, not hover state.
+      const grabbed =
+        wallScene && svgRef.current
+          ? handleAt(svgPoint(svgRef.current, e))
+          : null;
+      if (grabbed && wallScene) {
         const chainsToDrag = grabbed.runs.flatMap((runIndex) => {
           const edges = wallScene.runs[runIndex]?.edges ?? [];
           const far = chainEndpoints(edges, size, o).find(
@@ -683,6 +698,17 @@ export function CreationBoard({
           onPointerUp={() => {
             endPaint();
             finishGesture();
+          }}
+          onPointerCancel={() => {
+            // A browser-canceled pointer (touch interruption, capture
+            // loss) must drop the in-flight gesture WITHOUT committing
+            // it — otherwise a later unrelated pointer-up would commit
+            // the stale chain (Copilot review, PR #808).
+            endPaint();
+            setGesture(null);
+            setHoverEdge(null);
+            setHoverCell(null);
+            setHoverPoint(null);
           }}
           onPointerLeave={() => {
             endPaint();

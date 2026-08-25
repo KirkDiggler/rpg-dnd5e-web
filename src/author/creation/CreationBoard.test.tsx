@@ -3,7 +3,7 @@
  * pointer events and assert on the document the callbacks produce.
  */
 import { fireEvent, render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addWalls,
   emptyDungeon,
@@ -13,7 +13,8 @@ import {
   toggleWall,
   type DungeonDoc,
 } from '../dungeonYaml';
-import { axialKey, fromOffset, type Edge } from '../hexOffset';
+import { axialKey, edgeKey, fromOffset, type Edge } from '../hexOffset';
+import { boardWallScene } from './boardWallRuns';
 import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
 import {
   BOARD_HEX_SIZE,
@@ -21,6 +22,8 @@ import {
   CreationBoard,
   type CreationBoardProps,
 } from './CreationBoard';
+import { cornerPoint, type CornerRef } from './hexCorner';
+import { runVertices, tautPath } from './wallGesture';
 
 const p = (c: number, r: number) => fromOffset('pointy', [c, r]);
 
@@ -353,5 +356,155 @@ describe('wall gesture affordances (#804)', () => {
     });
     const selected = container.querySelectorAll('[data-run][data-selected]');
     expect(selected).toHaveLength(1);
+  });
+});
+
+/**
+ * Press–move–release integration (#804, Copilot review on PR #808):
+ * the pure module pins the derivation; these pin the PLUMBING — that a
+ * DOM drag reaches onWallDraw/onWallErase/onDoorDraw/onWallReshape
+ * with the exact taut chain. jsdom has no SVG layout, so `svgPoint`'s
+ * CTM path is enabled with a scoped identity polyfill: `getScreenCTM`
+ * returns an identity whose inverse maps client coords straight to SVG
+ * user space, and events carry SVG coordinates in clientX/clientY.
+ */
+describe('gesture plumbing — press, drag, release (#804)', () => {
+  const S = BOARD_HEX_SIZE;
+  const ref = (c: number, r: number, corner: number): CornerRef => ({
+    cell: p(c, r),
+    corner,
+  });
+  const pt = (r: CornerRef) => cornerPoint(r, S, 'pointy');
+  const keys = (edges: readonly Edge[]) => edges.map(edgeKey);
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'DOMPoint',
+      class {
+        x: number;
+        y: number;
+        constructor(x = 0, y = 0) {
+          this.x = x;
+          this.y = y;
+        }
+        matrixTransform() {
+          return { x: this.x, y: this.y };
+        }
+      }
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function floorDoc() {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [1, 1],
+      [2, 1],
+      [1, 2],
+      [2, 2],
+    ] as const) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    return doc;
+  }
+
+  function enableSvgCtm(container: HTMLElement) {
+    const svg = container.querySelector('svg')!;
+    (svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({
+      inverse: () => ({}),
+    });
+    return svg;
+  }
+
+  const at = (point: { x: number; y: number }) => ({
+    button: 0,
+    clientX: point.x,
+    clientY: point.y,
+  });
+
+  // A = top of the col1|2 seam's row-1 edge, B = bottom of its row-2
+  // edge — the expected chain is the module's own tautPath, pinned
+  // exactly in wallGesture.test.ts.
+  const A = ref(1, 1, 0); // (√3·2, 1)·size
+  const B = ref(2, 2, 3); // (√3·1.5, 3.5)·size
+  const expectedChain = () => tautPath(A, B, S, 'pointy');
+
+  it('a wall drag commits the derived chain through onWallDraw', () => {
+    const onWallDraw = vi.fn();
+    const { container } = mount(floorDoc(), { tool: 'wall', onWallDraw });
+    const svg = enableSvgCtm(container);
+    fireEvent.pointerDown(cellEl(container, 1, 1), at(pt(A)));
+    fireEvent.pointerMove(cellEl(container, 2, 2), at(pt(B)));
+    fireEvent.pointerUp(svg);
+    expect(onWallDraw).toHaveBeenCalledTimes(1);
+    expect(keys(onWallDraw.mock.calls[0][0])).toEqual(keys(expectedChain()));
+    expect(expectedChain().length).toBeGreaterThan(0);
+  });
+
+  it('a shift-drag erases along the same derived path through onWallErase', () => {
+    const onWallErase = vi.fn();
+    const doc = addWalls(floorDoc(), expectedChain());
+    const { container } = mount(doc, { tool: 'wall', onWallErase });
+    const svg = enableSvgCtm(container);
+    fireEvent.pointerDown(cellEl(container, 1, 1), {
+      ...at(pt(A)),
+      shiftKey: true,
+    });
+    fireEvent.pointerMove(cellEl(container, 2, 2), at(pt(B)));
+    fireEvent.pointerUp(svg);
+    expect(onWallErase).toHaveBeenCalledTimes(1);
+    expect(keys(onWallErase.mock.calls[0][0])).toEqual(keys(expectedChain()));
+  });
+
+  it('a door drag commits ONE chain through onDoorDraw', () => {
+    const onDoorDraw = vi.fn();
+    const { container } = mount(floorDoc(), { tool: 'door', onDoorDraw });
+    const svg = enableSvgCtm(container);
+    fireEvent.pointerDown(cellEl(container, 1, 1), at(pt(A)));
+    fireEvent.pointerMove(cellEl(container, 2, 2), at(pt(B)));
+    fireEvent.pointerUp(svg);
+    expect(onDoorDraw).toHaveBeenCalledTimes(1);
+    expect(keys(onDoorDraw.mock.calls[0][0])).toEqual(keys(expectedChain()));
+  });
+
+  it('grabbing a selected wall’s handle re-derives the chain through onWallReshape', () => {
+    const onWallReshape = vi.fn();
+    const wall: Edge[] = [[p(1, 1), p(2, 1)]];
+    const doc = addWalls(floorDoc(), wall);
+    const { container } = mount(doc, {
+      tool: 'select',
+      selection: { kind: 'wall', edges: doc.walls },
+      onWallReshape,
+    });
+    const svg = enableSvgCtm(container);
+    // The handle sits at the RENDERED endpoint; grab the bottom one.
+    const vertices = runVertices(boardWallScene(doc, S)!.runs, S, 'pointy');
+    const bottom = vertices.reduce((acc, v) =>
+      v.point.y > acc.point.y ? v : acc
+    );
+    const target = ref(1, 1, 2); // (√3·1.5, 2.5)·size
+    fireEvent.pointerDown(cellEl(container, 1, 1), at(bottom.point));
+    fireEvent.pointerMove(cellEl(container, 1, 1), at(pt(target)));
+    fireEvent.pointerUp(svg);
+    expect(onWallReshape).toHaveBeenCalledTimes(1);
+    const [oldChains, newChains] = onWallReshape.mock.calls[0];
+    expect(oldChains.map(keys)).toEqual([keys(wall)]);
+    const far = vertices.find((v) => v !== bottom)!;
+    expect(newChains.map(keys)).toEqual([
+      keys(tautPath(far.ref, target, S, 'pointy')),
+    ]);
+  });
+
+  it('a canceled pointer drops the gesture without committing', () => {
+    const onWallDraw = vi.fn();
+    const { container } = mount(floorDoc(), { tool: 'wall', onWallDraw });
+    const svg = enableSvgCtm(container);
+    fireEvent.pointerDown(cellEl(container, 1, 1), at(pt(A)));
+    fireEvent.pointerMove(cellEl(container, 2, 2), at(pt(B)));
+    fireEvent.pointerCancel(svg);
+    fireEvent.pointerUp(svg); // a later unrelated release commits nothing
+    expect(onWallDraw).not.toHaveBeenCalled();
   });
 });

@@ -655,8 +655,16 @@ export function toggleWall(doc: DungeonDoc, e: Edge): DungeonDoc {
 }
 
 /** An edge the wall/door tools may act on: two adjacent floor cells. */
-export function edgeIsOfferable(doc: DungeonDoc, [a, b]: Edge): boolean {
-  const owners = floorOwners(doc);
+export function edgeIsOfferable(doc: DungeonDoc, edge: Edge): boolean {
+  return edgeOfferableWith(floorOwners(doc), edge);
+}
+
+/** `edgeIsOfferable` against a PRECOMPUTED owner map — the batch
+ * mutators below run per pointer move on the live preview, so they
+ * build `floorOwners` once per call instead of once per edge (Copilot
+ * review, PR #808: the per-edge rebuild made a long drag scan the
+ * whole floor per candidate, O(chain × floor) instead of O(chain)). */
+function edgeOfferableWith(owners: Map<string, string>, [a, b]: Edge): boolean {
   return (
     owners.has(axialKey(a)) &&
     owners.has(axialKey(b)) &&
@@ -675,12 +683,17 @@ export function edgeIsOfferable(doc: DungeonDoc, [a, b]: Edge): boolean {
  * gesture never authors) and the chain simply breaks there. Returns the
  * same doc when nothing survives the filter. */
 export function addWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
+  const owners = floorOwners(doc);
   const doorKeys = doorEdgeOwners(doc);
   const present = wallKeys(doc);
   const toAdd: Edge[] = [];
   for (const e of edges) {
     const key = edgeKey(e);
-    if (!edgeIsOfferable(doc, e) || doorKeys.has(key) || present.has(key)) {
+    if (
+      !edgeOfferableWith(owners, e) ||
+      doorKeys.has(key) ||
+      present.has(key)
+    ) {
       continue;
     }
     present.add(key);
@@ -705,12 +718,13 @@ export function removeWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
  * walls on the surviving edges are replaced, same as `toggleDoorEdge`'s
  * wall-or-door rule. Returns the same doc when no edge survives. */
 export function addDoor(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
+  const owners = floorOwners(doc);
   const doorKeys = doorEdgeOwners(doc);
   const seen = new Set<string>();
   const clean: Edge[] = [];
   for (const e of edges) {
     const key = edgeKey(e);
-    if (!edgeIsOfferable(doc, e) || doorKeys.has(key) || seen.has(key)) {
+    if (!edgeOfferableWith(owners, e) || doorKeys.has(key) || seen.has(key)) {
       continue;
     }
     seen.add(key);
