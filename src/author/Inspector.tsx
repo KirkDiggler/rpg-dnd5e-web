@@ -194,6 +194,7 @@ function WallPanel({
           <input
             className="dg-input flex-1"
             data-testid="wall-height"
+            aria-label="wall height multiplier"
             type="number"
             min={1}
             max={3}
