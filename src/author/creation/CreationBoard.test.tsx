@@ -43,6 +43,7 @@ function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
       onWallDraw={() => {}}
       onWallErase={() => {}}
       onWallReshape={() => {}}
+      onDoorDraw={() => {}}
       onCellClick={() => {}}
       onSelect={() => {}}
       {...overrides}
@@ -194,6 +195,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         onWallDraw={() => {}}
         onWallErase={() => {}}
         onWallReshape={() => {}}
+        onDoorDraw={() => {}}
         onCellClick={() => {}}
         onSelect={() => {}}
       />
@@ -238,6 +240,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         onWallDraw={() => {}}
         onWallErase={() => {}}
         onWallReshape={() => {}}
+        onDoorDraw={() => {}}
         onCellClick={() => {}}
         onSelect={() => {}}
       />

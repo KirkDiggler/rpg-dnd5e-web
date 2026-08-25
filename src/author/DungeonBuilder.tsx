@@ -27,6 +27,7 @@ import {
 } from './authoringRpc';
 import { CreationBoard } from './creation/CreationBoard';
 import {
+  applyDoorDraw,
   applyReshape,
   applyWallDraw,
   applyWallErase,
@@ -313,6 +314,19 @@ export function DungeonBuilder({
   const handleWallReshape = (oldChains: Edge[][], newChains: Edge[][]) => {
     setDoc((d) => applyReshape(d, oldChains, newChains));
   };
+  // One drag, ONE door — and select it, same as the click path does.
+  const handleDoorDraw = (chain: Edge[]) => {
+    setDoc((d) => {
+      const next = applyDoorDraw(d, chain);
+      if (next !== d && next.doors.length > 0) {
+        setSelection({
+          kind: 'door',
+          id: next.doors[next.doors.length - 1].id,
+        });
+      }
+      return next;
+    });
+  };
   const handleEdgeClick = (edge: Edge) => {
     if (tool === 'wall') setDoc((d) => toggleWall(d, edge));
     if (tool === 'door') {
@@ -506,6 +520,7 @@ export function DungeonBuilder({
               onWallDraw={handleWallDraw}
               onWallErase={handleWallErase}
               onWallReshape={handleWallReshape}
+              onDoorDraw={handleDoorDraw}
               onCellClick={handleCellClick}
               onSelect={setSelection}
             />

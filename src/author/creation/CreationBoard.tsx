@@ -60,10 +60,12 @@ import {
 } from './canvasGeometry';
 import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
 import {
+  applyDoorDraw,
   applyReshape,
   applyWallDraw,
   applyWallErase,
   chainEndpoints,
+  deriveDoorAdd,
   deriveWallAdd,
   deriveWallErase,
   GESTURE_TUNING,
@@ -103,6 +105,9 @@ export interface CreationBoardProps {
    * own fixed far endpoint. Raw chains; the owner applies the same
    * `applyReshape` the preview used. */
   onWallReshape: (oldChains: Edge[][], newChains: Edge[][]) => void;
+  /** A door drag's chain becomes ONE door's edges[] (design §Doors
+   * compose); a door click stays today's per-edge toggle. */
+  onDoorDraw: (chain: Edge[]) => void;
   onCellClick: (cell: Axial) => void;
   onSelect: (selection: Selection) => void;
 }
@@ -123,6 +128,9 @@ function svgPoint(svg: SVGSVGElement, e: PointerEvent): Point {
  * today's single-edge toggle, released on pointer up. */
 interface DrawGesture {
   kind: 'draw' | 'erase';
+  /** The door tool inherits the same drag (design §Doors compose): one
+   * drag's chain becomes ONE door's edges[]. Erase stays wall-only. */
+  tool: 'wall' | 'door';
   a: CornerRef;
   b: CornerRef;
   moved: boolean;
@@ -157,6 +165,7 @@ export function CreationBoard({
   onWallDraw,
   onWallErase,
   onWallReshape,
+  onDoorDraw,
   onCellClick,
   onSelect,
 }: CreationBoardProps) {
@@ -284,9 +293,10 @@ export function CreationBoard({
         chains
       );
     }
-    return gesture.kind === 'draw'
-      ? applyWallDraw(doc, chains[0])
-      : applyWallErase(doc, chains[0]);
+    if (gesture.kind === 'erase') return applyWallErase(doc, chains[0]);
+    return gesture.tool === 'door'
+      ? applyDoorDraw(doc, chains[0])
+      : applyWallDraw(doc, chains[0]);
   }, [gesture, doc, chains]);
   const previewScene = useMemo(
     () => (previewDoc ? boardWallScene(previewDoc, size) : null),
@@ -303,9 +313,10 @@ export function CreationBoard({
       );
       return chains.flatMap((c) => deriveWallAdd(base, c));
     }
-    return gesture.kind === 'draw'
-      ? deriveWallAdd(doc, chains[0])
-      : deriveWallErase(doc, chains[0]);
+    if (gesture.kind === 'erase') return deriveWallErase(doc, chains[0]);
+    return gesture.tool === 'door'
+      ? deriveDoorAdd(doc, chains[0])
+      : deriveWallAdd(doc, chains[0]);
   }, [gesture, doc, chains]);
   const displayDoc = previewDoc ?? doc;
   const scene = previewDoc ? previewScene : wallScene;
@@ -420,6 +431,7 @@ export function CreationBoard({
         const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
         setGesture({
           kind: erase ? 'erase' : 'draw',
+          tool: 'wall',
           a,
           b: a,
           moved: false,
@@ -428,7 +440,20 @@ export function CreationBoard({
         setHoverEdge(null);
         return;
       }
-      onEdgeClick(pressEdge);
+      if (e.shiftKey || e.button === 2) {
+        onEdgeClick(pressEdge);
+        return;
+      }
+      const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
+      setGesture({
+        kind: 'draw',
+        tool: 'door',
+        a,
+        b: a,
+        moved: false,
+        pressEdge,
+      });
+      setHoverEdge(null);
       return;
     }
     if (tool === 'select') {
@@ -546,8 +571,9 @@ export function CreationBoard({
       return;
     }
     if (sameCorner(gesture.a, gesture.b, size, o)) return;
-    if (gesture.kind === 'draw') onWallDraw(chains[0]);
-    else onWallErase(chains[0]);
+    if (gesture.kind === 'erase') onWallErase(chains[0]);
+    else if (gesture.tool === 'door') onDoorDraw(chains[0]);
+    else onWallDraw(chains[0]);
   };
 
   const selectedRegion = selection?.kind === 'region' ? selection.id : null;
