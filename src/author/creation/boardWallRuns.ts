@@ -57,9 +57,12 @@
 import {
   cubeToWorld,
   HEX_SIZE,
+  hexEdgeBetween,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
 import { boundariesToWallRuns } from '@/components/session/atlasWallRuns';
+import { positionToCube } from '@/components/session/positionBridge';
+import { vertexKey } from '@/hooks/authoredWallRuns';
 import { create } from '@bufbuild/protobuf';
 import {
   GetAtlasResponseSchema,
@@ -92,11 +95,21 @@ export function worldToBoard(
 }
 
 /** One straight wall run in SVG user space, keyed by the shared
- * module's own stable run key. */
+ * module's own stable run key — and carrying the document edges it was
+ * derived from (rpg-dnd5e-web#804), so a rendered run can answer "which
+ * doc edges am I" for hit-testing, selection, and the gesture's
+ * endpoint handles. Presentation metadata threaded ADDITIVELY on the
+ * board side only: the shared 3D module's geometry is untouched; the
+ * mapping rides the run's own `key`, which is the ';'-join of one token
+ * per constituent edge (`vertexKey(a)|vertexKey(b)` from
+ * `hexEdgeBetween` — see `edgeFitDataByToken`'s doc comment in
+ * atlasWallRuns.ts for why that token is bit-identical when recomputed
+ * here from the same cell pair). */
 export interface BoardWallRun {
   key: string;
   a: Point;
   b: Point;
+  edges: Edge[];
 }
 
 /** One door, drawn IN its run's gap (aligned to the straightened run,
@@ -131,10 +144,24 @@ const pos = (a: Axial) => ({ x: a.q, y: a.r });
 export function docAtlasFacts(doc: DungeonDoc): {
   facts: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways'>;
   doorSources: { doorId: string; edge: Edge }[];
+  /** Run-key token (one per non-door edge, exactly as the chaining
+   * engine builds them into each run's `key`) → the document edge it
+   * came from — how `boardWallScene` threads each run's source edges
+   * through (#804). */
+  wallSourcesByToken: Map<string, Edge>;
 } {
   const doorSources = doc.doors.flatMap((d) =>
     d.edges.map((edge) => ({ doorId: d.id, edge }))
   );
+  const wallSourcesByToken = new Map<string, Edge>();
+  for (const edge of doc.walls) {
+    const { a, b } = hexEdgeBetween(
+      positionToCube({ x: edge[0].q, y: edge[0].r } as never),
+      positionToCube({ x: edge[1].q, y: edge[1].r } as never),
+      HEX_SIZE
+    );
+    wallSourcesByToken.set(`${vertexKey(a)}|${vertexKey(b)}`, edge);
+  }
   const facts = create(GetAtlasResponseSchema, {
     cells: doc.regions
       .flatMap((r) => r.cells)
@@ -152,7 +179,7 @@ export function docAtlasFacts(doc: DungeonDoc): {
       to: pos(b),
     })),
   });
-  return { facts, doorSources };
+  return { facts, doorSources, wallSourcesByToken };
 }
 
 /**
@@ -169,13 +196,21 @@ export function boardWallScene(
   boardHexSize: number
 ): BoardWallScene | null {
   if (doc.orientation !== 'pointy') return null;
-  const { facts, doorSources } = docAtlasFacts(doc);
+  const { facts, doorSources, wallSourcesByToken } = docAtlasFacts(doc);
   const { wallRuns, doorGaps } = boundariesToWallRuns(facts, HEX_SIZE);
   const project = (w: WorldPos) => worldToBoard(w, HEX_SIZE, boardHexSize);
   const runs: BoardWallRun[] = wallRuns.map((r) => ({
     key: r.key,
     a: project(r.start),
     b: project(r.end),
+    // Every token in a run's key is one constituent non-door edge; a
+    // missing lookup is never expected (every boundary fed to the
+    // engine came from doc.walls above) and is dropped rather than
+    // invented.
+    edges: r.key
+      .split(';')
+      .map((token) => wallSourcesByToken.get(token))
+      .filter((e): e is Edge => e !== undefined),
   }));
   const doors: BoardDoorRun[] = [];
   doorGaps.forEach((gap, i) => {

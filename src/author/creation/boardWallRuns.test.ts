@@ -16,7 +16,7 @@ import { hexCenter } from '../../concepts/session-tomb/atlas';
 import { emptyDungeon, paintCell, toggleWall } from '../dungeonYaml';
 import { fixtureAtlasOf } from '../fixtures/fixtureAtlas';
 import { referenceTombDoc } from '../fixtures/referenceTomb';
-import { fromOffset, type Axial } from '../hexOffset';
+import { edgeKey, fromOffset, type Axial } from '../hexOffset';
 import { BOARD_HEX_SIZE } from './CreationBoard';
 import {
   boardWallScene,
@@ -110,6 +110,18 @@ describe('boardWallScene', () => {
     const scene2d = boardWallScene(referenceTombDoc(), BOARD_HEX_SIZE)!;
     for (const run of scene2d.runs) {
       expect(Math.abs(run.a.x - run.b.x)).toBeLessThan(1e-6 * BOARD_HEX_SIZE);
+    }
+  });
+
+  it('threads each run’s source doc edges through (#804) — the union is exactly walls[]', () => {
+    const doc = referenceTombDoc();
+    const scene2d = boardWallScene(doc, BOARD_HEX_SIZE)!;
+    const threaded = scene2d.runs.flatMap((r) => r.edges).map(edgeKey);
+    // Every doc wall appears in exactly one run's source list, and no
+    // run carries an edge the doc doesn't have.
+    expect(threaded.sort()).toEqual(doc.walls.map(edgeKey).sort());
+    for (const run of scene2d.runs) {
+      expect(run.edges.length).toBeGreaterThan(0);
     }
   });
 

@@ -337,10 +337,23 @@ export function computeAuthoredWallRuns(
     let currentKey = otherEnd(firstEdge, startKey).key;
 
     while (!doorVertexKeys.has(currentKey)) {
-      const options = (adjacency.get(currentKey) ?? []).filter(
-        (g) => !used.has(g)
-      );
-      if (options.length !== 1) break; // dead end (0) or branch/junction (2+)
+      // Softness is the vertex's TRUE degree, never its unused-edge
+      // count (rpg-dnd5e-web#808, Kirk's walk: "the bottom room east
+      // wall does not match the corner"). The original check counted
+      // only UNUSED incident edges, so a genuine branch vertex
+      // degraded to "soft" once an earlier chain had consumed one of
+      // its edges — a later walk then continued straight THROUGH the
+      // junction, absorbing the far side into its own chain (measured:
+      // a 3-way corner's diagonal overshooting the junction and taking
+      // two of the crossing wall's edges with it), with the outcome
+      // depending on which chain happened to walk first. This module's
+      // own contract (header doc: "break at any branch/junction — a
+      // vertex with more than 2 wall edges") is a statement about the
+      // GRAPH, so it is asked of the graph.
+      const incident = adjacency.get(currentKey) ?? [];
+      if (incident.length !== 2) break; // dead end (<2) or branch/junction (3+)
+      const options = incident.filter((g) => !used.has(g));
+      if (options.length !== 1) break; // the one continuation is already taken
       const next = options[0]!;
       const candidateEnd = otherEnd(next, currentKey);
       const fitsWithinTolerance = [...visited, candidateEnd.pos].every(

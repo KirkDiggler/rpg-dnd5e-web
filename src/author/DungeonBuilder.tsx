@@ -21,11 +21,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   defaultAuthoringClient,
   errorMessageOf,
+  staleAtlasNotice,
   usePutDungeonPreview,
   useSaveDungeon,
   type AuthoringClient,
 } from './authoringRpc';
 import { CreationBoard } from './creation/CreationBoard';
+import {
+  applyDoorDraw,
+  applyReshape,
+  applyWallDraw,
+  applyWallErase,
+} from './creation/wallGesture';
 import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
@@ -40,6 +47,7 @@ import {
   placeAt,
   removePlacement,
   removeRegion,
+  removeWalls,
   resolveErrorTargets,
   setStart,
   toggleDoorEdge,
@@ -50,7 +58,7 @@ import {
   updateRegion,
   type DungeonDoc,
 } from './dungeonYaml';
-import { type Axial, type Edge, type Orientation } from './hexOffset';
+import { edgeKey, type Axial, type Edge, type Orientation } from './hexOffset';
 import { Inspector } from './Inspector';
 import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
@@ -295,6 +303,49 @@ export function DungeonBuilder({
     if (activeRegionId) setDoc((d) => paintCell(d, activeRegionId, cell));
   };
   const handleErase = (cell: Axial) => setDoc((d) => eraseCell(d, cell));
+  // The wall drag commits its RAW taut chain; applying the same
+  // mutator composition the board's live preview used (wallGesture's
+  // apply*) is what makes the preview the commit (#804).
+  const handleWallDraw = (chain: Edge[]) => {
+    setDoc((d) => applyWallDraw(d, chain));
+  };
+  const handleWallErase = (chain: Edge[]) => {
+    setDoc((d) => applyWallErase(d, chain));
+  };
+  // Manipulation rides selection (Kirk's walk ruling): keep the wall
+  // selected through a reshape by re-selecting the edges the re-derived
+  // chains produced, so its handles stay up for the next grab.
+  const handleWallReshape = (oldChains: Edge[][], newChains: Edge[][]) => {
+    setDoc((d) => {
+      const next = applyReshape(d, oldChains, newChains);
+      if (next !== d) {
+        const untouched = new Set(
+          removeWalls(
+            d,
+            oldChains.flatMap((c) => c)
+          ).walls.map(edgeKey)
+        );
+        setSelection({
+          kind: 'wall',
+          edges: next.walls.filter((w) => !untouched.has(edgeKey(w))),
+        });
+      }
+      return next;
+    });
+  };
+  // One drag, ONE door — and select it, same as the click path does.
+  const handleDoorDraw = (chain: Edge[]) => {
+    setDoc((d) => {
+      const next = applyDoorDraw(d, chain);
+      if (next !== d && next.doors.length > 0) {
+        setSelection({
+          kind: 'door',
+          id: next.doors[next.doors.length - 1].id,
+        });
+      }
+      return next;
+    });
+  };
   const handleEdgeClick = (edge: Edge) => {
     if (tool === 'wall') setDoc((d) => toggleWall(d, edge));
     if (tool === 'door') {
@@ -485,6 +536,10 @@ export function DungeonBuilder({
               onPaint={handlePaint}
               onErase={handleErase}
               onEdgeClick={handleEdgeClick}
+              onWallDraw={handleWallDraw}
+              onWallErase={handleWallErase}
+              onWallReshape={handleWallReshape}
+              onDoorDraw={handleDoorDraw}
               onCellClick={handleCellClick}
               onSelect={setSelection}
             />
@@ -493,6 +548,7 @@ export function DungeonBuilder({
               atlas={preview.atlas}
               doc={doc}
               status={statusLine}
+              staleNotice={staleAtlasNotice(preview)}
             />
           )}
         </div>
@@ -519,6 +575,10 @@ export function DungeonBuilder({
               setDoc((d) => updateDoor(d, id, patch));
               if (patch.id !== undefined)
                 setSelection({ kind: 'door', id: patch.id });
+            }}
+            onRemoveWall={(edges) => {
+              setDoc((d) => removeWalls(d, edges));
+              setSelection({ kind: 'dungeon' });
             }}
             onRemoveDoor={(id) => {
               setDoc((d) => ({

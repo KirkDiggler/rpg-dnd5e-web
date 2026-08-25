@@ -34,6 +34,7 @@ function mountPlacement(
       onRemoveDoor={noop}
       onPlacement={overrides.onPlacement ?? noop}
       onRemovePlacement={noop}
+      onRemoveWall={noop}
     />
   );
 }
@@ -116,5 +117,58 @@ describe('PlacementPanel facing/offset (rpg-project#261)', () => {
     mountPlacement(doc);
     expect(screen.queryByTestId('facing-compass')).toBeNull();
     expect(screen.queryByLabelText('x')).toBeNull();
+  });
+});
+
+describe('wall selection (#804)', () => {
+  it('shows "Wall — N edges" for the selected run and deletes all of them', () => {
+    let doc = emptyDungeon('pointy');
+    doc = {
+      ...doc,
+      regions: [{ ...doc.regions[0], cells: [p(0, 0), p(1, 0), p(0, 1)] }],
+      walls: [
+        [p(0, 0), p(1, 0)],
+        [p(0, 0), p(0, 1)],
+      ],
+    };
+    const onRemoveWall = vi.fn();
+    render(
+      <Inspector
+        doc={doc}
+        selection={{ kind: 'wall', edges: doc.walls }}
+        onDungeon={noop}
+        onRegion={noop}
+        onRemoveRegion={noop}
+        onDoor={noop}
+        onRemoveDoor={noop}
+        onPlacement={noop}
+        onRemovePlacement={noop}
+        onRemoveWall={onRemoveWall}
+      />
+    );
+    expect(screen.getByTestId('wall-panel').textContent).toContain(
+      'Wall — 2 edges'
+    );
+    fireEvent.click(screen.getByRole('button', { name: /delete wall/i }));
+    expect(onRemoveWall).toHaveBeenCalledWith(doc.walls);
+  });
+
+  it('a wall selection whose edges are all gone falls back to the dungeon panel', () => {
+    const doc = emptyDungeon('pointy');
+    render(
+      <Inspector
+        doc={doc}
+        selection={{ kind: 'wall', edges: [[p(0, 0), p(1, 0)]] }}
+        onDungeon={noop}
+        onRegion={noop}
+        onRemoveRegion={noop}
+        onDoor={noop}
+        onRemoveDoor={noop}
+        onPlacement={noop}
+        onRemovePlacement={noop}
+        onRemoveWall={noop}
+      />
+    );
+    expect(screen.getByTestId('dungeon-panel')).toBeTruthy();
   });
 });

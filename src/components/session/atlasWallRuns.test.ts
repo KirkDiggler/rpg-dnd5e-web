@@ -34,6 +34,7 @@
  */
 import { hexEdgeBetween, type CubeCoord } from '@/components/hex-grid/hexMath';
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import { DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN } from '@/hooks/wallRuns';
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import {
@@ -1399,5 +1400,297 @@ describe('boundariesToWallRuns — small edge cases', () => {
       1
     );
     expect(scene).toEqual({ wallRuns: [], doorGaps: [] });
+  });
+});
+
+describe('boundariesToWallRuns — input order is canonicalized (rpg-dnd5e-web#808)', () => {
+  // Kirk's walk: "the bottom room east wall does not match the corner.
+  // it seems the view from the 2d does not match the 3d." Same edge
+  // SET, two callers, two iteration orders — the 2D board hands this
+  // module the document's stroke order, the server's compiled atlas
+  // arrives sorted — and before canonicalization the chain walk's
+  // branch-vertex membership (and so each chain's fitted line and every
+  // downstream corner joint) depended on that order: this very fixture
+  // put one seam's fitted line HALF A HEX apart between the two orders,
+  // and 20/20 random permutations differed. The one-formula law is only
+  // real if the answer depends on the input set, not the caller's
+  // iteration order.
+  //
+  // The shape is Kirk's own east corner, minimized: a horizontal row
+  // seam (H), a descending diagonal (D), and a column seam (V), all
+  // meeting at one lattice vertex — a 3-way branch.
+  const offsetCell = (col: number, row: number) =>
+    pos(col - (row - (row & 1)) / 2, row);
+  const cells: ReturnType<typeof pos>[] = [];
+  for (let row = 0; row <= 8; row += 1) {
+    for (let col = 0; col <= 11; col += 1) cells.push(offsetCell(col, row));
+  }
+  const pair = (a: [number, number], b: [number, number]) => ({
+    from: pos(a[0], a[1]),
+    to: pos(b[0], b[1]),
+    blocksMovement: true,
+    blocksLineOfSight: true,
+  });
+  const H: [number, number][][] = [
+    [
+      [1, 3],
+      [0, 4],
+    ],
+    [
+      [1, 3],
+      [1, 4],
+    ],
+    [
+      [2, 3],
+      [1, 4],
+    ],
+    [
+      [2, 3],
+      [2, 4],
+    ],
+    [
+      [3, 3],
+      [2, 4],
+    ],
+    [
+      [3, 3],
+      [3, 4],
+    ],
+    [
+      [4, 3],
+      [3, 4],
+    ],
+    [
+      [4, 3],
+      [4, 4],
+    ],
+    [
+      [5, 3],
+      [4, 4],
+    ],
+    [
+      [5, 3],
+      [5, 4],
+    ],
+    [
+      [6, 3],
+      [5, 4],
+    ],
+    [
+      [6, 3],
+      [6, 4],
+    ],
+    [
+      [7, 3],
+      [6, 4],
+    ],
+    [
+      [7, 3],
+      [7, 4],
+    ],
+  ];
+  const D: [number, number][][] = [
+    [
+      [4, 0],
+      [5, 0],
+    ],
+    [
+      [5, 0],
+      [4, 1],
+    ],
+    [
+      [5, 0],
+      [5, 1],
+    ],
+    [
+      [6, 0],
+      [5, 1],
+    ],
+    [
+      [5, 1],
+      [6, 1],
+    ],
+    [
+      [6, 1],
+      [5, 2],
+    ],
+    [
+      [6, 1],
+      [6, 2],
+    ],
+    [
+      [7, 1],
+      [6, 2],
+    ],
+    [
+      [6, 2],
+      [7, 2],
+    ],
+    [
+      [7, 2],
+      [6, 3],
+    ],
+    [
+      [7, 2],
+      [7, 3],
+    ],
+    [
+      [8, 2],
+      [7, 3],
+    ],
+    [
+      [7, 3],
+      [8, 3],
+    ],
+  ];
+  const V: [number, number][][] = [
+    [
+      [8, 3],
+      [7, 4],
+    ],
+    [
+      [7, 4],
+      [8, 4],
+    ],
+    [
+      [7, 4],
+      [7, 5],
+    ],
+    [
+      [6, 5],
+      [7, 5],
+    ],
+    [
+      [7, 5],
+      [6, 6],
+    ],
+    [
+      [6, 6],
+      [7, 6],
+    ],
+    [
+      [6, 6],
+      [6, 7],
+    ],
+    [
+      [5, 7],
+      [6, 7],
+    ],
+  ];
+  const strokeOrder = [...H, ...D, ...V].map(([a, b]) => pair(a, b));
+
+  const runsOf = (boundaries: typeof strokeOrder) =>
+    boundariesToWallRuns({ cells, boundaries, doorways: [] } as never, 1)
+      .wallRuns;
+
+  it('every permutation of the same edges derives the identical scene, float-exact', () => {
+    const reference = runsOf(strokeOrder);
+    expect(reference.length).toBeGreaterThan(1);
+    // A deterministic LCG so the shuffles are reproducible.
+    let state = 42;
+    const rng = () =>
+      (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    for (let trial = 0; trial < 12; trial += 1) {
+      const shuffled = [...strokeOrder];
+      for (let i = shuffled.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rng() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      expect(runsOf(shuffled)).toEqual(reference);
+    }
+  });
+
+  it('the doc feed and the server feed converge — direction swaps, sorting, and a door on one arm included', () => {
+    // The two real callers do not even agree on PAIR DIRECTION: the
+    // web doc normalizes an edge by (r, then q) while the server's
+    // normalizeDoorEdge uses (q, then r), and the server additionally
+    // sorts boundaries and doorways where the doc feeds stroke order.
+    // With a doorway mid-H (Kirk's own seam has one), build both
+    // feeds and assert the scenes agree: runs to float noise, and the
+    // door gap's center AND leaf end identical — the door's own
+    // orientation logic must not let a swapped wire pair hang the leaf
+    // from the other end.
+    const doorPair = H[7];
+    const wallPairs = [...H.slice(0, 7), ...H.slice(8), ...D, ...V];
+    const docDir = (a: [number, number], b: [number, number]) =>
+      a[1] < b[1] || (a[1] === b[1] && a[0] <= b[0]) ? [a, b] : [b, a];
+    const srvDir = (a: [number, number], b: [number, number]) =>
+      a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? [a, b] : [b, a];
+    const factsFor = (dir: typeof docDir, serverSort: boolean) => {
+      let boundaries = wallPairs.map(([a, b]) => {
+        const [f, t] = dir(a, b);
+        return pair(f as [number, number], t as [number, number]);
+      });
+      if (serverSort) {
+        boundaries = [...boundaries].sort((x, y) => {
+          const fx = x.from as unknown as { x: number; y: number };
+          const fy = y.from as unknown as { x: number; y: number };
+          if (fx.x !== fy.x) return fx.x - fy.x;
+          if (fx.y !== fy.y) return fx.y - fy.y;
+          const tx = x.to as unknown as { x: number; y: number };
+          const ty = y.to as unknown as { x: number; y: number };
+          return tx.x !== ty.x ? tx.x - ty.x : tx.y - ty.y;
+        });
+      }
+      const [df, dt] = dir(doorPair[0], doorPair[1]);
+      return {
+        cells,
+        boundaries,
+        doorways: [
+          {
+            connection: 'door-1',
+            from: pos((df as number[])[0], (df as number[])[1]),
+            to: pos((dt as number[])[0], (dt as number[])[1]),
+          },
+        ],
+      } as never;
+    };
+    const doc = boundariesToWallRuns(factsFor(docDir, false), 1);
+    const srv = boundariesToWallRuns(factsFor(srvDir, true), 1);
+    expect(srv.wallRuns.length).toBe(doc.wallRuns.length);
+    const sig = (runs: readonly AuthoredWallRun[]) =>
+      [...runs]
+        .map((r) => [r.start.x, r.start.z, r.end.x, r.end.z])
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const a = sig(doc.wallRuns);
+    const b = sig(srv.wallRuns);
+    for (let i = 0; i < a.length; i += 1) {
+      for (let k = 0; k < 4; k += 1) {
+        // Not exact: hexEdgeBetween enumerates the FROM cell's
+        // corners, so a swapped pair carries ~1e-15 trig noise.
+        expect(Math.abs(a[i][k] - b[i][k])).toBeLessThan(1e-9);
+      }
+    }
+    const dg = doc.doorGaps[0];
+    const sg = srv.doorGaps[0];
+    expect(
+      Math.hypot(dg.position.x - sg.position.x, dg.position.z - sg.position.z)
+    ).toBeLessThan(1e-9);
+    expect(
+      Math.hypot(
+        dg.leafPosition.x - sg.leafPosition.x,
+        dg.leafPosition.z - sg.leafPosition.z
+      )
+    ).toBeLessThan(1e-9);
+  });
+
+  it('the 3-way corner closes: all three runs meet within the corner-overlap miter', () => {
+    const runs = runsOf(strokeOrder);
+    expect(runs).toHaveLength(3);
+    // Each pair of runs has a facing-endpoint separation no larger than
+    // the two overlap-margin extensions the closure deliberately adds.
+    for (let i = 0; i < runs.length; i += 1) {
+      for (let j = i + 1; j < runs.length; j += 1) {
+        let min = Infinity;
+        for (const a of [runs[i].start, runs[i].end]) {
+          for (const b of [runs[j].start, runs[j].end]) {
+            min = Math.min(min, distanceBetween(a, b));
+          }
+        }
+        expect(min).toBeLessThanOrEqual(
+          2 * DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN + 1e-9
+        );
+      }
+    }
   });
 });

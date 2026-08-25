@@ -12,6 +12,7 @@
 import { facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -23,6 +24,7 @@ import {
   doorEdgeOwners,
   floorOwners,
   isMonsterRef,
+  removeWalls,
   type DungeonDoc,
   type ErrorTarget,
 } from '../dungeonYaml';
@@ -33,14 +35,14 @@ import {
   DOOR_STROKE,
   ERROR_STROKE,
   HOVER_STROKE,
+  litColor,
   MONSTER_COLOR,
   PROP_COLOR,
+  regionColor,
   START_COLOR,
   VOID_FILL,
   VOID_STROKE,
   WALL_STROKE,
-  litColor,
-  regionColor,
 } from '../markerStyle';
 import { thumbForRef } from '../paletteData';
 import type { BoardTool, Selection } from '../types';
@@ -56,6 +58,23 @@ import {
   viewRectFor,
   type GridBounds,
 } from './canvasGeometry';
+import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
+import {
+  applyDoorDraw,
+  applyReshape,
+  applyWallDraw,
+  applyWallErase,
+  chainEndpoints,
+  deriveDoorAdd,
+  deriveWallAdd,
+  deriveWallErase,
+  GESTURE_TUNING,
+  nearestRunIndex,
+  runVertices,
+  snapGesturePoint,
+  tautPath,
+  type RunVertex,
+} from './wallGesture';
 
 export const BOARD_HEX_SIZE = 24;
 
@@ -75,6 +94,20 @@ export interface CreationBoardProps {
   onPaint: (cell: Axial) => void;
   onErase: (cell: Axial) => void;
   onEdgeClick: (edge: Edge) => void;
+  /** The wall drag's commit (#804): the RAW taut chain of the released
+   * drag — the owner applies the same `applyWallDraw` the preview used,
+   * so the preview IS the commit. */
+  onWallDraw: (chain: Edge[]) => void;
+  /** Shift/right-drag erase along the same derived path (ruling 3). */
+  onWallErase: (chain: Edge[]) => void;
+  /** Rulings 2 + 4: an endpoint or shared-corner drag replaces each
+   * incident run's old edges with its chain re-derived from that run's
+   * own fixed far endpoint. Raw chains; the owner applies the same
+   * `applyReshape` the preview used. */
+  onWallReshape: (oldChains: Edge[][], newChains: Edge[][]) => void;
+  /** A door drag's chain becomes ONE door's edges[] (design §Doors
+   * compose); a door click stays today's per-edge toggle. */
+  onDoorDraw: (chain: Edge[]) => void;
   onCellClick: (cell: Axial) => void;
   onSelect: (selection: Selection) => void;
 }
@@ -90,6 +123,36 @@ function svgPoint(svg: SVGSVGElement, e: PointerEvent): Point {
   return { x: p.x, y: p.y };
 }
 
+/** One in-flight wall drag (#804). `pressEdge` carries the click
+ * fallback: a press that never moves off its snapped corner stays
+ * today's single-edge toggle, released on pointer up. */
+interface DrawGesture {
+  kind: 'draw' | 'erase';
+  /** The door tool inherits the same drag (design §Doors compose): one
+   * drag's chain becomes ONE door's edges[]. Erase stays wall-only. */
+  tool: 'wall' | 'door';
+  a: CornerRef;
+  b: CornerRef;
+  moved: boolean;
+  pressEdge: Edge;
+}
+
+/** An endpoint or shared-corner grab (rulings 2 + 4): every incident
+ * chain re-derives from its own fixed far endpoint to wherever B goes.
+ * The endpoint grab is the one-incident-chain case. */
+interface ReshapeGesture {
+  kind: 'reshape';
+  chains: { far: CornerRef; old: Edge[] }[];
+  origin: CornerRef;
+  b: CornerRef;
+  moved: boolean;
+  /** Indices of the grabbed runs — their own vertices are excluded
+   * from the magnetism targets so the drag doesn't stick to itself. */
+  draggedRuns: number[];
+}
+
+type DragOrReshape = DrawGesture | ReshapeGesture;
+
 export function CreationBoard({
   doc,
   tool,
@@ -99,6 +162,10 @@ export function CreationBoard({
   onPaint,
   onErase,
   onEdgeClick,
+  onWallDraw,
+  onWallErase,
+  onWallReshape,
+  onDoorDraw,
   onCellClick,
   onSelect,
 }: CreationBoardProps) {
@@ -187,6 +254,129 @@ export function CreationBoard({
   // the document directly, not the debounced server compile, so the
   // wall the author just clicked straightens immediately.
   const wallScene = useMemo(() => boardWallScene(doc, size), [doc, size]);
+  const [gesture, setGesture] = useState<DragOrReshape | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
+  // The magnetism targets and (later) drag handles: the lattice
+  // vertices at the ends of the COMMITTED doc's rendered chains —
+  // never the mid-gesture candidate's, or the endpoint would chase its
+  // own preview.
+  const vertices = useMemo(
+    () => (wallScene ? runVertices(wallScene.runs, size, o) : []),
+    [wallScene, size, o]
+  );
+  // THE PREVIEW IS THE COMMIT: the candidate document is the same
+  // mutator composition the release applies (wallGesture's apply*),
+  // and its runs come from the same shared geometry module. On
+  // flat-top docs boardWallScene stays null and the literal edge
+  // drawing below previews the candidate doc instead — the honest
+  // picture there (#763).
+  const chains = useMemo(() => {
+    if (!gesture) return [];
+    if (gesture.kind === 'reshape') {
+      return gesture.chains.map((c) => tautPath(c.far, gesture.b, size, o));
+    }
+    return [tautPath(gesture.a, gesture.b, size, o)];
+  }, [gesture, size, o]);
+  const previewDoc = useMemo(() => {
+    if (!gesture || !gesture.moved) return null;
+    if (gesture.kind === 'reshape') {
+      return applyReshape(
+        doc,
+        gesture.chains.map((c) => c.old),
+        chains
+      );
+    }
+    if (gesture.kind === 'erase') return applyWallErase(doc, chains[0]);
+    return gesture.tool === 'door'
+      ? applyDoorDraw(doc, chains[0])
+      : applyWallDraw(doc, chains[0]);
+  }, [gesture, doc, chains]);
+  const previewScene = useMemo(
+    () => (previewDoc ? boardWallScene(previewDoc, size) : null),
+    [previewDoc, size]
+  );
+  // The faint literal trace of the candidate edges (draw), or of the
+  // edges about to be removed (erase).
+  const traceEdges = useMemo(() => {
+    if (!gesture || !gesture.moved) return [];
+    if (gesture.kind === 'reshape') {
+      const base = removeWalls(
+        doc,
+        gesture.chains.flatMap((c) => c.old)
+      );
+      // Two re-derived chains can share an edge near the dragged
+      // vertex; dedup so the trace draws (and keys) each edge once.
+      const seen = new Set<string>();
+      return chains
+        .flatMap((c) => deriveWallAdd(base, c))
+        .filter((edge) => {
+          const key = edgeKey(edge);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    }
+    if (gesture.kind === 'erase') return deriveWallErase(doc, chains[0]);
+    return gesture.tool === 'door'
+      ? deriveDoorAdd(doc, chains[0])
+      : deriveWallAdd(doc, chains[0]);
+  }, [gesture, doc, chains]);
+  const displayDoc = previewDoc ?? doc;
+  const scene = previewDoc ? previewScene : wallScene;
+  // Manipulation rides SELECTION (Kirk's walk ruling, 2026-08-25 —
+  // Strava-route-builder grammar): selecting a wall shows its handles
+  // immediately and they drag right there with the Select tool; the
+  // wall tool stays pure draw/erase, so pressing near a chain end
+  // CONTINUES the wall instead of grabbing it (the old hover-grab made
+  // continuation impossible within the pickup radius).
+  const selectedRunIndices = useMemo(() => {
+    if (!wallScene || selection?.kind !== 'wall') return new Set<number>();
+    const keys = new Set(selection.edges.map(edgeKey));
+    const indices = new Set<number>();
+    wallScene.runs.forEach((r, i) => {
+      if (r.edges.some((edge) => keys.has(edgeKey(edge)))) indices.add(i);
+    });
+    return indices;
+  }, [wallScene, selection]);
+  const handleVertices = useMemo(
+    () =>
+      selectedRunIndices.size === 0
+        ? []
+        : vertices.filter((v) => v.runs.some((i) => selectedRunIndices.has(i))),
+    [vertices, selectedRunIndices]
+  );
+  // The selected wall's handle nearest `p`, within the pickup radius —
+  // used for the hover affordance AND hit-tested directly on pointer
+  // down (Copilot review, PR #808: gating the press on hover state
+  // misses direct-touch input, which presses without a hover pass).
+  const handleAt = useCallback(
+    (p: Point): RunVertex | null => {
+      let best: RunVertex | null = null;
+      let bestDist = GESTURE_TUNING.cornerSnapRadius * size;
+      for (const v of handleVertices) {
+        const d = Math.hypot(v.point.x - p.x, v.point.y - p.y);
+        if (d <= bestDist) {
+          best = v;
+          bestDist = d;
+        }
+      }
+      return best;
+    },
+    [handleVertices, size]
+  );
+  const hoverVertex = useMemo(
+    () =>
+      tool !== 'select' || gesture || !hoverPoint ? null : handleAt(hoverPoint),
+    [tool, gesture, hoverPoint, handleAt]
+  );
+  useEffect(() => {
+    if (!gesture) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setGesture(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [gesture]);
   const doorById = useMemo(
     () => new Map(doc.doors.map((d) => [d.id, d] as const)),
     [doc.doors]
@@ -239,10 +429,73 @@ export function CreationBoard({
     }
     if (edgeTool) {
       if (!svgRef.current || !owners.has(axialKey(cell))) return;
-      onEdgeClick(nearestEdge(cell, svgPoint(svgRef.current, e), size, o));
+      const p = svgPoint(svgRef.current, e);
+      const pressEdge = nearestEdge(cell, p, size, o);
+      if (tool === 'wall') {
+        const erase = e.shiftKey || e.button === 2;
+        // Press anchors A (wall-vertex magnetism first, then the
+        // corner lattice); release decides click vs drag. Shift or
+        // right button erases along the derived path (ruling 3).
+        // Pressing at an existing chain's rendered end magnetizes A
+        // onto its vertex — that is how a wall is CONTINUED.
+        const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
+        setGesture({
+          kind: erase ? 'erase' : 'draw',
+          tool: 'wall',
+          a,
+          b: a,
+          moved: false,
+          pressEdge,
+        });
+        setHoverEdge(null);
+        return;
+      }
+      if (e.shiftKey || e.button === 2) {
+        onEdgeClick(pressEdge);
+        return;
+      }
+      const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
+      setGesture({
+        kind: 'draw',
+        tool: 'door',
+        a,
+        b: a,
+        moved: false,
+        pressEdge,
+      });
+      setHoverEdge(null);
       return;
     }
     if (tool === 'select') {
+      // A handle on the selected wall grabs its incident chains
+      // (rulings 2 + 4, riding selection): each re-derives from its own
+      // far endpoint — the chain's OTHER odd-degree lattice vertex.
+      // Hit-tested against the press point itself, not hover state.
+      const grabbed =
+        wallScene && svgRef.current
+          ? handleAt(svgPoint(svgRef.current, e))
+          : null;
+      if (grabbed && wallScene) {
+        const chainsToDrag = grabbed.runs.flatMap((runIndex) => {
+          const edges = wallScene.runs[runIndex]?.edges ?? [];
+          const far = chainEndpoints(edges, size, o).find(
+            (r) => !sameCorner(r, grabbed.ref, size, o)
+          );
+          return far ? [{ far, old: [...edges] }] : [];
+        });
+        if (chainsToDrag.length > 0) {
+          setGesture({
+            kind: 'reshape',
+            chains: chainsToDrag,
+            origin: grabbed.ref,
+            b: grabbed.ref,
+            moved: false,
+            draggedRuns: grabbed.runs,
+          });
+          setHoverEdge(null);
+          return;
+        }
+      }
       const key = axialKey(cell);
       const placementIndex = doc.place.findIndex((p) => axialKey(p.at) === key);
       if (placementIndex !== -1) {
@@ -252,6 +505,21 @@ export function CreationBoard({
       if (hoverEdge && doorOwners.has(edgeKey(hoverEdge))) {
         onSelect({ kind: 'door', id: doorOwners.get(edgeKey(hoverEdge))! });
         return;
+      }
+      // A rendered run selects the doc edges behind it, resolved at
+      // click time from the derived scene — no wall id exists and none
+      // is added (#804). Flat-top docs draw literal edges, not runs, so
+      // there is nothing to hit here by construction.
+      if (wallScene && svgRef.current) {
+        const hit = nearestRunIndex(
+          wallScene.runs,
+          svgPoint(svgRef.current, e),
+          size
+        );
+        if (hit !== null) {
+          onSelect({ kind: 'wall', edges: wallScene.runs[hit].edges });
+          return;
+        }
       }
       const owner = owners.get(key);
       if (owner) onSelect({ kind: 'region', id: owner });
@@ -265,6 +533,38 @@ export function CreationBoard({
     setHoverCell(cell);
     if (painting.current && (tool === 'region' || tool === 'erase')) {
       applyBrush(cell, painting.current);
+    }
+    if (gesture && svgRef.current) {
+      // Every move re-snaps B: wall vertices first, then the corner
+      // lattice, with angle magnetism toward the seam families unless
+      // Alt is held (ruling 1). The preview re-derives from the doc on
+      // every change of B — O(chain) + the shared module's O(walls).
+      // A reshape drag skips angle magnetism (several chains would each
+      // want their own origin) and never magnetizes to the vertices of
+      // the runs being dragged — B would stick to its own old position.
+      const p = svgPoint(svgRef.current, e);
+      const anchor = gesture.kind === 'reshape' ? gesture.origin : gesture.a;
+      const b = snapGesturePoint(p, size, o, {
+        origin:
+          gesture.kind === 'reshape'
+            ? undefined
+            : cornerPoint(gesture.a, size, o),
+        alt: e.altKey,
+        wallVertices:
+          gesture.kind === 'reshape'
+            ? vertices.filter(
+                (v) => !v.runs.some((i) => gesture.draggedRuns.includes(i))
+              )
+            : vertices,
+      });
+      const moved = gesture.moved || !sameCorner(b, anchor, size, o);
+      if (moved !== gesture.moved || !sameCorner(b, gesture.b, size, o)) {
+        setGesture({ ...gesture, b, moved });
+      }
+      return;
+    }
+    if (tool === 'select' && svgRef.current) {
+      setHoverPoint(svgPoint(svgRef.current, e));
     }
     if ((edgeTool || tool === 'select') && svgRef.current) {
       if (!owners.has(axialKey(cell))) {
@@ -287,8 +587,44 @@ export function CreationBoard({
     painting.current = null;
   };
 
+  // Release commits (or falls back to the single-edge click); releasing
+  // with B back on A after moving, or Escape, or leaving the canvas,
+  // cancels.
+  const finishGesture = () => {
+    if (!gesture) return;
+    setGesture(null);
+    if (gesture.kind === 'reshape') {
+      // Released in place = no-op; released elsewhere replaces every
+      // grabbed chain with its re-derived one.
+      if (!gesture.moved || sameCorner(gesture.origin, gesture.b, size, o)) {
+        return;
+      }
+      onWallReshape(
+        gesture.chains.map((c) => c.old),
+        chains
+      );
+      return;
+    }
+    if (!gesture.moved) {
+      onEdgeClick(gesture.pressEdge);
+      return;
+    }
+    if (sameCorner(gesture.a, gesture.b, size, o)) return;
+    if (gesture.kind === 'erase') onWallErase(chains[0]);
+    else if (gesture.tool === 'door') onDoorDraw(chains[0]);
+    else onWallDraw(chains[0]);
+  };
+
   const selectedRegion = selection?.kind === 'region' ? selection.id : null;
   const selectedDoor = selection?.kind === 'door' ? selection.id : null;
+  // A selected wall is a set of doc edges; a run reads as selected when
+  // any of its source edges is in the set (the runs re-derive on every
+  // doc change, so membership is resolved at render time).
+  const selectedWallKeys = useMemo(
+    () =>
+      selection?.kind === 'wall' ? new Set(selection.edges.map(edgeKey)) : null,
+    [selection]
+  );
   const selectedPlacement =
     selection?.kind === 'placement' ? selection.index : null;
 
@@ -297,7 +633,7 @@ export function CreationBoard({
   // literal, drawn on top of the runs — an error is edge-scoped truth
   // about what the author clicked, not about the fitted line (#800).
   // On a flat-top document everything stays literal, as before.
-  const straightened = wallScene !== null;
+  const straightened = scene !== null;
   const edgeLines: {
     key: string;
     edge: Edge;
@@ -305,7 +641,7 @@ export function CreationBoard({
     width: number;
     dash?: string;
   }[] = [];
-  for (const w of doc.walls) {
+  for (const w of displayDoc.walls) {
     const isError = errorEdges.has(edgeKey(w));
     if (straightened && !isError) continue;
     edgeLines.push({
@@ -315,7 +651,7 @@ export function CreationBoard({
       width: 4,
     });
   }
-  for (const d of doc.doors) {
+  for (const d of displayDoc.doors) {
     for (const e of d.edges) {
       const k = edgeKey(e);
       const isError = errorEdges.has(k);
@@ -352,13 +688,34 @@ export function CreationBoard({
           style={{
             background: VOID_FILL,
             touchAction: 'none',
-            cursor: cursorFor(tool),
+            cursor:
+              gesture?.kind === 'reshape'
+                ? 'grabbing'
+                : hoverVertex
+                  ? 'grab'
+                  : cursorFor(tool),
           }}
-          onPointerUp={endPaint}
-          onPointerLeave={() => {
+          onPointerUp={() => {
             endPaint();
+            finishGesture();
+          }}
+          onPointerCancel={() => {
+            // A browser-canceled pointer (touch interruption, capture
+            // loss) must drop the in-flight gesture WITHOUT committing
+            // it — otherwise a later unrelated pointer-up would commit
+            // the stale chain (Copilot review, PR #808).
+            endPaint();
+            setGesture(null);
             setHoverEdge(null);
             setHoverCell(null);
+            setHoverPoint(null);
+          }}
+          onPointerLeave={() => {
+            endPaint();
+            setGesture(null);
+            setHoverEdge(null);
+            setHoverCell(null);
+            setHoverPoint(null);
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
@@ -509,19 +866,25 @@ export function CreationBoard({
                 but sits IN the run's gap, exactly where 3D will put it;
                 hit-testing stays edge-based (this layer takes no
                 pointer events). */}
-            {wallScene?.runs.map((r) => (
-              <line
-                key={`run:${r.key}`}
-                data-run={r.key}
-                x1={r.a.x}
-                y1={r.a.y}
-                x2={r.b.x}
-                y2={r.b.y}
-                stroke={WALL_STROKE}
-                strokeWidth={4}
-              />
-            ))}
-            {wallScene?.doors.map((d) => {
+            {scene?.runs.map((r) => {
+              const isSelected =
+                !!selectedWallKeys &&
+                r.edges.some((edge) => selectedWallKeys.has(edgeKey(edge)));
+              return (
+                <line
+                  key={`run:${r.key}`}
+                  data-run={r.key}
+                  data-selected={isSelected || undefined}
+                  stroke={isSelected ? HOVER_STROKE : WALL_STROKE}
+                  strokeWidth={isSelected ? 6 : 4}
+                  x1={r.a.x}
+                  y1={r.a.y}
+                  x2={r.b.x}
+                  y2={r.b.y}
+                />
+              );
+            })}
+            {scene?.doors.map((d) => {
               const doorDoc = doorById.get(d.doorId);
               return (
                 <line
@@ -574,6 +937,78 @@ export function CreationBoard({
                 );
               })()}
           </g>
+          {tool === 'select' && !gesture && (
+            <g data-layer="handles" pointerEvents="none">
+              {/* The selected wall's endpoints and shared corners are
+                  drag handles, visible the moment it is selected
+                  (Kirk's walk ruling: manipulation rides selection,
+                  the Strava-route-builder grammar). Drawn at the
+                  RENDERED endpoints — the points the author sees. */}
+              {handleVertices.map((v) => {
+                const hot =
+                  hoverVertex !== null &&
+                  sameCorner(v.ref, hoverVertex.ref, size, o);
+                return (
+                  <circle
+                    key={`vx:${v.point.x.toFixed(2)},${v.point.y.toFixed(2)}`}
+                    data-run-vertex={v.runs.length}
+                    cx={v.point.x}
+                    cy={v.point.y}
+                    r={size * (hot ? 0.22 : 0.12)}
+                    fill={hot ? HOVER_STROKE : WALL_STROKE}
+                    fillOpacity={hot ? 0.9 : 0.5}
+                    stroke={hot ? HOVER_STROKE : 'none'}
+                  />
+                );
+              })}
+            </g>
+          )}
+          {gesture && gesture.moved && (
+            <g data-layer="gesture" pointerEvents="none">
+              {/* The faint literal trace of the candidate edges — the
+                  chain the drag derived (skipped pairs shown absent),
+                  or the walls the erase will remove. The straightened
+                  result is already live above via the candidate doc. */}
+              {traceEdges.map((edge) => {
+                const seg = edgeSegment(edge, size, o);
+                if (!seg) return null;
+                return (
+                  <line
+                    key={`trace:${edgeKey(edge)}`}
+                    data-gesture-trace={edgeKey(edge)}
+                    x1={seg.a.x}
+                    y1={seg.a.y}
+                    x2={seg.b.x}
+                    y2={seg.b.y}
+                    stroke={
+                      gesture.kind === 'erase' ? ERROR_STROKE : HOVER_STROKE
+                    }
+                    strokeWidth={3}
+                    strokeOpacity={0.4}
+                    strokeDasharray="3 3"
+                  />
+                );
+              })}
+              {(gesture.kind === 'reshape'
+                ? [gesture.b, ...gesture.chains.map((c) => c.far)]
+                : [gesture.a, gesture.b]
+              ).map((end, i) => {
+                const p = cornerPoint(end, size, o);
+                return (
+                  <circle
+                    key={`end:${i}`}
+                    data-gesture-end={i}
+                    cx={p.x}
+                    cy={p.y}
+                    r={size * 0.18}
+                    fill="none"
+                    stroke={HOVER_STROKE}
+                    strokeWidth={2}
+                  />
+                );
+              })}
+            </g>
+          )}
         </svg>
       </div>
     </div>

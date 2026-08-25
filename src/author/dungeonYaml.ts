@@ -655,8 +655,16 @@ export function toggleWall(doc: DungeonDoc, e: Edge): DungeonDoc {
 }
 
 /** An edge the wall/door tools may act on: two adjacent floor cells. */
-export function edgeIsOfferable(doc: DungeonDoc, [a, b]: Edge): boolean {
-  const owners = floorOwners(doc);
+export function edgeIsOfferable(doc: DungeonDoc, edge: Edge): boolean {
+  return edgeOfferableWith(floorOwners(doc), edge);
+}
+
+/** `edgeIsOfferable` against a PRECOMPUTED owner map — the batch
+ * mutators below run per pointer move on the live preview, so they
+ * build `floorOwners` once per call instead of once per edge (Copilot
+ * review, PR #808: the per-edge rebuild made a long drag scan the
+ * whole floor per candidate, O(chain × floor) instead of O(chain)). */
+function edgeOfferableWith(owners: Map<string, string>, [a, b]: Edge): boolean {
   return (
     owners.has(axialKey(a)) &&
     owners.has(axialKey(b)) &&
@@ -665,6 +673,69 @@ export function edgeIsOfferable(doc: DungeonDoc, [a, b]: Edge): boolean {
     Math.abs(a.q + a.r - b.q - b.r) <= 1 &&
     !(a.q === b.q && a.r === b.r)
   );
+}
+
+/** Add every offerable, non-door, not-already-present edge of `edges`
+ * to `walls[]` — the wall gesture's commit (rpg-dnd5e-web#804). Unlike
+ * `toggleWall`, drawing over an existing wall is IDEMPOTENT (the design's
+ * dedup rule): an edge already present is skipped, never removed. Door
+ * edges are skipped (an edge in both lists is a validation failure the
+ * gesture never authors) and the chain simply breaks there. Returns the
+ * same doc when nothing survives the filter. */
+export function addWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
+  const owners = floorOwners(doc);
+  const doorKeys = doorEdgeOwners(doc);
+  const present = wallKeys(doc);
+  const toAdd: Edge[] = [];
+  for (const e of edges) {
+    const key = edgeKey(e);
+    if (
+      !edgeOfferableWith(owners, e) ||
+      doorKeys.has(key) ||
+      present.has(key)
+    ) {
+      continue;
+    }
+    present.add(key);
+    toAdd.push(normalizeEdge(e));
+  }
+  return toAdd.length === 0 ? doc : { ...doc, walls: [...doc.walls, ...toAdd] };
+}
+
+/** Remove every edge of `edges` from `walls[]` — the erase drag's commit
+ * and the wall selection's Delete (rpg-dnd5e-web#804). Door edges are
+ * untouchable by construction: they are never IN `walls[]` (an edge is a
+ * wall OR a door), so filtering `walls` alone is the whole rule. */
+export function removeWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
+  const keys = new Set(edges.map(edgeKey));
+  const walls = doc.walls.filter((w) => !keys.has(edgeKey(w)));
+  return walls.length === doc.walls.length ? doc : { ...doc, walls };
+}
+
+/** One door from one drag's chain (rpg-dnd5e-web#804, design: "a door
+ * drag's chain becomes ONE door's `edges[]`"). Offerable edges only;
+ * edges already belonging to any door are skipped rather than stolen;
+ * walls on the surviving edges are replaced, same as `toggleDoorEdge`'s
+ * wall-or-door rule. Returns the same doc when no edge survives. */
+export function addDoor(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
+  const owners = floorOwners(doc);
+  const doorKeys = doorEdgeOwners(doc);
+  const seen = new Set<string>();
+  const clean: Edge[] = [];
+  for (const e of edges) {
+    const key = edgeKey(e);
+    if (!edgeOfferableWith(owners, e) || doorKeys.has(key) || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    clean.push(normalizeEdge(e));
+  }
+  if (clean.length === 0) return doc;
+  return {
+    ...doc,
+    walls: doc.walls.filter((w) => !seen.has(edgeKey(w))),
+    doors: [...doc.doors, { id: nextDoorId(doc), edges: clean }],
+  };
 }
 
 function nextDoorId(doc: DungeonDoc): string {
