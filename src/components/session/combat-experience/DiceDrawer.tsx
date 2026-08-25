@@ -11,6 +11,10 @@ export interface DiceDrawerProps {
   events: readonly DicePresentationEvent[];
   rollerName: string;
   onReleaseRequest: (event: DicePresentationReleasedEvent) => void;
+  /** Unsafe identifier fallback; never contains or announces the result. */
+  semanticFallback?: boolean;
+  onSemanticReleaseRequest?: () => void;
+  witnessRole?: 'roller' | 'spectator';
 }
 
 export function DiceDrawer({
@@ -18,6 +22,9 @@ export function DiceDrawer({
   events,
   rollerName,
   onReleaseRequest,
+  semanticFallback = false,
+  onSemanticReleaseRequest,
+  witnessRole = 'roller',
 }: DiceDrawerProps) {
   const expanded = phase === 'awaiting-roll' || phase === 'settled';
   if (!expanded) {
@@ -62,12 +69,29 @@ export function DiceDrawer({
         </small>
       </header>
       <div className={styles.dicePresentationStage}>
-        <DiceTrayPresentation
-          label={`${rollerName}’s attack die`}
-          witnessRole="roller"
-          events={events}
-          onReleaseRequest={onReleaseRequest}
-        />
+        {semanticFallback ? (
+          <div>
+            <p role="status" aria-live="polite">
+              {phase === 'settled'
+                ? 'Dice presentation unavailable · authoritative event shown in Story'
+                : 'Dice presentation unavailable · result remains concealed'}
+            </p>
+            {phase === 'awaiting-roll' && onSemanticReleaseRequest && (
+              <button type="button" onClick={onSemanticReleaseRequest}>
+                Reveal result
+              </button>
+            )}
+          </div>
+        ) : (
+          // Provider/WebGL failure remains inside DiceTrayPresentation: its
+          // truthful SVG keeps this same explicit release control available.
+          <DiceTrayPresentation
+            label={`${rollerName}’s attack die`}
+            witnessRole={witnessRole}
+            events={events}
+            onReleaseRequest={onReleaseRequest}
+          />
+        )}
       </div>
     </aside>
   );

@@ -93,6 +93,9 @@ export function CombatExperience({
   debug,
   result,
   diceEvents,
+  diceSemanticFallback,
+  diceWitnessRole,
+  diceRollerName,
   location,
   renderMap,
   onSelectDeclaration,
@@ -100,6 +103,8 @@ export function CombatExperience({
   onEndTurn,
   onLogModeChange,
   onDiceReleaseRequest,
+  onDiceSemanticReleaseRequest,
+  diagnosticsEnabled,
 }: CombatExperienceProps) {
   const viewer = participants.find(
     (participant) => participant.member === viewerMember
@@ -207,13 +212,17 @@ export function CombatExperience({
           streamState={streamState}
           onModeChange={onLogModeChange}
           result={result}
+          diagnosticsEnabled={diagnosticsEnabled}
         />
 
         <DiceDrawer
           phase={phase}
           events={diceEvents}
-          rollerName={viewer?.name ?? 'Your character'}
+          rollerName={diceRollerName ?? viewer?.name ?? 'Your character'}
           onReleaseRequest={onDiceReleaseRequest}
+          semanticFallback={diceSemanticFallback}
+          onSemanticReleaseRequest={onDiceSemanticReleaseRequest}
+          witnessRole={diceWitnessRole}
         />
 
         <div data-testid="session-combat-dock" className={styles.dock}>

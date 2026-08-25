@@ -1,4 +1,5 @@
 import styles from './CombatExperience.module.css';
+import { isCombatDebugEnabled } from './diagnostics';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -12,6 +13,8 @@ export interface StoryLogProps {
   streamState: 'live' | 'caught-up';
   onModeChange: (mode: CombatExperienceLogMode) => void;
   result?: CombatExperienceAttackOutcome;
+  /** Explicit diagnostic surface (for example the Concepts contract view). */
+  diagnosticsEnabled?: boolean;
 }
 
 function StoryEntry({ entry }: { entry: CombatExperienceStoryExchange }) {
@@ -32,6 +35,10 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
     : result.hit
       ? 'Hit'
       : 'Miss';
+  const rollDetail =
+    result.bonus === undefined
+      ? `d20 ${result.d20} · total ${result.total} against AC ${result.against} · ${verdict}`
+      : `${result.d20} + ${result.bonus} = ${result.total} against AC ${result.against} · ${verdict}`;
   return (
     <article className={`${styles.storyEntry} ${styles.storyResult}`}>
       <span>
@@ -42,18 +49,20 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
           ? `${result.actor} strikes ${result.target}`
           : `${result.target} evades ${result.actor}`}
       </strong>
-      <p>
-        <b>{result.d20}</b> + {result.bonus} = <b>{result.total}</b> against AC{' '}
-        {result.against} · {verdict}
-      </p>
-      {result.hit && (
+      <p>{rollDetail}</p>
+      {result.hit && result.damage !== undefined && (
         <div className={styles.damageSummary}>
           <span>−{result.damage}</span>
           <div>
-            <strong>{result.damageType} damage</strong>
-            <small>
-              {result.target} · {result.hpAfter.current}/{result.hpAfter.max} HP
-            </small>
+            <strong>
+              {result.damageType ? `${result.damageType} damage` : 'Damage'}
+            </strong>
+            {result.hpAfter && (
+              <small>
+                {result.target} · {result.hpAfter.current}/{result.hpAfter.max}{' '}
+                HP
+              </small>
+            )}
           </div>
         </div>
       )}
@@ -68,7 +77,16 @@ export function StoryLog({
   streamState,
   onModeChange,
   result,
+  diagnosticsEnabled = false,
 }: StoryLogProps) {
+  const debugEnabled = isCombatDebugEnabled(
+    diagnosticsEnabled,
+    import.meta.env.DEV
+  );
+  // A stale/persisted Debug preference cannot turn raw wire facts into the
+  // production Story surface when diagnostics are unavailable.
+  const visibleMode = debugEnabled && mode === 'debug' ? 'debug' : 'story';
+
   return (
     <aside
       data-testid="session-combat-log"
@@ -78,10 +96,10 @@ export function StoryLog({
       <header>
         <div>
           <span className={styles.panelEyebrow}>
-            {mode === 'story' ? 'Encounter story' : 'Developer stream'}
+            {visibleMode === 'story' ? 'Encounter story' : 'Developer stream'}
           </span>
           <strong>
-            {mode === 'story' ? 'What happened' : 'Every wire fact'}
+            {visibleMode === 'story' ? 'What happened' : 'Every wire fact'}
           </strong>
         </div>
         <span
@@ -91,39 +109,56 @@ export function StoryLog({
         </span>
       </header>
 
-      {mode === 'story' ? (
-        <div className={styles.storyEntries}>
-          {story.map((entry) => (
-            <StoryEntry key={entry.id} entry={entry} />
-          ))}
-          {result && <ResultEntry result={result} />}
+      {visibleMode === 'story' ? (
+        <div
+          className={styles.storyEntries}
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+        >
+          {story.map((entry) =>
+            result?.attackId === entry.id ? (
+              <ResultEntry key={entry.id} result={result} />
+            ) : (
+              <StoryEntry key={entry.id} entry={entry} />
+            )
+          )}
+          {result && !story.some((entry) => entry.id === result.attackId) && (
+            <ResultEntry result={result} />
+          )}
         </div>
       ) : (
-        <div className={styles.debugFeed} aria-label="Raw debug feed">
+        <div
+          className={styles.debugFeed}
+          aria-label="Raw debug feed"
+          aria-live="off"
+        >
           {debug.map((line, index) => (
             <div key={`${index}-${line}`}>{line}</div>
           ))}
         </div>
       )}
 
-      <footer>
-        <button
-          type="button"
-          className={mode === 'story' ? '' : styles.quietButton}
-          aria-pressed={mode === 'story'}
-          onClick={() => onModeChange('story')}
-        >
-          Story
-        </button>
-        <button
-          type="button"
-          className={mode === 'debug' ? '' : styles.quietButton}
-          aria-pressed={mode === 'debug'}
-          onClick={() => onModeChange('debug')}
-        >
-          Debug
-        </button>
-      </footer>
+      {debugEnabled && (
+        <footer>
+          <button
+            type="button"
+            className={visibleMode === 'story' ? '' : styles.quietButton}
+            aria-pressed={visibleMode === 'story'}
+            onClick={() => onModeChange('story')}
+          >
+            Story
+          </button>
+          <button
+            type="button"
+            className={visibleMode === 'debug' ? '' : styles.quietButton}
+            aria-pressed={visibleMode === 'debug'}
+            onClick={() => onModeChange('debug')}
+          >
+            Debug
+          </button>
+        </footer>
+      )}
     </aside>
   );
 }

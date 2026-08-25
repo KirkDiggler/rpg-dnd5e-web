@@ -3,6 +3,7 @@ import type {
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
 import type {
+  AttackRef,
   ClockKind,
   Declaration,
   Participant,
@@ -27,28 +28,35 @@ export type CombatExperienceLogMode = 'story' | 'debug';
 
 export interface CombatExperienceStoryExchange {
   id: string;
-  round: number;
+  round?: number;
   eyebrow: string;
   headline: string;
   detail: string;
   tone: 'neutral' | 'success' | 'danger' | 'turn';
+  /** Exact typed provider identity retained beside presentation prose. */
+  attack?: Readonly<Pick<AttackRef, 'ref' | 'name' | 'damageType'>>;
 }
 
-/** Presentation projection of an already-authoritative attack result. */
+/** Presentation projection of an already-authoritative typed attack event. */
 export interface CombatExperienceAttackOutcome {
   attackId: string;
+  session?: string;
+  seq?: bigint;
   actor: string;
   target: string;
   action: string;
+  attackRef?: string;
   d20: number;
-  bonus: number;
+  /** Legacy concept fixtures may carry a provider-authored bonus. Live Story never derives it. */
+  bonus?: number;
   total: number;
   against: number;
   hit: boolean;
   critical: boolean;
-  damage: number;
-  damageType: string;
-  hpAfter: { current: number; max: number };
+  damage?: number;
+  damageType?: string;
+  /** Legacy concept evidence only. Live Story never calculates target HP. */
+  hpAfter?: { current: number; max: number };
 }
 
 export interface CombatExperienceMapRenderProps {
@@ -72,6 +80,9 @@ export interface CombatExperienceProps {
   debug: readonly string[];
   result?: CombatExperienceAttackOutcome;
   diceEvents: readonly DicePresentationEvent[];
+  diceSemanticFallback?: boolean;
+  diceWitnessRole?: 'roller' | 'spectator';
+  diceRollerName?: string;
   location: { name: string; area: string };
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;
   onSelectDeclaration: (declaration: Declaration) => void;
@@ -79,4 +90,7 @@ export interface CombatExperienceProps {
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
+  onDiceSemanticReleaseRequest?: () => void;
+  /** Explicit Concepts diagnostic surface; allowed independently of DEV. */
+  diagnosticsEnabled?: boolean;
 }

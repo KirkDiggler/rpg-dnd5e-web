@@ -249,6 +249,7 @@ export function SessionCombatConcept() {
         onEndTurn={armDeclaration}
         onLogModeChange={setLogMode}
         onDiceReleaseRequest={handleDiceRelease}
+        diagnosticsEnabled
       />
     </section>
   );
