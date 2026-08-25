@@ -1600,6 +1600,80 @@ describe('boundariesToWallRuns — input order is canonicalized (rpg-dnd5e-web#8
     }
   });
 
+  it('the doc feed and the server feed converge — direction swaps, sorting, and a door on one arm included', () => {
+    // The two real callers do not even agree on PAIR DIRECTION: the
+    // web doc normalizes an edge by (r, then q) while the server's
+    // normalizeDoorEdge uses (q, then r), and the server additionally
+    // sorts boundaries and doorways where the doc feeds stroke order.
+    // With a doorway mid-H (Kirk's own seam has one), build both
+    // feeds and assert the scenes agree: runs to float noise, and the
+    // door gap's center AND leaf end identical — the door's own
+    // orientation logic must not let a swapped wire pair hang the leaf
+    // from the other end.
+    const doorPair = H[7];
+    const wallPairs = [...H.slice(0, 7), ...H.slice(8), ...D, ...V];
+    const docDir = (a: [number, number], b: [number, number]) =>
+      a[1] < b[1] || (a[1] === b[1] && a[0] <= b[0]) ? [a, b] : [b, a];
+    const srvDir = (a: [number, number], b: [number, number]) =>
+      a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]) ? [a, b] : [b, a];
+    const factsFor = (dir: typeof docDir, serverSort: boolean) => {
+      let boundaries = wallPairs.map(([a, b]) => {
+        const [f, t] = dir(a, b);
+        return pair(f as [number, number], t as [number, number]);
+      });
+      if (serverSort) {
+        boundaries = [...boundaries].sort((x, y) => {
+          const fx = x.from as unknown as { x: number; y: number };
+          const fy = y.from as unknown as { x: number; y: number };
+          if (fx.x !== fy.x) return fx.x - fy.x;
+          if (fx.y !== fy.y) return fx.y - fy.y;
+          const tx = x.to as unknown as { x: number; y: number };
+          const ty = y.to as unknown as { x: number; y: number };
+          return tx.x !== ty.x ? tx.x - ty.x : tx.y - ty.y;
+        });
+      }
+      const [df, dt] = dir(doorPair[0], doorPair[1]);
+      return {
+        cells,
+        boundaries,
+        doorways: [
+          {
+            connection: 'door-1',
+            from: pos((df as number[])[0], (df as number[])[1]),
+            to: pos((dt as number[])[0], (dt as number[])[1]),
+          },
+        ],
+      } as never;
+    };
+    const doc = boundariesToWallRuns(factsFor(docDir, false), 1);
+    const srv = boundariesToWallRuns(factsFor(srvDir, true), 1);
+    expect(srv.wallRuns.length).toBe(doc.wallRuns.length);
+    const sig = (runs: readonly AuthoredWallRun[]) =>
+      [...runs]
+        .map((r) => [r.start.x, r.start.z, r.end.x, r.end.z])
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const a = sig(doc.wallRuns);
+    const b = sig(srv.wallRuns);
+    for (let i = 0; i < a.length; i += 1) {
+      for (let k = 0; k < 4; k += 1) {
+        // Not exact: hexEdgeBetween enumerates the FROM cell's
+        // corners, so a swapped pair carries ~1e-15 trig noise.
+        expect(Math.abs(a[i][k] - b[i][k])).toBeLessThan(1e-9);
+      }
+    }
+    const dg = doc.doorGaps[0];
+    const sg = srv.doorGaps[0];
+    expect(
+      Math.hypot(dg.position.x - sg.position.x, dg.position.z - sg.position.z)
+    ).toBeLessThan(1e-9);
+    expect(
+      Math.hypot(
+        dg.leafPosition.x - sg.leafPosition.x,
+        dg.leafPosition.z - sg.leafPosition.z
+      )
+    ).toBeLessThan(1e-9);
+  });
+
   it('the 3-way corner closes: all three runs meet within the corner-overlap miter', () => {
     const runs = runsOf(strokeOrder);
     expect(runs).toHaveLength(3);
