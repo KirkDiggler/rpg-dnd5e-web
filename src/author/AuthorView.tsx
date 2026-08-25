@@ -13,6 +13,7 @@
 import { useCreateLobby } from '@/api/useCreateLobby';
 import { useSetLobbyReady } from '@/api/useSetLobbyReady';
 import { useStartLobbyEncounter } from '@/api/useStartLobbyEncounter';
+import { ThemeSelector } from '@/components/ThemeSelector';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DungeonBuilder } from './DungeonBuilder';
 
@@ -70,8 +71,12 @@ export function AuthorView({ onBack, characterId, onPlay }: AuthorViewProps) {
   );
 
   return (
-    <div className="max-w-[1600px] mx-auto">
-      <div className="flex items-center gap-4 mb-4">
+    // A viewport-tall flex column: one header row, then the builder taking
+    // every pixel that is left. `min-h-0` on the body is what lets the
+    // builder's own panes scroll internally instead of stretching this
+    // column past the bottom of the window.
+    <div className="h-screen flex flex-col gap-3 p-4">
+      <div className="flex items-center gap-4 shrink-0">
         <button
           onClick={onBack}
           disabled={playing}
@@ -94,13 +99,20 @@ export function AuthorView({ onBack, characterId, onPlay }: AuthorViewProps) {
         >
           Dungeon Builder
         </h1>
+        {/* The shell skips its own header row for full-bleed views, so the
+            theme control rides here rather than costing a second row. */}
+        <div className="ml-auto">
+          <ThemeSelector />
+        </div>
       </div>
-      <DungeonBuilder
-        onPlay={play}
-        playDisabledReason={
-          characterId ? null : 'Pick a character on Home to play'
-        }
-      />
+      <div className="flex-1 min-h-0">
+        <DungeonBuilder
+          onPlay={play}
+          playDisabledReason={
+            characterId ? null : 'Pick a character on Home to play'
+          }
+        />
+      </div>
     </div>
   );
 }

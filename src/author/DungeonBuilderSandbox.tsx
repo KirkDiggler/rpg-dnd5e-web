@@ -25,12 +25,17 @@ export function DungeonBuilderSandbox() {
     () => emitDungeon(sandboxDocForSearch(window.location.search)),
     []
   );
+  // The Lab mounts the builder in ordinary document flow, so it hands it a
+  // definite box to fill; the real `/author` shell is a viewport-tall flex
+  // column and gives it the remaining height instead.
   return (
-    <DungeonBuilder
-      initialYaml={initialYaml}
-      fixtureCompile={fixtureAtlasOf}
-      persistDraft={false}
-      allowYamlFileIO
-    />
+    <div className="dg-stage">
+      <DungeonBuilder
+        initialYaml={initialYaml}
+        fixtureCompile={fixtureAtlasOf}
+        persistDraft={false}
+        allowYamlFileIO
+      />
+    </div>
   );
 }
