@@ -118,6 +118,7 @@ import { useEquipItem } from '../../api/useEquipItem';
 import { useGetCharacterData } from '../../api/useGetCharacterData';
 import { useSessionAfford } from '../../api/useSessionAfford';
 import { useSessionAtlas } from '../../api/useSessionAtlas';
+import { useSessionRoster } from '../../api/useSessionRoster';
 import { useSessionTurn } from '../../api/useSessionTurn';
 import { useSessionView } from '../../api/useSessionView';
 import { useSessionWhere } from '../../api/useSessionWhere';
@@ -203,6 +204,13 @@ export function SessionEncounterView({
     sessionId,
     characterId ?? ''
   );
+
+  // The session roster — PUBLIC identity, loaded once and referenced at
+  // render (rpg-project#264, ideas/characters/presentation). The only
+  // refetch trigger is a `joined` event (pull-on-join, the ruled shape) in
+  // `handleSessionEvent` below; nothing perception-driven ever refetches
+  // identity.
+  const { roster, refetch: refetchRoster } = useSessionRoster(sessionId);
   // Afford — "what can I still declare this turn" (slice 5a). Same
   // additive-not-blocking treatment as GetView above: a turn-economy
   // readout degrades to "no panel data yet" (free-roam, per
@@ -538,6 +546,11 @@ export function SessionEncounterView({
       if (event.body?.case === 'moved' && event.body.value.member === member) {
         void refetchWhere();
       }
+      if (event.body?.case === 'joined') {
+        // A new member is new IDENTITY, the roster's one change signal
+        // (rpg-project#264's pull-on-join ruling).
+        void refetchRoster();
+      }
       // Beat-line formatting, another member's turn pacing, and every
       // Afford/Turn/View refetch trigger besides the self-MOVED GetWhere
       // refresh above now live in `useCombatPanel`'s own `handleEvent` —
@@ -548,7 +561,7 @@ export function SessionEncounterView({
         return [...next, event];
       });
     },
-    [member, refetchWhere, handleCombatEvent]
+    [member, refetchWhere, refetchRoster, handleCombatEvent]
   );
 
   // Names for the debug log — the SAME `participantNameMap` +
@@ -713,6 +726,7 @@ export function SessionEncounterView({
           characterName={character?.name ?? 'You'}
           character={character ?? undefined}
           classRefId={classRefId}
+          roster={roster}
           // Falls back to the last known-good GetWhere position — see
           // `lastGoodPositionRef`'s own comment above for why this reads
           // from that ref rather than a live `wherePosition`.
