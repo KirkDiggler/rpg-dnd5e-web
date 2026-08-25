@@ -158,6 +158,14 @@ function fakeStream(events: SessionEvent[]) {
  * fetch) to have landed BEFORE a stream event arrives, so a race between
  * the two microtask queues can't deliver the event against a still-empty
  * `participants` list. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 function deferredStream(events: SessionEvent[]) {
   let release = () => {};
   const gate = new Promise<void>((resolve) => {
@@ -533,6 +541,74 @@ describe('SessionEncounterView', () => {
         />
       );
     }
+
+    it('refuses movement when Turn resolves WORLD before Afford, then uses the known world selector once both snapshots agree', async () => {
+      const afford = deferred<unknown>();
+      hoisted.affordFn.mockReturnValue(afford.promise);
+      hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+      renderReadyAtOrigin();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      expect(hoisted.moveFn).not.toHaveBeenCalled();
+
+      await act(async () => {
+        afford.resolve({ clock: ClockKind.WORLD, declarations: [] });
+        await afford.promise;
+      });
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      expect(hoisted.moveFn).toHaveBeenCalledWith(
+        expect.objectContaining({ declarationId: '' })
+      );
+    });
+
+    it('refuses movement when Afford resolves TURN before Turn, then echoes the unique move selector once both snapshots agree', async () => {
+      const turn = deferred<unknown>();
+      hoisted.turnFn.mockReturnValue(turn.promise);
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            id: 'v1.move',
+            verb: Verb.MOVE,
+            available: true,
+            targetKind: TargetKind.PATH,
+            candidates: [],
+          },
+        ],
+      });
+      hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+      renderReadyAtOrigin();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      expect(hoisted.moveFn).not.toHaveBeenCalled();
+
+      await act(async () => {
+        turn.resolve({
+          clock: ClockKind.TURN,
+          active: 'char-1',
+          round: 1,
+          order: ['char-1'],
+          participants: [participant('char-1', { active: true })],
+        });
+        await turn.promise;
+      });
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+      expect(hoisted.moveFn).toHaveBeenCalledWith(
+        expect.objectContaining({ declarationId: 'v1.move' })
+      );
+    });
 
     it('a click on the reachable neighbor cell dispatches Move and shows "Walking…" while the RPC is in flight', async () => {
       hoisted.moveFn.mockReturnValue(new Promise(() => {})); // never resolves
@@ -985,6 +1061,14 @@ describe('SessionEncounterView', () => {
             ],
           },
           {
+            id: 'v1.move',
+            verb: Verb.MOVE,
+            slot: Slot.NONE,
+            available: true,
+            targetKind: TargetKind.PATH,
+            candidates: [],
+          },
+          {
             id: 'v1.end',
             verb: Verb.END_TURN,
             slot: Slot.NONE,
@@ -1202,6 +1286,104 @@ describe('SessionEncounterView', () => {
       });
       await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    });
+
+    it('dispatches the exact valid direct-map offer when an earlier legacy row for the same subject is unavailable', async () => {
+      readyOnYourTurn();
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            id: 'v1.spent-attack',
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            available: false,
+            targetKind: TargetKind.MEMBER,
+            candidates: [{ member: 'skeleton-1', available: false }],
+          },
+          {
+            id: 'v1.valid-attack',
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            available: true,
+            targetKind: TargetKind.MEMBER,
+            candidates: [{ member: 'skeleton-1', available: true }],
+          },
+        ],
+      });
+      hoisted.attackFn.mockResolvedValue({});
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.attackableTargets).toContain(
+          'skeleton-1'
+        )
+      );
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+
+      expect(hoisted.attackFn).toHaveBeenCalledWith({
+        session: 'enc-1',
+        attacker: 'char-1',
+        target: 'skeleton-1',
+        declarationId: 'v1.valid-attack',
+      });
+    });
+
+    it('does not dispatch a direct-map attack when multiple valid offers match the visible subject', async () => {
+      readyOnYourTurn();
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            id: 'v1.longsword',
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            available: true,
+            targetKind: TargetKind.MEMBER,
+            candidates: [{ member: 'skeleton-1', available: true }],
+          },
+          {
+            id: 'v1.unarmed',
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            available: true,
+            targetKind: TargetKind.MEMBER,
+            candidates: [{ member: 'skeleton-1', available: true }],
+          },
+        ],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() =>
+        expect(hoisted.lastCanvasProps.current?.attackableTargets).toContain(
+          'skeleton-1'
+        )
+      );
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onEntityClick!('skeleton-1');
+      });
+
+      expect(hoisted.attackFn).not.toHaveBeenCalled();
     });
 
     it("also refetches GetView after the player's own Attack round-trip (a live-gate-found gap: sightings only refreshed on Move before this, so a just-defeated target stayed clickable until the next walk)", async () => {
@@ -1815,6 +1997,82 @@ describe('SessionEncounterView', () => {
       );
     });
 
+    it('refuses turn movement when the Move offer is missing', async () => {
+      readyOnYourTurn();
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            id: 'v1.attack',
+            verb: Verb.ATTACK,
+            slot: Slot.ACTION,
+            available: true,
+            targetKind: TargetKind.MEMBER,
+            candidates: [{ member: 'skeleton-1', available: true }],
+          },
+        ],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+
+      expect(hoisted.moveFn).not.toHaveBeenCalled();
+    });
+
+    it('refuses turn movement when duplicate available Move offers are present', async () => {
+      readyOnYourTurn();
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [
+          {
+            id: 'v1.move-a',
+            verb: Verb.MOVE,
+            available: true,
+            targetKind: TargetKind.PATH,
+            candidates: [],
+          },
+          {
+            id: 'v1.move-b',
+            verb: Verb.MOVE,
+            available: true,
+            targetKind: TargetKind.PATH,
+            candidates: [],
+          },
+        ],
+      });
+
+      render(
+        <SessionEncounterView
+          sessionId="enc-1"
+          characterId="char-1"
+          playerId="player-1"
+          onBack={noop}
+        />
+      );
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        hoisted.lastCanvasProps.current!.onHexClick!({ x: 1, y: -1, z: 0 });
+      });
+
+      expect(hoisted.moveFn).not.toHaveBeenCalled();
+    });
+
     it('SessionCanvas.maxCells is floor(remaining/5) from the Move declaration on your turn', async () => {
       readyOnYourTurn();
       hoisted.affordFn.mockResolvedValue({
@@ -1827,9 +2085,11 @@ describe('SessionEncounterView', () => {
             candidates: [{ member: 'skeleton-1', available: true }],
           },
           {
+            id: 'v1.move',
             verb: Verb.MOVE,
             slot: Slot.NONE,
             available: true,
+            targetKind: TargetKind.PATH,
             candidates: [],
             remaining: 17,
           },

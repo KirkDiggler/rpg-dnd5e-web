@@ -145,6 +145,38 @@ describe('selectCombatExperience', () => {
       selectCombatExperience([declaration('v1.current')], state('v1.stale'))
     ).toBeNull();
   });
+
+  it('fails closed when the selected declaration id is duplicated', () => {
+    const first = declaration('v1.duplicate', {
+      candidates: [candidate('goblin-1')],
+    });
+    const second = declaration('v1.duplicate', {
+      candidates: [candidate('goblin-1')],
+    });
+
+    expect(
+      selectCombatExperience([first, second], state('v1.duplicate', 'goblin-1'))
+    ).toBeNull();
+  });
+
+  it('fails closed when a member candidate is missing or duplicated', () => {
+    const missing = declaration('v1.missing', {
+      candidates: [candidate('goblin-2')],
+    });
+    const duplicate = declaration('v1.duplicate-candidate', {
+      candidates: [candidate('goblin-1'), candidate('goblin-1')],
+    });
+
+    expect(
+      selectCombatExperience([missing], state('v1.missing', 'goblin-1'))
+    ).toBeNull();
+    expect(
+      selectCombatExperience(
+        [duplicate],
+        state('v1.duplicate-candidate', 'goblin-1')
+      )
+    ).toBeNull();
+  });
 });
 
 describe('staleDeclarationMessage', () => {
@@ -200,5 +232,26 @@ describe('selectDirectMapAttack', () => {
     });
 
     expect(selectDirectMapAttack([first, second], 'goblin-1')).toBeNull();
+  });
+
+  it('fails closed when the otherwise direct offer has duplicate candidate rows', () => {
+    const duplicateCandidate = declaration('v1.longsword', {
+      candidates: [candidate('goblin-1'), candidate('goblin-1')],
+    });
+
+    expect(selectDirectMapAttack([duplicateCandidate], 'goblin-1')).toBeNull();
+  });
+
+  it('fails closed when a matching offer selector is duplicated by another declaration', () => {
+    const direct = declaration('v1.duplicate', {
+      candidates: [candidate('goblin-1')],
+    });
+    const sameSelector = declaration('v1.duplicate', {
+      candidates: [candidate('goblin-2')],
+    });
+
+    expect(
+      selectDirectMapAttack([direct, sameSelector], 'goblin-1')
+    ).toBeNull();
   });
 });

@@ -108,7 +108,25 @@ describe('useSessionWalk', () => {
     await waitFor(() => expect(result.current.busy).toBe(true));
   });
 
-  it('world-clock movement sends an empty declaration id', () => {
+  it('does not dispatch while move authority is unavailable', () => {
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn(),
+        undefined
+      )
+    );
+
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(result.current.busy).toBe(false);
+  });
+
+  it('world-clock movement sends an explicit empty declaration id', () => {
     hoisted.moveFn.mockReturnValue(new Promise(() => {}));
     const { result } = renderHook(() =>
       useSessionWalk(
@@ -116,7 +134,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
 
@@ -135,7 +154,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
@@ -157,7 +177,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
 
@@ -183,7 +204,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -200,7 +222,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -216,7 +239,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -234,7 +258,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -253,7 +278,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -271,7 +297,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -299,7 +326,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        refetchWhere
+        refetchWhere,
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));

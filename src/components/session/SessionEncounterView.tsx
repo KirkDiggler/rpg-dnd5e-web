@@ -472,14 +472,25 @@ export function SessionEncounterView({
     lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
 
   const member = characterId ?? '';
-  // Exact server selector on the turn clock; world movement must always echo
-  // an empty id. No selector is constructed or parsed here.
-  const moveDeclarationId =
-    turnClock === ClockKind.TURN
-      ? (affordDeclarations.find(
-          (declaration) => declaration.verb === Verb.MOVE
-        )?.id ?? '')
-      : '';
+  // Move authority is usable only from a coherent Turn/Afford snapshot.
+  // Known world movement is the explicit empty selector; known turn movement
+  // is one unique, available, non-empty opaque offer. Every partial,
+  // mismatched, missing, or ambiguous state stays undefined and is refused
+  // locally by useSessionWalk rather than being mislabeled as free roam.
+  const availableMoveDeclarations = affordDeclarations.filter(
+    (declaration) =>
+      declaration.verb === Verb.MOVE &&
+      declaration.available &&
+      declaration.id.length > 0
+  );
+  const moveDeclarationId: string | undefined =
+    turnClock === ClockKind.WORLD && affordClock === ClockKind.WORLD
+      ? ''
+      : turnClock === ClockKind.TURN &&
+          affordClock === ClockKind.TURN &&
+          availableMoveDeclarations.length === 1
+        ? availableMoveDeclarations[0]!.id
+        : undefined;
   const {
     displayPosition,
     movePath,

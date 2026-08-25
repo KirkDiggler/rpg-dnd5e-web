@@ -357,8 +357,10 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
   const attackTarget = useCallback(
     (subject: string) => {
       if (selection.mode !== 'turn') return;
-      const target = selection.attackTargets.find((t) => t.id === subject);
-      if (!target || !target.affordable) return;
+      // Keep the old panel's mode/visibility gate during the temporary row
+      // bridge, but never choose authority from one of those legacy rows.
+      if (!selection.attackTargets.some((target) => target.id === subject))
+        return;
       const declaration = selectDirectMapAttack(serverDeclarations, subject);
       if (!declaration) return;
       void (async () => {

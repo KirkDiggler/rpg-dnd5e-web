@@ -20,6 +20,16 @@ beforeEach(() => {
   hoisted.affordFn.mockReset();
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('useSessionAfford', () => {
   it('does not call Afford on mount — the caller owns every fetch via refetch', () => {
     const { result } = renderHook(() => useSessionAfford('enc-1', 'char-1'));
@@ -165,6 +175,98 @@ describe('useSessionAfford', () => {
     rerender({ session: 'enc-1', member: '' });
     expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
     expect(result.current.declarations).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('keeps only the newest concurrent response when completions arrive in reverse order', async () => {
+    const first = deferred<AffordResponse>();
+    const second = deferred<AffordResponse>();
+    hoisted.affordFn
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+
+    const { result } = renderHook(() => useSessionAfford('enc-1', 'char-1'));
+    act(() => {
+      void result.current.refetch();
+      void result.current.refetch();
+    });
+    expect(result.current.loading).toBe(true);
+
+    const newestDeclarations = [{ id: 'v1.newest' }];
+    await act(async () => {
+      second.resolve({
+        clock: ClockKind.TURN,
+        declarations: newestDeclarations,
+      } as unknown as AffordResponse);
+      await second.promise;
+    });
+    expect(result.current.clock).toBe(ClockKind.TURN);
+    expect(result.current.declarations).toBe(newestDeclarations);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+
+    await act(async () => {
+      first.resolve({
+        clock: ClockKind.WORLD,
+        declarations: [{ id: 'v1.stale' }],
+      } as unknown as AffordResponse);
+      await first.promise;
+    });
+    expect(result.current.clock).toBe(ClockKind.TURN);
+    expect(result.current.declarations).toBe(newestDeclarations);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('resets on a non-empty member change and fences old data, errors, and loading updates', async () => {
+    const oldMember = deferred<AffordResponse>();
+    const newMember = deferred<AffordResponse>();
+    hoisted.affordFn
+      .mockReturnValueOnce(oldMember.promise)
+      .mockReturnValueOnce(newMember.promise);
+
+    const { result, rerender } = renderHook(
+      ({ member }) => useSessionAfford('enc-1', member),
+      { initialProps: { member: 'char-1' } }
+    );
+    act(() => {
+      void result.current.refetch();
+    });
+    expect(result.current.loading).toBe(true);
+
+    rerender({ member: 'char-2' });
+    expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
+    expect(result.current.declarations).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+
+    act(() => {
+      void result.current.refetch();
+    });
+    expect(result.current.loading).toBe(true);
+    await act(async () => {
+      oldMember.reject(new Error('old member failed'));
+      await oldMember.promise.catch(() => undefined);
+    });
+    expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
+    expect(result.current.declarations).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    const currentDeclarations = [{ id: 'v1.char-2' }];
+    await act(async () => {
+      newMember.resolve({
+        clock: ClockKind.TURN,
+        declarations: currentDeclarations,
+      } as unknown as AffordResponse);
+      await newMember.promise;
+    });
+    expect(hoisted.affordFn).toHaveBeenLastCalledWith({
+      session: 'enc-1',
+      member: 'char-2',
+    });
+    expect(result.current.declarations).toBe(currentDeclarations);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
   });

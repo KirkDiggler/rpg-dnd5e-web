@@ -45,18 +45,23 @@ export function selectCombatExperience(
 ): SelectedCombatExperience | null {
   if (state.armedDeclarationId === null) return null;
 
-  const declaration = declarations.find(
+  const declarationMatches = declarations.filter(
     (candidate) => candidate.id === state.armedDeclarationId
   );
-  if (!declaration) return null;
+  if (declarationMatches.length !== 1) return null;
+  const declaration = declarationMatches[0]!;
 
-  const candidate =
+  let candidate: TargetCandidate | null = null;
+  if (
     declaration.targetKind === TargetKind.MEMBER &&
     state.selectedCandidateMember !== null
-      ? (declaration.candidates.find(
-          (target) => target.member === state.selectedCandidateMember
-        ) ?? null)
-      : null;
+  ) {
+    const candidateMatches = declaration.candidates.filter(
+      (target) => target.member === state.selectedCandidateMember
+    );
+    if (candidateMatches.length !== 1) return null;
+    candidate = candidateMatches[0]!;
+  }
 
   if (!declaration.available) {
     return {
@@ -86,15 +91,25 @@ export function selectDirectMapAttack(
   declarations: readonly Declaration[],
   subject: string
 ): Declaration | null {
-  const matches = declarations.filter(
-    (declaration) =>
-      declaration.verb === Verb.ATTACK &&
-      declaration.targetKind === TargetKind.MEMBER &&
-      declaration.available &&
-      declaration.candidates.some(
-        (candidate) => candidate.member === subject && candidate.available
-      )
-  );
+  const matches = declarations.filter((declaration) => {
+    if (
+      declaration.id.length === 0 ||
+      declaration.verb !== Verb.ATTACK ||
+      declaration.targetKind !== TargetKind.MEMBER ||
+      !declaration.available
+    ) {
+      return false;
+    }
+    const candidates = declaration.candidates.filter(
+      (candidate) => candidate.member === subject
+    );
+    return candidates.length === 1 && candidates[0]!.available;
+  });
 
-  return matches.length === 1 ? matches[0]! : null;
+  if (matches.length !== 1) return null;
+  const match = matches[0]!;
+  return declarations.filter((declaration) => declaration.id === match.id)
+    .length === 1
+    ? match
+    : null;
 }

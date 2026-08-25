@@ -93,8 +93,9 @@ export function useSessionWalk(
   pathIndex: AtlasPathIndex | null,
   wherePosition: Position | null,
   refetchWhere: () => Promise<void>,
-  /** Exact opaque Move offer id on the turn clock; empty in free roam. */
-  declarationId = ''
+  /** Exact opaque Move offer id on the turn clock; empty in known free roam.
+   * Undefined means the Turn/Afford authority snapshots are not coherent yet. */
+  declarationId?: string
 ): UseSessionWalkResult {
   const [displayPosition, setDisplayPosition] = useState<CubeCoord | null>(
     wherePosition ? positionToCube(wherePosition) : null
@@ -128,7 +129,14 @@ export function useSessionWalk(
 
   const walkTo = useCallback(
     (target: CubeCoord) => {
-      if (!pathIndex || !displayPosition || !member || busy) return;
+      if (
+        !pathIndex ||
+        !displayPosition ||
+        !member ||
+        busy ||
+        declarationId === undefined
+      )
+        return;
       const path = findAtlasPath(pathIndex, displayPosition, target);
       // Empty means "nothing to walk" either way: already there, or no
       // route exists (blocked/unreachable) — both are silent no-ops, per
