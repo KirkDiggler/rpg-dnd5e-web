@@ -74,23 +74,12 @@ const statusFor = (
   message,
 });
 
-const isMainHandRef = (ref: string): boolean => ref.startsWith('dnd5e:item:');
-
-const roundTo2 = (value: number): number => Math.round(value * 100) / 100;
-
 export function attachMainHandObject(
   characterRoot: THREE.Object3D,
   weaponRoot: THREE.Object3D,
   presentation: MainHandPresentation
 ): MainHandAttachmentResult {
   const { socket } = presentation;
-
-  if (!isMainHandRef(presentation.ref)) {
-    return {
-      status: statusFor('unmapped-ref', presentation),
-      detach: noop,
-    };
-  }
 
   if (!validateMainHandSocket(socket)) {
     return {
@@ -108,11 +97,9 @@ export function attachMainHandObject(
   }
 
   const unitsPerMeter = 1 / socket.boneUnitMeters;
-  weaponRoot.position.set(
-    roundTo2(socket.positionMeters[0] * unitsPerMeter),
-    roundTo2(socket.positionMeters[1] * unitsPerMeter),
-    roundTo2(socket.positionMeters[2] * unitsPerMeter)
-  );
+  weaponRoot.position
+    .fromArray(socket.positionMeters)
+    .multiplyScalar(unitsPerMeter);
   weaponRoot.quaternion.fromArray(socket.rotationQuaternion).normalize();
   weaponRoot.scale.setScalar(socket.scale * unitsPerMeter);
   bone.add(weaponRoot);
