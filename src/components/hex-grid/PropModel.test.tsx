@@ -1,4 +1,5 @@
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
@@ -121,7 +122,7 @@ describe('PropModel companion rendering (rpg-game-assets#36 wave-1, issue #623)'
       .map((n) => (n as unknown as { instance: THREE.Group }).instance);
     const outer = groups.find((g) => g.position.x === 3);
     expect(outer).toBeDefined();
-    expect(outer!.position.toArray()).toEqual([3, 0, 4]);
+    expect(outer!.position.toArray()).toEqual([3, DUNGEON_SURFACE_Y, 4]);
     expect(outer!.rotation.y).toBeCloseTo(1.2);
     // Both meshes are children of this one group — neither the parent
     // primitive nor the companion primitive carries its own position, so
@@ -130,34 +131,29 @@ describe('PropModel companion rendering (rpg-game-assets#36 wave-1, issue #623)'
   });
 });
 
-describe('PropModel renderScale (rpg-game-assets#36 wave-1, issue #623 fast-follow — rug sizing)', () => {
-  function outerGroupScale(renderer: {
-    scene: { findAllByType: (t: string) => unknown[] };
-  }): number {
-    const groups = renderer.scene
-      .findAllByType('Group')
-      .map((n) => (n as unknown as { instance: THREE.Group }).instance);
-    // The outer transform-holding group is the one whose scale isn't the
-    // default (1,1,1) every bare cloned GLB scene starts at, OR — when
-    // renderScale is exactly 1 too — the one at the given `position`
-    // (same disambiguation PropModel.test.tsx's anchor test above uses).
-    const outer = groups.find((g) => g.position.z === 9) ?? groups[0]!;
-    return outer.scale.x;
-  }
-
-  it('defaults to plain SYNTY_SCALE when the variant has no renderScale — every pre-fast-follow variant, unchanged', async () => {
+describe('PropModel shared placement', () => {
+  it('renders every prop at the shared SYNTY_SCALE', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <PropModel variant={BASE_VARIANT} position={[0, 0, 9]} />
     );
-    expect(outerGroupScale(renderer)).toBeCloseTo(SYNTY_SCALE);
+    const groups = renderer.scene
+      .findAllByType('Group')
+      .map((n) => (n as unknown as { instance: THREE.Group }).instance);
+    const outer = groups.find((group) => group.position.z === 9);
+    expect(outer?.scale.x).toBeCloseTo(SYNTY_SCALE);
   });
 
-  it('multiplies SYNTY_SCALE by renderScale when the variant specifies one', async () => {
-    const variant: PropVariant = { ...BASE_VARIANT, renderScale: 2 };
+  it('adds the dungeon surface height to the caller-provided Y position', async () => {
     const renderer = await ReactThreeTestRenderer.create(
-      <PropModel variant={variant} position={[0, 0, 9]} />
+      <PropModel variant={BASE_VARIANT} position={[2, 0.07, 5]} />
     );
-    expect(outerGroupScale(renderer)).toBeCloseTo(SYNTY_SCALE * 2);
+    const groups = renderer.scene
+      .findAllByType('Group')
+      .map((n) => (n as unknown as { instance: THREE.Group }).instance);
+    const outer = groups.find(
+      (group) => group.position.x === 2 && group.position.z === 5
+    );
+    expect(outer?.position.y).toBeCloseTo(0.07 + DUNGEON_SURFACE_Y);
   });
 });
 

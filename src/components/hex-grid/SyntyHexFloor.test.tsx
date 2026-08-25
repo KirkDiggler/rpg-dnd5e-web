@@ -1,3 +1,4 @@
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
@@ -57,6 +58,16 @@ function isCloseTo(a: THREE.Color, b: THREE.Color): boolean {
     Math.abs(a.b - b.b) < 1e-6
   );
 }
+
+describe('SyntyHexFloor surface placement', () => {
+  it('renders its flat tiles at the dungeon surface height', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor floorTiles={tiles([0, 0, 0])} hexSize={1} />
+    );
+    const tile = renderer.scene.findByType('Mesh').instance as THREE.Mesh;
+    expect(tile.position.y).toBeCloseTo(DUNGEON_SURFACE_Y);
+  });
+});
 
 describe('SyntyHexFloor spaceTheme (rpg-dnd5e-web#558 real-route theme consumption)', () => {
   it('renders remembered tiles opaque charcoal before the crypt theme', async () => {
