@@ -6,8 +6,9 @@
  * `ShadedHexFloor` (the dev-flag-off floor renderer) extrudes each hex tile
  * from y=0.05 to y=0.15 in world space. `SyntyHexFloor` (the DEFAULT floor
  * renderer — see EncounterMap.tsx / PlaytestMap.tsx) is a flat, unextruded
- * plane positioned at world y=0.2 (its `FLOOR_Y` const — the geometry has
- * zero local thickness, so 0.2 is both its base AND its top). Two overlay
+ * plane positioned at world y=0.2 (the shared `DUNGEON_SURFACE_Y` — its
+ * geometry has zero local thickness, so 0.2 is both its base AND its top).
+ * Two overlay
  * components draw on top of whichever floor is mounted:
  *
  *   - `MovementRangeBorder` — cyan glowing perimeter around reachable hexes
@@ -37,6 +38,7 @@
  * needing a real WebGL context.
  */
 
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,11 +66,9 @@ const FLOOR_TOP_Y = 0.15;
  * PlaytestMap.tsx render it unconditionally; ShadedHexFloor only mounts
  * behind the `?syntyDungeon=0` dev flag). Its tile mesh is a flat
  * `ShapeGeometry` with no extrusion — `rotateX(-Math.PI / 2)` collapses all
- * local Y to 0, so the mesh's `FLOOR_Y` position IS its top face, not a
- * base under some taller top. Extracted from source (not hardcoded) so a
- * future change to SyntyHexFloor's height can't silently desync this test.
+ * local Y to 0, so its shared `DUNGEON_SURFACE_Y` position IS its top face,
+ * not a base under some taller top.
  */
-const SYNTY_FLOOR_TOP_CONST = 'FLOOR_Y';
 
 function readSource(relativePath: string): string {
   return readFileSync(resolve(HERE, relativePath), 'utf-8');
@@ -84,6 +84,10 @@ function extractNumberConst(src: string, name: string): number {
 }
 
 describe('floor overlay Y offsets clear the floor extrusion top', () => {
+  it('pins the shared dungeon surface used by floor and prop placement', () => {
+    expect(DUNGEON_SURFACE_Y).toBe(0.2);
+  });
+
   it('MovementRangeBorder Y offset is above the floor top', () => {
     const src = readSource('./MovementRangeBorder.tsx');
     const offset = extractNumberConst(src, 'BORDER_Y_OFFSET');
@@ -117,35 +121,29 @@ describe('floor overlay Y offsets clear the floor extrusion top', () => {
 
   it('MovementRangeBorder Y offset is above SyntyHexFloor (the default floor) top', () => {
     const overlaySrc = readSource('./MovementRangeBorder.tsx');
-    const floorSrc = readSource('./SyntyHexFloor.tsx');
     const offset = extractNumberConst(overlaySrc, 'BORDER_Y_OFFSET');
-    const syntyTop = extractNumberConst(floorSrc, SYNTY_FLOOR_TOP_CONST);
-    expect(offset).toBeGreaterThan(syntyTop);
+    expect(offset).toBeGreaterThan(DUNGEON_SURFACE_Y);
   });
 
   it('PathPreview Y offset is above SyntyHexFloor (the default floor) top', () => {
     const overlaySrc = readSource('./PathPreview.tsx');
-    const floorSrc = readSource('./SyntyHexFloor.tsx');
     const offset = extractNumberConst(overlaySrc, 'PATH_Y_OFFSET');
-    const syntyTop = extractNumberConst(floorSrc, SYNTY_FLOOR_TOP_CONST);
-    expect(offset).toBeGreaterThan(syntyTop);
+    expect(offset).toBeGreaterThan(DUNGEON_SURFACE_Y);
   });
 
   it('shared character placement clears both floor renderers', () => {
     const entitySrc = readSource('./HexEntity.tsx');
-    const floorSrc = readSource('./SyntyHexFloor.tsx');
     const characterOffset = extractNumberConst(entitySrc, 'CHARACTER_Y_OFFSET');
-    const syntyTop = extractNumberConst(floorSrc, SYNTY_FLOOR_TOP_CONST);
 
     expect(characterOffset).toBeGreaterThan(FLOOR_TOP_Y);
-    expect(characterOffset).toBeGreaterThan(syntyTop);
+    expect(characterOffset).toBeGreaterThan(DUNGEON_SURFACE_Y);
   });
 
-  it('SyntyHexFloor is unextruded, so FLOOR_Y is genuinely its top face', () => {
+  it('SyntyHexFloor is unextruded, so DUNGEON_SURFACE_Y is genuinely its top face', () => {
     // Guard the "flat plane, position IS the top" assumption the two tests
     // above rely on. If SyntyHexFloor ever grows real extrusion depth (an
     // ExtrudeGeometry with a `depth` option instead of ShapeGeometry), its
-    // true top would be FLOOR_Y + depth, not FLOOR_Y, and the tests above
+    // true top would be DUNGEON_SURFACE_Y + depth, and the tests above
     // would need updating alongside.
     const src = readSource('./SyntyHexFloor.tsx');
     expect(src).toContain('new THREE.ShapeGeometry(shape)');

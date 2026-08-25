@@ -22,6 +22,7 @@
  */
 
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useTexture } from '@react-three/drei';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
@@ -35,9 +36,8 @@ import {
 const TEX_BASE = '/models/synty/textures/';
 const FLOOR_TEXTURE = TEX_BASE + 'Dungeons_Texture_FloorTiles_01.png';
 
-// Sits above ShadedHexFloor's extruded top (0.05-0.15) so the two never
-// z-fight if both are ever mounted at once during a toggle transition.
-const FLOOR_Y = 0.2;
+// DUNGEON_SURFACE_Y sits above ShadedHexFloor's extruded top (0.05-0.15),
+// so the two never z-fight if both mount during a toggle transition.
 
 /**
  * Crypt-theme floor tint (mid-flight scope addition, rpg-dnd5e-web#558 PR
@@ -179,7 +179,7 @@ function SyntyHexFloorTile({
   // doesn't fully close the tone-mapping question — only the floor's
   // slice of it).
   return (
-    <mesh geometry={geometry} position={[world.x, FLOOR_Y, world.z]}>
+    <mesh geometry={geometry} position={[world.x, DUNGEON_SURFACE_Y, world.z]}>
       {isRemembered ? (
         <meshBasicMaterial
           color={CRYPT_MEMORY_COLOR}

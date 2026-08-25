@@ -1,3 +1,4 @@
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useGLTF } from '@react-three/drei';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
@@ -51,6 +52,7 @@ describe('AtlasPropModel', () => {
       .map((node) => (node as unknown as { instance: THREE.Group }).instance)
       .find((group) => Math.abs(group.position.x) > 0.1);
 
+    expect(outer?.position.y).toBeCloseTo(DUNGEON_SURFACE_Y);
     expect(outer?.rotation.y).toBeCloseTo(facingToYaw('pointy', 'ne'));
   });
 

@@ -46,14 +46,10 @@
  * component does not squeeze it down to fit a single hex. footprintHexes
  * is placement-sanity DATA for whatever positions props on the grid
  * (reserving N hexes so a wide piece doesn't visually overlap a
- * neighboring entity), not a scale input to this renderer.
- *
- * `variant.renderScale` (rpg-game-assets#36 wave-1, issue #623 fast-follow)
- * IS a deliberate, separate scale input — an explicit per-variant visual
- * override (today only the `rug` key uses it) multiplied on top of
- * SYNTY_SCALE, not derived from `footprintHexes`. See that field's own doc
- * comment in propManifest.ts for why it exists and how its value was
- * picked.
+ * neighboring entity), not a scale input to this renderer. Vertical
+ * placement is shared too: the caller's Y is a relative offset added to
+ * `DUNGEON_SURFACE_Y`, so grounded props and `SyntyHexFloor` agree on the
+ * same world surface without caller- or specimen-specific transforms.
  *
  * Remembered tinting (rpg-dnd5e-web#605/#609): `remembered` applies the
  * SAME shared crypt-memory material treatment ClassCharacterModel.tsx uses
@@ -68,6 +64,7 @@
  */
 
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useGLTF } from '@react-three/drei';
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
@@ -81,7 +78,8 @@ import { cloneCryptMaterials } from './sceneKnowledge';
 export interface PropModelProps {
   variant: PropVariant;
   /** World position (already converted from hex/cube coords by the
-   * caller — see HexEntity.tsx's cubeToWorld usage). */
+   * caller — see HexEntity.tsx's cubeToWorld usage). Y is relative to the
+   * shared dungeon surface. */
   position: [number, number, number];
   rotationY?: number;
   /** Render as the viewer's frozen last observation (rpg-dnd5e-web#605/
@@ -155,9 +153,9 @@ export function PropModel({
 
   return (
     <group
-      position={position}
+      position={[position[0], position[1] + DUNGEON_SURFACE_Y, position[2]]}
       rotation={[0, rotationY, 0]}
-      scale={SYNTY_SCALE * (variant.renderScale ?? 1)}
+      scale={SYNTY_SCALE}
     >
       <primitive object={cloned} />
       {variant.companions?.map((companion) => (

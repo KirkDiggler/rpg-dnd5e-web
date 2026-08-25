@@ -6,6 +6,7 @@
  * rather than nesting a second `<Canvas>` inside it.
  */
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   MemberKind,
@@ -203,10 +204,12 @@ describe('SessionScene', () => {
       />
     );
 
-    // Three floor tiles -> three meshes at FLOOR_Y (SyntyHexFloor.tsx).
+    // Three floor tiles -> three meshes at the shared dungeon surface.
     const floorMeshes = renderer.scene
       .findAll((node) => node.type === 'Mesh')
-      .filter((node) => (node.instance as THREE.Mesh).position.y === 0.2);
+      .filter(
+        (node) => (node.instance as THREE.Mesh).position.y === DUNGEON_SURFACE_Y
+      );
     expect(floorMeshes).toHaveLength(3);
 
     // WallRunMesh tiles 6 authored wall runs into GLB pieces, plus the
@@ -225,6 +228,17 @@ describe('SessionScene', () => {
     // the three floor tiles already counted.
     const allMeshes = renderer.scene.findAll((node) => node.type === 'Mesh');
     expect(allMeshes.length).toBeGreaterThan(floorMeshes.length);
+  });
+
+  it('places a mapped AtlasProp on the same dungeon surface as the floor', async () => {
+    const renderer = await renderSession(sceneWithProp('dnd5e:props:pillar'));
+    const propMesh = meshInstances(renderer).find(
+      (mesh) => mesh.name === '/models/synty/props/SM_Env_Pillar_Round_01.glb'
+    );
+    expect(propMesh).toBeDefined();
+
+    const propAnchor = propMesh?.parent?.parent as THREE.Group | undefined;
+    expect(propAnchor?.position.y).toBeCloseTo(DUNGEON_SURFACE_Y);
   });
 
   it('renders a visible placeholder at the cell when an AtlasProp ref is unknown', async () => {
