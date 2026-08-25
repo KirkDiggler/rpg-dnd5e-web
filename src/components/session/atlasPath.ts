@@ -77,7 +77,9 @@ export function buildAtlasPathIndex(
   atlas: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways' | 'props'>,
   /** Live door state keyed by door id (`useSessionDoors`). Omitted — by
    * callers that predate doors on the wire, and by tests — every doorway
-   * stays crossable. */
+   * stays crossable. Provided, a doorway passes only when its door is
+   * KNOWN OPEN: a missing entry refuses, matching the shut leaf
+   * `AtlasWalls` draws for the same unknown. */
   doors?: ReadonlyMap<string, DoorInfo>
 ): AtlasPathIndex {
   const floor = new Set(
@@ -93,9 +95,16 @@ export function buildAtlasPathIndex(
       positionToCube(doorway.to)
     );
     doorwayEdges.add(key);
-    const state = doors?.get(doorway.connection)?.state;
-    if (state !== undefined && state !== DoorState.OPEN) {
-      shutDoorEdges.add(key);
+    // With a live door map in hand, only a door KNOWN OPEN passes — an
+    // entry that is missing or shut refuses, exactly matching the leaf
+    // `AtlasWalls` renders for the same state (Copilot round, #812: the
+    // preview must never path through a door drawn shut). Without a map
+    // (callers that predate doors, tests) every doorway stays crossable.
+    if (doors !== undefined) {
+      const state = doors.get(doorway.connection)?.state;
+      if (state !== DoorState.OPEN) {
+        shutDoorEdges.add(key);
+      }
     }
   }
 

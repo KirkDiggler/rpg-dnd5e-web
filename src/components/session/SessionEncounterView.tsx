@@ -162,9 +162,6 @@ export interface SessionEncounterViewProps {
   onBack: () => void;
 }
 
-/** A centered message card, matching the shape (not the fixed positioning)
- * every early-exit state below shares — loading/error/gap all read the
- * same way, just with different content. */
 /** The outcome headline by declared ending key — keys are content
  * vocabulary (rpg-project#269 §6.3): the wire carries the author's word and
  * the client owns the sentence. An unknown key still ends the run, with the
@@ -182,6 +179,9 @@ function endingHeadline(ending: string): string {
   }
 }
 
+/** A centered message card, matching the shape (not the fixed positioning)
+ * every early-exit state below shares — loading/error/gap all read the
+ * same way, just with different content. */
 function CenteredCard({ children }: { children: React.ReactNode }) {
   return (
     <div
@@ -618,6 +618,12 @@ export function SessionEncounterView({
   // session/member-scoped state.
   useEffect(() => {
     setDebugEvents([]);
+    // Session/member-scoped UI state resets with them (the same
+    // reset-rather-than-trust-a-remount discipline as the log): a run that
+    // ended in one session must not greet the next with its overlay, and a
+    // door notice belongs to the session it happened in.
+    setRunEnded(null);
+    setDoorNotice(null);
   }, [sessionId, member]);
 
   const handleSessionEvent = useCallback(
@@ -885,7 +891,14 @@ export function SessionEncounterView({
               zIndex: 30,
             }}
           >
+            {/* Dialog semantics without `ui/Modal`: that component portals a
+                FIXED full-viewport layer, and this overlay is deliberately
+                scoped to the canvas it sits over (the panel and top bar stay
+                where they are). Same accessibility contract, hand-carried. */}
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="run-ended-headline"
               style={{
                 textAlign: 'center',
                 padding: '32px 48px',
@@ -894,7 +907,9 @@ export function SessionEncounterView({
                 border: '1px solid var(--border-primary, #333)',
               }}
             >
-              <h2 style={{ margin: '0 0 8px' }}>{endingHeadline(runEnded)}</h2>
+              <h2 id="run-ended-headline" style={{ margin: '0 0 8px' }}>
+                {endingHeadline(runEnded)}
+              </h2>
               <p
                 style={{
                   color: 'var(--text-secondary, #aaa)',

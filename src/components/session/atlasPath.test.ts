@@ -428,6 +428,16 @@ describe('door state gates the doorway (rpg-project#268)', () => {
     ).toBe(false);
   });
 
+  it('a map WITHOUT an entry for the door refuses too — the leaf draws shut for the same unknown, and the preview must match it', () => {
+    const index = buildAtlasPathIndex(
+      gatedAtlas(),
+      new Map() as ReadonlyMap<string, DoorInfo>
+    );
+    expect(
+      edgePassable(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toBe(false);
+  });
+
   it('a shut door never leaks into blockedEdges — reopening is a doors-map change, not an atlas change', () => {
     const index = buildAtlasPathIndex(
       gatedAtlas(),
