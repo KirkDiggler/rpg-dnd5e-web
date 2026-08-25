@@ -6,6 +6,10 @@ import {
 import { useCallback, useState } from 'react';
 import { characterV2Client } from './client';
 
+export interface GetCharacterDataOptions {
+  signal?: AbortSignal;
+}
+
 export interface UseGetCharacterDataResult {
   /**
    * Calls the v1alpha2 CharacterService.GetCharacterData unary RPC — the
@@ -17,7 +21,10 @@ export interface UseGetCharacterDataResult {
    * from this and later re-renders from an equip response uses one type,
    * one code path.
    */
-  getCharacterData: (characterId: string) => Promise<GetCharacterDataResponse>;
+  getCharacterData: (
+    characterId: string,
+    options?: GetCharacterDataOptions
+  ) => Promise<GetCharacterDataResponse>;
   loading: boolean;
   error: Error | null;
 }
@@ -36,12 +43,19 @@ export function useGetCharacterData(): UseGetCharacterDataResult {
   const [error, setError] = useState<Error | null>(null);
 
   const getCharacterData = useCallback(
-    async (characterId: string): Promise<GetCharacterDataResponse> => {
+    async (
+      characterId: string,
+      options?: GetCharacterDataOptions
+    ): Promise<GetCharacterDataResponse> => {
       setLoading(true);
       setError(null);
       try {
         const request = create(GetCharacterDataRequestSchema, { characterId });
-        const response = await characterV2Client.getCharacterData(request);
+        const response = options?.signal
+          ? await characterV2Client.getCharacterData(request, {
+              signal: options.signal,
+            })
+          : await characterV2Client.getCharacterData(request);
         return response;
       } catch (err) {
         const wrapped =

@@ -20,7 +20,10 @@ vi.mock('@/api/client', () => ({
 }));
 
 // Import AFTER vi.mock so the mock is applied
-import { useSessionEventStream } from './useSessionEventStream';
+import {
+  STORY_RECOVERY_INTERVAL_MS,
+  useSessionEventStream,
+} from './useSessionEventStream';
 
 function fakeEvent(overrides: Partial<Event> = {}): Event {
   return {
@@ -185,13 +188,15 @@ describe('useSessionEventStream', () => {
     // `repeated Event`, the same message StreamEvents sends), not a
     // synthesized stand-in.
     expect(onEvent.mock.calls[0][0]).toBe(catchUpEvent);
+    expect(onEvent.mock.calls[0][1]).toEqual({ source: 'catchup' });
     await waitFor(() => expect(result.current).toBe('live'));
 
     stream.push(fakeEvent({ seq: 2n }));
     await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(2));
     expect(onEvent).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ seq: 2n })
+      expect.objectContaining({ seq: 2n }),
+      { source: 'live' }
     );
   });
 
@@ -243,6 +248,12 @@ describe('useSessionEventStream', () => {
       3n,
       4n,
     ]);
+    expect(onEvent.mock.calls.map((call) => call[1])).toEqual([
+      { source: 'live' },
+      { source: 'catchup' },
+      { source: 'catchup' },
+      { source: 'live' },
+    ]);
     // Catch-up entries are ordinary typed Events now (rpg-api-protos
     // v0.1.135) — delivered straight through, object identity intact.
     expect(onEvent.mock.calls[1][0]).toBe(catchUpSeq2);
@@ -262,7 +273,8 @@ describe('useSessionEventStream', () => {
     await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(5));
     expect(onEvent).toHaveBeenNthCalledWith(
       5,
-      expect.objectContaining({ seq: 5n })
+      expect.objectContaining({ seq: 5n }),
+      { source: 'live' }
     );
   });
 
@@ -414,8 +426,195 @@ describe('useSessionEventStream', () => {
       50n,
       100n,
     ]);
+    expect(onEvent.mock.calls.map((call) => call[1])).toEqual([
+      { source: 'live' },
+      { source: 'catchup' },
+      { source: 'live' },
+    ]);
     expect(onAgedOut).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(result.current).toBe('live'));
+  });
+
+  it('recovers the last dropped event within five seconds without a later stream frame, exactly once', async () => {
+    vi.useFakeTimers();
+    const stream = manualStream();
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    const dropped = fakeEvent({ seq: 8n });
+    hoisted.getStoryFn
+      .mockResolvedValueOnce({ entries: [] })
+      .mockResolvedValue({ entries: [dropped] });
+    const onEvent = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+
+    stream.push(fakeEvent({ seq: 7n }));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+    await vi.advanceTimersByTimeAsync(STORY_RECOVERY_INTERVAL_MS);
+    await vi.waitFor(() =>
+      expect(onEvent).toHaveBeenCalledWith(dropped, { source: 'catchup' })
+    );
+
+    await vi.advanceTimersByTimeAsync(STORY_RECOVERY_INTERVAL_MS);
+    expect(
+      onEvent.mock.calls.filter(([value]) => (value as Event).seq === 8n)
+    ).toHaveLength(1);
+  });
+
+  it('runs an immediate catch-up when the window focuses', async () => {
+    vi.useFakeTimers();
+    const stream = manualStream();
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    const focusedEntry = fakeEvent({ seq: 2n });
+    hoisted.getStoryFn
+      .mockResolvedValueOnce({ entries: [] })
+      .mockResolvedValueOnce({ entries: [focusedEntry] });
+    const onEvent = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent)
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+    stream.push(fakeEvent({ seq: 1n }));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+    window.dispatchEvent(new globalThis.Event('focus'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.waitFor(() =>
+      expect(onEvent).toHaveBeenCalledWith(focusedEntry, {
+        source: 'catchup',
+      })
+    );
+    expect(hoisted.getStoryFn).toHaveBeenLastCalledWith(
+      { session: 'enc-1', member: 'char-1', fromSeq: 2n },
+      expect.anything()
+    );
+  });
+
+  it('runs an immediate catch-up when the document becomes visible and restores the visibility descriptor', async () => {
+    vi.useFakeTimers();
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      'visibilityState'
+    );
+    const setVisibility = (value: DocumentVisibilityState) => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value,
+      });
+    };
+
+    try {
+      setVisibility('hidden');
+      const stream = manualStream();
+      hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+      const visibleEntry = fakeEvent({ seq: 2n });
+      hoisted.getStoryFn
+        .mockResolvedValueOnce({ entries: [] })
+        .mockResolvedValueOnce({ entries: [visibleEntry] });
+      const onEvent = vi.fn();
+
+      const { result } = renderHook(() =>
+        useSessionEventStream('enc-1', 'char-1', onEvent)
+      );
+      await vi.waitFor(() => expect(result.current).toBe('live'));
+      stream.push(fakeEvent({ seq: 1n }));
+      await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+      setVisibility('visible');
+      document.dispatchEvent(new globalThis.Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(0);
+
+      await vi.waitFor(() =>
+        expect(onEvent).toHaveBeenCalledWith(visibleEntry, {
+          source: 'catchup',
+        })
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(document, 'visibilityState', originalDescriptor);
+      } else {
+        delete (document as unknown as { visibilityState?: string })
+          .visibilityState;
+      }
+    }
+  });
+
+  it('serializes interval, focus, and visibility catch-ups while one recovery is active', async () => {
+    vi.useFakeTimers();
+    const stream = manualStream();
+    let resolveRecovery!: (value: { entries: Event[] }) => void;
+    const pending = new Promise<{ entries: Event[] }>((resolve) => {
+      resolveRecovery = resolve;
+    });
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    hoisted.getStoryFn
+      .mockResolvedValueOnce({ entries: [] })
+      .mockReturnValueOnce(pending)
+      .mockResolvedValue({ entries: [] });
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', () => {})
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+
+    await vi.advanceTimersByTimeAsync(STORY_RECOVERY_INTERVAL_MS);
+    await vi.waitFor(() => expect(result.current).toBe('resyncing'));
+    expect(hoisted.getStoryFn).toHaveBeenCalledTimes(2);
+
+    window.dispatchEvent(new globalThis.Event('focus'));
+    document.dispatchEvent(new globalThis.Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(STORY_RECOVERY_INTERVAL_MS);
+    expect(hoisted.getStoryFn).toHaveBeenCalledTimes(2);
+
+    resolveRecovery({ entries: [] });
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+
+    window.dispatchEvent(new globalThis.Event('focus'));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(hoisted.getStoryFn).toHaveBeenCalledTimes(3));
+  });
+
+  it('retries a trimmed interval recovery from zero, marks recovered entries catch-up, then invokes onAgedOut', async () => {
+    vi.useFakeTimers();
+    const stream = manualStream();
+    const recovered = fakeEvent({ seq: 8n });
+    hoisted.streamEventsFn.mockReturnValue(stream.iterable);
+    hoisted.getStoryFn
+      .mockResolvedValueOnce({ entries: [] })
+      .mockRejectedValueOnce(storyTrimmedError())
+      .mockResolvedValueOnce({ entries: [recovered] });
+    const onEvent = vi.fn();
+    const onAgedOut = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionEventStream('enc-1', 'char-1', onEvent, onAgedOut)
+    );
+    await vi.waitFor(() => expect(result.current).toBe('live'));
+    stream.push(fakeEvent({ seq: 7n }));
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+
+    await vi.advanceTimersByTimeAsync(STORY_RECOVERY_INTERVAL_MS);
+    await vi.waitFor(() => expect(onAgedOut).toHaveBeenCalledTimes(1));
+
+    expect(hoisted.getStoryFn).toHaveBeenNthCalledWith(
+      2,
+      { session: 'enc-1', member: 'char-1', fromSeq: 8n },
+      expect.anything()
+    );
+    expect(hoisted.getStoryFn).toHaveBeenNthCalledWith(
+      3,
+      { session: 'enc-1', member: 'char-1', fromSeq: 0n },
+      expect.anything()
+    );
+    expect(onEvent).toHaveBeenCalledWith(recovered, { source: 'catchup' });
+    expect(onAgedOut.mock.invocationCallOrder[0]).toBeGreaterThan(
+      onEvent.mock.invocationCallOrder[1] ?? 0
+    );
   });
 
   it('does not throw when the stream rejects after abort (unmount race)', async () => {
