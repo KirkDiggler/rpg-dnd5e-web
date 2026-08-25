@@ -954,24 +954,31 @@ describe('SessionEncounterView', () => {
         participants,
       });
       const affordable = overrides.attackAffordable ?? true;
+      // The v0.1.143 wire shape (#253): ONE attack declaration carrying
+      // its per-target candidates; useSessionAfford's shim expands them
+      // back to the per-target rows the panel renders.
       hoisted.affordFn.mockResolvedValue({
         clock: ClockKind.TURN,
         declarations: [
           {
             verb: Verb.ATTACK,
             slot: Slot.ACTION,
-            affordable,
-            shortfall: affordable ? '' : (overrides.shortfallText ?? ''),
-            target: 'skeleton-1',
-            why: affordable
-              ? undefined
-              : {
-                  reason: ShortfallReason.NO_BUDGET,
-                  currency: Currency.ACTION,
-                  needed: 1,
-                  left: 0,
-                  text: overrides.shortfallText ?? '',
-                },
+            available: affordable,
+            candidates: [
+              {
+                member: 'skeleton-1',
+                available: affordable,
+                why: affordable
+                  ? undefined
+                  : {
+                      reason: ShortfallReason.NO_BUDGET,
+                      currency: Currency.ACTION,
+                      needed: 1,
+                      left: 0,
+                      text: overrides.shortfallText ?? '',
+                    },
+              },
+            ],
           },
         ],
       });
@@ -1021,9 +1028,8 @@ describe('SessionEncounterView', () => {
           {
             verb: Verb.ATTACK,
             slot: Slot.ACTION,
-            affordable: true,
-            shortfall: '',
-            target: 'skeleton-1',
+            available: true,
+            candidates: [{ member: 'skeleton-1', available: true }],
           },
         ],
       });
@@ -1803,15 +1809,14 @@ describe('SessionEncounterView', () => {
           {
             verb: Verb.ATTACK,
             slot: Slot.ACTION,
-            affordable: true,
-            shortfall: '',
-            target: 'skeleton-1',
+            available: true,
+            candidates: [{ member: 'skeleton-1', available: true }],
           },
           {
             verb: Verb.MOVE,
             slot: Slot.NONE,
-            affordable: true,
-            shortfall: '',
+            available: true,
+            candidates: [],
             remaining: 17,
           },
         ],
@@ -2304,9 +2309,8 @@ describe('SessionEncounterView', () => {
           {
             verb: Verb.ATTACK,
             slot: Slot.ACTION,
-            affordable: true,
-            shortfall: '',
-            target: 'skeleton-1',
+            available: true,
+            candidates: [{ member: 'skeleton-1', available: true }],
           },
         ],
       });

@@ -57,9 +57,9 @@ export function referenceTombDoc(): DungeonDoc {
   const entranceHallDoor: Edge = normalizeEdge([p(5, 3), p(6, 3)]);
   const hallTombDoor: Edge = normalizeEdge([p(15, 3), p(16, 3)]);
   const doorKeys = new Set([entranceHallDoor, hallTombDoor].map(axialPairKey));
-  const walls = [...seamEdges(entrance, hall), ...seamEdges(hall, tomb)].filter(
-    (e) => !doorKeys.has(axialPairKey(e))
-  );
+  const walls = [...seamEdges(entrance, hall), ...seamEdges(hall, tomb)]
+    .filter((e) => !doorKeys.has(axialPairKey(e)))
+    .map((edge) => ({ edge }));
 
   return {
     version: 2,

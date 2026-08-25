@@ -83,6 +83,15 @@ export interface AuthoredWallEdgeInput {
    * of tiling straight through the door opening.
    */
   isDoor: boolean;
+  /**
+   * The authored wall-height MULTIPLIER of the standard rendered wall
+   * height (rpg-project#273), `0`/omitted = not authored = standard.
+   * Height joins the CHAIN-IDENTITY criteria: a chain SPLITS where
+   * adjacent edges disagree on height, exactly as doors split runs —
+   * a half-authored wall must not average into one run that renders a
+   * height nobody wrote.
+   */
+  height?: number;
 }
 
 /** One straight authored wall run — a chain of contiguous, straight-enough
@@ -96,6 +105,11 @@ export interface AuthoredWallRun extends WallRunSegment {
    * wallRunMeshHelpers.segmentKey's "derive from the segment's own
    * identity, not position" rule). */
   key: string;
+  /** The run's authored height multiplier — uniform across the whole
+   * chain by construction (height is a chain-break criterion, see
+   * `AuthoredWallEdgeInput.height`). `0` = not authored: render the
+   * standard height, never multiply by the raw value. */
+  height: number;
   /** Unit vector (world x/z) this run's tiled pieces should face outward
    * — see wallRuns.ts's `EnvelopeRun.facing` doc comment for the defect
    * this corrects (a tiled piece's detailed face vs. flat back). Derived
@@ -268,6 +282,22 @@ export function computeAuthoredWallRuns(
     }
   }
 
+  // Height boundaries are hard breaks, exactly as door vertices are
+  // (rpg-project#273): a vertex whose incident non-door edges disagree
+  // on height both STOPS a walk and STARTS chains, so a run is
+  // height-uniform by construction and the boundary lands on the exact
+  // authored edge, not wherever an arbitrary walk happened to notice.
+  const heightOf = (g: EdgeGeom): number => g.input.height ?? 0;
+  const heightBreakKeys = new Set<string>();
+  const heightsAtVertex = new Map<string, number>();
+  for (const g of nonDoor) {
+    for (const key of [g.aKey, g.bKey]) {
+      const seen = heightsAtVertex.get(key);
+      if (seen === undefined) heightsAtVertex.set(key, heightOf(g));
+      else if (seen !== heightOf(g)) heightBreakKeys.add(key);
+    }
+  }
+
   const vertexPos = new Map<string, WorldPos>();
   for (const g of geoms) {
     vertexPos.set(g.aKey, g.a);
@@ -336,7 +366,10 @@ export function computeAuthoredWallRuns(
     const visited: WorldPos[] = [otherEnd(firstEdge, startKey).pos];
     let currentKey = otherEnd(firstEdge, startKey).key;
 
-    while (!doorVertexKeys.has(currentKey)) {
+    while (
+      !doorVertexKeys.has(currentKey) &&
+      !heightBreakKeys.has(currentKey)
+    ) {
       // Softness is the vertex's TRUE degree, never its unused-edge
       // count (rpg-dnd5e-web#808, Kirk's walk: "the bottom room east
       // wall does not match the corner"). The original check counted
@@ -482,7 +515,9 @@ export function computeAuthoredWallRuns(
       .map((g) => g.input.id ?? `${g.aKey}|${g.bKey}`)
       .sort()
       .join(';');
-    runs.push({ start, end, key, facing });
+    // Uniform across the chain by the height-break rule above; the
+    // first edge speaks for all of them.
+    runs.push({ start, end, key, facing, height: heightOf(chainEdges[0]!) });
   }
 
   // Phase 1: start a chain from every hard-break vertex (branch, dead end,
@@ -490,7 +525,8 @@ export function computeAuthoredWallRuns(
   const allVertexKeys = new Set<string>(adjacency.keys());
   for (const key of allVertexKeys) {
     const degree = (adjacency.get(key) ?? []).length;
-    const isHardBreak = degree !== 2 || doorVertexKeys.has(key);
+    const isHardBreak =
+      degree !== 2 || doorVertexKeys.has(key) || heightBreakKeys.has(key);
     if (!isHardBreak) continue;
     for (const g of adjacency.get(key) ?? []) {
       if (used.has(g)) continue;

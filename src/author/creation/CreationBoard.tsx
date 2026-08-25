@@ -642,11 +642,11 @@ export function CreationBoard({
     dash?: string;
   }[] = [];
   for (const w of displayDoc.walls) {
-    const isError = errorEdges.has(edgeKey(w));
+    const isError = errorEdges.has(edgeKey(w.edge));
     if (straightened && !isError) continue;
     edgeLines.push({
-      key: `w:${edgeKey(w)}`,
-      edge: w,
+      key: `w:${edgeKey(w.edge)}`,
+      edge: w.edge,
       stroke: isError ? ERROR_STROKE : WALL_STROKE,
       width: 4,
     });
@@ -793,9 +793,7 @@ export function CreationBoard({
                 (t) => t.kind === 'placement' && t.index === i
               );
               const facingDeg =
-                p.facing !== undefined
-                  ? facingAngleDeg(o, p.facing)
-                  : undefined;
+                p.facing !== undefined ? facingAngleDeg(p.facing) : undefined;
               return (
                 <g key={`${p.ref}:${axialKey(p.at)}`} data-placement={i}>
                   <circle
@@ -871,17 +869,31 @@ export function CreationBoard({
                 !!selectedWallKeys &&
                 r.edges.some((edge) => selectedWallKeys.has(edgeKey(edge)));
               return (
-                <line
-                  key={`run:${r.key}`}
-                  data-run={r.key}
-                  data-selected={isSelected || undefined}
-                  stroke={isSelected ? HOVER_STROKE : WALL_STROKE}
-                  strokeWidth={isSelected ? 6 : 4}
-                  x1={r.a.x}
-                  y1={r.a.y}
-                  x2={r.b.x}
-                  y2={r.b.y}
-                />
+                <g key={`run:${r.key}`}>
+                  <line
+                    data-run={r.key}
+                    data-selected={isSelected || undefined}
+                    stroke={isSelected ? HOVER_STROKE : WALL_STROKE}
+                    strokeWidth={isSelected ? 6 : 4}
+                    x1={r.a.x}
+                    y1={r.a.y}
+                    x2={r.b.x}
+                    y2={r.b.y}
+                  />
+                  {r.height > 0 && (
+                    <text
+                      data-run-height={r.key}
+                      x={(r.a.x + r.b.x) / 2}
+                      y={(r.a.y + r.b.y) / 2 - 6}
+                      textAnchor="middle"
+                      fontSize={11}
+                      fill={WALL_STROKE}
+                      stroke="none"
+                    >
+                      ×{r.height}
+                    </text>
+                  )}
+                </g>
               );
             })}
             {scene?.doors.map((d) => {

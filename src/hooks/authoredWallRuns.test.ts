@@ -302,6 +302,53 @@ describe('computeAuthoredWallRuns — door interrupts a run', () => {
   });
 });
 
+describe('computeAuthoredWallRuns — authored height splits chains (rpg-project#273)', () => {
+  /** The same pure single-side fixture the door-interrupt test builds —
+   * one straight column of genuinely adjacent boundary edges. */
+  function straightSide(): AuthoredWallEdgeInput[] {
+    const minRow = 0;
+    const maxRow = 9;
+    const side = rectBoundaryEdges(0, 8, minRow, maxRow).filter(
+      (e) =>
+        e.from.x === 0 && hexRow(e.from) > minRow && hexRow(e.from) < maxRow
+    );
+    expect(side.length).toBeGreaterThanOrEqual(6);
+    return side;
+  }
+
+  it('a mid-chain height change splits the run at the authored boundary, each side carrying its own height', () => {
+    const side = straightSide();
+    const raisedCount = 3;
+    const edges = side.map((e, i) => ({
+      ...e,
+      height: i < raisedCount ? 2 : 0,
+    }));
+    const runs = computeAuthoredWallRuns(edges);
+    expect(runs).toHaveLength(2);
+    const heights = runs.map((r) => r.height).sort();
+    expect(heights).toEqual([0, 2]);
+  });
+
+  it('a uniform authored height derives exactly the default-height run geometry — height rides, it never moves an endpoint', () => {
+    const side = straightSide();
+    const reference = computeAuthoredWallRuns(side);
+    const raised = computeAuthoredWallRuns(
+      side.map((e) => ({ ...e, height: 2.5 }))
+    );
+    expect(raised).toEqual(reference.map((r) => ({ ...r, height: 2.5 })));
+  });
+
+  it('0 and omitted are the same fact: both chain together as standard height', () => {
+    const side = straightSide();
+    const mixedSpelling = side.map((e, i) =>
+      i % 2 === 0 ? e : { ...e, height: 0 }
+    );
+    expect(computeAuthoredWallRuns(mixedSpelling)).toEqual(
+      computeAuthoredWallRuns(side)
+    );
+  });
+});
+
 describe('computeAuthoredWallRuns — corner (a genuine direction change)', () => {
   it('breaks into separate runs at a real corner, not one chord across the whole bend', () => {
     // A genuine L-shaped bend: the full boundary of a tall, narrow

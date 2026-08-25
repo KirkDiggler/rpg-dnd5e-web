@@ -474,6 +474,9 @@ interface MutableRun {
   end: WorldPos;
   key: string;
   facing: WorldPos;
+  /** The run's authored height multiplier, carried verbatim from the
+   * chaining engine (`AuthoredWallRun.height`); 0 = standard. */
+  height: number;
 }
 
 /** Whichever run has an endpoint at EXACTLY `DOOR_TRIM` from `corner`
@@ -820,7 +823,11 @@ export function boundariesToWallRuns(
     const from = positionToCube(b.from);
     const to = positionToCube(b.to);
     if (doorwayPairs.has(pairKey(from, to))) continue;
-    edges.push({ from, to, isDoor: false });
+    // The authored height multiplier rides each edge into the chaining
+    // engine, where it is a chain-break criterion (rpg-project#273).
+    // `?? 0` for JSON-shaped callers; the generated proto always has
+    // the field (0 = not authored = standard).
+    edges.push({ from, to, isDoor: false, height: b.height ?? 0 });
   }
 
   for (const d of atlas.doorways as AtlasDoorway[]) {
@@ -1009,6 +1016,7 @@ export function boundariesToWallRuns(
       end: fitted.end,
       key: r.key,
       facing: r.facing,
+      height: r.height,
     };
   });
 

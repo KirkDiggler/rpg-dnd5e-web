@@ -77,11 +77,11 @@ function PreviewProp({
       <ErrorBoundary fallback={placeholder}>
         <PropModel
           variant={variant}
-          position={[world.x, 0, world.z]}
+          position={[world.x, world.y, world.z]}
           // 'pointy' is safe unqualified: resolveSceneLayout already
           // gated this whole scene to pointy-top before buildScene3D
           // ran (hexMath.ts places pointy-top hexes only).
-          rotationY={facingToYaw('pointy', prop.facing)}
+          rotationY={facingToYaw(prop.facing)}
         />
       </ErrorBoundary>
     </Suspense>

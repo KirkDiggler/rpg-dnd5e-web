@@ -13,7 +13,12 @@ import { DOOR_FRAME_CALIBRATED_WIDTH } from '@/components/hex-grid/syntyHexWallH
 import { buildScene3D } from '@/components/session/atlasToScene3D';
 import { describe, expect, it } from 'vitest';
 import { hexCenter } from '../../concepts/session-tomb/atlas';
-import { emptyDungeon, paintCell, toggleWall } from '../dungeonYaml';
+import {
+  emptyDungeon,
+  paintCell,
+  setWallHeights,
+  toggleWall,
+} from '../dungeonYaml';
 import { fixtureAtlasOf } from '../fixtures/fixtureAtlas';
 import { referenceTombDoc } from '../fixtures/referenceTomb';
 import { edgeKey, fromOffset, type Axial } from '../hexOffset';
@@ -119,10 +124,31 @@ describe('boardWallScene', () => {
     const threaded = scene2d.runs.flatMap((r) => r.edges).map(edgeKey);
     // Every doc wall appears in exactly one run's source list, and no
     // run carries an edge the doc doesn't have.
-    expect(threaded.sort()).toEqual(doc.walls.map(edgeKey).sort());
+    expect(threaded.sort()).toEqual(
+      doc.walls.map((w) => edgeKey(w.edge)).sort()
+    );
     for (const run of scene2d.runs) {
       expect(run.edges.length).toBeGreaterThan(0);
     }
+  });
+
+  it("an authored height reaches its 2D run — and splits the run where the document's heights change (rpg-project#273)", () => {
+    // Raise part of the tomb's first seam: the shared engine must break
+    // the chain at the height boundary and each side must carry its own
+    // multiplier out to the board.
+    const doc = referenceTombDoc();
+    const raisedEdges = doc.walls.slice(0, 3).map((w) => w.edge);
+    const raisedKeys = new Set(raisedEdges.map(edgeKey));
+    const raisedDoc = setWallHeights(doc, raisedEdges, 2);
+    const scene2d = boardWallScene(raisedDoc, BOARD_HEX_SIZE)!;
+    for (const run of scene2d.runs) {
+      const inRaised = run.edges.map((e) => raisedKeys.has(edgeKey(e)));
+      // No run mixes raised and standard edges — the chain split there.
+      expect(new Set(inRaised).size).toBe(1);
+      expect(run.height).toBe(inRaised[0] ? 2 : 0);
+    }
+    expect(scene2d.runs.some((r) => r.height === 2)).toBe(true);
+    expect(scene2d.runs.some((r) => r.height === 0)).toBe(true);
   });
 
   it('doors sit exactly in the run gaps, one per door edge, keyed to their document door', () => {

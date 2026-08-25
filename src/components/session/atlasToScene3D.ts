@@ -77,26 +77,32 @@ export interface SceneProp3D {
    * is the renderer's job (`facingYaw.ts`'s `facingToYaw`), not this
    * adapter's; the wire carries the word, never an angle. */
   facing: string;
-  /** The authored within-cell visual nudge, verbatim off the wire —
-   * `{0, 0}` and "not authored" render identically, by design. VISUAL
-   * ONLY; never read by anything that computes rules. */
-  offset: { x: number; y: number };
+  /** The authored visual displacement, verbatim off the wire: `x`/`y`
+   * the within-cell nudge, `z` the height above the floor
+   * (rpg-project#272 — same cell-size unit, its own wider [0,3] range,
+   * not the planar ±0.5 clamp). The zero value and "not authored"
+   * render identically, by design. VISUAL ONLY; never read by anything
+   * that computes rules. */
+  offset: { x: number; y: number; z: number };
 }
 
 /**
  * A prop's actual render position: its cell center plus its authored
  * `offset`, each component scaled by `hexSize` (design: "offset * HEX_SIZE
- * applied in the shared scene path"). ONE place, so `DungeonPreview3D`'s
- * prop path and the game route's (`SessionCanvas`) can never disagree —
- * the same symmetric-bug discipline `hexOffset.ts` names.
+ * applied in the shared scene path") — including the world-Y the third
+ * component raises it to (rpg-project#272: floor + offset.z · hexSize).
+ * ONE place, so `DungeonPreview3D`'s prop path and the game route's
+ * (`SessionCanvas`) can never disagree — the same symmetric-bug
+ * discipline `hexOffset.ts` names.
  */
 export function propWorldPosition(
   prop: Pick<SceneProp3D, 'position' | 'offset'>,
   hexSize: number
-): WorldPos {
+): WorldPos & { y: number } {
   const center = cubeToWorld(prop.position, hexSize);
   return {
     x: center.x + prop.offset.x * hexSize,
+    y: prop.offset.z * hexSize,
     z: center.z + prop.offset.y * hexSize,
   };
 }
@@ -200,7 +206,11 @@ export function buildScene3D(
       ref: prop.ref,
       position: positionToCube(prop.at),
       facing: prop.facing ?? '',
-      offset: { x: prop.offsetX ?? 0, y: prop.offsetY ?? 0 },
+      offset: {
+        x: prop.offsetX ?? 0,
+        y: prop.offsetY ?? 0,
+        z: prop.offsetZ ?? 0,
+      },
     });
   }
 

@@ -136,6 +136,7 @@ describe('buildScene3D', () => {
             facing: 'ne',
             offsetX: 0.2,
             offsetY: -0.1,
+            offsetZ: 0.6,
           },
           {
             ref: 'homebrew:props:unknown',
@@ -157,13 +158,13 @@ describe('buildScene3D', () => {
         ref: 'dnd5e:props:pillar',
         position: { x: 3, y: -1, z: -2 },
         facing: 'ne',
-        offset: { x: 0.2, y: -0.1 },
+        offset: { x: 0.2, y: -0.1, z: 0.6 },
       },
       {
         ref: 'homebrew:props:unknown',
         position: { x: 0, y: -1, z: 1 },
         facing: '',
-        offset: { x: 0, y: 0 },
+        offset: { x: 0, y: 0, z: 0 },
       },
     ]);
   });
@@ -195,12 +196,12 @@ describe('buildScene3D', () => {
 
     const prop = scene.props[0];
     expect(prop.facing).toBe('');
-    expect(prop.offset).toEqual({ x: 0, y: 0 });
+    expect(prop.offset).toEqual({ x: 0, y: 0, z: 0 });
 
     const world = propWorldPosition(prop, 1);
     expect(Number.isFinite(world.x)).toBe(true);
     expect(Number.isFinite(world.z)).toBe(true);
-    expect(world).toEqual(worldPositionOf(pos(1, 0), 1));
+    expect(world).toEqual({ ...worldPositionOf(pos(1, 0), 1), y: 0 });
   });
 
   /**
@@ -251,10 +252,10 @@ describe('buildScene3D', () => {
 describe('propWorldPosition', () => {
   it('is exactly the cell center when offset is {0, 0}', () => {
     const world = propWorldPosition(
-      { position: positionToCube(pos(2, -1)), offset: { x: 0, y: 0 } },
+      { position: positionToCube(pos(2, -1)), offset: { x: 0, y: 0, z: 0 } },
       1
     );
-    expect(world).toEqual(worldPositionOf(pos(2, -1), 1));
+    expect(world).toEqual({ ...worldPositionOf(pos(2, -1), 1), y: 0 });
   });
 
   it('adds offset * hexSize to the cell center, exactly, on both axes', () => {
@@ -262,10 +263,22 @@ describe('propWorldPosition', () => {
     const cell = positionToCube(pos(-3, 5));
     const center = worldPositionOf(pos(-3, 5), hexSize);
     const world = propWorldPosition(
-      { position: cell, offset: { x: 0.2, y: -0.4 } },
+      { position: cell, offset: { x: 0.2, y: -0.4, z: 0 } },
       hexSize
     );
     expect(world.x).toBeCloseTo(center.x + 0.2 * hexSize, 12);
     expect(world.z).toBeCloseTo(center.z + -0.4 * hexSize, 12);
+  });
+
+  it('raises world-Y by offset.z * hexSize, exactly — floor + offset_z · HEX_SIZE (rpg-project#272)', () => {
+    const hexSize = 1.75;
+    const world = propWorldPosition(
+      {
+        position: positionToCube(pos(-3, 5)),
+        offset: { x: 0, y: 0, z: 2.4 },
+      },
+      hexSize
+    );
+    expect(world.y).toBe(2.4 * hexSize);
   });
 });

@@ -329,7 +329,7 @@ describe('wall gesture affordances (#804)', () => {
     const doc = walledDoc();
     const { container } = mount(doc, {
       tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls },
+      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
     });
     // One single-edge run: two endpoint vertices, each with exactly one
     // incident run, visible the moment the wall is selected.
@@ -352,7 +352,7 @@ describe('wall gesture affordances (#804)', () => {
     const doc = walledDoc();
     const { container } = mount(doc, {
       tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls },
+      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
     });
     const selected = container.querySelectorAll('[data-run][data-selected]');
     expect(selected).toHaveLength(1);
@@ -475,7 +475,7 @@ describe('gesture plumbing — press, drag, release (#804)', () => {
     const doc = addWalls(floorDoc(), wall);
     const { container } = mount(doc, {
       tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls },
+      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
       onWallReshape,
     });
     const svg = enableSvgCtm(container);

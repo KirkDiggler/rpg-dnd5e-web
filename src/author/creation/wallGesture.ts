@@ -255,8 +255,12 @@ export function deriveDoorAdd(doc: DungeonDoc, chain: Edge[]): Edge[] {
 // asserts it float-exactly anyway).
 // ---------------------------------------------------------------------------
 
-export function applyWallDraw(doc: DungeonDoc, chain: Edge[]): DungeonDoc {
-  return addWalls(doc, deriveWallAdd(doc, chain));
+export function applyWallDraw(
+  doc: DungeonDoc,
+  chain: Edge[],
+  height?: number
+): DungeonDoc {
+  return addWalls(doc, deriveWallAdd(doc, chain), height);
 }
 
 export function applyWallErase(doc: DungeonDoc, chain: Edge[]): DungeonDoc {
@@ -279,13 +283,36 @@ export function applyReshape(
   oldChains: readonly Edge[][],
   newChains: readonly Edge[][]
 ): DungeonDoc {
+  // Chain-level height intent (rpg-project#273): the reshaped chain's
+  // authored height survives onto EVERY edge the re-derivation
+  // produces, including edges the reshape created — per-edge survival
+  // (keep old edges' heights, default the new) was the design's
+  // rejected alternative: it turns one drag into a mixed-height chain
+  // nobody asked for. Read before removal; `oldChains[i]` and
+  // `newChains[i]` are the same grabbed chain by the caller's own
+  // construction (CreationBoard's finishGesture maps `gesture.chains`
+  // in order). A chain's height is its first authored edge's — chains
+  // are height-uniform by the stepper's chain-level stamp, and a
+  // hand-edited mixed chain resolves to its first edge's value rather
+  // than silently dropping to standard.
+  const byKey = new Map(
+    doc.walls.map((w) => [edgeKey(w.edge), w.height] as const)
+  );
+  const heightOf = (chain: readonly Edge[]): number | undefined => {
+    for (const e of chain) {
+      const h = byKey.get(edgeKey(e));
+      if (h !== undefined) return h;
+    }
+    return undefined;
+  };
+  const heights = oldChains.map(heightOf);
   let next = removeWalls(
     doc,
     oldChains.flatMap((chain) => chain)
   );
-  for (const chain of newChains) {
-    next = applyWallDraw(next, chain);
-  }
+  newChains.forEach((chain, i) => {
+    next = applyWallDraw(next, chain, heights[i]);
+  });
   return next;
 }
 

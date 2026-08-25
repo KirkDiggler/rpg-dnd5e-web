@@ -35,28 +35,27 @@ function mountPlacement(
       onPlacement={overrides.onPlacement ?? noop}
       onRemovePlacement={noop}
       onRemoveWall={noop}
+      onSetWallHeight={noop}
     />
   );
 }
 
 describe('PlacementPanel facing/offset (rpg-project#261)', () => {
-  it('draws the pointy-top six-name compass and none defaults active', () => {
+  it('draws all eight compass buttons under pointy and none defaults active — the rose does not rotate with orientation (rpg-project#272)', () => {
     mountPlacement(propDoc('pointy'));
-    for (const name of ['e', 'se', 'sw', 'w', 'nw', 'ne']) {
+    for (const name of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
       expect(screen.getByTestId(`facing-${name}`)).toBeTruthy();
     }
-    expect(screen.queryByTestId('facing-n')).toBeNull();
     expect(screen.getByTestId('facing-none').className).toContain(
       'dg-tool--on'
     );
   });
 
-  it('draws the flat-top six-name compass under a flat dungeon', () => {
+  it('draws the SAME eight compass buttons under a flat dungeon', () => {
     mountPlacement(propDoc('flat'));
-    for (const name of ['n', 's', 'ne', 'nw', 'se', 'sw']) {
+    for (const name of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
       expect(screen.getByTestId(`facing-${name}`)).toBeTruthy();
     }
-    expect(screen.queryByTestId('facing-e')).toBeNull();
   });
 
   it('clicking a facing button reports that name; clicking none clears it', () => {
@@ -126,16 +125,13 @@ describe('wall selection (#804)', () => {
     doc = {
       ...doc,
       regions: [{ ...doc.regions[0], cells: [p(0, 0), p(1, 0), p(0, 1)] }],
-      walls: [
-        [p(0, 0), p(1, 0)],
-        [p(0, 0), p(0, 1)],
-      ],
+      walls: [{ edge: [p(0, 0), p(1, 0)] }, { edge: [p(0, 0), p(0, 1)] }],
     };
     const onRemoveWall = vi.fn();
     render(
       <Inspector
         doc={doc}
-        selection={{ kind: 'wall', edges: doc.walls }}
+        selection={{ kind: 'wall', edges: doc.walls.map((w) => w.edge) }}
         onDungeon={noop}
         onRegion={noop}
         onRemoveRegion={noop}
@@ -144,13 +140,85 @@ describe('wall selection (#804)', () => {
         onPlacement={noop}
         onRemovePlacement={noop}
         onRemoveWall={onRemoveWall}
+        onSetWallHeight={noop}
       />
     );
     expect(screen.getByTestId('wall-panel').textContent).toContain(
       'Wall — 2 edges'
     );
     fireEvent.click(screen.getByRole('button', { name: /delete wall/i }));
-    expect(onRemoveWall).toHaveBeenCalledWith(doc.walls);
+    expect(onRemoveWall).toHaveBeenCalledWith(doc.walls.map((w) => w.edge));
+  });
+
+  it('the wall height stepper reports chain-level stamps: a value for the whole selection, standard clears it (rpg-project#273)', () => {
+    let doc = emptyDungeon('pointy');
+    doc = {
+      ...doc,
+      regions: [{ ...doc.regions[0], cells: [p(0, 0), p(1, 0), p(0, 1)] }],
+      walls: [
+        { edge: [p(0, 0), p(1, 0)], height: 2 },
+        { edge: [p(0, 0), p(0, 1)], height: 2 },
+      ],
+    };
+    const onSetWallHeight = vi.fn();
+    render(
+      <Inspector
+        doc={doc}
+        selection={{ kind: 'wall', edges: doc.walls.map((w) => w.edge) }}
+        onDungeon={noop}
+        onRegion={noop}
+        onRemoveRegion={noop}
+        onDoor={noop}
+        onRemoveDoor={noop}
+        onPlacement={noop}
+        onRemovePlacement={noop}
+        onRemoveWall={noop}
+        onSetWallHeight={onSetWallHeight}
+      />
+    );
+    const stepper = screen.getByTestId('wall-height') as HTMLInputElement;
+    expect(stepper.value).toBe('2');
+    fireEvent.change(stepper, { target: { value: '3' } });
+    expect(onSetWallHeight).toHaveBeenLastCalledWith(
+      doc.walls.map((w) => w.edge),
+      3
+    );
+    // Stepping down to 1 IS "standard": the doc entry clears rather
+    // than writing the redundant 1.
+    fireEvent.change(stepper, { target: { value: '1' } });
+    expect(onSetWallHeight).toHaveBeenLastCalledWith(
+      doc.walls.map((w) => w.edge),
+      undefined
+    );
+    fireEvent.click(screen.getByTestId('wall-height-standard'));
+    expect(onSetWallHeight).toHaveBeenLastCalledWith(
+      doc.walls.map((w) => w.edge),
+      undefined
+    );
+  });
+
+  it('the offset height control has its own [0,3] range and emits a triple — dropping back to the floor emits a pair (rpg-project#272)', () => {
+    const onPlacement = vi.fn();
+    mountPlacement(propDoc(), { onPlacement });
+    const height = screen.getByTestId('offset-height') as HTMLInputElement;
+    expect(height.min).toBe('0');
+    expect(height.max).toBe('3');
+    fireEvent.change(height, { target: { value: '1.6' } });
+    expect(onPlacement).toHaveBeenLastCalledWith(0, { offset: [0, 0, 1.6] });
+  });
+
+  it('a raised placement dropping back to the floor emits the two-component form — height 0 is not written (rpg-project#272)', () => {
+    const onPlacement = vi.fn();
+    const doc = propDoc();
+    const raised = {
+      ...doc,
+      place: [{ ...doc.place[0], offset: [0.2, -0.1, 1.6] as const }],
+    } as DungeonDoc;
+    mountPlacement(raised, { onPlacement });
+    const height = screen.getByTestId('offset-height') as HTMLInputElement;
+    expect(height.value).toBe('1.6');
+    fireEvent.change(height, { target: { value: '0' } });
+    expect(onPlacement).toHaveBeenLastCalledWith(0, { offset: [0.2, -0.1] });
   });
 
   it('a wall selection whose edges are all gone falls back to the dungeon panel', () => {
@@ -167,6 +235,7 @@ describe('wall selection (#804)', () => {
         onPlacement={noop}
         onRemovePlacement={noop}
         onRemoveWall={noop}
+        onSetWallHeight={noop}
       />
     );
     expect(screen.getByTestId('dungeon-panel')).toBeTruthy();
