@@ -2,19 +2,19 @@ import {
   ClockKind,
   Slot,
   Verb,
-  type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DeclarationRow } from './declarationRows';
 import { selectTurnHud } from './turnHud';
 
-function declaration(overrides: Partial<Declaration> = {}): Declaration {
+function declaration(overrides: Partial<DeclarationRow> = {}): DeclarationRow {
   return {
     verb: Verb.ATTACK,
     slot: Slot.ACTION,
     affordable: true,
     shortfall: '',
     ...overrides,
-  } as Declaration;
+  } as DeclarationRow;
 }
 
 describe('selectTurnHud', () => {

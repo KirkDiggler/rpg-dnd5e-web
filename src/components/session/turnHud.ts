@@ -53,10 +53,10 @@
 import {
   ClockKind,
   Slot,
-  type Declaration,
   type Shortfall,
   type Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { DeclarationRow } from './declarationRows';
 
 /** The three economy shapes a turn HUD has buttons for — Kirk's own
  * vocabulary, not a proto import, because `Slot` also carries
@@ -111,7 +111,7 @@ export type TurnHudSelection =
 
 export interface SelectTurnHudArgs {
   clock: ClockKind;
-  declarations: Declaration[];
+  declarations: DeclarationRow[];
 }
 
 const HUD_SLOT_ORDER: TurnHudSlotName[] = ['action', 'bonus', 'reaction'];

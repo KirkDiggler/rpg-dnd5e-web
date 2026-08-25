@@ -58,6 +58,11 @@ export interface DoorDoc {
   locked?: LockDoc;
 }
 
+/** A placement's authored offset: `[x, y]` or `[x, y, height]`
+ * (rpg-project#272 — the third component raises the prop off the
+ * floor). */
+export type PlacementOffset = [number, number] | [number, number, number];
+
 export interface PlacementDoc {
   ref: string;
   at: Axial;
@@ -66,25 +71,46 @@ export interface PlacementDoc {
   blocksMovement?: boolean;
   blocksLos?: boolean;
   /** Props only, REFUSED on monsters (server rule, rpg-project#261).
-   * The authored word verbatim — one of the SIX names valid under the
-   * dungeon's own `orientation` (`facingYaw.ts`'s `FACING_NAMES`).
-   * Omitted means the asset's own default orientation. This module
-   * only checks the SHAPE (a string); whether it's one of the six
-   * valid names is the server's call, surfaced as a `place[i].facing`
-   * `FieldError` like any other field. */
+   * The authored word verbatim — one of the EIGHT true-compass names,
+   * the same eight under both orientations (rpg-project#272;
+   * `facingYaw.ts`'s `FACING_NAMES`). Omitted means the asset's own
+   * default orientation. This module only checks the SHAPE (a string);
+   * whether it's a compass name is the server's call, surfaced as a
+   * `place[i].facing` `FieldError` like any other field. */
   facing?: string;
   /** Props only, REFUSED on monsters. A within-cell visual nudge, each
    * component a fraction of the cell size in `[-0.5, 0.5]` — VISUAL
    * ONLY (design's "presentation never decides mechanics" law: the
    * prop still occupies its whole cell for movement and LOS). Omitted
    * means centered; `[0, 0]` means the same thing but stays written if
-   * the caller wrote it (no silent collapsing). Bounds are the
-   * server's call, surfaced the same way as `facing`'s.
+   * the caller wrote it (no silent collapsing). An OPTIONAL third
+   * component is height above the floor in the same cell-size unit,
+   * `[0, 3]` — deliberately not bound to the planar clamp
+   * (rpg-project#272). Bounds are the server's call, surfaced the same
+   * way as `facing`'s.
    */
-  offset?: [number, number];
+  offset?: PlacementOffset;
   /** Monsters only; opaque to the builder. */
   targeting?: string;
   boss?: boolean;
+}
+
+/** One authored wall entry: its edge, plus the authored height when one
+ * was written (rpg-project#273). In the file the bare pair stays the
+ * common form; the object form `{ between, height }` exists for the
+ * edge that carries more facts than its endpoints. Identity and
+ * attribute live in ONE entry deliberately — erasing a wall erases its
+ * height with it, so a later redraw can never resurrect a stale one. */
+export interface WallDoc {
+  edge: Edge;
+  /** Raise-only MULTIPLIER of the standard rendered wall height, in
+   * `[1, 3]` (rpg-project#273's ruling: walls raise, they never
+   * lower). Omitted means standard — exactly what writing `1` means.
+   * Bounds are the server's call, surfaced as a `walls[i].height`
+   * `FieldError` like any other field; this module only checks the
+   * SHAPE (a finite number). VISUAL ONLY: a wall blocks movement and
+   * sight identically — and cannot be seen past — at every height. */
+  height?: number;
 }
 
 export interface DungeonDoc {
@@ -95,7 +121,7 @@ export interface DungeonDoc {
   void: VoidKind;
   regions: RegionDoc[];
   start: Axial | null;
-  walls: Edge[];
+  walls: WallDoc[];
   doors: DoorDoc[];
   place: PlacementDoc[];
 }
@@ -159,16 +185,17 @@ function pair(v: unknown, path: string): OffsetPair {
  * `typeof === 'number'`: NaN/Infinity are still typeof "number" and
  * would otherwise pass the shape check, then break the parse/emit
  * round trip this module promises (Copilot review, PR #795). */
-function offsetPair(v: unknown, path: string): [number, number] {
+function offsetPair(v: unknown, path: string): PlacementOffset {
   if (
     !Array.isArray(v) ||
-    v.length !== 2 ||
-    !Number.isFinite(v[0]) ||
-    !Number.isFinite(v[1])
+    (v.length !== 2 && v.length !== 3) ||
+    !v.every((c) => Number.isFinite(c))
   ) {
-    throw new DungeonParseError(`${path}: expected [x,y]`);
+    throw new DungeonParseError(`${path}: expected [x,y] or [x,y,height]`);
   }
-  return [v[0] as number, v[1] as number];
+  return v.length === 2
+    ? [v[0] as number, v[1] as number]
+    : [v[0] as number, v[1] as number, v[2] as number];
 }
 
 function edge(v: unknown, path: string, o: Orientation): Edge {
@@ -268,9 +295,26 @@ export function parseDungeon(text: string): DungeonDoc {
       ? null
       : fromOffset(orientation, pair(raw.start, 'start'));
 
-  const walls = list(raw.walls, 'walls').map((w, i) =>
-    edge(w, `walls[${i}]`, orientation)
-  );
+  const walls = list(raw.walls, 'walls').map((w, i): WallDoc => {
+    const path = `walls[${i}]`;
+    if (Array.isArray(w)) return { edge: edge(w, path, orientation) };
+    if (isRecord(w)) {
+      expectKeys(w, ['between', 'height'], path);
+      const wall: WallDoc = {
+        edge: edge(w.between, `${path}.between`, orientation),
+      };
+      if (w.height !== undefined && w.height !== null) {
+        if (!Number.isFinite(w.height)) {
+          throw new DungeonParseError(`${path}.height: expected a number`);
+        }
+        wall.height = w.height as number;
+      }
+      return wall;
+    }
+    throw new DungeonParseError(
+      `${path}: expected [[col,row],[col,row]] or { between, height }`
+    );
+  });
 
   const doors = list(raw.doors, 'doors').map((d, i): DoorDoc => {
     const path = `doors[${i}]`;
@@ -392,7 +436,7 @@ function compareOffset(a: OffsetPair, b: OffsetPair): number {
  */
 export interface EmittedLayout {
   regions: { region: RegionDoc; rows: Axial[][] }[];
-  walls: Edge[];
+  walls: WallDoc[];
   doors: { door: DoorDoc; edges: Edge[] }[];
 }
 
@@ -412,7 +456,7 @@ export function emittedLayout(doc: DungeonDoc): EmittedLayout {
       }
       return { region, rows };
     }),
-    walls: sortedEdges(doc.walls),
+    walls: sortedWalls(doc.walls),
     doors: doc.doors.map((door) => ({ door, edges: sortedEdges(door.edges) })),
   };
 }
@@ -426,6 +470,19 @@ function sortedEdges(edges: Edge[]): Edge[] {
   return edges.map(normalizeEdge).sort((x, y) => {
     return compareAxial(x[0], y[0]) || compareAxial(x[1], y[1]);
   });
+}
+
+/** `sortedEdges` for wall entries: same normalized edge order, with each
+ * entry's own height riding along — so `walls[i]` in the emitted file
+ * and in a compiler error path name the same entry. */
+function sortedWalls(walls: WallDoc[]): WallDoc[] {
+  return walls
+    .map((w) => ({ ...w, edge: normalizeEdge(w.edge) }))
+    .sort((x, y) => {
+      return (
+        compareAxial(x.edge[0], y.edge[0]) || compareAxial(x.edge[1], y.edge[1])
+      );
+    });
 }
 
 export function emitDungeon(doc: DungeonDoc): string {
@@ -469,7 +526,13 @@ export function emitDungeon(doc: DungeonDoc): string {
     out.push('walls: []');
   } else {
     out.push('walls:');
-    for (const w of layout.walls) out.push(`  - ${fmtEdge(o, w)}`);
+    for (const w of layout.walls) {
+      out.push(
+        w.height === undefined
+          ? `  - ${fmtEdge(o, w.edge)}`
+          : `  - { between: ${fmtEdge(o, w.edge)}, height: ${w.height} }`
+      );
+    }
   }
 
   if (doc.doors.length === 0) {
@@ -502,7 +565,7 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (p.blocksLos !== undefined) fields.push(`blocks_los: ${p.blocksLos}`);
       if (p.facing !== undefined) fields.push(`facing: ${scalar(p.facing)}`);
       if (p.offset !== undefined) {
-        fields.push(`offset: [${p.offset[0]}, ${p.offset[1]}]`);
+        fields.push(`offset: [${p.offset.join(', ')}]`);
       }
       if (p.targeting !== undefined) {
         fields.push(`targeting: ${scalar(p.targeting)}`);
@@ -537,7 +600,7 @@ export const isFloor = (doc: DungeonDoc, cell: Axial): boolean =>
   floorOwners(doc).has(axialKey(cell));
 
 export function wallKeys(doc: DungeonDoc): Set<string> {
-  return new Set(doc.walls.map(edgeKey));
+  return new Set(doc.walls.map((w) => edgeKey(w.edge)));
 }
 
 /** Edge key → door id, for every door edge. */
@@ -629,7 +692,7 @@ export function eraseCell(doc: DungeonDoc, cell: Axial): DungeonDoc {
         ? region
         : { ...region, cells: without };
     }),
-    walls: doc.walls.filter((w) => !touches(w)),
+    walls: doc.walls.filter((w) => !touches(w.edge)),
     doors: doc.doors
       .map((d) => ({ ...d, edges: d.edges.filter((e) => !touches(e)) }))
       .filter((d) => d.edges.length > 0),
@@ -645,12 +708,12 @@ export function eraseCell(doc: DungeonDoc, cell: Axial): DungeonDoc {
 export function toggleWall(doc: DungeonDoc, e: Edge): DungeonDoc {
   const key = edgeKey(e);
   if (!edgeIsOfferable(doc, e) || doorEdgeOwners(doc).has(key)) return doc;
-  const exists = doc.walls.some((w) => edgeKey(w) === key);
+  const exists = doc.walls.some((w) => edgeKey(w.edge) === key);
   return {
     ...doc,
     walls: exists
-      ? doc.walls.filter((w) => edgeKey(w) !== key)
-      : [...doc.walls, normalizeEdge(e)],
+      ? doc.walls.filter((w) => edgeKey(w.edge) !== key)
+      : [...doc.walls, { edge: normalizeEdge(e) }],
   };
 }
 
@@ -682,11 +745,15 @@ function edgeOfferableWith(owners: Map<string, string>, [a, b]: Edge): boolean {
  * edges are skipped (an edge in both lists is a validation failure the
  * gesture never authors) and the chain simply breaks there. Returns the
  * same doc when nothing survives the filter. */
-export function addWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
+export function addWalls(
+  doc: DungeonDoc,
+  edges: Edge[],
+  height?: number
+): DungeonDoc {
   const owners = floorOwners(doc);
   const doorKeys = doorEdgeOwners(doc);
   const present = wallKeys(doc);
-  const toAdd: Edge[] = [];
+  const toAdd: WallDoc[] = [];
   for (const e of edges) {
     const key = edgeKey(e);
     if (
@@ -697,9 +764,33 @@ export function addWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
       continue;
     }
     present.add(key);
-    toAdd.push(normalizeEdge(e));
+    const wall: WallDoc = { edge: normalizeEdge(e) };
+    if (height !== undefined) wall.height = height;
+    toAdd.push(wall);
   }
   return toAdd.length === 0 ? doc : { ...doc, walls: [...doc.walls, ...toAdd] };
+}
+
+/** Stamp `height` on every wall whose edge is in `edges` — the height
+ * stepper's commit (rpg-project#273). Chain-level intent: the caller
+ * passes the SELECTION's edges and every one of them takes the value,
+ * exactly as the door affordance treats a selection. `undefined`
+ * clears back to standard. Returns the same doc for a no-op. */
+export function setWallHeights(
+  doc: DungeonDoc,
+  edges: Edge[],
+  height: number | undefined
+): DungeonDoc {
+  const keys = new Set(edges.map(edgeKey));
+  let changed = false;
+  const walls = doc.walls.map((w) => {
+    if (!keys.has(edgeKey(w.edge)) || w.height === height) return w;
+    changed = true;
+    const next: WallDoc = { edge: w.edge };
+    if (height !== undefined) next.height = height;
+    return next;
+  });
+  return changed ? { ...doc, walls } : doc;
 }
 
 /** Remove every edge of `edges` from `walls[]` — the erase drag's commit
@@ -708,7 +799,7 @@ export function addWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
  * wall OR a door), so filtering `walls` alone is the whole rule. */
 export function removeWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
   const keys = new Set(edges.map(edgeKey));
-  const walls = doc.walls.filter((w) => !keys.has(edgeKey(w)));
+  const walls = doc.walls.filter((w) => !keys.has(edgeKey(w.edge)));
   return walls.length === doc.walls.length ? doc : { ...doc, walls };
 }
 
@@ -733,7 +824,7 @@ export function addDoor(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
   if (clean.length === 0) return doc;
   return {
     ...doc,
-    walls: doc.walls.filter((w) => !seen.has(edgeKey(w))),
+    walls: doc.walls.filter((w) => !seen.has(edgeKey(w.edge))),
     doors: [...doc.doors, { id: nextDoorId(doc), edges: clean }],
   };
 }
@@ -769,7 +860,7 @@ export function toggleDoorEdge(
         .filter((d) => d.edges.length > 0),
     };
   }
-  const walls = doc.walls.filter((w) => edgeKey(w) !== key);
+  const walls = doc.walls.filter((w) => edgeKey(w.edge) !== key);
   const target = doorId && doc.doors.find((d) => d.id === doorId);
   if (target) {
     return {
@@ -947,8 +1038,8 @@ export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
   }
   m = /^walls\[(\d+)\]/.exec(path);
   if (m) {
-    const edge = layout.walls[+m[1]];
-    return edge ? { kind: 'edge', edge } : { kind: 'document' };
+    const wall = layout.walls[+m[1]];
+    return wall ? { kind: 'edge', edge: wall.edge } : { kind: 'document' };
   }
   m = /^doors\[(\d+)\]\.edges\[(\d+)\]/.exec(path);
   if (m) {

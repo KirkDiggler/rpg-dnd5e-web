@@ -746,7 +746,9 @@ describe('boundariesToWallRuns — corners close by construction (rpg-dnd5e-web#
    * `computeAuthoredWallRuns` explicitly supports a branch vertex with
    * 3+ runs meeting it (this module's own header doc, corners
    * section) -- this is that shape. */
-  function tJunctionScene() {
+  function tJunctionScene(
+    heightOfSeam?: (ra: 0 | 1 | 2, rb: 0 | 1 | 2) => number
+  ) {
     const N = 2;
     const regionOf = (q: number, r: number): 0 | 1 | 2 => {
       const x = q;
@@ -767,6 +769,7 @@ describe('boundariesToWallRuns — corners close by construction (rpg-dnd5e-web#
       to: unknown;
       blocksMovement: boolean;
       blocksLineOfSight: boolean;
+      height: number;
     }> = [];
     const seen = new Set<string>();
     for (let q = -N; q <= N; q++) {
@@ -791,6 +794,9 @@ describe('boundariesToWallRuns — corners close by construction (rpg-dnd5e-web#
             to: pos(nq, nr),
             blocksMovement: true,
             blocksLineOfSight: true,
+            height: heightOfSeam
+              ? heightOfSeam(regionOf(q, r), regionOf(nq, nr))
+              : 0,
           });
         }
       }
@@ -1004,6 +1010,28 @@ describe('boundariesToWallRuns — corners close by construction (rpg-dnd5e-web#
       CORNER_OVERLAP_MARGIN,
       6
     );
+  });
+
+  it('a differing-height arm neither moves the junction joint nor leaks its height onto the other arms (rpg-project#273)', () => {
+    // Raise ONE seam (the 0|1 region boundary) and leave the others at
+    // standard: the junction must still close to one shared point with
+    // the same geometry as the all-default fixture, and every run must
+    // carry exactly its own arm's height — the multiplier is presentation
+    // riding the chain, never an input to the corner solver.
+    const reference = tJunctionScene();
+    const scene = tJunctionScene((ra, rb) =>
+      (ra === 0 && rb === 1) || (ra === 1 && rb === 0) ? 2 : 0
+    );
+    const geometryOf = (runs: typeof scene.wallRuns) =>
+      runs.map((r) => ({ ...r, height: 0 }));
+    expect(geometryOf(scene.wallRuns)).toEqual(geometryOf(reference.wallRuns));
+    const heights = new Set(scene.wallRuns.map((r) => r.height));
+    expect(heights).toEqual(new Set([0, 2]));
+    const group = findJunctionCluster(scene.wallRuns, 3);
+    expect(group).toBeDefined();
+    const [p0, p1, p2] = group!.map((m) => m.point);
+    const circle = circumcircle(p0!, p1!, p2!);
+    expect(circle.radius).toBeCloseTo(CORNER_OVERLAP_MARGIN, 6);
   });
 
   describe('cornerJoint — the near-parallel fallback (Copilot review, PR #794)', () => {
@@ -1597,6 +1625,39 @@ describe('boundariesToWallRuns — input order is canonicalized (rpg-dnd5e-web#8
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
       }
       expect(runsOf(shuffled)).toEqual(reference);
+    }
+  });
+
+  it('a permuted MIXED-HEIGHT document derives identical runs, heights included — height joins the one-formula law (rpg-project#273)', () => {
+    // The H span raised, D/V standard (strokeOrder lists H first, so
+    // the index marks the span): the same seeded shuffles must
+    // reproduce the same scene float-exactly, each run still carrying
+    // its own chain's height. This is the #804 order-invariance suite
+    // extended with the height axis.
+    const heighted = strokeOrder.map((b, i) => ({
+      ...b,
+      height: i < H.length ? 2 : 0,
+    }));
+    const reference = boundariesToWallRuns(
+      { cells, boundaries: heighted, doorways: [] } as never,
+      1
+    ).wallRuns;
+    expect(new Set(reference.map((r) => r.height))).toEqual(new Set([0, 2]));
+    let state = 1337;
+    const rng = () =>
+      (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    for (let trial = 0; trial < 8; trial += 1) {
+      const shuffled = [...heighted];
+      for (let i = shuffled.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rng() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      expect(
+        boundariesToWallRuns(
+          { cells, boundaries: shuffled, doorways: [] } as never,
+          1
+        ).wallRuns
+      ).toEqual(reference);
     }
   });
 

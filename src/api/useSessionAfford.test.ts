@@ -67,13 +67,27 @@ describe('useSessionAfford', () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it('a turn-clock response with declarations stores them verbatim', async () => {
+  it('a turn-clock response with declarations stores them as expanded rows (the v0.1.143 #253 shim: candidates become per-target rows)', async () => {
     const declarations = [
       {
         verb: 1,
         slot: 2,
-        affordable: false,
-        shortfall: 'action: 1 needed, 0 left',
+        available: false,
+        candidates: [],
+        why: { text: 'action: 1 needed, 0 left' },
+      },
+      {
+        verb: 2,
+        slot: 1,
+        available: true,
+        candidates: [
+          { member: 'gob-1', available: true },
+          {
+            member: 'gob-2',
+            available: false,
+            why: { text: 'out of reach' },
+          },
+        ],
       },
     ];
     hoisted.affordFn.mockResolvedValue({
@@ -87,7 +101,34 @@ describe('useSessionAfford', () => {
     });
 
     expect(result.current.clock).toBe(ClockKind.TURN);
-    expect(result.current.declarations).toEqual(declarations);
+    expect(result.current.declarations).toEqual([
+      {
+        verb: 1,
+        slot: 2,
+        affordable: false,
+        shortfall: 'action: 1 needed, 0 left',
+        remaining: undefined,
+        why: { text: 'action: 1 needed, 0 left' },
+      },
+      {
+        verb: 2,
+        slot: 1,
+        affordable: true,
+        shortfall: '',
+        remaining: undefined,
+        target: 'gob-1',
+        why: undefined,
+      },
+      {
+        verb: 2,
+        slot: 1,
+        affordable: false,
+        shortfall: 'out of reach',
+        remaining: undefined,
+        target: 'gob-2',
+        why: { text: 'out of reach' },
+      },
+    ]);
   });
 
   it('sets error on RPC failure, loading=false, and clock/declarations stay at their unfetched defaults on the FIRST fetch', async () => {
@@ -107,7 +148,17 @@ describe('useSessionAfford', () => {
 
   it('KEEPS the last-good clock/declarations on a refetch error, unlike useSessionWhere/useSessionView (the slice-4 last-good lesson)', async () => {
     const declarations = [
-      { verb: 1, slot: 2, affordable: true, shortfall: '' },
+      { verb: 1, slot: 2, available: true, candidates: [] },
+    ];
+    const expectedRows = [
+      {
+        verb: 1,
+        slot: 2,
+        affordable: true,
+        shortfall: '',
+        remaining: undefined,
+        why: undefined,
+      },
     ];
     hoisted.affordFn
       .mockResolvedValueOnce({
@@ -121,7 +172,7 @@ describe('useSessionAfford', () => {
       await result.current.refetch();
     });
     expect(result.current.clock).toBe(ClockKind.TURN);
-    expect(result.current.declarations).toEqual(declarations);
+    expect(result.current.declarations).toEqual(expectedRows);
 
     await act(async () => {
       await result.current.refetch();
@@ -131,7 +182,7 @@ describe('useSessionAfford', () => {
     // The LAST GOOD answer, not cleared — this is the divergence from
     // useSessionWhere/useSessionView, documented on the hook itself.
     expect(result.current.clock).toBe(ClockKind.TURN);
-    expect(result.current.declarations).toEqual(declarations);
+    expect(result.current.declarations).toEqual(expectedRows);
   });
 
   it('clears clock/declarations/error when session/member becomes empty', async () => {

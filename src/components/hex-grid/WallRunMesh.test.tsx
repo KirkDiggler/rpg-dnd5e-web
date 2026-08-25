@@ -150,12 +150,14 @@ describe('WallRunMesh R3F scene', () => {
         start: { x: 0, z: 0 },
         end: { x: 0, z: 4 },
         facing: { x: -1, z: 0 },
+        height: 0,
       },
       {
         key: 'right-run',
         start: { x: 4, z: 0 },
         end: { x: 4, z: 4 },
         facing: { x: 1, z: 0 },
+        height: 0,
       },
     ];
 

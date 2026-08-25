@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addWalls,
   emitDungeon,
   emptyDungeon,
   eraseCell,
@@ -7,15 +8,23 @@ import {
   paintCell,
   parseDungeon,
   placeAt,
+  removeWalls,
   resolveErrorPath,
   setStart,
+  setWallHeights,
   toggleDoorEdge,
   toggleWall,
   updatePlacement,
   type DungeonDoc,
 } from './dungeonYaml';
 import { referenceTombDoc } from './fixtures/referenceTomb';
-import { fromOffset, toOffset, type Axial } from './hexOffset';
+import {
+  edgeKey,
+  fromOffset,
+  toOffset,
+  type Axial,
+  type Edge,
+} from './hexOffset';
 
 const p = (col: number, row: number): Axial => fromOffset('pointy', [col, row]);
 
@@ -174,6 +183,61 @@ describe('emitDungeon / parseDungeon', () => {
     ).toThrow(/place\[0\]\.offset: expected \[x,y\]/);
   });
 
+  it('round-trips a three-component offset byte-for-byte — the height escapes the planar clamp (rpg-project#272)', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:skull',
+      at: p(1, 1),
+      blocksMovement: false,
+      blocksLos: false,
+    });
+    doc = {
+      ...doc,
+      place: [{ ...doc.place[0], offset: [0.2, -0.1, 1.6] }],
+    };
+    const text = emitDungeon(doc);
+    expect(text).toContain('offset: [0.2, -0.1, 1.6]');
+    const reparsed = parseDungeon(text);
+    expect(reparsed.place[0].offset).toEqual([0.2, -0.1, 1.6]);
+    expect(emitDungeon(reparsed)).toBe(text);
+  });
+
+  it('round-trips both wall forms byte-for-byte: bare pair = standard, object = authored height (rpg-project#273)', () => {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ]) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    doc = toggleWall(doc, [p(0, 0), p(1, 0)]);
+    doc = toggleWall(doc, [p(0, 1), p(1, 1)]);
+    doc = setWallHeights(doc, [[p(0, 1), p(1, 1)]], 2);
+    const text = emitDungeon(doc);
+    expect(text).toContain('walls:\n  - [[0,0],[1,0]]\n');
+    expect(text).toContain('  - { between: [[0,1],[1,1]], height: 2 }');
+    const reparsed = parseDungeon(text);
+    expect(reparsed.walls.map((w) => w.height)).toEqual([undefined, 2]);
+    expect(emitDungeon(reparsed)).toBe(text);
+  });
+
+  it('refuses a wall object with an unknown key, a missing edge, or a non-number height', () => {
+    const head =
+      'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nwalls:\n';
+    expect(() =>
+      parseDungeon(head + '  - { between: [[0,0],[1,0]], hieght: 2 }\n')
+    ).toThrow(/walls\[0\]: unknown key "hieght"/);
+    expect(() => parseDungeon(head + '  - { height: 2 }\n')).toThrow(
+      /walls\[0\]\.between/
+    );
+    expect(() =>
+      parseDungeon(head + '  - { between: [[0,0],[1,0]], height: tall }\n')
+    ).toThrow(/walls\[0\]\.height: expected a number/);
+  });
+
   it('the reference tomb has no facing/offset anywhere — the additive fields change nothing absent', () => {
     for (const placement of referenceTombDoc().place) {
       expect(placement.facing).toBeUndefined();
@@ -225,6 +289,55 @@ describe('mutators', () => {
     expect(toggleWall(doc, [p(0, 0), p(1, 0)])).toBe(doc);
     // clicking it again with the door tool removes the door
     expect(toggleDoorEdge(doc, [p(1, 0), p(0, 0)]).doors).toHaveLength(0);
+  });
+
+  it('setWallHeights stamps every named edge, clears back to standard with undefined, and dies with an erased wall', () => {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ]) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    const e1: Edge = [p(0, 0), p(1, 0)];
+    const e2: Edge = [p(0, 1), p(1, 1)];
+    doc = addWalls(doc, [e1, e2]);
+    doc = setWallHeights(doc, [e1, e2], 2.5);
+    expect(doc.walls.map((w) => w.height)).toEqual([2.5, 2.5]);
+    // Clearing is the same chain-level stamp.
+    doc = setWallHeights(doc, [e1], undefined);
+    expect(doc.walls.map((w) => w.height)).toEqual([undefined, 2.5]);
+    // A no-op returns the same doc (referential, like every mutator).
+    expect(setWallHeights(doc, [e1], undefined)).toBe(doc);
+    // Erasing the raised wall erases its height WITH it: a redraw gets
+    // standard, never a resurrected stale height.
+    doc = removeWalls(doc, [e2]);
+    doc = addWalls(doc, [e2]);
+    const redrawn = doc.walls.find((w) => edgeKey(w.edge) === edgeKey(e2));
+    expect(redrawn?.height).toBeUndefined();
+  });
+
+  it('addWalls with a height writes it on every new edge — the current stroke carries it (rpg-project#273)', () => {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ]) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    doc = addWalls(
+      doc,
+      [
+        [p(0, 0), p(1, 0)],
+        [p(0, 1), p(1, 1)],
+      ],
+      3
+    );
+    expect(doc.walls.map((w) => w.height)).toEqual([3, 3]);
   });
 
   it('erasing a cell takes its walls, door edges, start and placement with it', () => {

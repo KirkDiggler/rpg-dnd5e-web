@@ -6,16 +6,14 @@
  * reruns only when `clock`/`declarations` actually change, not on every
  * unrelated re-render of the session route.
  */
-import type {
-  ClockKind,
-  Declaration,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { ClockKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useMemo } from 'react';
+import type { DeclarationRow } from './declarationRows';
 import { selectTurnHud, type TurnHudSelection } from './turnHud';
 
 export function useTurnHud(
   clock: ClockKind,
-  declarations: Declaration[]
+  declarations: DeclarationRow[]
 ): TurnHudSelection {
   return useMemo(
     () => selectTurnHud({ clock, declarations }),

@@ -6,11 +6,11 @@ import {
   Slot,
   Standing,
   Verb,
-  type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import { selectCombatPanel, type SelectCombatPanelArgs } from './combatPanel';
+import type { DeclarationRow } from './declarationRows';
 import type { SightedMember } from './sightingEntities';
 
 function participant(overrides: Partial<Participant> = {}): Participant {
@@ -37,8 +37,8 @@ const defaultParticipants: Participant[] = [
 /** One in-reach ATTACK declaration for a given target. */
 function attackDeclaration(
   target: string,
-  overrides: Partial<Declaration> = {}
-): Declaration {
+  overrides: Partial<DeclarationRow> = {}
+): DeclarationRow {
   return {
     verb: Verb.ATTACK,
     slot: Slot.ACTION,
@@ -46,13 +46,13 @@ function attackDeclaration(
     shortfall: '',
     target,
     ...overrides,
-  } as Declaration;
+  } as DeclarationRow;
 }
 
 /** The single untargeted "nothing in reach" declaration. */
 function noTargetDeclaration(
-  overrides: Partial<Declaration> = {}
-): Declaration {
+  overrides: Partial<DeclarationRow> = {}
+): DeclarationRow {
   return {
     verb: Verb.ATTACK,
     slot: Slot.ACTION,
@@ -66,7 +66,7 @@ function noTargetDeclaration(
       text: 'no target in reach',
     },
     ...overrides,
-  } as Declaration;
+  } as DeclarationRow;
 }
 
 /** A `GetView` sighting of another member, in the shape
@@ -87,7 +87,9 @@ function sightedMember(overrides: Partial<SightedMember> = {}): SightedMember {
 
 /** Mirrors the toolkit's own `affordMove`: always `Slot.NONE`, always
  * carries `remaining`. */
-function moveDeclaration(overrides: Partial<Declaration> = {}): Declaration {
+function moveDeclaration(
+  overrides: Partial<DeclarationRow> = {}
+): DeclarationRow {
   return {
     verb: Verb.MOVE,
     slot: Slot.NONE,
@@ -95,7 +97,7 @@ function moveDeclaration(overrides: Partial<Declaration> = {}): Declaration {
     shortfall: '',
     remaining: 30,
     ...overrides,
-  } as Declaration;
+  } as DeclarationRow;
 }
 
 function args(

@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { resolveClassCharacterModelUrl } from '../hex-grid/classCharacterModels';
+import { facingToYaw } from '../hex-grid/facingYaw';
 import { cubeToWorld } from '../hex-grid/hexMath';
 import { buildAtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
@@ -91,36 +92,42 @@ function scene(): Scene3D {
       start: { x: -1, z: -1 },
       end: { x: -1, z: 1 },
       facing: { x: -1, z: 0 },
+      height: 0,
     },
     {
       key: 'right',
       start: { x: 3, z: -1 },
       end: { x: 3, z: 1 },
       facing: { x: 1, z: 0 },
+      height: 0,
     },
     {
       key: 'top',
       start: { x: -1, z: -1 },
       end: { x: 3, z: -1 },
       facing: { x: 0, z: -1 },
+      height: 0,
     },
     {
       key: 'bottom',
       start: { x: -1, z: 1 },
       end: { x: 3, z: 1 },
       facing: { x: 0, z: 1 },
+      height: 0,
     },
     {
       key: 'hall-1-a',
       start: { x: 1, z: -1 },
       end: { x: 1, z: -0.5 },
       facing: { x: 1, z: 0 },
+      height: 0,
     },
     {
       key: 'hall-1-b',
       start: { x: 1, z: 0.5 },
       end: { x: 1, z: 1 },
       facing: { x: 1, z: 0 },
+      height: 0,
     },
   ];
   const doorGaps: DoorGapPiece[] = [
@@ -158,7 +165,7 @@ function sceneWithProp(
   ref: string,
   position = { x: 1, y: 0, z: -1 },
   facing = '',
-  offset = { x: 0, y: 0 }
+  offset = { x: 0, y: 0, z: 0 }
 ) {
   const propScene = scene();
   propScene.props = [{ ref, position, facing, offset }];
@@ -231,14 +238,43 @@ describe('SessionScene', () => {
   });
 
   it('places a mapped AtlasProp on the same dungeon surface as the floor', async () => {
-    const renderer = await renderSession(sceneWithProp('dnd5e:props:pillar'));
+    const position = { x: 1, y: -1, z: 0 };
+    const renderer = await renderSession(
+      sceneWithProp('dnd5e:props:pillar', position)
+    );
     const propMesh = meshInstances(renderer).find(
       (mesh) => mesh.name === '/models/synty/props/SM_Env_Pillar_Round_01.glb'
     );
     expect(propMesh).toBeDefined();
 
+    const expected = cubeToWorld(position, 1);
     const propAnchor = propMesh?.parent?.parent as THREE.Group | undefined;
+    expect(propAnchor?.position.x).toBeCloseTo(expected.x);
     expect(propAnchor?.position.y).toBeCloseTo(DUNGEON_SURFACE_Y);
+    expect(propAnchor?.position.z).toBeCloseTo(expected.z);
+  });
+
+  it('an authored offset/facing reaches the shared AtlasPropModel render path', async () => {
+    const position = { x: 1, y: -1, z: 0 };
+    const renderer = await renderSession(
+      sceneWithProp('dnd5e:props:pillar', position, 'ne', {
+        x: 0.2,
+        y: -0.3,
+        z: 0.6,
+      })
+    );
+
+    const propMesh = meshInstances(renderer).find(
+      (mesh) => mesh.name === '/models/synty/props/SM_Env_Pillar_Round_01.glb'
+    );
+    expect(propMesh).toBeDefined();
+
+    const cellCenter = cubeToWorld(position, 1);
+    const propAnchor = propMesh?.parent?.parent as THREE.Group | undefined;
+    expect(propAnchor?.position.x).toBeCloseTo(cellCenter.x + 0.2, 9);
+    expect(propAnchor?.position.y).toBeCloseTo(DUNGEON_SURFACE_Y + 0.6, 9);
+    expect(propAnchor?.position.z).toBeCloseTo(cellCenter.z - 0.3, 9);
+    expect(propAnchor?.rotation.y).toBeCloseTo(facingToYaw('ne'), 9);
   });
 
   it('renders a visible placeholder at the cell when an AtlasProp ref is unknown', async () => {

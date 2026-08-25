@@ -40,20 +40,17 @@ describe('AtlasPropModel', () => {
       ref: 'dnd5e:props:pillar',
       position: { x: 1, y: -1, z: 0 },
       facing: 'ne',
-      offset: { x: 0.2, y: -0.3 },
+      offset: { x: 0.2, y: -0.3, z: 0 },
     });
 
-    expect(meshes(renderer).map((mesh) => mesh.name)).toContain(
-      '/models/synty/props/SM_Env_Pillar_Round_01.glb'
+    const propMesh = meshes(renderer).find(
+      (mesh) => mesh.name === '/models/synty/props/SM_Env_Pillar_Round_01.glb'
     );
+    expect(propMesh).toBeDefined();
 
-    const outer = renderer.scene
-      .findAllByType('Group')
-      .map((node) => (node as unknown as { instance: THREE.Group }).instance)
-      .find((group) => Math.abs(group.position.x) > 0.1);
-
+    const outer = propMesh?.parent?.parent as THREE.Group | undefined;
     expect(outer?.position.y).toBeCloseTo(DUNGEON_SURFACE_Y);
-    expect(outer?.rotation.y).toBeCloseTo(facingToYaw('pointy', 'ne'));
+    expect(outer?.rotation.y).toBeCloseTo(facingToYaw('ne'));
   });
 
   it('renders the neutral placeholder for an unknown ref', async () => {
@@ -61,7 +58,7 @@ describe('AtlasPropModel', () => {
       ref: 'homebrew:props:unknown',
       position: { x: 0, y: 0, z: 0 },
       facing: '',
-      offset: { x: 0, y: 0 },
+      offset: { x: 0, y: 0, z: 0 },
     });
 
     expect(

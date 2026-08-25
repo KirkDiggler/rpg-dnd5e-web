@@ -11,11 +11,7 @@ export interface AtlasPropModelProps {
   orientation: 'pointy';
 }
 
-export function AtlasPropModel({
-  prop,
-  hexSize,
-  orientation,
-}: AtlasPropModelProps) {
+export function AtlasPropModel({ prop, hexSize }: AtlasPropModelProps) {
   const world = propWorldPosition(prop, hexSize);
   const placeholder = (
     <mesh position={[world.x, hexSize * 0.5, world.z]}>
@@ -30,8 +26,8 @@ export function AtlasPropModel({
       <ErrorBoundary fallback={placeholder}>
         <PropModel
           variant={variant}
-          position={[world.x, 0, world.z]}
-          rotationY={facingToYaw(orientation, prop.facing)}
+          position={[world.x, world.y, world.z]}
+          rotationY={facingToYaw(prop.facing)}
         />
       </ErrorBoundary>
     </Suspense>
