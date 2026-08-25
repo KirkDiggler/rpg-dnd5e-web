@@ -37,7 +37,9 @@ import type {
   AtlasBoundary,
   AtlasDoorway,
   AtlasProp,
+  DoorInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { positionToCube } from './positionBridge';
 
 /** A stable, order-independent key for an unordered pair of hex
@@ -57,26 +59,44 @@ export interface AtlasPathIndex {
   floor: ReadonlySet<string>;
   /** Boundary pairs that block movement and are NOT also a doorway pair. */
   blockedEdges: ReadonlySet<string>;
-  /** Doorway pairs — always crossable regardless of any boundary. */
+  /** Doorway pairs — crossable when their door is open (see
+   * `shutDoorEdges`); a doorway with no live state known stays crossable,
+   * the pre-doors behavior. */
   doorwayEdges: ReadonlySet<string>;
+  /** Doorway pairs whose door is currently shut or locked
+   * (rpg-project#268): the server refuses the step, so the preview must
+   * too. Rebuilt whenever door state changes — unlike the rest of this
+   * index, this half is LIVE, not construction truth. */
+  shutDoorEdges: ReadonlySet<string>;
   /** Cells a prop occupies with `blocksMovement: true` — nothing may enter
    * one, even from an otherwise-open edge. */
   blockedCells: ReadonlySet<string>;
 }
 
 export function buildAtlasPathIndex(
-  atlas: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways' | 'props'>
+  atlas: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways' | 'props'>,
+  /** Live door state keyed by door id (`useSessionDoors`). Omitted — by
+   * callers that predate doors on the wire, and by tests — every doorway
+   * stays crossable. */
+  doors?: ReadonlyMap<string, DoorInfo>
 ): AtlasPathIndex {
   const floor = new Set(
     atlas.cells.map((cell) => coordToKey(positionToCube(cell)))
   );
 
   const doorwayEdges = new Set<string>();
+  const shutDoorEdges = new Set<string>();
   for (const doorway of atlas.doorways as AtlasDoorway[]) {
     if (!doorway.from || !doorway.to) continue;
-    doorwayEdges.add(
-      pairKey(positionToCube(doorway.from), positionToCube(doorway.to))
+    const key = pairKey(
+      positionToCube(doorway.from),
+      positionToCube(doorway.to)
     );
+    doorwayEdges.add(key);
+    const state = doors?.get(doorway.connection)?.state;
+    if (state !== undefined && state !== DoorState.OPEN) {
+      shutDoorEdges.add(key);
+    }
   }
 
   const blockedEdges = new Set<string>();
@@ -101,7 +121,7 @@ export function buildAtlasPathIndex(
     }
   }
 
-  return { floor, blockedEdges, doorwayEdges, blockedCells };
+  return { floor, blockedEdges, doorwayEdges, shutDoorEdges, blockedCells };
 }
 
 /** Whether a member may step directly from `a` to `b` — both must be
@@ -120,7 +140,7 @@ export function edgePassable(
   if (!index.floor.has(ka) || !index.floor.has(kb)) return false;
   if (index.blockedCells.has(kb)) return false;
   const key = pairKey(a, b);
-  if (index.doorwayEdges.has(key)) return true;
+  if (index.doorwayEdges.has(key)) return !index.shutDoorEdges.has(key);
   return !index.blockedEdges.has(key);
 }
 

@@ -32,6 +32,8 @@
 
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
+import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { GlbInstance } from '../hex-grid/GlbInstance';
 import { WallRunMesh } from '../hex-grid/WallRunMesh';
 import {
@@ -45,6 +47,16 @@ import type { DoorGapPiece } from './atlasWallRuns';
 export interface AtlasWallsProps {
   wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
+  /** Live door state keyed by door id (`DoorGapPiece.connection` speaks
+   * the same id — `useSessionDoors`). The frame always renders; the LEAF
+   * renders only while the door is shut (closed or locked,
+   * rpg-project#268). Absent — no state known yet — the leaf renders, the
+   * pre-doors look: a door drawn shut until told otherwise beats a gap
+   * drawn open that the server then refuses. */
+  doors?: ReadonlyMap<string, DoorInfo>;
+  /** A click on a door's frame or leaf, by door id — the open/unlock
+   * affordance lives with the caller, which knows who is acting. */
+  onDoorClick?: (door: string) => void;
   /** Defaults to the game's standard wall height so this renders at the
    * same scale as every other wall in the game. */
   wallHeight?: number;
@@ -53,6 +65,8 @@ export interface AtlasWallsProps {
 export function AtlasWalls({
   wallRuns,
   doorGaps,
+  doors,
+  onDoorClick,
   wallHeight = WALL_HEIGHT,
 }: AtlasWallsProps) {
   return (
@@ -63,22 +77,38 @@ export function AtlasWalls({
         authoredRuns={wallRuns}
         wallHeight={wallHeight}
       />
-      {doorGaps.map((door) => (
-        <group key={door.key}>
-          <GlbInstance
-            file={DOOR_FRAME_FILE}
-            position={door.position}
-            rotationY={door.rotationY}
-            scale={doorFrameScale(wallHeight)}
-          />
-          <GlbInstance
-            file={DOOR_LEAF_FILE}
-            position={door.leafPosition}
-            rotationY={door.rotationY}
-            scale={doorLeafScale(wallHeight)}
-          />
-        </group>
-      ))}
+      {doorGaps.map((door) => {
+        const state = doors?.get(door.connection)?.state;
+        const leafShut = state === undefined || state !== DoorState.OPEN;
+        return (
+          <group
+            key={door.key}
+            onClick={
+              onDoorClick
+                ? (e) => {
+                    e.stopPropagation();
+                    onDoorClick(door.connection);
+                  }
+                : undefined
+            }
+          >
+            <GlbInstance
+              file={DOOR_FRAME_FILE}
+              position={door.position}
+              rotationY={door.rotationY}
+              scale={doorFrameScale(wallHeight)}
+            />
+            {leafShut && (
+              <GlbInstance
+                file={DOOR_LEAF_FILE}
+                position={door.leafPosition}
+                rotationY={door.rotationY}
+                scale={doorLeafScale(wallHeight)}
+              />
+            )}
+          </group>
+        );
+      })}
     </>
   );
 }

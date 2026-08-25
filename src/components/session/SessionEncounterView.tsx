@@ -105,7 +105,11 @@
 import { errorMessage } from '@/utils/combatFormat';
 import { create } from '@bufbuild/protobuf';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { ClockKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
+  ClockKind,
+  DoorState,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   GetCharacterRequestSchema,
   type Character,
@@ -114,10 +118,12 @@ import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useGetCharacter } from '../../api/characterHooks';
+import { sessionClient } from '../../api/client';
 import { useEquipItem } from '../../api/useEquipItem';
 import { useGetCharacterData } from '../../api/useGetCharacterData';
 import { useSessionAfford } from '../../api/useSessionAfford';
 import { useSessionAtlas } from '../../api/useSessionAtlas';
+import { useSessionDoors } from '../../api/useSessionDoors';
 import { useSessionRoster } from '../../api/useSessionRoster';
 import { useSessionTurn } from '../../api/useSessionTurn';
 import { useSessionView } from '../../api/useSessionView';
@@ -159,6 +165,23 @@ export interface SessionEncounterViewProps {
 /** A centered message card, matching the shape (not the fixed positioning)
  * every early-exit state below shares — loading/error/gap all read the
  * same way, just with different content. */
+/** The outcome headline by declared ending key — keys are content
+ * vocabulary (rpg-project#269 §6.3): the wire carries the author's word and
+ * the client owns the sentence. An unknown key still ends the run, with the
+ * plain sentence. */
+function endingHeadline(ending: string): string {
+  switch (ending) {
+    case 'boss-down':
+      return 'The tomb is cleared.';
+    case 'withdrawn':
+      return 'The party withdrew.';
+    case 'abandoned':
+      return 'The run was abandoned.';
+    default:
+      return 'The run has ended.';
+  }
+}
+
 function CenteredCard({ children }: { children: React.ReactNode }) {
   return (
     <div
@@ -211,6 +234,12 @@ export function SessionEncounterView({
   // `handleSessionEvent` below; nothing perception-driven ever refetches
   // identity.
   const { roster, refetch: refetchRoster } = useSessionRoster(sessionId);
+
+  // The doors' LIVE state (rpg-project#268) — load once, refresh on `door`
+  // stream events, the same pull-on-signal shape the roster set. Feeds the
+  // leaf each doorway renders, the walk preview's shut-door refusals, and
+  // the click affordance below.
+  const { doors, refetch: refetchDoors } = useSessionDoors(sessionId);
   // Afford — "what can I still declare this turn" (slice 5a). Same
   // additive-not-blocking treatment as GetView above: a turn-economy
   // readout degrades to "no panel data yet" (free-roam, per
@@ -353,12 +382,15 @@ export function SessionEncounterView({
   // doorways/props) — layout-agnostic (it works in axial/cube space, not
   // screen space), so unlike `scene` this doesn't gate on `layoutOutcome`;
   // it just has nothing to build from before the atlas itself arrives.
-  // Recomputes only when the ATLAS REFERENCE changes (buildAtlasPathIndex
-  // is real work — several Sets built from cells/boundaries/doorways/
-  // props), same as `scene` above.
+  // Recomputes when the ATLAS REFERENCE changes (buildAtlasPathIndex is
+  // real work — several Sets built from cells/boundaries/doorways/props)
+  // — and when DOOR STATE does (rpg-project#268): a shut or locked door
+  // refuses the step server-side, so the preview must refuse it too, and
+  // door state is the one live input this otherwise construction-truth
+  // index has.
   const pathIndex = useMemo(
-    () => (atlas ? buildAtlasPathIndex(atlas) : null),
-    [atlas]
+    () => (atlas ? buildAtlasPathIndex(atlas, doors) : null),
+    [atlas, doors]
   );
 
   // Whether a FULLY clean paint is possible RIGHT NOW: atlas, position AND
@@ -528,6 +560,53 @@ export function SessionEncounterView({
   const DEBUG_LOG_MAX_EVENTS = 500;
   const [debugEvents, setDebugEvents] = useState<SessionEvent[]>([]);
 
+  // The run's end (rpg-project#268): the declared ending key once the
+  // `ended` beat arrives, '' for an ENDED with no typed body, null while
+  // the run is live. Drives the outcome overlay below.
+  const [runEnded, setRunEnded] = useState<string | null>(null);
+
+  // The last door action's own one-liner — the direct response half of the
+  // narration (the table-wide half arrives as a `door` beat). Cleared on
+  // the next attempt; shown beside the walk notices in the top bar.
+  const [doorNotice, setDoorNotice] = useState<string | null>(null);
+
+  // Click a door (rpg-project#268): shut opens it, locked tries the lock —
+  // the check rolls SERVER-SIDE and the answer is narrated with its
+  // numbers, both outcomes. Open doors ignore the click (CloseDoor is
+  // shelved off the wire). The stream's `door` beat refreshes the map for
+  // everyone including us; the refetch here just lands the state a beat
+  // earlier for the actor.
+  const handleDoorClick = useCallback(
+    (door: string) => {
+      const state = doors.get(door)?.state;
+      if (!member || state === undefined || state === DoorState.OPEN) return;
+      setDoorNotice(null);
+      void (async () => {
+        try {
+          if (state === DoorState.LOCKED) {
+            const resp = await sessionClient.unlock({
+              session: sessionId,
+              member,
+              door,
+            });
+            setDoorNotice(
+              resp.beaten
+                ? `Picked the lock — ${resp.total} vs DC ${resp.dc}. The door swings open.`
+                : `The lock holds — ${resp.total} vs DC ${resp.dc}.`
+            );
+          } else {
+            await sessionClient.openDoor({ session: sessionId, member, door });
+            setDoorNotice('The door opens.');
+          }
+          void refetchDoors();
+        } catch (err) {
+          setDoorNotice(errorMessage(err));
+        }
+      })();
+    },
+    [doors, member, sessionId, refetchDoors]
+  );
+
   // Cleared on every session/member change (Copilot review, PR #784) —
   // GameView mounts this component without a `key`, so a future wiring
   // change that reassigns `sessionId`/`characterId` on an already-mounted
@@ -551,6 +630,22 @@ export function SessionEncounterView({
         // (rpg-project#264's pull-on-join ruling).
         void refetchRoster();
       }
+      if (event.body?.case === 'door') {
+        // A door changed — opened, closed, or an unlock attempt
+        // (rpg-project#268). Re-pull the live door map; the leaf, the walk
+        // preview and the click affordance all read from it.
+        void refetchDoors();
+      }
+      if (event.body?.case === 'ended' || event.kind === EventKind.ENDED) {
+        // The run is over. The typed body carries the declared key the
+        // client maps to a sentence (rpg-project#269 §6.3); an ENDED kind
+        // with no body still ends the run, with the default headline. The
+        // bubble dissolved BEFORE this arrived (ruling §6.6), so the
+        // overlay lands on free roam, never on the combat panel.
+        setRunEnded(
+          event.body?.case === 'ended' ? event.body.value.ending : ''
+        );
+      }
       // Beat-line formatting, another member's turn pacing, and every
       // Afford/Turn/View refetch trigger besides the self-MOVED GetWhere
       // refresh above now live in `useCombatPanel`'s own `handleEvent` —
@@ -561,7 +656,7 @@ export function SessionEncounterView({
         return [...next, event];
       });
     },
-    [member, refetchWhere, refetchRoster, handleCombatEvent]
+    [member, refetchWhere, refetchRoster, refetchDoors, handleCombatEvent]
   );
 
   // Names for the debug log — the SAME `participantNameMap` +
@@ -727,6 +822,8 @@ export function SessionEncounterView({
           character={character ?? undefined}
           classRefId={classRefId}
           roster={roster}
+          doors={doors}
+          onDoorClick={handleDoorClick}
           // Falls back to the last known-good GetWhere position — see
           // `lastGoodPositionRef`'s own comment above for why this reads
           // from that ref rather than a live `wherePosition`.
@@ -770,7 +867,48 @@ export function SessionEncounterView({
               {moveError}
             </span>
           )}
+          {doorNotice && (
+            <span style={{ color: 'var(--text-secondary, #aaa)' }}>
+              {doorNotice}
+            </span>
+          )}
         </div>
+        {runEnded !== null && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(0, 0, 0, 0.65)',
+              zIndex: 30,
+            }}
+          >
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '32px 48px',
+                borderRadius: 12,
+                background: 'var(--bg-secondary, #1c1c22)',
+                border: '1px solid var(--border-primary, #333)',
+              }}
+            >
+              <h2 style={{ margin: '0 0 8px' }}>{endingHeadline(runEnded)}</h2>
+              <p
+                style={{
+                  color: 'var(--text-secondary, #aaa)',
+                  margin: '0 0 20px',
+                }}
+              >
+                The encounter is over — the outcome is recorded.
+              </p>
+              <Button size="sm" onClick={onBack}>
+                Leave
+              </Button>
+            </div>
+          </div>
+        )}
         <CombatPanel
           selection={combatPanel.selection}
           turnStartedBanner={combatPanel.turnStartedBanner}

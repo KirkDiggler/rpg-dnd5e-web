@@ -28,6 +28,7 @@
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   DamageType,
+  DoorState,
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { resolveName, resolveNameLower } from './participantNames';
@@ -104,6 +105,28 @@ export function formatBeat(
     }
     case 'fightEnded':
       return 'The fight is over.';
+    case 'door': {
+      // A door beat narrates from typed facts (rpg-project#268): an unlock
+      // attempt carries its author and its numbers — the miss is as much
+      // fiction as the hit — and a plain open/close names whose hands.
+      const d = event.body.value;
+      const who = d.actor ? resolveName(names, d.actor, member) : 'The door';
+      if (d.dc) {
+        return d.beaten
+          ? `${who} picks the lock — ${d.total} vs DC ${d.dc}. The door swings open.`
+          : `${who} tries the lock — ${d.total} vs DC ${d.dc}. It holds.`;
+      }
+      if (d.state === DoorState.OPEN) {
+        return d.actor ? `${who} opens the door.` : 'The door opens.';
+      }
+      return d.actor ? `${who} shuts the door.` : 'The door shuts.';
+    }
+    case 'ended': {
+      // The run's own last word — the key is content vocabulary and the
+      // sentence is the client's (rpg-project#269 §6.3); the overlay owns
+      // the big headline, this is the log's plain record.
+      return 'The encounter is over.';
+    }
     case 'turnEnded':
     case 'moved':
     case undefined:
