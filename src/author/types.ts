@@ -1,3 +1,5 @@
+import type { Edge } from './hexOffset';
+
 /** The palette's tools (design §1, left column) plus `select`, which
  * the inspector needs: clicking a placement, a door edge or a region
  * cell with it selects that thing. */
@@ -10,11 +12,15 @@ export type BoardTool =
   | 'start'
   | 'place';
 
-/** What the inspector is looking at. */
+/** What the inspector is looking at. A wall selection is the set of
+ * doc edges behind a rendered run, resolved at click time from the
+ * derived scene — there is no wall id in the file and none is added
+ * (rpg-dnd5e-web#804). */
 export type Selection =
   | { kind: 'dungeon' }
   | { kind: 'region'; id: string }
   | { kind: 'door'; id: string }
+  | { kind: 'wall'; edges: Edge[] }
   | { kind: 'placement'; index: number };
 
 /** The catalog item armed on the `place` tool. */

@@ -26,6 +26,7 @@ import {
   type AuthoringClient,
 } from './authoringRpc';
 import { CreationBoard } from './creation/CreationBoard';
+import { applyWallDraw, applyWallErase } from './creation/wallGesture';
 import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
@@ -295,6 +296,15 @@ export function DungeonBuilder({
     if (activeRegionId) setDoc((d) => paintCell(d, activeRegionId, cell));
   };
   const handleErase = (cell: Axial) => setDoc((d) => eraseCell(d, cell));
+  // The wall drag commits its RAW taut chain; applying the same
+  // mutator composition the board's live preview used (wallGesture's
+  // apply*) is what makes the preview the commit (#804).
+  const handleWallDraw = (chain: Edge[]) => {
+    setDoc((d) => applyWallDraw(d, chain));
+  };
+  const handleWallErase = (chain: Edge[]) => {
+    setDoc((d) => applyWallErase(d, chain));
+  };
   const handleEdgeClick = (edge: Edge) => {
     if (tool === 'wall') setDoc((d) => toggleWall(d, edge));
     if (tool === 'door') {
@@ -485,6 +495,8 @@ export function DungeonBuilder({
               onPaint={handlePaint}
               onErase={handleErase}
               onEdgeClick={handleEdgeClick}
+              onWallDraw={handleWallDraw}
+              onWallErase={handleWallErase}
               onCellClick={handleCellClick}
               onSelect={setSelection}
             />

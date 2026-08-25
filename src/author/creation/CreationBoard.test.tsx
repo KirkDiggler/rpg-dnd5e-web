@@ -39,6 +39,8 @@ function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
       onPaint={(c) => calls.paint.push(axialKey(c))}
       onErase={(c) => calls.erase.push(axialKey(c))}
       onEdgeClick={(e) => calls.edges.push(e)}
+      onWallDraw={() => {}}
+      onWallErase={() => {}}
       onCellClick={() => {}}
       onSelect={() => {}}
       {...overrides}
@@ -80,6 +82,7 @@ describe('CreationBoard', () => {
   it('the wall tool on a void cell never reports an edge', () => {
     const { container, calls } = mount(emptyDungeon(), { tool: 'wall' });
     fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerUp(container.querySelector('svg')!);
     expect(calls.edges).toHaveLength(0);
   });
 
@@ -88,7 +91,10 @@ describe('CreationBoard', () => {
     doc = paintCell(doc, 'region-1', p(1, 1));
     doc = paintCell(doc, 'region-1', p(2, 1));
     const { container, calls } = mount(doc, { tool: 'wall' });
+    // Press + release without moving: the drag-capable wall tool still
+    // commits today's single-edge toggle, on release (#804).
     fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerUp(container.querySelector('svg')!);
     expect(calls.edges).toHaveLength(1);
     const [a, b] = calls.edges[0];
     expect(axialKey(a)).toBe(axialKey(p(1, 1)));
@@ -183,6 +189,8 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
+        onWallDraw={() => {}}
+        onWallErase={() => {}}
         onCellClick={() => {}}
         onSelect={() => {}}
       />
@@ -224,6 +232,8 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
+        onWallDraw={() => {}}
+        onWallErase={() => {}}
         onCellClick={() => {}}
         onSelect={() => {}}
       />

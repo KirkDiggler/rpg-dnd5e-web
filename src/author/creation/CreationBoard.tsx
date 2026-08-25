@@ -12,6 +12,7 @@
 import { facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -56,6 +57,16 @@ import {
   viewRectFor,
   type GridBounds,
 } from './canvasGeometry';
+import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
+import {
+  applyWallDraw,
+  applyWallErase,
+  deriveWallAdd,
+  deriveWallErase,
+  runVertices,
+  snapGesturePoint,
+  tautPath,
+} from './wallGesture';
 
 export const BOARD_HEX_SIZE = 24;
 
@@ -75,6 +86,12 @@ export interface CreationBoardProps {
   onPaint: (cell: Axial) => void;
   onErase: (cell: Axial) => void;
   onEdgeClick: (edge: Edge) => void;
+  /** The wall drag's commit (#804): the RAW taut chain of the released
+   * drag — the owner applies the same `applyWallDraw` the preview used,
+   * so the preview IS the commit. */
+  onWallDraw: (chain: Edge[]) => void;
+  /** Shift/right-drag erase along the same derived path (ruling 3). */
+  onWallErase: (chain: Edge[]) => void;
   onCellClick: (cell: Axial) => void;
   onSelect: (selection: Selection) => void;
 }
@@ -90,6 +107,17 @@ function svgPoint(svg: SVGSVGElement, e: PointerEvent): Point {
   return { x: p.x, y: p.y };
 }
 
+/** One in-flight wall drag (#804). `pressEdge` carries the click
+ * fallback: a press that never moves off its snapped corner stays
+ * today's single-edge toggle, released on pointer up. */
+interface DragGesture {
+  kind: 'draw' | 'erase';
+  a: CornerRef;
+  b: CornerRef;
+  moved: boolean;
+  pressEdge: Edge;
+}
+
 export function CreationBoard({
   doc,
   tool,
@@ -99,6 +127,8 @@ export function CreationBoard({
   onPaint,
   onErase,
   onEdgeClick,
+  onWallDraw,
+  onWallErase,
   onCellClick,
   onSelect,
 }: CreationBoardProps) {
@@ -187,6 +217,60 @@ export function CreationBoard({
   // the document directly, not the debounced server compile, so the
   // wall the author just clicked straightens immediately.
   const wallScene = useMemo(() => boardWallScene(doc, size), [doc, size]);
+  const [gesture, setGesture] = useState<DragGesture | null>(null);
+  // The magnetism targets and (later) drag handles: the lattice
+  // vertices at the ends of the COMMITTED doc's rendered chains —
+  // never the mid-gesture candidate's, or the endpoint would chase its
+  // own preview.
+  const vertices = useMemo(
+    () =>
+      wallScene
+        ? runVertices(
+            wallScene.runs.map((r) => r.edges),
+            size,
+            o
+          )
+        : [],
+    [wallScene, size, o]
+  );
+  // THE PREVIEW IS THE COMMIT: the candidate document is the same
+  // mutator composition the release applies (wallGesture's apply*),
+  // and its runs come from the same shared geometry module. On
+  // flat-top docs boardWallScene stays null and the literal edge
+  // drawing below previews the candidate doc instead — the honest
+  // picture there (#763).
+  const chain = useMemo(
+    () => (gesture ? tautPath(gesture.a, gesture.b, size, o) : []),
+    [gesture, size, o]
+  );
+  const previewDoc = useMemo(() => {
+    if (!gesture || !gesture.moved) return null;
+    return gesture.kind === 'draw'
+      ? applyWallDraw(doc, chain)
+      : applyWallErase(doc, chain);
+  }, [gesture, doc, chain]);
+  const previewScene = useMemo(
+    () => (previewDoc ? boardWallScene(previewDoc, size) : null),
+    [previewDoc, size]
+  );
+  // The faint literal trace of the candidate edges (draw), or of the
+  // edges about to be removed (erase).
+  const traceEdges = useMemo(() => {
+    if (!gesture || !gesture.moved) return [];
+    return gesture.kind === 'draw'
+      ? deriveWallAdd(doc, chain)
+      : deriveWallErase(doc, chain);
+  }, [gesture, doc, chain]);
+  const displayDoc = previewDoc ?? doc;
+  const scene = previewDoc ? previewScene : wallScene;
+  useEffect(() => {
+    if (!gesture) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setGesture(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [gesture]);
   const doorById = useMemo(
     () => new Map(doc.doors.map((d) => [d.id, d] as const)),
     [doc.doors]
@@ -239,7 +323,24 @@ export function CreationBoard({
     }
     if (edgeTool) {
       if (!svgRef.current || !owners.has(axialKey(cell))) return;
-      onEdgeClick(nearestEdge(cell, svgPoint(svgRef.current, e), size, o));
+      const p = svgPoint(svgRef.current, e);
+      const pressEdge = nearestEdge(cell, p, size, o);
+      if (tool === 'wall') {
+        // Press anchors A (wall-vertex magnetism first, then the
+        // corner lattice); release decides click vs drag. Shift or
+        // right button erases along the derived path (ruling 3).
+        const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
+        setGesture({
+          kind: e.shiftKey || e.button === 2 ? 'erase' : 'draw',
+          a,
+          b: a,
+          moved: false,
+          pressEdge,
+        });
+        setHoverEdge(null);
+        return;
+      }
+      onEdgeClick(pressEdge);
       return;
     }
     if (tool === 'select') {
@@ -266,6 +367,22 @@ export function CreationBoard({
     if (painting.current && (tool === 'region' || tool === 'erase')) {
       applyBrush(cell, painting.current);
     }
+    if (gesture && svgRef.current) {
+      // Every move re-snaps B: wall vertices first, then the corner
+      // lattice, with angle magnetism toward the seam families unless
+      // Alt is held (ruling 1). The preview re-derives from the doc on
+      // every change of B — O(chain) + the shared module's O(walls).
+      const b = snapGesturePoint(svgPoint(svgRef.current, e), size, o, {
+        origin: cornerPoint(gesture.a, size, o),
+        alt: e.altKey,
+        wallVertices: vertices,
+      });
+      const moved = gesture.moved || !sameCorner(b, gesture.a, size, o);
+      if (moved !== gesture.moved || !sameCorner(b, gesture.b, size, o)) {
+        setGesture({ ...gesture, b, moved });
+      }
+      return;
+    }
     if ((edgeTool || tool === 'select') && svgRef.current) {
       if (!owners.has(axialKey(cell))) {
         setHoverEdge(null);
@@ -287,6 +404,21 @@ export function CreationBoard({
     painting.current = null;
   };
 
+  // Release commits (or falls back to the single-edge click); releasing
+  // with B back on A after moving, or Escape, or leaving the canvas,
+  // cancels.
+  const finishGesture = () => {
+    if (!gesture) return;
+    setGesture(null);
+    if (!gesture.moved) {
+      onEdgeClick(gesture.pressEdge);
+      return;
+    }
+    if (sameCorner(gesture.a, gesture.b, size, o)) return;
+    if (gesture.kind === 'draw') onWallDraw(chain);
+    else onWallErase(chain);
+  };
+
   const selectedRegion = selection?.kind === 'region' ? selection.id : null;
   const selectedDoor = selection?.kind === 'door' ? selection.id : null;
   const selectedPlacement =
@@ -297,7 +429,7 @@ export function CreationBoard({
   // literal, drawn on top of the runs — an error is edge-scoped truth
   // about what the author clicked, not about the fitted line (#800).
   // On a flat-top document everything stays literal, as before.
-  const straightened = wallScene !== null;
+  const straightened = scene !== null;
   const edgeLines: {
     key: string;
     edge: Edge;
@@ -305,7 +437,7 @@ export function CreationBoard({
     width: number;
     dash?: string;
   }[] = [];
-  for (const w of doc.walls) {
+  for (const w of displayDoc.walls) {
     const isError = errorEdges.has(edgeKey(w));
     if (straightened && !isError) continue;
     edgeLines.push({
@@ -315,7 +447,7 @@ export function CreationBoard({
       width: 4,
     });
   }
-  for (const d of doc.doors) {
+  for (const d of displayDoc.doors) {
     for (const e of d.edges) {
       const k = edgeKey(e);
       const isError = errorEdges.has(k);
@@ -354,9 +486,13 @@ export function CreationBoard({
             touchAction: 'none',
             cursor: cursorFor(tool),
           }}
-          onPointerUp={endPaint}
+          onPointerUp={() => {
+            endPaint();
+            finishGesture();
+          }}
           onPointerLeave={() => {
             endPaint();
+            setGesture(null);
             setHoverEdge(null);
             setHoverCell(null);
           }}
@@ -509,7 +645,7 @@ export function CreationBoard({
                 but sits IN the run's gap, exactly where 3D will put it;
                 hit-testing stays edge-based (this layer takes no
                 pointer events). */}
-            {wallScene?.runs.map((r) => (
+            {scene?.runs.map((r) => (
               <line
                 key={`run:${r.key}`}
                 data-run={r.key}
@@ -521,7 +657,7 @@ export function CreationBoard({
                 strokeWidth={4}
               />
             ))}
-            {wallScene?.doors.map((d) => {
+            {scene?.doors.map((d) => {
               const doorDoc = doorById.get(d.doorId);
               return (
                 <line
@@ -574,6 +710,49 @@ export function CreationBoard({
                 );
               })()}
           </g>
+          {gesture && gesture.moved && (
+            <g data-layer="gesture" pointerEvents="none">
+              {/* The faint literal trace of the candidate edges — the
+                  chain the drag derived (skipped pairs shown absent),
+                  or the walls the erase will remove. The straightened
+                  result is already live above via the candidate doc. */}
+              {traceEdges.map((edge) => {
+                const seg = edgeSegment(edge, size, o);
+                if (!seg) return null;
+                return (
+                  <line
+                    key={`trace:${edgeKey(edge)}`}
+                    data-gesture-trace={edgeKey(edge)}
+                    x1={seg.a.x}
+                    y1={seg.a.y}
+                    x2={seg.b.x}
+                    y2={seg.b.y}
+                    stroke={
+                      gesture.kind === 'erase' ? ERROR_STROKE : HOVER_STROKE
+                    }
+                    strokeWidth={3}
+                    strokeOpacity={0.4}
+                    strokeDasharray="3 3"
+                  />
+                );
+              })}
+              {(['a', 'b'] as const).map((end) => {
+                const p = cornerPoint(gesture[end], size, o);
+                return (
+                  <circle
+                    key={end}
+                    data-gesture-end={end}
+                    cx={p.x}
+                    cy={p.y}
+                    r={size * 0.18}
+                    fill="none"
+                    stroke={HOVER_STROKE}
+                    strokeWidth={2}
+                  />
+                );
+              })}
+            </g>
+          )}
         </svg>
       </div>
     </div>
