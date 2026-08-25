@@ -305,6 +305,77 @@ describe('combat presentation authority reconciliation', () => {
     }
   );
 
+  it('makes a newer conflict current over an older pending local attack', () => {
+    const pending = createAttackAuthorityFixture({ seq: 22n });
+    const accepted = createAttackAuthorityFixture({ seq: 23n });
+    const conflict = createAttackAuthorityFixture({
+      seq: 23n,
+      roll: 4,
+      total: 9,
+    });
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      pending.streamFact()
+    );
+    state = reduceCombatPresentation(state, accepted.responseFact);
+    state = reduceCombatPresentation(state, conflict.streamFact());
+
+    expect(state.pendingLocalKeys).toEqual([state.presentations[0]?.key]);
+    expect(selectCurrentPresentation(state)).toMatchObject({
+      seq: 23n,
+      conflicted: true,
+    });
+    expect(selectCurrentDiceEvents(state)).toEqual([]);
+    expect(selectVisibleResult(state)).toBeUndefined();
+    expect(selectLiveAnnouncement(state)).toBeNull();
+  });
+
+  it('keeps a newer pending local attack current over an older conflict', () => {
+    const accepted = createAttackAuthorityFixture({ seq: 22n });
+    const conflict = createAttackAuthorityFixture({
+      seq: 22n,
+      roll: 4,
+      total: 9,
+    });
+    const pending = createAttackAuthorityFixture({ seq: 23n });
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      accepted.responseFact
+    );
+    state = reduceCombatPresentation(state, conflict.streamFact());
+    state = reduceCombatPresentation(state, pending.streamFact());
+
+    expect(selectCurrentPresentation(state)).toMatchObject({
+      seq: 23n,
+      conflicted: false,
+      settlement: 'armed',
+    });
+    expect(selectCurrentDiceEvents(state)[0]?.presentationId).toBe(
+      'session:crypt-run:23'
+    );
+  });
+
+  it('keeps an older pending local attack current over a newer settled witness', () => {
+    const pending = createAttackAuthorityFixture({ seq: 22n });
+    const witness = createAttackAuthorityFixture({
+      seq: 23n,
+      attacker: 'skeleton-guard',
+    });
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      pending.streamFact()
+    );
+    state = reduceCombatPresentation(state, witness.streamFact());
+
+    expect(selectCurrentPresentation(state)).toMatchObject({
+      seq: 22n,
+      settlement: 'armed',
+    });
+    expect(selectCurrentDiceEvents(state)[0]?.presentationId).toBe(
+      'session:crypt-run:22'
+    );
+  });
+
   it('orders Story by authoritative sequence rather than event arrival', () => {
     const earlier = createAttackAuthorityFixture({ seq: 22n, roll: 4 });
     const later = createAttackAuthorityFixture({ seq: 23n, roll: 12 });

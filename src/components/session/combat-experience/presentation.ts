@@ -1157,31 +1157,50 @@ export function selectLiveAnnouncement(
   return entry ? `${entry.headline}. ${entry.detail}` : null;
 }
 
+function isAuthoritativelyNewer(
+  candidate: CombatPresentationRecord,
+  current: CombatPresentationRecord
+): boolean {
+  return candidate.session === current.session
+    ? candidate.seq > current.seq
+    : candidate.order > current.order;
+}
+
 export function selectCurrentPresentation(
   state: CombatPresentationState
 ): CombatPresentationRecord | undefined {
+  let pending: CombatPresentationRecord | undefined;
   for (const key of state.pendingLocalKeys) {
-    const pending = state.presentations.find(
+    pending = state.presentations.find(
       (record) =>
         record.key === key &&
         !record.conflicted &&
         record.settlement === 'armed'
     );
-    if (pending) return pending;
+    if (pending) break;
   }
 
-  // A newer conflict is still authoritative-current. Selectors must reach its
-  // conflict guard instead of resurrecting an older settled presentation.
-  let current: CombatPresentationRecord | undefined;
+  let latestConflict: CombatPresentationRecord | undefined;
   for (const record of state.presentations) {
     if (
-      !current ||
-      (record.session === current.session
-        ? record.seq > current.seq
-        : record.order > current.order)
+      record.conflicted &&
+      (!latestConflict || isAuthoritativelyNewer(record, latestConflict))
     ) {
-      current = record;
+      latestConflict = record;
     }
+  }
+
+  // Settled witnesses never displace FIFO local work, but newer conflicted
+  // authority must fail closed instead of resurrecting an older pending roll.
+  if (pending) {
+    return latestConflict && isAuthoritativelyNewer(latestConflict, pending)
+      ? latestConflict
+      : pending;
+  }
+
+  let current: CombatPresentationRecord | undefined;
+  for (const record of state.presentations) {
+    if (!current || isAuthoritativelyNewer(record, current)) current = record;
   }
   return current;
 }
