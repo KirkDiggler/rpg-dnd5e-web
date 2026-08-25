@@ -17,6 +17,7 @@ import {
   renderHook,
   screen,
 } from '@testing-library/react';
+import { StrictMode, type PropsWithChildren } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { isCombatDebugEnabled } from './diagnostics';
 import { DiceDrawer } from './DiceDrawer';
@@ -39,6 +40,10 @@ const participants = [
     standing: Standing.UP,
   }),
 ];
+
+function StrictWrapper({ children }: PropsWithChildren) {
+  return <StrictMode>{children}</StrictMode>;
+}
 
 function releaseFor(
   events: readonly (
@@ -68,7 +73,11 @@ describe('useCombatPresentation', () => {
   it('ingests game truth and raw Debug immediately while withholding actor semantics until release', () => {
     const facts = createAttackAuthorityFixture();
     const { result } = renderHook(() =>
-      useCombatPresentation({ viewerMember: 'aldric', participants })
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        participants,
+      })
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
@@ -96,7 +105,11 @@ describe('useCombatPresentation', () => {
   it('allows release delivery before the stream event without using the response as Story', () => {
     const facts = createAttackAuthorityFixture();
     const { result } = renderHook(() =>
-      useCombatPresentation({ viewerMember: 'aldric', participants })
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        participants,
+      })
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
@@ -116,7 +129,11 @@ describe('useCombatPresentation', () => {
       session: `unsafe-${'x'.repeat(140)}`,
     });
     const { result } = renderHook(() =>
-      useCombatPresentation({ viewerMember: 'aldric', participants })
+      useCombatPresentation({
+        session: facts.event.session,
+        viewerMember: 'aldric',
+        participants,
+      })
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
@@ -141,7 +158,11 @@ describe('useCombatPresentation', () => {
     });
     const { result, rerender } = renderHook(
       ({ roster }) =>
-        useCombatPresentation({ viewerMember: 'aldric', participants: roster }),
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          participants: roster,
+        }),
       { initialProps: { roster: participants.slice(0, 1) } }
     );
 
@@ -157,14 +178,15 @@ describe('useCombatPresentation', () => {
     expect(result.current.semanticFallback).toBe(false);
   });
 
-  it('offers a result-free semantic release control when no safe dice ID can mount', () => {
+  it('offers a result-free semantic release control only to an authoritative roller', () => {
     const onSemanticReleaseRequest = vi.fn();
-    render(
+    const { rerender } = render(
       <DiceDrawer
         phase="awaiting-roll"
         events={[]}
         rollerName="Aldric"
         semanticFallback
+        witnessRole="roller"
         onReleaseRequest={vi.fn()}
         onSemanticReleaseRequest={onSemanticReleaseRequest}
       />
@@ -173,6 +195,117 @@ describe('useCombatPresentation', () => {
     expect(screen.queryByText(/d20 12|total 17|Hit/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Reveal result' }));
     expect(onSemanticReleaseRequest).toHaveBeenCalledOnce();
+
+    rerender(
+      <DiceDrawer
+        phase="awaiting-roll"
+        events={[]}
+        rollerName="Aldric"
+        semanticFallback
+        witnessRole="spectator"
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'Reveal result' })).toBeNull();
+    expect(screen.getByText(/presentation unavailable/)).toBeTruthy();
+  });
+
+  it('makes a missing provider role spectator-only with no request or reveal control', () => {
+    const facts = createAttackAuthorityFixture();
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        participants: [],
+      })
+    );
+
+    act(() => result.current.acceptAttackResponse(facts.responseFact));
+    act(() =>
+      result.current.acceptStreamEvent(facts.event, { source: 'live' })
+    );
+
+    expect(result.current.diceWitnessRole).toBe('spectator');
+    expect(result.current.diceEvents).toEqual([]);
+    expect(result.current.semanticFallback).toBe(false);
+    expect(result.current.phase).toBe('settled');
+    expect(result.current.story).toHaveLength(1);
+  });
+
+  it('creates and removes a pending response presentation as authoritative role facts change', () => {
+    const facts = createAttackAuthorityFixture();
+    const { result, rerender } = renderHook(
+      ({ roster }) =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          participants: roster,
+        }),
+      { initialProps: { roster: participants.slice(1) } }
+    );
+
+    act(() => result.current.acceptAttackResponse(facts.responseFact));
+    expect(result.current.diceWitnessRole).toBe('spectator');
+    expect(result.current.diceEvents).toEqual([]);
+
+    rerender({ roster: participants });
+    expect(result.current.diceWitnessRole).toBe('roller');
+    expect(result.current.diceEvents).toHaveLength(1);
+    expect(result.current.phase).toBe('awaiting-roll');
+
+    rerender({ roster: participants.slice(1) });
+    expect(result.current.diceWitnessRole).toBe('spectator');
+    expect(result.current.diceEvents).toEqual([]);
+    expect(result.current.phase).toBe('settled');
+  });
+
+  it('fences stale state and callbacks synchronously across StrictMode session and viewer scope changes', () => {
+    const oldFacts = createAttackAuthorityFixture();
+    const nextFacts = createAttackAuthorityFixture({ session: 'next-run' });
+    const { result, rerender } = renderHook(
+      ({ session, viewerMember }) =>
+        useCombatPresentation({ session, viewerMember, participants }),
+      {
+        initialProps: {
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+        },
+        wrapper: StrictWrapper,
+      }
+    );
+
+    act(() => result.current.acceptAttackResponse(oldFacts.responseFact));
+    act(() =>
+      result.current.acceptStreamEvent(oldFacts.event, { source: 'live' })
+    );
+    const staleAccept = result.current.acceptStreamEvent;
+    expect(result.current.debug).not.toEqual([]);
+    expect(result.current.diceEvents).not.toEqual([]);
+
+    rerender({ session: 'next-run', viewerMember: 'aldric' });
+    expect(result.current.state.session).toBe('next-run');
+    expect(result.current.story).toEqual([]);
+    expect(result.current.debug).toEqual([]);
+    expect(result.current.diceEvents).toEqual([]);
+    expect(result.current.result).toBeUndefined();
+
+    act(() => staleAccept(oldFacts.event, { source: 'live' }));
+    expect(result.current.debug).toEqual([]);
+    expect(result.current.state.presentations).toEqual([]);
+
+    act(() =>
+      result.current.acceptStreamEvent(nextFacts.event, { source: 'catchup' })
+    );
+    expect(result.current.story).toHaveLength(1);
+    const staleNextAccept = result.current.acceptStreamEvent;
+
+    rerender({ session: 'next-run', viewerMember: 'skeleton-guard' });
+    expect(result.current.state.viewerMember).toBe('skeleton-guard');
+    expect(result.current.story).toEqual([]);
+    expect(result.current.debug).toEqual([]);
+    expect(result.current.diceEvents).toEqual([]);
+
+    act(() => staleNextAccept(nextFacts.event, { source: 'catchup' }));
+    expect(result.current.state.presentations).toEqual([]);
   });
 });
 

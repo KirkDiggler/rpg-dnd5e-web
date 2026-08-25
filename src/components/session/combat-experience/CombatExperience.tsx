@@ -215,15 +215,25 @@ export function CombatExperience({
           diagnosticsEnabled={diagnosticsEnabled}
         />
 
-        <DiceDrawer
-          phase={phase}
-          events={diceEvents}
-          rollerName={diceRollerName ?? viewer?.name ?? 'Your character'}
-          onReleaseRequest={onDiceReleaseRequest}
-          semanticFallback={diceSemanticFallback}
-          onSemanticReleaseRequest={onDiceSemanticReleaseRequest}
-          witnessRole={diceWitnessRole}
-        />
+        {diceWitnessRole === 'roller' ? (
+          <DiceDrawer
+            phase={phase}
+            events={diceEvents}
+            rollerName={diceRollerName ?? viewer?.name ?? 'Your character'}
+            semanticFallback={diceSemanticFallback}
+            witnessRole="roller"
+            onReleaseRequest={onDiceReleaseRequest}
+            onSemanticReleaseRequest={onDiceSemanticReleaseRequest}
+          />
+        ) : (
+          <DiceDrawer
+            phase={phase}
+            events={diceEvents}
+            rollerName={diceRollerName ?? viewer?.name ?? 'Your character'}
+            semanticFallback={diceSemanticFallback}
+            witnessRole="spectator"
+          />
+        )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
           <div className={styles.identityRow}>

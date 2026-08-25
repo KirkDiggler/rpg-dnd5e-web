@@ -4,10 +4,18 @@ import type {
 } from '@/components/ui/dice/dicePresentationEvent';
 import { createDicePresentationRelease } from '@/components/ui/dice/dicePresentationRelease';
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
+import { create } from '@bufbuild/protobuf';
+import {
+  DownedSchema,
+  EventKind,
+  EventSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { describe, expect, it } from 'vitest';
 import {
   emptyPresentation,
   reduceCombatPresentation,
+  selectCurrentDiceEvents,
+  selectCurrentPresentation,
   selectLiveAnnouncement,
   selectVisibleResult,
   selectVisibleStory,
@@ -16,6 +24,7 @@ import {
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
 
 const config = {
+  session: 'crypt-run',
   viewerMember: 'aldric',
   memberNames: {
     aldric: 'Aldric',
@@ -41,7 +50,11 @@ function requestOf(
 }
 
 function releaseFact(state: CombatPresentationState) {
-  const request = requestOf(state);
+  const request = selectCurrentDiceEvents(state).find(
+    (event): event is DicePresentationRequestedEvent =>
+      event.type === 'dice-presentation-requested'
+  );
+  if (!request) throw new Error('expected a current dice request');
   const event: DicePresentationReleasedEvent = {
     schemaVersion: 1,
     type: 'dice-presentation-released',
@@ -66,6 +79,36 @@ function releaseCount(state: CombatPresentationState) {
   return state.diceEvents.filter(
     (event) => event.type === 'dice-presentation-released'
   ).length;
+}
+
+function downedFact(member: string, source: 'live' | 'catchup' = 'live') {
+  return {
+    type: 'stream-event' as const,
+    event: create(EventSchema, {
+      session: 'crypt-run',
+      seq: 23n,
+      kind: EventKind.DOWNED,
+      recipient: 'aldric',
+      body: {
+        case: 'downed' as const,
+        value: create(DownedSchema, { member }),
+      },
+    }),
+    metadata: { source },
+  };
+}
+
+function expectConflictClosed(state: CombatPresentationState) {
+  expect(state.identities).toHaveLength(1);
+  expect(state.identities[0]?.conflicted).toBe(true);
+  expect(
+    state.presentations[0]?.conflicted ?? state.otherStory[0]?.conflicted
+  ).toBe(true);
+  expect(selectVisibleStory(state)).toEqual([]);
+  expect(selectVisibleResult(state)).toBeUndefined();
+  expect(selectLiveAnnouncement(state)).toBeNull();
+  expect(selectCurrentDiceEvents(state)).toEqual([]);
+  expect(selectCurrentPresentation(state)).toBeUndefined();
 }
 
 describe('combat presentation authority reconciliation', () => {
@@ -159,34 +202,48 @@ describe('combat presentation authority reconciliation', () => {
     expect(selectVisibleStory(state)).toHaveLength(1);
   });
 
-  it('keeps the first accepted roller, result, and AttackRef when a conflicting duplicate arrives', () => {
-    const accepted = createAttackAuthorityFixture();
-    const conflict = createAttackAuthorityFixture({
-      attacker: 'mira',
-      roll: 4,
-      total: 9,
-      hit: false,
-      damage: 0,
-      attackRef: 'dnd5e:weapons:dagger',
-      attackName: 'Dagger',
-    });
-    let state = reduceCombatPresentation(
-      emptyPresentation(config),
-      accepted.streamFact()
-    );
-    state = reduceCombatPresentation(state, conflict.streamFact());
-    state = reduceCombatPresentation(state, releaseFact(state));
+  it.each([
+    ['hit/miss', { hit: false, damage: 0 }],
+    ['roller', { attacker: 'mira' }],
+    ['target', { target: 'mira' }],
+    ['result', { roll: 4, total: 9 }],
+    [
+      'AttackRef',
+      {
+        attackRef: 'dnd5e:weapons:dagger',
+        attackName: 'Dagger',
+      },
+    ],
+    ['damage', { damage: 3 }],
+  ] as const)(
+    'fails closed for a conflicting %s in response-first and event-first order',
+    (_, mismatch) => {
+      const accepted = createAttackAuthorityFixture();
+      const conflict = createAttackAuthorityFixture(mismatch);
 
-    expect(state.diagnostics).toHaveLength(1);
-    expect(state.diagnostics[0]).toContain('conflicting authority');
-    expect(selectVisibleResult(state)).toMatchObject({
-      actor: 'Aldric',
-      d20: 12,
-      hit: true,
-      attackRef: 'dnd5e:weapons:longsword',
-    });
-    expect(selectVisibleResult(state)?.d20).not.toBe(4);
-  });
+      let responseFirst = reduceCombatPresentation(
+        emptyPresentation(config),
+        accepted.responseFact
+      );
+      responseFirst = reduceCombatPresentation(
+        responseFirst,
+        conflict.streamFact()
+      );
+
+      let eventFirst = reduceCombatPresentation(
+        emptyPresentation(config),
+        conflict.streamFact()
+      );
+      eventFirst = reduceCombatPresentation(eventFirst, accepted.responseFact);
+
+      expectConflictClosed(responseFirst);
+      expectConflictClosed(eventFirst);
+      expect(responseFirst.diagnostics.at(-1)).toContain(
+        'conflicting authority'
+      );
+      expect(eventFirst.debug.at(-1)).toContain('conflicting authority');
+    }
+  );
 
   it('does not keep announcing an older result while a newer actor result is concealed', () => {
     const witness = createAttackAuthorityFixture({
@@ -233,6 +290,64 @@ describe('combat presentation authority reconciliation', () => {
     expect(requestCount(state)).toBe(2);
     expect(selectVisibleStory(state)).toEqual([]);
   });
+
+  it('uses one identity registry and fails closed when attack and other Story collide in either order', () => {
+    const attack = createAttackAuthorityFixture();
+
+    let attackFirst = reduceCombatPresentation(
+      emptyPresentation(config),
+      attack.responseFact
+    );
+    attackFirst = reduceCombatPresentation(
+      attackFirst,
+      downedFact('skeleton-guard')
+    );
+
+    let otherFirst = reduceCombatPresentation(
+      emptyPresentation(config),
+      downedFact('skeleton-guard')
+    );
+    otherFirst = reduceCombatPresentation(otherFirst, attack.responseFact);
+
+    expectConflictClosed(attackFirst);
+    expectConflictClosed(otherFirst);
+    expect(attackFirst.presentations).toHaveLength(1);
+    expect(attackFirst.otherStory).toHaveLength(0);
+    expect(otherFirst.presentations).toHaveLength(0);
+    expect(otherFirst.otherStory).toHaveLength(1);
+  });
+
+  it('compares exact typed Story facts and marks differing same-key facts conflicted in both orders', () => {
+    let firstOrder = reduceCombatPresentation(
+      emptyPresentation(config),
+      downedFact('skeleton-guard')
+    );
+    firstOrder = reduceCombatPresentation(firstOrder, downedFact('mira'));
+
+    let mirrorOrder = reduceCombatPresentation(
+      emptyPresentation(config),
+      downedFact('mira')
+    );
+    mirrorOrder = reduceCombatPresentation(
+      mirrorOrder,
+      downedFact('skeleton-guard')
+    );
+
+    expectConflictClosed(firstOrder);
+    expectConflictClosed(mirrorOrder);
+  });
+
+  it('deduplicates an exactly matching typed Story event without a conflict', () => {
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      downedFact('skeleton-guard')
+    );
+    state = reduceCombatPresentation(state, downedFact('skeleton-guard'));
+
+    expect(state.identities).toHaveLength(1);
+    expect(state.identities[0]?.conflicted).toBe(false);
+    expect(selectVisibleStory(state)).toHaveLength(1);
+  });
 });
 
 describe('combat presentation settlement policy', () => {
@@ -272,7 +387,39 @@ describe('combat presentation settlement policy', () => {
 
     expect(requestCount(catchupCopy)).toBe(1);
     expect(releaseCount(catchupCopy)).toBe(0);
+    expect(catchupCopy.pendingLocalKeys).toEqual([
+      catchupCopy.presentations[0]?.key,
+    ]);
     expect(selectVisibleStory(catchupCopy)).toEqual([]);
+  });
+
+  it('keeps an event-first live local attack pending when an already-accepted catchup duplicate arrives', () => {
+    const facts = createAttackAuthorityFixture();
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      facts.streamFact('live')
+    );
+    state = reduceCombatPresentation(state, facts.streamFact('catchup'));
+
+    expect(state.pendingLocalKeys).toEqual([state.presentations[0]?.key]);
+    expect(selectCurrentPresentation(state)?.seq).toBe(23n);
+    expect(selectCurrentDiceEvents(state)).toHaveLength(1);
+    expect(selectVisibleStory(state)).toEqual([]);
+  });
+
+  it('runs catchup duplicate settlement for an accepted ordinary spectator record', () => {
+    const facts = createAttackAuthorityFixture();
+    const noAuthoritativeRole = { ...config, rollerRoles: {} };
+    let state = reduceCombatPresentation(
+      emptyPresentation(noAuthoritativeRole),
+      facts.streamFact('live')
+    );
+    state = reduceCombatPresentation(state, facts.streamFact('catchup'));
+
+    expect(state.pendingLocalKeys).toEqual([]);
+    expect(state.presentations[0]?.settlement).toBe('auto');
+    expect(selectVisibleStory(state)).toHaveLength(1);
+    expect(selectCurrentDiceEvents(state)).toEqual([]);
   });
 
   it.each([
@@ -298,12 +445,205 @@ describe('combat presentation settlement policy', () => {
     }
   );
 
-  it('uses a semantic fallback for an unsafe presentation ID without an early actor reveal or a stall', () => {
-    const facts = createAttackAuthorityFixture({
-      session: `unsafe-${'x'.repeat(140)}`,
+  it('presents multiple local attacks FIFO and never lets newer witness/history hide the oldest pending result', () => {
+    const first = createAttackAuthorityFixture({ seq: 23n, roll: 11 });
+    const second = createAttackAuthorityFixture({ seq: 24n, roll: 12 });
+    const witness = createAttackAuthorityFixture({
+      seq: 25n,
+      attacker: 'skeleton-guard',
+      roll: 13,
     });
-    const responseFirst = reduceCombatPresentation(
+    let state = reduceCombatPresentation(
       emptyPresentation(config),
+      first.streamFact()
+    );
+    state = reduceCombatPresentation(state, second.streamFact());
+    state = reduceCombatPresentation(state, witness.streamFact('catchup'));
+
+    expect(state.pendingLocalKeys).toHaveLength(2);
+    expect(selectCurrentPresentation(state)?.seq).toBe(23n);
+    expect(selectCurrentDiceEvents(state)[0]?.presentationId).toBe(
+      'session:crypt-run:23'
+    );
+    expect(selectVisibleStory(state).map((entry) => entry.id)).toEqual([
+      expect.stringContaining(':25'),
+    ]);
+    expect(selectVisibleResult(state)).toBeUndefined();
+
+    const spoofedLaterRelease = releaseFact({
+      ...state,
+      pendingLocalKeys: [state.pendingLocalKeys[1]!],
+    });
+    const afterSpoof = reduceCombatPresentation(state, spoofedLaterRelease);
+    expect(afterSpoof.pendingLocalKeys).toEqual(state.pendingLocalKeys);
+    expect(afterSpoof.diagnostics.at(-1)).toContain('ineligible release');
+
+    state = reduceCombatPresentation(state, releaseFact(state));
+    expect(selectVisibleStory(state).map((entry) => entry.id)).toEqual([
+      expect.stringContaining(':23'),
+      expect.stringContaining(':25'),
+    ]);
+    expect(selectCurrentPresentation(state)?.seq).toBe(24n);
+    expect(selectVisibleResult(state)).toBeUndefined();
+
+    state = reduceCombatPresentation(state, releaseFact(state));
+    expect(state.pendingLocalKeys).toEqual([]);
+    expect(selectVisibleStory(state).map((entry) => entry.id)).toEqual([
+      expect.stringContaining(':23'),
+      expect.stringContaining(':24'),
+      expect.stringContaining(':25'),
+    ]);
+  });
+
+  it('makes missing role data spectator-safe and creates/removes unresolved controls on configure', () => {
+    const facts = createAttackAuthorityFixture();
+    const noRole = { ...config, rollerRoles: {} };
+    let responseOnly = reduceCombatPresentation(
+      emptyPresentation(noRole),
+      facts.responseFact
+    );
+
+    expect(responseOnly.pendingLocalKeys).toEqual([]);
+    expect(responseOnly.diceEvents).toEqual([]);
+    expect(responseOnly.presentations[0]?.semanticFallback).toBe(false);
+    const firstAuthority = responseOnly.presentations[0]?.authority;
+
+    responseOnly = reduceCombatPresentation(responseOnly, {
+      type: 'configure',
+      ...config,
+    });
+    expect(responseOnly.presentations[0]?.authority).toBe(firstAuthority);
+    expect(responseOnly.pendingLocalKeys).toEqual([
+      responseOnly.presentations[0]?.key,
+    ]);
+    expect(selectCurrentDiceEvents(responseOnly)).toHaveLength(1);
+
+    responseOnly = reduceCombatPresentation(responseOnly, {
+      type: 'configure',
+      ...noRole,
+    });
+    expect(responseOnly.pendingLocalKeys).toEqual([]);
+    expect(selectCurrentDiceEvents(responseOnly)).toEqual([]);
+    expect(responseOnly.presentations[0]?.semanticFallback).toBe(false);
+  });
+
+  it('creates and removes an unresolved unsafe-ID fallback as role facts become known', () => {
+    const session = `unsafe-${'x'.repeat(140)}`;
+    const facts = createAttackAuthorityFixture({ session });
+    const noRole = {
+      ...config,
+      session,
+      rollerRoles: {},
+    };
+    let state = reduceCombatPresentation(
+      emptyPresentation(noRole),
+      facts.responseFact
+    );
+    expect(state.presentations[0]?.semanticFallback).toBe(false);
+    expect(state.pendingLocalKeys).toEqual([]);
+
+    state = reduceCombatPresentation(state, {
+      type: 'configure',
+      ...config,
+      session,
+    });
+    expect(state.presentations[0]?.semanticFallback).toBe(true);
+    expect(state.pendingLocalKeys).toEqual([state.presentations[0]?.key]);
+
+    state = reduceCombatPresentation(state, {
+      type: 'configure',
+      ...noRole,
+    });
+    expect(state.presentations[0]?.semanticFallback).toBe(false);
+    expect(state.pendingLocalKeys).toEqual([]);
+  });
+
+  it('updates late authoritative names on accepted Story without changing outcome authority', () => {
+    const facts = createAttackAuthorityFixture({ attacker: 'skeleton-guard' });
+    let state = reduceCombatPresentation(
+      emptyPresentation({
+        ...config,
+        memberNames: {},
+      }),
+      facts.streamFact()
+    );
+    const firstAuthority = state.presentations[0]?.authority;
+    expect(selectVisibleStory(state)[0]?.headline).toContain('skeleton-guard');
+
+    state = reduceCombatPresentation(state, { type: 'configure', ...config });
+    expect(state.presentations[0]?.authority).toBe(firstAuthority);
+    expect(selectVisibleStory(state)[0]?.headline).toContain('Skeleton Guard');
+  });
+
+  it('keeps a late-authorized player event settled after spectator fallback already revealed it', () => {
+    const facts = createAttackAuthorityFixture();
+    const noRole = { ...config, rollerRoles: {} };
+    let state = reduceCombatPresentation(
+      emptyPresentation(noRole),
+      facts.streamFact()
+    );
+    expect(selectVisibleStory(state)).toHaveLength(1);
+
+    state = reduceCombatPresentation(state, { type: 'configure', ...config });
+    expect(state.pendingLocalKeys).toEqual([]);
+    expect(state.presentations[0]?.settlement).toBe('auto');
+    expect(selectCurrentDiceEvents(state).map((event) => event.type)).toEqual([
+      'dice-presentation-requested',
+      'dice-presentation-released',
+    ]);
+    expect(selectVisibleStory(state)).toHaveLength(1);
+  });
+
+  it('ignores release and semantic reveal attempts after authoritative player eligibility is removed', () => {
+    const safe = createAttackAuthorityFixture();
+    let safeState = reduceCombatPresentation(
+      emptyPresentation(config),
+      safe.streamFact()
+    );
+    const staleRelease = releaseFact(safeState);
+    const afterMalformed = reduceCombatPresentation(safeState, {
+      type: 'local-release',
+      event: { ...staleRelease.event, eventId: 'not a valid event id' },
+    });
+    expect(afterMalformed.pendingLocalKeys).toEqual(safeState.pendingLocalKeys);
+    expect(afterMalformed.diagnostics.at(-1)).toContain('malformed');
+
+    safeState = reduceCombatPresentation(safeState, {
+      type: 'configure',
+      ...config,
+      rollerRoles: {},
+    });
+    const afterRelease = reduceCombatPresentation(safeState, staleRelease);
+    expect(afterRelease.diagnostics.at(-1)).toContain('ineligible release');
+    expect(afterRelease.diceEvents).toEqual([]);
+
+    const unsafeSession = `unsafe-${'x'.repeat(140)}`;
+    const unsafeConfig = { ...config, session: unsafeSession };
+    const unsafe = createAttackAuthorityFixture({ session: unsafeSession });
+    let unsafeState = reduceCombatPresentation(
+      emptyPresentation(unsafeConfig),
+      unsafe.streamFact()
+    );
+    const unsafeKey = unsafeState.presentations[0]!.key;
+    unsafeState = reduceCombatPresentation(unsafeState, {
+      type: 'configure',
+      ...unsafeConfig,
+      rollerRoles: {},
+    });
+    const afterSemantic = reduceCombatPresentation(unsafeState, {
+      type: 'semantic-release',
+      presentationKey: unsafeKey,
+    });
+    expect(afterSemantic.diagnostics.at(-1)).toContain(
+      'ineligible semantic release'
+    );
+  });
+
+  it('uses a semantic fallback for an unsafe presentation ID without an early actor reveal or a stall', () => {
+    const session = `unsafe-${'x'.repeat(140)}`;
+    const facts = createAttackAuthorityFixture({ session });
+    const responseFirst = reduceCombatPresentation(
+      emptyPresentation({ ...config, session }),
       facts.responseFact
     );
 

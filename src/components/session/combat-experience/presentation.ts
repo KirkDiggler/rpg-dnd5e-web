@@ -50,6 +50,7 @@ interface AuthoritySnapshot {
 
 export interface CombatPresentationConfigFact {
   readonly type: 'configure';
+  readonly session: string;
   readonly viewerMember: string;
   readonly memberNames: Readonly<Record<string, string>>;
   readonly rollerRoles: Readonly<Record<string, RollerRole>>;
@@ -87,6 +88,13 @@ export type CombatPresentationFact =
   | LocalDiceReleaseFact
   | SemanticDiceReleaseFact;
 
+export interface CombatPresentationIdentity {
+  readonly key: string;
+  readonly category: 'attack' | 'other';
+  readonly conflicted: boolean;
+  readonly order: number;
+}
+
 export interface CombatPresentationRecord {
   readonly key: string;
   readonly presentationId?: string;
@@ -102,21 +110,29 @@ export interface CombatPresentationRecord {
   readonly settlement: 'armed' | 'released' | 'auto';
   readonly semanticFallback: boolean;
   readonly locallyArmedResponse: boolean;
+  readonly conflicted: boolean;
   readonly order: number;
 }
 
-interface OtherStoryRecord {
+export interface OtherStoryRecord {
   readonly key: string;
   readonly fact: CombatStoryFact;
+  readonly relevantFacts: string;
+  readonly conflicted: boolean;
   readonly order: number;
 }
 
 export interface CombatPresentationState {
+  readonly session: string;
   readonly viewerMember: string;
   readonly memberNames: Readonly<Record<string, string>>;
   readonly rollerRoles: Readonly<Record<string, RollerRole>>;
+  /** The canonical registry for every accepted response or event key. */
+  readonly identities: readonly CombatPresentationIdentity[];
   readonly presentations: readonly CombatPresentationRecord[];
   readonly otherStory: readonly OtherStoryRecord[];
+  /** FIFO keys for local, authoritative player outcomes awaiting reveal. */
+  readonly pendingLocalKeys: readonly string[];
   readonly diceEvents: readonly DicePresentationEvent[];
   /** Typed raw stream formatting occurs before Story reconciliation. */
   readonly debug: readonly string[];
@@ -125,6 +141,7 @@ export interface CombatPresentationState {
 }
 
 export interface EmptyPresentationConfig {
+  readonly session?: string;
   readonly viewerMember?: string;
   readonly memberNames?: Readonly<Record<string, string>>;
   readonly rollerRoles?: Readonly<Record<string, RollerRole>>;
@@ -140,11 +157,14 @@ export function emptyPresentation(
   config: EmptyPresentationConfig = {}
 ): CombatPresentationState {
   return Object.freeze({
+    session: config.session ?? '',
     viewerMember: config.viewerMember ?? '',
     memberNames: Object.freeze({ ...(config.memberNames ?? {}) }),
     rollerRoles: Object.freeze({ ...(config.rollerRoles ?? {}) }),
+    identities: Object.freeze([]),
     presentations: Object.freeze([]),
     otherStory: Object.freeze([]),
+    pendingLocalKeys: Object.freeze([]),
     diceEvents: Object.freeze([]),
     debug: Object.freeze([]),
     diagnostics: Object.freeze([]),
@@ -274,22 +294,21 @@ function eventId(kind: 'request' | 'release', presentationId: string): string {
   return `${kind}:${hash(`${kind}:${presentationId}`).toString(16)}`;
 }
 
-function rollerRole(
-  state: CombatPresentationState,
+function isAuthoritativeLocalPlayer(
+  state: Pick<CombatPresentationState, 'viewerMember' | 'rollerRoles'>,
   attacker: string
-): RollerRole | undefined {
+): boolean {
   return (
-    state.rollerRoles[attacker] ??
-    (attacker === state.viewerMember ? 'player' : undefined)
+    attacker === state.viewerMember && state.rollerRoles[attacker] === 'player'
   );
 }
 
 function createRequest(
-  state: CombatPresentationState,
+  state: Pick<CombatPresentationState, 'rollerRoles'>,
   authority: AuthoritySnapshot
 ): DicePresentationRequestedEvent | undefined {
   const presentationId = combatPresentationId(authority.session, authority.seq);
-  const role = rollerRole(state, authority.attacker);
+  const role = state.rollerRoles[authority.attacker];
   if (
     !presentationId ||
     !role ||
@@ -332,6 +351,18 @@ function createNeutralRelease(
   });
 }
 
+function isReleaseCompatible(
+  request: DicePresentationRequestedEvent,
+  release: DicePresentationReleasedEvent | undefined
+): release is DicePresentationReleasedEvent {
+  return (
+    release !== undefined &&
+    release.presentationId === request.presentationId &&
+    release.release.presentationId === request.presentationId &&
+    release.release.presetId === request.die.presetId
+  );
+}
+
 function deepFreeze<T>(value: T): T {
   if (
     value === null ||
@@ -351,31 +382,18 @@ function snapshotEvent(event: Event): Event {
   return deepFreeze(clone(EventSchema, event));
 }
 
-function appendDiceEvents(
-  state: CombatPresentationState,
-  ...events: readonly (DicePresentationEvent | undefined)[]
+function diceEventsFor(
+  presentations: readonly CombatPresentationRecord[]
 ): readonly DicePresentationEvent[] {
-  const next = events.filter(
-    (event): event is DicePresentationEvent => event !== undefined
-  );
-  return next.length === 0
-    ? state.diceEvents
-    : Object.freeze([...state.diceEvents, ...next]);
-}
-
-function replacePresentation(
-  state: CombatPresentationState,
-  index: number,
-  record: CombatPresentationRecord,
-  diceEvents = state.diceEvents
-): CombatPresentationState {
-  const presentations = [...state.presentations];
-  presentations[index] = Object.freeze(record);
-  return Object.freeze({
-    ...state,
-    presentations: Object.freeze(presentations),
-    diceEvents,
-  });
+  const events: DicePresentationEvent[] = [];
+  for (const record of [...presentations].sort(
+    (left, right) => left.order - right.order
+  )) {
+    if (record.conflicted) continue;
+    if (record.request) events.push(record.request);
+    if (record.release) events.push(record.release);
+  }
+  return Object.freeze(events);
 }
 
 function diagnose(
@@ -407,6 +425,70 @@ function appendRawDebug(
   });
 }
 
+function identityAt(
+  state: CombatPresentationState,
+  key: string
+): CombatPresentationIdentity | undefined {
+  return state.identities.find((identity) => identity.key === key);
+}
+
+function addIdentity(
+  state: CombatPresentationState,
+  key: string,
+  category: CombatPresentationIdentity['category']
+): readonly CombatPresentationIdentity[] {
+  return Object.freeze([
+    ...state.identities,
+    Object.freeze({
+      key,
+      category,
+      conflicted: false,
+      order: state.nextOrder,
+    }),
+  ]);
+}
+
+function markConflicted(
+  state: CombatPresentationState,
+  key: string,
+  message: string
+): CombatPresentationState {
+  const identities = state.identities.map((identity) =>
+    identity.key === key && !identity.conflicted
+      ? Object.freeze({ ...identity, conflicted: true })
+      : identity
+  );
+  const presentations = state.presentations.map((record) =>
+    record.key === key && !record.conflicted
+      ? Object.freeze({
+          ...record,
+          request: undefined,
+          release: undefined,
+          settlement: 'auto' as const,
+          semanticFallback: false,
+          locallyArmedResponse: false,
+          conflicted: true,
+        })
+      : record
+  );
+  const otherStory = state.otherStory.map((record) =>
+    record.key === key && !record.conflicted
+      ? Object.freeze({ ...record, conflicted: true })
+      : record
+  );
+  const conflicted = Object.freeze({
+    ...state,
+    identities: Object.freeze(identities),
+    presentations: Object.freeze(presentations),
+    otherStory: Object.freeze(otherStory),
+    pendingLocalKeys: Object.freeze(
+      state.pendingLocalKeys.filter((pendingKey) => pendingKey !== key)
+    ),
+    diceEvents: diceEventsFor(presentations),
+  });
+  return diagnose(conflicted, message);
+}
+
 function initialRecord(
   state: CombatPresentationState,
   authority: AuthoritySnapshot,
@@ -415,53 +497,91 @@ function initialRecord(
     event?: Event;
     source?: 'live' | 'catchup';
   }
-): {
-  record: CombatPresentationRecord;
-  dice: readonly DicePresentationEvent[];
-} {
+): { record: CombatPresentationRecord; pending: boolean } {
   const request = createRequest(state, authority);
-  const localActor = authority.attacker === state.viewerMember;
-  const auto =
-    options.event !== undefined &&
-    (options.source === 'catchup' || !localActor);
-  const release = request && auto ? createNeutralRelease(request) : undefined;
-  const semanticFallback = request === undefined;
-  // Local fallback remains explicitly armed: its result-free semantic release
-  // preserves the same concealment boundary when no valid dice ID can exist.
-  const settlement = auto ? 'auto' : 'armed';
-  const presentationId = combatPresentationId(authority.session, authority.seq);
-  const record: CombatPresentationRecord = Object.freeze({
-    key: authorityKey(authority.session, authority.seq),
-    presentationId,
-    session: authority.session,
-    seq: authority.seq,
-    authority,
-    responseAccepted: options.responseAccepted,
-    eventAccepted: options.event !== undefined,
-    event: options.event,
-    eventSource: options.source,
-    request,
-    release,
-    settlement,
-    semanticFallback,
-    locallyArmedResponse:
-      options.responseAccepted && localActor && settlement === 'armed',
-    order: state.nextOrder,
-  });
+  const roleKnown = state.rollerRoles[authority.attacker] !== undefined;
+  const localPlayer = isAuthoritativeLocalPlayer(state, authority.attacker);
+  const pending =
+    localPlayer &&
+    !(options.event !== undefined && options.source === 'catchup');
+  const settlement = pending ? ('armed' as const) : ('auto' as const);
+  const release =
+    request && !pending ? createNeutralRelease(request) : undefined;
   return {
-    record,
-    dice: Object.freeze(
-      [request, release].filter(
-        (event): event is DicePresentationEvent => event !== undefined
-      )
-    ),
+    record: Object.freeze({
+      key: authorityKey(authority.session, authority.seq),
+      presentationId: combatPresentationId(authority.session, authority.seq),
+      session: authority.session,
+      seq: authority.seq,
+      authority,
+      responseAccepted: options.responseAccepted,
+      eventAccepted: options.event !== undefined,
+      event: options.event,
+      eventSource: options.source,
+      request,
+      release,
+      settlement,
+      semanticFallback: roleKnown && request === undefined,
+      locallyArmedResponse:
+        options.responseAccepted && pending && settlement === 'armed',
+      conflicted: false,
+      order: state.nextOrder,
+    }),
+    pending,
   };
+}
+
+function addAttackRecord(
+  state: CombatPresentationState,
+  authority: AuthoritySnapshot,
+  options: {
+    responseAccepted: boolean;
+    event?: Event;
+    source?: 'live' | 'catchup';
+  }
+): CombatPresentationState {
+  const key = authorityKey(authority.session, authority.seq);
+  const { record, pending } = initialRecord(state, authority, options);
+  const presentations = Object.freeze([...state.presentations, record]);
+  return Object.freeze({
+    ...state,
+    identities: addIdentity(state, key, 'attack'),
+    presentations,
+    pendingLocalKeys: pending
+      ? Object.freeze([...state.pendingLocalKeys, key])
+      : state.pendingLocalKeys,
+    diceEvents: diceEventsFor(presentations),
+    nextOrder: state.nextOrder + 1,
+  });
+}
+
+function replacePresentation(
+  state: CombatPresentationState,
+  index: number,
+  record: CombatPresentationRecord,
+  pendingLocalKeys = state.pendingLocalKeys
+): CombatPresentationState {
+  const presentations = [...state.presentations];
+  presentations[index] = Object.freeze(record);
+  return Object.freeze({
+    ...state,
+    presentations: Object.freeze(presentations),
+    pendingLocalKeys: Object.freeze([...pendingLocalKeys]),
+    diceEvents: diceEventsFor(presentations),
+  });
+}
+
+function inSession(state: CombatPresentationState, session: string): boolean {
+  return !state.session || state.session === session;
 }
 
 function acceptResponse(
   state: CombatPresentationState,
   fact: AttackResponseFact
 ): CombatPresentationState {
+  if (!inSession(state, fact.session)) {
+    return diagnose(state, `response outside session ${state.session} ignored`);
+  }
   let authority: AuthoritySnapshot;
   try {
     authority = authorityFromResponse(fact);
@@ -472,24 +592,28 @@ function acceptResponse(
     );
   }
   const key = authorityKey(authority.session, authority.seq);
-  const index = state.presentations.findIndex((record) => record.key === key);
-  if (index < 0) {
-    const { record, dice } = initialRecord(state, authority, {
-      responseAccepted: true,
-    });
-    return Object.freeze({
-      ...state,
-      presentations: Object.freeze([...state.presentations, record]),
-      diceEvents: Object.freeze([...state.diceEvents, ...dice]),
-      nextOrder: state.nextOrder + 1,
-    });
+  const identity = identityAt(state, key);
+  if (!identity) {
+    return addAttackRecord(state, authority, { responseAccepted: true });
+  }
+  if (identity.category !== 'attack') {
+    return markConflicted(
+      state,
+      key,
+      `attack response conflicts with typed Story for ${key}`
+    );
   }
 
-  const current = state.presentations[index]!;
+  const index = state.presentations.findIndex((record) => record.key === key);
+  const current = state.presentations[index];
+  if (!current) {
+    return markConflicted(state, key, `missing attack record for ${key}`);
+  }
   if (!sameAuthority(current.authority, authority)) {
-    return diagnose(
+    return markConflicted(
       state,
-      `conflicting authority for ${key}; response ignored`
+      key,
+      `conflicting authority for ${key}; response rejected`
     );
   }
   if (current.responseAccepted) return state;
@@ -497,9 +621,34 @@ function acceptResponse(
     ...current,
     responseAccepted: true,
     locallyArmedResponse:
-      current.locallyArmedResponse ||
-      (authority.attacker === state.viewerMember &&
-        current.settlement === 'armed'),
+      !current.conflicted &&
+      current.settlement === 'armed' &&
+      state.pendingLocalKeys.includes(key),
+  });
+}
+
+function settleCatchupDuplicate(
+  state: CombatPresentationState,
+  index: number,
+  source: 'live' | 'catchup'
+): CombatPresentationState {
+  const current = state.presentations[index]!;
+  if (
+    source !== 'catchup' ||
+    current.conflicted ||
+    current.settlement !== 'armed' ||
+    state.pendingLocalKeys.includes(current.key)
+  ) {
+    return state;
+  }
+  const release = current.request
+    ? createNeutralRelease(current.request)
+    : undefined;
+  return replacePresentation(state, index, {
+    ...current,
+    release,
+    settlement: 'auto',
+    locallyArmedResponse: false,
   });
 }
 
@@ -509,81 +658,182 @@ function acceptAttackEvent(
   authority: AuthoritySnapshot
 ): CombatPresentationState {
   const key = authorityKey(authority.session, authority.seq);
-  const index = state.presentations.findIndex((record) => record.key === key);
+  const identity = identityAt(state, key);
   const event = snapshotEvent(fact.event);
-  if (index < 0) {
-    const { record, dice } = initialRecord(state, authority, {
+  if (!identity) {
+    return addAttackRecord(state, authority, {
       responseAccepted: false,
       event,
       source: fact.metadata.source,
     });
-    return Object.freeze({
-      ...state,
-      presentations: Object.freeze([...state.presentations, record]),
-      diceEvents: Object.freeze([...state.diceEvents, ...dice]),
-      nextOrder: state.nextOrder + 1,
-    });
+  }
+  if (identity.category !== 'attack') {
+    return markConflicted(
+      state,
+      key,
+      `attack event conflicts with typed Story for ${key}`
+    );
   }
 
-  const current = state.presentations[index]!;
+  const index = state.presentations.findIndex((record) => record.key === key);
+  const current = state.presentations[index];
+  if (!current) {
+    return markConflicted(state, key, `missing attack record for ${key}`);
+  }
   if (!sameAuthority(current.authority, authority)) {
-    return diagnose(state, `conflicting authority for ${key}; event ignored`);
+    return markConflicted(
+      state,
+      key,
+      `conflicting authority for ${key}; event rejected`
+    );
   }
-  if (current.eventAccepted) return state;
+  if (current.eventAccepted) {
+    return settleCatchupDuplicate(state, index, fact.metadata.source);
+  }
 
-  const localActor = authority.attacker === state.viewerMember;
-  const preserveArmedResponse =
-    localActor &&
-    current.locallyArmedResponse &&
-    current.settlement === 'armed';
-  const shouldAuto =
-    current.settlement === 'armed' &&
-    (!localActor ||
-      (fact.metadata.source === 'catchup' && !preserveArmedResponse));
+  const pending = state.pendingLocalKeys.includes(key);
+  const settlement = pending ? 'armed' : current.settlement;
   const release =
-    shouldAuto && current.request
-      ? createNeutralRelease(current.request)
-      : current.release;
-  const settlement = shouldAuto ? 'auto' : current.settlement;
-  const diceEvents =
-    release && release !== current.release
-      ? appendDiceEvents(state, release)
-      : state.diceEvents;
-
-  return replacePresentation(
-    state,
-    index,
-    {
-      ...current,
-      eventAccepted: true,
-      event,
-      eventSource: fact.metadata.source,
-      release,
-      settlement,
-    },
-    diceEvents
-  );
+    settlement === 'armed' || !current.request
+      ? current.release
+      : (current.release ?? createNeutralRelease(current.request));
+  return replacePresentation(state, index, {
+    ...current,
+    eventAccepted: true,
+    event,
+    eventSource: fact.metadata.source,
+    release,
+    settlement,
+    locallyArmedResponse:
+      current.responseAccepted && pending && settlement === 'armed',
+  });
 }
 
-function sameOtherEvent(first: Event, later: Event): boolean {
-  return first.kind === later.kind && first.body.case === later.body.case;
+type RelevantOtherEvent = Readonly<Record<string, unknown>>;
+
+const EXPECTED_OTHER_KIND = {
+  turnEnded: EventKind.TURN_ENDED,
+  downed: EventKind.DOWNED,
+  fightStarted: EventKind.FIGHT_STARTED,
+  fightEnded: EventKind.FIGHT_ENDED,
+  moved: EventKind.MOVED,
+  joined: EventKind.JOINED,
+  exited: EventKind.EXITED,
+  ended: EventKind.ENDED,
+  door: EventKind.DOOR,
+} as const;
+
+const TYPED_EVENT_KINDS = new Set<number>([
+  EventKind.TURN_ENDED,
+  EventKind.DOWNED,
+  EventKind.FIGHT_STARTED,
+  EventKind.FIGHT_ENDED,
+  EventKind.MOVED,
+  EventKind.JOINED,
+  EventKind.EXITED,
+  EventKind.ENDED,
+  EventKind.DOOR,
+  EventKind.STRUCK,
+  EventKind.MISSED,
+]);
+
+function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
+  const bodyCase = event.body.case;
+  if (bodyCase === undefined) {
+    if (TYPED_EVENT_KINDS.has(event.kind)) return undefined;
+    return Object.freeze({ kind: event.kind, bodyCase: 'none' });
+  }
+  if (bodyCase === 'struck' || bodyCase === 'missed') return undefined;
+  if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
+
+  switch (bodyCase) {
+    case 'turnEnded':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+        next: event.body.value.next,
+      });
+    case 'downed':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+      });
+    case 'fightStarted':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        members: Object.freeze([...event.body.value.members]),
+      });
+    case 'fightEnded':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        cause: event.body.value.cause,
+      });
+    case 'moved':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+        to: event.body.value.to
+          ? Object.freeze({
+              x: event.body.value.to.x,
+              y: event.body.value.to.y,
+            })
+          : null,
+      });
+    case 'joined':
+    case 'exited':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+      });
+    case 'ended':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        ending: event.body.value.ending,
+      });
+    case 'door':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        door: event.body.value.door,
+        state: event.body.value.state,
+        actor: event.body.value.actor,
+        dc: event.body.value.dc,
+        total: event.body.value.total,
+        beaten: event.body.value.beaten,
+      });
+  }
 }
 
 function acceptOtherEvent(
   state: CombatPresentationState,
-  fact: CombatStreamFact
+  fact: CombatStreamFact,
+  relevantFacts: RelevantOtherEvent
 ): CombatPresentationState {
   const key = authorityKey(fact.event.session, fact.event.seq);
-  const attackAtKey = state.presentations.find((record) => record.key === key);
-  if (attackAtKey) {
-    return diagnose(state, `conflicting non-attack event for ${key}; ignored`);
+  const factsIdentity = JSON.stringify(relevantFacts);
+  const identity = identityAt(state, key);
+  if (identity) {
+    if (identity.category !== 'other') {
+      return markConflicted(
+        state,
+        key,
+        `typed Story conflicts with attack for ${key}`
+      );
+    }
+    const existing = state.otherStory.find((record) => record.key === key);
+    if (!existing || existing.relevantFacts !== factsIdentity) {
+      return markConflicted(state, key, `conflicting typed facts for ${key}`);
+    }
+    return state;
   }
-  const existing = state.otherStory.find((record) => record.key === key);
-  if (existing) {
-    return sameOtherEvent(existing.fact.event, fact.event)
-      ? state
-      : diagnose(state, `conflicting typed event for ${key}; ignored`);
-  }
+
   const event = snapshotEvent(fact.event);
   const record: OtherStoryRecord = Object.freeze({
     key,
@@ -592,10 +842,13 @@ function acceptOtherEvent(
       source: fact.metadata.source,
       visible: true,
     }),
+    relevantFacts: factsIdentity,
+    conflicted: false,
     order: state.nextOrder,
   });
   return Object.freeze({
     ...state,
+    identities: addIdentity(state, key, 'other'),
     otherStory: Object.freeze([...state.otherStory, record]),
     nextOrder: state.nextOrder + 1,
   });
@@ -606,6 +859,9 @@ function acceptStreamEvent(
   fact: CombatStreamFact
 ): CombatPresentationState {
   const state = appendRawDebug(original, fact);
+  if (!inSession(state, fact.event.session)) {
+    return diagnose(state, `event outside session ${state.session} ignored`);
+  }
   let authority: AuthoritySnapshot | undefined;
   try {
     authority = authorityFromEvent(fact.event);
@@ -616,10 +872,12 @@ function acceptStreamEvent(
     );
   }
   if (authority) return acceptAttackEvent(state, fact, authority);
-  if (fact.event.body.case === 'struck' || fact.event.body.case === 'missed') {
-    return diagnose(state, 'attack event kind/body mismatch ignored');
+
+  const relevantFacts = relevantOtherEvent(fact.event);
+  if (!relevantFacts) {
+    return diagnose(state, 'typed event kind/body mismatch ignored');
   }
-  return acceptOtherEvent(state, fact);
+  return acceptOtherEvent(state, fact, relevantFacts);
 }
 
 function acceptLocalRelease(
@@ -643,8 +901,10 @@ function acceptLocalRelease(
       : diagnose(state, `conflicting release for ${parsed.presentationId}`);
   }
   if (
-    !current.request ||
-    current.authority.attacker !== state.viewerMember ||
+    current.conflicted ||
+    state.pendingLocalKeys[0] !== current.key ||
+    !isAuthoritativeLocalPlayer(state, current.authority.attacker) ||
+    current.request?.roller.role !== 'player' ||
     current.settlement !== 'armed' ||
     parsed.release.presentationId !== current.request.presentationId ||
     parsed.release.presetId !== current.request.die.presetId
@@ -658,8 +918,9 @@ function acceptLocalRelease(
       ...current,
       release: parsed,
       settlement: 'released',
+      locallyArmedResponse: false,
     },
-    appendDiceEvents(state, parsed)
+    state.pendingLocalKeys.slice(1)
   );
 }
 
@@ -675,16 +936,24 @@ function acceptSemanticRelease(
   }
   const current = state.presentations[index]!;
   if (
+    current.conflicted ||
+    state.pendingLocalKeys[0] !== current.key ||
     !current.semanticFallback ||
-    current.authority.attacker !== state.viewerMember
+    !isAuthoritativeLocalPlayer(state, current.authority.attacker) ||
+    current.settlement !== 'armed'
   ) {
     return diagnose(state, 'ineligible semantic release ignored');
   }
-  if (current.settlement !== 'armed') return state;
-  return replacePresentation(state, index, {
-    ...current,
-    settlement: 'released',
-  });
+  return replacePresentation(
+    state,
+    index,
+    {
+      ...current,
+      settlement: 'released',
+      locallyArmedResponse: false,
+    },
+    state.pendingLocalKeys.slice(1)
+  );
 }
 
 function sameStringRecord(
@@ -703,19 +972,88 @@ function configurePresentation(
   state: CombatPresentationState,
   fact: CombatPresentationConfigFact
 ): CombatPresentationState {
-  if (state.viewerMember !== fact.viewerMember) {
+  if (
+    (state.session && state.session !== fact.session) ||
+    state.viewerMember !== fact.viewerMember
+  ) {
     return emptyPresentation(fact);
   }
   if (
+    state.session === fact.session &&
     sameStringRecord(state.memberNames, fact.memberNames) &&
     sameStringRecord(state.rollerRoles, fact.rollerRoles)
   ) {
     return state;
   }
-  return Object.freeze({
+
+  const configured = {
     ...state,
+    session: fact.session,
     memberNames: Object.freeze({ ...fact.memberNames }),
     rollerRoles: Object.freeze({ ...fact.rollerRoles }),
+  };
+  const previouslyPending = new Set(state.pendingLocalKeys);
+  const eligiblePending = new Set<string>();
+  const presentations = state.presentations.map((record) => {
+    if (record.conflicted) return record;
+
+    const request = createRequest(configured, record.authority);
+    const roleKnown =
+      configured.rollerRoles[record.authority.attacker] !== undefined;
+    const localPlayer = isAuthoritativeLocalPlayer(
+      configured,
+      record.authority.attacker
+    );
+    const outcomeExposed =
+      record.eventAccepted && record.settlement !== 'armed';
+    const pending =
+      localPlayer &&
+      record.settlement !== 'released' &&
+      !outcomeExposed &&
+      (previouslyPending.has(record.key) || !record.eventAccepted);
+    if (pending) eligiblePending.add(record.key);
+
+    const settlement = pending
+      ? ('armed' as const)
+      : localPlayer && record.settlement === 'released'
+        ? ('released' as const)
+        : ('auto' as const);
+    const release =
+      request && settlement !== 'armed'
+        ? isReleaseCompatible(request, record.release) &&
+          settlement === 'released'
+          ? record.release
+          : createNeutralRelease(request)
+        : undefined;
+    return Object.freeze({
+      ...record,
+      request,
+      release,
+      settlement,
+      semanticFallback: roleKnown && request === undefined,
+      locallyArmedResponse: record.responseAccepted && pending,
+    });
+  });
+
+  const pendingLocalKeys = state.pendingLocalKeys.filter((key) =>
+    eligiblePending.has(key)
+  );
+  for (const record of [...presentations].sort(
+    (left, right) => left.order - right.order
+  )) {
+    if (
+      eligiblePending.has(record.key) &&
+      !pendingLocalKeys.includes(record.key)
+    ) {
+      pendingLocalKeys.push(record.key);
+    }
+  }
+
+  return Object.freeze({
+    ...configured,
+    presentations: Object.freeze(presentations),
+    pendingLocalKeys: Object.freeze(pendingLocalKeys),
+    diceEvents: diceEventsFor(presentations),
   });
 }
 
@@ -739,7 +1077,9 @@ export function reduceCombatPresentation(
 }
 
 function isVisible(record: CombatPresentationRecord): boolean {
-  return record.eventAccepted && record.settlement !== 'armed';
+  return (
+    !record.conflicted && record.eventAccepted && record.settlement !== 'armed'
+  );
 }
 
 function orderedStoryFacts(state: CombatPresentationState): CombatStoryFact[] {
@@ -750,7 +1090,7 @@ function orderedStoryFacts(state: CombatPresentationState): CombatStoryFact[] {
     fact: CombatStoryFact;
   }[] = [];
   for (const record of state.presentations) {
-    if (!record.event || !record.eventSource) continue;
+    if (record.conflicted || !record.event || !record.eventSource) continue;
     facts.push({
       order: record.order,
       session: record.session,
@@ -763,6 +1103,7 @@ function orderedStoryFacts(state: CombatPresentationState): CombatStoryFact[] {
     });
   }
   for (const record of state.otherStory) {
+    if (record.conflicted) continue;
     facts.push({
       order: record.order,
       session: record.fact.event.session,
@@ -814,8 +1155,19 @@ export function selectLiveAnnouncement(
 export function selectCurrentPresentation(
   state: CombatPresentationState
 ): CombatPresentationRecord | undefined {
+  for (const key of state.pendingLocalKeys) {
+    const pending = state.presentations.find(
+      (record) =>
+        record.key === key &&
+        !record.conflicted &&
+        record.settlement === 'armed'
+    );
+    if (pending) return pending;
+  }
+
   let current: CombatPresentationRecord | undefined;
   for (const record of state.presentations) {
+    if (record.conflicted) continue;
     if (
       !current ||
       (record.session === current.session
@@ -832,7 +1184,7 @@ export function selectCurrentDiceEvents(
   state: CombatPresentationState
 ): readonly DicePresentationEvent[] {
   const current = selectCurrentPresentation(state);
-  if (!current) return Object.freeze([]);
+  if (!current || current.conflicted) return Object.freeze([]);
   return Object.freeze(
     [current.request, current.release].filter(
       (event): event is DicePresentationEvent => event !== undefined

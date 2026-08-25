@@ -56,9 +56,9 @@ function propsFor(
     onTargetClick: vi.fn(),
     onEndTurn: vi.fn(),
     onLogModeChange: vi.fn(),
-    onDiceReleaseRequest: vi.fn(),
+    diceWitnessRole: 'spectator',
     ...overrides,
-  };
+  } as CombatExperienceProps;
 }
 
 describe('CombatExperience shared production shell', () => {

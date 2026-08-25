@@ -8,7 +8,7 @@ import {
   MemberKind,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useCallback, useEffect, useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
   emptyPresentation,
@@ -19,6 +19,8 @@ import {
   selectVisibleResult,
   selectVisibleStory,
   type AttackResponseFact,
+  type CombatPresentationConfigFact,
+  type CombatPresentationFact,
   type CombatPresentationState,
 } from './presentation';
 import type {
@@ -28,6 +30,7 @@ import type {
 } from './types';
 
 export interface UseCombatPresentationArgs {
+  readonly session: string;
   readonly viewerMember: string;
   readonly participants?: readonly Participant[];
 }
@@ -52,7 +55,9 @@ export interface UseCombatPresentationResult {
   readonly onSemanticReleaseRequest: () => void;
 }
 
-function presentationConfig(args: UseCombatPresentationArgs) {
+function presentationConfig(
+  args: UseCombatPresentationArgs
+): Omit<CombatPresentationConfigFact, 'type'> {
   const memberNames: Record<string, string> = {};
   const rollerRoles: Record<string, 'player' | 'monster'> = {};
   for (const participant of args.participants ?? []) {
@@ -64,47 +69,105 @@ function presentationConfig(args: UseCombatPresentationArgs) {
     }
   }
   return {
+    session: args.session,
     viewerMember: args.viewerMember,
     memberNames,
     rollerRoles,
   };
 }
 
+interface ScopeToken {
+  readonly session: string;
+  readonly viewerMember: string;
+}
+
+interface ScopedPresentationState {
+  readonly token: ScopeToken;
+  readonly presentation: CombatPresentationState;
+}
+
+interface ScopedPresentationAction {
+  readonly token: ScopeToken;
+  readonly config: Omit<CombatPresentationConfigFact, 'type'>;
+  readonly fact: CombatPresentationFact;
+}
+
+function scopedPresentationReducer(
+  state: ScopedPresentationState,
+  action: ScopedPresentationAction
+): ScopedPresentationState {
+  const sameScope = state.token === action.token;
+  const presentation = sameScope
+    ? state.presentation
+    : emptyPresentation(action.config);
+  const reduced = reduceCombatPresentation(presentation, action.fact);
+  if (sameScope && reduced === state.presentation) return state;
+  return Object.freeze({
+    token: action.token,
+    presentation: reduced,
+  });
+}
+
 /**
  * Controller seam for Task 14. Dispatch records response/event truth
- * synchronously; only Story/result selectors are release-gated.
+ * synchronously; only Story/result selectors are release-gated. Session and
+ * viewer form an explicit scope, so a render never projects prior-scope state.
  */
 export function useCombatPresentation(
   args: UseCombatPresentationArgs
 ): UseCombatPresentationResult {
-  const { viewerMember, participants } = args;
+  const { session, viewerMember, participants } = args;
   const config = useMemo(
-    () => presentationConfig({ viewerMember, participants }),
-    [participants, viewerMember]
+    () => presentationConfig({ session, viewerMember, participants }),
+    [participants, session, viewerMember]
   );
-  const [state, dispatch] = useReducer(
-    reduceCombatPresentation,
-    config,
-    emptyPresentation
+  const token = useMemo<ScopeToken>(
+    () => Object.freeze({ session, viewerMember }),
+    [session, viewerMember]
   );
+  const activeToken = useRef(token);
+  activeToken.current = token;
+
+  const [scopedState, scopedDispatch] = useReducer(
+    scopedPresentationReducer,
+    undefined,
+    (): ScopedPresentationState =>
+      Object.freeze({
+        token,
+        presentation: emptyPresentation(config),
+      })
+  );
+  const emptyScopedState = useMemo(() => emptyPresentation(config), [config]);
+  const state =
+    scopedState.token === token ? scopedState.presentation : emptyScopedState;
+
+  const dispatch = useCallback(
+    (fact: CombatPresentationFact) => {
+      if (activeToken.current !== token) return;
+      scopedDispatch({ token, config, fact });
+    },
+    [config, token]
+  );
+
   useEffect(() => {
     dispatch({ type: 'configure', ...config });
-  }, [config]);
+  }, [config, dispatch]);
 
-  const acceptAttackResponse = useCallback((fact: AttackResponseFact) => {
-    dispatch(fact);
-  }, []);
+  const acceptAttackResponse = useCallback(
+    (fact: AttackResponseFact) => dispatch(fact),
+    [dispatch]
+  );
   const acceptStreamEvent = useCallback(
     (event: Event, metadata: SessionEventDeliveryMetadata) => {
       dispatch({ type: 'stream-event', event, metadata });
     },
-    []
+    [dispatch]
   );
   const onDiceReleaseRequest = useCallback(
     (event: DicePresentationReleasedEvent) => {
       dispatch({ type: 'local-release', event });
     },
-    []
+    [dispatch]
   );
   const onSemanticReleaseRequest = useCallback(() => {
     const current = selectCurrentPresentation(state);
@@ -113,7 +176,7 @@ export function useCombatPresentation(
       type: 'semantic-release',
       presentationKey: current.key,
     });
-  }, [state]);
+  }, [dispatch, state]);
 
   const story = useMemo(() => selectVisibleStory(state), [state]);
   const result = useMemo(() => selectVisibleResult(state), [state]);
@@ -123,6 +186,9 @@ export function useCombatPresentation(
   );
   const diceEvents = useMemo(() => selectCurrentDiceEvents(state), [state]);
   const current = selectCurrentPresentation(state);
+  const authoritativeRoller =
+    current?.authority.attacker === state.viewerMember &&
+    state.rollerRoles[current.authority.attacker] === 'player';
   const phase: CombatExperiencePhase = !current
     ? 'fresh'
     : current.settlement === 'armed' ||
@@ -138,10 +204,7 @@ export function useCombatPresentation(
     debug: state.debug,
     diceEvents,
     semanticFallback: current?.semanticFallback ?? false,
-    diceWitnessRole:
-      current?.authority.attacker === state.viewerMember
-        ? 'roller'
-        : 'spectator',
+    diceWitnessRole: authoritativeRoller ? 'roller' : 'spectator',
     diceRollerName: current
       ? (state.memberNames[current.authority.attacker] ??
         current.authority.attacker)

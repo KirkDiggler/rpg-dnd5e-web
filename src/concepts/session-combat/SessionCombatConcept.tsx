@@ -248,7 +248,9 @@ export function SessionCombatConcept() {
         onTargetClick={chooseTarget}
         onEndTurn={armDeclaration}
         onLogModeChange={setLogMode}
+        diceWitnessRole="roller"
         onDiceReleaseRequest={handleDiceRelease}
+        onDiceSemanticReleaseRequest={() => setPhase('settled')}
         diagnosticsEnabled
       />
     </section>

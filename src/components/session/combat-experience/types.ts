@@ -64,7 +64,7 @@ export interface CombatExperienceMapRenderProps {
   onTargetClick: (targetId: string) => void;
 }
 
-export interface CombatExperienceProps {
+interface CombatExperienceBaseProps {
   viewerMember: string;
   clock: ClockKind;
   round: number;
@@ -81,7 +81,6 @@ export interface CombatExperienceProps {
   result?: CombatExperienceAttackOutcome;
   diceEvents: readonly DicePresentationEvent[];
   diceSemanticFallback?: boolean;
-  diceWitnessRole?: 'roller' | 'spectator';
   diceRollerName?: string;
   location: { name: string; area: string };
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;
@@ -89,8 +88,20 @@ export interface CombatExperienceProps {
   onTargetClick: (targetId: string) => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
-  onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
-  onDiceSemanticReleaseRequest?: () => void;
   /** Explicit Concepts diagnostic surface; allowed independently of DEV. */
   diagnosticsEnabled?: boolean;
 }
+
+export type CombatExperienceProps = CombatExperienceBaseProps &
+  (
+    | {
+        diceWitnessRole: 'roller';
+        onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
+        onDiceSemanticReleaseRequest: () => void;
+      }
+    | {
+        diceWitnessRole?: 'spectator';
+        onDiceReleaseRequest?: never;
+        onDiceSemanticReleaseRequest?: never;
+      }
+  );
