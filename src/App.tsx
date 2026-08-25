@@ -271,7 +271,8 @@ function AppContent() {
         animate={{ opacity: 1, y: 0 }}
         className={fullBleed ? '' : 'max-w-7xl mx-auto'}
       >
-        {/* Header - Hide on character sheet and lobby */}
+        {/* Header — full-bleed views draw their own chrome, and the lobby
+            has none. */}
         {!fullBleed && currentView !== 'lobby' && (
           <div className="flex justify-end items-center mb-6">
             <ThemeSelector />

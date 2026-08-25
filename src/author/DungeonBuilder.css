@@ -16,6 +16,16 @@
   min-height: 560px;
   color: var(--text-primary);
 }
+/* `.dg-root` fills its parent, so a mount in ordinary document flow has to
+   hand it a definite box — this is that box. The `/author` shell is instead a
+   viewport-tall flex column and gives the builder the height that is left, so
+   it needs no stage. Mounting `<DungeonBuilder>` outside a sized parent
+   without this class leaves the grid at content height and its panes stop
+   scrolling internally. */
+.dg-stage {
+  height: 80vh;
+  min-height: 560px;
+}
 .dg-topbar {
   grid-column: 1 / -1;
   display: flex;

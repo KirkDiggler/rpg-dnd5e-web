@@ -17,7 +17,7 @@ export function DungeonBuilderSandbox() {
   // definite box to fill; the real `/author` shell is a viewport-tall flex
   // column and gives it the remaining height instead.
   return (
-    <div className="h-[80vh] min-h-[560px]">
+    <div className="dg-stage">
       <DungeonBuilder
         initialYaml={initialYaml}
         fixtureCompile={fixtureAtlasOf}
