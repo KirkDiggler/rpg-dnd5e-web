@@ -24,6 +24,7 @@ import {
   doorEdgeOwners,
   floorOwners,
   isMonsterRef,
+  removeWalls,
   type DungeonDoc,
   type ErrorTarget,
 } from '../dungeonYaml';
@@ -34,14 +35,14 @@ import {
   DOOR_STROKE,
   ERROR_STROKE,
   HOVER_STROKE,
+  litColor,
   MONSTER_COLOR,
   PROP_COLOR,
+  regionColor,
   START_COLOR,
   VOID_FILL,
   VOID_STROKE,
   WALL_STROKE,
-  litColor,
-  regionColor,
 } from '../markerStyle';
 import { thumbForRef } from '../paletteData';
 import type { BoardTool, Selection } from '../types';
@@ -59,13 +60,18 @@ import {
 } from './canvasGeometry';
 import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
 import {
+  applyReshape,
   applyWallDraw,
   applyWallErase,
+  chainEndpoints,
   deriveWallAdd,
   deriveWallErase,
+  GESTURE_TUNING,
+  nearestRunIndex,
   runVertices,
   snapGesturePoint,
   tautPath,
+  type RunVertex,
 } from './wallGesture';
 
 export const BOARD_HEX_SIZE = 24;
@@ -92,6 +98,11 @@ export interface CreationBoardProps {
   onWallDraw: (chain: Edge[]) => void;
   /** Shift/right-drag erase along the same derived path (ruling 3). */
   onWallErase: (chain: Edge[]) => void;
+  /** Rulings 2 + 4: an endpoint or shared-corner drag replaces each
+   * incident run's old edges with its chain re-derived from that run's
+   * own fixed far endpoint. Raw chains; the owner applies the same
+   * `applyReshape` the preview used. */
+  onWallReshape: (oldChains: Edge[][], newChains: Edge[][]) => void;
   onCellClick: (cell: Axial) => void;
   onSelect: (selection: Selection) => void;
 }
@@ -110,13 +121,29 @@ function svgPoint(svg: SVGSVGElement, e: PointerEvent): Point {
 /** One in-flight wall drag (#804). `pressEdge` carries the click
  * fallback: a press that never moves off its snapped corner stays
  * today's single-edge toggle, released on pointer up. */
-interface DragGesture {
+interface DrawGesture {
   kind: 'draw' | 'erase';
   a: CornerRef;
   b: CornerRef;
   moved: boolean;
   pressEdge: Edge;
 }
+
+/** An endpoint or shared-corner grab (rulings 2 + 4): every incident
+ * chain re-derives from its own fixed far endpoint to wherever B goes.
+ * The endpoint grab is the one-incident-chain case. */
+interface ReshapeGesture {
+  kind: 'reshape';
+  chains: { far: CornerRef; old: Edge[] }[];
+  origin: CornerRef;
+  b: CornerRef;
+  moved: boolean;
+  /** Indices of the grabbed runs — their own vertices are excluded
+   * from the magnetism targets so the drag doesn't stick to itself. */
+  draggedRuns: number[];
+}
+
+type DragOrReshape = DrawGesture | ReshapeGesture;
 
 export function CreationBoard({
   doc,
@@ -129,6 +156,7 @@ export function CreationBoard({
   onEdgeClick,
   onWallDraw,
   onWallErase,
+  onWallReshape,
   onCellClick,
   onSelect,
 }: CreationBoardProps) {
@@ -217,7 +245,8 @@ export function CreationBoard({
   // the document directly, not the debounced server compile, so the
   // wall the author just clicked straightens immediately.
   const wallScene = useMemo(() => boardWallScene(doc, size), [doc, size]);
-  const [gesture, setGesture] = useState<DragGesture | null>(null);
+  const [gesture, setGesture] = useState<DragOrReshape | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
   // The magnetism targets and (later) drag handles: the lattice
   // vertices at the ends of the COMMITTED doc's rendered chains —
   // never the mid-gesture candidate's, or the endpoint would chase its
@@ -239,16 +268,26 @@ export function CreationBoard({
   // flat-top docs boardWallScene stays null and the literal edge
   // drawing below previews the candidate doc instead — the honest
   // picture there (#763).
-  const chain = useMemo(
-    () => (gesture ? tautPath(gesture.a, gesture.b, size, o) : []),
-    [gesture, size, o]
-  );
+  const chains = useMemo(() => {
+    if (!gesture) return [];
+    if (gesture.kind === 'reshape') {
+      return gesture.chains.map((c) => tautPath(c.far, gesture.b, size, o));
+    }
+    return [tautPath(gesture.a, gesture.b, size, o)];
+  }, [gesture, size, o]);
   const previewDoc = useMemo(() => {
     if (!gesture || !gesture.moved) return null;
+    if (gesture.kind === 'reshape') {
+      return applyReshape(
+        doc,
+        gesture.chains.map((c) => c.old),
+        chains
+      );
+    }
     return gesture.kind === 'draw'
-      ? applyWallDraw(doc, chain)
-      : applyWallErase(doc, chain);
-  }, [gesture, doc, chain]);
+      ? applyWallDraw(doc, chains[0])
+      : applyWallErase(doc, chains[0]);
+  }, [gesture, doc, chains]);
   const previewScene = useMemo(
     () => (previewDoc ? boardWallScene(previewDoc, size) : null),
     [previewDoc, size]
@@ -257,12 +296,34 @@ export function CreationBoard({
   // edges about to be removed (erase).
   const traceEdges = useMemo(() => {
     if (!gesture || !gesture.moved) return [];
+    if (gesture.kind === 'reshape') {
+      const base = removeWalls(
+        doc,
+        gesture.chains.flatMap((c) => c.old)
+      );
+      return chains.flatMap((c) => deriveWallAdd(base, c));
+    }
     return gesture.kind === 'draw'
-      ? deriveWallAdd(doc, chain)
-      : deriveWallErase(doc, chain);
-  }, [gesture, doc, chain]);
+      ? deriveWallAdd(doc, chains[0])
+      : deriveWallErase(doc, chains[0]);
+  }, [gesture, doc, chains]);
   const displayDoc = previewDoc ?? doc;
   const scene = previewDoc ? previewScene : wallScene;
+  // The handle under the pointer (wall tool, not mid-drag): grabbing it
+  // starts a reshape instead of a new wall.
+  const hoverVertex = useMemo(() => {
+    if (tool !== 'wall' || gesture || !hoverPoint) return null;
+    let best: RunVertex | null = null;
+    let bestDist = GESTURE_TUNING.cornerSnapRadius * size;
+    for (const v of vertices) {
+      const d = Math.hypot(v.point.x - hoverPoint.x, v.point.y - hoverPoint.y);
+      if (d <= bestDist) {
+        best = v;
+        bestDist = d;
+      }
+    }
+    return best;
+  }, [tool, gesture, hoverPoint, vertices, size]);
   useEffect(() => {
     if (!gesture) return;
     const onKey = (e: KeyboardEvent) => {
@@ -326,12 +387,39 @@ export function CreationBoard({
       const p = svgPoint(svgRef.current, e);
       const pressEdge = nearestEdge(cell, p, size, o);
       if (tool === 'wall') {
+        const erase = e.shiftKey || e.button === 2;
+        // A handle under the pointer grabs the incident chains instead
+        // of starting a new wall (rulings 2 + 4): each re-derives from
+        // its own far endpoint — the far endpoint is the chain's OTHER
+        // odd-degree lattice vertex.
+        if (!erase && hoverVertex && wallScene) {
+          const grabbed = hoverVertex;
+          const chainsToDrag = grabbed.runs.flatMap((runIndex) => {
+            const edges = wallScene.runs[runIndex]?.edges ?? [];
+            const far = chainEndpoints(edges, size, o).find(
+              (r) => !sameCorner(r, grabbed.ref, size, o)
+            );
+            return far ? [{ far, old: edges }] : [];
+          });
+          if (chainsToDrag.length > 0) {
+            setGesture({
+              kind: 'reshape',
+              chains: chainsToDrag,
+              origin: grabbed.ref,
+              b: grabbed.ref,
+              moved: false,
+              draggedRuns: grabbed.runs,
+            });
+            setHoverEdge(null);
+            return;
+          }
+        }
         // Press anchors A (wall-vertex magnetism first, then the
         // corner lattice); release decides click vs drag. Shift or
         // right button erases along the derived path (ruling 3).
         const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
         setGesture({
-          kind: e.shiftKey || e.button === 2 ? 'erase' : 'draw',
+          kind: erase ? 'erase' : 'draw',
           a,
           b: a,
           moved: false,
@@ -354,6 +442,21 @@ export function CreationBoard({
         onSelect({ kind: 'door', id: doorOwners.get(edgeKey(hoverEdge))! });
         return;
       }
+      // A rendered run selects the doc edges behind it, resolved at
+      // click time from the derived scene — no wall id exists and none
+      // is added (#804). Flat-top docs draw literal edges, not runs, so
+      // there is nothing to hit here by construction.
+      if (wallScene && svgRef.current) {
+        const hit = nearestRunIndex(
+          wallScene.runs,
+          svgPoint(svgRef.current, e),
+          size
+        );
+        if (hit !== null) {
+          onSelect({ kind: 'wall', edges: wallScene.runs[hit].edges });
+          return;
+        }
+      }
       const owner = owners.get(key);
       if (owner) onSelect({ kind: 'region', id: owner });
       else onSelect({ kind: 'dungeon' });
@@ -372,16 +475,32 @@ export function CreationBoard({
       // lattice, with angle magnetism toward the seam families unless
       // Alt is held (ruling 1). The preview re-derives from the doc on
       // every change of B — O(chain) + the shared module's O(walls).
-      const b = snapGesturePoint(svgPoint(svgRef.current, e), size, o, {
-        origin: cornerPoint(gesture.a, size, o),
+      // A reshape drag skips angle magnetism (several chains would each
+      // want their own origin) and never magnetizes to the vertices of
+      // the runs being dragged — B would stick to its own old position.
+      const p = svgPoint(svgRef.current, e);
+      const anchor = gesture.kind === 'reshape' ? gesture.origin : gesture.a;
+      const b = snapGesturePoint(p, size, o, {
+        origin:
+          gesture.kind === 'reshape'
+            ? undefined
+            : cornerPoint(gesture.a, size, o),
         alt: e.altKey,
-        wallVertices: vertices,
+        wallVertices:
+          gesture.kind === 'reshape'
+            ? vertices.filter(
+                (v) => !v.runs.some((i) => gesture.draggedRuns.includes(i))
+              )
+            : vertices,
       });
-      const moved = gesture.moved || !sameCorner(b, gesture.a, size, o);
+      const moved = gesture.moved || !sameCorner(b, anchor, size, o);
       if (moved !== gesture.moved || !sameCorner(b, gesture.b, size, o)) {
         setGesture({ ...gesture, b, moved });
       }
       return;
+    }
+    if (tool === 'wall' && svgRef.current) {
+      setHoverPoint(svgPoint(svgRef.current, e));
     }
     if ((edgeTool || tool === 'select') && svgRef.current) {
       if (!owners.has(axialKey(cell))) {
@@ -410,17 +529,37 @@ export function CreationBoard({
   const finishGesture = () => {
     if (!gesture) return;
     setGesture(null);
+    if (gesture.kind === 'reshape') {
+      // Released in place = no-op; released elsewhere replaces every
+      // grabbed chain with its re-derived one.
+      if (!gesture.moved || sameCorner(gesture.origin, gesture.b, size, o)) {
+        return;
+      }
+      onWallReshape(
+        gesture.chains.map((c) => c.old),
+        chains
+      );
+      return;
+    }
     if (!gesture.moved) {
       onEdgeClick(gesture.pressEdge);
       return;
     }
     if (sameCorner(gesture.a, gesture.b, size, o)) return;
-    if (gesture.kind === 'draw') onWallDraw(chain);
-    else onWallErase(chain);
+    if (gesture.kind === 'draw') onWallDraw(chains[0]);
+    else onWallErase(chains[0]);
   };
 
   const selectedRegion = selection?.kind === 'region' ? selection.id : null;
   const selectedDoor = selection?.kind === 'door' ? selection.id : null;
+  // A selected wall is a set of doc edges; a run reads as selected when
+  // any of its source edges is in the set (the runs re-derive on every
+  // doc change, so membership is resolved at render time).
+  const selectedWallKeys = useMemo(
+    () =>
+      selection?.kind === 'wall' ? new Set(selection.edges.map(edgeKey)) : null,
+    [selection]
+  );
   const selectedPlacement =
     selection?.kind === 'placement' ? selection.index : null;
 
@@ -484,7 +623,12 @@ export function CreationBoard({
           style={{
             background: VOID_FILL,
             touchAction: 'none',
-            cursor: cursorFor(tool),
+            cursor:
+              gesture?.kind === 'reshape'
+                ? 'grabbing'
+                : hoverVertex
+                  ? 'grab'
+                  : cursorFor(tool),
           }}
           onPointerUp={() => {
             endPaint();
@@ -495,6 +639,7 @@ export function CreationBoard({
             setGesture(null);
             setHoverEdge(null);
             setHoverCell(null);
+            setHoverPoint(null);
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
@@ -645,18 +790,24 @@ export function CreationBoard({
                 but sits IN the run's gap, exactly where 3D will put it;
                 hit-testing stays edge-based (this layer takes no
                 pointer events). */}
-            {scene?.runs.map((r) => (
-              <line
-                key={`run:${r.key}`}
-                data-run={r.key}
-                x1={r.a.x}
-                y1={r.a.y}
-                x2={r.b.x}
-                y2={r.b.y}
-                stroke={WALL_STROKE}
-                strokeWidth={4}
-              />
-            ))}
+            {scene?.runs.map((r) => {
+              const isSelected =
+                !!selectedWallKeys &&
+                r.edges.some((edge) => selectedWallKeys.has(edgeKey(edge)));
+              return (
+                <line
+                  key={`run:${r.key}`}
+                  data-run={r.key}
+                  data-selected={isSelected || undefined}
+                  stroke={isSelected ? HOVER_STROKE : WALL_STROKE}
+                  strokeWidth={isSelected ? 6 : 4}
+                  x1={r.a.x}
+                  y1={r.a.y}
+                  x2={r.b.x}
+                  y2={r.b.y}
+                />
+              );
+            })}
             {scene?.doors.map((d) => {
               const doorDoc = doorById.get(d.doorId);
               return (
@@ -710,6 +861,30 @@ export function CreationBoard({
                 );
               })()}
           </g>
+          {tool === 'wall' && !gesture && (
+            <g data-layer="handles" pointerEvents="none">
+              {/* Every chain endpoint / shared corner is a handle
+                  (rulings 2 + 4); the one under the pointer lights up
+                  to say a press grabs it instead of drawing. */}
+              {vertices.map((v) => {
+                const hot =
+                  hoverVertex !== null &&
+                  sameCorner(v.ref, hoverVertex.ref, size, o);
+                return (
+                  <circle
+                    key={`vx:${v.point.x.toFixed(2)},${v.point.y.toFixed(2)}`}
+                    data-run-vertex={v.runs.length}
+                    cx={v.point.x}
+                    cy={v.point.y}
+                    r={size * (hot ? 0.22 : 0.12)}
+                    fill={hot ? HOVER_STROKE : WALL_STROKE}
+                    fillOpacity={hot ? 0.9 : 0.5}
+                    stroke={hot ? HOVER_STROKE : 'none'}
+                  />
+                );
+              })}
+            </g>
+          )}
           {gesture && gesture.moved && (
             <g data-layer="gesture" pointerEvents="none">
               {/* The faint literal trace of the candidate edges — the
@@ -736,12 +911,15 @@ export function CreationBoard({
                   />
                 );
               })}
-              {(['a', 'b'] as const).map((end) => {
-                const p = cornerPoint(gesture[end], size, o);
+              {(gesture.kind === 'reshape'
+                ? [gesture.b, ...gesture.chains.map((c) => c.far)]
+                : [gesture.a, gesture.b]
+              ).map((end, i) => {
+                const p = cornerPoint(end, size, o);
                 return (
                   <circle
-                    key={end}
-                    data-gesture-end={end}
+                    key={`end:${i}`}
+                    data-gesture-end={i}
                     cx={p.x}
                     cy={p.y}
                     r={size * 0.18}

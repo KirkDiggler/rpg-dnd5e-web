@@ -5,6 +5,7 @@
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
+  addWalls,
   emptyDungeon,
   eraseCell,
   paintCell,
@@ -41,6 +42,7 @@ function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
       onEdgeClick={(e) => calls.edges.push(e)}
       onWallDraw={() => {}}
       onWallErase={() => {}}
+      onWallReshape={() => {}}
       onCellClick={() => {}}
       onSelect={() => {}}
       {...overrides}
@@ -191,6 +193,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         onEdgeClick={() => {}}
         onWallDraw={() => {}}
         onWallErase={() => {}}
+        onWallReshape={() => {}}
         onCellClick={() => {}}
         onSelect={() => {}}
       />
@@ -234,6 +237,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         onEdgeClick={() => {}}
         onWallDraw={() => {}}
         onWallErase={() => {}}
+        onWallReshape={() => {}}
         onCellClick={() => {}}
         onSelect={() => {}}
       />
@@ -298,5 +302,39 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
       6
     );
     expect(container.querySelector('[data-facing-tick="1"]')).toBeNull();
+  });
+});
+
+describe('wall gesture affordances (#804)', () => {
+  function walledDoc() {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [1, 1],
+      [2, 1],
+      [1, 2],
+      [2, 2],
+    ] as const) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    return addWalls(doc, [[p(1, 1), p(2, 1)]]);
+  }
+
+  it('the wall tool shows a handle at each chain endpoint', () => {
+    const { container } = mount(walledDoc(), { tool: 'wall' });
+    // One single-edge run: two endpoint vertices, each with exactly one
+    // incident run.
+    const handles = container.querySelectorAll('[data-run-vertex]');
+    expect(handles).toHaveLength(2);
+    handles.forEach((h) => expect(h.getAttribute('data-run-vertex')).toBe('1'));
+  });
+
+  it('a wall selection highlights the run whose edges it holds', () => {
+    const doc = walledDoc();
+    const { container } = mount(doc, {
+      tool: 'select',
+      selection: { kind: 'wall', edges: doc.walls },
+    });
+    const selected = container.querySelectorAll('[data-run][data-selected]');
+    expect(selected).toHaveLength(1);
   });
 });

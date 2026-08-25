@@ -7,11 +7,12 @@
 import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
   isMonsterRef,
+  wallKeys,
   type DoorDoc,
   type DungeonDoc,
   type PlacementDoc,
 } from './dungeonYaml';
-import type { Orientation } from './hexOffset';
+import { edgeKey, type Edge, type Orientation } from './hexOffset';
 import { RegionPanel } from './RegionPanel';
 import { ABILITIES, TARGETINGS, type Selection } from './types';
 
@@ -41,6 +42,8 @@ export interface InspectorProps {
     patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>
   ) => void;
   onRemovePlacement: (index: number) => void;
+  /** Delete every edge of the selected wall run (#804). */
+  onRemoveWall: (edges: Edge[]) => void;
 }
 
 export function Inspector(props: InspectorProps) {
@@ -70,6 +73,17 @@ export function Inspector(props: InspectorProps) {
         onChange={(p) => props.onDoor(door.id, p)}
         onRemove={() => props.onRemoveDoor(door.id)}
       />
+    );
+  }
+  if (selection.kind === 'wall') {
+    // The selection is the doc edges resolved at click time; edges the
+    // document no longer holds (erased, re-derived) drop out here, and
+    // an emptied selection falls back to the dungeon panel.
+    const present = wallKeys(doc);
+    const edges = selection.edges.filter((e) => present.has(edgeKey(e)));
+    if (edges.length === 0) return <DungeonPanel {...props} />;
+    return (
+      <WallPanel edges={edges} onRemove={() => props.onRemoveWall(edges)} />
     );
   }
   if (selection.kind === 'placement') {
@@ -135,6 +149,29 @@ function DungeonPanel({ doc, onDungeon }: InspectorProps) {
         {doc.walls.length} walls · {doc.doors.length} doors · {doc.place.length}{' '}
         placed
       </div>
+    </div>
+  );
+}
+
+function WallPanel({
+  edges,
+  onRemove,
+}: {
+  edges: Edge[];
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3" data-testid="wall-panel">
+      <h3 className="dg-h">
+        Wall — {edges.length} edge{edges.length === 1 ? '' : 's'}
+      </h3>
+      <div className="text-xs opacity-70">
+        One straight run: the doc edges behind the line you clicked. There is no
+        wall id in the file — this selection IS the edges.
+      </div>
+      <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
+        delete wall
+      </button>
     </div>
   );
 }

@@ -26,7 +26,11 @@ import {
   type AuthoringClient,
 } from './authoringRpc';
 import { CreationBoard } from './creation/CreationBoard';
-import { applyWallDraw, applyWallErase } from './creation/wallGesture';
+import {
+  applyReshape,
+  applyWallDraw,
+  applyWallErase,
+} from './creation/wallGesture';
 import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
@@ -41,6 +45,7 @@ import {
   placeAt,
   removePlacement,
   removeRegion,
+  removeWalls,
   resolveErrorTargets,
   setStart,
   toggleDoorEdge,
@@ -305,6 +310,9 @@ export function DungeonBuilder({
   const handleWallErase = (chain: Edge[]) => {
     setDoc((d) => applyWallErase(d, chain));
   };
+  const handleWallReshape = (oldChains: Edge[][], newChains: Edge[][]) => {
+    setDoc((d) => applyReshape(d, oldChains, newChains));
+  };
   const handleEdgeClick = (edge: Edge) => {
     if (tool === 'wall') setDoc((d) => toggleWall(d, edge));
     if (tool === 'door') {
@@ -497,6 +505,7 @@ export function DungeonBuilder({
               onEdgeClick={handleEdgeClick}
               onWallDraw={handleWallDraw}
               onWallErase={handleWallErase}
+              onWallReshape={handleWallReshape}
               onCellClick={handleCellClick}
               onSelect={setSelection}
             />
@@ -531,6 +540,10 @@ export function DungeonBuilder({
               setDoc((d) => updateDoor(d, id, patch));
               if (patch.id !== undefined)
                 setSelection({ kind: 'door', id: patch.id });
+            }}
+            onRemoveWall={(edges) => {
+              setDoc((d) => removeWalls(d, edges));
+              setSelection({ kind: 'dungeon' });
             }}
             onRemoveDoor={(id) => {
               setDoc((d) => ({
