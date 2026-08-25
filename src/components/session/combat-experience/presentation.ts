@@ -935,6 +935,9 @@ function acceptSemanticRelease(
     return diagnose(state, 'semantic release for unknown presentation ignored');
   }
   const current = state.presentations[index]!;
+  if (current.semanticFallback && current.settlement === 'released') {
+    return state;
+  }
   if (
     current.conflicted ||
     state.pendingLocalKeys[0] !== current.key ||
@@ -1143,6 +1146,8 @@ export function selectVisibleResult(
 export function selectLiveAnnouncement(
   state: CombatPresentationState
 ): string | null {
+  const current = selectCurrentPresentation(state);
+  if (current?.conflicted) return null;
   const fact = orderedStoryFacts(state).at(-1);
   if (!fact || fact.source !== 'live' || !fact.visible) return null;
   const [entry] = buildCombatStory([fact], {
@@ -1165,9 +1170,10 @@ export function selectCurrentPresentation(
     if (pending) return pending;
   }
 
+  // A newer conflict is still authoritative-current. Selectors must reach its
+  // conflict guard instead of resurrecting an older settled presentation.
   let current: CombatPresentationRecord | undefined;
   for (const record of state.presentations) {
-    if (record.conflicted) continue;
     if (
       !current ||
       (record.session === current.session

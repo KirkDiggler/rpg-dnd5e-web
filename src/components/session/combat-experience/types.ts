@@ -22,6 +22,7 @@ export type CombatExperiencePhase =
   | 'fresh'
   | 'targeting'
   | 'awaiting-roll'
+  | 'released-waiting-event'
   | 'settled';
 
 export type CombatExperienceLogMode = 'story' | 'debug';

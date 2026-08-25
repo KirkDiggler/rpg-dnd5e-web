@@ -45,6 +45,63 @@ function StrictWrapper({ children }: PropsWithChildren) {
   return <StrictMode>{children}</StrictMode>;
 }
 
+const unsafeSemanticFacts = createAttackAuthorityFixture({
+  session: `unsafe-${'x'.repeat(140)}`,
+});
+
+function SemanticFallbackHarness() {
+  const presentation = useCombatPresentation({
+    session: unsafeSemanticFacts.event.session,
+    viewerMember: 'aldric',
+    participants,
+  });
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          presentation.acceptAttackResponse(unsafeSemanticFacts.responseFact)
+        }
+      >
+        Accept response
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          presentation.acceptStreamEvent(unsafeSemanticFacts.event, {
+            source: 'live',
+          })
+        }
+      >
+        Accept event
+      </button>
+      <output data-testid="visible-story-count">
+        {presentation.story.length}
+      </output>
+      {presentation.diceWitnessRole === 'roller' ? (
+        <DiceDrawer
+          phase={presentation.phase}
+          events={presentation.diceEvents}
+          rollerName={presentation.diceRollerName}
+          semanticFallback={presentation.semanticFallback}
+          witnessRole="roller"
+          onReleaseRequest={presentation.onDiceReleaseRequest}
+          onSemanticReleaseRequest={presentation.onSemanticReleaseRequest}
+        />
+      ) : (
+        <DiceDrawer
+          phase={presentation.phase}
+          events={presentation.diceEvents}
+          rollerName={presentation.diceRollerName}
+          semanticFallback={presentation.semanticFallback}
+          witnessRole="spectator"
+        />
+      )}
+    </>
+  );
+}
+
 function releaseFor(
   events: readonly (
     | DicePresentationRequestedEvent
@@ -117,6 +174,7 @@ describe('useCombatPresentation', () => {
       result.current.onDiceReleaseRequest(releaseFor(result.current.diceEvents))
     );
     expect(result.current.story).toEqual([]);
+    expect(result.current.phase).toBe('released-waiting-event');
 
     act(() =>
       result.current.acceptStreamEvent(facts.event, { source: 'live' })
@@ -124,7 +182,7 @@ describe('useCombatPresentation', () => {
     expect(result.current.story).toHaveLength(1);
   });
 
-  it('surfaces an unsafe-ID semantic fallback only after the typed event exists', () => {
+  it('consumes an unsafe-ID reveal before the event and reveals exactly once when authority arrives', () => {
     const facts = createAttackAuthorityFixture({
       session: `unsafe-${'x'.repeat(140)}`,
     });
@@ -139,16 +197,67 @@ describe('useCombatPresentation', () => {
     act(() => result.current.acceptAttackResponse(facts.responseFact));
     expect(result.current.semanticFallback).toBe(true);
     expect(result.current.story).toEqual([]);
+    expect(result.current.phase).toBe('awaiting-roll');
+
+    act(() => result.current.onSemanticReleaseRequest());
+    expect(result.current.story).toEqual([]);
+    expect(result.current.result).toBeUndefined();
+    expect(result.current.phase).toBe('released-waiting-event');
+    const waitingState = result.current.state;
+    const diagnosticCount = result.current.state.diagnostics.length;
+
+    act(() => result.current.onSemanticReleaseRequest());
+    expect(result.current.state).toBe(waitingState);
+    expect(result.current.state.diagnostics).toHaveLength(diagnosticCount);
 
     act(() =>
       result.current.acceptStreamEvent(facts.event, { source: 'live' })
     );
-    expect(result.current.story).toEqual([]);
-    expect(result.current.phase).toBe('awaiting-roll');
-
-    act(() => result.current.onSemanticReleaseRequest());
     expect(result.current.story).toHaveLength(1);
     expect(result.current.phase).toBe('settled');
+
+    act(() =>
+      result.current.acceptStreamEvent(facts.event, { source: 'live' })
+    );
+    expect(result.current.story).toHaveLength(1);
+  });
+
+  it('suppresses singular UI projection for a newer conflict without erasing settled Story', () => {
+    const settled = createAttackAuthorityFixture({
+      seq: 22n,
+      attacker: 'skeleton-guard',
+    });
+    const accepted = createAttackAuthorityFixture({ seq: 23n });
+    const conflict = createAttackAuthorityFixture({
+      seq: 23n,
+      roll: 4,
+      total: 9,
+    });
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        participants,
+      })
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(settled.event, { source: 'live' })
+    );
+    expect(result.current.story).toHaveLength(1);
+    expect(result.current.result?.seq).toBe(22n);
+
+    act(() => result.current.acceptAttackResponse(accepted.responseFact));
+    act(() =>
+      result.current.acceptStreamEvent(conflict.event, { source: 'live' })
+    );
+
+    expect(result.current.story).toHaveLength(1);
+    expect(result.current.result).toBeUndefined();
+    expect(result.current.liveAnnouncement).toBeNull();
+    expect(result.current.diceEvents).toEqual([]);
+    expect(result.current.diceWitnessRole).toBe('spectator');
+    expect(result.current.phase).toBe('fresh');
   });
 
   it('uses the latest provider participant roles when they load after the hook mounts', () => {
@@ -178,6 +287,28 @@ describe('useCombatPresentation', () => {
     expect(result.current.semanticFallback).toBe(false);
   });
 
+  it('removes the semantic Reveal control on click while the hook waits for the event', () => {
+    render(<SemanticFallbackHarness />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept response' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal result' }));
+
+    expect(screen.queryByRole('button', { name: 'Reveal result' })).toBeNull();
+    expect(
+      screen.getByText(/waiting for the authoritative outcome/i)
+    ).toBeTruthy();
+    expect(screen.getByTestId('visible-story-count').textContent).toBe('0');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept event' }));
+    expect(screen.getByTestId('visible-story-count').textContent).toBe('1');
+    expect(screen.queryByText(/waiting for the authoritative outcome/i)).toBe(
+      null
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept event' }));
+    expect(screen.getByTestId('visible-story-count').textContent).toBe('1');
+  });
+
   it('offers a result-free semantic release control only to an authoritative roller', () => {
     const onSemanticReleaseRequest = vi.fn();
     const { rerender } = render(
@@ -194,6 +325,23 @@ describe('useCombatPresentation', () => {
 
     expect(screen.queryByText(/d20 12|total 17|Hit/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Reveal result' }));
+    expect(onSemanticReleaseRequest).toHaveBeenCalledOnce();
+
+    rerender(
+      <DiceDrawer
+        phase="released-waiting-event"
+        events={[]}
+        rollerName="Aldric"
+        semanticFallback
+        witnessRole="roller"
+        onReleaseRequest={vi.fn()}
+        onSemanticReleaseRequest={onSemanticReleaseRequest}
+      />
+    );
+    expect(screen.queryByRole('button', { name: 'Reveal result' })).toBeNull();
+    expect(
+      screen.getByText(/waiting for the authoritative outcome/i)
+    ).toBeTruthy();
     expect(onSemanticReleaseRequest).toHaveBeenCalledOnce();
 
     rerender(

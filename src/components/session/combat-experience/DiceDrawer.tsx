@@ -37,7 +37,9 @@ export function DiceDrawer(props: DiceDrawerProps) {
     semanticFallback = false,
     witnessRole,
   } = props;
-  const expanded = phase === 'awaiting-roll' || phase === 'settled';
+  const waitingForEvent = phase === 'released-waiting-event';
+  const expanded =
+    phase === 'awaiting-roll' || waitingForEvent || phase === 'settled';
   const roller = witnessRole === 'roller';
   if (!expanded) {
     return (
@@ -70,33 +72,41 @@ export function DiceDrawer(props: DiceDrawerProps) {
       <header className={styles.diceDrawerHeader}>
         <div>
           <span className={styles.panelEyebrow}>
-            {phase === 'awaiting-roll'
-              ? roller
-                ? 'Attack ready'
-                : 'Attack die'
-              : 'Result released'}
+            {waitingForEvent
+              ? 'Reveal requested'
+              : phase === 'awaiting-roll'
+                ? roller
+                  ? 'Attack ready'
+                  : 'Attack die'
+                : 'Result released'}
           </span>
           <strong>
-            {roller
-              ? 'Roll your carved iron d20'
-              : `${rollerName}’s carved iron d20`}
+            {waitingForEvent
+              ? 'Waiting for authoritative outcome'
+              : roller
+                ? 'Roll your carved iron d20'
+                : `${rollerName}’s carved iron d20`}
           </strong>
         </div>
         <small>
-          {phase === 'awaiting-roll' && roller
-            ? 'Roll or grab and release'
-            : phase === 'awaiting-roll'
-              ? 'Read-only presentation'
-              : 'Authoritative face: presented'}
+          {waitingForEvent
+            ? 'Reveal consumed · awaiting typed event'
+            : phase === 'awaiting-roll' && roller
+              ? 'Roll or grab and release'
+              : phase === 'awaiting-roll'
+                ? 'Read-only presentation'
+                : 'Authoritative face: presented'}
         </small>
       </header>
       <div className={styles.dicePresentationStage}>
         {semanticFallback ? (
           <div>
             <p role="status" aria-live="polite">
-              {phase === 'settled' || !roller
-                ? 'Dice presentation unavailable · authoritative event shown in Story'
-                : 'Dice presentation unavailable · result remains concealed'}
+              {waitingForEvent
+                ? 'Reveal received · waiting for the authoritative outcome'
+                : phase === 'settled' || !roller
+                  ? 'Dice presentation unavailable · authoritative event shown in Story'
+                  : 'Dice presentation unavailable · result remains concealed'}
             </p>
             {phase === 'awaiting-roll' && roller && (
               <button type="button" onClick={props.onSemanticReleaseRequest}>

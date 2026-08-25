@@ -108,7 +108,7 @@ function expectConflictClosed(state: CombatPresentationState) {
   expect(selectVisibleResult(state)).toBeUndefined();
   expect(selectLiveAnnouncement(state)).toBeNull();
   expect(selectCurrentDiceEvents(state)).toEqual([]);
-  expect(selectCurrentPresentation(state)).toBeUndefined();
+  expect(selectCurrentPresentation(state)).toBe(state.presentations[0]);
 }
 
 describe('combat presentation authority reconciliation', () => {
@@ -261,6 +261,49 @@ describe('combat presentation authority reconciliation', () => {
     expect(selectLiveAnnouncement(state)).toBeNull();
     expect(selectVisibleResult(state)).toBeUndefined();
   });
+
+  it.each([
+    ['result', { roll: 4, total: 9 }],
+    ['roller', { attacker: 'mira' }],
+  ] as const)(
+    'keeps settled Story but makes a newer conflicting %s authoritative-current in both arrival orders',
+    (_, mismatch) => {
+      const settled = createAttackAuthorityFixture({
+        seq: 22n,
+        attacker: 'skeleton-guard',
+      });
+      const accepted = createAttackAuthorityFixture({ seq: 23n });
+      const conflict = createAttackAuthorityFixture({
+        seq: 23n,
+        ...mismatch,
+      });
+
+      for (const facts of [
+        [accepted.responseFact, conflict.streamFact()],
+        [conflict.streamFact(), accepted.responseFact],
+      ] as const) {
+        let state = reduceCombatPresentation(
+          emptyPresentation(config),
+          settled.streamFact()
+        );
+        expect(selectVisibleResult(state)?.seq).toBe(22n);
+        expect(selectLiveAnnouncement(state)).not.toBeNull();
+
+        state = reduceCombatPresentation(state, facts[0]);
+        state = reduceCombatPresentation(state, facts[1]);
+
+        expect(selectVisibleStory(state)).toHaveLength(1);
+        expect(selectVisibleStory(state)[0]?.id).toContain(':22');
+        expect(selectCurrentPresentation(state)).toMatchObject({
+          seq: 23n,
+          conflicted: true,
+        });
+        expect(selectVisibleResult(state)).toBeUndefined();
+        expect(selectLiveAnnouncement(state)).toBeNull();
+        expect(selectCurrentDiceEvents(state)).toEqual([]);
+      }
+    }
+  );
 
   it('orders Story by authoritative sequence rather than event arrival', () => {
     const earlier = createAttackAuthorityFixture({ seq: 22n, roll: 4 });
@@ -663,5 +706,36 @@ describe('combat presentation settlement policy', () => {
     });
     expect(selectVisibleStory(released)).toHaveLength(1);
     expect(selectVisibleResult(released)?.d20).toBe(12);
+  });
+
+  it('consumes a semantic release before its event and makes repeated release intent idempotent', () => {
+    const session = `unsafe-${'x'.repeat(140)}`;
+    const facts = createAttackAuthorityFixture({ session });
+    const armed = reduceCombatPresentation(
+      emptyPresentation({ ...config, session }),
+      facts.responseFact
+    );
+    const release = {
+      type: 'semantic-release' as const,
+      presentationKey: armed.presentations[0]!.key,
+    };
+
+    const waiting = reduceCombatPresentation(armed, release);
+    expect(waiting.presentations[0]).toMatchObject({
+      eventAccepted: false,
+      settlement: 'released',
+      semanticFallback: true,
+    });
+    expect(waiting.pendingLocalKeys).toEqual([]);
+    expect(selectVisibleStory(waiting)).toEqual([]);
+    expect(selectVisibleResult(waiting)).toBeUndefined();
+    expect(reduceCombatPresentation(waiting, release)).toBe(waiting);
+
+    let revealed = reduceCombatPresentation(waiting, facts.streamFact());
+    expect(selectVisibleStory(revealed)).toHaveLength(1);
+    expect(selectVisibleResult(revealed)?.d20).toBe(12);
+
+    revealed = reduceCombatPresentation(revealed, facts.streamFact());
+    expect(selectVisibleStory(revealed)).toHaveLength(1);
   });
 });

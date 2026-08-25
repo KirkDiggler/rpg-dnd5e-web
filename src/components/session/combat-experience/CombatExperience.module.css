@@ -319,6 +319,10 @@
   border-color: rgba(106, 183, 217, 0.62);
 }
 
+.contextPrompt[data-phase='released-waiting-event'] {
+  border-color: rgba(232, 183, 95, 0.62);
+}
+
 .contextPrompt[data-phase='settled'] {
   min-width: 230px;
   border-color: rgba(116, 198, 157, 0.62);

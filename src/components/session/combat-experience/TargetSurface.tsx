@@ -94,6 +94,16 @@ export function TargetSurface({
           <span>Roll in the dice drawer</span>
         </div>
       )}
+      {phase === 'released-waiting-event' && targetName && (
+        <div
+          className={styles.contextPrompt}
+          data-phase="released-waiting-event"
+        >
+          <span className={styles.turnPromptKicker}>Reveal requested</span>
+          <strong>Waiting for authoritative outcome</strong>
+          <span>The result will appear when the combat event arrives</span>
+        </div>
+      )}
       {phase === 'settled' && targetName && (
         <div className={styles.contextPrompt} data-phase="settled">
           <span className={styles.turnPromptKicker}>Result delivered</span>

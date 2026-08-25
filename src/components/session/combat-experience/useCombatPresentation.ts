@@ -171,7 +171,14 @@ export function useCombatPresentation(
   );
   const onSemanticReleaseRequest = useCallback(() => {
     const current = selectCurrentPresentation(state);
-    if (!current) return;
+    if (
+      !current ||
+      current.conflicted ||
+      !current.semanticFallback ||
+      current.settlement !== 'armed'
+    ) {
+      return;
+    }
     dispatch({
       type: 'semantic-release',
       presentationKey: current.key,
@@ -187,14 +194,18 @@ export function useCombatPresentation(
   const diceEvents = useMemo(() => selectCurrentDiceEvents(state), [state]);
   const current = selectCurrentPresentation(state);
   const authoritativeRoller =
-    current?.authority.attacker === state.viewerMember &&
+    current !== undefined &&
+    !current.conflicted &&
+    current.authority.attacker === state.viewerMember &&
     state.rollerRoles[current.authority.attacker] === 'player';
-  const phase: CombatExperiencePhase = !current
-    ? 'fresh'
-    : current.settlement === 'armed' ||
-        (current.semanticFallback && !current.eventAccepted)
-      ? 'awaiting-roll'
-      : 'settled';
+  const phase: CombatExperiencePhase =
+    !current || current.conflicted
+      ? 'fresh'
+      : current.settlement === 'armed'
+        ? 'awaiting-roll'
+        : current.settlement === 'released' && !current.eventAccepted
+          ? 'released-waiting-event'
+          : 'settled';
 
   return {
     state,
