@@ -261,14 +261,7 @@ export function CreationBoard({
   // never the mid-gesture candidate's, or the endpoint would chase its
   // own preview.
   const vertices = useMemo(
-    () =>
-      wallScene
-        ? runVertices(
-            wallScene.runs.map((r) => r.edges),
-            size,
-            o
-          )
-        : [],
+    () => (wallScene ? runVertices(wallScene.runs, size, o) : []),
     [wallScene, size, o]
   );
   // THE PREVIEW IS THE COMMIT: the candidate document is the same
@@ -330,13 +323,33 @@ export function CreationBoard({
   }, [gesture, doc, chains]);
   const displayDoc = previewDoc ?? doc;
   const scene = previewDoc ? previewScene : wallScene;
-  // The handle under the pointer (wall tool, not mid-drag): grabbing it
-  // starts a reshape instead of a new wall.
+  // Manipulation rides SELECTION (Kirk's walk ruling, 2026-08-25 —
+  // Strava-route-builder grammar): selecting a wall shows its handles
+  // immediately and they drag right there with the Select tool; the
+  // wall tool stays pure draw/erase, so pressing near a chain end
+  // CONTINUES the wall instead of grabbing it (the old hover-grab made
+  // continuation impossible within the pickup radius).
+  const selectedRunIndices = useMemo(() => {
+    if (!wallScene || selection?.kind !== 'wall') return new Set<number>();
+    const keys = new Set(selection.edges.map(edgeKey));
+    const indices = new Set<number>();
+    wallScene.runs.forEach((r, i) => {
+      if (r.edges.some((edge) => keys.has(edgeKey(edge)))) indices.add(i);
+    });
+    return indices;
+  }, [wallScene, selection]);
+  const handleVertices = useMemo(
+    () =>
+      selectedRunIndices.size === 0
+        ? []
+        : vertices.filter((v) => v.runs.some((i) => selectedRunIndices.has(i))),
+    [vertices, selectedRunIndices]
+  );
   const hoverVertex = useMemo(() => {
-    if (tool !== 'wall' || gesture || !hoverPoint) return null;
+    if (tool !== 'select' || gesture || !hoverPoint) return null;
     let best: RunVertex | null = null;
     let bestDist = GESTURE_TUNING.cornerSnapRadius * size;
-    for (const v of vertices) {
+    for (const v of handleVertices) {
       const d = Math.hypot(v.point.x - hoverPoint.x, v.point.y - hoverPoint.y);
       if (d <= bestDist) {
         best = v;
@@ -344,7 +357,7 @@ export function CreationBoard({
       }
     }
     return best;
-  }, [tool, gesture, hoverPoint, vertices, size]);
+  }, [tool, gesture, hoverPoint, handleVertices, size]);
   useEffect(() => {
     if (!gesture) return;
     const onKey = (e: KeyboardEvent) => {
@@ -409,35 +422,11 @@ export function CreationBoard({
       const pressEdge = nearestEdge(cell, p, size, o);
       if (tool === 'wall') {
         const erase = e.shiftKey || e.button === 2;
-        // A handle under the pointer grabs the incident chains instead
-        // of starting a new wall (rulings 2 + 4): each re-derives from
-        // its own far endpoint — the far endpoint is the chain's OTHER
-        // odd-degree lattice vertex.
-        if (!erase && hoverVertex && wallScene) {
-          const grabbed = hoverVertex;
-          const chainsToDrag = grabbed.runs.flatMap((runIndex) => {
-            const edges = wallScene.runs[runIndex]?.edges ?? [];
-            const far = chainEndpoints(edges, size, o).find(
-              (r) => !sameCorner(r, grabbed.ref, size, o)
-            );
-            return far ? [{ far, old: edges }] : [];
-          });
-          if (chainsToDrag.length > 0) {
-            setGesture({
-              kind: 'reshape',
-              chains: chainsToDrag,
-              origin: grabbed.ref,
-              b: grabbed.ref,
-              moved: false,
-              draggedRuns: grabbed.runs,
-            });
-            setHoverEdge(null);
-            return;
-          }
-        }
         // Press anchors A (wall-vertex magnetism first, then the
         // corner lattice); release decides click vs drag. Shift or
         // right button erases along the derived path (ruling 3).
+        // Pressing at an existing chain's rendered end magnetizes A
+        // onto its vertex — that is how a wall is CONTINUED.
         const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
         setGesture({
           kind: erase ? 'erase' : 'draw',
@@ -467,6 +456,31 @@ export function CreationBoard({
       return;
     }
     if (tool === 'select') {
+      // A handle on the selected wall grabs its incident chains
+      // (rulings 2 + 4, riding selection): each re-derives from its own
+      // far endpoint — the chain's OTHER odd-degree lattice vertex.
+      if (hoverVertex && wallScene) {
+        const grabbed = hoverVertex;
+        const chainsToDrag = grabbed.runs.flatMap((runIndex) => {
+          const edges = wallScene.runs[runIndex]?.edges ?? [];
+          const far = chainEndpoints(edges, size, o).find(
+            (r) => !sameCorner(r, grabbed.ref, size, o)
+          );
+          return far ? [{ far, old: [...edges] }] : [];
+        });
+        if (chainsToDrag.length > 0) {
+          setGesture({
+            kind: 'reshape',
+            chains: chainsToDrag,
+            origin: grabbed.ref,
+            b: grabbed.ref,
+            moved: false,
+            draggedRuns: grabbed.runs,
+          });
+          setHoverEdge(null);
+          return;
+        }
+      }
       const key = axialKey(cell);
       const placementIndex = doc.place.findIndex((p) => axialKey(p.at) === key);
       if (placementIndex !== -1) {
@@ -534,7 +548,7 @@ export function CreationBoard({
       }
       return;
     }
-    if (tool === 'wall' && svgRef.current) {
+    if (tool === 'select' && svgRef.current) {
       setHoverPoint(svgPoint(svgRef.current, e));
     }
     if ((edgeTool || tool === 'select') && svgRef.current) {
@@ -897,12 +911,14 @@ export function CreationBoard({
                 );
               })()}
           </g>
-          {tool === 'wall' && !gesture && (
+          {tool === 'select' && !gesture && (
             <g data-layer="handles" pointerEvents="none">
-              {/* Every chain endpoint / shared corner is a handle
-                  (rulings 2 + 4); the one under the pointer lights up
-                  to say a press grabs it instead of drawing. */}
-              {vertices.map((v) => {
+              {/* The selected wall's endpoints and shared corners are
+                  drag handles, visible the moment it is selected
+                  (Kirk's walk ruling: manipulation rides selection,
+                  the Strava-route-builder grammar). Drawn at the
+                  RENDERED endpoints — the points the author sees. */}
+              {handleVertices.map((v) => {
                 const hot =
                   hoverVertex !== null &&
                   sameCorner(v.ref, hoverVertex.ref, size, o);

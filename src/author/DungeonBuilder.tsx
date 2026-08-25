@@ -57,7 +57,7 @@ import {
   updateRegion,
   type DungeonDoc,
 } from './dungeonYaml';
-import { type Axial, type Edge, type Orientation } from './hexOffset';
+import { edgeKey, type Axial, type Edge, type Orientation } from './hexOffset';
 import { Inspector } from './Inspector';
 import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
@@ -311,8 +311,26 @@ export function DungeonBuilder({
   const handleWallErase = (chain: Edge[]) => {
     setDoc((d) => applyWallErase(d, chain));
   };
+  // Manipulation rides selection (Kirk's walk ruling): keep the wall
+  // selected through a reshape by re-selecting the edges the re-derived
+  // chains produced, so its handles stay up for the next grab.
   const handleWallReshape = (oldChains: Edge[][], newChains: Edge[][]) => {
-    setDoc((d) => applyReshape(d, oldChains, newChains));
+    setDoc((d) => {
+      const next = applyReshape(d, oldChains, newChains);
+      if (next !== d) {
+        const untouched = new Set(
+          removeWalls(
+            d,
+            oldChains.flatMap((c) => c)
+          ).walls.map(edgeKey)
+        );
+        setSelection({
+          kind: 'wall',
+          edges: next.walls.filter((w) => !untouched.has(edgeKey(w))),
+        });
+      }
+      return next;
+    });
   };
   // One drag, ONE door — and select it, same as the click path does.
   const handleDoorDraw = (chain: Edge[]) => {

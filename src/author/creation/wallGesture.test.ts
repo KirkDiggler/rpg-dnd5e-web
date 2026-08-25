@@ -68,6 +68,12 @@ function fixtureDoc(): DungeonDoc {
   return doc;
 }
 
+/** The magnetism/handle targets as the board builds them: from the
+ * rendered scene's runs, so `point` is the drawn endpoint (see-vs-snap:
+ * Kirk's walk found lattice-centered magnetism missing where he aimed). */
+const sceneVertices = (doc: DungeonDoc) =>
+  runVertices(boardWallScene(doc, SIZE)!.runs, SIZE, o);
+
 // The named drags. Corners are addressed by (offset cell, corner index)
 // in hexCorners' own convention; the comments give the SVG points in
 // units of `size` so the geometry stays checkable by hand.
@@ -215,11 +221,8 @@ describe('snapGesturePoint — corners snap by construction', () => {
     // P sits 0.55·size from the chain endpoint at (√3, 2)·size but only
     // 0.45·size from the plain corner at (√3·1.5, 2.5)·size — the wall
     // vertex still wins: sharing a vertex IS the closed corner.
-    const vertices = runVertices(
-      [[E([0, 1], [0, 2]), E([0, 1], [1, 2])]],
-      SIZE,
-      o
-    );
+    const existing = [E([0, 1], [0, 2]), E([0, 1], [1, 2])];
+    const vertices = sceneVertices(addWalls(fixtureDoc(), existing));
     const endpoint = ref(0, 1, 1); // (√3, 2)·size
     const p = pt(endpoint);
     const raw = { x: p.x + 0.478 * SIZE, y: p.y + 0.275 * SIZE };
@@ -251,13 +254,66 @@ describe('snapGesturePoint — corners snap by construction', () => {
     const wide = snapGesturePoint(at(20, 6), SIZE, o, { origin });
     expect(sameCorner(wide, onColumn, SIZE, o)).toBe(false);
   });
+
+  it('magnetizes to the RENDERED run endpoint, not the lattice vertex behind it (Kirk’s walk)', () => {
+    // A ~44° chain's fitted+projected endpoint sits ~0.52·size from its
+    // chain-end lattice vertex (measured; the fit, corner closure and
+    // margins all move the drawn end off the raw lattice). Aim just
+    // past the DRAWN end: the pointer is outside the 0.6·size gate
+    // measured from the lattice vertex — the old, lattice-centered
+    // magnetism missed exactly this aim — but well inside it measured
+    // from the rendered endpoint, and the snap still resolves to the
+    // chain's LATTICE vertex for derivation.
+    const doc = applyWallDraw(fixtureDoc(), FREE.chain);
+    const vertices = sceneVertices(doc);
+    const scene = boardWallScene(doc, SIZE)!;
+    expect(scene.runs).toHaveLength(1);
+    const run = scene.runs[0];
+    const latticeEnd = ref(1, 3, 1); // (√3·2, 5)·size
+    const lp = pt(latticeEnd);
+    const drawnEnd =
+      Math.hypot(run.a.x - lp.x, run.a.y - lp.y) <
+      Math.hypot(run.b.x - lp.x, run.b.y - lp.y)
+        ? run.a
+        : run.b;
+    const other = drawnEnd === run.a ? run.b : run.a;
+    const len = Math.hypot(drawnEnd.x - other.x, drawnEnd.y - other.y);
+    const out = {
+      x: drawnEnd.x + ((drawnEnd.x - other.x) / len) * 0.15 * SIZE,
+      y: drawnEnd.y + ((drawnEnd.y - other.y) / len) * 0.15 * SIZE,
+    };
+    // The receipt: this aim is OUTSIDE the lattice-centered gate…
+    expect(Math.hypot(out.x - lp.x, out.y - lp.y)).toBeGreaterThan(
+      GESTURE_TUNING.wallVertexSnapRadius * SIZE
+    );
+    // …and still snaps, resolving to the lattice vertex.
+    const snapped = snapGesturePoint(out, SIZE, o, { wallVertices: vertices });
+    expect(sameCorner(snapped, latticeEnd, SIZE, o)).toBe(true);
+  });
+
+  it('an off-axis wall vertex in range beats angle magnetism — vertex intent wins', () => {
+    // Drag ~5° off vertical from (√3, 1)·size toward the horizontal
+    // chain's rendered endpoint near (√3, 2.25)·size: the axis snap
+    // would project the endpoint onto the vertical line, but the
+    // vertex magnetism is tested on the raw pointer FIRST, so the
+    // corner closes instead of the axis winning.
+    const existing = [E([0, 1], [0, 2]), E([0, 1], [1, 2])];
+    const vertices = sceneVertices(addWalls(fixtureDoc(), existing));
+    const origin = pt(ref(1, 0, 2)); // (√3, 1)·size
+    const raw = { x: origin.x + 0.1 * SIZE, y: origin.y + 1.2 * SIZE };
+    const snapped = snapGesturePoint(raw, SIZE, o, {
+      origin,
+      wallVertices: vertices,
+    });
+    expect(sameCorner(snapped, ref(0, 1, 1), SIZE, o)).toBe(true);
+  });
 });
 
 describe('a drag ending on an existing wall vertex shares it — the corner closes by construction', () => {
   it('snaps B to the chain endpoint and derives the connecting edge', () => {
     const existing = [E([0, 1], [0, 2]), E([0, 1], [1, 2])];
     const doc = addWalls(fixtureDoc(), existing);
-    const vertices = runVertices([existing], SIZE, o);
+    const vertices = sceneVertices(doc);
     const sharedVertex = ref(0, 1, 1); // (√3, 2)·size
     const vp = pt(sharedVertex);
     const b = snapGesturePoint({ x: vp.x + 10, y: vp.y - 6 }, SIZE, o, {
@@ -274,15 +330,27 @@ describe('shared-corner drag (ruling 4) — every incident chain re-derives to t
   const chainB = [E([0, 1], [1, 1]), E([1, 0], [1, 1])];
 
   it('runVertices finds the shared corner (2 incident runs) and the far endpoints (1 each)', () => {
-    const vertices = runVertices([chainA, chainB], SIZE, o);
+    // Two REAL seam chains meeting at (√3·2.5, 3.5)·size — long enough
+    // that the engine's chain tolerance keeps them two runs (a
+    // two-edge elbow reads as one shallow zigzag and merges; a genuine
+    // corner between two seams does not).
+    const vert = VERT.chain;
+    const horiz = [E([2, 3], [3, 2]), E([3, 2], [3, 3]), E([3, 3], [4, 2])];
+    const vertices = sceneVertices(addWalls(fixtureDoc(), [...vert, ...horiz]));
+    // The shared corner is the SCENE's own break vertex — where the
+    // chaining engine judged straightness to end, one edge past the
+    // drag boundary here (the elbow's first horizontal edge still fit
+    // the vertical run's tolerance). Handles live on what is rendered,
+    // so that is the corner the author grabs.
     const shared = vertices.find((v) =>
-      sameCorner(v.ref, ref(0, 1, 1), SIZE, o)
+      sameCorner(v.ref, ref(3, 2, 2), SIZE, o)
     );
     expect(shared?.runs.sort()).toEqual([0, 1]);
-    const farA = vertices.find((v) => sameCorner(v.ref, ref(0, 1, 3), SIZE, o));
-    expect(farA?.runs).toEqual([0]);
-    const farB = vertices.find((v) => sameCorner(v.ref, ref(1, 0, 1), SIZE, o));
-    expect(farB?.runs).toEqual([1]);
+    const farV = vertices.find((v) => sameCorner(v.ref, VERT.a, SIZE, o));
+    expect(farV?.runs).toHaveLength(1);
+    const farH = vertices.find((v) => sameCorner(v.ref, ref(4, 3, 4), SIZE, o));
+    expect(farH?.runs).toHaveLength(1);
+    expect(farV?.runs[0]).not.toBe(farH?.runs[0]);
   });
 
   it('dragging the shared vertex re-derives BOTH chains, still sharing the new vertex', () => {

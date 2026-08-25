@@ -86,12 +86,15 @@ import {
  * inferred; recalibration lands here and re-pins.
  */
 export const GESTURE_TUNING = {
-  /** Endpoint/shared-vertex handle pickup radius around a rendered
-   * run's endpoint (wall tool, pre-press hover → grab). */
+  /** Handle pickup radius around a selected run's RENDERED endpoint
+   * or shared corner (Select tool — manipulation rides selection,
+   * Kirk's walk ruling). */
   cornerSnapRadius: 0.4,
-  /** Existing-wall-vertex magnetism on the drag endpoints — STRONGER
-   * than the plain lattice snap: landing on a chain's vertex is what
-   * closes a corner by construction. */
+  /** Existing-wall-vertex magnetism on the drag endpoints, measured at
+   * the RENDERED endpoint the author aims at (never the lattice vertex
+   * behind it — see RunVertex) and STRONGER than the plain lattice
+   * snap: landing on a chain's vertex is what closes a corner by
+   * construction. */
   wallVertexSnapRadius: 0.6,
   /** Ruling 1: drag direction within this many degrees of a seam
    * family snaps the endpoint onto the dragged line; Alt bypasses. */
@@ -290,10 +293,19 @@ export function applyReshape(
 // Vertices and snapping
 // ---------------------------------------------------------------------------
 
-/** A lattice vertex where rendered runs end: the drag handles and the
- * wall-vertex magnetism targets. `runs` holds the indices (into the
- * caller's run list) of every incident run — 1 = an endpoint handle,
- * 2+ = a shared corner (ruling 4). */
+/** A vertex where rendered runs end: the drag handles and the
+ * wall-vertex magnetism targets. `ref` is the chain-end LATTICE vertex
+ * (what derivation anchors to); `point` is the RENDERED endpoint the
+ * author actually sees. The two differ by up to ~half a hex — the
+ * least-squares/axis fit, corner closure, and overlap margin all move
+ * a run's drawn end off the raw lattice (measured live on Kirk's walk:
+ * 0.15–0.52·size depending on chain angle, vs a 0.6·size magnet
+ * radius). Magnetism centered on the lattice vertex therefore missed
+ * exactly where he aimed — "I cannot get that upper right corner to
+ * snap in." Select the thing you see applies to magnetism too: snap
+ * and display live on `point`, derivation on `ref`. `runs` holds the
+ * indices of every incident run — 1 = an endpoint handle, 2+ = a
+ * shared corner (ruling 4). */
 export interface RunVertex {
   ref: CornerRef;
   point: Point;
@@ -326,33 +338,81 @@ export function chainEndpoints(
     .map((v) => v.ref);
 }
 
+/** A scene-shaped run: its rendered segment plus the doc edges behind
+ * it (`BoardWallRun`'s own shape, structurally). */
+export interface SceneRunLike {
+  a: Point;
+  b: Point;
+  edges: readonly Edge[];
+}
+
 /**
- * Every run-endpoint vertex over the rendered runs' source edge lists
- * (threaded through `boardWallRuns`), grouped by physical vertex —
- * the magnetism targets and the handles. The design's own definition:
- * "the lattice vertices at the ends of existing authored chains."
+ * Every run-endpoint vertex over the rendered runs, grouped by
+ * physical lattice vertex — the magnetism targets and the handles.
+ * Each vertex's `point` is the mean of the incident runs' own rendered
+ * endpoints on that side (each run's endpoint is matched to whichever
+ * of its two chain-end lattice vertices sits nearer): at a closed
+ * corner the incident runs' drawn ends all sit within the overlap
+ * margin of the shared joint, so the mean is the visible corner point.
  */
 export function runVertices(
-  runEdgeLists: readonly (readonly Edge[])[],
+  runs: readonly SceneRunLike[],
   size: number,
   o: Orientation
 ): RunVertex[] {
-  const byKey = new Map<string, RunVertex>();
-  runEdgeLists.forEach((edges, runIndex) => {
-    for (const ref of chainEndpoints(edges, size, o)) {
+  const byKey = new Map<
+    string,
+    {
+      ref: CornerRef;
+      sumX: number;
+      sumY: number;
+      count: number;
+      runs: number[];
+    }
+  >();
+  runs.forEach((run, runIndex) => {
+    const ends = chainEndpoints(run.edges, size, o);
+    if (ends.length !== 2) return; // degenerate (loop / empty) — no handles
+    // Match each lattice endpoint to the nearer rendered endpoint; the
+    // fit preserves the chain's extremes, so the pairing is unambiguous.
+    const [e0, e1] = ends;
+    const p0 = cornerPoint(e0, size, o);
+    const assignAtoE0 =
+      Math.hypot(run.a.x - p0.x, run.a.y - p0.y) <=
+      Math.hypot(run.b.x - p0.x, run.b.y - p0.y);
+    const pairs: [CornerRef, Point][] = assignAtoE0
+      ? [
+          [e0, run.a],
+          [e1, run.b],
+        ]
+      : [
+          [e0, run.b],
+          [e1, run.a],
+        ];
+    for (const [ref, rendered] of pairs) {
       const key = cornerKey(ref, size, o);
-      const existing = byKey.get(key);
-      if (existing) existing.runs.push(runIndex);
-      else {
+      const entry = byKey.get(key);
+      if (entry) {
+        entry.sumX += rendered.x;
+        entry.sumY += rendered.y;
+        entry.count += 1;
+        entry.runs.push(runIndex);
+      } else {
         byKey.set(key, {
           ref,
-          point: cornerPoint(ref, size, o),
+          sumX: rendered.x,
+          sumY: rendered.y,
+          count: 1,
           runs: [runIndex],
         });
       }
     }
   });
-  return [...byKey.values()];
+  return [...byKey.values()].map((v) => ({
+    ref: v.ref,
+    point: { x: v.sumX / v.count, y: v.sumY / v.count },
+    runs: v.runs,
+  }));
 }
 
 export interface SnapOptions {

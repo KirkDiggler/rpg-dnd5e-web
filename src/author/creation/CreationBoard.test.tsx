@@ -322,13 +322,27 @@ describe('wall gesture affordances (#804)', () => {
     return addWalls(doc, [[p(1, 1), p(2, 1)]]);
   }
 
-  it('the wall tool shows a handle at each chain endpoint', () => {
-    const { container } = mount(walledDoc(), { tool: 'wall' });
+  it('selecting a wall shows a handle at each chain endpoint — manipulation rides selection', () => {
+    const doc = walledDoc();
+    const { container } = mount(doc, {
+      tool: 'select',
+      selection: { kind: 'wall', edges: doc.walls },
+    });
     // One single-edge run: two endpoint vertices, each with exactly one
-    // incident run.
+    // incident run, visible the moment the wall is selected.
     const handles = container.querySelectorAll('[data-run-vertex]');
     expect(handles).toHaveLength(2);
     handles.forEach((h) => expect(h.getAttribute('data-run-vertex')).toBe('1'));
+  });
+
+  it('the wall tool draws — it shows no handles (continuing a wall presses at its end)', () => {
+    const { container } = mount(walledDoc(), { tool: 'wall' });
+    expect(container.querySelectorAll('[data-run-vertex]')).toHaveLength(0);
+  });
+
+  it('an unselected board shows no handles under the select tool', () => {
+    const { container } = mount(walledDoc(), { tool: 'select' });
+    expect(container.querySelectorAll('[data-run-vertex]')).toHaveLength(0);
   });
 
   it('a wall selection highlights the run whose edges it holds', () => {
