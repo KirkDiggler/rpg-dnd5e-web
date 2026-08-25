@@ -832,7 +832,43 @@ export function boundariesToWallRuns(
     });
   }
 
-  const rawRuns = computeAuthoredWallRuns(edges, hexSize, cubes);
+  // CANONICAL INPUT ORDER (rpg-dnd5e-web#808, Kirk's walk: "the bottom
+  // room east wall does not match the corner" — the 2D board and the 3D
+  // preview showed DIFFERENT geometry for the same walls). The chaining
+  // walk's chain membership at a branch vertex, and therefore each
+  // chain's fitted line and every corner joint downstream, depends on
+  // the order edges are visited in. The board feeds this module the
+  // document's own stroke order; the server's compiled atlas arrives
+  // sorted — same edge SET, different order, measurably different runs
+  // (a 3-way corner fixture put one seam's fitted line half a hex apart
+  // between the two orders; 20/20 random permutations differed). The
+  // one-formula law is only real if the formula's answer depends on the
+  // INPUT SET, not the caller's iteration order — so the edge list is
+  // sorted here, deterministically, before chaining: doors last (they
+  // are break points, kept clear of the boundary ordering), then by the
+  // order-independent cell-pair key. Each edge's own from/to is left
+  // untouched: `hexEdgeBetween(from, to)` enumerates FROM's corners, so
+  // flipping a pair would perturb run-key tokens (and float geometry at
+  // ~1e-13) that callers like boardWallRuns recompute from their own
+  // edge objects for source-edge threading. The floor cubes are sorted
+  // too, so no downstream consumer inherits the caller's cell order.
+  const canonicalEdges = [...edges].sort((a, b) => {
+    if (a.isDoor !== b.isDoor) return a.isDoor ? 1 : -1;
+    const ka = pairKey(a.from, a.to);
+    const kb = pairKey(b.from, b.to);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  const canonicalCubes = [...cubes].sort((a, b) => {
+    const ka = coordToKey(a);
+    const kb = coordToKey(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+
+  const rawRuns = computeAuthoredWallRuns(
+    canonicalEdges,
+    hexSize,
+    canonicalCubes
+  );
 
   // Find which run (if any) flanks each door on each side, against the
   // ENGINE'S OWN raw run positions -- the only place the DOOR_TRIM-
