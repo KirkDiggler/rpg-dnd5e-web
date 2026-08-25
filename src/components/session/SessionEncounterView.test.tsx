@@ -2342,3 +2342,60 @@ describe('SessionEncounterView', () => {
     });
   });
 });
+
+describe("the run's end (rpg-project#268)", () => {
+  it('an ended beat raises the outcome overlay on free roam — headline by declared key, and Leave exits', async () => {
+    hoisted.atlasResult.atlas = pointyAtlas();
+    hoisted.atlasResult.loading = false;
+    hoisted.whereResult.position = { x: 1, y: 0 };
+    hoisted.whereResult.loading = false;
+    hoisted.streamEventsFn.mockReturnValue(
+      fakeStream([
+        event(EventKind.ENDED, {
+          case: 'ended',
+          value: { ending: 'boss-down' } as never,
+        }),
+      ])
+    );
+
+    const onBack = vi.fn();
+    render(
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={onBack}
+      />
+    );
+
+    // The overlay lands with the canvas still mounted underneath — the run
+    // ends in free roam (ruling rpg-project#269 §6.6), it does not unmount
+    // the world.
+    await waitFor(() => screen.getByText('The tomb is cleared.'));
+    screen.getByTestId('session-canvas');
+
+    fireEvent.click(screen.getByRole('button', { name: /leave/i }));
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it('an ENDED kind with no typed body still ends the run, with the plain headline', async () => {
+    hoisted.atlasResult.atlas = pointyAtlas();
+    hoisted.atlasResult.loading = false;
+    hoisted.whereResult.position = { x: 1, y: 0 };
+    hoisted.whereResult.loading = false;
+    hoisted.streamEventsFn.mockReturnValue(
+      fakeStream([event(EventKind.ENDED)])
+    );
+
+    render(
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-1"
+        onBack={noop}
+      />
+    );
+
+    await waitFor(() => screen.getByText('The run has ended.'));
+  });
+});

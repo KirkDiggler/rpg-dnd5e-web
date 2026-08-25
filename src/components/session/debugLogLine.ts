@@ -57,6 +57,7 @@ import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/
 import {
   DamageType,
   DissolveKind,
+  DoorState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 
 /** One rendered debug-log entry. `text` is the full line, ready to
@@ -174,6 +175,27 @@ export function formatDebugLine(
         seq,
         ids: b.members,
         text: `${prefix} fight_started order=[${b.members.map(name).join(', ')}]`,
+      };
+    }
+    case 'door': {
+      const b = event.body.value;
+      const stateName = DoorState[b.state] ?? String(b.state);
+      const attempt = b.dc
+        ? ` dc=${b.dc} total=${b.total} beaten=${b.beaten}`
+        : '';
+      const actor = b.actor ? ` actor=${name(b.actor)}` : '';
+      return {
+        seq,
+        ids: b.actor ? [b.actor] : [],
+        text: `${prefix} door door=${b.door} state=${stateName}${actor}${attempt}`,
+      };
+    }
+    case 'ended': {
+      const b = event.body.value;
+      return {
+        seq,
+        ids: [],
+        text: `${prefix} ended ending=${b.ending}`,
       };
     }
     case 'fightEnded': {

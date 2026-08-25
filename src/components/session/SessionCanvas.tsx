@@ -58,7 +58,10 @@
  */
 
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
-import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type {
+  DoorInfo,
+  PublicMemberInfo,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
@@ -213,6 +216,13 @@ export interface SessionCanvasProps {
    * neutral placeholder for players, subject-derived ref for monsters —
    * never a blocked render. */
   roster?: ReadonlyMap<string, PublicMemberInfo>;
+  /** Live door state keyed by door id (`useSessionDoors` —
+   * rpg-project#268): drives the leaf each doorway renders. Missing map
+   * or entry falls back to a shut leaf — the pre-doors look. */
+  doors?: ReadonlyMap<string, DoorInfo>;
+  /** Fires with the clicked door's id — the open/unlock affordance lives
+   * in the caller, which knows who acts and what the door's state is. */
+  onDoorClick?: (door: string) => void;
   /** Subject ids the caller currently offers as in-reach, AFFORDABLE
    * Attack candidates (rpg-project#249) — see this component's own doc
    * comment on why this is narrower than every in-reach candidate.
@@ -259,6 +269,8 @@ export function SessionScene({
   onMovementPresentationComplete,
   otherMembers,
   roster,
+  doors,
+  onDoorClick,
   attackableTargets,
   pathIndex = null,
   turnLocked = false,
@@ -460,7 +472,12 @@ export function SessionScene({
         <meshBasicMaterial visible={false} />
       </mesh>
       <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={hexSize} />
-      <AtlasWalls wallRuns={scene.wallRuns} doorGaps={scene.doorGaps} />
+      <AtlasWalls
+        wallRuns={scene.wallRuns}
+        doorGaps={scene.doorGaps}
+        doors={doors}
+        onDoorClick={onDoorClick}
+      />
       {scene.props.map((prop, index) => (
         <AtlasPropModel
           key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}

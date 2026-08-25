@@ -1,5 +1,8 @@
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { DamageType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  DamageType,
+  DoorState,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import { damageTypeWord, formatBeat } from './combatBeat';
 import { participantNameMap } from './participantNames';
@@ -168,5 +171,77 @@ describe('formatBeat', () => {
 
   it('an unset body case returns null', () => {
     expect(formatBeat(event({ case: undefined }), 'char-1', names)).toBeNull();
+  });
+});
+
+describe('formatBeat: the door and the end (rpg-project#268)', () => {
+  it("a beaten lock — the attempt's author and numbers, then the door swings open", () => {
+    expect(
+      formatBeat(
+        event({
+          case: 'door',
+          value: {
+            door: 'hall-tomb',
+            state: DoorState.OPEN,
+            actor: 'char-1',
+            dc: 12,
+            total: 22,
+            beaten: true,
+          } as never,
+        }),
+        'char-2',
+        names
+      )
+    ).toBe('Aldric picks the lock — 22 vs DC 12. The door swings open.');
+  });
+
+  it('a failed attempt is narrated too — the miss is as much fiction as the hit', () => {
+    expect(
+      formatBeat(
+        event({
+          case: 'door',
+          value: {
+            door: 'hall-tomb',
+            state: DoorState.LOCKED,
+            actor: 'char-1',
+            dc: 12,
+            total: 9,
+            beaten: false,
+          } as never,
+        }),
+        'char-2',
+        names
+      )
+    ).toBe('Aldric tries the lock — 9 vs DC 12. It holds.');
+  });
+
+  it('a plain open names whose hands, no numbers — dc zero IS a plain open/close', () => {
+    expect(
+      formatBeat(
+        event({
+          case: 'door',
+          value: {
+            door: 'entrance-hall',
+            state: DoorState.OPEN,
+            actor: 'char-1',
+            dc: 0,
+            total: 0,
+            beaten: false,
+          } as never,
+        }),
+        'char-2',
+        names
+      )
+    ).toBe('Aldric opens the door.');
+  });
+
+  it("the run's end is the log's plain record — the overlay owns the headline", () => {
+    expect(
+      formatBeat(
+        event({ case: 'ended', value: { ending: 'boss-down' } as never }),
+        'char-1',
+        names
+      )
+    ).toBe('The encounter is over.');
   });
 });

@@ -6,6 +6,8 @@
  * (same shape `atlasWallRuns.test.ts` uses) for an end-to-end route
  * crossing a real doorway.
  */
+import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import { buildAtlasPathIndex, edgePassable, findAtlasPath } from './atlasPath';
@@ -367,5 +369,81 @@ describe('findAtlasPath — the real reference tomb', () => {
     for (let i = 0; i < path.length - 1; i++) {
       expect(edgePassable(index, path[i]!, path[i + 1]!)).toBe(true);
     }
+  });
+});
+
+describe('door state gates the doorway (rpg-project#268)', () => {
+  /** The doorway-on-a-boundary shape the real tomb authors: the seam
+   * blocks, the doorway punches through — and now the DOOR decides. */
+  function gatedAtlas() {
+    return {
+      cells: [pos(0, 0), pos(1, 0)],
+      boundaries: [
+        {
+          from: pos(0, 0),
+          to: pos(1, 0),
+          blocksMovement: true,
+          blocksLineOfSight: true,
+        },
+      ],
+      doorways: [{ connection: 'gate', from: pos(0, 0), to: pos(1, 0) }],
+      props: [],
+    } as never;
+  }
+
+  const doorsWith = (state: DoorState): ReadonlyMap<string, DoorInfo> =>
+    new Map([['gate', { door: 'gate', state } as DoorInfo]]);
+
+  it('no live door state known — every doorway stays crossable (the pre-doors behavior every caller without the map gets)', () => {
+    const index = buildAtlasPathIndex(gatedAtlas());
+    expect(
+      edgePassable(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toBe(true);
+  });
+
+  it('an OPEN door is crossable', () => {
+    const index = buildAtlasPathIndex(gatedAtlas(), doorsWith(DoorState.OPEN));
+    expect(
+      edgePassable(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toBe(true);
+  });
+
+  it('a CLOSED door refuses the edge — the preview matches the server, and the remedy is OpenDoor, not new coordinates', () => {
+    const index = buildAtlasPathIndex(
+      gatedAtlas(),
+      doorsWith(DoorState.CLOSED)
+    );
+    expect(
+      edgePassable(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toBe(false);
+  });
+
+  it('a LOCKED door refuses the edge too', () => {
+    const index = buildAtlasPathIndex(
+      gatedAtlas(),
+      doorsWith(DoorState.LOCKED)
+    );
+    expect(
+      edgePassable(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toBe(false);
+  });
+
+  it('a map WITHOUT an entry for the door refuses too — the leaf draws shut for the same unknown, and the preview must match it', () => {
+    const index = buildAtlasPathIndex(
+      gatedAtlas(),
+      new Map() as ReadonlyMap<string, DoorInfo>
+    );
+    expect(
+      edgePassable(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toBe(false);
+  });
+
+  it('a shut door never leaks into blockedEdges — reopening is a doors-map change, not an atlas change', () => {
+    const index = buildAtlasPathIndex(
+      gatedAtlas(),
+      doorsWith(DoorState.CLOSED)
+    );
+    expect(index.shutDoorEdges.size).toBe(1);
+    expect(index.blockedEdges.size).toBe(0);
   });
 });
