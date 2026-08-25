@@ -87,7 +87,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        'v1.move'
       )
     );
 
@@ -96,6 +97,7 @@ describe('useSessionWalk', () => {
     expect(hoisted.moveFn).toHaveBeenCalledWith({
       session: 'enc-1',
       member: 'char-1',
+      declarationId: 'v1.move',
       // (0,0) is the current cell and is excluded; the corridor's
       // middle cell (1,0) then the destination (2,-1) remain.
       path: [
@@ -104,6 +106,25 @@ describe('useSessionWalk', () => {
       ],
     });
     await waitFor(() => expect(result.current.busy).toBe(true));
+  });
+
+  it('world-clock movement sends an empty declaration id', () => {
+    hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn()
+      )
+    );
+
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+
+    expect(hoisted.moveFn).toHaveBeenCalledWith(
+      expect.objectContaining({ declarationId: '' })
+    );
   });
 
   it('a second walkTo while busy is ignored', () => {

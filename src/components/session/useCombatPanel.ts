@@ -62,11 +62,14 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   ClockKind,
+  Verb,
+  type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSessionAttack } from '../../api/useSessionAttack';
 import { useSessionEndTurn } from '../../api/useSessionEndTurn';
+import { selectDirectMapAttack } from './combat-experience/selection';
 import { formatBeat } from './combatBeat';
 import { selectCombatPanel, type CombatPanelSelection } from './combatPanel';
 import type { DeclarationRow } from './declarationRows';
@@ -103,6 +106,9 @@ export interface UseCombatPanelArgs {
   sightedMembers?: SightedMember[];
   affordClock: ClockKind;
   affordDeclarations: DeclarationRow[];
+  /** Generated nested declarations retained beside the temporary legacy rows
+   * solely so this old panel can echo exact selectors until Task 14 deletes it. */
+  serverDeclarations: Declaration[];
   /** Owned by the caller — `SessionEncounterView` is the single owner of
    * every Afford/Turn fetch. */
   refetchAfford: () => Promise<void>;
@@ -155,6 +161,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     sightedMembers,
     affordClock,
     affordDeclarations,
+    serverDeclarations,
     refetchAfford,
     refetchTurn,
     refetchView,
@@ -352,9 +359,16 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
       if (selection.mode !== 'turn') return;
       const target = selection.attackTargets.find((t) => t.id === subject);
       if (!target || !target.affordable) return;
+      const declaration = selectDirectMapAttack(serverDeclarations, subject);
+      if (!declaration) return;
       void (async () => {
         try {
-          await dispatchAttack({ session, attacker: member, target: subject });
+          await dispatchAttack({
+            session,
+            attacker: member,
+            target: subject,
+            declarationId: declaration.id,
+          });
           // The beat line comes from the stream's own Struck/Missed event
           // — see this module's own doc comment.
         } catch (err) {
@@ -373,6 +387,7 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
     },
     [
       selection,
+      serverDeclarations,
       dispatchAttack,
       session,
       member,
@@ -384,9 +399,18 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
 
   const endTurn = useCallback(() => {
     if (selection.mode !== 'turn' || !selection.endTurn.enabled) return;
+    const declarations = serverDeclarations.filter(
+      (declaration) =>
+        declaration.verb === Verb.END_TURN && declaration.available
+    );
+    if (declarations.length !== 1) return;
     void (async () => {
       try {
-        await dispatchEndTurn({ session, member });
+        await dispatchEndTurn({
+          session,
+          member,
+          declarationId: declarations[0]!.id,
+        });
       } catch {
         // Not separately surfaced (rare: only fires if the button was
         // enabled but the server disagreed, e.g. a race) — the refetch
@@ -396,7 +420,15 @@ export function useCombatPanel(args: UseCombatPanelArgs): UseCombatPanelResult {
         void refetchTurn();
       }
     })();
-  }, [selection, dispatchEndTurn, session, member, refetchAfford, refetchTurn]);
+  }, [
+    selection,
+    serverDeclarations,
+    dispatchEndTurn,
+    session,
+    member,
+    refetchAfford,
+    refetchTurn,
+  ]);
 
   const handleEvent = useCallback(
     (event: SessionEvent) => {

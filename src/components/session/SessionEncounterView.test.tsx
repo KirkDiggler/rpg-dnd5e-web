@@ -39,6 +39,7 @@ import {
   ShortfallReason,
   Slot,
   Standing,
+  TargetKind,
   Verb,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -546,6 +547,7 @@ describe('SessionEncounterView', () => {
         session: 'enc-1',
         member: 'char-1',
         path: [{ x: 1, y: 0 }],
+        declarationId: '',
       });
       await waitFor(() => screen.getByText(/walking…/i));
     });
@@ -954,16 +956,18 @@ describe('SessionEncounterView', () => {
         participants,
       });
       const affordable = overrides.attackAffordable ?? true;
-      // The v0.1.143 wire shape (#253): ONE attack declaration carrying
-      // its per-target candidates; useSessionAfford's shim expands them
-      // back to the per-target rows the panel renders.
+      // The generated wire shape: one Attack declaration carries all
+      // candidates. SessionEncounterView alone expands temporary rows for
+      // the old panel while retaining these exact selector-bearing messages.
       hoisted.affordFn.mockResolvedValue({
         clock: ClockKind.TURN,
         declarations: [
           {
+            id: 'v1.attack',
             verb: Verb.ATTACK,
             slot: Slot.ACTION,
             available: affordable,
+            targetKind: TargetKind.MEMBER,
             candidates: [
               {
                 member: 'skeleton-1',
@@ -979,6 +983,14 @@ describe('SessionEncounterView', () => {
                     },
               },
             ],
+          },
+          {
+            id: 'v1.end',
+            verb: Verb.END_TURN,
+            slot: Slot.NONE,
+            available: true,
+            targetKind: TargetKind.NONE,
+            candidates: [],
           },
         ],
       });
@@ -1186,6 +1198,7 @@ describe('SessionEncounterView', () => {
         session: 'enc-1',
         attacker: 'char-1',
         target: 'skeleton-1',
+        declarationId: 'v1.attack',
       });
       await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
@@ -1486,6 +1499,7 @@ describe('SessionEncounterView', () => {
       expect(hoisted.endTurnFn).toHaveBeenCalledWith({
         session: 'enc-1',
         member: 'char-1',
+        declarationId: 'v1.end',
       });
       await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
       await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));

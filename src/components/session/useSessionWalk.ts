@@ -92,7 +92,9 @@ export function useSessionWalk(
   member: string,
   pathIndex: AtlasPathIndex | null,
   wherePosition: Position | null,
-  refetchWhere: () => Promise<void>
+  refetchWhere: () => Promise<void>,
+  /** Exact opaque Move offer id on the turn clock; empty in free roam. */
+  declarationId = ''
 ): UseSessionWalkResult {
   const [displayPosition, setDisplayPosition] = useState<CubeCoord | null>(
     wherePosition ? positionToCube(wherePosition) : null
@@ -148,6 +150,8 @@ export function useSessionWalk(
             session,
             member,
             path: requestPath,
+            // Opaque server offer selector: echoed only, never parsed or built.
+            declarationId,
           });
           const steps = response.steps
             .filter((step) => step.position !== undefined)
@@ -182,7 +186,7 @@ export function useSessionWalk(
         }
       })();
     },
-    [pathIndex, displayPosition, member, busy, session]
+    [pathIndex, displayPosition, member, busy, session, declarationId]
   );
 
   const onWalkAnimationComplete = useCallback(

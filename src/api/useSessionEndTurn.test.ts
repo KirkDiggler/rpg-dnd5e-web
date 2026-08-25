@@ -26,7 +26,7 @@ describe('useSessionEndTurn', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('calls sessionClient.endTurn with the request shape unchanged (session/member)', async () => {
+  it('echoes the exact opaque declaration id with session/member', async () => {
     const fakeResponse = {
       next: 'skeleton-1',
       roundWrapped: false,
@@ -41,6 +41,7 @@ describe('useSessionEndTurn', () => {
       response = await result.current.endTurn({
         session: 'enc-1',
         member: 'char-1',
+        declarationId: 'v1.end',
       });
     });
 
@@ -49,6 +50,7 @@ describe('useSessionEndTurn', () => {
     expect(hoisted.endTurnFn).toHaveBeenCalledWith({
       session: 'enc-1',
       member: 'char-1',
+      declarationId: 'v1.end',
     });
   });
 
@@ -62,7 +64,11 @@ describe('useSessionEndTurn', () => {
     const { result } = renderHook(() => useSessionEndTurn());
 
     act(() => {
-      void result.current.endTurn({ session: 'enc-1', member: 'char-1' });
+      void result.current.endTurn({
+        session: 'enc-1',
+        member: 'char-1',
+        declarationId: 'v1.end',
+      });
     });
 
     await waitFor(() => expect(result.current.loading).toBe(true));
@@ -82,7 +88,11 @@ describe('useSessionEndTurn', () => {
 
     await act(async () => {
       await expect(
-        result.current.endTurn({ session: 'enc-1', member: 'char-1' })
+        result.current.endTurn({
+          session: 'enc-1',
+          member: 'char-1',
+          declarationId: 'v1.end',
+        })
       ).rejects.toThrow('member is not in a fight, or it is not their turn');
     });
 
@@ -99,13 +109,21 @@ describe('useSessionEndTurn', () => {
 
     await act(async () => {
       await expect(
-        result.current.endTurn({ session: 'enc-1', member: 'char-1' })
+        result.current.endTurn({
+          session: 'enc-1',
+          member: 'char-1',
+          declarationId: 'v1.end',
+        })
       ).rejects.toThrow('first fail');
     });
     expect(result.current.error).not.toBeNull();
 
     await act(async () => {
-      await result.current.endTurn({ session: 'enc-1', member: 'char-1' });
+      await result.current.endTurn({
+        session: 'enc-1',
+        member: 'char-1',
+        declarationId: 'v1.end',
+      });
     });
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);

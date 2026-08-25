@@ -26,7 +26,7 @@ describe('useSessionAttack', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('calls sessionClient.attack with the request shape unchanged (session/attacker/target)', async () => {
+  it('echoes the exact opaque declaration id with session/attacker/target', async () => {
     const fakeResponse = {
       roll: 17,
       total: 20,
@@ -46,6 +46,7 @@ describe('useSessionAttack', () => {
         session: 'enc-1',
         attacker: 'char-1',
         target: 'skeleton-1',
+        declarationId: 'v1.selector',
       });
     });
 
@@ -55,6 +56,7 @@ describe('useSessionAttack', () => {
       session: 'enc-1',
       attacker: 'char-1',
       target: 'skeleton-1',
+      declarationId: 'v1.selector',
     });
   });
 
@@ -72,6 +74,7 @@ describe('useSessionAttack', () => {
         session: 'enc-1',
         attacker: 'char-1',
         target: 'skeleton-1',
+        declarationId: 'v1.selector',
       });
     });
 
@@ -94,6 +97,7 @@ describe('useSessionAttack', () => {
           session: 'enc-1',
           attacker: 'char-1',
           target: 'skeleton-1',
+          declarationId: 'v1.selector',
         })
       ).rejects.toThrow('nothing equipped in "main_hand"');
     });
@@ -115,6 +119,7 @@ describe('useSessionAttack', () => {
           session: 'enc-1',
           attacker: 'char-1',
           target: 'skeleton-1',
+          declarationId: 'v1.selector',
         })
       ).rejects.toThrow('first fail');
     });
@@ -125,6 +130,7 @@ describe('useSessionAttack', () => {
         session: 'enc-1',
         attacker: 'char-1',
         target: 'skeleton-1',
+        declarationId: 'v1.selector',
       });
     });
     expect(result.current.error).toBeNull();

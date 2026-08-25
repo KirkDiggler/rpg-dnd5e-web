@@ -109,6 +109,7 @@ import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/
 import {
   ClockKind,
   DoorState,
+  Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   GetCharacterRequestSchema,
@@ -144,6 +145,7 @@ import {
 } from './atlasToScene3D';
 import { CombatPanel } from './CombatPanel';
 import { DebugCombatLog } from './DebugCombatLog';
+import { expandDeclarations } from './declarationRows';
 import { participantNameMap } from './participantNames';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
@@ -470,6 +472,14 @@ export function SessionEncounterView({
     lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
 
   const member = characterId ?? '';
+  // Exact server selector on the turn clock; world movement must always echo
+  // an empty id. No selector is constructed or parsed here.
+  const moveDeclarationId =
+    turnClock === ClockKind.TURN
+      ? (affordDeclarations.find(
+          (declaration) => declaration.verb === Verb.MOVE
+        )?.id ?? '')
+      : '';
   const {
     displayPosition,
     movePath,
@@ -484,7 +494,8 @@ export function SessionEncounterView({
     member,
     lastGoodPathIndexRef.current,
     wherePosition,
-    refetchWhere
+    refetchWhere,
+    moveDeclarationId
   );
 
   // The floor's own lock signal — computed FRESH from live Turn state on
@@ -506,6 +517,15 @@ export function SessionEncounterView({
     [sightings, characterId]
   );
 
+  // TEMPORARY TASK-10 BRIDGE: the old CombatPanel still consumes the retired
+  // per-candidate DeclarationRow shape. Keep expansion at this one old-panel
+  // call site only; the authoritative hook, selector helpers, and new combat
+  // experience all retain generated nested declarations. Task 14 deletes this.
+  const legacyAffordDeclarations = useMemo(
+    () => expandDeclarations(affordDeclarations),
+    [affordDeclarations]
+  );
+
   // The combat panel (rpg-dnd5e-web#762) — turn order, the three shapes,
   // Attack/End Turn gates, target selection, the beat line. See its own
   // doc comment for why the args are flat primitives rather than a
@@ -519,7 +539,8 @@ export function SessionEncounterView({
     participants: turnParticipants,
     sightedMembers: otherMembers,
     affordClock,
-    affordDeclarations,
+    affordDeclarations: legacyAffordDeclarations,
+    serverDeclarations: affordDeclarations,
     refetchAfford,
     refetchTurn,
     refetchView,

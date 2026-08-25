@@ -7,6 +7,8 @@ export interface EndTurnParams {
   /** Whose turn is ending — must be their turn, server-enforced
    * (`FAILED_PRECONDITION` otherwise; `TurnRequest`'s own doc comment). */
   member: string;
+  /** Opaque selector echoed exactly from the chosen Afford declaration. */
+  declarationId: string;
 }
 
 export interface UseEndTurnResult {

@@ -1,0 +1,100 @@
+import {
+  TargetKind,
+  Verb,
+  type Declaration,
+  type Shortfall,
+  type TargetCandidate,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type { CombatExperiencePresentationState } from './types';
+
+/** Safe copy for an offer rejected because the authoritative offer changed. */
+export const STALE_DECLARATION_MESSAGE =
+  'That option changed; review your current actions.';
+
+/**
+ * Adds provider-authored refusal copy when one is present. Nothing parses or
+ * synthesizes a reason from a selector, verb, slot, or candidate.
+ */
+export function staleDeclarationMessage(why?: Shortfall): string {
+  return why?.text
+    ? `${STALE_DECLARATION_MESSAGE} ${why.text}`
+    : STALE_DECLARATION_MESSAGE;
+}
+
+export interface SelectedCombatExperience {
+  /** Exact generated offer only when its own availability fact permits selection. */
+  declaration: Declaration | null;
+  /** Exact generated member only when both offer and candidate are available. */
+  candidate: TargetCandidate | null;
+  /** Provider-authored refusal text selected by precedence, or no copy. */
+  whyText: string | null;
+}
+
+/**
+ * Resolves local presentation state back to generated provider facts.
+ *
+ * The selector is compared as opaque text and never parsed. Target shape comes
+ * from the declaration's generated `targetKind`: only MEMBER declarations
+ * select a candidate; PATH and NONE keep their provider messages unchanged and
+ * do not manufacture a target shape. Availability remains on the generated
+ * declaration/candidate rather than being normalized into another rules flag.
+ */
+export function selectCombatExperience(
+  declarations: readonly Declaration[],
+  state: CombatExperiencePresentationState
+): SelectedCombatExperience | null {
+  if (state.armedDeclarationId === null) return null;
+
+  const declaration = declarations.find(
+    (candidate) => candidate.id === state.armedDeclarationId
+  );
+  if (!declaration) return null;
+
+  const candidate =
+    declaration.targetKind === TargetKind.MEMBER &&
+    state.selectedCandidateMember !== null
+      ? (declaration.candidates.find(
+          (target) => target.member === state.selectedCandidateMember
+        ) ?? null)
+      : null;
+
+  if (!declaration.available) {
+    return {
+      declaration: null,
+      candidate: null,
+      whyText: declaration.why?.text ?? null,
+    };
+  }
+
+  if (candidate && !candidate.available) {
+    return {
+      declaration,
+      candidate: null,
+      whyText: candidate.why?.text ?? null,
+    };
+  }
+
+  return { declaration, candidate, whyText: null };
+}
+
+/**
+ * Direct-map convenience is safe only when the server facts make the choice
+ * unique. Zero matches no-op; one returns that exact generated declaration;
+ * multiple matches refuse ambiguity so the player must choose in the panel.
+ */
+export function selectDirectMapAttack(
+  declarations: readonly Declaration[],
+  subject: string
+): Declaration | null {
+  const matches = declarations.filter(
+    (declaration) =>
+      declaration.verb === Verb.ATTACK &&
+      declaration.targetKind === TargetKind.MEMBER &&
+      declaration.available &&
+      declaration.candidates.some(
+        (candidate) => candidate.member === subject && candidate.available
+      )
+  );
+
+  return matches.length === 1 ? matches[0]! : null;
+}
