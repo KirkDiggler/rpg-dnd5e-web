@@ -49,9 +49,24 @@ describe('session combat generated-shape review fixtures', () => {
       },
       available: true,
     });
-    expect(JSON.stringify(fresh)).not.toMatch(
-      /Healing Potion|Blessed|\bDodge\b|\bDash\b|Spells/
-    );
+  });
+
+  it('keeps every fixture free of forbidden executable, magic, and item content', () => {
+    for (const fixture of SESSION_COMBAT_FIXTURES) {
+      expect(
+        fixture.declarations.every(
+          (declaration) =>
+            declaration.verb === Verb.ATTACK ||
+            declaration.verb === Verb.MOVE ||
+            declaration.verb === Verb.END_TURN
+        ),
+        fixture.id
+      ).toBe(true);
+      expect(fixture.characterData.inventory, fixture.id).toEqual([]);
+      expect(JSON.stringify(fixture), fixture.id).not.toMatch(
+        /Healing Potion|Blessed|\bDodge\b|\bDash\b|\bSpells?\b|\bMagic\b/i
+      );
+    }
   });
 
   it('keeps spent refusal and Move remaining on generated declarations', () => {
@@ -102,20 +117,96 @@ describe('session combat generated-shape review fixtures', () => {
     ).toBe(false);
   });
 
-  it('keeps current non-magical Fighter facts informational in CharacterData', () => {
-    const character = SESSION_COMBAT_FIXTURES[0]!.characterData;
+  it('pins the provider CharacterData taxonomy for the level-3 Fighter', () => {
+    for (const fixture of SESSION_COMBAT_FIXTURES) {
+      const character = fixture.characterData;
 
-    expect(character.features.map((feature) => feature.name)).toEqual([
-      'Dueling',
-      'Second Wind',
-      'Action Surge',
-    ]);
-    expect(character.conditions).toEqual([]);
-    expect(character.resources.map((resource) => resource.name)).toEqual([
-      'Second Wind',
-      'Action Surge',
-    ]);
-    expect(character.inventory).toEqual([]);
+      expect(
+        character.features.map((feature) => ({
+          typeName: feature.$typeName,
+          ref: feature.ref && {
+            module: feature.ref.module,
+            type: feature.ref.type,
+            id: feature.ref.id,
+          },
+          name: feature.name,
+          detail: feature.detail,
+          resourceKey: feature.resourceKey,
+        })),
+        fixture.id
+      ).toEqual([
+        {
+          typeName: 'dnd5e.api.v1alpha2.encounter.FeatureView',
+          ref: { module: 'dnd5e', type: 'features', id: 'action_surge' },
+          name: 'Action Surge',
+          detail: '',
+          resourceKey: 'action_surge',
+        },
+        {
+          typeName: 'dnd5e.api.v1alpha2.encounter.FeatureView',
+          ref: { module: 'dnd5e', type: 'features', id: 'second_wind' },
+          name: 'Second Wind',
+          detail: '',
+          resourceKey: 'second_wind',
+        },
+      ]);
+      expect(
+        character.conditions.map((condition) => ({
+          typeName: condition.$typeName,
+          ref: condition.ref && {
+            module: condition.ref.module,
+            type: condition.ref.type,
+            id: condition.ref.id,
+          },
+          name: condition.name,
+          detail: condition.detail,
+        })),
+        fixture.id
+      ).toEqual([
+        {
+          typeName: 'dnd5e.api.v1alpha2.encounter.ConditionView',
+          ref: {
+            module: 'dnd5e',
+            type: 'conditions',
+            id: 'fighting_style_dueling',
+          },
+          name: 'Dueling',
+          detail: '',
+        },
+      ]);
+      expect(
+        character.resources.map((resource) => ({
+          typeName: resource.$typeName,
+          key: resource.key,
+          name: resource.name,
+          current: resource.current,
+          maximum: resource.maximum,
+        })),
+        fixture.id
+      ).toEqual([
+        {
+          typeName: 'dnd5e.api.v1alpha2.encounter.ResourceView',
+          key: 'action_surge',
+          name: 'Action Surge',
+          current: 1,
+          maximum: 1,
+        },
+        {
+          typeName: 'dnd5e.api.v1alpha2.encounter.ResourceView',
+          key: 'hit_dice',
+          name: 'Hit Dice',
+          current: 3,
+          maximum: 3,
+        },
+        {
+          typeName: 'dnd5e.api.v1alpha2.encounter.ResourceView',
+          key: 'second_wind',
+          name: 'Second Wind',
+          current: 1,
+          maximum: 1,
+        },
+      ]);
+    }
   });
 
   it('retains ordered Story and exhaustive Debug facts after catch-up', () => {

@@ -19,6 +19,7 @@ import {
 import {
   ArmorClassDisplaySchema,
   CharacterDataSchema,
+  ConditionViewSchema,
   FeatureViewSchema,
   HitPointsSchema,
   RefSchema,
@@ -145,44 +146,51 @@ const characterData = create(CharacterDataSchema, {
     create(FeatureViewSchema, {
       ref: create(RefSchema, {
         module: 'dnd5e',
-        type: 'feature',
-        id: 'fighting-style-dueling',
-      }),
-      name: 'Dueling',
-      detail: 'Fighting style · active with longsword and shield',
-    }),
-    create(FeatureViewSchema, {
-      ref: create(RefSchema, {
-        module: 'dnd5e',
-        type: 'feature',
-        id: 'second-wind',
-      }),
-      name: 'Second Wind',
-      detail: 'Regain hit points as a bonus action',
-      resourceKey: 'second-wind',
-    }),
-    create(FeatureViewSchema, {
-      ref: create(RefSchema, {
-        module: 'dnd5e',
-        type: 'feature',
-        id: 'action-surge',
+        type: 'features',
+        id: 'action_surge',
       }),
       name: 'Action Surge',
-      detail: 'Take one additional action on your turn',
-      resourceKey: 'action-surge',
+      detail: '',
+      resourceKey: 'action_surge',
+    }),
+    create(FeatureViewSchema, {
+      ref: create(RefSchema, {
+        module: 'dnd5e',
+        type: 'features',
+        id: 'second_wind',
+      }),
+      name: 'Second Wind',
+      detail: '',
+      resourceKey: 'second_wind',
     }),
   ],
-  conditions: [],
+  conditions: [
+    create(ConditionViewSchema, {
+      ref: create(RefSchema, {
+        module: 'dnd5e',
+        type: 'conditions',
+        id: 'fighting_style_dueling',
+      }),
+      name: 'Dueling',
+      detail: '',
+    }),
+  ],
   resources: [
     create(ResourceViewSchema, {
-      key: 'second-wind',
-      name: 'Second Wind',
+      key: 'action_surge',
+      name: 'Action Surge',
       current: 1,
       maximum: 1,
     }),
     create(ResourceViewSchema, {
-      key: 'action-surge',
-      name: 'Action Surge',
+      key: 'hit_dice',
+      name: 'Hit Dice',
+      current: 3,
+      maximum: 3,
+    }),
+    create(ResourceViewSchema, {
+      key: 'second_wind',
+      name: 'Second Wind',
       current: 1,
       maximum: 1,
     }),

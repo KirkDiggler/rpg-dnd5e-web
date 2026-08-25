@@ -211,6 +211,35 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(screen.getByText(/catch_up from_seq=18 entries=3/)).toBeTruthy();
   });
 
+  it('resets phase, selection, dice, turn notice, and log mode together on a scenario transition', () => {
+    render(<SessionCombatConcept />);
+    fireEvent.click(screen.getByRole('button', { name: /Longsword/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Map target skeleton-guard' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+
+    expect(screen.getByText('Attack declared')).toBeTruthy();
+    expect(screen.getByTestId('real-dice-presentation')).toBeTruthy();
+    expect(screen.getByText(/seq=18 clock=6/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Spent turn' }));
+
+    expect(screen.queryByText('Attack declared')).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: /Longsword/ })
+        .getAttribute('aria-pressed')
+    ).toBe('false');
+    expect(screen.queryByTestId('real-dice-presentation')).toBeNull();
+    expect(screen.queryByText('Choose an action or move')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Story' }).getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.queryByText(/seq=18 clock=6/)).toBeNull();
+    expect(screen.getByText('Aldric turns the blow aside')).toBeTruthy();
+  });
+
   it('reveals the authoritative result story only after dice release delivery', () => {
     render(<SessionCombatConcept />);
     fireEvent.click(screen.getByRole('button', { name: /Longsword/ }));

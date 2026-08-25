@@ -66,7 +66,9 @@ function StatusBadge({ status }: { status: InformationalStatus }) {
   return (
     <span
       className={`${styles.effectBadge} ${styles[`effect_${status.tone}`]}`}
-      title={`${status.label} · ${status.detail}`}
+      title={
+        status.detail ? `${status.label} · ${status.detail}` : status.label
+      }
       data-informational="true"
     >
       <span aria-hidden="true">{status.icon}</span>

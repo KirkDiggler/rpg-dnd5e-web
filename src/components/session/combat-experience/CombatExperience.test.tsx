@@ -85,11 +85,13 @@ describe('CombatExperience shared production shell', () => {
     expect(screen.queryByText('Blessed')).toBeNull();
   });
 
-  it('keeps Fighter features and resources informational rather than executable', () => {
+  it('keeps Fighter features, conditions, and resources informational without invented detail', () => {
     render(<CombatExperience {...propsFor()} />);
 
     expect(screen.getByText('Dueling').dataset.informational).toBe('true');
+    expect(screen.getByText('Dueling').title).toBe('Dueling');
     expect(screen.getByText('Action Surge').dataset.informational).toBe('true');
+    expect(screen.getByText('Action Surge').title).toBe('Action Surge');
     expect(screen.getByText('Second Wind 1/1').dataset.informational).toBe(
       'true'
     );
@@ -115,23 +117,41 @@ describe('CombatExperience shared production shell', () => {
     ).toBe(false);
   });
 
-  it('keeps End Turn unavailable when its separate server declaration refuses it', () => {
+  it('suppresses Attack, Move, and End Turn callbacks when their declarations are disabled', () => {
     const blockers = SESSION_COMBAT_FIXTURES.find(
       (fixture) => fixture.id === 'spectating'
     )!.declarations;
+    const onSelectDeclaration = vi.fn();
+    const onEndTurn = vi.fn();
     render(
       <CombatExperience
         {...propsFor(fresh, {
           declarations: blockers,
+          onSelectDeclaration,
+          onEndTurn,
         })}
       />
     );
 
+    const attack = screen.getByRole('button', {
+      name: /Attack.*Unavailable: Not your turn\./,
+    });
+    const move = screen.getByRole('button', {
+      name: /Move.*Unavailable: Not your turn\./,
+    });
     const endTurn = screen.getByRole('button', {
       name: /End turn.*Unavailable: Not your turn\./,
     });
+    fireEvent.click(attack);
+    fireEvent.click(move);
+    fireEvent.click(endTurn);
+
+    expect((attack as HTMLButtonElement).disabled).toBe(true);
+    expect((move as HTMLButtonElement).disabled).toBe(true);
     expect((endTurn as HTMLButtonElement).disabled).toBe(true);
     expect(endTurn.title).toBe('Not your turn.');
+    expect(onSelectDeclaration).not.toHaveBeenCalled();
+    expect(onEndTurn).not.toHaveBeenCalled();
   });
 
   it('exposes only available members from the armed declaration while retaining provider why text', () => {
@@ -195,9 +215,17 @@ describe('CombatExperience shared production shell', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Longsword/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Move/ }));
     fireEvent.click(screen.getByRole('button', { name: 'End turn' }));
 
-    expect(onSelectDeclaration).toHaveBeenCalledWith(fresh.declarations[0]);
+    expect(onSelectDeclaration).toHaveBeenNthCalledWith(
+      1,
+      fresh.declarations[0]
+    );
+    expect(onSelectDeclaration).toHaveBeenNthCalledWith(
+      2,
+      fresh.declarations[1]
+    );
     expect(onEndTurn).toHaveBeenCalledWith(fresh.declarations[2]);
   });
 });
