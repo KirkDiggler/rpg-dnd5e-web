@@ -45,14 +45,29 @@ players therefore have the same panel-first target authority. They cannot
 dispatch. A map click with no armed action never attacks. Multiple offers are
 never auto-selected. End Turn echoes its own unique available declaration.
 Selectors are compared and echoed only; they are never parsed or constructed.
+Dispatch also validates each generated target shape: Attack requires MEMBER,
+turn-clock Move requires PATH, and End Turn requires NONE. A malformed shape,
+empty selector/member, unavailable fact, duplicate, or missing candidate never
+dispatches.
 
 Movement keeps the atlas path/request and authoritative response-step animation.
 Authority is fail-closed: WORLD/WORLD supplies the exact empty selector;
-TURN/TURN requires one available non-empty Move declaration; partial,
-mismatched, missing, and ambiguous snapshots lock the path preview and are not
-ready. WORLD/WORLD remains unlocked. `remaining` is
-rendered as provider display context only. The web performs no feet-to-cell or
-path-price calculation.
+TURN/TURN requires one available non-empty PATH Move declaration; partial,
+mismatched, missing, ambiguous, stale, and failed snapshots lock the path
+preview and are not ready. WORLD/WORLD remains unlocked only while both
+snapshots are fresh. `remaining` is rendered as provider display context only.
+The web performs no feet-to-cell or path-price calculation.
+
+Turn and Afford keep last-good display separately from execution freshness.
+Every invalidate/refetch revokes `fresh` immediately; only the newest successful
+request for the current key restores it, while errors and reversed/stale
+responses remain false. Each delivered event sequence revokes both before the
+coalesced refresh starts. Old declarations may remain visible with an explicit
+stale marker, but Attack, Move preview/dispatch, and End Turn stay disabled.
+A selector-bearing FAILED_PRECONDITION uses one recovery path for all three
+verbs: clear selection, revoke authority, show `That option changed; review
+your current actions.`, refresh Turn+Afford, append only refreshed provider
+`why.text` when present, and never auto-retry.
 
 ## Public identity and private status
 
@@ -62,13 +77,21 @@ turn clocks. A missing viewer roster row renders `You` / `Adventurer`; neither
 Turn participants nor private CharacterData may substitute identity. The route
 no longer calls v1alpha1 `GetCharacter` for the local model, HP, or level.
 
-Authenticated-owner `useCharacterData(characterId)` supplies exact level, HP,
-base speed, AC display, equipment, features, conditions, and resources. It
-keeps the last confirmed value on background failure, records invalidation
-while a read is in flight, and performs one serialized trailing owner snapshot.
-That last confirmed private value remains usable while newer door/path state is
-published. Key changes and authoritative mutation replacement cancel the read
-and any trailing pass. EquipItem and UnequipItem success replace the cache directly
+Authenticated-owner `useCharacterData(characterId, playerId)` supplies exact
+level, HP, base speed, AC display, equipment, features, conditions, and
+resources. Session, character, and authenticated player all participate in the
+synchronous private scope; changing owner with the same session/character
+clears prior private value/error before an owner-gated reread. It keeps the last
+confirmed value on background failure, records invalidation while a read is in
+flight, and performs one serialized trailing owner snapshot. That last
+confirmed private value remains visible with a stale warning while newer public
+door/path state is published.
+
+An initial private loading/failure never blocks atlas, position, roster, Turn,
+Afford, Story, or map interaction. The shared dock renders a retryable private
+status area and omits private badges/equipment until CharacterData succeeds.
+Key changes and authoritative mutation replacement cancel the read and any
+trailing pass. EquipItem and UnequipItem success replace the cache directly
 with the complete response `CharacterData`; the web does not recompute slots,
 AC, damage, HP, or resources.
 
@@ -82,9 +105,10 @@ serialized lane.
 
 `SessionEncounterView` then applies each delivered event in this order:
 
-1. schedule immediate, burst-coalesced CharacterData/Turn/Afford/View/Where
-   (plus roster/door) invalidation; passes are serialized and invalidations
-   observed during one pass force one immediate coalesced trailing pass;
+1. synchronously revoke Turn/Afford execution freshness, then schedule the
+   immediate, burst-coalesced CharacterData/Turn/Afford/View/Where (plus
+   roster/door) refresh; passes are serialized and invalidations observed
+   during one pass force one immediate coalesced trailing pass;
 2. ingest raw Debug and authoritative typed presentation facts;
 3. advance presentation-only other-member pacing;
 4. apply door notice and run-ending route handlers.
@@ -100,11 +124,18 @@ also fences reversed responses and key changes like Afford.
 ## Story, dice, and diagnostics
 
 The presentation reducer keys authority by `(session, seq)` and reconciles
-AttackResponse with typed Struck/Missed events. The acting player sees no
-current Story verdict, result, or live announcement until the authoritative d20
-presentation is explicitly released. Other players, monsters, and catch-up
-history auto-settle. Conflicting facts fail closed; raw payload bytes never
-become Story and no bonus, damage, or HP arithmetic occurs in the web.
+AttackResponse with typed Struck/Missed events. Stable public-roster roles and
+names are the only dice/Story identity authority; Turn participants never
+supply or overwrite identity. Unknown roles remain unresolved with no inferred
+ownership, and late roster facts may authorize them. Once a local player roll
+is armed, FightEnded or a transient empty participant/roster snapshot cannot
+revoke or auto-settle it. The acting player sees no current Story verdict,
+result, or live announcement until the authoritative d20 presentation is
+explicitly released. Other known players, monsters, and catch-up history
+auto-settle. Conflicting facts fail closed; raw payload bytes never become
+Story. Result presentation contains only provider roll, total, against,
+hit/critical, damage/type, and AttackRef facts—never a bonus equation, target
+`hpAfter`, peer exact HP, or client arithmetic.
 
 Story is always present in production. Raw Debug ingests immediately but is
 rendered only in development or on an explicitly enabled Concepts diagnostic
@@ -113,8 +144,9 @@ polite live log.
 
 ## Scope reset
 
-`SessionEncounterView` keys its mounted production scope by session/member.
-Selection, presentation, Story/Debug, equipment-open state, private data,
+`SessionEncounterView` keys its mounted production scope by
+session/member/authenticated-player. Selection, presentation, Story/Debug,
+equipment-open state, private data,
 timers, and callbacks therefore reset synchronously. Controller and query
 generations fence late completions and stale map callbacks. ENDED closes
 Equipment immediately, marks the preserved game surface inert and hidden,

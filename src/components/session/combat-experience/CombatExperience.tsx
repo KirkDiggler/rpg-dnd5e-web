@@ -88,6 +88,10 @@ export function CombatExperience({
   participants,
   declarations,
   characterData,
+  privateStatus,
+  privateStatusMessage,
+  onRetryPrivateStatus,
+  authorityFresh,
   presentationState,
   phase,
   showTurnNotice,
@@ -117,40 +121,46 @@ export function CombatExperience({
     (participant) => participant.active
   );
   const isViewerTurn = activeParticipant?.member === viewerMember;
-  const selection = selectCombatExperience(declarations, presentationState);
+  const selection = authorityFresh
+    ? selectCombatExperience(declarations, presentationState)
+    : null;
   const moveDeclarations = declarations.filter(
     (declaration) => declaration.verb === Verb.MOVE
   );
   const movementRemainingFeet =
     moveDeclarations.length === 1 ? moveDeclarations[0]?.remaining : undefined;
-  const hp = characterData.hitPoints;
+  const hp = characterData?.hitPoints;
   const hpPercent = hp?.max
     ? Math.max(0, Math.min(100, Math.round((hp.current / hp.max) * 100)))
     : 0;
-  const presentedCharacter = presentCharacterData(characterData);
-  const statuses: InformationalStatus[] = [
-    ...presentedCharacter.features.map((feature, index) => ({
-      key: `feature:${feature.ref?.module}:${feature.ref?.type}:${feature.ref?.id}:${index}`,
-      label: feature.name,
-      detail: feature.detail,
-      icon: feature.icon,
-      tone: feature.tone,
-    })),
-    ...presentedCharacter.conditions.map((condition, index) => ({
-      key: `condition:${condition.ref?.module}:${condition.ref?.type}:${condition.ref?.id}:${index}`,
-      label: condition.name,
-      detail: condition.detail,
-      icon: condition.icon,
-      tone: condition.tone,
-    })),
-    ...presentedCharacter.resources.map((resource, index) => ({
-      key: `resource:${resource.key}:${index}`,
-      label: `${resource.name} ${resource.current}/${resource.maximum}`,
-      detail: `${resource.current}/${resource.maximum}`,
-      icon: resource.icon,
-      tone: resource.tone,
-    })),
-  ];
+  const presentedCharacter = characterData
+    ? presentCharacterData(characterData)
+    : undefined;
+  const statuses: InformationalStatus[] = presentedCharacter
+    ? [
+        ...presentedCharacter.features.map((feature, index) => ({
+          key: `feature:${feature.ref?.module}:${feature.ref?.type}:${feature.ref?.id}:${index}`,
+          label: feature.name,
+          detail: feature.detail,
+          icon: feature.icon,
+          tone: feature.tone,
+        })),
+        ...presentedCharacter.conditions.map((condition, index) => ({
+          key: `condition:${condition.ref?.module}:${condition.ref?.type}:${condition.ref?.id}:${index}`,
+          label: condition.name,
+          detail: condition.detail,
+          icon: condition.icon,
+          tone: condition.tone,
+        })),
+        ...presentedCharacter.resources.map((resource, index) => ({
+          key: `resource:${resource.key}:${index}`,
+          label: `${resource.name} ${resource.current}/${resource.maximum}`,
+          detail: `${resource.current}/${resource.maximum}`,
+          icon: resource.icon,
+          tone: resource.tone,
+        })),
+      ]
+    : [];
 
   return (
     <div className={styles.combatExperience}>
@@ -251,7 +261,9 @@ export function CombatExperience({
             <div className={styles.viewerIdentity}>
               <strong>{viewerName}</strong>
               <span>
-                Level {characterData.level} {labelOf(viewerClassRefId)}
+                {characterData
+                  ? `Level ${characterData.level} ${labelOf(viewerClassRefId)}`
+                  : labelOf(viewerClassRefId)}
               </span>
             </div>
             {hp && (
@@ -267,7 +279,7 @@ export function CombatExperience({
                 </div>
               </div>
             )}
-            {characterData.armorClassDetail && (
+            {characterData?.armorClassDetail && (
               <div
                 className={styles.statBlock}
                 title={characterData.armorClassDetail.note}
@@ -276,21 +288,42 @@ export function CombatExperience({
                 <strong>{characterData.armorClassDetail.total}</strong>
               </div>
             )}
-            <div className={styles.statBlock}>
-              <small>{isViewerTurn ? 'Move' : 'Speed'}</small>
-              <strong>
-                {isViewerTurn && movementRemainingFeet !== undefined
-                  ? movementRemainingFeet
-                  : characterData.baseSpeedFeet}{' '}
-                ft
-              </strong>
-            </div>
-            <div className={styles.effects} aria-label="Character status">
-              {statuses.map((status) => (
-                <StatusBadge key={status.key} status={status} />
-              ))}
-            </div>
-            {onOpenEquipment && (
+            {characterData && (
+              <div className={styles.statBlock}>
+                <small>{isViewerTurn ? 'Move' : 'Speed'}</small>
+                <strong>
+                  {isViewerTurn && movementRemainingFeet !== undefined
+                    ? movementRemainingFeet
+                    : characterData.baseSpeedFeet}{' '}
+                  ft
+                </strong>
+              </div>
+            )}
+            {statuses.length > 0 && (
+              <div className={styles.effects} aria-label="Character status">
+                {statuses.map((status) => (
+                  <StatusBadge key={status.key} status={status} />
+                ))}
+              </div>
+            )}
+            {privateStatus !== 'ready' && (
+              <div className={styles.privateStatus} role="status">
+                <strong>
+                  {privateStatus === 'loading'
+                    ? 'Loading private status'
+                    : privateStatus === 'stale'
+                      ? 'Private status may be out of date'
+                      : 'Private status unavailable'}
+                </strong>
+                {privateStatusMessage && <small>{privateStatusMessage}</small>}
+                {onRetryPrivateStatus && (
+                  <button type="button" onClick={onRetryPrivateStatus}>
+                    Retry private status
+                  </button>
+                )}
+              </div>
+            )}
+            {characterData && onOpenEquipment && (
               <button
                 type="button"
                 className={styles.equipmentButton}
@@ -310,6 +343,7 @@ export function CombatExperience({
             viewerMember={viewerMember}
             participants={participants}
             declarations={declarations}
+            authorityFresh={authorityFresh}
             armedDeclarationId={
               presentationState.armedDeclarationId ?? undefined
             }

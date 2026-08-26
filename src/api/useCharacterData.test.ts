@@ -23,7 +23,11 @@ vi.mock('./client', () => ({
   },
 }));
 
-import { useCharacterData } from './useCharacterData';
+import { useCharacterData as useOwnerScopedCharacterData } from './useCharacterData';
+
+function useCharacterData(characterId: string, ownerScope = 'player-1') {
+  return useOwnerScopedCharacterData(characterId, ownerScope);
+}
 
 function character(level: number, current = 20): CharacterData {
   return create(CharacterDataSchema, {
@@ -188,6 +192,55 @@ describe('useCharacterData', () => {
     await waitFor(() => expect(result.current.error).toBe(notFound));
     expect(result.current.characterData).toBeUndefined();
     expect(result.current.loading).toBe(false);
+  });
+
+  it('includes the authenticated owner in its synchronous private scope and rereads the same character for a new owner', async () => {
+    const firstOwner = character(3, 24);
+    const secondOwnerRead = deferred<GetCharacterDataResponse>();
+    hoisted.getCharacterDataFn
+      .mockResolvedValueOnce(response(firstOwner))
+      .mockReturnValueOnce(secondOwnerRead.promise);
+
+    const observations: Array<{
+      ownerScope: string;
+      characterData: CharacterData | undefined;
+      error: Error | null;
+    }> = [];
+    const { result, rerender } = renderHook(
+      ({ ownerScope }) => {
+        const value = useCharacterData('fighter-1', ownerScope);
+        observations.push({
+          ownerScope,
+          characterData: value.characterData,
+          error: value.error,
+        });
+        return value;
+      },
+      { initialProps: { ownerScope: 'player-1' } }
+    );
+    await waitFor(() => expect(result.current.characterData).toBe(firstOwner));
+
+    observations.length = 0;
+    rerender({ ownerScope: 'player-2' });
+
+    expect(
+      observations.find(({ ownerScope }) => ownerScope === 'player-2')
+    ).toEqual({
+      ownerScope: 'player-2',
+      characterData: undefined,
+      error: null,
+    });
+    expect(result.current.loading).toBe(true);
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+
+    const secondOwner = character(4, 18);
+    await act(async () => {
+      secondOwnerRead.resolve(response(secondOwner));
+      await secondOwnerRead.promise;
+    });
+    expect(result.current.characterData).toBe(secondOwner);
   });
 
   it('never exposes the previous key data or error during the first render of a nonempty key change', async () => {

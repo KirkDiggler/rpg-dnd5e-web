@@ -4,10 +4,6 @@ import type {
 } from '@/components/ui/dice/dicePresentationEvent';
 import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import type { AttackResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
-import {
-  MemberKind,
-  type Participant,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
@@ -32,9 +28,9 @@ import type {
 export interface UseCombatPresentationArgs {
   readonly session: string;
   readonly viewerMember: string;
-  /** Public roster names may arrive before Turn participants. */
+  /** Stable public-roster identity; Turn participants are never consulted. */
   readonly memberNames?: Readonly<Record<string, string>>;
-  readonly participants?: readonly Participant[];
+  readonly memberRoles?: Readonly<Record<string, 'player' | 'monster'>>;
 }
 
 export interface UseCombatPresentationResult {
@@ -60,21 +56,11 @@ export interface UseCombatPresentationResult {
 function presentationConfig(
   args: UseCombatPresentationArgs
 ): Omit<CombatPresentationConfigFact, 'type'> {
-  const memberNames: Record<string, string> = { ...(args.memberNames ?? {}) };
-  const rollerRoles: Record<string, 'player' | 'monster'> = {};
-  for (const participant of args.participants ?? []) {
-    memberNames[participant.member] = participant.name;
-    if (participant.kind === MemberKind.PLAYER) {
-      rollerRoles[participant.member] = 'player';
-    } else if (participant.kind === MemberKind.MONSTER) {
-      rollerRoles[participant.member] = 'monster';
-    }
-  }
   return {
     session: args.session,
     viewerMember: args.viewerMember,
-    memberNames,
-    rollerRoles,
+    memberNames: { ...(args.memberNames ?? {}) },
+    rollerRoles: { ...(args.memberRoles ?? {}) },
   };
 }
 
@@ -118,16 +104,16 @@ function scopedPresentationReducer(
 export function useCombatPresentation(
   args: UseCombatPresentationArgs
 ): UseCombatPresentationResult {
-  const { session, viewerMember, memberNames, participants } = args;
+  const { session, viewerMember, memberNames, memberRoles } = args;
   const config = useMemo(
     () =>
       presentationConfig({
         session,
         viewerMember,
         memberNames,
-        participants,
+        memberRoles,
       }),
-    [memberNames, participants, session, viewerMember]
+    [memberNames, memberRoles, session, viewerMember]
   );
   const token = useMemo<ScopeToken>(
     () => Object.freeze({ session, viewerMember }),
@@ -205,15 +191,18 @@ export function useCombatPresentation(
     current !== undefined &&
     !current.conflicted &&
     current.authority.attacker === state.viewerMember &&
-    state.rollerRoles[current.authority.attacker] === 'player';
+    current.localPlayerOwned &&
+    current.settlement !== 'auto';
   const phase: CombatExperiencePhase =
     !current || current.conflicted
       ? 'fresh'
-      : current.settlement === 'armed'
-        ? 'awaiting-roll'
-        : current.settlement === 'released' && !current.eventAccepted
-          ? 'released-waiting-event'
-          : 'settled';
+      : current.settlement === 'unresolved'
+        ? 'fresh'
+        : current.settlement === 'armed'
+          ? 'awaiting-roll'
+          : current.settlement === 'released' && !current.eventAccepted
+            ? 'released-waiting-event'
+            : 'settled';
 
   return {
     state,

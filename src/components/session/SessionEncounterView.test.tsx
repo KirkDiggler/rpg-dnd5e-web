@@ -408,21 +408,39 @@ describe('SessionEncounterView production combat integration', () => {
     expect(screen.queryByTestId('session-canvas')).toBeNull();
   });
 
-  it('keeps loading until atlas, position, and owner-private CharacterData land', () => {
+  it('keeps loading only until the public atlas and position land', () => {
     renderView();
     screen.getByText(/loading the tomb/i);
   });
 
-  it('retries a failed owner-private CharacterData read', async () => {
-    readyScene();
+  it('keeps map and declarations usable through an initial private failure and retries only the explicit dock status', async () => {
+    readyTurn();
     hoisted.getCharacterDataFn
       .mockRejectedValueOnce(new Error('private status unavailable'))
       .mockResolvedValueOnce({ character: privateCharacterData() });
+    hoisted.attackFn.mockReturnValue(new Promise(() => {}));
     renderView();
 
-    await waitFor(() => screen.getByText(/private status unavailable/i));
-    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
     await waitFor(() => screen.getByTestId('session-canvas'));
+    await screen.findByText('Private status unavailable');
+    expect(screen.queryByText('24/28')).toBeNull();
+    expect(screen.queryByTestId('session-combat-equipment-button')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+    expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /retry private status/i })
+    );
+    await waitFor(() => screen.getByText('24/28'));
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
   });
 
@@ -650,6 +668,9 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.whereResult.refetch.mockResolvedValue(undefined);
     renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false)
+    );
 
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
@@ -1163,6 +1184,44 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
   });
 
+  it('synchronously resets and rereads private state when authenticated owner changes with the same session and character', async () => {
+    readyScene();
+    const secondOwner = deferred<{
+      character: ReturnType<typeof privateCharacterData>;
+    }>();
+    hoisted.getCharacterDataFn
+      .mockResolvedValueOnce({ character: privateCharacterData() })
+      .mockReturnValueOnce(secondOwner.promise);
+    const { rerender } = renderView();
+    await screen.findByText('24/28');
+
+    rerender(
+      <SessionEncounterView
+        sessionId="enc-1"
+        characterId="char-1"
+        playerId="player-2"
+        onBack={() => {}}
+      />
+    );
+
+    expect(screen.queryByText('24/28')).toBeNull();
+    await screen.findByText(/loading private status/i);
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+
+    await act(async () => {
+      secondOwner.resolve({
+        character: privateCharacterData({
+          playerId: 'player-2',
+          hitPoints: { current: 9, max: 12, temp: 0 },
+        }),
+      });
+      await secondOwner.promise;
+    });
+    await screen.findByText('9/12');
+  });
+
   it('resets selection, Story/Debug, and private state on member change and fences stale map callbacks', async () => {
     readyTurn();
     const live = deferredStream([]);
@@ -1272,18 +1331,215 @@ describe('SessionEncounterView production combat integration', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('surfaces the friendly not-your-turn Move refusal and refreshes authority', async () => {
-    readyScene();
-    hoisted.moveFn.mockRejectedValue(
-      new ConnectError('not your turn', Code.FailedPrecondition)
+  it('synchronously disables declarations and movement preview when an event invalidates authority, then waits for both current snapshots', async () => {
+    readyTurn();
+    const update = deferredStream([
+      event(EventKind.FIGHT_STARTED, {
+        case: 'fightStarted',
+        value: { members: ['char-1', 'skeleton-1'] },
+      } as SessionEvent['body']),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(update.stream);
+    renderView();
+    const attack = await screen.findByRole('button', { name: /longsword/i });
+    fireEvent.click(attack);
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    const staleTargetClick = hoisted.lastCanvasProps.current?.onEntityClick;
+
+    const turnRefresh = deferred<unknown>();
+    const affordRefresh = deferred<unknown>();
+    hoisted.turnFn.mockReturnValue(turnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(affordRefresh.promise);
+    update.release();
+
+    await screen.findByText(/actions may be out of date/i);
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
+    act(() => staleTargetClick?.('skeleton-1'));
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      affordRefresh.resolve({
+        clock: ClockKind.TURN,
+        declarations: [
+          attackDeclaration(),
+          moveDeclaration(),
+          endTurnDeclaration(),
+        ],
+      });
+      await affordRefresh.promise;
+    });
+    expect(screen.getByText(/actions may be out of date/i)).toBeTruthy();
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
+
+    await act(async () => {
+      turnRefresh.resolve({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 2,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', { active: true }),
+          participant('skeleton-1'),
+        ],
+      });
+      await turnRefresh.promise;
+    });
+    await waitFor(() =>
+      expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
+    );
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false);
+  });
+
+  it('recovers an Attack selector refusal with generic copy, refreshed provider why, cleared arm, and no retry', async () => {
+    readyTurn();
+    hoisted.attackFn.mockRejectedValue(
+      new ConnectError('raw selector mismatch', Code.FailedPrecondition)
     );
     renderView();
-    await waitFor(() => screen.getByTestId('session-canvas'));
+    await screen.findByRole('button', { name: /longsword/i });
+
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [
+        attackDeclaration({
+          available: false,
+          why: create(ShortfallSchema, {
+            reason: ShortfallReason.NO_BUDGET,
+            text: 'Action already spent.',
+          }),
+        }),
+        moveDeclaration(),
+        endTurnDeclaration(),
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+
+    await screen.findByText(
+      'That option changed; review your current actions.'
+    );
+    expect(screen.queryByText(/raw selector mismatch/i)).toBeNull();
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    await waitFor(() =>
+      screen.getByText(
+        'That option changed; review your current actions. Action already spent.'
+      )
+    );
+    expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers an End Turn selector refusal instead of swallowing it and never retries', async () => {
+    readyTurn();
+    hoisted.endTurnFn.mockRejectedValue(
+      new ConnectError('stale end selector', Code.FailedPrecondition)
+    );
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /end turn/i }));
+
+    await screen.findByText(
+      'That option changed; review your current actions.'
+    );
+    expect(screen.queryByText(/stale end selector/i)).toBeNull();
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    expect(hoisted.endTurnFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers every Move FailedPrecondition through the stale declaration path regardless of not-your-turn wording', async () => {
+    readyTurn();
+    hoisted.moveFn.mockRejectedValue(
+      new ConnectError('selector no longer current', Code.FailedPrecondition)
+    );
+    renderView();
+    await screen.findByRole('button', { name: /move/i });
+    const turnRefresh = deferred<unknown>();
+    const affordRefresh = deferred<unknown>();
+    hoisted.turnFn.mockReturnValue(turnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(affordRefresh.promise);
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
-    await waitFor(() => screen.getByText(/movement is locked/i));
+
+    await screen.findByText(
+      'That option changed; review your current actions.'
+    );
+    expect(screen.queryByText(/selector no longer current/i)).toBeNull();
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a non-stale Attack failure honest and armed without forcing authority recovery', async () => {
+    readyTurn();
+    hoisted.attackFn.mockRejectedValue(
+      new Error('temporary transport failure')
+    );
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+
+    await screen.findByText('Attack failed: temporary transport failure');
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+      'skeleton-1',
+    ]);
+    expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces an honest non-stale End Turn failure without revoking current authority', async () => {
+    readyTurn();
+    hoisted.endTurnFn.mockRejectedValue(
+      new Error('temporary transport failure')
+    );
+    renderView();
+    const endTurn = await screen.findByRole('button', { name: /end turn/i });
+    fireEvent.click(endTurn);
+
+    await screen.findByText('End turn failed: temporary transport failure');
+    expect((endTurn as HTMLButtonElement).disabled).toBe(false);
+    expect(hoisted.turnFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.affordFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.endTurnFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed malformed provider target kinds for Attack, Move, and End Turn dispatch', async () => {
+    readyTurn([
+      attackDeclaration({ targetKind: TargetKind.PATH }),
+      create(DeclarationSchema, {
+        ...moveDeclaration(),
+        targetKind: TargetKind.MEMBER,
+      }),
+      create(DeclarationSchema, {
+        ...endTurnDeclaration(),
+        targetKind: TargetKind.MEMBER,
+      }),
+    ]);
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    fireEvent.click(screen.getByRole('button', { name: /end turn/i }));
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
   });
 });

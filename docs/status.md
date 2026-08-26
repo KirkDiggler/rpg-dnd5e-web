@@ -24,12 +24,21 @@ let it rot.
   roster names and provider `why.text` without dispatch. Move is fail-closed
   across coherent Turn/Afford clocks (WORLD empty selector, TURN one exact
   Move, mismatch/missing/duplicate locked), with provider `remaining`
-  display-only and no feet/path pricing in the web. Public roster supplies the
-  explicit dock identity/body on every clock; owner-gated CharacterData
-  supplies exact private level/HP/speed/status/equipment but never name/class
-  identity. Equipment mutations replace that cache from the full response
-  without client recomputation. StreamEvents and GetStory share the Task 12
-  sequencer/terminal polling lane; one route funnel serializes and coalesces
+  display-only and no feet/path pricing in the web. Turn/Afford freshness is
+  independent from last-good display: every event synchronously revokes both,
+  stale/error/reversed snapshots disable Attack/Move/End Turn, and selector
+  FAILED_PRECONDITION recovery clears selection, shows generic copy, refreshes,
+  appends only refreshed provider `why.text`, and never retries. Dispatch fails
+  closed unless target kinds are Attack MEMBER, turn Move PATH, End Turn NONE.
+  Public roster supplies the explicit dock identity/body plus stable dice/Story
+  names and roles; transient Turn participants cannot revoke a locally armed
+  roller. Owner-gated CharacterData is scoped by player+character and supplies
+  exact private level/HP/speed/status/equipment but never name/class identity.
+  Initial private failure leaves the map/declarations usable with a retry dock;
+  last-good background state remains visible as stale. Equipment mutations
+  replace that cache from the full response without client recomputation.
+  StreamEvents and GetStory share the Task 12 sequencer/terminal polling lane;
+  one route funnel serializes and coalesces
   CharacterData/Turn/Afford/View/Where invalidation, retaining one immediate
   trailing safety pass for events that arrive during a read. CharacterData
   likewise retains an in-flight invalidation for a trailing owner snapshot.
@@ -40,7 +49,8 @@ let it rot.
   Run-ended presentation closes equipment immediately, places an inert/hidden
   game surface beneath the focused `aria-modal` action, and layers the modal
   above every panel. A transient private refresh error keeps the last confirmed
-  CharacterData and cannot freeze newer door/path state. The old session
+  CharacterData and cannot freeze newer door/path state. Attack outcomes never
+  display bonus equations, target `hpAfter`, or peer exact HP. The old session
   CombatPanel/useCombatPanel/combatPanel, DeclarationRow/TurnHud
   bridge, direct-floor attack, and separate DebugCombatLog are deleted.
   Provider baseline: proto v0.1.143 (`a7db07a`), toolkit dnd5e v0.100.0 /

@@ -234,6 +234,8 @@ export function SessionCombatConcept() {
         participants={fixture.participants}
         declarations={fixture.declarations}
         characterData={fixture.characterData}
+        privateStatus="ready"
+        authorityFresh
         presentationState={presentationState}
         phase={phase}
         showTurnNotice={showTurnNotice}

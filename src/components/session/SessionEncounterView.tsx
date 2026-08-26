@@ -26,6 +26,8 @@ import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/
 import {
   ClockKind,
   DoorState,
+  MemberKind,
+  TargetKind,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -102,7 +104,7 @@ function CenteredCard({ children }: { children: React.ReactNode }) {
 export function SessionEncounterView(props: SessionEncounterViewProps) {
   return (
     <SessionEncounterScope
-      key={`${props.sessionId}\u0000${props.characterId ?? ''}`}
+      key={`${props.sessionId}\u0000${props.characterId ?? ''}\u0000${props.playerId}`}
       {...props}
     />
   );
@@ -111,6 +113,7 @@ export function SessionEncounterView(props: SessionEncounterViewProps) {
 function SessionEncounterScope({
   sessionId,
   characterId,
+  playerId,
   onBack,
 }: SessionEncounterViewProps) {
   const member = characterId ?? '';
@@ -132,6 +135,8 @@ function SessionEncounterScope({
   const {
     clock: affordClock,
     declarations: affordDeclarations,
+    fresh: affordFresh,
+    invalidate: invalidateAfford,
     refetch: refetchAfford,
   } = useSessionAfford(sessionId, member);
   const {
@@ -139,6 +144,8 @@ function SessionEncounterScope({
     active: turnActive,
     round: turnRound,
     participants: turnParticipants,
+    fresh: turnFresh,
+    invalidate: invalidateTurn,
     refetch: refetchTurn,
   } = useSessionTurn(sessionId, member);
   const {
@@ -147,7 +154,7 @@ function SessionEncounterScope({
     error: characterDataError,
     refetch: refetchCharacterData,
     replace: replaceCharacterData,
-  } = useCharacterData(member);
+  } = useCharacterData(member, playerId);
 
   const { equipItem, loading: equipping } = useEquipItem();
   const { unequipItem, loading: unequipping } = useUnequipItem();
@@ -193,7 +200,7 @@ function SessionEncounterScope({
   // transient status error. Neither condition may freeze newer public door /
   // path snapshots behind the prior scene.
   const canDrawSceneNow =
-    !!scene && scene.floorTiles.size > 0 && !!wherePosition && !!characterData;
+    !!scene && scene.floorTiles.size > 0 && !!wherePosition;
   const lastGoodSceneRef = useRef<typeof scene>(null);
   const lastGoodPositionRef = useRef<ReturnType<typeof positionToCube> | null>(
     null
@@ -205,26 +212,39 @@ function SessionEncounterScope({
     lastGoodPathIndexRef.current = pathIndex;
   }
   const canDrawScene =
-    lastGoodSceneRef.current !== null &&
-    lastGoodPositionRef.current !== null &&
-    characterData !== undefined;
+    lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
 
   // Only coherent snapshots authorize movement. WORLD/WORLD echoes the empty
   // selector; TURN/TURN requires one exact available non-empty Move offer.
   const moveOffers = affordDeclarations.filter(
     (declaration) =>
       declaration.verb === Verb.MOVE &&
+      declaration.targetKind === TargetKind.PATH &&
       declaration.available &&
       declaration.id.length > 0
   );
-  const moveDeclarationId: string | undefined =
-    turnClock === ClockKind.WORLD && affordClock === ClockKind.WORLD
+  const authorityFresh =
+    turnFresh &&
+    affordFresh &&
+    turnClock !== ClockKind.UNSPECIFIED &&
+    turnClock === affordClock;
+  const moveDeclarationId: string | undefined = authorityFresh
+    ? turnClock === ClockKind.WORLD
       ? ''
-      : turnClock === ClockKind.TURN &&
-          affordClock === ClockKind.TURN &&
-          moveOffers.length === 1
+      : turnClock === ClockKind.TURN && moveOffers.length === 1
         ? moveOffers[0]!.id
-        : undefined;
+        : undefined
+    : undefined;
+
+  const authorityFreshRef = useRef(authorityFresh);
+  authorityFreshRef.current = authorityFresh;
+  const isMoveAuthorityFresh = useCallback(() => authorityFreshRef.current, []);
+  const staleMoveRecoveryRef = useRef<(declarationId: string) => void>(
+    () => {}
+  );
+  const handleStaleMoveRefusal = useCallback((declarationId: string) => {
+    staleMoveRecoveryRef.current(declarationId);
+  }, []);
 
   const {
     displayPosition,
@@ -234,14 +254,15 @@ function SessionEncounterScope({
     walkTo,
     onWalkAnimationComplete,
     moveError,
-    notYourTurn,
   } = useSessionWalk(
     sessionId,
     member,
     lastGoodPathIndexRef.current,
     wherePosition,
     refetchWhere,
-    moveDeclarationId
+    moveDeclarationId,
+    handleStaleMoveRefusal,
+    isMoveAuthorityFresh
   );
 
   const otherMembers = useMemo(
@@ -252,6 +273,14 @@ function SessionEncounterScope({
     () => new Map([...roster].map(([id, entry]) => [id, entry.name])),
     [roster]
   );
+  const publicMemberRoles = useMemo(() => {
+    const roles = new Map<string, 'player' | 'monster'>();
+    for (const [id, entry] of roster) {
+      if (entry.kind === MemberKind.PLAYER) roles.set(id, 'player');
+      if (entry.kind === MemberKind.MONSTER) roles.set(id, 'monster');
+    }
+    return roles;
+  }, [roster]);
   const experienceClock =
     turnClock === affordClock ? turnClock : ClockKind.UNSPECIFIED;
   const coherentDeclarations =
@@ -261,8 +290,15 @@ function SessionEncounterScope({
   // mismatched, missing, or duplicate authority is shown as locked rather than
   // advertising a path the click handler must refuse.
   const turnLocked =
+    !authorityFresh ||
     moveDeclarationId === undefined ||
     (turnClock === ClockKind.TURN && turnActive !== member);
+
+  const invalidateAuthoritySnapshots = useCallback(() => {
+    authorityFreshRef.current = false;
+    invalidateTurn();
+    invalidateAfford();
+  }, [invalidateAfford, invalidateTurn]);
 
   const refreshCallbacks = useMemo(
     () => ({
@@ -294,11 +330,16 @@ function SessionEncounterScope({
     member,
     clock: experienceClock,
     active: turnActive,
+    authorityFresh,
     memberNames: publicMemberNames,
+    memberRoles: publicMemberRoles,
     participants: turnParticipants,
     declarations: coherentDeclarations,
+    invalidateAuthoritySnapshots,
     scheduleRefresh,
   });
+  staleMoveRecoveryRef.current = (declarationId) =>
+    combat.recoverStaleDeclaration(declarationId, Verb.MOVE);
 
   const refreshKeysForEvent = useCallback(
     (event: SessionEvent): SessionRefreshKey[] => {
@@ -335,10 +376,19 @@ function SessionEncounterScope({
 
   // One delivered-event funnel: immediate query invalidation, immediate raw
   // Debug/authority ingestion, presentation-only pacing, then route handlers.
-  const { acceptStreamEvent } = combat;
+  const { acceptStreamEvent, invalidateAuthority } = combat;
   const handleSessionEvent = useCallback(
     (event: SessionEvent, metadata: SessionEventDeliveryMetadata) => {
-      scheduleRefresh(refreshKeysForEvent(event));
+      // Every delivered sequence advancement revokes action authority before
+      // the coalesced snapshots can begin. Last-good values remain display-only.
+      invalidateAuthority();
+      scheduleRefresh([
+        ...new Set<SessionRefreshKey>([
+          'turn',
+          'afford',
+          ...refreshKeysForEvent(event),
+        ]),
+      ]);
       acceptStreamEvent(event, metadata);
 
       if (event.body.case === 'door') setDoorNotice(null);
@@ -349,12 +399,18 @@ function SessionEncounterScope({
         setRunEnded(event.body.case === 'ended' ? event.body.value.ending : '');
       }
     },
-    [acceptStreamEvent, refreshKeysForEvent, scheduleRefresh]
+    [
+      acceptStreamEvent,
+      invalidateAuthority,
+      refreshKeysForEvent,
+      scheduleRefresh,
+    ]
   );
 
   const handleStreamAgedOut = useCallback(() => {
+    invalidateAuthority();
     scheduleRefresh(['characterData', 'turn', 'afford', 'view', 'where']);
-  }, [scheduleRefresh]);
+  }, [invalidateAuthority, scheduleRefresh]);
   const streamState = useSessionEventStream(
     sessionId,
     member,
@@ -370,17 +426,15 @@ function SessionEncounterScope({
     if (!member) return;
     scheduleRefresh(['afford', 'turn']);
   }, [member, scheduleRefresh]);
-  useEffect(() => {
-    if (!notYourTurn) return;
-    scheduleRefresh(['afford', 'turn']);
-  }, [notYourTurn, scheduleRefresh]);
-
   const handleWalkAnimationComplete = useCallback(
     (completedSeq: number) => {
       onWalkAnimationComplete(completedSeq);
-      if (completedSeq === moveSeq) scheduleRefresh(['afford', 'turn']);
+      if (completedSeq === moveSeq) {
+        invalidateAuthority();
+        scheduleRefresh(['afford', 'turn']);
+      }
     },
-    [moveSeq, onWalkAnimationComplete, scheduleRefresh]
+    [invalidateAuthority, moveSeq, onWalkAnimationComplete, scheduleRefresh]
   );
 
   const handleDoorClick = useCallback(
@@ -445,8 +499,17 @@ function SessionEncounterScope({
   const ownRoster = roster.get(member);
   const characterName = ownRoster?.name || 'You';
   const classRefId = ownRoster?.classRef || undefined;
-  const loading = atlasLoading || whereLoading || characterDataLoading;
-  const blockingError = atlasError ?? whereError ?? characterDataError;
+  const loading = atlasLoading || whereLoading;
+  const blockingError = atlasError ?? whereError;
+  const privateStatus = characterData
+    ? characterDataError
+      ? ('stale' as const)
+      : characterDataLoading
+        ? ('loading' as const)
+        : ('ready' as const)
+    : characterDataError
+      ? ('unavailable' as const)
+      : ('loading' as const);
 
   let content: React.ReactNode;
   if (!characterId) {
@@ -461,7 +524,7 @@ function SessionEncounterScope({
         </Button>
       </CenteredCard>
     );
-  } else if (canDrawScene && characterData) {
+  } else if (canDrawScene) {
     content = (
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <div
@@ -494,6 +557,12 @@ function SessionEncounterScope({
             participants={turnParticipants}
             declarations={coherentDeclarations}
             characterData={characterData}
+            privateStatus={privateStatus}
+            privateStatusMessage={
+              characterDataError ? errorMessage(characterDataError) : undefined
+            }
+            onRetryPrivateStatus={() => void refetchCharacterData()}
+            authorityFresh={authorityFresh}
             presentationState={combat.presentationState}
             phase={combat.phase}
             showTurnNotice={combat.showTurnNotice}
@@ -537,8 +606,12 @@ function SessionEncounterScope({
             onTargetClick={combat.onTargetClick}
             onEndTurn={combat.onEndTurn}
             onLogModeChange={combat.onLogModeChange}
-            onOpenEquipment={() => setEquipmentOpen((open) => !open)}
-            equipmentOpen={equipmentOpen}
+            onOpenEquipment={
+              characterData
+                ? () => setEquipmentOpen((open) => !open)
+                : undefined
+            }
+            equipmentOpen={characterData ? equipmentOpen : false}
             {...(combat.diceWitnessRole === 'roller'
               ? {
                   diceWitnessRole: 'roller' as const,
@@ -582,7 +655,7 @@ function SessionEncounterScope({
               height: 0,
             }}
           >
-            {runEnded === null && (
+            {runEnded === null && characterData && (
               <EquipmentPopover
                 open={equipmentOpen}
                 characterName={characterName}

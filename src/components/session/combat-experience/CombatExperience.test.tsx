@@ -38,6 +38,8 @@ function propsFor(
     participants: fixture.participants,
     declarations: fixture.declarations,
     characterData: fixture.characterData,
+    privateStatus: 'ready',
+    authorityFresh: true,
     presentationState: emptyState,
     phase: 'fresh',
     showTurnNotice: false,
@@ -91,6 +93,75 @@ describe('CombatExperience shared production shell', () => {
     expect(screen.queryByText('Spells')).toBeNull();
     expect(screen.queryByText('Healing Potion')).toBeNull();
     expect(screen.queryByText('Blessed')).toBeNull();
+  });
+
+  it('renders an explicit retryable private status area without private badges or equipment when the initial owner read is unavailable', () => {
+    const retry = vi.fn();
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          characterData: undefined,
+          privateStatus: 'unavailable',
+          privateStatusMessage: 'Private status unavailable.',
+          onRetryPrivateStatus: retry,
+          onOpenEquipment: vi.fn(),
+        })}
+      />
+    );
+
+    screen.getByText('Private status unavailable');
+    expect(screen.queryByText(/level 3/i)).toBeNull();
+    expect(screen.queryByText('22/28')).toBeNull();
+    expect(screen.queryByText('Dueling')).toBeNull();
+    expect(screen.queryByTestId('session-combat-equipment-button')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: /retry private status/i })
+    );
+    expect(retry).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: /longsword/i })).toBeTruthy();
+  });
+
+  it('keeps last-good private status visible with an explicit stale warning after a background error', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          privateStatus: 'stale',
+          privateStatusMessage: 'Temporary owner read failure.',
+          onRetryPrivateStatus: vi.fn(),
+        })}
+      />
+    );
+
+    screen.getByText('Private status may be out of date');
+    screen.getByText('22/28');
+    screen.getByText('Dueling');
+  });
+
+  it('displays last-good declarations as stale but disables every command while authority is invalid', () => {
+    const onSelectDeclaration = vi.fn();
+    const onEndTurn = vi.fn();
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          authorityFresh: false,
+          onSelectDeclaration,
+          onEndTurn,
+        })}
+      />
+    );
+
+    screen.getByText('Actions may be out of date');
+    const attack = screen.getByRole('button', { name: /Longsword/ });
+    const move = screen.getByRole('button', { name: /Move/ });
+    const end = screen.getByRole('button', { name: /End turn/ });
+    expect((attack as HTMLButtonElement).disabled).toBe(true);
+    expect((move as HTMLButtonElement).disabled).toBe(true);
+    expect((end as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(attack);
+    fireEvent.click(move);
+    fireEvent.click(end);
+    expect(onSelectDeclaration).not.toHaveBeenCalled();
+    expect(onEndTurn).not.toHaveBeenCalled();
   });
 
   it('keeps Fighter features, conditions, and resources informational without invented detail', () => {

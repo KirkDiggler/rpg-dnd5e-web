@@ -13,8 +13,12 @@ Date: 2026-08-25
 
 `SessionEncounterView.test.tsx` mounts the production shared shell and proves
 panel-first exact Attack targeting, unavailable provider reasons, no unarmed map
-dispatch, ambiguity refusal, exact Move/End Turn selectors, private
-CharacterData, coalesced event invalidation, immediate Debug, presentation-only
+dispatch, ambiguity and malformed-target-kind refusal, exact Move/End Turn
+selectors, authenticated-owner private cache isolation, public map/action
+operation during initial private failure, Turn/Afford freshness and synchronous
+event invalidation, unified no-retry FAILED_PRECONDITION recovery for all three
+verbs, stable public-roster dice ownership through FightEnded, authoritative-only
+result fields, coalesced refresh, immediate Debug, presentation-only
 other-member pacing, catch-up Story, equipment response replacement, reconnect,
 scope reset, doors, roster pull, movement reconciliation, and the run-ended
 overlay.

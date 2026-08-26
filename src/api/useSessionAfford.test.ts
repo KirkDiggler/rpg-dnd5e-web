@@ -37,6 +37,7 @@ describe('useSessionAfford', () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
     expect(result.current.declarations).toEqual([]);
+    expect(result.current.fresh).toBe(false);
   });
 
   it('refetch is a no-op while session or member is empty', async () => {
@@ -75,6 +76,7 @@ describe('useSessionAfford', () => {
     expect(result.current.declarations).toEqual([]);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
+    expect(result.current.fresh).toBe(true);
   });
 
   it('stores generated nested declarations directly without expanding candidate rows', async () => {
@@ -127,6 +129,52 @@ describe('useSessionAfford', () => {
     expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
     expect(result.current.declarations).toEqual([]);
     expect(result.current.loading).toBe(false);
+  });
+
+  it('invalidate and refetch revoke freshness immediately; an error stays stale until a current success', async () => {
+    const pending = deferred<AffordResponse>();
+    hoisted.affordFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        declarations: [{ id: 'v1.current' }],
+      } as unknown as AffordResponse)
+      .mockReturnValueOnce(pending.promise)
+      .mockRejectedValueOnce(new Error('refresh failed'))
+      .mockResolvedValueOnce({
+        clock: ClockKind.WORLD,
+        declarations: [],
+      } as unknown as AffordResponse);
+
+    const { result } = renderHook(() => useSessionAfford('enc-1', 'char-1'));
+    await act(async () => result.current.refetch());
+    expect(result.current.fresh).toBe(true);
+
+    act(() => result.current.invalidate());
+    expect(result.current.fresh).toBe(false);
+
+    let currentRead!: Promise<void>;
+    act(() => {
+      currentRead = result.current.refetch();
+    });
+    expect(result.current.fresh).toBe(false);
+    await act(async () => {
+      pending.resolve({
+        clock: ClockKind.TURN,
+        declarations: [{ id: 'v1.after-invalidate' }],
+      } as unknown as AffordResponse);
+      await currentRead;
+    });
+    expect(result.current.fresh).toBe(true);
+
+    await act(async () => result.current.refetch());
+    expect(result.current.fresh).toBe(false);
+    expect(result.current.declarations).toEqual([
+      { id: 'v1.after-invalidate' },
+    ]);
+
+    await act(async () => result.current.refetch());
+    expect(result.current.fresh).toBe(true);
+    expect(result.current.clock).toBe(ClockKind.WORLD);
   });
 
   it('KEEPS the last-good clock/declarations on a refetch error, unlike useSessionWhere/useSessionView (the slice-4 last-good lesson)', async () => {
@@ -192,6 +240,7 @@ describe('useSessionAfford', () => {
       void result.current.refetch();
     });
     expect(result.current.loading).toBe(true);
+    expect(result.current.fresh).toBe(false);
 
     const newestDeclarations = [{ id: 'v1.newest' }];
     await act(async () => {
@@ -205,6 +254,7 @@ describe('useSessionAfford', () => {
     expect(result.current.declarations).toBe(newestDeclarations);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
+    expect(result.current.fresh).toBe(true);
 
     await act(async () => {
       first.resolve({

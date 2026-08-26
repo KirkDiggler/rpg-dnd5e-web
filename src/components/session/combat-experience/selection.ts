@@ -1,3 +1,4 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import {
   TargetKind,
   type Declaration,
@@ -9,6 +10,11 @@ import type { CombatExperiencePresentationState } from './types';
 /** Safe copy for an offer rejected because the authoritative offer changed. */
 export const STALE_DECLARATION_MESSAGE =
   'That option changed; review your current actions.';
+
+/** Selector-bearing session verbs use FAILED_PRECONDITION for stale offers. */
+export function isStaleDeclarationRefusal(error: unknown): boolean {
+  return ConnectError.from(error).code === Code.FailedPrecondition;
+}
 
 /**
  * Adds provider-authored refusal copy when one is present. Nothing parses or
@@ -49,6 +55,7 @@ export function selectCombatExperience(
   );
   if (declarationMatches.length !== 1) return null;
   const declaration = declarationMatches[0]!;
+  if (!declaration.id) return null;
 
   let candidate: TargetCandidate | null = null;
   if (
@@ -60,6 +67,7 @@ export function selectCombatExperience(
     );
     if (candidateMatches.length !== 1) return null;
     candidate = candidateMatches[0]!;
+    if (!candidate.member) return null;
   }
 
   if (!declaration.available) {

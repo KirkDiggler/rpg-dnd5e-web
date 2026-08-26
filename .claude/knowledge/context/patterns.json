@@ -15,5 +15,23 @@
       "src/api/useCharacterData.ts",
       "rpg-dnd5e-web#822"
     ]
+  },
+  {
+    "type": "pattern",
+    "id": "separate-last-good-display-from-execution-freshness",
+    "created": "2026-08-26",
+    "updated": "2026-08-26",
+    "status": "active",
+    "name": "Separate last-good display from execution freshness",
+    "description": "For server-authored command declarations, retaining the last successful values improves continuity, but those values must not remain dispatch authority after an event, refetch, or error. Expose a separate fresh flag and synchronous invalidate operation. Revoke freshness before scheduling reconciliation; restore it only on a successful response for the newest current key/generation.",
+    "example": "useSessionTurn/useSessionAfford retain old display while fresh=false; SessionEncounterView synchronously invalidates both on every delivered sequence, and CombatExperience disables Attack, Move preview/dispatch, and End Turn until both are fresh and coherent.",
+    "anti_pattern": "Treating last-good values as executable after background refresh begins/fails, or clearing useful display just to fail closed.",
+    "domain": "web/session-action-authority",
+    "references": [
+      "src/api/useSessionTurn.ts",
+      "src/api/useSessionAfford.ts",
+      "src/components/session/SessionEncounterView.tsx",
+      "rpg-dnd5e-web#822"
+    ]
   }
 ]

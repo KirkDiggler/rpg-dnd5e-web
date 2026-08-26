@@ -6,119 +6,125 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { sessionClient } from './client';
 
 export interface UseSessionAffordResult {
+  /** Last successful provider display values for this exact session/member. */
   clock: ClockKind;
   declarations: Declaration[];
   loading: boolean;
   error: Error | null;
+  /** True only after the newest request generation succeeds. */
+  fresh: boolean;
+  /** Synchronously revokes authority without discarding last-good display. */
+  invalidate: () => void;
   refetch: () => Promise<void>;
 }
 
+interface AffordState {
+  key: string;
+  clock: ClockKind;
+  declarations: Declaration[];
+  loading: boolean;
+  error: Error | null;
+  fresh: boolean;
+}
+
+function emptyState(key: string): AffordState {
+  return {
+    key,
+    clock: ClockKind.UNSPECIFIED,
+    declarations: [],
+    loading: false,
+    error: null,
+    fresh: false,
+  };
+}
+
 /**
- * Fetches one member's turn-economy budget (`SessionService.Afford`) —
- * "backend tells dumb client what it can do" (Kirk's ruling, toolkit#1138,
- * carried into `turnHud.ts`'s own doc comment, which is the pure mapping
- * this hook's answer feeds). `AffordResponse`'s own doc comment: empty
- * `declarations` on `CLOCK_KIND_WORLD` IS the answer (free roam), never
- * "unknown" — this hook does not distinguish that from "never fetched
- * yet" either; both start at `CLOCK_KIND_UNSPECIFIED`/`[]` until a real
- * response lands, and `turnHud.ts` treats anything short of
- * `CLOCK_KIND_TURN` as free-roam by design (see its own doc comment).
- *
- * `session`/`member` empty/falsy is the "not ready yet" state, same
- * convention as `useSessionWhere`/`useSessionView` — `loading`/`error`
- * both clear rather than leaving a stale error visible from a previous
- * session/member pair.
- *
- * NO MOUNT FETCH, same reasoning as `useSessionView`'s own doc comment: an
- * Afford answer only means something relative to the CURRENT game state
- * (which clock a member is in, right now), not something that stays true
- * just because a component mounted. `SessionEncounterView` is the single
- * owner of every fetch — once when the member is first known, then again
- * on the specific `StreamEvents` kinds that can change a budget (fight
- * start/end, turn end, a strike/miss/downing landing, the encounter
- * ending), after the local player's own Move/Attack round-trips, and
- * after a fight-lock `Move` refusal (see that component's own comments
- * for the full trigger list — this hook only owns the RPC and the state
- * machine around it, not when to call it).
- *
- * KEEPS LAST-GOOD ON A REFETCH ERROR, unlike `useSessionWhere`/
- * `useSessionView`, which null out on failure. The slice-4 lesson
- * (Copilot review, PR #768: `pathIndex` silently going dead on a
- * background refetch failure while the canvas kept drawing the old
- * scene) has the same shape here — a `clock`/`declarations` pair that
- * goes stale because ONE background Afford refetch failed is a worse
- * answer than the LAST one the server actually gave, so a failed refetch
- * only sets `error` and leaves `clock`/`declarations` exactly as they
- * were. The very first fetch has no "last good" to fall back to, so it
- * behaves the same either way: both start at the unfetched defaults
- * above and stay there until a call actually succeeds.
+ * Fetches the member's generated action declarations without interpreting
+ * them. Last-good values remain displayable after invalidation or failure, but
+ * `fresh` is the separate execution authority: refetch/invalidate revoke it
+ * immediately, only a successful response for the current key/generation
+ * restores it, and errors remain stale. The route owns all fetch triggers.
  */
 export function useSessionAfford(
   session: string,
   member: string
 ): UseSessionAffordResult {
-  const [clock, setClock] = useState<ClockKind>(ClockKind.UNSPECIFIED);
-  const [declarations, setDeclarations] = useState<Declaration[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  // Fences both key changes and overlapping refetches. Only the newest call
-  // for the current session/member pair may publish any state transition,
-  // including its catch/finally updates. The key ref updates during render so
-  // even a completion that races ahead of the reset effect sees the new key.
+  const key = `${session}\u0000${member}`;
+  const [state, setState] = useState<AffordState>(() => emptyState(key));
   const generationRef = useRef(0);
-  const keyRef = useRef({ session, member });
-  keyRef.current = { session, member };
+  const keyRef = useRef(key);
+  keyRef.current = key;
+
+  const invalidate = useCallback(() => {
+    if (keyRef.current !== key) return;
+    generationRef.current += 1;
+    setState((previous) =>
+      previous.key === key
+        ? { ...previous, loading: false, fresh: false }
+        : emptyState(key)
+    );
+  }, [key]);
 
   const fetchAfford = useCallback(async () => {
-    if (
-      keyRef.current.session !== session ||
-      keyRef.current.member !== member
-    ) {
-      return;
-    }
+    if (keyRef.current !== key) return;
     if (!session || !member) {
       generationRef.current += 1;
-      setClock(ClockKind.UNSPECIFIED);
-      setDeclarations([]);
-      setError(null);
-      setLoading(false);
+      setState(emptyState(key));
       return;
     }
 
     const generation = ++generationRef.current;
     const isCurrent = () =>
-      generation === generationRef.current &&
-      keyRef.current.session === session &&
-      keyRef.current.member === member;
-    setLoading(true);
-    setError(null);
+      generation === generationRef.current && keyRef.current === key;
+    setState((previous) => ({
+      ...(previous.key === key ? previous : emptyState(key)),
+      key,
+      loading: true,
+      error: null,
+      fresh: false,
+    }));
+
     try {
       const response = await sessionClient.afford({ session, member });
       if (!isCurrent()) return;
-      setClock(response.clock);
-      setDeclarations(response.declarations);
+      setState({
+        key,
+        clock: response.clock,
+        declarations: response.declarations,
+        loading: false,
+        error: null,
+        fresh: true,
+      });
     } catch (err) {
       if (!isCurrent()) return;
-      // Last-good `clock`/`declarations` are deliberately left untouched —
-      // see this module's own doc comment.
-      setError(err instanceof Error ? err : new Error('Afford RPC failed'));
-    } finally {
-      if (isCurrent()) setLoading(false);
+      setState((previous) => ({
+        ...(previous.key === key ? previous : emptyState(key)),
+        key,
+        loading: false,
+        error: err instanceof Error ? err : new Error('Afford RPC failed'),
+        fresh: false,
+      }));
     }
-  }, [session, member]);
+  }, [key, member, session]);
 
-  // Every key transition resets the old pair's answer, including a direct
-  // non-empty -> non-empty change. Cleanup also invalidates work on unmount.
   useEffect(() => {
     generationRef.current += 1;
-    setClock(ClockKind.UNSPECIFIED);
-    setDeclarations([]);
-    setError(null);
-    setLoading(false);
+    setState(emptyState(key));
     return () => {
       generationRef.current += 1;
     };
-  }, [session, member]);
+  }, [key]);
 
-  return { clock, declarations, loading, error, refetch: fetchAfford };
+  // Effects reset after commit; render-time key association prevents the first
+  // render of a new pair from exposing old declarations, errors, or freshness.
+  const current = state.key === key ? state : emptyState(key);
+  return {
+    clock: current.clock,
+    declarations: current.declarations,
+    loading: current.loading,
+    error: current.error,
+    fresh: current.fresh,
+    invalidate,
+    refetch: fetchAfford,
+  };
 }

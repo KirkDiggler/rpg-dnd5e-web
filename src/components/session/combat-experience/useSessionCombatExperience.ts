@@ -15,7 +15,11 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
-import { selectCombatExperience, staleDeclarationMessage } from './selection';
+import {
+  isStaleDeclarationRefusal,
+  selectCombatExperience,
+  staleDeclarationMessage,
+} from './selection';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
@@ -37,14 +41,23 @@ const EMPTY_INTERACTION: CombatExperiencePresentationState = Object.freeze({
 
 export const TURN_NOTICE_MS = 1800;
 
+interface StaleRecovery {
+  readonly declarationId: string;
+  readonly verb: Verb;
+  readonly target?: string;
+}
+
 export interface UseSessionCombatExperienceArgs {
   session: string;
   member: string;
   clock: ClockKind;
   active: string;
+  authorityFresh: boolean;
   memberNames?: ReadonlyMap<string, string>;
+  memberRoles?: ReadonlyMap<string, 'player' | 'monster'>;
   participants: readonly Participant[];
   declarations: readonly Declaration[];
+  invalidateAuthoritySnapshots: () => void;
   scheduleRefresh: (keys: readonly SessionRefreshKey[]) => void;
 }
 
@@ -67,6 +80,14 @@ export interface UseSessionCombatExperienceResult {
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
   onDiceSemanticReleaseRequest: () => void;
+  /** Synchronous event-sequence authority revocation. */
+  invalidateAuthority: () => void;
+  /** Unified FAILED_PRECONDITION selector recovery used by Move too. */
+  recoverStaleDeclaration: (
+    declarationId: string,
+    verb: Verb,
+    target?: string
+  ) => void;
   acceptStreamEvent: (
     event: Event,
     metadata: SessionEventDeliveryMetadata
@@ -76,7 +97,8 @@ export interface UseSessionCombatExperienceResult {
 function uniqueCurrentDeclaration(
   declarations: readonly Declaration[],
   candidate: Declaration,
-  verb: Verb
+  verb: Verb,
+  targetKind: TargetKind
 ): Declaration | undefined {
   const matches = declarations.filter(
     (declaration) => declaration.id === candidate.id
@@ -87,11 +109,35 @@ function uniqueCurrentDeclaration(
     !current ||
     current.id.length === 0 ||
     current.verb !== verb ||
+    current.targetKind !== targetKind ||
     !current.available
   ) {
     return undefined;
   }
   return current;
+}
+
+function refreshedWhy(
+  declarations: readonly Declaration[],
+  recovery: StaleRecovery
+) {
+  const matches = declarations.filter(
+    (declaration) =>
+      declaration.id === recovery.declarationId &&
+      declaration.verb === recovery.verb
+  );
+  if (matches.length !== 1) return undefined;
+  const declaration = matches[0]!;
+  if (declaration.why?.text) return declaration.why;
+  if (recovery.target) {
+    const candidates = declaration.candidates.filter(
+      (candidate) => candidate.member === recovery.target
+    );
+    if (candidates.length === 1 && candidates[0]?.why?.text) {
+      return candidates[0].why;
+    }
+  }
+  return undefined;
 }
 
 /** Production interaction/controller seam around the shared renderer. */
@@ -100,9 +146,12 @@ export function useSessionCombatExperience({
   member,
   clock,
   active,
+  authorityFresh,
   memberNames,
+  memberRoles,
   participants,
   declarations,
+  invalidateAuthoritySnapshots,
   scheduleRefresh,
 }: UseSessionCombatExperienceArgs): UseSessionCombatExperienceResult {
   const [interaction, setInteraction] =
@@ -114,9 +163,11 @@ export function useSessionCombatExperience({
   const endTurnInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
-  const authorityRef = useRef({ clock, active });
+  const staleRecoveryRef = useRef<StaleRecovery | null>(null);
+  const authorityRef = useRef({ clock, active, fresh: authorityFresh });
   declarationsRef.current = declarations;
-  authorityRef.current = { clock, active };
+  authorityRef.current = { clock, active, fresh: authorityFresh };
+
   useEffect(() => {
     // StrictMode performs a setup → cleanup → setup probe on one mount.
     mountedRef.current = true;
@@ -129,11 +180,15 @@ export function useSessionCombatExperience({
     () => Object.fromEntries(memberNames ?? []),
     [memberNames]
   );
+  const presentationMemberRoles = useMemo(
+    () => Object.fromEntries(memberRoles ?? []),
+    [memberRoles]
+  );
   const presentation = useCombatPresentation({
     session,
     viewerMember: member,
     memberNames: presentationMemberNames,
-    participants,
+    memberRoles: presentationMemberRoles,
   });
   const pacing = useCombatStoryPacing({
     member,
@@ -145,6 +200,51 @@ export function useSessionCombatExperience({
   const { attack } = useSessionAttack();
   const { endTurn } = useSessionEndTurn();
 
+  const invalidateAuthority = useCallback(() => {
+    authorityRef.current = { ...authorityRef.current, fresh: false };
+    invalidateAuthoritySnapshots();
+    setInteraction((current) =>
+      staleRecoveryRef.current
+        ? {
+            ...EMPTY_INTERACTION,
+            changedOptionNotice:
+              current.changedOptionNotice ?? staleDeclarationMessage(),
+          }
+        : EMPTY_INTERACTION
+    );
+    setTargeting(false);
+  }, [invalidateAuthoritySnapshots]);
+
+  const recoverStaleDeclaration = useCallback(
+    (declarationId: string, verb: Verb, target?: string) => {
+      if (!mountedRef.current) return;
+      staleRecoveryRef.current = { declarationId, verb, target };
+      authorityRef.current = { ...authorityRef.current, fresh: false };
+      invalidateAuthoritySnapshots();
+      setInteraction({
+        ...EMPTY_INTERACTION,
+        changedOptionNotice: staleDeclarationMessage(),
+      });
+      setTargeting(false);
+      scheduleRefresh(['turn', 'afford']);
+    },
+    [invalidateAuthoritySnapshots, scheduleRefresh]
+  );
+
+  // Only a coherent, successful refreshed pair may add provider-authored
+  // why.text to the generic stale-declaration copy.
+  useEffect(() => {
+    const recovery = staleRecoveryRef.current;
+    if (!authorityFresh || !recovery) return;
+    staleRecoveryRef.current = null;
+    setInteraction({
+      ...EMPTY_INTERACTION,
+      changedOptionNotice: staleDeclarationMessage(
+        refreshedWhy(declarations, recovery)
+      ),
+    });
+  }, [authorityFresh, declarations]);
+
   const { armedIsCurrent, presentationState } = useMemo(() => {
     const armedMatches =
       interaction.armedDeclarationId === null
@@ -153,6 +253,7 @@ export function useSessionCombatExperience({
             (declaration) => declaration.id === interaction.armedDeclarationId
           );
     const current =
+      authorityFresh &&
       clock === ClockKind.TURN &&
       active === member &&
       armedMatches.length === 1 &&
@@ -172,7 +273,7 @@ export function useSessionCombatExperience({
               ),
             },
     };
-  }, [active, clock, declarations, interaction, member]);
+  }, [active, authorityFresh, clock, declarations, interaction, member]);
 
   useEffect(() => {
     if (interaction.armedDeclarationId !== null && !armedIsCurrent) {
@@ -193,7 +294,6 @@ export function useSessionCombatExperience({
       previousActiveRef.current = current;
       return () => {
         clearTimeout(timeout);
-        // Let StrictMode's second setup recreate the bounded notice.
         if (previousActiveRef.current === current) {
           previousActiveRef.current = null;
         }
@@ -206,22 +306,21 @@ export function useSessionCombatExperience({
     (candidate: Declaration) => {
       if (
         !mountedRef.current ||
+        !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
       ) {
         return;
       }
-      const current = uniqueCurrentDeclaration(
-        declarationsRef.current,
-        candidate,
-        candidate.verb
-      );
-      if (!current) return;
 
-      if (
-        current.verb === Verb.ATTACK &&
-        current.targetKind === TargetKind.MEMBER
-      ) {
+      if (candidate.verb === Verb.ATTACK) {
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.ATTACK,
+          TargetKind.MEMBER
+        );
+        if (!current) return;
         setInteraction({
           armedDeclarationId: current.id,
           selectedCandidateMember: null,
@@ -231,9 +330,14 @@ export function useSessionCombatExperience({
         return;
       }
 
-      // Move is always dispatched by the map/walk seam using the coherent
-      // Turn/Afford selector. Selecting its display row merely disarms Attack.
-      if (current.verb === Verb.MOVE) {
+      if (candidate.verb === Verb.MOVE) {
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.MOVE,
+          TargetKind.PATH
+        );
+        if (!current) return;
         setInteraction(EMPTY_INTERACTION);
         setTargeting(false);
       }
@@ -244,8 +348,10 @@ export function useSessionCombatExperience({
   const onTargetClick = useCallback(
     (target: string) => {
       if (
+        !target ||
         !mountedRef.current ||
         attackInFlightRef.current ||
+        !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
       ) {
@@ -260,7 +366,13 @@ export function useSessionCombatExperience({
         declarationsRef.current,
         currentState
       );
-      if (!selected?.declaration || !selected.candidate) {
+      if (
+        !selected?.declaration ||
+        selected.declaration.verb !== Verb.ATTACK ||
+        selected.declaration.targetKind !== TargetKind.MEMBER ||
+        !selected.candidate ||
+        !selected.candidate.member
+      ) {
         setInteraction({
           ...currentState,
           changedOptionNotice:
@@ -291,23 +403,35 @@ export function useSessionCombatExperience({
               response,
             })
           );
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
         } catch (error) {
           if (!mountedRef.current) return;
-          setInteraction((current) => ({
-            ...current,
-            selectedCandidateMember: null,
-            changedOptionNotice: `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-          }));
-          setTargeting(true);
+          if (isStaleDeclarationRefusal(error)) {
+            recoverStaleDeclaration(declaration.id, Verb.ATTACK, exactTarget);
+          } else {
+            setInteraction((current) => ({
+              ...current,
+              selectedCandidateMember: null,
+              changedOptionNotice: `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+            }));
+            setTargeting(true);
+          }
         } finally {
           attackInFlightRef.current = false;
-          if (mountedRef.current) {
-            scheduleRefresh(['characterData', 'afford', 'turn', 'view']);
-          }
         }
       })();
     },
-    [attack, member, presentation, presentationState, scheduleRefresh, session]
+    [
+      attack,
+      invalidateAuthority,
+      member,
+      presentation,
+      presentationState,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
   );
 
   const onEndTurn = useCallback(
@@ -315,6 +439,7 @@ export function useSessionCombatExperience({
       if (
         !mountedRef.current ||
         endTurnInFlightRef.current ||
+        !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
       ) {
@@ -326,7 +451,8 @@ export function useSessionCombatExperience({
       const current = uniqueCurrentDeclaration(
         declarationsRef.current,
         candidate,
-        Verb.END_TURN
+        Verb.END_TURN,
+        TargetKind.NONE
       );
       if (!current || endTurns.length !== 1) return;
 
@@ -338,17 +464,32 @@ export function useSessionCombatExperience({
             member,
             declarationId: current.id,
           });
-        } catch {
-          // A stale server refusal is reconciled by the refresh below.
+          if (!mountedRef.current) return;
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          if (isStaleDeclarationRefusal(error)) {
+            recoverStaleDeclaration(current.id, Verb.END_TURN);
+          } else {
+            setInteraction((previous) => ({
+              ...previous,
+              changedOptionNotice: `End turn failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+            }));
+          }
         } finally {
           endTurnInFlightRef.current = false;
-          if (mountedRef.current) {
-            scheduleRefresh(['characterData', 'afford', 'turn']);
-          }
         }
       })();
     },
-    [endTurn, member, scheduleRefresh, session]
+    [
+      endTurn,
+      invalidateAuthority,
+      member,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
   );
 
   const acceptStreamEvent = useCallback(
@@ -382,10 +523,13 @@ export function useSessionCombatExperience({
       onLogModeChange: setLogMode,
       onDiceReleaseRequest: presentation.onDiceReleaseRequest,
       onDiceSemanticReleaseRequest: presentation.onSemanticReleaseRequest,
+      invalidateAuthority,
+      recoverStaleDeclaration,
       acceptStreamEvent,
     }),
     [
       acceptStreamEvent,
+      invalidateAuthority,
       logMode,
       onEndTurn,
       onSelectDeclaration,
@@ -402,6 +546,7 @@ export function useSessionCombatExperience({
       presentation.onSemanticReleaseRequest,
       presentation.semanticFallback,
       presentationState,
+      recoverStaleDeclaration,
       showTurnNotice,
     ]
   );

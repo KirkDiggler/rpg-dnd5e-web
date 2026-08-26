@@ -36,10 +36,7 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
     : result.hit
       ? 'Hit'
       : 'Miss';
-  const rollDetail =
-    result.bonus === undefined
-      ? `d20 ${result.d20} · total ${result.total} against AC ${result.against} · ${verdict}`
-      : `${result.d20} + ${result.bonus} = ${result.total} against AC ${result.against} · ${verdict}`;
+  const rollDetail = `d20 ${result.d20} · total ${result.total} against AC ${result.against} · ${verdict}`;
   return (
     <article className={`${styles.storyEntry} ${styles.storyResult}`}>
       <span>
@@ -58,12 +55,6 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
             <strong>
               {result.damageType ? `${result.damageType} damage` : 'Damage'}
             </strong>
-            {result.hpAfter && (
-              <small>
-                {result.target} · {result.hpAfter.current}/{result.hpAfter.max}{' '}
-                HP
-              </small>
-            )}
           </div>
         </div>
       )}

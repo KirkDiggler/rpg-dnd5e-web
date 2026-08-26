@@ -203,7 +203,7 @@ const story = Object.freeze([
     round: 1,
     eyebrow: 'Skeleton Guard · Longsword',
     headline: 'Aldric turns the blow aside',
-    detail: '9 + 4 = 13 against AC 18 · Miss',
+    detail: 'd20 9 · total 13 against AC 18 · Miss',
     tone: 'neutral' as const,
   },
   {
@@ -230,14 +230,12 @@ const attackOutcome = Object.freeze({
   target: 'Skeleton Guard',
   action: 'Longsword',
   d20: 12,
-  bonus: 5,
   total: 17,
   against: 13,
   hit: true,
   critical: false,
   damage: 8,
   damageType: 'slashing',
-  hpAfter: { current: 2, max: 10 },
 });
 
 const fieldSources = Object.freeze({
@@ -247,7 +245,7 @@ const fieldSources = Object.freeze({
   attackNameRefSlotCandidatesWhy: 'session-wire' as const,
   movementRemainingFeet: 'session-wire' as const,
   hpArmorFeaturesConditionsResources: 'existing-other-wire' as const,
-  attackOutcome: 'session-wire' as const,
+  attackRollTotalAgainstVerdictDamageTypeRef: 'session-wire' as const,
   storyGrouping: 'presentation' as const,
   dicePresentation: 'presentation' as const,
 });

@@ -58,10 +58,12 @@ function declarationIcon(declaration: Declaration): string {
 function ActionDeclaration({
   declaration,
   armed,
+  authorityFresh,
   onSelect,
 }: {
   declaration: Declaration;
   armed: boolean;
+  authorityFresh: boolean;
   onSelect: (declaration: Declaration) => void;
 }) {
   const label = declarationLabel(declaration);
@@ -77,8 +79,14 @@ function ActionDeclaration({
     <button
       type="button"
       className={`${styles.actionOffer} ${armed ? styles.actionOfferArmed : ''}`}
-      disabled={!declaration.available}
-      title={declaration.available ? context : unavailable}
+      disabled={!authorityFresh || !declaration.available}
+      title={
+        !authorityFresh
+          ? 'Actions may be out of date'
+          : declaration.available
+            ? context
+            : unavailable
+      }
       aria-pressed={armed}
       onClick={() => onSelect(declaration)}
     >
@@ -105,6 +113,7 @@ export interface ActionDockProps {
   viewerMember: string;
   participants: readonly Participant[];
   declarations: readonly Declaration[];
+  authorityFresh: boolean;
   armedDeclarationId?: string;
   onSelectDeclaration: (declaration: Declaration) => void;
   onEndTurn: (declaration: Declaration) => void;
@@ -125,6 +134,7 @@ export function ActionDock({
   viewerMember,
   participants,
   declarations,
+  authorityFresh,
   armedDeclarationId,
   onSelectDeclaration,
   onEndTurn,
@@ -133,8 +143,16 @@ export function ActionDock({
     return (
       <div className={styles.passiveActionRow}>
         <span>Exploration</span>
-        <strong>Click the floor to move</strong>
-        <small>No turn economy on the world clock.</small>
+        <strong>
+          {authorityFresh
+            ? 'Click the floor to move'
+            : 'Actions may be out of date'}
+        </strong>
+        <small>
+          {authorityFresh
+            ? 'No turn economy on the world clock.'
+            : 'Waiting for current Turn and Afford authority.'}
+        </small>
       </div>
     );
   }
@@ -179,18 +197,28 @@ export function ActionDock({
               key={`${declaration.id}:${index}`}
               declaration={declaration}
               armed={armedDeclarationId === declaration.id}
+              authorityFresh={authorityFresh}
               onSelect={onSelectDeclaration}
             />
           ))}
         </div>
       </div>
+      {!authorityFresh && (
+        <div className={styles.authorityStale} role="status">
+          Actions may be out of date
+        </div>
+      )}
       {endTurn && (
         <button
           type="button"
           className={styles.endTurn}
-          disabled={!endTurn.available}
+          disabled={!authorityFresh || !endTurn.available}
           title={
-            endTurn.available ? 'End turn' : endTurn.why?.text || 'Unavailable'
+            !authorityFresh
+              ? 'Actions may be out of date'
+              : endTurn.available
+                ? 'End turn'
+                : endTurn.why?.text || 'Unavailable'
           }
           onClick={() => onEndTurn(endTurn)}
         >

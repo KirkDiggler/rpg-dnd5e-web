@@ -51,6 +51,24 @@ describe('session combat generated-shape review fixtures', () => {
     });
   });
 
+  it('contains only authoritative roll/total/outcome facts with no bonus equation, target HP, or peer-private exact HP', () => {
+    for (const fixture of SESSION_COMBAT_FIXTURES) {
+      const serialized = JSON.stringify(fixture);
+      expect(serialized, fixture.id).not.toMatch(/"bonus"|"hpAfter"/);
+      expect(serialized, fixture.id).not.toMatch(/\b\d+\s*\+\s*\d+\s*=\s*\d+/);
+      expect(serialized, fixture.id).not.toMatch(
+        /Skeleton (?:Guard|Archer).*\b\d+\/\d+\s*HP/i
+      );
+      expect(fixture.attackOutcome, fixture.id).toMatchObject({
+        d20: expect.any(Number),
+        total: expect.any(Number),
+        against: expect.any(Number),
+        hit: expect.any(Boolean),
+        critical: expect.any(Boolean),
+      });
+    }
+  });
+
   it('keeps every fixture free of forbidden executable, magic, and item content', () => {
     for (const fixture of SESSION_COMBAT_FIXTURES) {
       expect(

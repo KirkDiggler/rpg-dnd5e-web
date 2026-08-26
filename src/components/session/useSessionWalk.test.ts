@@ -248,10 +248,11 @@ describe('useSessionWalk', () => {
     expect(result.current.moveError).toBe('no doorway joins those cells');
   });
 
-  it('a Move RPC refused with the not-your-turn FailedPrecondition (toolkit#1169 session.ErrNotYourTurn) surfaces the friendly line AND sets notYourTurn too', async () => {
+  it('routes every Move FailedPrecondition through stale-selector recovery without exposing raw wording', async () => {
     hoisted.moveFn.mockRejectedValue(
       new ConnectError('not your turn', Code.FailedPrecondition)
     );
+    const onStaleDeclarationRefusal = vi.fn();
     const { result } = renderHook(() =>
       useSessionWalk(
         'enc-1',
@@ -259,15 +260,16 @@ describe('useSessionWalk', () => {
         corridorIndex(),
         { x: 0, y: 0 } as never,
         vi.fn(),
-        ''
+        'v1.move',
+        onStaleDeclarationRefusal
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
-    expect(result.current.moveError).toBe(
-      'Not your turn — movement is locked.'
-    );
+    expect(result.current.moveError).toBeNull();
     expect(result.current.notYourTurn).toBe(true);
+    expect(onStaleDeclarationRefusal).toHaveBeenCalledOnce();
+    expect(onStaleDeclarationRefusal).toHaveBeenCalledWith('v1.move');
   });
 
   it('a plain (non-turn-lock) Move RPC failure leaves notYourTurn false', async () => {

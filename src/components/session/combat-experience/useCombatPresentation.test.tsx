@@ -6,6 +6,10 @@ import { createDicePresentationRelease } from '@/components/ui/dice/dicePresenta
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { create } from '@bufbuild/protobuf';
 import {
+  EventKind,
+  EventSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import {
   MemberKind,
   ParticipantSchema,
   Standing,
@@ -41,6 +45,20 @@ const participants = [
   }),
 ];
 
+function publicRosterConfig(roster = participants) {
+  return {
+    memberNames: Object.fromEntries(
+      roster.map((participant) => [participant.member, participant.name])
+    ),
+    memberRoles: Object.fromEntries(
+      roster.map((participant) => [
+        participant.member,
+        participant.kind === MemberKind.PLAYER ? 'player' : 'monster',
+      ])
+    ) as Record<string, 'player' | 'monster'>,
+  };
+}
+
 function StrictWrapper({ children }: PropsWithChildren) {
   return <StrictMode>{children}</StrictMode>;
 }
@@ -53,7 +71,7 @@ function SemanticFallbackHarness() {
   const presentation = useCombatPresentation({
     session: unsafeSemanticFacts.event.session,
     viewerMember: 'aldric',
-    participants,
+    ...publicRosterConfig(),
   });
 
   return (
@@ -133,7 +151,7 @@ describe('useCombatPresentation', () => {
       useCombatPresentation({
         session: 'crypt-run',
         viewerMember: 'aldric',
-        participants,
+        ...publicRosterConfig(),
       })
     );
 
@@ -165,7 +183,7 @@ describe('useCombatPresentation', () => {
       useCombatPresentation({
         session: 'crypt-run',
         viewerMember: 'aldric',
-        participants,
+        ...publicRosterConfig(),
       })
     );
 
@@ -190,7 +208,7 @@ describe('useCombatPresentation', () => {
       useCombatPresentation({
         session: facts.event.session,
         viewerMember: 'aldric',
-        participants,
+        ...publicRosterConfig(),
       })
     );
 
@@ -237,7 +255,7 @@ describe('useCombatPresentation', () => {
       useCombatPresentation({
         session: 'crypt-run',
         viewerMember: 'aldric',
-        participants,
+        ...publicRosterConfig(),
       })
     );
 
@@ -260,7 +278,7 @@ describe('useCombatPresentation', () => {
     expect(result.current.phase).toBe('fresh');
   });
 
-  it('uses the latest provider participant roles when they load after the hook mounts', () => {
+  it('uses stable public-roster roles and lets roster names win when they arrive after the hook mounts', () => {
     const facts = createAttackAuthorityFixture({
       attacker: 'skeleton-guard',
       recipient: 'aldric',
@@ -270,12 +288,20 @@ describe('useCombatPresentation', () => {
         useCombatPresentation({
           session: 'crypt-run',
           viewerMember: 'aldric',
-          participants: roster,
+          ...publicRosterConfig(roster),
         }),
       { initialProps: { roster: participants.slice(0, 1) } }
     );
 
-    rerender({ roster: participants });
+    rerender({
+      roster: [
+        participants[0]!,
+        create(ParticipantSchema, {
+          ...participants[1],
+          name: 'Roster Skeleton',
+        }),
+      ],
+    });
     act(() =>
       result.current.acceptStreamEvent(facts.event, { source: 'live' })
     );
@@ -284,6 +310,7 @@ describe('useCombatPresentation', () => {
       type: 'dice-presentation-requested',
       roller: { entityId: 'skeleton-guard', role: 'monster' },
     });
+    expect(result.current.story[0]?.headline).toContain('Roster Skeleton');
     expect(result.current.semanticFallback).toBe(false);
   });
 
@@ -357,13 +384,14 @@ describe('useCombatPresentation', () => {
     expect(screen.getByText(/presentation unavailable/)).toBeTruthy();
   });
 
-  it('makes a missing provider role spectator-only with no request or reveal control', () => {
+  it('keeps an unknown public role unresolved with no inferred dice ownership or Story reveal', () => {
     const facts = createAttackAuthorityFixture();
     const { result } = renderHook(() =>
       useCombatPresentation({
         session: 'crypt-run',
         viewerMember: 'aldric',
-        participants: [],
+        memberNames: {},
+        memberRoles: {},
       })
     );
 
@@ -375,24 +403,27 @@ describe('useCombatPresentation', () => {
     expect(result.current.diceWitnessRole).toBe('spectator');
     expect(result.current.diceEvents).toEqual([]);
     expect(result.current.semanticFallback).toBe(false);
-    expect(result.current.phase).toBe('settled');
-    expect(result.current.story).toHaveLength(1);
+    expect(result.current.phase).toBe('fresh');
+    expect(result.current.story).toEqual([]);
   });
 
-  it('creates and removes a pending response presentation as authoritative role facts change', () => {
-    const facts = createAttackAuthorityFixture();
+  it('late public roster authorizes an unresolved local roller and FightEnded or a later empty roster cannot revoke or auto-settle it', () => {
+    const facts = createAttackAuthorityFixture({ damage: 99 });
     const { result, rerender } = renderHook(
       ({ roster }) =>
         useCombatPresentation({
           session: 'crypt-run',
           viewerMember: 'aldric',
-          participants: roster,
+          ...publicRosterConfig(roster),
         }),
       { initialProps: { roster: participants.slice(1) } }
     );
 
     act(() => result.current.acceptAttackResponse(facts.responseFact));
-    expect(result.current.diceWitnessRole).toBe('spectator');
+    act(() =>
+      result.current.acceptStreamEvent(facts.event, { source: 'live' })
+    );
+    expect(result.current.story).toEqual([]);
     expect(result.current.diceEvents).toEqual([]);
 
     rerender({ roster: participants });
@@ -400,10 +431,37 @@ describe('useCombatPresentation', () => {
     expect(result.current.diceEvents).toHaveLength(1);
     expect(result.current.phase).toBe('awaiting-roll');
 
-    rerender({ roster: participants.slice(1) });
-    expect(result.current.diceWitnessRole).toBe('spectator');
-    expect(result.current.diceEvents).toEqual([]);
-    expect(result.current.phase).toBe('settled');
+    act(() =>
+      result.current.acceptStreamEvent(
+        create(EventSchema, {
+          session: 'crypt-run',
+          seq: 24n,
+          kind: EventKind.FIGHT_ENDED,
+          body: { case: 'fightEnded', value: { cause: 1 } },
+        }),
+        { source: 'live' }
+      )
+    );
+    rerender({ roster: [] });
+
+    expect(result.current.diceWitnessRole).toBe('roller');
+    expect(result.current.phase).toBe('awaiting-roll');
+    expect(
+      result.current.story.some((entry) => /strikes/.test(entry.headline))
+    ).toBe(false);
+    expect(
+      result.current.story.some((entry) =>
+        /fight is over/i.test(entry.headline)
+      )
+    ).toBe(true);
+    expect(result.current.diceEvents).toHaveLength(1);
+
+    act(() =>
+      result.current.onDiceReleaseRequest(releaseFor(result.current.diceEvents))
+    );
+    expect(
+      result.current.story.some((entry) => /strikes/.test(entry.headline))
+    ).toBe(true);
   });
 
   it('fences stale state and callbacks synchronously across StrictMode session and viewer scope changes', () => {
@@ -411,7 +469,11 @@ describe('useCombatPresentation', () => {
     const nextFacts = createAttackAuthorityFixture({ session: 'next-run' });
     const { result, rerender } = renderHook(
       ({ session, viewerMember }) =>
-        useCombatPresentation({ session, viewerMember, participants }),
+        useCombatPresentation({
+          session,
+          viewerMember,
+          ...publicRosterConfig(),
+        }),
       {
         initialProps: {
           session: 'crypt-run',

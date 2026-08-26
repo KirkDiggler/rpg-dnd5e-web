@@ -107,8 +107,10 @@ export interface CombatPresentationRecord {
   readonly eventSource?: 'live' | 'catchup';
   readonly request?: DicePresentationRequestedEvent;
   readonly release?: DicePresentationReleasedEvent;
-  readonly settlement: 'armed' | 'released' | 'auto';
+  readonly settlement: 'unresolved' | 'armed' | 'released' | 'auto';
   readonly semanticFallback: boolean;
+  /** Sticky once stable public roster authorizes the viewer as player roller. */
+  readonly localPlayerOwned: boolean;
   readonly locallyArmedResponse: boolean;
   readonly conflicted: boolean;
   readonly order: number;
@@ -476,6 +478,7 @@ function markConflicted(
           release: undefined,
           settlement: 'auto' as const,
           semanticFallback: false,
+          localPlayerOwned: false,
           locallyArmedResponse: false,
           conflicted: true,
         })
@@ -511,12 +514,20 @@ function initialRecord(
   const request = createRequest(state, authority);
   const roleKnown = state.rollerRoles[authority.attacker] !== undefined;
   const localPlayer = isAuthoritativeLocalPlayer(state, authority.attacker);
-  const pending =
-    localPlayer &&
-    !(options.event !== undefined && options.source === 'catchup');
-  const settlement = pending ? ('armed' as const) : ('auto' as const);
+  const historical =
+    options.event !== undefined && options.source === 'catchup';
+  const pending = localPlayer && !historical;
+  const settlement = historical
+    ? ('auto' as const)
+    : !roleKnown
+      ? ('unresolved' as const)
+      : pending
+        ? ('armed' as const)
+        : ('auto' as const);
   const release =
-    request && !pending ? createNeutralRelease(request) : undefined;
+    request && settlement === 'auto'
+      ? createNeutralRelease(request)
+      : undefined;
   return {
     record: Object.freeze({
       key: authorityKey(authority.session, authority.seq),
@@ -532,6 +543,7 @@ function initialRecord(
       release,
       settlement,
       semanticFallback: roleKnown && request === undefined,
+      localPlayerOwned: localPlayer,
       locallyArmedResponse:
         options.responseAccepted && pending && settlement === 'armed',
       conflicted: false,
@@ -646,7 +658,7 @@ function settleCatchupDuplicate(
   if (
     source !== 'catchup' ||
     current.conflicted ||
-    current.settlement !== 'armed' ||
+    (current.settlement !== 'armed' && current.settlement !== 'unresolved') ||
     state.pendingLocalKeys.includes(current.key)
   ) {
     return state;
@@ -913,7 +925,7 @@ function acceptLocalRelease(
   if (
     current.conflicted ||
     state.pendingLocalKeys[0] !== current.key ||
-    !isAuthoritativeLocalPlayer(state, current.authority.attacker) ||
+    !current.localPlayerOwned ||
     current.request?.roller.role !== 'player' ||
     current.settlement !== 'armed' ||
     parsed.release.presentationId !== current.request.presentationId ||
@@ -952,7 +964,7 @@ function acceptSemanticRelease(
     current.conflicted ||
     state.pendingLocalKeys[0] !== current.key ||
     !current.semanticFallback ||
-    !isAuthoritativeLocalPlayer(state, current.authority.attacker) ||
+    !current.localPlayerOwned ||
     current.settlement !== 'armed'
   ) {
     return diagnose(state, 'ineligible semantic release ignored');
@@ -1005,36 +1017,80 @@ function configurePresentation(
     memberNames: Object.freeze({ ...fact.memberNames }),
     rollerRoles: Object.freeze({ ...fact.rollerRoles }),
   };
-  const previouslyPending = new Set(state.pendingLocalKeys);
-  const eligiblePending = new Set<string>();
+  const pendingLocalKeys: string[] = [];
   const presentations = state.presentations.map((record) => {
     if (record.conflicted) return record;
 
-    const request = createRequest(configured, record.authority);
-    const roleKnown =
-      configured.rollerRoles[record.authority.attacker] !== undefined;
-    const localPlayer = isAuthoritativeLocalPlayer(
+    const configuredRole = configured.rollerRoles[record.authority.attacker];
+    const roleKnown = configuredRole !== undefined;
+    const newlyLocal = isAuthoritativeLocalPlayer(
       configured,
       record.authority.attacker
     );
-    const outcomeExposed =
-      record.eventAccepted && record.settlement !== 'armed';
-    const pending =
-      localPlayer &&
-      record.settlement !== 'released' &&
-      !outcomeExposed &&
-      (previouslyPending.has(record.key) || !record.eventAccepted);
-    if (pending) eligiblePending.add(record.key);
 
-    const settlement = pending
-      ? ('armed' as const)
-      : localPlayer && record.settlement === 'released'
-        ? ('released' as const)
-        : ('auto' as const);
+    // Once stable public roster facts arm the local player, a later empty
+    // roster/Turn transition cannot revoke ownership or auto-settle it.
+    if (record.localPlayerOwned) {
+      const request =
+        record.request ??
+        createRequest(
+          {
+            ...configured,
+            rollerRoles: {
+              ...configured.rollerRoles,
+              [record.authority.attacker]: 'player',
+            },
+          },
+          record.authority
+        );
+      if (record.settlement === 'armed') pendingLocalKeys.push(record.key);
+      return Object.freeze({
+        ...record,
+        request,
+        release: record.release,
+        semanticFallback: record.semanticFallback || request === undefined,
+        localPlayerOwned: true,
+        locallyArmedResponse:
+          record.responseAccepted && record.settlement === 'armed',
+      });
+    }
+
+    // Unknown roster role stays unresolved and concealed. Late public roster
+    // may authorize it exactly once; no role is inferred from attacker id or
+    // transient Turn participants.
+    if (record.settlement === 'unresolved') {
+      if (!roleKnown) return record;
+      const request = createRequest(configured, record.authority);
+      if (newlyLocal) {
+        pendingLocalKeys.push(record.key);
+        return Object.freeze({
+          ...record,
+          request,
+          release: undefined,
+          settlement: 'armed' as const,
+          semanticFallback: request === undefined,
+          localPlayerOwned: true,
+          locallyArmedResponse: record.responseAccepted,
+        });
+      }
+      return Object.freeze({
+        ...record,
+        request,
+        release: request ? createNeutralRelease(request) : undefined,
+        settlement: 'auto' as const,
+        semanticFallback: request === undefined,
+        localPlayerOwned: false,
+        locallyArmedResponse: false,
+      });
+    }
+
+    const request = roleKnown
+      ? createRequest(configured, record.authority)
+      : record.request;
     const release =
-      request && settlement !== 'armed'
+      request && record.settlement !== 'armed'
         ? isReleaseCompatible(request, record.release) &&
-          settlement === 'released'
+          record.settlement === 'released'
           ? record.release
           : createNeutralRelease(request)
         : undefined;
@@ -1042,25 +1098,11 @@ function configurePresentation(
       ...record,
       request,
       release,
-      settlement,
-      semanticFallback: roleKnown && request === undefined,
-      locallyArmedResponse: record.responseAccepted && pending,
+      semanticFallback:
+        roleKnown && request === undefined && record.settlement !== 'auto',
+      locallyArmedResponse: false,
     });
   });
-
-  const pendingLocalKeys = state.pendingLocalKeys.filter((key) =>
-    eligiblePending.has(key)
-  );
-  for (const record of [...presentations].sort(
-    (left, right) => left.order - right.order
-  )) {
-    if (
-      eligiblePending.has(record.key) &&
-      !pendingLocalKeys.includes(record.key)
-    ) {
-      pendingLocalKeys.push(record.key);
-    }
-  }
 
   return Object.freeze({
     ...configured,
@@ -1091,7 +1133,10 @@ export function reduceCombatPresentation(
 
 function isVisible(record: CombatPresentationRecord): boolean {
   return (
-    !record.conflicted && record.eventAccepted && record.settlement !== 'armed'
+    !record.conflicted &&
+    record.eventAccepted &&
+    record.settlement !== 'armed' &&
+    record.settlement !== 'unresolved'
   );
 }
 

@@ -31,6 +31,7 @@ import type { Position } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/sess
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AtlasPathIndex } from './atlasPath';
 import { findAtlasPath } from './atlasPath';
+import { isStaleDeclarationRefusal } from './combat-experience/selection';
 import { formatMoveError, isNotYourTurnError } from './moveErrorMessage';
 import { cubeToPosition, positionToCube } from './positionBridge';
 
@@ -59,31 +60,14 @@ export interface UseSessionWalkResult {
   /** Wire straight to `HexEntity`'s `onMovementPresentationComplete` (via
    * a wrapper that drops the entityId argument). */
   onWalkAnimationComplete: (completedSeq: number) => void;
-  /** The most recent move-RPC failure message, or `null`. Cleared at the
-   * start of the next `walkTo` — rendered verbatim by
-   * `SessionEncounterView` as a status line (rpg-project#249's own "the
-   * two Move refusals render as status lines"). */
+  /** The most recent non-stale move-RPC failure message, or `null`.
+   * FAILED_PRECONDITION selector refusals use the shared declaration recovery
+   * callback instead, so raw stale wording never reaches this field. */
   moveError: string | null;
-  /** True exactly when `moveError` is the turn-lock refusal
-   * (toolkit#1169's `session.ErrNotYourTurn` "not your turn" —
-   * `moveErrorMessage.ts`'s `isNotYourTurnError`) rather than some other
-   * rejection.
-   *
-   * NOT wired to the canvas hover indicator directly — `SessionEncounter
-   * View` computes that from live Turn state instead (`turnActive !==
-   * member`), which can never go stale the way an attempt-driven flag
-   * can: this field only updates on a NEW `walkTo` attempt (cleared at
-   * its start, set from its own rejection), so it would otherwise keep
-   * reading `true` for a beat after the turn order actually cycles back
-   * to this member, until the player tried another click. The
-   * state-driven signal has no such window — it is simply recomputed
-   * correct on every render.
-   *
-   * Still meaningful for its own caller: `SessionEncounterView`'s
-   * refetch-on-refusal effect (a click refused this way is a signal this
-   * client's Turn/Afford state is stale and worth refreshing immediately,
-   * not waiting for the next stream event). Cleared at the start of the
-   * next `walkTo`, same as `moveError`. */
+  /** Diagnostic compatibility flag for the exact not-your-turn sentinel.
+   * All FailedPrecondition Move refusals recover through the shared stale
+   * declaration path regardless of wording; this flag is never execution
+   * authority and clears at the next attempt. */
   notYourTurn: boolean;
 }
 
@@ -95,7 +79,9 @@ export function useSessionWalk(
   refetchWhere: () => Promise<void>,
   /** Exact opaque Move offer id on the turn clock; empty in known free roam.
    * Undefined means the Turn/Afford authority snapshots are not coherent yet. */
-  declarationId?: string
+  declarationId?: string,
+  onStaleDeclarationRefusal?: (declarationId: string) => void,
+  isAuthorityFresh: () => boolean = () => true
 ): UseSessionWalkResult {
   const [displayPosition, setDisplayPosition] = useState<CubeCoord | null>(
     wherePosition ? positionToCube(wherePosition) : null
@@ -134,7 +120,8 @@ export function useSessionWalk(
         !displayPosition ||
         !member ||
         busy ||
-        declarationId === undefined
+        declarationId === undefined ||
+        !isAuthorityFresh()
       )
         return;
       const path = findAtlasPath(pathIndex, displayPosition, target);
@@ -181,20 +168,30 @@ export function useSessionWalk(
           // busy stays true — released by onWalkAnimationComplete once
           // the presentation finishes AND GetWhere reconciles.
         } catch (err) {
-          // formatMoveError.ts's own doc comment: rewrites the turn-lock
-          // FailedPrecondition (toolkit#1169's ErrNotYourTurn) into a
-          // friendly line; every other rejection (including the movement-
-          // shortfall one, ErrCannotAfford) passes through unchanged.
-          // isNotYourTurnError parses the SAME caught error to set the
-          // boolean this hook's own caller reads — see `notYourTurn`'s
-          // own doc comment above.
-          setMoveError(formatMoveError(err));
-          setNotYourTurn(isNotYourTurnError(err));
+          const turnRefusal = isNotYourTurnError(err);
+          setNotYourTurn(turnRefusal);
+          if (isStaleDeclarationRefusal(err)) {
+            // Selector-bearing Move refusals share the same recovery surface as
+            // Attack and EndTurn. Raw refusal text never becomes presentation.
+            setMoveError(null);
+            onStaleDeclarationRefusal?.(declarationId);
+          } else {
+            setMoveError(formatMoveError(err));
+          }
           setBusy(false);
         }
       })();
     },
-    [pathIndex, displayPosition, member, busy, session, declarationId]
+    [
+      pathIndex,
+      displayPosition,
+      member,
+      busy,
+      session,
+      declarationId,
+      onStaleDeclarationRefusal,
+      isAuthorityFresh,
+    ]
   );
 
   const onWalkAnimationComplete = useCallback(

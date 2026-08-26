@@ -63,7 +63,7 @@ export function useCombatStoryPacing({
   const namesNow = () => {
     const names = new Map(memberNamesRef.current ?? []);
     for (const [id, name] of participantNameMap(participantsRef.current)) {
-      names.set(id, name);
+      if (!names.has(id)) names.set(id, name);
     }
     return names;
   };

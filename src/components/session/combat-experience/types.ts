@@ -54,16 +54,12 @@ export interface CombatExperienceAttackOutcome {
   action: string;
   attackRef?: string;
   d20: number;
-  /** Legacy concept fixtures may carry a provider-authored bonus. Live Story never derives it. */
-  bonus?: number;
   total: number;
   against: number;
   hit: boolean;
   critical: boolean;
   damage?: number;
   damageType?: string;
-  /** Legacy concept evidence only. Live Story never calculates target HP. */
-  hpAfter?: { current: number; max: number };
 }
 
 export interface CombatExperienceMapRenderProps {
@@ -83,7 +79,13 @@ interface CombatExperienceBaseProps {
   round: number;
   participants: readonly Participant[];
   declarations: readonly Declaration[];
-  characterData: CharacterData;
+  /** Last confirmed owner-private status; absent never blocks public play. */
+  characterData?: CharacterData;
+  privateStatus: 'ready' | 'loading' | 'unavailable' | 'stale';
+  privateStatusMessage?: string;
+  onRetryPrivateStatus?: () => void;
+  /** Turn + Afford both succeeded for their newest current generation. */
+  authorityFresh: boolean;
   presentationState: CombatExperiencePresentationState;
   phase: CombatExperiencePhase;
   showTurnNotice: boolean;

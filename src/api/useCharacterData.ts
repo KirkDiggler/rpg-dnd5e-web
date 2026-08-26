@@ -14,7 +14,7 @@ export interface UseCharacterDataResult {
 }
 
 interface InFlightRead {
-  characterId: string;
+  scopeKey: string;
   generation: number;
   controller: AbortController;
   /** A refresh arrived after this pass began and requires a trailing read. */
@@ -23,7 +23,7 @@ interface InFlightRead {
 }
 
 interface CharacterDataCacheState {
-  characterId: string;
+  scopeKey: string;
   characterData: CharacterData | undefined;
   loading: boolean;
   error: Error | null;
@@ -43,30 +43,37 @@ const missingCharacterDataError = () =>
  * this cache only with their complete provider response — this hook performs
  * no HP, resource, equipment, AC, or other game-rule calculation.
  */
-export function useCharacterData(characterId: string): UseCharacterDataResult {
+export function useCharacterData(
+  characterId: string,
+  ownerScope: string
+): UseCharacterDataResult {
   const { getCharacterData } = useGetCharacterData();
+  // Authenticated owner is part of the cache identity even though the RPC
+  // request itself carries only character_id. The transport reads current auth
+  // credentials, so an owner switch must force a new owner-gated request.
+  const scopeKey = `${ownerScope}\u0000${characterId}`;
+  const ready = Boolean(characterId && ownerScope);
   const [cache, setCache] = useState<CharacterDataCacheState>(() => ({
-    characterId,
+    scopeKey,
     characterData: undefined,
-    // A nonempty key schedules its automatic owner read after this render.
-    loading: Boolean(characterId),
+    loading: ready,
     error: null,
   }));
 
   // Update during render so an old completion racing the key-reset effect is
   // already stale. `generationRef` also fences replacement and unmount.
-  const keyRef = useRef(characterId);
-  keyRef.current = characterId;
+  const keyRef = useRef(scopeKey);
+  keyRef.current = scopeKey;
   const generationRef = useRef(0);
   const inFlightRef = useRef<InFlightRead | null>(null);
 
   const refetch = useCallback((): Promise<void> => {
-    if (!characterId || keyRef.current !== characterId) {
+    if (!ready || keyRef.current !== scopeKey) {
       return Promise.resolve();
     }
 
     const existing = inFlightRef.current;
-    if (existing?.characterId === characterId) {
+    if (existing?.scopeKey === scopeKey) {
       // Sharing only the current promise can lose a stream invalidation: the
       // response already in flight may be a server snapshot from before that
       // event. Coalesce every such invalidation into one serialized trailing
@@ -79,21 +86,19 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
     const controller = new AbortController();
     const isCurrent = () =>
       generationRef.current === generation &&
-      keyRef.current === characterId &&
+      keyRef.current === scopeKey &&
       !controller.signal.aborted;
 
     setCache((previous) => ({
-      characterId,
+      scopeKey,
       characterData:
-        previous.characterId === characterId
-          ? previous.characterData
-          : undefined,
+        previous.scopeKey === scopeKey ? previous.characterData : undefined,
       loading: true,
       error: null,
     }));
 
     const read: InFlightRead = {
-      characterId,
+      scopeKey,
       generation,
       controller,
       invalidated: false,
@@ -109,7 +114,7 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
           if (!isCurrent()) return;
           setCache((previous) =>
             isCurrent()
-              ? { ...previous, characterId, loading: true, error: null }
+              ? { ...previous, scopeKey, loading: true, error: null }
               : previous
           );
 
@@ -123,7 +128,7 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
             setCache((previous) =>
               isCurrent()
                 ? {
-                    characterId,
+                    scopeKey,
                     characterData: confirmed,
                     loading: previous.loading,
                     error: null,
@@ -141,9 +146,9 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
             setCache((previous) =>
               isCurrent()
                 ? {
-                    characterId,
+                    scopeKey,
                     characterData:
-                      previous.characterId === characterId
+                      previous.scopeKey === scopeKey
                         ? previous.characterData
                         : undefined,
                     loading: previous.loading,
@@ -156,7 +161,7 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
       } finally {
         if (inFlightRef.current === read) inFlightRef.current = null;
         setCache((previous) =>
-          isCurrent() ? { ...previous, characterId, loading: false } : previous
+          isCurrent() ? { ...previous, scopeKey, loading: false } : previous
         );
       }
     })();
@@ -164,22 +169,22 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
     read.promise = promise;
     inFlightRef.current = read;
     return promise;
-  }, [characterId, getCharacterData]);
+  }, [characterId, getCharacterData, ready, scopeKey]);
 
   const replace = useCallback(
     (confirmed: CharacterData) => {
-      if (!characterId || keyRef.current !== characterId) return;
+      if (!ready || keyRef.current !== scopeKey) return;
       generationRef.current += 1;
       inFlightRef.current?.controller.abort();
       inFlightRef.current = null;
       setCache({
-        characterId,
+        scopeKey,
         characterData: confirmed,
         error: null,
         loading: false,
       });
     },
-    [characterId]
+    [ready, scopeKey]
   );
 
   useEffect(() => {
@@ -187,28 +192,28 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
     inFlightRef.current?.controller.abort();
     inFlightRef.current = null;
     setCache({
-      characterId,
+      scopeKey,
       characterData: undefined,
       error: null,
-      loading: Boolean(characterId),
+      loading: ready,
     });
 
-    if (characterId) void refetch();
+    if (ready) void refetch();
 
     return () => {
       generationRef.current += 1;
       inFlightRef.current?.controller.abort();
       inFlightRef.current = null;
     };
-  }, [characterId, refetch]);
+  }, [ready, refetch, scopeKey]);
 
   // Effects reset/fetch after commit. Associate every published state with its
   // key so the render that notices a key change cannot expose the old key's
   // private data or error in that pre-effect window.
-  const cacheMatchesRenderKey = cache.characterId === characterId;
+  const cacheMatchesRenderKey = cache.scopeKey === scopeKey;
   return {
     characterData: cacheMatchesRenderKey ? cache.characterData : undefined,
-    loading: cacheMatchesRenderKey ? cache.loading : Boolean(characterId),
+    loading: cacheMatchesRenderKey ? cache.loading : ready,
     error: cacheMatchesRenderKey ? cache.error : null,
     refetch,
     replace,

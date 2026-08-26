@@ -42,6 +42,7 @@ describe('useSessionTurn', () => {
     expect(result.current.round).toBe(0);
     expect(result.current.order).toEqual([]);
     expect(result.current.participants).toEqual([]);
+    expect(result.current.fresh).toBe(false);
   });
 
   it('refetch is a no-op while session or member is empty', async () => {
@@ -100,6 +101,7 @@ describe('useSessionTurn', () => {
     expect(result.current.participants).toEqual(participants);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
+    expect(result.current.fresh).toBe(true);
   });
 
   it('a world-clock response resolves to empty active/zero round/empty order, not an error', async () => {
@@ -136,6 +138,67 @@ describe('useSessionTurn', () => {
     expect(result.current.round).toBe(0);
     expect(result.current.order).toEqual([]);
     expect(result.current.loading).toBe(false);
+  });
+
+  it('invalidate and refetch revoke freshness immediately; failed and reversed reads cannot restore stale authority', async () => {
+    const stale = deferred<TurnResponse>();
+    const current = deferred<TurnResponse>();
+    hoisted.turnFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 1,
+        order: ['char-1'],
+        participants: [],
+      } as unknown as TurnResponse)
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(current.promise)
+      .mockRejectedValueOnce(new Error('refresh failed'));
+
+    const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
+    await act(async () => result.current.refetch());
+    expect(result.current.fresh).toBe(true);
+
+    act(() => result.current.invalidate());
+    expect(result.current.fresh).toBe(false);
+
+    let staleRead!: Promise<void>;
+    let currentRead!: Promise<void>;
+    act(() => {
+      staleRead = result.current.refetch();
+      currentRead = result.current.refetch();
+    });
+    expect(result.current.fresh).toBe(false);
+
+    await act(async () => {
+      stale.resolve({
+        clock: ClockKind.TURN,
+        active: 'stale-member',
+        round: 8,
+        order: ['stale-member'],
+        participants: [],
+      } as unknown as TurnResponse);
+      await staleRead;
+    });
+    expect(result.current.fresh).toBe(false);
+    expect(result.current.active).toBe('char-1');
+
+    await act(async () => {
+      current.resolve({
+        clock: ClockKind.WORLD,
+        active: '',
+        round: 0,
+        order: [],
+        participants: [],
+      } as unknown as TurnResponse);
+      await currentRead;
+    });
+    expect(result.current.fresh).toBe(true);
+    expect(result.current.clock).toBe(ClockKind.WORLD);
+
+    await act(async () => result.current.refetch());
+    expect(result.current.fresh).toBe(false);
+    expect(result.current.clock).toBe(ClockKind.WORLD);
   });
 
   it('KEEPS the last-good clock/active/round/order on a refetch error, same last-good discipline as useSessionAfford', async () => {
@@ -234,6 +297,7 @@ describe('useSessionTurn', () => {
     expect(result.current.active).toBe('');
     expect(result.current.round).toBe(0);
     expect(result.current.loading).toBe(false);
+    expect(result.current.fresh).toBe(true);
   });
 
   it('fences a late response from a previous nonempty session/member key', async () => {

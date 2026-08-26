@@ -609,7 +609,7 @@ describe('combat presentation settlement policy', () => {
     ]);
   });
 
-  it('makes missing role data spectator-safe and creates/removes unresolved controls on configure', () => {
+  it('makes missing role data unresolved, then keeps local ownership sticky once public roster authorizes it', () => {
     const facts = createAttackAuthorityFixture();
     const noRole = { ...config, rollerRoles: {} };
     let responseOnly = reduceCombatPresentation(
@@ -636,12 +636,14 @@ describe('combat presentation settlement policy', () => {
       type: 'configure',
       ...noRole,
     });
-    expect(responseOnly.pendingLocalKeys).toEqual([]);
-    expect(selectCurrentDiceEvents(responseOnly)).toEqual([]);
+    expect(responseOnly.pendingLocalKeys).toEqual([
+      responseOnly.presentations[0]?.key,
+    ]);
+    expect(selectCurrentDiceEvents(responseOnly)).toHaveLength(1);
     expect(responseOnly.presentations[0]?.semanticFallback).toBe(false);
   });
 
-  it('creates and removes an unresolved unsafe-ID fallback as role facts become known', () => {
+  it('creates and preserves an unresolved unsafe-ID fallback once public roster authorizes it', () => {
     const session = `unsafe-${'x'.repeat(140)}`;
     const facts = createAttackAuthorityFixture({ session });
     const noRole = {
@@ -668,8 +670,8 @@ describe('combat presentation settlement policy', () => {
       type: 'configure',
       ...noRole,
     });
-    expect(state.presentations[0]?.semanticFallback).toBe(false);
-    expect(state.pendingLocalKeys).toEqual([]);
+    expect(state.presentations[0]?.semanticFallback).toBe(true);
+    expect(state.pendingLocalKeys).toEqual([state.presentations[0]?.key]);
   });
 
   it('updates late authoritative names on accepted Story without changing outcome authority', () => {
@@ -689,26 +691,26 @@ describe('combat presentation settlement policy', () => {
     expect(selectVisibleStory(state)[0]?.headline).toContain('Skeleton Guard');
   });
 
-  it('keeps a late-authorized player event settled after spectator fallback already revealed it', () => {
+  it('keeps a missing-role live event concealed so late public roster can authorize its local release', () => {
     const facts = createAttackAuthorityFixture();
     const noRole = { ...config, rollerRoles: {} };
     let state = reduceCombatPresentation(
       emptyPresentation(noRole),
       facts.streamFact()
     );
-    expect(selectVisibleStory(state)).toHaveLength(1);
+    expect(selectVisibleStory(state)).toEqual([]);
+    expect(state.presentations[0]?.settlement).toBe('unresolved');
 
     state = reduceCombatPresentation(state, { type: 'configure', ...config });
-    expect(state.pendingLocalKeys).toEqual([]);
-    expect(state.presentations[0]?.settlement).toBe('auto');
+    expect(state.pendingLocalKeys).toEqual([state.presentations[0]?.key]);
+    expect(state.presentations[0]?.settlement).toBe('armed');
     expect(selectCurrentDiceEvents(state).map((event) => event.type)).toEqual([
       'dice-presentation-requested',
-      'dice-presentation-released',
     ]);
-    expect(selectVisibleStory(state)).toHaveLength(1);
+    expect(selectVisibleStory(state)).toEqual([]);
   });
 
-  it('ignores release and semantic reveal attempts after authoritative player eligibility is removed', () => {
+  it('keeps release and semantic reveal eligibility after a transient empty roster once local ownership was authoritative', () => {
     const safe = createAttackAuthorityFixture();
     let safeState = reduceCombatPresentation(
       emptyPresentation(config),
@@ -728,8 +730,9 @@ describe('combat presentation settlement policy', () => {
       rollerRoles: {},
     });
     const afterRelease = reduceCombatPresentation(safeState, staleRelease);
-    expect(afterRelease.diagnostics.at(-1)).toContain('ineligible release');
-    expect(afterRelease.diceEvents).toEqual([]);
+    expect(afterRelease.presentations[0]?.settlement).toBe('released');
+    expect(afterRelease.pendingLocalKeys).toEqual([]);
+    expect(releaseCount(afterRelease)).toBe(1);
 
     const unsafeSession = `unsafe-${'x'.repeat(140)}`;
     const unsafeConfig = { ...config, session: unsafeSession };
@@ -748,9 +751,8 @@ describe('combat presentation settlement policy', () => {
       type: 'semantic-release',
       presentationKey: unsafeKey,
     });
-    expect(afterSemantic.diagnostics.at(-1)).toContain(
-      'ineligible semantic release'
-    );
+    expect(afterSemantic.presentations[0]?.settlement).toBe('released');
+    expect(afterSemantic.pendingLocalKeys).toEqual([]);
   });
 
   it('uses a semantic fallback for an unsafe presentation ID without an early actor reveal or a stall', () => {
