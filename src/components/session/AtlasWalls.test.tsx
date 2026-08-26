@@ -151,4 +151,30 @@ describe('AtlasWalls profile assembly', () => {
     );
     expect(meshNodes(renderer)).toHaveLength(3); // surround remains; leaf is omitted
   });
+
+  it('preserves the legacy frame/leaf output and locked-vs-open state contract without a profile', async () => {
+    const locked = await ReactThreeTestRenderer.create(
+      <AtlasWalls
+        wallRuns={[]}
+        doorGaps={doorGaps}
+        doors={new Map([['door-id', { state: DoorState.LOCKED } as never]])}
+      />
+    );
+    expect(meshNodes(locked)).toHaveLength(2);
+    expect(loadedUrls).toEqual(
+      expect.arrayContaining([
+        '/models/synty/env/SM_Env_Door_Frame_01.glb',
+        '/models/synty/env/SM_Env_Door_01.glb',
+      ])
+    );
+
+    const open = await ReactThreeTestRenderer.create(
+      <AtlasWalls
+        wallRuns={[]}
+        doorGaps={doorGaps}
+        doors={new Map([['door-id', { state: DoorState.OPEN } as never]])}
+      />
+    );
+    expect(meshNodes(open)).toHaveLength(1);
+  });
 });

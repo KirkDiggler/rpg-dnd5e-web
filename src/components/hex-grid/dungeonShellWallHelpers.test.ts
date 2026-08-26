@@ -4,23 +4,28 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   deriveShellDoorGeometry,
-  extendWallRunsAtDoorGaps,
   shellBodyScale,
+  shellComponentPivotOffset,
   shellComponentY,
   shellDoorLeafScale,
   shellDoorSurroundScale,
   shellLocalOffsetToWorld,
   shellRawDimensions,
-  shellSeamOverlap,
   shellTrimScale,
+  shellVisibleWallTop,
   type ShellOpening,
 } from './dungeonShellWallHelpers';
-import { DOOR_FRAME_CALIBRATED_WIDTH } from './syntyHexWallHelpers';
 
 const body = artifact([-2, 0, -0.2], [2, 4, 0.2]);
 const base = artifact([-1.8, 0, -0.3], [1.8, 0.3, 0.3]);
 const cap = artifact([-1.9, 0, -0.2], [1.9, 0.4, 0.2]);
 const surround = artifact([-1, 0, -0.3], [1, 2.5, 0.3]);
+const profileBody = {
+  ...body,
+  localSpanAxis: '+X' as const,
+  localFaceAxis: 'Z' as const,
+  twoSided: true as const,
+};
 
 function artifact(
   min: [number, number, number],
@@ -77,16 +82,32 @@ describe('dungeon shell wall transforms', () => {
     ).toThrow(/finite/);
   });
 
-  it('fits body, trims, and surround from measured bounds', () => {
+  it('fits body and trims from measured bounds', () => {
     expect(shellBodyScale(body, 1, 2.4)).toEqual([0.25, 0.6, 0.75]);
     expect(shellTrimScale(base, 1)).toEqual([1 / 3.6, 0.75, 0.75]);
     expect(shellTrimScale(cap, 1)).toEqual([1 / 3.8, 0.75, 0.75]);
-    expect(shellDoorSurroundScale(surround, 2.4)).toEqual([
-      DOOR_FRAME_CALIBRATED_WIDTH / 2,
-      2.4 / 2.5,
-      0.75,
-    ]);
   });
+
+  it.each([
+    { effectiveHeight: 2.4, label: 'standard' },
+    { effectiveHeight: 4.8, label: 'authored 2x' },
+    { effectiveHeight: 0.3, label: 'cutaway' },
+  ])(
+    'makes the visible profile frame top exact for $label',
+    ({ effectiveHeight }) => {
+      const visibleWallTop = shellVisibleWallTop(effectiveHeight, cap);
+      const frameScale = shellDoorSurroundScale(surround, visibleWallTop);
+      const frameTop =
+        DUNGEON_SURFACE_Y +
+        shellRawDimensions(surround.bounds).height * frameScale[1];
+      expect(frameTop).toBeCloseTo(
+        DUNGEON_SURFACE_Y +
+          effectiveHeight +
+          shellRawDimensions(cap.bounds).height * 0.75,
+        9
+      );
+    }
+  );
 
   it('places base/body/surround on the floor and cap at the effective wall top', () => {
     expect(shellComponentY('body', 2.4)).toBe(DUNGEON_SURFACE_Y);
@@ -95,47 +116,28 @@ describe('dungeon shell wall transforms', () => {
     expect(shellComponentY('cap', 2.4)).toBe(DUNGEON_SURFACE_Y + 2.4);
   });
 
+  it('aligns trim pivots to the body on both facings without changing the local offset', () => {
+    const offset = shellComponentPivotOffset(
+      profileBody,
+      artifact([0, 0, -0.3], [2, 0.3, 0.3]),
+      1,
+      shellTrimScale(artifact([0, 0, -0.3], [2, 0.3, 0.3]), 1)
+    );
+    expect(offset).toBeCloseTo(-0.5, 9);
+    expect(shellLocalOffsetToWorld({ x: offset, z: 0 }, 0).x).toBeCloseTo(
+      offset
+    );
+    expect(shellLocalOffsetToWorld({ x: offset, z: 0 }, Math.PI).x).toBeCloseTo(
+      -offset
+    );
+  });
+
   it('rotates local offsets using the same X/Z convention as Three.js Y rotation', () => {
     expect(shellLocalOffsetToWorld({ x: 1, z: 0 }, 0)).toEqual({ x: 1, z: 0 });
     expect(shellLocalOffsetToWorld({ x: 0, z: 1 }, Math.PI / 2)).toMatchObject({
       x: 1,
       z: expect.closeTo(0),
     });
-  });
-
-  it('extends only door-adjacent visual endpoints under the frame seam', () => {
-    const runs = [
-      {
-        key: 'left',
-        start: { x: -2, z: 0 },
-        end: { x: -0.5, z: 0 },
-        facing: { x: 0, z: 1 },
-        height: 0,
-      },
-      {
-        key: 'right',
-        start: { x: 0.5, z: 0 },
-        end: { x: 2, z: 0 },
-        facing: { x: 0, z: 1 },
-        height: 2,
-      },
-    ];
-    const gaps = [
-      {
-        key: 'door',
-        connection: 'door',
-        position: { x: 0, z: 0 },
-        leafPosition: { x: -0.5, z: 0 },
-        rotationY: 0,
-      },
-    ];
-    expect(shellSeamOverlap()).toBe(0.08);
-    const extended = extendWallRunsAtDoorGaps(runs, gaps);
-    expect(extended[0]!.end.x).toBeCloseTo(-0.42);
-    expect(extended[1]!.start.x).toBeCloseTo(0.42);
-    expect(runs[0]!.end.x).toBe(-0.5);
-    expect(extended[0]!.height).toBe(0);
-    expect(extended[1]!.height).toBe(2);
   });
 });
 
@@ -161,20 +163,21 @@ describe('measured closed-door geometry', () => {
     expect(geometry.leafBounds.max[2]).toBeCloseTo(0.1);
   });
 
-  it('fits the leaf 0.02 under each side post and lintel at every wall height', () => {
+  it('derives leaf horizontal and vertical cover from the exact surround frame scale', () => {
     const opening: ShellOpening = { min: [-0.7, 0], max: [0.7, 2] };
-    for (const wallHeight of [0.3, 0.8, 2.4]) {
+    for (const effectiveHeight of [0.3, 0.8, 2.4]) {
+      const visibleWallTop = shellVisibleWallTop(effectiveHeight, cap);
+      const frameScale = shellDoorSurroundScale(surround, visibleWallTop);
       const scale = shellDoorLeafScale(
         artifact([0, 0, 0], [1.2, 1.9, 0.2]),
         opening,
-        wallHeight,
-        surround
+        frameScale
       );
       expect(scale.every((value) => Number.isFinite(value) && value > 0)).toBe(
         true
       );
-      expect(scale[0]).toBeCloseTo((1.4 * 0.5 + 0.04) / 1.2);
-      expect(scale[1]).toBeCloseTo((2 * (wallHeight / 2.5) + 0.02) / 1.9);
+      expect(scale[0]).toBeCloseTo((1.4 * frameScale[0] + 0.04) / 1.2);
+      expect(scale[1]).toBeCloseTo((2 * frameScale[1] + 0.02) / 1.9);
     }
   });
 });

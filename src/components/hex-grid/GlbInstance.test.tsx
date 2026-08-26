@@ -11,9 +11,51 @@ vi.mock('@react-three/drei', () => {
       new THREE.MeshStandardMaterial({ color: 0xffffff })
     )
   );
-  return { useGLTF: () => ({ scene }) };
+
+  const nestedScene = new THREE.Group();
+  nestedScene.position.set(20, 30, 40);
+  nestedScene.rotation.y = 0.37;
+  nestedScene.scale.set(9, 8, 7);
+  const nestedGroup = new THREE.Group();
+  nestedGroup.name = 'nested-transform-group';
+  nestedGroup.position.set(1, 2, 3);
+  nestedGroup.rotation.y = Math.PI / 2;
+  nestedGroup.scale.set(2, 1, 0.5);
+  const meshA = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ color: 0xff0000 })
+  );
+  meshA.name = 'submesh-a';
+  meshA.position.set(1, 0, 0);
+  const meshB = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+  );
+  meshB.name = 'submesh-b';
+  meshB.position.set(0, 0, 3);
+  nestedGroup.add(meshA, meshB);
+  nestedScene.add(nestedGroup);
+
+  const skinnedScene = new THREE.Group();
+  skinnedScene.add(
+    new THREE.SkinnedMesh(
+      new THREE.BoxGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    )
+  );
+
+  return {
+    useGLTF: (url: string) => ({
+      scene: url.includes('nested-transform')
+        ? nestedScene
+        : url.includes('skinned')
+          ? skinnedScene
+          : scene,
+    }),
+  };
 });
 
+import { useGLTF } from '@react-three/drei';
 import { GlbInstance } from './GlbInstance';
 
 function findMesh(renderer: {
@@ -125,6 +167,106 @@ describe('GlbInstance — non-uniform scale baking (W3/W4 GlbInstance fix)', () 
     const meshA = findMesh(rendererA);
     const meshB = findMesh(rendererB);
     expect(meshA.geometry).toBe(meshB.geometry);
+  });
+
+  it('bakes nested mesh transforms into each geometry while preserving spacing, names, materials, normals, and one shared floor anchor', async () => {
+    const source = (
+      useGLTF as unknown as (url: string) => { scene: THREE.Group }
+    )('/models/synty/env/nested-transform.glb').scene;
+    source.updateMatrixWorld(true);
+    const relativeRoot = source.matrixWorld.clone().invert();
+    const rootScale = new THREE.Matrix4().makeScale(2, 3, 4);
+    const expected: Array<{
+      name: string;
+      box: THREE.Box3;
+      normal: THREE.Vector3;
+    }> = [];
+    source.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const relative = relativeRoot.clone().multiply(child.matrixWorld);
+      const geometry = child.geometry
+        .clone()
+        .applyMatrix4(rootScale.clone().multiply(relative));
+      geometry.computeBoundingBox();
+      expected.push({
+        name: child.name,
+        box: geometry.boundingBox!.clone(),
+        normal: new THREE.Vector3(
+          geometry.getAttribute('normal').getX(0),
+          geometry.getAttribute('normal').getY(0),
+          geometry.getAttribute('normal').getZ(0)
+        ),
+      });
+      geometry.dispose();
+    });
+    const expectedMinY = Math.min(...expected.map(({ box }) => box.min.y));
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <GlbInstance
+        file="nested-transform.glb"
+        position={{ x: 0, z: 0 }}
+        rotationY={0}
+        scale={[2, 3, 4]}
+      />
+    );
+    const meshes = renderer.scene
+      .findAll(
+        (node) =>
+          (node as { instance?: unknown }).instance instanceof THREE.Mesh
+      )
+      .map((node) => (node as unknown as { instance: THREE.Mesh }).instance)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    expect(meshes.map((mesh) => mesh.name)).toEqual(['submesh-a', 'submesh-b']);
+    expect(
+      meshes.map((mesh) => {
+        const material = Array.isArray(mesh.material)
+          ? mesh.material[0]!
+          : mesh.material;
+        return (material as THREE.MeshStandardMaterial).color.getHexString();
+      })
+    ).toEqual(['ff0000', '00ff00']);
+    expect(source.position.toArray()).toEqual([20, 30, 40]);
+    expect(meshes[0]!.position.toArray()).toEqual([0, 0, 0]);
+    expect(meshes[0]!.scale.toArray()).toEqual([1, 1, 1]);
+
+    let combinedMinY = Infinity;
+    for (let i = 0; i < meshes.length; i += 1) {
+      const geometry = meshes[i]!.geometry;
+      geometry.computeBoundingBox();
+      const actual = geometry.boundingBox!;
+      const wanted = expected[i]!.box.clone().translate(
+        new THREE.Vector3(0, -expectedMinY, 0)
+      );
+      expect(actual.min.toArray()).toEqual(wanted.min.toArray());
+      expect(actual.max.toArray()).toEqual(wanted.max.toArray());
+      const normal = meshes[i]!.geometry.getAttribute('normal');
+      expect(
+        new THREE.Vector3(
+          normal.getX(0),
+          normal.getY(0),
+          normal.getZ(0)
+        ).toArray()
+      ).toEqual(expected[i]!.normal.toArray());
+      expect(
+        normal.getX(0) ** 2 + normal.getY(0) ** 2 + normal.getZ(0) ** 2
+      ).toBeCloseTo(1, 8);
+      combinedMinY = Math.min(combinedMinY, actual.min.y);
+    }
+    expect(combinedMinY).toBeCloseTo(0, 8);
+  });
+
+  it('refuses to flatten a skinned mesh for non-uniform baking', async () => {
+    await expect(
+      ReactThreeTestRenderer.create(
+        <GlbInstance
+          file="skinned-fixture.glb"
+          position={{ x: 0, z: 0 }}
+          rotationY={0}
+          scale={[2, 3, 4]}
+        />
+      )
+    ).rejects.toThrow(/skinned/i);
   });
 
   it('defaults positionY to zero and adds it to the primitive world Y position', async () => {

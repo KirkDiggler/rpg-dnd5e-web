@@ -112,58 +112,50 @@ function bakedGeometriesFor(
   const key = `${file}|${sx}|${sy}|${sz}`;
   const cached = bakedGeometryCache.get(key);
   if (cached) return cached;
+
+  // A GLB can put meshes below arbitrarily transformed groups. Update the
+  // source matrices first, then remove the scene root transform so the
+  // cached geometry remains local to the primitive's root.
+  scene.updateMatrixWorld(true);
+  const rootInverse = scene.matrixWorld.clone().invert();
+  const rootScale = new THREE.Matrix4().makeScale(sx, sy, sz);
   const baked: THREE.BufferGeometry[] = [];
   scene.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      const geometry = child.geometry.clone();
-      const hadAuthoredNormals = !!geometry.attributes.normal;
-      geometry.scale(sx, sy, sz);
-      if (!hadAuthoredNormals) {
-        geometry.computeVertexNormals();
-      }
-      baked.push(geometry);
+    if (child instanceof THREE.SkinnedMesh) {
+      throw new Error(
+        `Cannot non-uniformly bake skinned mesh "${child.name || child.uuid}" in ${file}`
+      );
     }
+    if (!(child instanceof THREE.Mesh)) return;
+    const relativeMatrix = rootInverse.clone().multiply(child.matrixWorld);
+    const geometry = child.geometry.clone();
+    const hadAuthoredNormals = !!geometry.attributes.normal;
+    geometry.applyMatrix4(rootScale.clone().multiply(relativeMatrix));
+    if (!hadAuthoredNormals) geometry.computeVertexNormals();
+    baked.push(geometry);
   });
-  // Base-anchor the whole instance to the floor plane (Kirk's live-walk
-  // extreme-height test, `?wallCutaway=1&wallHeight=12.4`: tall walls
-  // rendered as FLOATING beams, clear floor visible beneath where their
-  // bodies should meet the ground). Root cause: `geometry.scale(sx,sy,sz)`
-  // above multiplies each vertex's LOCAL position by the scale factors —
-  // correct only when a piece's authored local origin already sits
-  // exactly at its own base (Y=0). These wall/door/fitting GLBs don't
-  // (their measured raw bounding boxes are NOT anchored at their local
-  // Y=0 the way this fix assumes elsewhere for X, e.g. WallVariant's own
-  // `rawMinX` pivot-ratio finding), so scaling Y non-uniformly moves the
-  // base itself: a piece whose local origin sits partway up its own
-  // height lifts its base by roughly half the height DELTA as `sy` grows
-  // — subtle and easy to miss at a small dial value (wallHeight=2.4), a
-  // dramatic ~5-6 unit levitation at the extreme value that exposed it
-  // (wallHeight=12.4) — exactly Kirk's reported symptom, at exactly the
-  // magnitude the math predicts.
-  //
-  // Fix: compute ONE combined bounding box across every mesh THIS file
-  // bakes to (not per-mesh — a multi-mesh GLB's sub-pieces may be
-  // deliberately offset from each other; anchoring each mesh
-  // independently would misalign them), then translate every baked
-  // geometry by the SAME amount so the combined base sits exactly at
-  // local Y=0 — matching where `<primitive position={[x, 0, z]}>` below
-  // actually places the floor, regardless of the model's own authored
-  // pivot. An empty/degenerate `baked` (a GLB with zero meshes, not
-  // expected in practice but not this function's job to assume) safely
-  // no-ops via `Infinity`'s own short-circuit below.
+  // Base-anchor the complete transformed assembly with one shared offset so
+  // the authored spacing between submeshes remains intact.
   let minY = Infinity;
   for (const geometry of baked) {
     geometry.computeBoundingBox();
-    const box = geometry.boundingBox;
-    if (box && box.min.y < minY) minY = box.min.y;
+    if (geometry.boundingBox && geometry.boundingBox.min.y < minY) {
+      minY = geometry.boundingBox.min.y;
+    }
   }
   if (Number.isFinite(minY) && minY !== 0) {
-    for (const geometry of baked) {
-      geometry.translate(0, -minY, 0);
-    }
+    for (const geometry of baked) geometry.translate(0, -minY, 0);
   }
   bakedGeometryCache.set(key, baked);
   return baked;
+}
+
+function resetBakedTransforms(object: THREE.Object3D): void {
+  object.position.set(0, 0, 0);
+  object.quaternion.identity();
+  object.scale.set(1, 1, 1);
+  object.matrixAutoUpdate = true;
+  object.updateMatrix();
 }
 
 export interface GlbInstanceProps {
@@ -224,20 +216,25 @@ export function GlbInstance({
   // baked geometries here is what makes sharing safe without mutating
   // that shared cache.
   const cloned = useMemo(() => {
-    const obj = scene.clone(true);
     if (isUniform) {
+      const obj = scene.clone(true);
       obj.scale.setScalar(sx);
       return obj;
     }
+
     const baked = bakedGeometriesFor(scene, file, sx, sy, sz);
+    const obj = scene.clone(true);
     let i = 0;
     obj.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry = baked[i]!;
         i += 1;
       }
+      // All source transforms have already been applied to the geometry.
+      // Reset every hierarchy node, not just the root, to prevent a nested
+      // group transform from being applied a second time.
+      resetBakedTransforms(child);
     });
-    obj.scale.setScalar(1);
     return obj;
   }, [scene, isUniform, sx, sy, sz, file]);
 

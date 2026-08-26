@@ -42,11 +42,11 @@ import { ENV_BASE, GlbInstance } from '../hex-grid/GlbInstance';
 import { WallRunMesh } from '../hex-grid/WallRunMesh';
 import {
   deriveShellDoorGeometry,
-  extendWallRunsAtDoorGaps,
   SHELL_DOOR_FRAME_FOREGROUND_MARGIN,
   shellDoorLeafScale,
   shellDoorSurroundScale,
   shellLocalOffsetToWorld,
+  shellVisibleWallTop,
 } from '../hex-grid/dungeonShellWallHelpers';
 import {
   DOOR_FRAME_FILE,
@@ -83,11 +83,15 @@ function ProfileDoor({
     x: door.position.x + frameOffset.x,
     z: door.position.z + frameOffset.z,
   };
+  const visibleWallTop = shellVisibleWallTop(wallHeight, profile.cap);
+  const frameScale = shellDoorSurroundScale(
+    profile.doorSurround,
+    visibleWallTop
+  );
   const leafScale = shellDoorLeafScale(
     { bounds: geometry.leafBounds },
     geometry.opening,
-    wallHeight,
-    profile.doorSurround
+    frameScale
   );
   return (
     <>
@@ -96,7 +100,7 @@ function ProfileDoor({
         position={framePosition}
         positionY={DUNGEON_SURFACE_Y}
         rotationY={door.rotationY}
-        scale={shellDoorSurroundScale(profile.doorSurround, wallHeight)}
+        scale={frameScale}
       />
       {leafShut && (
         <GlbInstance
@@ -140,16 +144,12 @@ export function AtlasWalls({
   wallHeight = WALL_HEIGHT,
   profile,
 }: AtlasWallsProps) {
-  const visualWallRuns = useMemo(
-    () => (profile ? extendWallRunsAtDoorGaps(wallRuns, doorGaps) : wallRuns),
-    [doorGaps, profile, wallRuns]
-  );
   return (
     <>
       <WallRunMesh
         envelopeRuns={[]}
         connectorRuns={[]}
-        authoredRuns={visualWallRuns}
+        authoredRuns={wallRuns}
         wallHeight={wallHeight}
         profile={profile}
       />

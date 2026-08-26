@@ -1,4 +1,3 @@
-import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import type {
   DungeonShellArtifact,
@@ -7,11 +6,9 @@ import type {
 } from '@/rendering/dungeonShellManifest';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import * as THREE from 'three';
-import type { DoorGapPiece } from '../session/atlasWallRuns';
 import type { WorldPos } from './hexMath';
 import { DOOR_FRAME_CALIBRATED_WIDTH } from './syntyHexWallHelpers';
 
-export const SHELL_SEAM_OVERLAP = 0.08;
 export const SHELL_DOOR_COVER_MARGIN = 0.02;
 export const SHELL_DOOR_FRAME_FOREGROUND_MARGIN = 0.01;
 
@@ -56,6 +53,16 @@ function pieceWidth(value: number): number {
   return finitePositive(value, 'piece width');
 }
 
+export function shellVisibleWallTop(
+  effectiveHeight: number,
+  cap: DungeonShellArtifact
+): number {
+  return (
+    finitePositive(effectiveHeight, 'effective wall height') +
+    shellRawDimensions(cap.bounds).height * SYNTY_SCALE
+  );
+}
+
 export function shellBodyScale(
   body: DungeonShellArtifact,
   width: number,
@@ -79,12 +86,12 @@ export function shellTrimScale(
 
 export function shellDoorSurroundScale(
   surround: DungeonShellArtifact,
-  wallHeight: number
+  visibleWallTop: number
 ): [number, number, number] {
   const raw = shellRawDimensions(surround.bounds);
   return [
     DOOR_FRAME_CALIBRATED_WIDTH / raw.width,
-    finitePositive(wallHeight, 'door wall height') / raw.height,
+    finitePositive(visibleWallTop, 'visible wall top') / raw.height,
     SYNTY_SCALE,
   ];
 }
@@ -110,56 +117,6 @@ export function shellLocalOffsetToWorld(
   return {
     x: offset.x * Math.cos(rotationY) + offset.z * Math.sin(rotationY),
     z: -offset.x * Math.sin(rotationY) + offset.z * Math.cos(rotationY),
-  };
-}
-
-export function shellSeamOverlap(): number {
-  return SHELL_SEAM_OVERLAP;
-}
-
-function samePoint(a: WorldPos, b: WorldPos): boolean {
-  return Math.hypot(a.x - b.x, a.z - b.z) < 1e-6;
-}
-
-/** Copy authored runs and grow only endpoints that are the public door gap
- * boundaries toward the gap center. The authored/mechanical runs stay intact. */
-export function extendWallRunsAtDoorGaps(
-  runs: readonly AuthoredWallRun[],
-  gaps: readonly DoorGapPiece[],
-  overlap = SHELL_SEAM_OVERLAP
-): AuthoredWallRun[] {
-  finitePositive(overlap, 'door seam overlap');
-  return runs.map((run) => {
-    let start = run.start;
-    let end = run.end;
-    for (const gap of gaps) {
-      const otherBoundary = {
-        x: 2 * gap.position.x - gap.leafPosition.x,
-        z: 2 * gap.position.z - gap.leafPosition.z,
-      };
-      for (const boundary of [gap.leafPosition, otherBoundary]) {
-        if (samePoint(start, boundary)) {
-          start = moveToward(start, gap.position, overlap);
-        }
-        if (samePoint(end, boundary)) {
-          end = moveToward(end, gap.position, overlap);
-        }
-      }
-    }
-    return start === run.start && end === run.end
-      ? run
-      : { ...run, start, end };
-  });
-}
-
-function moveToward(from: WorldPos, to: WorldPos, distance: number): WorldPos {
-  const dx = to.x - from.x;
-  const dz = to.z - from.z;
-  const length = Math.hypot(dx, dz);
-  if (length === 0) return from;
-  return {
-    x: from.x + (dx / length) * distance,
-    z: from.z + (dz / length) * distance,
   };
 }
 
@@ -266,14 +223,11 @@ export function deriveShellDoorGeometry(
 export function shellDoorLeafScale(
   leaf: { bounds: { min: ShellVec3; max: ShellVec3 } },
   opening: ShellOpening,
-  wallHeight: number,
-  surround: DungeonShellArtifact
+  frameScale: [number, number, number]
 ): [number, number, number] {
   const leafRaw = shellRawDimensions(leaf.bounds);
-  const surroundRaw = shellRawDimensions(surround.bounds);
-  const frameScaleX = DOOR_FRAME_CALIBRATED_WIDTH / surroundRaw.width;
-  const frameScaleY =
-    finitePositive(wallHeight, 'door wall height') / surroundRaw.height;
+  const frameScaleX = finitePositive(frameScale[0], 'door frame X scale');
+  const frameScaleY = finitePositive(frameScale[1], 'door frame Y scale');
   const openingWidth = opening.max[0] - opening.min[0];
   const openingHeight = opening.max[1] - opening.min[1];
   finitePositive(openingWidth, 'opening width');
