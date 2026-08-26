@@ -33,5 +33,23 @@
       "src/components/session/SessionEncounterView.tsx",
       "rpg-dnd5e-web#822"
     ]
+  },
+  {
+    "type": "pattern",
+    "id": "reconcile-ambiguous-mutation-outcomes-without-replay",
+    "created": "2026-08-26",
+    "updated": "2026-08-26",
+    "status": "active",
+    "name": "Fail closed and reconcile ambiguous mutation outcomes without replay",
+    "description": "A successful command response and a non-precondition transport failure can both mean server state changed before an event arrives. Revoke old execution authority synchronously, preserve honest presentation facts, and queue serialized authoritative reads. Never automatically replay a mutation whose commit status is unknown.",
+    "example": "Move acceptance invalidates Turn/Afford before animation; non-FAILED_PRECONDITION Attack and EndTurn failures clear selection, retain their error, invalidate authority, and schedule the same authoritative reconciliation as success.",
+    "anti_pattern": "Leaving old declarations executable until a stream event arrives, or retrying an Attack/EndTurn after an unavailable/unknown response.",
+    "domain": "web/session-command-recovery",
+    "references": [
+      "src/components/session/SessionEncounterView.tsx",
+      "src/components/session/combat-experience/useSessionCombatExperience.ts",
+      "src/components/session/useSessionWalk.ts",
+      "rpg-dnd5e-web#822"
+    ]
   }
 ]

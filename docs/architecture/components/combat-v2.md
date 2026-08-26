@@ -62,12 +62,17 @@ Turn and Afford keep last-good display separately from execution freshness.
 Every invalidate/refetch revokes `fresh` immediately; only the newest successful
 request for the current key restores it, while errors and reversed/stale
 responses remain false. Each delivered event sequence revokes both before the
-coalesced refresh starts. Old declarations may remain visible with an explicit
-stale marker, but Attack, Move preview/dispatch, and End Turn stay disabled.
-A selector-bearing FAILED_PRECONDITION uses one recovery path for all three
-verbs: clear selection, revoke authority, show `That option changed; review
-your current actions.`, refresh Turn+Afford, append only refreshed provider
-`why.text` when present, and never auto-retry.
+coalesced refresh starts. A successful Move response also revokes both and
+queues the coalesced Turn/Afford refresh immediately, before response-step
+animation or MOVED delivery; Where reconciliation remains animation-timed. Old
+declarations may remain visible with an explicit stale marker, but Attack, Move
+preview/dispatch, and End Turn stay disabled. A selector-bearing
+FAILED_PRECONDITION uses one recovery path for all three verbs: clear selection,
+revoke authority, show `That option changed; review your current actions.`,
+refresh Turn+Afford, append only refreshed provider `why.text` when present, and
+never auto-retry. Any other Attack or End Turn failure is an ambiguous mutation
+outcome: retain its honest error, clear selection, revoke Turn/Afford, reconcile
+the same authoritative snapshots as success, and never retry the command.
 
 ## Public identity and private status
 

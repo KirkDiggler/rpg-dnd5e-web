@@ -410,12 +410,17 @@ export function useSessionCombatExperience({
           if (isStaleDeclarationRefusal(error)) {
             recoverStaleDeclaration(declaration.id, Verb.ATTACK, exactTarget);
           } else {
-            setInteraction((current) => ({
-              ...current,
-              selectedCandidateMember: null,
-              changedOptionNotice: `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-            }));
-            setTargeting(true);
+            // A transport/unknown failure is ambiguous: the provider may have
+            // committed the command even though its response did not arrive.
+            // Keep the honest error, but never leave pre-command authority
+            // armed or executable and never replay the mutation.
+            const notice = `Attack failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
           }
         } finally {
           attackInFlightRef.current = false;
@@ -472,10 +477,16 @@ export function useSessionCombatExperience({
           if (isStaleDeclarationRefusal(error)) {
             recoverStaleDeclaration(current.id, Verb.END_TURN);
           } else {
-            setInteraction((previous) => ({
-              ...previous,
-              changedOptionNotice: `End turn failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-            }));
+            // Non-selector failures are ambiguous and may describe a committed
+            // EndTurn. Fail closed, preserve the transport error, and reconcile
+            // snapshots without ever retrying the command.
+            const notice = `End turn failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford']);
           }
         } finally {
           endTurnInFlightRef.current = false;

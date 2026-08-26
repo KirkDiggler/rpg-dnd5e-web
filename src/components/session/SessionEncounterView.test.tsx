@@ -220,10 +220,12 @@ function fakeStream(events: SessionEvent[]) {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((settle) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((settle, fail) => {
     resolve = settle;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function deferredStream(events: SessionEvent[]) {
@@ -658,6 +660,84 @@ describe('SessionEncounterView production combat integration', () => {
         expect.objectContaining({ declarationId: '' })
       )
     );
+  });
+
+  it('revokes old authority and queues one Turn/Afford refresh as soon as Move succeeds, before animation or an event', async () => {
+    readyTurn();
+    const moveResponse = deferred<unknown>();
+    hoisted.moveFn.mockReturnValue(moveResponse.promise);
+    renderView();
+    const attack = await screen.findByRole('button', { name: /longsword/i });
+    const endTurn = screen.getByRole('button', { name: /end turn/i });
+    fireEvent.click(attack);
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    const oldTargetClick = hoisted.lastCanvasProps.current?.onEntityClick;
+
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+
+    const turnRefresh = deferred<unknown>();
+    const affordRefresh = deferred<unknown>();
+    hoisted.turnFn.mockReturnValue(turnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(affordRefresh.promise);
+    await act(async () => {
+      moveResponse.resolve({
+        steps: [{ position: { x: 1, y: 0 }, seq: 9n }],
+      });
+      await moveResponse.promise;
+    });
+
+    await screen.findByText(/actions may be out of date/i);
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    expect(hoisted.lastCanvasProps.current?.moveSeq).toBe(1);
+    expect(hoisted.whereResult.refetch).not.toHaveBeenCalled();
+    act(() => {
+      oldTargetClick?.('skeleton-1');
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    fireEvent.click(endTurn);
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      turnRefresh.resolve({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 2,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', { active: true }),
+          participant('skeleton-1'),
+        ],
+      });
+      affordRefresh.resolve({
+        clock: ClockKind.TURN,
+        declarations: [
+          attackDeclaration(),
+          moveDeclaration(),
+          endTurnDeclaration(),
+        ],
+      });
+      await Promise.all([turnRefresh.promise, affordRefresh.promise]);
+    });
+    await waitFor(() =>
+      expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(hoisted.turnFn).toHaveBeenCalledTimes(2);
+    expect(hoisted.affordFn).toHaveBeenCalledTimes(2);
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.whereResult.refetch).not.toHaveBeenCalled();
   });
 
   it('a completed move preserves server steps and reconciles after animation', async () => {
@@ -1482,38 +1562,94 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a non-stale Attack failure honest and armed without forcing authority recovery', async () => {
+  it('recovers an ambiguous Attack failure without retrying or leaving old declarations executable', async () => {
     readyTurn();
-    hoisted.attackFn.mockRejectedValue(
-      new Error('temporary transport failure')
-    );
+    const attackFailure = deferred<unknown>();
+    hoisted.attackFn.mockReturnValue(attackFailure.promise);
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
-    act(() => {
-      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    const oldEndTurn = screen.getByRole('button', { name: /end turn/i });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    const oldTargetClick = hoisted.lastCanvasProps.current?.onEntityClick;
+    act(() => oldTargetClick?.('skeleton-1'));
+
+    const turnRefresh = deferred<unknown>();
+    const affordRefresh = deferred<unknown>();
+    hoisted.turnFn.mockReturnValue(turnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(affordRefresh.promise);
+    await act(async () => {
+      attackFailure.reject(
+        new ConnectError('temporary upstream failure', Code.Unavailable)
+      );
+      try {
+        await attackFailure.promise;
+      } catch {
+        // The controller owns the rejected command promise.
+      }
     });
 
-    await screen.findByText('Attack failed: temporary transport failure');
-    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
-      'skeleton-1',
-    ]);
+    await screen.findByText(/Attack failed:.*temporary upstream failure/i);
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
+    expect((oldEndTurn as HTMLButtonElement).disabled).toBe(true);
+    act(() => {
+      oldTargetClick?.('skeleton-1');
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    fireEvent.click(oldEndTurn);
     expect(hoisted.attackFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
   });
 
-  it('surfaces an honest non-stale End Turn failure without revoking current authority', async () => {
+  it('recovers an ambiguous End Turn failure without retrying or leaving old declarations executable', async () => {
     readyTurn();
-    hoisted.endTurnFn.mockRejectedValue(
-      new Error('temporary transport failure')
-    );
+    const endTurnFailure = deferred<unknown>();
+    hoisted.endTurnFn.mockReturnValue(endTurnFailure.promise);
     renderView();
-    const endTurn = await screen.findByRole('button', { name: /end turn/i });
-    fireEvent.click(endTurn);
+    fireEvent.click(await screen.findByRole('button', { name: /longsword/i }));
+    const oldEndTurn = screen.getByRole('button', { name: /end turn/i });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    const oldTargetClick = hoisted.lastCanvasProps.current?.onEntityClick;
+    fireEvent.click(oldEndTurn);
 
-    await screen.findByText('End turn failed: temporary transport failure');
-    expect((endTurn as HTMLButtonElement).disabled).toBe(false);
-    expect(hoisted.turnFn).toHaveBeenCalledTimes(1);
-    expect(hoisted.affordFn).toHaveBeenCalledTimes(1);
+    const turnRefresh = deferred<unknown>();
+    const affordRefresh = deferred<unknown>();
+    hoisted.turnFn.mockReturnValue(turnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(affordRefresh.promise);
+    await act(async () => {
+      endTurnFailure.reject(new Error('unknown transport outcome'));
+      try {
+        await endTurnFailure.promise;
+      } catch {
+        // The controller owns the rejected command promise.
+      }
+    });
+
+    await screen.findByText('End turn failed: unknown transport outcome');
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
+    expect((oldEndTurn as HTMLButtonElement).disabled).toBe(true);
+    act(() => {
+      oldTargetClick?.('skeleton-1');
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+    });
+    fireEvent.click(oldEndTurn);
     expect(hoisted.endTurnFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
   });
 
   it('fails closed malformed provider target kinds for Attack, Move, and End Turn dispatch', async () => {

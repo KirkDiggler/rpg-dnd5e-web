@@ -164,6 +164,32 @@ describe('useSessionWalk', () => {
     expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
   });
 
+  it('reports successful Move acceptance before animation completion', async () => {
+    hoisted.moveFn.mockResolvedValue({
+      steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
+    });
+    const onMoveAccepted = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn(),
+        'v1.move',
+        undefined,
+        () => true,
+        onMoveAccepted
+      )
+    );
+
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+
+    await waitFor(() => expect(onMoveAccepted).toHaveBeenCalledOnce());
+    expect(result.current.busy).toBe(true);
+    expect(result.current.moveSeq).toBe(1);
+  });
+
   it('a resolved Move sets movePath/moveSeq from the returned steps and jumps display position to the last step, staying busy', async () => {
     hoisted.moveFn.mockResolvedValue({
       steps: [

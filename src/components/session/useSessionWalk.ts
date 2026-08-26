@@ -81,7 +81,11 @@ export function useSessionWalk(
    * Undefined means the Turn/Afford authority snapshots are not coherent yet. */
   declarationId?: string,
   onStaleDeclarationRefusal?: (declarationId: string) => void,
-  isAuthorityFresh: () => boolean = () => true
+  isAuthorityFresh: () => boolean = () => true,
+  /** Fires synchronously when Move is accepted, before response-step animation
+   * state is published. The route uses this boundary to revoke stale command
+   * authority and queue Turn/Afford reconciliation. */
+  onMoveAccepted?: () => void
 ): UseSessionWalkResult {
   const [displayPosition, setDisplayPosition] = useState<CubeCoord | null>(
     wherePosition ? positionToCube(wherePosition) : null
@@ -148,6 +152,10 @@ export function useSessionWalk(
             // Opaque server offer selector: echoed only, never parsed or built.
             declarationId,
           });
+          // A successful unary response is itself command acceptance. Revoke
+          // old declarations before publishing any animation state and without
+          // waiting for a redundant MOVED delivery.
+          onMoveAccepted?.();
           const steps = response.steps
             .filter((step) => step.position !== undefined)
             .map((step) => positionToCube(step.position!));
@@ -191,6 +199,7 @@ export function useSessionWalk(
       declarationId,
       onStaleDeclarationRefusal,
       isAuthorityFresh,
+      onMoveAccepted,
     ]
   );
 

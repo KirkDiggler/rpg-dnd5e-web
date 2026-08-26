@@ -242,8 +242,12 @@ function SessionEncounterScope({
   const staleMoveRecoveryRef = useRef<(declarationId: string) => void>(
     () => {}
   );
+  const moveAcceptedRef = useRef<() => void>(() => {});
   const handleStaleMoveRefusal = useCallback((declarationId: string) => {
     staleMoveRecoveryRef.current(declarationId);
+  }, []);
+  const handleMoveAccepted = useCallback(() => {
+    moveAcceptedRef.current();
   }, []);
 
   const {
@@ -262,7 +266,8 @@ function SessionEncounterScope({
     refetchWhere,
     moveDeclarationId,
     handleStaleMoveRefusal,
-    isMoveAuthorityFresh
+    isMoveAuthorityFresh,
+    handleMoveAccepted
   );
 
   const otherMembers = useMemo(
@@ -340,6 +345,10 @@ function SessionEncounterScope({
   });
   staleMoveRecoveryRef.current = (declarationId) =>
     combat.recoverStaleDeclaration(declarationId, Verb.MOVE);
+  moveAcceptedRef.current = () => {
+    combat.invalidateAuthority();
+    scheduleRefresh(['turn', 'afford']);
+  };
 
   const refreshKeysForEvent = useCallback(
     (event: SessionEvent): SessionRefreshKey[] => {
@@ -429,12 +438,8 @@ function SessionEncounterScope({
   const handleWalkAnimationComplete = useCallback(
     (completedSeq: number) => {
       onWalkAnimationComplete(completedSeq);
-      if (completedSeq === moveSeq) {
-        invalidateAuthority();
-        scheduleRefresh(['afford', 'turn']);
-      }
     },
-    [invalidateAuthority, moveSeq, onWalkAnimationComplete, scheduleRefresh]
+    [onWalkAnimationComplete]
   );
 
   const handleDoorClick = useCallback(

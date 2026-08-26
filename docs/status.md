@@ -26,9 +26,13 @@ let it rot.
   Move, mismatch/missing/duplicate locked), with provider `remaining`
   display-only and no feet/path pricing in the web. Turn/Afford freshness is
   independent from last-good display: every event synchronously revokes both,
-  stale/error/reversed snapshots disable Attack/Move/End Turn, and selector
-  FAILED_PRECONDITION recovery clears selection, shows generic copy, refreshes,
-  appends only refreshed provider `why.text`, and never retries. Dispatch fails
+  stale/error/reversed snapshots disable Attack/Move/End Turn. Successful Move
+  acceptance revokes Turn/Afford and queues their coalesced refresh before
+  animation or MOVED delivery. Selector FAILED_PRECONDITION recovery clears
+  selection, shows generic copy, refreshes, appends only refreshed provider
+  `why.text`, and never retries; other Attack/End Turn failures retain honest
+  errors but fail closed and reconcile because the mutation may have committed.
+  Dispatch fails
   closed unless target kinds are Attack MEMBER, turn Move PATH, End Turn NONE.
   Public roster supplies the explicit dock identity/body plus stable dice/Story
   names and roles; transient Turn participants cannot revoke a locally armed
