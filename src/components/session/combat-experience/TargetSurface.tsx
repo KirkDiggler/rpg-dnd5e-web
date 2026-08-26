@@ -17,7 +17,7 @@ export interface TargetSurfaceProps {
   showTurnNotice: boolean;
   pacingNotice?: string | null;
   changedOptionNotice?: string | null;
-  participantNames: ReadonlyMap<string, string>;
+  memberNames: ReadonlyMap<string, string>;
   location: { name: string; area: string };
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
   onTargetClick: (targetId: string) => void;
@@ -31,7 +31,7 @@ export function TargetSurface({
   showTurnNotice,
   pacingNotice,
   changedOptionNotice,
-  participantNames,
+  memberNames,
   location,
   renderMap,
   onTargetClick,
@@ -46,14 +46,9 @@ export function TargetSurface({
           .filter((candidate) => candidate.available)
           .map((candidate) => candidate.member)
       : [];
-  const unavailableTargets =
-    phase === 'targeting' && isMemberAttack
-      ? declaration.candidates.filter((candidate) => !candidate.available)
-      : [];
   const attackName = declaration?.attack?.name || 'Attack';
   const targetName = selection?.candidate
-    ? participantNames.get(selection.candidate.member) ||
-      selection.candidate.member
+    ? memberNames.get(selection.candidate.member) || selection.candidate.member
     : null;
 
   return (
@@ -93,12 +88,36 @@ export function TargetSurface({
             {availableTargets.length} highlighted target
             {availableTargets.length === 1 ? '' : 's'}
           </span>
-          {unavailableTargets.map((candidate) => (
-            <small key={candidate.member} className={styles.targetShortfall}>
-              {participantNames.get(candidate.member) || candidate.member}:{' '}
-              {candidate.why?.text || 'Unavailable'}
-            </small>
-          ))}
+          <ul
+            className={styles.targetList}
+            aria-label={`${attackName} targets`}
+          >
+            {declaration.candidates.map((candidate, index) => {
+              const name =
+                memberNames.get(candidate.member) || candidate.member;
+              const status = candidate.available
+                ? 'Available'
+                : `Unavailable: ${candidate.why?.text || 'Unavailable'}`;
+              return (
+                <li key={`${candidate.member}:${index}`}>
+                  <button
+                    type="button"
+                    className={
+                      candidate.available
+                        ? styles.targetChoice
+                        : `${styles.targetChoice} ${styles.targetChoiceUnavailable}`
+                    }
+                    disabled={!candidate.available}
+                    onClick={() => {
+                      if (candidate.available) onTargetClick(candidate.member);
+                    }}
+                  >
+                    {name}: {status}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
       {phase === 'awaiting-roll' && targetName && (

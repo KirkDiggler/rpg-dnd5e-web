@@ -19,6 +19,8 @@ export interface SessionCombatFixture {
   label: string;
   description: string;
   viewerMember: string;
+  viewerName: string;
+  viewerClassRefId?: string;
   round: number;
   clock: ClockKind;
   streamState: 'live' | 'caught-up';

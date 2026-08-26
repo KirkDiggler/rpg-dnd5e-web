@@ -1,7 +1,7 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-08-25
+updated: 2026-08-26
 confidence: medium — session combat is current through #817; older unrelated entries still need the dedicated refresh noted below.
 ---
 
@@ -19,19 +19,29 @@ let it rot.
   Attack flow: selecting one exact authored Attack arms only its available
   provider candidates; unavailable candidates retain `why.text`; direct map
   clicks never choose an action; Attack and End Turn echo exact opaque
-  declaration IDs. Move is fail-closed across coherent Turn/Afford clocks
-  (WORLD empty selector, TURN one exact Move, mismatch/missing/duplicate not
-  ready), with provider `remaining` display-only and no feet/path pricing in
-  the web. Public roster supplies identity/body; owner-gated CharacterData
-  supplies exact private level/HP/speed/status/equipment. Equipment mutations
-  replace that cache from the full response without client recomputation.
-  StreamEvents and GetStory share the Task 12 sequencer/terminal polling lane;
-  one route funnel coalesces CharacterData/Turn/Afford/View/Where invalidation,
-  ingests Debug and typed presentation immediately, and keeps other-member
-  pacing presentation-only. Actor Story/dice remain concealed until release;
+  declaration IDs. The same available candidate set drives canvas rings and
+  an accessible semantic target-button list; unavailable targets retain public
+  roster names and provider `why.text` without dispatch. Move is fail-closed
+  across coherent Turn/Afford clocks (WORLD empty selector, TURN one exact
+  Move, mismatch/missing/duplicate locked), with provider `remaining`
+  display-only and no feet/path pricing in the web. Public roster supplies the
+  explicit dock identity/body on every clock; owner-gated CharacterData
+  supplies exact private level/HP/speed/status/equipment but never name/class
+  identity. Equipment mutations replace that cache from the full response
+  without client recomputation. StreamEvents and GetStory share the Task 12
+  sequencer/terminal polling lane; one route funnel serializes and coalesces
+  CharacterData/Turn/Afford/View/Where invalidation, retaining one immediate
+  trailing safety pass for events that arrive during a read. CharacterData
+  likewise retains an in-flight invalidation for a trailing owner snapshot.
+  Query generations fence reversed/key-stale completions and disposed refresh
+  schedulers are inert. Actor Story/dice remain concealed until release;
   witnesses/history auto-settle. Story is always available; raw Debug renders
   only in development/explicit Concepts diagnostics and has no live region.
-  The old session CombatPanel/useCombatPanel/combatPanel, DeclarationRow/TurnHud
+  Run-ended presentation closes equipment immediately, places an inert/hidden
+  game surface beneath the focused `aria-modal` action, and layers the modal
+  above every panel. A transient private refresh error keeps the last confirmed
+  CharacterData and cannot freeze newer door/path state. The old session
+  CombatPanel/useCombatPanel/combatPanel, DeclarationRow/TurnHud
   bridge, direct-floor attack, and separate DebugCombatLog are deleted.
   Provider baseline: proto v0.1.143 (`a7db07a`), toolkit dnd5e v0.100.0 /
   session v0.30.0 / resolution v0.13.0, merged API dev `f1aa9d2` (PR #845).
@@ -303,8 +313,8 @@ their live successor.
 | [gRPC client](#grpc-client--encounterhooks)                                                                                       | Medium — clean hook wrappers; no tests                                                                                                                                                                                                                                    |
 | [proto integration (@kirkdiggler/rpg-api-protos)](#proto-integration-rpg-api-protos-v0186)                                        | Medium-high — types used directly, no duplication; lock-file discipline needed                                                                                                                                                                                            |
 | [Discord Activity wiring](#discord-activity-wiring)                                                                               | Medium — works in prod path, dev fallback is fragile                                                                                                                                                                                                                      |
-| [/concepts route](#concepts-route)                                                                                                | Medium — useful sandbox; decoupled from production                                                                                                                                                                                                                        |
-| [vitest coverage](#testing)                                                                                                       | Medium — 569 tests, mostly utility/hook-layer; near-zero rendered-component coverage                                                                                                                                                                                      |
+| [/concepts route](architecture/components/concepts-route.md)                                                                      | Medium-high — fixture controllers and review controls stay sandbox-only, while session-combat/equipment/encounter-dock concepts intentionally render the same production-owned components                                                                                 |
+| [vitest coverage](#testing)                                                                                                       | High automated — 212 passing test files plus 1 skipped; 3,438 passing tests plus 2 skipped, including rendered route/component integration, hooks, recovery, concepts, dice, and R3F tests; real WebGL/licensed-asset fidelity remains a live visual gate                 |
 
 ## Upcoming work
 

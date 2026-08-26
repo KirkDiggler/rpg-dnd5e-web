@@ -92,29 +92,36 @@ describe('useCharacterData', () => {
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
   });
 
-  it('coalesces a burst of refetch requests into one in-flight owner read', async () => {
+  it('records an in-flight invalidation burst and runs one trailing owner snapshot', async () => {
     const initial = character(3);
-    const refreshed = character(4);
+    const staleSnapshot = character(4);
+    const latestSnapshot = character(5);
     const pending = deferred<GetCharacterDataResponse>();
     hoisted.getCharacterDataFn
       .mockResolvedValueOnce(response(initial))
-      .mockReturnValueOnce(pending.promise);
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(response(latestSnapshot));
 
     const { result } = renderHook(() => useCharacterData('fighter-1'));
     await waitFor(() => expect(result.current.characterData).toBe(initial));
 
+    let refresh!: Promise<void>;
     act(() => {
-      void result.current.refetch();
+      refresh = result.current.refetch();
       void result.current.refetch();
       void result.current.refetch();
     });
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      pending.resolve(response(refreshed));
-      await pending.promise;
+      pending.resolve(response(staleSnapshot));
+      await refresh;
     });
-    expect(result.current.characterData).toBe(refreshed);
+
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(3);
+    expect(result.current.characterData).toBe(latestSnapshot);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 
   it('keeps an authoritative replacement when an older owner read resolves after it', async () => {
@@ -132,6 +139,9 @@ describe('useCharacterData', () => {
 
     act(() => {
       void result.current.refetch();
+      // This would normally require a trailing read, but the mutation response
+      // supersedes both the in-flight snapshot and its recorded invalidation.
+      void result.current.refetch();
     });
     await waitFor(() => expect(result.current.loading).toBe(true));
 
@@ -147,6 +157,7 @@ describe('useCharacterData', () => {
     expect(result.current.characterData).toBe(replaced);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the last confirmed CharacterData when a refetch fails', async () => {
@@ -283,6 +294,11 @@ describe('useCharacterData', () => {
       { initialProps: { characterId: 'fighter-1' } }
     );
     await waitFor(() => expect(result.current.loading).toBe(true));
+    act(() => {
+      // Record a trailing invalidation for the old key; the key transition
+      // must supersede it rather than issuing another fighter-1 read.
+      void result.current.refetch();
+    });
 
     rerender({ characterId: 'fighter-2' });
     expect(result.current.characterData).toBeUndefined();
@@ -305,6 +321,7 @@ describe('useCharacterData', () => {
     expect(result.current.characterData).toBe(current);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
   });
 
   it('treats a successful response without CharacterData as an error, not an empty sheet', async () => {

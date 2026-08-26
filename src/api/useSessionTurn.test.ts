@@ -20,6 +20,14 @@ vi.mock('./client', () => ({
 // Import AFTER vi.mock so the mock is applied
 import { useSessionTurn } from './useSessionTurn';
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   hoisted.turnFn.mockReset();
 });
@@ -176,6 +184,83 @@ describe('useSessionTurn', () => {
     expect(result.current.clock).toBe(ClockKind.TURN);
 
     rerender({ session: 'enc-1', member: '' });
+    expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
+    expect(result.current.active).toBe('');
+    expect(result.current.round).toBe(0);
+    expect(result.current.order).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('publishes only the newest overlapping response for the current key', async () => {
+    const older = deferred<TurnResponse>();
+    const newer = deferred<TurnResponse>();
+    hoisted.turnFn
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(newer.promise);
+
+    const { result } = renderHook(() => useSessionTurn('enc-1', 'char-1'));
+    let olderRead!: Promise<void>;
+    let newerRead!: Promise<void>;
+    act(() => {
+      olderRead = result.current.refetch();
+      newerRead = result.current.refetch();
+    });
+
+    await act(async () => {
+      newer.resolve({
+        clock: ClockKind.WORLD,
+        active: '',
+        round: 0,
+        order: [],
+        participants: [],
+      } as unknown as TurnResponse);
+      await newerRead;
+    });
+    expect(result.current.clock).toBe(ClockKind.WORLD);
+
+    await act(async () => {
+      older.resolve({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 9,
+        order: ['char-1'],
+        participants: [],
+      } as unknown as TurnResponse);
+      await olderRead;
+    });
+
+    expect(result.current.clock).toBe(ClockKind.WORLD);
+    expect(result.current.active).toBe('');
+    expect(result.current.round).toBe(0);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('fences a late response from a previous nonempty session/member key', async () => {
+    const oldKey = deferred<TurnResponse>();
+    hoisted.turnFn.mockReturnValueOnce(oldKey.promise);
+    const { result, rerender } = renderHook(
+      ({ session, member }) => useSessionTurn(session, member),
+      { initialProps: { session: 'enc-1', member: 'char-1' } }
+    );
+
+    let staleRead!: Promise<void>;
+    act(() => {
+      staleRead = result.current.refetch();
+    });
+    rerender({ session: 'enc-2', member: 'char-2' });
+
+    await act(async () => {
+      oldKey.resolve({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 4,
+        order: ['char-1'],
+        participants: [],
+      } as unknown as TurnResponse);
+      await staleRead;
+    });
+
     expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
     expect(result.current.active).toBe('');
     expect(result.current.round).toBe(0);

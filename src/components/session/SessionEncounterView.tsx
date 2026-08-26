@@ -154,6 +154,23 @@ function SessionEncounterScope({
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
+  const encounterContentRef = useRef<HTMLDivElement>(null);
+  const leaveRunButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const underlying = encounterContentRef.current;
+    if (runEnded === null) {
+      underlying?.removeAttribute('inert');
+      return;
+    }
+
+    // Native inert removes every underlying canvas/panel control from pointer
+    // and sequential-focus interaction. aria-hidden mirrors that isolation for
+    // assistive technology while focus moves to the modal's one primary action.
+    underlying?.setAttribute('inert', '');
+    leaveRunButtonRef.current?.focus();
+    return () => underlying?.removeAttribute('inert');
+  }, [runEnded]);
 
   const layoutOutcome = useMemo(
     () => (atlas ? resolveSceneLayout(atlas) : null),
@@ -171,13 +188,12 @@ function SessionEncounterScope({
     [atlas, doors]
   );
 
+  // Once owner-private CharacterData has been confirmed it remains valid
+  // presentation input while a background refresh is loading or reports a
+  // transient status error. Neither condition may freeze newer public door /
+  // path snapshots behind the prior scene.
   const canDrawSceneNow =
-    !!scene &&
-    scene.floorTiles.size > 0 &&
-    !!wherePosition &&
-    !!characterData &&
-    !characterDataLoading &&
-    !characterDataError;
+    !!scene && scene.floorTiles.size > 0 && !!wherePosition && !!characterData;
   const lastGoodSceneRef = useRef<typeof scene>(null);
   const lastGoodPositionRef = useRef<ReturnType<typeof positionToCube> | null>(
     null
@@ -240,7 +256,13 @@ function SessionEncounterScope({
     turnClock === affordClock ? turnClock : ClockKind.UNSPECIFIED;
   const coherentDeclarations =
     experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations;
-  const turnLocked = turnClock === ClockKind.TURN && turnActive !== member;
+  // A path preview is actionable only with coherent Move authority. Known
+  // WORLD/WORLD uses the valid empty selector and remains unlocked; partial,
+  // mismatched, missing, or duplicate authority is shown as locked rather than
+  // advertising a path the click handler must refuse.
+  const turnLocked =
+    moveDeclarationId === undefined ||
+    (turnClock === ClockKind.TURN && turnActive !== member);
 
   const refreshCallbacks = useMemo(
     () => ({
@@ -321,6 +343,9 @@ function SessionEncounterScope({
 
       if (event.body.case === 'door') setDoorNotice(null);
       if (event.body.case === 'ended' || event.kind === EventKind.ENDED) {
+        // Equipment must disappear in the same authoritative event update,
+        // before the modal receives focus or can be layered over the panel.
+        setEquipmentOpen(false);
         setRunEnded(event.body.case === 'ended' ? event.body.value.ending : '');
       }
     },
@@ -439,97 +464,165 @@ function SessionEncounterScope({
   } else if (canDrawScene && characterData) {
     content = (
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        <CombatExperience
-          viewerMember={member}
-          clock={experienceClock}
-          round={turnRound}
-          participants={turnParticipants}
-          declarations={coherentDeclarations}
-          characterData={characterData}
-          presentationState={combat.presentationState}
-          phase={combat.phase}
-          showTurnNotice={combat.showTurnNotice}
-          logMode={combat.logMode}
-          streamState={streamState}
-          story={combat.story}
-          debug={combat.debug}
-          result={combat.result}
-          diceEvents={combat.diceEvents}
-          diceSemanticFallback={combat.diceSemanticFallback}
-          diceRollerName={combat.diceRollerName}
-          location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
-          pacingNotice={combat.pacingNotice}
-          renderMap={({ attackableTargets, onTargetClick }) => (
-            <SessionCanvas
-              scene={lastGoodSceneRef.current!}
-              hexSize={HEX_SIZE}
-              characterId={member}
-              characterName={characterName}
-              classRefId={classRefId}
-              roster={roster}
-              doors={doors}
-              onDoorClick={handleDoorClick}
-              myPosition={displayPosition ?? lastGoodPositionRef.current!}
-              movePath={movePath}
-              moveSeq={moveSeq}
-              onHexClick={walkTo}
-              onEntityClick={onTargetClick}
-              onMovementPresentationComplete={handleWalkAnimationComplete}
-              otherMembers={otherMembers}
-              attackableTargets={[...attackableTargets]}
-              pathIndex={lastGoodPathIndexRef.current}
-              turnLocked={turnLocked}
-            />
-          )}
-          onSelectDeclaration={combat.onSelectDeclaration}
-          onTargetClick={combat.onTargetClick}
-          onEndTurn={combat.onEndTurn}
-          onLogModeChange={combat.onLogModeChange}
-          onOpenEquipment={() => setEquipmentOpen((open) => !open)}
-          equipmentOpen={equipmentOpen}
-          {...(combat.diceWitnessRole === 'roller'
-            ? {
-                diceWitnessRole: 'roller' as const,
-                onDiceReleaseRequest: combat.onDiceReleaseRequest,
-                onDiceSemanticReleaseRequest:
-                  combat.onDiceSemanticReleaseRequest,
-              }
-            : { diceWitnessRole: 'spectator' as const })}
-        />
-
         <div
+          ref={encounterContentRef}
+          data-testid="session-encounter-content"
+          aria-hidden={runEnded !== null ? true : undefined}
+          onClickCapture={(event) => {
+            if (runEnded === null) return;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onKeyDownCapture={(event) => {
+            if (runEnded === null) return;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           style={{
             position: 'absolute',
-            zIndex: 20,
-            top: 12,
-            left: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
+            inset: 0,
+            pointerEvents: runEnded !== null ? 'none' : undefined,
           }}
         >
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            Back
-          </Button>
-          {walking && <span>Walking…</span>}
-          {moveError && !walking && (
-            <span style={{ color: 'var(--color-error, #f87171)' }}>
-              {moveError}
-            </span>
-          )}
-          {doorNotice && <span>{doorNotice}</span>}
+          <CombatExperience
+            viewerMember={member}
+            viewerName={characterName}
+            viewerClassRefId={classRefId}
+            memberNames={publicMemberNames}
+            clock={experienceClock}
+            round={turnRound}
+            participants={turnParticipants}
+            declarations={coherentDeclarations}
+            characterData={characterData}
+            presentationState={combat.presentationState}
+            phase={combat.phase}
+            showTurnNotice={combat.showTurnNotice}
+            logMode={combat.logMode}
+            streamState={streamState}
+            story={combat.story}
+            debug={combat.debug}
+            result={combat.result}
+            diceEvents={combat.diceEvents}
+            diceSemanticFallback={combat.diceSemanticFallback}
+            diceRollerName={combat.diceRollerName}
+            location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
+            pacingNotice={combat.pacingNotice}
+            renderMap={({ attackableTargets, onTargetClick }) => (
+              <SessionCanvas
+                scene={lastGoodSceneRef.current!}
+                hexSize={HEX_SIZE}
+                characterId={member}
+                characterName={characterName}
+                classRefId={classRefId}
+                roster={roster}
+                doors={doors}
+                onDoorClick={runEnded === null ? handleDoorClick : undefined}
+                myPosition={displayPosition ?? lastGoodPositionRef.current!}
+                movePath={movePath}
+                moveSeq={moveSeq}
+                onHexClick={runEnded === null ? walkTo : undefined}
+                onEntityClick={runEnded === null ? onTargetClick : undefined}
+                onMovementPresentationComplete={
+                  runEnded === null ? handleWalkAnimationComplete : undefined
+                }
+                otherMembers={otherMembers}
+                attackableTargets={
+                  runEnded === null ? [...attackableTargets] : []
+                }
+                pathIndex={lastGoodPathIndexRef.current}
+                turnLocked={turnLocked}
+              />
+            )}
+            onSelectDeclaration={combat.onSelectDeclaration}
+            onTargetClick={combat.onTargetClick}
+            onEndTurn={combat.onEndTurn}
+            onLogModeChange={combat.onLogModeChange}
+            onOpenEquipment={() => setEquipmentOpen((open) => !open)}
+            equipmentOpen={equipmentOpen}
+            {...(combat.diceWitnessRole === 'roller'
+              ? {
+                  diceWitnessRole: 'roller' as const,
+                  onDiceReleaseRequest: combat.onDiceReleaseRequest,
+                  onDiceSemanticReleaseRequest:
+                    combat.onDiceSemanticReleaseRequest,
+                }
+              : { diceWitnessRole: 'spectator' as const })}
+          />
+
+          <div
+            style={{
+              position: 'absolute',
+              zIndex: 20,
+              top: 12,
+              left: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              Back
+            </Button>
+            {walking && <span>Walking…</span>}
+            {moveError && !walking && (
+              <span style={{ color: 'var(--color-error, #f87171)' }}>
+                {moveError}
+              </span>
+            )}
+            {doorNotice && <span>{doorNotice}</span>}
+          </div>
+
+          <div
+            style={{
+              position: 'fixed',
+              zIndex: 40,
+              left: 0,
+              right: 0,
+              bottom: 174,
+              height: 0,
+            }}
+          >
+            {runEnded === null && (
+              <EquipmentPopover
+                open={equipmentOpen}
+                characterName={characterName}
+                classLabel={classLabel(classRefId) ?? undefined}
+                slots={characterData.slots}
+                equipped={characterData.equipped}
+                items={characterData.inventory.filter(
+                  (
+                    item
+                  ): item is typeof item & {
+                    ref: NonNullable<typeof item.ref>;
+                  } => item.ref !== undefined
+                )}
+                armorClass={
+                  characterData.armorClassDetail
+                    ? {
+                        total: characterData.armorClassDetail.total,
+                        note: characterData.armorClassDetail.note,
+                      }
+                    : undefined
+                }
+                mainHandDamage={characterData.mainHandDamage}
+                onIntent={(intent) => void handleEquipIntent(intent)}
+                busy={equipping || unequipping}
+              />
+            )}
+          </div>
         </div>
 
         {runEnded !== null && (
           <div
+            data-testid="run-ended-overlay"
             style={{
               position: 'absolute',
-              zIndex: 30,
+              zIndex: 1000,
               inset: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(0, 0, 0, 0.65)',
+              background: 'rgba(0, 0, 0, 0.72)',
             }}
           >
             <div
@@ -545,49 +638,12 @@ function SessionEncounterScope({
             >
               <h2 id="run-ended-headline">{endingHeadline(runEnded)}</h2>
               <p>The encounter is over — the outcome is recorded.</p>
-              <Button size="sm" onClick={onBack}>
+              <Button ref={leaveRunButtonRef} size="sm" onClick={onBack}>
                 Leave
               </Button>
             </div>
           </div>
         )}
-
-        <div
-          style={{
-            position: 'fixed',
-            zIndex: 40,
-            left: 0,
-            right: 0,
-            bottom: 174,
-            height: 0,
-          }}
-        >
-          <EquipmentPopover
-            open={equipmentOpen}
-            characterName={characterName}
-            classLabel={classLabel(classRefId) ?? undefined}
-            slots={characterData.slots}
-            equipped={characterData.equipped}
-            items={characterData.inventory.filter(
-              (
-                item
-              ): item is typeof item & {
-                ref: NonNullable<typeof item.ref>;
-              } => item.ref !== undefined
-            )}
-            armorClass={
-              characterData.armorClassDetail
-                ? {
-                    total: characterData.armorClassDetail.total,
-                    note: characterData.armorClassDetail.note,
-                  }
-                : undefined
-            }
-            mainHandDamage={characterData.mainHandDamage}
-            onIntent={(intent) => void handleEquipIntent(intent)}
-            busy={equipping || unequipping}
-          />
-        </div>
       </div>
     );
   } else if (loading) {

@@ -25,6 +25,14 @@ function propsFor(
 ): CombatExperienceProps {
   return {
     viewerMember: fixture.viewerMember,
+    viewerName: 'Aldric Vale',
+    viewerClassRefId: 'fighter',
+    memberNames: new Map(
+      fixture.participants.map((participant) => [
+        participant.member,
+        participant.name,
+      ])
+    ),
     clock: fixture.clock,
     round: fixture.round,
     participants: fixture.participants,
@@ -154,10 +162,11 @@ describe('CombatExperience shared production shell', () => {
     expect(onEndTurn).not.toHaveBeenCalled();
   });
 
-  it('exposes only available members from the armed declaration while retaining provider why text', () => {
+  it('keeps canvas rings equivalent to an accessible named target list with native available/unavailable buttons', () => {
     const attack = fresh.declarations.find(
       (declaration) => declaration.verb === Verb.ATTACK
     )!;
+    const onTargetClick = vi.fn();
     render(
       <CombatExperience
         {...propsFor(fresh, {
@@ -166,10 +175,12 @@ describe('CombatExperience shared production shell', () => {
             ...emptyState,
             armedDeclarationId: attack.id,
           },
+          onTargetClick,
         })}
       />
     );
 
+    // Canvas receives exactly the same available subset.
     expect(
       screen.getByRole('button', { name: 'Shared target skeleton-guard' })
     ).toBeTruthy();
@@ -178,6 +189,27 @@ describe('CombatExperience shared production shell', () => {
         name: 'Shared target skeleton-archer',
       })
     ).toBeNull();
+
+    const list = screen.getByRole('list', { name: 'Longsword targets' });
+    const available = screen.getByRole('button', {
+      name: /Skeleton Guard.*Available/i,
+    });
+    const unavailable = screen.getByRole('button', {
+      name: /Skeleton Archer.*Unavailable.*outside this attack’s reach/i,
+    });
+    expect(list.contains(available)).toBe(true);
+    expect(list.contains(unavailable)).toBe(true);
+    expect((available as HTMLButtonElement).disabled).toBe(false);
+    expect((unavailable as HTMLButtonElement).disabled).toBe(true);
+
+    available.focus();
+    expect(document.activeElement).toBe(available);
+    // A keyboard-initiated native button activation is delivered as click
+    // detail=0; no custom key handler is needed or wanted.
+    fireEvent.click(available, { detail: 0 });
+    fireEvent.click(unavailable);
+    expect(onTargetClick).toHaveBeenCalledTimes(1);
+    expect(onTargetClick).toHaveBeenCalledWith('skeleton-guard');
     expect(screen.getByText(/outside this attack’s reach/)).toBeTruthy();
   });
 

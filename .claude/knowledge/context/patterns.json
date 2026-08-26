@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "type": "pattern",
+    "id": "serialized-refresh-with-trailing-invalidation",
+    "created": "2026-08-26",
+    "updated": "2026-08-26",
+    "status": "active",
+    "name": "Serialize snapshot refreshes with a trailing invalidation pass",
+    "description": "When a stream event invalidates data while its unary snapshot read is already in flight, sharing only the current promise can publish a pre-event snapshot and lose the invalidation. Record a pending bit/key set, let the active read settle, then immediately run one coalesced trailing read. Fence timer, flush, response, and trailing work by lifecycle/key generation; authoritative replacement or key change cancels the pending pass.",
+    "example": "useCoalescedSessionRefreshes serializes callback passes and useCharacterData loops once more when refetch marks its active read invalidated.",
+    "anti_pattern": "Returning the current in-flight promise without recording that a newer event arrived, or launching an overlapping refresh that permits reversed responses.",
+    "domain": "web/session-query-reconciliation",
+    "references": [
+      "src/components/session/useCoalescedSessionRefreshes.ts",
+      "src/api/useCharacterData.ts",
+      "rpg-dnd5e-web#822"
+    ]
+  }
+]

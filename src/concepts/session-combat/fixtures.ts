@@ -258,6 +258,8 @@ const freshTurn: SessionCombatFixture = {
   description:
     'Aldric begins round two with server-declared Attack, Move, and End Turn choices.',
   viewerMember: 'aldric',
+  viewerName: 'Aldric Vale',
+  viewerClassRefId: 'fighter',
   round: 2,
   clock: ClockKind.TURN,
   streamState: 'live',

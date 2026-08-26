@@ -17,6 +17,8 @@ interface InFlightRead {
   characterId: string;
   generation: number;
   controller: AbortController;
+  /** A refresh arrived after this pass began and requires a trailing read. */
+  invalidated: boolean;
   promise: Promise<void>;
 }
 
@@ -64,7 +66,14 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
     }
 
     const existing = inFlightRef.current;
-    if (existing?.characterId === characterId) return existing.promise;
+    if (existing?.characterId === characterId) {
+      // Sharing only the current promise can lose a stream invalidation: the
+      // response already in flight may be a server snapshot from before that
+      // event. Coalesce every such invalidation into one serialized trailing
+      // owner read instead.
+      existing.invalidated = true;
+      return existing.promise;
+    }
 
     const generation = generationRef.current;
     const controller = new AbortController();
@@ -87,45 +96,63 @@ export function useCharacterData(characterId: string): UseCharacterDataResult {
       characterId,
       generation,
       controller,
+      invalidated: false,
       promise: Promise.resolve(),
     };
     const promise = (async () => {
       try {
-        const response = await getCharacterData(characterId, {
-          signal: controller.signal,
-        });
-        if (!isCurrent()) return;
-        if (!response.character) throw missingCharacterDataError();
-        const confirmed = response.character;
-        setCache((previous) =>
-          isCurrent()
-            ? {
-                characterId,
-                characterData: confirmed,
-                loading: previous.loading,
-                error: null,
-              }
-            : previous
-        );
-      } catch (err) {
-        if (!isCurrent()) return;
-        // Keep the last confirmed value for this exact key. ConnectError
-        // (including the owner gate's NOT_FOUND) is preserved verbatim.
-        const error =
-          err instanceof Error ? err : new Error('GetCharacterData RPC failed');
-        setCache((previous) =>
-          isCurrent()
-            ? {
-                characterId,
-                characterData:
-                  previous.characterId === characterId
-                    ? previous.characterData
-                    : undefined,
-                loading: previous.loading,
-                error,
-              }
-            : previous
-        );
+        do {
+          // Invalidations observed during this read set the flag again. A
+          // whole burst therefore produces one trailing snapshot, while an
+          // event during that trailing snapshot remains safely recoverable.
+          read.invalidated = false;
+          if (!isCurrent()) return;
+          setCache((previous) =>
+            isCurrent()
+              ? { ...previous, characterId, loading: true, error: null }
+              : previous
+          );
+
+          try {
+            const response = await getCharacterData(characterId, {
+              signal: controller.signal,
+            });
+            if (!isCurrent()) return;
+            if (!response.character) throw missingCharacterDataError();
+            const confirmed = response.character;
+            setCache((previous) =>
+              isCurrent()
+                ? {
+                    characterId,
+                    characterData: confirmed,
+                    loading: previous.loading,
+                    error: null,
+                  }
+                : previous
+            );
+          } catch (err) {
+            if (!isCurrent()) return;
+            // Keep the last confirmed value for this exact key. ConnectError
+            // (including the owner gate's NOT_FOUND) is preserved verbatim.
+            const error =
+              err instanceof Error
+                ? err
+                : new Error('GetCharacterData RPC failed');
+            setCache((previous) =>
+              isCurrent()
+                ? {
+                    characterId,
+                    characterData:
+                      previous.characterId === characterId
+                        ? previous.characterData
+                        : undefined,
+                    loading: previous.loading,
+                    error,
+                  }
+                : previous
+            );
+          }
+        } while (isCurrent() && read.invalidated);
       } finally {
         if (inFlightRef.current === read) inFlightRef.current = null;
         setCache((previous) =>

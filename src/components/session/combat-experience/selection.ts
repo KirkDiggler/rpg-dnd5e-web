@@ -1,6 +1,5 @@
 import {
   TargetKind,
-  Verb,
   type Declaration,
   type Shortfall,
   type TargetCandidate,
@@ -80,36 +79,4 @@ export function selectCombatExperience(
   }
 
   return { declaration, candidate, whyText: null };
-}
-
-/**
- * Direct-map convenience is safe only when the server facts make the choice
- * unique. Zero matches no-op; one returns that exact generated declaration;
- * multiple matches refuse ambiguity so the player must choose in the panel.
- */
-export function selectDirectMapAttack(
-  declarations: readonly Declaration[],
-  subject: string
-): Declaration | null {
-  const matches = declarations.filter((declaration) => {
-    if (
-      declaration.id.length === 0 ||
-      declaration.verb !== Verb.ATTACK ||
-      declaration.targetKind !== TargetKind.MEMBER ||
-      !declaration.available
-    ) {
-      return false;
-    }
-    const candidates = declaration.candidates.filter(
-      (candidate) => candidate.member === subject
-    );
-    return candidates.length === 1 && candidates[0]!.available;
-  });
-
-  if (matches.length !== 1) return null;
-  const match = matches[0]!;
-  return declarations.filter((declaration) => declaration.id === match.id)
-    .length === 1
-    ? match
-    : null;
 }

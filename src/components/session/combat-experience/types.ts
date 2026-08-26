@@ -73,6 +73,12 @@ export interface CombatExperienceMapRenderProps {
 
 interface CombatExperienceBaseProps {
   viewerMember: string;
+  /** Public-roster identity. Never derive this from Turn or CharacterData. */
+  viewerName: string;
+  /** Public-roster body/class ref id; absent renders an honest neutral label. */
+  viewerClassRefId?: string;
+  /** Public-roster names used by semantic targets and outcome labels. */
+  memberNames: ReadonlyMap<string, string>;
   clock: ClockKind;
   round: number;
   participants: readonly Participant[];

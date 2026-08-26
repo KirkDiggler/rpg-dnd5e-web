@@ -1,7 +1,7 @@
 ---
 name: production session combat experience
 description: Shared CombatExperience renderer, exact declarations, private character data, event recovery, and presentation gating
-updated: 2026-08-25
+updated: 2026-08-26
 confidence: high — production and concept import the same renderer; focused route/controller/recovery suites pass
 ---
 
@@ -34,10 +34,14 @@ Attack is panel-first in the first production cut:
 1. the player selects an available authored Attack;
 2. that exact declaration becomes armed;
 3. `SessionCanvas` receives rings/click routing for only that declaration's
-   available candidates;
-4. a candidate click echoes the exact declaration ID and member target.
+   available candidates, while `TargetSurface` renders the equivalent semantic
+   list of native target buttons using public-roster names;
+4. either an available canvas ring or target button echoes the exact declaration
+   ID and member target.
 
-Unavailable candidates stay readable with provider `why.text` and cannot
+Unavailable candidate buttons are disabled, stay readable with provider
+`why.text`, and remain absent from canvas rings. Keyboard and screen-reader
+players therefore have the same panel-first target authority. They cannot
 dispatch. A map click with no armed action never attacks. Multiple offers are
 never auto-selected. End Turn echoes its own unique available declaration.
 Selectors are compared and echoed only; they are never parsed or constructed.
@@ -45,20 +49,26 @@ Selectors are compared and echoed only; they are never parsed or constructed.
 Movement keeps the atlas path/request and authoritative response-step animation.
 Authority is fail-closed: WORLD/WORLD supplies the exact empty selector;
 TURN/TURN requires one available non-empty Move declaration; partial,
-mismatched, missing, and ambiguous snapshots are not ready. `remaining` is
+mismatched, missing, and ambiguous snapshots lock the path preview and are not
+ready. WORLD/WORLD remains unlocked. `remaining` is
 rendered as provider display context only. The web performs no feet-to-cell or
 path-price calculation.
 
 ## Public identity and private status
 
 The public session roster supplies names, member kind, and body refs used by the
-map. The route no longer calls v1alpha1 `GetCharacter` for the local model, HP,
-or level.
+map, target list, and explicit shared-dock viewer name/class on both world and
+turn clocks. A missing viewer roster row renders `You` / `Adventurer`; neither
+Turn participants nor private CharacterData may substitute identity. The route
+no longer calls v1alpha1 `GetCharacter` for the local model, HP, or level.
 
 Authenticated-owner `useCharacterData(characterId)` supplies exact level, HP,
 base speed, AC display, equipment, features, conditions, and resources. It
-keeps the last confirmed value on background failure, coalesces reads, and
-fences key changes. EquipItem and UnequipItem success replace the cache directly
+keeps the last confirmed value on background failure, records invalidation
+while a read is in flight, and performs one serialized trailing owner snapshot.
+That last confirmed private value remains usable while newer door/path state is
+published. Key changes and authoritative mutation replacement cancel the read
+and any trailing pass. EquipItem and UnequipItem success replace the cache directly
 with the complete response `CharacterData`; the web does not recompute slots,
 AC, damage, HP, or resources.
 
@@ -73,7 +83,8 @@ serialized lane.
 `SessionEncounterView` then applies each delivered event in this order:
 
 1. schedule immediate, burst-coalesced CharacterData/Turn/Afford/View/Where
-   (plus roster/door) invalidation;
+   (plus roster/door) invalidation; passes are serialized and invalidations
+   observed during one pass force one immediate coalesced trailing pass;
 2. ingest raw Debug and authoritative typed presentation facts;
 3. advance presentation-only other-member pacing;
 4. apply door notice and run-ending route handlers.
@@ -82,7 +93,9 @@ Query/state reconciliation is never delayed for animation. The existing
 `monsterBeatQueue` semantics pace only another member's live Story cursor;
 catch-up history settles immediately. Self-MOVED refreshes Where, other-member
 movement refreshes View, JOINED pulls roster identity, door events pull live
-door state, and ENDED preserves the run outcome overlay.
+door state, and ENDED preserves the run outcome overlay. Disposed/key-stale
+schedulers and queued timers are generation-fenced before every flush; Turn
+also fences reversed responses and key changes like Afford.
 
 ## Story, dice, and diagnostics
 
@@ -103,4 +116,7 @@ polite live log.
 `SessionEncounterView` keys its mounted production scope by session/member.
 Selection, presentation, Story/Debug, equipment-open state, private data,
 timers, and callbacks therefore reset synchronously. Controller and query
-generations fence late completions and stale map callbacks.
+generations fence late completions and stale map callbacks. ENDED closes
+Equipment immediately, marks the preserved game surface inert and hidden,
+layers the correctly labelled `aria-modal` dialog above every panel, and focuses
+its Leave action so underlying pointer/keyboard actions cannot fire.

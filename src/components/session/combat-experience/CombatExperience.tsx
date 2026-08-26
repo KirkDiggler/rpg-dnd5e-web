@@ -80,6 +80,9 @@ function StatusBadge({ status }: { status: InformationalStatus }) {
 
 export function CombatExperience({
   viewerMember,
+  viewerName,
+  viewerClassRefId,
+  memberNames,
   clock,
   round,
   participants,
@@ -110,9 +113,6 @@ export function CombatExperience({
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
-  const viewer = participants.find(
-    (participant) => participant.member === viewerMember
-  );
   const activeParticipant = participants.find(
     (participant) => participant.active
   );
@@ -168,14 +168,7 @@ export function CombatExperience({
             showTurnNotice={showTurnNotice}
             pacingNotice={pacingNotice}
             changedOptionNotice={presentationState.changedOptionNotice}
-            participantNames={
-              new Map(
-                participants.map((participant) => [
-                  participant.member,
-                  participant.name,
-                ])
-              )
-            }
+            memberNames={memberNames}
             location={location}
             renderMap={renderMap}
             onTargetClick={onTargetClick}
@@ -234,7 +227,7 @@ export function CombatExperience({
           <DiceDrawer
             phase={phase}
             events={diceEvents}
-            rollerName={diceRollerName ?? viewer?.name ?? 'Your character'}
+            rollerName={diceRollerName ?? viewerName}
             semanticFallback={diceSemanticFallback}
             witnessRole="roller"
             onReleaseRequest={onDiceReleaseRequest}
@@ -244,7 +237,7 @@ export function CombatExperience({
           <DiceDrawer
             phase={phase}
             events={diceEvents}
-            rollerName={diceRollerName ?? viewer?.name ?? 'Your character'}
+            rollerName={diceRollerName ?? viewerName}
             semanticFallback={diceSemanticFallback}
             witnessRole="spectator"
           />
@@ -253,13 +246,12 @@ export function CombatExperience({
         <div data-testid="session-combat-dock" className={styles.dock}>
           <div className={styles.identityRow}>
             <div className={styles.viewerPortrait}>
-              {portraitOf(viewer?.name ?? 'You')}
+              {portraitOf(viewerName)}
             </div>
             <div className={styles.viewerIdentity}>
-              <strong>{viewer?.name ?? 'You'}</strong>
+              <strong>{viewerName}</strong>
               <span>
-                Level {characterData.level}{' '}
-                {labelOf(characterData.classRef?.id)}
+                Level {characterData.level} {labelOf(viewerClassRefId)}
               </span>
             </div>
             {hp && (

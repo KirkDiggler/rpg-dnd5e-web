@@ -219,6 +219,16 @@ export function SessionCombatConcept() {
 
       <CombatExperience
         viewerMember={fixture.viewerMember}
+        viewerName={fixture.viewerName}
+        viewerClassRefId={fixture.viewerClassRefId}
+        memberNames={
+          new Map(
+            fixture.participants.map((participant) => [
+              participant.member,
+              participant.name,
+            ])
+          )
+        }
         clock={fixture.clock}
         round={fixture.round}
         participants={fixture.participants}

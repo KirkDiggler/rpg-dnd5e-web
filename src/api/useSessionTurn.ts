@@ -2,7 +2,7 @@ import {
   ClockKind,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { sessionClient } from './client';
 
 export interface UseSessionTurnResult {
@@ -57,9 +57,23 @@ export function useSessionTurn(
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  // Same key/request fencing as Afford. Render-time key updates make a late
+  // completion stale before the key-reset effect runs; generations ensure an
+  // older overlapping request for the same key cannot overwrite a newer
+  // server snapshot (including error/loading state).
+  const generationRef = useRef(0);
+  const keyRef = useRef({ session, member });
+  keyRef.current = { session, member };
 
   const fetchTurn = useCallback(async () => {
+    if (
+      keyRef.current.session !== session ||
+      keyRef.current.member !== member
+    ) {
+      return;
+    }
     if (!session || !member) {
+      generationRef.current += 1;
       setClock(ClockKind.UNSPECIFIED);
       setActive('');
       setRound(0);
@@ -69,34 +83,46 @@ export function useSessionTurn(
       setLoading(false);
       return;
     }
+
+    const generation = ++generationRef.current;
+    const isCurrent = () =>
+      generation === generationRef.current &&
+      keyRef.current.session === session &&
+      keyRef.current.member === member;
     setLoading(true);
     setError(null);
     try {
       const response = await sessionClient.turn({ session, member });
+      if (!isCurrent()) return;
       setClock(response.clock);
       setActive(response.active);
       setRound(response.round);
       setOrder(response.order);
       setParticipants(response.participants);
     } catch (err) {
+      if (!isCurrent()) return;
       // Last-good clock/active/round/order/participants deliberately
       // untouched — see this module's own doc comment.
       setError(err instanceof Error ? err : new Error('Turn RPC failed'));
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [session, member]);
 
+  // Every key transition resets the old pair's public turn answer, including
+  // direct nonempty -> nonempty changes. Cleanup also invalidates unmount work.
   useEffect(() => {
-    if (!session || !member) {
-      setClock(ClockKind.UNSPECIFIED);
-      setActive('');
-      setRound(0);
-      setOrder([]);
-      setParticipants([]);
-      setError(null);
-      setLoading(false);
-    }
+    generationRef.current += 1;
+    setClock(ClockKind.UNSPECIFIED);
+    setActive('');
+    setRound(0);
+    setOrder([]);
+    setParticipants([]);
+    setError(null);
+    setLoading(false);
+    return () => {
+      generationRef.current += 1;
+    };
   }, [session, member]);
 
   return {

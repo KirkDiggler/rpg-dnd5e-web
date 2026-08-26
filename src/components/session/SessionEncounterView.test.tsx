@@ -426,16 +426,88 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
   });
 
-  it('uses public roster identity/body and private CharacterData HP/level, never legacy GetCharacter', async () => {
+  it('uses public roster identity/body on the world clock and private CharacterData only for sheet status', async () => {
     readyScene();
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        classRef: { module: 'private', type: 'class', id: 'wizard' },
+      }),
+    });
     renderView();
 
     await waitFor(() => screen.getByTestId('session-canvas'));
     expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
     expect(hoisted.lastCanvasProps.current?.characterName).toBe('Aldric');
     expect(hoisted.lastCanvasProps.current?.classRefId).toBe('fighter');
-    screen.getByText(/level 3 fighter/i);
+    const dock = screen.getByTestId('session-combat-dock');
+    within(dock).getByText('Aldric');
+    within(dock).getByText(/level 3 fighter/i);
+    expect(within(dock).queryByText(/wizard/i)).toBeNull();
     screen.getByText('24/28');
+  });
+
+  it('keeps dock identity on the public roster during a turn instead of Turn participants or private CharacterData', async () => {
+    readyTurn();
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 2,
+      order: ['char-1'],
+      participants: [
+        participant('char-1', { name: 'Turn Snapshot Name', active: true }),
+      ],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        classRef: { module: 'private', type: 'class', id: 'wizard' },
+      }),
+    });
+    renderView();
+
+    const dock = await screen.findByTestId('session-combat-dock');
+    within(dock).getByText('Aldric');
+    within(dock).getByText(/level 3 fighter/i);
+    expect(within(dock).queryByText('Turn Snapshot Name')).toBeNull();
+    expect(within(dock).queryByText(/wizard/i)).toBeNull();
+  });
+
+  it('uses honest neutral dock/body fallbacks when the viewer is absent from the public roster', async () => {
+    readyTurn();
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'skeleton-1',
+          kind: MemberKind.MONSTER,
+          name: 'Skeleton',
+          classRef: '',
+          raceRef: '',
+          monsterRef: 'dnd5e:monsters:skeleton',
+        },
+      ],
+    });
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 2,
+      order: ['char-1'],
+      participants: [
+        participant('char-1', { name: 'Private Turn Name', active: true }),
+      ],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        classRef: { module: 'private', type: 'class', id: 'wizard' },
+      }),
+    });
+    renderView();
+
+    const dock = await screen.findByTestId('session-combat-dock');
+    within(dock).getByText('You');
+    within(dock).getByText(/level 3 adventurer/i);
+    expect(within(dock).queryByText('Private Turn Name')).toBeNull();
+    expect(within(dock).queryByText(/wizard/i)).toBeNull();
+    expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
+    expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
   });
 
   it('keeps an already-drawn canvas mounted through a failed background Where refresh', async () => {
@@ -479,6 +551,7 @@ describe('SessionEncounterView production combat integration', () => {
       path: [{ x: 1, y: 0 }],
       declarationId: '',
     });
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false);
   });
 
   it('echoes one exact Move declaration on turn clock', async () => {
@@ -509,6 +582,7 @@ describe('SessionEncounterView production combat integration', () => {
         hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
       });
       expect(hoisted.moveFn).not.toHaveBeenCalled();
+      expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
     }
   );
 
@@ -614,6 +688,7 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
     expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
   });
 
   it('renders no combat declaration row on world clock', async () => {
@@ -774,7 +849,9 @@ describe('SessionEncounterView production combat integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
     await waitFor(() =>
-      screen.getByText('Skeleton: Target is beyond the Longsword reach.')
+      screen.getByRole('button', {
+        name: 'Skeleton: Unavailable: Target is beyond the Longsword reach.',
+      })
     );
     expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
     act(() => {
@@ -948,6 +1025,74 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => expect(hoisted.getRosterFn).toHaveBeenCalledTimes(2));
   });
 
+  it('updates the confirmed door/path snapshot after a transient private background error', async () => {
+    readyScene();
+    hoisted.atlasResult.atlas = pointyAtlas({
+      boundaries: [
+        {
+          from: { x: 0, y: 0 },
+          to: { x: 1, y: 0 },
+          blocksMovement: true,
+          blocksLineOfSight: true,
+        },
+      ],
+      doorways: [
+        {
+          connection: 'crypt-door',
+          from: { x: 0, y: 0 },
+          to: { x: 1, y: 0 },
+        },
+      ],
+    });
+    hoisted.getDoorsFn
+      .mockResolvedValueOnce({
+        doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
+      })
+      .mockResolvedValueOnce({
+        doors: [{ door: 'crypt-door', state: DoorState.OPEN, dc: 0 }],
+      });
+    hoisted.getCharacterDataFn
+      .mockResolvedValueOnce({ character: privateCharacterData() })
+      .mockRejectedValueOnce(new Error('private refresh failed'));
+    const updates = deferredStream([
+      struck(),
+      event(EventKind.DOOR, {
+        case: 'door',
+        value: {
+          door: 'crypt-door',
+          state: DoorState.OPEN,
+          actor: 'char-1',
+          dc: 0,
+          total: 0,
+          beaten: false,
+        },
+      } as SessionEvent['body']),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(updates.stream);
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.pathIndex?.shutDoorEdges.size
+      ).toBe(1)
+    );
+    updates.release();
+
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+    await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.pathIndex?.shutDoorEdges.size
+      ).toBe(0)
+    );
+    expect(
+      hoisted.lastCanvasProps.current?.doors?.get('crypt-door')?.state
+    ).toBe(DoorState.OPEN);
+  });
+
   it('preserves door actions and refreshes live door state', async () => {
     readyScene();
     hoisted.getDoorsFn.mockResolvedValue({
@@ -1082,8 +1227,8 @@ describe('SessionEncounterView production combat integration', () => {
     );
   });
 
-  it('raises the run-ended overlay without unmounting the map', async () => {
-    readyScene();
+  it('isolates a run-ended modal above an open equipment panel and focuses only its primary action', async () => {
+    readyTurn();
     const ended = deferredStream([
       event(EventKind.ENDED, {
         case: 'ended',
@@ -1093,13 +1238,38 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.streamEventsFn.mockReturnValue(ended.stream);
     const onBack = vi.fn();
     renderView({ onBack });
-    await waitFor(() => screen.getByTestId('session-canvas'));
+    await screen.findByTestId('session-combat-equipment-button');
+    fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
+    await screen.findByTestId('equipment-popover');
+    const underlyingEndTurn = screen.getByRole('button', { name: /end turn/i });
+
     ended.release();
 
-    await waitFor(() => screen.getByText('The tomb is cleared.'));
+    const dialog = await screen.findByRole('dialog', {
+      name: /tomb is cleared/i,
+    });
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(screen.queryByTestId('equipment-popover')).toBeNull();
+    const overlay = screen.getByTestId('run-ended-overlay');
+    expect(Number(overlay.style.zIndex)).toBeGreaterThan(40);
+    const underlying = screen.getByTestId('session-encounter-content');
+    expect(underlying.hasAttribute('inert')).toBe(true);
+    expect(underlying.getAttribute('aria-hidden')).toBe('true');
     screen.getByTestId('session-canvas');
-    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
-    expect(onBack).toHaveBeenCalled();
+
+    const leave = screen.getByRole('button', { name: 'Leave' });
+    await waitFor(() => expect(document.activeElement).toBe(leave));
+    fireEvent.click(underlyingEndTurn);
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    act(() => {
+      hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
+      hoisted.lastCanvasProps.current?.onDoorClick?.('crypt-door');
+    });
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(hoisted.openDoorFn).not.toHaveBeenCalled();
+
+    fireEvent.click(leave);
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces the friendly not-your-turn Move refusal and refreshes authority', async () => {

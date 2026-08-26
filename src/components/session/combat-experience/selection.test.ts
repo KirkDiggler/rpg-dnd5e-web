@@ -13,7 +13,6 @@ import { describe, expect, it } from 'vitest';
 import {
   STALE_DECLARATION_MESSAGE,
   selectCombatExperience,
-  selectDirectMapAttack,
   staleDeclarationMessage,
 } from './selection';
 import type { CombatExperiencePresentationState } from './types';
@@ -189,69 +188,5 @@ describe('staleDeclarationMessage', () => {
       `${STALE_DECLARATION_MESSAGE} action: 1 needed, 0 left`
     );
     expect(staleDeclarationMessage(why(''))).toBe(STALE_DECLARATION_MESSAGE);
-  });
-});
-
-describe('selectDirectMapAttack', () => {
-  it('returns null when there are zero direct matches, including independently unavailable facts', () => {
-    const unavailableDeclaration = declaration('v1.spent', {
-      available: false,
-      candidates: [candidate('goblin-1')],
-    });
-    const unavailableCandidate = declaration('v1.out-of-reach', {
-      candidates: [candidate('goblin-1', false, 'out of reach')],
-    });
-    const wrongTargetKind = declaration('v1.not-member-targeted', {
-      targetKind: TargetKind.PATH,
-      candidates: [candidate('goblin-1')],
-    });
-
-    expect(
-      selectDirectMapAttack(
-        [unavailableDeclaration, unavailableCandidate, wrongTargetKind],
-        'goblin-1'
-      )
-    ).toBeNull();
-  });
-
-  it('returns the exact declaration when there is one direct match', () => {
-    const exact = declaration('v1.longsword', {
-      candidates: [candidate('goblin-1')],
-    });
-
-    expect(selectDirectMapAttack([exact], 'goblin-1')).toBe(exact);
-    expect(selectDirectMapAttack([exact], 'unknown')).toBeNull();
-  });
-
-  it('refuses ambiguity when two offers directly match the same subject', () => {
-    const first = declaration('v1.longsword', {
-      candidates: [candidate('goblin-1')],
-    });
-    const second = declaration('v1.unarmed', {
-      candidates: [candidate('goblin-1')],
-    });
-
-    expect(selectDirectMapAttack([first, second], 'goblin-1')).toBeNull();
-  });
-
-  it('fails closed when the otherwise direct offer has duplicate candidate rows', () => {
-    const duplicateCandidate = declaration('v1.longsword', {
-      candidates: [candidate('goblin-1'), candidate('goblin-1')],
-    });
-
-    expect(selectDirectMapAttack([duplicateCandidate], 'goblin-1')).toBeNull();
-  });
-
-  it('fails closed when a matching offer selector is duplicated by another declaration', () => {
-    const direct = declaration('v1.duplicate', {
-      candidates: [candidate('goblin-1')],
-    });
-    const sameSelector = declaration('v1.duplicate', {
-      candidates: [candidate('goblin-2')],
-    });
-
-    expect(
-      selectDirectMapAttack([direct, sameSelector], 'goblin-1')
-    ).toBeNull();
   });
 });
