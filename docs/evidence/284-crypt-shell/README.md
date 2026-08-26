@@ -20,10 +20,8 @@ Task 5 artifact tracked in the web repository.
 - Final verification manifest (`verification.json`) SHA-256:
   `e036f5b0a1a35f6c68ffbe76268d0051e16bb03dda72bbf9f36318fdfa02ad7a`.
 
-The provider checkout used for this sync was
-`/home/kirk/.pi/worktrees/rpg-game-assets/65-crypt-shell`, at the reviewed
-head. It was clean and was not pulled, reset, or replaced with the stale shared
-provider checkout.
+The sync consumed the reviewed provider output identified by the repository,
+PR, merge commit, reviewed head, and review/merge tree hashes above.
 
 ## Profile and inventory pins
 
@@ -47,8 +45,6 @@ provider checkout.
 | base | `harness/models/synty/env/Crypt_Wall_Base_01.glb` | `6933008930a251aec0f27ac757611097faa15f38db06cb542e91128fa60c4f6f` |
 | cap | `harness/models/synty/env/Crypt_Wall_Cap_01.glb` | `f56b63ded7b8f8f5ca02a8824df9b9f2a2ca4052d1bf7939281b06c68c059a67` |
 | door surround | `harness/models/synty/env/Crypt_Wall_Door_Surround_01.glb` | `bd4d0a9ca3da8fcee72f8cfaf72d51040f6754920649b9e30c8c8a2e44093cc0` |
-| floor texture | `harness/models/synty/textures/Dungeons_Texture_FloorTile_09_01.png` | `ec84f155a32297c64e86b8c678955e25d8f8180023327e42c840dd086916b841` |
-| closed door leaf | `harness/models/synty/env/SM_Env_Door_01.glb` | `c1445b4dae6a02127be15fcbd59e6f02f207de28a3461cf95a1ceba18f8d4c15` |
 
 The selected floor is `floor-09-01-u6` with repeat `6u`; the selected wall is
 `wall-double-01-worked`. The provider assembly spans `+X`, is up `+Y`, and
@@ -56,19 +52,9 @@ presents `+Z` and `-Z` faces.
 
 ## Web sync and readback
 
-The brief's legacy override was first attempted exactly as written, but this
-checkout's script treats `RPG_GAME_ASSETS_DIR` as a mutable clone location. It
-therefore refused the already-existing reviewed provider worktree. The
-successful exact-root sync added the script's skip-update guard:
-
-```sh
-ASSETS_SYNC_SKIP_UPDATE=1 \
-RPG_GAME_ASSETS_DIR=/home/kirk/.pi/worktrees/rpg-game-assets/65-crypt-shell \
-npm run assets:sync
-```
-
-The command reported both runtime roots synced. Readback from the web
-worktree:
+The sync consumed the reviewed provider output identified by the repository,
+PR, merge commit, reviewed head, and review/merge tree hashes above. Readback
+from the web worktree:
 
 ```text
 sha256  public/models/synty/env/shell-profiles.json
@@ -97,7 +83,3 @@ not commit GLBs, textures, manifests, raw source, or provider evidence. This
 tracked document records hashes and provenance only, so later web work can
 prove which private bytes it consumed without moving licensed content into the
 web repository.
-
-## Integrated tests
-
-## Screenshots
