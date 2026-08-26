@@ -136,7 +136,6 @@ export interface WeaponAttachmentPreviewProps {
   view: WeaponView;
   facing: WeaponFacing;
   presentation?: MainHandPresentation;
-  forcedStatus?: MainHandAttachmentStatus;
   onAttachmentStatus?: (status: MainHandAttachmentStatus) => void;
   onRenderObserved: (observation: WeaponRenderObservation) => void;
 }
@@ -147,13 +146,11 @@ export function WeaponAttachmentScene({
   view,
   facing,
   presentation,
-  forcedStatus,
   onAttachmentStatus,
   onRenderObserved,
 }: WeaponAttachmentPreviewProps) {
   const [attachmentStatus, setAttachmentStatus] =
     useState<MainHandAttachmentStatus>();
-  const effectiveStatus = forcedStatus ?? attachmentStatus;
   const lastObservedKey = useRef<string | undefined>(undefined);
   const handleMainHandStatus = useCallback(
     (status: MainHandAttachmentStatus) => {
@@ -165,31 +162,41 @@ export function WeaponAttachmentScene({
   );
 
   useEffect(() => {
-    if (!effectiveStatus) return;
-    onAttachmentStatus?.(effectiveStatus);
-  }, [effectiveStatus, onAttachmentStatus]);
+    if (!attachmentStatus) return;
+    onAttachmentStatus?.(attachmentStatus);
+  }, [attachmentStatus, onAttachmentStatus]);
 
   useEffect(() => {
-    if (!isStableObservation(equipmentState, effectiveStatus)) return;
+    if (!isStableObservation(equipmentState, attachmentStatus)) {
+      lastObservedKey.current = undefined;
+      return;
+    }
 
     const observation = {
       equipmentState,
       motion,
       view,
       facing,
-      attachmentCode: effectiveStatus.code,
+      attachmentCode: attachmentStatus.code,
     } satisfies WeaponRenderObservation;
     const key = [
       equipmentState,
       motion,
       view,
       facing,
-      effectiveStatus.code,
+      attachmentStatus.code,
     ].join('|');
     if (lastObservedKey.current === key) return;
     lastObservedKey.current = key;
     onRenderObserved(observation);
-  }, [effectiveStatus, equipmentState, facing, motion, onRenderObserved, view]);
+  }, [
+    attachmentStatus,
+    equipmentState,
+    facing,
+    motion,
+    onRenderObserved,
+    view,
+  ]);
 
   return (
     <>
