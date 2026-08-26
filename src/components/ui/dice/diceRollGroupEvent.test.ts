@@ -38,9 +38,11 @@ function die(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
-function group(
-  overrides: Record<string, unknown> = {}
-): Record<string, unknown> {
+type GroupFixture = Record<string, unknown> & {
+  dice: Record<string, unknown>[];
+};
+
+function group(overrides: Record<string, unknown> = {}): GroupFixture {
   return {
     key: 'attack',
     dice: [die()],
@@ -49,9 +51,16 @@ function group(
   };
 }
 
-function requested(
-  overrides: Record<string, unknown> = {}
-): Record<string, unknown> {
+type RequestFixture = Record<string, unknown> & {
+  group: GroupFixture;
+};
+type ReleaseFixture = Record<string, unknown> & {
+  release: Record<string, unknown> & {
+    throwProfile: VisualThrowProfileV1;
+  };
+};
+
+function requested(overrides: Record<string, unknown> = {}): RequestFixture {
   return {
     schemaVersion: 1,
     type: 'dice-roll-group-requested',
@@ -66,7 +75,7 @@ function requested(
 function released(
   overrides: Record<string, unknown> = {},
   releaseOverrides: Record<string, unknown> = {}
-): Record<string, unknown> {
+): ReleaseFixture {
   return {
     schemaVersion: 1,
     type: 'dice-roll-group-released',
@@ -93,18 +102,20 @@ describe('parseDiceRollGroupEvent', () => {
       expect(parsed).not.toBe(inbound);
       expect(Object.isFrozen(parsed)).toBe(true);
       if (parsed?.type === 'dice-roll-group-requested') {
-        expect(parsed.roller).not.toBe(inbound.roller);
-        expect(parsed.group).not.toBe(inbound.group);
-        expect(parsed.group.dice).not.toBe(inbound.group.dice);
-        expect(parsed.group.dice[0]).not.toBe(inbound.group.dice[0]);
+        const requestInbound = inbound as RequestFixture;
+        expect(parsed.roller).not.toBe(requestInbound.roller);
+        expect(parsed.group).not.toBe(requestInbound.group);
+        expect(parsed.group.dice).not.toBe(requestInbound.group.dice);
+        expect(parsed.group.dice[0]).not.toBe(requestInbound.group.dice[0]);
         expect(Object.isFrozen(parsed.roller)).toBe(true);
         expect(Object.isFrozen(parsed.group)).toBe(true);
         expect(Object.isFrozen(parsed.group.dice)).toBe(true);
         expect(Object.isFrozen(parsed.group.dice[0])).toBe(true);
       } else if (parsed) {
-        expect(parsed.release).not.toBe(inbound.release);
+        const releaseInbound = inbound as ReleaseFixture;
+        expect(parsed.release).not.toBe(releaseInbound.release);
         expect(parsed.release.throwProfile).not.toBe(
-          inbound.release.throwProfile
+          releaseInbound.release.throwProfile
         );
         expect(Object.isFrozen(parsed.release)).toBe(true);
         expect(Object.isFrozen(parsed.release.throwProfile)).toBe(true);

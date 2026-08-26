@@ -13,7 +13,7 @@ function reroll(
   };
 }
 
-function die(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function die(overrides: Record<string, unknown> = {}): DieFixture {
   return {
     id: 'die:1',
     kind: 'd20',
@@ -60,9 +60,15 @@ function modifierText(
   };
 }
 
-function complexGroup(
-  overrides: Record<string, unknown> = {}
-): Record<string, unknown> {
+type DieFixture = Record<string, unknown> & {
+  rerolls: Record<string, unknown>[];
+};
+type GroupFixture = Record<string, unknown> & {
+  dice: DieFixture[];
+  modifiers: Record<string, unknown>[];
+};
+
+function complexGroup(overrides: Record<string, unknown> = {}): GroupFixture {
   return {
     key: 'damage',
     dice: [
