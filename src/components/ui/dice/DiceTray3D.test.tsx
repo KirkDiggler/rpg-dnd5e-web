@@ -10,6 +10,7 @@ import {
   type DiceTray3DItem,
   type DiceTray3DProps,
 } from './DiceTray3D';
+import { DiceTrayInteractionSurface } from './DiceTrayInteractionSurface';
 
 const attackDieProps: AttackDie3DProps[] = [];
 const controllerMocks = vi.hoisted(() => ({ creates: vi.fn() }));
@@ -199,6 +200,74 @@ function renderTray(
 }
 
 describe('DiceTray3D', () => {
+  it('exposes the same shared surface in tray-plane mode for an exact group grab', () => {
+    const projection = {
+      screenToPlane: (clientX: number, clientY: number) =>
+        [clientX, clientY] as const,
+      planeToScreen: (point: readonly [number, number]) =>
+        [point[0], point[1]] as const,
+      planeToNormalized: (point: readonly [number, number]) =>
+        [point[0] / 100, point[1] / 100] as const,
+    };
+    const onHeldChange = vi.fn();
+    const onReleaseRequest = vi.fn();
+    render(
+      <DiceTrayInteractionSurface
+        mode="tray-plane"
+        canInteract
+        motionSeed={0x755}
+        projection={projection}
+        hitRegions={[
+          {
+            dieId: 'die:group-member',
+            bounds: { left: 10, top: 10, width: 20, height: 20 },
+            memberAnchor: [20, 20],
+            stableIndex: 0,
+          },
+        ]}
+        onHeldChange={onHeldChange}
+        onReleaseRequest={onReleaseRequest}
+        testId="shared-tray-plane-surface"
+      />
+    );
+    const surface = screen.getByTestId('shared-tray-plane-surface');
+
+    fireEvent.pointerDown(surface, {
+      pointerId: 31,
+      pointerType: 'mouse',
+      clientX: 27,
+      clientY: 23,
+      timeStamp: 0,
+    });
+    expect(onHeldChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        anchor: [7, 3],
+        normalizedPosition: [0.2, 0.2],
+        grabbedDieId: 'die:group-member',
+      })
+    );
+    fireEvent.pointerMove(surface, {
+      pointerId: 31,
+      clientX: 40,
+      clientY: 30,
+      timeStamp: 16,
+    });
+    expect(onHeldChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ normalizedPosition: [0.33, 0.27] })
+    );
+    fireEvent.pointerUp(surface, {
+      pointerId: 31,
+      clientX: 50,
+      clientY: 20,
+      timeStamp: 32,
+    });
+
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(onReleaseRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ schemaVersion: 1, motionSeed: 0x755 })
+    );
+  });
+
   it('renders exactly one allowlisted d20 and passes authoritative inputs unchanged', () => {
     renderTray();
 
