@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useReducer,
@@ -141,6 +142,9 @@ function SharedTableDiceRun({
     createSharedTableDiceEvidencePublisher()
   );
   const [witnessView, setWitnessView] = useState<WitnessView>('roller');
+  const witnessTabsId = useId();
+  const witnessTabId = (role: WitnessView) => `${witnessTabsId}-${role}-tab`;
+  const witnessPaneId = (role: WitnessView) => `${witnessTabsId}-${role}-pane`;
   const [state, dispatch] = useReducer(
     (current: SharedTableDiceState, action: CoordinatorAction) =>
       reduceSharedTableDice(current, action, scenario),
@@ -317,10 +321,11 @@ function SharedTableDiceRun({
         ).map(([role, label]) => (
           <button
             key={role}
+            id={witnessTabId(role)}
             type="button"
             role="tab"
             aria-selected={witnessView === role}
-            aria-controls={`shared-table-dice-${role}-pane`}
+            aria-controls={witnessPaneId(role)}
             onClick={() => setWitnessView(role)}
           >
             {label}
@@ -332,11 +337,11 @@ function SharedTableDiceRun({
         data-active-witness={witnessView}
       >
         <section
-          id="shared-table-dice-roller-pane"
+          id={witnessPaneId('roller')}
           className="shared-table-dice-stage__witness"
           data-witness-pane="roller"
-          role="region"
-          aria-label="Roller shared table dice"
+          role="tabpanel"
+          aria-labelledby={witnessTabId('roller')}
         >
           <p className="shared-table-dice-stage__witness-label">Roller view</p>
           <DiceTrayPresentation
@@ -352,11 +357,11 @@ function SharedTableDiceRun({
           />
         </section>
         <section
-          id="shared-table-dice-spectator-pane"
+          id={witnessPaneId('spectator')}
           className="shared-table-dice-stage__witness"
           data-witness-pane="spectator"
-          role="region"
-          aria-label="Witness shared table dice"
+          role="tabpanel"
+          aria-labelledby={witnessTabId('spectator')}
         >
           <p className="shared-table-dice-stage__witness-label">Witness view</p>
           <DiceTrayPresentation
@@ -379,6 +384,9 @@ export function SharedTableDiceStage({
   const [feel, setFeel] = useState<RollGroupFeelCandidateId>('physical');
   const [reducedMotion, setReducedMotion] = useState(inheritedReducedMotion);
   const [run, setRun] = useState(1);
+  useEffect(() => {
+    setReducedMotion(inheritedReducedMotion);
+  }, [inheritedReducedMotion]);
   const scenario = SHARED_TABLE_DICE_SCENARIOS[scenarioId];
   const rerolls = rerollLabels(scenario);
   const reset = () => setRun((current) => current + 1);

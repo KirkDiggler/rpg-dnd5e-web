@@ -47,9 +47,10 @@ afterEach(() => {
 });
 
 function region(label: 'Roller' | 'Witness') {
-  return screen.getByRole('region', {
-    name: `${label} shared table dice`,
-  });
+  const witness = label === 'Roller' ? 'roller' : 'spectator';
+  return document.querySelector<HTMLElement>(
+    `[data-witness-pane="${witness}"]`
+  )!;
 }
 
 function latest(role: 'roller' | 'spectator') {
@@ -139,6 +140,72 @@ describe('SharedTableDiceStage', () => {
       (screen.getByRole('radio', { name: 'Weighty' }) as HTMLInputElement)
         .checked
     ).toBe(true);
+  });
+
+  it('links the mobile tabs to labeled tabpanels while keeping both desktop panes mounted', () => {
+    render(<SharedTableDiceStage />);
+
+    const rollerTab = screen.getByRole('tab', { name: 'Roller' });
+    const witnessTab = screen.getByRole('tab', { name: 'Witness' });
+    const rollerPanel = screen.getByRole('tabpanel', { name: 'Roller' });
+    const witnessPanel = screen.getByRole('tabpanel', { name: 'Witness' });
+
+    expect(rollerTab.id).not.toBe('');
+    expect(witnessTab.id).not.toBe('');
+    expect(rollerTab.id).not.toBe(witnessTab.id);
+    expect(rollerTab.getAttribute('aria-controls')).toBe(rollerPanel.id);
+    expect(witnessTab.getAttribute('aria-controls')).toBe(witnessPanel.id);
+    expect(rollerPanel.getAttribute('aria-labelledby')).toBe(rollerTab.id);
+    expect(witnessPanel.getAttribute('aria-labelledby')).toBe(witnessTab.id);
+    expect(rollerPanel.hidden).toBe(false);
+    expect(witnessPanel.hidden).toBe(false);
+
+    fireEvent.click(witnessTab);
+
+    expect(rollerTab.getAttribute('aria-selected')).toBe('false');
+    expect(witnessTab.getAttribute('aria-selected')).toBe('true');
+    expect(rollerPanel.hidden).toBe(false);
+    expect(witnessPanel.hidden).toBe(false);
+    expect(document.body.contains(rollerPanel)).toBe(true);
+    expect(document.body.contains(witnessPanel)).toBe(true);
+  });
+
+  it('synchronizes later inherited reduced motion without resetting the active bench state', () => {
+    const view = render(<SharedTableDiceStage reducedMotion={false} />);
+    const scenario = screen.getByRole('combobox', { name: 'Scenario' });
+
+    fireEvent.change(scenario, { target: { value: 'ordinary-damage' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Weighty' }));
+    const presentationId = latest('roller').events[0]?.presentationId;
+
+    view.rerender(<SharedTableDiceStage reducedMotion={true} />);
+
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: 'Reduced motion',
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(true);
+    expect((scenario as HTMLSelectElement).value).toBe('ordinary-damage');
+    expect(
+      (screen.getByRole('radio', { name: 'Weighty' }) as HTMLInputElement)
+        .checked
+    ).toBe(true);
+    expect(latest('roller').reducedMotion).toBe(true);
+    expect(latest('roller').events[0]?.presentationId).toBe(presentationId);
+
+    view.rerender(<SharedTableDiceStage reducedMotion={false} />);
+
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: 'Reduced motion',
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(false);
+    expect(latest('roller').reducedMotion).toBe(false);
+    expect(latest('roller').events[0]?.presentationId).toBe(presentationId);
   });
 
   it('advances only after exact mounted generations complete the two-witness barrier', () => {

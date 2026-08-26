@@ -114,6 +114,36 @@ describe('shared table dice evidence publisher', () => {
     expect(window.__sharedTableDiceEvidence).toBe(accepted);
   });
 
+  it('invalidates its published snapshot immediately when the active fence changes', () => {
+    const publisher = createSharedTableDiceEvidencePublisher();
+    publisher.activate(mount);
+    expect(
+      publisher.publish({ ...diagnostic, projectedAnchor: [12, 34] })
+    ).toBe(true);
+    const attackSnapshot = window.__sharedTableDiceEvidence;
+
+    publisher.activate(mount);
+    expect(window.__sharedTableDiceEvidence).toBe(attackSnapshot);
+
+    publisher.activate({
+      presentationId: 'concept:shared-table:run:1:damage',
+      groupKey: 'damage',
+      witnessRole: 'roller',
+      rendererGeneration: -100_002,
+      dieIds: ['die:damage:d8'],
+    });
+
+    expect(window.__sharedTableDiceEvidence).toBeUndefined();
+    expect(
+      publisher.publish({
+        ...diagnostic,
+        projectedAnchor: [20, 40],
+        frameSequence: 2,
+      })
+    ).toBe(false);
+    expect(window.__sharedTableDiceEvidence).toBeUndefined();
+  });
+
   it('never republishes raw pointer, result, damage, URL, or renderer-resource fields', () => {
     const publisher = createSharedTableDiceEvidencePublisher();
     publisher.activate(mount);

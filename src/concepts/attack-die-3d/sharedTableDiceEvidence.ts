@@ -94,6 +94,11 @@ export function createSharedTableDiceEvidencePublisher(): SharedTableDiceEvidenc
       });
       const current = fences.get(mount.witnessRole);
       if (current && sameFence(current, fence)) return;
+      if (current) {
+        if (window.__sharedTableDiceEvidence === published)
+          delete window.__sharedTableDiceEvidence;
+        published = undefined;
+      }
       fences.set(mount.witnessRole, fence);
       for (const key of frameSequences.keys())
         if (key.startsWith(`${mount.witnessRole}:`)) frameSequences.delete(key);
