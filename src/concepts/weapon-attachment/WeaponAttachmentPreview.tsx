@@ -263,7 +263,7 @@ export function WeaponAttachmentPreview(props: WeaponAttachmentPreviewProps) {
   return (
     <div
       data-testid="weapon-attachment-preview"
-      style={{ width: '100%', height: '100%', minHeight: 520 }}
+      style={{ width: '100%', height: 520, minHeight: 520 }}
     >
       <Canvas frameloop="demand" dpr={[1, 1.5]}>
         <WeaponAttachmentScene {...props} />

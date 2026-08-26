@@ -392,7 +392,7 @@ describe('WeaponAttachmentPreview props', () => {
 
     const preview = screen.getByTestId('weapon-attachment-preview');
     expect(preview.style.width).toBe('100%');
-    expect(preview.style.height).toBe('100%');
+    expect(preview.style.height).toBe('520px');
     expect(preview.style.minHeight).toBe('520px');
     expect(screen.getByTestId('weapon-attachment-canvas')).toBeTruthy();
   });
