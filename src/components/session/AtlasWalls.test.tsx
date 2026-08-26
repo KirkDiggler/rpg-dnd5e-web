@@ -431,7 +431,7 @@ function expectAuthoredFixtureTruth(scene: WallRunScene) {
     expectRunFact(runBySource(scene.wallRuns, expected.source), expected);
   }
   const tRuns = T_SOURCES.map((source) => runBySource(scene.wallRuns, source));
-  expect(new Set(tRuns.map((run) => run.key))).toHaveLength(3);
+  expect(new Set(tRuns.map((run) => run.key)).size).toBe(3);
   for (const run of tRuns) {
     expect(pointToSegmentDistance(EXPECTED_T_JOINT, run)).toBeLessThan(1e-9);
   }
