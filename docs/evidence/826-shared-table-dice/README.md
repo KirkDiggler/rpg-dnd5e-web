@@ -14,11 +14,44 @@ npm run dev -- --host 127.0.0.1 --port 3010
 
 ## Capture identity
 
-- Commit under review: `<exact committed SHA from git rev-parse HEAD>`
-- Browser/version: `<record>`
-- Viewport/input device: `<record>`
-- Reviewer/date: `<record after live review>`
+- Commit under review: `c69b0efebfe423de39d32f33b3c2bc0eaa7355b9` (source HEAD at automated run)
+- Browser/version: Chromium `151.0.7922.169` (`/usr/bin/google-chrome`)
+- Viewport/input device: desktop `1280×800`, stack-boundary `1024×768`, narrow-touch `390×844` (hasTouch)
+- Reviewer/date: automated harness, `2026-08-26T22:06:34.621Z`
 - Kirk feel gate: pending live review
+
+## Task 9 automated browser run — BLOCKED
+
+Observed 2026-08-26T22:06:34.621Z against source HEAD
+`c69b0efebfe423de39d32f33b3c2bc0eaa7355b9` at the exact launch URL above.
+Chromium was `151.0.7922.169` at `/usr/bin/google-chrome`. The previous RED
+transcript is unavailable; no claim is made about its contents.
+
+The script used the stable Roller per-die/generation selector, both center and
+off-center grabs, and center/quarter/edge tray samples. Its bounded run used a
+720000ms global deadline, 20000ms per-step deadline, 30000ms stage deadline,
+35000ms scenario deadline, 10000ms cleanup deadline, and three scenario
+workers; it completed in 566407ms with no fatal error. The responsive checks
+passed at desktop `1280×800`, stack-boundary `1024×768`, and narrow-touch
+`390×844`. Attachment failed: all 36 samples exceeded the 2 CSS px limit.
+Desktop had 12 failures (20.714337–214.056191 CSS px), stack-boundary had 12
+(19.034293–157.290500 CSS px), and narrow-touch had 12
+(16.592338–94.933038 CSS px); the aggregate maximum was 214.056191 CSS px.
+
+The candidate/scenario sweep ran all 81 cases: 79 passed and two timed out at
+35000ms: narrow-touch/Weighty/critical-damage and
+narrow-touch/Physical/critical-damage. The run recorded zero console errors,
+three page errors (`Cannot read properties of null (reading 'addEventListener')`)
+at narrow-touch/Weighty/great-weapon-fighting,
+narrow-touch/Energetic/great-weapon-fighting, and
+narrow-touch/Physical/reduced-motion; it also recorded two `net::ERR_ABORTED`
+D4 fetches at desktop/Physical/bless-mixed-attack and
+stack-boundary/Physical/bless-mixed-attack. Exit status was 1.
+
+A temporary missing-evidence fixture suppressed bridge publication; the final
+harness exited 1 with 12 of 12 attachment samples marked `missing`. The
+mutation was restored by a shell trap. These automated failures do not change
+Kirk's pending live feel gate.
 
 ## Candidate/scenario matrix
 
