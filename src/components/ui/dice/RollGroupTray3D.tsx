@@ -191,6 +191,8 @@ export function RollGroupTray3D({
   const interactionLayoutById = usesHeldLayout
     ? heldLayoutById
     : restingLayoutById;
+  const canvasEventSource =
+    typeof document === 'undefined' ? undefined : document.body;
   const rerollDieIdSet = useMemo(() => new Set(rerollDieIds), [rerollDieIds]);
   const diceIdentity = group.dice.map((die) => die.id).join('|');
   const faceIdentity = group.dice
@@ -384,6 +386,7 @@ export function RollGroupTray3D({
             <Canvas
               aria-hidden="true"
               className="roll-group-tray-3d__canvas"
+              eventSource={canvasEventSource}
               camera={{
                 fov: ROLL_GROUP_TRAY_CAMERA.fov,
                 near: ROLL_GROUP_TRAY_CAMERA.near,
@@ -415,6 +418,7 @@ export function RollGroupTray3D({
                   memberCount={group.dice.length}
                   phase={phase}
                   feel={feel}
+                  projection={projection}
                   reducedMotion={reducedMotion}
                   throwProfile={throwProfile}
                   heldRef={heldRef}

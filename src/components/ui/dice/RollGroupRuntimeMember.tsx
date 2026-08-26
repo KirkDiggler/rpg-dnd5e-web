@@ -34,6 +34,7 @@ import type {
   RuntimeDiceSurfaceGrab,
   RuntimeDiceSurfaceHandle,
 } from './runtimeDiceSurfaceGrab';
+import type { TrayPlaneProjection } from './trayPlaneProjection';
 import type { VisualThrowProfileV1 } from './visualThrowProfile';
 
 export type RollGroupTrayPhase =
@@ -60,6 +61,10 @@ export interface RuntimeMemberSurfaceHandle {
   readonly projectSurface: (
     grab: RuntimeDiceSurfaceGrab
   ) => readonly [number, number] | undefined;
+  readonly alignSurface: (
+    grab: RuntimeDiceSurfaceGrab,
+    target: readonly [number, number]
+  ) => boolean;
 }
 
 type GroupSnapshot =
@@ -165,6 +170,7 @@ export interface RollGroupRuntimeMemberProps {
   readonly reducedMotion: boolean;
   readonly throwProfile: VisualThrowProfileV1;
   readonly heldRef: MutableRefObject<AnchoredHeldRollGroupState | undefined>;
+  readonly projection: TrayPlaneProjection | undefined;
   readonly heldLayout: RollGroupMemberLayout;
   readonly restingLayout: RollGroupMemberLayout;
   readonly appearance: RollGroupDieAppearance | undefined;
@@ -212,6 +218,7 @@ export function RollGroupRuntimeMember({
   reducedMotion,
   throwProfile,
   heldRef,
+  projection,
   heldLayout,
   restingLayout,
   appearance,
@@ -272,6 +279,16 @@ export function RollGroupRuntimeMember({
                   grab,
                   camera,
                   viewport: viewportFor(gl.domElement),
+                }),
+              alignSurface: (
+                grab: RuntimeDiceSurfaceGrab,
+                target: readonly [number, number]
+              ) =>
+                handle.alignSurface({
+                  grab,
+                  camera,
+                  viewport: viewportFor(gl.domElement),
+                  target,
                 }),
             })
           );
@@ -383,22 +400,26 @@ export function RollGroupRuntimeMember({
       !handle ||
       activeGrab.dieId !== die.id ||
       activeGrab.rendererGeneration !== rendererGeneration ||
-      held.grabbedDieId !== die.id ||
-      !onAttachmentDiagnostic
+      held.grabbedDieId !== die.id
     )
       return;
     try {
+      const target = projection?.planeToScreen(held.pointerPlane);
+      if (!target || !target.every(Number.isFinite)) return;
+      if (!handle.alignSurface(activeGrab.grab, target)) return;
       const projectedAnchor = handle.projectSurface(activeGrab.grab);
       if (!projectedAnchor || !projectedAnchor.every(Number.isFinite)) return;
-      sequence.current += 1;
-      onAttachmentDiagnostic({
-        presentationId,
-        rendererGeneration,
-        dieId: die.id,
-        projectedAnchor,
-        heldPoseApplied: true,
-        frameSequence: sequence.current,
-      });
+      if (onAttachmentDiagnostic) {
+        sequence.current += 1;
+        onAttachmentDiagnostic({
+          presentationId,
+          rendererGeneration,
+          dieId: die.id,
+          projectedAnchor,
+          heldPoseApplied: true,
+          frameSequence: sequence.current,
+        });
+      }
     } catch {
       // Diagnostics are best-effort and must never affect rendering.
     }
@@ -408,6 +429,7 @@ export function RollGroupRuntimeMember({
     heldRef,
     onAttachmentDiagnostic,
     presentationId,
+    projection,
     rendererGeneration,
     surfaceHandlesRef,
   ]);

@@ -39,6 +39,8 @@ const mocks = vi.hoisted(() => ({
   renderer: undefined as unknown as Record<string, unknown>,
   surfaceCaptures: [] as Array<readonly [number, number]>,
   projectedSurface: [141, 37] as readonly [number, number],
+  canvasEventSources: [] as unknown[],
+  surfaceAlignments: [] as Array<readonly [number, number]>,
 }));
 
 vi.mock('@react-three/fiber', () => ({
@@ -55,6 +57,7 @@ vi.mock('@react-three/fiber', () => ({
   Canvas: ({
     children,
     camera: cameraInput,
+    eventSource,
     onCreated,
   }: {
     children?: React.ReactNode;
@@ -65,6 +68,7 @@ vi.mock('@react-three/fiber', () => ({
       position: readonly [number, number, number];
       up: readonly [number, number, number];
     }>;
+    eventSource?: unknown;
     onCreated?: (input: {
       camera: PerspectiveCamera;
       gl: Record<string, unknown>;
@@ -72,6 +76,7 @@ vi.mock('@react-three/fiber', () => ({
     }) => void;
   }) => {
     mocks.canvases += 1;
+    mocks.canvasEventSources.push(eventSource);
     const cameraRef = useRef<PerspectiveCamera | null>(null);
     if (!cameraRef.current) {
       cameraRef.current = new PerspectiveCamera(
@@ -152,6 +157,10 @@ vi.mock('./RuntimeDiceMesh', () => ({
           });
         },
         projectSurface: () => mocks.projectedSurface,
+        alignSurface: (_grab: unknown, target: readonly [number, number]) => {
+          mocks.surfaceAlignments.push(target);
+          return true;
+        },
       };
       surfaceHandleRef.current = handle;
       return () => {
@@ -305,6 +314,8 @@ beforeEach(() => {
   mocks.canvasFailure = false;
   mocks.surfaceCaptures = [];
   mocks.projectedSurface = [141, 37];
+  mocks.canvasEventSources = [];
+  mocks.surfaceAlignments = [];
   mocks.renderer = {
     domElement: mocks.domElement,
     render: vi.fn(),
@@ -430,6 +441,12 @@ afterEach(() => {
 });
 
 describe('RollGroupTray3D', () => {
+  it('connects Canvas events to a stable document target during async pane swaps', () => {
+    render(<RollGroupTray3D {...baseProps} />);
+
+    expect(mocks.canvasEventSources.at(-1)).toBe(document.body);
+  });
+
   it('aims the production camera at the horizontal tray plane', () => {
     render(<RollGroupTray3D {...baseProps} />);
 
@@ -878,6 +895,37 @@ describe('RollGroupTray3D', () => {
       expect(roller.runtimeSourceId).toBe(spectator.runtimeSourceId);
       expect(roller.runtimeCloneId).not.toBe(spectator.runtimeCloneId);
     }
+  });
+
+  it('aligns the retained surface point even when evidence diagnostics are not requested', () => {
+    render(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="armed"
+        onReleaseRequest={vi.fn()}
+      />
+    );
+    const target = document.querySelector(
+      '[data-roll-group-die-id="die:two"]'
+    )!;
+    fireEvent.pointerDown(target, {
+      pointerId: 9,
+      pointerType: 'mouse',
+      clientX: 70,
+      clientY: 10,
+      timeStamp: 0,
+    });
+
+    act(() => {
+      (
+        latestMesh('die:two').onPoseApplied as (
+          frame: DiceMotionPose,
+          elapsedMs: number
+        ) => void
+      )(POSE, 16);
+    });
+
+    expect(mocks.surfaceAlignments).toHaveLength(1);
   });
 
   it('projects the retained grabbed surface point after the rendered member transform and emits no pointer sample', () => {

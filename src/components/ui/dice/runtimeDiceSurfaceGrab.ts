@@ -1,4 +1,5 @@
 import {
+  Plane,
   Raycaster,
   Vector2,
   Vector3,
@@ -26,6 +27,12 @@ export interface RuntimeDiceSurfaceHandle {
     readonly camera: Camera;
     readonly viewport: ClientBounds;
   }) => readonly [number, number] | undefined;
+  readonly alignSurface: (input: {
+    readonly grab: RuntimeDiceSurfaceGrab;
+    readonly camera: Camera;
+    readonly viewport: ClientBounds;
+    readonly target: readonly [number, number];
+  }) => boolean;
 }
 
 function finiteBounds(bounds: ClientBounds) {
@@ -106,6 +113,49 @@ export function createRuntimeDiceSurfaceHandle(
           : undefined;
       } catch {
         return undefined;
+      }
+    },
+    alignSurface({ grab, camera, viewport, target }) {
+      if (
+        !finiteBounds(viewport) ||
+        target.length !== 2 ||
+        !target.every(Number.isFinite)
+      )
+        return false;
+      try {
+        grab.object.updateWorldMatrix(true, false);
+        camera.updateMatrixWorld(true);
+        const worldPoint = grab.object.localToWorld(
+          new Vector3(...grab.localPoint)
+        );
+        if (!finiteVector(worldPoint)) return false;
+
+        const pointer = new Vector2(
+          ((target[0] - viewport.left) / viewport.width) * 2 - 1,
+          1 - ((target[1] - viewport.top) / viewport.height) * 2
+        );
+        const raycaster = new Raycaster();
+        raycaster.setFromCamera(pointer, camera);
+        const targetWorld = raycaster.ray.intersectPlane(
+          new Plane(new Vector3(0, 1, 0), -worldPoint.y),
+          new Vector3()
+        );
+        if (!targetWorld || !finiteVector(targetWorld)) return false;
+
+        root.updateWorldMatrix(true, false);
+        const rootWorld = root.getWorldPosition(new Vector3());
+        if (!finiteVector(rootWorld)) return false;
+        rootWorld.add(targetWorld.sub(worldPoint));
+        if (!finiteVector(rootWorld)) return false;
+
+        if (root.parent) {
+          root.parent.updateWorldMatrix(true, false);
+          root.position.copy(root.parent.worldToLocal(rootWorld));
+        } else root.position.copy(rootWorld);
+        root.updateWorldMatrix(true, true);
+        return true;
+      } catch {
+        return false;
       }
     },
   };

@@ -14,7 +14,9 @@ const TIMEOUTS = Object.freeze({
   scenarioMs: 35_000,
   cleanupMs: 10_000,
 });
-const SCENARIO_WORKER_COUNT = 3;
+// Two WebGL workers keep the narrow tabbed critical pool within its deadline;
+// three concurrent canvases caused renderer starvation without changing state.
+const SCENARIO_WORKER_COUNT = 2;
 const MEASUREMENT_SCENARIO = 'bless-mixed-attack';
 const MEASUREMENT_CANDIDATE = 'physical';
 const VIEWPORTS = Object.freeze([
@@ -488,6 +490,29 @@ async function attachmentEvidenceWatermark(page, identity) {
   );
 }
 
+async function replayStage(
+  page,
+  setDiagnosticContext,
+  viewport,
+  candidate,
+  scenario
+) {
+  await withTimeout(
+    `replay ${viewport.id}/${candidate.id}/${scenario}`,
+    TIMEOUTS.stageMs,
+    async () => {
+      setDiagnosticContext(`${viewport.id}/${candidate.id}/${scenario}`);
+      await page.getByRole('button', { name: 'Replay', exact: true }).click();
+      await page
+        .locator(
+          '[data-testid="roll-group-presentation"][data-witness-role="roller"]'
+        )
+        .waitFor({ state: 'attached', timeout: TIMEOUTS.stepMs });
+      await waitAnimationFrames(page);
+    }
+  );
+}
+
 async function measureProbe({
   page,
   setDiagnosticContext,
@@ -497,7 +522,9 @@ async function measureProbe({
   grabPoint,
   samples,
 }) {
-  await openStage(
+  // Replay the mounted fixture instead of navigating. Navigation can cancel an
+  // in-flight provisional asset fetch and report a harness-induced ERR_ABORTED.
+  await replayStage(
     page,
     setDiagnosticContext,
     viewport,

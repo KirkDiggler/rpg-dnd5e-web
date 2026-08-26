@@ -136,4 +136,38 @@ describe('roll group tray runtime seams', () => {
     expect(projected[0]).toBeCloseTo(expectedClient[0], 8);
     expect(projected[1]).toBeCloseTo(expectedClient[1], 8);
   });
+
+  it('aligns the retained surface point to a requested screen point after a held pose', () => {
+    const camera = new PerspectiveCamera(45, viewport.width / viewport.height);
+    camera.position.set(0, 3, 0);
+    camera.up.set(0, 0, -1);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+
+    const root = new Group();
+    const mesh = new Mesh(
+      new BoxGeometry(1, 1, 1),
+      new MeshBasicMaterial({ color: '#ffffff' })
+    );
+    root.add(mesh);
+    root.updateWorldMatrix(true, true);
+
+    const client = projectWorld(camera, mesh.getWorldPosition(new Vector3()));
+    const handle = createRuntimeDiceSurfaceHandle(root);
+    const grab = handle.captureSurface({
+      clientX: client[0],
+      clientY: client[1],
+      camera,
+      viewport,
+    })!;
+    const target = [client[0] + 64, client[1] - 28] as const;
+
+    expect(handle.alignSurface({ grab, camera, viewport, target })).toBe(true);
+    const aligned = handle.projectSurface({ grab, camera, viewport });
+
+    expect(aligned).toBeDefined();
+    expect(aligned![0]).toBeCloseTo(target[0], 8);
+    expect(aligned![1]).toBeCloseTo(target[1], 8);
+  });
 });

@@ -137,6 +137,34 @@ function begin(
 }
 
 describe('createAnchoredRollGroupGestureController', () => {
+  it('retains the pointer plane and group plane position separately from the member grab anchor', () => {
+    const controller = createAnchoredRollGroupGestureController();
+    const captureTarget = new FakePointerCaptureOwner();
+
+    expect(
+      begin(controller, captureTarget, {
+        sample: { ...startSample, clientX: 27, clientY: 23 },
+      })
+    ).toMatchObject({
+      anchor: [7, 3],
+      pointerPlane: [27, 23],
+      planePosition: [0, 0],
+    });
+
+    expect(
+      controller.move({
+        pointerId: 7,
+        clientX: 40,
+        clientY: 30,
+        timeMs: 16,
+      })
+    ).toMatchObject({
+      anchor: [7, 3],
+      pointerPlane: [40, 30],
+      planePosition: [13, 7],
+    });
+  });
+
   it('preserves the exact pointer-minus-member anchor while moving the whole group', () => {
     const controller = createAnchoredRollGroupGestureController();
     const captureTarget = new FakePointerCaptureOwner();
@@ -504,6 +532,8 @@ describe('createAnchoredRollGroupGestureController', () => {
     expect(Object.isFrozen(profile?.releaseDirection)).toBe(true);
     expect(Object.keys(held ?? {})).toEqual([
       'anchor',
+      'pointerPlane',
+      'planePosition',
       'normalizedPosition',
       'normalizedTilt',
       'shakeEnergy',

@@ -14,6 +14,8 @@ import {
 
 export interface AnchoredHeldRollGroupState {
   readonly anchor: TrayPlanePoint;
+  readonly pointerPlane: TrayPlanePoint;
+  readonly planePosition: TrayPlanePoint;
   readonly normalizedPosition: readonly [number, number];
   readonly normalizedTilt: readonly [number, number];
   readonly shakeEnergy: number;
@@ -56,6 +58,7 @@ interface ActiveGesture {
   readonly projection: TrayPlaneProjection;
   readonly motionSeed: number;
   readonly anchor: TrayPlanePoint;
+  readonly memberAnchor: TrayPlanePoint;
   readonly grabbedDieId: string;
   previousSample: RollGroupPointerSample;
   previousPosition: Tuple2;
@@ -74,6 +77,8 @@ function frozenTuple(first: number, second: number): Tuple2 {
 
 function frozenHeldState(
   anchor: TrayPlanePoint,
+  pointerPlane: TrayPlanePoint,
+  planePosition: TrayPlanePoint,
   normalizedPosition: Tuple2,
   normalizedTilt: Tuple2,
   shakeEnergy: number,
@@ -82,6 +87,8 @@ function frozenHeldState(
 ): AnchoredHeldRollGroupState {
   return Object.freeze({
     anchor,
+    pointerPlane,
+    planePosition,
     normalizedPosition,
     normalizedTilt,
     shakeEnergy,
@@ -272,6 +279,7 @@ function updateMotion(
   nextSample: RollGroupPointerSample
 ): boolean {
   let nextPlanePosition: TrayPlanePoint;
+  let pointerPlane: TrayPlanePoint;
   let nextPosition: Tuple2 | undefined;
   try {
     const pointer = gesture.projection.screenToPlane(
@@ -279,6 +287,7 @@ function updateMotion(
       nextSample.clientY
     );
     if (!pointer || !isFiniteTuple2(pointer)) return false;
+    pointerPlane = pointer;
     nextPlanePosition = groupPlanePosition(pointer, gesture.anchor);
     nextPosition = normalizedPosition(gesture.projection, nextPlanePosition);
   } catch {
@@ -324,8 +333,14 @@ function updateMotion(
   gesture.previousPosition = nextPosition;
   gesture.previousVelocity = filteredVelocity;
   gesture.previousDelta = delta;
+  const planePosition = frozenTuple(
+    nextPlanePosition[0] - gesture.memberAnchor[0],
+    nextPlanePosition[1] - gesture.memberAnchor[1]
+  );
   gesture.heldState = frozenHeldState(
     gesture.anchor,
+    pointerPlane,
+    planePosition,
     nextPosition,
     normalizedTilt,
     shakeEnergy,
@@ -396,8 +411,8 @@ export function createAnchoredRollGroupGestureController(): AnchoredRollGroupGes
           pointer[0] - selected.memberAnchor[0],
           pointer[1] - selected.memberAnchor[1]
         );
-        const planePosition = groupPlanePosition(pointer, anchor);
-        const position = normalizedPosition(projection, planePosition);
+        const memberPosition = groupPlanePosition(pointer, anchor);
+        const position = normalizedPosition(projection, memberPosition);
         if (!position) return undefined;
 
         capturedPointerId = sample.pointerId;
@@ -409,8 +424,14 @@ export function createAnchoredRollGroupGestureController(): AnchoredRollGroupGes
           return undefined;
         }
 
+        const planePosition = frozenTuple(
+          memberPosition[0] - selected.memberAnchor[0],
+          memberPosition[1] - selected.memberAnchor[1]
+        );
         const heldState = frozenHeldState(
           anchor,
+          pointer,
+          planePosition,
           position,
           frozenTuple(0, 0),
           0,
@@ -423,6 +444,10 @@ export function createAnchoredRollGroupGestureController(): AnchoredRollGroupGes
           projection,
           motionSeed: input.motionSeed,
           anchor,
+          memberAnchor: frozenTuple(
+            selected.memberAnchor[0],
+            selected.memberAnchor[1]
+          ),
           grabbedDieId: selected.dieId,
           previousSample: sample,
           previousPosition: position,

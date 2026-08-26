@@ -6,10 +6,7 @@ import type {
   DiceTranslation,
 } from './diceMotionSolver';
 import type { RollGroupMemberLayout } from './rollGroupLayout';
-import {
-  ROLL_GROUP_HELD_PLANE_HEIGHT,
-  ROLL_GROUP_HELD_PLANE_WIDTH,
-} from './rollGroupTrayGeometry';
+import { ROLL_GROUP_HELD_PLANE_HEIGHT } from './rollGroupTrayGeometry';
 import {
   parseVisualThrowProfile,
   type VisualThrowProfileV1,
@@ -256,6 +253,8 @@ function validLayout(layout: RollGroupMemberLayout): boolean {
 function validHeldState(held: AnchoredHeldRollGroupState): boolean {
   return (
     isFiniteTuple(held.anchor, 2) &&
+    isFiniteTuple(held.pointerPlane, 2) &&
+    isFiniteTuple(held.planePosition, 2) &&
     isFiniteTuple(held.normalizedPosition, 2) &&
     isFiniteTuple(held.normalizedTilt, 2) &&
     held.normalizedPosition[0] >= 0 &&
@@ -555,13 +554,8 @@ export function solveRollGroupMemberMotion(input: {
     }
 
     if (input.phase === 'held') {
-      const groupX = input.held
-        ? (input.held.normalizedPosition[0] - 0.5) * ROLL_GROUP_HELD_PLANE_WIDTH
-        : 0;
-      const groupZ = input.held
-        ? (input.held.normalizedPosition[1] - 0.5) *
-          ROLL_GROUP_HELD_PLANE_HEIGHT
-        : 0;
+      const groupX = input.held?.planePosition[0] ?? 0;
+      const groupZ = input.held?.planePosition[1] ?? 0;
       const lift = input.reducedMotion
         ? HOLD_LIFT
         : HOLD_LIFT + (input.held?.shakeEnergy ?? 0) * 0.02;

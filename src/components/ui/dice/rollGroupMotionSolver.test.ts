@@ -27,6 +27,8 @@ const THROW_PROFILE = createVisualThrowProfile({
 });
 const HELD = Object.freeze({
   anchor: [0.1, -0.05],
+  pointerPlane: [0.1, -0.05],
+  planePosition: [0.0576, -0.0416],
   normalizedPosition: [0.58, 0.42],
   normalizedTilt: [0.6, -0.35],
   shakeEnergy: 0.4,
@@ -159,6 +161,23 @@ describe('rollGroupMotionSolver', () => {
     }
   );
 
+  it('uses the retained group plane position instead of reconstructing it from fixed extents', () => {
+    const pose = solveRollGroupMemberMotion(
+      motionInput(ROLL_GROUP_FEEL_PROFILES.weighty, {
+        phase: 'held',
+        elapsedMs: 0,
+        held: {
+          ...HELD,
+          planePosition: [0.2, -0.1],
+          pointerPlane: [0.3, -0.2],
+        } as AnchoredHeldRollGroupState,
+      })
+    );
+
+    expect(pose.translation[0]).toBeCloseTo(0.32, 12);
+    expect(pose.translation[2]).toBeCloseTo(-0.14, 12);
+  });
+
   it('maps exact tray-plane held extents to the same solver position and direction', () => {
     const camera = new PerspectiveCamera(35, 720 / 520, 0.1, 100);
     camera.position.set(0, 3, 0);
@@ -185,7 +204,11 @@ describe('rollGroupMotionSolver', () => {
       motionInput(ROLL_GROUP_FEEL_PROFILES.weighty, {
         phase: 'held',
         elapsedMs: 0,
-        held: { ...HELD, normalizedPosition: normalized },
+        held: {
+          ...HELD,
+          planePosition: [0.36, 0.26],
+          normalizedPosition: normalized,
+        },
       })
     );
     expect(heldPose.translation[0] - HELD_LAYOUT.center[0]).toBeCloseTo(
@@ -214,6 +237,7 @@ describe('rollGroupMotionSolver', () => {
         memberCount: 1,
         heldLayout: { ...HELD_LAYOUT, center: [0, 0] },
         restingLayout: { ...RESTING_LAYOUT, center: [0, 0] },
+        held: { ...HELD, planePosition: [0, 0] },
         throwProfile: downward,
       })
     );

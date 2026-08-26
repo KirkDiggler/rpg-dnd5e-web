@@ -14,44 +14,34 @@ npm run dev -- --host 127.0.0.1 --port 3010
 
 ## Capture identity
 
-- Commit under review: `c69b0efebfe423de39d32f33b3c2bc0eaa7355b9` (source HEAD at automated run)
+- Source base HEAD at automated run: `b249f970f2b98a4e0b496e25404e23aa106b1da8`, with the audited Task 9 Fix Round 1 working-tree changes later committed together with this worksheet
 - Browser/version: Chromium `151.0.7922.169` (`/usr/bin/google-chrome`)
 - Viewport/input device: desktop `1280×800`, stack-boundary `1024×768`, narrow-touch `390×844` (hasTouch)
-- Reviewer/date: automated harness, `2026-08-26T22:06:34.621Z`
+- Reviewer/date: automated harness, `2026-08-26T23:19:09.620Z`
 - Kirk feel gate: pending live review
 
-## Task 9 automated browser run — BLOCKED
+## Task 9 Fix Round 1 automated browser run — PASS
 
-Observed 2026-08-26T22:06:34.621Z against source HEAD
-`c69b0efebfe423de39d32f33b3c2bc0eaa7355b9` at the exact launch URL above.
-Chromium was `151.0.7922.169` at `/usr/bin/google-chrome`. The previous RED
-transcript is unavailable; no claim is made about its contents.
+Observed `2026-08-26T23:19:09.620Z` against the exact launch URL above. The
+bounded run used a 720000ms global deadline, 20000ms per-step deadline, 30000ms
+stage deadline, 35000ms scenario deadline, 10000ms cleanup deadline, and two
+scenario workers. It completed in 650195ms with overall `passed: true` and no
+fatal errors.
 
-The script used the stable Roller per-die/generation selector, both center and
-off-center grabs, and center/quarter/edge tray samples. Its bounded run used a
-720000ms global deadline, 20000ms per-step deadline, 30000ms stage deadline,
-35000ms scenario deadline, 10000ms cleanup deadline, and three scenario
-workers; it completed in 566407ms with no fatal error. The responsive checks
-passed at desktop `1280×800`, stack-boundary `1024×768`, and narrow-touch
-`390×844`. Attachment failed: all 36 samples exceeded the 2 CSS px limit.
-Desktop had 12 failures (20.714337–214.056191 CSS px), stack-boundary had 12
-(19.034293–157.290500 CSS px), and narrow-touch had 12
-(16.592338–94.933038 CSS px); the aggregate maximum was 214.056191 CSS px.
+The attachment probe retained the 2 CSS px limit, stable Roller per-die and
+renderer-generation selector, both center and off-center grabs, and
+center/quarter/edge tray samples. It measured both Roller members in the
+Physical `bless-mixed-attack` scenario at all three viewports: **36/36 samples
+passed**, zero samples failed, and the maximum error was **0.000006 CSS px**.
+No pointer coordinates or histories were written to the result.
 
-The candidate/scenario sweep ran all 81 cases: 79 passed and two timed out at
-35000ms: narrow-touch/Weighty/critical-damage and
-narrow-touch/Physical/critical-damage. The run recorded zero console errors,
-three page errors (`Cannot read properties of null (reading 'addEventListener')`)
-at narrow-touch/Weighty/great-weapon-fighting,
-narrow-touch/Energetic/great-weapon-fighting, and
-narrow-touch/Physical/reduced-motion; it also recorded two `net::ERR_ABORTED`
-D4 fetches at desktop/Physical/bless-mixed-attack and
-stack-boundary/Physical/bless-mixed-attack. Exit status was 1.
-
-A temporary missing-evidence fixture suppressed bridge publication; the final
-harness exited 1 with 12 of 12 attachment samples marked `missing`. The
-mutation was restored by a shell trap. These automated failures do not change
-Kirk's pending live feel gate.
+Responsive checks passed in all three required states: desktop `1280×800` and
+stack-boundary `1024×768` showed two panes, while narrow-touch `390×844` showed
+the tabbed single-pane mode. The complete sweep passed **81/81** runs across
+three candidates, nine scenarios, and three viewports. Runtime records contain
+zero console errors, zero page errors, zero request failures, and zero fatal
+errors. This automated PASS does not change **Kirk feel gate: pending live
+review**.
 
 ## Candidate/scenario matrix
 
