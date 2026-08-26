@@ -191,6 +191,9 @@ describe('SyntyHexFloor profile UVs', () => {
       [alternateUrl, textureState(alternateShared)],
       [legacyUrl, textureState(legacyShared)],
     ]);
+    const profileSharedDispose = vi.spyOn(profileShared, 'dispose');
+    const alternateSharedDispose = vi.spyOn(alternateShared, 'dispose');
+    const legacySharedDispose = vi.spyOn(legacyShared, 'dispose');
     useTextureMock.mockImplementation((url?: string) => {
       const shared = new Map([
         [profileUrl, profileShared],
@@ -212,6 +215,7 @@ describe('SyntyHexFloor profile UVs', () => {
       renderer.scene.findByType('MeshBasicMaterial')
         .instance as unknown as THREE.MeshBasicMaterial
     ).map!;
+    const firstMapDispose = vi.spyOn(firstMap, 'dispose');
 
     expect(useTextureMock).toHaveBeenLastCalledWith(profileUrl);
     expect(firstMap).not.toBe(profileShared);
@@ -232,8 +236,12 @@ describe('SyntyHexFloor profile UVs', () => {
         .instance as unknown as THREE.MeshBasicMaterial
     ).map!;
 
+    const alternateMapDispose = vi.spyOn(secondMap, 'dispose');
+
     expect(useTextureMock).toHaveBeenLastCalledWith(alternateUrl);
+    expect(secondMap).not.toBe(firstMap);
     expect(secondMap).not.toBe(alternateShared);
+    expect(firstMapDispose).toHaveBeenCalledTimes(1);
     expect(secondMap.wrapS).toBe(THREE.RepeatWrapping);
     expect(secondMap.wrapT).toBe(THREE.RepeatWrapping);
     expect(secondMap.repeat.toArray()).toEqual([1, 1]);
@@ -249,8 +257,12 @@ describe('SyntyHexFloor profile UVs', () => {
         .instance as unknown as THREE.MeshBasicMaterial
     ).map!;
 
+    const legacyMapDispose = vi.spyOn(legacyMap, 'dispose');
+
     expect(useTextureMock).toHaveBeenLastCalledWith(legacyUrl);
+    expect(legacyMap).not.toBe(secondMap);
     expect(legacyMap).not.toBe(legacyShared);
+    expect(alternateMapDispose).toHaveBeenCalledTimes(1);
     expect(legacyMap.wrapS).toBe(THREE.RepeatWrapping);
     expect(legacyMap.wrapT).toBe(THREE.RepeatWrapping);
     expect(legacyMap.repeat.toArray()).toEqual([2, 2]);
@@ -259,7 +271,14 @@ describe('SyntyHexFloor profile UVs', () => {
       sharedBefore.get(alternateUrl)
     );
     expect(textureState(legacyShared)).toEqual(sharedBefore.get(legacyUrl));
+    expect(profileSharedDispose).not.toHaveBeenCalled();
+    expect(alternateSharedDispose).not.toHaveBeenCalled();
+    expect(legacySharedDispose).not.toHaveBeenCalled();
     await renderer.unmount();
+    expect(legacyMapDispose).toHaveBeenCalledTimes(1);
+    expect(profileSharedDispose).not.toHaveBeenCalled();
+    expect(alternateSharedDispose).not.toHaveBeenCalled();
+    expect(legacySharedDispose).not.toHaveBeenCalled();
   });
 
   it('maps adjacent pointy cells to equal absolute UVs at their shared world vertices', async () => {
