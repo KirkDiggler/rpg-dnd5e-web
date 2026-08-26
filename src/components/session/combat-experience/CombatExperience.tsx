@@ -79,6 +79,7 @@ function StatusBadge({ status }: { status: InformationalStatus }) {
 }
 
 export function CombatExperience({
+  layout = 'review-frame',
   viewerMember,
   viewerName,
   viewerClassRefId,
@@ -163,7 +164,10 @@ export function CombatExperience({
     : [];
 
   return (
-    <div className={styles.combatExperience}>
+    <div
+      className={`${styles.combatExperience} ${layout === 'fill-parent' ? styles.combatExperienceFillParent : ''}`}
+      data-layout={layout}
+    >
       <div className={styles.gameFrame} data-testid="combat-experience-shell">
         <div
           data-testid="session-combat-map"

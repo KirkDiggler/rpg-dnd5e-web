@@ -27,6 +27,8 @@ export type CombatExperiencePhase =
 
 export type CombatExperienceLogMode = 'story' | 'debug';
 
+export type CombatExperienceLayout = 'review-frame' | 'fill-parent';
+
 export type CombatExperienceStreamState =
   | 'live'
   | 'caught-up'
@@ -68,6 +70,8 @@ export interface CombatExperienceMapRenderProps {
 }
 
 interface CombatExperienceBaseProps {
+  /** Review defaults to a fixed visual-gate frame; the production portal fills its definite-height parent. */
+  layout?: CombatExperienceLayout;
   viewerMember: string;
   /** Public-roster identity. Never derive this from Turn or CharacterData. */
   viewerName: string;

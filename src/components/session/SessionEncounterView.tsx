@@ -553,6 +553,7 @@ function SessionEncounterScope({
           }}
         >
           <CombatExperience
+            layout="fill-parent"
             viewerMember={member}
             viewerName={characterName}
             viewerClassRefId={classRefId}

@@ -83,6 +83,22 @@ describe('CombatExperience shared production shell', () => {
     expect(screen.getByTestId('session-combat-log')).toBeTruthy();
   });
 
+  it('defaults to the fixed review frame and requires an explicit fill-parent layout', () => {
+    const { rerender } = render(<CombatExperience {...propsFor()} />);
+    const shell = screen.getByTestId('combat-experience-shell');
+
+    expect(shell.parentElement?.dataset.layout).toBe('review-frame');
+    expect(shell.parentElement?.className).not.toContain(
+      'combatExperienceFillParent'
+    );
+
+    rerender(<CombatExperience {...propsFor()} layout="fill-parent" />);
+    expect(shell.parentElement?.dataset.layout).toBe('fill-parent');
+    expect(shell.parentElement?.className).toContain(
+      'combatExperienceFillParent'
+    );
+  });
+
   it('renders only provider-declared Attack, Move, and separate End Turn gameplay controls', () => {
     render(<CombatExperience {...propsFor()} />);
 
@@ -344,5 +360,9 @@ describe('CombatExperience responsive and accessibility contract', () => {
     expect(css).toContain('prefers-reduced-motion: reduce');
     expect(css).toContain('height: 768px');
     expect(css).toContain('overflow-x: auto');
+    expect(css).not.toMatch(/\.combatExperience\s+\.gameFrame\s*\{/);
+    expect(css).toMatch(
+      /\.combatExperienceFillParent\s+\.gameFrame\s*\{[^}]*height:\s*100%;[^}]*border-radius:\s*0;/s
+    );
   });
 });

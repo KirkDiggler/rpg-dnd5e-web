@@ -415,6 +415,17 @@ describe('SessionEncounterView production combat integration', () => {
     screen.getByText(/loading the tomb/i);
   });
 
+  it('explicitly opts the production portal into the fill-parent combat layout', async () => {
+    readyScene();
+    renderView();
+
+    const shell = await screen.findByTestId('combat-experience-shell');
+    expect(shell.parentElement?.dataset.layout).toBe('fill-parent');
+    expect(shell.parentElement?.className).toContain(
+      'combatExperienceFillParent'
+    );
+  });
+
   it('keeps map and declarations usable through an initial private failure and retries only the explicit dock status', async () => {
     readyTurn();
     hoisted.getCharacterDataFn

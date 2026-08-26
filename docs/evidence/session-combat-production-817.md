@@ -70,3 +70,24 @@ no simulated result is presented as live evidence here.
 - Implementation commit: `4074ed2f26531d946bbdb535544b55332f2311dd`.
 - Gates: Prettier format check, ESLint, TypeScript, build, focused tests, full
   tests, and `npm run ci-check` all passed; `git diff --check` passed.
+
+## Visual-gate layout correction
+
+An actual visual-gate run with synced licensed assets and system Chrome exposed a
+layout failure that DOM structure tests had missed: at
+`?concept=session-combat`, the shared game frame computed to `2px` high and the
+map to `0px`. The generic `.combatExperience .gameFrame` selector forced
+`height: 100%` for every mount, overriding the approved `800px` review frame
+inside Concepts Lab even though that parent has no definite height.
+
+The shared renderer now defaults to the fixed review-frame presentation (`800px`,
+with the existing `768px` media floor). Only `SessionEncounterView` explicitly
+selects the production fill-parent mode, whose discriminating selector applies
+`height: 100%` and `border-radius: 0`. Shared-component, concept, production-route,
+and CSS contract tests pin that separation and reject the former generic
+selector.
+
+The visual evidence must be recaptured at both required viewports from an
+authorized checkout with the actual synced assets. The collapsed pre-fix capture
+is invalid and must not be used as approval evidence; no fallback, placeholder,
+or intercepted asset capture qualifies.

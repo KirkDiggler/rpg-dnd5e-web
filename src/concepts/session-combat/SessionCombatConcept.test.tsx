@@ -91,7 +91,11 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     render(<SessionCombatConcept />);
 
     expect(screen.getByText('Fresh turn')).toBeTruthy();
-    expect(screen.getByTestId('combat-experience-shell')).toBeTruthy();
+    const shell = screen.getByTestId('combat-experience-shell');
+    expect(shell.parentElement?.dataset.layout).toBe('review-frame');
+    expect(shell.parentElement?.className).not.toContain(
+      'combatExperienceFillParent'
+    );
     expect(screen.getByTestId('session-combat-initiative')).toBeTruthy();
     expect(screen.getByTestId('session-combat-map')).toBeTruthy();
     expect(screen.getByTestId('session-combat-dock')).toBeTruthy();

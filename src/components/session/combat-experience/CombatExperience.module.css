@@ -153,10 +153,13 @@
 
 .combatExperience {
   width: 100%;
+}
+
+.combatExperienceFillParent {
   height: 100%;
 }
 
-.combatExperience .gameFrame {
+.combatExperienceFillParent .gameFrame {
   height: 100%;
   border-radius: 0;
 }
