@@ -28,6 +28,7 @@ import {
   scheduleMonsterDiceTrayWitnessRelease,
   type DiceTrayWitnessMode,
 } from './diceTrayWitnessFixture';
+import { SharedTableDiceStage } from './SharedTableDiceStage';
 
 type DiceTrayEvidenceExercise =
   | 'original'
@@ -343,6 +344,7 @@ function TokenDiceTray3DConceptPanel({
         exercise={exercise}
         reducedMotion={reducedMotion}
       />
+      <SharedTableDiceStage reducedMotion={reducedMotion} />
     </section>
   );
 }
