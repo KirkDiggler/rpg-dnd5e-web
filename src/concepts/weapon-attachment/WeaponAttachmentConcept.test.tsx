@@ -83,7 +83,7 @@ describe('WeaponAttachmentConcept', () => {
     );
     expect(screen.getByTestId('texture-warning').textContent).toContain('none');
     expect(screen.getByTestId('socket-profile').textContent).toBe(
-      'Hand_R · bone units 0.01m · pos [-0.113567, 0.043773, -0.007070] · quat [-0.560139, -0.804964, 0.160704, 0.111588] · scale 1'
+      'Hand_R · bone units 0.01m · pos [-0.113569, 0.043781, -0.007072] · quat [-0.317175, -0.455560, 0.682831, 0.474981] · scale 1'
     );
 
     for (const name of [
