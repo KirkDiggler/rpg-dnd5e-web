@@ -89,6 +89,7 @@ function ProfileResources({
         floorTiles={scene.floorTiles}
         hexSize={HEX_SIZE}
         profile={profile.floor}
+        spaceTheme="crypt"
       />
       <AtlasWalls
         wallRuns={scene.wallRuns}

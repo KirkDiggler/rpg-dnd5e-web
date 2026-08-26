@@ -325,6 +325,30 @@ describe('DungeonShell actual shell integration', () => {
     );
   });
 
+  it('tints an active crypt profile floor while leaving the legacy floor untinted', async () => {
+    shellState.snapshot = ready();
+    const profiled = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} doors={doors} />
+    );
+    const profileMaterial = profiled.scene.findByType('MeshBasicMaterial')
+      .instance as unknown as THREE.MeshBasicMaterial;
+
+    expect(profileMaterial.color.r).toBeCloseTo(0.35);
+    expect(profileMaterial.color.g).toBeCloseTo(0.38);
+    expect(profileMaterial.color.b).toBeCloseTo(0.46);
+    expect(profileMaterial.toneMapped).toBe(false);
+
+    shellState.snapshot = { status: 'idle' };
+    const legacy = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} doors={doors} />
+    );
+    const legacyMaterial = legacy.scene.findByType('MeshBasicMaterial')
+      .instance as unknown as THREE.MeshBasicMaterial;
+
+    expect(legacyMaterial.color.getHexString()).toBe('ffffff');
+    expect(legacyMaterial.toneMapped).toBe(false);
+  });
+
   it('keeps the actual legacy pair while ordinary GLTF resources are pending, then switches after they fulfill', async () => {
     shellState.snapshot = ready();
     const pending = PROFILE_URLS.filter((url) => url.endsWith('.glb')).map(
