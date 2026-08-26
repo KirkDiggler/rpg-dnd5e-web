@@ -87,7 +87,16 @@ selects the production fill-parent mode, whose discriminating selector applies
 and CSS contract tests pin that separation and reject the former generic
 selector.
 
+The actual `1024x768` and `1280x800` game-frame captures also showed the app
+shell's fixed bottom-right development controls overlapping the shared End Turn
+button. Concepts Lab already owns its Back navigation, and CombatExperience owns
+its Story/Debug diagnostic surface, so Concepts now suppresses both the global
+floating controls and any previously opened Discord debug panel. Other
+development views are unchanged, and the requested debug-panel state is
+preserved when returning from Concepts.
+
 The visual evidence must be recaptured at both required viewports from an
-authorized checkout with the actual synced assets. The collapsed pre-fix capture
+authorized checkout with the actual synced assets. The recapture is now expected
+to contain no global floating development overlay. The collapsed pre-fix capture
 is invalid and must not be used as approval evidence; no fallback, placeholder,
 or intercepted asset capture qualifies.
