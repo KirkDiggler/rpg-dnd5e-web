@@ -65,7 +65,7 @@ describe('resolveDungeonShellProfile', () => {
     }
   });
 
-  it('treats no regions and only empty or whitespace archetypes as legacy', () => {
+  it('treats no regions as no-regions and empty archetypes as unknown', () => {
     const snapshot = readyCatalog();
 
     expect(resolveDungeonShellProfile([], snapshot)).toEqual({
@@ -74,7 +74,7 @@ describe('resolveDungeonShellProfile', () => {
     });
     expect(resolveDungeonShellProfile(['', '   '], snapshot)).toEqual({
       kind: 'legacy',
-      reason: 'no-regions',
+      reason: 'unknown-archetype',
     });
   });
 
@@ -84,6 +84,21 @@ describe('resolveDungeonShellProfile', () => {
       reason: 'unknown-archetype',
     });
   });
+
+  it.each([
+    ['crypt', ''],
+    ['', 'crypt'],
+    ['crypt', '   '],
+    ['   ', 'crypt'],
+  ])(
+    'reports valid plus empty or whitespace archetypes regardless of order: %s',
+    (...archetypes) => {
+      expect(resolveDungeonShellProfile(archetypes, readyCatalog())).toEqual({
+        kind: 'legacy',
+        reason: 'unknown-archetype',
+      });
+    }
+  );
 
   it.each([
     ['crypt', 'cave', 'crypt'],

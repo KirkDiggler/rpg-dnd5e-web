@@ -28,13 +28,12 @@ export function resolveDungeonShellProfile(
     return { kind: 'loading' };
   }
 
-  const uniqueArchetypes = [
-    ...new Set(
-      archetypes
-        .map((archetype) => archetype.trim())
-        .filter((archetype) => archetype)
-    ),
-  ].sort();
+  const trimmedArchetypes = archetypes.map((archetype) => archetype.trim());
+  if (trimmedArchetypes.some((archetype) => archetype.length === 0)) {
+    return { kind: 'legacy', reason: 'unknown-archetype' };
+  }
+
+  const uniqueArchetypes = [...new Set(trimmedArchetypes)].sort();
   if (uniqueArchetypes.length === 0) {
     return { kind: 'legacy', reason: 'no-regions' };
   }
