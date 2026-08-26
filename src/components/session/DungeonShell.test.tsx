@@ -24,6 +24,7 @@ const LEGACY_TEXTURE_URL =
 const LEGACY_WALL_URL = '/models/synty/env/SM_Env_Wall_Half_01.glb';
 const LEGACY_FRAME_URL = '/models/synty/env/SM_Env_Door_Frame_01.glb';
 const LEAF_URL = '/models/synty/env/SM_Env_Door_01.glb';
+const CLOSED_FALLBACK_NAME = 'closed-door-fallback';
 
 type ResourceState<T> =
   | { status: 'pending'; promise: Promise<never> }
@@ -276,6 +277,16 @@ function floorMeshes(renderer: RenderedScene) {
   });
 }
 
+function closedFallbackMeshes(renderer: RenderedScene) {
+  return renderer.scene.findAll((node) => {
+    const rendered = node as { type: string; instance: unknown };
+    return (
+      rendered.type === 'Mesh' &&
+      (rendered.instance as THREE.Mesh).name === CLOSED_FALLBACK_NAME
+    );
+  }) as Array<{ instance: THREE.Mesh }>;
+}
+
 beforeEach(() => {
   shellState.snapshot = { status: 'idle' };
   shellState.hookCalls.length = 0;
@@ -399,6 +410,12 @@ describe('DungeonShell actual shell integration', () => {
         expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
       );
       expect(primitiveAssetNames(renderer)).not.toContain(failedUrl);
+      if (failedUrl === LEAF_URL) {
+        expect(closedFallbackMeshes(renderer)).toHaveLength(1);
+      } else {
+        expect(primitiveAssetNames(renderer)).toContain(LEAF_URL);
+        expect(closedFallbackMeshes(renderer)).toHaveLength(0);
+      }
       const clickable = renderer.scene.find(
         (node) =>
           node.fiber.type === 'group' &&
@@ -532,7 +549,70 @@ describe('DungeonShell actual shell integration', () => {
     consoleError.mockRestore();
   });
 
-  it('routes an ordinary pending leaf rejection to the failed fallback without a leaf hook in that fallback', async () => {
+  it('renders a floor-grounded procedural closed leaf while the legacy leaf is pending, then uses the actual leaf', async () => {
+    shellState.snapshot = ready();
+    const pendingLeaf = pendingGltf(LEAF_URL);
+    const view = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} doors={doors} />
+    );
+    await view.update(<DungeonShell scene={scene()} doors={doors} />);
+
+    const fallback = closedFallbackMeshes(view);
+    expect(fallback).toHaveLength(1);
+    const fallbackMesh = fallback[0]!.instance;
+    expect(fallbackMesh.position.toArray()).toEqual([1, 0.2 + 1.2, 0]);
+    expect(fallbackMesh.rotation.y).toBe(0);
+    fallbackMesh.updateMatrixWorld(true);
+    const fallbackBox = new THREE.Box3().setFromObject(fallbackMesh);
+    expect(fallbackBox.min.x).toBeCloseTo(0.5, 5);
+    expect(fallbackBox.min.y).toBeCloseTo(0.2, 5);
+    expect(fallbackBox.min.z).toBeCloseTo(-0.15, 5);
+    expect(fallbackBox.max.x).toBeCloseTo(1.5, 5);
+    expect(fallbackBox.max.y).toBeCloseTo(2.6, 5);
+    expect(fallbackBox.max.z).toBeCloseTo(0.15, 5);
+
+    pendingLeaf.fulfill();
+    await view.update(<DungeonShell scene={scene()} doors={doors} />);
+    expect(primitiveAssetNames(view)).toContain(LEAF_URL);
+    expect(closedFallbackMeshes(view)).toHaveLength(0);
+  });
+
+  it.each([
+    ['closed', new Map([['door-id', { state: DoorState.CLOSED } as DoorInfo]])],
+    ['locked', doors],
+    ['unknown', new Map<string, DoorInfo>()],
+  ] as const)(
+    'keeps %s doors closed in the resource fallback',
+    async (_state, stateDoors) => {
+      shellState.snapshot = ready();
+      rejectGltf('/models/synty/env/body.glb');
+      const renderer = await ReactThreeTestRenderer.create(
+        <DungeonShell scene={scene()} doors={stateDoors} />
+      );
+
+      expect(floorMeshes(renderer)).toHaveLength(1);
+      expect(primitiveAssetNames(renderer)).toEqual(
+        expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
+      );
+      expect(primitiveAssetNames(renderer)).toContain(LEAF_URL);
+    }
+  );
+
+  it('does not render a real or procedural leaf for OPEN in the resource fallback', async () => {
+    shellState.snapshot = ready();
+    rejectGltf('/models/synty/env/body.glb');
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonShell
+        scene={scene()}
+        doors={new Map([['door-id', { state: DoorState.OPEN } as DoorInfo]])}
+      />
+    );
+
+    expect(primitiveAssetNames(renderer)).not.toContain(LEAF_URL);
+    expect(closedFallbackMeshes(renderer)).toHaveLength(0);
+  });
+
+  it('routes an ordinary pending leaf rejection to the failed fallback without retrying the leaf hook', async () => {
     shellState.snapshot = ready();
     const pendingLeaf = pendingGltf(LEAF_URL);
     const onFallbackReason = vi.fn();
@@ -563,7 +643,24 @@ describe('DungeonShell actual shell integration', () => {
     expect(
       shellState.loaderCalls.filter((url) => url === LEAF_URL)
     ).toHaveLength(0);
+    const rejectedLeafHookCount = shellState.hookCalls.filter(
+      (url) => url === LEAF_URL
+    ).length;
+    expect(rejectedLeafHookCount).toBeGreaterThan(0);
     expect(primitiveAssetNames(view)).not.toContain(LEAF_URL);
+    expect(closedFallbackMeshes(view)).toHaveLength(1);
+
+    await view.update(
+      <DungeonShell
+        scene={scene()}
+        doors={doors}
+        onFallbackReason={onFallbackReason}
+      />
+    );
+    expect(shellState.hookCalls.filter((url) => url === LEAF_URL)).toHaveLength(
+      rejectedLeafHookCount
+    );
+    expect(closedFallbackMeshes(view)).toHaveLength(1);
     consoleError.mockRestore();
   });
 

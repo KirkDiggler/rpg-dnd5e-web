@@ -37,10 +37,8 @@ import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useGLTF } from '@react-three/drei';
-import { useMemo } from 'react';
+import { Suspense, useMemo } from 'react';
 import type { Object3D } from 'three';
-import { ENV_BASE, GlbInstance } from '../hex-grid/GlbInstance';
-import { WallRunMesh } from '../hex-grid/WallRunMesh';
 import {
   deriveShellDoorGeometry,
   SHELL_DOOR_FRAME_FOREGROUND_MARGIN,
@@ -49,12 +47,15 @@ import {
   shellLocalOffsetToWorld,
   shellVisibleWallTop,
 } from '../hex-grid/dungeonShellWallHelpers';
+import { ENV_BASE, GlbInstance } from '../hex-grid/GlbInstance';
 import {
   DOOR_FRAME_FILE,
   DOOR_LEAF_FILE,
   doorFrameScale,
   doorLeafScale,
 } from '../hex-grid/syntyHexWallHelpers';
+import { WallRunMesh } from '../hex-grid/WallRunMesh';
+import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import type { DoorGapPiece } from './atlasWallRuns';
 
 function ProfileDoor({
@@ -125,6 +126,59 @@ function LoadedProfileDoor(
   return <ProfileDoor {...props} leafScene={leafScene} />;
 }
 
+const CLOSED_DOOR_FALLBACK_NAME = 'closed-door-fallback';
+const CLOSED_DOOR_FALLBACK_DEPTH = 0.3;
+
+/** Fallback-only, licensed-asset-free occluder for a closed legacy door. */
+function ClosedDoorFallback({
+  door,
+  wallHeight,
+}: {
+  door: DoorGapPiece;
+  wallHeight: number;
+}) {
+  return (
+    <mesh
+      name={CLOSED_DOOR_FALLBACK_NAME}
+      position={[
+        door.position.x,
+        DUNGEON_SURFACE_Y + wallHeight / 2,
+        door.position.z,
+      ]}
+      rotation={[0, door.rotationY, 0]}
+    >
+      <boxGeometry args={[1, wallHeight, CLOSED_DOOR_FALLBACK_DEPTH]} />
+      <meshBasicMaterial color="#2c313d" toneMapped={false} />
+    </mesh>
+  );
+}
+
+function ResilientLegacyDoorLeaf({
+  door,
+  wallHeight,
+  leafShut,
+}: {
+  door: DoorGapPiece;
+  wallHeight: number;
+  leafShut: boolean;
+}) {
+  const fallback = <ClosedDoorFallback door={door} wallHeight={wallHeight} />;
+  return (
+    <ErrorBoundary fallback={fallback}>
+      {leafShut ? (
+        <Suspense fallback={fallback}>
+          <GlbInstance
+            file={DOOR_LEAF_FILE}
+            position={door.leafPosition}
+            rotationY={door.rotationY}
+            scale={doorLeafScale(wallHeight)}
+          />
+        </Suspense>
+      ) : null}
+    </ErrorBoundary>
+  );
+}
+
 export interface AtlasWallsProps {
   wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
@@ -148,10 +202,10 @@ export interface AtlasWallsProps {
    * Supplying it avoids a second hook read; standalone AtlasWalls callers
    * retain the loaded-profile behavior when omitted. */
   profileLeafScene?: Object3D;
-  /** Resource-error fallback only: keep frames, gaps, state, and click
-   * handling while omitting leaf loads that may be the rejected resource.
-   * Defaults false so loading and ordinary legacy paths stay closed. */
-  suppressDoorLeaves?: boolean;
+  /** Resource-fallback only: isolate legacy leaf loading so a pending or
+   * rejected leaf gets a closed procedural occluder instead. Defaults false
+   * so loading and ordinary legacy paths stay exactly as before. */
+  resilientDoorLeaves?: boolean;
 }
 
 export function AtlasWalls({
@@ -162,7 +216,7 @@ export function AtlasWalls({
   wallHeight = WALL_HEIGHT,
   profile,
   profileLeafScene,
-  suppressDoorLeaves = false,
+  resilientDoorLeaves = false,
 }: AtlasWallsProps) {
   return (
     <>
@@ -213,13 +267,21 @@ export function AtlasWalls({
                   rotationY={door.rotationY}
                   scale={doorFrameScale(wallHeight)}
                 />
-                {leafShut && !suppressDoorLeaves && (
-                  <GlbInstance
-                    file={DOOR_LEAF_FILE}
-                    position={door.leafPosition}
-                    rotationY={door.rotationY}
-                    scale={doorLeafScale(wallHeight)}
+                {resilientDoorLeaves ? (
+                  <ResilientLegacyDoorLeaf
+                    door={door}
+                    wallHeight={wallHeight}
+                    leafShut={leafShut}
                   />
+                ) : (
+                  leafShut && (
+                    <GlbInstance
+                      file={DOOR_LEAF_FILE}
+                      position={door.leafPosition}
+                      rotationY={door.rotationY}
+                      scale={doorLeafScale(wallHeight)}
+                    />
+                  )
                 )}
               </>
             )}
