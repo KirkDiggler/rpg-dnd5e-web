@@ -74,6 +74,19 @@ Raw-only observations cannot credit a calibrated candidate. It does not write
 production state or add asset-specific behavior to a game renderer. Verdict and runtime
 proof: `docs/evidence/asset-anchor-lab-731.md`.
 
+`src/concepts/weapon-attachment/` — the rpg-dnd5e-web#821 equipped-weapon
+concept bench, registered as `?concept=weapon-attachment`. It renders the real
+shared `ClassCharacterModel` through `WeaponAttachmentPreview` while the
+concept owns provisional equipped fixtures only: fighter main-hand,
+unarmed/longsword/shortbow, idle/walk, and close/orbit/play evidence views.
+The inspector reports the mapped ref, candidate provenance, fixed socket
+profile, attachment callback status, texture-budget warning, and coverage gate;
+verdict output is explicitly `NON-PRODUCTION CONCEPT EVIDENCE`. This bench has
+no production writer and no live equipment wiring. Open provider gaps remain:
+final semantic asset selection, normalized production exports, socket receipt,
+and texture budget. Do not call the concept accepted here; Task 6 is where
+Kirk records the viewed verdict.
+
 ## Gap: no promotion process
 
 There is no documented process for promoting a concept to production. The class-selection spike has existed since March 2026 with no next step defined. When a concept is ready, it needs:
