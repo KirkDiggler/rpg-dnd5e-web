@@ -236,6 +236,45 @@ describe('projectDiceRollGroupEvents', () => {
     expect(projection.acceptedEvents).toHaveLength(2);
   });
 
+  it('locks onto the first active presentation stream and ignores foreign presentation ids', () => {
+    const projection = projectDiceRollGroupEvents([
+      requested(),
+      requested({
+        eventId: 'event:request:8',
+        presentationId: 'group:8',
+      }),
+      released(
+        {
+          eventId: 'event:release:8',
+          presentationId: 'group:8',
+        },
+        {
+          presentationId: 'group:8',
+          throwProfile: profile({ motionSeed: 18 }),
+        }
+      ),
+      released(
+        { eventId: 'event:release:first-stream' },
+        { throwProfile: profile({ motionSeed: 17 }) }
+      ),
+    ]);
+
+    expect(projection.request?.presentationId).toBe('group:7');
+    expect(projection.release).toMatchObject({
+      eventId: 'event:release:first-stream',
+      presentationId: 'group:7',
+      release: {
+        presentationId: 'group:7',
+        groupKey: 'attack',
+        throwProfile: { motionSeed: 17 },
+      },
+    });
+    expect(projection.acceptedEvents).toHaveLength(2);
+    expect(
+      projection.acceptedEvents.map((event) => event.presentationId)
+    ).toEqual(['group:7', 'group:7']);
+  });
+
   it('treats delivery arrays as immutable facts and deeply freezes accepted outputs', () => {
     const inboundRequest = requested();
     const inboundRelease = released();

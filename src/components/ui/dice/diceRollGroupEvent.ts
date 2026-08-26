@@ -290,41 +290,42 @@ function sameRequestFacts(
 }
 
 export function projectDiceRollGroupEvents(values: readonly unknown[]) {
-  const requests = new Map<string, DiceRollGroupRequestedEvent>();
-  const releases = new Map<string, DiceRollGroupReleasedEvent>();
   const acceptedEvents: DiceRollGroupEvent[] = [];
   let request: DiceRollGroupRequestedEvent | undefined;
+  let release: DiceRollGroupReleasedEvent | undefined;
 
   for (const value of values) {
     const event = parseDiceRollGroupEvent(value);
     if (!event) continue;
 
     if (event.type === 'dice-roll-group-requested') {
-      const first = requests.get(event.presentationId);
-      if (first) {
-        if (!sameRequestFacts(first, event)) continue;
+      if (!request) {
+        request = event;
+        acceptedEvents.push(event);
         continue;
       }
-      requests.set(event.presentationId, event);
-      acceptedEvents.push(event);
-      request = event;
+      if (
+        event.presentationId !== request.presentationId ||
+        !sameRequestFacts(request, event)
+      )
+        continue;
       continue;
     }
 
-    const matchingRequest = requests.get(event.presentationId);
     if (
-      !matchingRequest ||
-      releases.has(event.presentationId) ||
-      event.release.groupKey !== matchingRequest.group.key
+      !request ||
+      event.presentationId !== request.presentationId ||
+      release ||
+      event.release.groupKey !== request.group.key
     )
       continue;
-    releases.set(event.presentationId, event);
+    release = event;
     acceptedEvents.push(event);
   }
 
   return Object.freeze({
     request,
-    release: request ? releases.get(request.presentationId) : undefined,
+    release,
     acceptedEvents: Object.freeze(acceptedEvents),
   });
 }
