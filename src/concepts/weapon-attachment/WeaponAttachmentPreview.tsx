@@ -18,7 +18,7 @@ import {
   OrthographicCamera,
   PerspectiveCamera,
 } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import {
   Suspense,
   useCallback,
@@ -65,7 +65,16 @@ const ORBIT_CAMERA_QUATERNION = lookAtQuaternion(
   ORBIT_CAMERA_TARGET
 );
 
+function useInvalidateAfterCameraActivation() {
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    invalidate();
+  }, [invalidate]);
+}
+
 function CloseCamera() {
+  useInvalidateAfterCameraActivation();
   return (
     <PerspectiveCamera
       name="weapon-attachment-close-camera"
@@ -78,6 +87,8 @@ function CloseCamera() {
 }
 
 function OrbitCamera() {
+  useInvalidateAfterCameraActivation();
+
   return (
     <>
       <PerspectiveCamera
@@ -93,6 +104,8 @@ function OrbitCamera() {
 }
 
 function TacticalCamera() {
+  useInvalidateAfterCameraActivation();
+
   const position = useMemo(
     () =>
       sphericalCameraPosition(

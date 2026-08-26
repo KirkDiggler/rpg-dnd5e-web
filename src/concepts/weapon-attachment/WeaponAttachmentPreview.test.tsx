@@ -60,6 +60,7 @@ type MockCameraProps = {
 
 const weaponAttachmentPreviewMocks = vi.hoisted(() => ({
   canvasProps: null as Record<string, unknown> | null,
+  invalidate: vi.fn(),
   perspectiveCameraProps: null as MockCameraProps | null,
   orbitControlsProps: null as MockCameraProps | null,
   orthographicCameraProps: null as MockCameraProps | null,
@@ -70,6 +71,8 @@ vi.mock('@react-three/fiber', () => ({
     weaponAttachmentPreviewMocks.canvasProps = props;
     return <div data-testid="weapon-attachment-canvas" />;
   },
+  useThree: (selector: (state: { invalidate: () => void }) => unknown) =>
+    selector({ invalidate: weaponAttachmentPreviewMocks.invalidate }),
 }));
 
 vi.mock('@react-three/drei', () => ({
@@ -179,6 +182,7 @@ describe('WeaponAttachmentScene', () => {
     expect(
       weaponAttachmentPreviewMocks.perspectiveCameraProps?.quaternion
     ).toMatchObject(lookAtQuaternion([-1.2, 1.22, 0.85], [-0.6, 1.02, -0.025]));
+    expect(weaponAttachmentPreviewMocks.invalidate).toHaveBeenCalledTimes(1);
     expect(onRenderObserved).toHaveBeenCalledWith({
       equipmentState: 'longsword',
       motion: 'walk',
@@ -215,6 +219,7 @@ describe('WeaponAttachmentScene', () => {
       makeDefault: true,
       target: [0, 0.7, 0],
     });
+    expect(weaponAttachmentPreviewMocks.invalidate).toHaveBeenCalledTimes(1);
     expect(onRenderObserved).toHaveBeenCalledWith({
       equipmentState: 'unarmed',
       motion: 'idle',
@@ -261,6 +266,7 @@ describe('WeaponAttachmentScene', () => {
         [0, 0.65, 0]
       )
     );
+    expect(weaponAttachmentPreviewMocks.invalidate).toHaveBeenCalledTimes(1);
     expect(onRenderObserved).toHaveBeenCalledWith({
       equipmentState: 'unarmed',
       motion: 'idle',
@@ -291,6 +297,7 @@ describe('WeaponAttachmentScene', () => {
     );
 
     expect(onRenderObserved).toHaveBeenCalledTimes(1);
+    expect(weaponAttachmentPreviewMocks.invalidate).toHaveBeenCalledTimes(1);
 
     mockAttachmentStatusState.current = { code: 'asset-load-failed' };
     await renderer.update(
@@ -320,6 +327,7 @@ describe('WeaponAttachmentScene', () => {
     );
 
     expect(onRenderObserved).toHaveBeenCalledTimes(2);
+    expect(weaponAttachmentPreviewMocks.invalidate).toHaveBeenCalledTimes(1);
     expect(onRenderObserved).toHaveBeenLastCalledWith({
       equipmentState: 'longsword',
       motion: 'idle',
