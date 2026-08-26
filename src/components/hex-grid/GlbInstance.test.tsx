@@ -127,6 +127,35 @@ describe('GlbInstance — non-uniform scale baking (W3/W4 GlbInstance fix)', () 
     expect(meshA.geometry).toBe(meshB.geometry);
   });
 
+  it('defaults positionY to zero and adds it to the primitive world Y position', async () => {
+    const defaultRenderer = await ReactThreeTestRenderer.create(
+      <GlbInstance
+        file="position-default.glb"
+        position={{ x: 1, z: 2 }}
+        rotationY={0}
+        scale={1}
+      />
+    );
+    const positionedRenderer = await ReactThreeTestRenderer.create(
+      <GlbInstance
+        file="position-additive.glb"
+        position={{ x: 1, z: 2 }}
+        positionY={0.2}
+        rotationY={0}
+        scale={1}
+      />
+    );
+    const primitive = (renderer: typeof defaultRenderer) =>
+      renderer.scene.findAll(
+        (node) =>
+          (node as { instance?: unknown }).instance instanceof THREE.Group
+      )[0] as unknown as { instance: THREE.Group };
+    expect(primitive(defaultRenderer).instance.position.y).toBe(0);
+    expect(primitive(positionedRenderer).instance.position.toArray()).toEqual([
+      1, 0.2, 2,
+    ]);
+  });
+
   it('two instances with the same file but DIFFERENT non-uniform scale get distinct geometries', async () => {
     const rendererA = await ReactThreeTestRenderer.create(
       <GlbInstance

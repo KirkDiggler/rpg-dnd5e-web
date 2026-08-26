@@ -32,10 +32,22 @@
 
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
+import type { DungeonShellWallProfile } from '@/rendering/dungeonShellManifest';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { GlbInstance } from '../hex-grid/GlbInstance';
+import { useGLTF } from '@react-three/drei';
+import { useMemo } from 'react';
+import { ENV_BASE, GlbInstance } from '../hex-grid/GlbInstance';
 import { WallRunMesh } from '../hex-grid/WallRunMesh';
+import {
+  deriveShellDoorGeometry,
+  extendWallRunsAtDoorGaps,
+  SHELL_DOOR_FRAME_FOREGROUND_MARGIN,
+  shellDoorLeafScale,
+  shellDoorSurroundScale,
+  shellLocalOffsetToWorld,
+} from '../hex-grid/dungeonShellWallHelpers';
 import {
   DOOR_FRAME_FILE,
   DOOR_LEAF_FILE,
@@ -43,6 +55,61 @@ import {
   doorLeafScale,
 } from '../hex-grid/syntyHexWallHelpers';
 import type { DoorGapPiece } from './atlasWallRuns';
+
+function ProfileDoor({
+  door,
+  profile,
+  wallHeight,
+  leafShut,
+}: {
+  door: DoorGapPiece;
+  profile: DungeonShellWallProfile;
+  wallHeight: number;
+  leafShut: boolean;
+}) {
+  const surroundScene = useGLTF(
+    ENV_BASE + profile.doorSurround.file.replace(/^env\//, '')
+  ).scene;
+  const leafScene = useGLTF(ENV_BASE + DOOR_LEAF_FILE).scene;
+  const geometry = useMemo(
+    () => deriveShellDoorGeometry(surroundScene, leafScene),
+    [leafScene, surroundScene]
+  );
+  const frameOffset = shellLocalOffsetToWorld(
+    { x: 0, z: SHELL_DOOR_FRAME_FOREGROUND_MARGIN },
+    door.rotationY
+  );
+  const framePosition = {
+    x: door.position.x + frameOffset.x,
+    z: door.position.z + frameOffset.z,
+  };
+  const leafScale = shellDoorLeafScale(
+    { bounds: geometry.leafBounds },
+    geometry.opening,
+    wallHeight,
+    profile.doorSurround
+  );
+  return (
+    <>
+      <GlbInstance
+        file={profile.doorSurround.file}
+        position={framePosition}
+        positionY={DUNGEON_SURFACE_Y}
+        rotationY={door.rotationY}
+        scale={shellDoorSurroundScale(profile.doorSurround, wallHeight)}
+      />
+      {leafShut && (
+        <GlbInstance
+          file={DOOR_LEAF_FILE}
+          position={door.leafPosition}
+          positionY={DUNGEON_SURFACE_Y}
+          rotationY={door.rotationY}
+          scale={leafScale}
+        />
+      )}
+    </>
+  );
+}
 
 export interface AtlasWallsProps {
   wallRuns: AuthoredWallRun[];
@@ -60,6 +127,9 @@ export interface AtlasWallsProps {
   /** Defaults to the game's standard wall height so this renders at the
    * same scale as every other wall in the game. */
   wallHeight?: number;
+  /** Optional measured shell profile. Omitted preserves the legacy assets
+   * and transforms exactly. */
+  profile?: DungeonShellWallProfile;
 }
 
 export function AtlasWalls({
@@ -68,14 +138,20 @@ export function AtlasWalls({
   doors,
   onDoorClick,
   wallHeight = WALL_HEIGHT,
+  profile,
 }: AtlasWallsProps) {
+  const visualWallRuns = useMemo(
+    () => (profile ? extendWallRunsAtDoorGaps(wallRuns, doorGaps) : wallRuns),
+    [doorGaps, profile, wallRuns]
+  );
   return (
     <>
       <WallRunMesh
         envelopeRuns={[]}
         connectorRuns={[]}
-        authoredRuns={wallRuns}
+        authoredRuns={visualWallRuns}
         wallHeight={wallHeight}
+        profile={profile}
       />
       {doorGaps.map((door) => {
         const state = doors?.get(door.connection)?.state;
@@ -92,19 +168,30 @@ export function AtlasWalls({
                 : undefined
             }
           >
-            <GlbInstance
-              file={DOOR_FRAME_FILE}
-              position={door.position}
-              rotationY={door.rotationY}
-              scale={doorFrameScale(wallHeight)}
-            />
-            {leafShut && (
-              <GlbInstance
-                file={DOOR_LEAF_FILE}
-                position={door.leafPosition}
-                rotationY={door.rotationY}
-                scale={doorLeafScale(wallHeight)}
+            {profile ? (
+              <ProfileDoor
+                door={door}
+                profile={profile}
+                wallHeight={wallHeight}
+                leafShut={leafShut}
               />
+            ) : (
+              <>
+                <GlbInstance
+                  file={DOOR_FRAME_FILE}
+                  position={door.position}
+                  rotationY={door.rotationY}
+                  scale={doorFrameScale(wallHeight)}
+                />
+                {leafShut && (
+                  <GlbInstance
+                    file={DOOR_LEAF_FILE}
+                    position={door.leafPosition}
+                    rotationY={door.rotationY}
+                    scale={doorLeafScale(wallHeight)}
+                  />
+                )}
+              </>
             )}
           </group>
         );

@@ -5,6 +5,7 @@ import type {
   EnvelopeRun,
   WallRunSegment,
 } from '@/hooks/wallRuns';
+import type { DungeonShellWallProfile } from '@/rendering/dungeonShellManifest';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
@@ -27,6 +28,32 @@ vi.mock('@react-three/drei', () => {
 import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
 import { WallRunMesh } from './WallRunMesh';
 
+const SHELL_PROFILE: DungeonShellWallProfile = {
+  body: {
+    file: 'env/Crypt_Wall_Body_01.glb',
+    sha256: 'a'.repeat(64),
+    localSpanAxis: '+X',
+    localFaceAxis: 'Z',
+    twoSided: true,
+    bounds: { min: [-2, 0, -0.2], max: [2, 4, 0.2] },
+  },
+  base: {
+    file: 'env/Crypt_Wall_Base_01.glb',
+    sha256: 'a'.repeat(64),
+    bounds: { min: [-1.8, 0, -0.3], max: [1.8, 0.3, 0.3] },
+  },
+  cap: {
+    file: 'env/Crypt_Wall_Cap_01.glb',
+    sha256: 'a'.repeat(64),
+    bounds: { min: [-1.9, 0, -0.2], max: [1.9, 0.4, 0.2] },
+  },
+  doorSurround: {
+    file: 'env/Crypt_Wall_Door_Surround_01.glb',
+    sha256: 'a'.repeat(64),
+    bounds: { min: [-1, 0, -0.3], max: [1, 2.5, 0.3] },
+  },
+};
+
 /** Counts every rendered THREE.Mesh instance — both literal `<mesh>` JSX
  * (the floor skirts) and `<primitive object={cloned}>`-wrapped GLB
  * instances (the tiled wall pieces / corner fittings, via GlbInstance) —
@@ -43,6 +70,35 @@ function countMeshes(renderer: {
 }
 
 describe('WallRunMesh R3F scene', () => {
+  it('renders one body, base, and cap per profile tile without a floor skirt', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[]}
+        connectorRuns={[]}
+        authoredRuns={[
+          {
+            key: 'profile-run',
+            start: { x: 0, z: 0 },
+            end: { x: 0, z: 2 },
+            facing: { x: 1, z: 0 },
+            height: 0,
+          },
+        ]}
+        profile={SHELL_PROFILE}
+      />
+    );
+
+    // Two tiled slots, with body/base/cap geometry for each slot. Profile
+    // mode deliberately has no placeholder FloorSkirtBox.
+    expect(countMeshes(renderer)).toBe(6);
+    expect(
+      renderer.scene.findAll((node) => {
+        const n = node as { instance?: unknown };
+        return n.instance instanceof THREE.Mesh;
+      })
+    ).toHaveLength(6);
+  });
+
   it('tiles real wall pieces along each envelope run and connector segment, plus one skirt box per run/segment', async () => {
     const envelopeRuns: EnvelopeRun[] = [
       {

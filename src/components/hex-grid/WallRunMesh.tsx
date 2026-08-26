@@ -39,8 +39,17 @@ import type {
   WallRunSegment,
 } from '@/hooks/wallRuns';
 import { SYNTY_SCALE, WALL_HEIGHT } from '@/rendering/calibrationConstants';
+import type { DungeonShellWallProfile } from '@/rendering/dungeonShellManifest';
 import { Suspense, useMemo } from 'react';
 import type * as THREE from 'three';
+import {
+  shellBodyScale,
+  shellComponentPivotOffset,
+  shellComponentY,
+  shellLocalOffsetToWorld,
+  shellRawDimensions,
+  shellTrimScale,
+} from './dungeonShellWallHelpers';
 import { GlbInstance } from './GlbInstance';
 import type { WorldPos } from './hexMath';
 import {
@@ -198,6 +207,147 @@ function TiledWallRun({
   );
 }
 
+function TiledShellRun({
+  segment,
+  wallHeight,
+  profile,
+  remembered = false,
+  facing,
+}: {
+  segment: WallRunSegment;
+  wallHeight: number;
+  profile: DungeonShellWallProfile;
+  remembered?: boolean;
+  facing?: WorldPos;
+}) {
+  const bodyRaw = shellRawDimensions(profile.body.bounds);
+  const pieces = useMemo(
+    () =>
+      tileWallSegment(
+        segment,
+        NOMINAL_PIECE_WIDTH,
+        profile.body.bounds.min[0] / bodyRaw.width,
+        facing,
+        RUN_WALL_TILE_OVERLAP_MARGIN
+      ),
+    [bodyRaw.width, facing, profile.body.bounds.min, segment]
+  );
+
+  return (
+    <>
+      {pieces.map((piece, i) => {
+        const bodyScale = shellBodyScale(
+          profile.body,
+          piece.pieceWidth,
+          wallHeight
+        );
+        const baseScale = shellTrimScale(profile.base, piece.pieceWidth);
+        const capScale = shellTrimScale(profile.cap, piece.pieceWidth);
+        const baseOffset = shellLocalOffsetToWorld(
+          {
+            x: shellComponentPivotOffset(
+              profile.body,
+              profile.base,
+              piece.pieceWidth,
+              baseScale
+            ),
+            z: 0,
+          },
+          piece.rotationY
+        );
+        const capOffset = shellLocalOffsetToWorld(
+          {
+            x: shellComponentPivotOffset(
+              profile.body,
+              profile.cap,
+              piece.pieceWidth,
+              capScale
+            ),
+            z: 0,
+          },
+          piece.rotationY
+        );
+        const basePosition = {
+          x: piece.position.x + baseOffset.x,
+          z: piece.position.z + baseOffset.z,
+        };
+        const capPosition = {
+          x: piece.position.x + capOffset.x,
+          z: piece.position.z + capOffset.z,
+        };
+        return (
+          <group key={i}>
+            <GlbInstance
+              file={profile.body.file}
+              position={piece.position}
+              positionY={shellComponentY('body', wallHeight)}
+              rotationY={piece.rotationY}
+              scale={bodyScale}
+              remembered={remembered}
+            />
+            <GlbInstance
+              file={profile.base.file}
+              position={basePosition}
+              positionY={shellComponentY('base', wallHeight)}
+              rotationY={piece.rotationY}
+              scale={baseScale}
+              remembered={remembered}
+            />
+            <GlbInstance
+              file={profile.cap.file}
+              position={capPosition}
+              positionY={shellComponentY('cap', wallHeight)}
+              rotationY={piece.rotationY}
+              scale={capScale}
+              remembered={remembered}
+            />
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
+function WallRunPieces({
+  segment,
+  wallHeight,
+  profile,
+  tint,
+  remembered,
+  facing,
+}: {
+  segment: WallRunSegment;
+  wallHeight: number;
+  profile?: DungeonShellWallProfile;
+  tint?: THREE.Color;
+  remembered?: boolean;
+  facing?: WorldPos;
+}) {
+  if (profile) {
+    return (
+      <TiledShellRun
+        segment={segment}
+        wallHeight={wallHeight}
+        profile={profile}
+        remembered={remembered}
+        facing={facing}
+      />
+    );
+  }
+  return (
+    <>
+      <TiledWallRun
+        segment={segment}
+        wallHeight={wallHeight}
+        tint={tint}
+        remembered={remembered}
+        facing={facing}
+      />
+      <FloorSkirtBox segment={segment} remembered={remembered} />
+    </>
+  );
+}
+
 export interface WallRunMeshProps {
   envelopeRuns: EnvelopeRun[];
   envelopeCorners?: EnvelopeCorner[];
@@ -295,6 +445,9 @@ export interface WallRunMeshProps {
    * material. Undefined (every caller before this design) renders
    * untinted, unchanged. */
   spaceTheme?: WallTheme;
+  /** Optional measured shell assembly. Omitted keeps the legacy tiled wall
+   * and floor-skirt path byte-behavior unchanged. */
+  profile?: DungeonShellWallProfile;
 }
 
 /**
@@ -339,6 +492,7 @@ export function WallRunMesh({
   wallCutaway = false,
   playerPosition,
   spaceTheme,
+  profile,
 }: WallRunMeshProps) {
   const tint = spaceTheme ? WALL_TINT_BY_THEME[spaceTheme] : undefined;
 
@@ -349,14 +503,14 @@ export function WallRunMesh({
         const height = effectiveWallHeight(run.facing, wallCutaway, wallHeight);
         return (
           <group key={`${run.regionId}-${run.side}`}>
-            <TiledWallRun
+            <WallRunPieces
               segment={run}
               wallHeight={height}
               tint={tint}
               remembered={remembered}
               facing={run.facing}
+              profile={profile}
             />
-            <FloorSkirtBox segment={run} remembered={remembered} />
           </group>
         );
       })}
@@ -374,13 +528,13 @@ export function WallRunMesh({
         const authored = run.height > 0 ? run.height : 1;
         return (
           <group key={run.key}>
-            <TiledWallRun
+            <WallRunPieces
               segment={run}
               wallHeight={height * authored}
               tint={tint}
               facing={run.facing}
+              profile={profile}
             />
-            <FloorSkirtBox segment={run} />
           </group>
         );
       })}
@@ -405,14 +559,14 @@ export function WallRunMesh({
           : wallHeight;
         return run.segments.map((segment) => (
           <group key={segmentKey(segment)}>
-            <TiledWallRun
+            <WallRunPieces
               segment={segment}
               wallHeight={height}
               tint={tint}
               remembered={remembered}
               facing={run.facing}
+              profile={profile}
             />
-            <FloorSkirtBox segment={segment} remembered={remembered} />
           </group>
         ));
       })}
@@ -432,8 +586,12 @@ export function WallRunMesh({
         );
         return (
           <group key={`fallback-${segmentKey(segment)}`}>
-            <TiledWallRun segment={segment} wallHeight={height} tint={tint} />
-            <FloorSkirtBox segment={segment} />
+            <WallRunPieces
+              segment={segment}
+              wallHeight={height}
+              tint={tint}
+              profile={profile}
+            />
           </group>
         );
       })}

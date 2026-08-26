@@ -39,6 +39,10 @@ import { ENV_GLB_FILES_TO_PRELOAD } from './syntyHexWallHelpers';
 
 export const ENV_BASE = '/models/synty/env/';
 
+function environmentUrl(file: string): string {
+  return file.startsWith('env/') ? `/models/synty/${file}` : ENV_BASE + file;
+}
+
 // Preload every known wall/door/fitting GLB at module scope (Kirk's
 // live-walk observation: newly-appearing walls sometimes flash at raw
 // mesh height for a frame before snapping to their computed scale — see
@@ -165,6 +169,9 @@ function bakedGeometriesFor(
 export interface GlbInstanceProps {
   file: string;
   position: WorldPos;
+  /** Additive world-space vertical placement. Defaults to zero so every
+   * existing caller retains its original floor-relative transform. */
+  positionY?: number;
   rotationY: number;
   scale: [number, number, number] | number;
   /** Multiplicative color tint for this instance only — clones each
@@ -194,8 +201,9 @@ export function GlbInstance({
   scale,
   tint,
   remembered = false,
+  positionY = 0,
 }: GlbInstanceProps) {
-  const { scene } = useGLTF(ENV_BASE + file);
+  const { scene } = useGLTF(environmentUrl(file));
 
   // Normalize to per-axis numbers up front so useMemo below can depend on
   // plain numbers (stable across renders) rather than the `scale` prop's
@@ -300,7 +308,7 @@ export function GlbInstance({
   return (
     <primitive
       object={cloned}
-      position={[position.x, 0, position.z]}
+      position={[position.x, positionY, position.z]}
       rotation={[0, rotationY, 0]}
     />
   );
