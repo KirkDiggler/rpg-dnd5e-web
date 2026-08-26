@@ -6,6 +6,7 @@ import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import {
   __resetDungeonShellProviderForTests,
   getDungeonShellCatalogSnapshot,
+  preloadDungeonShellCatalog,
 } from '../../rendering/dungeonShellProvider';
 import { DungeonShell } from './DungeonShell';
 import type { Scene3D } from './atlasToScene3D';
@@ -32,7 +33,7 @@ vi.mock('@react-three/drei', () => {
   return { useGLTF, useTexture };
 });
 
-function validManifest() {
+function validManifest(prefix = 'provider') {
   const artifact = (file: string) => ({
     file,
     sha256: HASH,
@@ -49,14 +50,14 @@ function validManifest() {
         },
         wall: {
           body: {
-            ...artifact('env/provider-body.glb'),
+            ...artifact(`env/${prefix}-body.glb`),
             localSpanAxis: '+X',
             localFaceAxis: 'Z',
             twoSided: true,
           },
-          base: artifact('env/provider-base.glb'),
-          cap: artifact('env/provider-cap.glb'),
-          doorSurround: artifact('env/provider-surround.glb'),
+          base: artifact(`env/${prefix}-base.glb`),
+          cap: artifact(`env/${prefix}-cap.glb`),
+          doorSurround: artifact(`env/${prefix}-surround.glb`),
         },
       },
     },
@@ -221,5 +222,57 @@ describe('DungeonShell with the real catalog hook and provider', () => {
       '/models/synty/env/provider-body.glb'
     );
     expect(loadedUrls).toContain(LEAF_URL);
+  });
+
+  it('keeps the hook and shell on the new snapshot when the stale owner settles last', async () => {
+    let settleOld!: (response: unknown) => void;
+    const oldFetch = new Promise<unknown>((resolve) => {
+      settleOld = resolve;
+    });
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(oldFetch)
+      .mockResolvedValueOnce(responseFor(validManifest('new')));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reason = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} onFallbackReason={reason} />
+    );
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const stale = preloadDungeonShellCatalog();
+    __resetDungeonShellProviderForTests();
+    const current = preloadDungeonShellCatalog();
+    await current;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getDungeonShellCatalogSnapshot()).toMatchObject({
+      status: 'ready',
+      catalog: {
+        profiles: { crypt: { wall: { body: { file: 'env/new-body.glb' } } } },
+      },
+    });
+
+    settleOld(
+      responseFor({
+        schemaVersion: 2,
+        profiles: {},
+      })
+    );
+    await expect(stale).rejects.toThrow('manifest validation failed');
+    await renderer.update(
+      <DungeonShell scene={scene()} onFallbackReason={reason} />
+    );
+
+    expect(getDungeonShellCatalogSnapshot()).toMatchObject({
+      status: 'ready',
+      catalog: {
+        profiles: { crypt: { wall: { body: { file: 'env/new-body.glb' } } } },
+      },
+    });
+    expect(primitiveAssetNames(renderer)).toContain(
+      '/models/synty/env/new-body.glb'
+    );
   });
 });

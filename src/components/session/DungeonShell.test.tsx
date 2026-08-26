@@ -1,5 +1,6 @@
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { useGLTF } from '@react-three/drei';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { StrictMode } from 'react';
 import * as THREE from 'three';
@@ -24,16 +25,18 @@ const LEGACY_WALL_URL = '/models/synty/env/SM_Env_Wall_Half_01.glb';
 const LEGACY_FRAME_URL = '/models/synty/env/SM_Env_Door_Frame_01.glb';
 const LEAF_URL = '/models/synty/env/SM_Env_Door_01.glb';
 
+type ResourceState<T> =
+  | { status: 'pending'; promise: Promise<never> }
+  | { status: 'fulfilled'; value: T }
+  | { status: 'rejected'; error: Error };
+
 const shellState = vi.hoisted(() => ({
   snapshot: { status: 'idle' } as DungeonShellCatalogSnapshot,
-  failedUrls: new Set<string>(),
-  rejectedUrls: new Set<string>(),
-  pendingUrls: new Set<string>(),
   hookCalls: [] as string[],
   loaderCalls: [] as string[],
-  assets: new Map<string, { scene: THREE.Group }>(),
-  textures: new Map<string, THREE.Texture>(),
-  pending: new Promise<never>(() => undefined),
+  assets: new Map<string, ResourceState<{ scene: THREE.Group }>>(),
+  textures: new Map<string, ResourceState<THREE.Texture>>(),
+  clearCalls: [] as string[],
 }));
 
 function assetScene(url: string) {
@@ -60,38 +63,70 @@ function assetScene(url: string) {
   return { scene };
 }
 
+function fulfilledAsset(url: string) {
+  return { status: 'fulfilled' as const, value: assetScene(url) };
+}
+
+function readResource<T>(
+  url: string,
+  cache: Map<string, ResourceState<T>>,
+  value: () => T
+): T {
+  let state = cache.get(url);
+  if (!state) {
+    shellState.loaderCalls.push(url);
+    state = { status: 'fulfilled', value: value() };
+    cache.set(url, state);
+  }
+  if (state.status === 'pending') throw state.promise;
+  if (state.status === 'rejected') throw state.error;
+  return state.value;
+}
+
 function readAsset(url: string) {
   shellState.hookCalls.push(url);
-  if (!shellState.assets.has(url)) {
-    shellState.loaderCalls.push(url);
-    shellState.assets.set(url, assetScene(url));
-  }
-  if (shellState.rejectedUrls.has(url)) {
-    throw new Error(`cached rejection ${url}`);
-  }
-  if (shellState.failedUrls.has(url)) {
-    shellState.rejectedUrls.add(url);
-    throw new Error(`failed ${url}`);
-  }
-  if (shellState.pendingUrls.has(url)) throw shellState.pending;
-  return shellState.assets.get(url)!;
+  return readResource(url, shellState.assets, () => assetScene(url));
 }
 
 function readTexture(url: string) {
   shellState.hookCalls.push(url);
-  if (!shellState.textures.has(url)) {
-    shellState.loaderCalls.push(url);
-    shellState.textures.set(url, new THREE.Texture());
-  }
-  if (shellState.rejectedUrls.has(url)) {
-    throw new Error(`cached rejection ${url}`);
-  }
-  if (shellState.failedUrls.has(url)) {
-    shellState.rejectedUrls.add(url);
-    throw new Error(`failed ${url}`);
-  }
-  if (shellState.pendingUrls.has(url)) throw shellState.pending;
-  return shellState.textures.get(url)!;
+  return readResource(url, shellState.textures, () => new THREE.Texture());
+}
+
+function rejectGltf(url: string, message = `failed to load ${url}`) {
+  shellState.loaderCalls.push(url);
+  shellState.assets.set(url, {
+    status: 'rejected',
+    error: new Error(message),
+  });
+}
+
+function rejectTexture(url: string, message = `failed to load ${url}`) {
+  shellState.loaderCalls.push(url);
+  shellState.textures.set(url, {
+    status: 'rejected',
+    error: new Error(message),
+  });
+}
+
+function pendingGltf(url: string) {
+  let resolve!: () => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<never>((resolvePromise, rejectPromise) => {
+    resolve = () => resolvePromise(undefined as never);
+    reject = rejectPromise;
+  });
+  shellState.assets.set(url, { status: 'pending', promise });
+  return {
+    fulfill() {
+      shellState.assets.set(url, fulfilledAsset(url));
+      resolve();
+    },
+    reject(error = new Error(`failed to load ${url}`)) {
+      shellState.assets.set(url, { status: 'rejected', error });
+      reject(error);
+    },
+  };
 }
 
 vi.mock('./useDungeonShellCatalog', () => ({
@@ -101,13 +136,16 @@ vi.mock('./useDungeonShellCatalog', () => ({
 vi.mock('@react-three/drei', () => {
   const useGLTF = (url: string) => readAsset(url);
   useGLTF.preload = () => undefined;
+  useGLTF.clear = (url: string) => {
+    shellState.clearCalls.push(url);
+    shellState.assets.delete(url);
+  };
   const useTexture = (url: string) => readTexture(url);
   useTexture.preload = () => undefined;
   return { useGLTF, useTexture };
 });
 
 import { DungeonShell } from './DungeonShell';
-import { clearRejectedProfileLeavesForTests } from './dungeonShellResourceCache';
 
 const HASH = 'a'.repeat(64);
 const profile: DungeonShellProfile = {
@@ -217,13 +255,10 @@ function floorMeshes(renderer: RenderedScene) {
 }
 
 beforeEach(() => {
-  clearRejectedProfileLeavesForTests();
   shellState.snapshot = { status: 'idle' };
-  shellState.failedUrls.clear();
-  shellState.rejectedUrls.clear();
-  shellState.pendingUrls.clear();
   shellState.hookCalls.length = 0;
   shellState.loaderCalls.length = 0;
+  shellState.clearCalls.length = 0;
   shellState.assets.clear();
   shellState.textures.clear();
 });
@@ -268,9 +303,11 @@ describe('DungeonShell actual shell integration', () => {
     );
   });
 
-  it('keeps the actual legacy pair while the profile resource gate is pending, then switches through the same cache', async () => {
+  it('keeps the actual legacy pair while ordinary GLTF resources are pending, then switches after they fulfill', async () => {
     shellState.snapshot = ready();
-    for (const url of PROFILE_URLS) shellState.pendingUrls.add(url);
+    const pending = PROFILE_URLS.filter((url) => url.endsWith('.glb')).map(
+      (url) => pendingGltf(url)
+    );
     const renderer = await ReactThreeTestRenderer.create(
       <DungeonShell scene={scene()} doors={doors} />
     );
@@ -281,12 +318,11 @@ describe('DungeonShell actual shell integration', () => {
         LEGACY_TEXTURE_URL,
         LEGACY_WALL_URL,
         LEGACY_FRAME_URL,
-        LEAF_URL,
       ])
     );
     expect(shellState.loaderCalls).not.toContain('/models/synty/env/body.glb');
 
-    shellState.pendingUrls.clear();
+    pending.forEach(({ fulfill }) => fulfill());
     await renderer.update(<DungeonShell scene={scene()} doors={doors} />);
     expect(primitiveAssetNames(renderer)).toEqual(
       expect.arrayContaining(['/models/synty/env/body.glb', LEAF_URL])
@@ -297,7 +333,7 @@ describe('DungeonShell actual shell integration', () => {
     'falls back once to actual floor and walls without retrying failed leaf %s',
     async (failedUrl) => {
       shellState.snapshot = ready();
-      shellState.failedUrls.add(failedUrl);
+      (failedUrl.endsWith('.png') ? rejectTexture : rejectGltf)(failedUrl);
       const onFallbackReason = vi.fn();
       const onDoorClick = vi.fn();
       const consoleError = vi
@@ -327,9 +363,6 @@ describe('DungeonShell actual shell integration', () => {
       if (failedUrl === LEAF_URL) {
         expect(
           shellState.loaderCalls.filter((url) => url === LEAF_URL)
-        ).toHaveLength(1);
-        expect(
-          shellState.hookCalls.filter((url) => url === LEAF_URL)
         ).toHaveLength(1);
       }
       expect(onFallbackReason).toHaveBeenCalledWith('manifest-unavailable');
@@ -363,70 +396,44 @@ describe('DungeonShell actual shell integration', () => {
     }
   );
 
-  it('orders loading, pending, resource-error, and recovery callbacks despite stale promise settlement', async () => {
-    let resolveStale!: () => void;
-    shellState.pending = new Promise<never>((resolve) => {
-      resolveStale = () => resolve(undefined as never);
-    });
+  it('routes an ordinary pending leaf rejection to the failed fallback without a leaf hook in that fallback', async () => {
+    shellState.snapshot = ready();
+    const pendingLeaf = pendingGltf(LEAF_URL);
     const onFallbackReason = vi.fn();
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
     const view = await ReactThreeTestRenderer.create(
-      <DungeonShell scene={scene()} onFallbackReason={onFallbackReason} />
+      <DungeonShell
+        scene={scene()}
+        doors={doors}
+        onFallbackReason={onFallbackReason}
+      />
     );
-    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
+    expect(
+      shellState.loaderCalls.filter((url) => url === LEAF_URL)
+    ).toHaveLength(0);
 
-    shellState.snapshot = ready();
-    PROFILE_URLS.forEach((url) => shellState.pendingUrls.add(url));
+    pendingLeaf.reject();
+    await Promise.resolve();
     await view.update(
-      <DungeonShell scene={scene()} onFallbackReason={onFallbackReason} />
-    );
-    expect(primitiveAssetNames(view)).toEqual(
-      expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
-    );
-    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
-
-    shellState.pendingUrls.clear();
-    shellState.failedUrls.add(LEAF_URL);
-    await view.update(
-      <DungeonShell scene={scene()} onFallbackReason={onFallbackReason} />
+      <DungeonShell
+        scene={scene()}
+        doors={doors}
+        onFallbackReason={onFallbackReason}
+      />
     );
     expect(onFallbackReason).toHaveBeenLastCalledWith('manifest-unavailable');
-
-    shellState.failedUrls.clear();
-    shellState.rejectedUrls.clear();
-    clearRejectedProfileLeavesForTests();
-    const recovered: DungeonShellProfile = {
-      ...profile,
-      floor: { ...profile.floor, diffuse: 'textures/race-recovered.png' },
-    };
-    shellState.snapshot = ready(recovered);
-    await view.update(
-      <DungeonShell scene={scene()} onFallbackReason={onFallbackReason} />
-    );
-    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
-    expect(primitiveAssetNames(view)).toEqual(
-      expect.arrayContaining(['/models/synty/env/body.glb', LEAF_URL])
-    );
-
-    resolveStale();
-    await Promise.resolve();
-    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
-    expect(primitiveAssetNames(view)).toEqual(
-      expect.arrayContaining(['/models/synty/env/body.glb', LEAF_URL])
-    );
-    expect(onFallbackReason.mock.calls.map(([reason]) => reason)).toEqual([
-      null,
-      'manifest-unavailable',
-      null,
-    ]);
+    expect(
+      shellState.loaderCalls.filter((url) => url === LEAF_URL)
+    ).toHaveLength(0);
+    expect(primitiveAssetNames(view)).not.toContain(LEAF_URL);
     consoleError.mockRestore();
   });
 
   it('keeps a cached rejected leaf in fallback until the cache is explicitly cleared', async () => {
     shellState.snapshot = ready();
-    shellState.failedUrls.add(LEAF_URL);
+    rejectGltf(LEAF_URL);
     const onFallbackReason = vi.fn();
     const consoleError = vi
       .spyOn(console, 'error')
@@ -441,6 +448,9 @@ describe('DungeonShell actual shell integration', () => {
       </StrictMode>
     );
     expect(onFallbackReason).toHaveBeenLastCalledWith('manifest-unavailable');
+    expect(
+      shellState.loaderCalls.filter((url) => url === LEAF_URL)
+    ).toHaveLength(1);
 
     const sameResources: DungeonShellProfile = {
       ...profile,
@@ -460,12 +470,14 @@ describe('DungeonShell actual shell integration', () => {
       expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
     );
     expect(onFallbackReason).toHaveBeenLastCalledWith('manifest-unavailable');
+    expect(
+      shellState.loaderCalls.filter((url) => url === LEAF_URL)
+    ).toHaveLength(1);
 
     // This is the explicit cache-clear operation that a real asset-loader
     // reset would perform; changing a profile key alone is not one.
-    shellState.failedUrls.clear();
-    shellState.rejectedUrls.clear();
-    clearRejectedProfileLeavesForTests();
+    useGLTF.clear(LEAF_URL);
+    expect(shellState.clearCalls).toEqual([LEAF_URL]);
     const recovered: DungeonShellProfile = {
       ...sameResources,
       floor: { ...sameResources.floor, diffuse: 'textures/recovered.png' },
@@ -491,5 +503,8 @@ describe('DungeonShell actual shell integration', () => {
       expect.arrayContaining(['/models/synty/env/recovered-body.glb', LEAF_URL])
     );
     expect(onFallbackReason).toHaveBeenLastCalledWith(null);
+    expect(
+      shellState.loaderCalls.filter((url) => url === LEAF_URL)
+    ).toHaveLength(2);
   });
 });

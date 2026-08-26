@@ -12,10 +12,6 @@ import { DOOR_LEAF_FILE } from '../hex-grid/syntyHexWallHelpers';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import type { Scene3D } from './atlasToScene3D';
 import { AtlasWalls } from './AtlasWalls';
-import {
-  rejectedProfileLeaf,
-  rememberRejectedProfileLeaf,
-} from './dungeonShellResourceCache';
 import { useDungeonShellCatalog } from './useDungeonShellCatalog';
 
 export type { ShellFallbackReason } from '../../rendering/dungeonShellProfile';
@@ -29,21 +25,6 @@ export interface DungeonShellProps {
 
 const modelUrl = (file: `env/${string}.glb`) => `/models/synty/${file}`;
 const textureUrl = (file: `textures/${string}.png`) => `/models/synty/${file}`;
-
-// A rejected drei resource remains rejected in its URL cache. Remember the
-// leaf failure before React retries the throwing render for ErrorBoundary so
-// the retry does not issue a second leaf hook read. A changed resource URL or
-// an explicit loader reset is the only recovery path.
-function useProfileLeafScene(url: string) {
-  const cachedFailure = rejectedProfileLeaf(url);
-  if (cachedFailure) throw cachedFailure;
-  try {
-    return useGLTF(url).scene;
-  } catch (error) {
-    rememberRejectedProfileLeaf(url, error);
-    throw error;
-  }
-}
 
 function FallbackReporter({
   reason,
@@ -99,7 +80,7 @@ function ProfileResources({
   useGLTF(modelUrl(profile.wall.base.file));
   useGLTF(modelUrl(profile.wall.cap.file));
   useGLTF(modelUrl(profile.wall.doorSurround.file));
-  const leafScene = useProfileLeafScene(modelUrl(`env/${DOOR_LEAF_FILE}`));
+  const leafScene = useGLTF(modelUrl(`env/${DOOR_LEAF_FILE}`)).scene;
 
   return (
     <>
@@ -153,6 +134,7 @@ export function DungeonShell({
       onDoorClick={onDoorClick}
       reason={null}
       onFallbackReason={onFallbackReason}
+      suppressDoorLeaves
     />
   );
   const failed = (
