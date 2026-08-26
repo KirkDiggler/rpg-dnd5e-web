@@ -12,6 +12,7 @@ import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
 import { SessionCombatConcept } from './session-combat/SessionCombatConcept';
 import { SessionTombConcept } from './session-tomb/SessionTombConcept';
+import { WeaponAttachmentConcept } from './weapon-attachment/WeaponAttachmentConcept';
 
 type ConceptPage =
   | 'attack-die-3d'
@@ -24,6 +25,7 @@ type ConceptPage =
   | 'fog-of-war'
   | 'session-combat'
   | 'session-tomb'
+  | 'weapon-attachment'
   | 'dungeon-builder'
   | 'asset-anchor-lab';
 
@@ -38,6 +40,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'fog-of-war', label: 'Fog of War' },
   { id: 'session-combat', label: 'Session Combat' },
   { id: 'session-tomb', label: 'Session Tomb' },
+  { id: 'weapon-attachment', label: 'Weapon Attachment' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
 ];
@@ -128,6 +131,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'fog-of-war' && <FogOfWarConcept />}
         {activePage === 'session-combat' && <SessionCombatConcept />}
         {activePage === 'session-tomb' && <SessionTombConcept />}
+        {activePage === 'weapon-attachment' && <WeaponAttachmentConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
             `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
             tab is the dev sandbox — the same `DungeonBuilder` on a fixture

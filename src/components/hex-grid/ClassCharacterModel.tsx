@@ -52,6 +52,11 @@ import {
   resolveIdleClipName,
   resolveWalkClipName,
 } from './classCharacterModels';
+import { MainHandAttachmentSlot } from './MainHandAttachment';
+import {
+  type MainHandAttachmentStatus,
+  type MainHandPresentation,
+} from './mainHandPresentation';
 import { cloneCryptMaterials } from './sceneKnowledge';
 
 export interface ClassCharacterModelProps {
@@ -76,6 +81,8 @@ export interface ClassCharacterModelProps {
    * doesn't fire for them. Defaults false, matching every pre-existing
    * standing-model caller. */
   isDownedVariant?: boolean;
+  mainHandPresentation?: MainHandPresentation;
+  onMainHandStatus?: (status: MainHandAttachmentStatus) => void;
 }
 
 export function ClassCharacterModel({
@@ -86,6 +93,8 @@ export function ClassCharacterModel({
   facingRotation = 0,
   isMoving = false,
   isDownedVariant = false,
+  mainHandPresentation,
+  onMainHandStatus,
 }: ClassCharacterModelProps) {
   // useGLTF returns drei's shared, URL-keyed cache — mutating it directly
   // during render is a render-phase side effect on shared state (same
@@ -257,10 +266,22 @@ export function ClassCharacterModel({
   });
 
   return (
-    <primitive
-      object={cloned}
-      scale={SYNTY_SCALE}
-      rotation={[0, facingRotation, 0]}
-    />
+    <>
+      <primitive
+        object={cloned}
+        scale={SYNTY_SCALE}
+        rotation={[0, facingRotation, 0]}
+      />
+      <MainHandAttachmentSlot
+        key={
+          mainHandPresentation
+            ? `${mainHandPresentation.ref}|${mainHandPresentation.weaponUrl}`
+            : 'unarmed'
+        }
+        characterRoot={cloned}
+        presentation={mainHandPresentation}
+        onStatus={onMainHandStatus}
+      />
+    </>
   );
 }
