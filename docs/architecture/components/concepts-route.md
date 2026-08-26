@@ -82,10 +82,13 @@ unarmed/longsword/shortbow, idle/walk, and close/orbit/play evidence views.
 The inspector reports the mapped ref, candidate provenance, fixed socket
 profile, attachment callback status, texture-budget warning, and coverage gate;
 verdict output is explicitly `NON-PRODUCTION CONCEPT EVIDENCE`. This bench has
-no production writer and no live equipment wiring. Open provider gaps remain:
-final semantic asset selection, normalized production exports, socket receipt,
-and texture budget. Do not call the concept accepted here; Task 6 is where
-Kirk records the viewed verdict.
+no production writer and no live equipment wiring. The observed verdict is now
+recorded in `src/concepts/weapon-attachment/CONTRACT.md` and
+`docs/evidence/821-weapon-attachment/README.md`: Kirk accepted the attachment
+proof, accepted `SM_Prop_Bow_01` provisionally for shortbow, rejected
+`SM_Wep_Slayer_01` as an oversized final-longsword candidate, and left open
+provider gaps around final semantic asset selection, normalized production
+exports, socket receipt, and texture budget.
 
 ## Gap: no promotion process
 

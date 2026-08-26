@@ -153,14 +153,37 @@ function sameStatus(
   );
 }
 
+function matchesPresentationIdentity(
+  status: MainHandAttachmentStatus | undefined,
+  presentation: MainHandPresentation | undefined
+): boolean {
+  return (
+    status?.ref === presentation?.ref &&
+    status?.weaponUrl === presentation?.weaponUrl
+  );
+}
+
+function statusForCurrentPresentation(
+  status: MainHandAttachmentStatus | undefined,
+  presentation: MainHandPresentation | undefined
+): MainHandAttachmentStatus | undefined {
+  if (!status) return undefined;
+  if (!presentation) {
+    return status.code === 'unarmed' ? status : undefined;
+  }
+  return matchesPresentationIdentity(status, presentation) ? status : undefined;
+}
+
 function isStableObservation(
   equipmentState: WeaponEquipmentState,
+  presentation: MainHandPresentation | undefined,
   status: MainHandAttachmentStatus | undefined
 ): status is MainHandAttachmentStatus {
   if (!status) return false;
   return equipmentState === 'unarmed'
     ? status.code === 'unarmed'
-    : status.code === 'attached';
+    : status.code === 'attached' &&
+        matchesPresentationIdentity(status, presentation);
 }
 
 export interface WeaponAttachmentPreviewProps {
@@ -193,14 +216,24 @@ export function WeaponAttachmentScene({
     },
     []
   );
+  const currentAttachmentStatus = statusForCurrentPresentation(
+    attachmentStatus,
+    presentation
+  );
 
   useEffect(() => {
-    if (!attachmentStatus) return;
-    onAttachmentStatus?.(attachmentStatus);
-  }, [attachmentStatus, onAttachmentStatus]);
+    if (!currentAttachmentStatus) return;
+    onAttachmentStatus?.(currentAttachmentStatus);
+  }, [currentAttachmentStatus, onAttachmentStatus]);
 
   useEffect(() => {
-    if (!isStableObservation(equipmentState, attachmentStatus)) {
+    if (
+      !isStableObservation(
+        equipmentState,
+        presentation,
+        currentAttachmentStatus
+      )
+    ) {
       lastObservedKey.current = undefined;
       return;
     }
@@ -210,24 +243,25 @@ export function WeaponAttachmentScene({
       motion,
       view,
       facing,
-      attachmentCode: attachmentStatus.code,
+      attachmentCode: currentAttachmentStatus.code,
     } satisfies WeaponRenderObservation;
     const key = [
       equipmentState,
       motion,
       view,
       facing,
-      attachmentStatus.code,
+      currentAttachmentStatus.code,
     ].join('|');
     if (lastObservedKey.current === key) return;
     lastObservedKey.current = key;
     onRenderObserved(observation);
   }, [
-    attachmentStatus,
+    currentAttachmentStatus,
     equipmentState,
     facing,
     motion,
     onRenderObserved,
+    presentation,
     view,
   ]);
 

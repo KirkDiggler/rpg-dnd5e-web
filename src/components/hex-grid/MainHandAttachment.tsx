@@ -13,17 +13,19 @@ interface StatusProps {
 }
 
 function StatusReporter({ status, onStatus }: StatusProps) {
-  useEffect(
-    () => onStatus?.(status),
-    [
-      onStatus,
-      status.code,
-      status.ref,
-      status.weaponUrl,
-      status.bone,
-      status.message,
-    ]
-  );
+  const { code, ref, weaponUrl, bone, message } = status;
+
+  useEffect(() => {
+    if (!onStatus) return;
+
+    const reportedStatus: MainHandAttachmentStatus = { code };
+    if (ref !== undefined) reportedStatus.ref = ref;
+    if (weaponUrl !== undefined) reportedStatus.weaponUrl = weaponUrl;
+    if (bone !== undefined) reportedStatus.bone = bone;
+    if (message !== undefined) reportedStatus.message = message;
+
+    onStatus(reportedStatus);
+  }, [bone, code, message, onStatus, ref, weaponUrl]);
   return null;
 }
 

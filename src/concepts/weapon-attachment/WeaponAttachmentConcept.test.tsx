@@ -62,6 +62,27 @@ function setSearch(search: string) {
   window.history.replaceState({}, '', search);
 }
 
+const FORBIDDEN_TERMS = /(position|rotation|scale|nudge|transform)/i;
+
+function forbiddenTransformControls() {
+  return Array.from(
+    document.body.querySelectorAll(
+      'button, input:not([type="hidden"]), select, textarea, [role], [contenteditable="true"]'
+    )
+  ).flatMap((element) => {
+    const role = element.getAttribute('role')?.trim();
+    const name = (
+      element.getAttribute('aria-label') ??
+      element.textContent ??
+      ''
+    ).trim();
+
+    if (FORBIDDEN_TERMS.test(name)) return [name];
+    if (role && FORBIDDEN_TERMS.test(role)) return [role];
+    return [];
+  });
+}
+
 describe('WeaponAttachmentConcept', () => {
   beforeEach(() => {
     setSearch('/');
@@ -86,17 +107,7 @@ describe('WeaponAttachmentConcept', () => {
       'Hand_R · bone units 0.01m · pos [-0.113569, 0.043781, -0.007072] · quat [-0.317175, -0.455560, 0.682831, 0.474981] · scale 1'
     );
 
-    for (const name of [
-      'position',
-      'rotation',
-      'scale',
-      'nudge',
-      'transform',
-    ]) {
-      expect(
-        screen.queryByRole('button', { name: new RegExp(name, 'i') })
-      ).toBe(null);
-    }
+    expect(forbiddenTransformControls()).toEqual([]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Longsword' }));
     expect(screen.getByTestId('equipped-ref').textContent).toContain(
@@ -185,5 +196,29 @@ describe('WeaponAttachmentConcept', () => {
     expect(screen.getByTestId('mock-weapon-preview').textContent).toBe(
       'unarmed|idle|play|0'
     );
+  });
+
+  it('the forbidden-control guard catches non-button transform widgets too', () => {
+    render(
+      <div>
+        <div aria-label="Position X" role="slider" />
+        <div aria-label="Rotation Y" role="spinbutton" />
+        <div aria-label="Scale note" role="textbox" />
+        <select aria-label="Nudge preset">
+          <option>1 cm</option>
+        </select>
+        <div aria-label="Transform picker" role="combobox" />
+        <div aria-label="Safe label" role="transform-editor" tabIndex={0} />
+      </div>
+    );
+
+    expect(forbiddenTransformControls()).toEqual([
+      'Position X',
+      'Rotation Y',
+      'Scale note',
+      'Nudge preset',
+      'Transform picker',
+      'transform-editor',
+    ]);
   });
 });

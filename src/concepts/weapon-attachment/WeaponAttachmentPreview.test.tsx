@@ -34,9 +34,11 @@ const mockAttachmentStatusState: {
 
 const statusForPresentation = (presentation?: {
   ref: string;
+  weaponUrl: string;
 }): MainHandAttachmentStatus => ({
   code: presentation ? 'attached' : 'unarmed',
   ref: presentation?.ref,
+  weaponUrl: presentation?.weaponUrl,
 });
 
 const clonePresentation = (
@@ -94,7 +96,7 @@ vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
   ClassCharacterModel: (props: {
     isMoving: boolean;
     facingRotation: number;
-    mainHandPresentation?: { ref: string };
+    mainHandPresentation?: { ref: string; weaponUrl: string };
     onMainHandStatus?: (status: MainHandAttachmentStatus) => void;
   }) => {
     useEffect(() => {
@@ -375,6 +377,106 @@ describe('WeaponAttachmentScene', () => {
     );
 
     expect(onRenderObserved).not.toHaveBeenCalled();
+  });
+
+  it('does not credit the next mapped weapon until its own attached status arrives', async () => {
+    const sword = resolveProvisionalMainHand({
+      main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
+    });
+    const bow = resolveProvisionalMainHand({
+      main_hand: { module: 'dnd5e', type: 'item', id: 'shortbow' },
+    });
+    if (sword.code !== 'mapped' || bow.code !== 'mapped') {
+      throw new Error('fixtures must map');
+    }
+
+    const onRenderObserved = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WeaponAttachmentScene
+        equipmentState="longsword"
+        motion="idle"
+        view="orbit"
+        facing={0}
+        presentation={sword.presentation}
+        onAttachmentStatus={() => {}}
+        onRenderObserved={onRenderObserved}
+      />
+    );
+
+    expect(onRenderObserved).toHaveBeenCalledTimes(1);
+    expect(onRenderObserved).toHaveBeenLastCalledWith({
+      equipmentState: 'longsword',
+      motion: 'idle',
+      view: 'orbit',
+      facing: 0,
+      attachmentCode: 'attached',
+    });
+
+    mockAttachmentStatusState.current = {
+      code: 'loading',
+      ref: bow.presentation.ref,
+      weaponUrl: bow.presentation.weaponUrl,
+      bone: bow.presentation.socket.bone,
+    };
+    await renderer.update(
+      <WeaponAttachmentScene
+        equipmentState="shortbow"
+        motion="idle"
+        view="orbit"
+        facing={0}
+        presentation={clonePresentation(bow.presentation)}
+        onAttachmentStatus={() => {}}
+        onRenderObserved={onRenderObserved}
+      />
+    );
+
+    mockAttachmentStatusState.current = {
+      code: 'asset-load-failed',
+      ref: bow.presentation.ref,
+      weaponUrl: bow.presentation.weaponUrl,
+      bone: bow.presentation.socket.bone,
+      message: 'failed bow',
+    };
+    await renderer.update(
+      <WeaponAttachmentScene
+        equipmentState="shortbow"
+        motion="idle"
+        view="orbit"
+        facing={0}
+        presentation={clonePresentation(bow.presentation)}
+        onAttachmentStatus={() => {}}
+        onRenderObserved={onRenderObserved}
+      />
+    );
+
+    expect(onRenderObserved).toHaveBeenCalledTimes(1);
+
+    mockAttachmentStatusState.current = {
+      code: 'attached',
+      ref: bow.presentation.ref,
+      weaponUrl: bow.presentation.weaponUrl,
+      bone: bow.presentation.socket.bone,
+    };
+    await renderer.update(
+      <WeaponAttachmentScene
+        equipmentState="shortbow"
+        motion="idle"
+        view="orbit"
+        facing={0}
+        presentation={clonePresentation(bow.presentation)}
+        onAttachmentStatus={() => {}}
+        onRenderObserved={onRenderObserved}
+      />
+    );
+
+    expect(onRenderObserved).toHaveBeenCalledTimes(2);
+    expect(onRenderObserved).toHaveBeenLastCalledWith({
+      equipmentState: 'shortbow',
+      motion: 'idle',
+      view: 'orbit',
+      facing: 0,
+      attachmentCode: 'attached',
+    });
   });
 });
 
