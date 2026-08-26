@@ -5,14 +5,20 @@ private provider output for rpg-project#284 / rpg-project#169 and superseding
 rpg-dnd5e-web#791. Runtime assets remain ignored; this README is the only
 Task 5 artifact tracked in the web repository.
 
-## Provider pin
+## Implementation and provider pins
 
+- Evidence implementation head (final web commit):
+  `404738a9b70ad3a1034252b4c8959cb8012eb0e1`.
+- Web base head before Task 11 implementation:
+  `185570cd39bca46c1b4073b5dfc1ae406eeedac7`.
 - Provider PR: KirkDiggler/rpg-game-assets#68, merged at
   `f183c96d6d89ecdaf9a2f5dd2c452de485882ed3`.
-- Reviewed provider head: `2facea936b47dd0a5750668be6bfa9a664bcc71d1`.
+- Provider evidence commit (provider-side evidence bundle):
+  `b9eaec454bc43bbfdb284fa647ffbdef60ff8a3a`.
+- Provider reviewed head (PR review head):
+  `2facea936b47dd0a5750668be6bfa9a664bcc71d`.
 - Reviewed head tree: `46e41c26e39f0b1434e1282379bd2cad06f7fd7f`.
 - Merge tree: `46e41c26e39f0b1434e1282379bd2cad06f7fd7f`.
-- Provider evidence commit: `b9eaec4`.
 - Provider verdict: Kirk — `looks great`; verdict content SHA-256
   `a1acb5269ccc801954073139737cb8ca00768712cb93e6b7e225457efa47c6f1`.
 - Provider verdict file SHA-256:
@@ -102,8 +108,9 @@ gate approved the tinted builder and playable game: `looks really good`.
 
 ### Web change and fixture contract
 
-- Web base head at finalization: `185570cd39bca46c1b4073b5dfc1ae406eeedac7`;
-  Task 11 changes are finalized in
+- Web base head before Task 11 implementation:
+  `185570cd39bca46c1b4073b5dfc1ae406eeedac7`; evidence implementation head:
+  `404738a9b70ad3a1034252b4c8959cb8012eb0e1`. Task 11 changes are finalized in
   `src/author/fixtures/cryptPropShowcase.ts` and its test; the floor tint fix is
   in `src/components/session/DungeonShell.tsx` and its test.
 - Fixture: `crypt-prop-showcase`, pointy, opaque; two regions (`gallery` and
@@ -142,8 +149,7 @@ gate approved the tinted builder and playable game: `looks really good`.
   was untouched. Authoring probe `GetDungeon(reference-tomb)` returned 200.
 - Candidate Vite: `VITE_API_HOST=http://localhost:8080
   VITE_DEV_PLAYER_ID=test-player npm run dev -- --host 127.0.0.1 --port 3012`;
-  parent PID `995132`, Vite child PID `995145`, log
-  `/tmp/crypt-shell-825/vite.log`. It remains alive for review.
+  parent PID `995132`, Vite child PID `995145`; it remains alive for review.
 - Builder URL/state: `http://127.0.0.1:3012/` → character `Standre` → Dungeon
   Builder → Load `crypt-prop-showcase.yaml` → compiled → Save → Open
   `crypt-prop-showcase`; Save and reopen YAML were byte-identical in the
@@ -155,7 +161,9 @@ gate approved the tinted builder and playable game: `looks really good`.
   `StartEncounter` returned HTTP 200, and session `GetAtlas` returned HTTP 200
   with `240` cells and `3` props. The candidate route is playable; the
   existing session location label still says “The Reference Tomb” because
-  that label is hard-coded while the atlas is authoritative for this slice.
+  that visible banner is pre-existing static `SessionEncounterView` copy, not
+  atlas identity. It was not changed. The atlas, YAML, session, and network
+  hashes in this record prove the loaded fixture is `crypt-prop-showcase`.
 
 ### Network and byte pins
 
@@ -253,8 +261,9 @@ or provider evidence and was not changed.
   `b44ef4dd027eaefc02db77f35bb31bb4461b1948dc80974b1bbbcfbe74d9baaa`.
   All preserved, candidate, and final frames are PNG `1600×900`.
 - Provider authority remains PR `KirkDiggler/rpg-game-assets#68`, merge
-  `f183c96d6d89ecdaf9a2f5dd2c452de485882ed3`, reviewed head
-  `2facea936b47dd0a5750668be6bfa9a664bcc71d1`, tree
+  `f183c96d6d89ecdaf9a2f5dd2c452de485882ed3`, provider evidence commit
+  `b9eaec454bc43bbfdb284fa647ffbdef60ff8a3a`, reviewed head
+  `2facea936b47dd0a5750668be6bfa9a664bcc71d`, tree
   `46e41c26e39f0b1434e1282379bd2cad06f7fd7f`, and profile
   `d02e6398b06f8b347fbe2e68d91d83bfeccd389ea412be5774d34454c2d164a7`.
   The four shell artifact hashes are recorded above; floor hash is
