@@ -56,9 +56,9 @@ export function DiceDrawer(props: DiceDrawerProps) {
           <strong>Carved iron d20</strong>
           <small>Ready when an action calls for a roll</small>
         </div>
-        <button type="button" aria-label="Expand dice drawer">
+        <span className={styles.diceDrawerCue} aria-hidden="true">
           ⌃
-        </button>
+        </span>
       </aside>
     );
   }

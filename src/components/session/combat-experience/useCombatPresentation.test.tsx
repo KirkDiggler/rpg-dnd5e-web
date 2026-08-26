@@ -336,6 +336,48 @@ describe('useCombatPresentation', () => {
     expect(screen.getByTestId('visible-story-count').textContent).toBe('1');
   });
 
+  it('keeps the collapsed drawer decorative while preserving expanded roller controls', () => {
+    const onSemanticReleaseRequest = vi.fn();
+    const { rerender } = render(
+      <DiceDrawer
+        phase="fresh"
+        events={[]}
+        rollerName="Aldric"
+        semanticFallback
+        witnessRole="roller"
+        onReleaseRequest={vi.fn()}
+        onSemanticReleaseRequest={onSemanticReleaseRequest}
+      />
+    );
+
+    const drawer = screen.getByTestId('session-combat-dice-drawer');
+    expect(
+      screen.queryByRole('button', { name: 'Expand dice drawer' })
+    ).toBeNull();
+    expect(
+      drawer.querySelectorAll(
+        'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    ).toHaveLength(0);
+
+    rerender(
+      <DiceDrawer
+        phase="awaiting-roll"
+        events={[]}
+        rollerName="Aldric"
+        semanticFallback
+        witnessRole="roller"
+        onReleaseRequest={vi.fn()}
+        onSemanticReleaseRequest={onSemanticReleaseRequest}
+      />
+    );
+    const reveal = screen.getByRole('button', { name: 'Reveal result' });
+    reveal.focus();
+    expect(document.activeElement).toBe(reveal);
+    fireEvent.click(reveal);
+    expect(onSemanticReleaseRequest).toHaveBeenCalledOnce();
+  });
+
   it('offers a result-free semantic release control only to an authoritative roller', () => {
     const onSemanticReleaseRequest = vi.fn();
     const { rerender } = render(
