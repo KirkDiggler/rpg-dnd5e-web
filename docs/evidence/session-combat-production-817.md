@@ -52,3 +52,21 @@ node tools/browser/screenshot.mjs \
 The authenticated two-browser API journey requires an asset-complete web host,
 two owned characters, and a live API environment. It remains a controller gate;
 no simulated result is presented as live evidence here.
+
+## Copilot review fix
+
+- Inline `3859462714`: member-scoped Story pacing now resets its timer, queue,
+  draining flag, announced actor, beat flag, hidden IDs, and notice on member
+  change and unmount. Render-scoped state prevents a prior member's Story or
+  notice from projecting during the switch, and timer callbacks carry a stale
+  scope fence.
+- Inline `3859462730`: the collapsed dice-drawer chevron is now an
+  `aria-hidden` decorative cue rather than a behaviorless focusable button;
+  expanded authoritative roller controls remain interactive.
+- RED: the new pacing and drawer regressions produced `2 failed | 15 passed`
+  against `a840a1b`.
+- GREEN: the focused regressions produced `17 passed`; the pacing/drawer/combat/
+  concept gate produced `16 files passed | 219 tests passed`.
+- Implementation commit: `4074ed2f26531d946bbdb535544b55332f2311dd`.
+- Gates: Prettier format check, ESLint, TypeScript, build, focused tests, full
+  tests, and `npm run ci-check` all passed; `git diff --check` passed.
