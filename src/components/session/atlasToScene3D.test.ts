@@ -95,11 +95,56 @@ describe('buildScene3D', () => {
   it('refuses a flat layout by name instead of drawing the rotated picture', () => {
     expect(() =>
       buildScene3D(
-        { cells: [], props: [], boundaries: [], doorways: [] } as never,
+        {
+          cells: [],
+          props: [],
+          boundaries: [],
+          doorways: [],
+          regions: [],
+        } as never,
         1,
         'flat'
       )
     ).toThrow(/pointy-top hexes only.*#763/);
+  });
+
+  it('copies region archetypes in order into a frozen scene field', () => {
+    const scene = buildScene3D(
+      {
+        cells: [],
+        props: [],
+        boundaries: [],
+        doorways: [],
+        regions: [
+          { id: 'second', archetype: 'crypt' },
+          { id: 'first', archetype: 'crypt' },
+        ],
+      } as never,
+      1,
+      'pointy'
+    );
+
+    expect(scene.archetypes).toEqual(['crypt', 'crypt']);
+    expect(Object.isFrozen(scene.archetypes)).toBe(true);
+  });
+
+  it('does not trim or select archetype words while building the scene', () => {
+    const scene = buildScene3D(
+      {
+        cells: [],
+        props: [],
+        boundaries: [],
+        doorways: [],
+        regions: [
+          { id: 'first', archetype: ' crypt ' },
+          { id: 'second', archetype: '' },
+        ],
+      } as never,
+      1,
+      'pointy'
+    );
+
+    expect(scene.archetypes).toEqual([' crypt ', '']);
   });
 
   it('places every cell as a floor tile keyed by its cube coordinate', () => {
@@ -109,6 +154,7 @@ describe('buildScene3D', () => {
         props: [],
         boundaries: [],
         doorways: [],
+        regions: [],
       } as never,
       1,
       'pointy'
@@ -127,6 +173,7 @@ describe('buildScene3D', () => {
         cells: [pos(3, -2), pos(0, 1)],
         boundaries: [],
         doorways: [],
+        regions: [],
         props: [
           {
             ref: 'dnd5e:props:pillar',
@@ -180,6 +227,7 @@ describe('buildScene3D', () => {
         cells: [pos(1, 0)],
         boundaries: [],
         doorways: [],
+        regions: [],
         props: [
           {
             ref: 'dnd5e:props:statue-reaper',
@@ -240,7 +288,7 @@ describe('buildScene3D', () => {
       },
     ];
     const scene = buildScene3D(
-      { cells, props: [], boundaries, doorways: [] } as never,
+      { cells, props: [], boundaries, doorways: [], regions: [] } as never,
       1,
       'pointy'
     );
