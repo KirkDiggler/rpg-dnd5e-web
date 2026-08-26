@@ -1,6 +1,9 @@
 # Session combat production promotion — #817
 
-Date: 2026-08-25
+- Date: 2026-08-25
+- Final evidence: 2026-08-26
+- Evidence target web HEAD: `301b9a39c12dd3eeffec3c55b136e095dc22ec45` (`301b9a3`)
+- Merged API runtime: `f1aa9d2`
 
 ## Reproducible concept target
 
@@ -9,7 +12,7 @@ Date: 2026-08-25
 - Shared renderer: `src/components/session/combat-experience/CombatExperience.tsx`
 - Production route: `src/components/session/SessionEncounterView.tsx`
 
-## Automated evidence
+## Automated evidence — PASS
 
 `SessionEncounterView.test.tsx` mounts the production shared shell and proves
 panel-first exact Attack targeting, unavailable provider reasons, no unarmed map
@@ -23,80 +26,110 @@ other-member pacing, catch-up Story, equipment response replacement, reconnect,
 scope reset, doors, roster pull, movement reconciliation, and the run-ended
 overlay.
 
-The shared component/concept/dice/recovery suites and full `npm run ci-check`
-results are recorded in the Task 14 report and PR.
+At final code HEAD, GitHub CI passed Prettier, ESLint, TypeScript, build, tests,
+and security audit. Vitest reported `215 passed | 1 skipped` test files and
+`3472 passed | 2 skipped` tests. Commit `301b9a3` added the final App-level
+coverage for Concepts dev-tool state.
 
-## Screenshot limit
+## Visual witness — PASS
 
-No screenshot is committed from this checkout. The required licensed Synty
-runtime tree (`public/models/synty/`) is absent, and the requested helper
-`tools/browser/screenshot.mjs` is not present. Only unrelated/open local assets
-and `public/models/human_test.glb` are available. Capturing the concept would
-therefore show missing-asset fallbacks rather than the approved map fidelity.
-No route interception, placeholder GLB/PNG, or private/licensed artifact was
-created or committed.
+The authorized recapture used the actual synced licensed assets, system Chrome,
+and SwiftShader. Captures targeted the game frame element rather than the whole
+browser page:
 
-Run the two viewports from an asset-complete authorized checkout before merge:
+| Browser viewport | Captured frame | SHA-256 |
+|---|---|---|
+| `1280x800` | `1216x800` | `fdf9dab7d216265eed5ff703e1946974e1045d437a51b84fb50d5cb1417fe7b5` |
+| `1024x768` | `960x768` | `87f5e7dbe71ea726d1cf58941033c90d0ee2370c1f8e337dcbdfb62a049419e3` |
 
-```bash
-node tools/browser/screenshot.mjs \
-  --url 'http://localhost:5173/?concept=session-combat' \
-  --width 1280 --height 800
-node tools/browser/screenshot.mjs \
-  --url 'http://localhost:5173/?concept=session-combat' \
-  --width 1024 --height 768
-```
+Both viewports had zero console errors, page errors, and request errors. The
+frame and map had real dimensions, and the End Turn control had no overlap with
+global development tools after the layout and Concepts-overlay fixes. The
+screenshots remain at private local paths and are intentionally not committed;
+the hashes identify the reviewed files without publishing licensed material.
 
-## Live limit
+The earlier missing-assets/pending-capture statement and the collapsed pre-fix
+capture are superseded by this PASS. No fallback, placeholder, intercepted
+asset, private log, screenshot, or licensed asset is evidence committed here.
 
-The authenticated two-browser API journey requires an asset-complete web host,
-two owned characters, and a live API environment. It remains a controller gate;
-no simulated result is presented as live evidence here.
+## Authenticated two-context live journey — PASS
 
-## Copilot review fix
+The complete untracked report is
+`/home/kirk/game-dev/.superpowers/sdd/plan/task-14-live-report.md`. Its 69 private
+artifacts remain under `/tmp/session-combat-live-817/`; do not copy those
+screenshots, private logs, Redis captures, or licensed assets into git.
 
-- Inline `3859462714`: member-scoped Story pacing now resets its timer, queue,
-  draining flag, announced actor, beat flag, hidden IDs, and notice on member
-  change and unmount. Render-scoped state prevents a prior member's Story or
-  notice from projecting during the switch, and timer callbacks carry a stale
-  scope fence.
-- Inline `3859462730`: the collapsed dice-drawer chevron is now an
-  `aria-hidden` decorative cue rather than a behaviorless focusable button;
-  expanded authoritative roller controls remain interactive.
-- RED: the new pacing and drawer regressions produced `2 failed | 15 passed`
-  against `a840a1b`.
-- GREEN: the focused regressions produced `17 passed`; the pacing/drawer/combat/
-  concept gate produced `16 files passed | 219 tests passed`.
-- Implementation commit: `4074ed2f26531d946bbdb535544b55332f2311dd`.
-- Gates: Prettier format check, ESLint, TypeScript, build, focused tests, full
-  tests, and `npm run ci-check` all passed; `git diff --check` passed.
+Two independent browser contexts used `Dev toolkit-sandbox-fighter` and
+`Dev toolkit-sandbox-barbarian`. The principal run used lobby
+`lobby_3183ef21-744b-4133-852b-4a0bb52cad6e`, join ref
+`join_d67d8c92-8b9a-47fa-a138-e4741e135e3a`, and session
+`137fb64c-1092-4412-9fdb-40e56a85b918` in `reference-tomb`. Results by required
+witness:
 
-## Visual-gate layout correction
+1. **Shared session and privacy:** the real 224-cell map, roster, props,
+   monsters, Story, and initiative rendered. Fighter private data was `12/12`,
+   AC 16; Barbarian private data was `14/14`, AC 12. Equipment differed by
+   owner, and neither DOM exposed the peer's exact HP.
+2. **Panel-first Longsword:** combat formed at sequence 16. `Afford` supplied
+   `dnd5e:weapons:longsword`; map clicks before arming sent no Attack, and
+   arming the panel action alone sent no Attack.
+3. **Availability reasons:** the Barbarian candidate was enabled as
+   `Available`; both Skeleton candidates were disabled with
+   `Unavailable: target out of reach`. Clicking a disabled candidate dispatched
+   no Attack.
+4. **Exact declaration/request/outcome:** `SessionService.AttackRequest` sent
+   session `137fb64c-1092-4412-9fdb-40e56a85b918`, attacker
+   `char_2ed37e2a-8d4f-4ee4-b8cc-bfe246d032eb`, target
+   `char_d80b367c-d815-4c4c-8085-3fe2df9d02dd`, and declaration ID
+   `v1.rkme8u-Yt7vzF-cVzeFgIqa3X7XeLSuMJ6XaifTR-DE`. The authoritative response
+   was `roll=17 total=22 against=12 hit=true critical=false damage=10`,
+   `attack.ref=dnd5e:weapons:longsword`, and `attack.name=Longsword`.
+5. **Dice roles:** the actor initially saw a concealed `?` and had to use the
+   real Roll d20 control. The witness auto-settled the same roll read-only,
+   without Roll or Grab controls; the actor then settled to the same result.
+6. **Story and Debug:** actor Story concealed the strike until release, while
+   Debug immediately showed the typed roll, total, AC, damage, weapon ref, and
+   components. Story became readable after release.
+7. **Owner HP refresh/privacy:** the target's authenticated
+   `GetCharacterData` refresh changed only the Barbarian dock from `14/14` to
+   `4/14`; the Fighter retained `12/12` and never received the peer's exact HP.
+8. **Spent state and selectors:** Longsword became disabled with
+   `action: 1 needed, 0 left`. Move to `(4,4)` sent selector
+   `v1.n4ncMkCqYuD_AND8Zkt0TV3lAwvnLbPCWTyTR81gd3Q`; End Turn sent
+   `v1.7HmEoUAKk_xzzSkLrDm08JsUlDenVuk7l5KdITMcHLs`. Monster turns resolved and
+   sequence 25 advanced initiative to round 2.
+9. **Terminal-stream recovery:** in independent session
+   `b84b9804-1186-4f34-b3c5-1c86afc4527d`, only the Barbarian stream was ended
+   successfully with zero messages. A real Fighter move at sequence 7 was
+   recovered by `GetStory(fromSeq=7)` in **744 ms**, rendered as `source=catchup`,
+   with zero later live stream Event deliveries.
+10. **Allowed alternative branch:** the run did not play through a terminal
+    `FightEnded`, so terminal declaration removal was not claimed. Instead it
+    verified the specified world-clock branch twice: free roam, no turn economy,
+    `clock=1`, round 0, no active participant, and empty declarations.
 
-An actual visual-gate run with synced licensed assets and system Chrome exposed a
-layout failure that DOM structure tests had missed: at
-`?concept=session-combat`, the shared game frame computed to `2px` high and the
-map to `0px`. The generic `.combatExperience .gameFrame` selector forced
-`height: 100%` for every mount, overriding the approved `800px` review frame
-inside Concepts Lab even though that parent has no definite height.
+There were zero page errors and zero HTTP responses at or above 400 in either
+live context. Expected development/intentional stream-cancellation logs are
+listed in the full report and were not treated as product failures. After real
+pointer attempts showed headless orthographic wall geometry made deterministic
+floor ray hits unreliable, map destinations used the rendered `SessionCanvas`
+Fiber callback into the production walk handler; no API client was called
+directly, and Attack targeting remained visible DOM interaction.
 
-The shared renderer now defaults to the fixed review-frame presentation (`800px`,
-with the existing `768px` media floor). Only `SessionEncounterView` explicitly
-selects the production fill-parent mode, whose discriminating selector applies
-`height: 100%` and `border-radius: 0`. Shared-component, concept, production-route,
-and CSS contract tests pin that separation and reject the former generic
-selector.
+Cleanup stopped the browser controller and deleted exactly the 32 keys belonging
+to the two player pointers and six lobbies, join refs, and sessions created by
+the gate. No wildcard deletion or flush was used, created-session residuals were
+zero, and pre-existing data was untouched.
 
-The actual `1024x768` and `1280x800` game-frame captures also showed the app
-shell's fixed bottom-right development controls overlapping the shared End Turn
-button. Concepts Lab already owns its Back navigation, and CombatExperience owns
-its Story/Debug diagnostic surface, so Concepts now suppresses both the global
-floating controls and any previously opened Discord debug panel. Other
-development views are unchanged, and the requested debug-panel state is
-preserved when returning from Concepts.
+## Copilot review and final fixes
 
-The visual evidence must be recaptured at both required viewports from an
-authorized checkout with the actual synced assets. The recapture is now expected
-to contain no global floating development overlay. The collapsed pre-fix capture
-is invalid and must not be used as approval evidence; no fallback, placeholder,
-or intercepted asset capture qualifies.
+- Inline comments `3859462714` and `3859462730` were fixed in
+  `4074ed2f26531d946bbdb535544b55332f2311dd` and replied to inline.
+- RED was `2 failed | 15 passed`; focused GREEN was `17 passed`. The subsequent
+  pacing/drawer/combat/concept gate was `16 files passed | 219 tests passed`.
+- The shared review frame/fill-parent separation landed in `c603400`; Concepts
+  global dev-tool suppression landed in `7967805`; final App-level coverage
+  landed in `301b9a3`.
+- The review-fix gates passed Prettier, ESLint, TypeScript, build, focused tests,
+  full tests, `npm run ci-check`, and `git diff --check`. Final-head CI counts
+  and checks are recorded above.
