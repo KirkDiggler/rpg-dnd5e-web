@@ -261,6 +261,7 @@ describe('SyntyHexFloor profile UVs', () => {
 
     expect(useTextureMock).toHaveBeenLastCalledWith(legacyUrl);
     expect(legacyMap).not.toBe(secondMap);
+    expect(legacyMap).not.toBe(firstMap);
     expect(legacyMap).not.toBe(legacyShared);
     expect(alternateMapDispose).toHaveBeenCalledTimes(1);
     expect(legacyMap.wrapS).toBe(THREE.RepeatWrapping);
