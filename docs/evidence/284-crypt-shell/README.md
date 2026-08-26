@@ -144,22 +144,18 @@ gate approved the tinted builder and playable game: `looks really good`.
 
 - Runbook: `rpg-project/docs/howto/run-the-game-locally.md` plus this repo's
   `docs/how-to/local-dev.md`.
-- Shared stack was not restarted, rebuilt, or modified: Envoy
-  `http://localhost:8080` (`rpg-envoy`, healthy); existing Vite on `:3001`
-  was untouched. Authoring probe `GetDungeon(reference-tomb)` returned 200.
-- Candidate Vite: `VITE_API_HOST=http://localhost:8080
-  VITE_DEV_PLAYER_ID=test-player npm run dev -- --host 127.0.0.1 --port 3012`;
-  parent PID `995132`, Vite child PID `995145`; it remains alive for review.
-- Builder URL/state: `http://127.0.0.1:3012/` → character `Standre` → Dungeon
-  Builder → Load `crypt-prop-showcase.yaml` → compiled → Save → Open
-  `crypt-prop-showcase`; Save and reopen YAML were byte-identical in the
-  builder (`94` lines, `3593` bytes, SHA-256
+- Shared stack was not restarted, rebuilt, or modified. Authoring probe
+  `GetDungeon(reference-tomb)` returned HTTP 200.
+- Builder state: character `Standre` → Dungeon Builder → Load
+  `crypt-prop-showcase.yaml` → compiled → Save → Open `crypt-prop-showcase`;
+  Save and reopen YAML were byte-identical in the builder (`94` lines,
+  `3593` bytes, SHA-256
   `1b5effb21b3ccc5c26153714cff62d7a08041808a1782cd79d9999b3755fca25`).
   The real calls were `PutDungeon(validate_only)`/`PutDungeon`/`GetDungeon`,
   all HTTP 200; compile status was `240 cells, 44 boundaries, 2 regions`.
-- Play URL/state: same app URL after Save & Play; the real
-  `StartEncounter` returned HTTP 200, and session `GetAtlas` returned HTTP 200
-  with `240` cells and `3` props. The candidate route is playable; the
+- Play state: Save & Play succeeded; the real `StartEncounter` returned HTTP
+  200, and session `GetAtlas` returned HTTP 200 with `240` cells and `3`
+  props. The candidate route is playable; the
   existing session location label still says “The Reference Tomb” because
   that visible banner is pre-existing static `SessionEncounterView` copy, not
   atlas identity. It was not changed. The atlas, YAML, session, and network
@@ -188,7 +184,7 @@ into this evidence directory. The ignored provider tree remains untracked;
 
 ### Preserved and candidate frames
 
-All are PNG `1600×900`, captured from the real `:3012` route:
+All are PNG `1600×900`, captured from the real builder and game flows:
 
 - `before-builder.png` — SHA-256
   `9933803cdf0d366980ed7c340045547012124d1afd6270be7576b7d82c775663`.
@@ -228,7 +224,7 @@ or provider evidence and was not changed.
   existing tint (`r=.35, g=.38, b=.46`) and `toneMapped=false`, while legacy
   remains `ffffff` and `toneMapped=false`.
 - Focused floor/shell/parity tests: `5` files, `77/77` passed. The live
-  `:3012` route was hot-reloaded and recaptured at `1600×900` with the same
+  route was hot-reloaded and recaptured at `1600×900` with the same
   capture flow/camera. The old bright integrated candidates are preserved as
   `brightness-before-builder.png` and `brightness-before-game.png`.
 - Comparable floor-region scan: fixed screen-space polygons, excluding pixels
@@ -249,8 +245,7 @@ or provider evidence and was not changed.
 - Live readback: builder compiled `240` cells/`44` boundaries/`2` regions;
   Save/reopen YAML remained byte-identical; Play started successfully and
   loaded the `240`-cell atlas, `3` props, and one door. Kirk's final integrated
-  verdict on the tinted builder/game was exactly `looks really good` at
-  `http://127.0.0.1:3012/`.
+  verdict on the tinted builder/game was exactly `looks really good`.
 
 ## Task 11 finalization
 
@@ -274,10 +269,9 @@ or provider evidence and was not changed.
   `185570cd39bca46c1b4073b5dfc1ae406eeedac7`. Save/reopen YAML remained
   identical at `94` lines and `3,593` bytes, SHA-256
   `1b5effb21b3ccc5c26153714cff62d7a08041808a1782cd79d9999b3755fca25`.
-  Builder and game used `http://127.0.0.1:3012/`; `PutDungeon`,
-  `GetDungeon`, `CreateLobby`, `SetReady`, `StartEncounter`, `GetAtlas`, and
-  all recorded provider/runtime asset requests returned HTTP 200. Session was
-  `b7c9c625-7010-467e-94c9-8604975d33f2`.
+  `PutDungeon`, `GetDungeon`, `CreateLobby`, `SetReady`, `StartEncounter`,
+  `GetAtlas`, and all recorded provider/runtime asset requests returned HTTP
+  200.
 - The brightness root cause and A/B are retained above: the profile bypassed
   `CRYPT_FLOOR_TINT` on the raw `MeshBasicMaterial` branch; builder luma moved
   `106.8 → 70.3` and game luma `87.6 → 60.2` toward provider `~74.9`.
