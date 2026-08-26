@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Group } from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiceMotionPose } from './diceMotionSolver';
@@ -13,6 +13,7 @@ import { RollGroupDie3D, type RollGroupDie3DProps } from './RollGroupDie3D';
 const mocks = vi.hoisted(() => ({
   productionSnapshot: undefined as Record<string, unknown> | undefined,
   conceptSnapshot: undefined as Record<string, unknown> | undefined,
+  conceptSnapshotReads: [] as Array<Record<string, unknown> | undefined>,
   productionPreload: vi.fn().mockResolvedValue(undefined),
   conceptPreload: vi.fn().mockResolvedValue(undefined),
   meshCalls: [] as Array<Record<string, unknown>>,
@@ -29,13 +30,18 @@ vi.mock('./diceRuntimeProvider', () => ({
     mocks.productionPreload(presetId),
 }));
 vi.mock('./conceptDiceRuntimeProvider', () => ({
-  getConceptDiceRuntimePresetSnapshot: () => mocks.conceptSnapshot,
+  getConceptDiceRuntimePresetSnapshot: () =>
+    mocks.conceptSnapshotReads.shift() ?? mocks.conceptSnapshot,
   preloadConceptDiceRuntimePreset: (presetId: string) =>
     mocks.conceptPreload(presetId),
 }));
 vi.mock('./RuntimeDiceMesh', () => ({
   RuntimeDiceMesh: (props: Record<string, unknown>) => {
-    mocks.meshCalls.push(props);
+    const mounted = useRef(false);
+    if (!mounted.current) {
+      mounted.current = true;
+      mocks.meshCalls.push(props);
+    }
     const onReady = props.onReady as
       | ((input: { runtimeSourceId: number; runtimeCloneId: number }) => void)
       | undefined;
@@ -134,6 +140,7 @@ function props(
 beforeEach(() => {
   mocks.productionSnapshot = undefined;
   mocks.conceptSnapshot = undefined;
+  mocks.conceptSnapshotReads = [];
   mocks.productionPreload.mockClear();
   mocks.conceptPreload.mockClear();
   mocks.meshCalls = [];
@@ -216,6 +223,20 @@ describe('RollGroupDie3D', () => {
     render(<RollGroupDie3D {...props(die, 3)} onFailure={onFailure} />);
     expect(onFailure).toHaveBeenCalledTimes(1);
     expect(onFailure.mock.calls[0][1]).toMatch(/assurance|provisional/i);
+  });
+
+  it('replaces stale state with a fresh ready snapshot without calling preload', () => {
+    const preset = presetFor('d6');
+    mocks.conceptSnapshotReads = [
+      { status: 'loading', assurance: 'provisional-concept' },
+      readySnapshot(preset, 'provisional-concept'),
+    ];
+
+    render(<RollGroupDie3D {...props(dieFor('d6', preset.presetId, 6), 6)} />);
+
+    expect(mocks.conceptPreload).not.toHaveBeenCalled();
+    expect(mocks.meshCalls).toHaveLength(1);
+    expect(mocks.meshCalls[0].source).toMatchObject({ preset });
   });
 
   it('keeps production d20 assurance and ownership separate from provisional concept d6', async () => {

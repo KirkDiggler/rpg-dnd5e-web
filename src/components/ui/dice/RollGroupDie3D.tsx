@@ -102,6 +102,7 @@ export function RollGroupDie3D({
       if (subscribed) setSnapshot(readSnapshot());
     };
     const initial = readSnapshot();
+    setSnapshot(initial);
     if (initial.status === 'idle' || initial.status === 'loading') {
       const owner = production
         ? preloadDiceRuntimePreset(die.presetId)
