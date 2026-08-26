@@ -23,6 +23,7 @@ import { cubeToWorld } from '../hex-grid/hexMath';
 import { buildAtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import type { DoorGapPiece } from './atlasWallRuns';
+import type { DungeonShellProps } from './DungeonShell';
 
 vi.mock('@react-three/fiber', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@react-three/fiber')>();
@@ -33,6 +34,10 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
   return { ...actual, useLoader };
 });
 
+const shellProbe = vi.hoisted(() => ({
+  props: null as DungeonShellProps | null,
+}));
+
 const gltfMockState = vi.hoisted(() => ({
   failedUrls: new Set<string>(),
   pendingUrls: new Set<string>(),
@@ -42,6 +47,17 @@ const gltfMockState = vi.hoisted(() => ({
 afterEach(() => {
   gltfMockState.failedUrls.clear();
   gltfMockState.pendingUrls.clear();
+});
+
+vi.mock('./DungeonShell', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./DungeonShell')>();
+  return {
+    ...original,
+    DungeonShell: (props: DungeonShellProps) => {
+      shellProbe.props = props;
+      return <original.DungeonShell {...props} />;
+    },
+  };
 });
 
 vi.mock('@react-three/drei', () => {
@@ -209,6 +225,27 @@ describe('SessionScene', () => {
     expect(source).not.toMatch(/<AtlasWalls\b/);
     expect(source).toContain('doors={doors}');
     expect(source).toContain('onDoorClick={onDoorClick}');
+  });
+
+  it('renders game shell props instead of only proving source wiring', async () => {
+    const onDoorClick = vi.fn();
+    const gameDoors = new Map([['door-id', { state: 1 } as never]]);
+    await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Toolkit Sandbox Fighter"
+        classRefId={undefined}
+        myPosition={{ x: 0, y: 0, z: 0 }}
+        doors={gameDoors}
+        onDoorClick={onDoorClick}
+      />
+    );
+
+    expect(shellProbe.props?.scene).toEqual(scene());
+    expect(shellProbe.props?.doors).toBe(gameDoors);
+    expect(shellProbe.props?.onDoorClick).toBe(onDoorClick);
   });
 
   it('mounts the floor, walls, doors, and the local player without throwing', async () => {

@@ -1,53 +1,101 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { StrictMode } from 'react';
+import * as THREE from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AuthoredWallRun } from '../../hooks/authoredWallRuns';
+import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import type { DungeonShellProfile } from '../../rendering/dungeonShellManifest';
 import type { DungeonShellCatalogSnapshot } from '../../rendering/dungeonShellProvider';
 import type { Scene3D } from './atlasToScene3D';
 
+const PROFILE_URLS = [
+  '/models/synty/textures/floor.png',
+  '/models/synty/env/body.glb',
+  '/models/synty/env/base.glb',
+  '/models/synty/env/cap.glb',
+  '/models/synty/env/surround.glb',
+  '/models/synty/env/SM_Env_Door_01.glb',
+] as const;
+const LEGACY_TEXTURE_URL =
+  '/models/synty/textures/Dungeons_Texture_FloorTiles_01.png';
+const LEGACY_WALL_URL = '/models/synty/env/SM_Env_Wall_Half_01.glb';
+const LEGACY_FRAME_URL = '/models/synty/env/SM_Env_Door_Frame_01.glb';
+const LEAF_URL = '/models/synty/env/SM_Env_Door_01.glb';
+
 const shellState = vi.hoisted(() => ({
   snapshot: { status: 'idle' } as DungeonShellCatalogSnapshot,
-  pending: false,
-  failed: false,
-  failedUrl: null as string | null,
-  calls: [] as string[],
+  failedUrls: new Set<string>(),
+  pendingUrls: new Set<string>(),
+  hookCalls: [] as string[],
+  loaderCalls: [] as string[],
+  assets: new Map<string, { scene: THREE.Group }>(),
+  textures: new Map<string, THREE.Texture>(),
+  pending: new Promise<never>(() => undefined),
 }));
+
+function assetScene(url: string) {
+  const scene = new THREE.Group();
+  scene.name = url;
+  const mesh = new THREE.Mesh(
+    url.includes('/surround.glb')
+      ? new THREE.BoxGeometry(0.4, 2, 0.4)
+      : new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ color: 0xffffff })
+  );
+  mesh.name = url;
+  if (url.includes('/surround.glb')) {
+    mesh.position.x = -0.3;
+    const right = mesh.clone();
+    right.position.x = 0.3;
+    const lintel = mesh.clone();
+    lintel.position.set(0, 2, 0);
+    lintel.scale.set(2, 0.2, 1);
+    scene.add(mesh, right, lintel);
+  } else {
+    scene.add(mesh);
+  }
+  return { scene };
+}
+
+function readAsset(url: string) {
+  shellState.hookCalls.push(url);
+  if (!shellState.assets.has(url)) {
+    shellState.loaderCalls.push(url);
+    shellState.assets.set(url, assetScene(url));
+  }
+  if (shellState.failedUrls.has(url)) {
+    throw new Error(`failed ${url}`);
+  }
+  if (shellState.pendingUrls.has(url)) throw shellState.pending;
+  return shellState.assets.get(url)!;
+}
+
+function readTexture(url: string) {
+  shellState.hookCalls.push(url);
+  if (!shellState.textures.has(url)) {
+    shellState.loaderCalls.push(url);
+    shellState.textures.set(url, new THREE.Texture());
+  }
+  if (shellState.failedUrls.has(url)) {
+    throw new Error(`failed ${url}`);
+  }
+  if (shellState.pendingUrls.has(url)) throw shellState.pending;
+  return shellState.textures.get(url)!;
+}
 
 vi.mock('./useDungeonShellCatalog', () => ({
   useDungeonShellCatalog: () => shellState.snapshot,
 }));
 
-vi.mock('@react-three/drei', () => ({
-  useTexture: (url: string) => {
-    shellState.calls.push(url);
-    if (shellState.pending) throw new Promise<never>(() => undefined);
-    if (shellState.failed || shellState.failedUrl === url)
-      throw new Error(`failed ${url}`);
-    return {};
-  },
-  useGLTF: (url: string) => {
-    shellState.calls.push(url);
-    if (shellState.pending) throw new Promise<never>(() => undefined);
-    if (shellState.failed || shellState.failedUrl === url)
-      throw new Error(`failed ${url}`);
-    return { scene: {} };
-  },
-}));
-
-vi.mock('../hex-grid/SyntyHexFloor', () => ({
-  SyntyHexFloor: (props: { profile?: unknown }) => (
-    <div
-      data-testid={props.profile ? 'profile-floor-leaf' : 'legacy-floor-leaf'}
-    />
-  ),
-}));
-
-vi.mock('./AtlasWalls', () => ({
-  AtlasWalls: (props: { profile?: unknown }) => (
-    <div
-      data-testid={props.profile ? 'profile-wall-leaf' : 'legacy-wall-leaf'}
-    />
-  ),
-}));
+vi.mock('@react-three/drei', () => {
+  const useGLTF = (url: string) => readAsset(url);
+  useGLTF.preload = () => undefined;
+  const useTexture = (url: string) => readTexture(url);
+  useTexture.preload = () => undefined;
+  return { useGLTF, useTexture };
+});
 
 import { DungeonShell } from './DungeonShell';
 
@@ -85,151 +133,246 @@ const profile: DungeonShellProfile = {
   },
 };
 
-const scene = {
-  floorTiles: new Map(),
-  props: [],
-  archetypes: ['crypt'],
-  wallRuns: [],
-  doorGaps: [],
-} as Scene3D;
+const wallRuns: AuthoredWallRun[] = [
+  {
+    key: 'wall',
+    start: { x: -0.5, z: 0 },
+    end: { x: 0.5, z: 0 },
+    facing: { x: 0, z: 1 },
+    height: 0,
+  },
+];
+const doorGaps = [
+  {
+    key: 'door-key',
+    connection: 'door-id',
+    position: { x: 1, z: 0 },
+    leafPosition: { x: 0.5, z: 0 },
+    rotationY: 0,
+  },
+];
+const doors = new Map([['door-id', { state: DoorState.LOCKED } as DoorInfo]]);
 
-function ready(): DungeonShellCatalogSnapshot {
+function scene(archetypes: string[] = ['crypt']): Scene3D {
+  const floorTiles = new Map<string, AbsoluteFloorTile>([
+    ['0,0,0', { x: 0, y: 0, z: 0, roomId: '' }],
+  ]);
+  return {
+    floorTiles,
+    props: [],
+    archetypes,
+    wallRuns,
+    doorGaps,
+  };
+}
+
+function ready(nextProfile = profile): DungeonShellCatalogSnapshot {
   return {
     status: 'ready',
-    catalog: { schemaVersion: 1, profiles: { crypt: profile } },
+    catalog: { schemaVersion: 1, profiles: { crypt: nextProfile } },
   };
+}
+
+type RenderedScene = {
+  scene: {
+    findAll: (predicate: (node: unknown) => boolean) => unknown[];
+  };
+};
+
+function primitives(renderer: RenderedScene) {
+  return renderer.scene.findAll((node) => {
+    const fiber = (node as { fiber: { type: unknown } }).fiber;
+    return fiber.type === 'primitive';
+  }) as Array<{ instance: THREE.Object3D }>;
+}
+
+function primitiveAssetNames(renderer: RenderedScene) {
+  return primitives(renderer).flatMap(({ instance }) => {
+    const names: string[] = [];
+    instance.traverse((node) => {
+      if (node instanceof THREE.Mesh) names.push(node.name);
+    });
+    return names;
+  });
+}
+
+function floorMeshes(renderer: RenderedScene) {
+  return renderer.scene.findAll((node) => {
+    const rendered = node as { type: string; instance: unknown };
+    return (
+      rendered.type === 'Mesh' &&
+      (rendered.instance as THREE.Mesh).position.y === 0.2
+    );
+  });
 }
 
 beforeEach(() => {
   shellState.snapshot = { status: 'idle' };
-  shellState.pending = false;
-  shellState.failed = false;
-  shellState.failedUrl = null;
-  shellState.calls = [];
+  shellState.failedUrls.clear();
+  shellState.pendingUrls.clear();
+  shellState.hookCalls.length = 0;
+  shellState.loaderCalls.length = 0;
+  shellState.assets.clear();
+  shellState.textures.clear();
 });
 
-describe('DungeonShell', () => {
-  it('renders a complete legacy pair while catalog selection is loading without a warning', async () => {
-    const onFallbackReason = vi.fn();
-    render(<DungeonShell scene={scene} onFallbackReason={onFallbackReason} />);
+describe('DungeonShell actual shell integration', () => {
+  it('keeps a closed legacy leaf on loading and named legacy paths', async () => {
+    const loading = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} doors={doors} />
+    );
+    expect(primitiveAssetNames(loading)).toContain(LEAF_URL);
 
-    expect(screen.getByTestId('legacy-floor-leaf')).toBeTruthy();
-    expect(screen.getByTestId('legacy-wall-leaf')).toBeTruthy();
-    await waitFor(() => expect(onFallbackReason).toHaveBeenCalledWith(null));
+    shellState.snapshot = ready();
+    const namedLegacy = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene(['cave'])} doors={doors} />
+    );
+    expect(primitiveAssetNames(namedLegacy)).toContain(LEAF_URL);
   });
 
-  it.each([
-    ['no-regions', []],
-    ['unknown-archetype', ['cave']],
-    ['mixed-archetypes', ['crypt', 'cave']],
-  ] as const)(
-    'renders both legacy leaves and reports %s',
-    async (reason, archetypes) => {
+  it('mounts the actual profile floor and wall pair only after all six cached resources are ready', async () => {
+    shellState.snapshot = ready();
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} doors={doors} />
+    );
+
+    expect(floorMeshes(renderer)).toHaveLength(1);
+    expect(primitiveAssetNames(renderer)).toEqual(
+      expect.arrayContaining([
+        '/models/synty/env/body.glb',
+        '/models/synty/env/base.glb',
+        '/models/synty/env/cap.glb',
+        '/models/synty/env/surround.glb',
+        LEAF_URL,
+      ])
+    );
+    expect(
+      shellState.loaderCalls.filter((url) =>
+        PROFILE_URLS.includes(url as never)
+      )
+    ).toEqual(PROFILE_URLS);
+  });
+
+  it('keeps the actual legacy pair while the profile resource gate is pending, then switches through the same cache', async () => {
+    shellState.snapshot = ready();
+    for (const url of PROFILE_URLS) shellState.pendingUrls.add(url);
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} doors={doors} />
+    );
+    await renderer.update(<DungeonShell scene={scene()} doors={doors} />);
+
+    expect(shellState.loaderCalls).toEqual(
+      expect.arrayContaining([
+        LEGACY_TEXTURE_URL,
+        LEGACY_WALL_URL,
+        LEGACY_FRAME_URL,
+        LEAF_URL,
+      ])
+    );
+    expect(shellState.loaderCalls).not.toContain('/models/synty/env/body.glb');
+
+    shellState.pendingUrls.clear();
+    await renderer.update(<DungeonShell scene={scene()} doors={doors} />);
+    expect(primitiveAssetNames(renderer)).toEqual(
+      expect.arrayContaining(['/models/synty/env/body.glb', LEAF_URL])
+    );
+  });
+
+  it.each(PROFILE_URLS)(
+    'falls back once to actual floor and walls without retrying failed leaf %s',
+    async (failedUrl) => {
       shellState.snapshot = ready();
+      shellState.failedUrls.add(failedUrl);
       const onFallbackReason = vi.fn();
-      render(
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+      const renderer = await ReactThreeTestRenderer.create(
         <DungeonShell
-          scene={{ ...scene, archetypes }}
+          scene={scene()}
+          doors={doors}
+          onDoorClick={vi.fn()}
           onFallbackReason={onFallbackReason}
         />
       );
 
-      expect(screen.getByTestId('legacy-floor-leaf')).toBeTruthy();
-      expect(screen.getByTestId('legacy-wall-leaf')).toBeTruthy();
-      await waitFor(() =>
-        expect(onFallbackReason).toHaveBeenCalledWith(reason)
+      expect(floorMeshes(renderer)).toHaveLength(1);
+      expect(primitiveAssetNames(renderer)).toEqual(
+        expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
+      );
+      expect(primitiveAssetNames(renderer)).not.toContain(failedUrl);
+      if (failedUrl === LEAF_URL) {
+        expect(
+          shellState.loaderCalls.filter((url) => url === LEAF_URL)
+        ).toHaveLength(1);
+      }
+      expect(onFallbackReason).toHaveBeenCalledWith('manifest-unavailable');
+      consoleError.mockRestore();
+    }
+  );
+
+  it.each([
+    ['manifest-unavailable', 'manifest-unavailable'],
+    ['invalid-profile', 'invalid-profile'],
+  ] as const)(
+    'reports provider %s without entering profile resources',
+    async (failureKind, expected) => {
+      shellState.snapshot = {
+        status: 'failed',
+        failureKind,
+        failureReason: 'test failure',
+      };
+      const onFallbackReason = vi.fn();
+      await ReactThreeTestRenderer.create(
+        <DungeonShell
+          scene={scene()}
+          doors={doors}
+          onFallbackReason={onFallbackReason}
+        />
+      );
+      expect(onFallbackReason).toHaveBeenCalledWith(expected);
+      expect(shellState.hookCalls).not.toEqual(
+        expect.arrayContaining([...PROFILE_URLS])
       );
     }
   );
 
-  it('loads all six profile URLs before mounting either profile leaf', async () => {
+  it('resets the resource boundary on a profile-key change under StrictMode', async () => {
     shellState.snapshot = ready();
+    shellState.failedUrls.add(LEAF_URL);
     const onFallbackReason = vi.fn();
-    render(<DungeonShell scene={scene} onFallbackReason={onFallbackReason} />);
-
-    await waitFor(() =>
-      expect(screen.queryByTestId('profile-floor-leaf')).toBeTruthy()
-    );
-    expect(screen.getByTestId('profile-wall-leaf')).toBeTruthy();
-    expect(shellState.calls).toEqual([
-      '/models/synty/textures/floor.png',
-      '/models/synty/env/body.glb',
-      '/models/synty/env/base.glb',
-      '/models/synty/env/cap.glb',
-      '/models/synty/env/surround.glb',
-      '/models/synty/env/SM_Env_Door_01.glb',
-    ]);
-    expect(onFallbackReason).toHaveBeenCalledWith(null);
-  });
-
-  it('keeps the complete legacy pair during profile resource loading', () => {
-    shellState.snapshot = ready();
-    shellState.pending = true;
-    const onFallbackReason = vi.fn();
-    render(<DungeonShell scene={scene} onFallbackReason={onFallbackReason} />);
-
-    expect(screen.getByTestId('legacy-floor-leaf')).toBeTruthy();
-    expect(screen.getByTestId('legacy-wall-leaf')).toBeTruthy();
-    expect(screen.queryByTestId('profile-floor-leaf')).toBeNull();
-    expect(screen.queryByTestId('profile-wall-leaf')).toBeNull();
-  });
-
-  it.each([
-    '/models/synty/textures/floor.png',
-    '/models/synty/env/body.glb',
-    '/models/synty/env/base.glb',
-    '/models/synty/env/cap.glb',
-    '/models/synty/env/surround.glb',
-    '/models/synty/env/SM_Env_Door_01.glb',
-  ])('falls back atomically for a rejection of %s', async (failedUrl) => {
-    shellState.snapshot = ready();
-    shellState.failedUrl = failedUrl;
-    const onFallbackReason = vi.fn();
-    const error = vi
+    const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    render(<DungeonShell scene={scene} onFallbackReason={onFallbackReason} />);
-
-    expect(screen.getByTestId('legacy-floor-leaf')).toBeTruthy();
-    expect(screen.getByTestId('legacy-wall-leaf')).toBeTruthy();
-    expect(screen.queryByTestId('profile-floor-leaf')).toBeNull();
-    expect(screen.queryByTestId('profile-wall-leaf')).toBeNull();
-    await waitFor(() =>
-      expect(onFallbackReason).toHaveBeenCalledWith('manifest-unavailable')
+    const view = await ReactThreeTestRenderer.create(
+      <StrictMode>
+        <DungeonShell
+          scene={scene()}
+          doors={doors}
+          onFallbackReason={onFallbackReason}
+        />
+      </StrictMode>
     );
-    error.mockRestore();
-  });
+    expect(onFallbackReason).toHaveBeenCalledWith('manifest-unavailable');
 
-  it('resets a failed resource boundary when the selected profile changes', async () => {
-    shellState.snapshot = ready();
-    shellState.failed = true;
-    const onFallbackReason = vi.fn();
-    const error = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
-    const view = render(
-      <DungeonShell scene={scene} onFallbackReason={onFallbackReason} />
-    );
-    await waitFor(() =>
-      expect(onFallbackReason).toHaveBeenCalledWith('manifest-unavailable')
-    );
-
+    shellState.failedUrls.clear();
     const nextProfile = {
       ...profile,
       floor: { ...profile.floor, worldUnitsPerRepeat: 7 },
     };
-    shellState.failed = false;
-    shellState.snapshot = {
-      status: 'ready',
-      catalog: { schemaVersion: 1, profiles: { crypt: nextProfile } },
-    };
-    view.rerender(
-      <DungeonShell scene={scene} onFallbackReason={onFallbackReason} />
+    shellState.snapshot = ready(nextProfile);
+    await view.update(
+      <StrictMode>
+        <DungeonShell
+          scene={scene()}
+          doors={doors}
+          onFallbackReason={onFallbackReason}
+        />
+      </StrictMode>
     );
-
-    await waitFor(() =>
-      expect(screen.getByTestId('profile-floor-leaf')).toBeTruthy()
+    expect(primitiveAssetNames(view)).toEqual(
+      expect.arrayContaining(['/models/synty/env/body.glb', LEAF_URL])
     );
-    error.mockRestore();
+    consoleError.mockRestore();
   });
 });

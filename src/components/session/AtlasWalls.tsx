@@ -134,6 +134,10 @@ export interface AtlasWallsProps {
   /** Optional measured shell profile. Omitted preserves the legacy assets
    * and transforms exactly. */
   profile?: DungeonShellWallProfile;
+  /** Resource-error fallback only: keep frames, gaps, state, and click
+   * handling while omitting leaf loads that may be the rejected resource.
+   * Defaults false so loading and ordinary legacy paths stay closed. */
+  suppressDoorLeaves?: boolean;
 }
 
 export function AtlasWalls({
@@ -143,6 +147,7 @@ export function AtlasWalls({
   onDoorClick,
   wallHeight = WALL_HEIGHT,
   profile,
+  suppressDoorLeaves = false,
 }: AtlasWallsProps) {
   return (
     <>
@@ -183,7 +188,7 @@ export function AtlasWalls({
                   rotationY={door.rotationY}
                   scale={doorFrameScale(wallHeight)}
                 />
-                {leafShut && (
+                {leafShut && !suppressDoorLeaves && (
                   <GlbInstance
                     file={DOOR_LEAF_FILE}
                     position={door.leafPosition}

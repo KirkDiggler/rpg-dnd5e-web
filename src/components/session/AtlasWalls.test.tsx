@@ -721,6 +721,27 @@ describe('AtlasWalls profile assembly', () => {
     expect(meshNodes(renderer)).toHaveLength(3); // surround remains; leaf is omitted
   });
 
+  it('suppresses only legacy door leaves when the shell resource boundary failed', async () => {
+    const onDoorClick = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <AtlasWalls
+        wallRuns={wallRuns}
+        doorGaps={doorGaps}
+        doors={new Map([['door-id', { state: DoorState.LOCKED } as never]])}
+        onDoorClick={onDoorClick}
+        suppressDoorLeaves
+      />
+    );
+
+    expect(meshNodes(renderer)).toHaveLength(7); // two wall tiles + frame
+    expect(loadedUrls).not.toContain('/models/synty/env/SM_Env_Door_01.glb');
+    const clickable = renderer.scene.find(
+      (node) => typeof node.props.onClick === 'function'
+    );
+    await renderer.fireEvent(clickable, 'click');
+    expect(onDoorClick).toHaveBeenCalledWith('door-id');
+  });
+
   it('preserves exact legacy frame/leaf files, transforms, positions, and state behavior without profile transforms', async () => {
     const locked = await ReactThreeTestRenderer.create(
       <AtlasWalls

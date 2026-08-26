@@ -44,7 +44,11 @@ function LegacyShell({
   onDoorClick,
   reason,
   onFallbackReason,
-}: DungeonShellProps & { reason: ShellFallbackReason | null }) {
+  suppressDoorLeaves,
+}: DungeonShellProps & {
+  reason: ShellFallbackReason | null;
+  suppressDoorLeaves?: boolean;
+}) {
   return (
     <>
       <FallbackReporter reason={reason} onFallbackReason={onFallbackReason} />
@@ -54,6 +58,7 @@ function LegacyShell({
         doorGaps={scene.doorGaps}
         doors={doors}
         onDoorClick={onDoorClick}
+        suppressDoorLeaves={suppressDoorLeaves}
       />
     </>
   );
@@ -137,6 +142,7 @@ export function DungeonShell({
       onDoorClick={onDoorClick}
       reason="manifest-unavailable"
       onFallbackReason={onFallbackReason}
+      suppressDoorLeaves
     />
   );
 
