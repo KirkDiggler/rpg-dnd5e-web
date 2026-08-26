@@ -29,9 +29,11 @@
 - Longsword candidate: `16 MB > 4.5 MB production budget`.
 - Shortbow candidate: `64 MB > 4.5 MB production budget`.
 
+Kirk’s verdict applies to the live Concepts walk; the final tracked PNGs were subsequently captured and opened/read by the implementation agent, so the index distinguishes the human verdict from the captured and implementation-reviewed state.
+
 ## Screenshot index
 
-| File | Kirk viewed | Attachment status | Verdict |
+| File | Captured and implementation-reviewed state | Attachment status | Verdict |
 | --- | --- | --- | --- |
 | `01-unarmed-tactical.png` | unarmed, idle, tactical, facing E | `unarmed` | shared fighter baseline is honest; no weapon rendered |
 | `02-longsword-hand-idle.png` | longsword, idle, hand close-up, facing E | `attached` | sword socket works, but candidate is oversized and rejected |
