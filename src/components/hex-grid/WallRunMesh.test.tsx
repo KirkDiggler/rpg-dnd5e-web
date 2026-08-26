@@ -336,9 +336,78 @@ describe('WallRunMesh R3F scene', () => {
         cutawayGroups.find((group) => group.children[0]!.name === 'cap')!
       ).max.y
     ).toBeCloseTo(0.8, 6);
+
+    const farCutaway = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[
+          {
+            regionId: 'far',
+            side: 'right',
+            start: { x: 0, z: 0 },
+            end: { x: 1, z: 0 },
+            facing: { x: -1, z: -1 },
+          },
+        ]}
+        connectorRuns={[]}
+        wallHeight={2.4}
+        wallCutaway
+        profile={SHELL_PROFILE}
+      />
+    );
+    const farCutawayGroups = primitiveGroups(farCutaway);
+    expect(
+      worldBox(
+        farCutawayGroups.find((group) => group.children[0]!.name === 'body')!
+      ).max.y
+    ).toBeCloseTo(2.6, 6);
+    expect(
+      worldBox(
+        farCutawayGroups.find((group) => group.children[0]!.name === 'cap')!
+      ).max.y
+    ).toBeCloseTo(2.9, 6);
   });
 
-  it('does not mutate T-junction or multiple-run inputs while rendering profile pieces', async () => {
+  it('does not mutate envelope, connector, or fallback inputs while rendering profile pieces', async () => {
+    const envelopeRuns: EnvelopeRun[] = [
+      {
+        regionId: 'envelope',
+        side: 'left',
+        start: { x: -2, z: 0 },
+        end: { x: -1, z: 0 },
+        facing: { x: 0, z: 1 },
+      },
+    ];
+    const connectorRuns: ConnectorRun[] = [
+      {
+        doorId: 'connector',
+        regionAId: 'a',
+        regionBId: 'b',
+        segments: [{ start: { x: 0, z: 0 }, end: { x: 1, z: 0 } }],
+        coveredRows: { minRow: 0, maxRow: 1 },
+        facing: { x: 0, z: 1 },
+      },
+    ];
+    const fallbackSegments: WallRunSegment[] = [
+      { start: { x: 2, z: 0 }, end: { x: 3, z: 0 } },
+    ];
+    const envelopeBefore = JSON.parse(JSON.stringify(envelopeRuns));
+    const connectorBefore = JSON.parse(JSON.stringify(connectorRuns));
+    const fallbackBefore = JSON.parse(JSON.stringify(fallbackSegments));
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={envelopeRuns}
+        connectorRuns={connectorRuns}
+        fallbackSegments={fallbackSegments}
+        profile={SHELL_PROFILE}
+      />
+    );
+    expect(primitiveGroups(renderer).length).toBeGreaterThan(0);
+    expect(envelopeRuns).toEqual(envelopeBefore);
+    expect(connectorRuns).toEqual(connectorBefore);
+    expect(fallbackSegments).toEqual(fallbackBefore);
+  });
+
+  it('does not mutate authored T-junction or multiple-run inputs while rendering profile pieces', async () => {
     const authoredRuns: AuthoredWallRun[] = [
       {
         key: 'trunk',
