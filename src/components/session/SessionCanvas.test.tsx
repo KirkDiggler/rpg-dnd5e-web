@@ -13,6 +13,7 @@ import {
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
@@ -198,6 +199,18 @@ function expectOneVisiblePlaceholder(
 }
 
 describe('SessionScene', () => {
+  it('mounts one shared shell and keeps doors in the game scene contract', () => {
+    const source = readFileSync(
+      'src/components/session/SessionCanvas.tsx',
+      'utf8'
+    );
+    expect(source.match(/<DungeonShell\b/g)).toHaveLength(1);
+    expect(source).not.toMatch(/<SyntyHexFloor\b/);
+    expect(source).not.toMatch(/<AtlasWalls\b/);
+    expect(source).toContain('doors={doors}');
+    expect(source).toContain('onDoorClick={onDoorClick}');
+  });
+
   it('mounts the floor, walls, doors, and the local player without throwing', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <SessionScene

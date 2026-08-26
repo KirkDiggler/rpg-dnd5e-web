@@ -26,15 +26,17 @@ import {
   type CubeCoord,
 } from '@/components/hex-grid/hexMath';
 import { PathPreview } from '@/components/hex-grid/PathPreview';
-import { SyntyHexFloor } from '@/components/hex-grid/SyntyHexFloor';
 import { AtlasPropModel } from '@/components/session/AtlasPropModel';
-import { AtlasWalls } from '@/components/session/AtlasWalls';
 import { DungeonSceneLights } from '@/components/session/DungeonSceneLights';
+import {
+  DungeonShell,
+  type ShellFallbackReason,
+} from '@/components/session/DungeonShell';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   isMonsterRef,
   MONSTER_REF_PREFIX,
@@ -82,6 +84,12 @@ export function DungeonPreview3D({
     }
     return [x / cells.length, 0, z / cells.length] as const;
   }, [doc.regions]);
+  const [shellFallbackReason, setShellFallbackReason] =
+    useState<ShellFallbackReason | null>(null);
+
+  useEffect(() => {
+    if (!built || !built.ok) setShellFallbackReason(null);
+  }, [built]);
 
   if (!built) {
     return (
@@ -122,6 +130,26 @@ export function DungeonPreview3D({
           {staleNotice}
         </div>
       )}
+      {shellFallbackReason && (
+        <div
+          data-testid="preview-shell-fallback"
+          style={{
+            position: 'absolute',
+            top: staleNotice ? 36 : 8,
+            left: 8,
+            right: 8,
+            zIndex: 1,
+            padding: '4px 8px',
+            borderRadius: 4,
+            background: '#7c2d12cc',
+            color: '#fed7aa',
+            fontSize: 12,
+            pointerEvents: 'none',
+          }}
+        >
+          Legacy shell: {shellFallbackReason}
+        </div>
+      )}
       <Canvas
         orthographic
         frameloop="demand"
@@ -139,8 +167,7 @@ export function DungeonPreview3D({
         data-testid="preview-canvas"
       >
         <DungeonSceneLights />
-        <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={HEX_SIZE} />
-        <AtlasWalls wallRuns={scene.wallRuns} doorGaps={scene.doorGaps} />
+        <DungeonShell scene={scene} onFallbackReason={setShellFallbackReason} />
         {scene.props.map((prop, index) => (
           <AtlasPropModel
             key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}

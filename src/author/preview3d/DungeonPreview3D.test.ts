@@ -11,6 +11,7 @@ import {
   buildScene3D,
   resolveSceneLayout,
 } from '@/components/session/atlasToScene3D';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { cryptPropShowcaseDoc } from '../fixtures/cryptPropShowcase';
 import { fixtureAtlasOf } from '../fixtures/fixtureAtlas';
@@ -37,6 +38,16 @@ function tombWithFacedProp() {
 
 describe('previewScene', () => {
   const atlas = fixtureAtlasOf(referenceTombDoc());
+
+  it('mounts the shared shell rather than duplicating floor or wall leaves', () => {
+    const source = readFileSync(
+      'src/author/preview3d/DungeonPreview3D.tsx',
+      'utf8'
+    );
+    expect(source.match(/<DungeonShell\b/g)).toHaveLength(1);
+    expect(source).not.toMatch(/<SyntyHexFloor\b/);
+    expect(source).not.toMatch(/<AtlasWalls\b/);
+  });
 
   it('produces the same tiles, runs and door gaps the session route builds', () => {
     const preview = previewScene(atlas);
