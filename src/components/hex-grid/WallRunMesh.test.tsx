@@ -15,14 +15,45 @@ import { describe, expect, it, vi } from 'vitest';
 // needs a fake scene rather than trying to fetch an actual .glb file in
 // the test environment (jsdom can't resolve a relative URL at all).
 vi.mock('@react-three/drei', () => {
-  const scene = new THREE.Group();
-  scene.add(
-    new THREE.Mesh(
-      new THREE.BoxGeometry(),
+  const box = (
+    min: [number, number, number],
+    max: [number, number, number],
+    name: string
+  ) => {
+    const geometry = new THREE.BoxGeometry(
+      max[0] - min[0],
+      max[1] - min[1],
+      max[2] - min[2]
+    );
+    geometry.translate(
+      (min[0] + max[0]) / 2,
+      (min[1] + max[1]) / 2,
+      (min[2] + max[2]) / 2
+    );
+    const mesh = new THREE.Mesh(
+      geometry,
       new THREE.MeshStandardMaterial({ color: 0xffffff })
-    )
-  );
-  return { useGLTF: () => ({ scene }) };
+    );
+    mesh.name = name;
+    return mesh;
+  };
+  const sceneFor = (url: string) => {
+    const scene = new THREE.Group();
+    if (url.includes('Crypt_Wall_Body_01')) {
+      scene.add(box([-1, 0, -0.2], [3, 4, 0.2], 'body'));
+    } else if (url.includes('Crypt_Wall_Base_01')) {
+      scene.add(box([0, 0, -0.3], [2, 0.4, 0.3], 'base'));
+    } else if (url.includes('Crypt_Wall_Cap_01')) {
+      scene.add(box([0.25, 0, -0.2], [2.25, 0.4, 0.2], 'cap'));
+    } else {
+      scene.add(box([-0.5, 0, -0.5], [0.5, 1, 0.5], 'legacy'));
+    }
+    scene.traverse((node) => {
+      if (node instanceof THREE.Mesh) node.userData.file = url;
+    });
+    return scene;
+  };
+  return { useGLTF: (url: string) => ({ scene: sceneFor(url) }) };
 });
 
 import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
@@ -35,22 +66,22 @@ const SHELL_PROFILE: DungeonShellWallProfile = {
     localSpanAxis: '+X',
     localFaceAxis: 'Z',
     twoSided: true,
-    bounds: { min: [-2, 0, -0.2], max: [2, 4, 0.2] },
+    bounds: { min: [-1, 0, -0.2], max: [3, 4, 0.2] },
   },
   base: {
     file: 'env/Crypt_Wall_Base_01.glb',
     sha256: 'a'.repeat(64),
-    bounds: { min: [-1.8, 0, -0.3], max: [1.8, 0.3, 0.3] },
+    bounds: { min: [0, 0, -0.3], max: [2, 0.4, 0.3] },
   },
   cap: {
     file: 'env/Crypt_Wall_Cap_01.glb',
     sha256: 'a'.repeat(64),
-    bounds: { min: [-1.9, 0, -0.2], max: [1.9, 0.4, 0.2] },
+    bounds: { min: [0.25, 0, -0.2], max: [2.25, 0.4, 0.2] },
   },
   doorSurround: {
     file: 'env/Crypt_Wall_Door_Surround_01.glb',
     sha256: 'a'.repeat(64),
-    bounds: { min: [-1, 0, -0.3], max: [1, 2.5, 0.3] },
+    bounds: { min: [-2, 0, -0.3], max: [2, 2.5, 0.3] },
   },
 };
 
@@ -67,6 +98,34 @@ function countMeshes(renderer: {
     const n = node as { type?: string; instance?: unknown };
     return n.type === 'Mesh' || n.instance instanceof THREE.Mesh;
   }).length;
+}
+
+function primitiveGroups(renderer: {
+  scene: { findAll: (predicate: (node: unknown) => boolean) => unknown[] };
+}): THREE.Group[] {
+  return renderer.scene
+    .findAll((node) => {
+      const instance = (node as { instance?: unknown }).instance;
+      return (
+        instance instanceof THREE.Group &&
+        instance.children.some((child) => child instanceof THREE.Mesh)
+      );
+    })
+    .map((node) => (node as { instance: THREE.Group }).instance);
+}
+
+function worldBox(group: THREE.Group): THREE.Box3 {
+  group.updateMatrixWorld(true);
+  return new THREE.Box3().setFromObject(group);
+}
+
+function expectCloseVector(
+  actual: THREE.Vector3,
+  expected: [number, number, number]
+) {
+  expect(actual.x).toBeCloseTo(expected[0], 6);
+  expect(actual.y).toBeCloseTo(expected[1], 6);
+  expect(actual.z).toBeCloseTo(expected[2], 6);
 }
 
 describe('WallRunMesh R3F scene', () => {
@@ -97,6 +156,223 @@ describe('WallRunMesh R3F scene', () => {
         return n.instance instanceof THREE.Mesh;
       })
     ).toHaveLength(6);
+  });
+
+  it('uses exact profile files, baked X/Y/Z dimensions, pivot positions, both facings, and residual piece widths', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[]}
+        connectorRuns={[]}
+        authoredRuns={[
+          {
+            key: 'forward',
+            start: { x: 0, z: 0 },
+            end: { x: 2.5, z: 0 },
+            facing: { x: 0, z: 1 },
+            height: 0,
+          },
+          {
+            key: 'reverse-facing',
+            start: { x: 0, z: 2 },
+            end: { x: 2.5, z: 2 },
+            facing: { x: 0, z: -1 },
+            height: 0,
+          },
+        ]}
+        profile={SHELL_PROFILE}
+      />
+    );
+    const groups = primitiveGroups(renderer);
+    expect(groups).toHaveLength(18);
+    expect(
+      [
+        ...new Set(
+          groups.map((group) => (group.children[0] as THREE.Mesh).userData.file)
+        ),
+      ].sort()
+    ).toEqual([
+      '/models/synty/env/Crypt_Wall_Base_01.glb',
+      '/models/synty/env/Crypt_Wall_Body_01.glb',
+      '/models/synty/env/Crypt_Wall_Cap_01.glb',
+    ]);
+    expect(groups.map((group) => group.children[0]!.name)).toEqual(
+      Array(6).fill(['body', 'base', 'cap']).flat()
+    );
+
+    const byRole = (role: string) =>
+      groups
+        .filter((group) => group.children[0]!.name === role)
+        .sort(
+          (a, b) => a.position.z - b.position.z || a.position.x - b.position.x
+        );
+    const expectedXs = {
+      body: [
+        [0.16833333333333333, 1.0016666666666667, 1.835],
+        [0.665, 1.4983333333333333, 2.331666666666667],
+      ],
+      base: [
+        [-0.08, 0.7533333333333333, 1.5866666666666667],
+        [0.9133333333, 1.7466666667, 2.58],
+      ],
+      cap: [
+        [-0.20416666666666666, 0.6291666666666667, 1.4625],
+        [1.0375, 1.8708333333333333, 2.704166666666667],
+      ],
+    } as const;
+    for (const role of ['body', 'base', 'cap'] as const) {
+      const roleGroups = byRole(role);
+      for (let row = 0; row < 2; row += 1) {
+        const rowGroups = roleGroups.filter(
+          (group) => Math.abs(group.position.z - (row === 0 ? 0 : 2)) < 1e-8
+        );
+        expect(rowGroups).toHaveLength(3);
+        for (let i = 0; i < 3; i += 1) {
+          const group = rowGroups[i]!;
+          expect(group.position.x).toBeCloseTo(expectedXs[role][row][i], 8);
+          expect(group.position.y).toBeCloseTo(role === 'cap' ? 2.6 : 0.2, 8);
+          expect(group.rotation.y).toBeCloseTo(row === 0 ? 0 : Math.PI, 8);
+          const box = worldBox(group);
+          const slotMin = i * (5 / 6) - 0.08;
+          const slotMax = (i + 1) * (5 / 6) + 0.08;
+          const yMax = role === 'body' ? 2.6 : role === 'cap' ? 2.9 : 0.5;
+          const zHalf = role === 'base' ? 0.225 : 0.15;
+          expectCloseVector(box.min, [
+            slotMin,
+            role === 'cap' ? 2.6 : 0.2,
+            (row === 0 ? 0 : 2) - zHalf,
+          ]);
+          expectCloseVector(box.max, [
+            slotMax,
+            yMax,
+            (row === 0 ? 0 : 2) + zHalf,
+          ]);
+        }
+      }
+    }
+  });
+
+  it('keeps the actual run end overlap at 0.08 once, including a residual-width run', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[]}
+        connectorRuns={[]}
+        authoredRuns={[
+          {
+            key: 'residual',
+            start: { x: 0, z: 0 },
+            end: { x: 1.5, z: 0 },
+            facing: { x: 0, z: 1 },
+            height: 0,
+          },
+        ]}
+        profile={SHELL_PROFILE}
+      />
+    );
+    const bodies = primitiveGroups(renderer)
+      .filter((group) => group.children[0]!.name === 'body')
+      .sort((a, b) => a.position.x - b.position.x);
+    expect(bodies).toHaveLength(2);
+    const boxes = bodies.map(worldBox);
+    expect(boxes[0]!.max.x - boxes[0]!.min.x).toBeCloseTo(0.91, 6);
+    expect(boxes[1]!.max.x - boxes[1]!.min.x).toBeCloseTo(0.91, 6);
+    expect(boxes[0]!.max.x - boxes[1]!.min.x).toBeCloseTo(0.16, 6);
+    expect(boxes[1]!.max.x - 1.5).toBeCloseTo(0.08, 6);
+  });
+
+  it('uses authored 2x and cutaway effective heights while keeping the cap visible top above the body', async () => {
+    const authored = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[]}
+        connectorRuns={[]}
+        authoredRuns={[
+          {
+            key: 'double',
+            start: { x: 0, z: 0 },
+            end: { x: 1, z: 0 },
+            facing: { x: 0, z: 1 },
+            height: 2,
+          },
+        ]}
+        wallHeight={2.4}
+        profile={SHELL_PROFILE}
+      />
+    );
+    const authoredGroups = primitiveGroups(authored);
+    const authoredBody = authoredGroups.find(
+      (group) => group.children[0]!.name === 'body'
+    )!;
+    const authoredCap = authoredGroups.find(
+      (group) => group.children[0]!.name === 'cap'
+    )!;
+    expectCloseVector(worldBox(authoredBody).max, [1.08, 5, 0.15]);
+    expectCloseVector(worldBox(authoredCap).min, [-0.08, 5, -0.15]);
+    expect(worldBox(authoredCap).max.y).toBeCloseTo(5.3, 6);
+
+    const cutaway = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[
+          {
+            regionId: 'near',
+            side: 'left',
+            start: { x: 0, z: 0 },
+            end: { x: 1, z: 0 },
+            facing: { x: 1, z: 1 },
+          },
+        ]}
+        connectorRuns={[]}
+        wallHeight={2.4}
+        wallCutaway
+        profile={SHELL_PROFILE}
+      />
+    );
+    const cutawayGroups = primitiveGroups(cutaway);
+    expect(
+      worldBox(
+        cutawayGroups.find((group) => group.children[0]!.name === 'body')!
+      ).max.y
+    ).toBeCloseTo(0.5, 6);
+    expect(
+      worldBox(
+        cutawayGroups.find((group) => group.children[0]!.name === 'cap')!
+      ).max.y
+    ).toBeCloseTo(0.8, 6);
+  });
+
+  it('does not mutate T-junction or multiple-run inputs while rendering profile pieces', async () => {
+    const authoredRuns: AuthoredWallRun[] = [
+      {
+        key: 'trunk',
+        start: { x: 0, z: 0 },
+        end: { x: 2, z: 0 },
+        facing: { x: 0, z: 1 },
+        height: 0,
+      },
+      {
+        key: 'arm',
+        start: { x: 1, z: 0 },
+        end: { x: 1, z: 1 },
+        facing: { x: 1, z: 0 },
+        height: 0,
+      },
+      {
+        key: 'second',
+        start: { x: 3, z: 0 },
+        end: { x: 4.25, z: 0 },
+        facing: { x: 0, z: 1 },
+        height: 0,
+      },
+    ];
+    const before = JSON.parse(JSON.stringify(authoredRuns));
+    const renderer = await ReactThreeTestRenderer.create(
+      <WallRunMesh
+        envelopeRuns={[]}
+        connectorRuns={[]}
+        authoredRuns={authoredRuns}
+        profile={SHELL_PROFILE}
+      />
+    );
+    expect(primitiveGroups(renderer)).toHaveLength(12);
+    expect(authoredRuns).toEqual(before);
   });
 
   it('tiles real wall pieces along each envelope run and connector segment, plus one skirt box per run/segment', async () => {

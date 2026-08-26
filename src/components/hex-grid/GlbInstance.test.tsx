@@ -169,37 +169,10 @@ describe('GlbInstance — non-uniform scale baking (W3/W4 GlbInstance fix)', () 
     expect(meshA.geometry).toBe(meshB.geometry);
   });
 
-  it('bakes nested mesh transforms into each geometry while preserving spacing, names, materials, normals, and one shared floor anchor', async () => {
+  it('bakes a nested rotated/scaled two-mesh fixture to independently derived bounds, spacing, normals, and one floor anchor', async () => {
     const source = (
       useGLTF as unknown as (url: string) => { scene: THREE.Group }
     )('/models/synty/env/nested-transform.glb').scene;
-    source.updateMatrixWorld(true);
-    const relativeRoot = source.matrixWorld.clone().invert();
-    const rootScale = new THREE.Matrix4().makeScale(2, 3, 4);
-    const expected: Array<{
-      name: string;
-      box: THREE.Box3;
-      normal: THREE.Vector3;
-    }> = [];
-    source.traverse((child) => {
-      if (!(child instanceof THREE.Mesh)) return;
-      const relative = relativeRoot.clone().multiply(child.matrixWorld);
-      const geometry = child.geometry
-        .clone()
-        .applyMatrix4(rootScale.clone().multiply(relative));
-      geometry.computeBoundingBox();
-      expected.push({
-        name: child.name,
-        box: geometry.boundingBox!.clone(),
-        normal: new THREE.Vector3(
-          geometry.getAttribute('normal').getX(0),
-          geometry.getAttribute('normal').getY(0),
-          geometry.getAttribute('normal').getZ(0)
-        ),
-      });
-      geometry.dispose();
-    });
-    const expectedMinY = Math.min(...expected.map(({ box }) => box.min.y));
 
     const renderer = await ReactThreeTestRenderer.create(
       <GlbInstance
@@ -227,33 +200,56 @@ describe('GlbInstance — non-uniform scale baking (W3/W4 GlbInstance fix)', () 
       })
     ).toEqual(['ff0000', '00ff00']);
     expect(source.position.toArray()).toEqual([20, 30, 40]);
-    expect(meshes[0]!.position.toArray()).toEqual([0, 0, 0]);
-    expect(meshes[0]!.scale.toArray()).toEqual([1, 1, 1]);
 
-    let combinedMinY = Infinity;
+    // Hand-derived from the fixture: the outer scene transform is removed;
+    // the child group rotates mesh A to x=[.75,1.25], z=[0,2] and mesh B to
+    // x=[2.25,2.75], z=[2,4]. Applying [2,3,4] and shifting the shared
+    // lowest Y (4.5) to the floor gives these literal results. A test that
+    // leaves the child transform live would double-transform these boxes.
+    const expectedBoxes = [
+      { min: [1.5, 0, 0] as const, max: [2.5, 3, 8] as const },
+      { min: [4.5, 0, 8] as const, max: [5.5, 3, 16] as const },
+    ];
     for (let i = 0; i < meshes.length; i += 1) {
-      const geometry = meshes[i]!.geometry;
-      geometry.computeBoundingBox();
-      const actual = geometry.boundingBox!;
-      const wanted = expected[i]!.box.clone().translate(
-        new THREE.Vector3(0, -expectedMinY, 0)
+      meshes[i]!.geometry.computeBoundingBox();
+      expect(meshes[i]!.geometry.boundingBox!.min.toArray()).toEqual(
+        expectedBoxes[i]!.min
       );
-      expect(actual.min.toArray()).toEqual(wanted.min.toArray());
-      expect(actual.max.toArray()).toEqual(wanted.max.toArray());
-      const normal = meshes[i]!.geometry.getAttribute('normal');
-      expect(
-        new THREE.Vector3(
-          normal.getX(0),
-          normal.getY(0),
-          normal.getZ(0)
-        ).toArray()
-      ).toEqual(expected[i]!.normal.toArray());
-      expect(
-        normal.getX(0) ** 2 + normal.getY(0) ** 2 + normal.getZ(0) ** 2
-      ).toBeCloseTo(1, 8);
-      combinedMinY = Math.min(combinedMinY, actual.min.y);
+      expect(meshes[i]!.geometry.boundingBox!.max.toArray()).toEqual(
+        expectedBoxes[i]!.max
+      );
     }
-    expect(combinedMinY).toBeCloseTo(0, 8);
+    expect(
+      meshes[1]!.geometry.boundingBox!.min.x -
+        meshes[0]!.geometry.boundingBox!.max.x
+    ).toBe(2);
+    expect(meshes[0]!.geometry.boundingBox!.max.z).toBe(
+      meshes[1]!.geometry.boundingBox!.min.z
+    );
+
+    // BoxGeometry's first authored normal is +Z. Three.js's positive Y
+    // rotation maps it to -Z here; the non-uniform scale preserves that
+    // direction after the inverse-transpose normal bake.
+    const normal = meshes[0]!.geometry.getAttribute('normal');
+    expect(normal.getX(0)).toBeCloseTo(0, 8);
+    expect(normal.getY(0)).toBe(0);
+    expect(normal.getZ(0)).toBe(-1);
+    expect(
+      normal.getX(0) ** 2 + normal.getY(0) ** 2 + normal.getZ(0) ** 2
+    ).toBe(1);
+
+    const bakedGroup = renderer.scene.find(
+      (node) =>
+        (node as { instance?: unknown }).instance instanceof THREE.Group &&
+        (node as unknown as { instance: THREE.Group }).instance.name ===
+          'nested-transform-group'
+    ) as unknown as { instance: THREE.Group };
+    expect(bakedGroup.instance.position.toArray()).toEqual([0, 0, 0]);
+    expect(bakedGroup.instance.scale.toArray()).toEqual([1, 1, 1]);
+    expect(bakedGroup.instance.rotation.x).toBeCloseTo(0, 8);
+    expect(bakedGroup.instance.rotation.y).toBeCloseTo(0, 8);
+    expect(bakedGroup.instance.rotation.z).toBeCloseTo(0, 8);
+    expect(bakedGroup.instance.rotation.order).toBe('XYZ');
   });
 
   it('refuses to flatten a skinned mesh for non-uniform baking', async () => {

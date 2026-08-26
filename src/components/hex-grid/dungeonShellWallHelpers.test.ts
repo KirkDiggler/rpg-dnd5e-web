@@ -12,7 +12,6 @@ import {
   shellLocalOffsetToWorld,
   shellRawDimensions,
   shellTrimScale,
-  shellVisibleWallTop,
   type ShellOpening,
 } from './dungeonShellWallHelpers';
 
@@ -84,26 +83,41 @@ describe('dungeon shell wall transforms', () => {
 
   it('fits body and trims from measured bounds', () => {
     expect(shellBodyScale(body, 1, 2.4)).toEqual([0.25, 0.6, 0.75]);
-    expect(shellTrimScale(base, 1)).toEqual([1 / 3.6, 0.75, 0.75]);
-    expect(shellTrimScale(cap, 1)).toEqual([1 / 3.8, 0.75, 0.75]);
+    expect(shellTrimScale(base, 1)).toEqual([0.2777777777777778, 0.75, 0.75]);
+    expect(shellTrimScale(cap, 1)).toEqual([0.2631578947368421, 0.75, 0.75]);
   });
 
   it.each([
-    { effectiveHeight: 2.4, label: 'standard' },
-    { effectiveHeight: 4.8, label: 'authored 2x' },
-    { effectiveHeight: 0.3, label: 'cutaway' },
+    {
+      effectiveHeight: 2.4,
+      expectedScale: [0.5, 1.08, 0.75] as const,
+      expectedTop: 2.9,
+      label: 'standard',
+    },
+    {
+      effectiveHeight: 4.8,
+      expectedScale: [0.5, 2.04, 0.75] as const,
+      expectedTop: 5.3,
+      label: 'authored 2x',
+    },
+    {
+      effectiveHeight: 0.3,
+      expectedScale: [0.5, 0.24, 0.75] as const,
+      expectedTop: 0.8,
+      label: 'cutaway',
+    },
   ])(
     'makes the visible profile frame top exact for $label',
-    ({ effectiveHeight }) => {
-      const visibleWallTop = shellVisibleWallTop(effectiveHeight, cap);
-      const frameScale = shellDoorSurroundScale(surround, visibleWallTop);
-      const frameTop =
-        DUNGEON_SURFACE_Y +
-        shellRawDimensions(surround.bounds).height * frameScale[1];
-      expect(frameTop).toBeCloseTo(
-        DUNGEON_SURFACE_Y +
-          effectiveHeight +
-          shellRawDimensions(cap.bounds).height * 0.75,
+    ({ effectiveHeight, expectedScale, expectedTop }) => {
+      const frameScale = shellDoorSurroundScale(
+        surround,
+        effectiveHeight + 0.4 * 0.75
+      );
+      expect(frameScale[0]).toBeCloseTo(expectedScale[0], 12);
+      expect(frameScale[1]).toBeCloseTo(expectedScale[1], 12);
+      expect(frameScale[2]).toBeCloseTo(expectedScale[2], 12);
+      expect(DUNGEON_SURFACE_Y + 2.5 * frameScale[1]).toBeCloseTo(
+        expectedTop,
         9
       );
     }
@@ -121,7 +135,7 @@ describe('dungeon shell wall transforms', () => {
       profileBody,
       artifact([0, 0, -0.3], [2, 0.3, 0.3]),
       1,
-      shellTrimScale(artifact([0, 0, -0.3], [2, 0.3, 0.3]), 1)
+      [0.5, 0.75, 0.75]
     );
     expect(offset).toBeCloseTo(-0.5, 9);
     expect(shellLocalOffsetToWorld({ x: offset, z: 0 }, 0).x).toBeCloseTo(
@@ -163,21 +177,22 @@ describe('measured closed-door geometry', () => {
     expect(geometry.leafBounds.max[2]).toBeCloseTo(0.1);
   });
 
-  it('derives leaf horizontal and vertical cover from the exact surround frame scale', () => {
+  it('derives leaf horizontal and vertical cover from independent frame literals', () => {
     const opening: ShellOpening = { min: [-0.7, 0], max: [0.7, 2] };
-    for (const effectiveHeight of [0.3, 0.8, 2.4]) {
-      const visibleWallTop = shellVisibleWallTop(effectiveHeight, cap);
-      const frameScale = shellDoorSurroundScale(surround, visibleWallTop);
+    const expected = [
+      [0.6166666666666667, 1.1473684210526316, 0.75],
+      [0.6166666666666667, 2.1578947368421053, 0.75],
+      [0.6166666666666667, 0.2631578947368421, 0.75],
+    ] as const;
+    for (const [index, frameY] of [1.08, 2.04, 0.24].entries()) {
       const scale = shellDoorLeafScale(
         artifact([0, 0, 0], [1.2, 1.9, 0.2]),
         opening,
-        frameScale
+        [0.5, frameY, 0.75]
       );
-      expect(scale.every((value) => Number.isFinite(value) && value > 0)).toBe(
-        true
-      );
-      expect(scale[0]).toBeCloseTo((1.4 * frameScale[0] + 0.04) / 1.2);
-      expect(scale[1]).toBeCloseTo((2 * frameScale[1] + 0.02) / 1.9);
+      expect(scale[0]).toBeCloseTo(expected[index]![0], 12);
+      expect(scale[1]).toBeCloseTo(expected[index]![1], 12);
+      expect(scale[2]).toBeCloseTo(expected[index]![2], 12);
     }
   });
 });
