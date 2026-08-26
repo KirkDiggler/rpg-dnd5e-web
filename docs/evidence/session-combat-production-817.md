@@ -138,3 +138,30 @@ zero, and pre-existing data was untouched.
 - The review-fix gates passed Prettier, ESLint, TypeScript, build, focused tests,
   full tests, `npm run ci-check`, and `git diff --check`. Final-head CI counts
   and checks are recorded above.
+
+## Rebase integration — PASS
+
+On 2026-08-26 the clean feature head `bc40aa9cfb693b15022c4ec7437e676d50e217f1`
+was rebased with `git rebase origin/dev` onto
+`3fa05eb7c3d47910c51b8f79330fd36a5b1078b2`; the replayed code head before
+this note was `6304f55f406489f342f112469e26eb84a01e5631`.
+
+Three documentation conflicts across two replayed commits were resolved as a
+semantic union: session-combat's shared/promoted-shell documentation was kept
+alongside the upstream weapon-attachment concept registration, accepted/rejected
+candidate verdict, and provider gaps. No source conflict occurred. Review also
+confirmed that the upstream full-window Dungeon Builder layout remains intact,
+that Concepts still suppresses the global development-tool overlay, that the
+upstream `ClassCharacterModel` main-hand attachment contract remains intact,
+and that the session route continues to choose character identity/body only from
+the public roster boundary. The deleted production `CombatPanel`,
+`DeclarationRow`, and related old controller path remain absent.
+
+Post-rebase gates passed: 22 focused files / 252 tests, the full
+`npm run test:run` suite at 221 passed + 1 skipped files / 3504 passed + 1
+skipped tests, `npm run ci-check`, standalone `npm run build` (3392 modules;
+expected large-chunk warning only), `git diff --check`, conflict-marker scan,
+legacy-symbol scan, and upstream-path preservation checks. This integration
+adds no new visual or authenticated-live claim: the exact evidence target at
+the top of this document remains unchanged, and the existing captures and live
+journey stay attributed only to that recorded target.
