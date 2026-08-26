@@ -43,13 +43,13 @@ function assetScene(url: string) {
   const scene = new THREE.Group();
   scene.name = url;
   const mesh = new THREE.Mesh(
-    url.includes('/surround.glb')
+    url.includes('surround.glb')
       ? new THREE.BoxGeometry(0.4, 2, 0.4)
       : new THREE.BoxGeometry(1, 1, 1),
     new THREE.MeshStandardMaterial({ color: 0xffffff })
   );
   mesh.name = url;
-  if (url.includes('/surround.glb')) {
+  if (url.includes('surround.glb')) {
     mesh.position.x = -0.3;
     const right = mesh.clone();
     right.position.x = 0.3;
@@ -218,6 +218,28 @@ function ready(nextProfile = profile): DungeonShellCatalogSnapshot {
   return {
     status: 'ready',
     catalog: { schemaVersion: 1, profiles: { crypt: nextProfile } },
+  };
+}
+
+function resourceProfile(
+  prefix: 'old' | 'failed' | 'recovered'
+): DungeonShellProfile {
+  return {
+    ...profile,
+    floor: {
+      ...profile.floor,
+      diffuse: `textures/${prefix}-floor.png`,
+    },
+    wall: {
+      ...profile.wall,
+      body: { ...profile.wall.body, file: `env/${prefix}-body.glb` },
+      base: { ...profile.wall.base, file: `env/${prefix}-base.glb` },
+      cap: { ...profile.wall.cap, file: `env/${prefix}-cap.glb` },
+      doorSurround: {
+        ...profile.wall.doorSurround,
+        file: `env/${prefix}-surround.glb`,
+      },
+    },
   };
 }
 
@@ -395,6 +417,96 @@ describe('DungeonShell actual shell integration', () => {
       );
     }
   );
+
+  it('keeps recovered callback and shell state when an obsolete profile resource rejects last', async () => {
+    const onFallbackReason = vi.fn();
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const renderShell = () => (
+      <StrictMode>
+        <DungeonShell
+          scene={scene()}
+          doors={doors}
+          onFallbackReason={onFallbackReason}
+        />
+      </StrictMode>
+    );
+    const callbackReasons = () =>
+      onFallbackReason.mock.calls.map(([reason]) => reason);
+    const phaseReasons: Array<'manifest-unavailable' | null> = [];
+    let callbackCount = 0;
+    const recordCallbackPhase = (expected: 'manifest-unavailable' | null) => {
+      const nextReasons = callbackReasons().slice(callbackCount);
+      expect(nextReasons.length).toBeGreaterThan(0);
+      nextReasons.forEach((reason) => expect(reason).toBe(expected));
+      callbackCount += nextReasons.length;
+      phaseReasons.push(expected);
+    };
+
+    const view = await ReactThreeTestRenderer.create(renderShell());
+    expect(primitiveAssetNames(view)).toEqual(
+      expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
+    );
+    recordCallbackPhase(null);
+
+    const oldProfile = resourceProfile('old');
+    const oldBodyUrl = '/models/synty/env/old-body.glb';
+    const staleResource = pendingGltf(oldBodyUrl);
+    shellState.snapshot = ready(oldProfile);
+    await view.update(renderShell());
+    expect(primitiveAssetNames(view)).toEqual(
+      expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
+    );
+    expect(primitiveAssetNames(view)).not.toContain(oldBodyUrl);
+    recordCallbackPhase(null);
+
+    const failedProfile = resourceProfile('failed');
+    const failedBodyUrl = '/models/synty/env/failed-body.glb';
+    rejectGltf(failedBodyUrl);
+    shellState.snapshot = ready(failedProfile);
+    await view.update(renderShell());
+    expect(primitiveAssetNames(view)).toEqual(
+      expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
+    );
+    expect(primitiveAssetNames(view)).not.toContain(failedBodyUrl);
+    recordCallbackPhase('manifest-unavailable');
+
+    useGLTF.clear(failedBodyUrl);
+    expect(shellState.clearCalls).toEqual([failedBodyUrl]);
+    const recoveredResources = resourceProfile('recovered');
+    const recoveredProfile: DungeonShellProfile = {
+      ...recoveredResources,
+      wall: {
+        ...recoveredResources.wall,
+        body: failedProfile.wall.body,
+      },
+    };
+    shellState.snapshot = ready(recoveredProfile);
+    await view.update(renderShell());
+    const recoveredAssetNames = primitiveAssetNames(view);
+    expect(recoveredAssetNames).toEqual(
+      expect.arrayContaining([
+        failedBodyUrl,
+        '/models/synty/env/recovered-base.glb',
+        '/models/synty/env/recovered-cap.glb',
+        '/models/synty/env/recovered-surround.glb',
+        LEAF_URL,
+      ])
+    );
+    expect(recoveredAssetNames).not.toContain(LEGACY_WALL_URL);
+    recordCallbackPhase(null);
+    expect(phaseReasons).toEqual([null, null, 'manifest-unavailable', null]);
+    const recoveredCallbacks = callbackReasons();
+
+    staleResource.reject(new Error('obsolete profile resource rejected'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(callbackReasons()).toEqual(recoveredCallbacks);
+    expect(primitiveAssetNames(view)).toEqual(recoveredAssetNames);
+    consoleError.mockRestore();
+  });
 
   it('routes an ordinary pending leaf rejection to the failed fallback without a leaf hook in that fallback', async () => {
     shellState.snapshot = ready();
