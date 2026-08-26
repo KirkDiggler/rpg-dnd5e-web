@@ -10,7 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AttackDie3DProps, AttackDieTelemetry } from './AttackDie3D';
 import { parseDicePresentationEvent } from './dicePresentationEvent';
 import type { DicePresentationRelease } from './dicePresentationRelease';
-import { DiceTrayPresentation } from './DiceTrayPresentation';
+import {
+  DiceTrayPresentation,
+  type DiceRollGroupPresentationProps,
+} from './DiceTrayPresentation';
 import {
   createVisualThrowProfile,
   type VisualThrowProfileV1,
@@ -187,6 +190,59 @@ function originalReleased(presentationId = 'attack:original') {
   });
 }
 
+function rollGroupProps(): DiceRollGroupPresentationProps {
+  const presentationId = 'damage:group-overload';
+  return {
+    mode: 'roll-group',
+    label: 'Shared damage dice',
+    events: [
+      {
+        schemaVersion: 1,
+        type: 'dice-roll-group-requested',
+        eventId: `request:${presentationId}`,
+        presentationId,
+        roller: { memberId: 'member:1', role: 'player' },
+        group: {
+          key: 'damage',
+          dice: [
+            {
+              id: 'die:group-overload',
+              kind: 'd6',
+              presetId: 'dice.original.carved.d6',
+              setId: 'set:1',
+              originalFace: 3,
+              finalFace: 3,
+              rerolls: [],
+              disposition: 'counted',
+              sourceRef: 'source:1',
+              sourceLabel: 'Weapon damage',
+              contributorMemberId: 'member:1',
+              purpose: 'base',
+            },
+          ],
+          modifiers: [],
+          suppliedFinalTotal: 3,
+        },
+      },
+    ],
+    witnessRole: 'roller',
+    feel: 'weighty',
+    appearances: [
+      {
+        dieId: 'die:group-overload',
+        treatment: {
+          bodyColor: '#15233b',
+          numeralColor: '#f5eddc',
+          roughness: 0.72,
+          metalness: 0.08,
+        },
+      },
+    ],
+    reducedMotion: true,
+    forceFailure: 'provider',
+  };
+}
+
 function renderPresentation(
   events: readonly unknown[],
   overrides: Partial<React.ComponentProps<typeof DiceTrayPresentation>> = {}
@@ -267,6 +323,25 @@ describe('DiceTrayPresentation', () => {
     renderPresentation([]);
 
     expect(screen.queryByRole('region')).toBeNull();
+    expect(attackDieProps).toHaveLength(0);
+  });
+
+  it('routes only explicit roll-group mode through the shared-group overload while retaining the legacy renderer', () => {
+    const legacy = renderPresentation([originalRequested()]);
+    expect(screen.getByRole('region')).toBeTruthy();
+    expect(attackDieProps).not.toHaveLength(0);
+
+    legacy.unmount();
+    attackDieProps.length = 0;
+    render(<DiceTrayPresentation {...rollGroupProps()} />);
+
+    expect(screen.getByTestId('roll-group-presentation')).toBeTruthy();
+    expect(screen.getByTestId('semantic-roll-group')).toBeTruthy();
+    expect(
+      screen
+        .getByTestId('roll-group-presentation')
+        .querySelector('[role="status"]')?.textContent
+    ).toMatch(/waiting for release/i);
     expect(attackDieProps).toHaveLength(0);
   });
 
