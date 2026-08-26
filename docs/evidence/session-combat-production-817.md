@@ -1,9 +1,25 @@
 # Session combat production promotion — #817
 
 - Date: 2026-08-25
-- Final evidence: 2026-08-26
-- Evidence target web HEAD: `301b9a39c12dd3eeffec3c55b136e095dc22ec45` (`301b9a3`)
-- Merged API runtime: `f1aa9d2`
+- Final evidence reconciliation: 2026-08-26
+
+## Evidence targets
+
+These targets are intentionally separate:
+
+- **Authenticated live behavior:** web code
+  `301b9a39c12dd3eeffec3c55b136e095dc22ec45` (`301b9a3`) against merged API
+  runtime `f1aa9d2`. The numbered live journey below applies only to this pair.
+- **Reviewed rebased PR integration:**
+  `ae3b60cf45f450dc6d39df474e0dec3840c10e3d` (`ae3b60c`), based on
+  `3fa05eb7c3d47910c51b8f79330fd36a5b1078b2`. This is the PR head before this
+  documentation-only reconciliation commit. Range-diff review found the
+  session-combat non-documentation patches patch-equivalent to the pre-rebase
+  series; this integration also includes the upstream full-window Dungeon
+  Builder and equipped main-hand weapon attachment.
+- **Final post-rebase visual witness:** actual-asset frame captures at
+  `ae3b60c`. This covers the rebased render integration, not authenticated API
+  behavior.
 
 ## Reproducible concept target
 
@@ -26,12 +42,18 @@ other-member pacing, catch-up Story, equipment response replacement, reconnect,
 scope reset, doors, roster pull, movement reconciliation, and the run-ended
 overlay.
 
-At final code HEAD, GitHub CI passed Prettier, ESLint, TypeScript, build, and
-tests. The GitHub Security Audit job was green/non-blocking because its workflow
-uses `continue-on-error`; `npm audit` reported 6 vulnerabilities (1 low, 5 high)
-and exited nonzero. This is pre-existing dependency risk, not hidden. Vitest
-reported `215 passed | 1 skipped` test files and `3472 passed | 2 skipped` tests.
-Commit `301b9a3` added the final App-level coverage for Concepts dev-tool state.
+At rebased integration head `ae3b60c`, the post-rebase full suite reported 221
+passed + 1 skipped test files and 3504 passed + 1 skipped tests.
+`npm run ci-check` and a standalone `npm run build` were green. GitHub's PR
+checks at that exact head were also green for lint/type check, tests, deploy
+preview, and Security Audit. The Security Audit result remains non-blocking
+because its workflow uses `continue-on-error`: `npm audit` exited nonzero with
+6 vulnerabilities (1 low, 5 high). This is pre-existing dependency risk, not
+hidden.
+
+This reconciliation commit changes only this evidence document. Its requested
+validation is the formatting and diff checks recorded below; it does not relabel
+the `ae3b60c` full-suite totals as a later exact-head test run.
 
 ## Visual witness — PASS
 
@@ -41,21 +63,28 @@ browser page:
 
 | Browser viewport | Captured frame | SHA-256 |
 |---|---|---|
-| `1280x800` | `1216x800` | `fdf9dab7d216265eed5ff703e1946974e1045d437a51b84fb50d5cb1417fe7b5` |
-| `1024x768` | `960x768` | `87f5e7dbe71ea726d1cf58941033c90d0ee2370c1f8e337dcbdfb62a049419e3` |
+| `1280x800` | `1216x800` | `63524e028e3c7ddc703999665fffe01c8eb4459ccda8f7f8fc514fa6bbfa198d` |
+| `1024x768` | `960x768` | `2829379aa2bfc4b658c86ea21d599f5372934e2d7d43abba5292eef304b5deb1` |
 
-Both viewports had zero console errors and page errors. The frame capture script
-did not monitor `requestfailed` events or HTTP response status. The frame and map
-had real dimensions, and the End Turn control had no overlap with global
-development tools after the layout and Concepts-overlay fixes. The screenshots
-remain at private local paths and are intentionally not committed; the hashes
-identify the reviewed files without publishing licensed material.
+These are the final rebased actual-asset captures at `ae3b60c` and supersede all
+earlier visual hashes. Both viewports had zero console errors and zero page
+errors. The frame capture script did not monitor request status or
+`requestfailed` events, so no HTTP-status claim is made for this visual run.
+The frame and map had real dimensions, and there was no overlap with global
+development tools. The screenshots remain at private local paths and are
+intentionally not committed; the hashes identify the reviewed files without
+publishing licensed material.
 
-The earlier missing-assets/pending-capture statement and the collapsed pre-fix
-capture are superseded by this PASS. No fallback, placeholder, intercepted
-asset, private log, screenshot, or licensed asset is evidence committed here.
+The earlier missing-assets/pending-capture statement, collapsed pre-fix capture,
+and previous post-fix hashes are superseded by this PASS. No fallback,
+placeholder, intercepted asset, private log, screenshot, or licensed asset is
+evidence committed here.
 
-## Authenticated two-context live journey — PASS
+## Authenticated two-context live journey — PASS at `301b9a3` / API `f1aa9d2`
+
+Every fact in items 1–10 and the associated error, interaction, and cleanup
+notes below was witnessed at web code `301b9a3` against API `f1aa9d2`. No
+authenticated behavior re-run was performed after the rebase.
 
 The complete untracked report is
 `/home/kirk/game-dev/.superpowers/sdd/plan/task-14-live-report.md`. Its 69 private
@@ -135,33 +164,42 @@ zero, and pre-existing data was untouched.
 - The shared review frame/fill-parent separation landed in `c603400`; Concepts
   global dev-tool suppression landed in `7967805`; final App-level coverage
   landed in `301b9a3`.
-- The review-fix gates passed Prettier, ESLint, TypeScript, build, focused tests,
-  full tests, `npm run ci-check`, and `git diff --check`. Final-head CI counts
-  and checks are recorded above.
+- The pre-rebase review-fix gates passed Prettier, ESLint, TypeScript, build,
+  focused tests, full tests, `npm run ci-check`, and `git diff --check`. The
+  separately attributed rebased-head counts and checks are recorded above.
 
 ## Rebase integration — PASS
 
 On 2026-08-26 the clean feature head `bc40aa9cfb693b15022c4ec7437e676d50e217f1`
 was rebased with `git rebase origin/dev` onto
-`3fa05eb7c3d47910c51b8f79330fd36a5b1078b2`; the replayed code head before
-this note was `6304f55f406489f342f112469e26eb84a01e5631`.
+`3fa05eb7c3d47910c51b8f79330fd36a5b1078b2`. The replayed non-documentation
+code head was `7e61b8c204ba51d49af963d8bf1c2c3a14351e15`; evidence corrections then
+produced `6304f55f406489f342f112469e26eb84a01e5631`, and the reviewed PR
+integration head was `ae3b60c`.
 
-Three documentation conflicts across two replayed commits were resolved as a
-semantic union: session-combat's shared/promoted-shell documentation was kept
-alongside the upstream weapon-attachment concept registration, accepted/rejected
-candidate verdict, and provider gaps. No source conflict occurred. Review also
-confirmed that the upstream full-window Dungeon Builder layout remains intact,
-that Concepts still suppresses the global development-tool overlay, that the
+Range-diffing the pre-rebase series
+`12b9c8a69ae0335e076872f8b89cba3fe025f5aa..bc40aa9cfb693b15022c4ec7437e676d50e217f1`
+against the rebased series
+`3fa05eb7c3d47910c51b8f79330fd36a5b1078b2..6304f55f406489f342f112469e26eb84a01e5631`
+found every non-documentation session-combat patch equivalent. Differences were
+limited to documentation reconciled with upstream content. Three documentation
+conflicts across two replayed commits were resolved as a semantic union:
+session-combat's shared/promoted-shell documentation was kept alongside the
+upstream weapon-attachment concept registration, accepted/rejected candidate
+verdict, and provider gaps. No source conflict occurred.
+
+Review confirmed that the upstream full-window Dungeon Builder layout remains
+intact, Concepts still suppresses the global development-tool overlay, the
 upstream `ClassCharacterModel` main-hand attachment contract remains intact,
-and that the session route continues to choose character identity/body only from
-the public roster boundary. The deleted production `CombatPanel`,
-`DeclarationRow`, and related old controller path remain absent.
+and the session route continues to choose character identity/body only from the
+public roster boundary. The deleted production `CombatPanel`, `DeclarationRow`,
+and related old controller path remain absent.
 
-Post-rebase gates passed: 22 focused files / 252 tests, the full
-`npm run test:run` suite at 221 passed + 1 skipped files / 3504 passed + 1
-skipped tests, `npm run ci-check`, standalone `npm run build` (3392 modules;
-expected large-chunk warning only), `git diff --check`, conflict-marker scan,
-legacy-symbol scan, and upstream-path preservation checks. This integration
-adds no new visual or authenticated-live claim: the exact evidence target at
-the top of this document remains unchanged, and the existing captures and live
-journey stay attributed only to that recorded target.
+Post-rebase gates passed at `ae3b60c`: 22 focused files / 252 tests, the full
+suite totals recorded above, `npm run ci-check`, standalone `npm run build`
+(3392 modules; expected large-chunk warning only), `git diff --check`,
+conflict-marker scan, legacy-symbol scan, and upstream-path preservation checks.
+The final rebased actual-asset frames provide visual coverage of the upstream
+render integration. They do not substitute for an authenticated behavior run,
+and no authenticated live claim is advanced beyond the journey at `301b9a3` /
+API `f1aa9d2`.
