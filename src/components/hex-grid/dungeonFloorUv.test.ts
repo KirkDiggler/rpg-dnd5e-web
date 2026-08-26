@@ -2,17 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { dungeonFloorUv } from './dungeonFloorUv';
 import { cubeToWorld, hexCorners, type CubeCoord } from './hexMath';
 
-function profileUvsForHex(
-  hex: CubeCoord,
-  worldUnitsPerRepeat: number,
-  hexSize = 1
-): Array<readonly [number, number]> {
-  const world = cubeToWorld(hex, hexSize);
-  return hexCorners(world, hexSize).map((corner) =>
-    dungeonFloorUv(corner.x, corner.z, worldUnitsPerRepeat)
-  );
-}
-
 describe('dungeonFloorUv', () => {
   it('uses absolute world coordinates divided by the repeat distance', () => {
     expect(dungeonFloorUv(4, -2, 4)).toEqual([1, -0.5]);
@@ -35,23 +24,34 @@ describe('dungeonFloorUv', () => {
 
   it('gives named adjacent pointy hexes exact UVs at their shared vertices', () => {
     const a: CubeCoord = { x: 0, y: 0, z: 0 };
-    const b: CubeCoord = { x: 1, y: -1, z: 0 };
-    const aUvs = profileUvsForHex(a, 4);
-    const bUvs = profileUvsForHex(b, 4);
-    const sharedPairs = aUvs.flatMap((uv) =>
-      bUvs
-        .filter(
-          (other) =>
-            Math.abs(other[0] - uv[0]) < 1e-12 &&
-            Math.abs(other[1] - uv[1]) < 1e-12
-        )
-        .map((other) => [uv, other] as const)
+    const b: CubeCoord = { x: 0, y: -1, z: 1 };
+    const repeat = 4;
+    const aCorners = hexCorners(cubeToWorld(a, 1), 1);
+    const bCorners = hexCorners(cubeToWorld(b, 1), 1);
+    const sharedWorldVertices = aCorners.filter((corner) =>
+      bCorners.some(
+        (other) =>
+          Math.abs(other.x - corner.x) < 1e-12 &&
+          Math.abs(other.z - corner.z) < 1e-12
+      )
     );
 
-    expect(sharedPairs).toHaveLength(2);
-    for (const [aUv, bUv] of sharedPairs) {
-      expect(aUv[0]).toBeCloseTo(bUv[0], 14);
-      expect(aUv[1]).toBeCloseTo(bUv[1], 14);
+    expect(sharedWorldVertices).toHaveLength(2);
+    for (const [expectedX, expectedZ] of [
+      [0, 1],
+      [Math.sqrt(3) / 2, 0.5],
+    ]) {
+      const vertex = sharedWorldVertices.find(
+        (candidate) =>
+          Math.abs(candidate.x - expectedX) < 1e-12 &&
+          Math.abs(candidate.z - expectedZ) < 1e-12
+      );
+      expect(vertex).toBeDefined();
+      if (!vertex) continue;
+      expect(dungeonFloorUv(vertex.x, vertex.z, repeat)).toEqual([
+        vertex.x / repeat,
+        vertex.z / repeat,
+      ]);
     }
   });
 });

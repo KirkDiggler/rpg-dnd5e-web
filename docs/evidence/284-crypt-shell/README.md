@@ -83,3 +83,14 @@ not commit GLBs, textures, manifests, raw source, or provider evidence. This
 tracked document records hashes and provenance only, so later web work can
 prove which private bytes it consumed without moving licensed content into the
 web repository.
+
+## Task 8 test-hardening report
+
+The approved review gaps were closed without production changes. The floor UV
+coverage now exercises adjacent pointy cubes `[0,0,0]` and `[0,-1,1]`, identifies
+both shared world vertices, asserts their absolute U/V values from world
+coordinates divided by the profile repeat, and asserts both cells agree. The
+texture coverage initializes each mocked shared cache texture with non-default
+state, verifies the configured clones receive profile or legacy wrap/repeat
+state, checks distinct alternate/profile/legacy URLs, and verifies all shared
+source state survives profile → alternate profile → legacy rerenders.

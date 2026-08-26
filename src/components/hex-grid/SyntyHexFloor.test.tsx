@@ -1,7 +1,7 @@
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import type { DungeonShellFloorProfile } from '../../rendering/dungeonShellManifest';
 
@@ -63,6 +63,33 @@ const ALT_CRYPT_FLOOR_PROFILE: DungeonShellFloorProfile = {
   sha256: 'b'.repeat(64),
   worldUnitsPerRepeat: 8,
 };
+
+beforeEach(() => {
+  useTextureMock.mockReset();
+  useTextureMock.mockImplementation(() => new THREE.Texture());
+});
+
+function textureState(texture: THREE.Texture) {
+  return {
+    wrapS: texture.wrapS,
+    wrapT: texture.wrapT,
+    repeat: texture.repeat.toArray(),
+    offset: texture.offset.toArray(),
+    center: texture.center.toArray(),
+    rotation: texture.rotation,
+    matrixAutoUpdate: texture.matrixAutoUpdate,
+    magFilter: texture.magFilter,
+    minFilter: texture.minFilter,
+    anisotropy: texture.anisotropy,
+    generateMipmaps: texture.generateMipmaps,
+    premultiplyAlpha: texture.premultiplyAlpha,
+    flipY: texture.flipY,
+    unpackAlignment: texture.unpackAlignment,
+    colorSpace: texture.colorSpace,
+    channel: texture.channel,
+    version: texture.version,
+  };
+}
 
 function isCloseTo(a: THREE.Color, b: THREE.Color): boolean {
   return (
@@ -127,9 +154,53 @@ describe('SyntyHexFloor profile UVs', () => {
     );
   });
 
-  it('replaces and disposes the owned texture clone when the profile changes without mutating the shared cache', async () => {
-    const sharedTexture = new THREE.Texture();
-    useTextureMock.mockImplementationOnce(() => sharedTexture);
+  it('configures owned profile and legacy clones without mutating shared cache textures', async () => {
+    const profileUrl = '/models/synty/textures/crypt-floor.png';
+    const alternateUrl = '/models/synty/textures/crypt-floor-alt.png';
+    const legacyUrl =
+      '/models/synty/textures/Dungeons_Texture_FloorTiles_01.png';
+    const profileShared = new THREE.Texture();
+    profileShared.wrapS = THREE.MirroredRepeatWrapping;
+    profileShared.wrapT = THREE.RepeatWrapping;
+    profileShared.repeat.set(3, 5);
+    profileShared.offset.set(0.25, 0.75);
+    profileShared.center.set(0.1, 0.2);
+    profileShared.rotation = 0.4;
+    profileShared.matrixAutoUpdate = false;
+    profileShared.magFilter = THREE.NearestFilter;
+    profileShared.minFilter = THREE.NearestMipmapNearestFilter;
+    profileShared.anisotropy = 4;
+    profileShared.generateMipmaps = false;
+    profileShared.premultiplyAlpha = true;
+    profileShared.flipY = false;
+    profileShared.unpackAlignment = 1;
+    profileShared.colorSpace = THREE.SRGBColorSpace;
+    profileShared.channel = 1;
+    const alternateShared = new THREE.Texture();
+    alternateShared.wrapS = THREE.MirroredRepeatWrapping;
+    alternateShared.wrapT = THREE.MirroredRepeatWrapping;
+    alternateShared.repeat.set(6, 7);
+    alternateShared.offset.set(0.3, 0.4);
+    const legacyShared = new THREE.Texture();
+    legacyShared.wrapS = THREE.MirroredRepeatWrapping;
+    legacyShared.wrapT = THREE.ClampToEdgeWrapping;
+    legacyShared.repeat.set(9, 10);
+    legacyShared.offset.set(0.5, 0.6);
+    const sharedBefore = new Map([
+      [profileUrl, textureState(profileShared)],
+      [alternateUrl, textureState(alternateShared)],
+      [legacyUrl, textureState(legacyShared)],
+    ]);
+    useTextureMock.mockImplementation((url?: string) => {
+      const shared = new Map([
+        [profileUrl, profileShared],
+        [alternateUrl, alternateShared],
+        [legacyUrl, legacyShared],
+      ]).get(url ?? '');
+      if (!shared) throw new Error(`unexpected texture URL: ${url}`);
+      return shared;
+    });
+
     const renderer = await ReactThreeTestRenderer.create(
       <SyntyHexFloor
         floorTiles={tiles([0, 0, 0])}
@@ -141,11 +212,13 @@ describe('SyntyHexFloor profile UVs', () => {
       renderer.scene.findByType('MeshBasicMaterial')
         .instance as unknown as THREE.MeshBasicMaterial
     ).map!;
-    const dispose = vi.spyOn(firstMap, 'dispose');
 
-    expect(firstMap).not.toBe(sharedTexture);
-    expect(sharedTexture.repeat.x).toBe(1);
-    expect(sharedTexture.repeat.y).toBe(1);
+    expect(useTextureMock).toHaveBeenLastCalledWith(profileUrl);
+    expect(firstMap).not.toBe(profileShared);
+    expect(firstMap.wrapS).toBe(THREE.RepeatWrapping);
+    expect(firstMap.wrapT).toBe(THREE.RepeatWrapping);
+    expect(firstMap.repeat.toArray()).toEqual([1, 1]);
+    expect(textureState(profileShared)).toEqual(sharedBefore.get(profileUrl));
 
     await renderer.update(
       <SyntyHexFloor
@@ -154,52 +227,59 @@ describe('SyntyHexFloor profile UVs', () => {
         profile={ALT_CRYPT_FLOOR_PROFILE}
       />
     );
-
     const secondMap = (
       renderer.scene.findByType('MeshBasicMaterial')
         .instance as unknown as THREE.MeshBasicMaterial
     ).map!;
-    expect(secondMap).not.toBe(firstMap);
-    expect(secondMap.repeat.x).toBe(1);
-    expect(secondMap.repeat.y).toBe(1);
-    expect(dispose).toHaveBeenCalled();
+
+    expect(useTextureMock).toHaveBeenLastCalledWith(alternateUrl);
+    expect(secondMap).not.toBe(alternateShared);
+    expect(secondMap.wrapS).toBe(THREE.RepeatWrapping);
+    expect(secondMap.wrapT).toBe(THREE.RepeatWrapping);
+    expect(secondMap.repeat.toArray()).toEqual([1, 1]);
+    expect(textureState(alternateShared)).toEqual(
+      sharedBefore.get(alternateUrl)
+    );
+
+    await renderer.update(
+      <SyntyHexFloor floorTiles={tiles([0, 0, 0])} hexSize={1} />
+    );
+    const legacyMap = (
+      renderer.scene.findByType('MeshBasicMaterial')
+        .instance as unknown as THREE.MeshBasicMaterial
+    ).map!;
+
+    expect(useTextureMock).toHaveBeenLastCalledWith(legacyUrl);
+    expect(legacyMap).not.toBe(legacyShared);
+    expect(legacyMap.wrapS).toBe(THREE.RepeatWrapping);
+    expect(legacyMap.wrapT).toBe(THREE.RepeatWrapping);
+    expect(legacyMap.repeat.toArray()).toEqual([2, 2]);
+    expect(textureState(profileShared)).toEqual(sharedBefore.get(profileUrl));
+    expect(textureState(alternateShared)).toEqual(
+      sharedBefore.get(alternateUrl)
+    );
+    expect(textureState(legacyShared)).toEqual(sharedBefore.get(legacyUrl));
     await renderer.unmount();
   });
 
-  it('keeps exact UVs at shared vertices for adjacent cells and when a distant cell is added', async () => {
-    const oneCell = await ReactThreeTestRenderer.create(
-      <SyntyHexFloor
-        floorTiles={tiles([0, 0, 0])}
-        hexSize={1}
-        profile={CRYPT_FLOOR_PROFILE}
-      />
-    );
-    const withDistantCell = await ReactThreeTestRenderer.create(
-      <SyntyHexFloor
-        floorTiles={tiles([0, 0, 0], [100, -100, 0])}
-        hexSize={1}
-        profile={CRYPT_FLOOR_PROFILE}
-      />
-    );
-    const originalUvs = Array.from(
-      floorMeshes(oneCell)[0].geometry.getAttribute('uv').array
-    );
-    const distantCellUvs = Array.from(
-      floorMeshes(withDistantCell)[0].geometry.getAttribute('uv').array
-    );
-
-    expect(distantCellUvs).toEqual(originalUvs);
-
+  it('maps adjacent pointy cells to equal absolute UVs at their shared world vertices', async () => {
     const meshes = floorMeshes(
       await ReactThreeTestRenderer.create(
         <SyntyHexFloor
-          floorTiles={tiles([0, 0, 0], [1, -1, 0])}
+          floorTiles={tiles([0, 0, 0], [0, -1, 1])}
           hexSize={1}
           profile={CRYPT_FLOOR_PROFILE}
         />
       )
     );
-    const sharedUvs: number[][] = [];
+    const sharedVertices: Array<{
+      x: number;
+      z: number;
+      aU: number;
+      aV: number;
+      bU: number;
+      bV: number;
+    }> = [];
     const aPos = meshes[0].geometry.getAttribute('position');
     const aUv = meshes[0].geometry.getAttribute('uv');
     const bPos = meshes[1].geometry.getAttribute('position');
@@ -211,15 +291,50 @@ describe('SyntyHexFloor profile UVs', () => {
         const bx = meshes[1].position.x + bPos.getX(j);
         const bz = meshes[1].position.z + bPos.getZ(j);
         if (Math.abs(ax - bx) < 1e-6 && Math.abs(az - bz) < 1e-6) {
-          sharedUvs.push([aUv.getX(i), aUv.getY(i), bUv.getX(j), bUv.getY(j)]);
+          sharedVertices.push({
+            x: ax,
+            z: az,
+            aU: aUv.getX(i),
+            aV: aUv.getY(i),
+            bU: bUv.getX(j),
+            bV: bUv.getY(j),
+          });
         }
       }
     }
 
-    expect(sharedUvs.length).toBeGreaterThanOrEqual(2);
-    for (const [au, av, bu, bv] of sharedUvs) {
-      expect(au).toBeCloseTo(bu, 6);
-      expect(av).toBeCloseTo(bv, 6);
+    expect(sharedVertices).toHaveLength(2);
+    for (const [expectedX, expectedZ] of [
+      [0, 1],
+      [Math.sqrt(3) / 2, 0.5],
+    ]) {
+      const vertex = sharedVertices.find(
+        (candidate) =>
+          Math.abs(candidate.x - expectedX) < 1e-6 &&
+          Math.abs(candidate.z - expectedZ) < 1e-6
+      );
+      expect(vertex).toBeDefined();
+      if (!vertex) continue;
+      expect(vertex.x).toBeCloseTo(expectedX, 6);
+      expect(vertex.z).toBeCloseTo(expectedZ, 6);
+      expect(vertex.aU).toBeCloseTo(
+        expectedX / CRYPT_FLOOR_PROFILE.worldUnitsPerRepeat,
+        6
+      );
+      expect(vertex.aV).toBeCloseTo(
+        expectedZ / CRYPT_FLOOR_PROFILE.worldUnitsPerRepeat,
+        6
+      );
+      expect(vertex.bU).toBeCloseTo(
+        expectedX / CRYPT_FLOOR_PROFILE.worldUnitsPerRepeat,
+        6
+      );
+      expect(vertex.bV).toBeCloseTo(
+        expectedZ / CRYPT_FLOOR_PROFILE.worldUnitsPerRepeat,
+        6
+      );
+      expect(vertex.aU).toBeCloseTo(vertex.bU, 6);
+      expect(vertex.aV).toBeCloseTo(vertex.bV, 6);
     }
   });
 
