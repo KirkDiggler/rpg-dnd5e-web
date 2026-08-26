@@ -46,14 +46,16 @@ const TACTICAL_CAMERA_TARGET = [0, 0.65, 0] as const;
 function lookAtQuaternion(
   position: readonly [number, number, number],
   target: readonly [number, number, number]
-): Quaternion {
-  return new Quaternion().setFromRotationMatrix(
-    new Matrix4().lookAt(
-      new Vector3(...position),
-      new Vector3(...target),
-      new Vector3(0, 1, 0)
+): readonly [number, number, number, number] {
+  return new Quaternion()
+    .setFromRotationMatrix(
+      new Matrix4().lookAt(
+        new Vector3(...position),
+        new Vector3(...target),
+        new Vector3(0, 1, 0)
+      )
     )
-  );
+    .toArray() as readonly [number, number, number, number];
 }
 
 const CLOSE_CAMERA_QUATERNION = lookAtQuaternion(

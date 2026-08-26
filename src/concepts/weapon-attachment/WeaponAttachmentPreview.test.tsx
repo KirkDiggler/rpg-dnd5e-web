@@ -55,7 +55,7 @@ type MockCameraProps = {
   near?: number;
   far?: number;
   target?: readonly [number, number, number];
-  quaternion?: Quaternion;
+  quaternion?: readonly [number, number, number, number];
 };
 
 const weaponAttachmentPreviewMocks = vi.hoisted(() => ({
@@ -135,14 +135,16 @@ beforeEach(() => {
 function lookAtQuaternion(
   position: readonly [number, number, number],
   target: readonly [number, number, number]
-): Quaternion {
-  return new Quaternion().setFromRotationMatrix(
-    new Matrix4().lookAt(
-      new Vector3(...position),
-      new Vector3(...target),
-      new Vector3(0, 1, 0)
+): readonly [number, number, number, number] {
+  return new Quaternion()
+    .setFromRotationMatrix(
+      new Matrix4().lookAt(
+        new Vector3(...position),
+        new Vector3(...target),
+        new Vector3(0, 1, 0)
+      )
     )
-  );
+    .toArray() as readonly [number, number, number, number];
 }
 
 describe('WeaponAttachmentScene', () => {
@@ -179,9 +181,16 @@ describe('WeaponAttachmentScene', () => {
       position: [-1.2, 1.22, 0.85],
       fov: 42,
     });
-    expect(
-      weaponAttachmentPreviewMocks.perspectiveCameraProps?.quaternion
-    ).toMatchObject(lookAtQuaternion([-1.2, 1.22, 0.85], [-0.6, 1.02, -0.025]));
+    const closeQuaternion =
+      weaponAttachmentPreviewMocks.perspectiveCameraProps?.quaternion;
+    expect(closeQuaternion).toEqual([
+      -0.08885709508907506, -0.29474934704894257, -0.02753899945954927,
+      0.9510356684033046,
+    ]);
+    expect(closeQuaternion).toEqual(
+      lookAtQuaternion([-1.2, 1.22, 0.85], [-0.6, 1.02, -0.025])
+    );
+    expect(closeQuaternion).not.toBeInstanceOf(Quaternion);
     expect(weaponAttachmentPreviewMocks.invalidate).toHaveBeenCalledTimes(1);
     expect(onRenderObserved).toHaveBeenCalledWith({
       equipmentState: 'longsword',
@@ -212,9 +221,16 @@ describe('WeaponAttachmentScene', () => {
       position: [2.4, 1.8, 3.1],
       fov: 42,
     });
-    expect(
-      weaponAttachmentPreviewMocks.perspectiveCameraProps?.quaternion
-    ).toMatchObject(lookAtQuaternion([2.4, 1.8, 3.1], [0, 0.7, 0]));
+    const orbitQuaternion =
+      weaponAttachmentPreviewMocks.perspectiveCameraProps?.quaternion;
+    expect(orbitQuaternion).toEqual([
+      -0.12901630119426993, 0.3204572871794044, 0.04410525237043826,
+      0.9373988733901412,
+    ]);
+    expect(orbitQuaternion).toEqual(
+      lookAtQuaternion([2.4, 1.8, 3.1], [0, 0.7, 0])
+    );
+    expect(orbitQuaternion).not.toBeInstanceOf(Quaternion);
     expect(weaponAttachmentPreviewMocks.orbitControlsProps).toMatchObject({
       makeDefault: true,
       target: [0, 0.7, 0],
@@ -258,14 +274,19 @@ describe('WeaponAttachmentScene', () => {
       near: 0.1,
       far: 1000,
     });
-    expect(
-      weaponAttachmentPreviewMocks.orthographicCameraProps?.quaternion
-    ).toMatchObject(
+    const tacticalQuaternion =
+      weaponAttachmentPreviewMocks.orthographicCameraProps?.quaternion;
+    expect(tacticalQuaternion).toEqual([
+      -0.29380714106850614, 0.36281673958654276, 0.12169890255264042,
+      0.8759170933658189,
+    ]);
+    expect(tacticalQuaternion).toEqual(
       lookAtQuaternion(
         [tacticalPosition.x, tacticalPosition.y, tacticalPosition.z],
         [0, 0.65, 0]
       )
     );
+    expect(tacticalQuaternion).not.toBeInstanceOf(Quaternion);
     expect(weaponAttachmentPreviewMocks.invalidate).toHaveBeenCalledTimes(1);
     expect(onRenderObserved).toHaveBeenCalledWith({
       equipmentState: 'unarmed',
