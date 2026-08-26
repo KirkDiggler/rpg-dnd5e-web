@@ -37,10 +37,10 @@ import type {
 } from './weaponAttachmentExperiment';
 
 const FIGHTER_URL = '/models/synty/characters/fighter.glb' as const;
-const ORBIT_CAMERA_POSITION = [3.2, 2.4, 4.2] as const;
-const ORBIT_CAMERA_TARGET = [0, 0.95, 0] as const;
-const CLOSE_CAMERA_POSITION = [-1.45, 1.45, 1.15] as const;
-const CLOSE_CAMERA_TARGET = [-0.8, 1.3, 0] as const;
+const ORBIT_CAMERA_POSITION = [2.4, 1.8, 3.1] as const;
+const ORBIT_CAMERA_TARGET = [0, 0.7, 0] as const;
+const CLOSE_CAMERA_POSITION = [-1.2, 1.22, 0.85] as const;
+const CLOSE_CAMERA_TARGET = [-0.6, 1.02, -0.025] as const;
 const TACTICAL_CAMERA_TARGET = [0, 0.65, 0] as const;
 
 function CloseCamera() {
@@ -228,8 +228,13 @@ export function WeaponAttachmentScene({
 
 export function WeaponAttachmentPreview(props: WeaponAttachmentPreviewProps) {
   return (
-    <Canvas frameloop="demand" dpr={[1, 1.5]}>
-      <WeaponAttachmentScene {...props} />
-    </Canvas>
+    <div
+      data-testid="weapon-attachment-preview"
+      style={{ width: '100%', height: '100%', minHeight: 520 }}
+    >
+      <Canvas frameloop="demand" dpr={[1, 1.5]}>
+        <WeaponAttachmentScene {...props} />
+      </Canvas>
+    </div>
   );
 }
