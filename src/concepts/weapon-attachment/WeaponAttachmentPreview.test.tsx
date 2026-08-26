@@ -1,3 +1,9 @@
+import {
+  INITIAL_AZIMUTH,
+  INITIAL_DISTANCE,
+  POLAR_ANGLE,
+  sphericalCameraPosition,
+} from '@/author/preview3d/playCameraRig';
 import type {
   MainHandAttachmentStatus,
   MainHandPresentation,
@@ -6,6 +12,7 @@ import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { render, screen } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { useEffect } from 'react';
+import { Matrix4, Quaternion, Vector3 } from 'three';
 import {
   beforeAll,
   beforeEach,
@@ -48,22 +55,14 @@ type MockCameraProps = {
   near?: number;
   far?: number;
   target?: readonly [number, number, number];
-};
-
-type MockCameraHandle = {
-  lookAt: (...args: number[]) => void;
-  updateProjectionMatrix: () => void;
+  quaternion?: Quaternion;
 };
 
 const weaponAttachmentPreviewMocks = vi.hoisted(() => ({
   canvasProps: null as Record<string, unknown> | null,
   perspectiveCameraProps: null as MockCameraProps | null,
-  perspectiveCameraLookAt: vi.fn(),
-  perspectiveCameraUpdateProjectionMatrix: vi.fn(),
   orbitControlsProps: null as MockCameraProps | null,
   orthographicCameraProps: null as MockCameraProps | null,
-  orthographicCameraLookAt: vi.fn(),
-  orthographicCameraUpdateProjectionMatrix: vi.fn(),
 }));
 
 vi.mock('@react-three/fiber', () => ({
@@ -73,40 +72,20 @@ vi.mock('@react-three/fiber', () => ({
   },
 }));
 
-vi.mock('@react-three/drei', async () => {
-  const React = await import('react');
-  return {
-    OrbitControls: (props: MockCameraProps) => {
-      weaponAttachmentPreviewMocks.orbitControlsProps = props;
-      return React.createElement('group', {
-        ...props,
-        name: 'weapon-attachment-orbit-controls',
-      });
-    },
-    OrthographicCamera: React.forwardRef<MockCameraHandle, MockCameraProps>(
-      (props, ref) => {
-        weaponAttachmentPreviewMocks.orthographicCameraProps = props;
-        React.useImperativeHandle(ref, () => ({
-          lookAt: weaponAttachmentPreviewMocks.orthographicCameraLookAt,
-          updateProjectionMatrix:
-            weaponAttachmentPreviewMocks.orthographicCameraUpdateProjectionMatrix,
-        }));
-        return React.createElement('group', props);
-      }
-    ),
-    PerspectiveCamera: React.forwardRef<MockCameraHandle, MockCameraProps>(
-      (props, ref) => {
-        weaponAttachmentPreviewMocks.perspectiveCameraProps = props;
-        React.useImperativeHandle(ref, () => ({
-          lookAt: weaponAttachmentPreviewMocks.perspectiveCameraLookAt,
-          updateProjectionMatrix:
-            weaponAttachmentPreviewMocks.perspectiveCameraUpdateProjectionMatrix,
-        }));
-        return React.createElement('group', props);
-      }
-    ),
-  };
-});
+vi.mock('@react-three/drei', () => ({
+  OrbitControls: (props: MockCameraProps) => {
+    weaponAttachmentPreviewMocks.orbitControlsProps = props;
+    return null;
+  },
+  OrthographicCamera: (props: MockCameraProps) => {
+    weaponAttachmentPreviewMocks.orthographicCameraProps = props;
+    return null;
+  },
+  PerspectiveCamera: (props: MockCameraProps) => {
+    weaponAttachmentPreviewMocks.perspectiveCameraProps = props;
+    return null;
+  },
+}));
 
 vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
   ClassCharacterModel: (props: {
@@ -147,12 +126,21 @@ beforeEach(() => {
   weaponAttachmentPreviewMocks.perspectiveCameraProps = null;
   weaponAttachmentPreviewMocks.orbitControlsProps = null;
   weaponAttachmentPreviewMocks.orthographicCameraProps = null;
-  weaponAttachmentPreviewMocks.perspectiveCameraLookAt.mockClear();
-  weaponAttachmentPreviewMocks.perspectiveCameraUpdateProjectionMatrix.mockClear();
-  weaponAttachmentPreviewMocks.orthographicCameraLookAt.mockClear();
-  weaponAttachmentPreviewMocks.orthographicCameraUpdateProjectionMatrix.mockClear();
   vi.clearAllMocks();
 });
+
+function lookAtQuaternion(
+  position: readonly [number, number, number],
+  target: readonly [number, number, number]
+): Quaternion {
+  return new Quaternion().setFromRotationMatrix(
+    new Matrix4().lookAt(
+      new Vector3(...position),
+      new Vector3(...target),
+      new Vector3(0, 1, 0)
+    )
+  );
+}
 
 describe('WeaponAttachmentScene', () => {
   it('projects walk, facing, mapped weapon, and close camera into the shared renderer', async () => {
@@ -182,16 +170,15 @@ describe('WeaponAttachmentScene', () => {
       ref: 'dnd5e:item:longsword',
     });
     expect(model.props.userData.facingRotation).toBeCloseTo(-Math.PI, 5);
-    const closeCamera = renderer.scene.findAll(
-      (node) => node.props.name === 'weapon-attachment-close-camera'
-    )[0]!;
-    expect(closeCamera.props.position).toEqual([-1.2, 1.22, 0.85]);
+    expect(weaponAttachmentPreviewMocks.perspectiveCameraProps).toMatchObject({
+      name: 'weapon-attachment-close-camera',
+      makeDefault: true,
+      position: [-1.2, 1.22, 0.85],
+      fov: 42,
+    });
     expect(
-      weaponAttachmentPreviewMocks.perspectiveCameraLookAt
-    ).toHaveBeenCalledWith(-0.6, 1.02, -0.025);
-    expect(
-      weaponAttachmentPreviewMocks.perspectiveCameraUpdateProjectionMatrix
-    ).toHaveBeenCalledTimes(1);
+      weaponAttachmentPreviewMocks.perspectiveCameraProps?.quaternion
+    ).toMatchObject(lookAtQuaternion([-1.2, 1.22, 0.85], [-0.6, 1.02, -0.025]));
     expect(onRenderObserved).toHaveBeenCalledWith({
       equipmentState: 'longsword',
       motion: 'walk',
@@ -215,14 +202,19 @@ describe('WeaponAttachmentScene', () => {
       />
     );
 
-    const orbitCamera = renderer.scene.findAll(
-      (node) => node.props.name === 'weapon-attachment-orbit-camera'
-    )[0]!;
-    expect(orbitCamera.props.position).toEqual([2.4, 1.8, 3.1]);
-    const orbitControls = renderer.scene.findAll(
-      (node) => node.props.name === 'weapon-attachment-orbit-controls'
-    )[0]!;
-    expect(orbitControls.props.target).toEqual([0, 0.7, 0]);
+    expect(weaponAttachmentPreviewMocks.perspectiveCameraProps).toMatchObject({
+      name: 'weapon-attachment-orbit-camera',
+      makeDefault: true,
+      position: [2.4, 1.8, 3.1],
+      fov: 42,
+    });
+    expect(
+      weaponAttachmentPreviewMocks.perspectiveCameraProps?.quaternion
+    ).toMatchObject(lookAtQuaternion([2.4, 1.8, 3.1], [0, 0.7, 0]));
+    expect(weaponAttachmentPreviewMocks.orbitControlsProps).toMatchObject({
+      makeDefault: true,
+      target: [0, 0.7, 0],
+    });
     expect(onRenderObserved).toHaveBeenCalledWith({
       equipmentState: 'unarmed',
       motion: 'idle',
@@ -230,6 +222,7 @@ describe('WeaponAttachmentScene', () => {
       facing: 0,
       attachmentCode: 'unarmed',
     });
+    expect(renderer).toBeTruthy();
   });
 
   it('renders the named tactical camera branch', async () => {
@@ -246,11 +239,28 @@ describe('WeaponAttachmentScene', () => {
       />
     );
 
+    const tacticalPosition = sphericalCameraPosition(
+      { x: 0, y: 0, z: 0 },
+      POLAR_ANGLE,
+      INITIAL_AZIMUTH,
+      INITIAL_DISTANCE
+    );
+    expect(weaponAttachmentPreviewMocks.orthographicCameraProps).toMatchObject({
+      name: 'weapon-attachment-tactical-camera',
+      makeDefault: true,
+      position: [tacticalPosition.x, tacticalPosition.y, tacticalPosition.z],
+      zoom: 80,
+      near: 0.1,
+      far: 1000,
+    });
     expect(
-      renderer.scene.findAll(
-        (node) => node.props.name === 'weapon-attachment-tactical-camera'
+      weaponAttachmentPreviewMocks.orthographicCameraProps?.quaternion
+    ).toMatchObject(
+      lookAtQuaternion(
+        [tacticalPosition.x, tacticalPosition.y, tacticalPosition.z],
+        [0, 0.65, 0]
       )
-    ).toHaveLength(1);
+    );
     expect(onRenderObserved).toHaveBeenCalledWith({
       equipmentState: 'unarmed',
       motion: 'idle',
@@ -258,6 +268,7 @@ describe('WeaponAttachmentScene', () => {
       facing: 2,
       attachmentCode: 'unarmed',
     });
+    expect(renderer).toBeTruthy();
   });
 
   it('re-observes the same stable tuple after an invalid status clears', async () => {

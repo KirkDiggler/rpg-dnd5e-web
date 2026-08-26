@@ -27,7 +27,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import type * as THREE from 'three';
+import { Matrix4, Quaternion, Vector3 } from 'three';
 import type {
   WeaponEquipmentState,
   WeaponFacing,
@@ -43,20 +43,35 @@ const CLOSE_CAMERA_POSITION = [-1.2, 1.22, 0.85] as const;
 const CLOSE_CAMERA_TARGET = [-0.6, 1.02, -0.025] as const;
 const TACTICAL_CAMERA_TARGET = [0, 0.65, 0] as const;
 
+function lookAtQuaternion(
+  position: readonly [number, number, number],
+  target: readonly [number, number, number]
+): Quaternion {
+  return new Quaternion().setFromRotationMatrix(
+    new Matrix4().lookAt(
+      new Vector3(...position),
+      new Vector3(...target),
+      new Vector3(0, 1, 0)
+    )
+  );
+}
+
+const CLOSE_CAMERA_QUATERNION = lookAtQuaternion(
+  CLOSE_CAMERA_POSITION,
+  CLOSE_CAMERA_TARGET
+);
+const ORBIT_CAMERA_QUATERNION = lookAtQuaternion(
+  ORBIT_CAMERA_POSITION,
+  ORBIT_CAMERA_TARGET
+);
+
 function CloseCamera() {
-  const ref = useRef<THREE.PerspectiveCamera | null>(null);
-
-  useEffect(() => {
-    ref.current?.lookAt(...CLOSE_CAMERA_TARGET);
-    ref.current?.updateProjectionMatrix();
-  }, []);
-
   return (
     <PerspectiveCamera
-      ref={ref}
       name="weapon-attachment-close-camera"
       makeDefault
       position={CLOSE_CAMERA_POSITION}
+      quaternion={CLOSE_CAMERA_QUATERNION}
       fov={42}
     />
   );
@@ -69,6 +84,7 @@ function OrbitCamera() {
         name="weapon-attachment-orbit-camera"
         makeDefault
         position={ORBIT_CAMERA_POSITION}
+        quaternion={ORBIT_CAMERA_QUATERNION}
         fov={42}
       />
       <OrbitControls makeDefault target={ORBIT_CAMERA_TARGET} />
@@ -77,7 +93,6 @@ function OrbitCamera() {
 }
 
 function TacticalCamera() {
-  const ref = useRef<THREE.OrthographicCamera | null>(null);
   const position = useMemo(
     () =>
       sphericalCameraPosition(
@@ -88,18 +103,21 @@ function TacticalCamera() {
       ),
     []
   );
-
-  useEffect(() => {
-    ref.current?.lookAt(...TACTICAL_CAMERA_TARGET);
-    ref.current?.updateProjectionMatrix();
-  }, []);
+  const quaternion = useMemo(
+    () =>
+      lookAtQuaternion(
+        [position.x, position.y, position.z],
+        TACTICAL_CAMERA_TARGET
+      ),
+    [position]
+  );
 
   return (
     <OrthographicCamera
-      ref={ref}
       name="weapon-attachment-tactical-camera"
       makeDefault
       position={[position.x, position.y, position.z]}
+      quaternion={quaternion}
       zoom={ORTHO_ZOOM}
       near={ORTHO_NEAR}
       far={ORTHO_FAR}
