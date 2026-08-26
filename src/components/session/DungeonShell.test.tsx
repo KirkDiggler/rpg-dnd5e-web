@@ -27,6 +27,7 @@ const LEAF_URL = '/models/synty/env/SM_Env_Door_01.glb';
 const shellState = vi.hoisted(() => ({
   snapshot: { status: 'idle' } as DungeonShellCatalogSnapshot,
   failedUrls: new Set<string>(),
+  rejectedUrls: new Set<string>(),
   pendingUrls: new Set<string>(),
   hookCalls: [] as string[],
   loaderCalls: [] as string[],
@@ -65,7 +66,11 @@ function readAsset(url: string) {
     shellState.loaderCalls.push(url);
     shellState.assets.set(url, assetScene(url));
   }
+  if (shellState.rejectedUrls.has(url)) {
+    throw new Error(`cached rejection ${url}`);
+  }
   if (shellState.failedUrls.has(url)) {
+    shellState.rejectedUrls.add(url);
     throw new Error(`failed ${url}`);
   }
   if (shellState.pendingUrls.has(url)) throw shellState.pending;
@@ -78,7 +83,11 @@ function readTexture(url: string) {
     shellState.loaderCalls.push(url);
     shellState.textures.set(url, new THREE.Texture());
   }
+  if (shellState.rejectedUrls.has(url)) {
+    throw new Error(`cached rejection ${url}`);
+  }
   if (shellState.failedUrls.has(url)) {
+    shellState.rejectedUrls.add(url);
     throw new Error(`failed ${url}`);
   }
   if (shellState.pendingUrls.has(url)) throw shellState.pending;
@@ -98,6 +107,7 @@ vi.mock('@react-three/drei', () => {
 });
 
 import { DungeonShell } from './DungeonShell';
+import { clearRejectedProfileLeavesForTests } from './dungeonShellResourceCache';
 
 const HASH = 'a'.repeat(64);
 const profile: DungeonShellProfile = {
@@ -207,8 +217,10 @@ function floorMeshes(renderer: RenderedScene) {
 }
 
 beforeEach(() => {
+  clearRejectedProfileLeavesForTests();
   shellState.snapshot = { status: 'idle' };
   shellState.failedUrls.clear();
+  shellState.rejectedUrls.clear();
   shellState.pendingUrls.clear();
   shellState.hookCalls.length = 0;
   shellState.loaderCalls.length = 0;
@@ -251,6 +263,9 @@ describe('DungeonShell actual shell integration', () => {
         PROFILE_URLS.includes(url as never)
       )
     ).toEqual(PROFILE_URLS);
+    expect(shellState.hookCalls.filter((url) => url === LEAF_URL)).toHaveLength(
+      1
+    );
   });
 
   it('keeps the actual legacy pair while the profile resource gate is pending, then switches through the same cache', async () => {
@@ -284,6 +299,7 @@ describe('DungeonShell actual shell integration', () => {
       shellState.snapshot = ready();
       shellState.failedUrls.add(failedUrl);
       const onFallbackReason = vi.fn();
+      const onDoorClick = vi.fn();
       const consoleError = vi
         .spyOn(console, 'error')
         .mockImplementation(() => undefined);
@@ -291,7 +307,7 @@ describe('DungeonShell actual shell integration', () => {
         <DungeonShell
           scene={scene()}
           doors={doors}
-          onDoorClick={vi.fn()}
+          onDoorClick={onDoorClick}
           onFallbackReason={onFallbackReason}
         />
       );
@@ -301,9 +317,19 @@ describe('DungeonShell actual shell integration', () => {
         expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
       );
       expect(primitiveAssetNames(renderer)).not.toContain(failedUrl);
+      const clickable = renderer.scene.find(
+        (node) =>
+          node.fiber.type === 'group' &&
+          typeof node.props.onClick === 'function'
+      );
+      await renderer.fireEvent(clickable, 'click');
+      expect(onDoorClick).toHaveBeenCalledWith('door-id');
       if (failedUrl === LEAF_URL) {
         expect(
           shellState.loaderCalls.filter((url) => url === LEAF_URL)
+        ).toHaveLength(1);
+        expect(
+          shellState.hookCalls.filter((url) => url === LEAF_URL)
         ).toHaveLength(1);
       }
       expect(onFallbackReason).toHaveBeenCalledWith('manifest-unavailable');
@@ -337,7 +363,68 @@ describe('DungeonShell actual shell integration', () => {
     }
   );
 
-  it('resets the resource boundary on a profile-key change under StrictMode', async () => {
+  it('orders loading, pending, resource-error, and recovery callbacks despite stale promise settlement', async () => {
+    let resolveStale!: () => void;
+    shellState.pending = new Promise<never>((resolve) => {
+      resolveStale = () => resolve(undefined as never);
+    });
+    const onFallbackReason = vi.fn();
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const view = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} onFallbackReason={onFallbackReason} />
+    );
+    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
+
+    shellState.snapshot = ready();
+    PROFILE_URLS.forEach((url) => shellState.pendingUrls.add(url));
+    await view.update(
+      <DungeonShell scene={scene()} onFallbackReason={onFallbackReason} />
+    );
+    expect(primitiveAssetNames(view)).toEqual(
+      expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
+    );
+    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
+
+    shellState.pendingUrls.clear();
+    shellState.failedUrls.add(LEAF_URL);
+    await view.update(
+      <DungeonShell scene={scene()} onFallbackReason={onFallbackReason} />
+    );
+    expect(onFallbackReason).toHaveBeenLastCalledWith('manifest-unavailable');
+
+    shellState.failedUrls.clear();
+    shellState.rejectedUrls.clear();
+    clearRejectedProfileLeavesForTests();
+    const recovered: DungeonShellProfile = {
+      ...profile,
+      floor: { ...profile.floor, diffuse: 'textures/race-recovered.png' },
+    };
+    shellState.snapshot = ready(recovered);
+    await view.update(
+      <DungeonShell scene={scene()} onFallbackReason={onFallbackReason} />
+    );
+    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
+    expect(primitiveAssetNames(view)).toEqual(
+      expect.arrayContaining(['/models/synty/env/body.glb', LEAF_URL])
+    );
+
+    resolveStale();
+    await Promise.resolve();
+    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
+    expect(primitiveAssetNames(view)).toEqual(
+      expect.arrayContaining(['/models/synty/env/body.glb', LEAF_URL])
+    );
+    expect(onFallbackReason.mock.calls.map(([reason]) => reason)).toEqual([
+      null,
+      'manifest-unavailable',
+      null,
+    ]);
+    consoleError.mockRestore();
+  });
+
+  it('keeps a cached rejected leaf in fallback until the cache is explicitly cleared', async () => {
     shellState.snapshot = ready();
     shellState.failedUrls.add(LEAF_URL);
     const onFallbackReason = vi.fn();
@@ -353,14 +440,13 @@ describe('DungeonShell actual shell integration', () => {
         />
       </StrictMode>
     );
-    expect(onFallbackReason).toHaveBeenCalledWith('manifest-unavailable');
+    expect(onFallbackReason).toHaveBeenLastCalledWith('manifest-unavailable');
 
-    shellState.failedUrls.clear();
-    const nextProfile = {
+    const sameResources: DungeonShellProfile = {
       ...profile,
       floor: { ...profile.floor, worldUnitsPerRepeat: 7 },
     };
-    shellState.snapshot = ready(nextProfile);
+    shellState.snapshot = ready(sameResources);
     await view.update(
       <StrictMode>
         <DungeonShell
@@ -371,8 +457,39 @@ describe('DungeonShell actual shell integration', () => {
       </StrictMode>
     );
     expect(primitiveAssetNames(view)).toEqual(
-      expect.arrayContaining(['/models/synty/env/body.glb', LEAF_URL])
+      expect.arrayContaining([LEGACY_WALL_URL, LEGACY_FRAME_URL])
     );
+    expect(onFallbackReason).toHaveBeenLastCalledWith('manifest-unavailable');
+
+    // This is the explicit cache-clear operation that a real asset-loader
+    // reset would perform; changing a profile key alone is not one.
+    shellState.failedUrls.clear();
+    shellState.rejectedUrls.clear();
+    clearRejectedProfileLeavesForTests();
+    const recovered: DungeonShellProfile = {
+      ...sameResources,
+      floor: { ...sameResources.floor, diffuse: 'textures/recovered.png' },
+      wall: {
+        ...sameResources.wall,
+        body: { ...sameResources.wall.body, file: 'env/recovered-body.glb' },
+        base: { ...sameResources.wall.base, file: 'env/recovered-base.glb' },
+        cap: { ...sameResources.wall.cap, file: 'env/recovered-cap.glb' },
+      },
+    };
     consoleError.mockRestore();
+    shellState.snapshot = ready(recovered);
+    await view.update(
+      <StrictMode>
+        <DungeonShell
+          scene={scene()}
+          doors={doors}
+          onFallbackReason={onFallbackReason}
+        />
+      </StrictMode>
+    );
+    expect(primitiveAssetNames(view)).toEqual(
+      expect.arrayContaining(['/models/synty/env/recovered-body.glb', LEAF_URL])
+    );
+    expect(onFallbackReason).toHaveBeenLastCalledWith(null);
   });
 });

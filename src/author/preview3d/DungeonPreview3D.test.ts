@@ -47,6 +47,9 @@ describe('previewScene', () => {
     expect(source.match(/<DungeonShell\b/g)).toHaveLength(1);
     expect(source).not.toMatch(/<SyntyHexFloor\b/);
     expect(source).not.toMatch(/<AtlasWalls\b/);
+    expect(source).not.toMatch(/\bdoors=/);
+    expect(source).not.toMatch(/\bonDoorClick=/);
+    expect(source).toContain('onFallbackReason={setShellFallbackReason}');
   });
 
   it('produces the same tiles, runs and door gaps the session route builds', () => {

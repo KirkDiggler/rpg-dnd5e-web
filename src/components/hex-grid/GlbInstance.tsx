@@ -180,13 +180,16 @@ export interface GlbInstanceProps {
    * if it would otherwise carry a theme tint. Default false (every caller
    * before this prop existed) renders exactly as before. */
   remembered?: boolean;
+  /** A scene already read by an enclosing atomic resource gate. When set,
+   * this instance clones that scene without issuing another useGLTF hook read. */
+  sourceScene?: THREE.Object3D;
 }
 
 /** Renders one instance of a GLB. useGLTF caches the loaded scene by URL,
  * so repeated placements of the same file must each clone the cached
  * Object3D — reusing the same instance across multiple `<primitive>`s
  * would just reparent it to the last placement (SyntyRoomDemo.tsx). */
-export function GlbInstance({
+function GlbInstanceObject({
   file,
   position,
   rotationY,
@@ -194,8 +197,9 @@ export function GlbInstance({
   tint,
   remembered = false,
   positionY = 0,
-}: GlbInstanceProps) {
-  const { scene } = useGLTF(environmentUrl(file));
+  sourceScene,
+}: GlbInstanceProps & { sourceScene: THREE.Object3D }) {
+  const scene = sourceScene;
 
   // Normalize to per-axis numbers up front so useMemo below can depend on
   // plain numbers (stable across renders) rather than the `scale` prop's
@@ -309,4 +313,16 @@ export function GlbInstance({
       rotation={[0, rotationY, 0]}
     />
   );
+}
+
+function LoadedGlbInstance(props: GlbInstanceProps) {
+  const { scene } = useGLTF(environmentUrl(props.file));
+  return <GlbInstanceObject {...props} sourceScene={scene} />;
+}
+
+export function GlbInstance(props: GlbInstanceProps) {
+  if (props.sourceScene) {
+    return <GlbInstanceObject {...props} sourceScene={props.sourceScene} />;
+  }
+  return <LoadedGlbInstance {...props} />;
 }

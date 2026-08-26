@@ -38,6 +38,7 @@ import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/sess
 import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useGLTF } from '@react-three/drei';
 import { useMemo } from 'react';
+import type { Object3D } from 'three';
 import { ENV_BASE, GlbInstance } from '../hex-grid/GlbInstance';
 import { WallRunMesh } from '../hex-grid/WallRunMesh';
 import {
@@ -61,16 +62,17 @@ function ProfileDoor({
   profile,
   wallHeight,
   leafShut,
+  leafScene,
 }: {
   door: DoorGapPiece;
   profile: DungeonShellWallProfile;
   wallHeight: number;
   leafShut: boolean;
+  leafScene: Object3D;
 }) {
   const surroundScene = useGLTF(
     ENV_BASE + profile.doorSurround.file.replace(/^env\//, '')
   ).scene;
-  const leafScene = useGLTF(ENV_BASE + DOOR_LEAF_FILE).scene;
   const geometry = useMemo(
     () => deriveShellDoorGeometry(surroundScene, leafScene),
     [leafScene, surroundScene]
@@ -109,10 +111,18 @@ function ProfileDoor({
           positionY={DUNGEON_SURFACE_Y}
           rotationY={door.rotationY}
           scale={leafScale}
+          sourceScene={leafScene}
         />
       )}
     </>
   );
+}
+
+function LoadedProfileDoor(
+  props: Omit<Parameters<typeof ProfileDoor>[0], 'leafScene'>
+) {
+  const leafScene = useGLTF(ENV_BASE + DOOR_LEAF_FILE).scene;
+  return <ProfileDoor {...props} leafScene={leafScene} />;
 }
 
 export interface AtlasWallsProps {
@@ -134,6 +144,10 @@ export interface AtlasWallsProps {
   /** Optional measured shell profile. Omitted preserves the legacy assets
    * and transforms exactly. */
   profile?: DungeonShellWallProfile;
+  /** The leaf scene already read by DungeonShell's atomic profile gate.
+   * Supplying it avoids a second hook read; standalone AtlasWalls callers
+   * retain the loaded-profile behavior when omitted. */
+  profileLeafScene?: Object3D;
   /** Resource-error fallback only: keep frames, gaps, state, and click
    * handling while omitting leaf loads that may be the rejected resource.
    * Defaults false so loading and ordinary legacy paths stay closed. */
@@ -147,6 +161,7 @@ export function AtlasWalls({
   onDoorClick,
   wallHeight = WALL_HEIGHT,
   profile,
+  profileLeafScene,
   suppressDoorLeaves = false,
 }: AtlasWallsProps) {
   return (
@@ -174,12 +189,22 @@ export function AtlasWalls({
             }
           >
             {profile ? (
-              <ProfileDoor
-                door={door}
-                profile={profile}
-                wallHeight={wallHeight}
-                leafShut={leafShut}
-              />
+              profileLeafScene ? (
+                <ProfileDoor
+                  door={door}
+                  profile={profile}
+                  wallHeight={wallHeight}
+                  leafShut={leafShut}
+                  leafScene={profileLeafScene}
+                />
+              ) : (
+                <LoadedProfileDoor
+                  door={door}
+                  profile={profile}
+                  wallHeight={wallHeight}
+                  leafShut={leafShut}
+                />
+              )
             ) : (
               <>
                 <GlbInstance
