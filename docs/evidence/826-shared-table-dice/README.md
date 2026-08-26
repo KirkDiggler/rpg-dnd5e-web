@@ -12,36 +12,43 @@ npm run dev -- --host 127.0.0.1 --port 3010
 # open http://127.0.0.1:3010/?concept=attack-die-3d&attackDieStage=tray
 ```
 
-## Capture identity
+## Harness integrity and capture procedure
 
-- Source base HEAD at automated run: `b249f970f2b98a4e0b496e25404e23aa106b1da8`, with the audited Task 9 Fix Round 1 working-tree changes later committed together with this worksheet
-- Browser/version: Chromium `151.0.7922.169` (`/usr/bin/google-chrome`)
-- Viewport/input device: desktop `1280×800`, stack-boundary `1024×768`, narrow-touch `390×844` (hasTouch)
-- Reviewer/date: automated harness, `2026-08-26T23:19:09.620Z`
-- Kirk feel gate: pending live review
+Run the focused integrity checks before starting Chromium:
 
-## Task 9 Fix Round 1 automated browser run — PASS
+```bash
+node --test scripts/attack-die/measure-shared-table-attachment.test.mjs
+node --check scripts/attack-die/measure-shared-table-attachment.mjs
+```
 
-Observed `2026-08-26T23:19:09.620Z` against the exact launch URL above. The
-bounded run used a 720000ms global deadline, 20000ms per-step deadline, 30000ms
-stage deadline, 35000ms scenario deadline, 10000ms cleanup deadline, and two
-scenario workers. It completed in 650195ms with overall `passed: true` and no
-fatal errors.
+Then run the exact checked-out source against the launch URL:
 
-The attachment probe retained the 2 CSS px limit, stable Roller per-die and
-renderer-generation selector, both center and off-center grabs, and
-center/quarter/edge tray samples. It measured both Roller members in the
-Physical `bless-mixed-attack` scenario at all three viewports: **36/36 samples
-passed**, zero samples failed, and the maximum error was **0.000006 CSS px**.
-No pointer coordinates or histories were written to the result.
+```bash
+node scripts/attack-die/measure-shared-table-attachment.mjs \
+  'http://127.0.0.1:3010/?concept=attack-die-3d&attackDieStage=tray' \
+  /tmp/shared-table-dice-attachment-final.json
+```
 
-Responsive checks passed in all three required states: desktop `1280×800` and
-stack-boundary `1024×768` showed two panes, while narrow-touch `390×844` showed
-the tabbed single-pane mode. The complete sweep passed **81/81** runs across
-three candidates, nine scenarios, and three viewports. Runtime records contain
-zero console errors, zero page errors, zero request failures, and zero fatal
-errors. This automated PASS does not change **Kirk feel gate: pending live
-review**.
+The harness uses system Chromium and the required desktop `1280×800`,
+stack-boundary `1024×768`, and narrow-touch `390×844` (hasTouch) viewports. It
+requires exactly two unique Roller targets per viewport, both center and
+off-center grabs, and every center/quarter/edge tray sample: exactly 36
+attachment samples. Each finite Euclidean attachment error is compared to the
+2 CSS px limit before its diagnostic output is rounded. It also runs all 81
+candidate/scenario/viewport combinations and rejects fatal, console, page, or
+failed-request errors.
+
+The bounded run uses a 720000ms global deadline, 20000ms per-step deadline,
+30000ms stage deadline, 35000ms scenario deadline, 10000ms cleanup deadline,
+and two scenario workers. A timeout cancels its owned page/context operation
+and waits for it to settle before later work; a scenario worker replaces a
+timed-out page before it continues. Cleanup escalates to the owned browser
+process tree if graceful close does not settle. JSON retains only
+aggregate/sample error, never pointer coordinates or histories.
+
+Record the exact commit SHA, browser version, result totals, and gate outputs
+only in the ignored Task 9 report after running this procedure. This worksheet
+contains no automated approval claim. **Kirk feel gate: pending live review.**
 
 ## Candidate/scenario matrix
 

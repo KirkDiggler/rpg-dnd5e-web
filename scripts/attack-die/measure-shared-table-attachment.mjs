@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -66,9 +68,22 @@ const TRAY_SAMPLES = Object.freeze([
     ],
   }),
 ]);
+const EXPECTED_ROLLER_TARGET_COUNT = 2;
+const EXPECTED_ATTACHMENT_SAMPLE_COUNT =
+  VIEWPORTS.length *
+  EXPECTED_ROLLER_TARGET_COUNT *
+  GRAB_POINTS.length *
+  TRAY_SAMPLES.length;
 
 const [urlArgument, outputArgument, ...extraArguments] = process.argv.slice(2);
-if (!urlArgument || !outputArgument || extraArguments.length > 0) {
+const isHarnessIntegritySelfTest =
+  urlArgument === '--self-test' &&
+  outputArgument === undefined &&
+  extraArguments.length === 0;
+if (
+  !isHarnessIntegritySelfTest &&
+  (!urlArgument || !outputArgument || extraArguments.length > 0)
+) {
   console.error(
     'usage: node scripts/attack-die/measure-shared-table-attachment.mjs <url> <output-json>'
   );
@@ -76,17 +91,20 @@ if (!urlArgument || !outputArgument || extraArguments.length > 0) {
 }
 
 let targetUrl;
-try {
-  targetUrl = new URL(urlArgument);
-  if (!['http:', 'https:'].includes(targetUrl.protocol))
-    throw Error('URL must use HTTP or HTTPS');
-} catch (error) {
-  console.error(
-    `invalid measurement URL: ${error instanceof Error ? error.message : String(error)}`
-  );
-  process.exit(2);
+let outputPath;
+if (!isHarnessIntegritySelfTest) {
+  try {
+    targetUrl = new URL(urlArgument);
+    if (!['http:', 'https:'].includes(targetUrl.protocol))
+      throw Error('URL must use HTTP or HTTPS');
+  } catch (error) {
+    console.error(
+      `invalid measurement URL: ${error instanceof Error ? error.message : String(error)}`
+    );
+    process.exit(2);
+  }
+  outputPath = resolve(outputArgument);
 }
-const outputPath = resolve(outputArgument);
 
 function round(value) {
   return Number(value.toFixed(6));
@@ -98,6 +116,28 @@ function safeMessage(value) {
 }
 
 class GlobalDeadlineError extends Error {}
+class OperationTimeoutError extends Error {}
+
+const activeHarnessTimers = new Set();
+
+function setHarnessTimer(callback, timeoutMs) {
+  const timer = setTimeout(() => {
+    activeHarnessTimers.delete(timer);
+    callback();
+  }, timeoutMs);
+  activeHarnessTimers.add(timer);
+  return timer;
+}
+
+function clearHarnessTimer(timer) {
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  activeHarnessTimers.delete(timer);
+}
+
+function activeHarnessTimerCount() {
+  return activeHarnessTimers.size;
+}
 
 const measurementStartedAt = Date.now();
 const interrupt = new AbortController();
@@ -115,51 +155,156 @@ function assertGlobalTimeRemaining(label) {
     );
 }
 
-async function withTimeout(label, timeoutMs, operation) {
+function timeoutError(label, timeoutMs, isGlobalDeadline) {
+  return isGlobalDeadline
+    ? new GlobalDeadlineError(
+        `global measurement deadline (${TIMEOUTS.globalMs}ms) exceeded during ${label}`
+      )
+    : new OperationTimeoutError(
+        `step timeout (${timeoutMs}ms) during ${label}`
+      );
+}
+
+async function withTimeout(label, timeoutMs, operation, cancelOperation) {
   assertGlobalTimeRemaining(label);
+  if (typeof cancelOperation !== 'function')
+    throw Error(`timeout cancellation is required for ${label}`);
+
   const remainingMs = globalTimeRemainingMs();
   const effectiveTimeoutMs = Math.min(timeoutMs, remainingMs);
   const isGlobalDeadline = remainingMs <= timeoutMs;
   let timer;
+  let settled = false;
+  let timingOut = false;
   let removeAbortListener = () => undefined;
+  const operationPromise = Promise.resolve().then(operation);
+
+  return new Promise((resolveOperation, rejectOperation) => {
+    const cleanup = () => {
+      clearHarnessTimer(timer);
+      removeAbortListener();
+    };
+    const settle = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback(value);
+    };
+    const terminate = async (error) => {
+      if (settled || timingOut) return;
+      timingOut = true;
+      try {
+        await cancelOperation();
+      } catch {
+        // The operation is still awaited below, so a failed cancellation cannot
+        // allow it to overlap later work.
+      }
+      try {
+        await operationPromise;
+      } catch {
+        // The timeout is the externally meaningful result after cancellation.
+      }
+      settle(rejectOperation, error);
+    };
+
+    operationPromise.then(
+      (value) => {
+        if (!timingOut) settle(resolveOperation, value);
+      },
+      (error) => {
+        if (!timingOut) settle(rejectOperation, error);
+      }
+    );
+    timer = setHarnessTimer(
+      () => void terminate(timeoutError(label, timeoutMs, isGlobalDeadline)),
+      effectiveTimeoutMs
+    );
+    const abort = () =>
+      void terminate(
+        new GlobalDeadlineError(`measurement interrupted during ${label}`)
+      );
+    interrupt.signal.addEventListener('abort', abort, { once: true });
+    removeAbortListener = () =>
+      interrupt.signal.removeEventListener('abort', abort);
+  });
+}
+
+async function closeWithinTimeout(label, operation, forceTerminate) {
   try {
-    return await Promise.race([
-      Promise.resolve().then(operation),
-      new Promise((_, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(
-              isGlobalDeadline
-                ? new GlobalDeadlineError(
-                    `global measurement deadline (${TIMEOUTS.globalMs}ms) exceeded during ${label}`
-                  )
-                : new Error(`step timeout (${timeoutMs}ms) during ${label}`)
-            ),
-          effectiveTimeoutMs
-        );
-        const abort = () =>
-          reject(
-            new GlobalDeadlineError(`measurement interrupted during ${label}`)
-          );
-        interrupt.signal.addEventListener('abort', abort, { once: true });
-        removeAbortListener = () =>
-          interrupt.signal.removeEventListener('abort', abort);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-    removeAbortListener();
+    await withTimeout(label, TIMEOUTS.cleanupMs, operation, forceTerminate);
+  } catch {
+    // A cleanup timeout invokes forceTerminate before this point and waits for
+    // the close promise to settle, so no cleanup promise can outlive teardown.
   }
 }
 
-async function closeWithinTimeout(label, operation) {
+async function closePage(page) {
+  if (page && !page.isClosed()) await page.close({ runBeforeUnload: false });
+}
+
+async function closeContext(context) {
+  if (context) await context.close();
+}
+
+function browserProcess(browser) {
   try {
-    await Promise.race([
-      operation(),
-      new Promise((resolve) => setTimeout(resolve, TIMEOUTS.cleanupMs)),
-    ]);
+    if (typeof browser?.process === 'function') return browser.process();
+    return browser?._impl?._browserProcess ?? browser?._browserProcess ?? null;
   } catch {
-    // Cleanup is best-effort; the enclosing browser close is the final fallback.
+    return null;
+  }
+}
+
+function killOwnedBrowserProcessTree() {
+  let processRows;
+  try {
+    processRows = execFileSync('ps', ['-eo', 'pid=,ppid='], {
+      encoding: 'utf8',
+      timeout: TIMEOUTS.cleanupMs,
+    });
+  } catch {
+    return;
+  }
+  const children = new Map();
+  for (const row of processRows.trim().split('\n')) {
+    const [pidText, parentPidText] = row.trim().split(/\s+/);
+    const pid = Number(pidText);
+    const parentPid = Number(parentPidText);
+    if (!Number.isInteger(pid) || !Number.isInteger(parentPid)) continue;
+    const siblings = children.get(parentPid) ?? [];
+    siblings.push(pid);
+    children.set(parentPid, siblings);
+  }
+  const descendants = [];
+  const pending = [...(children.get(process.pid) ?? [])];
+  while (pending.length > 0) {
+    const pid = pending.pop();
+    if (!pid) continue;
+    descendants.push(pid);
+    pending.push(...(children.get(pid) ?? []));
+  }
+  for (const pid of descendants.reverse()) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // A descendant may have already exited while its parent was terminated.
+    }
+  }
+}
+
+async function forceTerminateBrowser(browser) {
+  try {
+    browserProcess(browser)?.kill?.('SIGKILL');
+  } catch {
+    // Playwright does not expose a process handle in every supported release.
+  }
+  // The harness owns no child processes other than the browser tree. This is a
+  // final kill fallback when protocol-level Browser.close does not settle.
+  killOwnedBrowserProcessTree();
+  try {
+    if (browser?.isConnected?.()) await browser.close();
+  } catch {
+    // The process kill above is terminal when graceful protocol close fails.
   }
 }
 
@@ -200,20 +345,24 @@ async function systemChromiumExecutable() {
 }
 
 async function waitAnimationFrames(page, count = 2) {
-  await withTimeout(`wait for ${count} animation frames`, TIMEOUTS.stepMs, () =>
-    page.evaluate(
-      (frameCount) =>
-        new Promise((resolveFrame) => {
-          let remaining = frameCount;
-          const advance = () => {
-            remaining -= 1;
-            if (remaining === 0) resolveFrame();
-            else requestAnimationFrame(advance);
-          };
-          requestAnimationFrame(advance);
-        }),
-      count
-    )
+  await withTimeout(
+    `wait for ${count} animation frames`,
+    TIMEOUTS.stepMs,
+    () =>
+      page.evaluate(
+        (frameCount) =>
+          new Promise((resolveFrame) => {
+            let remaining = frameCount;
+            const advance = () => {
+              remaining -= 1;
+              if (remaining === 0) resolveFrame();
+              else requestAnimationFrame(advance);
+            };
+            requestAnimationFrame(advance);
+          }),
+        count
+      ),
+    () => closePage(page)
   );
 }
 
@@ -289,7 +438,8 @@ async function openStage(
         .waitFor({ state: 'attached', timeout: TIMEOUTS.stepMs });
       await page.waitForLoadState('networkidle', { timeout: TIMEOUTS.stepMs });
       await waitAnimationFrames(page);
-    }
+    },
+    () => closePage(page)
   );
 }
 
@@ -336,7 +486,8 @@ async function inspectResponsiveState(page, viewport) {
           headerColumns:
             getComputedStyle(header).gridTemplateColumns.split(' ').length,
         };
-      })
+      }),
+    () => closePage(page)
   );
   if ('failure' in state) throw Error(state.failure);
   if (!state.controlsAboveWitnesses)
@@ -375,7 +526,8 @@ async function inspectResponsiveState(page, viewport) {
           spectator: getComputedStyle(
             document.querySelector('[data-witness-pane="spectator"]')
           ).display,
-        }))
+        })),
+      () => closePage(page)
     );
     if (switched.roller !== 'none' || switched.spectator === 'none')
       throw Error('narrow Witness tab did not swap the visible pane');
@@ -389,20 +541,11 @@ async function inspectResponsiveState(page, viewport) {
   };
 }
 
-async function enumerateTargets(page) {
-  const targets = await withTimeout(
-    'enumerate stable Roller die targets',
-    TIMEOUTS.stepMs,
-    () =>
-      page.locator(TARGET_SELECTOR).evaluateAll((nodes) =>
-        nodes.map((node) => ({
-          dieId: node.getAttribute('data-roll-group-die-id'),
-          rendererGeneration: node.getAttribute('data-renderer-generation'),
-          tagName: node.tagName.toLowerCase(),
-        }))
-      )
-  );
-  if (targets.length === 0) throw Error('no Roller die targets were rendered');
+function validateRollerTargets(targets) {
+  if (targets.length !== EXPECTED_ROLLER_TARGET_COUNT)
+    throw Error(
+      `expected exactly ${EXPECTED_ROLLER_TARGET_COUNT} unique Roller die targets; received ${targets.length}`
+    );
   const identities = new Set();
   for (const target of targets) {
     if (!target.dieId || !target.rendererGeneration)
@@ -417,6 +560,109 @@ async function enumerateTargets(page) {
     identities.add(key);
   }
   return targets;
+}
+
+function attachmentSampleKey(sample) {
+  return [
+    sample.viewport,
+    sample.dieId,
+    sample.grabPoint,
+    sample.traySample,
+  ].join('\u0000');
+}
+
+function validateAttachmentCardinality(measuredMembers, samples) {
+  if (measuredMembers.length !== VIEWPORTS.length)
+    throw Error(
+      `expected measurements for ${VIEWPORTS.length} viewports; received ${measuredMembers.length}`
+    );
+  if (samples.length !== EXPECTED_ATTACHMENT_SAMPLE_COUNT)
+    throw Error(
+      `expected exactly ${EXPECTED_ATTACHMENT_SAMPLE_COUNT} attachment samples; received ${samples.length}`
+    );
+
+  const expectedKeys = new Set();
+  const expectedViewports = new Set(VIEWPORTS.map((viewport) => viewport.id));
+  for (const measured of measuredMembers) {
+    if (!expectedViewports.delete(measured.viewport))
+      throw Error(
+        `duplicate or unexpected attachment viewport ${measured.viewport}`
+      );
+    if (measured.memberCount !== EXPECTED_ROLLER_TARGET_COUNT)
+      throw Error(
+        `${measured.viewport} requires exactly ${EXPECTED_ROLLER_TARGET_COUNT} Roller targets`
+      );
+    if (
+      !Array.isArray(measured.dieIds) ||
+      new Set(measured.dieIds).size !== EXPECTED_ROLLER_TARGET_COUNT
+    )
+      throw Error(
+        `${measured.viewport} did not retain exactly ${EXPECTED_ROLLER_TARGET_COUNT} unique Roller die IDs`
+      );
+    for (const dieId of measured.dieIds) {
+      for (const grabPoint of GRAB_POINTS) {
+        for (const traySample of TRAY_SAMPLES) {
+          expectedKeys.add(
+            attachmentSampleKey({
+              viewport: measured.viewport,
+              dieId,
+              grabPoint: grabPoint.id,
+              traySample: traySample.id,
+            })
+          );
+        }
+      }
+    }
+  }
+  if (expectedViewports.size > 0)
+    throw Error(
+      `missing attachment viewport measurements: ${[...expectedViewports].join(', ')}`
+    );
+
+  const actualKeys = new Set();
+  for (const sample of samples) {
+    const key = attachmentSampleKey(sample);
+    if (!expectedKeys.has(key))
+      throw Error(
+        `unexpected attachment sample ${sample.viewport}/${sample.dieId}`
+      );
+    if (actualKeys.has(key))
+      throw Error(
+        `duplicate attachment sample ${sample.viewport}/${sample.dieId}`
+      );
+    actualKeys.add(key);
+  }
+  if (actualKeys.size !== expectedKeys.size)
+    throw Error(
+      `attachment samples do not contain every two-grab × three-sample combination`
+    );
+}
+
+function evaluateAttachmentError(errorCssPx) {
+  if (!Number.isFinite(errorCssPx)) return { failure: 'non-finite-error' };
+  return {
+    errorCssPx: round(errorCssPx),
+    ...(errorCssPx > ATTACHMENT_LIMIT_CSS_PX
+      ? { failure: 'error-exceeds-limit' }
+      : {}),
+  };
+}
+
+async function enumerateTargets(page) {
+  const targets = await withTimeout(
+    'enumerate stable Roller die targets',
+    TIMEOUTS.stepMs,
+    () =>
+      page.locator(TARGET_SELECTOR).evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          dieId: node.getAttribute('data-roll-group-die-id'),
+          rendererGeneration: node.getAttribute('data-renderer-generation'),
+          tagName: node.tagName.toLowerCase(),
+        }))
+      ),
+    () => closePage(page)
+  );
+  return validateRollerTargets(targets);
 }
 
 async function readAttachmentObservation(page, identity, previous) {
@@ -464,7 +710,8 @@ async function readAttachmentObservation(page, identity, previous) {
           };
         },
         { expected: identity, prior: previous }
-      )
+      ),
+    () => closePage(page)
   );
 }
 
@@ -486,7 +733,8 @@ async function attachmentEvidenceWatermark(page, identity) {
               frameSequence: evidence.frameSequence,
             }
           : { revision: 0, frameSequence: 0 };
-      }, identity)
+      }, identity),
+    () => closePage(page)
   );
 }
 
@@ -509,7 +757,8 @@ async function replayStage(
         )
         .waitFor({ state: 'attached', timeout: TIMEOUTS.stepMs });
       await waitAnimationFrames(page);
-    }
+    },
+    () => closePage(page)
   );
 }
 
@@ -600,7 +849,9 @@ async function measureProbe({
         observation.projectedAnchor[0] - probePointer.clientX,
         observation.projectedAnchor[1] - probePointer.clientY
       );
-      samples.push({ ...sample, errorCssPx: round(error) });
+      // The pass/fail decision is derived from the raw finite Euclidean error.
+      // Only the diagnostic value is rounded for JSON output.
+      samples.push({ ...sample, ...evaluateAttachmentError(error) });
     }
   } finally {
     await page.mouse.up().catch(() => undefined);
@@ -635,7 +886,10 @@ async function runAttachmentMeasurements({
       });
     }
   }
-  return targets.length;
+  return {
+    memberCount: targets.length,
+    dieIds: targets.map((target) => target.dieId),
+  };
 }
 
 async function advanceNarrowWitnessFrame(page, phase, scenario) {
@@ -652,7 +906,8 @@ async function advanceNarrowWitnessFrame(page, phase, scenario) {
         await page.waitForTimeout(50);
       }
       throw Error(`${scenario} Witness completion did not render`);
-    }
+    },
+    () => closePage(page)
   );
   await page.getByRole('tab', { name: 'Roller', exact: true }).click();
 }
@@ -772,27 +1027,36 @@ async function sweepScenarios({
   const pending = CANDIDATES.flatMap((candidate) =>
     SCENARIOS.map((scenario) => ({ candidate, scenario }))
   );
+  const createScenarioWorkerPage = async () => {
+    const workerPage = await withTimeout(
+      `create ${viewport.id} scenario worker page`,
+      TIMEOUTS.stepMs,
+      () => context.newPage(),
+      () => closeContext(context)
+    );
+    configurePage(workerPage);
+    return {
+      page: workerPage,
+      setDiagnosticContext: createPageDiagnostics(workerPage, records),
+    };
+  };
   const workers = [
     { page, setDiagnosticContext, closeWhenDone: false },
     ...(await Promise.all(
       Array.from(
         { length: Math.min(SCENARIO_WORKER_COUNT - 1, pending.length - 1) },
-        async () => {
-          const workerPage = await withTimeout(
-            `create ${viewport.id} scenario worker page`,
-            TIMEOUTS.stepMs,
-            () => context.newPage()
-          );
-          configurePage(workerPage);
-          return {
-            page: workerPage,
-            setDiagnosticContext: createPageDiagnostics(workerPage, records),
-            closeWhenDone: true,
-          };
-        }
+        async () => ({
+          ...(await createScenarioWorkerPage()),
+          closeWhenDone: true,
+        })
       )
     )),
   ];
+  const replaceClosedWorkerPage = async (worker) => {
+    const replacement = await createScenarioWorkerPage();
+    worker.page = replacement.page;
+    worker.setDiagnosticContext = replacement.setDiagnosticContext;
+  };
 
   await Promise.all(
     workers.map(async (worker) => {
@@ -817,7 +1081,8 @@ async function sweepScenarios({
             const outcome = await withTimeout(
               `run ${viewport.id}/${next.candidate.id}/${next.scenario}`,
               TIMEOUTS.scenarioMs,
-              () => runScenario(worker.page, viewport, next.scenario)
+              () => runScenario(worker.page, viewport, next.scenario),
+              () => closePage(worker.page)
             );
             results.push({ ...identity, passed: true, ...outcome });
           } catch (error) {
@@ -825,13 +1090,18 @@ async function sweepScenarios({
             const failure = { ...identity, message: safeMessage(error) };
             failures.push(failure);
             results.push({ ...identity, passed: false });
+            // withTimeout has already closed and awaited the timed-out page.
+            // Continue only on a fresh page, never a page whose operation was
+            // terminated by the timeout scope.
+            if (worker.page.isClosed()) await replaceClosedWorkerPage(worker);
           }
         }
       } finally {
         if (worker.closeWhenDone)
           await closeWithinTimeout(
             `close ${viewport.id} scenario worker page`,
-            () => worker.page.close()
+            () => closePage(worker.page),
+            () => closeContext(context)
           );
       }
     })
@@ -843,6 +1113,68 @@ async function writeResult(path, value) {
   const temporary = `${path}.task9-${process.pid}.tmp`;
   await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`);
   await rename(temporary, path);
+}
+
+async function runHarnessIntegritySelfTest() {
+  assert.throws(
+    () =>
+      validateRollerTargets([
+        {
+          dieId: 'die:one',
+          rendererGeneration: '1',
+          tagName: 'button',
+        },
+      ]),
+    /expected exactly 2 unique Roller die targets/
+  );
+
+  const roundedFailure = evaluateAttachmentError(2.0000001);
+  assert.deepEqual(roundedFailure, {
+    errorCssPx: 2,
+    failure: 'error-exceeds-limit',
+  });
+
+  const sequence = [];
+  let releaseOperation;
+  const timedOperation = withTimeout(
+    'self-test cancellation',
+    5,
+    () =>
+      new Promise((resolveOperation) => {
+        sequence.push('operation-started');
+        releaseOperation = () => {
+          sequence.push('operation-settled');
+          resolveOperation();
+        };
+      }),
+    async () => {
+      sequence.push('cancelled');
+      releaseOperation();
+    }
+  );
+  await assert.rejects(timedOperation, OperationTimeoutError);
+  sequence.push('continuation');
+  assert.deepEqual(sequence, [
+    'operation-started',
+    'cancelled',
+    'operation-settled',
+    'continuation',
+  ]);
+
+  assert.equal(activeHarnessTimerCount(), 0);
+  await withTimeout(
+    'self-test timer cleanup',
+    50,
+    () => Promise.resolve('settled'),
+    () => assert.fail('settled operation must not be cancelled')
+  );
+  assert.equal(activeHarnessTimerCount(), 0);
+}
+
+if (isHarnessIntegritySelfTest) {
+  await runHarnessIntegritySelfTest();
+  console.log('harness integrity self-test: 4/4 passed');
+  process.exit(0);
 }
 
 const generatedAt = new Date().toISOString();
@@ -869,12 +1201,24 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 
 try {
   executablePath = await systemChromiumExecutable();
-  browser = await withTimeout('launch system Chromium', TIMEOUTS.stepMs, () =>
-    chromium.launch({
-      executablePath,
-      headless: true,
-      timeout: TIMEOUTS.stepMs,
-    })
+  let launchedBrowser;
+  let launchCancelled = false;
+  browser = await withTimeout(
+    'launch system Chromium',
+    TIMEOUTS.stepMs,
+    async () => {
+      launchedBrowser = await chromium.launch({
+        executablePath,
+        headless: true,
+        timeout: TIMEOUTS.stepMs,
+      });
+      if (launchCancelled) await forceTerminateBrowser(launchedBrowser);
+      return launchedBrowser;
+    },
+    async () => {
+      launchCancelled = true;
+      await forceTerminateBrowser(launchedBrowser);
+    }
   );
   browserVersion = browser.version();
 
@@ -889,12 +1233,14 @@ try {
           deviceScaleFactor: 1,
           hasTouch: viewport.touch,
           isMobile: viewport.touch,
-        })
+        }),
+      () => forceTerminateBrowser(browser)
     );
     const page = await withTimeout(
       `create ${viewport.id} browser page`,
       TIMEOUTS.stepMs,
-      () => context.newPage()
+      () => context.newPage(),
+      () => closeContext(context)
     );
     configurePage(page);
     const setDiagnosticContext = createPageDiagnostics(page, records);
@@ -912,14 +1258,14 @@ try {
         'single-d20'
       );
       responsiveStates.push(await inspectResponsiveState(page, viewport));
-      const memberCount = await runAttachmentMeasurements({
+      const measuredMembers = await runAttachmentMeasurements({
         page,
         setDiagnosticContext,
         viewport,
         candidate: measurementCandidate,
         samples: attachmentSamples,
       });
-      measuredMemberCounts.push({ viewport: viewport.id, memberCount });
+      measuredMemberCounts.push({ viewport: viewport.id, ...measuredMembers });
       await sweepScenarios({
         context,
         page,
@@ -932,8 +1278,10 @@ try {
     } catch (error) {
       fatalErrors.push({ viewport: viewport.id, message: safeMessage(error) });
     } finally {
-      await closeWithinTimeout(`close ${viewport.id} browser context`, () =>
-        context.close()
+      await closeWithinTimeout(
+        `close ${viewport.id} browser context`,
+        () => closeContext(context),
+        () => forceTerminateBrowser(browser)
       );
     }
   }
@@ -943,7 +1291,11 @@ try {
   for (const [signal, handler] of signalHandlers)
     process.removeListener(signal, handler);
   if (browser)
-    await closeWithinTimeout('close system Chromium', () => browser.close());
+    await closeWithinTimeout(
+      'close system Chromium',
+      () => browser.close(),
+      () => forceTerminateBrowser(browser)
+    );
 }
 
 const scenarioOrder = new Map(
@@ -961,6 +1313,17 @@ const compareScenarioEntries = (first, second) =>
 sweepResults.sort(compareScenarioEntries);
 sweepFailures.sort(compareScenarioEntries);
 
+let attachmentCardinalityPassed = true;
+try {
+  validateAttachmentCardinality(measuredMemberCounts, attachmentSamples);
+} catch (error) {
+  attachmentCardinalityPassed = false;
+  fatalErrors.push({
+    viewport: 'attachment',
+    message: safeMessage(error),
+  });
+}
+
 const finiteErrors = attachmentSamples
   .map((sample) => sample.errorCssPx)
   .filter((value) => typeof value === 'number' && Number.isFinite(value));
@@ -976,7 +1339,7 @@ const expectedSweepRuns =
   VIEWPORTS.length * CANDIDATES.length * SCENARIOS.length;
 const attachmentPassed =
   fatalErrors.length === 0 &&
-  attachmentSamples.length > 0 &&
+  attachmentCardinalityPassed &&
   failedAttachmentSamples.length === 0 &&
   maximumErrorCssPx !== null &&
   maximumErrorCssPx <= ATTACHMENT_LIMIT_CSS_PX;
@@ -1029,6 +1392,7 @@ const result = {
     grabPoints: GRAB_POINTS.map(({ id }) => id),
     traySamples: TRAY_SAMPLES.map(({ id }) => id),
     measuredMemberCounts,
+    expectedSampleCount: EXPECTED_ATTACHMENT_SAMPLE_COUNT,
     sampleCount: attachmentSamples.length,
     failedSampleCount: failedAttachmentSamples.length,
     maximumErrorCssPx,
