@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   productionPreload: vi.fn().mockResolvedValue(undefined),
   conceptPreload: vi.fn().mockResolvedValue(undefined),
   meshCalls: [] as Array<Record<string, unknown>>,
+  sourceEffects: [] as Array<{
+    source: unknown;
+    phase: 'setup' | 'cleanup';
+  }>,
 }));
 
 vi.mock('@react-three/fiber', () => ({
@@ -42,12 +46,17 @@ vi.mock('./RuntimeDiceMesh', () => ({
       mounted.current = true;
       mocks.meshCalls.push(props);
     }
+    const source = props.source;
     const onReady = props.onReady as
       | ((input: { runtimeSourceId: number; runtimeCloneId: number }) => void)
       | undefined;
     useEffect(() => {
+      mocks.sourceEffects.push({ source, phase: 'setup' });
       onReady?.({ runtimeSourceId: 11, runtimeCloneId: 12 });
-    }, [onReady]);
+      return () => {
+        mocks.sourceEffects.push({ source, phase: 'cleanup' });
+      };
+    }, [onReady, source]);
     return <div data-testid="mock-runtime-dice-mesh" />;
   },
 }));
@@ -144,6 +153,7 @@ beforeEach(() => {
   mocks.productionPreload.mockClear();
   mocks.conceptPreload.mockClear();
   mocks.meshCalls = [];
+  mocks.sourceEffects = [];
 });
 
 describe('RollGroupDie3D', () => {
@@ -237,6 +247,24 @@ describe('RollGroupDie3D', () => {
     expect(mocks.conceptPreload).not.toHaveBeenCalled();
     expect(mocks.meshCalls).toHaveLength(1);
     expect(mocks.meshCalls[0].source).toMatchObject({ preset });
+  });
+
+  it('prepares an already-ready production d20 once when its snapshot is unchanged', () => {
+    const preset = presetFor('d20');
+    mocks.productionSnapshot = readySnapshot(preset, 'verified-production');
+    const onReady = vi.fn();
+
+    render(
+      <RollGroupDie3D
+        {...props(dieFor('d20', preset.presetId, 20), 20)}
+        onReady={onReady}
+      />
+    );
+
+    expect(
+      mocks.sourceEffects.filter(({ phase }) => phase === 'setup')
+    ).toHaveLength(1);
+    expect(onReady).toHaveBeenCalledTimes(1);
   });
 
   it('keeps production d20 assurance and ownership separate from provisional concept d6', async () => {

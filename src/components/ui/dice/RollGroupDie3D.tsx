@@ -59,6 +59,17 @@ function sourceFromSnapshot(
   };
 }
 
+function snapshotsEqual(left: GroupSnapshot, right: GroupSnapshot) {
+  return (
+    left.status === right.status &&
+    left.assurance === right.assurance &&
+    left.preset === right.preset &&
+    left.scene === right.scene &&
+    left.binding === right.binding &&
+    left.failureReason === right.failureReason
+  );
+}
+
 export function RollGroupDie3D({
   die,
   displayedFace,
@@ -98,11 +109,16 @@ export function RollGroupDie3D({
             assurance: 'verified-production' as const,
           }
         : conceptSnapshot(die.presetId);
+    const updateSnapshot = (next: GroupSnapshot) => {
+      setSnapshot((current) =>
+        snapshotsEqual(current, next) ? current : next
+      );
+    };
     const refresh = () => {
-      if (subscribed) setSnapshot(readSnapshot());
+      if (subscribed) updateSnapshot(readSnapshot());
     };
     const initial = readSnapshot();
-    setSnapshot(initial);
+    updateSnapshot(initial);
     if (initial.status === 'idle' || initial.status === 'loading') {
       const owner = production
         ? preloadDiceRuntimePreset(die.presetId)
