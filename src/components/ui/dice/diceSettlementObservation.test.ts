@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { DiceSettlementEntryV2 } from './diceRuntimeManifest';
 import { parseDiceRuntimeManifest } from './diceRuntimeManifest';
-import { observeUpwardResult } from './diceSettlementObservation';
+import {
+  observeUpwardPresetResult,
+  observeUpwardResult,
+} from './diceSettlementObservation';
 
 type Direction = readonly [number, number, number];
 type Quaternion = readonly [number, number, number, number];
@@ -60,6 +63,53 @@ function perpendicularTo(direction: Direction): Direction {
   const magnitude = Math.hypot(...unnormalized);
   return unnormalized.map((value) => value / magnitude) as unknown as Direction;
 }
+
+describe('observeUpwardPresetResult', () => {
+  it.each([
+    ['d4', [1, 2, 3, 4]],
+    ['d6', [1, 2, 3, 4, 5, 6]],
+    ['d8', [1, 2, 3, 4, 5, 6, 7, 8]],
+    ['d10', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]],
+    ['d12', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]],
+  ] as const)(
+    'resolves every supported result for %s',
+    (_kind, supportedResults) => {
+      const directions = syntheticDirections();
+      const entries = Object.fromEntries(
+        supportedResults.map((result, index) => [
+          String(result),
+          {
+            quaternion: rotateDirectionToUp(directions[index]),
+            witness: {
+              kind: 'runtime-direction',
+              readKind: 'face',
+              readIndex: index,
+              readDirection: directions[index],
+            },
+          },
+        ])
+      ) as Record<string, DiceSettlementEntryV2>;
+
+      for (const result of supportedResults) {
+        const observation = observeUpwardPresetResult(
+          entries,
+          supportedResults,
+          entries[String(result)].quaternion
+        );
+        expect(observation.result).toBe(result);
+        expect(observation.upDot).toBeGreaterThan(0.999999);
+        expect(observation.margin).toBeGreaterThan(0.2);
+      }
+    }
+  );
+
+  it('requires the generic entry keys to match the supported result list exactly', () => {
+    const entries = syntheticEntries();
+    expect(() =>
+      observeUpwardPresetResult(entries, [1, 2, 3], [0, 0, 0, 1])
+    ).toThrow(/result set/i);
+  });
+});
 
 describe('observeUpwardResult', () => {
   it('independently resolves every result in a complete synthetic d20', () => {

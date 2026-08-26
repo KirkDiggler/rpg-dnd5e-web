@@ -1183,6 +1183,38 @@ describe('Original carved runtime renderer', () => {
     );
   });
 
+  it('mounts the shared RuntimeDiceMesh for a verified runtime preset', () => {
+    arrangeRuntimeReady();
+    render(
+      <AttackDie3D
+        {...props(550, 12)}
+        provider={originalProvider}
+        phase="settled"
+      />
+    );
+
+    expect(screen.getByTestId('runtime-dice-mesh')).toBeTruthy();
+  });
+
+  it('does not emit a final observation while the die is exiting', () => {
+    arrangeRuntimeReady();
+    const telemetry = vi.fn();
+    render(
+      <AttackDie3D
+        {...props(551, 12)}
+        provider={originalProvider}
+        phase="exiting"
+        onTelemetry={telemetry}
+      />
+    );
+
+    frame(-1, 0);
+
+    expect(telemetry).not.toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'observed' })
+    );
+  });
+
   it('applies the exact model normalization as a Three.js group without Canvas transforms', () => {
     arrangeRuntimeReady();
     render(

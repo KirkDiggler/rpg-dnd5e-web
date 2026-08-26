@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { Object3D } from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as runtimeProvider from './diceRuntimeProvider';
@@ -268,6 +269,13 @@ beforeEach(() => {
 });
 
 describe('dice runtime provider', () => {
+  it('keeps the verified production provider bytes pinned', () => {
+    const bytes = readFileSync('src/components/ui/dice/diceRuntimeProvider.ts');
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(
+      'b30067f57256d8dd901704b091e26a0f3d0c1e5eb7eaa14c6c7bfb6c47dafba6'
+    );
+  });
+
   it.each([
     [
       'sub-1e-4 exponents and normalized signed zero',
@@ -413,6 +421,7 @@ describe('dice runtime provider', () => {
 
   it.each([
     'lightning',
+    'dice.original.carved.d6',
     'dice.original.carved.d12',
     'https://evil.test/caller-selected.glb',
   ])(
