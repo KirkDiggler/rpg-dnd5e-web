@@ -373,6 +373,49 @@ describe('createAnchoredRollGroupGestureController', () => {
     expect(captureTarget.releaseCalls).toEqual([]);
   });
 
+  it.each([
+    ['move', Number.NaN],
+    ['move', Number.POSITIVE_INFINITY],
+    ['release', Number.NaN],
+    ['release', Number.NEGATIVE_INFINITY],
+  ] as const)(
+    'cleans up when the sample has a non-finite pointer ID: %s/%s',
+    (method, pointerId) => {
+      const controller = createAnchoredRollGroupGestureController();
+      const captureTarget = new FakePointerCaptureOwner();
+      begin(controller, captureTarget);
+
+      expect(
+        controller[method]({ pointerId, clientX: 30, clientY: 30, timeMs: 16 })
+      ).toBeUndefined();
+      expect(controller.held()).toBeUndefined();
+      expect(captureTarget.releaseCalls).toEqual([7]);
+    }
+  );
+
+  it('releases capture if a stateful sample getter throws after acquisition', () => {
+    let timeReads = 0;
+    const sample = {
+      pointerId: 7,
+      clientX: 20,
+      clientY: 20,
+      get timeMs() {
+        timeReads += 1;
+        if (timeReads > 1) throw new Error('sample changed while copying');
+        return 0;
+      },
+    } as RollGroupPointerSample;
+    const controller = createAnchoredRollGroupGestureController();
+    const captureTarget = new FakePointerCaptureOwner();
+
+    const held = begin(controller, captureTarget, { sample });
+    if (held) controller.reset();
+
+    expect(captureTarget.setCalls).toEqual([7]);
+    expect(captureTarget.releaseCalls).toEqual([7]);
+    expect(controller.held()).toBeUndefined();
+  });
+
   it.each(['cancel', 'reset', 'lost capture'] as const)(
     'cleans up on %s without emitting',
     (ending) => {

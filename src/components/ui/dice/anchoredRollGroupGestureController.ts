@@ -169,10 +169,11 @@ function validHitRegion(region: HitRegion): boolean {
 }
 
 function validBegin(
-  input: Parameters<AnchoredRollGroupGestureController['begin']>[0]
+  input: Parameters<AnchoredRollGroupGestureController['begin']>[0],
+  sample: RollGroupPointerSample
 ): boolean {
   if (
-    !isFiniteSample(input.sample) ||
+    !isFiniteSample(sample) ||
     !Number.isFinite(input.hitPaddingPx) ||
     input.hitPaddingPx < 0 ||
     !Number.isInteger(input.motionSeed) ||
@@ -337,12 +338,19 @@ function updateMotion(
 export function createAnchoredRollGroupGestureController(): AnchoredRollGroupGestureController {
   let active: ActiveGesture | undefined;
 
-  function safelyReleaseCapture(gesture: ActiveGesture): void {
+  function safelyReleasePointerCapture(
+    captureTarget: PointerCaptureOwner,
+    pointerId: number
+  ): void {
     try {
-      gesture.captureTarget.releasePointerCapture(gesture.pointerId);
+      captureTarget.releasePointerCapture(pointerId);
     } catch {
       // Capture cleanup is best-effort and must never escape the controller.
     }
+  }
+
+  function safelyReleaseCapture(gesture: ActiveGesture): void {
+    safelyReleasePointerCapture(gesture.captureTarget, gesture.pointerId);
   }
 
   function clearAndRelease(gesture: ActiveGesture): void {
@@ -364,20 +372,24 @@ export function createAnchoredRollGroupGestureController(): AnchoredRollGroupGes
 
   return {
     begin(input) {
+      let captureRequested = false;
+      let capturedPointerId: number | undefined;
       try {
-        if (active || !validBegin(input)) return undefined;
+        if (active) return undefined;
+        const sample = copySample(input.sample);
+        if (!validBegin(input, sample)) return undefined;
         const projection = snapshotProjection(input.projection);
         const regions = input.hitRegions.map(copyHitRegion);
         const selected = chooseHit(
           projection,
           regions,
           input.hitPaddingPx,
-          input.sample
+          sample
         );
         if (!selected) return undefined;
         const pointer = projection.screenToPlane(
-          input.sample.clientX,
-          input.sample.clientY
+          sample.clientX,
+          sample.clientY
         );
         if (!pointer || !isFiniteTuple2(pointer)) return undefined;
         const anchor = frozenTuple(
@@ -388,26 +400,15 @@ export function createAnchoredRollGroupGestureController(): AnchoredRollGroupGes
         const position = normalizedPosition(projection, planePosition);
         if (!position) return undefined;
 
-        try {
-          input.captureTarget.setPointerCapture(input.sample.pointerId);
-          if (!input.captureTarget.hasPointerCapture(input.sample.pointerId)) {
-            try {
-              input.captureTarget.releasePointerCapture(input.sample.pointerId);
-            } catch {
-              // Failed capture ownership has no controller state to preserve.
-            }
-            return undefined;
-          }
-        } catch {
-          try {
-            input.captureTarget.releasePointerCapture(input.sample.pointerId);
-          } catch {
-            // A failed capture request has no controller state to preserve.
-          }
+        capturedPointerId = sample.pointerId;
+        captureRequested = true;
+        input.captureTarget.setPointerCapture(capturedPointerId);
+        if (!input.captureTarget.hasPointerCapture(capturedPointerId)) {
+          safelyReleasePointerCapture(input.captureTarget, capturedPointerId);
+          captureRequested = false;
           return undefined;
         }
 
-        const sample = copySample(input.sample);
         const heldState = frozenHeldState(
           anchor,
           position,
@@ -430,19 +431,23 @@ export function createAnchoredRollGroupGestureController(): AnchoredRollGroupGes
           accumulatedTurn: 0,
           heldState,
         };
+        captureRequested = false;
         return heldState;
       } catch {
+        if (captureRequested && capturedPointerId !== undefined)
+          safelyReleasePointerCapture(input.captureTarget, capturedPointerId);
         return undefined;
       }
     },
 
     move(sample) {
       const gesture = active;
-      if (!gesture || sample.pointerId !== gesture.pointerId) return undefined;
+      if (!gesture) return undefined;
       if (!isFiniteSample(sample)) {
         clearAndRelease(gesture);
         return undefined;
       }
+      if (sample.pointerId !== gesture.pointerId) return undefined;
       if (!stillOwnsCapture(gesture)) return undefined;
       if (!updateMotion(gesture, sample)) {
         clearAndRelease(gesture);
@@ -453,11 +458,12 @@ export function createAnchoredRollGroupGestureController(): AnchoredRollGroupGes
 
     release(sample) {
       const gesture = active;
-      if (!gesture || sample.pointerId !== gesture.pointerId) return undefined;
+      if (!gesture) return undefined;
       if (!isFiniteSample(sample)) {
         clearAndRelease(gesture);
         return undefined;
       }
+      if (sample.pointerId !== gesture.pointerId) return undefined;
       if (!stillOwnsCapture(gesture)) return undefined;
 
       try {
