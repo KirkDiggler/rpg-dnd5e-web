@@ -396,6 +396,16 @@ function diceEventsFor(
   return Object.freeze(events);
 }
 
+export const COMBAT_DEBUG_MAX_LINES = 500;
+
+function appendDebugLine(
+  debug: readonly string[],
+  line: string
+): readonly string[] {
+  const start = Math.max(0, debug.length - COMBAT_DEBUG_MAX_LINES + 1);
+  return Object.freeze([...debug.slice(start), line]);
+}
+
 function diagnose(
   state: CombatPresentationState,
   message: string
@@ -404,7 +414,7 @@ function diagnose(
   return Object.freeze({
     ...state,
     diagnostics: Object.freeze([...state.diagnostics, diagnostic]),
-    debug: Object.freeze([...state.debug, diagnostic]),
+    debug: appendDebugLine(state.debug, diagnostic),
   });
 }
 
@@ -421,7 +431,7 @@ function appendRawDebug(
   }
   return Object.freeze({
     ...state,
-    debug: Object.freeze([...state.debug, text]),
+    debug: appendDebugLine(state.debug, text),
   });
 }
 

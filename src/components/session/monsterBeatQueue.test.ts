@@ -187,7 +187,7 @@ describe('nextBeatStep', () => {
     const t2 = moved('skeleton-2');
     const queue = [t2];
     // Caller resets announcedActor to null after processing skeleton-1's
-    // own turnEnded (useCombatPanel's own job) — the next actor's first
+    // own turnEnded (the pacing hook's job) — the next actor's first
     // beat announces exactly like the first ever did.
     expect(nextBeatStep(queue, null)).toEqual({
       type: 'announce',

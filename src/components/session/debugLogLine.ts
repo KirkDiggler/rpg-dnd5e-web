@@ -2,7 +2,7 @@
  * debugLogLine — turns one stream `Event` into one line of the debug
  * combat log (rpg-dnd5e-web#740, rescoped 2026-08-23: "render everything
  * on the wire, raw"). Framework-free pure function, same split every
- * other selector on this route keeps (`combatBeat.ts`, `combatPanel.ts`).
+ * other selector on this route keeps (`combatBeat.ts`, combat experience).
  *
  * # Debug, not Story
  *

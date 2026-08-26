@@ -138,6 +138,15 @@ export function ActionDock({
       </div>
     );
   }
+  if (clock !== ClockKind.TURN) {
+    return (
+      <div className={styles.passiveActionRow}>
+        <span>Synchronizing</span>
+        <strong>Actions are not ready</strong>
+        <small>Waiting for coherent Turn and Afford authority.</small>
+      </div>
+    );
+  }
 
   const activeParticipant = participants.find(
     (participant) => participant.active

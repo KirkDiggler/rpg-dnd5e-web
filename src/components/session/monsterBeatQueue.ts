@@ -2,8 +2,8 @@
  * monsterBeatQueue — pure sequencing logic behind "the monster's turn as a
  * moment" (rpg-project#254, design rpg-project#252, slice 2 of the combat
  * turn journey rpg-project#253/#91). Framework-free, same split every other
- * pure selector on this route keeps (`combatBeat.ts`, `combatPanel.ts`,
- * `turnHud.ts`) — `useCombatPanel.ts` owns the timers, this module owns the
+ * pure selector on this route keeps (`combatBeat.ts`, combat-experience
+ * selection) — `useCombatStoryPacing.ts` owns the timers, this module owns the
  * decisions about WHAT plays next.
  *
  * # The problem this solves
@@ -12,7 +12,7 @@
  * narrates it as a burst: `moved` (one per cell), then `struck`/`missed`,
  * then `turn_ended` — all of which can land within milliseconds of each
  * other. Shown as fast as they arrive, a four-cell approach and a swing
- * would flash by unreadably. `useCombatPanel` queues these four event
+ * would flash by unreadably. `useCombatStoryPacing` queues these four event
  * kinds (`moved`/`struck`/`missed`/`turnEnded`) and replays them at a
  * fixed human-followable pace; every OTHER kind (`downed`, `fightStarted`,
  * `fightEnded`, and anything the local player caused themselves) bypasses
@@ -34,7 +34,7 @@
  *
  * # `nextBeatStep` — pure, so the pacing itself is unit-testable
  *
- * The queue is a plain array the caller owns (`useCombatPanel`'s
+ * The queue is a plain array the caller owns (`useCombatStoryPacing`'s
  * `queueRef`); this module never touches it directly. `nextBeatStep`
  * READS the queue's head and the currently-announced actor and decides
  * one of three things, without any side effect or timer of its own:
@@ -108,7 +108,7 @@ export type BeatStep =
  * `announce` step leaves the head in place (there's nothing to process
  * yet, just something to say first); a `process` step's caller is the one
  * that shifts it off. `announcedActor` resets to `null` once a
- * `turnEnded` for that actor has been processed (`useCombatPanel`'s own
+ * `turnEnded` for that actor has been processed (the pacing hook's own
  * job), so the NEXT actor's first beat announces in turn.
  */
 export function nextBeatStep(

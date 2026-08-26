@@ -1,36 +1,106 @@
 ---
-name: combat-v2 panels (deleted)
-description: Deleted in slice 3 of the game-screen rebuild — see game-view.md
-updated: 2026-07-12
-confidence: high — verified by git rm and a clean grep for combat-v2 across src/
+name: production session combat experience
+description: Shared CombatExperience renderer, exact declarations, private character data, event recovery, and presentation gating
+updated: 2026-08-25
+confidence: high — production and concept import the same renderer; focused route/controller/recovery suites pass
 ---
 
-# combat-v2 panels — deleted
+# Production session combat experience
 
-`src/components/combat-v2/` was deleted in slice 3 of the [game-screen
-rebuild](https://github.com/KirkDiggler/rpg-project/blob/main/ideas/game-screen-rebuild/design.md)
-(rpg-dnd5e-web#447): `CombatPanel`, `ActionPanel`/`ActionPanelV2`,
-`CombatHistorySidebar`, `HoverInfoPanel`, `CharacterInfoSection`,
-`CombatAbilitiesPanel`, `FeaturesListPanel`, `EquipmentDisplay`,
-`ActionEconomyIndicators`, and `usePlayerTurn`. `LobbyView.tsx` was the
-only consumer of any of it (via the `combat-v2` barrel export); once
-LobbyView was deleted, every file in the directory was unreferenced.
+The production session route and `?concept=session-combat` now render the same
+production-owned tree under
+`src/components/session/combat-experience/`: `CombatExperience`, `ActionDock`,
+`TargetSurface`, `StoryLog`, and `DiceDrawer`. The concept supplies generated
+fixtures and review controls; `SessionEncounterView` supplies live provider
+hooks and `SessionCanvas`. There is no concept copy and no production-only
+combat panel renderer.
 
-Per design.md's "Incompatible — rebuild, no bridge exists" framing, these
-panels got available actions from RPC response payloads; the proven v2
-stack pushes them on the stream as `TurnStateChanged`. The replacement
-combat surface is `EncounterDock`, composed from the `ui/combat/*`
-primitives (rpg-dnd5e-web#525; slice 2 / PR #556 took it to the signed-off
-composition D) — it renders the server-authored `TurnState` verbatim: a
-HUD-sprite-skinned two-row bar with pool-shape cost badges, verbs inline
-(features as labeled groups, width-measured overflow), a floating
-`ContextPill` that appears only for non-obvious states (no standing
-teaching strip), and the `CombatLog` open by default as a click-through
-translucent panel over the map. It
-bootstrapped from the harness's `ActionMenu`/`EconomyBar`
-(`src/components/playtest/`), which now remain the PlaytestHarness dev-panel
-surface only — see [game-view.md](game-view.md#encounterview--the-shared-harness-stack).
-The old `CombatHistorySidebar`'s "📜 Combat Log" was rebuilt on the push
-model (matching its spirit, not its code) as `CombatLog` +
-`useCombatLog` — see game-view.md's "Combat log + initiative tracker"
-section.
+This supersedes two older surfaces:
+
+- `src/components/combat-v2/`, deleted in game-screen rebuild slice 3 (#447);
+- the later session-local `CombatPanel` / `useCombatPanel` / `combatPanel.ts`,
+  its `DeclarationRow` expansion shim, direct-floor Attack flow, old TurnHud,
+  and separate DebugCombatLog. Those files are deleted in #817.
+
+## Authority and actions
+
+`useSessionAfford` retains generated nested `Declaration[]` unchanged. An
+Attack declaration carries its full `AttackRef`, `target_kind`, candidate rows,
+independent declaration/candidate availability, provider `why.text`, and opaque
+`id`.
+
+Attack is panel-first in the first production cut:
+
+1. the player selects an available authored Attack;
+2. that exact declaration becomes armed;
+3. `SessionCanvas` receives rings/click routing for only that declaration's
+   available candidates;
+4. a candidate click echoes the exact declaration ID and member target.
+
+Unavailable candidates stay readable with provider `why.text` and cannot
+dispatch. A map click with no armed action never attacks. Multiple offers are
+never auto-selected. End Turn echoes its own unique available declaration.
+Selectors are compared and echoed only; they are never parsed or constructed.
+
+Movement keeps the atlas path/request and authoritative response-step animation.
+Authority is fail-closed: WORLD/WORLD supplies the exact empty selector;
+TURN/TURN requires one available non-empty Move declaration; partial,
+mismatched, missing, and ambiguous snapshots are not ready. `remaining` is
+rendered as provider display context only. The web performs no feet-to-cell or
+path-price calculation.
+
+## Public identity and private status
+
+The public session roster supplies names, member kind, and body refs used by the
+map. The route no longer calls v1alpha1 `GetCharacter` for the local model, HP,
+or level.
+
+Authenticated-owner `useCharacterData(characterId)` supplies exact level, HP,
+base speed, AC display, equipment, features, conditions, and resources. It
+keeps the last confirmed value on background failure, coalesces reads, and
+fences key changes. EquipItem and UnequipItem success replace the cache directly
+with the complete response `CharacterData`; the web does not recompute slots,
+AC, damage, HP, or resources.
+
+## One event funnel and recovery
+
+`useSessionEventStream` sequences live StreamEvents and GetStory entries through
+one monotonic gap-aware lane. Every delivery includes `live` or `catchup`
+provenance. Initial connection, reconnect, observed gaps, the five-second
+terminal poll, focus, visibility, and aged-out from-zero recovery use that same
+serialized lane.
+
+`SessionEncounterView` then applies each delivered event in this order:
+
+1. schedule immediate, burst-coalesced CharacterData/Turn/Afford/View/Where
+   (plus roster/door) invalidation;
+2. ingest raw Debug and authoritative typed presentation facts;
+3. advance presentation-only other-member pacing;
+4. apply door notice and run-ending route handlers.
+
+Query/state reconciliation is never delayed for animation. The existing
+`monsterBeatQueue` semantics pace only another member's live Story cursor;
+catch-up history settles immediately. Self-MOVED refreshes Where, other-member
+movement refreshes View, JOINED pulls roster identity, door events pull live
+door state, and ENDED preserves the run outcome overlay.
+
+## Story, dice, and diagnostics
+
+The presentation reducer keys authority by `(session, seq)` and reconciles
+AttackResponse with typed Struck/Missed events. The acting player sees no
+current Story verdict, result, or live announcement until the authoritative d20
+presentation is explicitly released. Other players, monsters, and catch-up
+history auto-settle. Conflicting facts fail closed; raw payload bytes never
+become Story and no bonus, damage, or HP arithmetic occurs in the web.
+
+Story is always present in production. Raw Debug ingests immediately but is
+rendered only in development or on an explicitly enabled Concepts diagnostic
+surface. The closed/open Debug feed uses `aria-live="off"`; only Story owns the
+polite live log.
+
+## Scope reset
+
+`SessionEncounterView` keys its mounted production scope by session/member.
+Selection, presentation, Story/Debug, equipment-open state, private data,
+timers, and callbacks therefore reset synchronously. Controller and query
+generations fence late completions and stale map callbacks.

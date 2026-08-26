@@ -32,6 +32,8 @@ import type {
 export interface UseCombatPresentationArgs {
   readonly session: string;
   readonly viewerMember: string;
+  /** Public roster names may arrive before Turn participants. */
+  readonly memberNames?: Readonly<Record<string, string>>;
   readonly participants?: readonly Participant[];
 }
 
@@ -58,7 +60,7 @@ export interface UseCombatPresentationResult {
 function presentationConfig(
   args: UseCombatPresentationArgs
 ): Omit<CombatPresentationConfigFact, 'type'> {
-  const memberNames: Record<string, string> = {};
+  const memberNames: Record<string, string> = { ...(args.memberNames ?? {}) };
   const rollerRoles: Record<string, 'player' | 'monster'> = {};
   for (const participant of args.participants ?? []) {
     memberNames[participant.member] = participant.name;
@@ -116,10 +118,16 @@ function scopedPresentationReducer(
 export function useCombatPresentation(
   args: UseCombatPresentationArgs
 ): UseCombatPresentationResult {
-  const { session, viewerMember, participants } = args;
+  const { session, viewerMember, memberNames, participants } = args;
   const config = useMemo(
-    () => presentationConfig({ session, viewerMember, participants }),
-    [participants, session, viewerMember]
+    () =>
+      presentationConfig({
+        session,
+        viewerMember,
+        memberNames,
+        participants,
+      }),
+    [memberNames, participants, session, viewerMember]
   );
   const token = useMemo<ScopeToken>(
     () => Object.freeze({ session, viewerMember }),

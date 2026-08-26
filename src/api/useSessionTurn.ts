@@ -42,7 +42,7 @@ export interface UseSessionTurnResult {
  *   EndTurn round-trips). A turn-order answer, like an Afford answer,
  *   only means something relative to the CURRENT game state.
  * - KEEPS LAST-GOOD ON A REFETCH ERROR, same slice-4/5a reasoning as
- *   `useSessionAfford`: a `CombatPanel` that briefly can't reach the
+ *   `useSessionAfford`: a combat experience that briefly can't reach the
  *   server should keep showing the last known turn order rather than
  *   collapsing to "nobody's turn."
  */

@@ -27,6 +27,12 @@ export type CombatExperiencePhase =
 
 export type CombatExperienceLogMode = 'story' | 'debug';
 
+export type CombatExperienceStreamState =
+  | 'live'
+  | 'caught-up'
+  | 'reconnecting'
+  | 'resyncing';
+
 export interface CombatExperienceStoryExchange {
   id: string;
   round?: number;
@@ -76,7 +82,7 @@ interface CombatExperienceBaseProps {
   phase: CombatExperiencePhase;
   showTurnNotice: boolean;
   logMode: CombatExperienceLogMode;
-  streamState: 'live' | 'caught-up';
+  streamState: CombatExperienceStreamState;
   story: readonly CombatExperienceStoryExchange[];
   debug: readonly string[];
   result?: CombatExperienceAttackOutcome;
@@ -84,11 +90,15 @@ interface CombatExperienceBaseProps {
   diceSemanticFallback?: boolean;
   diceRollerName?: string;
   location: { name: string; area: string };
+  /** Presentation-only readable pacing notice; authority is already ingested. */
+  pacingNotice?: string | null;
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;
   onSelectDeclaration: (declaration: Declaration) => void;
   onTargetClick: (targetId: string) => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
+  onOpenEquipment?: () => void;
+  equipmentOpen?: boolean;
   /** Explicit Concepts diagnostic surface; allowed independently of DEV. */
   diagnosticsEnabled?: boolean;
 }

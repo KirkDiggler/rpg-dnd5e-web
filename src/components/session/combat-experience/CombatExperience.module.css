@@ -151,6 +151,16 @@
   color: var(--sc-gold);
 }
 
+.combatExperience {
+  width: 100%;
+  height: 100%;
+}
+
+.combatExperience .gameFrame {
+  height: 100%;
+  border-radius: 0;
+}
+
 .gameFrame {
   position: relative;
   width: 100%;
@@ -1048,6 +1058,26 @@
   gap: 5px;
 }
 
+.equipmentButton {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 1px solid var(--sc-line);
+  border-radius: 6px;
+  color: var(--sc-ink);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.equipmentButton[aria-pressed='true'],
+.equipmentButton:hover {
+  border-color: var(--sc-gold);
+  color: var(--sc-gold-bright);
+}
+
 .effectBadge {
   display: inline-flex;
   max-width: 145px;
@@ -1063,6 +1093,11 @@
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.effect_neutral {
+  border-color: var(--sc-line);
+  color: var(--sc-ink);
 }
 
 .effect_cool {
@@ -1283,6 +1318,7 @@
 .contractInspector button:focus-visible,
 .actionOffer:focus-visible,
 .endTurn:focus-visible,
+.equipmentButton:focus-visible,
 .storyLog button:focus-visible,
 .diceDrawer button:focus-visible {
   outline: 3px solid var(--sc-blue);

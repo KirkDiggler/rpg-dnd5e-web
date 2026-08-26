@@ -21,7 +21,7 @@ export interface UseEndTurnResult {
  * Thin wrapper around `SessionService.EndTurn` — mirrors `useEquipItem`/
  * `useTakeAction`: one file per verb, `loading` true while in flight,
  * `error` set on failure (cleared on the next successful call), and the
- * returned promise rejects so the caller (`useCombatPanel`) can decide
+ * returned promise rejects so the combat-experience controller can decide
  * what to show without this hook guessing.
  */
 export function useSessionEndTurn(): UseEndTurnResult {

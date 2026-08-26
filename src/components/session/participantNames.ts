@@ -10,7 +10,7 @@ import type { Participant } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/s
 /** Builds a `member id -> Participant.name` lookup from a `Turn`
  * participants list. */
 export function participantNameMap(
-  participants: Participant[]
+  participants: readonly Participant[]
 ): Map<string, string> {
   const map = new Map<string, string>();
   for (const p of participants) {

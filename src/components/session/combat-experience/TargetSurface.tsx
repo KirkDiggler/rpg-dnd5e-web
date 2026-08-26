@@ -15,6 +15,8 @@ export interface TargetSurfaceProps {
   movementRemainingFeet?: number;
   isViewerTurn: boolean;
   showTurnNotice: boolean;
+  pacingNotice?: string | null;
+  changedOptionNotice?: string | null;
   participantNames: ReadonlyMap<string, string>;
   location: { name: string; area: string };
   renderMap: (props: CombatExperienceMapRenderProps) => React.ReactNode;
@@ -27,6 +29,8 @@ export function TargetSurface({
   movementRemainingFeet,
   isViewerTurn,
   showTurnNotice,
+  pacingNotice,
+  changedOptionNotice,
   participantNames,
   location,
   renderMap,
@@ -60,6 +64,18 @@ export function TargetSurface({
         <span>{location.name}</span>
         <small>{location.area}</small>
       </div>
+      {pacingNotice && (
+        <div className={styles.contextPrompt} data-phase="pacing">
+          <span className={styles.turnPromptKicker}>The turn unfolds</span>
+          <strong>{pacingNotice}</strong>
+        </div>
+      )}
+      {changedOptionNotice && (
+        <div className={styles.contextPrompt} data-phase="changed-option">
+          <span className={styles.turnPromptKicker}>Action changed</span>
+          <strong>{changedOptionNotice}</strong>
+        </div>
+      )}
       {phase === 'fresh' && isViewerTurn && showTurnNotice && (
         <div className={styles.turnPrompt} data-phase="fresh">
           <span className={styles.turnPromptKicker}>Your turn</span>

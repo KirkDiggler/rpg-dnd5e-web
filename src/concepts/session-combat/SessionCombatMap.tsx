@@ -24,7 +24,6 @@ export function SessionCombatMap({
       hexSize={HEX_SIZE}
       characterId="aldric"
       characterName="Aldric Vale"
-      character={undefined}
       classRefId="fighter"
       myPosition={SESSION_COMBAT_MAP_FIXTURE.playerPosition}
       otherMembers={[...SESSION_COMBAT_MAP_FIXTURE.members]}

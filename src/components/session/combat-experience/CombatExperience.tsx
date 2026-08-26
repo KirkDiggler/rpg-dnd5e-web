@@ -5,6 +5,7 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { ActionDock } from './ActionDock';
+import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
 import { DiceDrawer } from './DiceDrawer';
 import { selectCombatExperience } from './selection';
@@ -59,7 +60,7 @@ interface InformationalStatus {
   label: string;
   detail: string;
   icon: string;
-  tone: 'warm' | 'cool' | 'danger';
+  tone: 'neutral' | 'warm' | 'cool' | 'danger';
 }
 
 function StatusBadge({ status }: { status: InformationalStatus }) {
@@ -97,11 +98,14 @@ export function CombatExperience({
   diceWitnessRole,
   diceRollerName,
   location,
+  pacingNotice,
   renderMap,
   onSelectDeclaration,
   onTargetClick,
   onEndTurn,
   onLogModeChange,
+  onOpenEquipment,
+  equipmentOpen,
   onDiceReleaseRequest,
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
@@ -123,27 +127,28 @@ export function CombatExperience({
   const hpPercent = hp?.max
     ? Math.max(0, Math.min(100, Math.round((hp.current / hp.max) * 100)))
     : 0;
+  const presentedCharacter = presentCharacterData(characterData);
   const statuses: InformationalStatus[] = [
-    ...characterData.features.map((feature, index) => ({
+    ...presentedCharacter.features.map((feature, index) => ({
       key: `feature:${feature.ref?.module}:${feature.ref?.type}:${feature.ref?.id}:${index}`,
       label: feature.name,
       detail: feature.detail,
-      icon: '◆',
-      tone: 'warm' as const,
+      icon: feature.icon,
+      tone: feature.tone,
     })),
-    ...characterData.conditions.map((condition, index) => ({
+    ...presentedCharacter.conditions.map((condition, index) => ({
       key: `condition:${condition.ref?.module}:${condition.ref?.type}:${condition.ref?.id}:${index}`,
       label: condition.name,
       detail: condition.detail,
-      icon: '◈',
-      tone: 'cool' as const,
+      icon: condition.icon,
+      tone: condition.tone,
     })),
-    ...characterData.resources.map((resource, index) => ({
+    ...presentedCharacter.resources.map((resource, index) => ({
       key: `resource:${resource.key}:${index}`,
       label: `${resource.name} ${resource.current}/${resource.maximum}`,
       detail: `${resource.current}/${resource.maximum}`,
-      icon: '●',
-      tone: 'danger' as const,
+      icon: resource.icon,
+      tone: resource.tone,
     })),
   ];
 
@@ -161,6 +166,8 @@ export function CombatExperience({
             movementRemainingFeet={movementRemainingFeet}
             isViewerTurn={isViewerTurn}
             showTurnNotice={showTurnNotice}
+            pacingNotice={pacingNotice}
+            changedOptionNotice={presentationState.changedOptionNotice}
             participantNames={
               new Map(
                 participants.map((participant) => [
@@ -195,13 +202,21 @@ export function CombatExperience({
               ))}
             </div>
           </div>
-        ) : (
+        ) : clock === ClockKind.WORLD ? (
           <div
             data-testid="session-combat-free-roam"
             className={styles.freeRoamStatus}
           >
             <span>World clock</span>
             <strong>Free roam</strong>
+          </div>
+        ) : (
+          <div
+            data-testid="session-combat-synchronizing"
+            className={styles.freeRoamStatus}
+          >
+            <span>Authority</span>
+            <strong>Synchronizing</strong>
           </div>
         )}
 
@@ -283,6 +298,19 @@ export function CombatExperience({
                 <StatusBadge key={status.key} status={status} />
               ))}
             </div>
+            {onOpenEquipment && (
+              <button
+                type="button"
+                className={styles.equipmentButton}
+                data-testid="session-combat-equipment-button"
+                aria-pressed={equipmentOpen}
+                title="Equipment"
+                onClick={onOpenEquipment}
+              >
+                <span aria-hidden="true">♜</span>
+                Equipment
+              </button>
+            )}
           </div>
 
           <ActionDock

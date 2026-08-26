@@ -90,13 +90,14 @@ proof, accepted `SM_Prop_Bow_01` provisionally for shortbow, rejected
 provider gaps around final semantic asset selection, normalized production
 exports, socket receipt, and texture budget.
 
-## Gap: no promotion process
+## Promotion process
 
-There is no documented process for promoting a concept to production. The class-selection spike has existed since March 2026 with no next step defined. When a concept is ready, it needs:
-
-1. A design decision on whether to replace the existing class selection flow
-2. A PR that wires the component into the character creation flow and removes the hardcoded `data.ts`
-3. Removal from the `/concepts` route (or keeping it as a development reference)
+`docs/how-to/concepts-route.md` documents the fixture-first promotion path. The
+session-combat work is the reference: production ownership came first, the
+concept switched to the shared component, and production promotion later
+changed the data/controller source rather than creating another renderer. A
+concept can remain as a generated-fixture regression/evidence harness after
+promotion.
 
 ## Gap: hardcoded data
 

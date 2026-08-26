@@ -4,13 +4,14 @@ import type {
   CombatExperienceAttackOutcome,
   CombatExperienceLogMode,
   CombatExperienceStoryExchange,
+  CombatExperienceStreamState,
 } from './types';
 
 export interface StoryLogProps {
   story: readonly CombatExperienceStoryExchange[];
   debug: readonly string[];
   mode: CombatExperienceLogMode;
-  streamState: 'live' | 'caught-up';
+  streamState: CombatExperienceStreamState;
   onModeChange: (mode: CombatExperienceLogMode) => void;
   result?: CombatExperienceAttackOutcome;
   /** Explicit diagnostic surface (for example the Concepts contract view). */
@@ -86,6 +87,14 @@ export function StoryLog({
   // A stale/persisted Debug preference cannot turn raw wire facts into the
   // production Story surface when diagnostics are unavailable.
   const visibleMode = debugEnabled && mode === 'debug' ? 'debug' : 'story';
+  const streamLabel =
+    streamState === 'live'
+      ? 'Live'
+      : streamState === 'caught-up'
+        ? 'Caught up'
+        : streamState === 'reconnecting'
+          ? 'Reconnecting…'
+          : 'Resyncing…';
 
   return (
     <aside
@@ -103,9 +112,9 @@ export function StoryLog({
           </strong>
         </div>
         <span
-          className={`${styles.liveBadge} ${streamState === 'caught-up' ? styles.caughtUpBadge : ''}`}
+          className={`${styles.liveBadge} ${streamState !== 'live' ? styles.caughtUpBadge : ''}`}
         >
-          {streamState === 'caught-up' ? 'Caught up' : 'Live'}
+          {streamLabel}
         </span>
       </header>
 
