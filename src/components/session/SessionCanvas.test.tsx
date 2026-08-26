@@ -6,6 +6,7 @@
  * rather than nesting a second `<Canvas>` inside it.
  */
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import { __resetDungeonShellProviderForTests } from '@/rendering/dungeonShellProvider';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
@@ -13,8 +14,9 @@ import {
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { resolveClassCharacterModelUrl } from '../hex-grid/classCharacterModels';
 import { facingToYaw } from '../hex-grid/facingYaw';
@@ -38,9 +40,15 @@ const gltfMockState = vi.hoisted(() => ({
   pending: new Promise<never>(() => undefined),
 }));
 
+beforeEach(() => {
+  __resetDungeonShellProviderForTests();
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+});
+
 afterEach(() => {
   gltfMockState.failedUrls.clear();
   gltfMockState.pendingUrls.clear();
+  vi.unstubAllGlobals();
 });
 
 vi.mock('@react-three/drei', () => {
@@ -142,6 +150,7 @@ function scene(): Scene3D {
   return {
     floorTiles: floorTiles([0, 0, 0], [1, -1, 0], [1, 0, -1]),
     props: [],
+    archetypes: [],
     wallRuns,
     doorGaps,
   };
@@ -197,6 +206,68 @@ function expectOneVisiblePlaceholder(
 }
 
 describe('SessionScene', () => {
+  it('mounts one shared shell and keeps doors in the game scene contract', () => {
+    const source = readFileSync(
+      'src/components/session/SessionCanvas.tsx',
+      'utf8'
+    );
+    expect(source.match(/<DungeonShell\b/g)).toHaveLength(1);
+    expect(source).not.toMatch(/<SyntyHexFloor\b/);
+    expect(source).not.toMatch(/<AtlasWalls\b/);
+    expect(source).toContain('doors={doors}');
+    expect(source).toContain('onDoorClick={onDoorClick}');
+    expect(source).not.toContain('onFallbackReason');
+  });
+
+  it('renders the actual game shell with doors/click and exactly one actual light pair', async () => {
+    const onDoorClick = vi.fn();
+    const gameDoors = new Map([['hall-1', { state: 1 } as never]]);
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Toolkit Sandbox Fighter"
+        classRefId={undefined}
+        myPosition={{ x: 0, y: 0, z: 0 }}
+        doors={gameDoors}
+        onDoorClick={onDoorClick}
+      />
+    );
+
+    const doorGroup = renderer.scene.find((node) => {
+      if (
+        node.fiber.type !== 'group' ||
+        typeof node.props.onClick !== 'function'
+      ) {
+        return false;
+      }
+      let hasDoorAsset = false;
+      (node.instance as THREE.Object3D).traverse((child) => {
+        if (child.name.includes('SM_Env_Door_Frame_01.glb')) {
+          hasDoorAsset = true;
+        }
+      });
+      return hasDoorAsset;
+    });
+    await renderer.fireEvent(doorGroup, 'click');
+    expect(onDoorClick).toHaveBeenCalledWith('hall-1');
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          (node as { instance?: { type?: string } }).instance?.type ===
+          'AmbientLight'
+      )
+    ).toHaveLength(1);
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          (node as { instance?: { type?: string } }).instance?.type ===
+          'DirectionalLight'
+      )
+    ).toHaveLength(1);
+  });
+
   it('mounts the floor, walls, doors, and the local player without throwing', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <SessionScene
