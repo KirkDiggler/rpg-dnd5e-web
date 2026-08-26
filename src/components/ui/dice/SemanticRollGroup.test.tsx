@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiceRollGroupDie, DiceRollGroupInput } from './diceRollGroup';
 import {
@@ -111,6 +111,28 @@ beforeEach(() => {
 });
 
 describe('SemanticRollGroup', () => {
+  it('offers an explicit semantic release request while armed without advancing itself', () => {
+    const onReleaseRequest = vi.fn();
+    const armed = createRollGroupPresentationState({
+      released: false,
+      hydrated: false,
+      rerollCount: 1,
+      modifierCount: 0,
+    });
+    const releaseProps = {
+      group,
+      presentation: armed,
+      onReleaseRequest,
+    } as React.ComponentProps<typeof SemanticRollGroup> & {
+      readonly onReleaseRequest: () => void;
+    };
+    render(<SemanticRollGroup {...releaseProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll dice' }));
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText('d4 ?')).toHaveLength(2);
+  });
+
   it('keeps concealed d4 labels truthful without drawing the legacy d20 polygon', () => {
     render(
       <SemanticRollGroup

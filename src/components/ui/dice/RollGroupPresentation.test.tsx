@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { StrictMode, useLayoutEffect } from 'react';
+import { StrictMode, useEffect, useLayoutEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiceRollGroupInput } from './diceRollGroup';
 import type {
@@ -25,12 +25,17 @@ const mocks = vi.hoisted(() => ({
   semantic: [] as Array<Record<string, unknown>>,
   order: [] as string[],
   nextCloneId: 1,
+  autoFinalFrame: true,
 }));
 
 vi.mock('./RollGroupTray3D', () => ({
   RollGroupTray3D: (props: RollGroupTray3DProps) => {
     mocks.trays.push(props);
     const { group, onReady, rendererGeneration, witnessRole } = props;
+    const frameCallbacks = props as RollGroupTray3DProps & {
+      readonly onRerollSettled?: () => void;
+      readonly onFinalFrameRendered?: () => void;
+    };
     useLayoutEffect(() => {
       mocks.order.push(`tray-ready:${witnessRole}`);
       group.dice.forEach((die) =>
@@ -41,6 +46,10 @@ vi.mock('./RollGroupTray3D', () => ({
         })
       );
     }, [group.dice, onReady, rendererGeneration, witnessRole]);
+    useEffect(() => {
+      if (props.phase === 'complete' && mocks.autoFinalFrame)
+        frameCallbacks.onFinalFrameRendered?.();
+    }, [frameCallbacks, props.phase]);
     return (
       <div data-testid="mock-roll-group-tray" data-phase={props.phase}>
         {props.witnessRole === 'roller' && props.onReleaseRequest ? (
@@ -68,6 +77,7 @@ vi.mock('./SemanticRollGroup', () => ({
     mocks.semantic.push(props);
     const group = props.group as DiceRollGroupInput;
     const presentation = props.presentation as { phase: string };
+    const onReleaseRequest = props.onReleaseRequest as (() => void) | undefined;
     useLayoutEffect(() => {
       mocks.order.push('semantic-ready');
     }, []);
@@ -79,6 +89,11 @@ vi.mock('./SemanticRollGroup', () => ({
         {group.dice.map((die) => (
           <div key={die.id} data-roll-group-die-id={die.id} />
         ))}
+        {presentation.phase === 'armed' && onReleaseRequest ? (
+          <button type="button" onClick={() => onReleaseRequest()}>
+            Roll dice
+          </button>
+        ) : null}
       </div>
     );
   },
@@ -200,6 +215,8 @@ function props(
 type DesiredTrayProps = RollGroupTray3DProps & {
   readonly displayedFaces?: Readonly<Record<string, number>>;
   readonly rerollDieIds?: readonly string[];
+  readonly onRerollSettled?: () => void;
+  readonly onFinalFrameRendered?: () => void;
 };
 
 function latestTray(
@@ -219,6 +236,7 @@ beforeEach(() => {
   mocks.semantic = [];
   mocks.order = [];
   mocks.nextCloneId = 1;
+  mocks.autoFinalFrame = true;
 });
 
 describe('DiceTrayPresentation roll-group overload', () => {
@@ -395,13 +413,15 @@ describe('DiceTrayPresentation roll-group overload', () => {
     }
   );
 
-  it('keeps an armed failed renderer concealed until a real release append arrives', async () => {
+  it('retains an explicit append-only release control when failure occurs while armed', async () => {
     const onComplete = vi.fn();
+    const onReleaseRequest = vi.fn();
     const view = render(
       <DiceTrayPresentation
         {...props([request()], {
           forceFailure: 'provider',
           onComplete,
+          onReleaseRequest,
         })}
       />
     );
@@ -410,12 +430,21 @@ describe('DiceTrayPresentation roll-group overload', () => {
       screen.getByTestId('mock-semantic-roll-group').getAttribute('data-phase')
     ).toBe('armed');
     expect(onComplete).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Roll dice' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Roll dice' }));
+    expect(onReleaseRequest).toHaveBeenCalledTimes(1);
+    const emitted = onReleaseRequest.mock.calls[0][0];
+    expect(
+      screen.getByTestId('mock-semantic-roll-group').getAttribute('data-phase')
+    ).toBe('armed');
+    expect(onComplete).not.toHaveBeenCalled();
 
     view.rerender(
       <DiceTrayPresentation
-        {...props([request(), release()], {
+        {...props([request(), structuredClone(emitted)], {
           forceFailure: 'provider',
           onComplete,
+          onReleaseRequest,
         })}
       />
     );
@@ -545,7 +574,7 @@ describe('DiceTrayPresentation roll-group overload', () => {
       );
       statuses.push(status.textContent ?? '');
 
-      runNextTimer();
+      act(() => latestTray().onRerollSettled?.());
       expect(latestTray().phase).toBe('modifiers');
       expect(screen.queryByText('Strength')).toBeNull();
       expect(screen.queryByText('Flame Tongue')).toBeNull();
@@ -585,6 +614,43 @@ describe('DiceTrayPresentation roll-group overload', () => {
           fallback: false,
         })
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for the actual final rendered-frame witness after runtime preparation', () => {
+    mocks.autoFinalFrame = false;
+    const onComplete = vi.fn();
+    render(
+      <DiceTrayPresentation
+        {...props([request(), release()], { onComplete })}
+      />
+    );
+
+    expect(latestTray().phase).toBe('complete');
+    expect(onComplete).not.toHaveBeenCalled();
+    act(() => latestTray().onFinalFrameRendered?.());
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete.mock.calls[0][0]).toMatchObject({ renderer: '3d' });
+  });
+
+  it('does not timer-complete rerolls before their rendered target witness', () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<DiceTrayPresentation {...props([request()])} />);
+      view.rerender(
+        <DiceTrayPresentation {...props([request(), release()])} />
+      );
+      act(() => latestTray().onOriginalsSettled?.());
+      runNextTimer();
+      runNextTimer();
+      expect(latestTray().phase).toBe('rerolling');
+
+      act(() => vi.runAllTimers());
+      expect(latestTray().phase).toBe('rerolling');
+      act(() => latestTray().onRerollSettled?.());
+      expect(latestTray().phase).toBe('modifiers');
     } finally {
       vi.useRealTimers();
     }

@@ -7,6 +7,10 @@ import type {
 } from './diceMotionSolver';
 import type { RollGroupMemberLayout } from './rollGroupLayout';
 import {
+  ROLL_GROUP_HELD_PLANE_HEIGHT,
+  ROLL_GROUP_HELD_PLANE_WIDTH,
+} from './rollGroupTrayGeometry';
+import {
   parseVisualThrowProfile,
   type VisualThrowProfileV1,
 } from './visualThrowProfile';
@@ -370,7 +374,9 @@ function releaseOrigin(
   const centerBiasX = input.heldLayout.center[0] * 0.8;
   const centerBiasY = input.heldLayout.center[1] * 0.8;
   const releaseX = (input.throwProfile.releasePosition[0] - 0.5) * 0.34;
-  const releaseY = (0.5 - input.throwProfile.releasePosition[1]) * 0.26;
+  const releaseY =
+    (input.throwProfile.releasePosition[1] - 0.5) *
+    ROLL_GROUP_HELD_PLANE_HEIGHT;
   const scatterX =
     hashSigned(seed, input.memberIndex, 0x4f1b_bc91) * profile.scatter * 0.12;
   const scatterY =
@@ -392,7 +398,7 @@ function translationForProfile(
   const restZ = input.restingLayout.center[1];
   const [originX, originZ] = releaseOrigin(input, profile, seed);
   const dirX = input.throwProfile.releaseDirection[0];
-  const dirZ = -input.throwProfile.releaseDirection[1];
+  const dirZ = input.throwProfile.releaseDirection[1];
   const scatterX = hashSigned(seed, input.memberIndex, 0x19d2_8f31);
   const scatterZ = hashSigned(seed, input.memberIndex, 0x27b7_4aa5);
   const travelX =
@@ -550,10 +556,11 @@ export function solveRollGroupMemberMotion(input: {
 
     if (input.phase === 'held') {
       const groupX = input.held
-        ? (input.held.normalizedPosition[0] - 0.5) * 0.72
+        ? (input.held.normalizedPosition[0] - 0.5) * ROLL_GROUP_HELD_PLANE_WIDTH
         : 0;
       const groupZ = input.held
-        ? (0.5 - input.held.normalizedPosition[1]) * 0.52
+        ? (input.held.normalizedPosition[1] - 0.5) *
+          ROLL_GROUP_HELD_PLANE_HEIGHT
         : 0;
       const lift = input.reducedMotion
         ? HOLD_LIFT

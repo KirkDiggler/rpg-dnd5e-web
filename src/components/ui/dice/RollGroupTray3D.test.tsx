@@ -5,11 +5,18 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { Children, isValidElement, useEffect } from 'react';
-import { Group, PerspectiveCamera } from 'three';
+import {
+  Children,
+  isValidElement,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from 'react';
+import { Group, PerspectiveCamera, Scene } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiceMotionPose } from './diceMotionSolver';
 import type { DiceRollGroupDie, DiceRollGroupInput } from './diceRollGroup';
+import { layoutHeldRollGroup } from './rollGroupLayout';
 import { ROLL_GROUP_FEEL_PROFILES } from './rollGroupMotionSolver';
 import { RollGroupTray3D, type RollGroupTray3DProps } from './RollGroupTray3D';
 import type { TrayPlaneProjection } from './trayPlaneProjection';
@@ -27,6 +34,11 @@ const mocks = vi.hoisted(() => ({
   productionPreset: undefined as unknown as Record<string, unknown>,
   conceptPreset: undefined as unknown as Record<string, unknown>,
   binding: undefined as unknown as Record<string, unknown>,
+  canvasCamera: undefined as unknown as PerspectiveCamera,
+  canvasFailure: false,
+  renderer: undefined as unknown as Record<string, unknown>,
+  surfaceCaptures: [] as Array<readonly [number, number]>,
+  projectedSurface: [141, 37] as readonly [number, number],
 }));
 
 vi.mock('@react-three/fiber', () => ({
@@ -40,8 +52,46 @@ vi.mock('@react-three/fiber', () => ({
       camera: mocks.camera,
       gl: { domElement: mocks.domElement },
     }),
-  Canvas: ({ children }: { children?: React.ReactNode }) => {
+  Canvas: ({
+    children,
+    camera: cameraInput,
+    onCreated,
+  }: {
+    children?: React.ReactNode;
+    camera?: Readonly<{
+      fov: number;
+      near: number;
+      far: number;
+      position: readonly [number, number, number];
+      up: readonly [number, number, number];
+    }>;
+    onCreated?: (input: {
+      camera: PerspectiveCamera;
+      gl: Record<string, unknown>;
+      scene: Scene;
+    }) => void;
+  }) => {
     mocks.canvases += 1;
+    const cameraRef = useRef<PerspectiveCamera | null>(null);
+    if (!cameraRef.current) {
+      cameraRef.current = new PerspectiveCamera(
+        cameraInput?.fov,
+        2,
+        cameraInput?.near,
+        cameraInput?.far
+      );
+      if (cameraInput) {
+        cameraRef.current.position.set(...cameraInput.position);
+        cameraRef.current.up.set(...cameraInput.up);
+      }
+    }
+    const camera = cameraRef.current;
+    mocks.canvasCamera = camera;
+    mocks.camera = camera;
+    useLayoutEffect(() => {
+      onCreated?.({ camera, gl: mocks.renderer, scene: new Scene() });
+    }, [camera, onCreated]);
+    if (mocks.canvasFailure) throw Error('WebGL creation failed');
     return (
       <div data-testid="shared-roll-group-canvas">
         {Children.toArray(children).filter(
@@ -78,6 +128,37 @@ vi.mock('./RuntimeDiceMesh', () => ({
     const source = props.source as
       | { preset?: { presetId?: string } }
       | undefined;
+    const surfaceHandleRef = props.surfaceHandleRef as
+      | React.MutableRefObject<
+          | {
+              captureSurface: (input: {
+                clientX: number;
+                clientY: number;
+              }) => unknown;
+              projectSurface: () => readonly [number, number];
+            }
+          | undefined
+        >
+      | undefined;
+    useLayoutEffect(() => {
+      if (!surfaceHandleRef) return undefined;
+      const handle = {
+        captureSurface: (input: { clientX: number; clientY: number }) => {
+          mocks.surfaceCaptures.push([input.clientX, input.clientY]);
+          return Object.freeze({
+            object: new Group(),
+            localPoint: Object.freeze([0.1, 0.2, 0.3] as const),
+            runtimeCloneId: mocks.nextCloneId,
+          });
+        },
+        projectSurface: () => mocks.projectedSurface,
+      };
+      surfaceHandleRef.current = handle;
+      return () => {
+        if (surfaceHandleRef.current === handle)
+          surfaceHandleRef.current = undefined;
+      };
+    }, [surfaceHandleRef]);
     useEffect(() => {
       onReady?.({
         runtimeSourceId: source?.preset?.presetId?.endsWith('d20') ? 20 : 6,
@@ -178,6 +259,10 @@ const baseProps: RollGroupTray3DProps = {
 };
 
 let capturedPointers: WeakMap<HTMLElement, Set<number>>;
+const originalGetContext = Object.getOwnPropertyDescriptor(
+  HTMLCanvasElement.prototype,
+  'getContext'
+);
 
 function latestMesh(dieId: string) {
   return [...mocks.meshes]
@@ -186,6 +271,12 @@ function latestMesh(dieId: string) {
 }
 
 beforeEach(() => {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: vi.fn(() => ({
+      getExtension: vi.fn(() => ({ loseContext: vi.fn() })),
+    })),
+  });
   mocks.canvases = 0;
   mocks.meshes = [];
   mocks.bridgeProps = [];
@@ -197,6 +288,15 @@ beforeEach(() => {
     meshDefinition: 'mesh',
     meshDefinitionIndex: 0,
   });
+  mocks.canvasFailure = false;
+  mocks.surfaceCaptures = [];
+  mocks.projectedSurface = [141, 37];
+  mocks.renderer = {
+    domElement: mocks.domElement,
+    render: vi.fn(),
+    compile: vi.fn(),
+    debug: { checkShaderErrors: false, onShaderError: null },
+  };
   mocks.productionPreset = Object.freeze({
     presetId: 'dice.original.carved.d20',
     dieKind: 'd20',
@@ -246,11 +346,14 @@ beforeEach(() => {
   mocks.camera.updateProjectionMatrix();
   mocks.camera.updateMatrixWorld(true);
   mocks.domElement = document.createElement('canvas');
+  mocks.renderer.domElement = mocks.domElement;
   mocks.projection = Object.freeze({
-    screenToPlane: (x: number, y: number) => [x / 100, y / 100] as const,
+    screenToPlane: (x: number, y: number) =>
+      [((x - 100) / 200) * 0.72, ((50 - y) / 100) * 0.52] as const,
     planeToScreen: (point: readonly [number, number]) =>
-      [point[0] * 100, point[1] * 100] as const,
-    planeToNormalized: (point: readonly [number, number]) => point,
+      [100 + (point[0] / 0.72) * 200, 50 - (point[1] / 0.52) * 100] as const,
+    planeToNormalized: (point: readonly [number, number]) =>
+      [0.5 + point[0] / 0.72, 0.5 + point[1] / 0.52] as const,
   });
   capturedPointers = new WeakMap();
   Object.defineProperties(HTMLElement.prototype, {
@@ -300,6 +403,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (originalGetContext)
+    Object.defineProperty(
+      HTMLCanvasElement.prototype,
+      'getContext',
+      originalGetContext
+    );
   delete (HTMLElement.prototype as Partial<HTMLElement>).setPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).hasPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).releasePointerCapture;
@@ -307,6 +416,62 @@ afterEach(() => {
 });
 
 describe('RollGroupTray3D', () => {
+  it('aims the production camera at the horizontal tray plane', () => {
+    render(<RollGroupTray3D {...baseProps} />);
+
+    const direction = mocks.canvasCamera.getWorldDirection(
+      mocks.canvasCamera.position.clone()
+    );
+    expect(direction.x).toBeCloseTo(0, 8);
+    expect(direction.y).toBeCloseTo(-1, 8);
+    expect(direction.z).toBeCloseTo(0, 8);
+  });
+
+  it('positions member hit targets as projected overlays over their dice', () => {
+    render(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="armed"
+        onReleaseRequest={vi.fn()}
+      />
+    );
+
+    const overlay = document.querySelector(
+      '.roll-group-tray-3d__targets'
+    ) as HTMLElement;
+    expect(overlay.style.position).toBe('absolute');
+    expect(overlay.style.inset).toBe('0');
+    const layouts = layoutHeldRollGroup(group.dice);
+    for (const layout of layouts) {
+      const target = document.querySelector(
+        `[data-roll-group-die-id="${layout.dieId}"]`
+      ) as HTMLElement;
+      const projectedCenter = mocks.projection.planeToScreen(layout.center)!;
+      expect(target.style.position).toBe('absolute');
+      expect(Number.parseFloat(target.style.left)).toBeCloseTo(
+        projectedCenter[0],
+        6
+      );
+      expect(Number.parseFloat(target.style.top)).toBeCloseTo(
+        projectedCenter[1],
+        6
+      );
+      expect(Number.parseFloat(target.style.width)).toBeGreaterThan(0);
+      expect(Number.parseFloat(target.style.height)).toBeGreaterThan(0);
+    }
+  });
+
+  it('reports a thrown Canvas/WebGL creation error through the group failure boundary', () => {
+    mocks.canvasFailure = true;
+    const onFailure = vi.fn();
+
+    expect(() =>
+      render(<RollGroupTray3D {...baseProps} onFailure={onFailure} />)
+    ).not.toThrow();
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(onFailure.mock.calls[0][1]).toMatch(/WebGL creation failed/i);
+  });
+
   it('owns every member in one Canvas and exposes only stable member data selectors', () => {
     render(
       <RollGroupTray3D
@@ -431,6 +596,54 @@ describe('RollGroupTray3D', () => {
     );
   });
 
+  it('starts original and reroll motion from phase-local frame time instead of the Canvas clock origin', () => {
+    const view = render(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="armed"
+        onReleaseRequest={vi.fn()}
+      />
+    );
+    (latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose)(
+      9_000
+    );
+
+    view.rerender(<RollGroupTray3D {...baseProps} phase="rolling-originals" />);
+    const originalStart = (
+      latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose
+    )(12_000);
+    expect(originalStart.observeNow).toBe(false);
+    const originalEnd = (
+      latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose
+    )(12_000 + baseProps.feel.durationMs);
+    expect(originalEnd.observeNow).toBe(true);
+
+    view.rerender(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="rerolling"
+        rerollDieIds={['die:one']}
+      />
+    );
+    const rerollStart = (
+      latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose
+    )(40_000);
+    expect(rerollStart.observeNow).toBe(false);
+    const rerollEnd = (
+      latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose
+    )(40_000 + baseProps.feel.rerollDurationMs);
+    expect(rerollEnd.observeNow).toBe(true);
+  });
+
+  it('uses solver-exact held extents for the tray projection bridge', () => {
+    render(<RollGroupTray3D {...baseProps} />);
+
+    expect(mocks.bridgeProps.at(-1)).toMatchObject({
+      width: 0.72,
+      height: 0.52,
+    });
+  });
+
   it('routes every feel candidate through every member solver', () => {
     const signatures = new Map<string, string[]>();
     for (const [feelId, feel] of Object.entries(ROLL_GROUP_FEEL_PROFILES)) {
@@ -497,6 +710,98 @@ describe('RollGroupTray3D', () => {
       );
     });
     expect(onOriginalsSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['rerolling', 'onRerollSettled'],
+    ['complete', 'onFinalFrameRendered'],
+  ] as const)(
+    'waits for every member actual target frame before reporting %s settlement',
+    (phase, callbackName) => {
+      const settled = vi.fn();
+      const propsWithFrameWitness = {
+        ...baseProps,
+        phase,
+        rerollDieIds: phase === 'rerolling' ? ['die:one'] : [],
+        [callbackName]: settled,
+      } as RollGroupTray3DProps;
+      render(<RollGroupTray3D {...propsWithFrameWitness} />);
+
+      act(() => {
+        (latestMesh('die:one').onFrame as (frame: DiceMotionPose) => void)(
+          OBSERVED_POSE
+        );
+      });
+      expect(settled).not.toHaveBeenCalled();
+
+      act(() => {
+        (latestMesh('die:two').onFrame as (frame: DiceMotionPose) => void)(
+          OBSERVED_POSE
+        );
+      });
+      expect(settled).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('requires a fresh rendered witness when a later reroll targets the same face', () => {
+    const onRerollSettled = vi.fn();
+    const renderReroll = (phase: RollGroupTray3DProps['phase']) => (
+      <RollGroupTray3D
+        {...baseProps}
+        phase={phase}
+        rerollDieIds={['die:one']}
+        onRerollSettled={onRerollSettled}
+      />
+    );
+    const view = render(renderReroll('rerolling'));
+    act(() => {
+      for (const item of group.dice)
+        (latestMesh(item.id).onFrame as (frame: DiceMotionPose) => void)(
+          OBSERVED_POSE
+        );
+    });
+    expect(onRerollSettled).toHaveBeenCalledTimes(1);
+
+    view.rerender(renderReroll('reroll-flash'));
+    view.rerender(renderReroll('rerolling'));
+    act(() => {
+      for (const item of group.dice)
+        (latestMesh(item.id).onFrame as (frame: DiceMotionPose) => void)(
+          OBSERVED_POSE
+        );
+    });
+    expect(onRerollSettled).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains partial final-frame witnesses across unrelated tray rerenders', () => {
+    const onFinalFrameRendered = vi.fn();
+    const view = render(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="complete"
+        onFinalFrameRendered={onFinalFrameRendered}
+      />
+    );
+
+    act(() => {
+      (latestMesh('die:one').onFrame as (frame: DiceMotionPose) => void)(
+        OBSERVED_POSE
+      );
+    });
+    view.rerender(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="complete"
+        onFinalFrameRendered={onFinalFrameRendered}
+      />
+    );
+    act(() => {
+      (latestMesh('die:two').onFrame as (frame: DiceMotionPose) => void)(
+        OBSERVED_POSE
+      );
+    });
+
+    expect(onFinalFrameRendered).toHaveBeenCalledTimes(1);
   });
 
   it('reports one member failure so the presentation can activate one group fallback', () => {
@@ -590,8 +895,8 @@ describe('RollGroupTray3D', () => {
       heldPoseApplied: true,
       frameSequence: 1,
     });
-    expect(diagnostic.projectedAnchor[0]).toBeCloseTo(117.55, 6);
-    expect(diagnostic.projectedAnchor[1]).toBeCloseTo(51.6666666667, 6);
+    expect(mocks.surfaceCaptures).toEqual([[70, 10]]);
+    expect(diagnostic.projectedAnchor).toEqual([141, 37]);
     expect(Reflect.ownKeys(diagnostic).sort()).toEqual(
       [
         'dieId',

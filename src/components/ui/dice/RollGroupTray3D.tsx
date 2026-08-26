@@ -1,42 +1,46 @@
-import { Canvas, useThree } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Quaternion, Vector3 } from 'three';
+import { Canvas } from '@react-three/fiber';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import type { Camera, Scene, WebGLRenderer } from 'three';
 import type { AnchoredHeldRollGroupState } from './anchoredRollGroupGestureController';
-import {
-  getConceptDiceRuntimePresetSnapshot,
-  preloadConceptDiceRuntimePreset,
-  type ConceptDiceRuntimePresetSnapshot,
-} from './conceptDiceRuntimeProvider';
-import type { DiceMotionPose } from './diceMotionSolver';
 import type { DiceRollGroupDie } from './diceRollGroup';
-import type { DiceRuntimePresetSnapshot } from './diceRuntimeProvider';
-import {
-  getDiceRuntimePresetSnapshot,
-  preloadDiceRuntimePreset,
-} from './diceRuntimeProvider';
-import { resolveRuntimeDiceSettlement } from './diceSettlementResolver';
 import type { DiceTrayInteractionHitRegion } from './DiceTrayInteractionSurface';
 import { DiceTrayInteractionSurface } from './DiceTrayInteractionSurface';
-import {
-  layoutHeldRollGroup,
-  layoutRestingRollGroup,
-  type RollGroupMemberLayout,
-} from './rollGroupLayout';
+import type { ClientBounds } from './rollGroupGestureController';
+import { projectRollGroupHitTarget } from './rollGroupHitTarget';
+import { layoutHeldRollGroup, layoutRestingRollGroup } from './rollGroupLayout';
 import {
   ROLL_GROUP_FEEL_PROFILES,
-  solveRollGroupMemberMotion,
   type RollGroupFeelProfile,
-  type RollGroupMotionPhase,
 } from './rollGroupMotionSolver';
 import type { RollGroupDieAppearance } from './RollGroupPresentation';
-import type { RuntimeDiceMeshSource } from './RuntimeDiceMesh';
-import { RuntimeDiceMesh } from './RuntimeDiceMesh';
+import { RollGroupRenderBoundary } from './RollGroupRenderBoundary';
+import { installRollGroupRendererGuard } from './rollGroupRendererGuard';
+import {
+  RollGroupRuntimeMember,
+  type ActiveRuntimeSurfaceGrab,
+  type RollGroupTrayPhase,
+  type RuntimeMemberSurfaceHandle,
+} from './RollGroupRuntimeMember';
+import {
+  configureRollGroupTrayCamera,
+  ROLL_GROUP_HELD_PLANE_HEIGHT,
+  ROLL_GROUP_HELD_PLANE_WIDTH,
+  ROLL_GROUP_TRAY_CAMERA,
+} from './rollGroupTrayGeometry';
 import type { TrayPlaneProjection } from './trayPlaneProjection';
 import { TrayPlaneProjectionBridge } from './TrayPlaneProjectionBridge';
 import {
   createNeutralVisualThrowProfile,
   type VisualThrowProfileV1,
 } from './visualThrowProfile';
+import { canCreateWebGLContext } from './webglAvailability';
 
 export interface RollGroupTray3DProps {
   readonly label: string;
@@ -45,15 +49,7 @@ export interface RollGroupTray3DProps {
   readonly motionSeed: number;
   readonly rollerRole: 'player' | 'monster';
   readonly witnessRole: 'roller' | 'spectator';
-  readonly phase:
-    | 'armed'
-    | 'held'
-    | 'rolling-originals'
-    | 'settled-originals'
-    | 'reroll-flash'
-    | 'rerolling'
-    | 'modifiers'
-    | 'complete';
+  readonly phase: RollGroupTrayPhase;
   readonly group: {
     readonly key: 'attack' | 'damage';
     readonly dice: readonly DiceRollGroupDie[];
@@ -65,6 +61,8 @@ export interface RollGroupTray3DProps {
   readonly throwProfile?: VisualThrowProfileV1;
   readonly onReleaseRequest?: (profile?: VisualThrowProfileV1) => void;
   readonly onOriginalsSettled?: () => void;
+  readonly onRerollSettled?: () => void;
+  readonly onFinalFrameRendered?: () => void;
   readonly onReady?: (
     input: Readonly<{
       dieId: string;
@@ -87,359 +85,39 @@ export interface RollGroupTray3DProps {
   readonly forceFailure?: 'provider' | 'webgl' | 'solver';
 }
 
-type GroupSnapshot =
-  | (DiceRuntimePresetSnapshot & {
-      readonly assurance: 'verified-production';
-    })
-  | ConceptDiceRuntimePresetSnapshot;
-
-type GroupPhase = RollGroupTray3DProps['phase'];
-
-const DEFAULT_TREATMENT = Object.freeze({
-  bodyColor: '#15233b',
-  numeralColor: '#f5eddc',
-  roughness: 0.72,
-  metalness: 0.08,
-});
 const NEUTRAL_PROFILE = createNeutralVisualThrowProfile(0);
+const EMPTY_REROLL_DIE_IDS: readonly string[] = Object.freeze([]);
 
-function snapshotFor(
-  kind: DiceRollGroupDie['kind'],
-  presetId: string
-): GroupSnapshot {
-  if (kind === 'd20')
-    return {
-      ...getDiceRuntimePresetSnapshot(presetId),
-      assurance: 'verified-production',
-    };
-  return getConceptDiceRuntimePresetSnapshot(presetId);
-}
-
-function sourceFor(snapshot: GroupSnapshot): RuntimeDiceMeshSource | undefined {
-  if (
-    snapshot.status !== 'ready' ||
-    !snapshot.preset ||
-    !snapshot.scene ||
-    !snapshot.binding
-  )
-    return undefined;
-  return {
-    preset: snapshot.preset,
-    scene: snapshot.scene,
-    binding: snapshot.binding,
-  };
-}
-
-function snapshotsEqual(left: GroupSnapshot, right: GroupSnapshot) {
-  return (
-    left.status === right.status &&
-    left.assurance === right.assurance &&
-    left.preset === right.preset &&
-    left.scene === right.scene &&
-    left.binding === right.binding &&
-    left.failureReason === right.failureReason
-  );
-}
-
-function phaseForSolver(
-  phase: GroupPhase,
-  affectedByCurrentReroll: boolean
-): RollGroupMotionPhase {
-  if (phase === 'armed' || phase === 'held') return 'held';
-  if (phase === 'rolling-originals') return 'rolling-originals';
-  if (phase === 'rerolling')
-    return affectedByCurrentReroll ? 'rerolling' : 'settled-originals';
-  if (phase === 'settled-originals' || phase === 'reroll-flash')
-    return 'settled-originals';
-  return 'settled-final';
-}
-
-function isFinitePoint(point: readonly number[]): point is [number, number] {
-  return point.length === 2 && point.every(Number.isFinite);
-}
-
-function RuntimeAttachmentReporter({
-  frame,
-  die,
-  held,
-  camera,
-  domElement,
-  onAttachmentDiagnostic,
-  sequence,
-  presentationId,
-  rendererGeneration,
-}: {
-  readonly frame: DiceMotionPose;
-  readonly die: DiceRollGroupDie;
-  readonly held: AnchoredHeldRollGroupState | undefined;
-  readonly camera: import('three').Camera;
-  readonly domElement: HTMLElement;
-  readonly onAttachmentDiagnostic?: RollGroupTray3DProps['onAttachmentDiagnostic'];
-  readonly sequence: React.MutableRefObject<number>;
-  readonly presentationId: string;
-  readonly rendererGeneration: number;
-}) {
-  if (!held || held.grabbedDieId !== die.id || !onAttachmentDiagnostic)
-    return null;
+function snapshotBounds(element: HTMLElement): ClientBounds | undefined {
   try {
-    const localAnchor = new Vector3(held.anchor[0], 0, held.anchor[1]);
-    localAnchor.applyQuaternion(new Quaternion(...frame.quaternion));
-    localAnchor.add(new Vector3(...frame.translation));
-    localAnchor.project(camera);
-    const rect = domElement.getBoundingClientRect();
-    const projectedAnchor: [number, number] = [
-      rect.left + ((localAnchor.x + 1) / 2) * rect.width,
-      rect.top + ((1 - localAnchor.y) / 2) * rect.height,
-    ];
-    if (!isFinitePoint(projectedAnchor)) return null;
-    sequence.current += 1;
-    onAttachmentDiagnostic({
-      presentationId,
-      rendererGeneration,
-      dieId: die.id,
-      projectedAnchor,
-      heldPoseApplied: true,
-      frameSequence: sequence.current,
-    });
+    const rect = element.getBoundingClientRect();
+    const bounds = {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+    return Object.values(bounds).every(Number.isFinite) &&
+      bounds.width > 0 &&
+      bounds.height > 0
+      ? bounds
+      : undefined;
   } catch {
-    // Diagnostics are best-effort and must never affect rendering.
+    return undefined;
   }
-  return null;
 }
 
-function RuntimeGroupMember({
-  die,
-  displayedFace,
-  affectedByCurrentReroll,
-  index,
-  memberCount,
-  phase,
-  feel,
-  reducedMotion,
-  throwProfile,
-  heldRef,
-  heldLayout,
-  restingLayout,
-  appearance,
-  reportFailure,
-  onReady,
-  onOriginalsSettled,
-  onAttachmentDiagnostic,
-  presentationId,
-  rendererGeneration,
-}: {
-  readonly die: DiceRollGroupDie;
-  readonly displayedFace: number;
-  readonly affectedByCurrentReroll: boolean;
-  readonly index: number;
-  readonly memberCount: number;
-  readonly phase: GroupPhase;
-  readonly feel: RollGroupFeelProfile;
-  readonly reducedMotion: boolean;
-  readonly throwProfile: VisualThrowProfileV1;
-  readonly heldRef: React.MutableRefObject<
-    AnchoredHeldRollGroupState | undefined
-  >;
-  readonly heldLayout: RollGroupMemberLayout;
-  readonly restingLayout: RollGroupMemberLayout;
-  readonly appearance: RollGroupDieAppearance | undefined;
-  readonly reportFailure: (dieId: string, reason: string) => void;
-  readonly onReady?: RollGroupTray3DProps['onReady'];
-  readonly onOriginalsSettled?: (dieId: string) => void;
-  readonly onAttachmentDiagnostic?: RollGroupTray3DProps['onAttachmentDiagnostic'];
-  readonly presentationId: string;
-  readonly rendererGeneration: number;
-}) {
-  const camera = useThree((state) => state.camera);
-  const gl = useThree((state) => state.gl);
-  const [snapshot, setSnapshot] = useState<GroupSnapshot>(() =>
-    snapshotFor(die.kind, die.presetId)
-  );
-  const source = useMemo(() => sourceFor(snapshot), [snapshot]);
-  const settlement = useMemo(
-    () =>
-      source &&
-      snapshot.preset &&
-      snapshot.preset.dieKind === die.kind &&
-      snapshot.preset.presetId === die.presetId
-        ? resolveRuntimeDiceSettlement({
-            preset: snapshot.preset,
-            expectedPresetId: die.presetId,
-            authoritativeResult: displayedFace,
-          })
-        : undefined,
-    [die.kind, die.presetId, displayedFace, snapshot.preset, source]
-  );
-  const failureSent = useRef(false);
-  const sequence = useRef(0);
-  const settled = useRef(false);
-  const rollStartedAt = useRef<number | undefined>(undefined);
-  const previousPhase = useRef<GroupPhase>(phase);
-
-  const fail = useCallback(
-    (reason: string) => {
-      if (failureSent.current) return;
-      failureSent.current = true;
-      reportFailure(die.id, reason);
-    },
-    [die.id, reportFailure]
-  );
-
-  useEffect(() => {
-    let subscribed = true;
-    const updateSnapshot = (next: GroupSnapshot) => {
-      setSnapshot((current) =>
-        snapshotsEqual(current, next) ? current : next
-      );
-    };
-    const refresh = () => {
-      if (subscribed) updateSnapshot(snapshotFor(die.kind, die.presetId));
-    };
-    const initial = snapshotFor(die.kind, die.presetId);
-    updateSnapshot(initial);
-    if (initial.status === 'idle' || initial.status === 'loading') {
-      const owner =
-        die.kind === 'd20'
-          ? preloadDiceRuntimePreset(die.presetId)
-          : preloadConceptDiceRuntimePreset(die.presetId);
-      void owner.then(refresh, refresh);
-    }
-    return () => {
-      subscribed = false;
-    };
-  }, [die.kind, die.presetId]);
-
-  useEffect(() => {
-    if (snapshot.status === 'failed') {
-      fail(snapshot.failureReason ?? 'runtime preset failed');
-      return;
-    }
-    if (snapshot.status !== 'ready') return;
-    if (!source) {
-      fail('runtime preset ready snapshot is incomplete');
-      return;
-    }
-    if (!settlement) {
-      fail('authoritative result has no verified mapping');
-      return;
-    }
-  }, [fail, settlement, snapshot, source]);
-
-  const getPose = useCallback(
-    (elapsedMs: number): DiceMotionPose => {
-      const held = heldRef.current;
-      const solverPhase = phaseForSolver(phase, affectedByCurrentReroll);
-      if (
-        phase !== previousPhase.current ||
-        (phase === 'rolling-originals' && rollStartedAt.current === undefined)
-      ) {
-        if (phase === 'rolling-originals' || phase === 'rerolling')
-          rollStartedAt.current = elapsedMs;
-        else rollStartedAt.current = undefined;
-        previousPhase.current = phase;
-        if (phase !== 'rolling-originals') settled.current = false;
-      }
-      const localElapsed =
-        solverPhase === 'rolling-originals' || solverPhase === 'rerolling'
-          ? Math.max(0, elapsedMs - (rollStartedAt.current ?? elapsedMs))
-          : 0;
-      return solveRollGroupMemberMotion({
-        profile: feel,
-        phase: solverPhase,
-        elapsedMs: localElapsed,
-        reducedMotion,
-        target: settlement?.target ?? [0, 0, 0, 1],
-        throwProfile,
-        memberIndex: index,
-        memberCount,
-        held,
-        affectedByCurrentReroll:
-          solverPhase === 'rerolling' && affectedByCurrentReroll,
-        heldLayout,
-        restingLayout,
-      });
-    },
-    [
-      affectedByCurrentReroll,
-      feel,
-      heldLayout,
-      heldRef,
-      index,
-      memberCount,
-      reducedMotion,
-      restingLayout,
-      settlement?.target,
-      phase,
-      throwProfile,
-    ]
-  );
-
-  const initialPose = useMemo(() => getPose(0), [getPose]);
-  const handlePoseApplied = useCallback(
-    (frame: DiceMotionPose) => {
-      RuntimeAttachmentReporter({
-        frame,
-        die,
-        held: heldRef.current,
-        camera,
-        domElement: gl.domElement,
-        onAttachmentDiagnostic,
-        sequence,
-        presentationId,
-        rendererGeneration,
-      });
-    },
-    [
-      camera,
-      die,
-      gl.domElement,
-      heldRef,
-      onAttachmentDiagnostic,
-      presentationId,
-      rendererGeneration,
-    ]
-  );
-  const handleReady = useCallback(
-    (input: Readonly<{ runtimeSourceId: number; runtimeCloneId: number }>) => {
-      onReady?.({ dieId: die.id, ...input });
-    },
-    [die.id, onReady]
-  );
-  const handleFrame = useCallback(
-    (frame: DiceMotionPose) => {
-      if (phase !== 'rolling-originals' || !frame.observeNow || settled.current)
-        return;
-      settled.current = true;
-      onOriginalsSettled?.(die.id);
-    },
-    [die.id, onOriginalsSettled, phase]
-  );
-
-  if (!source || !settlement) return null;
+function displayedFaceFor(
+  die: DiceRollGroupDie,
+  phase: RollGroupTrayPhase,
+  displayedFaces: Readonly<Record<string, number>> | undefined
+) {
   return (
-    <RuntimeDiceMesh
-      source={source}
-      treatment={appearance?.treatment ?? DEFAULT_TREATMENT}
-      initialPose={initialPose}
-      getPose={getPose}
-      onReady={handleReady}
-      onPoseApplied={handlePoseApplied}
-      onFrame={handleFrame}
-      onFailure={fail}
-      selectedGroupName={`roll-group-die-${die.id}`}
-      shadowName={`roll-group-shadow-${die.id}`}
-    />
+    displayedFaces?.[die.id] ??
+    (phase === 'modifiers' || phase === 'complete'
+      ? die.finalFace
+      : die.originalFace)
   );
-}
-
-function targetStyle(layout: RollGroupMemberLayout) {
-  return {
-    left: `${50 + layout.center[0] * 50}%`,
-    top: `${50 - layout.center[1] * 50}%`,
-    width: `${Math.max(8, layout.radius * 100)}%`,
-    aspectRatio: '1',
-    transform: 'translate(-50%, -50%)',
-  } as const;
 }
 
 export function RollGroupTray3D({
@@ -454,10 +132,12 @@ export function RollGroupTray3D({
   feel,
   appearances,
   displayedFaces,
-  rerollDieIds = [],
+  rerollDieIds = EMPTY_REROLL_DIE_IDS,
   throwProfile = NEUTRAL_PROFILE,
   onReleaseRequest,
   onOriginalsSettled,
+  onRerollSettled,
+  onFinalFrameRendered,
   onReady,
   onFailure,
   onAttachmentDiagnostic,
@@ -467,12 +147,27 @@ export function RollGroupTray3D({
   const heldRef = useRef<AnchoredHeldRollGroupState | undefined>(undefined);
   const projectionRef = useRef<TrayPlaneProjection | undefined>(undefined);
   const [projection, setProjection] = useState<TrayPlaneProjection>();
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [overlayBounds, setOverlayBounds] = useState<ClientBounds>();
   const reportedFailure = useRef(false);
-  const originalsSettledIds = useRef(new Set<string>());
-  const originalsReported = useRef(false);
+  const targetFrameIds = useRef(new Set<string>());
+  const targetFrameReported = useRef(false);
   const targetRefs = useRef(
     new Map<string, HTMLButtonElement | HTMLDivElement>()
   );
+  const surfaceHandlesRef = useRef(
+    new Map<string, RuntimeMemberSurfaceHandle>()
+  );
+  const activeSurfaceGrabRef = useRef<ActiveRuntimeSurfaceGrab | undefined>(
+    undefined
+  );
+  const rendererGuardRef = useRef<
+    ReturnType<typeof installRollGroupRendererGuard> | undefined
+  >(undefined);
+  const webglAvailable = useMemo(canCreateWebGLContext, [
+    presentationId,
+    rendererGeneration,
+  ]);
   const heldLayout = useMemo(
     () => layoutHeldRollGroup(group.dice),
     [group.dice]
@@ -481,20 +176,25 @@ export function RollGroupTray3D({
     () => layoutRestingRollGroup(group.dice, motionSeed),
     [group.dice, motionSeed]
   );
-  const layoutById = useMemo(
-    () =>
-      new Map(restingLayout.map((layout) => [layout.dieId, layout] as const)),
+  const restingLayoutById = useMemo(
+    () => new Map(restingLayout.map((item) => [item.dieId, item] as const)),
     [restingLayout]
   );
   const heldLayoutById = useMemo(
-    () => new Map(heldLayout.map((layout) => [layout.dieId, layout] as const)),
+    () => new Map(heldLayout.map((item) => [item.dieId, item] as const)),
     [heldLayout]
   );
   const usesHeldLayout = phase === 'armed' || phase === 'held';
-  const interactionLayoutById = usesHeldLayout ? heldLayoutById : layoutById;
   const interactionLayout = usesHeldLayout ? heldLayout : restingLayout;
+  const interactionLayoutById = usesHeldLayout
+    ? heldLayoutById
+    : restingLayoutById;
   const rerollDieIdSet = useMemo(() => new Set(rerollDieIds), [rerollDieIds]);
   const diceIdentity = group.dice.map((die) => die.id).join('|');
+  const faceIdentity = group.dice
+    .map((die) => displayedFaceFor(die, phase, displayedFaces))
+    .join('|');
+  const rerollIdentity = rerollDieIds.join('|');
   const canInteract =
     phase === 'armed' &&
     rollerRole === 'player' &&
@@ -511,57 +211,92 @@ export function RollGroupTray3D({
   );
 
   useEffect(() => {
+    if (!webglAvailable)
+      reportFailure(
+        group.dice[0]?.id ?? 'group',
+        'WebGL creation failed: unavailable context'
+      );
+  }, [group.dice, reportFailure, webglAvailable]);
+
+  useEffect(() => {
     if (forceFailure)
       reportFailure(group.dice[0]?.id ?? 'group', `${forceFailure} failure`);
   }, [forceFailure, group.dice, reportFailure]);
 
-  useEffect(() => {
-    originalsSettledIds.current = new Set();
-    originalsReported.current = false;
-  }, [diceIdentity, phase, presentationId, rendererGeneration]);
+  useEffect(
+    () => () => {
+      rendererGuardRef.current?.dispose();
+      rendererGuardRef.current = undefined;
+      activeSurfaceGrabRef.current = undefined;
+      surfaceHandlesRef.current.clear();
+    },
+    []
+  );
 
-  const handleMemberOriginalSettled = useCallback(
-    (dieId: string) => {
+  useEffect(() => {
+    targetFrameIds.current = new Set();
+    targetFrameReported.current = false;
+  }, [
+    diceIdentity,
+    faceIdentity,
+    phase,
+    presentationId,
+    rendererGeneration,
+    rerollIdentity,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!overlayRef.current) return;
+    setOverlayBounds(snapshotBounds(overlayRef.current));
+  }, [projection, interactionLayout]);
+
+  const handleTargetFrame = useCallback(
+    (
+      dieId: string,
+      witnessedPhase: 'rolling-originals' | 'rerolling' | 'complete'
+    ) => {
       if (
-        phase !== 'rolling-originals' ||
-        originalsReported.current ||
+        witnessedPhase !== phase ||
+        targetFrameReported.current ||
         !group.dice.some((die) => die.id === dieId)
       )
         return;
-      originalsSettledIds.current.add(dieId);
-      if (originalsSettledIds.current.size !== group.dice.length) return;
-      originalsReported.current = true;
-      onOriginalsSettled?.();
+      targetFrameIds.current.add(dieId);
+      if (targetFrameIds.current.size !== group.dice.length) return;
+      targetFrameReported.current = true;
+      if (witnessedPhase === 'rolling-originals') onOriginalsSettled?.();
+      else if (witnessedPhase === 'rerolling') onRerollSettled?.();
+      else onFinalFrameRendered?.();
     },
-    [group.dice, onOriginalsSettled, phase]
+    [
+      group.dice,
+      onFinalFrameRendered,
+      onOriginalsSettled,
+      onRerollSettled,
+      phase,
+    ]
   );
 
-  const getHitRegions =
-    useCallback((): readonly DiceTrayInteractionHitRegion[] => {
-      return group.dice.flatMap((die, index) => {
+  const getHitRegions = useCallback(
+    (): readonly DiceTrayInteractionHitRegion[] =>
+      group.dice.flatMap((die, index) => {
         const target = targetRefs.current.get(die.id);
         const layout = interactionLayoutById.get(die.id);
         if (!target || !layout) return [];
-        try {
-          const rect = target.getBoundingClientRect();
-          return [
-            {
-              dieId: die.id,
-              bounds: {
-                left: rect.left,
-                top: rect.top,
-                width: rect.width,
-                height: rect.height,
+        const bounds = snapshotBounds(target);
+        return bounds
+          ? [
+              {
+                dieId: die.id,
+                bounds,
+                memberAnchor: layout.center,
+                stableIndex: index,
               },
-              memberAnchor: layout.center,
-              stableIndex: index,
-            },
-          ];
-        } catch {
-          return [];
-        }
-      });
-    }, [group.dice, interactionLayoutById]);
+            ]
+          : [];
+      }),
+    [group.dice, interactionLayoutById]
+  );
 
   const heldChange = useCallback((held: unknown) => {
     heldRef.current =
@@ -571,10 +306,52 @@ export function RollGroupTray3D({
       typeof held.grabbedDieId === 'string'
         ? (held as AnchoredHeldRollGroupState)
         : undefined;
+    if (!heldRef.current) activeSurfaceGrabRef.current = undefined;
   }, []);
+  const captureSurface = useCallback(
+    (dieId: string, clientX: number, clientY: number) => {
+      const grab = surfaceHandlesRef.current
+        .get(dieId)
+        ?.captureSurface({ clientX, clientY });
+      activeSurfaceGrabRef.current = grab
+        ? { dieId, rendererGeneration, grab }
+        : undefined;
+    },
+    [rendererGeneration]
+  );
   const requestNeutralRelease = useCallback(() => {
     onReleaseRequest?.(createNeutralVisualThrowProfile(motionSeed));
   }, [motionSeed, onReleaseRequest]);
+  const handleCanvasCreated = useCallback(
+    ({
+      gl,
+      scene,
+      camera,
+    }: {
+      gl: WebGLRenderer;
+      scene: Scene;
+      camera: Camera;
+    }) => {
+      try {
+        configureRollGroupTrayCamera(camera);
+        rendererGuardRef.current?.dispose();
+        rendererGuardRef.current = installRollGroupRendererGuard(
+          gl,
+          scene,
+          camera,
+          (reason) => reportFailure(group.dice[0]?.id ?? 'group', reason)
+        );
+      } catch (error) {
+        reportFailure(
+          group.dice[0]?.id ?? 'group',
+          `WebGL renderer setup failed: ${
+            error instanceof Error ? error.message : 'unknown'
+          }`
+        );
+      }
+    },
+    [group.dice, reportFailure]
+  );
 
   return (
     <section
@@ -595,61 +372,79 @@ export function RollGroupTray3D({
         className="dice-tray-3d-renderer roll-group-tray-3d__surface"
         testId="roll-group-tray-surface"
       >
-        <Canvas
-          aria-hidden="true"
-          className="roll-group-tray-3d__canvas"
-          camera={{
-            fov: 35,
-            near: 0.1,
-            far: 100,
-            position: [0, 3, 0],
-            up: [0, 0, -1],
+        {webglAvailable ? (
+          <RollGroupRenderBoundary
+            onError={(reason) =>
+              reportFailure(group.dice[0]?.id ?? 'group', reason)
+            }
+          >
+            <Canvas
+              aria-hidden="true"
+              className="roll-group-tray-3d__canvas"
+              camera={{
+                fov: ROLL_GROUP_TRAY_CAMERA.fov,
+                near: ROLL_GROUP_TRAY_CAMERA.near,
+                far: ROLL_GROUP_TRAY_CAMERA.far,
+                position: [...ROLL_GROUP_TRAY_CAMERA.position],
+                up: [...ROLL_GROUP_TRAY_CAMERA.up],
+              }}
+              onCreated={handleCanvasCreated}
+            >
+              <ambientLight intensity={1.4} />
+              <directionalLight position={[0.7, 1.7, 0.7]} intensity={2.1} />
+              <TrayPlaneProjectionBridge
+                origin={[0, 0, 0]}
+                xAxis={[1, 0, 0]}
+                yAxis={[0, 0, 1]}
+                width={ROLL_GROUP_HELD_PLANE_WIDTH}
+                height={ROLL_GROUP_HELD_PLANE_HEIGHT}
+                projectionRef={projectionRef}
+                onProjection={setProjection}
+              />
+              {group.dice.map((die, index) => (
+                <RollGroupRuntimeMember
+                  key={die.id}
+                  die={die}
+                  displayedFace={displayedFaceFor(die, phase, displayedFaces)}
+                  affectedByCurrentReroll={rerollDieIdSet.has(die.id)}
+                  index={index}
+                  memberCount={group.dice.length}
+                  phase={phase}
+                  feel={feel}
+                  reducedMotion={reducedMotion}
+                  throwProfile={throwProfile}
+                  heldRef={heldRef}
+                  heldLayout={heldLayoutById.get(die.id) ?? heldLayout[0]}
+                  restingLayout={
+                    restingLayoutById.get(die.id) ?? restingLayout[0]
+                  }
+                  appearance={appearances.find(
+                    (appearance) => appearance.dieId === die.id
+                  )}
+                  reportFailure={reportFailure}
+                  onReady={onReady}
+                  onTargetFrame={handleTargetFrame}
+                  onAttachmentDiagnostic={onAttachmentDiagnostic}
+                  presentationId={presentationId}
+                  rendererGeneration={rendererGeneration}
+                  surfaceHandlesRef={surfaceHandlesRef}
+                  activeSurfaceGrabRef={activeSurfaceGrabRef}
+                />
+              ))}
+            </Canvas>
+          </RollGroupRenderBoundary>
+        ) : null}
+        <div
+          ref={overlayRef}
+          className="roll-group-tray-3d__targets"
+          aria-hidden={!canInteract}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 2,
+            pointerEvents: 'none',
           }}
         >
-          <ambientLight intensity={1.4} />
-          <directionalLight position={[0.7, 1.7, 0.7]} intensity={2.1} />
-          <TrayPlaneProjectionBridge
-            origin={[0, 0, 0]}
-            xAxis={[1, 0, 0]}
-            yAxis={[0, 0, 1]}
-            width={2}
-            height={2}
-            projectionRef={projectionRef}
-            onProjection={setProjection}
-          />
-          {group.dice.map((die, index) => (
-            <RuntimeGroupMember
-              key={die.id}
-              die={die}
-              displayedFace={
-                displayedFaces?.[die.id] ??
-                (phase === 'modifiers' || phase === 'complete'
-                  ? die.finalFace
-                  : die.originalFace)
-              }
-              affectedByCurrentReroll={rerollDieIdSet.has(die.id)}
-              index={index}
-              memberCount={group.dice.length}
-              phase={phase}
-              feel={feel}
-              reducedMotion={reducedMotion}
-              throwProfile={throwProfile}
-              heldRef={heldRef}
-              heldLayout={heldLayoutById.get(die.id) ?? heldLayout[0]}
-              restingLayout={layoutById.get(die.id) ?? restingLayout[0]}
-              appearance={appearances.find(
-                (appearance) => appearance.dieId === die.id
-              )}
-              reportFailure={reportFailure}
-              onReady={onReady}
-              onOriginalsSettled={handleMemberOriginalSettled}
-              onAttachmentDiagnostic={onAttachmentDiagnostic}
-              presentationId={presentationId}
-              rendererGeneration={rendererGeneration}
-            />
-          ))}
-        </Canvas>
-        <div className="roll-group-tray-3d__targets" aria-hidden={!canInteract}>
           {group.dice.map((die) => {
             const layout =
               interactionLayoutById.get(die.id) ?? interactionLayout[0];
@@ -658,7 +453,15 @@ export function RollGroupTray3D({
                 if (element) targetRefs.current.set(die.id, element);
                 else targetRefs.current.delete(die.id);
               },
-              style: targetStyle(layout),
+              style: {
+                ...projectRollGroupHitTarget(layout, projection, overlayBounds),
+                pointerEvents: canInteract
+                  ? ('auto' as const)
+                  : ('none' as const),
+                cursor: canInteract ? ('grab' as const) : undefined,
+              },
+              onPointerDown: (event: React.PointerEvent) =>
+                captureSurface(die.id, event.clientX, event.clientY),
               'data-roll-group-die-id': die.id,
               'data-renderer-generation': rendererGeneration,
               'data-witness-role': witnessRole,

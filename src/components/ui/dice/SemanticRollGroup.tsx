@@ -12,6 +12,8 @@ export interface SemanticRollGroupProps {
   readonly poses?: Readonly<Record<string, DiceMotionPose>>;
   readonly onReady?: RollGroupDie3DProps['onReady'];
   readonly onFailure?: RollGroupDie3DProps['onFailure'];
+  readonly onReleaseRequest?: () => void;
+  readonly renderDice3D?: boolean;
 }
 
 const DEFAULT_TREATMENT: DiceMaterialTreatment = Object.freeze({
@@ -80,6 +82,8 @@ export function SemanticRollGroup({
   poses,
   onReady,
   onFailure,
+  onReleaseRequest,
+  renderDice3D = true,
 }: SemanticRollGroupProps) {
   const rerollLabel = currentRerollLabel(group.dice, presentation);
   return (
@@ -98,7 +102,7 @@ export function SemanticRollGroup({
               key={die.id}
             >
               <output>{`${die.kind} ${face ?? '?'}`}</output>
-              {face !== undefined ? (
+              {face !== undefined && renderDice3D ? (
                 <RollGroupDie3D
                   die={die}
                   displayedFace={face}
@@ -113,6 +117,11 @@ export function SemanticRollGroup({
           );
         })}
       </div>
+      {presentation.phase === 'armed' && onReleaseRequest ? (
+        <button type="button" onClick={() => onReleaseRequest()}>
+          Roll dice
+        </button>
+      ) : null}
       {rerollLabel ? (
         <p data-testid="semantic-roll-group-reroll">{rerollLabel}</p>
       ) : null}

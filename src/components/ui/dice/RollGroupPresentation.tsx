@@ -1,17 +1,12 @@
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
 } from 'react';
-import type {
-  DiceRollGroupInput,
-  DiceRollGroupKey,
-  DiceRollRerollStep,
-} from './diceRollGroup';
+import type { DiceRollGroupKey } from './diceRollGroup';
 import type {
   DiceRollGroupEvent,
   DiceRollGroupReleasedEvent,
@@ -24,12 +19,21 @@ import {
   type RollGroupFeelCandidateId,
 } from './rollGroupMotionSolver';
 import {
+  compatibleRelease,
+  createRerollBatches,
+  currentRerollBatch,
+  displayedFaces,
+  eventIdentity,
+  profileSeed,
+  releaseEventId,
+} from './rollGroupPresentationModel';
+import {
   createRollGroupPresentationState,
   reduceRollGroupPresentation,
   type RollGroupPresentationState,
 } from './rollGroupPresentationState';
-import { RollGroupTray3D } from './RollGroupTray3D';
-import { SemanticRollGroup } from './SemanticRollGroup';
+import { RollGroupPresentationView } from './RollGroupPresentationView';
+import { useRollGroupPhaseTimer } from './useRollGroupPhaseTimer';
 import {
   createNeutralVisualThrowProfile,
   type VisualThrowProfileV1,
@@ -97,20 +101,11 @@ export interface DiceRollGroupPresentationProps {
   ) => void;
 }
 
-interface RerollBatchEntry {
-  readonly dieId: string;
-  readonly step: DiceRollRerollStep;
-}
-
-interface RerollBatch {
-  readonly displayLabel: string;
-  readonly entries: readonly RerollBatchEntry[];
-  readonly dieIds: readonly string[];
-}
-
 type CallbackFence = {
   release?: (profile?: VisualThrowProfileV1) => void;
   originals?: () => void;
+  reroll?: () => void;
+  finalFrame?: () => void;
   ready?: (
     input: Readonly<{
       dieId: string;
@@ -136,119 +131,6 @@ function allocateRendererGeneration() {
   const generation = nextRendererGeneration;
   nextRendererGeneration -= 1;
   return generation;
-}
-
-function eventIdentity(event: DiceRollGroupEvent) {
-  return JSON.stringify(event);
-}
-
-function compatibleRelease(
-  request: DiceRollGroupRequestedEvent,
-  release: DiceRollGroupReleasedEvent
-) {
-  return (
-    release.presentationId === request.presentationId &&
-    release.release.presentationId === request.presentationId &&
-    release.release.groupKey === request.group.key
-  );
-}
-
-function profileSeed(presentationId: string) {
-  let result = 2_166_136_261;
-  for (const character of presentationId) {
-    result ^= character.charCodeAt(0);
-    result = Math.imul(result, 16_777_619);
-  }
-  return result >>> 0;
-}
-
-function releaseEventId(presentationId: string) {
-  const readable = `${presentationId}:release`;
-  return readable.length <= 128
-    ? readable
-    : `release:${profileSeed(presentationId).toString(16)}`;
-}
-
-function createRerollBatches(
-  group: DiceRollGroupInput
-): readonly RerollBatch[] {
-  const batches: RerollBatch[] = [];
-  const maxSteps = group.dice.reduce(
-    (largest, die) => Math.max(largest, die.rerolls.length),
-    0
-  );
-  for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
-    const byLabel = new Map<string, RerollBatchEntry[]>();
-    for (const die of group.dice) {
-      const step = die.rerolls[stepIndex];
-      if (!step) continue;
-      const entries = byLabel.get(step.displayLabel) ?? [];
-      entries.push(Object.freeze({ dieId: die.id, step }));
-      byLabel.set(step.displayLabel, entries);
-    }
-    for (const [displayLabel, entries] of byLabel) {
-      const frozenEntries = Object.freeze(entries);
-      batches.push(
-        Object.freeze({
-          displayLabel,
-          entries: frozenEntries,
-          dieIds: Object.freeze(entries.map((entry) => entry.dieId)),
-        })
-      );
-    }
-  }
-  return Object.freeze(batches);
-}
-
-function displayedFaces(
-  group: DiceRollGroupInput,
-  batches: readonly RerollBatch[],
-  state: RollGroupPresentationState
-): Readonly<Record<string, number>> {
-  let appliedBatchCount = 0;
-  if (state.phase === 'reroll-flash') appliedBatchCount = state.rerollIndex;
-  else if (state.phase === 'rerolling')
-    appliedBatchCount = state.rerollIndex + 1;
-  else if (state.phase === 'modifiers' || state.phase === 'complete')
-    appliedBatchCount = batches.length;
-
-  const faces: Record<string, number> = {};
-  for (const die of group.dice) faces[die.id] = die.originalFace;
-  for (const batch of batches.slice(0, appliedBatchCount)) {
-    for (const entry of batch.entries) faces[entry.dieId] = entry.step.after;
-  }
-  return Object.freeze(faces);
-}
-
-function currentRerollBatch(
-  batches: readonly RerollBatch[],
-  state: RollGroupPresentationState
-) {
-  return state.phase === 'reroll-flash' || state.phase === 'rerolling'
-    ? batches[state.rerollIndex]
-    : undefined;
-}
-
-function statusText(
-  label: string,
-  state: RollGroupPresentationState,
-  batch: RerollBatch | undefined,
-  fallback: boolean
-) {
-  if (state.phase === 'armed')
-    return `${label} requested · waiting for release event`;
-  if (state.phase === 'rolling-originals')
-    return `${label} release delivered · rolling originals`;
-  if (state.phase === 'settled-originals')
-    return `${label} original dice settled`;
-  if (state.phase === 'reroll-flash')
-    return `${label} reroll flash${batch ? ` · ${batch.displayLabel}` : ''}`;
-  if (state.phase === 'rerolling')
-    return `${label} rerolling${batch ? ` · ${batch.displayLabel}` : ''}`;
-  if (state.phase === 'modifiers') return `${label} modifiers`;
-  return fallback
-    ? `${label} complete · semantic fallback`
-    : `${label} roll complete`;
 }
 
 function RollGroupPresentationInstance({
@@ -298,6 +180,9 @@ function RollGroupPresentationInstance({
   const [rendererReady, setRendererReady] = useState(
     request.group.dice.length === 0
   );
+  const [finalFrameRendered, setFinalFrameRendered] = useState(
+    request.group.dice.length === 0
+  );
   const [state, dispatch] = useReducer(
     (
       current: RollGroupPresentationState,
@@ -317,7 +202,6 @@ function RollGroupPresentationInstance({
   const originalsSettled = useRef(initialRelease !== undefined);
   const readyDieIds = useRef(new Set<string>());
   const callbackFence = useRef<CallbackFence>({});
-  const timerFence = useRef(0);
 
   useLayoutEffect(() => {
     active.current = true;
@@ -418,6 +302,28 @@ function RollGroupPresentationInstance({
     dispatch({ type: 'originals-settled' });
   }, [fallback, isCurrentGeneration, state.phase]);
 
+  const handleRerollSettled = useCallback(() => {
+    if (
+      !isCurrentGeneration() ||
+      callbackFence.current.reroll !== handleRerollSettled ||
+      fallback ||
+      state.phase !== 'rerolling'
+    )
+      return;
+    dispatch({ type: 'reroll-settled' });
+  }, [fallback, isCurrentGeneration, state.phase]);
+
+  const handleFinalFrameRendered = useCallback(() => {
+    if (
+      !isCurrentGeneration() ||
+      callbackFence.current.finalFrame !== handleFinalFrameRendered ||
+      fallback ||
+      state.phase !== 'complete'
+    )
+      return;
+    setFinalFrameRendered(true);
+  }, [fallback, isCurrentGeneration, state.phase]);
+
   const handleReady = useCallback(
     (
       input: Readonly<{
@@ -505,6 +411,8 @@ function RollGroupPresentationInstance({
     callbackFence.current = {
       release: handleReleaseRequest,
       originals: handleOriginalsSettled,
+      reroll: handleRerollSettled,
+      finalFrame: handleFinalFrameRendered,
       ready: handleReady,
       failure: handleFailure,
       attachment: handleAttachmentDiagnostic,
@@ -516,8 +424,10 @@ function RollGroupPresentationInstance({
   }, [
     handleAttachmentDiagnostic,
     handleFailure,
+    handleFinalFrameRendered,
     handleOriginalsSettled,
     handleReady,
+    handleRerollSettled,
     handleReleaseRequest,
   ]);
 
@@ -540,50 +450,15 @@ function RollGroupPresentationInstance({
     state.phase,
   ]);
 
-  useEffect(() => {
-    if (!boundaryMounted || fallback) return undefined;
-    let action: Parameters<typeof reduceRollGroupPresentation>[1] | undefined;
-    let delay = 0;
-    if (state.phase === 'settled-originals') {
-      action = { type: 'reroll-flash-complete' };
-    } else if (state.phase === 'reroll-flash') {
-      action = { type: 'reroll-flash-complete' };
-      delay = reducedMotion
-        ? 0
-        : ROLL_GROUP_FEEL_PROFILES[feel].flashDurationMs;
-    } else if (state.phase === 'rerolling') {
-      action = { type: 'reroll-settled' };
-      delay = reducedMotion
-        ? 0
-        : ROLL_GROUP_FEEL_PROFILES[feel].rerollDurationMs;
-    } else if (state.phase === 'modifiers') {
-      action = { type: 'modifier-shown' };
-      delay = reducedMotion
-        ? 0
-        : ROLL_GROUP_FEEL_PROFILES[feel].modifierDurationMs;
-    }
-    if (!action) return undefined;
-
-    timerFence.current += 1;
-    const timerGeneration = timerFence.current;
-    const timer = window.setTimeout(() => {
-      if (isCurrentGeneration() && timerFence.current === timerGeneration)
-        dispatch(action);
-    }, delay);
-    return () => {
-      timerFence.current += 1;
-      window.clearTimeout(timer);
-    };
-  }, [
+  useRollGroupPhaseTimer({
     boundaryMounted,
     fallback,
     feel,
     isCurrentGeneration,
     reducedMotion,
-    state.modifierIndex,
-    state.phase,
-    state.rerollIndex,
-  ]);
+    state,
+    dispatch,
+  });
 
   const complete = useCallback(
     (renderer: '3d' | 'semantic') => {
@@ -639,11 +514,13 @@ function RollGroupPresentationInstance({
       if (acceptedReleaseRef.current) complete('semantic');
       return;
     }
-    if (state.phase === 'complete' && rendererReady) complete('3d');
+    if (state.phase === 'complete' && rendererReady && finalFrameRendered)
+      complete('3d');
   }, [
     boundaryMounted,
     complete,
     fallback,
+    finalFrameRendered,
     isCurrentGeneration,
     rendererReady,
     state.phase,
@@ -665,74 +542,38 @@ function RollGroupPresentationInstance({
       : semanticState.phase === 'modifiers'
         ? semanticState.modifierIndex
         : 0;
-  const visibleModifiers = request.group.modifiers.slice(
-    0,
-    visibleModifierCount
-  );
-
   return (
-    <section
-      data-testid="roll-group-presentation"
-      data-witness-role={witnessRole}
-      data-renderer-generation={rendererGeneration}
-      aria-label={label}
-    >
-      <p role="status" aria-live="polite">
-        {statusText(label, semanticState, batch, fallback)}
-      </p>
-      {boundaryMounted ? (
-        fallback ? (
-          <SemanticRollGroup
-            group={request.group}
-            presentation={semanticState}
-            presentationToken={rendererGeneration}
-          />
-        ) : (
-          <RollGroupTray3D
-            label={label}
-            presentationId={request.presentationId}
-            rendererGeneration={rendererGeneration}
-            motionSeed={profileSeed(request.presentationId)}
-            rollerRole={request.roller.role}
-            witnessRole={witnessRole}
-            phase={state.phase}
-            group={request.group}
-            feel={ROLL_GROUP_FEEL_PROFILES[feel]}
-            appearances={appearances}
-            displayedFaces={faces}
-            rerollDieIds={batch?.dieIds}
-            throwProfile={releaseProfile}
-            onReleaseRequest={handleReleaseRequest}
-            onOriginalsSettled={handleOriginalsSettled}
-            onReady={handleReady}
-            onFailure={handleFailure}
-            onAttachmentDiagnostic={handleAttachmentDiagnostic}
-            reducedMotion={reducedMotion}
-            forceFailure={forceFailure}
-          />
-        )
-      ) : null}
-      {!fallback && visibleModifiers.length > 0 ? (
-        <ul aria-label="Roll modifiers">
-          {visibleModifiers.map((modifier) => (
-            <li key={modifier.id}>
-              <span>{modifier.displayLabel}</span>:{' '}
-              {'value' in modifier ? modifier.value : modifier.text}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {semanticState.phase === 'complete' &&
-      request.group.suppliedFinalTotal !== undefined ? (
-        <output
-          role="presentation"
-          aria-label="Final total"
-          data-testid="roll-group-total"
-        >
-          {String(request.group.suppliedFinalTotal)}
-        </output>
-      ) : null}
-    </section>
+    <RollGroupPresentationView
+      label={label}
+      request={request}
+      witnessRole={witnessRole}
+      rendererGeneration={rendererGeneration}
+      boundaryMounted={boundaryMounted}
+      fallback={fallback}
+      state={state}
+      semanticState={semanticState}
+      batch={batch}
+      faces={faces}
+      releaseProfile={releaseProfile}
+      feel={ROLL_GROUP_FEEL_PROFILES[feel]}
+      appearances={appearances}
+      visibleModifierCount={visibleModifierCount}
+      releaseAuthority={
+        witnessRole === 'roller' &&
+        request.roller.role === 'player' &&
+        onReleaseRequest !== undefined
+      }
+      onReleaseRequest={handleReleaseRequest}
+      onOriginalsSettled={handleOriginalsSettled}
+      onRerollSettled={handleRerollSettled}
+      onFinalFrameRendered={handleFinalFrameRendered}
+      onReady={handleReady}
+      onFailure={handleFailure}
+      onAttachmentDiagnostic={handleAttachmentDiagnostic}
+      reducedMotion={reducedMotion}
+      forceFailure={forceFailure}
+      motionSeed={profileSeed(request.presentationId)}
+    />
   );
 }
 

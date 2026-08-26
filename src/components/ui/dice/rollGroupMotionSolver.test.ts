@@ -1,3 +1,4 @@
+import { PerspectiveCamera } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { AnchoredHeldRollGroupState } from './anchoredRollGroupGestureController';
 import type { QuaternionTuple } from './attackDieContract';
@@ -12,6 +13,7 @@ import {
   solveRollGroupMemberMotion,
   type RollGroupFeelProfile,
 } from './rollGroupMotionSolver';
+import { createTrayPlaneProjection } from './trayPlaneProjection';
 import { createVisualThrowProfile } from './visualThrowProfile';
 
 const TARGET = Object.freeze([0, 0, 0, 1] as const);
@@ -156,6 +158,68 @@ describe('rollGroupMotionSolver', () => {
       ).toBe(true);
     }
   );
+
+  it('maps exact tray-plane held extents to the same solver position and direction', () => {
+    const camera = new PerspectiveCamera(35, 720 / 520, 0.1, 100);
+    camera.position.set(0, 3, 0);
+    camera.up.set(0, 0, -1);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+    const projection = createTrayPlaneProjection({
+      camera,
+      viewport: { left: 0, top: 0, width: 720, height: 520 },
+      origin: [0, 0, 0],
+      xAxis: [1, 0, 0],
+      yAxis: [0, 0, 1],
+      width: 0.72,
+      height: 0.52,
+    })!;
+    const screen = projection.planeToScreen([0.36, 0.26])!;
+    const plane = projection.screenToPlane(screen[0], screen[1])!;
+    const normalized = projection.planeToNormalized(plane)!;
+    expect(normalized[0]).toBeCloseTo(1, 12);
+    expect(normalized[1]).toBeCloseTo(1, 12);
+
+    const heldPose = solveRollGroupMemberMotion(
+      motionInput(ROLL_GROUP_FEEL_PROFILES.weighty, {
+        phase: 'held',
+        elapsedMs: 0,
+        held: { ...HELD, normalizedPosition: normalized },
+      })
+    );
+    expect(heldPose.translation[0] - HELD_LAYOUT.center[0]).toBeCloseTo(
+      0.36,
+      8
+    );
+    expect(heldPose.translation[2] - HELD_LAYOUT.center[1]).toBeCloseTo(
+      0.26,
+      8
+    );
+  });
+
+  it('keeps release-position and direction Y aligned with tray-plane Z', () => {
+    const downward = createVisualThrowProfile({
+      releasePosition: [0.5, 1],
+      releaseDirection: [0, 1],
+      releaseSpeed: 1,
+      shakeEnergy: 0,
+      spinBias: 0,
+      motionSeed: 17,
+    });
+    const start = solveRollGroupMemberMotion(
+      motionInput(ROLL_GROUP_FEEL_PROFILES.weighty, {
+        elapsedMs: 0,
+        memberIndex: 0,
+        memberCount: 1,
+        heldLayout: { ...HELD_LAYOUT, center: [0, 0] },
+        restingLayout: { ...RESTING_LAYOUT, center: [0, 0] },
+        throwProfile: downward,
+      })
+    );
+
+    expect(start.translation[2]).toBeGreaterThan(0);
+  });
 
   it('settles reduced-motion rolling directly without travel or tumble', () => {
     const pose = solveRollGroupMemberMotion(

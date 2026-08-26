@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Quaternion,
   type Group,
@@ -22,6 +22,10 @@ import {
   runtimeDiceNormalization,
   type DiceMaterialTreatment,
 } from './materialFreeCarvedMesh';
+import {
+  createRuntimeDiceSurfaceHandle,
+  type RuntimeDiceSurfaceHandle,
+} from './runtimeDiceSurfaceGrab';
 
 export interface RuntimeDiceMeshSource {
   readonly preset: DiceRuntimePreset;
@@ -64,6 +68,9 @@ export interface RuntimeDiceMeshProps {
     }
   ) => void;
   readonly onFailure: (reason: string) => void;
+  readonly surfaceHandleRef?: {
+    current: RuntimeDiceSurfaceHandle | undefined;
+  };
   readonly magicalAnimation?: boolean;
   readonly selectedGroupName?: string;
   readonly shadowName?: string;
@@ -179,6 +186,7 @@ export function RuntimeDiceMesh({
   onPoseApplied,
   onFrame,
   onFailure,
+  surfaceHandleRef,
   magicalAnimation = false,
   selectedGroupName = 'attack-die-selected-group',
   shadowName = 'attack-die-shadow',
@@ -224,6 +232,20 @@ export function RuntimeDiceMesh({
     source,
     treatment,
   ]);
+
+  useLayoutEffect(() => {
+    const selectedGroup = group.current;
+    if (!surfaceHandleRef || !bundle || !selectedGroup) return undefined;
+    const handle = createRuntimeDiceSurfaceHandle(
+      selectedGroup,
+      bundle.runtimeCloneId
+    );
+    surfaceHandleRef.current = handle;
+    return () => {
+      if (surfaceHandleRef.current === handle)
+        surfaceHandleRef.current = undefined;
+    };
+  }, [bundle, surfaceHandleRef]);
 
   useFrame(({ clock }) => {
     validationRef.current = false;
