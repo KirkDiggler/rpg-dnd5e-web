@@ -60,6 +60,62 @@ describe('shared table dice coordinator state', () => {
     });
   });
 
+  it('ignores completion before the matching witness has mounted for both witness roles', () => {
+    const scenario = SHARED_TABLE_DICE_SCENARIOS['ordinary-damage'];
+
+    for (const [
+      mountedRole,
+      completionRole,
+      mountedGeneration,
+      completionGeneration,
+    ] of [
+      ['roller', 'spectator', 11, 22],
+      ['spectator', 'roller', 33, 44],
+    ] as const) {
+      const partiallyMounted = reduceSharedTableDice(
+        initial('ordinary-damage'),
+        {
+          type: 'presentation-mounted',
+          presentationId: 'attack:partial',
+          groupKey: 'attack',
+          witnessRole: mountedRole,
+          rendererGeneration: mountedGeneration,
+        },
+        scenario
+      );
+
+      expect(partiallyMounted).toEqual({
+        scenarioId: 'ordinary-damage',
+        phase: 'attack',
+        activePresentation: {
+          presentationId: 'attack:partial',
+          groupKey: 'attack',
+          generations: { [mountedRole]: mountedGeneration },
+          completed: { roller: false, spectator: false },
+        },
+      });
+
+      const blocked = reduceSharedTableDice(
+        partiallyMounted,
+        {
+          type: 'group-complete',
+          presentationId: 'attack:partial',
+          groupKey: 'attack',
+          witnessRole: completionRole,
+          rendererGeneration: completionGeneration,
+        },
+        scenario
+      );
+
+      expect(blocked).toBe(partiallyMounted);
+      expect(blocked.phase).toBe('attack');
+      expect(blocked.activePresentation?.completed).toEqual({
+        roller: false,
+        spectator: false,
+      });
+    }
+  });
+
   it('advances a miss only after both attack completions and verdict completion', () => {
     const scenario = SHARED_TABLE_DICE_SCENARIOS['single-d20'];
     const mounted = reduceSharedTableDice(
