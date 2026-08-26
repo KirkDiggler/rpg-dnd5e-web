@@ -18,10 +18,14 @@ import {
 import { positionToCube } from './positionBridge';
 
 const loadedUrls: string[] = [];
+const rejectedUrls = new Set<string>();
 
 vi.mock('@react-three/drei', () => {
   const useGLTF = (url: string) => {
     loadedUrls.push(url);
+    if (rejectedUrls.has(url)) {
+      throw new Error(`failed to load ${url}`);
+    }
     const scene = new THREE.Group();
     const box = (
       min: [number, number, number],
@@ -142,6 +146,18 @@ function primitiveGroups(renderer: {
       );
     })
     .map((node) => (node as { instance: THREE.Group }).instance);
+}
+
+function closedFallbackMeshes(renderer: {
+  scene: { findAll: (predicate: (node: unknown) => boolean) => unknown[] };
+}) {
+  return renderer.scene.findAll((node) => {
+    const rendered = node as { type: string; instance: unknown };
+    return (
+      rendered.type === 'Mesh' &&
+      (rendered.instance as THREE.Mesh).name === 'closed-door-fallback'
+    );
+  });
 }
 
 function worldBox(group: THREE.Group): THREE.Box3 {
@@ -489,7 +505,10 @@ function projectedBodyExtent(
 }
 
 describe('AtlasWalls profile assembly', () => {
-  beforeEach(() => loadedUrls.splice(0));
+  beforeEach(() => {
+    loadedUrls.splice(0);
+    rejectedUrls.clear();
+  });
 
   it('places the measured profile frame and derived leaf exactly at floor level for both rotations', async () => {
     const twoDoors = [
@@ -740,6 +759,59 @@ describe('AtlasWalls profile assembly', () => {
     );
     await renderer.fireEvent(clickable, 'click');
     expect(onDoorClick).toHaveBeenCalledWith('door-id');
+  });
+
+  it('unmounts a rejected resilient leaf while OPEN and remounts its fallback when reclosed', async () => {
+    rejectedUrls.add('/models/synty/env/SM_Env_Door_01.glb');
+    const onDoorClick = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <AtlasWalls
+        wallRuns={[]}
+        doorGaps={doorGaps}
+        doors={new Map([['door-id', { state: DoorState.CLOSED } as never]])}
+        onDoorClick={onDoorClick}
+        resilientDoorLeaves
+      />
+    );
+    await renderer.update(
+      <AtlasWalls
+        wallRuns={[]}
+        doorGaps={doorGaps}
+        doors={new Map([['door-id', { state: DoorState.CLOSED } as never]])}
+        onDoorClick={onDoorClick}
+        resilientDoorLeaves
+      />
+    );
+
+    expect(closedFallbackMeshes(renderer)).toHaveLength(1);
+
+    await renderer.update(
+      <AtlasWalls
+        wallRuns={[]}
+        doorGaps={doorGaps}
+        doors={new Map([['door-id', { state: DoorState.OPEN } as never]])}
+        onDoorClick={onDoorClick}
+        resilientDoorLeaves
+      />
+    );
+    expect(primitiveGroups(renderer).map(meshName)).toEqual(['legacy-frame']);
+    expect(closedFallbackMeshes(renderer)).toHaveLength(0);
+    const clickable = renderer.scene.find(
+      (node) => typeof node.props.onClick === 'function'
+    );
+    await renderer.fireEvent(clickable, 'click');
+    expect(onDoorClick).toHaveBeenCalledWith('door-id');
+
+    await renderer.update(
+      <AtlasWalls
+        wallRuns={[]}
+        doorGaps={doorGaps}
+        doors={new Map([['door-id', { state: DoorState.CLOSED } as never]])}
+        onDoorClick={onDoorClick}
+        resilientDoorLeaves
+      />
+    );
+    expect(closedFallbackMeshes(renderer)).toHaveLength(1);
   });
 
   it('preserves exact legacy frame/leaf files, transforms, positions, and state behavior without profile transforms', async () => {

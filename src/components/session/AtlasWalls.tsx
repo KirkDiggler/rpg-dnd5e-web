@@ -267,22 +267,22 @@ export function AtlasWalls({
                   rotationY={door.rotationY}
                   scale={doorFrameScale(wallHeight)}
                 />
-                {resilientDoorLeaves ? (
-                  <ResilientLegacyDoorLeaf
-                    door={door}
-                    wallHeight={wallHeight}
-                    leafShut={leafShut}
-                  />
-                ) : (
-                  leafShut && (
-                    <GlbInstance
-                      file={DOOR_LEAF_FILE}
-                      position={door.leafPosition}
-                      rotationY={door.rotationY}
-                      scale={doorLeafScale(wallHeight)}
-                    />
-                  )
-                )}
+                {resilientDoorLeaves
+                  ? leafShut && (
+                      <ResilientLegacyDoorLeaf
+                        door={door}
+                        wallHeight={wallHeight}
+                        leafShut={leafShut}
+                      />
+                    )
+                  : leafShut && (
+                      <GlbInstance
+                        file={DOOR_LEAF_FILE}
+                        position={door.leafPosition}
+                        rotationY={door.rotationY}
+                        scale={doorLeafScale(wallHeight)}
+                      />
+                    )}
               </>
             )}
           </group>

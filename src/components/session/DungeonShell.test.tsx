@@ -664,6 +664,71 @@ describe('DungeonShell actual shell integration', () => {
     consoleError.mockRestore();
   });
 
+  it.each([
+    ['CLOSED', DoorState.CLOSED, true],
+    ['LOCKED', DoorState.LOCKED, false],
+  ] as const)(
+    'unmounts a rejected resilient leaf on OPEN after %s without retrying the cached loader',
+    async (_stateName, initialState, reclose) => {
+      shellState.snapshot = ready();
+      rejectGltf(LEAF_URL);
+      const onDoorClick = vi.fn();
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+      const view = await ReactThreeTestRenderer.create(
+        <DungeonShell
+          scene={scene()}
+          doors={new Map([['door-id', { state: initialState } as DoorInfo]])}
+          onDoorClick={onDoorClick}
+        />
+      );
+
+      expect(closedFallbackMeshes(view)).toHaveLength(1);
+      expect(
+        shellState.loaderCalls.filter((url) => url === LEAF_URL)
+      ).toHaveLength(1);
+
+      await view.update(
+        <DungeonShell
+          scene={scene()}
+          doors={new Map([['door-id', { state: DoorState.OPEN } as DoorInfo]])}
+          onDoorClick={onDoorClick}
+        />
+      );
+      expect(primitiveAssetNames(view)).toContain(LEGACY_FRAME_URL);
+      expect(primitiveAssetNames(view)).not.toContain(LEAF_URL);
+      expect(closedFallbackMeshes(view)).toHaveLength(0);
+      const clickable = view.scene.find(
+        (node) =>
+          node.fiber.type === 'group' &&
+          typeof node.props.onClick === 'function'
+      );
+      await view.fireEvent(clickable, 'click');
+      expect(onDoorClick).toHaveBeenCalledWith('door-id');
+      expect(
+        shellState.loaderCalls.filter((url) => url === LEAF_URL)
+      ).toHaveLength(1);
+
+      if (reclose) {
+        await view.update(
+          <DungeonShell
+            scene={scene()}
+            doors={
+              new Map([['door-id', { state: DoorState.CLOSED } as DoorInfo]])
+            }
+            onDoorClick={onDoorClick}
+          />
+        );
+        expect(closedFallbackMeshes(view)).toHaveLength(1);
+        expect(
+          shellState.loaderCalls.filter((url) => url === LEAF_URL)
+        ).toHaveLength(1);
+      }
+      consoleError.mockRestore();
+    }
+  );
+
   it('keeps a cached rejected leaf in fallback until the cache is explicitly cleared', async () => {
     shellState.snapshot = ready();
     rejectGltf(LEAF_URL);
