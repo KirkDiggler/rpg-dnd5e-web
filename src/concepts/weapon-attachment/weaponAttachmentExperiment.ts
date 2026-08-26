@@ -44,14 +44,14 @@ interface Candidate {
 const CANDIDATES: Record<string, Candidate> = {
   'dnd5e:item:longsword': {
     ref: 'dnd5e:item:longsword',
-    source: 'SM_Wep_Slayer_01 · provisional semantic mapping',
+    source: 'SM_Wep_Slayer_01 · rejected oversized longsword candidate',
     weaponUrl: '/models/synty/characters/weapons/fighter-weapon.glb',
     decodedTextureMb: 16,
     budgetMb: 4.5,
   },
   'dnd5e:item:shortbow': {
     ref: 'dnd5e:item:shortbow',
-    source: 'SM_Prop_Bow_01 · provisional semantic mapping',
+    source: 'SM_Prop_Bow_01 · accepted provisional shortbow candidate',
     weaponUrl: '/models/synty/characters/weapons/bow-01.glb',
     decodedTextureMb: 64,
     budgetMb: 4.5,

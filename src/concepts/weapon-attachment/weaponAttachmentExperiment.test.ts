@@ -21,25 +21,43 @@ describe('weapon attachment experiment', () => {
   it('maps only exact equipped item refs to provisional assets', () => {
     expect(
       resolveProvisionalMainHand(equipped(ref('item', 'longsword')))
-    ).toMatchObject({
+    ).toEqual({
       code: 'mapped',
       ref: 'dnd5e:item:longsword',
-      presentation: {
+      candidate: {
+        ref: 'dnd5e:item:longsword',
+        source: 'SM_Wep_Slayer_01 · rejected oversized longsword candidate',
         weaponUrl: '/models/synty/characters/weapons/fighter-weapon.glb',
+        decodedTextureMb: 16,
+        budgetMb: 4.5,
+      },
+      presentation: {
+        ref: 'dnd5e:item:longsword',
+        weaponUrl: '/models/synty/characters/weapons/fighter-weapon.glb',
+        socket: PROVISIONAL_FIGHTER_SOCKET,
       },
     });
     expect(
       resolveProvisionalMainHand(equipped(ref('item', 'shortbow')))
-    ).toMatchObject({
+    ).toEqual({
       code: 'mapped',
       ref: 'dnd5e:item:shortbow',
-      presentation: {
+      candidate: {
+        ref: 'dnd5e:item:shortbow',
+        source: 'SM_Prop_Bow_01 · accepted provisional shortbow candidate',
         weaponUrl: '/models/synty/characters/weapons/bow-01.glb',
+        decodedTextureMb: 64,
+        budgetMb: 4.5,
+      },
+      presentation: {
+        ref: 'dnd5e:item:shortbow',
+        weaponUrl: '/models/synty/characters/weapons/bow-01.glb',
+        socket: PROVISIONAL_FIGHTER_SOCKET,
       },
     });
     expect(
       resolveProvisionalMainHand(equipped(ref('weapons', 'longsword')))
-    ).toMatchObject({
+    ).toEqual({
       code: 'unmapped-ref',
       ref: 'dnd5e:weapons:longsword',
     });
@@ -54,9 +72,20 @@ describe('weapon attachment experiment', () => {
     const bow = WEAPON_ATTACHMENT_FIXTURES.shortbow.equipped.main_hand!;
     const swordResult = resolveProvisionalMainHand({ main_hand: sword });
     const bowResult = resolveProvisionalMainHand({ main_hand: bow });
+    expect(PROVISIONAL_FIGHTER_SOCKET).toEqual({
+      bone: 'Hand_R',
+      boneUnitMeters: 0.01,
+      positionMeters: [
+        -0.11356719583272934, 0.04377313703298569, -0.0070696864277124405,
+      ],
+      rotationQuaternion: [
+        -0.5601389408111572, -0.8049638271331787, 0.16070428490638733,
+        0.11158794164657593,
+      ],
+      scale: 1,
+    });
     expect(swordResult.presentation?.socket).toBe(PROVISIONAL_FIGHTER_SOCKET);
     expect(bowResult.presentation?.socket).toBe(PROVISIONAL_FIGHTER_SOCKET);
-    expect(PROVISIONAL_FIGHTER_SOCKET.boneUnitMeters).toBe(0.01);
   });
 
   const observation = (
