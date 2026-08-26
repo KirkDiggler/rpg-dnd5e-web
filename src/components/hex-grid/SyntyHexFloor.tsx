@@ -22,10 +22,12 @@
  */
 
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
+import type { DungeonShellFloorProfile } from '@/rendering/dungeonShellManifest';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useTexture } from '@react-three/drei';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { dungeonFloorUv } from './dungeonFloorUv';
 import { cubeToWorld, hexCorners } from './hexMath';
 import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
 import {
@@ -61,6 +63,7 @@ interface SyntyHexFloorTileProps {
   tile: AbsoluteFloorTile;
   hexSize: number;
   texture: THREE.Texture;
+  profile?: DungeonShellFloorProfile;
   /** True for a tile in `themeFloorHexKeys` (rpg-dnd5e-web#558's crypt
    * demo) OR when the whole space is themed `'crypt'` (rpg-dnd5e-web#558
    * real-route consumption) — swaps in `CRYPT_FLOOR_TINT`. Both branches
@@ -96,6 +99,7 @@ function SyntyHexFloorTile({
   tile,
   hexSize,
   texture,
+  profile,
   isCrypt,
   isRemembered,
   poolLights,
@@ -137,14 +141,28 @@ function SyntyHexFloorTile({
     // this is lifted from).
     const pos = geo.getAttribute('position');
     const uv = new Float32Array(pos.count * 2);
-    for (let i = 0; i < pos.count; i++) {
-      uv[i * 2] = (pos.getX(i) + hexSize) / (2 * hexSize);
-      uv[i * 2 + 1] = (pos.getY(i) + hexSize) / (2 * hexSize);
+    if (profile) {
+      for (let i = 0; i < pos.count; i++) {
+        const absoluteX = world.x + pos.getX(i);
+        const absoluteZ = world.z - pos.getY(i);
+        const [u, v] = dungeonFloorUv(
+          absoluteX,
+          absoluteZ,
+          profile.worldUnitsPerRepeat
+        );
+        uv[i * 2] = u;
+        uv[i * 2 + 1] = v;
+      }
+    } else {
+      for (let i = 0; i < pos.count; i++) {
+        uv[i * 2] = (pos.getX(i) + hexSize) / (2 * hexSize);
+        uv[i * 2 + 1] = (pos.getY(i) + hexSize) / (2 * hexSize);
+      }
     }
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.rotateX(-Math.PI / 2);
     return geo;
-  }, [hexSize]);
+  }, [hexSize, profile, world.x, world.z]);
 
   // rpg-dnd5e-web#481: MeshStandardMaterial (PBR, lit) rendered this floor
   // nearly invisible in the deployed environment — under the scene's
@@ -240,6 +258,8 @@ export interface SyntyHexFloorProps {
   /** See `SyntyHexFloorTileProps.litSurfaces` — dev/Kirk-only A/B,
    * default false/undefined for every caller. */
   litSurfaces?: boolean;
+  /** Optional absolute-world floor texture profile for continuous masonry. */
+  profile?: DungeonShellFloorProfile;
 }
 
 export function SyntyHexFloor({
@@ -250,18 +270,22 @@ export function SyntyHexFloor({
   spaceTheme,
   poolLights,
   litSurfaces,
+  profile,
 }: SyntyHexFloorProps) {
   // useTexture returns drei's shared, URL-keyed texture cache — mutating it
   // directly during render is a render-phase side effect on shared state
   // (Copilot review on #472). Clone it and configure the clone instead.
-  const baseMap = useTexture(FLOOR_TEXTURE);
+  const textureUrl = profile
+    ? `/models/synty/${profile.diffuse}`
+    : FLOOR_TEXTURE;
+  const baseMap = useTexture(textureUrl);
   const floorMap = useMemo(() => {
     const t = baseMap.clone();
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(2, 2);
+    t.repeat.set(profile ? 1 : 2, profile ? 1 : 2);
     t.needsUpdate = true;
     return t;
-  }, [baseMap]);
+  }, [baseMap, profile]);
 
   useEffect(() => {
     return () => floorMap.dispose();
@@ -279,6 +303,7 @@ export function SyntyHexFloor({
             tile={tile}
             hexSize={hexSize}
             texture={floorMap}
+            profile={profile}
             isCrypt={
               spaceTheme === 'crypt' || (themeFloorHexKeys?.has(key) ?? false)
             }

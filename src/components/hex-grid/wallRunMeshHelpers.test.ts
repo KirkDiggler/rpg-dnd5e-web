@@ -405,6 +405,26 @@ describe('tileWallSegment (W3: real Synty pieces tiled along a run, design.md/pl
       expect(bboxMax0 - bboxMin1).toBeCloseTo(2 * overlapMargin, 9);
     });
 
+    it('uses exactly one 0.08 rendered extension at each run-to-frame seam in either run direction', () => {
+      const rawWidth = 2.672;
+      const rawMinX = -0.1174;
+      const pivotRatio = rawMinX / rawWidth;
+      for (const segment of [
+        { start: { x: -2, z: 0 }, end: { x: -0.5, z: 0 } },
+        { start: { x: 2, z: 0 }, end: { x: 0.5, z: 0 } },
+      ]) {
+        const pieces = tileWallSegment(segment, 1, pivotRatio, undefined, 0.08);
+        const edge = pieces.at(-1)!;
+        const scale = edge.pieceWidth / rawWidth;
+        const localMax = rawMinX + rawWidth;
+        const renderedEnd =
+          segment.end.x < segment.start.x
+            ? edge.position.x - localMax * scale
+            : edge.position.x + localMax * scale;
+        expect(Math.abs(renderedEnd - segment.end.x)).toBeCloseTo(0.08, 9);
+      }
+    });
+
     it('WITHOUT the margin (margin=0), the same two tiles meet exactly flush — proves the overlap test above is not vacuous', () => {
       const pieces = tileWallSegment(
         { start: { x: 0, z: 0 }, end: { x: 2, z: 0 } },

@@ -123,6 +123,7 @@ function pointyAtlas(overrides: Record<string, unknown> = {}) {
     boundaries: [],
     doorways: [],
     props: [],
+    regions: [],
     ...overrides,
   };
 }

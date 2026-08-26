@@ -56,14 +56,13 @@ import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import { PathPreview } from '../hex-grid/PathPreview';
-import { SyntyHexFloor } from '../hex-grid/SyntyHexFloor';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import type { AtlasPathIndex } from './atlasPath';
 import { AtlasPropModel } from './AtlasPropModel';
 import type { Scene3D } from './atlasToScene3D';
-import { AtlasWalls } from './AtlasWalls';
 import { DungeonSceneLights } from './DungeonSceneLights';
+import { DungeonShell } from './DungeonShell';
 import { MoveIndicator } from './MoveIndicator';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { useMoveIndicator } from './useMoveIndicator';
@@ -396,13 +395,7 @@ export function SessionScene({
         <planeGeometry args={[GROUND_PLANE_SIZE, GROUND_PLANE_SIZE]} />
         <meshBasicMaterial visible={false} />
       </mesh>
-      <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={hexSize} />
-      <AtlasWalls
-        wallRuns={scene.wallRuns}
-        doorGaps={scene.doorGaps}
-        doors={doors}
-        onDoorClick={onDoorClick}
-      />
+      <DungeonShell scene={scene} doors={doors} onDoorClick={onDoorClick} />
       {scene.props.map((prop, index) => (
         <AtlasPropModel
           key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}

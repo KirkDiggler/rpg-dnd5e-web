@@ -110,6 +110,7 @@ export function propWorldPosition(
 export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
   props: SceneProp3D[];
+  archetypes: readonly string[];
   wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
 }
@@ -172,7 +173,10 @@ export function resolveSceneLayout(
  * drawing the rotated picture ADR-0040 warns about.
  */
 export function buildScene3D(
-  atlas: Pick<GetAtlasResponse, 'cells' | 'props' | 'boundaries' | 'doorways'>,
+  atlas: Pick<
+    GetAtlasResponse,
+    'cells' | 'props' | 'boundaries' | 'doorways' | 'regions'
+  >,
   hexSize: number,
   layout: HexLayout
 ): Scene3D {
@@ -181,6 +185,9 @@ export function buildScene3D(
       `buildScene3D: hexMath.ts places pointy-top hexes only; got "${layout}" (rpg-dnd5e-web#763)`
     );
   }
+  const archetypes = Object.freeze(
+    atlas.regions.map((region) => region.archetype)
+  );
   const floorTiles = new Map<string, AbsoluteFloorTile>();
   for (const cell of atlas.cells) {
     const cube = positionToCube(cell);
@@ -216,5 +223,5 @@ export function buildScene3D(
 
   const { wallRuns, doorGaps } = boundariesToWallRuns(atlas, hexSize);
 
-  return { floorTiles, props, wallRuns, doorGaps };
+  return { floorTiles, props, archetypes, wallRuns, doorGaps };
 }
