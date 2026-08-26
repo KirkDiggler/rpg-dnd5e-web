@@ -12,6 +12,7 @@ export interface RerollBatchEntry {
 }
 
 export interface RerollBatch {
+  readonly occurrenceKey: string;
   readonly displayLabel: string;
   readonly entries: readonly RerollBatchEntry[];
   readonly dieIds: readonly string[];
@@ -69,6 +70,7 @@ export function createRerollBatches(
       const frozenEntries = Object.freeze(entries);
       batches.push(
         Object.freeze({
+          occurrenceKey: `reroll-step:${stepIndex}:batch:${batches.length}`,
           displayLabel,
           entries: frozenEntries,
           dieIds: Object.freeze(entries.map((entry) => entry.dieId)),

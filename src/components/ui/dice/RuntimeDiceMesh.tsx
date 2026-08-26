@@ -42,6 +42,26 @@ interface RuntimeDiceMeshBundle {
   readonly dispose: () => void;
 }
 
+type RuntimeDiceFrameCallback = (
+  frame: DiceMotionPose,
+  worldQuaternion: readonly [number, number, number, number],
+  runtimeIdentities?: {
+    runtimeSourceId: number;
+    runtimeCloneId: number;
+  }
+) => void;
+
+interface PendingDrawnFrame {
+  readonly rendererFrameAtApplication: number;
+  readonly frame: DiceMotionPose;
+  readonly worldQuaternion: readonly [number, number, number, number];
+  readonly runtimeIdentities?: {
+    runtimeSourceId: number;
+    runtimeCloneId: number;
+  };
+  readonly callback: RuntimeDiceFrameCallback;
+}
+
 export interface RuntimeDiceMeshProps {
   readonly source?: RuntimeDiceMeshSource;
   readonly sidecar?: AttackDieRuntimeSidecar;
@@ -59,14 +79,8 @@ export interface RuntimeDiceMeshProps {
     }>
   ) => void;
   readonly onPoseApplied?: (frame: DiceMotionPose, elapsedMs: number) => void;
-  readonly onFrame?: (
-    frame: DiceMotionPose,
-    worldQuaternion: readonly [number, number, number, number],
-    runtimeIdentities?: {
-      runtimeSourceId: number;
-      runtimeCloneId: number;
-    }
-  ) => void;
+  readonly onFrame?: RuntimeDiceFrameCallback;
+  readonly onFrameDrawn?: RuntimeDiceFrameCallback;
   readonly onFailure: (reason: string) => void;
   readonly surfaceHandleRef?: {
     current: RuntimeDiceSurfaceHandle | undefined;
@@ -185,6 +199,7 @@ export function RuntimeDiceMesh({
   onReady,
   onPoseApplied,
   onFrame,
+  onFrameDrawn,
   onFailure,
   surfaceHandleRef,
   magicalAnimation = false,
@@ -197,6 +212,7 @@ export function RuntimeDiceMesh({
   const [bundle, setBundle] = useState<RuntimeDiceMeshBundle>();
   const internalValidationRef = useRef(false);
   const validationRef = poseValidated ?? internalValidationRef;
+  const pendingDrawnFrame = useRef<PendingDrawnFrame | undefined>(undefined);
 
   useEffect(() => {
     try {
@@ -247,7 +263,22 @@ export function RuntimeDiceMesh({
     };
   }, [bundle, surfaceHandleRef]);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, gl }) => {
+    const pending = pendingDrawnFrame.current;
+    if (pending && pending.callback !== onFrameDrawn) {
+      pendingDrawnFrame.current = undefined;
+    } else if (
+      pending &&
+      gl.info.render.frame > pending.rendererFrameAtApplication
+    ) {
+      pendingDrawnFrame.current = undefined;
+      pending.callback(
+        pending.frame,
+        pending.worldQuaternion,
+        pending.runtimeIdentities
+      );
+    }
+
     validationRef.current = false;
     const elapsedMs = clock.elapsedTime * 1000;
     let frame: DiceMotionPose;
@@ -270,7 +301,7 @@ export function RuntimeDiceMesh({
       validationRef.current = true;
       onPoseApplied?.(frame, elapsedMs);
       if (magicalAnimation) bundle?.updateShaderTime(clock.elapsedTime);
-      if (!frame.observeNow || !onFrame) return;
+      if (!frame.observeNow || (!onFrame && !onFrameDrawn)) return;
 
       const finalWorldQuaternion = selectedGroup.getWorldQuaternion(
         new Quaternion()
@@ -289,7 +320,16 @@ export function RuntimeDiceMesh({
               runtimeCloneId: bundle.runtimeCloneId,
             }
           : undefined;
-      onFrame(frame, worldQuaternion, runtimeIdentities);
+      onFrame?.(frame, worldQuaternion, runtimeIdentities);
+      if (onFrameDrawn && !pendingDrawnFrame.current) {
+        pendingDrawnFrame.current = {
+          rendererFrameAtApplication: gl.info.render.frame,
+          frame,
+          worldQuaternion,
+          runtimeIdentities,
+          callback: onFrameDrawn,
+        };
+      }
     } catch (error) {
       onFailure(
         `motion pose application failed: ${error instanceof Error ? error.message : 'unknown'}`

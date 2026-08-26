@@ -58,6 +58,7 @@ export interface RollGroupTray3DProps {
   readonly appearances: readonly RollGroupDieAppearance[];
   readonly displayedFaces?: Readonly<Record<string, number>>;
   readonly rerollDieIds?: readonly string[];
+  readonly rerollOccurrenceKey?: string;
   readonly throwProfile?: VisualThrowProfileV1;
   readonly onReleaseRequest?: (profile?: VisualThrowProfileV1) => void;
   readonly onOriginalsSettled?: () => void;
@@ -133,6 +134,7 @@ export function RollGroupTray3D({
   appearances,
   displayedFaces,
   rerollDieIds = EMPTY_REROLL_DIE_IDS,
+  rerollOccurrenceKey,
   throwProfile = NEUTRAL_PROFILE,
   onReleaseRequest,
   onOriginalsSettled,
@@ -243,6 +245,7 @@ export function RollGroupTray3D({
     presentationId,
     rendererGeneration,
     rerollIdentity,
+    rerollOccurrenceKey,
   ]);
 
   useLayoutEffect(() => {
@@ -407,6 +410,7 @@ export function RollGroupTray3D({
                   die={die}
                   displayedFace={displayedFaceFor(die, phase, displayedFaces)}
                   affectedByCurrentReroll={rerollDieIdSet.has(die.id)}
+                  rerollOccurrenceKey={rerollOccurrenceKey}
                   index={index}
                   memberCount={group.dice.length}
                   phase={phase}

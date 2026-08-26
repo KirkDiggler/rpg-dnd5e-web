@@ -270,6 +270,20 @@ function latestMesh(dieId: string) {
     .find((mesh) => mesh.selectedGroupName === `roll-group-die-${dieId}`)!;
 }
 
+function applyTargetPose(dieId: string) {
+  (
+    latestMesh(dieId).onFrame as ((frame: DiceMotionPose) => void) | undefined
+  )?.(OBSERVED_POSE);
+}
+
+function reportDrawnTargetPose(dieId: string) {
+  (
+    latestMesh(dieId).onFrameDrawn as
+      | ((frame: DiceMotionPose) => void)
+      | undefined
+  )?.(OBSERVED_POSE);
+}
+
 beforeEach(() => {
   Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
     configurable: true,
@@ -596,7 +610,7 @@ describe('RollGroupTray3D', () => {
     );
   });
 
-  it('starts original and reroll motion from phase-local frame time instead of the Canvas clock origin', () => {
+  it('starts originals and every supplied reroll occurrence from phase-local frame time', () => {
     const view = render(
       <RollGroupTray3D
         {...baseProps}
@@ -623,16 +637,42 @@ describe('RollGroupTray3D', () => {
         {...baseProps}
         phase="rerolling"
         rerollDieIds={['die:one']}
+        rerollOccurrenceKey="reroll:0"
       />
     );
-    const rerollStart = (
+    const firstRerollStart = (
       latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose
     )(40_000);
-    expect(rerollStart.observeNow).toBe(false);
-    const rerollEnd = (
+    expect(firstRerollStart.observeNow).toBe(false);
+    const firstRerollEnd = (
       latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose
     )(40_000 + baseProps.feel.rerollDurationMs);
-    expect(rerollEnd.observeNow).toBe(true);
+    expect(firstRerollEnd.observeNow).toBe(true);
+
+    view.rerender(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="reroll-flash"
+        rerollDieIds={['die:one']}
+        rerollOccurrenceKey="reroll:1"
+      />
+    );
+    view.rerender(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="rerolling"
+        rerollDieIds={['die:one']}
+        rerollOccurrenceKey="reroll:1"
+      />
+    );
+    const secondSameFaceRerollStart = (
+      latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose
+    )(60_000);
+    expect(secondSameFaceRerollStart.observeNow).toBe(false);
+    const secondSameFaceRerollEnd = (
+      latestMesh('die:one').getPose as (elapsed: number) => DiceMotionPose
+    )(60_000 + baseProps.feel.rerollDurationMs);
+    expect(secondSameFaceRerollEnd.observeNow).toBe(true);
   });
 
   it('uses solver-exact held extents for the tray projection bridge', () => {
@@ -691,24 +731,21 @@ describe('RollGroupTray3D', () => {
     }
   });
 
-  it('waits for every original member to settle before reporting group settlement', () => {
+  it('waits for every original member to be drawn at target before reporting group settlement', () => {
     const onOriginalsSettled = vi.fn();
     render(
       <RollGroupTray3D {...baseProps} onOriginalsSettled={onOriginalsSettled} />
     );
 
     act(() => {
-      (latestMesh('die:one').onFrame as (frame: DiceMotionPose) => void)(
-        OBSERVED_POSE
-      );
+      group.dice.forEach((item) => applyTargetPose(item.id));
     });
     expect(onOriginalsSettled).not.toHaveBeenCalled();
 
-    act(() => {
-      (latestMesh('die:two').onFrame as (frame: DiceMotionPose) => void)(
-        OBSERVED_POSE
-      );
-    });
+    act(() => reportDrawnTargetPose('die:one'));
+    expect(onOriginalsSettled).not.toHaveBeenCalled();
+
+    act(() => reportDrawnTargetPose('die:two'));
     expect(onOriginalsSettled).toHaveBeenCalledTimes(1);
   });
 
@@ -728,47 +765,42 @@ describe('RollGroupTray3D', () => {
       render(<RollGroupTray3D {...propsWithFrameWitness} />);
 
       act(() => {
-        (latestMesh('die:one').onFrame as (frame: DiceMotionPose) => void)(
-          OBSERVED_POSE
-        );
+        group.dice.forEach((item) => applyTargetPose(item.id));
       });
       expect(settled).not.toHaveBeenCalled();
 
-      act(() => {
-        (latestMesh('die:two').onFrame as (frame: DiceMotionPose) => void)(
-          OBSERVED_POSE
-        );
-      });
+      act(() => reportDrawnTargetPose('die:one'));
+      expect(settled).not.toHaveBeenCalled();
+
+      act(() => reportDrawnTargetPose('die:two'));
       expect(settled).toHaveBeenCalledTimes(1);
     }
   );
 
   it('requires a fresh rendered witness when a later reroll targets the same face', () => {
     const onRerollSettled = vi.fn();
-    const renderReroll = (phase: RollGroupTray3DProps['phase']) => (
+    const renderReroll = (
+      phase: RollGroupTray3DProps['phase'],
+      rerollOccurrenceKey: string
+    ) => (
       <RollGroupTray3D
         {...baseProps}
         phase={phase}
         rerollDieIds={['die:one']}
+        rerollOccurrenceKey={rerollOccurrenceKey}
         onRerollSettled={onRerollSettled}
       />
     );
-    const view = render(renderReroll('rerolling'));
+    const view = render(renderReroll('rerolling', 'reroll:0'));
     act(() => {
-      for (const item of group.dice)
-        (latestMesh(item.id).onFrame as (frame: DiceMotionPose) => void)(
-          OBSERVED_POSE
-        );
+      group.dice.forEach((item) => reportDrawnTargetPose(item.id));
     });
     expect(onRerollSettled).toHaveBeenCalledTimes(1);
 
-    view.rerender(renderReroll('reroll-flash'));
-    view.rerender(renderReroll('rerolling'));
+    view.rerender(renderReroll('reroll-flash', 'reroll:1'));
+    view.rerender(renderReroll('rerolling', 'reroll:1'));
     act(() => {
-      for (const item of group.dice)
-        (latestMesh(item.id).onFrame as (frame: DiceMotionPose) => void)(
-          OBSERVED_POSE
-        );
+      group.dice.forEach((item) => reportDrawnTargetPose(item.id));
     });
     expect(onRerollSettled).toHaveBeenCalledTimes(2);
   });
@@ -783,11 +815,7 @@ describe('RollGroupTray3D', () => {
       />
     );
 
-    act(() => {
-      (latestMesh('die:one').onFrame as (frame: DiceMotionPose) => void)(
-        OBSERVED_POSE
-      );
-    });
+    act(() => reportDrawnTargetPose('die:one'));
     view.rerender(
       <RollGroupTray3D
         {...baseProps}
@@ -795,11 +823,7 @@ describe('RollGroupTray3D', () => {
         onFinalFrameRendered={onFinalFrameRendered}
       />
     );
-    act(() => {
-      (latestMesh('die:two').onFrame as (frame: DiceMotionPose) => void)(
-        OBSERVED_POSE
-      );
-    });
+    act(() => reportDrawnTargetPose('die:two'));
 
     expect(onFinalFrameRendered).toHaveBeenCalledTimes(1);
   });

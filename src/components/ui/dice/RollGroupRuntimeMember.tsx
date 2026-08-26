@@ -157,6 +157,7 @@ export interface RollGroupRuntimeMemberProps {
   readonly die: DiceRollGroupDie;
   readonly displayedFace: number;
   readonly affectedByCurrentReroll: boolean;
+  readonly rerollOccurrenceKey?: string;
   readonly index: number;
   readonly memberCount: number;
   readonly phase: RollGroupTrayPhase;
@@ -203,6 +204,7 @@ export function RollGroupRuntimeMember({
   die,
   displayedFace,
   affectedByCurrentReroll,
+  rerollOccurrenceKey,
   index,
   memberCount,
   phase,
@@ -349,13 +351,19 @@ export function RollGroupRuntimeMember({
         solverPhase === 'rolling-originals' || solverPhase === 'rerolling';
       const localElapsed = animated
         ? phaseClock.current.elapsed(
-            `${phase}:${displayedFace}:${affectedByCurrentReroll ? 1 : 0}`,
+            `${phase}:${rerollOccurrenceKey ?? 'none'}:${displayedFace}:${affectedByCurrentReroll ? 1 : 0}`,
             canvasElapsedMs
           )
         : 0;
       return solvePose(localElapsed);
     },
-    [affectedByCurrentReroll, displayedFace, phase, solvePose]
+    [
+      affectedByCurrentReroll,
+      displayedFace,
+      phase,
+      rerollOccurrenceKey,
+      solvePose,
+    ]
   );
   const initialPose = useMemo(() => solvePose(0), [solvePose]);
 
@@ -420,12 +428,19 @@ export function RollGroupRuntimeMember({
         )
       )
         return;
-      const identity = `${phase}:${displayedFace}`;
+      const identity = `${phase}:${rerollOccurrenceKey ?? 'none'}:${displayedFace}`;
       if (witnessedIdentity.current === identity) return;
       witnessedIdentity.current = identity;
       onTargetFrame(die.id, phase);
     },
-    [die.id, displayedFace, onTargetFrame, phase, settlement]
+    [
+      die.id,
+      displayedFace,
+      onTargetFrame,
+      phase,
+      rerollOccurrenceKey,
+      settlement,
+    ]
   );
 
   if (!source || !settlement) return null;
@@ -437,7 +452,7 @@ export function RollGroupRuntimeMember({
       getPose={getPose}
       onReady={handleReady}
       onPoseApplied={handlePoseApplied}
-      onFrame={handleFrame}
+      onFrameDrawn={handleFrame}
       onFailure={fail}
       surfaceHandleRef={surfaceHandleRef}
       selectedGroupName={`roll-group-die-${die.id}`}

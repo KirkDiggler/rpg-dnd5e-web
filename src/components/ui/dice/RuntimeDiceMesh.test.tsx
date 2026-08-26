@@ -5,6 +5,7 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
+  Quaternion,
 } from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiceMotionPose } from './diceMotionSolver';
@@ -12,14 +13,22 @@ import { validDiceRuntimeManifest } from './diceRuntimeTestFixtures';
 import type { DiceMaterialTreatment } from './materialFreeCarvedMesh';
 import { RuntimeDiceMesh, type RuntimeDiceMeshSource } from './RuntimeDiceMesh';
 
+interface MockFrameState {
+  readonly clock: { readonly elapsedTime: number };
+  readonly gl: {
+    readonly info: { readonly render: { readonly frame: number } };
+  };
+}
+
 const mocks = vi.hoisted(() => ({
-  frames: [] as Array<(state: { clock: { elapsedTime: number } }) => void>,
+  frames: [] as Array<(state: MockFrameState) => void>,
   quaternionSets: [] as Array<readonly number[]>,
   positionSets: [] as Array<readonly number[]>,
+  rendererFrame: 0,
 }));
 
 vi.mock('@react-three/fiber', () => ({
-  useFrame: (callback: (state: { clock: { elapsedTime: number } }) => void) =>
+  useFrame: (callback: (state: MockFrameState) => void) =>
     mocks.frames.push(callback),
 }));
 
@@ -103,10 +112,18 @@ function runtimeSource(): RuntimeDiceMeshSource {
   };
 }
 
+function runFrame(elapsedTime: number) {
+  mocks.frames.at(-1)?.({
+    clock: { elapsedTime },
+    gl: { info: { render: { frame: mocks.rendererFrame } } },
+  });
+}
+
 beforeEach(() => {
   mocks.frames = [];
   mocks.quaternionSets = [];
   mocks.positionSets = [];
+  mocks.rendererFrame = 0;
   Object.defineProperty(HTMLElement.prototype, 'quaternion', {
     configurable: true,
     get() {
@@ -134,6 +151,12 @@ beforeEach(() => {
     },
     set() {
       // The shadow material is deliberately not part of this ownership assertion.
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'getWorldQuaternion', {
+    configurable: true,
+    value(target: Quaternion) {
+      return target.set(0, 0, 0, 1);
     },
   });
 });
@@ -199,11 +222,54 @@ describe('RuntimeDiceMesh', () => {
       />
     );
 
-    mocks.frames.at(-1)?.({ clock: { elapsedTime: 4.25 } });
+    runFrame(4.25);
 
     expect(poseValidated.current).toBe(true);
     expect(mocks.quaternionSets.at(-1)).toEqual([...POSE.quaternion]);
     expect(mocks.positionSets).toContainEqual([...POSE.translation]);
     expect(applied).toHaveBeenCalledWith(POSE, 4250);
+  });
+
+  it('emits a drawn-frame witness only after the renderer frame counter advances past target pose application', () => {
+    const source = runtimeSource();
+    const targetPose = Object.freeze({
+      ...POSE,
+      observeNow: true,
+      exactTargetHeld: true,
+    });
+    const poseApplied = vi.fn();
+    const frameDrawn = vi.fn();
+
+    render(
+      <RuntimeDiceMesh
+        source={source}
+        treatment={TREATMENT}
+        initialPose={targetPose}
+        getPose={() => targetPose}
+        onPoseApplied={poseApplied}
+        onFrameDrawn={frameDrawn}
+        onFailure={vi.fn()}
+      />
+    );
+
+    mocks.rendererFrame = 12;
+    runFrame(1);
+    expect(poseApplied).toHaveBeenCalledTimes(1);
+    expect(frameDrawn).not.toHaveBeenCalled();
+
+    runFrame(1.01);
+    expect(frameDrawn).not.toHaveBeenCalled();
+
+    mocks.rendererFrame = 13;
+    runFrame(1.02);
+    expect(frameDrawn).toHaveBeenCalledTimes(1);
+    expect(frameDrawn).toHaveBeenCalledWith(
+      targetPose,
+      [0, 0, 0, 1],
+      expect.objectContaining({
+        runtimeSourceId: expect.any(Number),
+        runtimeCloneId: expect.any(Number),
+      })
+    );
   });
 });

@@ -215,6 +215,7 @@ function props(
 type DesiredTrayProps = RollGroupTray3DProps & {
   readonly displayedFaces?: Readonly<Record<string, number>>;
   readonly rerollDieIds?: readonly string[];
+  readonly rerollOccurrenceKey?: string;
   readonly onRerollSettled?: () => void;
   readonly onFinalFrameRendered?: () => void;
 };
@@ -614,6 +615,77 @@ describe('DiceTrayPresentation roll-group overload', () => {
           fallback: false,
         })
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('carries a distinct occurrence key from each supplied same-face reroll step into the tray', () => {
+    vi.useFakeTimers();
+    try {
+      const repeatedDie = {
+        ...die('die:repeated'),
+        finalFace: 4,
+        rerolls: [
+          {
+            before: 2,
+            after: 4,
+            reasonRef: 'reason:repeat',
+            displayLabel: 'Repeat reroll',
+          },
+          {
+            before: 4,
+            after: 4,
+            reasonRef: 'reason:repeat',
+            displayLabel: 'Repeat reroll',
+          },
+        ],
+      };
+      const repeatedGroup: DiceRollGroupInput = {
+        key: 'damage',
+        dice: [repeatedDie],
+        modifiers: [],
+        suppliedFinalTotal: 4,
+      };
+      const repeatedRequest: DiceRollGroupRequestedEvent = {
+        ...request('damage:repeated'),
+        group: repeatedGroup,
+      };
+      const repeatedAppearances = props([])
+        .appearances.slice(0, 1)
+        .map((appearance) => ({
+          ...appearance,
+          dieId: repeatedDie.id,
+        }));
+      const view = render(
+        <DiceTrayPresentation
+          {...props([repeatedRequest], {
+            appearances: repeatedAppearances,
+          })}
+        />
+      );
+      view.rerender(
+        <DiceTrayPresentation
+          {...props([repeatedRequest, release('damage:repeated')], {
+            appearances: repeatedAppearances,
+          })}
+        />
+      );
+
+      act(() => latestTray().onOriginalsSettled?.());
+      runNextTimer();
+      const firstOccurrence = latestTray().rerollOccurrenceKey;
+      expect(typeof firstOccurrence).toBe('string');
+
+      runNextTimer();
+      act(() => latestTray().onRerollSettled?.());
+      const secondOccurrence = latestTray().rerollOccurrenceKey;
+      expect(typeof secondOccurrence).toBe('string');
+      expect(secondOccurrence).not.toBe(firstOccurrence);
+
+      runNextTimer();
+      expect(latestTray().phase).toBe('rerolling');
+      expect(latestTray().rerollOccurrenceKey).toBe(secondOccurrence);
     } finally {
       vi.useRealTimers();
     }

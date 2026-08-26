@@ -104,6 +104,7 @@ export function RollGroupPresentationView({
             appearances={appearances}
             displayedFaces={faces}
             rerollDieIds={batch?.dieIds}
+            rerollOccurrenceKey={batch?.occurrenceKey}
             throwProfile={releaseProfile}
             onReleaseRequest={onReleaseRequest}
             onOriginalsSettled={onOriginalsSettled}
