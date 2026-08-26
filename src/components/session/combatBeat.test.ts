@@ -153,7 +153,7 @@ describe('formatBeat', () => {
     expect(formatBeat(e, 'char-1', names)).toBe('The fight is over.');
   });
 
-  it("turnEnded returns null — driven by useCombatPanel's own pacing, not a context-free string", () => {
+  it('turnEnded returns null — driven by Story pacing, not a context-free string', () => {
     const e = event({
       case: 'turnEnded',
       value: { member: 'char-1', next: 'skeleton-1' } as never,

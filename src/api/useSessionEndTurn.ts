@@ -7,6 +7,8 @@ export interface EndTurnParams {
   /** Whose turn is ending — must be their turn, server-enforced
    * (`FAILED_PRECONDITION` otherwise; `TurnRequest`'s own doc comment). */
   member: string;
+  /** Opaque selector echoed exactly from the chosen Afford declaration. */
+  declarationId: string;
 }
 
 export interface UseEndTurnResult {
@@ -19,7 +21,7 @@ export interface UseEndTurnResult {
  * Thin wrapper around `SessionService.EndTurn` — mirrors `useEquipItem`/
  * `useTakeAction`: one file per verb, `loading` true while in flight,
  * `error` set on failure (cleared on the next successful call), and the
- * returned promise rejects so the caller (`useCombatPanel`) can decide
+ * returned promise rejects so the combat-experience controller can decide
  * what to show without this hook guessing.
  */
 export function useSessionEndTurn(): UseEndTurnResult {

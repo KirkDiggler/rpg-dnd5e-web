@@ -20,6 +20,16 @@ beforeEach(() => {
   hoisted.affordFn.mockReset();
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('useSessionAfford', () => {
   it('does not call Afford on mount — the caller owns every fetch via refetch', () => {
     const { result } = renderHook(() => useSessionAfford('enc-1', 'char-1'));
@@ -27,6 +37,7 @@ describe('useSessionAfford', () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
     expect(result.current.declarations).toEqual([]);
+    expect(result.current.fresh).toBe(false);
   });
 
   it('refetch is a no-op while session or member is empty', async () => {
@@ -65,9 +76,10 @@ describe('useSessionAfford', () => {
     expect(result.current.declarations).toEqual([]);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
+    expect(result.current.fresh).toBe(true);
   });
 
-  it('a turn-clock response with declarations stores them as expanded rows (the v0.1.143 #253 shim: candidates become per-target rows)', async () => {
+  it('stores generated nested declarations directly without expanding candidate rows', async () => {
     const declarations = [
       {
         verb: 1,
@@ -101,34 +113,7 @@ describe('useSessionAfford', () => {
     });
 
     expect(result.current.clock).toBe(ClockKind.TURN);
-    expect(result.current.declarations).toEqual([
-      {
-        verb: 1,
-        slot: 2,
-        affordable: false,
-        shortfall: 'action: 1 needed, 0 left',
-        remaining: undefined,
-        why: { text: 'action: 1 needed, 0 left' },
-      },
-      {
-        verb: 2,
-        slot: 1,
-        affordable: true,
-        shortfall: '',
-        remaining: undefined,
-        target: 'gob-1',
-        why: undefined,
-      },
-      {
-        verb: 2,
-        slot: 1,
-        affordable: false,
-        shortfall: 'out of reach',
-        remaining: undefined,
-        target: 'gob-2',
-        why: { text: 'out of reach' },
-      },
-    ]);
+    expect(result.current.declarations).toBe(declarations);
   });
 
   it('sets error on RPC failure, loading=false, and clock/declarations stay at their unfetched defaults on the FIRST fetch', async () => {
@@ -146,19 +131,55 @@ describe('useSessionAfford', () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it('invalidate and refetch revoke freshness immediately; an error stays stale until a current success', async () => {
+    const pending = deferred<AffordResponse>();
+    hoisted.affordFn
+      .mockResolvedValueOnce({
+        clock: ClockKind.TURN,
+        declarations: [{ id: 'v1.current' }],
+      } as unknown as AffordResponse)
+      .mockReturnValueOnce(pending.promise)
+      .mockRejectedValueOnce(new Error('refresh failed'))
+      .mockResolvedValueOnce({
+        clock: ClockKind.WORLD,
+        declarations: [],
+      } as unknown as AffordResponse);
+
+    const { result } = renderHook(() => useSessionAfford('enc-1', 'char-1'));
+    await act(async () => result.current.refetch());
+    expect(result.current.fresh).toBe(true);
+
+    act(() => result.current.invalidate());
+    expect(result.current.fresh).toBe(false);
+
+    let currentRead!: Promise<void>;
+    act(() => {
+      currentRead = result.current.refetch();
+    });
+    expect(result.current.fresh).toBe(false);
+    await act(async () => {
+      pending.resolve({
+        clock: ClockKind.TURN,
+        declarations: [{ id: 'v1.after-invalidate' }],
+      } as unknown as AffordResponse);
+      await currentRead;
+    });
+    expect(result.current.fresh).toBe(true);
+
+    await act(async () => result.current.refetch());
+    expect(result.current.fresh).toBe(false);
+    expect(result.current.declarations).toEqual([
+      { id: 'v1.after-invalidate' },
+    ]);
+
+    await act(async () => result.current.refetch());
+    expect(result.current.fresh).toBe(true);
+    expect(result.current.clock).toBe(ClockKind.WORLD);
+  });
+
   it('KEEPS the last-good clock/declarations on a refetch error, unlike useSessionWhere/useSessionView (the slice-4 last-good lesson)', async () => {
     const declarations = [
       { verb: 1, slot: 2, available: true, candidates: [] },
-    ];
-    const expectedRows = [
-      {
-        verb: 1,
-        slot: 2,
-        affordable: true,
-        shortfall: '',
-        remaining: undefined,
-        why: undefined,
-      },
     ];
     hoisted.affordFn
       .mockResolvedValueOnce({
@@ -172,7 +193,7 @@ describe('useSessionAfford', () => {
       await result.current.refetch();
     });
     expect(result.current.clock).toBe(ClockKind.TURN);
-    expect(result.current.declarations).toEqual(expectedRows);
+    expect(result.current.declarations).toBe(declarations);
 
     await act(async () => {
       await result.current.refetch();
@@ -182,7 +203,7 @@ describe('useSessionAfford', () => {
     // The LAST GOOD answer, not cleared — this is the divergence from
     // useSessionWhere/useSessionView, documented on the hook itself.
     expect(result.current.clock).toBe(ClockKind.TURN);
-    expect(result.current.declarations).toEqual(expectedRows);
+    expect(result.current.declarations).toBe(declarations);
   });
 
   it('clears clock/declarations/error when session/member becomes empty', async () => {
@@ -202,6 +223,100 @@ describe('useSessionAfford', () => {
     rerender({ session: 'enc-1', member: '' });
     expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
     expect(result.current.declarations).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('keeps only the newest concurrent response when completions arrive in reverse order', async () => {
+    const first = deferred<AffordResponse>();
+    const second = deferred<AffordResponse>();
+    hoisted.affordFn
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+
+    const { result } = renderHook(() => useSessionAfford('enc-1', 'char-1'));
+    act(() => {
+      void result.current.refetch();
+      void result.current.refetch();
+    });
+    expect(result.current.loading).toBe(true);
+    expect(result.current.fresh).toBe(false);
+
+    const newestDeclarations = [{ id: 'v1.newest' }];
+    await act(async () => {
+      second.resolve({
+        clock: ClockKind.TURN,
+        declarations: newestDeclarations,
+      } as unknown as AffordResponse);
+      await second.promise;
+    });
+    expect(result.current.clock).toBe(ClockKind.TURN);
+    expect(result.current.declarations).toBe(newestDeclarations);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.fresh).toBe(true);
+
+    await act(async () => {
+      first.resolve({
+        clock: ClockKind.WORLD,
+        declarations: [{ id: 'v1.stale' }],
+      } as unknown as AffordResponse);
+      await first.promise;
+    });
+    expect(result.current.clock).toBe(ClockKind.TURN);
+    expect(result.current.declarations).toBe(newestDeclarations);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('resets on a non-empty member change and fences old data, errors, and loading updates', async () => {
+    const oldMember = deferred<AffordResponse>();
+    const newMember = deferred<AffordResponse>();
+    hoisted.affordFn
+      .mockReturnValueOnce(oldMember.promise)
+      .mockReturnValueOnce(newMember.promise);
+
+    const { result, rerender } = renderHook(
+      ({ member }) => useSessionAfford('enc-1', member),
+      { initialProps: { member: 'char-1' } }
+    );
+    act(() => {
+      void result.current.refetch();
+    });
+    expect(result.current.loading).toBe(true);
+
+    rerender({ member: 'char-2' });
+    expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
+    expect(result.current.declarations).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+
+    act(() => {
+      void result.current.refetch();
+    });
+    expect(result.current.loading).toBe(true);
+    await act(async () => {
+      oldMember.reject(new Error('old member failed'));
+      await oldMember.promise.catch(() => undefined);
+    });
+    expect(result.current.clock).toBe(ClockKind.UNSPECIFIED);
+    expect(result.current.declarations).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    const currentDeclarations = [{ id: 'v1.char-2' }];
+    await act(async () => {
+      newMember.resolve({
+        clock: ClockKind.TURN,
+        declarations: currentDeclarations,
+      } as unknown as AffordResponse);
+      await newMember.promise;
+    });
+    expect(hoisted.affordFn).toHaveBeenLastCalledWith({
+      session: 'enc-1',
+      member: 'char-2',
+    });
+    expect(result.current.declarations).toBe(currentDeclarations);
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
   });

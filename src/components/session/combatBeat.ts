@@ -20,7 +20,7 @@
  * `turnEnded` and `moved` deliberately return `null` here: `moved` isn't
  * narrated on the single evolving beat line (a walk would otherwise
  * clobber the last meaningful combat beat on every step), and `turnEnded`
- * drives `useCombatPanel`'s own pacing state machine (the "the monster's
+ * drives the shared Story pacing state machine (the "the monster's
  * turn as a moment" sequencing, web#561) rather than a context-free
  * string this module could produce alone — see that hook's own doc
  * comment.

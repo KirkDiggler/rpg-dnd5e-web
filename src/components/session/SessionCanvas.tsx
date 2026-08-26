@@ -14,27 +14,14 @@
  * renders `SyntyHexWall` directly rather than nesting a second `<Canvas>`
  * inside the test renderer's own root.
  *
- * # Attack is a floor gesture (rpg-project#249)
+ * # Armed server candidates on the map
  *
- * `attackableTargets` names every subject the caller currently offers as
- * an in-reach, AFFORDABLE, this-turn candidate (`SessionEncounterView`
- * filters `combatPanel.ts`'s own `attackTargets` down to the affordable
- * ones before handing them here — an unaffordable in-reach target still
- * gets its own shortfall text on hover via `onHoverEntity`, but is not
- * "attackable" for click-routing purposes, per Kirk's own live-walk
- * ruling: "the floor must keep walking... regardless of whether Attack
- * has been spent"). Drawn with a QUIET, persistent ground ring (reusing
- * `PathPreview`, the same flat hex overlay `MoveIndicator` already uses
- * for the hover states — never a full-body color/material swap, which
- * made the model unreadable in Kirk's own live walk) so "what can I hit"
- * reads at a glance without obscuring the model. Hovering one of them
- * (not a separate mode — see `moveIndicator.ts`'s own doc comment) adds a
- * BRIGHTER ring at the same spot (via `MoveIndicator`'s own `'target'`
- * kind) and shows the "Attack <name>" ground marker via `onHoverEntity`;
- * clicking one fires `onEntityClick` directly — no intermediate "arm"
- * step. Clicking a NON-attackable entity's cell is a no-op (never a walk
- * attempt either — an occupied cell was never a legitimate destination);
- * every other click is the ordinary `onHexClick` walk.
+ * `attackableTargets` contains only available candidates from the exact Attack
+ * declaration the player armed in the panel. With no armed declaration it is
+ * empty: a direct map click never chooses or dispatches an action. Candidates
+ * receive the existing quiet ring and brighter hover ring; unavailable
+ * candidates remain visible as entities but receive no ring and cannot route a
+ * dispatch. Floor walking and occupied-cell behavior are otherwise unchanged.
  *
  * BOTH the ground-plane raycast AND each entity's OWN mesh route through
  * the SAME resolution, for click AND hover alike — `HexEntity` has its
@@ -63,7 +50,6 @@ import type {
   PublicMemberInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -118,8 +104,9 @@ export interface SessionCanvasProps {
   scene: Scene3D;
   hexSize: number;
   characterId: string;
+  /** Public roster identity; never owner-private CharacterData. */
   characterName: string;
-  character: Character | undefined;
+  /** Public roster body ref; private CharacterData does not choose models. */
   classRefId: string | undefined;
   myPosition: CubeCoord;
   /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
@@ -187,17 +174,9 @@ export interface SessionCanvasProps {
    * live one straight through, so in practice this is only ever null
    * before the FIRST atlas load. */
   pathIndex?: AtlasPathIndex | null;
-  /** Not this member's turn (`combatPanel.ts`'s own turn-ownership gate)
-   * — when true, every non-attackable hover shows the indicator's locked
-   * state instead of a path preview, and floor clicks are ignored
-   * upstream (`onHexClick` simply isn't wired to dispatch anything by the
-   * caller in that state). Defaults to `false`. */
+  /** Not this member's turn — non-attackable hover shows the locked state.
+   * Defaults to `false`. */
   turnLocked?: boolean;
-  /** The server's own movement bound for this turn, already rounded down
-   * to whole cells (toolkit#1169, `combatPanel.ts`'s own `moveMaxCells`)
-   * — a path preview longer than this reads `'invalid'`. `undefined`
-   * means unbounded (free roam). */
-  maxCells?: number;
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -208,7 +187,6 @@ export function SessionScene({
   scene,
   characterId,
   characterName,
-  character,
   classRefId,
   myPosition,
   movePath,
@@ -224,7 +202,6 @@ export function SessionScene({
   attackableTargets,
   pathIndex = null,
   turnLocked = false,
-  maxCells,
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
@@ -390,7 +367,6 @@ export function SessionScene({
     locked: turnLocked,
     hoveredEntityId,
     attackable: hoveredEntityId ? attackableSet.has(hoveredEntityId) : false,
-    maxCells,
   });
 
   // The passive, persistent in-reach rings — every attackable target's
@@ -455,7 +431,6 @@ export function SessionScene({
         position={myPosition}
         type="player"
         hexSize={hexSize}
-        character={character}
         classRefId={classRefId}
         movePath={movePath}
         moveSeq={moveSeq}

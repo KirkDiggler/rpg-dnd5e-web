@@ -87,7 +87,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        'v1.move'
       )
     );
 
@@ -96,6 +97,7 @@ describe('useSessionWalk', () => {
     expect(hoisted.moveFn).toHaveBeenCalledWith({
       session: 'enc-1',
       member: 'char-1',
+      declarationId: 'v1.move',
       // (0,0) is the current cell and is excluded; the corridor's
       // middle cell (1,0) then the destination (2,-1) remain.
       path: [
@@ -106,6 +108,44 @@ describe('useSessionWalk', () => {
     await waitFor(() => expect(result.current.busy).toBe(true));
   });
 
+  it('does not dispatch while move authority is unavailable', () => {
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn(),
+        undefined
+      )
+    );
+
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+
+    expect(hoisted.moveFn).not.toHaveBeenCalled();
+    expect(result.current.busy).toBe(false);
+  });
+
+  it('world-clock movement sends an explicit empty declaration id', () => {
+    hoisted.moveFn.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn(),
+        ''
+      )
+    );
+
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+
+    expect(hoisted.moveFn).toHaveBeenCalledWith(
+      expect.objectContaining({ declarationId: '' })
+    );
+  });
+
   it('a second walkTo while busy is ignored', () => {
     hoisted.moveFn.mockReturnValue(new Promise(() => {}));
     const { result } = renderHook(() =>
@@ -114,13 +154,40 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
     expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports successful Move acceptance before animation completion', async () => {
+    hoisted.moveFn.mockResolvedValue({
+      steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
+    });
+    const onMoveAccepted = vi.fn();
+    const { result } = renderHook(() =>
+      useSessionWalk(
+        'enc-1',
+        'char-1',
+        corridorIndex(),
+        { x: 0, y: 0 } as never,
+        vi.fn(),
+        'v1.move',
+        undefined,
+        () => true,
+        onMoveAccepted
+      )
+    );
+
+    act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
+
+    await waitFor(() => expect(onMoveAccepted).toHaveBeenCalledOnce());
+    expect(result.current.busy).toBe(true);
+    expect(result.current.moveSeq).toBe(1);
   });
 
   it('a resolved Move sets movePath/moveSeq from the returned steps and jumps display position to the last step, staying busy', async () => {
@@ -136,7 +203,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
 
@@ -162,7 +230,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -179,7 +248,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -195,7 +265,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -203,25 +274,28 @@ describe('useSessionWalk', () => {
     expect(result.current.moveError).toBe('no doorway joins those cells');
   });
 
-  it('a Move RPC refused with the not-your-turn FailedPrecondition (toolkit#1169 session.ErrNotYourTurn) surfaces the friendly line AND sets notYourTurn too', async () => {
+  it('routes every Move FailedPrecondition through stale-selector recovery without exposing raw wording', async () => {
     hoisted.moveFn.mockRejectedValue(
       new ConnectError('not your turn', Code.FailedPrecondition)
     );
+    const onStaleDeclarationRefusal = vi.fn();
     const { result } = renderHook(() =>
       useSessionWalk(
         'enc-1',
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        'v1.move',
+        onStaleDeclarationRefusal
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
-    expect(result.current.moveError).toBe(
-      'Not your turn — movement is locked.'
-    );
+    expect(result.current.moveError).toBeNull();
     expect(result.current.notYourTurn).toBe(true);
+    expect(onStaleDeclarationRefusal).toHaveBeenCalledOnce();
+    expect(onStaleDeclarationRefusal).toHaveBeenCalledWith('v1.move');
   });
 
   it('a plain (non-turn-lock) Move RPC failure leaves notYourTurn false', async () => {
@@ -232,7 +306,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -250,7 +325,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        vi.fn()
+        vi.fn(),
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
@@ -278,7 +354,8 @@ describe('useSessionWalk', () => {
         'char-1',
         corridorIndex(),
         { x: 0, y: 0 } as never,
-        refetchWhere
+        refetchWhere,
+        ''
       )
     );
     act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));

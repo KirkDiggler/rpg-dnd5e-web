@@ -5,6 +5,7 @@ import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
 import './App.css';
+import { shouldRenderGlobalDevTools, type AppView } from './appView';
 import { AuthorView } from './author/AuthorView';
 import { DungeonBuilderHomeButton } from './author/DungeonBuilderHomeButton';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
@@ -41,14 +42,6 @@ const hasConceptDeepLink = (): boolean =>
   import.meta.env.MODE === 'development' &&
   typeof window !== 'undefined' &&
   new URLSearchParams(window.location.search).has('concept');
-
-type AppView =
-  | 'home'
-  | 'character-creation'
-  | 'character-sheet'
-  | 'lobby'
-  | 'concepts'
-  | 'author';
 
 function AppContent() {
   // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
@@ -94,6 +87,10 @@ function AppContent() {
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
+  const showGlobalDevTools = shouldRenderGlobalDevTools(
+    import.meta.env.MODE,
+    currentView
+  );
   // Dev override: ?playerId=alice|bob lets two tabs run as different players
   // without Discord (slice 2 playtest infrastructure)
   const devPlayerIdOverride = isDevelopment
@@ -390,7 +387,7 @@ function AppContent() {
         )}
 
         {/* Dev tools buttons */}
-        {isDevelopment && (
+        {showGlobalDevTools && (
           <div className="fixed bottom-4 right-4 z-50 flex gap-2">
             <button
               onClick={handleOpenConcepts}
@@ -409,8 +406,9 @@ function AppContent() {
           </div>
         )}
 
-        {/* Discord debug panel - show based on state */}
-        {showDebugPanel && (
+        {/* Preserve the requested debug state while keeping all global dev
+            surfaces out of Concepts Lab. */}
+        {showGlobalDevTools && showDebugPanel && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

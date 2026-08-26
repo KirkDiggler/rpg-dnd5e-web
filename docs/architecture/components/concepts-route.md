@@ -1,7 +1,7 @@
 ---
 name: /concepts route
-description: UI prototyping sandbox — isolated from production, no promotion process
-updated: 2026-08-08
+description: Fixture-first UI sandbox and shared production-component review harnesses
+updated: 2026-08-25
 confidence: high — verified by reading ConceptsView.tsx and the concepts/ directory
 ---
 
@@ -25,7 +25,16 @@ Since the Game-UX charter (web#525) it is also the **outside-in contract bench**
 
 `src/concepts/encounter-dock/` — verification harness for the live `EncounterDock`'s responsive behavior (#494/#519); renders the real component with mock proto data.
 
-`src/concepts/combat-panel/` — round-1 IA design bench for web#525. `fixtures.ts` (proto-typed fixture states incl. armed/spent/spectator/free-roam), `CommandBar.tsx` + `CommandBarWithContext.tsx` (compositions of `src/components/ui/combat/` primitives), `CombatPanelConcept.tsx` (fixture switcher + Discord-viewport frame). `ComfortBar.tsx`'s equipment chip imports the production `EquipmentPopover` (see below) with its own local "plays-the-server" state.
+`src/concepts/combat-panel/` — round-1 IA design bench for web#525. `fixtures.ts` (proto-typed fixture states incl. armed/spent/spectator/free-roam), `CommandBar.tsx` + `CommandBarWithContext.tsx` (compositions of `src/components/ui/combat/` primitives), `CombatPanelConcept.tsx` (fixture switcher + Discord-viewport frame). `ComfortBar.tsx`'s equipment chip imports the production `EquipmentPopover` (see below) with its own local "plays-the-server" state. This remains historical IA evidence; it is not the deleted production session `CombatPanel`.
+
+`src/concepts/session-combat/` — the fixture/evidence harness for the live
+session combat experience (#809/#810/#817). It imports the exact
+production-owned `CombatExperience`, `ActionDock`, `TargetSurface`, `StoryLog`,
+`DiceDrawer`, and `SessionCanvas` used by `SessionEncounterView`. Generated
+nested Declaration/Participant/CharacterData fixtures exercise fresh, spent,
+spectating, world, and reconnect states. Fixture controls and
+`ContractInspector` stay concept-only; production supplies the live controller,
+owner-private cache, event recovery, and RPC callbacks.
 
 `src/concepts/equipment/` — the equipment chip + popover bench (web#531/#557), now promoted to production (web#571, see [equipment.md](equipment.md)): `EquipmentConcept.tsx` imports the production `EquipmentSlots`/`InventoryLight` from `src/components/game/equipment/` directly and feeds them `fixtures.ts` (typed to the same wire-shaped interfaces) plus the concept-only cast switcher and intent log. `CONTRACT.md` records the original wire gaps this bench asked for — all landed (rpg-api-protos#188, rpg-toolkit#812, rpg-api#682).
 
@@ -90,13 +99,14 @@ proof, accepted `SM_Prop_Bow_01` provisionally for shortbow, rejected
 provider gaps around final semantic asset selection, normalized production
 exports, socket receipt, and texture budget.
 
-## Gap: no promotion process
+## Promotion process
 
-There is no documented process for promoting a concept to production. The class-selection spike has existed since March 2026 with no next step defined. When a concept is ready, it needs:
-
-1. A design decision on whether to replace the existing class selection flow
-2. A PR that wires the component into the character creation flow and removes the hardcoded `data.ts`
-3. Removal from the `/concepts` route (or keeping it as a development reference)
+`docs/how-to/concepts-route.md` documents the fixture-first promotion path. The
+session-combat work is the reference: production ownership came first, the
+concept switched to the shared component, and production promotion later
+changed the data/controller source rather than creating another renderer. A
+concept can remain as a generated-fixture regression/evidence harness after
+promotion.
 
 ## Gap: hardcoded data
 

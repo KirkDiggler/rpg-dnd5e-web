@@ -22,9 +22,6 @@ export interface UseMoveIndicatorArgs {
   locked: boolean;
   hoveredEntityId?: string | null;
   attackable?: boolean;
-  /** The server's movement bound for this turn, in whole cells
-   * (toolkit#1169) — see `moveIndicator.ts`'s own doc comment. */
-  maxCells?: number;
 }
 
 export function useMoveIndicator({
@@ -34,7 +31,6 @@ export function useMoveIndicator({
   locked,
   hoveredEntityId,
   attackable,
-  maxCells,
 }: UseMoveIndicatorArgs): MoveIndicatorSelection | null {
   return useMemo(
     () =>
@@ -45,8 +41,7 @@ export function useMoveIndicator({
         locked,
         hoveredEntityId,
         attackable,
-        maxCells,
       }),
-    [hovered, from, pathIndex, locked, hoveredEntityId, attackable, maxCells]
+    [hovered, from, pathIndex, locked, hoveredEntityId, attackable]
   );
 }

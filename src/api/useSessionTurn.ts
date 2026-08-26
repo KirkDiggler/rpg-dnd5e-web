@@ -2,111 +2,142 @@ import {
   ClockKind,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { sessionClient } from './client';
 
 export interface UseSessionTurnResult {
+  /** Last successful provider display values for this exact session/member. */
   clock: ClockKind;
-  /** Whose turn it currently is on that clock — empty on the world clock. */
   active: string;
-  /** Which round the clock is in — zero on the world clock. */
   round: number;
-  /** The fight's initiative order, first to act first — empty on the
-   * world clock. Kept alongside `participants` (same ids, same order) for
-   * any caller that only needs ids; `participants` is the richer answer
-   * (name/kind/standing/active) the combat panel actually renders from. */
   order: string[];
-  /** One entry per member of the fight the asker is in — name, kind,
-   * standing, and which one is active (rpg-project#249 §3's `Participant`,
-   * landed rpg-toolkit#1137). Empty on the world clock, same as `order`. */
   participants: Participant[];
   loading: boolean;
   error: Error | null;
+  /** True only after the newest request generation succeeds. */
+  fresh: boolean;
+  /** Synchronously revokes authority without discarding last-good display. */
+  invalidate: () => void;
   refetch: () => Promise<void>;
 }
 
+interface TurnState {
+  key: string;
+  clock: ClockKind;
+  active: string;
+  round: number;
+  order: string[];
+  participants: Participant[];
+  loading: boolean;
+  error: Error | null;
+  fresh: boolean;
+}
+
+function emptyState(key: string): TurnState {
+  return {
+    key,
+    clock: ClockKind.UNSPECIFIED,
+    active: '',
+    round: 0,
+    order: [],
+    participants: [],
+    loading: false,
+    error: null,
+    fresh: false,
+  };
+}
+
 /**
- * Fetches one member's own turn state (`SessionService.Turn` — "asked of
- * A MEMBER, never of the session," `TurnRequest`'s own doc comment:
- * several clocks can run at once, so there is no single "whose turn is
- * it" to ask). Same discipline as `useSessionAfford`, which this hook
- * mirrors field-for-field in spirit (both describe "the current state of
- * this member's turn economy," just from different angles — Afford is
- * can-I-pay, Turn is whose-go-is-it):
- *
- * - `session`/`member` empty/falsy is "not ready yet" — clears rather
- *   than answering about a stale pair.
- * - NO MOUNT FETCH of its own — `SessionEncounterView` owns every fetch,
- *   same trigger list as Afford (member-bootstrap, the combat-relevant
- *   `StreamEvents` kinds, after the local player's own Move/Attack/
- *   EndTurn round-trips). A turn-order answer, like an Afford answer,
- *   only means something relative to the CURRENT game state.
- * - KEEPS LAST-GOOD ON A REFETCH ERROR, same slice-4/5a reasoning as
- *   `useSessionAfford`: a `CombatPanel` that briefly can't reach the
- *   server should keep showing the last known turn order rather than
- *   collapsing to "nobody's turn."
+ * Fetches the member-scoped Turn snapshot. Last-good values remain available
+ * for stale display, while `fresh` is the fail-closed execution authority.
+ * Refetch/invalidate revoke freshness immediately; only the newest successful
+ * request for the current key restores it. Errors retain display and stay
+ * stale. The route owns all fetch triggers.
  */
 export function useSessionTurn(
   session: string,
   member: string
 ): UseSessionTurnResult {
-  const [clock, setClock] = useState<ClockKind>(ClockKind.UNSPECIFIED);
-  const [active, setActive] = useState('');
-  const [round, setRound] = useState(0);
-  const [order, setOrder] = useState<string[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const key = `${session}\u0000${member}`;
+  const [state, setState] = useState<TurnState>(() => emptyState(key));
+  const generationRef = useRef(0);
+  const keyRef = useRef(key);
+  keyRef.current = key;
+
+  const invalidate = useCallback(() => {
+    if (keyRef.current !== key) return;
+    generationRef.current += 1;
+    setState((previous) =>
+      previous.key === key
+        ? { ...previous, loading: false, fresh: false }
+        : emptyState(key)
+    );
+  }, [key]);
 
   const fetchTurn = useCallback(async () => {
+    if (keyRef.current !== key) return;
     if (!session || !member) {
-      setClock(ClockKind.UNSPECIFIED);
-      setActive('');
-      setRound(0);
-      setOrder([]);
-      setParticipants([]);
-      setError(null);
-      setLoading(false);
+      generationRef.current += 1;
+      setState(emptyState(key));
       return;
     }
-    setLoading(true);
-    setError(null);
+
+    const generation = ++generationRef.current;
+    const isCurrent = () =>
+      generation === generationRef.current && keyRef.current === key;
+    setState((previous) => ({
+      ...(previous.key === key ? previous : emptyState(key)),
+      key,
+      loading: true,
+      error: null,
+      fresh: false,
+    }));
+
     try {
       const response = await sessionClient.turn({ session, member });
-      setClock(response.clock);
-      setActive(response.active);
-      setRound(response.round);
-      setOrder(response.order);
-      setParticipants(response.participants);
+      if (!isCurrent()) return;
+      setState({
+        key,
+        clock: response.clock,
+        active: response.active,
+        round: response.round,
+        order: response.order,
+        participants: response.participants,
+        loading: false,
+        error: null,
+        fresh: true,
+      });
     } catch (err) {
-      // Last-good clock/active/round/order/participants deliberately
-      // untouched — see this module's own doc comment.
-      setError(err instanceof Error ? err : new Error('Turn RPC failed'));
-    } finally {
-      setLoading(false);
+      if (!isCurrent()) return;
+      setState((previous) => ({
+        ...(previous.key === key ? previous : emptyState(key)),
+        key,
+        loading: false,
+        error: err instanceof Error ? err : new Error('Turn RPC failed'),
+        fresh: false,
+      }));
     }
-  }, [session, member]);
+  }, [key, member, session]);
 
   useEffect(() => {
-    if (!session || !member) {
-      setClock(ClockKind.UNSPECIFIED);
-      setActive('');
-      setRound(0);
-      setOrder([]);
-      setParticipants([]);
-      setError(null);
-      setLoading(false);
-    }
-  }, [session, member]);
+    generationRef.current += 1;
+    setState(emptyState(key));
+    return () => {
+      generationRef.current += 1;
+    };
+  }, [key]);
 
+  const current = state.key === key ? state : emptyState(key);
   return {
-    clock,
-    active,
-    round,
-    order,
-    participants,
-    loading,
-    error,
+    clock: current.clock,
+    active: current.active,
+    round: current.round,
+    order: current.order,
+    participants: current.participants,
+    loading: current.loading,
+    error: current.error,
+    fresh: current.fresh,
+    invalidate,
     refetch: fetchTurn,
   };
 }
