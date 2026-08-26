@@ -26,10 +26,12 @@ other-member pacing, catch-up Story, equipment response replacement, reconnect,
 scope reset, doors, roster pull, movement reconciliation, and the run-ended
 overlay.
 
-At final code HEAD, GitHub CI passed Prettier, ESLint, TypeScript, build, tests,
-and security audit. Vitest reported `215 passed | 1 skipped` test files and
-`3472 passed | 2 skipped` tests. Commit `301b9a3` added the final App-level
-coverage for Concepts dev-tool state.
+At final code HEAD, GitHub CI passed Prettier, ESLint, TypeScript, build, and
+tests. The GitHub Security Audit job was green/non-blocking because its workflow
+uses `continue-on-error`; `npm audit` reported 6 vulnerabilities (1 low, 5 high)
+and exited nonzero. This is pre-existing dependency risk, not hidden. Vitest
+reported `215 passed | 1 skipped` test files and `3472 passed | 2 skipped` tests.
+Commit `301b9a3` added the final App-level coverage for Concepts dev-tool state.
 
 ## Visual witness — PASS
 
@@ -42,11 +44,12 @@ browser page:
 | `1280x800` | `1216x800` | `fdf9dab7d216265eed5ff703e1946974e1045d437a51b84fb50d5cb1417fe7b5` |
 | `1024x768` | `960x768` | `87f5e7dbe71ea726d1cf58941033c90d0ee2370c1f8e337dcbdfb62a049419e3` |
 
-Both viewports had zero console errors, page errors, and request errors. The
-frame and map had real dimensions, and the End Turn control had no overlap with
-global development tools after the layout and Concepts-overlay fixes. The
-screenshots remain at private local paths and are intentionally not committed;
-the hashes identify the reviewed files without publishing licensed material.
+Both viewports had zero console errors and page errors. The frame capture script
+did not monitor `requestfailed` events or HTTP response status. The frame and map
+had real dimensions, and the End Turn control had no overlap with global
+development tools after the layout and Concepts-overlay fixes. The screenshots
+remain at private local paths and are intentionally not committed; the hashes
+identify the reviewed files without publishing licensed material.
 
 The earlier missing-assets/pending-capture statement and the collapsed pre-fix
 capture are superseded by this PASS. No fallback, placeholder, intercepted
@@ -124,7 +127,9 @@ zero, and pre-existing data was untouched.
 ## Copilot review and final fixes
 
 - Inline comments `3859462714` and `3859462730` were fixed in
-  `4074ed2f26531d946bbdb535544b55332f2311dd` and replied to inline.
+  `4074ed2f26531d946bbdb535544b55332f2311dd` and replied to inline. Both
+  GraphQL review threads now report `resolved=true` and are outdated after
+  subsequent commits.
 - RED was `2 failed | 15 passed`; focused GREEN was `17 passed`. The subsequent
   pacing/drawer/combat/concept gate was `16 files passed | 219 tests passed`.
 - The shared review frame/fill-parent separation landed in `c603400`; Concepts
