@@ -10,6 +10,7 @@ import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import type { DungeonShellProfile } from '../../rendering/dungeonShellManifest';
 import type { DungeonShellCatalogSnapshot } from '../../rendering/dungeonShellProvider';
+import type { DungeonFloorLighting } from '../hex-grid/syntyHexFloorHelpers';
 import type { Scene3D } from './atlasToScene3D';
 
 const PROFILE_URLS = [
@@ -360,6 +361,39 @@ describe('DungeonShell actual shell integration', () => {
 
     expect(legacyMaterial.color.getHexString()).toBe('ffffff');
     expect(legacyMaterial.toneMapped).toBe(false);
+  });
+
+  it('forwards optional floor lighting through profile and legacy shell paths', async () => {
+    const floorLighting: DungeonFloorLighting = {
+      exposureByCell: new Map([['0,0,0', 0]]),
+      poolsByCell: new Map([
+        [
+          '0,0,0',
+          [
+            {
+              position: [0, 1.2, 0],
+              color: '#ff9d52',
+              distance: 5.5,
+            },
+          ],
+        ],
+      ]),
+    };
+    shellState.snapshot = ready();
+    const profiled = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene()} floorLighting={floorLighting} />
+    );
+    const profileMaterial = profiled.scene.findByType('MeshBasicMaterial')
+      .instance as unknown as THREE.MeshBasicMaterial;
+    expect(profileMaterial.color.r).toBeGreaterThan(0.35);
+
+    shellState.snapshot = { status: 'idle' };
+    const legacy = await ReactThreeTestRenderer.create(
+      <DungeonShell scene={scene(['cave'])} floorLighting={floorLighting} />
+    );
+    const legacyMaterial = legacy.scene.findByType('MeshBasicMaterial')
+      .instance as unknown as THREE.MeshBasicMaterial;
+    expect(legacyMaterial.color.getHexString()).toBe('ffffff');
   });
 
   it('keeps the actual legacy pair while ordinary GLTF resources are pending, then switches after they fulfill', async () => {

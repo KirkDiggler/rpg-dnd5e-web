@@ -8,6 +8,7 @@ import {
 } from '../../rendering/dungeonShellProfile';
 import { HEX_SIZE } from '../hex-grid/hexMath';
 import { SyntyHexFloor } from '../hex-grid/SyntyHexFloor';
+import type { DungeonFloorLighting } from '../hex-grid/syntyHexFloorHelpers';
 import { DOOR_LEAF_FILE } from '../hex-grid/syntyHexWallHelpers';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import type { Scene3D } from './atlasToScene3D';
@@ -21,6 +22,7 @@ export interface DungeonShellProps {
   doors?: ReadonlyMap<string, DoorInfo>;
   onDoorClick?: (door: string) => void;
   onFallbackReason?: (reason: ShellFallbackReason | null) => void;
+  floorLighting?: DungeonFloorLighting;
 }
 
 const modelUrl = (file: `env/${string}.glb`) => `/models/synty/${file}`;
@@ -44,6 +46,7 @@ function LegacyShell({
   onDoorClick,
   reason,
   onFallbackReason,
+  floorLighting,
   resilientDoorLeaves,
 }: DungeonShellProps & {
   reason: ShellFallbackReason | null;
@@ -52,7 +55,11 @@ function LegacyShell({
   return (
     <>
       <FallbackReporter reason={reason} onFallbackReason={onFallbackReason} />
-      <SyntyHexFloor floorTiles={scene.floorTiles} hexSize={HEX_SIZE} />
+      <SyntyHexFloor
+        floorTiles={scene.floorTiles}
+        hexSize={HEX_SIZE}
+        floorLighting={floorLighting}
+      />
       <AtlasWalls
         wallRuns={scene.wallRuns}
         doorGaps={scene.doorGaps}
@@ -70,6 +77,7 @@ function ProfileResources({
   doors,
   onDoorClick,
   onFallbackReason,
+  floorLighting,
 }: DungeonShellProps & {
   profile: DungeonShellProfile;
 }) {
@@ -90,6 +98,7 @@ function ProfileResources({
         hexSize={HEX_SIZE}
         profile={profile.floor}
         spaceTheme="crypt"
+        floorLighting={floorLighting}
       />
       <AtlasWalls
         wallRuns={scene.wallRuns}
@@ -112,6 +121,7 @@ export function DungeonShell({
   doors,
   onDoorClick,
   onFallbackReason,
+  floorLighting,
 }: DungeonShellProps) {
   const catalog = useDungeonShellCatalog();
   const selection = resolveDungeonShellProfile(scene.archetypes, catalog);
@@ -124,6 +134,7 @@ export function DungeonShell({
         onDoorClick={onDoorClick}
         reason={selection.kind === 'legacy' ? selection.reason : null}
         onFallbackReason={onFallbackReason}
+        floorLighting={floorLighting}
       />
     );
   }
@@ -135,6 +146,7 @@ export function DungeonShell({
       onDoorClick={onDoorClick}
       reason={null}
       onFallbackReason={onFallbackReason}
+      floorLighting={floorLighting}
       resilientDoorLeaves
     />
   );
@@ -145,6 +157,7 @@ export function DungeonShell({
       onDoorClick={onDoorClick}
       reason="manifest-unavailable"
       onFallbackReason={onFallbackReason}
+      floorLighting={floorLighting}
       resilientDoorLeaves
     />
   );
@@ -158,6 +171,7 @@ export function DungeonShell({
           doors={doors}
           onDoorClick={onDoorClick}
           onFallbackReason={onFallbackReason}
+          floorLighting={floorLighting}
         />
       </Suspense>
     </ErrorBoundary>

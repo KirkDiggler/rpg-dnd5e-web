@@ -32,6 +32,9 @@ import { cubeToWorld, hexCorners } from './hexMath';
 import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
 import {
   computeFloorPoolColor,
+  CRYPT_FLOOR_TINT,
+  cryptFloorBaseColor,
+  type DungeonFloorLighting,
   type FloorPoolLight,
 } from './syntyHexFloorHelpers';
 
@@ -40,24 +43,6 @@ const FLOOR_TEXTURE = TEX_BASE + 'Dungeons_Texture_FloorTiles_01.png';
 
 // DUNGEON_SURFACE_Y sits above ShadedHexFloor's extruded top (0.05-0.15),
 // so the two never z-fight if both mount during a toggle transition.
-
-/**
- * Crypt-theme floor tint (mid-flight scope addition, rpg-dnd5e-web#558 PR
- * review — Kirk: the floor's unlit MeshBasicMaterial renders full-bright
- * regardless of the scene's near-dark mood lighting, so candle/door light
- * pools visibly land on walls/props but not the floor — "the glowing-white-
- * board effect defeats the whole treatment"). Multiplies the floor texture,
- * same direction as the wall tint (WALL_TINT_BY_THEME in SyntyHexWall.tsx).
- *
- * REVISED (rpg-dnd5e-web#558 follow-up, Kirk's live-webview darkness
- * report): this now feeds an UNLIT `meshBasicMaterial` again (see
- * `isCrypt`'s branch below), not the lit `MeshStandardMaterial` the
- * comment above originally described — see that doc comment and this
- * PR's body for the full tone-mapping-variance rationale. Kept the same
- * color value across the swap so this is purely a lit-vs-unlit A/B, not
- * also a simultaneous hue change.
- */
-const CRYPT_FLOOR_TINT = new THREE.Color(0.35, 0.38, 0.46);
 
 interface SyntyHexFloorTileProps {
   tile: AbsoluteFloorTile;
@@ -72,6 +57,7 @@ interface SyntyHexFloorTileProps {
    * color, not the lit/unlit material family, as of the #558 follow-up. */
   isCrypt: boolean;
   isRemembered: boolean;
+  baseColor: THREE.Color;
   /** Mood lights (candles/braziers/torches/doors) to pool toward, via
    * `computeFloorPoolColor` (syntyHexFloorHelpers.ts) — deterministic,
    * device-independent color blending, NOT a lit material (see that
@@ -102,20 +88,16 @@ function SyntyHexFloorTile({
   profile,
   isCrypt,
   isRemembered,
+  baseColor,
   poolLights,
   litSurfaces,
 }: SyntyHexFloorTileProps) {
   const world = cubeToWorld({ x: tile.x, y: tile.y, z: tile.z }, hexSize);
   const cryptColor = useMemo(() => {
     if (!isCrypt) return CRYPT_FLOOR_TINT;
-    if (!poolLights || poolLights.length === 0) return CRYPT_FLOOR_TINT;
-    return computeFloorPoolColor(
-      CRYPT_FLOOR_TINT,
-      world.x,
-      world.z,
-      poolLights
-    );
-  }, [isCrypt, poolLights, world.x, world.z]);
+    if (!poolLights || poolLights.length === 0) return baseColor;
+    return computeFloorPoolColor(baseColor, world.x, world.z, poolLights);
+  }, [baseColor, isCrypt, poolLights, world.x, world.z]);
   const geometry = useMemo(() => {
     const shape = new THREE.Shape();
     const corners = hexCorners({ x: 0, z: 0 }, hexSize);
@@ -255,6 +237,9 @@ export interface SyntyHexFloorProps {
    * unchanged. Empty/undefined (every caller before the look-lab lighting
    * experiment) is a no-op. */
   poolLights?: readonly FloorPoolLight[];
+  /** Regional exposure and source pools resolved by DungeonLightingPlan.
+   * A per-cell pool entry wins over the legacy global poolLights fallback. */
+  floorLighting?: DungeonFloorLighting;
   /** See `SyntyHexFloorTileProps.litSurfaces` — dev/Kirk-only A/B,
    * default false/undefined for every caller. */
   litSurfaces?: boolean;
@@ -269,6 +254,7 @@ export function SyntyHexFloor({
   rememberedFloorHexKeys,
   spaceTheme,
   poolLights,
+  floorLighting,
   litSurfaces,
   profile,
 }: SyntyHexFloorProps) {
@@ -297,6 +283,12 @@ export function SyntyHexFloor({
     <Suspense fallback={null}>
       {tiles.map((tile) => {
         const key = `${tile.x},${tile.y},${tile.z}`;
+        const intensity = floorLighting?.exposureByCell.get(key);
+        const baseColor =
+          intensity === undefined
+            ? CRYPT_FLOOR_TINT
+            : cryptFloorBaseColor(intensity);
+        const lights = floorLighting?.poolsByCell.get(key) ?? poolLights ?? [];
         return (
           <SyntyHexFloorTile
             key={key}
@@ -308,7 +300,8 @@ export function SyntyHexFloor({
               spaceTheme === 'crypt' || (themeFloorHexKeys?.has(key) ?? false)
             }
             isRemembered={rememberedFloorHexKeys?.has(key) ?? false}
-            poolLights={poolLights}
+            baseColor={baseColor}
+            poolLights={lights}
             litSurfaces={litSurfaces}
           />
         );

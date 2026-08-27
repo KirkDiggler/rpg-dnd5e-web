@@ -14,7 +14,10 @@ vi.mock('@react-three/drei', () => ({
 import { SyntyHexFloor } from './SyntyHexFloor';
 import {
   computeFloorPoolColor,
+  CRYPT_DARK_FLOOR_TINT,
+  cryptFloorBaseColor,
   MAX_FLOOR_POOL_BLEND,
+  type DungeonFloorLighting,
   type FloorPoolLight,
 } from './syntyHexFloorHelpers';
 
@@ -473,6 +476,86 @@ describe('SyntyHexFloor spaceTheme (rpg-dnd5e-web#558 real-route theme consumpti
     for (const color of colors) {
       expect(isCloseTo(color, CRYPT_TINT)).toBe(true);
     }
+  });
+});
+
+describe('SyntyHexFloor regional floor lighting', () => {
+  it('composes per-cell exposure and pools without changing profile UVs or remembered precedence', async () => {
+    const floorLighting: DungeonFloorLighting = {
+      exposureByCell: new Map([
+        ['0,0,0', 0],
+        ['1,-1,0', 1],
+      ]),
+      poolsByCell: new Map([
+        [
+          '0,0,0',
+          [
+            {
+              position: [0, 1.2, 0],
+              color: '#ff9d52',
+              distance: 5.5,
+            },
+          ],
+        ],
+      ]),
+    };
+    const plain = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0], [1, -1, 0])}
+        hexSize={1}
+        profile={CRYPT_FLOOR_PROFILE}
+        spaceTheme="crypt"
+      />
+    );
+    const plainUvs = floorMeshes(plain).map((mesh) =>
+      Array.from(mesh.geometry.getAttribute('uv').array)
+    );
+    const renderer = await ReactThreeTestRenderer.create(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0], [1, -1, 0])}
+        hexSize={1}
+        profile={CRYPT_FLOOR_PROFILE}
+        spaceTheme="crypt"
+        floorLighting={floorLighting}
+      />
+    );
+    const meshes = floorMeshes(renderer);
+    const materials = renderer.scene
+      .findAllByType('MeshBasicMaterial')
+      .map(
+        (node) =>
+          (node as unknown as { instance: THREE.MeshBasicMaterial }).instance
+      );
+    const colors = floorTileColors(renderer);
+
+    expect(colors[0]!.r).toBeGreaterThan(CRYPT_DARK_FLOOR_TINT.r);
+    expect(colors[0]!.r).toBeGreaterThan(cryptFloorBaseColor(0).r);
+    expect(isCloseTo(colors[1]!, CRYPT_TINT)).toBe(true);
+    expect(materials).toHaveLength(2);
+    expect(
+      materials.every((material) => material.type === 'MeshBasicMaterial')
+    ).toBe(true);
+    expect(materials.every((material) => material.toneMapped === false)).toBe(
+      true
+    );
+    expect(
+      meshes.map((mesh) => Array.from(mesh.geometry.getAttribute('uv').array))
+    ).toEqual(plainUvs);
+
+    await renderer.update(
+      <SyntyHexFloor
+        floorTiles={tiles([0, 0, 0], [1, -1, 0])}
+        hexSize={1}
+        profile={CRYPT_FLOOR_PROFILE}
+        spaceTheme="crypt"
+        floorLighting={floorLighting}
+        rememberedFloorHexKeys={new Set(['0,0,0'])}
+      />
+    );
+    expect(floorTileColors(renderer)[0]!.getHexString()).toBe('465366');
+    expect(
+      Array.from(floorMeshes(renderer)[0]!.geometry.getAttribute('uv').array)
+    ).toEqual(plainUvs[0]);
   });
 });
 
