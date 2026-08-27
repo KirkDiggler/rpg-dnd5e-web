@@ -42,7 +42,7 @@ import type { Object3D } from 'three';
 import {
   deriveShellDoorGeometry,
   SHELL_DOOR_FRAME_FOREGROUND_MARGIN,
-  shellDoorLeafScale,
+  shellDoorLeafFit,
   shellDoorSurroundScale,
   shellLocalOffsetToWorld,
   shellVisibleWallTop,
@@ -91,10 +91,18 @@ function ProfileDoor({
     profile.doorSurround,
     visibleWallTop
   );
-  const leafScale = shellDoorLeafScale(
+  // The authored leaf root is the mechanical hinge at gapStart. Express that
+  // exact world offset in the frame's local X axis so the fit can translate
+  // only the asymmetric child geometry, never the authoritative hinge group.
+  const hingeDx = door.leafPosition.x - door.position.x;
+  const hingeDz = door.leafPosition.z - door.position.z;
+  const hingeGroupLocalX =
+    hingeDx * Math.cos(door.rotationY) - hingeDz * Math.sin(door.rotationY);
+  const leafFit = shellDoorLeafFit(
     { bounds: geometry.leafBounds },
     geometry.opening,
-    frameScale
+    frameScale,
+    hingeGroupLocalX
   );
   return (
     <>
@@ -111,7 +119,8 @@ function ProfileDoor({
           position={door.leafPosition}
           positionY={DUNGEON_SURFACE_Y}
           rotationY={door.rotationY}
-          scale={leafScale}
+          scale={leafFit.scale}
+          localOffset={leafFit.localTranslation}
           sourceScene={leafScene}
         />
       )}

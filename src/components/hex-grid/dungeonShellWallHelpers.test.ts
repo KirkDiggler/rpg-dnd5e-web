@@ -7,12 +7,12 @@ import {
   shellBodyScale,
   shellComponentPivotOffset,
   shellComponentY,
-  shellDoorLeafScale,
+  shellDoorLeafFit,
   shellDoorSurroundScale,
   shellLocalOffsetToWorld,
   shellRawDimensions,
   shellTrimScale,
-  type ShellOpening,
+  shellVisibleWallTop,
 } from './dungeonShellWallHelpers';
 
 const body = artifact([-2, 0, -0.2], [2, 4, 0.2]);
@@ -63,6 +63,44 @@ function doorFixture() {
   );
   const leaf = new THREE.Group();
   leaf.add(boxMesh([0, 0, -0.1], [1.2, 1.9, 0.1]));
+  return { frame, leaf };
+}
+
+// License-safe boxes transcribed from the reviewed provider geometry report
+// (rpg-game-assets#68 tree 46e41c2). Production still measures loaded scenes;
+// these literals are an independent fixture for the accepted asymmetric leaf.
+const providerSurround = artifact(
+  [-0.9993886947631836, 0, -0.3419951796531677],
+  [0.9993886947631836, 2.5346500873565674, 0.3419951796531677]
+);
+const providerCap = artifact(
+  [-2.546480178833008, 0, -0.20546433329582214],
+  [2.546480178833008, 0.663008451461792, 0.20546433329582214]
+);
+
+function providerDoorFixture() {
+  const frame = new THREE.Group();
+  frame.add(
+    boxMesh(
+      [-0.9993886947631836, 0, -0.3419951796531677],
+      [-0.66627635917071, 2.5346500873565674, 0.3419951796531677]
+    ),
+    boxMesh(
+      [0.6408623012743637, 0, -0.3419951796531677],
+      [0.9993886947631836, 2.5346500873565674, 0.3419951796531677]
+    ),
+    boxMesh(
+      [-0.9993886947631836, 2.1852569580078125, -0.3419951796531677],
+      [0.9993886947631836, 2.5346500873565674, 0.3419951796531677]
+    )
+  );
+  const leaf = new THREE.Group();
+  leaf.add(
+    boxMesh(
+      [-0.03624606132507324, 0, -0.09246932715177536],
+      [1.2874064445495605, 2.455683946609497, 0.09246950596570969]
+    )
+  );
   return { frame, leaf };
 }
 
@@ -177,22 +215,81 @@ describe('measured closed-door geometry', () => {
     expect(geometry.leafBounds.max[2]).toBeCloseTo(0.1);
   });
 
-  it('derives leaf horizontal and vertical cover from independent frame literals', () => {
-    const opening: ShellOpening = { min: [-0.7, 0], max: [0.7, 2] };
-    const expected = [
-      [0.6166666666666667, 1.1473684210526316, 0.75],
-      [0.6166666666666667, 2.1578947368421053, 0.75],
-      [0.6166666666666667, 0.2631578947368421, 0.75],
-    ] as const;
-    for (const [index, frameY] of [1.08, 2.04, 0.24].entries()) {
-      const scale = shellDoorLeafScale(
-        artifact([0, 0, 0], [1.2, 1.9, 0.2]),
-        opening,
-        [0.5, frameY, 0.75]
+  it.each([
+    { wallHeight: 2.4, expectedScaleY: 1.0253274410877296 },
+    { wallHeight: 3.6, expectedScaleY: 1.4466292015600781 },
+  ])(
+    'fits the provider-derived asymmetric leaf over the scaled opening at wallHeight=$wallHeight',
+    ({ wallHeight, expectedScaleY }) => {
+      const { frame, leaf } = providerDoorFixture();
+      const geometry = deriveShellDoorGeometry(frame, leaf);
+      const frameScale = shellDoorSurroundScale(
+        providerSurround,
+        shellVisibleWallTop(wallHeight, providerCap)
       );
-      expect(scale[0]).toBeCloseTo(expected[index]![0], 12);
-      expect(scale[1]).toBeCloseTo(expected[index]![1], 12);
-      expect(scale[2]).toBeCloseTo(expected[index]![2], 12);
+      const fit = shellDoorLeafFit(
+        { bounds: geometry.leafBounds },
+        geometry.opening,
+        frameScale,
+        -0.5
+      );
+
+      // Buffer attributes are float32, so geometry-derived values are pinned
+      // to the provider gate's 1e-6 seam tolerance rather than JSON precision.
+      expect(fit.scale[0]).toBeCloseTo(0.5242849629197495, 7);
+      expect(fit.scale[1]).toBeCloseTo(expectedScaleY, 7);
+      expect(fit.scale[2]).toBe(0.75);
+      expect(fit.localTranslation[0]).toBeCloseTo(0.16566031165076522, 7);
+      expect(fit.localTranslation[1]).toBeCloseTo(0, 7);
+      expect(fit.localTranslation[2]).toBe(0);
+
+      // Independent readback of the geometry after scale + child translation.
+      const openingLeft = geometry.opening.min[0] * frameScale[0];
+      const openingRight = geometry.opening.max[0] * frameScale[0];
+      const openingTop = geometry.opening.max[1] * frameScale[1];
+      const leafLeft =
+        -0.5 +
+        fit.localTranslation[0] +
+        geometry.leafBounds.min[0] * fit.scale[0];
+      const leafRight =
+        -0.5 +
+        fit.localTranslation[0] +
+        geometry.leafBounds.max[0] * fit.scale[0];
+      const leafBottom = fit.localTranslation[1];
+      const leafTop =
+        fit.localTranslation[1] +
+        (geometry.leafBounds.max[1] - geometry.leafBounds.min[1]) *
+          fit.scale[1];
+      expect(openingLeft - leafLeft).toBeGreaterThanOrEqual(0.02);
+      expect(leafRight - openingRight).toBeGreaterThanOrEqual(0.02);
+      expect(leafTop - openingTop).toBeGreaterThanOrEqual(0.02);
+      expect(openingLeft - leafLeft).toBeCloseTo(0.020001, 7);
+      expect(leafRight - openingRight).toBeCloseTo(0.020001, 7);
+      expect(leafTop - openingTop).toBeCloseTo(0.020001, 7);
+      expect(leafBottom).toBe(0);
     }
+  );
+
+  it('kills the scale-only mutation because an unchanged gapStart root leaves the provider opening uncovered on the right', () => {
+    const { frame, leaf } = providerDoorFixture();
+    const geometry = deriveShellDoorGeometry(frame, leaf);
+    const frameScale = shellDoorSurroundScale(
+      providerSurround,
+      shellVisibleWallTop(2.4, providerCap)
+    );
+    const fit = shellDoorLeafFit(
+      { bounds: geometry.leafBounds },
+      geometry.opening,
+      frameScale,
+      -0.5
+    );
+
+    const scaleOnlyLeafRight = -0.5 + geometry.leafBounds.max[0] * fit.scale[0];
+    const openingRight = geometry.opening.max[0] * frameScale[0];
+    expect(scaleOnlyLeafRight - openingRight).toBeCloseTo(
+      -0.14565931165076512,
+      7
+    );
+    expect(scaleOnlyLeafRight - openingRight).toBeLessThan(0.02);
   });
 });
