@@ -63,6 +63,11 @@ vi.mock('@react-three/drei', () => {
     );
     mesh.name = name;
     scene.add(mesh);
+    if (name.includes('/models/synty/characters/')) {
+      const hand = new THREE.Bone();
+      hand.name = 'Hand_R';
+      scene.add(hand);
+    }
     return scene;
   };
   return {
@@ -686,6 +691,40 @@ describe('SessionScene', () => {
       });
 
       expect(onHexClick).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('authoritative main-hand presentation (#832)', () => {
+    it('mounts the resolved weapon on the local class character', async () => {
+      const weaponUrl = '/models/synty/weapons/greatsword.glb';
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId="fighter"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          mainHandPresentation={{
+            ref: 'dnd5e:item:greatsword',
+            weaponUrl,
+            socket: {
+              bone: 'Hand_R',
+              boneUnitMeters: 0.01,
+              positionMeters: [0, 0, 0],
+              rotationQuaternion: [0, 0, 0, 1],
+              scale: 1,
+            },
+          }}
+        />
+      );
+
+      const weaponMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(weaponUrl)
+      );
+      expect(weaponMeshes.length).toBeGreaterThan(0);
     });
   });
 

@@ -1,13 +1,18 @@
 import type { MainHandAttachmentStatus } from '@/components/hex-grid/mainHandPresentation';
+import {
+  CURRENT_MAIN_HAND_WEAPONS,
+  TOWNFOLK_MAIN_HAND_SOCKET,
+} from '@/components/hex-grid/mainHandWeapons';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { WeaponAttachmentPreview } from './WeaponAttachmentPreview';
 import {
-  PROVISIONAL_FIGHTER_SOCKET,
   WEAPON_ATTACHMENT_FIXTURES,
   canRecordWeaponVerdict,
   coverageFor,
+  formatTextureBudget,
   resolveProvisionalMainHand,
   weaponConceptVerdict,
+  type WeaponClassId,
   type WeaponEquipmentState,
   type WeaponFacing,
   type WeaponMotion,
@@ -15,7 +20,16 @@ import {
   type WeaponView,
 } from './weaponAttachmentExperiment';
 
-const EQUIPMENT_VALUES = ['unarmed', 'longsword', 'shortbow'] as const;
+const CLASS_VALUES = [
+  'fighter',
+  'barbarian',
+  'monk',
+  'rogue',
+] as const satisfies readonly WeaponClassId[];
+const EQUIPMENT_VALUES: readonly WeaponEquipmentState[] = [
+  'unarmed',
+  ...CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.id),
+];
 const MOTION_VALUES = ['idle', 'walk'] as const;
 const VIEW_VALUES = ['close', 'orbit', 'play'] as const;
 const FACING_VALUES = [
@@ -25,7 +39,7 @@ const FACING_VALUES = [
 const formatTuple = (values: readonly number[]) =>
   `[${values.map((value) => value.toFixed(6)).join(', ')}]`;
 
-const SOCKET_PROFILE = `${PROVISIONAL_FIGHTER_SOCKET.bone} · bone units ${PROVISIONAL_FIGHTER_SOCKET.boneUnitMeters}m · pos ${formatTuple(PROVISIONAL_FIGHTER_SOCKET.positionMeters)} · quat ${formatTuple(PROVISIONAL_FIGHTER_SOCKET.rotationQuaternion)} · scale ${PROVISIONAL_FIGHTER_SOCKET.scale}`;
+const SOCKET_PROFILE = `${TOWNFOLK_MAIN_HAND_SOCKET.bone} · bone units ${TOWNFOLK_MAIN_HAND_SOCKET.boneUnitMeters}m · pos ${formatTuple(TOWNFOLK_MAIN_HAND_SOCKET.positionMeters)} · quat ${formatTuple(TOWNFOLK_MAIN_HAND_SOCKET.rotationQuaternion)} · scale ${TOWNFOLK_MAIN_HAND_SOCKET.scale}`;
 
 function readEnumParam<const Values extends readonly string[]>(
   name: string,
@@ -115,6 +129,9 @@ function ButtonGroup<T extends string | number>({
 }
 
 export function WeaponAttachmentConcept() {
+  const [classId, setClassId] = useState<WeaponClassId>(() =>
+    readEnumParam('class', CLASS_VALUES, 'fighter')
+  );
   const [equipmentState, setEquipmentState] = useState<WeaponEquipmentState>(
     () => readEnumParam('weapon', EQUIPMENT_VALUES, 'unarmed')
   );
@@ -175,9 +192,12 @@ export function WeaponAttachmentConcept() {
     resolution.code === 'mapped' ? resolution.candidate.source : 'none';
   const candidateUrl =
     resolution.code === 'mapped' ? resolution.candidate.weaponUrl : 'none';
-  const textureWarning =
+  const textureBudget =
     resolution.code === 'mapped'
-      ? `${resolution.candidate.decodedTextureMb} MB > ${resolution.candidate.budgetMb} MB production budget`
+      ? formatTextureBudget(
+          resolution.candidate.decodedTextureMb,
+          resolution.candidate.budgetMb
+        )
       : 'none';
 
   return (
@@ -185,7 +205,7 @@ export function WeaponAttachmentConcept() {
       <header className="space-y-2">
         <h1 className="text-3xl font-bold">Equipped Weapon Lab · Concept</h1>
         <p className="text-sm text-slate-300">
-          actual shared ClassCharacterModel · provisional private assets · no
+          actual shared ClassCharacterModel · production provider mapping · no
           writer
         </p>
       </header>
@@ -193,6 +213,18 @@ export function WeaponAttachmentConcept() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
+            <ButtonGroup
+              label="Class"
+              value={classId}
+              onChange={(next) => {
+                setClassId(next);
+                setVerdictJson(null);
+              }}
+              options={CLASS_VALUES.map((value) => ({
+                value,
+                label: value[0]!.toUpperCase() + value.slice(1),
+              }))}
+            />
             <ButtonGroup
               label="Equipment"
               value={equipmentState}
@@ -202,8 +234,10 @@ export function WeaponAttachmentConcept() {
               }}
               options={[
                 { value: 'unarmed', label: 'Unarmed' },
-                { value: 'longsword', label: 'Longsword' },
-                { value: 'shortbow', label: 'Shortbow' },
+                ...CURRENT_MAIN_HAND_WEAPONS.map((weapon) => ({
+                  value: weapon.id,
+                  label: weapon.label,
+                })),
               ]}
             />
             <ButtonGroup
@@ -251,6 +285,7 @@ export function WeaponAttachmentConcept() {
             style={{ borderColor: 'var(--border-primary)' }}
           >
             <WeaponAttachmentPreview
+              classId={classId}
               equipmentState={equipmentState}
               motion={motion}
               view={view}
@@ -289,13 +324,13 @@ export function WeaponAttachmentConcept() {
               <dd data-testid="attachment-status">{attachmentStatus.code}</dd>
             </div>
             <div>
-              <dt className="font-medium">Texture warning</dt>
-              <dd data-testid="texture-warning">{textureWarning}</dd>
+              <dt className="font-medium">Texture budget</dt>
+              <dd data-testid="texture-warning">{textureBudget}</dd>
             </div>
             <div>
               <dt className="font-medium">Coverage status</dt>
               <dd data-testid="coverage-status">
-                {`equipment ${coverage.equipmentStates.length}/3 · motion ${coverage.motions.length}/2 · views ${coverage.views.length}/3 · facings ${coverage.facings.length}/6`}
+                {`equipment ${coverage.equipmentStates.length}/${EQUIPMENT_VALUES.length} · motion ${coverage.motions.length}/2 · views ${coverage.views.length}/3 · facings ${coverage.facings.length}/6`}
               </dd>
             </div>
           </dl>

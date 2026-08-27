@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/832",
+  "status": "ready for review",
+  "implementationCommit": "e0e92fdbcc6632863bab9f13f35600564868bbb3",
+  "provider": {
+    "repository": "KirkDiggler/rpg-game-assets",
+    "commit": "d30372848df81b387f821f14129aced27ec709d4",
+    "manifestPath": "harness/models/synty/weapons/manifest.json",
+    "manifestSha256": "88531fb84ca7d346212fbd43abf8ea65fa1bcecaecd9159c37e23c94f4676634"
+  },
+  "classes": {
+    "fighter": {
+      "browserUrl": "/models/synty/characters/fighter.glb",
+      "providerPath": "harness/models/synty/characters/fighter.glb",
+      "sha256": "cb3ad6ff4169bc4befd901e4f23f618498c3f9f895dfeaf4664d0131d20980ae"
+    },
+    "barbarian": {
+      "browserUrl": "/models/synty/characters/barbarian.glb",
+      "providerPath": "harness/models/synty/characters/barbarian.glb",
+      "sha256": "2dc20cf2b9339a2f8fef549f7feedcd65e256bc58aa2b8f2cab5f0c81ea18bd4"
+    },
+    "monk": {
+      "browserUrl": "/models/synty/characters/monk.glb",
+      "providerPath": "harness/models/synty/characters/monk.glb",
+      "sha256": "e2cf05639b1b825a71acf636a7025773545d08acc2b035285a6574dbd1c75260"
+    },
+    "rogue": {
+      "browserUrl": "/models/synty/characters/rogue.glb",
+      "providerPath": "harness/models/synty/characters/rogue.glb",
+      "sha256": "491a8f50b1db44f47f63443c557d461cd53b880895f9c53d3f4db28e8a3aca06"
+    }
+  },
+  "weapons": {
+    "dnd5e:item:shortbow": {
+      "browserUrl": "/models/synty/weapons/shortbow.glb",
+      "providerPath": "harness/models/synty/weapons/shortbow.glb",
+      "sha256": "2183ffa96b65c03ce658233c072ab8dcf957a934714763957a91dc46ee48a391"
+    },
+    "dnd5e:item:longsword": {
+      "browserUrl": "/models/synty/weapons/longsword.glb",
+      "providerPath": "harness/models/synty/weapons/longsword.glb",
+      "sha256": "91cd687e76bf8416a270e20c819d699bbea9b6d097d1ede9fb82b8e4c6cf9aa8"
+    },
+    "dnd5e:item:shortsword": {
+      "browserUrl": "/models/synty/weapons/shortsword.glb",
+      "providerPath": "harness/models/synty/weapons/shortsword.glb",
+      "sha256": "ee5f39b67f7d77df01a9425c5a2a371603eff83138d236ba5049033a7dc4ce9b"
+    },
+    "dnd5e:item:dagger": {
+      "browserUrl": "/models/synty/weapons/dagger.glb",
+      "providerPath": "harness/models/synty/weapons/dagger.glb",
+      "sha256": "e02ea36a0f0e1dfdb288503733b11a66f5bd0e1320b3e2f8f710e925cbccba41"
+    },
+    "dnd5e:item:greataxe": {
+      "browserUrl": "/models/synty/weapons/greataxe.glb",
+      "providerPath": "harness/models/synty/weapons/greataxe.glb",
+      "sha256": "39c08c15e778c1f1c915478001204f218382c47cad3c1306626784f7ca398bb7"
+    },
+    "dnd5e:item:quarterstaff": {
+      "browserUrl": "/models/synty/weapons/quarterstaff.glb",
+      "providerPath": "harness/models/synty/weapons/quarterstaff.glb",
+      "sha256": "e9cdce3cb1e2f57bd7d49670a1d821eb6a3f6608f0817b4b9ba1c208ddbc7e63"
+    },
+    "dnd5e:item:greatsword": {
+      "browserUrl": "/models/synty/weapons/greatsword.glb",
+      "providerPath": "harness/models/synty/weapons/greatsword.glb",
+      "sha256": "600d83e67e47ff461efc94c43bde39e09139c3778ec82cfd86d47e03fb26eea1"
+    },
+    "dnd5e:item:battleaxe": {
+      "browserUrl": "/models/synty/weapons/battleaxe.glb",
+      "providerPath": "harness/models/synty/weapons/battleaxe.glb",
+      "sha256": "4941dcceb3ce0223ae9cfb008a18ed359a4b6bc6a9941fac456569e60e57fc48"
+    },
+    "dnd5e:item:handaxe": {
+      "browserUrl": "/models/synty/weapons/handaxe.glb",
+      "providerPath": "harness/models/synty/weapons/handaxe.glb",
+      "sha256": "26402db2d23acf53fea65246534588ee664a8bfa44ba39c6a381fe94109ad080"
+    },
+    "dnd5e:item:club": {
+      "browserUrl": "/models/synty/weapons/club.glb",
+      "providerPath": "harness/models/synty/weapons/club.glb",
+      "sha256": "c7d9b7086c3f973f56c1b74e1b95d09488e38c5ada6e8fb5f3f6f5da883d1fe1"
+    },
+    "dnd5e:item:greatclub": {
+      "browserUrl": "/models/synty/weapons/greatclub.glb",
+      "providerPath": "harness/models/synty/weapons/greatclub.glb",
+      "sha256": "1db94c793532245d077f1e1ff7a5ba740afe96657174409bb2d9c6125bff0b67"
+    },
+    "dnd5e:item:warhammer": {
+      "browserUrl": "/models/synty/weapons/warhammer.glb",
+      "providerPath": "harness/models/synty/weapons/warhammer.glb",
+      "sha256": "4ae41ac3e03eb425f0b933b9fa256ae769627d92a299560997f4e2c75c3376e0"
+    }
+  },
+  "socketProfile": {
+    "id": "townfolk-main-hand-v1",
+    "bone": "Hand_R",
+    "boneUnitMeters": 0.01,
+    "positionMeters": [
+      -0.11356871832209599,
+      0.0437807216160595,
+      -0.0070717729664129085
+    ],
+    "rotationQuaternion": [
+      -0.31717459916354807,
+      -0.45555976264236875,
+      0.6828311428133312,
+      0.47498148472569474
+    ],
+    "scale": 1,
+    "itemSpecificRuntimeCorrections": false
+  },
+  "fourClassReview": {
+    "classes": [
+      "fighter",
+      "barbarian",
+      "monk",
+      "rogue"
+    ],
+    "currentProviderWeapons": 12,
+    "idleClassWeaponCaptures": 48,
+    "focusedFighterWalkCaptures": 4,
+    "totalCaptures": 52,
+    "attachmentStatus": "attached for every capture",
+    "browserConsoleOrPageErrors": 0,
+    "requestFailures": 0,
+    "evidence": [
+      {
+        "path": "docs/evidence/832-authoritative-main-hand/current-roster-four-class-contact-sheet.png",
+        "sha256": "d020ff5e8d5e5356bda8df41ce9431c8c25359f690ee0110802014691c63d7e9",
+        "dimensions": [
+          2400,
+          2080
+        ]
+      },
+      {
+        "path": "docs/evidence/832-authoritative-main-hand/fighter-gwf-contact-sheet.png",
+        "sha256": "6831cebf467222bd54283eaa4bfe9d0c821ae2ab14d3ac831afa4f40cbb01f23",
+        "dimensions": [
+          2080,
+          680
+        ]
+      }
+    ],
+    "boundary": "Visual fixture matrix uses the production resolver and exact synced provider bytes; it is not authoritative equipment state."
+  },
+  "authoritativeRoute": {
+    "surface": "production build served locally in development mode against the real session stack",
+    "apiContainerImageId": "sha256:33cc392f9d51c116b3dae1787167505ccb928f46791b145734a5b48784f0a838",
+    "actingIdentity": "toolkit-sandbox-fighter",
+    "authoritativeSequence": [
+      "GetCharacterData -> Longsword",
+      "UnequipItem -> unarmed",
+      "fresh browser context -> unarmed",
+      "EquipItem -> Longsword",
+      "fresh browser context -> Longsword"
+    ],
+    "characterSeatRecovery": "GetMyActiveLobby lobby id -> first StreamLobby snapshot -> authenticated player seat character id",
+    "successfulRelevantResponses": 11,
+    "allRelevantResponseStatuses": 200,
+    "browserConsoleOrPageErrors": 0,
+    "unexpectedRequestFailures": 0,
+    "expectedOneSnapshotLobbyAborts": 3,
+    "expectedAbortNote": "Each seat-recovery stream intentionally aborts immediately after its first authoritative snapshot; no session request failed during a captured stage.",
+    "finalAuthoritativeMainHand": "Longsword",
+    "evidence": [
+      {
+        "path": "docs/evidence/832-authoritative-main-hand/authoritative-session-contact-sheet.png",
+        "sha256": "a47bbcb2c66751b0050d7a37a52096b6ef6e9716890ebfd67539710541fc72f8",
+        "dimensions": [
+          2040,
+          1000
+        ]
+      }
+    ],
+    "successfulResponseBreakdown": {
+      "EquipItem": 1,
+      "GetCharacterData": 6,
+      "UnequipItem": 1,
+      "longsword.glb": 3
+    },
+    "resumeFailureBehavior": "A failed or missing lobby seat keeps the app out of GameView and surfaces Unable to resume the running encounter; it never falls through to SessionEncounterView without a character."
+  },
+  "scope": {
+    "peerEquipmentProjection": false,
+    "offHand": false,
+    "twoHandContactOrFingerPosing": false,
+    "combatOrBowAnimation": false,
+    "weaponsBeyondCurrentProviderRoster": false
+  },
+  "reviewFixCommit": "4e449eb8ed488b8c68733df6983e6d8e670b2687"
+}

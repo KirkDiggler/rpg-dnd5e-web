@@ -63,6 +63,7 @@ import * as THREE from 'three';
 import { readCameraDials } from '../hex-grid/cameraDials';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
+import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
 import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
@@ -115,6 +116,9 @@ export interface SessionCanvasProps {
   characterName: string;
   /** Public roster body ref; private CharacterData does not choose models. */
   classRefId: string | undefined;
+  /** Owner-authoritative equipped main-hand presentation for the local player.
+   * Never applied to `otherMembers`, whose equipment is not public today. */
+  mainHandPresentation?: MainHandPresentation;
   myPosition: CubeCoord;
   /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
    * (`MoveResponse.steps`, already bridged to cube coords) — passed
@@ -198,6 +202,7 @@ export function SessionScene({
   characterId,
   characterName,
   classRefId,
+  mainHandPresentation,
   myPosition,
   movePath,
   moveSeq,
@@ -448,6 +453,7 @@ export function SessionScene({
         type="player"
         hexSize={hexSize}
         classRefId={classRefId}
+        mainHandPresentation={mainHandPresentation}
         movePath={movePath}
         moveSeq={moveSeq}
         onMovementPresentationComplete={(_entityId, completedMoveSeq) =>

@@ -9,6 +9,7 @@ import {
 } from '@/author/preview3d/playCameraRig';
 import { facingToRotationY } from '@/components/hex-grid/authorGridHelpers';
 import { ClassCharacterModel } from '@/components/hex-grid/ClassCharacterModel';
+import { resolveClassCharacterModelUrl } from '@/components/hex-grid/classCharacterModels';
 import type {
   MainHandAttachmentStatus,
   MainHandPresentation,
@@ -29,6 +30,7 @@ import {
 } from 'react';
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import type {
+  WeaponClassId,
   WeaponEquipmentState,
   WeaponFacing,
   WeaponMotion,
@@ -36,7 +38,6 @@ import type {
   WeaponView,
 } from './weaponAttachmentExperiment';
 
-const FIGHTER_URL = '/models/synty/characters/fighter.glb' as const;
 const ORBIT_CAMERA_POSITION = [2.4, 1.8, 3.1] as const;
 const ORBIT_CAMERA_TARGET = [0, 0.7, 0] as const;
 const CLOSE_CAMERA_POSITION = [-1.2, 1.22, 0.85] as const;
@@ -187,6 +188,7 @@ function isStableObservation(
 }
 
 export interface WeaponAttachmentPreviewProps {
+  classId?: WeaponClassId;
   equipmentState: WeaponEquipmentState;
   motion: WeaponMotion;
   view: WeaponView;
@@ -197,6 +199,7 @@ export interface WeaponAttachmentPreviewProps {
 }
 
 export function WeaponAttachmentScene({
+  classId = 'fighter',
   equipmentState,
   motion,
   view,
@@ -207,6 +210,7 @@ export function WeaponAttachmentScene({
 }: WeaponAttachmentPreviewProps) {
   const [attachmentStatus, setAttachmentStatus] =
     useState<MainHandAttachmentStatus>();
+  const classModelUrl = resolveClassCharacterModelUrl(classId, false);
   const lastObservedKey = useRef<string | undefined>(undefined);
   const handleMainHandStatus = useCallback(
     (status: MainHandAttachmentStatus) => {
@@ -277,13 +281,15 @@ export function WeaponAttachmentScene({
       <ambientLight intensity={0.9} />
       <directionalLight position={[5, 8, 4]} intensity={1.1} />
       <Suspense fallback={null}>
-        <ClassCharacterModel
-          url={FIGHTER_URL}
-          isMoving={motion === 'walk'}
-          facingRotation={facingToRotationY(facing)}
-          mainHandPresentation={presentation}
-          onMainHandStatus={handleMainHandStatus}
-        />
+        {classModelUrl ? (
+          <ClassCharacterModel
+            url={classModelUrl}
+            isMoving={motion === 'walk'}
+            facingRotation={facingToRotationY(facing)}
+            mainHandPresentation={presentation}
+            onMainHandStatus={handleMainHandStatus}
+          />
+        ) : null}
       </Suspense>
       <gridHelper
         args={[8, 16, '#354d4b', '#1d2928']}
