@@ -5,6 +5,7 @@
 Kirk's exact verdict: **"approved calibration `0.20/0.10` and said torches make it perfect, conditional on the region slider working."**
 
 The approved calibration commit is [`1571a8f`](https://github.com/KirkDiggler/rpg-dnd5e-web/commit/1571a8ff60a22a7eaad9927fd5c1b4eaae5cccc6), `feat(rendering): calibrate crypt shadow fill`.
+The immutable branch/evidence commit that introduced the three exact PNG bytes is `8dc75e356938155a681daf888c3a2a0b7f51bf71`.
 It changes only the six rendering source/test files that assert the crypt fill:
 
 - `src/rendering/dungeonLighting.ts`
