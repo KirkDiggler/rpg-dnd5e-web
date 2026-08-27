@@ -16,8 +16,9 @@
  * the combat panel does not load and which would be a second, unversioned
  * source of truth about the weapon being swung.
  *
- * So this shows the damage type it does have, and the moment the seam grows a
- * display-only damage string, `damageLine` is the one place that changes.
+ * So this shows the damage type it does have. Carrying the number across the
+ * seam is rpg-project#307 (deferred, deliberately): when that lands,
+ * `damageLine` is the one place that changes.
  */
 import {
   Slot,
