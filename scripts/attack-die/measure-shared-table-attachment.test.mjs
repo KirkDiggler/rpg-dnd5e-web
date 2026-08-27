@@ -18,5 +18,5 @@ test('harness integrity self-test rejects incomplete, rounded, overlapping, and 
     0,
     `self-test failed:\n${result.stderr || result.stdout}`
   );
-  assert.match(result.stdout, /harness integrity self-test: 5\/5 passed/);
+  assert.match(result.stdout, /harness integrity self-test: 6\/6 passed/);
 });

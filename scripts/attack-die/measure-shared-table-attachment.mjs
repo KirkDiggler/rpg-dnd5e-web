@@ -943,6 +943,20 @@ function shouldAttemptManualRelease(scenario) {
   return scenario !== 'missing-release';
 }
 
+function releasePhaseAccepted(phase) {
+  return typeof phase === 'string' && phase !== 'armed';
+}
+
+async function presentationAcceptedRelease(presentation, rollerPane) {
+  const tray = presentation.getByTestId('roll-group-tray-3d');
+  if ((await tray.count()) > 0)
+    return releasePhaseAccepted(await tray.getAttribute('data-phase'));
+  return !(await rollerPane
+    .getByRole('button', { name: 'Roll dice', exact: true })
+    .isVisible()
+    .catch(() => false));
+}
+
 async function runScenario(page, viewport, scenario) {
   const phase = page.getByTestId('shared-table-dice-phase');
   const rollerPane = page.locator('[data-witness-pane="roller"]');
@@ -1005,6 +1019,14 @@ async function runScenario(page, viewport, scenario) {
         'data-renderer-generation'
       );
       if (generation && !clickedGenerations.has(generation)) {
+        const recordAcceptedRelease = async () => {
+          await page.waitForTimeout(50);
+          if (!(await presentationAcceptedRelease(presentation, rollerPane)))
+            return false;
+          clickedGenerations.add(generation);
+          releaseActions += 1;
+          return true;
+        };
         const dieTarget = rollerPane.locator(TARGET_SELECTOR).first();
         if (await dieTarget.isVisible().catch(() => false)) {
           try {
@@ -1022,8 +1044,7 @@ async function runScenario(page, viewport, scenario) {
             await page.mouse.down();
             await page.mouse.move(start.x + 8, start.y + 4);
             await page.mouse.up();
-            clickedGenerations.add(generation);
-            releaseActions += 1;
+            await recordAcceptedRelease();
             continue;
           } catch (error) {
             if (!safeMessage(error).includes('not attached to the DOM'))
@@ -1037,8 +1058,7 @@ async function runScenario(page, viewport, scenario) {
         });
         if (await rollButton.isVisible().catch(() => false)) {
           await rollButton.press('Enter');
-          clickedGenerations.add(generation);
-          releaseActions += 1;
+          await recordAcceptedRelease();
           continue;
         }
       }
@@ -1172,6 +1192,8 @@ async function runHarnessIntegritySelfTest() {
 
   assert.equal(shouldAttemptManualRelease('missing-release'), false);
   assert.equal(shouldAttemptManualRelease('great-weapon-fighting'), true);
+  assert.equal(releasePhaseAccepted('armed'), false);
+  assert.equal(releasePhaseAccepted('rolling-originals'), true);
 
   const sequence = [];
   let releaseOperation;
@@ -1212,7 +1234,7 @@ async function runHarnessIntegritySelfTest() {
 
 if (isHarnessIntegritySelfTest) {
   await runHarnessIntegritySelfTest();
-  console.log('harness integrity self-test: 5/5 passed');
+  console.log('harness integrity self-test: 6/6 passed');
   process.exit(0);
 }
 
