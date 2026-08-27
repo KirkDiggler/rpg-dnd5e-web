@@ -51,7 +51,7 @@ describe('parseCameraDials', () => {
     expect(1600 / dials.zoomMin).toBeGreaterThan(sixHexMoveWidth);
   });
 
-  it('starts partway up the range, so the landing view is neither extreme of the curve', () => {
+  it('starts on the tactical band between the tabletop and detail extremes', () => {
     const dials = parseCameraDials('');
     expect(dials.zoomStart).toBeGreaterThan(dials.zoomMin);
     expect(dials.zoomStart).toBeLessThan(dials.zoomMax);
@@ -121,6 +121,19 @@ describe('parseCameraDials', () => {
     expect(dials.zoomMin).toBe(20);
     expect(dials.zoomMax).toBe(300);
     expect(dials.zoomStart).toBe(90);
+  });
+
+  it('keeps camera bands monotonic under crossing zoom overrides', () => {
+    for (const search of [
+      '?zoomMin=60',
+      '?zoomMin=200&zoomStart=10&zoomMax=5',
+    ]) {
+      const dials = parseCameraDials(search);
+      const zooms = dials.curve!.bands.map((band) => band.zoom);
+      expect(zooms).toEqual([...zooms].sort((a, b) => a - b));
+      expect(dials.zoomMin).toBeLessThanOrEqual(dials.zoomStart);
+      expect(dials.zoomStart).toBeLessThanOrEqual(dials.zoomMax);
+    }
   });
 
   it('ignores non-numeric and empty values instead of poisoning the camera with NaN', () => {
