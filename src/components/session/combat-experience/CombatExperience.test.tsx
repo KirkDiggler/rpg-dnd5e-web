@@ -71,6 +71,14 @@ function propsFor(
   } as CombatExperienceProps;
 }
 
+/** The tooltip card a button describes itself by. */
+function tooltipOf(button: HTMLElement): HTMLElement {
+  const id = button.getAttribute('aria-describedby');
+  const tooltip = id ? document.getElementById(id) : null;
+  if (!tooltip) throw new Error('button has no tooltip');
+  return tooltip;
+}
+
 describe('CombatExperience shared production shell', () => {
   it('owns the approved five-region composition at the 1024px structure floor', () => {
     render(<CombatExperience {...propsFor()} />);
@@ -202,10 +210,15 @@ describe('CombatExperience shared production shell', () => {
 
     const attack = screen.getByRole('button', { name: /Longsword/ });
     expect((attack as HTMLButtonElement).disabled).toBe(true);
-    expect(attack.title).toBe('Action: 1 needed, 0 left.');
-    expect(screen.getByRole('button', { name: /Move/ }).title).toBe(
-      '10 ft remaining'
+    expect(attack.dataset.attackRef).toBe('dnd5e:weapons:longsword');
+    // Refusal copy verbatim, and Move's feet shown as a number -- never
+    // converted into a path price.
+    expect(tooltipOf(attack).textContent).toContain(
+      'Action: 1 needed, 0 left.'
     );
+    expect(
+      tooltipOf(screen.getByRole('button', { name: /Move/ })).textContent
+    ).toContain('10 ft left');
     expect(
       (screen.getByRole('button', { name: 'End turn' }) as HTMLButtonElement)
         .disabled

@@ -42,6 +42,15 @@ function dockWith(declarations: Declaration[], onSelect = vi.fn()) {
   return onSelect;
 }
 
+/** The tooltip card a button points at with aria-describedby. */
+function describedTooltip(button: HTMLElement): HTMLElement {
+  const id = button.getAttribute('aria-describedby');
+  if (!id) throw new Error('button has no aria-describedby');
+  const tooltip = document.getElementById(id);
+  if (!tooltip) throw new Error(`no tooltip with id ${id}`);
+  return tooltip;
+}
+
 describe('ActionDock renders what a member can activate', () => {
   // THE LABEL COMES FROM THE SERVER. There is no ref-to-name table in this
   // client, so an ability renamed upstream renames the button with no client
@@ -81,7 +90,11 @@ describe('ActionDock renders what a member can activate', () => {
 
     const rage = screen.getByRole('button', { name: /Rage/ });
     expect((rage as HTMLButtonElement).disabled).toBe(true);
-    expect(rage.getAttribute('title')).toBe('no rage uses remaining');
+    // The refusal now lives in the tooltip the button describes itself by,
+    // rather than a native title -- same contract, the server's own words.
+    expect(describedTooltip(rage).textContent).toContain(
+      'no rage uses remaining'
+    );
   });
 
   it('hands the whole declaration back on click, selector included', () => {
@@ -128,6 +141,8 @@ describe('ActionDock renders what a member can activate', () => {
 
     const help = screen.getByRole('button', { name: /Help/ });
     expect((help as HTMLButtonElement).disabled).toBe(true);
-    expect(help.getAttribute('title')).toBe('no ally within reach');
+    expect(describedTooltip(help).textContent).toContain(
+      'no ally within reach'
+    );
   });
 });

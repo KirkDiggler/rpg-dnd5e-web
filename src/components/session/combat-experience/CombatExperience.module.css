@@ -1521,3 +1521,69 @@
     transform: translateY(0);
   }
 }
+
+/* Action-bar tooltips. Always in the DOM so the card can be the button's
+   aria-describedby target; revealed on hover and on keyboard focus. Pointer
+   events off so it can never swallow the click meant for the button under it. */
+.actionTooltip {
+  position: absolute;
+  z-index: 8;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  display: flex;
+  width: max-content;
+  max-width: 220px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--sc-line);
+  border-radius: 8px;
+  background: rgba(8, 14, 17, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: #d7e2e6;
+  font-size: 10px;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateX(-50%) translateY(3px);
+  transition:
+    opacity 110ms ease-out,
+    transform 110ms ease-out;
+  visibility: hidden;
+}
+
+.actionOffer:hover > .actionTooltip,
+.actionOffer:focus-visible > .actionTooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  visibility: visible;
+}
+
+.actionTooltip > strong {
+  color: #f2e4c4;
+  font:
+    700 12px Cinzel,
+    serif;
+}
+
+.actionTooltip > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.actionTooltip em {
+  color: #8fa3ab;
+  font-style: normal;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+}
+
+.actionTooltipRefusal {
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--sc-line);
+  color: #e07a7a;
+}

@@ -1,3 +1,4 @@
+import type { AttackDieTelemetry } from '@/components/ui/dice/AttackDie3D';
 import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
@@ -12,6 +13,10 @@ interface DiceDrawerBaseProps {
   rollerName: string;
   /** Unsafe identifier fallback; never contains or announces the result. */
   semanticFallback?: boolean;
+  /** Dice runtime telemetry. Carries the settlement observation that says the
+   * die is at rest — see useDiceSettleGate.ts. Spectators watch the same die
+   * animate, so both witness roles report it. */
+  onDiceTelemetry?: (telemetry: AttackDieTelemetry) => void;
 }
 
 interface RollerDiceDrawerProps extends DiceDrawerBaseProps {
@@ -36,6 +41,7 @@ export function DiceDrawer(props: DiceDrawerProps) {
     rollerName,
     semanticFallback = false,
     witnessRole,
+    onDiceTelemetry,
   } = props;
   const waitingForEvent = phase === 'released-waiting-event';
   const expanded =
@@ -122,12 +128,14 @@ export function DiceDrawer(props: DiceDrawerProps) {
             witnessRole="roller"
             events={events}
             onReleaseRequest={props.onReleaseRequest}
+            onTelemetry={onDiceTelemetry}
           />
         ) : (
           <DiceTrayPresentation
             label={`${rollerName}’s attack die`}
             witnessRole="spectator"
             events={events}
+            onTelemetry={onDiceTelemetry}
           />
         )}
       </div>

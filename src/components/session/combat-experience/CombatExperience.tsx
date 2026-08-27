@@ -13,6 +13,7 @@ import { StoryLog } from './StoryLog';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
 import { useDamageToasts } from './useDamageToasts';
+import { useDiceSettleGate } from './useDiceSettleGate';
 
 function portraitOf(name: string): string {
   return name
@@ -119,9 +120,17 @@ export function CombatExperience({
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
-  // Fed the REVEALED outcome, so a hit announces itself when the roll lands
-  // rather than when the event arrived — see damageToasts.ts.
-  const damageToasts = useDamageToasts(result);
+  // A die is only worth waiting for when one is actually being animated: the
+  // semantic fallback shows no die, and an attack with no dice presentation
+  // (a monster's swing, which settles 'auto') has no landing to wait for.
+  const diePresented = !diceSemanticFallback && diceEvents.length > 0;
+  // `result` goes visible when the die is THROWN, not when it lands. Hold it
+  // until the die is observed at rest — see useDiceSettleGate.ts.
+  const { settledResult, onDiceTelemetry } = useDiceSettleGate({
+    result,
+    diePresented,
+  });
+  const damageToasts = useDamageToasts(settledResult);
   const activeParticipant = participants.find(
     (participant) => participant.active
   );
@@ -248,6 +257,7 @@ export function CombatExperience({
             witnessRole="roller"
             onReleaseRequest={onDiceReleaseRequest}
             onSemanticReleaseRequest={onDiceSemanticReleaseRequest}
+            onDiceTelemetry={onDiceTelemetry}
           />
         ) : (
           <DiceDrawer
@@ -256,6 +266,7 @@ export function CombatExperience({
             rollerName={diceRollerName ?? viewerName}
             semanticFallback={diceSemanticFallback}
             witnessRole="spectator"
+            onDiceTelemetry={onDiceTelemetry}
           />
         )}
 

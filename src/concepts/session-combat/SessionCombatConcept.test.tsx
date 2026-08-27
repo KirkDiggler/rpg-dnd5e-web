@@ -86,6 +86,14 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
 
 import { SessionCombatConcept } from './SessionCombatConcept';
 
+/** The tooltip card a button describes itself by. */
+function tooltipOf(button: HTMLElement): HTMLElement {
+  const id = button.getAttribute('aria-describedby');
+  const tooltip = id ? document.getElementById(id) : null;
+  if (!tooltip) throw new Error('button has no tooltip');
+  return tooltip;
+}
+
 describe('SessionCombatConcept shared-shell checkpoint', () => {
   it('composes all stable gameplay regions through the production-owned shell', () => {
     render(<SessionCombatConcept />);
@@ -115,7 +123,9 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     render(<SessionCombatConcept />);
 
     const longsword = screen.getByRole('button', { name: /Longsword/ });
-    expect(longsword.title).toBe('dnd5e:weapons:longsword');
+    // Authored identity, straight from the provider — the client never maps
+    // a ref to a name of its own.
+    expect(longsword.dataset.attackRef).toBe('dnd5e:weapons:longsword');
     fireEvent.click(longsword);
 
     expect(longsword.getAttribute('aria-pressed')).toBe('true');
@@ -178,7 +188,9 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(screen.getAllByText('10 ft')).toHaveLength(2);
     const longsword = screen.getByRole('button', { name: /Longsword/ });
     expect((longsword as HTMLButtonElement).disabled).toBe(true);
-    expect(longsword.title).toBe('Action: 1 needed, 0 left.');
+    expect(tooltipOf(longsword).textContent).toContain(
+      'Action: 1 needed, 0 left.'
+    );
     expect(
       (screen.getByRole('button', { name: 'End turn' }) as HTMLButtonElement)
         .disabled

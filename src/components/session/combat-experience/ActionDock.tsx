@@ -5,22 +5,12 @@ import {
   type Declaration,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  buildActionTooltip,
+  slotLabel,
+  type ActionTooltip,
+} from './actionTooltip';
 import styles from './CombatExperience.module.css';
-
-function slotLabel(slot: Slot): string {
-  switch (slot) {
-    case Slot.ACTION:
-      return 'Action';
-    case Slot.BONUS:
-      return 'Bonus action';
-    case Slot.REACTION:
-      return 'Reaction';
-    case Slot.NONE:
-      return 'No turn slot';
-    default:
-      return 'Provider slot unavailable';
-  }
-}
 
 function CostBadge({ slot }: { slot: Slot }) {
   const label = slotLabel(slot);
@@ -63,41 +53,71 @@ function declarationIcon(declaration: Declaration): string {
   return '➜';
 }
 
+/**
+ * The hover/focus card. Always in the DOM (CSS reveals it), so it can be the
+ * button's `aria-describedby` target and read by assistive tech without a
+ * pointer — which the native `title` it replaces could not manage reliably.
+ */
+function ActionTooltipCard({
+  tooltip,
+  id,
+}: {
+  tooltip: ActionTooltip;
+  id: string;
+}) {
+  return (
+    <span className={styles.actionTooltip} id={id} role="tooltip">
+      <strong>{tooltip.title}</strong>
+      {tooltip.lines.map((line) => (
+        <span key={line.label}>
+          <em>{line.label}</em>
+          {line.value}
+        </span>
+      ))}
+      {tooltip.refusal && (
+        <span className={styles.actionTooltipRefusal}>{tooltip.refusal}</span>
+      )}
+    </span>
+  );
+}
+
 function ActionDeclaration({
   declaration,
   armed,
   authorityFresh,
+  index,
   onSelect,
 }: {
   declaration: Declaration;
   armed: boolean;
   authorityFresh: boolean;
+  /** Disambiguates the tooltip id: one verb can compile many offers, and two
+   * of them may share a declaration id within a render. */
+  index: number;
   onSelect: (declaration: Declaration) => void;
 }) {
   const label = declarationLabel(declaration);
-  const context =
-    declaration.verb === Verb.ATTACK
-      ? declaration.attack?.ref
-      : declaration.remaining !== undefined
-        ? `${declaration.remaining} ft remaining`
-        : undefined;
   const unavailable = declaration.why?.text || 'Unavailable';
+  const tooltip = buildActionTooltip(declaration);
+  const tooltipId = `action-tooltip-${declaration.id}-${index}`;
 
   return (
     <button
       type="button"
       className={`${styles.actionOffer} ${armed ? styles.actionOfferArmed : ''}`}
       disabled={!authorityFresh || !declaration.available}
-      title={
-        !authorityFresh
-          ? 'Actions may be out of date'
-          : declaration.available
-            ? context
-            : unavailable
-      }
+      // The authored weapon identity, kept addressable without putting a raw
+      // ref in a player's tooltip. Asserting on this is how "the client never
+      // maps refs to names itself" stays checkable.
+      data-attack-ref={declaration.attack?.ref || undefined}
+      aria-describedby={tooltipId}
       aria-pressed={armed}
       onClick={() => onSelect(declaration)}
     >
+      {/* Stale authority is announced ONCE by the dock's own status line;
+          repeating it in every tooltip is noise, and two copies of the same
+          sentence is a worse read than one. */}
+      <ActionTooltipCard tooltip={tooltip} id={tooltipId} />
       <span className={styles.actionIcon} aria-hidden="true">
         {declarationIcon(declaration)}
       </span>
@@ -217,6 +237,7 @@ export function ActionDock({
               declaration={declaration}
               armed={armedDeclarationId === declaration.id}
               authorityFresh={authorityFresh}
+              index={index}
               onSelect={onSelectDeclaration}
             />
           ))}
