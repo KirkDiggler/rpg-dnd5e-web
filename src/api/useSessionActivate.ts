@@ -15,7 +15,19 @@ export interface ActivateParams {
    * deciding something the server already decided.
    */
   declarationId: string;
-  /** Required only when the chosen declaration's targetKind is MEMBER. */
+  /**
+   * Who the ability lands on, for a declaration whose `targetKind` is MEMBER.
+   *
+   * OPTIONAL HERE, ALWAYS SENT ON THE WIRE. `ActivateRequest.target` is a
+   * proto3 scalar, so there is no absent — omitting it here sends `''`, which
+   * IS how the contract spells "no target", and the server reads it that way.
+   *
+   * A NON-EMPTY target on an ability that takes none is refused
+   * (`INVALID_ARGUMENT`) rather than ignored, so this must stay unset for the
+   * six level-1 activations that prompt for nobody. A dropped target would be
+   * a client that believes it aimed Dodge at somebody and a server that knows
+   * better.
+   */
   target?: string;
 }
 

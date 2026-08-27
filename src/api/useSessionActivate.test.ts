@@ -53,7 +53,7 @@ describe('useSessionActivate', () => {
     expect(sent).not.toHaveProperty('abilityRef');
   });
 
-  it('sends a target only when one was given', async () => {
+  it('forwards a target that was given', async () => {
     hoisted.activateFn.mockResolvedValue({} as ActivateResponse);
     const { result } = renderHook(() => useSessionActivate());
 
@@ -68,6 +68,27 @@ describe('useSessionActivate', () => {
 
     expect(hoisted.activateFn).toHaveBeenCalledWith(
       expect.objectContaining({ target: 'bob' })
+    );
+  });
+
+  // The counterpart, and the reason the test above is named "forwards" rather
+  // than "only when given": target is a proto3 scalar, so there is no absent.
+  // Omitting it sends the empty string, which IS how the contract spells "no
+  // target" — and the exact-match assertion in the first test already pins it.
+  it("sends the empty string as the contract's own way of saying no target", async () => {
+    hoisted.activateFn.mockResolvedValue({} as ActivateResponse);
+    const { result } = renderHook(() => useSessionActivate());
+
+    await act(async () => {
+      await result.current.activate({
+        session: 'sess-1',
+        member: 'alice',
+        declarationId: 'v1.dodge',
+      });
+    });
+
+    expect(hoisted.activateFn).toHaveBeenCalledWith(
+      expect.objectContaining({ target: '' })
     );
   });
 
