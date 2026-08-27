@@ -17,6 +17,10 @@ import { MONSTER_FIXTURE_RELEASE_DELAY_MS } from './diceTrayWitnessFixture';
 const attackDieProps: AttackDie3DProps[] = [];
 const presentationCalls: DiceTrayPresentationProps[] = [];
 let suppressSpectatorBoundary = false;
+const originalGetContext = Object.getOwnPropertyDescriptor(
+  HTMLCanvasElement.prototype,
+  'getContext'
+);
 
 vi.mock('../../components/ui/dice/DiceTrayPresentation', async (original) => {
   const actual =
@@ -78,6 +82,10 @@ beforeEach(() => {
   presentationCalls.length = 0;
   capturedPointers = new WeakMap();
   suppressSpectatorBoundary = false;
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: vi.fn(() => null),
+  });
   Object.defineProperties(HTMLElement.prototype, {
     setPointerCapture: {
       configurable: true,
@@ -116,6 +124,12 @@ afterEach(() => {
   delete (HTMLElement.prototype as Partial<HTMLElement>).hasPointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).releasePointerCapture;
   delete (HTMLElement.prototype as Partial<HTMLElement>).getBoundingClientRect;
+  if (originalGetContext)
+    Object.defineProperty(
+      HTMLCanvasElement.prototype,
+      'getContext',
+      originalGetContext
+    );
 });
 
 function observed(props: AttackDie3DProps): AttackDieTelemetry {
@@ -238,6 +252,10 @@ describe('DiceTray3DConceptPanel', () => {
       )
     ).toBeTruthy();
     expect(
+      screen.getByRole('heading', { name: 'Shared table dice feel lab' })
+    ).toBeTruthy();
+    expect(screen.getAllByTestId('roll-group-presentation')).toHaveLength(2);
+    expect(
       (screen.getByRole('radio', { name: 'Player' }) as HTMLInputElement)
         .checked
     ).toBe(true);
@@ -256,6 +274,8 @@ describe('DiceTray3DConceptPanel', () => {
 
     const rollerCall = latestPresentation('Roller');
     const spectatorCall = latestPresentation('Spectator');
+    expect(rollerCall).not.toHaveProperty('mode');
+    expect(spectatorCall).not.toHaveProperty('mode');
     expect(rollerCall.reducedMotion).toBe(true);
     expect(spectatorCall.reducedMotion).toBe(true);
     expect(rollerCall.events).toBe(spectatorCall.events);

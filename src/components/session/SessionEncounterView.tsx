@@ -36,6 +36,7 @@ import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent } from '../game/equipment/equipmentTypes';
 import { HEX_SIZE } from '../hex-grid/hexMath';
+import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { Button } from '../ui/Button';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { buildAtlasPathIndex } from './atlasPath';
@@ -504,6 +505,10 @@ function SessionEncounterScope({
   const ownRoster = roster.get(member);
   const characterName = ownRoster?.name || 'You';
   const classRefId = ownRoster?.classRef || undefined;
+  const mainHandResolution = useMemo(
+    () => resolveMainHandPresentation(characterData?.equipped ?? {}),
+    [characterData?.equipped]
+  );
   const loading = atlasLoading || whereLoading;
   const blockingError = atlasError ?? whereError;
   const privateStatus = characterData
@@ -589,6 +594,7 @@ function SessionEncounterScope({
                 characterId={member}
                 characterName={characterName}
                 classRefId={classRefId}
+                mainHandPresentation={mainHandResolution.presentation}
                 roster={roster}
                 doors={doors}
                 onDoorClick={runEnded === null ? handleDoorClick : undefined}

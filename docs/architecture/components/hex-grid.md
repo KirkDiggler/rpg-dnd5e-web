@@ -29,18 +29,20 @@ confidence: high — verified by reading hexUtils.ts, hexMath.ts, useMovementRan
 
 ## Visual components
 
-| Component                                  | Purpose                                                          |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| `HexTile.tsx` / `InstancedHexTiles.tsx`    | Floor tile geometry (instanced for performance)                  |
-| `HexWall.tsx` / `ShadedHexWall.tsx`        | Wall geometry with cel-shading                                   |
-| `HexDoor.tsx`                              | Door geometry, open/closed state visual                          |
-| `HexEntity.tsx`                            | Entity container — positions `MediumHumanoid` at hex coordinates |
-| `MediumHumanoid.tsx`                       | 12-part OBJ voxel character model assembly                       |
-| `CharacterHair.tsx`, `CharacterWeapon.tsx` | Hair and weapon attachment models                                |
-| `MovementRangeBorder.tsx`                  | BFS range visualization outline                                  |
-| `PathPreview.tsx`                          | A\* path line preview                                            |
-| `TurnOrderOverlay.tsx`                     | Initiative order numbers on entities                             |
-| `ShadedHexFloor.tsx`                       | Floor with shader-based shading                                  |
+| Component                                  | Purpose                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `HexTile.tsx` / `InstancedHexTiles.tsx`    | Floor tile geometry (instanced for performance)                                                                          |
+| `HexWall.tsx` / `ShadedHexWall.tsx`        | Wall geometry with cel-shading                                                                                           |
+| `HexDoor.tsx`                              | Door geometry, open/closed state visual                                                                                  |
+| `HexEntity.tsx`                            | Entity container — positions the resolved class/monster model and threads the local owner's exact main-hand presentation |
+| `ClassCharacterModel.tsx`                  | Animated Synty class/monster GLB clone; attaches a normalized standalone main-hand GLB beneath cloned `Hand_R`           |
+| `mainHandWeapons.ts`                       | Exact 12-ref production presentation catalog plus shared `townfolk-main-hand-v1` socket; no equipment rules              |
+| `MediumHumanoid.tsx`                       | 12-part OBJ voxel character fallback assembly                                                                            |
+| `CharacterHair.tsx`, `CharacterWeapon.tsx` | Legacy OBJ hair/weapon attachments used by the fallback renderer                                                         |
+| `MovementRangeBorder.tsx`                  | BFS range visualization outline                                                                                          |
+| `PathPreview.tsx`                          | A\* path line preview                                                                                                    |
+| `TurnOrderOverlay.tsx`                     | Initiative order numbers on entities                                                                                     |
+| `ShadedHexFloor.tsx`                       | Floor with shader-based shading                                                                                          |
 
 ## Door wall contract
 
@@ -50,6 +52,21 @@ retains `Wall.id` for the existing click -> `Interact(id)` intent path. The
 client only renders the state: the server owns lock checks, prompts, retries,
 and unlock outcomes. Locked doors use a distinct material state in both the
 Synty and fallback renderers; only `DOOR_OPEN` is walkable.
+
+## Class GLB main-hand boundary
+
+`SessionEncounterView` resolves only the acting owner's authoritative
+`equipped.main_hand`. `SessionCanvas` applies that presentation only to the
+local `HexEntity`; `otherMembers` never inherit it. `ClassCharacterModel` keeps
+the class GLB unarmed on disk, clones the standalone weapon, disables its
+raycast, and attaches it under the cloned `Hand_R`. Missing/unknown refs,
+invalid sockets, missing bones, and GLB load failures preserve the character
+and render unarmed.
+
+Fighter, barbarian, monk, and rogue use the same accepted socket. The browser
+contains neither item-specific transforms nor a class × weapon correction
+matrix. Off-hand contact and two-hand posing are not implied by this rigid
+right-hand presentation.
 
 ## MediumHumanoid: no error boundary
 

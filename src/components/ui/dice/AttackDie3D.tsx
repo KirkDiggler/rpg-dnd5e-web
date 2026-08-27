@@ -1,4 +1,4 @@
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import {
   Component,
   useCallback,
@@ -7,29 +7,19 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  Quaternion,
-  type Group,
-  type Material,
-  type Mesh,
-  type MeshBasicMaterial,
-  type WebGLRenderer,
-} from 'three';
+import type { WebGLRenderer } from 'three';
 import type { DiceTrayPhase } from './DiceTray';
+import { RuntimeDiceMesh, type RuntimeDiceMeshSource } from './RuntimeDiceMesh';
 import { applyAttackDieCamera } from './attackDieCamera';
 import type {
   AttackDieMaterialMode,
   AttackDieRuntimeSidecar,
   QuaternionTuple,
 } from './attackDieContract';
-import {
-  patchAttackDieMaterials,
-  type DiceMaterialTreatment,
-} from './attackDieMaterial';
-import { resolveAttackDiePrimitives } from './attackDiePrimitive';
+import type { DiceMaterialTreatment } from './attackDieMaterial';
 import { ownAttackDieRendererLifecycle } from './attackDieRendererLifecycle';
+import type { getAttackDieRuntimeScene } from './attackDieRuntime';
 import {
-  getAttackDieRuntimeScene,
   lockAttackDieRenderer,
   preloadAttackDieRuntime,
   releaseAttackDieRenderer,
@@ -41,23 +31,15 @@ import {
   ChoreographedSolverV1,
 } from './choreographedDiceMotion';
 import type { DiceMotionPose } from './diceMotionSolver';
-import type {
-  DiceRuntimePreset,
-  DiceSettlementEntryV2,
-} from './diceRuntimeManifest';
+import type { DiceSettlementEntryV2 } from './diceRuntimeManifest';
 import {
   getDiceRuntimePresetSnapshot,
   preloadDiceRuntimePreset,
   type DiceRuntimePresetSnapshot,
-  type RuntimeMeshBinding,
 } from './diceRuntimeProvider';
 import { observeUpwardResult } from './diceSettlementObservation';
 import { resolveRuntimeDiceSettlement } from './diceSettlementResolver';
-import {
-  ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE,
-  prepareMaterialFreeCarvedScene,
-  runtimeDiceNormalization,
-} from './materialFreeCarvedMesh';
+import { ORIGINAL_RUNTIME_CAMERA_DISTANCE_SCALE } from './materialFreeCarvedMesh';
 import type { HeldRollGroupState } from './rollGroupGestureController';
 import {
   createNeutralVisualThrowProfile,
@@ -174,16 +156,6 @@ const ORIGINAL_RUNTIME_TREATMENT: DiceMaterialTreatment = Object.freeze({
   metalness: 0.08,
 });
 
-const runtimeObjectIdentities = new WeakMap<object, number>();
-let nextRuntimeObjectIdentity = 1;
-function runtimeObjectIdentity(value: object) {
-  const existing = runtimeObjectIdentities.get(value);
-  if (existing !== undefined) return existing;
-  const identity = nextRuntimeObjectIdentity++;
-  runtimeObjectIdentities.set(value, identity);
-  return identity;
-}
-
 function canCreateWebGLContext() {
   if (typeof document === 'undefined') return true;
   try {
@@ -229,93 +201,6 @@ class RenderBoundary extends Component<
   render() {
     return this.state.failed ? null : this.props.children;
   }
-}
-
-interface RuntimePresetSceneSource {
-  readonly preset: DiceRuntimePreset;
-  readonly scene: NonNullable<DiceRuntimePresetSnapshot['scene']>;
-  readonly binding: RuntimeMeshBinding;
-}
-
-function cloneTokenScene(
-  sidecar: AttackDieRuntimeSidecar | undefined,
-  mode: AttackDieMaterialMode,
-  reducedMotion: boolean,
-  sourceOverride?: ReturnType<typeof getAttackDieRuntimeScene>,
-  runtimeSource?: RuntimePresetSceneSource
-) {
-  if (runtimeSource) {
-    const prepared = prepareMaterialFreeCarvedScene(
-      runtimeSource.scene,
-      runtimeSource.preset,
-      runtimeSource.binding,
-      ORIGINAL_RUNTIME_TREATMENT
-    );
-    return {
-      scene: prepared.scene,
-      normalization: runtimeDiceNormalization(runtimeSource.preset),
-      runtimeSourceId: runtimeObjectIdentity(runtimeSource.scene),
-      runtimeCloneId: runtimeObjectIdentity(prepared.scene),
-      updateShaderTime: () => undefined,
-      dispose: prepared.dispose,
-    };
-  }
-
-  if (!sidecar) throw Error('Lightning runtime sidecar unavailable');
-  const source = sourceOverride ?? getAttackDieRuntimeScene();
-  if (!source) throw Error('runtime scene unavailable');
-  if (source.name === sidecar.selectors.node && !source.parent) {
-    const wrapper = source.clone(false);
-    wrapper.name = 'attack-die-scene-root';
-    wrapper.add(source);
-    sourceOverride = wrapper;
-  }
-  const effectiveSource = sourceOverride ?? source;
-  effectiveSource.traverse((object) => {
-    object.userData.attackDieSourceName = object.name;
-  });
-  const scene = effectiveSource.clone(true);
-  const { body, numeral } = resolveAttackDiePrimitives(
-    scene,
-    sidecar.selectors
-  );
-  const bodyMaterial = (
-    Array.isArray(body.material) ? body.material[0] : body.material
-  ).clone();
-  const numeralMaterial = (
-    Array.isArray(numeral.material) ? numeral.material[0] : numeral.material
-  ).clone();
-  const patched = patchAttackDieMaterials(
-    [bodyMaterial, numeralMaterial],
-    mode,
-    reducedMotion,
-    {
-      bodyMaterial: sidecar.selectors.bodyPrimitive.material,
-      numeralMaterial: sidecar.selectors.numeralPrimitive.material,
-    }
-  );
-  body.material = patched.body;
-  numeral.material = numeralMaterial;
-  const owned = [
-    bodyMaterial,
-    numeralMaterial,
-    ...(patched.owned ? [patched.body] : []),
-  ] as Material[];
-  let disposed = false;
-  return {
-    scene,
-    normalization: undefined,
-    runtimeSourceId: undefined,
-    runtimeCloneId: undefined,
-    updateShaderTime(time: number) {
-      patched.setTime(time);
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      owned.forEach((material) => material.dispose());
-    },
-  };
 }
 
 type RuntimeMotionDiagnostic = Omit<
@@ -381,7 +266,7 @@ function RuntimeDie({
   onMotionDiagnostic,
 }: {
   sidecar?: AttackDieRuntimeSidecar;
-  runtimeSource?: RuntimePresetSceneSource;
+  runtimeSource?: RuntimeDiceMeshSource;
   target: QuaternionTuple;
   mode: AttackDieMaterialMode;
   reducedMotion: boolean;
@@ -402,9 +287,6 @@ function RuntimeDie({
   heldRollGroup?: HeldRollGroupState;
   onMotionDiagnostic?: (diagnostic: RuntimeMotionDiagnostic) => void;
 }) {
-  const group = useRef<Group>(null);
-  const shadow = useRef<Mesh>(null);
-  const shadowMaterial = useRef<MeshBasicMaterial>(null);
   const rollStartedAt = useRef<number | undefined>(undefined);
   const previousPhase = useRef<DiceTrayPhase>(phase);
   const observationSent = useRef(false);
@@ -421,27 +303,7 @@ function RuntimeDie({
     member: { memberIndex: 0, memberCount: 1 },
     held: heldRollGroup,
   });
-  const [bundle, setBundle] = useState<ReturnType<typeof cloneTokenScene>>();
-  useEffect(() => {
-    try {
-      const next = cloneTokenScene(
-        sidecar,
-        mode,
-        reducedMotion,
-        sceneOverride,
-        runtimeSource
-      );
-      setBundle(next);
-      return () => next.dispose();
-    } catch (error) {
-      onFailure(
-        `render setup failed: ${error instanceof Error ? error.message : 'unknown'}`
-      );
-    }
-  }, [mode, onFailure, reducedMotion, runtimeSource, sceneOverride, sidecar]);
-  useFrame(({ clock }) => {
-    poseValidated.current = false;
-    const now = clock.elapsedTime * 1000;
+  const getPose = (now: number) => {
     if (phase === 'rolling') {
       if (
         previousPhase.current !== 'rolling' ||
@@ -465,143 +327,76 @@ function RuntimeDie({
       member: { memberIndex: 0, memberCount: 1 },
       held: heldRollGroup,
     });
-    if (frame.failed) {
-      onFailure('motion observation missed');
-      return;
+    return phase === 'settled' && frame.exactTargetHeld && !frame.observeNow
+      ? { ...frame, observeNow: true }
+      : frame;
+  };
+  const handlePoseApplied = (frame: DiceMotionPose, elapsedMs: number) => {
+    if (!onMotionDiagnostic) return;
+    const previousDiagnostic = motionDiagnostic.current;
+    const moved = renderedPoseChanged(appliedPose.current, frame);
+    const heldApplied =
+      (phase === 'ready' || phase === 'entering') &&
+      heldRollGroup !== undefined;
+    const rollingApplied = phase === 'rolling';
+    const nextDiagnostic: RuntimeMotionDiagnostic = Object.freeze({
+      motionRevision: 'choreographed-v1',
+      heldPoseApplied: previousDiagnostic.heldPoseApplied || heldApplied,
+      heldPoseMoved:
+        previousDiagnostic.heldPoseMoved ||
+        (heldApplied && previousDiagnostic.heldPoseApplied && moved),
+      heldPoseRepeated:
+        previousDiagnostic.heldPoseRepeated ||
+        (heldApplied && previousDiagnostic.heldPoseApplied),
+      rollingPoseApplied:
+        previousDiagnostic.rollingPoseApplied || rollingApplied,
+      rollingPoseMoved:
+        previousDiagnostic.rollingPoseMoved ||
+        (rollingApplied && previousDiagnostic.rollingPoseApplied && moved),
+      reducedHeldPoseRepeated:
+        previousDiagnostic.reducedHeldPoseRepeated ||
+        (reducedMotion && heldApplied && previousDiagnostic.heldPoseApplied),
+      unexpectedMotion:
+        previousDiagnostic.unexpectedMotion ||
+        (reducedMotion &&
+          heldApplied &&
+          previousDiagnostic.heldPoseApplied &&
+          moved) ||
+        (reducedMotion &&
+          rollingApplied &&
+          elapsedMs > 0 &&
+          reducedRollingTargetApplied.current &&
+          moved),
+    });
+    appliedPose.current = frame;
+    if (reducedMotion && rollingApplied && elapsedMs > 0)
+      reducedRollingTargetApplied.current = true;
+    if (motionDiagnosticChanged(previousDiagnostic, nextDiagnostic)) {
+      motionDiagnostic.current = nextDiagnostic;
+      onMotionDiagnostic(nextDiagnostic);
     }
-    const selectedGroup = group.current;
-    const shadowGroup = shadow.current;
-    const ownedShadowMaterial = shadowMaterial.current;
-    if (!selectedGroup || !shadowGroup || !ownedShadowMaterial) return;
-    try {
-      selectedGroup.quaternion.set(...frame.quaternion);
-      selectedGroup.position.set(...frame.translation);
-      shadowGroup.position.set(...frame.shadow.translation);
-      shadowGroup.scale.setScalar(frame.shadow.scale);
-      ownedShadowMaterial.opacity = frame.shadow.opacity;
-      poseValidated.current = true;
-      if (onMotionDiagnostic) {
-        const previousDiagnostic = motionDiagnostic.current;
-        const moved = renderedPoseChanged(appliedPose.current, frame);
-        const heldApplied =
-          (phase === 'ready' || phase === 'entering') &&
-          heldRollGroup !== undefined;
-        const rollingApplied = phase === 'rolling';
-        const nextDiagnostic: RuntimeMotionDiagnostic = Object.freeze({
-          motionRevision: 'choreographed-v1',
-          heldPoseApplied: previousDiagnostic.heldPoseApplied || heldApplied,
-          heldPoseMoved:
-            previousDiagnostic.heldPoseMoved ||
-            (heldApplied && previousDiagnostic.heldPoseApplied && moved),
-          heldPoseRepeated:
-            previousDiagnostic.heldPoseRepeated ||
-            (heldApplied && previousDiagnostic.heldPoseApplied),
-          rollingPoseApplied:
-            previousDiagnostic.rollingPoseApplied || rollingApplied,
-          rollingPoseMoved:
-            previousDiagnostic.rollingPoseMoved ||
-            (rollingApplied && previousDiagnostic.rollingPoseApplied && moved),
-          reducedHeldPoseRepeated:
-            previousDiagnostic.reducedHeldPoseRepeated ||
-            (reducedMotion &&
-              heldApplied &&
-              previousDiagnostic.heldPoseApplied),
-          unexpectedMotion:
-            previousDiagnostic.unexpectedMotion ||
-            (reducedMotion &&
-              heldApplied &&
-              previousDiagnostic.heldPoseApplied &&
-              moved) ||
-            (reducedMotion &&
-              rollingApplied &&
-              elapsedMs > 0 &&
-              reducedRollingTargetApplied.current &&
-              moved),
-        });
-        appliedPose.current = frame;
-        if (reducedMotion && rollingApplied && elapsedMs > 0)
-          reducedRollingTargetApplied.current = true;
-        if (motionDiagnosticChanged(previousDiagnostic, nextDiagnostic)) {
-          motionDiagnostic.current = nextDiagnostic;
-          onMotionDiagnostic(nextDiagnostic);
-        }
-      }
-      if (magicalAnimation && !reducedMotion)
-        bundle?.updateShaderTime(clock.elapsedTime);
-      const observeNow =
-        (frame.observeNow || (phase === 'settled' && frame.exactTargetHeld)) &&
-        !observationSent.current;
-      if (!observeNow) return;
-      observationSent.current = true;
-      const finalWorldQuaternion = selectedGroup.getWorldQuaternion(
-        new Quaternion()
-      );
-      const worldQuaternion: QuaternionTuple = [
-        finalWorldQuaternion.x,
-        finalWorldQuaternion.y,
-        finalWorldQuaternion.z,
-        finalWorldQuaternion.w,
-      ];
-      onFrame(
-        observeNow === frame.observeNow ? frame : { ...frame, observeNow },
-        worldQuaternion,
-        bundle?.runtimeSourceId !== undefined &&
-          bundle.runtimeCloneId !== undefined
-          ? {
-              runtimeSourceId: bundle.runtimeSourceId,
-              runtimeCloneId: bundle.runtimeCloneId,
-            }
-          : undefined
-      );
-    } catch (error) {
-      onFailure(
-        `motion pose application failed: ${error instanceof Error ? error.message : 'unknown'}`
-      );
-    }
-  });
-  if (!bundle) return null;
+  };
+
   return (
-    <>
-      <group
-        ref={group}
-        name="attack-die-selected-group"
-        quaternion={initialPose.quaternion}
-        position={initialPose.translation}
-      >
-        {bundle.normalization ? (
-          <group
-            name="attack-die-runtime-normalization"
-            scale={bundle.normalization.scale}
-          >
-            <group
-              name="attack-die-runtime-recenter"
-              position={bundle.normalization.position}
-            >
-              <primitive object={bundle.scene} />
-            </group>
-          </group>
-        ) : (
-          <primitive object={bundle.scene} />
-        )}
-      </group>
-      <mesh
-        ref={shadow}
-        name="attack-die-shadow"
-        position={initialPose.shadow.translation}
-        rotation={[-Math.PI / 2, 0, 0]}
-        scale={initialPose.shadow.scale}
-      >
-        <circleGeometry args={[0.34, 48]} />
-        <meshBasicMaterial
-          ref={shadowMaterial}
-          name="attack-die-shadow-material"
-          color="#05070c"
-          transparent
-          opacity={initialPose.shadow.opacity}
-          depthWrite={false}
-        />
-      </mesh>
-    </>
+    <RuntimeDiceMesh
+      source={runtimeSource}
+      sidecar={sidecar}
+      mode={mode}
+      reducedMotion={reducedMotion}
+      sceneOverride={sceneOverride}
+      treatment={runtimeSource ? ORIGINAL_RUNTIME_TREATMENT : undefined}
+      initialPose={initialPose}
+      getPose={getPose}
+      poseValidated={poseValidated}
+      onPoseApplied={handlePoseApplied}
+      onFailure={onFailure}
+      magicalAnimation={magicalAnimation}
+      onFrame={(frame, worldQuaternion, runtimeIdentities) => {
+        if (observationSent.current) return;
+        observationSent.current = true;
+        onFrame(frame, worldQuaternion, runtimeIdentities);
+      }}
+    />
   );
 }
 
@@ -696,7 +491,7 @@ function AttackDieToken({
   const sidecar = runtimeProvider
     ? undefined
     : (sidecarOverride ?? legacyLock?.sidecar);
-  const runtimeSource = useMemo<RuntimePresetSceneSource | undefined>(() => {
+  const runtimeSource = useMemo<RuntimeDiceMeshSource | undefined>(() => {
     if (
       runtimeSnapshot?.status !== 'ready' ||
       !runtimeSnapshot.preset ||

@@ -51,5 +51,22 @@
       "src/components/session/useSessionWalk.ts",
       "rpg-dnd5e-web#822"
     ]
+  },
+  {
+    "type": "pattern",
+    "id": "gate-r3f-render-witnesses-by-renderer-frame-advancement",
+    "created": "2026-08-27",
+    "updated": "2026-08-27",
+    "status": "active",
+    "name": "Gate R3F rendered-pose witnesses by renderer frame advancement",
+    "description": "React Three Fiber useFrame callbacks run before the renderer draws the mutations applied in that callback. For completion, settlement, or rendered-attachment truth, retain the applied pose with gl.info.render.frame and emit its witness only when a later frame observes a greater renderer frame counter. Fence the pending witness to callback, die, role, and generation identity so rerenders or replaced captures cannot emit stale facts.",
+    "example": "RuntimeDiceMesh exposes onFrameDrawn for settlement and onPoseDrawn for held attachment after renderer frame advancement; RollGroupRuntimeMember publishes target and grabbed-point witnesses only through those seams.",
+    "anti_pattern": "Treating a pose mutation or a useFrame callback as proof that the user-visible frame was rendered.",
+    "domain": "web/r3f-render-lifecycle",
+    "references": [
+      "src/components/ui/dice/RuntimeDiceMesh.tsx",
+      "src/components/ui/dice/RollGroupRuntimeMember.tsx",
+      "rpg-dnd5e-web#826"
+    ]
   }
 ]

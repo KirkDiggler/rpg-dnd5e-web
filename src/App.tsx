@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { getPlayerId } from './api/auth';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
+import { useLobbyCharacterId } from './api/useLobbyCharacterId';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
 import './App.css';
 import { shouldRenderGlobalDevTools, type AppView } from './appView';
@@ -15,6 +16,7 @@ import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
+import { ErrorDisplay } from './components/ui/Feedback';
 import { ConceptsView } from './concepts/ConceptsView';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
@@ -119,17 +121,32 @@ function AppContent() {
   // mirroring /playtest's dev-only ?encounterId= gate but server-driven and
   // available for real players.
   const myActiveLobby = useMyActiveLobby(playerId);
+  const resumedLobbyCharacter = useLobbyCharacterId(
+    myActiveLobby.data?.encounterId ? myActiveLobby.data.lobbyId : '',
+    playerId ?? ''
+  );
+  const resumeLoading =
+    myActiveLobby.loading ||
+    Boolean(myActiveLobby.data?.encounterId && resumedLobbyCharacter.loading);
+  const resumeIdentityError =
+    myActiveLobby.data?.encounterId &&
+    !resumedLobbyCharacter.loading &&
+    !resumedLobbyCharacter.characterId
+      ? (resumedLobbyCharacter.error?.message ??
+        'The running encounter has no recoverable character seat.')
+      : null;
   useEffect(() => {
     if (hasConceptDeepLink()) return; // deep link owns the view
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
+      if (resumedLobbyCharacter.loading || resumeIdentityError) return;
       setResumeEncounterId(myActiveLobby.data.encounterId);
       setCurrentView('lobby');
     } else if (myActiveLobby.data.lobbyId) {
       setResumeLobbyId(myActiveLobby.data.lobbyId);
       setCurrentView('lobby');
     }
-  }, [myActiveLobby.data]);
+  }, [myActiveLobby.data, resumedLobbyCharacter.loading, resumeIdentityError]);
 
   const handleCreateCharacter = async () => {
     try {
@@ -325,7 +342,7 @@ function AppContent() {
         ) : currentView === 'lobby' &&
           (lobbyCharacterId || resumeEncounterId || resumeLobbyId) ? (
           <GameView
-            characterId={lobbyCharacterId ?? undefined}
+            characterId={lobbyCharacterId ?? resumedLobbyCharacter.characterId}
             playerId={playerId || 'test-player'}
             onBack={handleBackToHome}
             initialEncounterId={resumeEncounterId ?? undefined}
@@ -339,7 +356,14 @@ function AppContent() {
             characterId={selectedType === 'character' ? selectedId : null}
             onPlay={handlePlayAuthored}
           />
-        ) : currentView === 'home' && myActiveLobby.loading ? (
+        ) : currentView === 'home' && resumeIdentityError ? (
+          <div className="flex items-center justify-center h-screen">
+            <ErrorDisplay
+              title="Unable to resume the running encounter"
+              message={resumeIdentityError}
+            />
+          </div>
+        ) : currentView === 'home' && resumeLoading ? (
           // Resume-after-refresh (#444): hold Home's content one beat while
           // GetMyActiveLobby resolves, so a resumable session (routed via
           // the effect above, which flips currentView to 'lobby') never

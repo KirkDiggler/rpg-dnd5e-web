@@ -51,10 +51,19 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Canvas } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import * as THREE from 'three';
+import { readCameraDials } from '../hex-grid/cameraDials';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
+import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
 import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
@@ -105,6 +114,9 @@ export interface SessionCanvasProps {
   characterName: string;
   /** Public roster body ref; private CharacterData does not choose models. */
   classRefId: string | undefined;
+  /** Owner-authoritative equipped main-hand presentation for the local player.
+   * Never applied to `otherMembers`, whose equipment is not public today. */
+  mainHandPresentation?: MainHandPresentation;
   myPosition: CubeCoord;
   /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
    * (`MoveResponse.steps`, already bridged to cube coords) — passed
@@ -174,6 +186,9 @@ export interface SessionCanvasProps {
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
+  /** Optional presentation-only R3F layer. Concepts use this to prove
+   * temporary world-space effects without teaching SessionCanvas game rules. */
+  presentationLayer?: ReactNode;
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -185,6 +200,7 @@ export function SessionScene({
   characterId,
   characterName,
   classRefId,
+  mainHandPresentation,
   myPosition,
   movePath,
   moveSeq,
@@ -199,6 +215,7 @@ export function SessionScene({
   attackableTargets,
   pathIndex = null,
   turnLocked = false,
+  presentationLayer,
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
@@ -224,7 +241,17 @@ export function SessionScene({
     () => new THREE.Vector3(target.x, 0, target.z),
     [target.x, target.z]
   );
-  useCameraControls({ target: initialTargetRef.current, focusTarget });
+  const cameraDials = useMemo(() => readCameraDials(), []);
+  useCameraControls({
+    target: initialTargetRef.current,
+    focusTarget,
+    minZoom: cameraDials.zoomMin,
+    maxZoom: cameraDials.zoomMax,
+    curve: cameraDials.curve,
+    perspective: cameraDials.perspective,
+    minDistance: cameraDials.minDistance,
+    maxDistance: cameraDials.maxDistance,
+  });
 
   const attackableSet = useMemo(
     () => new Set(attackableTargets ?? []),
@@ -399,6 +426,7 @@ export function SessionScene({
         <planeGeometry args={[GROUND_PLANE_SIZE, GROUND_PLANE_SIZE]} />
         <meshBasicMaterial visible={false} />
       </mesh>
+      {presentationLayer}
       {attackableRingPositions.map((member) => (
         <PathPreview
           key={`attackable-ring-${member.subject}`}
@@ -420,6 +448,7 @@ export function SessionScene({
         type="player"
         hexSize={hexSize}
         classRefId={classRefId}
+        mainHandPresentation={mainHandPresentation}
         movePath={movePath}
         moveSeq={moveSeq}
         onMovementPresentationComplete={(_entityId, completedMoveSeq) =>
@@ -471,17 +500,26 @@ export function SessionScene({
 
 /**
  * The Canvas wrapper. Orthographic isometric camera at the same
- * `CAMERA_OFFSET`/zoom the rest of the game uses (`HexGrid.tsx`), so the
- * session route reads as the same game, not a different renderer —
- * `useCameraControls` (WASD/Q-E/wheel/right-drag) takes over placement
- * from there exactly as it does in `HexGrid`.
+ * `CAMERA_OFFSET` and shared zoom/pitch treatment as `HexGrid`, so the session
+ * route keeps the approved tabletop planning view when pulled out and flattens
+ * toward the minis when zoomed in. `useCameraControls`
+ * (WASD/Q-E/wheel/right-drag) takes over placement from there.
  */
 export function SessionCanvas(props: SessionCanvasProps) {
+  const cameraDials = useMemo(() => readCameraDials(), []);
   return (
     <Canvas
-      orthographic
+      key={cameraDials.perspective ? 'persp' : 'ortho'}
+      orthographic={!cameraDials.perspective}
       frameloop="demand"
-      camera={{ position: CAMERA_OFFSET, near: 0.1, far: 1000, zoom: 80 }}
+      camera={{
+        position: CAMERA_OFFSET,
+        near: 0.1,
+        far: 1000,
+        ...(cameraDials.perspective
+          ? { fov: cameraDials.fovDeg }
+          : { zoom: cameraDials.zoomStart }),
+      }}
       style={{ width: '100%', height: '100%' }}
     >
       <SessionScene {...props} />

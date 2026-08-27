@@ -8,6 +8,9 @@ export interface UpwardResultObservation {
 }
 
 const D20_RESULT_COUNT = 20;
+const D20_SUPPORTED_RESULTS = Object.freeze(
+  Array.from({ length: D20_RESULT_COUNT }, (_, index) => index + 1)
+);
 const NORMALIZATION_TOLERANCE = 0.000001;
 const MINIMUM_UPWARD_MARGIN = 0.2;
 
@@ -47,23 +50,35 @@ function transformedUpDot(
   return Math.max(-1, Math.min(1, transformedY));
 }
 
-export function observeUpwardResult(
+function observeUpwardPresetResultInternal(
   entries: Readonly<Record<string, DiceSettlementEntryV2>>,
-  worldQuaternion: readonly [number, number, number, number]
+  supportedResults: readonly number[],
+  worldQuaternion: readonly [number, number, number, number],
+  resultSetLabel: string,
+  exactResultSetDescription: string
 ): UpwardResultObservation {
   finiteUnitTuple(worldQuaternion, 4, 'world quaternion');
 
-  if (entries === null || typeof entries !== 'object' || Array.isArray(entries))
-    throw Error('d20 result set must be a complete object');
-  const keys = Reflect.ownKeys(entries);
   if (
-    keys.length !== D20_RESULT_COUNT ||
-    keys.some((key) => typeof key !== 'string') ||
-    !Array.from({ length: D20_RESULT_COUNT }, (_, index) =>
-      String(index + 1)
-    ).every((result) => keys.includes(result))
+    !Array.isArray(supportedResults) ||
+    supportedResults.length === 0 ||
+    supportedResults.some(
+      (result, index) =>
+        !Number.isInteger(result) || supportedResults.indexOf(result) !== index
+    )
   )
-    throw Error('d20 result set must contain exactly results 1 through 20');
+    throw Error(`${resultSetLabel} must contain unique integer results`);
+
+  if (entries === null || typeof entries !== 'object' || Array.isArray(entries))
+    throw Error(`${resultSetLabel} must be a complete object`);
+  const keys = Reflect.ownKeys(entries);
+  const expectedKeys = supportedResults.map(String);
+  if (
+    keys.length !== expectedKeys.length ||
+    keys.some((key) => typeof key !== 'string') ||
+    !expectedKeys.every((result) => keys.includes(result))
+  )
+    throw Error(`${resultSetLabel} must contain ${exactResultSetDescription}`);
 
   const ranked = keys.map((key) => {
     const result = Number(key);
@@ -87,4 +102,31 @@ export function observeUpwardResult(
     runnerUpDot: runnerUp.upDot,
     margin,
   });
+}
+
+export function observeUpwardPresetResult(
+  entries: Readonly<Record<string, DiceSettlementEntryV2>>,
+  supportedResults: readonly number[],
+  worldQuaternion: readonly [number, number, number, number]
+): UpwardResultObservation {
+  return observeUpwardPresetResultInternal(
+    entries,
+    supportedResults,
+    worldQuaternion,
+    'preset result set',
+    'the supported results'
+  );
+}
+
+export function observeUpwardResult(
+  entries: Readonly<Record<string, DiceSettlementEntryV2>>,
+  worldQuaternion: readonly [number, number, number, number]
+): UpwardResultObservation {
+  return observeUpwardPresetResultInternal(
+    entries,
+    D20_SUPPORTED_RESULTS,
+    worldQuaternion,
+    'd20 result set',
+    'exactly results 1 through 20'
+  );
 }

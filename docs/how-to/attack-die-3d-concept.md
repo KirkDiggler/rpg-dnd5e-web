@@ -27,11 +27,53 @@ production transport, profile, or asset-ownership surface. `CombatPresentation`,
 > Canvas, and WebGL context. This proves component inputs and local witnessing,
 > not production transport.
 >
-> **SCOPE:** The lab renders one attack d20. It contains no production combat
-> FIFO, encounter, network, loadout, inventory, persistence, or damage-dice
-> wiring. Stone 1 graduates only the local tactile controller, compact shared
-> visual throw profile, deterministic visual solver, and paired witness proof;
-> it does not move authoritative result or transport ownership.
+> **SCOPE:** The Stone 1 pane renders one attack d20. The Task 8 substage adds
+> fixture-only multi-die attack/damage groups without production combat FIFO,
+> encounter, network, loadout, inventory, persistence, or game-rule wiring.
+> Stone 1 graduates only the local tactile controller, compact shared visual
+> throw profile, deterministic visual solver, and paired witness proof; Task 8
+> remains a local feel bench and does not move authoritative result or transport
+> ownership.
+
+## Shared-table feel review (web #826 Task 8)
+
+Launch the exact Tray route:
+
+```bash
+npm run dev -- --host 127.0.0.1 --port 3010
+# open http://127.0.0.1:3010/?concept=attack-die-3d&attackDieStage=tray
+```
+
+The existing Stone 1 gameplay-placement pane remains first and continues to
+publish `window.__stone1TrayEvidence`. The separate **Shared table dice feel
+lab** below it mounts two literal shared roll-group presentations and publishes
+only generation-fenced rendered attachment facts through
+`window.__sharedTableDiceEvidence`.
+
+1. Throw Weighty, Energetic, and Physical with every scenario in the select.
+2. Confirm Roller alone has release controls and Witness sees the same simulated
+   delivery.
+3. Watch the two-witness barrier: verdict/damage never advances after only one
+   exact renderer generation completes.
+4. Check that Great Weapon Fighting gives only the supplied affected dice a
+   high-contrast flash, then verify ordered modifier toasts, the supplied final
+   total, missing/duplicate delivery, reduced motion, and semantic provider
+   fallback. With assistive output enabled, confirm originals include source and
+   contributor, each supplied reroll includes before/after and reason, and the
+   supplied modifier/total/impact facts are announced once in order.
+5. At `1024px` and below, confirm controls remain above both panes. At narrow
+   touch width, use the accessible Roller/Witness tabs and confirm Replay stays
+   reachable without scrolling past the tray.
+
+`sharedTableDiceDelivery.ts` is the only missing-release scheduler. The strict
+runtime scenario parser validates the complete player/set/group/contributor and
+preset graph before either tray mounts; malformed records show a refusal rather
+than partial fixture content. Scenario, candidate, reduced-motion, and Replay
+changes replace prior events, cancel old local timers, and clear the Task 8
+evidence bridge. Non-d20 carved assets are
+explicitly provisional. See `src/concepts/attack-die-3d/CONTRACT.md` and
+`docs/evidence/826-shared-table-dice/README.md`; both retain **Kirk feel gate:
+pending live review** until Kirk throws the stage.
 
 ## Stages
 
