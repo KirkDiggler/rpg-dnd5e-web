@@ -111,4 +111,10 @@ describe('cryptPropShowcaseDoc', () => {
       'crypt-prop-showcase'
     );
   });
+
+  it('returns the crypt lighting showcase for the crypt-lighting fixture query', () => {
+    expect(sandboxDocForSearch('?authorFixture=crypt-lighting').key).toBe(
+      'crypt-lighting-showcase'
+    );
+  });
 });
