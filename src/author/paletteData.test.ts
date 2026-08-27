@@ -1,6 +1,8 @@
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS } from '@/components/hex-grid/propManifest';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { DUNGEON_LIGHT_SOURCE_REFS } from '../rendering/dungeonLightSources';
 import {
   categoryForProp,
   PALETTE_MONSTERS,
@@ -35,20 +37,18 @@ describe('PALETTE_PROPS (2026-08-07 palette content sync — full manifest vocab
   });
 });
 
-describe('categoryForProp — Lighting category (8 keys, game-derived)', () => {
-  const lightingRefs = [
-    'dnd5e:props:brazier',
-    'dnd5e:props:candles',
-    'dnd5e:props:glowing-orb',
-    'dnd5e:props:candle-stand',
-    'dnd5e:props:lantern',
-    'dnd5e:props:torch-ornate',
-    'dnd5e:props:rune-marker',
-    'dnd5e:props:rune-pillar',
-  ];
-
-  it.each(lightingRefs)('%s categorizes as lighting', (ref) => {
+describe('categoryForProp — Lighting category (8 keys, shared manifest)', () => {
+  it.each(DUNGEON_LIGHT_SOURCE_REFS)('%s categorizes as lighting', (ref) => {
     expect(categoryForProp(ref)).toBe('lighting');
+  });
+
+  it('derives lighting authority from dungeonLightSources.ts rather than a duplicate table', () => {
+    for (const ref of DUNGEON_LIGHT_SOURCE_REFS) {
+      expect(categoryForProp(ref)).toBe('lighting');
+    }
+    expect(readFileSync('src/author/paletteData.ts', 'utf8')).not.toContain(
+      'LIGHTING_PROP_KEYS'
+    );
   });
 
   it('plain torch (TorchStick) is NOT lighting — the game itself does not classify it as a light source', () => {
