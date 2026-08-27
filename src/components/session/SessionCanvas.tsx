@@ -234,6 +234,9 @@ export function SessionScene({
     minZoom: cameraDials.zoomMin,
     maxZoom: cameraDials.zoomMax,
     curve: cameraDials.curve,
+    perspective: cameraDials.perspective,
+    minDistance: cameraDials.minDistance,
+    maxDistance: cameraDials.maxDistance,
   });
 
   const attackableSet = useMemo(
@@ -493,13 +496,16 @@ export function SessionCanvas(props: SessionCanvasProps) {
   const cameraDials = useMemo(() => readCameraDials(), []);
   return (
     <Canvas
-      orthographic
+      key={cameraDials.perspective ? 'persp' : 'ortho'}
+      orthographic={!cameraDials.perspective}
       frameloop="demand"
       camera={{
         position: CAMERA_OFFSET,
         near: 0.1,
         far: 1000,
-        zoom: cameraDials.zoomStart,
+        ...(cameraDials.perspective
+          ? { fov: cameraDials.fovDeg }
+          : { zoom: cameraDials.zoomStart }),
       }}
       style={{ width: '100%', height: '100%' }}
     >

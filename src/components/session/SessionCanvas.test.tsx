@@ -16,7 +16,7 @@ import {
 import { useThree } from '@react-three/fiber';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { readFileSync } from 'node:fs';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
@@ -50,6 +50,7 @@ beforeEach(() => {
 afterEach(() => {
   gltfMockState.failedUrls.clear();
   gltfMockState.pendingUrls.clear();
+  window.history.replaceState({}, '', '/');
   vi.unstubAllGlobals();
 });
 
@@ -175,14 +176,14 @@ function CameraProbe({
   onReady,
   onWheelListener,
 }: {
-  onReady: (camera: THREE.OrthographicCamera) => void;
+  onReady: (camera: THREE.Camera) => void;
   onWheelListener?: (listener: EventListener) => void;
 }) {
   const { camera, gl } = useThree();
-  const patched = useRef(false);
-  if (!patched.current && onWheelListener) {
+  useLayoutEffect(() => {
+    if (!onWheelListener) return;
     const canvas = gl.domElement;
-    const addEventListener = canvas.addEventListener.bind(canvas);
+    const addEventListener = canvas.addEventListener;
     canvas.addEventListener = ((
       type: string,
       listener: EventListenerOrEventListenerObject,
@@ -191,12 +192,14 @@ function CameraProbe({
       if (type === 'wheel' && typeof listener === 'function') {
         onWheelListener(listener);
       }
-      addEventListener(type, listener, options);
+      addEventListener.call(canvas, type, listener, options);
     }) as typeof canvas.addEventListener;
-    patched.current = true;
-  }
+    return () => {
+      canvas.addEventListener = addEventListener;
+    };
+  }, [gl, onWheelListener]);
   useEffect(() => {
-    onReady(camera as THREE.OrthographicCamera);
+    onReady(camera);
   }, [camera, onReady]);
   return null;
 }
@@ -427,8 +430,8 @@ describe('SessionScene', () => {
   it('steps through overview, tabletop, tactical, shoulder, and fixed-angle detail bands', async () => {
     let camera: THREE.OrthographicCamera | undefined;
     const wheelListeners: EventListener[] = [];
-    const onReady = (readyCamera: THREE.OrthographicCamera) => {
-      camera = readyCamera;
+    const onReady = (readyCamera: THREE.Camera) => {
+      camera = readyCamera as THREE.OrthographicCamera;
     };
     const testCamera = new THREE.OrthographicCamera(
       -640,
@@ -518,6 +521,52 @@ describe('SessionScene', () => {
     await wheelOnce(-100, 10);
     expect(camera!.zoom).toBe(110);
     expect(polarFromVertical(camera!)).toBeCloseTo((62 * Math.PI) / 180, 5);
+
+    await renderer.unmount();
+  });
+
+  it('preserves the shared perspective projection opt-in on the session route', async () => {
+    window.history.replaceState({}, '', '/?camera=persp');
+    let camera: THREE.PerspectiveCamera | undefined;
+    const wheelListeners: EventListener[] = [];
+    const testCamera = new THREE.PerspectiveCamera(24, 16 / 9, 0.1, 1000);
+    testCamera.position.set(10, 20, 10);
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <>
+        <CameraProbe
+          onReady={(readyCamera) => {
+            camera = readyCamera as THREE.PerspectiveCamera;
+          }}
+          onWheelListener={(listener) => wheelListeners.push(listener)}
+        />
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+        />
+      </>,
+      { camera: testCamera }
+    );
+
+    expect(camera).toBe(testCamera);
+    expect(polarFromVertical(camera!)).toBeCloseTo(
+      (38.21788129226145 * Math.PI) / 180,
+      5
+    );
+
+    const event = new WheelEvent('wheel', {
+      deltaY: -100,
+      cancelable: true,
+    });
+    wheelListeners.forEach((listener) => listener(event));
+    expect(polarFromVertical(camera!)).toBeCloseTo(
+      (49.58527422990233 * Math.PI) / 180,
+      5
+    );
 
     await renderer.unmount();
   });

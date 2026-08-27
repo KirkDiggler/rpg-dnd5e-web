@@ -178,9 +178,16 @@ export function parseCameraDials(search: string): CameraDials {
 
   const polarFar = deg(pitchFarDeg ?? DEFAULT_PITCH_FAR_DEG);
   const polarNear = deg(pitchNearDeg ?? DEFAULT_PITCH_NEAR_DEG);
-  const zoomMin = num(params, 'zoomMin') ?? DEFAULT_ZOOM_MIN;
-  const zoomMax = num(params, 'zoomMax') ?? DEFAULT_ZOOM_MAX;
-  const zoomStart = num(params, 'zoomStart') ?? DEFAULT_ZOOM_START;
+  const requestedZoomMin = num(params, 'zoomMin') ?? DEFAULT_ZOOM_MIN;
+  const requestedZoomMax = num(params, 'zoomMax') ?? DEFAULT_ZOOM_MAX;
+  const requestedZoomStart = num(params, 'zoomStart') ?? DEFAULT_ZOOM_START;
+  const zoomMin = Math.min(requestedZoomMin, requestedZoomMax);
+  const zoomMax = Math.max(requestedZoomMin, requestedZoomMax);
+  const zoomStart = Math.max(zoomMin, Math.min(zoomMax, requestedZoomStart));
+  const tabletopProgress =
+    (DEFAULT_TABLETOP_ZOOM - DEFAULT_ZOOM_MIN) /
+    (DEFAULT_ZOOM_START - DEFAULT_ZOOM_MIN);
+  const tabletopZoom = zoomMin + (zoomStart - zoomMin) * tabletopProgress;
   const shoulderZoom = zoomStart + (zoomMax - zoomStart) / 2;
 
   return {
@@ -195,7 +202,7 @@ export function parseCameraDials(search: string): CameraDials {
           focusLead: DEFAULT_CLOSE_FOCUS_LEAD,
           bands: [
             { zoom: zoomMin, polar: polarFar, focusLead: 0 },
-            { zoom: DEFAULT_TABLETOP_ZOOM, polar: polarFar, focusLead: 0 },
+            { zoom: tabletopZoom, polar: polarFar, focusLead: 0 },
             {
               zoom: zoomStart,
               polar: (polarFar + polarNear) / 2,
