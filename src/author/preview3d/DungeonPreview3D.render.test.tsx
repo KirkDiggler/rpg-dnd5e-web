@@ -76,11 +76,11 @@ describe('DungeonPreview3D rendered shell parity', () => {
     expect(container.querySelectorAll('ambientLight')).toHaveLength(1);
     expect(
       container.querySelector('ambientLight')?.getAttribute('intensity')
-    ).toBe('0.08');
+    ).toBe('0.2');
     expect(container.querySelectorAll('directionalLight')).toHaveLength(1);
     expect(
       container.querySelector('directionalLight')?.getAttribute('intensity')
-    ).toBe('0.05');
+    ).toBe('0.1');
     const pointLight = container.querySelector('pointLight');
     expect(container.querySelectorAll('pointLight')).toHaveLength(1);
     expect(pointLight?.getAttribute('color')).toBe('#ff9d52');

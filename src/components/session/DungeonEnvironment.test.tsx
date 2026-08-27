@@ -103,8 +103,8 @@ describe('DungeonEnvironment', () => {
         (node) => node.instance?.name === 'environment-prop'
       )
     ).toHaveLength(1);
-    expect(light(renderer, 'AmbientLight').instance.intensity).toBe(0.08);
-    expect(light(renderer, 'DirectionalLight').instance.intensity).toBe(0.05);
+    expect(light(renderer, 'AmbientLight').instance.intensity).toBe(0.2);
+    expect(light(renderer, 'DirectionalLight').instance.intensity).toBe(0.1);
     expect(pointLights(renderer)).toHaveLength(1);
 
     const shell = renderer.scene.find(

@@ -72,8 +72,8 @@ describe('buildDungeonLightingFacts', () => {
     ).toHaveLength(1);
     expect(resolveDungeonLighting(facts, { x: 0, z: 0 })).toMatchObject({
       mode: 'crypt',
-      ambientIntensity: 0.08,
-      directionalIntensity: 0.05,
+      ambientIntensity: 0.2,
+      directionalIntensity: 0.1,
       directionalPosition: [10, 20, 10],
       floorExposureByCell: new Map([['0,0,0', 0.6]]),
     });

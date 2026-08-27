@@ -306,8 +306,8 @@ describe('SessionScene', () => {
     );
     const renderer = await renderSession(cryptScene);
 
-    expect(lightIntensity(renderer, 'AmbientLight')).toBe(0.08);
-    expect(lightIntensity(renderer, 'DirectionalLight')).toBe(0.05);
+    expect(lightIntensity(renderer, 'AmbientLight')).toBe(0.2);
+    expect(lightIntensity(renderer, 'DirectionalLight')).toBe(0.1);
     expect(
       renderer.scene.findAll(
         (node) =>

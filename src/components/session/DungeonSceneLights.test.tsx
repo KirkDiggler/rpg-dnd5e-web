@@ -39,8 +39,8 @@ describe('DungeonSceneLights', () => {
   it('renders every plan point light with exact values and decay two without shadows', async () => {
     const plan: DungeonLightingPlan = {
       mode: 'crypt',
-      ambientIntensity: 0.08,
-      directionalIntensity: 0.05,
+      ambientIntensity: 0.2,
+      directionalIntensity: 0.1,
       directionalPosition: [10, 20, 10],
       pointLights: [
         {
