@@ -22,6 +22,8 @@ import type {
   DiceRollGroupPresentationProps,
   RollGroupAttachmentDiagnostic,
 } from '../../components/ui/dice/RollGroupPresentation';
+import { DungeonFloorPhysicsSpikeLauncher } from './DungeonFloorPhysicsSpikeLauncher';
+import { PhysicsTraySpikeLauncher } from './PhysicsTraySpikeLauncher';
 import { createSharedTableDiceDeliveryHost } from './sharedTableDiceDelivery';
 import {
   createSharedTableDiceEvidencePublisher,
@@ -517,6 +519,8 @@ function ValidatedSharedTableDiceStage({
         reducedMotion={reducedMotion || scenarioId === 'reduced-motion'}
         run={run}
       />
+      <PhysicsTraySpikeLauncher />
+      <DungeonFloorPhysicsSpikeLauncher />
     </section>
   );
 }

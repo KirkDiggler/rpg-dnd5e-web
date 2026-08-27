@@ -51,7 +51,14 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Canvas } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import * as THREE from 'three';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
@@ -176,6 +183,9 @@ export interface SessionCanvasProps {
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
+  /** Optional presentation-only R3F layer. Concepts use this to prove
+   * temporary world-space effects without teaching SessionCanvas game rules. */
+  presentationLayer?: ReactNode;
 }
 
 /** Renders inside the Canvas — `useCameraControls` needs the R3F context
@@ -201,6 +211,7 @@ export function SessionScene({
   attackableTargets,
   pathIndex = null,
   turnLocked = false,
+  presentationLayer,
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
@@ -396,6 +407,7 @@ export function SessionScene({
         <meshBasicMaterial visible={false} />
       </mesh>
       <DungeonShell scene={scene} doors={doors} onDoorClick={onDoorClick} />
+      {presentationLayer}
       {scene.props.map((prop, index) => (
         <AtlasPropModel
           key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}

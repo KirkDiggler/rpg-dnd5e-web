@@ -81,6 +81,81 @@ function expectedRestTranslation(layout: RollGroupMemberLayout) {
   return [layout.center[0], 0, layout.center[1]] as const;
 }
 
+function directionalThrow(
+  releaseDirection: readonly [number, number],
+  releaseSpeed = 0.9
+) {
+  return createVisualThrowProfile({
+    releasePosition: [0.5, 0.5],
+    releaseDirection,
+    releaseSpeed,
+    shakeEnergy: 0,
+    spinBias: 0,
+    motionSeed: 0x51de_c710,
+  });
+}
+
+function multiplyTestQuaternions(
+  first: QuaternionTuple,
+  second: QuaternionTuple
+): QuaternionTuple {
+  const [x1, y1, z1, w1] = first;
+  const [x2, y2, z2, w2] = second;
+  return [
+    w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+    w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+    w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+    w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+  ];
+}
+
+function relativeRotationAngle(
+  start: QuaternionTuple,
+  next: QuaternionTuple
+): number {
+  const dot = Math.abs(
+    start[0] * next[0] +
+      start[1] * next[1] +
+      start[2] * next[2] +
+      start[3] * next[3]
+  );
+  return 2 * Math.acos(Math.min(1, Math.max(0, dot)));
+}
+
+function relativeRotationAxis(
+  start: QuaternionTuple,
+  next: QuaternionTuple
+): readonly [number, number, number] {
+  const inverseStart: QuaternionTuple = [
+    -start[0],
+    -start[1],
+    -start[2],
+    start[3],
+  ];
+  let delta = multiplyTestQuaternions(next, inverseStart);
+  if (delta[3] < 0) delta = [-delta[0], -delta[1], -delta[2], -delta[3]];
+  const magnitude = Math.hypot(delta[0], delta[1], delta[2]);
+  expect(magnitude).toBeGreaterThan(0.000001);
+  return [delta[0] / magnitude, delta[1] / magnitude, delta[2] / magnitude];
+}
+
+function centeredDirectionalInput(
+  profile: RollGroupFeelProfile,
+  releaseDirection: readonly [number, number],
+  elapsedMs: number,
+  releaseSpeed = 0.9
+): Parameters<typeof solveRollGroupMemberMotion>[0] {
+  return motionInput(profile, {
+    elapsedMs,
+    memberIndex: 0,
+    memberCount: 1,
+    held: undefined,
+    heldLayout: { ...HELD_LAYOUT, center: [0, 0] },
+    restingLayout: { ...RESTING_LAYOUT, center: [0, 0] },
+    throwProfile: directionalThrow(releaseDirection, releaseSpeed),
+  });
+}
+
 function motionInput(
   profile: RollGroupFeelProfile,
   overrides: Partial<Parameters<typeof solveRollGroupMemberMotion>[0]> = {}
@@ -257,6 +332,162 @@ describe('rollGroupMotionSolver', () => {
       8
     );
   });
+
+  it.each(Object.values(ROLL_GROUP_FEEL_PROFILES))(
+    'starts %s travel at the release point and moves along the release vector',
+    (profile) => {
+      const eastStart = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [1, 0], 0)
+      );
+      const westStart = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [-1, 0], 0)
+      );
+      const earlyMs = profile.durationMs * 0.2;
+      const eastEarly = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [1, 0], earlyMs)
+      );
+      const westEarly = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [-1, 0], earlyMs)
+      );
+
+      expect(eastStart.translation[0]).toBeCloseTo(0, 8);
+      expect(westStart.translation[0]).toBeCloseTo(0, 8);
+      expect(eastEarly.translation[0]).toBeGreaterThan(0.04);
+      expect(westEarly.translation[0]).toBeLessThan(-0.04);
+    }
+  );
+
+  it.each(Object.values(ROLL_GROUP_FEEL_PROFILES))(
+    'derives the early %s rolling axis from the release vector',
+    (profile) => {
+      // Sample before half a revolution so quaternion sign canonicalization
+      // cannot flip the observed axis to its equivalent opposite direction.
+      const earlyMs = profile.durationMs * 0.02;
+      const pose = (direction: readonly [number, number], elapsedMs: number) =>
+        solveRollGroupMemberMotion(
+          centeredDirectionalInput(profile, direction, elapsedMs)
+        ).quaternion;
+      const eastAxis = relativeRotationAxis(
+        pose([1, 0], 0),
+        pose([1, 0], earlyMs)
+      );
+      const westAxis = relativeRotationAxis(
+        pose([-1, 0], 0),
+        pose([-1, 0], earlyMs)
+      );
+      const northAxis = relativeRotationAxis(
+        pose([0, 1], 0),
+        pose([0, 1], earlyMs)
+      );
+      const southAxis = relativeRotationAxis(
+        pose([0, -1], 0),
+        pose([0, -1], earlyMs)
+      );
+
+      expect(Math.abs(eastAxis[2])).toBeGreaterThan(Math.abs(eastAxis[0]) * 3);
+      expect(eastAxis[2]).toBeLessThan(-0.8);
+      expect(westAxis[2]).toBeGreaterThan(0.8);
+      expect(northAxis[0]).toBeGreaterThan(0.8);
+      expect(southAxis[0]).toBeLessThan(-0.8);
+    }
+  );
+
+  it.each(Object.values(ROLL_GROUP_FEEL_PROFILES))(
+    'scales early %s travel and rotation with release speed',
+    (profile) => {
+      // Sample before the hard throw completes half a revolution so the
+      // quaternion's shortest-angle representation cannot wrap the result.
+      const elapsedMs = profile.durationMs * 0.01;
+      const solve = (releaseSpeed: number, elapsed: number) =>
+        solveRollGroupMemberMotion(
+          motionInput(profile, {
+            elapsedMs: elapsed,
+            memberIndex: 0,
+            memberCount: 1,
+            held: undefined,
+            heldLayout: { ...HELD_LAYOUT, center: [0, 0] },
+            restingLayout: { ...RESTING_LAYOUT, center: [0, 0] },
+            throwProfile: directionalThrow([1, 0], releaseSpeed),
+          })
+        );
+      const slowStart = solve(0.15, 0);
+      const slow = solve(0.15, elapsedMs);
+      const fastStart = solve(1, 0);
+      const fast = solve(1, elapsedMs);
+      const slowTravel = Math.hypot(
+        slow.translation[0] - slowStart.translation[0],
+        slow.translation[2] - slowStart.translation[2]
+      );
+      const fastTravel = Math.hypot(
+        fast.translation[0] - fastStart.translation[0],
+        fast.translation[2] - fastStart.translation[2]
+      );
+      const slowRotation = relativeRotationAngle(
+        slowStart.quaternion,
+        slow.quaternion
+      );
+      const fastRotation = relativeRotationAngle(
+        fastStart.quaternion,
+        fast.quaternion
+      );
+
+      expect(fastTravel).toBeGreaterThan(slowTravel * 1.8);
+      expect(fastRotation).toBeGreaterThan(slowRotation * 1.8);
+    }
+  );
+
+  it.each(Object.values(ROLL_GROUP_FEEL_PROFILES))(
+    'adds speed-proportional airborne spin to a hard %s release',
+    (profile) => {
+      const elapsedMs = profile.durationMs * 0.02;
+      const slowStart = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [1, 0], 0, 0.15)
+      );
+      const slow = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [1, 0], elapsedMs, 0.15)
+      );
+      const fastStart = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [1, 0], 0, 1)
+      );
+      const fast = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [1, 0], elapsedMs, 1)
+      );
+      const slowRotation = relativeRotationAngle(
+        slowStart.quaternion,
+        slow.quaternion
+      );
+      const fastRotation = relativeRotationAngle(
+        fastStart.quaternion,
+        fast.quaternion
+      );
+
+      expect(fastRotation).toBeGreaterThan(0.25);
+      expect(fastRotation).toBeGreaterThan(slowRotation * 2.5);
+    }
+  );
+
+  it.each(Object.values(ROLL_GROUP_FEEL_PROFILES))(
+    'ties zero-impulse %s angular displacement to path distance over die radius',
+    (profile) => {
+      const elapsedMs = profile.durationMs * 0.035;
+      const start = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [1, 0], 0, 0)
+      );
+      const moved = solveRollGroupMemberMotion(
+        centeredDirectionalInput(profile, [1, 0], elapsedMs, 0)
+      );
+      const pathDistance = Math.hypot(
+        moved.translation[0] - start.translation[0],
+        moved.translation[2] - start.translation[2]
+      );
+      const angularDistance = relativeRotationAngle(
+        start.quaternion,
+        moved.quaternion
+      );
+
+      expect(angularDistance).toBeCloseTo(pathDistance / HELD_LAYOUT.radius, 2);
+    }
+  );
 
   it('keeps release-position and direction Y aligned with tray-plane Z', () => {
     const downward = createVisualThrowProfile({

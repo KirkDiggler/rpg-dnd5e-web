@@ -327,6 +327,20 @@ function axisQuaternion(axis: 'x' | 'y' | 'z', angle: number): QuaternionTuple {
   return frozenQuaternion(0, 0, sine, cosine);
 }
 
+function vectorAxisQuaternion(
+  axis: readonly [number, number, number],
+  angle: number
+): QuaternionTuple {
+  const sine = Math.sin(angle / 2);
+  const cosine = Math.cos(angle / 2);
+  return frozenQuaternion(
+    axis[0] * sine,
+    axis[1] * sine,
+    axis[2] * sine,
+    cosine
+  );
+}
+
 function multiplyQuaternions(
   first: QuaternionTuple,
   second: QuaternionTuple
@@ -368,9 +382,7 @@ function heldQuaternion(
 }
 
 function releaseOrigin(
-  input: Parameters<typeof solveRollGroupMemberMotion>[0],
-  profile: RollGroupFeelProfile,
-  seed: number
+  input: Parameters<typeof solveRollGroupMemberMotion>[0]
 ): readonly [number, number] {
   const centerBiasX = input.heldLayout.center[0] * 0.8;
   const centerBiasY = input.heldLayout.center[1] * 0.8;
@@ -378,14 +390,7 @@ function releaseOrigin(
   const releaseY =
     (input.throwProfile.releasePosition[1] - 0.5) *
     ROLL_GROUP_HELD_PLANE_HEIGHT;
-  const scatterX =
-    hashSigned(seed, input.memberIndex, 0x4f1b_bc91) * profile.scatter * 0.12;
-  const scatterY =
-    hashSigned(seed, input.memberIndex, 0x63e1_91c7) * profile.scatter * 0.12;
-  return [
-    centerBiasX + releaseX + scatterX,
-    centerBiasY + releaseY + scatterY,
-  ] as const;
+  return [centerBiasX + releaseX, centerBiasY + releaseY] as const;
 }
 
 function translationForProfile(
@@ -397,17 +402,22 @@ function translationForProfile(
 ): DiceTranslation {
   const restX = input.restingLayout.center[0];
   const restZ = input.restingLayout.center[1];
-  const [originX, originZ] = releaseOrigin(input, profile, seed);
+  const [originX, originZ] = releaseOrigin(input);
   const dirX = input.throwProfile.releaseDirection[0];
   const dirZ = input.throwProfile.releaseDirection[1];
   const scatterX = hashSigned(seed, input.memberIndex, 0x19d2_8f31);
   const scatterZ = hashSigned(seed, input.memberIndex, 0x27b7_4aa5);
+  const releaseEnergy = 0.12 + input.throwProfile.releaseSpeed * 0.88;
   const travelX =
-    dirX * profile.travel * 0.34 + scatterX * profile.scatter * 0.18;
+    (dirX * profile.travel * 0.34 + scatterX * profile.scatter * 0.18) *
+    releaseEnergy;
   const travelZ =
-    dirZ * profile.travel * 0.28 + scatterZ * profile.scatter * 0.18;
+    (dirZ * profile.travel * 0.28 + scatterZ * profile.scatter * 0.18) *
+    releaseEnergy;
   const shakeLift = input.throwProfile.shakeEnergy * 0.06;
   const speedLift = input.throwProfile.releaseSpeed * 0.08;
+
+  const directedEnvelope = Math.sin(progress * Math.PI);
 
   if (profile.id === 'weighty') {
     const eased = 1 - Math.pow(1 - progress, 1.7);
@@ -415,11 +425,12 @@ function translationForProfile(
       Math.sin(progress * Math.PI + phase) *
       profile.scatter *
       0.03 *
-      (1 - progress);
+      (1 - progress) *
+      progress;
     return frozenTranslation(
-      lerp(originX - travelX * 0.7, restX, eased) + sway,
+      lerp(originX, restX, eased) + travelX * directedEnvelope + sway,
       Math.sin(progress * Math.PI) * (0.07 + speedLift + shakeLift * 0.7),
-      lerp(originZ - travelZ * 0.7, restZ, eased) + sway * 0.4
+      lerp(originZ, restZ, eased) + travelZ * directedEnvelope + sway * 0.4
     );
   }
 
@@ -429,15 +440,16 @@ function translationForProfile(
       Math.sin(progress * Math.PI * 3 + phase) *
       profile.rebound *
       0.05 *
-      (1 - progress);
+      (1 - progress) *
+      progress;
     return frozenTranslation(
-      lerp(originX - travelX, restX, eased) + burst,
+      lerp(originX, restX, eased) + travelX * directedEnvelope + burst,
       Math.sin(progress * Math.PI) * (0.12 + speedLift * 1.2 + shakeLift) +
         Math.abs(Math.sin(progress * Math.PI * 4 + phase)) *
           profile.rebound *
           0.03 *
           (1 - progress),
-      lerp(originZ - travelZ, restZ, eased) - burst * 0.7
+      lerp(originZ, restZ, eased) + travelZ * directedEnvelope - burst * 0.7
     );
   }
 
@@ -446,17 +458,15 @@ function translationForProfile(
     hashSigned(seed, input.memberIndex, 0x77a9_0b3d) * profile.rebound * 0.16;
   const deflectZ =
     hashSigned(seed, input.memberIndex, 0x0aa4_c953) * profile.rebound * 0.16;
-  const startX = originX - travelX * 0.85;
-  const startZ = originZ - travelZ * 0.85;
-  const impactX = lerp(startX, restX, 0.72) + deflectX * 0.5;
-  const impactZ = lerp(startZ, restZ, 0.72) + deflectZ * 0.5;
+  const impactX = originX + travelX * 0.85 + deflectX * profile.scatter * 0.5;
+  const impactZ = originZ + travelZ * 0.85 + deflectZ * profile.scatter * 0.5;
 
   if (progress < impactProgress) {
     const local = progress / impactProgress;
     return frozenTranslation(
-      lerp(startX, impactX, 1 - Math.pow(1 - local, 2)),
+      lerp(originX, impactX, 1 - Math.pow(1 - local, 2)),
       Math.sin(local * Math.PI * 0.9) * (0.09 + speedLift + shakeLift * 0.9),
-      lerp(startZ, impactZ, 1 - Math.pow(1 - local, 2))
+      lerp(originZ, impactZ, 1 - Math.pow(1 - local, 2))
     );
   }
 
@@ -475,26 +485,85 @@ function translationForProfile(
   );
 }
 
+function pathRollAxis(
+  input: Parameters<typeof solveRollGroupMemberMotion>[0],
+  profile: RollGroupFeelProfile,
+  deltaX: number,
+  deltaZ: number,
+  phase: number
+): readonly [number, number, number] {
+  const distance = Math.hypot(deltaX, deltaZ);
+  const baseX = distance > 0.000001 ? deltaZ / distance : Math.sin(phase);
+  const baseZ = distance > 0.000001 ? -deltaX / distance : -Math.cos(phase);
+  const wobble =
+    profile.scatter * 0.025 + input.throwProfile.shakeEnergy * 0.015;
+  const x =
+    baseX +
+    hashSigned(input.throwProfile.motionSeed, input.memberIndex, 0x153a_79d1) *
+      wobble;
+  const y =
+    input.throwProfile.spinBias * 0.12 +
+    hashSigned(input.throwProfile.motionSeed, input.memberIndex, 0x63ac_51e7) *
+      wobble *
+      0.25;
+  const z =
+    baseZ +
+    hashSigned(input.throwProfile.motionSeed, input.memberIndex, 0x41bd_802f) *
+      wobble;
+  const magnitude = Math.hypot(x, y, z);
+  if (!Number.isFinite(magnitude) || magnitude <= 0.000001)
+    return [0, 0, -1] as const;
+  return [x / magnitude, y / magnitude, z / magnitude] as const;
+}
+
 function tumbleQuaternion(
   input: Parameters<typeof solveRollGroupMemberMotion>[0],
   profile: RollGroupFeelProfile,
   progress: number,
   phase: number
 ): QuaternionTuple {
-  const angle = progress * Math.PI * (2.2 + profile.tumble * 2.4) + phase;
-  return (
-    normalizedQuaternion(
-      frozenQuaternion(
-        Math.sin(angle * 0.71 + input.throwProfile.spinBias * 0.5) *
-          (0.26 + profile.tumble * 0.08),
-        Math.cos(angle * 1.07 + input.throwProfile.releaseSpeed) *
-          (0.22 + profile.tumble * 0.06),
-        Math.sin(angle * 0.89 + input.throwProfile.shakeEnergy) *
-          (0.28 + profile.tumble * 0.07),
-        Math.cos(angle * 0.63 + phase * 0.25)
-      )
-    ) ?? input.target
+  const seed = input.throwProfile.motionSeed;
+  const stepCount = Math.max(1, Math.ceil(progress * 24));
+  const airborneProgress = clamp(progress / 0.48, 0, 1);
+  const airborneEase = 1 - Math.pow(1 - airborneProgress, 2);
+  const airborneTurns =
+    input.throwProfile.releaseSpeed * (1.5 + profile.tumble * 1.1);
+  const airborneSpin = vectorAxisQuaternion(
+    pathRollAxis(
+      input,
+      profile,
+      input.throwProfile.releaseDirection[0],
+      input.throwProfile.releaseDirection[1],
+      phase
+    ),
+    airborneEase * airborneTurns * Math.PI * 2
   );
+  let rotation = multiplyQuaternions(airborneSpin, axisQuaternion('y', phase));
+  let previous = translationForProfile(input, profile, 0, phase, seed);
+
+  for (let step = 1; step <= stepCount; step += 1) {
+    const stepProgress = (progress * step) / stepCount;
+    const next = translationForProfile(
+      input,
+      profile,
+      stepProgress,
+      phase,
+      seed
+    );
+    const deltaX = next[0] - previous[0];
+    const deltaZ = next[2] - previous[2];
+    const distance = Math.hypot(deltaX, deltaZ);
+    if (distance > 0.000001) {
+      const roll = vectorAxisQuaternion(
+        pathRollAxis(input, profile, deltaX, deltaZ, phase),
+        distance / input.heldLayout.radius
+      );
+      rotation = multiplyQuaternions(roll, rotation);
+    }
+    previous = next;
+  }
+
+  return normalizedQuaternion(rotation) ?? axisQuaternion('y', phase);
 }
 
 function animatedQuaternion(
