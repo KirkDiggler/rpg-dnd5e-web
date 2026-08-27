@@ -186,6 +186,13 @@ export interface SessionCanvasProps {
   /** Not this member's turn — non-attackable hover shows the locked state.
    * Defaults to `false`. */
   turnLocked?: boolean;
+  /** Feet of movement left this turn, from the MOVE declaration's
+   * `remaining`. Shades the hover path's over-budget tail; it never
+   * shortens the path or blocks the click (`moveIndicator.ts`'s own doc
+   * comment). `undefined` outside a turn, or whenever no single MOVE
+   * declaration reports a budget — the whole path then reads affordable,
+   * which is the pre-budget behavior. */
+  movementBudgetFeet?: number;
   /** Optional presentation-only R3F layer. Concepts use this to prove
    * temporary world-space effects without teaching SessionCanvas game rules. */
   presentationLayer?: ReactNode;
@@ -215,6 +222,7 @@ export function SessionScene({
   attackableTargets,
   pathIndex = null,
   turnLocked = false,
+  movementBudgetFeet,
   presentationLayer,
 }: SessionCanvasProps) {
   // Stable base target, seeded ONCE from the character's starting position
@@ -391,6 +399,7 @@ export function SessionScene({
     locked: turnLocked,
     hoveredEntityId,
     attackable: hoveredEntityId ? attackableSet.has(hoveredEntityId) : false,
+    budgetFeet: movementBudgetFeet,
   });
 
   // The passive, persistent in-reach rings — every attackable target's

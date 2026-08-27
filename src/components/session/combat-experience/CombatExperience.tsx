@@ -1,14 +1,13 @@
 import {
   ClockKind,
   Standing,
-  Verb,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
 import { DiceDrawer } from './DiceDrawer';
-import { selectCombatExperience } from './selection';
+import { movementBudgetFeet, selectCombatExperience } from './selection';
 import { StoryLog } from './StoryLog';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
@@ -125,11 +124,7 @@ export function CombatExperience({
   const selection = authorityFresh
     ? selectCombatExperience(declarations, presentationState)
     : null;
-  const moveDeclarations = declarations.filter(
-    (declaration) => declaration.verb === Verb.MOVE
-  );
-  const movementRemainingFeet =
-    moveDeclarations.length === 1 ? moveDeclarations[0]?.remaining : undefined;
+  const movementRemainingFeet = movementBudgetFeet(declarations);
   const hp = characterData?.hitPoints;
   const hpPercent = hp?.max
     ? Math.max(0, Math.min(100, Math.round((hp.current / hp.max) * 100)))

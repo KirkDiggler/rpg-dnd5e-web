@@ -21,6 +21,8 @@ const PATH_COLOR = '#3b82f6'; // blue — a walkable route.
 const INVALID_COLOR = '#ef4444'; // red — unreachable (wall/off-atlas/self).
 const LOCKED_COLOR = '#a855f7'; // purple — fight-locked, distinct from both.
 const TARGET_COLOR = '#f97316'; // orange — an in-reach, hovered Attack target (rpg-project#249).
+const OVERBUDGET_COLOR = '#ef4444'; // red — route beyond this turn's movement.
+const OVERBUDGET_OPACITY = 0.22; // quieter than a walkable route: still a route, just not this turn's.
 
 export interface MoveIndicatorProps {
   selection: MoveIndicatorSelection | null;
@@ -41,14 +43,36 @@ export function MoveIndicator({
   if (!selection || !hovered) return null;
 
   switch (selection.kind) {
-    case 'path':
+    case 'path': {
+      // Two overlays, one route. The affordable prefix keeps the walkable
+      // blue, and because PathPreview brightens whatever cell ends the array
+      // it is handed, the last cell the budget pays for gets a "this far"
+      // marker for free. The remainder draws red and quiet: still the real
+      // route the click sends, shown as out of reach this turn rather than
+      // hidden — hiding it would leave the player hovering a cell with no
+      // feedback at all.
+      const affordable = selection.path.slice(0, selection.affordable);
+      const overBudget = selection.path.slice(selection.affordable);
       return (
-        <PathPreview
-          path={selection.path}
-          hexSize={hexSize}
-          color={PATH_COLOR}
-        />
+        <>
+          {affordable.length > 0 && (
+            <PathPreview
+              path={affordable}
+              hexSize={hexSize}
+              color={PATH_COLOR}
+            />
+          )}
+          {overBudget.length > 0 && (
+            <PathPreview
+              path={overBudget}
+              hexSize={hexSize}
+              color={OVERBUDGET_COLOR}
+              opacity={OVERBUDGET_OPACITY}
+            />
+          )}
+        </>
       );
+    }
     case 'invalid':
       return (
         <PathPreview

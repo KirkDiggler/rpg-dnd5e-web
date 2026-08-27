@@ -1,6 +1,7 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
   TargetKind,
+  Verb,
   type Declaration,
   type Shortfall,
   type TargetCandidate,
@@ -24,6 +25,29 @@ export function staleDeclarationMessage(why?: Shortfall): string {
   return why?.text
     ? `${STALE_DECLARATION_MESSAGE} ${why.text}`
     : STALE_DECLARATION_MESSAGE;
+}
+
+/**
+ * This turn's movement budget in feet, read from the one MOVE declaration
+ * that reports it.
+ *
+ * Deliberately `undefined` unless EXACTLY ONE MOVE declaration is present.
+ * Two of them would mean two budgets and no way to know which the map's hover
+ * is spending; no answer beats an arbitrary one. `undefined` also covers the
+ * ordinary cases — free roam, another member's turn — where there is no MOVE
+ * row at all.
+ *
+ * A present `remaining` of 0 is a real answer (no feet left) and is returned
+ * as 0, never folded into `undefined`: that distinction is the whole reason
+ * the field is `optional` on the wire.
+ */
+export function movementBudgetFeet(
+  declarations: readonly Declaration[]
+): number | undefined {
+  const moves = declarations.filter(
+    (declaration) => declaration.verb === Verb.MOVE
+  );
+  return moves.length === 1 ? moves[0]?.remaining : undefined;
 }
 
 export interface SelectedCombatExperience {

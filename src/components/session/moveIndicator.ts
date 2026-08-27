@@ -49,13 +49,34 @@
  * anywhere, so every non-attackable hover reads `'locked'`. It is checked
  * after `attackable`; the production caller supplies no armed candidates when
  * the viewer does not own the turn.
+ *
+ * # The budget marks the path, it never shortens or blocks it
+ *
+ * `budgetFeet` is the MOVE declaration's `remaining`. A `'path'` selection
+ * still carries the WHOLE route — the same array a click sends, so the law
+ * above survives intact — and reports `affordable`, how many of its leading
+ * cells this turn's movement actually pays for. The renderer draws the rest
+ * as overflow.
+ *
+ * This is a PREVIEW, never a verdict. The client does not refuse the click,
+ * shorten the request, or predict the server's answer: an over-budget path is
+ * still sent whole and still refused whole, by the server, exactly as before.
+ * Note that `Declaration.remaining`'s own proto comment tells clients not to
+ * convert the value to cells — this module does, at the server's own
+ * documented five-feet-per-cell rate, purely to shade an overlay. That
+ * tension is deliberate and unresolved — it wants a ruling, not a quiet
+ * client-side reading of a field whose comment forbids it.
+ *
+ * `budgetFeet` undefined means "no budget applies" (free roam, or no single
+ * MOVE declaration to read) — every cell reads affordable, which is the
+ * pre-budget behavior unchanged.
  */
 import type { CubeCoord } from '@/components/hex-grid/hexMath';
 import type { AtlasPathIndex } from './atlasPath';
 import { findAtlasPath } from './atlasPath';
 
 export type MoveIndicatorSelection =
-  | { kind: 'path'; path: CubeCoord[] }
+  | { kind: 'path'; path: CubeCoord[]; affordable: number }
   | { kind: 'invalid' }
   | { kind: 'locked' }
   | { kind: 'target'; entityId: string };
@@ -79,13 +100,46 @@ export interface SelectMoveIndicatorArgs {
   /** True iff `hoveredEntityId` is available on the currently armed exact
    * declaration. Ignored when `hoveredEntityId` is unset. */
   attackable?: boolean;
+  /** Feet of movement left this turn — the MOVE declaration's `remaining`.
+   * `undefined` when no budget applies; see this module's own doc comment. */
+  budgetFeet?: number;
+}
+
+/** The server's documented price for a walk: five feet per cell entered
+ * (`Walk`'s own RPC comment). The cell the walker already stands on is not
+ * entered, so an N-cell path — start cell included, as `findAtlasPath`
+ * returns it — costs `(N - 1) * 5`. */
+export const FEET_PER_CELL = 5;
+
+/**
+ * How many leading cells of `path` the budget pays for, start cell included.
+ *
+ * The start cell is always affordable: standing still is free. A budget of 0
+ * therefore returns 1 — "you are here, and you are not going anywhere" — not
+ * 0, which would mean the walker cannot even occupy their own cell.
+ */
+export function affordableCellCount(
+  pathLength: number,
+  budgetFeet: number | undefined
+): number {
+  if (pathLength === 0) return 0;
+  if (budgetFeet === undefined) return pathLength;
+  const steps = Math.floor(Math.max(0, budgetFeet) / FEET_PER_CELL);
+  return Math.min(pathLength, steps + 1);
 }
 
 export function selectMoveIndicator(
   args: SelectMoveIndicatorArgs
 ): MoveIndicatorSelection | null {
-  const { hovered, from, pathIndex, locked, hoveredEntityId, attackable } =
-    args;
+  const {
+    hovered,
+    from,
+    pathIndex,
+    locked,
+    hoveredEntityId,
+    attackable,
+    budgetFeet,
+  } = args;
 
   if (!hovered) return null;
 
@@ -101,5 +155,9 @@ export function selectMoveIndicator(
 
   const path = findAtlasPath(pathIndex, from, hovered);
   if (path.length === 0) return { kind: 'invalid' };
-  return { kind: 'path', path };
+  return {
+    kind: 'path',
+    path,
+    affordable: affordableCellCount(path.length, budgetFeet),
+  };
 }

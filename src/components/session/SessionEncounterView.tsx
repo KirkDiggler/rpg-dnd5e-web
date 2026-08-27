@@ -46,6 +46,7 @@ import {
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
+import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
@@ -612,6 +613,7 @@ function SessionEncounterScope({
                 }
                 pathIndex={lastGoodPathIndexRef.current}
                 turnLocked={turnLocked}
+                movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
               />
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
