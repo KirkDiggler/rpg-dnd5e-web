@@ -48,11 +48,19 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.ATTACK) {
     return declaration.attack?.name || 'Attack';
   }
+  if (declaration.verb === Verb.ACTIVATE) {
+    // The server authors the label. There is deliberately no ref-to-name table
+    // here: "Rage" is what the ability calls itself, and a client that mapped
+    // refs to names would go stale the first time one was renamed.
+    return declaration.ability?.name || 'Ability';
+  }
   return 'Move';
 }
 
 function declarationIcon(declaration: Declaration): string {
-  return declaration.verb === Verb.ATTACK ? '⚔' : '➜';
+  if (declaration.verb === Verb.ATTACK) return '⚔';
+  if (declaration.verb === Verb.ACTIVATE) return '✦';
+  return '➜';
 }
 
 function ActionDeclaration({
@@ -119,6 +127,10 @@ export interface ActionDockProps {
   onEndTurn: (declaration: Declaration) => void;
 }
 
+// exactlyOne is CORRECT ONLY FOR END TURN, and would be a bug anywhere else
+// now that a verb can compile many offers. End Turn compiles exactly one, so
+// "more than one" there really is a producer defect. VERB_ACTIVATE routinely
+// has six; ask for those by id, never by verb.
 function exactlyOne(
   declarations: readonly Declaration[],
   verb: Verb
@@ -181,9 +193,16 @@ export function ActionDock({
     );
   }
 
+  // ALL OF THEM NOW. Help was held back while its declaration said
+  // TARGET_KIND_MEMBER and carried no candidate universe — a control nothing
+  // could drive. rpg-toolkit#1274 gave it one, so the client no longer has to
+  // decline to draw anything, which is the state this filter should always be
+  // in: the server decides what is offered, and the dock draws it.
   const executableDeclarations = declarations.filter(
     (declaration) =>
-      declaration.verb === Verb.ATTACK || declaration.verb === Verb.MOVE
+      declaration.verb === Verb.ATTACK ||
+      declaration.verb === Verb.MOVE ||
+      declaration.verb === Verb.ACTIVATE
   );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
 
