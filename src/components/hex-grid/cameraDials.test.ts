@@ -7,6 +7,7 @@ import {
   DEFAULT_PITCH_NEAR_DEG,
   DEFAULT_ZOOM_MAX,
   DEFAULT_ZOOM_MIN,
+  bandFollowsFocus,
   parseCameraDials,
 } from './cameraDials';
 
@@ -145,5 +146,64 @@ describe('parseCameraDials', () => {
     expect(dials.zoomMax).toBe(DEFAULT_ZOOM_MAX);
     expect(dials.minDistance).toBe(DEFAULT_MIN_DISTANCE);
     expect(dials.maxDistance).toBe(DEFAULT_MAX_DISTANCE);
+  });
+});
+
+describe('which bands chase the character', () => {
+  const bandsOf = (search = '') => parseCameraDials(search).curve!.bands;
+
+  it('leaves the three wide bands parked where the player framed them', () => {
+    // overview, tabletop, tactical -- Kirk 2026-08-28: "the camera should
+    // stay put". Pulled back, the framing is a planning decision the player
+    // made on purpose.
+    expect(
+      bandsOf()
+        .slice(0, 3)
+        .map((band) => band.follow)
+    ).toEqual([false, false, false]);
+  });
+
+  it('keeps the two close bands behind the character', () => {
+    // shoulder and detail exist to sit on the mini; a character who walks out
+    // of frame there is simply lost.
+    expect(
+      bandsOf()
+        .slice(3)
+        .map((band) => band.follow)
+    ).toEqual([true, true]);
+  });
+
+  it('agrees with the focusLead gradient about where a map becomes a viewpoint', () => {
+    // The two dials encode the same "closeness" idea; if they ever disagree
+    // the camera reads as following something it is not framing.
+    for (const band of bandsOf()) {
+      if (band.focusLead === 0) expect(band.follow).toBe(false);
+    }
+    expect(bandsOf().filter((band) => band.follow).length).toBe(2);
+  });
+
+  it('survives a zoom retune -- the policy is per band, not per zoom number', () => {
+    expect(
+      bandsOf('?zoomMin=10&zoomMax=200').map((band) => band.follow)
+    ).toEqual([false, false, false, true, true]);
+  });
+});
+
+describe('bandFollowsFocus', () => {
+  it('honours the band it is given', () => {
+    expect(bandFollowsFocus({ follow: false }, false)).toBe(false);
+    expect(bandFollowsFocus({ follow: true }, false)).toBe(true);
+  });
+
+  it('follows when there is no band to consult', () => {
+    // `?pitchCurve=0`'s fixed angle has no ladder; the band ladder is what
+    // earns the exception, so its absence keeps the old behavior.
+    expect(bandFollowsFocus(null, false)).toBe(true);
+    expect(bandFollowsFocus(undefined, false)).toBe(true);
+  });
+
+  it('follows in perspective, which has no authored bands of its own', () => {
+    expect(bandFollowsFocus({ follow: false }, true)).toBe(true);
+    expect(bandFollowsFocus(null, true)).toBe(true);
   });
 });
