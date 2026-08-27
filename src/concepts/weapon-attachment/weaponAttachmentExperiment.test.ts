@@ -6,6 +6,7 @@ import {
   canRecordWeaponVerdict,
   coverageFor,
   resolveProvisionalMainHand,
+  weaponConceptVerdict,
   type WeaponRenderObservation,
 } from './weaponAttachmentExperiment';
 
@@ -18,7 +19,7 @@ const equipped = (mainHand?: ReturnType<typeof ref>): EquippedMap =>
   mainHand ? { main_hand: mainHand } : {};
 
 describe('weapon attachment experiment', () => {
-  it('maps only exact equipped item refs to provisional assets', () => {
+  it('maps only exact equipped item refs to production provider assets', () => {
     expect(
       resolveProvisionalMainHand(equipped(ref('item', 'longsword')))
     ).toEqual({
@@ -26,14 +27,14 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:longsword',
       candidate: {
         ref: 'dnd5e:item:longsword',
-        source: 'SM_Wep_Slayer_01 · rejected oversized longsword candidate',
-        weaponUrl: '/models/synty/characters/weapons/fighter-weapon.glb',
-        decodedTextureMb: 16,
+        source: 'rpg-game-assets#71 · promoted v1 provider output',
+        weaponUrl: '/models/synty/weapons/longsword.glb',
+        decodedTextureMb: 4,
         budgetMb: 4.5,
       },
       presentation: {
         ref: 'dnd5e:item:longsword',
-        weaponUrl: '/models/synty/characters/weapons/fighter-weapon.glb',
+        weaponUrl: '/models/synty/weapons/longsword.glb',
         socket: PROVISIONAL_FIGHTER_SOCKET,
       },
     });
@@ -44,14 +45,14 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:shortbow',
       candidate: {
         ref: 'dnd5e:item:shortbow',
-        source: 'SM_Prop_Bow_01 · accepted provisional shortbow candidate',
-        weaponUrl: '/models/synty/characters/weapons/bow-01.glb',
-        decodedTextureMb: 64,
+        source: 'rpg-game-assets#71 · promoted v1 provider output',
+        weaponUrl: '/models/synty/weapons/shortbow.glb',
+        decodedTextureMb: 4,
         budgetMb: 4.5,
       },
       presentation: {
         ref: 'dnd5e:item:shortbow',
-        weaponUrl: '/models/synty/characters/weapons/bow-01.glb',
+        weaponUrl: '/models/synty/weapons/shortbow.glb',
         socket: PROVISIONAL_FIGHTER_SOCKET,
       },
     });
@@ -99,7 +100,7 @@ describe('weapon attachment experiment', () => {
     ...changes,
   });
 
-  it('requires each dimension, not the 108-case Cartesian product', () => {
+  it('requires each dimension, not the Cartesian product', () => {
     const observations: WeaponRenderObservation[] = [
       observation({ equipmentState: 'unarmed', attachmentCode: 'unarmed' }),
       observation({
@@ -118,15 +119,52 @@ describe('weapon attachment experiment', () => {
       observation({ facing: 3 }),
       observation({ facing: 4 }),
       observation({ facing: 5 }),
+      observation({ equipmentState: 'shortsword', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'dagger', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'greataxe', attachmentCode: 'attached' }),
+      observation({
+        equipmentState: 'quarterstaff',
+        attachmentCode: 'attached',
+      }),
+      observation({ equipmentState: 'greatsword', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'battleaxe', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'handaxe', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'club', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'greatclub', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'warhammer', attachmentCode: 'attached' }),
     ];
 
     expect(coverageFor(observations)).toEqual({
-      equipmentStates: ['unarmed', 'longsword', 'shortbow'],
+      equipmentStates: [
+        'unarmed',
+        'shortbow',
+        'longsword',
+        'shortsword',
+        'dagger',
+        'greataxe',
+        'quarterstaff',
+        'greatsword',
+        'battleaxe',
+        'handaxe',
+        'club',
+        'greatclub',
+        'warhammer',
+      ],
       motions: ['idle', 'walk'],
       views: ['close', 'orbit', 'play'],
       facings: [0, 1, 2, 3, 4, 5],
     });
     expect(canRecordWeaponVerdict(observations)).toBe(true);
+    const verdict = weaponConceptVerdict(observations);
+    expect(verdict).toMatchObject({
+      classModels: {
+        fighter: '/models/synty/characters/fighter.glb',
+        barbarian: '/models/synty/characters/barbarian.glb',
+        monk: '/models/synty/characters/monk.glb',
+        rogue: '/models/synty/characters/rogue.glb',
+      },
+    });
+    expect(verdict).not.toHaveProperty('fighterModel');
   });
 
   it('does not credit a mapped weapon until its status is attached', () => {

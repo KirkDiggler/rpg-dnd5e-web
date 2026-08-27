@@ -478,6 +478,37 @@ describe('SessionEncounterView production combat integration', () => {
     screen.getByText('24/28');
   });
 
+  it('projects owner-authoritative main_hand into the local canvas presentation', async () => {
+    readyScene();
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        equipped: {
+          main_hand: { module: 'dnd5e', type: 'item', id: 'greatsword' },
+        },
+      }),
+    });
+    renderView();
+
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.mainHandPresentation).toEqual({
+        ref: 'dnd5e:item:greatsword',
+        weaponUrl: '/models/synty/weapons/greatsword.glb',
+        socket: {
+          bone: 'Hand_R',
+          boneUnitMeters: 0.01,
+          positionMeters: [
+            -0.11356871832209599, 0.0437807216160595, -0.0070717729664129085,
+          ],
+          rotationQuaternion: [
+            -0.31717459916354807, -0.45555976264236875, 0.6828311428133312,
+            0.47498148472569474,
+          ],
+          scale: 1,
+        },
+      })
+    );
+  });
+
   it('keeps dock identity on the public roster during a turn instead of Turn participants or private CharacterData', async () => {
     readyTurn();
     hoisted.turnFn.mockResolvedValue({
@@ -1264,6 +1295,11 @@ describe('SessionEncounterView production combat integration', () => {
     });
     renderView();
     await screen.findByTestId('session-combat-equipment-button');
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.mainHandPresentation?.ref).toBe(
+        'dnd5e:item:longsword'
+      )
+    );
 
     fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
     await screen.findByTestId('equipment-popover');
@@ -1272,6 +1308,67 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => expect(hoisted.unequipItemFn).toHaveBeenCalled());
     await waitFor(() =>
       within(screen.getByTestId('equipment-popover')).getByText('11')
+    );
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.mainHandPresentation
+      ).toBeUndefined()
+    );
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces the visible main hand directly from the authoritative EquipItem response', async () => {
+    readyScene();
+    const greatsword = {
+      module: 'dnd5e',
+      type: 'item',
+      id: 'greatsword',
+    };
+    const inventory = [
+      {
+        ref: greatsword,
+        name: 'Greatsword',
+        statLine: '2d6 slashing',
+        iconKey: '',
+        kind: 'weapon',
+        slotKeys: ['main_hand'],
+      },
+    ];
+    const slots = [
+      { key: 'main_hand', displayLabel: 'Main Hand', accepts: ['weapon'] },
+    ];
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({ equipped: {}, inventory, slots }),
+    });
+    hoisted.equipItemFn.mockResolvedValue({
+      character: privateCharacterData({
+        equipped: { main_hand: greatsword },
+        inventory,
+        slots,
+        mainHandDamage: '2d6 slashing',
+      }),
+    });
+    renderView();
+    await screen.findByTestId('session-combat-equipment-button');
+    expect(
+      hoisted.lastCanvasProps.current?.mainHandPresentation
+    ).toBeUndefined();
+
+    fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Greatsword — equip to Main Hand',
+      })
+    );
+
+    await waitFor(() => expect(hoisted.equipItemFn).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.mainHandPresentation
+      ).toMatchObject({
+        ref: 'dnd5e:item:greatsword',
+        weaponUrl: '/models/synty/weapons/greatsword.glb',
+      })
     );
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
   });

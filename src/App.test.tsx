@@ -1,7 +1,24 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+
+const hoisted = vi.hoisted(() => ({
+  activeLobby: {
+    data: null as null | {
+      lobbyId: string;
+      encounterId: string;
+      lobbyStatus: number;
+    },
+    loading: false,
+    error: null as Error | null,
+  },
+  lobbyCharacter: {
+    characterId: undefined as string | undefined,
+    loading: false,
+    error: null as Error | null,
+  },
+}));
 
 vi.mock('./api/auth', () => ({
   getPlayerId: () => 'test-player',
@@ -17,7 +34,11 @@ vi.mock('./api/useDevPlayerIdAuth', () => ({
 }));
 
 vi.mock('./api/useMyActiveLobby', () => ({
-  useMyActiveLobby: () => ({ data: null, loading: false }),
+  useMyActiveLobby: () => hoisted.activeLobby,
+}));
+
+vi.mock('./api/useLobbyCharacterId', () => ({
+  useLobbyCharacterId: () => hoisted.lobbyCharacter,
 }));
 
 vi.mock('./author/AuthorView', () => ({
@@ -50,7 +71,11 @@ vi.mock('./character/sheet/CharacterSheet', () => ({
 }));
 
 vi.mock('./components/game/GameView', () => ({
-  GameView: () => <div>Game View</div>,
+  GameView: ({ characterId }: { characterId?: string }) => (
+    <div data-testid="game-view" data-character-id={characterId}>
+      Game View
+    </div>
+  ),
 }));
 
 vi.mock('./components/home', () => ({
@@ -97,9 +122,34 @@ vi.mock('./toolkit-contributor-sandbox/route', () => ({
   isToolkitContributorSandboxRoute: () => false,
 }));
 
+beforeEach(() => {
+  hoisted.activeLobby.data = null;
+  hoisted.activeLobby.loading = false;
+  hoisted.activeLobby.error = null;
+  hoisted.lobbyCharacter.characterId = undefined;
+  hoisted.lobbyCharacter.loading = false;
+  hoisted.lobbyCharacter.error = null;
+});
+
 afterEach(() => {
   vi.unstubAllEnvs();
   window.history.replaceState({}, '', '/');
+});
+
+describe('App running-encounter resume', () => {
+  it('passes the authoritative lobby seat character into the resumed GameView', async () => {
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.characterId = 'char-alice';
+
+    render(<App />);
+
+    const game = await screen.findByTestId('game-view');
+    expect(game.dataset.characterId).toBe('char-alice');
+  });
 });
 
 describe('App global development tools', () => {
