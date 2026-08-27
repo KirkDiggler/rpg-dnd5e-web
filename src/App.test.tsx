@@ -137,6 +137,23 @@ afterEach(() => {
 });
 
 describe('App running-encounter resume', () => {
+  it('does not enter a running encounter when authoritative seat recovery fails', async () => {
+    hoisted.activeLobby.data = {
+      lobbyId: 'lobby-1',
+      encounterId: 'enc-1',
+      lobbyStatus: 2,
+    };
+    hoisted.lobbyCharacter.error = new Error('seat snapshot unavailable');
+
+    render(<App />);
+
+    expect(
+      await screen.findByText('Unable to resume the running encounter')
+    ).toBeTruthy();
+    expect(screen.getByText('seat snapshot unavailable')).toBeTruthy();
+    expect(screen.queryByTestId('game-view')).toBeNull();
+  });
+
   it('passes the authoritative lobby seat character into the resumed GameView', async () => {
     hoisted.activeLobby.data = {
       lobbyId: 'lobby-1',

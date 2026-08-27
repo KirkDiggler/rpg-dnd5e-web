@@ -16,6 +16,7 @@ import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
+import { ErrorDisplay } from './components/ui/Feedback';
 import { ConceptsView } from './concepts/ConceptsView';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
@@ -127,18 +128,25 @@ function AppContent() {
   const resumeLoading =
     myActiveLobby.loading ||
     Boolean(myActiveLobby.data?.encounterId && resumedLobbyCharacter.loading);
+  const resumeIdentityError =
+    myActiveLobby.data?.encounterId &&
+    !resumedLobbyCharacter.loading &&
+    !resumedLobbyCharacter.characterId
+      ? (resumedLobbyCharacter.error?.message ??
+        'The running encounter has no recoverable character seat.')
+      : null;
   useEffect(() => {
     if (hasConceptDeepLink()) return; // deep link owns the view
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
-      if (resumedLobbyCharacter.loading) return;
+      if (resumedLobbyCharacter.loading || resumeIdentityError) return;
       setResumeEncounterId(myActiveLobby.data.encounterId);
       setCurrentView('lobby');
     } else if (myActiveLobby.data.lobbyId) {
       setResumeLobbyId(myActiveLobby.data.lobbyId);
       setCurrentView('lobby');
     }
-  }, [myActiveLobby.data, resumedLobbyCharacter.loading]);
+  }, [myActiveLobby.data, resumedLobbyCharacter.loading, resumeIdentityError]);
 
   const handleCreateCharacter = async () => {
     try {
@@ -348,6 +356,13 @@ function AppContent() {
             characterId={selectedType === 'character' ? selectedId : null}
             onPlay={handlePlayAuthored}
           />
+        ) : currentView === 'home' && resumeIdentityError ? (
+          <div className="flex items-center justify-center h-screen">
+            <ErrorDisplay
+              title="Unable to resume the running encounter"
+              message={resumeIdentityError}
+            />
+          </div>
         ) : currentView === 'home' && resumeLoading ? (
           // Resume-after-refresh (#444): hold Home's content one beat while
           // GetMyActiveLobby resolves, so a resumable session (routed via
