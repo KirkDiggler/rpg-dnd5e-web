@@ -39,15 +39,22 @@ export function DungeonEnvironment({
     [plan.floorExposureByCell, plan.floorPoolsByCell]
   );
   const diagnosticsSignature = plan.diagnostics.join('\u0000');
-  const reportedDiagnostics = useRef<string | null>(null);
+  const reportedDiagnostics = useRef<{
+    signature: string;
+    callback: typeof onLightingDiagnostics;
+  } | null>(null);
   useEffect(() => {
+    if (!onLightingDiagnostics) return;
     if (
-      !onLightingDiagnostics ||
-      reportedDiagnostics.current === diagnosticsSignature
+      reportedDiagnostics.current?.signature === diagnosticsSignature &&
+      reportedDiagnostics.current.callback === onLightingDiagnostics
     ) {
       return;
     }
-    reportedDiagnostics.current = diagnosticsSignature;
+    reportedDiagnostics.current = {
+      signature: diagnosticsSignature,
+      callback: onLightingDiagnostics,
+    };
     onLightingDiagnostics(plan.diagnostics);
   }, [diagnosticsSignature, onLightingDiagnostics, plan.diagnostics]);
 

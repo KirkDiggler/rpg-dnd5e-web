@@ -148,6 +148,36 @@ describe('DungeonEnvironment', () => {
     ).toEqual(expect.objectContaining({ ref: 'homebrew:props:unknown' }));
   });
 
+  it('reports unchanged diagnostics to a newly supplied callback', async () => {
+    const firstCallback = vi.fn();
+    const secondCallback = vi.fn();
+    const scene = sceneWith(factsWithSources(13));
+    const renderer = await ReactThreeTestRenderer.create(
+      <DungeonEnvironment
+        scene={scene}
+        focus={{ x: 0, z: 0 }}
+        hexSize={1}
+        onLightingDiagnostics={firstCallback}
+      />
+    );
+
+    expect(firstCallback).toHaveBeenCalledTimes(1);
+
+    await renderer.update(
+      <DungeonEnvironment
+        scene={scene}
+        focus={{ x: 0, z: 0 }}
+        hexSize={1}
+        onLightingDiagnostics={secondCallback}
+      />
+    );
+
+    expect(secondCallback).toHaveBeenCalledWith([
+      '12 of 13 placed light sources active near this view',
+    ]);
+    expect(secondCallback).toHaveBeenCalledTimes(1);
+  });
+
   it('reports the point-light budget diagnostic once for an over-budget scene', async () => {
     const onLightingDiagnostics = vi.fn();
     const scene = sceneWith(factsWithSources(13));
