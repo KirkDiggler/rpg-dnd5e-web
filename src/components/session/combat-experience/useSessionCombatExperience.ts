@@ -1,3 +1,4 @@
+import { useSessionActivate } from '@/api/useSessionActivate';
 import { useSessionAttack } from '@/api/useSessionAttack';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
 import type { SessionRefreshKey } from '@/components/session/useCoalescedSessionRefreshes';
@@ -161,6 +162,7 @@ export function useSessionCombatExperience({
   const [showTurnNotice, setShowTurnNotice] = useState(false);
   const attackInFlightRef = useRef(false);
   const endTurnInFlightRef = useRef(false);
+  const activateInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
   const staleRecoveryRef = useRef<StaleRecovery | null>(null);
@@ -198,6 +200,7 @@ export function useSessionCombatExperience({
     result: presentation.result,
   });
   const { attack } = useSessionAttack();
+  const { activate } = useSessionActivate();
   const { endTurn } = useSessionEndTurn();
 
   const invalidateAuthority = useCallback(() => {
@@ -340,6 +343,16 @@ export function useSessionCombatExperience({
         if (!current) return;
         setInteraction(EMPTY_INTERACTION);
         setTargeting(false);
+        return;
+      }
+
+      // AN ACTIVATION FIRES ON THE CLICK. Attack arms and waits for a target,
+      // Move waits for a path; the six activations a level-1 character can
+      // reach prompt for nobody, so there is nothing to wait for and a
+      // two-step interaction would be ceremony. The dock only offers
+      // TARGET_KIND_NONE activations for exactly this reason.
+      if (candidate.verb === Verb.ACTIVATE) {
+        runActivateRef.current(candidate);
       }
     },
     [member]
@@ -438,6 +451,80 @@ export function useSessionCombatExperience({
       session,
     ]
   );
+
+  // runActivate is held in a ref so onSelectDeclaration can call it without
+  // taking it as a dependency: the two are mutually recursive through the
+  // dock's single onSelect handler, and threading the callback through would
+  // rebuild both on every render for no gain.
+  const runActivateRef = useRef<(candidate: Declaration) => void>(() => {});
+
+  const onActivate = useCallback(
+    (candidate: Declaration) => {
+      if (
+        !mountedRef.current ||
+        activateInFlightRef.current ||
+        !authorityRef.current.fresh ||
+        authorityRef.current.clock !== ClockKind.TURN ||
+        authorityRef.current.active !== member
+      ) {
+        return;
+      }
+      // BY ID, NEVER BY VERB. Activate is the first verb that compiles more
+      // than one offer, so "the current declaration for this verb" stopped
+      // being a question with an answer — uniqueCurrentDeclaration matches on
+      // the selector, which was always the unique thing.
+      const current = uniqueCurrentDeclaration(
+        declarationsRef.current,
+        candidate,
+        Verb.ACTIVATE,
+        TargetKind.NONE
+      );
+      if (!current) return;
+
+      activateInFlightRef.current = true;
+      void (async () => {
+        try {
+          await activate({
+            session,
+            member,
+            declarationId: current.id,
+          });
+          if (!mountedRef.current) return;
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          if (isStaleDeclarationRefusal(error)) {
+            recoverStaleDeclaration(current.id, Verb.ACTIVATE);
+          } else {
+            // Every other failure is ambiguous about whether the activation
+            // committed — the ack is thin by design, so a transport error
+            // cannot be told from a refusal after the fact. Fail closed,
+            // preserve the message, reconcile, and never retry.
+            const notice = `Activate failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford']);
+          }
+        } finally {
+          activateInFlightRef.current = false;
+        }
+      })();
+    },
+    [
+      activate,
+      invalidateAuthority,
+      member,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
+  );
+
+  runActivateRef.current = onActivate;
 
   const onEndTurn = useCallback(
     (candidate: Declaration) => {

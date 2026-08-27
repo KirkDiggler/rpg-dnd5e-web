@@ -1,6 +1,7 @@
 import {
   ClockKind,
   Slot,
+  TargetKind,
   Verb,
   type Declaration,
   type Participant,
@@ -48,11 +49,19 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.ATTACK) {
     return declaration.attack?.name || 'Attack';
   }
+  if (declaration.verb === Verb.ACTIVATE) {
+    // The server authors the label. There is deliberately no ref-to-name table
+    // here: "Rage" is what the ability calls itself, and a client that mapped
+    // refs to names would go stale the first time one was renamed.
+    return declaration.ability?.name || 'Ability';
+  }
   return 'Move';
 }
 
 function declarationIcon(declaration: Declaration): string {
-  return declaration.verb === Verb.ATTACK ? '⚔' : '➜';
+  if (declaration.verb === Verb.ATTACK) return '⚔';
+  if (declaration.verb === Verb.ACTIVATE) return '✦';
+  return '➜';
 }
 
 function ActionDeclaration({
@@ -119,6 +128,10 @@ export interface ActionDockProps {
   onEndTurn: (declaration: Declaration) => void;
 }
 
+// exactlyOne is CORRECT ONLY FOR END TURN, and would be a bug anywhere else
+// now that a verb can compile many offers. End Turn compiles exactly one, so
+// "more than one" there really is a producer defect. VERB_ACTIVATE routinely
+// has six; ask for those by id, never by verb.
 function exactlyOne(
   declarations: readonly Declaration[],
   verb: Verb
@@ -181,10 +194,22 @@ export function ActionDock({
     );
   }
 
-  const executableDeclarations = declarations.filter(
-    (declaration) =>
-      declaration.verb === Verb.ATTACK || declaration.verb === Verb.MOVE
-  );
+  const executableDeclarations = declarations.filter((declaration) => {
+    if (declaration.verb === Verb.ATTACK || declaration.verb === Verb.MOVE) {
+      return true;
+    }
+    if (declaration.verb !== Verb.ACTIVATE) return false;
+    // ACTIVATIONS THAT PROMPT FOR NOBODY, which at level 1 is six of the
+    // seven. Help asks for an ally and is held back until its declaration
+    // carries a candidate universe the way Attack's does — rendering a button
+    // that arms targeting against an empty candidate list would be a control
+    // nothing can drive (rpg-project#300).
+    //
+    // This is a rendering decision, not a rules one: the client declines to
+    // draw a control it cannot yet operate, and derives nothing about what the
+    // ability does.
+    return declaration.targetKind === TargetKind.NONE;
+  });
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
 
   return (
