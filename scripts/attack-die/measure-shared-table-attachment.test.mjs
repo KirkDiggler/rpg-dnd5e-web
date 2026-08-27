@@ -7,7 +7,7 @@ const scriptPath = fileURLToPath(
   new URL('./measure-shared-table-attachment.mjs', import.meta.url)
 );
 
-test('harness integrity self-test rejects incomplete, rounded, and overlapping work', () => {
+test('harness integrity self-test rejects incomplete, rounded, overlapping, and fabricated release work', () => {
   const result = spawnSync(process.execPath, [scriptPath, '--self-test'], {
     encoding: 'utf8',
     timeout: 10_000,
@@ -18,5 +18,5 @@ test('harness integrity self-test rejects incomplete, rounded, and overlapping w
     0,
     `self-test failed:\n${result.stderr || result.stdout}`
   );
-  assert.match(result.stdout, /harness integrity self-test: 4\/4 passed/);
+  assert.match(result.stdout, /harness integrity self-test: 5\/5 passed/);
 });

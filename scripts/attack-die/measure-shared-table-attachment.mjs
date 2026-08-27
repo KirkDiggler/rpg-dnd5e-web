@@ -474,14 +474,22 @@ async function inspectResponsiveState(page, viewport) {
           !header
         )
           return { failure: 'responsive stage elements are missing' };
-        const visible = (element) =>
-          getComputedStyle(element).display !== 'none';
+        const visible = (element) => {
+          const style = getComputedStyle(element);
+          return style.display !== 'none' && style.visibility !== 'hidden';
+        };
+        const renderSized = (element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        };
         const controlsRect = controls.getBoundingClientRect();
         const witnessesRect = witnesses.getBoundingClientRect();
         return {
           tabsVisible: visible(tabs),
           rollerVisible: visible(roller),
           spectatorVisible: visible(spectator),
+          rollerRenderSized: renderSized(roller),
+          spectatorRenderSized: renderSized(spectator),
           controlsAboveWitnesses: controlsRect.bottom <= witnessesRect.top,
           headerColumns:
             getComputedStyle(header).gridTemplateColumns.split(' ').length,
@@ -493,6 +501,10 @@ async function inspectResponsiveState(page, viewport) {
   if (!state.controlsAboveWitnesses)
     throw Error(
       `${viewport.id} controls do not remain above the witness trays`
+    );
+  if (!state.rollerRenderSized || !state.spectatorRenderSized)
+    throw Error(
+      `${viewport.id} must keep both witness renderers nonzero-sized`
     );
 
   if (viewport.id === 'desktop') {
@@ -519,18 +531,33 @@ async function inspectResponsiveState(page, viewport) {
       'inspect narrow witness tab state',
       TIMEOUTS.stepMs,
       () =>
-        page.evaluate(() => ({
-          roller: getComputedStyle(
-            document.querySelector('[data-witness-pane="roller"]')
-          ).display,
-          spectator: getComputedStyle(
-            document.querySelector('[data-witness-pane="spectator"]')
-          ).display,
-        })),
+        page.evaluate(() => {
+          const paneState = (selector) => {
+            const element = document.querySelector(selector);
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return {
+              visible:
+                style.display !== 'none' && style.visibility !== 'hidden',
+              renderSized: rect.width > 0 && rect.height > 0,
+            };
+          };
+          return {
+            roller: paneState('[data-witness-pane="roller"]'),
+            spectator: paneState('[data-witness-pane="spectator"]'),
+          };
+        }),
       () => closePage(page)
     );
-    if (switched.roller !== 'none' || switched.spectator === 'none')
-      throw Error('narrow Witness tab did not swap the visible pane');
+    if (
+      switched.roller.visible ||
+      !switched.spectator.visible ||
+      !switched.roller.renderSized ||
+      !switched.spectator.renderSized
+    )
+      throw Error(
+        'narrow Witness tab did not swap one visible pane while retaining both renderers'
+      );
     await page.getByRole('tab', { name: 'Roller', exact: true }).click();
   }
 
@@ -912,6 +939,10 @@ async function advanceNarrowWitnessFrame(page, phase, scenario) {
   await page.getByRole('tab', { name: 'Roller', exact: true }).click();
 }
 
+function shouldAttemptManualRelease(scenario) {
+  return scenario !== 'missing-release';
+}
+
 async function runScenario(page, viewport, scenario) {
   const phase = page.getByTestId('shared-table-dice-phase');
   const rollerPane = page.locator('[data-witness-pane="roller"]');
@@ -966,45 +997,50 @@ async function runScenario(page, viewport, scenario) {
       continue;
     }
 
-    const presentation = rollerPane.locator(
-      '[data-testid="roll-group-presentation"][data-renderer-generation]'
-    );
-    const generation = await presentation.getAttribute(
-      'data-renderer-generation'
-    );
-    if (generation && !clickedGenerations.has(generation)) {
-      const dieTarget = rollerPane.locator(TARGET_SELECTOR).first();
-      if (await dieTarget.isVisible().catch(() => false)) {
-        try {
-          await dieTarget.scrollIntoViewIfNeeded();
-          const box = await dieTarget.boundingBox();
-          if (!box) throw Error(`${scenario} Roller die target has no bounds`);
-          const start = {
-            x: box.x + box.width / 2,
-            y: box.y + box.height / 2,
-          };
-          await page.mouse.move(start.x, start.y);
-          await page.mouse.down();
-          await page.mouse.move(start.x + 8, start.y + 4);
-          await page.mouse.up();
+    if (shouldAttemptManualRelease(scenario)) {
+      const presentation = rollerPane.locator(
+        '[data-testid="roll-group-presentation"][data-renderer-generation]'
+      );
+      const generation = await presentation.getAttribute(
+        'data-renderer-generation'
+      );
+      if (generation && !clickedGenerations.has(generation)) {
+        const dieTarget = rollerPane.locator(TARGET_SELECTOR).first();
+        if (await dieTarget.isVisible().catch(() => false)) {
+          try {
+            await dieTarget.scrollIntoViewIfNeeded();
+            const box = await dieTarget.boundingBox();
+            if (!box) {
+              await page.waitForTimeout(50);
+              continue;
+            }
+            const start = {
+              x: box.x + box.width / 2,
+              y: box.y + box.height / 2,
+            };
+            await page.mouse.move(start.x, start.y);
+            await page.mouse.down();
+            await page.mouse.move(start.x + 8, start.y + 4);
+            await page.mouse.up();
+            clickedGenerations.add(generation);
+            releaseActions += 1;
+            continue;
+          } catch (error) {
+            if (!safeMessage(error).includes('not attached to the DOM'))
+              throw error;
+            continue;
+          }
+        }
+        const rollButton = rollerPane.getByRole('button', {
+          name: 'Roll dice',
+          exact: true,
+        });
+        if (await rollButton.isVisible().catch(() => false)) {
+          await rollButton.press('Enter');
           clickedGenerations.add(generation);
           releaseActions += 1;
           continue;
-        } catch (error) {
-          if (!safeMessage(error).includes('not attached to the DOM'))
-            throw error;
-          continue;
         }
-      }
-      const rollButton = rollerPane.getByRole('button', {
-        name: 'Roll dice',
-        exact: true,
-      });
-      if (await rollButton.isVisible().catch(() => false)) {
-        await rollButton.press('Enter');
-        clickedGenerations.add(generation);
-        releaseActions += 1;
-        continue;
       }
     }
     assertGlobalTimeRemaining(`run ${scenario}`);
@@ -1134,6 +1170,9 @@ async function runHarnessIntegritySelfTest() {
     failure: 'error-exceeds-limit',
   });
 
+  assert.equal(shouldAttemptManualRelease('missing-release'), false);
+  assert.equal(shouldAttemptManualRelease('great-weapon-fighting'), true);
+
   const sequence = [];
   let releaseOperation;
   const timedOperation = withTimeout(
@@ -1173,7 +1212,7 @@ async function runHarnessIntegritySelfTest() {
 
 if (isHarnessIntegritySelfTest) {
   await runHarnessIntegritySelfTest();
-  console.log('harness integrity self-test: 4/4 passed');
+  console.log('harness integrity self-test: 5/5 passed');
   process.exit(0);
 }
 

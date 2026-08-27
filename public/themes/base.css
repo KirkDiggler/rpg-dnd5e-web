@@ -2380,13 +2380,18 @@
   .shared-table-dice-stage__witnesses {
     grid-template-columns: minmax(0, 1fr);
   }
+  .shared-table-dice-stage__witness {
+    grid-area: 1 / 1;
+  }
   .shared-table-dice-stage__witnesses[data-active-witness='roller']
     [data-witness-pane='spectator'] {
-    display: none;
+    visibility: hidden;
+    pointer-events: none;
   }
   .shared-table-dice-stage__witnesses[data-active-witness='spectator']
     [data-witness-pane='roller'] {
-    display: none;
+    visibility: hidden;
+    pointer-events: none;
   }
   .shared-table-dice-stage__witness + .shared-table-dice-stage__witness {
     border-left: 0;
