@@ -53,6 +53,7 @@ import { MemberKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session
 import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { readCameraDials } from '../hex-grid/cameraDials';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import { PathPreview } from '../hex-grid/PathPreview';
@@ -226,7 +227,14 @@ export function SessionScene({
     () => new THREE.Vector3(target.x, 0, target.z),
     [target.x, target.z]
   );
-  useCameraControls({ target: initialTargetRef.current, focusTarget });
+  const cameraDials = useMemo(() => readCameraDials(), []);
+  useCameraControls({
+    target: initialTargetRef.current,
+    focusTarget,
+    minZoom: cameraDials.zoomMin,
+    maxZoom: cameraDials.zoomMax,
+    curve: cameraDials.curve,
+  });
 
   const attackableSet = useMemo(
     () => new Set(attackableTargets ?? []),
@@ -476,17 +484,23 @@ export function SessionScene({
 
 /**
  * The Canvas wrapper. Orthographic isometric camera at the same
- * `CAMERA_OFFSET`/zoom the rest of the game uses (`HexGrid.tsx`), so the
- * session route reads as the same game, not a different renderer —
- * `useCameraControls` (WASD/Q-E/wheel/right-drag) takes over placement
- * from there exactly as it does in `HexGrid`.
+ * `CAMERA_OFFSET` and shared zoom/pitch treatment as `HexGrid`, so the session
+ * route keeps the approved tabletop planning view when pulled out and flattens
+ * toward the minis when zoomed in. `useCameraControls`
+ * (WASD/Q-E/wheel/right-drag) takes over placement from there.
  */
 export function SessionCanvas(props: SessionCanvasProps) {
+  const cameraDials = useMemo(() => readCameraDials(), []);
   return (
     <Canvas
       orthographic
       frameloop="demand"
-      camera={{ position: CAMERA_OFFSET, near: 0.1, far: 1000, zoom: 80 }}
+      camera={{
+        position: CAMERA_OFFSET,
+        near: 0.1,
+        far: 1000,
+        zoom: cameraDials.zoomStart,
+      }}
       style={{ width: '100%', height: '100%' }}
     >
       <SessionScene {...props} />

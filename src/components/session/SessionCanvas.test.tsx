@@ -13,8 +13,10 @@ import {
   MemberKind,
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { useThree } from '@react-three/fiber';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { readFileSync } from 'node:fs';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
@@ -167,6 +169,41 @@ function renderSession(scene3D = scene()) {
       myPosition={{ x: 0, y: 0, z: 0 }}
     />
   );
+}
+
+function CameraProbe({
+  onReady,
+  onWheelListener,
+}: {
+  onReady: (camera: THREE.OrthographicCamera) => void;
+  onWheelListener?: (listener: EventListener) => void;
+}) {
+  const { camera, gl } = useThree();
+  const patched = useRef(false);
+  if (!patched.current && onWheelListener) {
+    const canvas = gl.domElement;
+    const addEventListener = canvas.addEventListener.bind(canvas);
+    canvas.addEventListener = ((
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ) => {
+      if (type === 'wheel' && typeof listener === 'function') {
+        onWheelListener(listener);
+      }
+      addEventListener(type, listener, options);
+    }) as typeof canvas.addEventListener;
+    patched.current = true;
+  }
+  useEffect(() => {
+    onReady(camera as THREE.OrthographicCamera);
+  }, [camera, onReady]);
+  return null;
+}
+
+function polarFromVertical(camera: THREE.Camera): number {
+  const viewDirection = camera.getWorldDirection(new THREE.Vector3());
+  return Math.acos(-viewDirection.y);
 }
 
 function sceneWithProp(
@@ -385,6 +422,104 @@ describe('SessionScene', () => {
     const renderer = await renderSession(sceneWithProp('dnd5e:props:pillar'));
 
     expectOneVisiblePlaceholder(renderer, baseMeshCount);
+  });
+
+  it('steps through overview, tabletop, tactical, shoulder, and fixed-angle detail bands', async () => {
+    let camera: THREE.OrthographicCamera | undefined;
+    const wheelListeners: EventListener[] = [];
+    const onReady = (readyCamera: THREE.OrthographicCamera) => {
+      camera = readyCamera;
+    };
+    const testCamera = new THREE.OrthographicCamera(
+      -640,
+      640,
+      400,
+      -400,
+      0.1,
+      1000
+    );
+    testCamera.position.set(10, 20, 10);
+    testCamera.zoom = 80;
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <>
+        <CameraProbe
+          onReady={onReady}
+          onWheelListener={(listener) => wheelListeners.push(listener)}
+        />
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+        />
+      </>,
+      { camera: testCamera }
+    );
+
+    expect(camera).toBeDefined();
+    expect(wheelListeners.length).toBeGreaterThan(0);
+
+    let wheelTime = 0;
+    const wheelOnce = async (deltaY: number, elapsedMs = 200) => {
+      wheelTime += elapsedMs;
+      await ReactThreeTestRenderer.act(async () => {
+        const event = new WheelEvent('wheel', { deltaY, cancelable: true });
+        Object.defineProperty(event, 'timeStamp', { value: wheelTime });
+        wheelListeners.forEach((listener) => listener(event));
+      });
+    };
+
+    expect(camera!.zoom).toBe(80);
+    expect(polarFromVertical(camera!)).toBeCloseTo((45 * Math.PI) / 180, 5);
+
+    await wheelOnce(100);
+    expect(camera!.zoom).toBe(50);
+    expect(polarFromVertical(camera!)).toBeCloseTo((28 * Math.PI) / 180, 5);
+
+    await wheelOnce(100);
+    expect(camera!.zoom).toBe(35);
+    expect(polarFromVertical(camera!)).toBeCloseTo((28 * Math.PI) / 180, 5);
+
+    await wheelOnce(-100);
+    expect(camera!.zoom).toBe(50);
+    expect(polarFromVertical(camera!)).toBeCloseTo((28 * Math.PI) / 180, 5);
+
+    await wheelOnce(-100);
+    expect(camera!.zoom).toBe(80);
+    expect(polarFromVertical(camera!)).toBeCloseTo((45 * Math.PI) / 180, 5);
+
+    await wheelOnce(-100);
+    expect(camera!.zoom).toBe(110);
+    expect(polarFromVertical(camera!)).toBeCloseTo((62 * Math.PI) / 180, 5);
+    camera!.updateMatrixWorld(true);
+    const playerInView = new THREE.Vector3(0, 0, 0).project(camera!);
+    expect(playerInView.y).toBeLessThan(-0.2);
+
+    await wheelOnce(-100);
+    expect(camera!.zoom).toBe(140);
+    expect(polarFromVertical(camera!)).toBeCloseTo((62 * Math.PI) / 180, 5);
+
+    await wheelOnce(-100);
+    expect(camera!.zoom).toBe(140);
+    expect(polarFromVertical(camera!)).toBeCloseTo((62 * Math.PI) / 180, 5);
+
+    await wheelOnce(100);
+    expect(camera!.zoom).toBe(110);
+    expect(polarFromVertical(camera!)).toBeCloseTo((62 * Math.PI) / 180, 5);
+
+    await wheelOnce(100);
+    expect(camera!.zoom).toBe(80);
+    expect(polarFromVertical(camera!)).toBeCloseTo((45 * Math.PI) / 180, 5);
+
+    await wheelOnce(-100);
+    await wheelOnce(-100, 10);
+    expect(camera!.zoom).toBe(110);
+    expect(polarFromVertical(camera!)).toBeCloseTo((62 * Math.PI) / 180, 5);
+
+    await renderer.unmount();
   });
 
   it('places the local player and camera target at the given cube position', async () => {

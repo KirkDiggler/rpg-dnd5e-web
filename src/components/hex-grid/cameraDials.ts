@@ -1,10 +1,14 @@
 /**
- * The hex-grid battle map's camera: it flattens as you zoom in and stands up
- * as you pull out (Gloomhaven's board camera, which Kirk called out from
- * play), plus the dials for tuning that live.
+ * The hex-grid battle map's Frosthaven-like camera: five deliberate wheel
+ * bands from overview/tabletop through tactical and shoulder to fixed-angle detail,
+ * plus the dials for tuning them live.
  *
  * The curve is ON by default — this is the camera now, not an experiment.
- * `?pitchCurve=0` restores the old fixed angle; `?camera=persp` remains
+ * Orthographic wheel input steps through five deliberate camera bands; the
+ * first two share the overview angle, pitch changes through tactical/shoulder,
+ * and the final detail zoom keeps the shoulder angle.
+ * `?pitchCurve=0` restores the old fixed-angle continuous zoom;
+ * `?camera=persp` remains
  * opt-in, because orthographic-vs-perspective is a separate open question.
  *
  * Same "read the query string once" convention as `?syntyDungeon=` /
@@ -20,7 +24,7 @@
  *  - zoomed in, it flattens to roughly eye-level-ish (~57° from vertical)
  * Ours is pinned at 51.4° (`Math.PI / 3.5`, HexGrid.tsx) at every zoom — i.e.
  * parked permanently at their CLOSE end, never reaching their planning angle.
- * So the curve is bidirectional: steeper when out, flatter when in.
+ * So the bands are bidirectional: steeper when out, flatter when in.
  *
  * The steep end is not just cosmetic. A 6-hex move (our normal budget, vs
  * Gloomhaven's 2-4) is a ~20.8-world-unit disc at HEX_SIZE=1, and wall
@@ -41,7 +45,7 @@ const deg = (d: number): number => (d * Math.PI) / 180;
 export const DEFAULT_PITCH_FAR_DEG = 28;
 
 /**
- * Polar angle (degrees from vertical) at the zoomed-IN extreme — the
+ * Polar angle (degrees from vertical) at the close-lean extreme — the
  * "up close and personal" end. 62° is past the ~57° measured off the
  * reference: Kirk drove the 32→57 version and asked for more swing.
  *
@@ -51,6 +55,14 @@ export const DEFAULT_PITCH_FAR_DEG = 28;
  * `?wallCutaway=1` a hard prerequisite rather than an opt-in experiment.
  */
 export const DEFAULT_PITCH_NEAR_DEG = 62;
+
+/**
+ * World-space look-target lead at the shoulder/detail bands. Moving the
+ * framing target ahead
+ * of the followed mini settles that mini lower in frame and reserves more of
+ * the close view for the dungeon in front.
+ */
+export const DEFAULT_CLOSE_FOCUS_LEAD = 2;
 
 /**
  * Vertical FOV for `?camera=persp`. Narrow on purpose: at the zoomed-out end
@@ -72,29 +84,25 @@ export const DEFAULT_MIN_DISTANCE = 6;
 export const DEFAULT_MAX_DISTANCE = 28;
 
 /**
- * Orthographic zoom floor — how far OUT you may go. Was 30, which showed
- * ~31 hexes across a 1600px canvas: far more board than a 6-hex move needs
- * (a ~20.8-world-unit disc, ~12 hexes) and the dungeon read as a small
- * object in a black frame. 50 still frames ~18 hexes, so a full move plus
- * margin fits, without the room getting lost.
+ * Orthographic overview zoom — one deliberate step wider than the tabletop
+ * band for the game's six-hex movement budget.
  */
-export const DEFAULT_ZOOM_MIN = 50;
+export const DEFAULT_ZOOM_MIN = 35;
+
+/** Wide tabletop band; shares the overview pitch without pulling out as far. */
+export const DEFAULT_TABLETOP_ZOOM = 50;
 
 /**
- * Orthographic zoom ceiling — how far IN you may go. The stock 150 topped
- * out around 6 hexes across, short of the reference close-up's ~4; 220 gets
- * there. Raised as a DEFAULT (not just a dial) so `?pitchCurve=1` on its own
- * reaches the close end the curve exists to serve.
+ * Orthographic detail-band zoom. Pitch has already reached its close angle at
+ * the preceding shoulder band; this final step changes scale only.
  */
-export const DEFAULT_ZOOM_MAX = 220;
+export const DEFAULT_ZOOM_MAX = 140;
 
 /**
- * Starting orthographic zoom. Sits partway up the [MIN, MAX] range so the
- * landing view is moderately close and moderately steep rather than pinned
- * at either extreme of the pitch curve — at 110 the curve resolves to ~40°
- * from vertical, between the 28° planning angle and the 62° close angle.
+ * Starting orthographic zoom and tactical band. It sits between the wide
+ * tabletop and shoulder/detail bands rather than landing at either extreme.
  */
-export const DEFAULT_ZOOM_START = 110;
+export const DEFAULT_ZOOM_START = 80;
 
 export interface CameraDials {
   /** Perspective projection instead of the default orthographic. */
@@ -113,7 +121,16 @@ export interface CameraDials {
    * camera now rather than an experiment. `null` (only via `?pitchCurve=0`)
    * restores the single fixed angle the grid used before this feature.
    */
-  curve: { polarFar: number; polarNear: number } | null;
+  curve: {
+    polarFar: number;
+    polarNear: number;
+    focusLead: number;
+    bands: readonly {
+      zoom: number;
+      polar: number;
+      focusLead: number;
+    }[];
+  } | null;
   /** Orthographic zoom range and starting point. */
   zoomMin: number;
   zoomMax: number;
@@ -159,6 +176,13 @@ export function parseCameraDials(search: string): CameraDials {
     pitchFarDeg !== null ||
     pitchNearDeg !== null;
 
+  const polarFar = deg(pitchFarDeg ?? DEFAULT_PITCH_FAR_DEG);
+  const polarNear = deg(pitchNearDeg ?? DEFAULT_PITCH_NEAR_DEG);
+  const zoomMin = num(params, 'zoomMin') ?? DEFAULT_ZOOM_MIN;
+  const zoomMax = num(params, 'zoomMax') ?? DEFAULT_ZOOM_MAX;
+  const zoomStart = num(params, 'zoomStart') ?? DEFAULT_ZOOM_START;
+  const shoulderZoom = zoomStart + (zoomMax - zoomStart) / 2;
+
   return {
     perspective,
     fovDeg: num(params, 'fov') ?? DEFAULT_PERSP_FOV_DEG,
@@ -166,13 +190,33 @@ export function parseCameraDials(search: string): CameraDials {
     maxDistance: num(params, 'maxDist') ?? DEFAULT_MAX_DISTANCE,
     curve: curveOn
       ? {
-          polarFar: deg(pitchFarDeg ?? DEFAULT_PITCH_FAR_DEG),
-          polarNear: deg(pitchNearDeg ?? DEFAULT_PITCH_NEAR_DEG),
+          polarFar,
+          polarNear,
+          focusLead: DEFAULT_CLOSE_FOCUS_LEAD,
+          bands: [
+            { zoom: zoomMin, polar: polarFar, focusLead: 0 },
+            { zoom: DEFAULT_TABLETOP_ZOOM, polar: polarFar, focusLead: 0 },
+            {
+              zoom: zoomStart,
+              polar: (polarFar + polarNear) / 2,
+              focusLead: DEFAULT_CLOSE_FOCUS_LEAD / 4,
+            },
+            {
+              zoom: shoulderZoom,
+              polar: polarNear,
+              focusLead: DEFAULT_CLOSE_FOCUS_LEAD,
+            },
+            {
+              zoom: zoomMax,
+              polar: polarNear,
+              focusLead: DEFAULT_CLOSE_FOCUS_LEAD,
+            },
+          ],
         }
       : null,
-    zoomMin: num(params, 'zoomMin') ?? DEFAULT_ZOOM_MIN,
-    zoomMax: num(params, 'zoomMax') ?? DEFAULT_ZOOM_MAX,
-    zoomStart: num(params, 'zoomStart') ?? DEFAULT_ZOOM_START,
+    zoomMin,
+    zoomMax,
+    zoomStart,
   };
 }
 

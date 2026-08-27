@@ -16,6 +16,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
+const WHEEL_BAND_STEP_INTERVAL_MS = 120;
+
 interface CameraControlsOptions {
   /** Target point to orbit around */
   target: THREE.Vector3;
@@ -32,15 +34,23 @@ interface CameraControlsOptions {
   /** When set, camera lerps target to this position. Cleared on manual pan. */
   focusTarget?: THREE.Vector3 | null;
   /**
-   * Zoom-coupled pitch (`?pitchCurve=1`, see cameraDials.ts). When set, the
-   * polar angle interpolates between `polarFar` at the zoomed-OUT extreme and
-   * `polarNear` at the zoomed-IN extreme instead of staying at the single
-   * fixed `polarAngle` — the camera goes near top-down for planning and
-   * flattens out as you lean in, which is the Gloomhaven behaviour.
+   * Banded zoom/pitch (`?pitchCurve=1`, see cameraDials.ts). Each orthographic
+   * wheel gesture selects one authored zoom/polar/focus band. The final detail
+   * band may increase zoom while retaining the preceding shoulder pitch.
    *
    * `undefined`/`null` keeps `polarAngle` fixed: the untouched default path.
    */
-  curve?: { polarFar: number; polarNear: number } | null;
+  curve?: {
+    polarFar: number;
+    polarNear: number;
+    /** World-space look-target lead for perspective and the closest bands. */
+    focusLead: number;
+    bands: readonly {
+      zoom: number;
+      polar: number;
+      focusLead: number;
+    }[];
+  } | null;
   /**
    * Drive a PerspectiveCamera by dollying `distance` instead of driving an
    * OrthographicCamera's `zoom` (`?camera=persp`). Orthographic stays the
@@ -97,6 +107,14 @@ export function useCameraControls({
   // Current distance from target
   const distance = useRef(20);
 
+  // The selected orthographic camera band. Null means resolve the nearest
+  // authored band from the Canvas's initial zoom on first use.
+  const orthoBandIndex = useRef<number | null>(null);
+  const lastOrthoBandStep = useRef({
+    at: Number.NEGATIVE_INFINITY,
+    direction: 0,
+  });
+
   // Track lerp target for auto-center
   const lerpTarget = useRef<THREE.Vector3 | null>(null);
 
@@ -129,11 +147,56 @@ export function useCameraControls({
     return THREE.MathUtils.clamp((camera.zoom - minZoom) / span, 0, 1);
   }, [perspective, maxDistance, minDistance, maxZoom, minZoom, camera]);
 
+  const currentOrthoBand = useCallback(() => {
+    const bands = curve?.bands ?? [];
+    if (bands.length === 0) return null;
+    if (
+      orthoBandIndex.current === null ||
+      orthoBandIndex.current >= bands.length
+    ) {
+      let nearest = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      bands.forEach((band, index) => {
+        const bandDistance = Math.abs(band.zoom - camera.zoom);
+        if (bandDistance < nearestDistance) {
+          nearest = index;
+          nearestDistance = bandDistance;
+        }
+      });
+      orthoBandIndex.current = nearest;
+    }
+    return bands[orthoBandIndex.current] ?? null;
+  }, [curve, camera]);
+
+  /** Smooth perspective close progress; orthographic cameras use exact bands. */
+  const easedPerspectiveCloseT = useCallback((): number => {
+    if (!curve || !perspective) return 0;
+    const closeT = zoomT();
+    return closeT * closeT * (3 - 2 * closeT);
+  }, [curve, perspective, zoomT]);
+
   /** Polar angle for the current zoom — constant unless a curve is supplied. */
   const currentPolar = useCallback((): number => {
     if (!curve) return polarAngle;
-    return THREE.MathUtils.lerp(curve.polarFar, curve.polarNear, zoomT());
-  }, [curve, polarAngle, zoomT]);
+    if (!perspective) return currentOrthoBand()?.polar ?? curve.polarFar;
+    return THREE.MathUtils.lerp(
+      curve.polarFar,
+      curve.polarNear,
+      easedPerspectiveCloseT()
+    );
+  }, [
+    curve,
+    perspective,
+    polarAngle,
+    currentOrthoBand,
+    easedPerspectiveCloseT,
+  ]);
+
+  const currentFocusLead = useCallback((): number => {
+    if (!curve) return 0;
+    if (!perspective) return currentOrthoBand()?.focusLead ?? 0;
+    return curve.focusLead * easedPerspectiveCloseT();
+  }, [curve, perspective, currentOrthoBand, easedPerspectiveCloseT]);
 
   /**
    * World units spanned by one screen pixel at the current zoom. Right-drag
@@ -155,15 +218,17 @@ export function useCameraControls({
   // Update camera position based on spherical coordinates
   const updateCamera = useCallback(() => {
     const polar = currentPolar();
-    const x =
-      target.x + distance.current * Math.sin(polar) * Math.cos(azimuth.current);
+    const az = azimuth.current;
+    const focusLead = currentFocusLead();
+    const focusX = target.x - focusLead * Math.cos(az);
+    const focusZ = target.z - focusLead * Math.sin(az);
+    const x = focusX + distance.current * Math.sin(polar) * Math.cos(az);
     const y = target.y + distance.current * Math.cos(polar);
-    const z =
-      target.z + distance.current * Math.sin(polar) * Math.sin(azimuth.current);
+    const z = focusZ + distance.current * Math.sin(polar) * Math.sin(az);
 
     camera.position.set(x, y, z);
-    camera.lookAt(target);
-  }, [target, currentPolar, camera]);
+    camera.lookAt(focusX, target.y, focusZ);
+  }, [target, currentPolar, camera, currentFocusLead]);
 
   // Handle keyboard events
   useEffect(() => {
@@ -261,17 +326,34 @@ export function useCameraControls({
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      // For orthographic camera, adjust zoom property
+      // Orthographic cameras with authored bands move one deliberate stop per
+      // wheel gesture. The fixed-angle escape hatch keeps continuous zoom.
       if (camera instanceof THREE.OrthographicCamera) {
-        camera.zoom = Math.max(
-          minZoom,
-          Math.min(maxZoom, camera.zoom - e.deltaY * 0.1)
-        );
+        if (curve && curve.bands.length > 0 && e.deltaY !== 0) {
+          const direction = e.deltaY < 0 ? 1 : -1;
+          const previousStep = lastOrthoBandStep.current;
+          const sameBurst =
+            previousStep.direction === direction &&
+            e.timeStamp >= previousStep.at &&
+            e.timeStamp - previousStep.at < WHEEL_BAND_STEP_INTERVAL_MS;
+          if (sameBurst) return;
+          lastOrthoBandStep.current = { at: e.timeStamp, direction };
+          currentOrthoBand();
+          const nextIndex = THREE.MathUtils.clamp(
+            (orthoBandIndex.current ?? 0) + direction,
+            0,
+            curve.bands.length - 1
+          );
+          orthoBandIndex.current = nextIndex;
+          camera.zoom = curve.bands[nextIndex]!.zoom;
+        } else {
+          camera.zoom = THREE.MathUtils.clamp(
+            camera.zoom - e.deltaY * 0.1,
+            minZoom,
+            maxZoom
+          );
+        }
         camera.updateProjectionMatrix();
-        // Ortho zoom normally leaves the camera's POSITION alone — but with a
-        // pitch curve the polar angle is a function of zoom, so the rig has to
-        // be re-placed on every wheel tick. Skipped entirely when no curve is
-        // active, keeping the default path's work identical to before.
         if (curve) updateCamera();
         invalidate(); // Request re-render for on-demand frameloop
       } else {

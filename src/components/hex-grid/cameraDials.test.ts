@@ -51,7 +51,7 @@ describe('parseCameraDials', () => {
     expect(1600 / dials.zoomMin).toBeGreaterThan(sixHexMoveWidth);
   });
 
-  it('starts partway up the range, so the landing view is neither extreme of the curve', () => {
+  it('starts on the tactical band between the tabletop and detail extremes', () => {
     const dials = parseCameraDials('');
     expect(dials.zoomStart).toBeGreaterThan(dials.zoomMin);
     expect(dials.zoomStart).toBeLessThan(dials.zoomMax);
