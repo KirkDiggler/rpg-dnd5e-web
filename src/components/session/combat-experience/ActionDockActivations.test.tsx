@@ -11,7 +11,10 @@ import { ActionDock } from './ActionDock';
 
 const fixture = SESSION_COMBAT_FIXTURES[0]!;
 
-function activation(overrides: Partial<Declaration> = {}): Declaration {
+// Overrides are loosely typed on purpose: these fixtures stand in for wire
+// messages, and spelling every nested proto field ($typeName and all) would
+// make each case unreadable for no assertion gained.
+function activation(overrides: Record<string, unknown> = {}): Declaration {
   return {
     verb: Verb.ACTIVATE,
     slot: Slot.ACTION,
@@ -55,7 +58,7 @@ describe('ActionDock renders what a member can activate', () => {
         id: 'v1.rage',
         slot: Slot.BONUS,
         ability: { ref: 'dnd5e:features:rage', name: 'Rage' },
-      } as Partial<Declaration>),
+      }),
     ]);
 
     // One verb, two shapes, live at the same moment — the case that forces
@@ -73,7 +76,7 @@ describe('ActionDock renders what a member can activate', () => {
         available: false,
         why: { text: 'no rage uses remaining' },
         ability: { ref: 'dnd5e:features:rage', name: 'Rage' },
-      } as Partial<Declaration>),
+      }),
     ]);
 
     const rage = screen.getByRole('button', { name: /Rage/ });
@@ -90,20 +93,41 @@ describe('ActionDock renders what a member can activate', () => {
     expect(onSelect).toHaveBeenCalledWith(dodge);
   });
 
-  // Help asks for an ally, and its declaration does not yet carry a candidate
-  // universe (rpg-project#300). Drawing the button would arm targeting against
-  // an empty list — a control nothing can drive.
-  it('does not draw an activation it cannot yet operate', () => {
+  // HELP IS DRAWN NOW. It was held back while its declaration said
+  // TARGET_KIND_MEMBER and carried no candidate universe — a control nothing
+  // could drive. rpg-toolkit#1274 gave it one, so the dock draws every
+  // activation the server offers and decides nothing itself.
+  it('draws an activation that asks for a target', () => {
     dockWith([
       activation(),
       activation({
         id: 'v1.help',
         targetKind: TargetKind.MEMBER,
         ability: { ref: 'dnd5e:combat_abilities:help', name: 'Help' },
-      } as Partial<Declaration>),
+        candidates: [{ member: 'bob', available: true }],
+      }),
     ]);
 
     expect(screen.getByRole('button', { name: /Dodge/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Help/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Help/ })).toBeTruthy();
+  });
+
+  // And a Help with nobody to help is drawn DISABLED with the server's reason,
+  // rather than dropped — the same treatment every other refused offer gets.
+  it('draws a Help with no available ally as a disabled button', () => {
+    dockWith([
+      activation({
+        id: 'v1.help',
+        targetKind: TargetKind.MEMBER,
+        available: false,
+        why: { text: 'no ally within reach' },
+        ability: { ref: 'dnd5e:combat_abilities:help', name: 'Help' },
+        candidates: [],
+      }),
+    ]);
+
+    const help = screen.getByRole('button', { name: /Help/ });
+    expect((help as HTMLButtonElement).disabled).toBe(true);
+    expect(help.getAttribute('title')).toBe('no ally within reach');
   });
 });

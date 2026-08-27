@@ -1,7 +1,6 @@
 import {
   ClockKind,
   Slot,
-  TargetKind,
   Verb,
   type Declaration,
   type Participant,
@@ -194,22 +193,17 @@ export function ActionDock({
     );
   }
 
-  const executableDeclarations = declarations.filter((declaration) => {
-    if (declaration.verb === Verb.ATTACK || declaration.verb === Verb.MOVE) {
-      return true;
-    }
-    if (declaration.verb !== Verb.ACTIVATE) return false;
-    // ACTIVATIONS THAT PROMPT FOR NOBODY, which at level 1 is six of the
-    // seven. Help asks for an ally and is held back until its declaration
-    // carries a candidate universe the way Attack's does — rendering a button
-    // that arms targeting against an empty candidate list would be a control
-    // nothing can drive (rpg-project#300).
-    //
-    // This is a rendering decision, not a rules one: the client declines to
-    // draw a control it cannot yet operate, and derives nothing about what the
-    // ability does.
-    return declaration.targetKind === TargetKind.NONE;
-  });
+  // ALL OF THEM NOW. Help was held back while its declaration said
+  // TARGET_KIND_MEMBER and carried no candidate universe — a control nothing
+  // could drive. rpg-toolkit#1274 gave it one, so the client no longer has to
+  // decline to draw anything, which is the state this filter should always be
+  // in: the server decides what is offered, and the dock draws it.
+  const executableDeclarations = declarations.filter(
+    (declaration) =>
+      declaration.verb === Verb.ATTACK ||
+      declaration.verb === Verb.MOVE ||
+      declaration.verb === Verb.ACTIVATE
+  );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
 
   return (

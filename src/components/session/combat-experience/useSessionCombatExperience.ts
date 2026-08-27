@@ -346,12 +346,30 @@ export function useSessionCombatExperience({
         return;
       }
 
-      // AN ACTIVATION FIRES ON THE CLICK. Attack arms and waits for a target,
-      // Move waits for a path; the six activations a level-1 character can
-      // reach prompt for nobody, so there is nothing to wait for and a
-      // two-step interaction would be ceremony. The dock only offers
-      // TARGET_KIND_NONE activations for exactly this reason.
+      // AN ACTIVATION THAT PROMPTS FOR NOBODY FIRES ON THE CLICK. Five of the
+      // six do: there is nothing to wait for, and a two-step interaction would
+      // be ceremony.
+      //
+      // Help is the exception and arms exactly like Attack — same candidate
+      // rows, same server-ruled availability, same selector echoed back. The
+      // only thing that differs downstream is which RPC runs.
       if (candidate.verb === Verb.ACTIVATE) {
+        if (candidate.targetKind === TargetKind.MEMBER) {
+          const current = uniqueCurrentDeclaration(
+            declarationsRef.current,
+            candidate,
+            Verb.ACTIVATE,
+            TargetKind.MEMBER
+          );
+          if (!current) return;
+          setInteraction({
+            armedDeclarationId: current.id,
+            selectedCandidateMember: null,
+            changedOptionNotice: null,
+          });
+          setTargeting(true);
+          return;
+        }
         runActivateRef.current(candidate);
       }
     },
@@ -364,6 +382,7 @@ export function useSessionCombatExperience({
         !target ||
         !mountedRef.current ||
         attackInFlightRef.current ||
+        activateInFlightRef.current ||
         !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
@@ -379,9 +398,15 @@ export function useSessionCombatExperience({
         declarationsRef.current,
         currentState
       );
+      // Two verbs prompt for a member now — Attack, and Help. Everything up
+      // to the click is identical: arm an offer, pick a candidate the SERVER
+      // ruled, echo the selector back. Only the RPC differs.
+      const targetTakingVerb =
+        selected?.declaration?.verb === Verb.ATTACK ||
+        selected?.declaration?.verb === Verb.ACTIVATE;
       if (
         !selected?.declaration ||
-        selected.declaration.verb !== Verb.ATTACK ||
+        !targetTakingVerb ||
         selected.declaration.targetKind !== TargetKind.MEMBER ||
         !selected.candidate ||
         !selected.candidate.member
@@ -398,6 +423,44 @@ export function useSessionCombatExperience({
       const exactTarget = selected.candidate.member;
       setInteraction(currentState);
       setTargeting(false);
+
+      if (declaration.verb === Verb.ACTIVATE) {
+        activateInFlightRef.current = true;
+        void (async () => {
+          try {
+            await activate({
+              session,
+              member,
+              declarationId: declaration.id,
+              target: exactTarget,
+            });
+            if (!mountedRef.current) return;
+            invalidateAuthority();
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          } catch (error) {
+            if (!mountedRef.current) return;
+            if (isStaleDeclarationRefusal(error)) {
+              recoverStaleDeclaration(
+                declaration.id,
+                Verb.ACTIVATE,
+                exactTarget
+              );
+            } else {
+              const notice = `Activate failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              invalidateAuthority();
+              setInteraction({
+                ...EMPTY_INTERACTION,
+                changedOptionNotice: notice,
+              });
+              scheduleRefresh(['characterData', 'turn', 'afford']);
+            }
+          } finally {
+            activateInFlightRef.current = false;
+          }
+        })();
+        return;
+      }
+
       attackInFlightRef.current = true;
       void (async () => {
         try {
@@ -441,6 +504,7 @@ export function useSessionCombatExperience({
       })();
     },
     [
+      activate,
       attack,
       invalidateAuthority,
       member,
