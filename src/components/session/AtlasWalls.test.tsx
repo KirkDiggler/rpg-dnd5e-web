@@ -5,6 +5,7 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { vertexKey, type AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import type { DungeonShellWallProfile } from '@/rendering/dungeonShellManifest';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
@@ -55,6 +56,24 @@ vi.mock('@react-three/drei', () => {
       scene.add(box([0, 0, -0.3], [2, 0.4, 0.3], 'profile-base'));
     } else if (url.includes('Crypt_Wall_Cap_01')) {
       scene.add(box([0.25, 0, -0.2], [2.25, 0.4, 0.2], 'profile-cap'));
+    } else if (url.includes('Provider_Door_Surround_Registration')) {
+      scene.add(
+        box(
+          [-0.9993886947631836, 0, -0.3419951796531677],
+          [-0.66627635917071, 2.5346500873565674, 0.3419951796531677],
+          'provider-surround-left'
+        ),
+        box(
+          [0.6408623012743637, 0, -0.3419951796531677],
+          [0.9993886947631836, 2.5346500873565674, 0.3419951796531677],
+          'provider-surround-right'
+        ),
+        box(
+          [-0.9993886947631836, 2.1852569580078125, -0.3419951796531677],
+          [0.9993886947631836, 2.5346500873565674, 0.3419951796531677],
+          'provider-surround-lintel'
+        )
+      );
     } else if (url.includes('Door_Surround')) {
       scene.add(
         box([-1, 0, -0.3], [-0.7, 2, 0.3], 'surround-left'),
@@ -97,6 +116,73 @@ const profile: DungeonShellWallProfile = {
     bounds: { min: [-1, 0, -0.3], max: [1, 2.5, 0.3] },
   },
 };
+
+const providerRegistrationProfile: DungeonShellWallProfile = {
+  ...profile,
+  cap: {
+    file: 'env/Crypt_Wall_Cap_01.glb',
+    sha256: 'a'.repeat(64),
+    bounds: {
+      min: [-2.546480178833008, 0, -0.20546433329582214],
+      max: [2.546480178833008, 0.663008451461792, 0.20546433329582214],
+    },
+  },
+  doorSurround: {
+    file: 'env/Provider_Door_Surround_Registration.glb',
+    sha256: 'a'.repeat(64),
+    bounds: {
+      min: [-0.9993886947631836, 0, -0.3419951796531677],
+      max: [0.9993886947631836, 2.5346500873565674, 0.3419951796531677],
+    },
+  },
+};
+
+function providerLeafScene(): THREE.Group {
+  const scene = new THREE.Group();
+  const geometry = new THREE.BoxGeometry(
+    1.2874064445495605 - -0.03624606132507324,
+    2.455683946609497,
+    0.09246950596570969 - -0.09246932715177536
+  );
+  geometry.translate(
+    (1.2874064445495605 + -0.03624606132507324) / 2,
+    2.455683946609497 / 2,
+    (0.09246950596570969 + -0.09246932715177536) / 2
+  );
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({ color: 0xffffff })
+  );
+  mesh.name = 'provider-leaf';
+  scene.add(mesh);
+  return scene;
+}
+
+function meshBoundsInDoorCoordinates(
+  mesh: THREE.Mesh,
+  door: DoorGapPiece
+): THREE.Box3 {
+  mesh.updateWorldMatrix(true, false);
+  const positions = mesh.geometry.getAttribute('position');
+  const points: THREE.Vector3[] = [];
+  const cos = Math.cos(door.rotationY);
+  const sin = Math.sin(door.rotationY);
+  for (let i = 0; i < positions.count; i += 1) {
+    const world = new THREE.Vector3()
+      .fromBufferAttribute(positions, i)
+      .applyMatrix4(mesh.matrixWorld);
+    const dx = world.x - door.position.x;
+    const dz = world.z - door.position.z;
+    points.push(
+      new THREE.Vector3(
+        dx * cos - dz * sin,
+        world.y - DUNGEON_SURFACE_Y,
+        dx * sin + dz * cos
+      )
+    );
+  }
+  return new THREE.Box3().setFromPoints(points);
+}
 
 const wallRuns = [
   {
@@ -161,7 +247,9 @@ function closedFallbackMeshes(renderer: {
 }
 
 function worldBox(group: THREE.Group): THREE.Box3 {
-  group.updateMatrixWorld(true);
+  let root: THREE.Object3D = group;
+  while (root.parent) root = root.parent;
+  root.updateMatrixWorld(true);
   return new THREE.Box3().setFromObject(group);
 }
 
@@ -517,7 +605,7 @@ describe('AtlasWalls profile assembly', () => {
         key: 'door-two',
         connection: 'door-two',
         position: { x: 3, z: 1 },
-        leafPosition: { x: 2.5, z: 1 },
+        leafPosition: { x: 3, z: 1.5 },
         rotationY: Math.PI / 2,
       },
     ];
@@ -543,10 +631,15 @@ describe('AtlasWalls profile assembly', () => {
     expect(firstFrame.position.toArray()).toEqual([0, 0.2, 0.01]);
     expect(firstFrame.rotation.y).toBeCloseTo(0, 8);
     expectBox(firstFrame, [-0.5, 0.2, -0.215], [0.5, 2.9, 0.235]);
-    const firstLeaf = leaves.find((group) => group.position.x === -0.5)!;
-    expect(firstLeaf.position.toArray()).toEqual([-0.5, 0.2, 0]);
-    expect(firstLeaf.rotation.y).toBeCloseTo(0, 8);
-    expectBox(firstLeaf, [-0.5, 0.2, -0.075], [0.24, 2.38, 0.075]);
+    const firstLeaf = leaves.find(
+      (group) => worldBox(group).getCenter(new THREE.Vector3()).x < 1.5
+    )!;
+    expect(firstLeaf.parent!.position.toArray()).toEqual([-0.5, 0.2, 0]);
+    expect(firstLeaf.parent!.rotation.y).toBeCloseTo(0, 8);
+    expect(firstLeaf.position.x).toBeCloseTo(0.129999, 6);
+    expect(firstLeaf.position.y).toBe(0);
+    expect(firstLeaf.position.z).toBe(0);
+    expectBox(firstLeaf, [-0.370001, 0.2, -0.075], [0.370001, 2.380001, 0.075]);
 
     const secondFrame = frames.find((group) => group.position.x > 3)!;
     expect(secondFrame.position.x).toBeCloseTo(3.01, 8);
@@ -554,10 +647,123 @@ describe('AtlasWalls profile assembly', () => {
     expect(secondFrame.position.z).toBeCloseTo(1, 8);
     expect(secondFrame.rotation.y).toBeCloseTo(Math.PI / 2, 8);
     expectBox(secondFrame, [2.785, 0.2, 0.5], [3.235, 2.9, 1.5]);
-    const secondLeaf = leaves.find((group) => group.position.x === 2.5)!;
-    expect(secondLeaf.rotation.y).toBeCloseTo(Math.PI / 2, 8);
-    expectBox(secondLeaf, [2.425, 0.2, 0.26], [2.575, 2.38, 1]);
+    const secondLeaf = leaves.find(
+      (group) => worldBox(group).getCenter(new THREE.Vector3()).x > 1.5
+    )!;
+    expect(secondLeaf.parent!.position.toArray()).toEqual([3, 0.2, 1.5]);
+    expect(secondLeaf.parent!.rotation.y).toBeCloseTo(Math.PI / 2, 8);
+    expect(secondLeaf.position.x).toBeCloseTo(0.129999, 6);
+    expect(secondLeaf.position.y).toBe(0);
+    expect(secondLeaf.position.z).toBe(0);
+    expectBox(secondLeaf, [2.925, 0.2, 0.629999], [3.075, 2.380001, 1.370001]);
   });
+
+  it.each([
+    { wallHeight: 2.4, label: 'standard' },
+    { wallHeight: 3.6, label: 'raised' },
+  ])(
+    'registers provider-derived closed leaves under exact gapStart hinges with full cover at $label height for both rotations and facings',
+    async ({ wallHeight }) => {
+      const facingDoors: DoorGapPiece[] = [
+        {
+          key: 'east',
+          connection: 'east',
+          position: { x: 0, z: 0 },
+          leafPosition: { x: -0.5, z: 0 },
+          rotationY: 0,
+        },
+        {
+          key: 'north',
+          connection: 'north',
+          position: { x: 4, z: 0 },
+          leafPosition: { x: 4, z: 0.5 },
+          rotationY: Math.PI / 2,
+        },
+        {
+          key: 'west',
+          connection: 'west',
+          position: { x: 8, z: 0 },
+          leafPosition: { x: 8.5, z: 0 },
+          rotationY: Math.PI,
+        },
+        {
+          key: 'south',
+          connection: 'south',
+          position: { x: 12, z: 0 },
+          leafPosition: { x: 12, z: -0.5 },
+          rotationY: -Math.PI / 2,
+        },
+      ];
+      const renderer = await ReactThreeTestRenderer.create(
+        <AtlasWalls
+          wallRuns={[]}
+          doorGaps={facingDoors}
+          profile={providerRegistrationProfile}
+          profileLeafScene={providerLeafScene()}
+          wallHeight={wallHeight}
+        />
+      );
+
+      const groupNodes = renderer.scene.findAll(
+        (node) => (node as { type?: string }).type === 'Group'
+      ) as unknown as Array<{
+        props: {
+          object?: THREE.Group;
+          position?: [number, number, number];
+          rotation?: [number, number, number];
+        };
+      }>;
+      for (const door of facingDoors) {
+        const hingeRoot = groupNodes.find(
+          (node) =>
+            !node.props.object &&
+            node.props.position?.[0] === door.leafPosition.x &&
+            node.props.position[1] === DUNGEON_SURFACE_Y &&
+            node.props.position[2] === door.leafPosition.z &&
+            node.props.rotation?.[1] === door.rotationY
+        );
+        expect(hingeRoot, `${door.connection} exact hinge root`).toBeDefined();
+      }
+
+      const leaves = meshNodes(renderer)
+        .map((node) => (node as { instance: THREE.Mesh }).instance)
+        .filter((mesh) => mesh.name === 'provider-leaf');
+      expect(leaves).toHaveLength(facingDoors.length);
+
+      const frameScaleX = 1 / (0.9993886947631836 - -0.9993886947631836);
+      const frameScaleY =
+        (wallHeight + 0.663008451461792 * 0.75) / 2.5346500873565674;
+      const openingLeft = -0.66627635917071 * frameScaleX;
+      const openingRight = 0.6408623012743637 * frameScaleX;
+      const openingTop = 2.1852569580078125 * frameScaleY;
+
+      for (const door of facingDoors) {
+        const nearestLeaf = leaves
+          .map((leaf) => {
+            leaf.updateWorldMatrix(true, false);
+            const center = new THREE.Box3()
+              .setFromObject(leaf)
+              .getCenter(new THREE.Vector3());
+            return {
+              leaf,
+              distance: Math.hypot(
+                center.x - door.position.x,
+                center.z - door.position.z
+              ),
+            };
+          })
+          .sort((a, b) => a.distance - b.distance)[0]!.leaf;
+        const bounds = meshBoundsInDoorCoordinates(nearestLeaf, door);
+        expect(openingLeft - bounds.min.x).toBeGreaterThanOrEqual(0.02);
+        expect(bounds.max.x - openingRight).toBeGreaterThanOrEqual(0.02);
+        expect(bounds.max.y - openingTop).toBeGreaterThanOrEqual(0.02);
+        expect(openingLeft - bounds.min.x).toBeCloseTo(0.020001, 5);
+        expect(bounds.max.x - openingRight).toBeCloseTo(0.020001, 5);
+        expect(bounds.max.y - openingTop).toBeCloseTo(0.020001, 5);
+        expect(bounds.min.y).toBeCloseTo(0, 6);
+      }
+    }
+  );
 
   it('raises the profile frame to body-plus-cap top at a raised authored height', async () => {
     const renderer = await ReactThreeTestRenderer.create(
@@ -576,7 +782,7 @@ describe('AtlasWalls profile assembly', () => {
     const leaf = primitiveGroups(renderer).find(
       (group) => meshName(group) === 'door-leaf'
     )!;
-    expectBox(leaf, [-0.5, 0.2, -0.075], [0.24, 4.3, 0.075]);
+    expectBox(leaf, [-0.370001, 0.2, -0.075], [0.370001, 4.300001, 0.075]);
   });
 
   it('renders exact authored T and door runs without mutating canonical converter output or doubling endpoint overlap', async () => {
