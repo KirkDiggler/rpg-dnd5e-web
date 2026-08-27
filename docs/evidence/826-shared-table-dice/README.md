@@ -74,7 +74,8 @@ Read only `window.__sharedTableDiceEvidence` while holding a die. Record:
 - presentation/group/witness/generation/die identity: `<record>`
 - projected rendered anchor: `<x, y>`
 - held pose applied: `<true/false>`
-- frame sequence and whether it increased: `<record>`
+- frame sequence, whether it increased, and confirmation that publication came
+  from the post-render frame witness: `<record>`
 - stale callback after scenario/replay rejected: `<yes/no>`
 
 Do not capture or add pointer samples, authoritative results, damage, URLs,

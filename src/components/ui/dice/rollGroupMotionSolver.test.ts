@@ -17,6 +17,12 @@ import { createTrayPlaneProjection } from './trayPlaneProjection';
 import { createVisualThrowProfile } from './visualThrowProfile';
 
 const TARGET = Object.freeze([0, 0, 0, 1] as const);
+const ALTERNATE_TARGET = Object.freeze([
+  Math.SQRT1_2,
+  0,
+  0,
+  Math.SQRT1_2,
+] as const);
 const THROW_PROFILE = createVisualThrowProfile({
   releasePosition: [0.25, 0.75],
   releaseDirection: [0.6, 0.8],
@@ -158,6 +164,37 @@ describe('rollGroupMotionSolver', () => {
         translationDistance(energetic, physical) > 0.03 ||
           angularDistanceDegrees(energetic.quaternion, physical.quaternion) > 4
       ).toBe(true);
+    }
+  );
+
+  it.each([
+    ['armed without a gesture', undefined, false],
+    ['gesture-held', HELD, false],
+    ['reduced-motion gesture-held', HELD, true],
+  ] as const)(
+    'keeps the %s pose independent of supplied settlement targets',
+    (_label, held, reducedMotion) => {
+      const first = solveRollGroupMemberMotion(
+        motionInput(ROLL_GROUP_FEEL_PROFILES.weighty, {
+          phase: 'held',
+          elapsedMs: 0,
+          target: TARGET,
+          held,
+          reducedMotion,
+        })
+      );
+      const second = solveRollGroupMemberMotion(
+        motionInput(ROLL_GROUP_FEEL_PROFILES.weighty, {
+          phase: 'held',
+          elapsedMs: 0,
+          target: ALTERNATE_TARGET,
+          held,
+          reducedMotion,
+        })
+      );
+
+      expect(second).toEqual(first);
+      expectFinitePose(first);
     }
   );
 

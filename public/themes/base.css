@@ -2233,7 +2233,7 @@
 }
 .shared-table-dice-stage
   [data-testid='roll-group-presentation']
-  > [role='status'] {
+  > [data-testid='roll-group-phase-status'] {
   min-height: 1.25rem;
   margin: 0 0 0.2rem;
   color: var(--text-secondary);
@@ -2261,6 +2261,14 @@
 .shared-table-dice-stage .roll-group-tray-3d__targets button:focus-visible {
   outline: 3px solid var(--accent-primary);
   outline-offset: 3px;
+}
+.shared-table-dice-stage .roll-group-tray-3d__reroll-flash {
+  border: 4px solid #fff36a !important;
+  border-radius: 50%;
+  background: rgb(255 243 106 / 30%);
+  box-shadow:
+    0 0 0 4px #090512,
+    0 0 1.6rem 0.55rem #fff36a;
 }
 .shared-table-dice-stage .semantic-roll-group {
   display: grid;

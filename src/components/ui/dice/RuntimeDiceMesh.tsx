@@ -51,6 +51,24 @@ type RuntimeDiceFrameCallback = (
   }
 ) => void;
 
+export interface RuntimeDicePoseDrawnWitness {
+  readonly elapsedMs: number;
+  readonly rendererFrameAtApplication: number;
+  readonly rendererFrameDrawn: number;
+}
+
+type RuntimeDicePoseDrawnCallback = (
+  frame: DiceMotionPose,
+  witness: RuntimeDicePoseDrawnWitness
+) => void;
+
+interface PendingPoseDrawn {
+  readonly rendererFrameAtApplication: number;
+  readonly elapsedMs: number;
+  readonly frame: DiceMotionPose;
+  readonly callback: RuntimeDicePoseDrawnCallback;
+}
+
 interface PendingDrawnFrame {
   readonly rendererFrameAtApplication: number;
   readonly frame: DiceMotionPose;
@@ -79,6 +97,7 @@ export interface RuntimeDiceMeshProps {
     }>
   ) => void;
   readonly onPoseApplied?: (frame: DiceMotionPose, elapsedMs: number) => void;
+  readonly onPoseDrawn?: RuntimeDicePoseDrawnCallback;
   readonly onFrame?: RuntimeDiceFrameCallback;
   readonly onFrameDrawn?: RuntimeDiceFrameCallback;
   readonly onFailure: (reason: string) => void;
@@ -198,6 +217,7 @@ export function RuntimeDiceMesh({
   poseValidated,
   onReady,
   onPoseApplied,
+  onPoseDrawn,
   onFrame,
   onFrameDrawn,
   onFailure,
@@ -212,6 +232,7 @@ export function RuntimeDiceMesh({
   const [bundle, setBundle] = useState<RuntimeDiceMeshBundle>();
   const internalValidationRef = useRef(false);
   const validationRef = poseValidated ?? internalValidationRef;
+  const pendingPoseDrawn = useRef<PendingPoseDrawn | undefined>(undefined);
   const pendingDrawnFrame = useRef<PendingDrawnFrame | undefined>(undefined);
 
   useEffect(() => {
@@ -264,6 +285,24 @@ export function RuntimeDiceMesh({
   }, [bundle, surfaceHandleRef]);
 
   useFrame(({ clock, gl }) => {
+    const pendingPose = pendingPoseDrawn.current;
+    if (pendingPose && pendingPose.callback !== onPoseDrawn) {
+      pendingPoseDrawn.current = undefined;
+    } else if (
+      pendingPose &&
+      gl.info.render.frame > pendingPose.rendererFrameAtApplication
+    ) {
+      pendingPoseDrawn.current = undefined;
+      pendingPose.callback(
+        pendingPose.frame,
+        Object.freeze({
+          elapsedMs: pendingPose.elapsedMs,
+          rendererFrameAtApplication: pendingPose.rendererFrameAtApplication,
+          rendererFrameDrawn: gl.info.render.frame,
+        })
+      );
+    }
+
     const pending = pendingDrawnFrame.current;
     if (pending && pending.callback !== onFrameDrawn) {
       pendingDrawnFrame.current = undefined;
@@ -300,6 +339,14 @@ export function RuntimeDiceMesh({
       ownedShadowMaterial.opacity = frame.shadow.opacity;
       validationRef.current = true;
       onPoseApplied?.(frame, elapsedMs);
+      if (onPoseDrawn && !pendingPoseDrawn.current) {
+        pendingPoseDrawn.current = {
+          rendererFrameAtApplication: gl.info.render.frame,
+          elapsedMs,
+          frame,
+          callback: onPoseDrawn,
+        };
+      }
       if (magicalAnimation) bundle?.updateShaderTime(clock.elapsedTime);
       if (!frame.observeNow || (!onFrame && !onFrameDrawn)) return;
 

@@ -230,6 +230,37 @@ describe('RuntimeDiceMesh', () => {
     expect(applied).toHaveBeenCalledWith(POSE, 4250);
   });
 
+  it('emits an applied-pose witness only after a later renderer frame for non-settlement poses', () => {
+    const source = runtimeSource();
+    const poseDrawn = vi.fn();
+
+    render(
+      <RuntimeDiceMesh
+        source={source}
+        treatment={TREATMENT}
+        initialPose={POSE}
+        getPose={() => POSE}
+        onPoseDrawn={poseDrawn}
+        onFailure={vi.fn()}
+      />
+    );
+
+    mocks.rendererFrame = 31;
+    runFrame(1);
+    expect(poseDrawn).not.toHaveBeenCalled();
+    runFrame(1.01);
+    expect(poseDrawn).not.toHaveBeenCalled();
+
+    mocks.rendererFrame = 32;
+    runFrame(1.02);
+    expect(poseDrawn).toHaveBeenCalledTimes(1);
+    expect(poseDrawn).toHaveBeenCalledWith(POSE, {
+      elapsedMs: 1000,
+      rendererFrameAtApplication: 31,
+      rendererFrameDrawn: 32,
+    });
+  });
+
   it('emits a drawn-frame witness only after the renderer frame counter advances past target pose application', () => {
     const source = runtimeSource();
     const targetPose = Object.freeze({

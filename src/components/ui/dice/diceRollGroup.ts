@@ -302,8 +302,7 @@ function parseDice(value: unknown): DiceRollGroupDie | undefined {
     currentFace = step.after;
     rerolls.push(step);
   }
-  if (rerolls.length > 0 && currentFace !== Number(snapshot.finalFace))
-    return undefined;
+  if (currentFace !== Number(snapshot.finalFace)) return undefined;
 
   return Object.freeze({
     id: snapshot.id,

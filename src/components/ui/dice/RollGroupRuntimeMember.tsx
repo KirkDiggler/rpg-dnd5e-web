@@ -79,6 +79,7 @@ const DEFAULT_TREATMENT = Object.freeze({
   roughness: 0.72,
   metalness: 0.08,
 });
+const CONCEALED_TARGET = Object.freeze([0, 0, 0, 1] as const);
 
 function snapshotFor(
   kind: DiceRollGroupDie['kind'],
@@ -235,22 +236,36 @@ export function RollGroupRuntimeMember({
   const gl = useThree((state) => state.gl);
   const snapshot = useStateSnapshot(die);
   const source = useMemo(() => sourceFor(snapshot), [snapshot]);
-  const settlement = useMemo(
-    () =>
-      source &&
+  const concealed = phase === 'armed' || phase === 'held';
+  const settlement = useMemo(() => {
+    if (concealed) return undefined;
+    return source &&
       snapshot.preset &&
       snapshot.preset.dieKind === die.kind &&
       snapshot.preset.presetId === die.presetId
-        ? resolveRuntimeDiceSettlement({
-            preset: snapshot.preset,
-            expectedPresetId: die.presetId,
-            authoritativeResult: displayedFace,
-          })
-        : undefined,
-    [die.kind, die.presetId, displayedFace, snapshot.preset, source]
-  );
+      ? resolveRuntimeDiceSettlement({
+          preset: snapshot.preset,
+          expectedPresetId: die.presetId,
+          authoritativeResult: displayedFace,
+        })
+      : undefined;
+  }, [
+    concealed,
+    die.kind,
+    die.presetId,
+    displayedFace,
+    snapshot.preset,
+    source,
+  ]);
   const failureSent = useRef(false);
   const sequence = useRef(0);
+  const alignedAttachment = useRef<
+    | Readonly<{
+        frame: DiceMotionPose;
+        grab: RuntimeDiceSurfaceGrab;
+      }>
+    | undefined
+  >(undefined);
   const witnessedIdentity = useRef<string | undefined>(undefined);
   const phaseClock = useRef(createPhaseElapsedClock());
   const surfaceHandleRef = useMemo(() => {
@@ -325,8 +340,9 @@ export function RollGroupRuntimeMember({
       fail('runtime preset ready snapshot is incomplete');
       return;
     }
-    if (!settlement) fail('authoritative result has no verified mapping');
-  }, [fail, settlement, snapshot, source]);
+    if (!concealed && !settlement)
+      fail('authoritative result has no verified mapping');
+  }, [concealed, fail, settlement, snapshot, source]);
 
   const solvePose = useCallback(
     (localElapsedMs: number): DiceMotionPose => {
@@ -336,7 +352,7 @@ export function RollGroupRuntimeMember({
         phase: solverPhase,
         elapsedMs: localElapsedMs,
         reducedMotion,
-        target: settlement?.target ?? [0, 0, 0, 1],
+        target: concealed || !settlement ? CONCEALED_TARGET : settlement.target,
         throwProfile,
         memberIndex: index,
         memberCount,
@@ -349,6 +365,7 @@ export function RollGroupRuntimeMember({
     },
     [
       affectedByCurrentReroll,
+      concealed,
       feel,
       heldLayout,
       heldRef,
@@ -357,7 +374,7 @@ export function RollGroupRuntimeMember({
       phase,
       reducedMotion,
       restingLayout,
-      settlement?.target,
+      settlement,
       throwProfile,
     ]
   );
@@ -390,28 +407,66 @@ export function RollGroupRuntimeMember({
     },
     [die.id, onReady]
   );
-  const handlePoseApplied = useCallback(() => {
-    const activeGrab = activeSurfaceGrabRef.current;
-    const held = heldRef.current;
-    const handle = surfaceHandlesRef.current.get(die.id);
-    if (
-      !activeGrab ||
-      !held ||
-      !handle ||
-      activeGrab.dieId !== die.id ||
-      activeGrab.rendererGeneration !== rendererGeneration ||
-      held.grabbedDieId !== die.id
-    )
-      return;
-    try {
-      const target = projection?.planeToScreen(held.pointerPlane);
-      if (!target || !target.every(Number.isFinite)) return;
-      if (!handle.alignSurface(activeGrab.grab, target)) return;
-      const projectedAnchor = handle.projectSurface(activeGrab.grab);
-      if (!projectedAnchor || !projectedAnchor.every(Number.isFinite)) return;
-      if (onAttachmentDiagnostic) {
+  const handlePoseApplied = useCallback(
+    (frame: DiceMotionPose) => {
+      alignedAttachment.current = undefined;
+      const activeGrab = activeSurfaceGrabRef.current;
+      const held = heldRef.current;
+      const handle = surfaceHandlesRef.current.get(die.id);
+      if (
+        !activeGrab ||
+        !held ||
+        !handle ||
+        activeGrab.dieId !== die.id ||
+        activeGrab.rendererGeneration !== rendererGeneration ||
+        held.grabbedDieId !== die.id
+      )
+        return;
+      try {
+        const target = projection?.planeToScreen(held.pointerPlane);
+        if (!target || !target.every(Number.isFinite)) return;
+        if (!handle.alignSurface(activeGrab.grab, target)) return;
+        alignedAttachment.current = Object.freeze({
+          frame,
+          grab: activeGrab.grab,
+        });
+      } catch {
+        // Surface alignment is best-effort and must never affect rendering.
+      }
+    },
+    [
+      activeSurfaceGrabRef,
+      die.id,
+      heldRef,
+      projection,
+      rendererGeneration,
+      surfaceHandlesRef,
+    ]
+  );
+  const handlePoseDrawn = useCallback(
+    (frame: DiceMotionPose) => {
+      const aligned = alignedAttachment.current;
+      alignedAttachment.current = undefined;
+      const activeGrab = activeSurfaceGrabRef.current;
+      const held = heldRef.current;
+      const handle = surfaceHandlesRef.current.get(die.id);
+      if (
+        !aligned ||
+        aligned.frame !== frame ||
+        !activeGrab ||
+        !held ||
+        !handle ||
+        activeGrab.grab !== aligned.grab ||
+        activeGrab.dieId !== die.id ||
+        activeGrab.rendererGeneration !== rendererGeneration ||
+        held.grabbedDieId !== die.id
+      )
+        return;
+      try {
+        const projectedAnchor = handle.projectSurface(activeGrab.grab);
+        if (!projectedAnchor || !projectedAnchor.every(Number.isFinite)) return;
         sequence.current += 1;
-        onAttachmentDiagnostic({
+        onAttachmentDiagnostic?.({
           presentationId,
           rendererGeneration,
           dieId: die.id,
@@ -419,20 +474,20 @@ export function RollGroupRuntimeMember({
           heldPoseApplied: true,
           frameSequence: sequence.current,
         });
+      } catch {
+        // Diagnostics are best-effort and must never affect rendering.
       }
-    } catch {
-      // Diagnostics are best-effort and must never affect rendering.
-    }
-  }, [
-    activeSurfaceGrabRef,
-    die.id,
-    heldRef,
-    onAttachmentDiagnostic,
-    presentationId,
-    projection,
-    rendererGeneration,
-    surfaceHandlesRef,
-  ]);
+    },
+    [
+      activeSurfaceGrabRef,
+      die.id,
+      heldRef,
+      onAttachmentDiagnostic,
+      presentationId,
+      rendererGeneration,
+      surfaceHandlesRef,
+    ]
+  );
   const handleFrame = useCallback(
     (
       frame: DiceMotionPose,
@@ -465,7 +520,7 @@ export function RollGroupRuntimeMember({
     ]
   );
 
-  if (!source || !settlement) return null;
+  if (!source || (!concealed && !settlement)) return null;
   return (
     <RuntimeDiceMesh
       source={source}
@@ -474,6 +529,7 @@ export function RollGroupRuntimeMember({
       getPose={getPose}
       onReady={handleReady}
       onPoseApplied={handlePoseApplied}
+      onPoseDrawn={onAttachmentDiagnostic ? handlePoseDrawn : undefined}
       onFrameDrawn={handleFrame}
       onFailure={fail}
       surfaceHandleRef={surfaceHandleRef}

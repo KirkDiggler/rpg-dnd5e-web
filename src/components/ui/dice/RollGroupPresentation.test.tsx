@@ -129,8 +129,13 @@ function die(id: string, rerolled = false) {
         ]
       : [],
     disposition: 'counted' as const,
-    sourceRef: 'source:base',
-    sourceLabel: 'Base damage',
+    sourceRef: `source:${id}`,
+    sourceLabel:
+      id === 'die:one'
+        ? 'Base damage'
+        : id === 'die:rerolled'
+          ? 'Weapon damage'
+          : 'Feature damage',
     contributorMemberId: 'member:roller',
     purpose: 'base' as const,
   };
@@ -145,21 +150,22 @@ const group: DiceRollGroupInput = {
   ],
   modifiers: [
     {
-      id: 'modifier:ability',
-      sourceRef: 'source:ability',
-      displayLabel: 'Strength',
-      order: 0,
-      value: 3,
-    },
-    {
       id: 'modifier:weapon',
       sourceRef: 'source:weapon',
       displayLabel: 'Flame Tongue',
       order: 1,
       text: 'fire',
     },
+    {
+      id: 'modifier:ability',
+      sourceRef: 'source:ability',
+      displayLabel: 'Strength',
+      order: 0,
+      value: 3,
+    },
   ],
   suppliedFinalTotal: 11,
+  impactLabel: 'Orc takes supplied slashing damage',
 };
 
 function request(id = 'damage:1'): DiceRollGroupRequestedEvent {
@@ -200,6 +206,7 @@ function props(
     feel: 'weighty',
     appearances: group.dice.map((item) => ({
       dieId: item.id,
+      contributorLabel: 'Aria',
       treatment: {
         bodyColor: '#15233b',
         numeralColor: '#f5eddc',
@@ -541,7 +548,7 @@ describe('DiceTrayPresentation roll-group overload', () => {
       );
 
       const statuses: string[] = [];
-      const status = screen.getByRole('status');
+      const status = screen.getByTestId('roll-group-phase-status');
       statuses.push(status.textContent ?? '');
       expect(latestTray().phase).toBe('rolling-originals');
       expect(latestTray().displayedFaces).toEqual({
@@ -615,6 +622,80 @@ describe('DiceTrayPresentation roll-group overload', () => {
           fallback: false,
         })
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('generation-fences complete supplied-fact narration and announces each fact once in normal 3D flow', () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<DiceTrayPresentation {...props([request()])} />);
+      const narrationItems = () =>
+        screen
+          .queryAllByTestId('roll-group-narration-fact')
+          .map((item) => item.textContent);
+      const live = () => screen.getByTestId('roll-group-live-narration');
+      const revision = () => live().getAttribute('data-live-revision');
+
+      expect(narrationItems()).toEqual([]);
+      view.rerender(
+        <DiceTrayPresentation {...props([request(), release()])} />
+      );
+      expect(narrationItems()).toEqual([]);
+
+      act(() => latestTray().onOriginalsSettled?.());
+      expect(narrationItems()).toEqual([
+        'Original d20 2 from Base damage, contributed by Aria.',
+        'Original d20 2 from Weapon damage, contributed by Aria.',
+        'Original d20 2 from Feature damage, contributed by Aria.',
+      ]);
+      expect(live().textContent).toContain('Original d20 2 from Base damage');
+      const originalsRevision = revision();
+
+      act(() => latestTray().onOriginalsSettled?.());
+      expect(narrationItems()).toHaveLength(3);
+      expect(revision()).toBe(originalsRevision);
+
+      runNextTimer();
+      expect(narrationItems().at(-1)).toBe(
+        'Great Weapon Fighting reroll: d20 2 → 4 from Weapon damage, contributed by Aria; d20 2 → 4 from Feature damage, contributed by Aria.'
+      );
+      expect(live().textContent).toContain('Great Weapon Fighting reroll');
+      const rerollRevision = revision();
+
+      runNextTimer();
+      expect(latestTray().phase).toBe('rerolling');
+      expect(revision()).toBe(rerollRevision);
+      act(() => latestTray().onRerollSettled?.());
+
+      runNextTimer();
+      expect(narrationItems().at(-1)).toBe('Modifier 1: +3 Strength.');
+      runNextTimer();
+      expect(narrationItems()).toEqual([
+        'Original d20 2 from Base damage, contributed by Aria.',
+        'Original d20 2 from Weapon damage, contributed by Aria.',
+        'Original d20 2 from Feature damage, contributed by Aria.',
+        'Great Weapon Fighting reroll: d20 2 → 4 from Weapon damage, contributed by Aria; d20 2 → 4 from Feature damage, contributed by Aria.',
+        'Modifier 1: +3 Strength.',
+        'Modifier 2: Flame Tongue — fire.',
+        'Final supplied total: 11.',
+        'Impact: Orc takes supplied slashing damage.',
+      ]);
+      expect(live().textContent).toContain('Final supplied total: 11.');
+      expect(live().textContent).toContain(
+        'Impact: Orc takes supplied slashing damage.'
+      );
+      expect(screen.getByTestId('roll-group-total').textContent).toBe('11');
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      const completeRevision = revision();
+
+      view.rerender(
+        <DiceTrayPresentation {...props([request(), release(), release()])} />
+      );
+      act(() => vi.runAllTimers());
+      expect(narrationItems()).toHaveLength(8);
+      expect(revision()).toBe(completeRevision);
     } finally {
       vi.useRealTimers();
     }
@@ -764,6 +845,9 @@ describe('DiceTrayPresentation roll-group overload', () => {
         />
       );
       const oldTray = latestTray();
+      expect(screen.queryAllByTestId('roll-group-narration-fact').length).toBe(
+        8
+      );
       act(() => oldTray.onOriginalsSettled?.());
 
       view.rerender(
@@ -779,6 +863,12 @@ describe('DiceTrayPresentation roll-group overload', () => {
       expect(currentTray.rendererGeneration).not.toBe(
         oldTray.rendererGeneration
       );
+      expect(screen.queryAllByTestId('roll-group-narration-fact')).toEqual([]);
+      expect(
+        screen
+          .getByTestId('roll-group-live-narration')
+          .getAttribute('data-renderer-generation')
+      ).toBe(String(currentTray.rendererGeneration));
 
       act(() => {
         oldTray.onReleaseRequest?.(neutralProfile(44));
@@ -798,6 +888,7 @@ describe('DiceTrayPresentation roll-group overload', () => {
       expect(onReleaseRequest).not.toHaveBeenCalled();
       expect(onAttachmentDiagnostic).not.toHaveBeenCalled();
       expect(currentTray.phase).toBe('armed');
+      expect(screen.queryAllByTestId('roll-group-narration-fact')).toEqual([]);
       expect(onComplete).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();

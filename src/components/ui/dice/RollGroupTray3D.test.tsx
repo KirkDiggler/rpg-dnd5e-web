@@ -59,6 +59,7 @@ vi.mock('@react-three/fiber', () => ({
     camera: cameraInput,
     eventSource,
     onCreated,
+    'aria-hidden': ariaHidden,
   }: {
     children?: React.ReactNode;
     camera?: Readonly<{
@@ -69,6 +70,7 @@ vi.mock('@react-three/fiber', () => ({
       up: readonly [number, number, number];
     }>;
     eventSource?: unknown;
+    'aria-hidden'?: boolean;
     onCreated?: (input: {
       camera: PerspectiveCamera;
       gl: Record<string, unknown>;
@@ -98,7 +100,7 @@ vi.mock('@react-three/fiber', () => ({
     }, [camera, onCreated]);
     if (mocks.canvasFailure) throw Error('WebGL creation failed');
     return (
-      <div data-testid="shared-roll-group-canvas">
+      <div data-testid="shared-roll-group-canvas" aria-hidden={ariaHidden}>
         {Children.toArray(children).filter(
           (child) =>
             !isValidElement(child) ||
@@ -447,6 +449,40 @@ describe('RollGroupTray3D', () => {
     expect(mocks.canvasEventSources.at(-1)).toBe(document.body);
   });
 
+  it('keeps the visual Canvas hidden from the accessibility tree', () => {
+    render(<RollGroupTray3D {...baseProps} />);
+
+    expect(
+      screen.getByTestId('shared-roll-group-canvas').getAttribute('aria-hidden')
+    ).toBe('true');
+  });
+
+  it('does not resolve supplied settlement targets before release is accepted', () => {
+    const onFailure = vi.fn();
+    const view = render(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="armed"
+        displayedFaces={{ 'die:one': 999, 'die:two': 999 }}
+        onReleaseRequest={vi.fn()}
+        onFailure={onFailure}
+      />
+    );
+
+    expect(screen.getAllByTestId('shared-runtime-die')).toHaveLength(2);
+    expect(onFailure).not.toHaveBeenCalled();
+
+    view.rerender(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="rolling-originals"
+        displayedFaces={{ 'die:one': 999, 'die:two': 999 }}
+        onFailure={onFailure}
+      />
+    );
+    expect(onFailure).toHaveBeenCalledTimes(1);
+  });
+
   it('aims the production camera at the horizontal tray plane', () => {
     render(<RollGroupTray3D {...baseProps} />);
 
@@ -624,6 +660,43 @@ describe('RollGroupTray3D', () => {
     expect(screen.queryByRole('button')).toBeNull();
     expect(document.querySelectorAll('[data-roll-group-die-id]')).toHaveLength(
       2
+    );
+  });
+
+  it('flashes only dice in the active supplied reroll batch', () => {
+    const view = render(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="reroll-flash"
+        rerollDieIds={['die:two']}
+        rerollOccurrenceKey="reroll:second-batch"
+      />
+    );
+
+    const first = document.querySelector('[data-roll-group-die-id="die:one"]')!;
+    const second = document.querySelector(
+      '[data-roll-group-die-id="die:two"]'
+    )!;
+    expect(first.classList.contains('roll-group-tray-3d__reroll-flash')).toBe(
+      false
+    );
+    expect(second.classList.contains('roll-group-tray-3d__reroll-flash')).toBe(
+      true
+    );
+
+    view.rerender(
+      <RollGroupTray3D
+        {...baseProps}
+        phase="reroll-flash"
+        rerollDieIds={['die:one']}
+        rerollOccurrenceKey="reroll:next-batch"
+      />
+    );
+    expect(first.classList.contains('roll-group-tray-3d__reroll-flash')).toBe(
+      true
+    );
+    expect(second.classList.contains('roll-group-tray-3d__reroll-flash')).toBe(
+      false
     );
   });
 
@@ -956,6 +1029,24 @@ describe('RollGroupTray3D', () => {
           elapsedMs: number
         ) => void
       )(POSE, 16);
+    });
+    expect(onAttachmentDiagnostic).not.toHaveBeenCalled();
+
+    act(() => {
+      (
+        latestMesh('die:two').onPoseDrawn as (
+          frame: DiceMotionPose,
+          witness: Readonly<{
+            elapsedMs: number;
+            rendererFrameAtApplication: number;
+            rendererFrameDrawn: number;
+          }>
+        ) => void
+      )(POSE, {
+        elapsedMs: 16,
+        rendererFrameAtApplication: 40,
+        rendererFrameDrawn: 41,
+      });
     });
 
     expect(onAttachmentDiagnostic).toHaveBeenCalledTimes(1);

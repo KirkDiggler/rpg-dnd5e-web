@@ -90,7 +90,7 @@ describe('parseDiceRollGroupInput', () => {
   it('accepts a supplied total that is not recomputed from dice or modifiers', () => {
     const parsed = parseDiceRollGroupInput({
       key: 'damage',
-      dice: [die({ originalFace: 1, finalFace: 6 })],
+      dice: [die({ originalFace: 6, finalFace: 6 })],
       modifiers: [modifierValue({ value: 3, order: 0 })],
       suppliedFinalTotal: 999,
     });
@@ -112,6 +112,16 @@ describe('parseDiceRollGroupInput', () => {
     });
 
     expect(parsed?.dice[0].finalFace).toBe(5);
+  });
+
+  it('rejects an unexplained original-to-final face change without rerolls', () => {
+    expect(
+      parseDiceRollGroupInput({
+        key: 'attack',
+        dice: [die({ kind: 'd6', originalFace: 1, finalFace: 6 })],
+        modifiers: [],
+      })
+    ).toBeUndefined();
   });
 
   it('rejects a reroll chain when a step does not match the current face', () => {

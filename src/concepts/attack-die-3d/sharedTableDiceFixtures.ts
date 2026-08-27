@@ -6,47 +6,22 @@ import type {
   DiceRollPurpose,
 } from '../../components/ui/dice/diceRollGroup';
 import type { DiceMaterialTreatment } from '../../components/ui/dice/materialFreeCarvedMesh';
+import {
+  parseSharedTableDiceScenarioRecord,
+  type SharedTableDicePlayerFixture,
+  type SharedTableDiceScenario,
+  type SharedTableDiceScenarioId,
+  type SharedTableDiceScenarioRecord,
+  type SharedTableDiceSetFixture,
+} from './sharedTableDiceScenario';
 
-export type SharedTableDiceScenarioId =
-  | 'single-d20'
-  | 'bless-mixed-attack'
-  | 'ordinary-damage'
-  | 'critical-damage'
-  | 'great-weapon-fighting'
-  | 'duplicate-release'
-  | 'missing-release'
-  | 'reduced-motion'
-  | 'provider-failure';
-
-export interface SharedTableDicePlayerFixture {
-  readonly memberId: string;
-  readonly name: string;
-  readonly setId: string;
-}
-
-export interface SharedTableDiceSetFixture {
-  readonly id: string;
-  readonly displayName: string;
-  readonly treatment: DiceMaterialTreatment;
-  readonly presetByKind: Readonly<Record<DiceKind, string>>;
-}
-
-export interface SharedTableDiceScenario {
-  readonly id: SharedTableDiceScenarioId;
-  readonly label: string;
-  readonly rollerMemberId: string;
-  readonly witnessMemberId: string;
-  readonly players: readonly SharedTableDicePlayerFixture[];
-  readonly sets: readonly SharedTableDiceSetFixture[];
-  readonly attack: DiceRollGroupInput;
-  readonly damage?: DiceRollGroupInput;
-  readonly hit: boolean;
-  readonly impactLabel?: string;
-  readonly exercise?:
-    | 'duplicate-release'
-    | 'missing-release'
-    | 'provider-failure';
-}
+export type {
+  SharedTableDicePlayerFixture,
+  SharedTableDiceScenario,
+  SharedTableDiceScenarioId,
+  SharedTableDiceScenarioRecord,
+  SharedTableDiceSetFixture,
+} from './sharedTableDiceScenario';
 
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -378,7 +353,7 @@ function scenario(input: SharedTableDiceScenario): SharedTableDiceScenario {
   return deepFreeze(input);
 }
 
-export const SHARED_TABLE_DICE_SCENARIOS: Readonly<
+const RAW_SHARED_TABLE_DICE_SCENARIOS: Readonly<
   Record<SharedTableDiceScenarioId, SharedTableDiceScenario>
 > = deepFreeze({
   'single-d20': scenario({
@@ -523,3 +498,9 @@ export const SHARED_TABLE_DICE_SCENARIOS: Readonly<
     exercise: 'provider-failure',
   }),
 });
+
+export const SHARED_TABLE_DICE_SCENARIOS:
+  | SharedTableDiceScenarioRecord
+  | undefined = parseSharedTableDiceScenarioRecord(
+  RAW_SHARED_TABLE_DICE_SCENARIOS
+);

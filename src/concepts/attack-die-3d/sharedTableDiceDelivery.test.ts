@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNeutralVisualThrowProfile } from '../../components/ui/dice/visualThrowProfile';
 import { createSharedTableDiceDeliveryHost } from './sharedTableDiceDelivery';
-import { SHARED_TABLE_DICE_SCENARIOS } from './sharedTableDiceFixtures';
+import { SHARED_TABLE_DICE_SCENARIOS as PARSED_SHARED_TABLE_DICE_SCENARIOS } from './sharedTableDiceFixtures';
+
+if (!PARSED_SHARED_TABLE_DICE_SCENARIOS)
+  throw Error('built-in shared table dice fixtures must pass strict parsing');
+const SHARED_TABLE_DICE_SCENARIOS = PARSED_SHARED_TABLE_DICE_SCENARIOS;
 
 afterEach(() => {
   vi.useRealTimers();

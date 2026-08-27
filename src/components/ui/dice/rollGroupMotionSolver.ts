@@ -341,11 +341,13 @@ function multiplyQuaternions(
   );
 }
 
+const NEUTRAL_HELD_QUATERNION = frozenQuaternion(0, 0, 0, 1);
+
 function heldQuaternion(
   input: Parameters<typeof solveRollGroupMemberMotion>[0],
   phase: number
 ): QuaternionTuple {
-  if (!input.held || input.reducedMotion) return input.target;
+  if (!input.held || input.reducedMotion) return NEUTRAL_HELD_QUATERNION;
   const tiltX = input.held.normalizedTilt[0] * 0.22;
   const tiltZ = input.held.normalizedTilt[1] * 0.22;
   const wobble =
@@ -361,7 +363,7 @@ function heldQuaternion(
         ),
         axisQuaternion('y', wobble)
       )
-    ) ?? input.target
+    ) ?? NEUTRAL_HELD_QUATERNION
   );
 }
 

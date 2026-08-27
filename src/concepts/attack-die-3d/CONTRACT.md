@@ -13,9 +13,11 @@ pending until he throws the candidates himself.
 
 `sharedTableDiceFixtures.ts` authors complete attack/damage groups with original
 faces, final faces, reroll steps, ordered modifiers, verdict labels, impact
-labels, and supplied final totals. The stage passes those facts through the
-shared `DiceTrayPresentation` roll-group mode. It does not derive a face, hit,
-critical, damage amount, or resource consequence.
+labels, and supplied final totals. A strict runtime parser snapshots and freezes
+the complete scenario record and rejects inconsistent player, set, contributor,
+preset, attack, or damage facts before either tray mounts. The stage passes only
+accepted facts through the shared `DiceTrayPresentation` roll-group mode. It
+does not derive a face, hit, critical, damage amount, or resource consequence.
 
 The scenarios cover a single d20, a mixed-contributor Bless roll, ordinary and
 critical damage, Great Weapon Fighting rerolls, duplicate/missing delivery,
@@ -43,8 +45,10 @@ never substitutes for either rendering completion.
 
 The separate `window.__sharedTableDiceEvidence` bridge publishes only a
 monotonic revision plus presentation, group, witness, renderer-generation, die,
-projected rendered anchor, held-pose, and frame-sequence facts. Scenario change,
-candidate change, replay, and unmount clear its generation fences. It contains
+projected rendered anchor, held-pose, and frame-sequence facts. The renderer
+publishes the grabbed-point witness only after its frame counter advances beyond
+the pose-application frame. Scenario change, candidate change, replay, and
+unmount clear its generation fences. It contains
 no pointer samples, result/damage facts, URLs, Canvas/WebGL objects, or renderer
 resources. This is a development measurement surface, not production telemetry.
 

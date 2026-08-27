@@ -27,19 +27,20 @@ import {
   createSharedTableDiceEvidencePublisher,
   type SharedTableDiceEvidencePublisher,
 } from './sharedTableDiceEvidence';
+import { SHARED_TABLE_DICE_SCENARIOS } from './sharedTableDiceFixtures';
 import {
-  SHARED_TABLE_DICE_SCENARIOS,
+  isSharedTableDiceScenarioId,
+  parseSharedTableDiceScenarioRecord,
+  SHARED_TABLE_DICE_SCENARIO_IDS,
   type SharedTableDiceScenario,
   type SharedTableDiceScenarioId,
-} from './sharedTableDiceFixtures';
+  type SharedTableDiceScenarioRecord,
+} from './sharedTableDiceScenario';
 import {
   reduceSharedTableDice,
   type SharedTableDiceState,
 } from './sharedTableDiceState';
 
-const SCENARIO_IDS = Object.freeze(
-  Object.keys(SHARED_TABLE_DICE_SCENARIOS) as SharedTableDiceScenarioId[]
-);
 const FEEL_IDS = Object.freeze([
   'weighty',
   'energetic',
@@ -53,6 +54,7 @@ type WitnessView = 'roller' | 'spectator';
 
 export interface SharedTableDiceStageProps {
   readonly reducedMotion?: boolean;
+  readonly scenarioRecords?: unknown;
 }
 
 function fixturePresentationId(
@@ -162,17 +164,27 @@ function SharedTableDiceRun({
     () => requestEvent(scenario, run, groupKey),
     [groupKey, run, scenario]
   );
-  const appearances = useMemo(
-    () =>
-      Object.freeze(
-        group.dice.map((die) => ({
-          dieId: die.id,
-          treatment: scenario.sets.find((set) => set.id === die.setId)!
-            .treatment,
-        }))
-      ),
-    [group.dice, scenario.sets]
-  );
+  const appearances = useMemo(() => {
+    const setsById = new Map(scenario.sets.map((set) => [set.id, set]));
+    const playersById = new Map(
+      scenario.players.map((player) => [player.memberId, player])
+    );
+    return Object.freeze(
+      group.dice.flatMap((die) => {
+        const set = setsById.get(die.setId);
+        const contributor = playersById.get(die.contributorMemberId);
+        return set && contributor
+          ? [
+              Object.freeze({
+                dieId: die.id,
+                contributorLabel: contributor.name,
+                treatment: set.treatment,
+              }),
+            ]
+          : [];
+      })
+    );
+  }, [group.dice, scenario.players, scenario.sets]);
   const dieIds = useMemo(
     () => Object.freeze(group.dice.map((die) => die.id)),
     [group.dice]
@@ -269,6 +281,15 @@ function SharedTableDiceRun({
     },
     [evidence]
   );
+
+  if (appearances.length !== group.dice.length) {
+    return (
+      <p role="alert">
+        Fixture scenario refused: appearance consistency failed. No dice content
+        was mounted.
+      </p>
+    );
+  }
 
   const phaseLabel =
     state.phase === 'attack-verdict'
@@ -376,9 +397,13 @@ function SharedTableDiceRun({
   );
 }
 
-export function SharedTableDiceStage({
-  reducedMotion: inheritedReducedMotion = false,
-}: SharedTableDiceStageProps) {
+function ValidatedSharedTableDiceStage({
+  inheritedReducedMotion,
+  scenarios,
+}: {
+  readonly inheritedReducedMotion: boolean;
+  readonly scenarios: SharedTableDiceScenarioRecord;
+}) {
   const [scenarioId, setScenarioId] =
     useState<SharedTableDiceScenarioId>('single-d20');
   const [feel, setFeel] = useState<RollGroupFeelCandidateId>('physical');
@@ -387,7 +412,7 @@ export function SharedTableDiceStage({
   useEffect(() => {
     setReducedMotion(inheritedReducedMotion);
   }, [inheritedReducedMotion]);
-  const scenario = SHARED_TABLE_DICE_SCENARIOS[scenarioId];
+  const scenario = scenarios[scenarioId];
   const rerolls = rerollLabels(scenario);
   const reset = () => setRun((current) => current + 1);
 
@@ -433,13 +458,15 @@ export function SharedTableDiceStage({
               aria-label="Scenario"
               value={scenarioId}
               onChange={(event) => {
-                setScenarioId(event.target.value as SharedTableDiceScenarioId);
+                const nextScenarioId = event.target.value;
+                if (!isSharedTableDiceScenarioId(nextScenarioId)) return;
+                setScenarioId(nextScenarioId);
                 reset();
               }}
             >
-              {SCENARIO_IDS.map((id) => (
+              {SHARED_TABLE_DICE_SCENARIO_IDS.map((id) => (
                 <option key={id} value={id}>
-                  {SHARED_TABLE_DICE_SCENARIOS[id].label}
+                  {scenarios[id].label}
                 </option>
               ))}
             </select>
@@ -466,12 +493,12 @@ export function SharedTableDiceStage({
               const set = scenario.sets.find(
                 (candidate) => candidate.id === player.setId
               );
-              return (
+              return set ? (
                 <span key={player.memberId}>
                   {index > 0 ? ' · ' : ''}
-                  {player.name} — {set?.displayName}
+                  {player.name} — {set.displayName}
                 </span>
-              );
+              ) : null;
             })}
           </p>
           {rerolls.length > 0 ? <p>Reroll cue · {rerolls.join(', ')}</p> : null}
@@ -491,5 +518,40 @@ export function SharedTableDiceStage({
         run={run}
       />
     </section>
+  );
+}
+
+export function SharedTableDiceStage({
+  reducedMotion: inheritedReducedMotion = false,
+  scenarioRecords,
+}: SharedTableDiceStageProps) {
+  const scenarios = useMemo(
+    () =>
+      scenarioRecords === undefined
+        ? SHARED_TABLE_DICE_SCENARIOS
+        : parseSharedTableDiceScenarioRecord(scenarioRecords),
+    [scenarioRecords]
+  );
+  if (!scenarios) {
+    return (
+      <section
+        className="shared-table-dice-stage"
+        aria-labelledby="shared-table-dice-refusal-title"
+      >
+        <h3 id="shared-table-dice-refusal-title">
+          Shared table dice feel lab unavailable
+        </h3>
+        <p role="alert">
+          Fixture scenario refused: strict validation failed. No dice content
+          was mounted.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <ValidatedSharedTableDiceStage
+      inheritedReducedMotion={inheritedReducedMotion}
+      scenarios={scenarios}
+    />
   );
 }

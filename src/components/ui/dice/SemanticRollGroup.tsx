@@ -2,6 +2,7 @@ import type { DiceMotionPose } from './diceMotionSolver';
 import type { DiceRollGroupDie, DiceRollGroupInput } from './diceRollGroup';
 import type { DiceMaterialTreatment } from './materialFreeCarvedMesh';
 import { RollGroupDie3D, type RollGroupDie3DProps } from './RollGroupDie3D';
+import type { RerollBatch } from './rollGroupPresentationModel';
 import type { RollGroupPresentationState } from './rollGroupPresentationState';
 
 export interface SemanticRollGroupProps {
@@ -10,6 +11,8 @@ export interface SemanticRollGroupProps {
   readonly presentationToken?: number;
   readonly treatment?: DiceMaterialTreatment;
   readonly poses?: Readonly<Record<string, DiceMotionPose>>;
+  readonly activeRerollBatch?: RerollBatch;
+  readonly displayedFaces?: Readonly<Record<string, number>>;
   readonly onReady?: RollGroupDie3DProps['onReady'];
   readonly onFailure?: RollGroupDie3DProps['onFailure'];
   readonly onReleaseRequest?: () => void;
@@ -37,41 +40,52 @@ const IDENTITY_POSE: DiceMotionPose = Object.freeze({
 
 type VisibleFace = number | undefined;
 
-function rerollAt(die: DiceRollGroupDie, index: number) {
-  return die.rerolls[index];
-}
-
 function visibleFace(
   die: DiceRollGroupDie,
-  presentation: RollGroupPresentationState
+  presentation: RollGroupPresentationState,
+  activeRerollBatch: RerollBatch | undefined,
+  displayedFaces: Readonly<Record<string, number>> | undefined
 ): VisibleFace {
   if (
     presentation.phase === 'armed' ||
     presentation.phase === 'rolling-originals'
   )
     return undefined;
+  const suppliedFace = displayedFaces?.[die.id];
+  if (suppliedFace !== undefined) return suppliedFace;
   if (
     presentation.phase === 'settled-originals' ||
     presentation.phase === 'reroll-flash'
   )
     return die.originalFace;
-  if (presentation.phase === 'rerolling') {
-    const current = rerollAt(die, presentation.rerollIndex);
-    return current?.after ?? die.originalFace;
-  }
+  if (presentation.phase === 'rerolling')
+    return (
+      activeRerollBatch?.entries.find((entry) => entry.dieId === die.id)?.step
+        .after ?? die.originalFace
+    );
   return die.finalFace;
 }
 
 function currentRerollLabel(
-  dice: readonly DiceRollGroupDie[],
-  presentation: RollGroupPresentationState
+  group: DiceRollGroupInput,
+  presentation: RollGroupPresentationState,
+  activeRerollBatch: RerollBatch | undefined
 ) {
-  if (presentation.phase !== 'rerolling') return undefined;
-  for (const die of dice) {
-    const reroll = rerollAt(die, presentation.rerollIndex);
-    if (reroll) return `Reroll ${reroll.before} → ${reroll.after}`;
-  }
-  return undefined;
+  if (
+    (presentation.phase !== 'reroll-flash' &&
+      presentation.phase !== 'rerolling') ||
+    !activeRerollBatch
+  )
+    return undefined;
+  const transitions = activeRerollBatch.entries.flatMap((entry) => {
+    const die = group.dice.find((candidate) => candidate.id === entry.dieId);
+    return die
+      ? [`${die.kind} ${entry.step.before} → ${entry.step.after}`]
+      : [];
+  });
+  return transitions.length > 0
+    ? `${activeRerollBatch.displayLabel}: ${transitions.join(', ')}`
+    : undefined;
 }
 
 export function SemanticRollGroup({
@@ -80,12 +94,18 @@ export function SemanticRollGroup({
   presentationToken = 0,
   treatment = DEFAULT_TREATMENT,
   poses,
+  activeRerollBatch,
+  displayedFaces,
   onReady,
   onFailure,
   onReleaseRequest,
   renderDice3D = true,
 }: SemanticRollGroupProps) {
-  const rerollLabel = currentRerollLabel(group.dice, presentation);
+  const rerollLabel = currentRerollLabel(
+    group,
+    presentation,
+    activeRerollBatch
+  );
   return (
     <section
       data-testid="semantic-roll-group"
@@ -94,7 +114,12 @@ export function SemanticRollGroup({
     >
       <div className="semantic-roll-group__dice">
         {group.dice.map((die, index) => {
-          const face = visibleFace(die, presentation);
+          const face = visibleFace(
+            die,
+            presentation,
+            activeRerollBatch,
+            displayedFaces
+          );
           return (
             <div
               className="semantic-roll-group__die"

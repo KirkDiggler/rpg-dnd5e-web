@@ -55,16 +55,22 @@ only generation-fenced rendered attachment facts through
    delivery.
 3. Watch the two-witness barrier: verdict/damage never advances after only one
    exact renderer generation completes.
-4. Check the Great Weapon Fighting reroll cue, modifier toast, supplied final
+4. Check that Great Weapon Fighting gives only the supplied affected dice a
+   high-contrast flash, then verify ordered modifier toasts, the supplied final
    total, missing/duplicate delivery, reduced motion, and semantic provider
-   fallback.
+   fallback. With assistive output enabled, confirm originals include source and
+   contributor, each supplied reroll includes before/after and reason, and the
+   supplied modifier/total/impact facts are announced once in order.
 5. At `1024px` and below, confirm controls remain above both panes. At narrow
    touch width, use the accessible Roller/Witness tabs and confirm Replay stays
    reachable without scrolling past the tray.
 
-`sharedTableDiceDelivery.ts` is the only missing-release scheduler. Scenario,
-candidate, reduced-motion, and Replay changes replace prior events, cancel old
-local timers, and clear the Task 8 evidence bridge. Non-d20 carved assets are
+`sharedTableDiceDelivery.ts` is the only missing-release scheduler. The strict
+runtime scenario parser validates the complete player/set/group/contributor and
+preset graph before either tray mounts; malformed records show a refusal rather
+than partial fixture content. Scenario, candidate, reduced-motion, and Replay
+changes replace prior events, cancel old local timers, and clear the Task 8
+evidence bridge. Non-d20 carved assets are
 explicitly provisional. See `src/concepts/attack-die-3d/CONTRACT.md` and
 `docs/evidence/826-shared-table-dice/README.md`; both retain **Kirk feel gate:
 pending live review** until Kirk throws the stage.

@@ -2,8 +2,12 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiceRollGroupPresentationProps } from '../../components/ui/dice/DiceTrayPresentation';
 import type { RollGroupAttachmentDiagnostic } from '../../components/ui/dice/RollGroupPresentation';
-import { SHARED_TABLE_DICE_SCENARIOS } from './sharedTableDiceFixtures';
+import { SHARED_TABLE_DICE_SCENARIOS as PARSED_SHARED_TABLE_DICE_SCENARIOS } from './sharedTableDiceFixtures';
 import { SharedTableDiceStage } from './SharedTableDiceStage';
+
+if (!PARSED_SHARED_TABLE_DICE_SCENARIOS)
+  throw Error('built-in shared table dice fixtures must pass strict parsing');
+const SHARED_TABLE_DICE_SCENARIOS = PARSED_SHARED_TABLE_DICE_SCENARIOS;
 
 const presentationCalls: DiceRollGroupPresentationProps[] = [];
 const originalGetContext = Object.getOwnPropertyDescriptor(
@@ -84,6 +88,27 @@ function complete(role: 'roller' | 'spectator', rendererGeneration: number) {
 }
 
 describe('SharedTableDiceStage', () => {
+  it('truthfully refuses a malformed scenario record before mounting any tray content', () => {
+    const malformed = structuredClone(
+      SHARED_TABLE_DICE_SCENARIOS
+    ) as unknown as {
+      'single-d20': {
+        attack: { dice: Array<{ contributorMemberId: string }> };
+      };
+    };
+    malformed['single-d20'].attack.dice[0].contributorMemberId =
+      'member:unknown';
+
+    render(<SharedTableDiceStage scenarioRecords={malformed} />);
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Fixture scenario refused: strict validation failed. No dice content was mounted.'
+    );
+    expect(screen.queryByRole('combobox', { name: 'Scenario' })).toBeNull();
+    expect(screen.queryByTestId('roll-group-presentation')).toBeNull();
+    expect(presentationCalls).toEqual([]);
+  });
+
   it('renders the complete keyboard-accessible feel bench and two literal shared witnesses', () => {
     render(<SharedTableDiceStage />);
 
@@ -140,6 +165,23 @@ describe('SharedTableDiceStage', () => {
       (screen.getByRole('radio', { name: 'Weighty' }) as HTMLInputElement)
         .checked
     ).toBe(true);
+  });
+
+  it('supplies validated contributor names and sets to accessible die appearances', () => {
+    render(<SharedTableDiceStage />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Scenario' }), {
+      target: { value: 'bless-mixed-attack' },
+    });
+
+    expect(
+      latest('roller').appearances.map((appearance) => ({
+        dieId: appearance.dieId,
+        contributorLabel: appearance.contributorLabel,
+      }))
+    ).toEqual([
+      { dieId: 'die:bless:attack:d20', contributorLabel: 'Aria' },
+      { dieId: 'die:bless:attack:d4', contributorLabel: 'Bram' },
+    ]);
   });
 
   it('links the mobile tabs to labeled tabpanels while keeping both desktop panes mounted', () => {
@@ -285,7 +327,11 @@ describe('SharedTableDiceStage', () => {
     expect(
       screen.getAllByLabelText('Final total').map((node) => node.textContent)
     ).toEqual(['21', '21']);
-    expect(screen.getAllByText(/Attack bonus/)).toHaveLength(2);
+    expect(
+      screen
+        .getAllByRole('list', { name: 'Roll modifiers' })
+        .map((list) => list.textContent)
+    ).toEqual(['Attack bonus: 7', 'Attack bonus: 7']);
     expect(screen.getByLabelText('Fallback status').textContent).toContain(
       'semantic fallback exercise'
     );

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DiceRollGroupDie, DiceRollGroupInput } from './diceRollGroup';
+import type { RerollBatch } from './rollGroupPresentationModel';
 import {
   createRollGroupPresentationState,
   reduceRollGroupPresentation,
@@ -61,6 +62,17 @@ const group: DiceRollGroupInput = {
     }),
   ],
   modifiers: [],
+};
+const ACTIVE_BATCH: RerollBatch = {
+  occurrenceKey: 'reroll-step:0:batch:0',
+  displayLabel: 'Great Weapon Fighting',
+  entries: [
+    {
+      dieId: 'die:rerolled',
+      step: group.dice[1].rerolls[0],
+    },
+  ],
+  dieIds: ['die:rerolled'],
 };
 
 function releasedState(): RollGroupPresentationState {
@@ -163,10 +175,73 @@ describe('SemanticRollGroup', () => {
     expect(mocks.dieProps.map((props) => props.displayedFace)).toEqual([3, 1]);
 
     view.rerender(
-      <SemanticRollGroup group={group} presentation={rerollingState()} />
+      <SemanticRollGroup
+        group={group}
+        presentation={rerollingState()}
+        activeRerollBatch={ACTIVE_BATCH}
+        displayedFaces={{ 'die:three': 3, 'die:rerolled': 4 }}
+      />
     );
-    expect(screen.getByText('Reroll 1 → 4')).toBeTruthy();
+    expect(screen.getByText('Great Weapon Fighting: d4 1 → 4')).toBeTruthy();
     expect(mocks.dieProps.at(-1)?.displayedFace).toBe(4);
+  });
+
+  it('renders reroll semantics from the active supplied batch instead of a per-die global index', () => {
+    const firstStep = {
+      before: 1,
+      after: 4,
+      reasonRef: 'reason:first',
+      displayLabel: 'Great Weapon Fighting',
+    } as const;
+    const secondStep = {
+      before: 2,
+      after: 3,
+      reasonRef: 'reason:second',
+      displayLabel: 'Savage Attacker',
+    } as const;
+    const batchGroup: DiceRollGroupInput = {
+      key: 'damage',
+      dice: [
+        die({
+          id: 'die:first-batch',
+          originalFace: 1,
+          finalFace: 4,
+          rerolls: [firstStep],
+        }),
+        die({
+          id: 'die:second-batch',
+          originalFace: 2,
+          finalFace: 3,
+          rerolls: [secondStep],
+        }),
+      ],
+      modifiers: [],
+    };
+    const activeBatch: RerollBatch = {
+      occurrenceKey: 'reroll-step:0:batch:1',
+      displayLabel: 'Savage Attacker',
+      entries: [{ dieId: 'die:second-batch', step: secondStep }],
+      dieIds: ['die:second-batch'],
+    };
+
+    render(
+      <SemanticRollGroup
+        group={batchGroup}
+        presentation={{
+          phase: 'rerolling',
+          rerollIndex: 1,
+          modifierIndex: 0,
+          hydrated: false,
+        }}
+        activeRerollBatch={activeBatch}
+        displayedFaces={{ 'die:first-batch': 4, 'die:second-batch': 3 }}
+      />
+    );
+
+    expect(screen.getByText('Savage Attacker: d4 2 → 3')).toBeTruthy();
+    expect(screen.queryByText(/Great Weapon Fighting/)).toBeNull();
+    expect(screen.getByText('d4 4')).toBeTruthy();
+    expect(screen.getByText('d4 3')).toBeTruthy();
   });
 
   it('renders final reroll labels and no d20 fallback in the complete state', () => {

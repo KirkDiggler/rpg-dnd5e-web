@@ -41,6 +41,7 @@ import {
 
 export interface RollGroupDieAppearance {
   readonly dieId: string;
+  readonly contributorLabel?: string;
   readonly treatment: DiceMaterialTreatment;
 }
 
@@ -535,6 +536,11 @@ function RollGroupPresentationInstance({
     : state;
   const batch = currentRerollBatch(rerollBatches, state);
   const faces = displayedFaces(request.group, rerollBatches, state);
+  const semanticFaces = displayedFaces(
+    request.group,
+    rerollBatches,
+    semanticState
+  );
   const releaseProfile = acceptedReleaseRef.current?.release.throwProfile;
   const visibleModifierCount =
     semanticState.phase === 'complete'
@@ -553,7 +559,9 @@ function RollGroupPresentationInstance({
       state={state}
       semanticState={semanticState}
       batch={batch}
+      rerollBatches={rerollBatches}
       faces={faces}
+      semanticFaces={semanticFaces}
       releaseProfile={releaseProfile}
       feel={ROLL_GROUP_FEEL_PROFILES[feel]}
       appearances={appearances}

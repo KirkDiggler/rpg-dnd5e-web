@@ -337,11 +337,9 @@ describe('DiceTrayPresentation', () => {
 
     expect(screen.getByTestId('roll-group-presentation')).toBeTruthy();
     expect(screen.getByTestId('semantic-roll-group')).toBeTruthy();
-    expect(
-      screen
-        .getByTestId('roll-group-presentation')
-        .querySelector('[role="status"]')?.textContent
-    ).toMatch(/waiting for release/i);
+    expect(screen.getByTestId('roll-group-phase-status').textContent).toMatch(
+      /waiting for release/i
+    );
     expect(attackDieProps).toHaveLength(0);
   });
 

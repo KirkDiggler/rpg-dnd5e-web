@@ -2,9 +2,43 @@ import { describe, expect, it } from 'vitest';
 import type { DiceKind } from '../../components/ui/dice/diceRollGroup';
 import { parseDiceRollGroupInput } from '../../components/ui/dice/diceRollGroup';
 import {
-  SHARED_TABLE_DICE_SCENARIOS,
+  SHARED_TABLE_DICE_SCENARIOS as PARSED_SHARED_TABLE_DICE_SCENARIOS,
   type SharedTableDiceScenario,
 } from './sharedTableDiceFixtures';
+import { parseSharedTableDiceScenarioRecord } from './sharedTableDiceScenario';
+
+if (!PARSED_SHARED_TABLE_DICE_SCENARIOS)
+  throw Error('built-in shared table dice fixtures must pass strict parsing');
+const SHARED_TABLE_DICE_SCENARIOS = PARSED_SHARED_TABLE_DICE_SCENARIOS;
+
+interface MutablePlayer extends Record<string, unknown> {
+  memberId: string;
+  setId: string;
+}
+
+interface MutableSet extends Record<string, unknown> {
+  presetByKind: Record<string, string>;
+}
+
+interface MutableDie extends Record<string, unknown> {
+  contributorMemberId: string;
+  presetId: string;
+  setId: string;
+}
+
+interface MutableGroup extends Record<string, unknown> {
+  dice: MutableDie[];
+}
+
+interface MutableScenario extends Record<string, unknown> {
+  id: string;
+  players: MutablePlayer[];
+  sets: MutableSet[];
+  attack: MutableGroup;
+  damage?: MutableGroup;
+}
+
+type MutableScenarioRecord = Record<string, MutableScenario>;
 
 function expectRecursivelyFrozen(value: unknown): void {
   if (value === null || typeof value !== 'object') return;
@@ -72,6 +106,95 @@ function expectScenarioIntegrity(scenario: SharedTableDiceScenario) {
 }
 
 describe('shared table dice fixtures', () => {
+  it('strictly parses the complete fixture record once into frozen snapshots', () => {
+    const parsed = parseSharedTableDiceScenarioRecord(
+      structuredClone(SHARED_TABLE_DICE_SCENARIOS)
+    );
+
+    expect(parsed).toEqual(SHARED_TABLE_DICE_SCENARIOS);
+    expect(parsed).not.toBe(SHARED_TABLE_DICE_SCENARIOS);
+    expectRecursivelyFrozen(parsed);
+  });
+
+  it.each([
+    [
+      'an extra scenario key',
+      (record: MutableScenarioRecord) => {
+        record['single-d20'].unexpected = true;
+      },
+    ],
+    [
+      'an extra player key',
+      (record: MutableScenarioRecord) => {
+        record['single-d20'].players[0].unexpected = true;
+      },
+    ],
+    [
+      'an extra set key',
+      (record: MutableScenarioRecord) => {
+        record['single-d20'].sets[0].unexpected = true;
+      },
+    ],
+    [
+      'an extra roll-group key',
+      (record: MutableScenarioRecord) => {
+        record['single-d20'].attack.unexpected = true;
+      },
+    ],
+    [
+      'a scenario ID that disagrees with its record key',
+      (record: MutableScenarioRecord) => {
+        record['single-d20'].id = 'bless-mixed-attack';
+      },
+    ],
+    [
+      'a contributor missing from the exact player list',
+      (record: MutableScenarioRecord) => {
+        record['single-d20'].attack.dice[0].contributorMemberId =
+          'member:unknown';
+      },
+    ],
+    [
+      "a contributor die that does not use that player's set",
+      (record: MutableScenarioRecord) => {
+        record['bless-mixed-attack'].attack.dice[1].setId = 'set:obsidian';
+      },
+    ],
+    [
+      'a die preset that disagrees with its set kind mapping',
+      (record: MutableScenarioRecord) => {
+        record['bless-mixed-attack'].attack.dice[1].presetId =
+          'dice.original.carved.d6';
+      },
+    ],
+    [
+      'a set preset mapped under the wrong die kind',
+      (record: MutableScenarioRecord) => {
+        record['single-d20'].sets[0].presetByKind.d20 =
+          'dice.original.carved.d6';
+      },
+    ],
+    [
+      'a hit scenario without its supplied damage group',
+      (record: MutableScenarioRecord) => {
+        delete record['ordinary-damage'].damage;
+      },
+    ],
+    [
+      'an explicit undefined exercise instead of an exact optional field',
+      (record: MutableScenarioRecord) => {
+        record['ordinary-damage'].exercise = undefined;
+      },
+    ],
+  ])('refuses %s before any scenario can mount', (_label, mutate) => {
+    const malformed = structuredClone(
+      SHARED_TABLE_DICE_SCENARIOS
+    ) as unknown as MutableScenarioRecord;
+    mutate(malformed);
+
+    expect(parseSharedTableDiceScenarioRecord(malformed)).toBeUndefined();
+  });
+
   it('publishes unique strict scenarios with visible fixture labels and exact Original carved presets', () => {
     const scenarios = Object.values(SHARED_TABLE_DICE_SCENARIOS);
 
@@ -170,10 +293,10 @@ describe('shared table dice fixtures', () => {
     const provider = SHARED_TABLE_DICE_SCENARIOS['provider-failure'];
 
     for (const scenario of [duplicate, missing, reduced, provider]) {
-      expect(scenario.players).toBe(ordinary.players);
-      expect(scenario.sets).toBe(ordinary.sets);
-      expect(scenario.attack).toBe(ordinary.attack);
-      expect(scenario.damage).toBe(ordinary.damage);
+      expect(scenario.players).toEqual(ordinary.players);
+      expect(scenario.sets).toEqual(ordinary.sets);
+      expect(scenario.attack).toEqual(ordinary.attack);
+      expect(scenario.damage).toEqual(ordinary.damage);
       expect(scenario.hit).toBe(ordinary.hit);
       expect(scenario.impactLabel).toBe(ordinary.impactLabel);
     }

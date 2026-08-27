@@ -456,6 +456,8 @@ export function RollGroupTray3D({
           {group.dice.map((die) => {
             const layout =
               interactionLayoutById.get(die.id) ?? interactionLayout[0];
+            const rerollFlashActive =
+              phase === 'reroll-flash' && rerollDieIdSet.has(die.id);
             const common = {
               ref: (element: HTMLButtonElement | HTMLDivElement | null) => {
                 if (element) targetRefs.current.set(die.id, element);
@@ -470,6 +472,9 @@ export function RollGroupTray3D({
               },
               onPointerDown: (event: React.PointerEvent) =>
                 captureSurface(die.id, event.clientX, event.clientY),
+              className: rerollFlashActive
+                ? 'roll-group-tray-3d__reroll-flash'
+                : undefined,
               'data-roll-group-die-id': die.id,
               'data-renderer-generation': rendererGeneration,
               'data-witness-role': witnessRole,

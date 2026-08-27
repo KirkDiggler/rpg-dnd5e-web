@@ -1,5 +1,6 @@
 import type { DiceRollGroupRequestedEvent } from './diceRollGroupEvent';
 import type { RollGroupFeelProfile } from './rollGroupMotionSolver';
+import { RollGroupNarration } from './RollGroupNarration';
 import type { RollGroupDieAppearance } from './RollGroupPresentation';
 import type { RerollBatch } from './rollGroupPresentationModel';
 import { statusText } from './rollGroupPresentationModel';
@@ -18,7 +19,9 @@ export interface RollGroupPresentationViewProps {
   readonly state: RollGroupPresentationState;
   readonly semanticState: RollGroupPresentationState;
   readonly batch?: RerollBatch;
+  readonly rerollBatches: readonly RerollBatch[];
   readonly faces: Readonly<Record<string, number>>;
+  readonly semanticFaces: Readonly<Record<string, number>>;
   readonly releaseProfile?: VisualThrowProfileV1;
   readonly feel: RollGroupFeelProfile;
   readonly appearances: readonly RollGroupDieAppearance[];
@@ -48,7 +51,9 @@ export function RollGroupPresentationView({
   state,
   semanticState,
   batch,
+  rerollBatches,
   faces,
+  semanticFaces,
   releaseProfile,
   feel,
   appearances,
@@ -65,10 +70,9 @@ export function RollGroupPresentationView({
   forceFailure,
   motionSeed,
 }: RollGroupPresentationViewProps) {
-  const visibleModifiers = request.group.modifiers.slice(
-    0,
-    visibleModifierCount
-  );
+  const visibleModifiers = [...request.group.modifiers]
+    .sort((first, second) => first.order - second.order)
+    .slice(0, visibleModifierCount);
   return (
     <section
       data-testid="roll-group-presentation"
@@ -76,15 +80,27 @@ export function RollGroupPresentationView({
       data-renderer-generation={rendererGeneration}
       aria-label={label}
     >
-      <p role="status" aria-live="polite">
+      <p data-testid="roll-group-phase-status">
         {statusText(label, semanticState, batch, fallback)}
       </p>
+      <RollGroupNarration
+        presentationId={request.presentationId}
+        witnessRole={witnessRole}
+        rendererGeneration={rendererGeneration}
+        group={request.group}
+        state={semanticState}
+        rerollBatches={rerollBatches}
+        appearances={appearances}
+        visibleModifierCount={visibleModifierCount}
+      />
       {boundaryMounted ? (
         fallback ? (
           <SemanticRollGroup
             group={request.group}
             presentation={semanticState}
             presentationToken={rendererGeneration}
+            activeRerollBatch={batch}
+            displayedFaces={semanticFaces}
             onReleaseRequest={
               releaseAuthority ? () => onReleaseRequest() : undefined
             }
@@ -130,13 +146,9 @@ export function RollGroupPresentationView({
       ) : null}
       {semanticState.phase === 'complete' &&
       request.group.suppliedFinalTotal !== undefined ? (
-        <output
-          role="presentation"
-          aria-label="Final total"
-          data-testid="roll-group-total"
-        >
+        <span aria-label="Final total" data-testid="roll-group-total">
           {String(request.group.suppliedFinalTotal)}
-        </output>
+        </span>
       ) : null}
     </section>
   );
