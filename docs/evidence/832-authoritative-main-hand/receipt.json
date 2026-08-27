@@ -179,7 +179,8 @@
       "GetCharacterData": 6,
       "UnequipItem": 1,
       "longsword.glb": 3
-    }
+    },
+    "resumeFailureBehavior": "A failed or missing lobby seat keeps the app out of GameView and surfaces Unable to resume the running encounter; it never falls through to SessionEncounterView without a character."
   },
   "scope": {
     "peerEquipmentProjection": false,
@@ -187,5 +188,6 @@
     "twoHandContactOrFingerPosing": false,
     "combatOrBowAnimation": false,
     "weaponsBeyondCurrentProviderRoster": false
-  }
+  },
+  "reviewFixCommit": "8ff69fbd3eb34f47f596a3bcb78bb56e11166af0"
 }

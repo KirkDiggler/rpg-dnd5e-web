@@ -73,6 +73,9 @@ The API already exposed the missing authority in `StreamLobby`'s first
 snapshot (`player_id -> character_id`). `useLobbyCharacterId` now consumes
 exactly that snapshot before entering the resumed session; no local-storage
 identity guess and no proto/API change were added.
+A missing seat, missing snapshot, or stream failure keeps the app out of the
+running session and surfaces “Unable to resume the running encounter” instead
+of falling through to `SessionEncounterView` without a character.
 
 ## Verification commands
 
