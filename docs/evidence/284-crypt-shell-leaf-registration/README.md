@@ -10,7 +10,7 @@ capture records and runtime identifiers are intentionally excluded.
 - Provider review: `rpg-game-assets#68`
   - reviewed head: `2facea936b47dd0a5750668be6bfa9a664bcc71d`
   - reviewed-and-merge tree: `46e41c26e39f0b1434e1282379bd2cad06f7fd7f`
-  - merge: `f183c96d6d89ecdaf9a2f5dd2c452de485882ed`
+  - merge: `f183c96d6d89ecdaf9a2f5dd2c452de485882ed3`
   - profile SHA-256: `d02e6398b06f8b347fbe2e68d91d83bfeccd389ea412be5774d34454c2d164a7`
   - surround SHA-256: `bd4d0a9ca3da8fcee72f8cfaf72d51040f6754920649b9e30c8c8a2e44093cc0`
   - leaf SHA-256: `c1445b4dae6a02127be15fcbd59e6f02f207de28a3461cf95a1ceba18f8d4c15`
@@ -99,3 +99,10 @@ All screenshots are `1600x900` PNG frames.
 The implementation is limited to the leaf registration path and its regression
 coverage; no unrelated project documentation or runtime capture records are
 part of this evidence set.
+
+## Review correction
+
+- Copilot inline finding `3868059306` corrected the provider merge pin to
+  `f183c96d6d89ecdaf9a2f5dd2c452de485882ed3`.
+- Every SHA token in this report is now 40 or 64 characters, and the provider
+  review, merge, tree, profile, surround, and leaf pins match PR #829.
