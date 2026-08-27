@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene3D } from '../../components/session/atlasToScene3D';
+import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import {
   adjustDungeonDiceHeight,
   isDungeonDiceFloorPoint,
@@ -12,6 +13,7 @@ const scene: Scene3D = {
   doorGaps: [],
   props: [],
   archetypes: [],
+  lighting: buildDungeonLightingFacts([], [], []),
 };
 
 describe('dungeon dice interaction', () => {

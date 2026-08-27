@@ -199,6 +199,16 @@ export function DungeonBuilder({
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   }, []);
 
+  useEffect(
+    () => () => {
+      if (toastTimer.current) {
+        clearTimeout(toastTimer.current);
+        toastTimer.current = null;
+      }
+    },
+    []
+  );
+
   // Keep the active region pointing at a region that exists.
   useEffect(() => {
     if (!doc.regions.some((r) => r.id === activeRegionId)) {

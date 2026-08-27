@@ -4,7 +4,13 @@
  * disabled until the file compiles, and Save sends the exact bytes the
  * YAML pane shows.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthoringClient } from './authoringRpc';
 import { staleAtlasNotice } from './authoringRpc';
@@ -191,6 +197,39 @@ describe('DungeonBuilder — review follow-ups (PR #781)', () => {
     });
     await waitFor(() => expect(compile).toHaveBeenCalledTimes(2));
     expect(compile.mock.calls[1][0].name).toBe('Renamed');
+  });
+});
+
+describe('DungeonBuilder timer lifecycle', () => {
+  it('clears the toast timeout when the builder unmounts', async () => {
+    const client = fakeClient([]);
+    try {
+      const { unmount } = render(
+        <DungeonBuilder
+          authoringClient={client}
+          initialYaml={emitDungeon(referenceTombDoc())}
+          persistDraft={false}
+        />
+      );
+      const save = screen.getByRole('button', {
+        name: /^Save$/,
+      }) as HTMLButtonElement;
+      await waitFor(() => expect(save.disabled).toBe(false));
+
+      vi.useFakeTimers();
+      fireEvent.click(save);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByText('Saved reference-tomb')).toBeTruthy();
+
+      unmount();
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
