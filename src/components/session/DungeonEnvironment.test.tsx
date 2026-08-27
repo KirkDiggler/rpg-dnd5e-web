@@ -23,20 +23,24 @@ vi.mock('./AtlasPropModel', () => ({
 import { DungeonEnvironment } from './DungeonEnvironment';
 
 function factsWithSources(sourceCount: number): DungeonLightingFacts {
+  const cellKeys = Array.from(
+    { length: sourceCount },
+    (_, index) => `source-cell-${index}`
+  );
   return buildDungeonLightingFacts(
-    ['0,0,0'],
+    cellKeys,
     [
       {
         id: 'crypt-room',
         archetype: 'crypt',
         intensity: 0.35,
-        cellKeys: ['0,0,0'],
+        cellKeys,
       },
     ],
-    Array.from({ length: sourceCount }, (_, index) => ({
+    cellKeys.map((cellKey, index) => ({
       key: `source-${index}`,
       ref: 'dnd5e:props:brazier',
-      cellKey: '0,0,0',
+      cellKey,
       groundedPosition: [0, 0, 0] as [number, number, number],
     }))
   );
@@ -115,8 +119,10 @@ describe('DungeonEnvironment', () => {
         userData: { floorLighting: DungeonFloorLighting };
       }
     ).userData.floorLighting;
-    expect(floorLighting.exposureByCell).toEqual(new Map([['0,0,0', 0.35]]));
-    expect(floorLighting.poolsByCell.get('0,0,0')).toHaveLength(1);
+    expect([...floorLighting.exposureByCell.entries()]).toEqual([
+      ['source-cell-0', 0.35],
+    ]);
+    expect(floorLighting.poolsByCell.get('source-cell-0')).toHaveLength(1);
     expect(onLightingDiagnostics).toHaveBeenLastCalledWith([]);
   });
 

@@ -15,6 +15,7 @@
  * cross-checked against the real reference-tomb capture.
  */
 import { coordToKey } from '@/components/hex-grid/hexMath';
+import { resolveDungeonLighting } from '@/rendering/dungeonLighting';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { describe, expect, it } from 'vitest';
 import { hexCenter } from '../../concepts/session-tomb/atlas';
@@ -153,12 +154,10 @@ describe('buildScene3D', () => {
     );
 
     expect(scene.lighting.mode).toBe('crypt');
-    expect(scene.lighting.intensityByCell).toEqual(
-      new Map([
-        ['0,0,0', 0.6],
-        ['1,-1,0', 0.15],
-      ])
-    );
+    expect([...scene.lighting.intensityByCell.entries()]).toEqual([
+      ['0,0,0', 0.6],
+      ['1,-1,0', 0.15],
+    ]);
     expect(scene.lighting.sources).toHaveLength(1);
     expect(scene.lighting.sources[0]?.ref).toBe('dnd5e:props:brazier');
     expect(scene.lighting.sources[0]?.position).toEqual([
@@ -168,6 +167,47 @@ describe('buildScene3D', () => {
     ]);
     expect(scene.lighting.sources[0]?.position[1]).not.toBe(
       0.4 + DUNGEON_SURFACE_Y + 0.9 + 0.4
+    );
+  });
+
+  it('falls back atomically for malformed recognized source placement', () => {
+    const scene = buildScene3D(
+      {
+        cells: [pos(0, 0)],
+        props: [
+          {
+            ref: 'dnd5e:props:brazier',
+            at: pos(0, 0),
+            offsetX: Number.NaN,
+            offsetY: 0,
+            offsetZ: 0,
+          },
+        ],
+        boundaries: [],
+        doorways: [],
+        regions: [
+          {
+            id: 'room',
+            archetype: 'crypt',
+            cells: [pos(0, 0)],
+            lighting: { intensity: 0.6 },
+          },
+        ],
+      } as never,
+      1,
+      'pointy'
+    );
+
+    expect(scene.lighting.fallbackReason).toBe('invalid-source-placement');
+    const plan = resolveDungeonLighting(scene.lighting, { x: 0, z: 0 });
+    expect(plan.mode).toBe('legacy');
+    expect(plan.ambientIntensity).toBe(0.6);
+    expect(plan.directionalIntensity).toBe(0.8);
+    expect(plan.pointLights).toEqual([]);
+    expect(plan.floorExposureByCell.size).toBe(0);
+    expect(plan.floorPoolsByCell.size).toBe(0);
+    expect(plan.pointLights.flatMap(({ position }) => position)).not.toContain(
+      Number.NaN
     );
   });
 

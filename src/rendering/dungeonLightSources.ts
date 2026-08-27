@@ -6,10 +6,50 @@ export interface DungeonLightSourceSpec {
   readonly floorPoolStrength: number;
 }
 
+/**
+ * A runtime read-only Map facade. The backing Map is retained only by these
+ * closures, while iteration uses an immutable snapshot, so consumers cannot
+ * reach a mutator or the mutable collection through the public API.
+ */
+export function createReadonlyMap<K, V>(
+  entries: Iterable<readonly [K, V]>
+): ReadonlyMap<K, V> {
+  const snapshot = Object.freeze(
+    [...entries].map(
+      ([key, value]) =>
+        Object.freeze([key, value] as const) as unknown as [K, V]
+    )
+  );
+  const lookup = new Map<K, V>(snapshot);
+  const facade: ReadonlyMap<K, V> = {
+    get: (key) => lookup.get(key),
+    has: (key) => lookup.has(key),
+    forEach: (callbackfn, thisArg) => {
+      for (const [key, value] of snapshot) {
+        callbackfn.call(thisArg, value, key, facade);
+      }
+    },
+    entries: () => snapshot[Symbol.iterator](),
+    keys: () =>
+      (function* () {
+        for (const [key] of snapshot) yield key;
+      })() as unknown as MapIterator<K>,
+    values: () =>
+      (function* () {
+        for (const [, value] of snapshot) yield value;
+      })() as unknown as MapIterator<V>,
+    [Symbol.iterator]: () => snapshot[Symbol.iterator](),
+    get size() {
+      return snapshot.length;
+    },
+  };
+  return Object.freeze(facade);
+}
+
 export const DUNGEON_LIGHT_SOURCE_SPECS: ReadonlyMap<
   string,
   DungeonLightSourceSpec
-> = new Map<string, DungeonLightSourceSpec>([
+> = createReadonlyMap<string, DungeonLightSourceSpec>([
   [
     'dnd5e:props:brazier',
     Object.freeze({

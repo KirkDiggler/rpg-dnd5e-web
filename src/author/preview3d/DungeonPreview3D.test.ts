@@ -72,9 +72,25 @@ describe('previewScene', () => {
     expect(preview.scene.doorGaps).toEqual(game.doorGaps);
     expect(preview.scene.props).toEqual(game.props);
     const focus = { x: 2.5, z: -1.25 };
-    expect(resolveDungeonLighting(preview.scene.lighting, focus)).toEqual(
-      resolveDungeonLighting(game.lighting, focus)
+    const previewLighting = resolveDungeonLighting(
+      preview.scene.lighting,
+      focus
     );
+    const gameLighting = resolveDungeonLighting(game.lighting, focus);
+    expect(previewLighting).toMatchObject({
+      mode: gameLighting.mode,
+      ambientIntensity: gameLighting.ambientIntensity,
+      directionalIntensity: gameLighting.directionalIntensity,
+      directionalPosition: gameLighting.directionalPosition,
+      pointLights: gameLighting.pointLights,
+      diagnostics: gameLighting.diagnostics,
+    });
+    expect([...previewLighting.floorExposureByCell]).toEqual([
+      ...gameLighting.floorExposureByCell,
+    ]);
+    expect([...previewLighting.floorPoolsByCell]).toEqual([
+      ...gameLighting.floorPoolsByCell,
+    ]);
     // two seams, one doorway each
     expect(preview.scene.doorGaps).toHaveLength(2);
     expect(preview.scene.wallRuns.length).toBeGreaterThan(0);

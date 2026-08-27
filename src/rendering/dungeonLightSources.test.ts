@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DungeonLightSourceSpec } from './dungeonLightSources';
 import {
   DUNGEON_LIGHT_SOURCE_REFS,
+  DUNGEON_LIGHT_SOURCE_SPECS,
   dungeonLightSourceSpec,
   isDungeonLightSourceRef,
 } from './dungeonLightSources';
@@ -97,5 +98,19 @@ describe('dungeon light source manifest', () => {
       expect(spec?.floorPoolStrength).toBeLessThanOrEqual(1);
       expect(Object.isFrozen(spec)).toBe(true);
     }
+  });
+
+  it('exposes a read-only map facade without reachable mutators', () => {
+    const sources = DUNGEON_LIGHT_SOURCE_SPECS;
+    const before = [...sources.entries()];
+    const mutable = sources as unknown as Map<string, DungeonLightSourceSpec>;
+
+    expect(() => mutable.set('dnd5e:props:torch', before[0]![1])).toThrow();
+    expect(() => mutable.delete(before[0]![0])).toThrow();
+    expect(() => mutable.clear()).toThrow();
+    expect([...sources.entries()]).toEqual(before);
+    expect(sources.size).toBe(EXPECTED.length);
+    expect([...sources.keys()].sort()).toEqual(EXPECTED);
+    expect([...sources.values()]).toEqual(before.map(([, value]) => value));
   });
 });

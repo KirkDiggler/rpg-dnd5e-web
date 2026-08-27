@@ -1,5 +1,6 @@
 import type { FloorPoolLight } from '@/components/hex-grid/syntyHexFloorHelpers';
 import {
+  createReadonlyMap,
   dungeonLightSourceSpec,
   type DungeonLightSourceSpec,
 } from './dungeonLightSources';
@@ -12,7 +13,13 @@ export type DungeonLightingFallbackReason =
   | 'invalid-intensity'
   | 'conflicting-region-cells'
   | 'unowned-floor-cells'
-  | 'source-outside-region';
+  | 'source-outside-region'
+  | 'invalid-region-identity'
+  | 'duplicate-region-identity'
+  | 'invalid-source-identity'
+  | 'duplicate-source-identity'
+  | 'invalid-source-placement'
+  | 'duplicate-source-placement';
 
 export interface DungeonLightingRegionInput {
   readonly id: string;
@@ -79,13 +86,13 @@ const DIRECTIONAL_POSITION = Object.freeze([10, 20, 10] as const);
 function fallbackFacts(
   fallbackReason: DungeonLightingFallbackReason
 ): DungeonLightingFacts {
-  return {
+  return Object.freeze({
     mode: 'legacy',
     fallbackReason,
-    regionByCell: new Map(),
-    intensityByCell: new Map(),
-    sources: [],
-  };
+    regionByCell: createReadonlyMap<string, string>([]),
+    intensityByCell: createReadonlyMap<string, number>([]),
+    sources: Object.freeze([]),
+  });
 }
 
 export function buildDungeonLightingFacts(
@@ -95,8 +102,20 @@ export function buildDungeonLightingFacts(
 ): DungeonLightingFacts {
   if (regions.length === 0) return fallbackFacts('no-regions');
 
+  const normalizedRegionIds: string[] = [];
+  const seenRegionIds = new Set<string>();
+  for (const region of regions) {
+    const id = typeof region?.id === 'string' ? region.id.trim() : '';
+    if (id.length === 0) return fallbackFacts('invalid-region-identity');
+    if (seenRegionIds.has(id)) {
+      return fallbackFacts('duplicate-region-identity');
+    }
+    seenRegionIds.add(id);
+    normalizedRegionIds.push(id);
+  }
+
   const archetypes = regions.map((region) =>
-    typeof region.archetype === 'string' ? region.archetype.trim() : ''
+    typeof region?.archetype === 'string' ? region.archetype.trim() : ''
   );
   const uniqueArchetypes = [...new Set(archetypes)];
   if (archetypes.some((archetype) => archetype.length === 0)) {
@@ -112,7 +131,7 @@ export function buildDungeonLightingFacts(
   if (
     regions.some(
       (region) =>
-        typeof region.intensity !== 'number' ||
+        typeof region?.intensity !== 'number' ||
         !Number.isFinite(region.intensity) ||
         region.intensity < 0 ||
         region.intensity > 1
@@ -123,12 +142,18 @@ export function buildDungeonLightingFacts(
 
   const regionByCell = new Map<string, string>();
   const intensityByCell = new Map<string, number>();
-  for (const region of regions) {
+  for (const [regionIndex, region] of regions.entries()) {
+    if (!Array.isArray(region?.cellKeys)) {
+      return fallbackFacts('conflicting-region-cells');
+    }
     for (const cellKey of region.cellKeys) {
-      if (typeof cellKey !== 'string' || regionByCell.has(cellKey)) {
+      if (typeof cellKey !== 'string' || cellKey.length === 0) {
         return fallbackFacts('conflicting-region-cells');
       }
-      regionByCell.set(cellKey, region.id);
+      if (regionByCell.has(cellKey)) {
+        return fallbackFacts('conflicting-region-cells');
+      }
+      regionByCell.set(cellKey, normalizedRegionIds[regionIndex]!);
       intensityByCell.set(cellKey, region.intensity);
     }
   }
@@ -138,49 +163,85 @@ export function buildDungeonLightingFacts(
   }
 
   const normalizedSources: DungeonLightSource[] = [];
+  const seenSourceKeys = new Set<string>();
+  const seenSourcePlacements = new Set<string>();
   for (const source of sources) {
-    const spec = dungeonLightSourceSpec(source.ref);
+    const spec = dungeonLightSourceSpec(
+      typeof source?.ref === 'string' ? source.ref : ''
+    );
     if (!spec) continue;
-    const regionId = regionByCell.get(source.cellKey);
-    if (regionId === undefined) {
+
+    const key = typeof source.key === 'string' ? source.key.trim() : '';
+    const cellKey =
+      typeof source.cellKey === 'string' ? source.cellKey.trim() : '';
+    if (key.length === 0 || cellKey.length === 0) {
+      return fallbackFacts('invalid-source-identity');
+    }
+    if (seenSourceKeys.has(key)) {
+      return fallbackFacts('duplicate-source-identity');
+    }
+    if (
+      !Array.isArray(source.groundedPosition) ||
+      source.groundedPosition.length !== 3 ||
+      source.groundedPosition.some(
+        (coordinate) =>
+          typeof coordinate !== 'number' || !Number.isFinite(coordinate)
+      )
+    ) {
+      return fallbackFacts('invalid-source-placement');
+    }
+    if (!regionByCell.has(cellKey)) {
       return fallbackFacts('source-outside-region');
     }
-    normalizedSources.push({
-      key: source.key,
-      ref: source.ref,
-      regionId,
-      cellKey: source.cellKey,
-      position: Object.freeze([
-        source.groundedPosition[0],
-        source.groundedPosition[1] + DUNGEON_SURFACE_Y + spec.height,
-        source.groundedPosition[2],
-      ] as [number, number, number]),
-      spec: Object.freeze({ ...spec }),
-    });
+
+    const placementKey = `${source.ref}|${cellKey}`;
+    if (seenSourcePlacements.has(placementKey)) {
+      return fallbackFacts('duplicate-source-placement');
+    }
+    seenSourceKeys.add(key);
+    seenSourcePlacements.add(placementKey);
+    const regionId = regionByCell.get(cellKey)!;
+    const position = Object.freeze([
+      source.groundedPosition[0],
+      source.groundedPosition[1] + DUNGEON_SURFACE_Y + spec.height,
+      source.groundedPosition[2],
+    ] as [number, number, number]);
+    normalizedSources.push(
+      Object.freeze({
+        key,
+        ref: source.ref,
+        regionId,
+        cellKey,
+        position,
+        spec: Object.freeze({ ...spec }),
+      })
+    );
   }
 
-  return {
+  return Object.freeze({
     mode: 'crypt',
     fallbackReason: null,
-    regionByCell,
-    intensityByCell,
+    regionByCell: createReadonlyMap(regionByCell),
+    intensityByCell: createReadonlyMap(intensityByCell),
     sources: Object.freeze(normalizedSources),
-  };
+  });
 }
 
 function legacyLightingPlan(
   fallbackReason: DungeonLightingFallbackReason
 ): DungeonLightingPlan {
-  return {
+  return Object.freeze({
     mode: 'legacy',
     ambientIntensity: LEGACY_AMBIENT_INTENSITY,
     directionalIntensity: LEGACY_DIRECTIONAL_INTENSITY,
     directionalPosition: DIRECTIONAL_POSITION,
-    pointLights: [],
-    floorExposureByCell: new Map(),
-    floorPoolsByCell: new Map(),
-    diagnostics: [`Legacy lighting: ${fallbackReason}`],
-  };
+    pointLights: Object.freeze([]),
+    floorExposureByCell: createReadonlyMap<string, number>([]),
+    floorPoolsByCell: createReadonlyMap<string, readonly DungeonFloorPool[]>(
+      []
+    ),
+    diagnostics: Object.freeze([`Legacy lighting: ${fallbackReason}`]),
+  });
 }
 
 export function resolveDungeonLighting(
@@ -206,26 +267,28 @@ export function resolveDungeonLighting(
     return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
   });
   const selectedSources = sortedSources.slice(0, DUNGEON_POINT_LIGHT_BUDGET);
-  const pointLights = selectedSources.map((source) => ({
-    key: source.key,
-    position: source.position,
-    color: source.spec.color,
-    intensity: source.spec.intensity,
-    distance: source.spec.distance,
-  }));
+  const pointLights = selectedSources.map((source) =>
+    Object.freeze({
+      key: source.key,
+      position: source.position,
+      color: source.spec.color,
+      intensity: source.spec.intensity,
+      distance: source.spec.distance,
+    })
+  );
 
   const poolsByCell = new Map<string, DungeonFloorPool[]>();
   for (const cellKey of facts.regionByCell.keys()) {
     poolsByCell.set(cellKey, []);
   }
   for (const source of selectedSources) {
-    const pool: DungeonFloorPool = {
+    const pool: DungeonFloorPool = Object.freeze({
       position: source.position,
       color: source.spec.color,
       intensity: source.spec.intensity,
       distance: source.spec.distance,
       floorPoolStrength: source.spec.floorPoolStrength,
-    };
+    });
     for (const [cellKey, regionId] of facts.regionByCell) {
       if (regionId !== source.regionId) continue;
       poolsByCell.get(cellKey)?.push(pool);
@@ -238,19 +301,19 @@ export function resolveDungeonLighting(
           `${DUNGEON_POINT_LIGHT_BUDGET} of ${facts.sources.length} placed light sources active near this view`,
         ]
       : [];
-  return {
+  return Object.freeze({
     mode: 'crypt',
     ambientIntensity: DUNGEON_AMBIENT_INTENSITY,
     directionalIntensity: DUNGEON_DIRECTIONAL_INTENSITY,
     directionalPosition: DIRECTIONAL_POSITION,
-    pointLights,
-    floorExposureByCell: new Map(facts.intensityByCell),
-    floorPoolsByCell: new Map(
+    pointLights: Object.freeze(pointLights),
+    floorExposureByCell: createReadonlyMap(facts.intensityByCell),
+    floorPoolsByCell: createReadonlyMap(
       [...poolsByCell].map(([cellKey, pools]) => [
         cellKey,
-        Object.freeze(pools.slice()),
+        Object.freeze(pools.slice()) as readonly DungeonFloorPool[],
       ])
     ),
-    diagnostics,
-  };
+    diagnostics: Object.freeze(diagnostics),
+  });
 }

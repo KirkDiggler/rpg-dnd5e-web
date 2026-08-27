@@ -93,11 +93,19 @@ describe('DungeonPreview3D rendered shell parity', () => {
 
   it('shows a point-light budget diagnostic only in the builder', async () => {
     const budgetDoc = referenceTombDoc();
+    const occupiedCells = new Set(
+      budgetDoc.place
+        .filter((prop) => prop.ref === 'dnd5e:props:brazier')
+        .map((prop) => `${prop.at.q},${prop.at.r}`)
+    );
+    const additionalCells = budgetDoc.regions[0]!.cells.filter(
+      (cell) => !occupiedCells.has(`${cell.q},${cell.r}`)
+    );
     budgetDoc.place = [
       ...budgetDoc.place,
-      ...Array.from({ length: 12 }, () => ({
+      ...Array.from({ length: 12 }, (_, index) => ({
         ref: 'dnd5e:props:brazier',
-        at: budgetDoc.regions[0]!.cells[0]!,
+        at: additionalCells[index]!,
         blocksMovement: true,
         blocksLos: false,
       })),
