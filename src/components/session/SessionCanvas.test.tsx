@@ -20,6 +20,7 @@ import { useEffect, useLayoutEffect } from 'react';
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
+import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import { resolveClassCharacterModelUrl } from '../hex-grid/classCharacterModels';
 import { facingToYaw } from '../hex-grid/facingYaw';
 import { cubeToWorld } from '../hex-grid/hexMath';
@@ -159,6 +160,7 @@ function scene(): Scene3D {
     floorTiles: floorTiles([0, 0, 0], [1, -1, 0], [1, 0, -1]),
     props: [],
     archetypes: [],
+    lighting: buildDungeonLightingFacts([], [], []),
     wallRuns,
     doorGaps,
   };
@@ -233,6 +235,17 @@ function meshInstances(
     .map((node) => (node as unknown as { instance: THREE.Mesh }).instance);
 }
 
+function lightIntensity(
+  renderer: Awaited<ReturnType<typeof renderSession>>,
+  type: string
+) {
+  const node = renderer.scene.find(
+    (candidate) =>
+      (candidate as { instance?: { type?: string } }).instance?.type === type
+  ) as unknown as { instance: { intensity: number } };
+  return node.instance.intensity;
+}
+
 function expectOneVisiblePlaceholder(
   renderer: Awaited<ReturnType<typeof renderSession>>,
   baseMeshCount: number
@@ -251,17 +264,19 @@ function expectOneVisiblePlaceholder(
 }
 
 describe('SessionScene', () => {
-  it('mounts one shared shell and keeps doors in the game scene contract', () => {
+  it('mounts one shared environment and keeps doors in the game scene contract', () => {
     const source = readFileSync(
       'src/components/session/SessionCanvas.tsx',
       'utf8'
     );
-    expect(source.match(/<DungeonShell\b/g)).toHaveLength(1);
-    expect(source).not.toMatch(/<SyntyHexFloor\b/);
-    expect(source).not.toMatch(/<AtlasWalls\b/);
+    expect(source.match(/<DungeonEnvironment\b/g)).toHaveLength(1);
+    expect(source).not.toMatch(/<DungeonSceneLights\b/);
+    expect(source).not.toMatch(/<DungeonShell\b/);
+    expect(source).not.toMatch(/<AtlasPropModel\b/);
     expect(source).toContain('doors={doors}');
     expect(source).toContain('onDoorClick={onDoorClick}');
     expect(source).not.toContain('onFallbackReason');
+    expect(source).not.toContain('onLightingDiagnostics');
   });
 
   it('renders the actual game shell with doors/click and exactly one actual light pair', async () => {
@@ -309,6 +324,40 @@ describe('SessionScene', () => {
         (node) =>
           (node as { instance?: { type?: string } }).instance?.type ===
           'DirectionalLight'
+      )
+    ).toHaveLength(1);
+  });
+
+  it('uses the authored crypt plan for the game environment', async () => {
+    const cryptScene = scene();
+    cryptScene.lighting = buildDungeonLightingFacts(
+      [...cryptScene.floorTiles.keys()],
+      [
+        {
+          id: 'crypt-room',
+          archetype: 'crypt',
+          intensity: 0.35,
+          cellKeys: [...cryptScene.floorTiles.keys()],
+        },
+      ],
+      [
+        {
+          key: 'entrance-brazier',
+          ref: 'dnd5e:props:brazier',
+          cellKey: '0,0,0',
+          groundedPosition: [0, 0, 0],
+        },
+      ]
+    );
+    const renderer = await renderSession(cryptScene);
+
+    expect(lightIntensity(renderer, 'AmbientLight')).toBe(0.2);
+    expect(lightIntensity(renderer, 'DirectionalLight')).toBe(0.1);
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          (node as { instance?: { type?: string } }).instance?.type ===
+          'PointLight'
       )
     ).toHaveLength(1);
   });

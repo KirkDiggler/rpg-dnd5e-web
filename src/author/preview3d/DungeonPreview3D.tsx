@@ -3,10 +3,9 @@
  * `PutDungeon(validate_only)` answered with, drawn by the GAME's own
  * renderer. `previewScene` runs the same `resolveSceneLayout` +
  * `buildScene3D` the session route runs (`SessionEncounterView`), then
- * the same leaf renderers draw it: `SyntyHexFloor`, `AtlasWalls`,
- * `AtlasPropModel`, `DungeonSceneLights`. There is no builder-side
- * geometry; if the preview and the game ever differ, one of them is
- * lying and `DungeonPreview3D.test.ts` says which.
+ * the same `DungeonEnvironment` composition draws it. There is no
+ * builder-side geometry; if the preview and the game ever differ, one of
+ * them is lying and `DungeonPreview3D.test.ts` says which.
  *
  * Two things the atlas does not carry are drawn from the document on
  * top, both through game renderers: the start cell as a `PathPreview`
@@ -20,18 +19,13 @@
  */
 import { HexEntity } from '@/components/hex-grid/HexEntity';
 import {
-  coordToKey,
   cubeToWorld,
   HEX_SIZE,
   type CubeCoord,
 } from '@/components/hex-grid/hexMath';
 import { PathPreview } from '@/components/hex-grid/PathPreview';
-import { AtlasPropModel } from '@/components/session/AtlasPropModel';
-import { DungeonSceneLights } from '@/components/session/DungeonSceneLights';
-import {
-  DungeonShell,
-  type ShellFallbackReason,
-} from '@/components/session/DungeonShell';
+import { DungeonEnvironment } from '@/components/session/DungeonEnvironment';
+import type { ShellFallbackReason } from '@/components/session/DungeonShell';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { OrbitControls } from '@react-three/drei';
@@ -86,9 +80,15 @@ export function DungeonPreview3D({
   }, [doc.regions]);
   const [shellFallbackReason, setShellFallbackReason] =
     useState<ShellFallbackReason | null>(null);
+  const [lightingDiagnostics, setLightingDiagnostics] = useState<
+    readonly string[]
+  >([]);
 
   useEffect(() => {
-    if (!built || !built.ok) setShellFallbackReason(null);
+    if (!built || !built.ok) {
+      setShellFallbackReason(null);
+      setLightingDiagnostics([]);
+    }
   }, [built]);
 
   if (!built) {
@@ -150,6 +150,26 @@ export function DungeonPreview3D({
           Legacy shell: {shellFallbackReason}
         </div>
       )}
+      {lightingDiagnostics.length > 0 && (
+        <div
+          data-testid="preview-lighting-diagnostics"
+          style={{
+            position: 'absolute',
+            top: staleNotice || shellFallbackReason ? 64 : 8,
+            left: 8,
+            right: 8,
+            zIndex: 1,
+            padding: '4px 8px',
+            borderRadius: 4,
+            background: '#1e3a8acc',
+            color: '#bfdbfe',
+            fontSize: 12,
+            pointerEvents: 'none',
+          }}
+        >
+          {lightingDiagnostics.join(' · ')}
+        </div>
+      )}
       <Canvas
         orthographic
         frameloop="demand"
@@ -166,16 +186,13 @@ export function DungeonPreview3D({
         style={{ width: '100%', height: '100%' }}
         data-testid="preview-canvas"
       >
-        <DungeonSceneLights />
-        <DungeonShell scene={scene} onFallbackReason={setShellFallbackReason} />
-        {scene.props.map((prop, index) => (
-          <AtlasPropModel
-            key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
-            prop={prop}
-            hexSize={HEX_SIZE}
-            orientation="pointy"
-          />
-        ))}
+        <DungeonEnvironment
+          scene={scene}
+          focus={{ x: target[0], z: target[2] }}
+          hexSize={HEX_SIZE}
+          onShellFallbackReason={setShellFallbackReason}
+          onLightingDiagnostics={setLightingDiagnostics}
+        />
         {doc.start && (
           <PathPreview
             path={[axialToCube(doc.start)]}

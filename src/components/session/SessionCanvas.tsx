@@ -68,10 +68,8 @@ import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import type { AtlasPathIndex } from './atlasPath';
-import { AtlasPropModel } from './AtlasPropModel';
 import type { Scene3D } from './atlasToScene3D';
-import { DungeonSceneLights } from './DungeonSceneLights';
-import { DungeonShell } from './DungeonShell';
+import { DungeonEnvironment } from './DungeonEnvironment';
 import { MoveIndicator } from './MoveIndicator';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { useMoveIndicator } from './useMoveIndicator';
@@ -411,7 +409,13 @@ export function SessionScene({
 
   return (
     <>
-      <DungeonSceneLights />
+      <DungeonEnvironment
+        scene={scene}
+        focus={{ x: target.x, z: target.z }}
+        hexSize={hexSize}
+        doors={doors}
+        onDoorClick={onDoorClick}
+      />
       {/* Invisible ground plane for hit detection — HexGrid.tsx's own
           convention, unchanged. */}
       <mesh
@@ -422,16 +426,7 @@ export function SessionScene({
         <planeGeometry args={[GROUND_PLANE_SIZE, GROUND_PLANE_SIZE]} />
         <meshBasicMaterial visible={false} />
       </mesh>
-      <DungeonShell scene={scene} doors={doors} onDoorClick={onDoorClick} />
       {presentationLayer}
-      {scene.props.map((prop, index) => (
-        <AtlasPropModel
-          key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
-          prop={prop}
-          hexSize={hexSize}
-          orientation="pointy"
-        />
-      ))}
       {attackableRingPositions.map((member) => (
         <PathPreview
           key={`attackable-ring-${member.subject}`}

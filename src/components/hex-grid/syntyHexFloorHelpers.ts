@@ -32,10 +32,26 @@ import * as THREE from 'three';
  * via `color`) but is accepted anyway so callers can pass the exact same
  * array they already built for `moodPointLights` without remapping it. */
 export interface FloorPoolLight {
-  position: readonly [number, number, number];
-  color: string;
-  intensity?: number;
-  distance: number;
+  readonly position: readonly [number, number, number];
+  readonly color: string;
+  readonly intensity?: number;
+  readonly distance: number;
+  readonly floorPoolStrength?: number;
+}
+
+export interface DungeonFloorLighting {
+  readonly exposureByCell: ReadonlyMap<string, number>;
+  readonly poolsByCell: ReadonlyMap<string, readonly FloorPoolLight[]>;
+}
+
+export const CRYPT_DARK_FLOOR_TINT = new THREE.Color('#101318');
+export const CRYPT_FLOOR_TINT = new THREE.Color(0.35, 0.38, 0.46);
+
+export function cryptFloorBaseColor(intensity: number): THREE.Color {
+  return CRYPT_DARK_FLOOR_TINT.clone().lerp(
+    CRYPT_FLOOR_TINT,
+    Math.max(0, Math.min(1, intensity))
+  );
 }
 
 /**
@@ -90,7 +106,7 @@ export function computeFloorPoolColor(
     const dist = Math.sqrt(dx * dx + dz * dz);
     if (dist >= light.distance) continue;
     const t = 1 - dist / light.distance;
-    const weight = t * t;
+    const weight = t * t * (light.floorPoolStrength ?? 1);
     if (weight <= 0) continue;
     scratch.set(light.color);
     r += scratch.r * weight;
