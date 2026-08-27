@@ -94,6 +94,27 @@ one file per verb, mirroring `useTakeAction`/`useInteract`.
   combat log (both anchor bottom-right); the log's own open/hidden
   preference is untouched and restores the instant the popover closes.
 
+### Session-route main-hand presentation (#832)
+
+The live `SessionEncounterView` already owns the authenticated player's
+owner-private `CharacterData` cache. It now projects only
+`equipped.main_hand` through `src/components/hex-grid/mainHandWeapons.ts` and
+passes the resulting presentation through `SessionCanvas` and `HexEntity` to
+`ClassCharacterModel`.
+
+The resolver is display-only and exact-ref-only: the current 12 promoted
+`dnd5e:item:*` refs map to `/models/synty/weapons/*.glb`; attack refs and
+unknown items remain unarmed. All four current class rigs share
+`townfolk-main-hand-v1`; no class × weapon offset table exists. Equip/unequip
+continues replacing the complete owner cache from the RPC response, so the
+model changes on that same render. A cold running-encounter resume recovers the
+authenticated player's character ID from the retained lobby's first snapshot
+before `GetCharacterData` restores equipment.
+
+Only the acting player's private equipment reaches this path. A sighted peer's
+public roster entry has no equipment projection, so peer weapons remain a
+separate contract rather than a client guess.
+
 ## Scope decisions
 
 - **No live push to other clients.** `EquipItem`/`UnequipItem` are

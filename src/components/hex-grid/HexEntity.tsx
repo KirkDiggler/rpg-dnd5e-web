@@ -32,6 +32,7 @@ import {
   SYNTY_GLB_FORWARD_OFFSET,
 } from './facing';
 import { cubeToWorld, type CubeCoord } from './hexMath';
+import type { MainHandPresentation } from './mainHandPresentation';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
@@ -97,6 +98,9 @@ export interface HexEntityProps {
    * entities (rpg-dnd5e-web#501). Unmapped/undefined falls back to
    * MediumHumanoid, unchanged (the #479 boundary lineage). */
   classRefId?: string;
+  /** Exact owner-authoritative visual projection for this player's main hand.
+   * Undefined means unarmed; only class GLBs consume it. */
+  mainHandPresentation?: MainHandPresentation;
   /** True for a CHARACTER entity carrying the "unconscious" condition —
    * swaps to the class's downed GLB variant (rpg-dnd5e-web#501). */
   isDowned?: boolean;
@@ -303,6 +307,7 @@ export function HexEntity({
   isGhost = false,
   knowledgeState,
   classRefId,
+  mainHandPresentation,
   isDowned = false,
   obstacleType,
   propRefId,
@@ -613,6 +618,9 @@ export function HexEntity({
                   facingRotation={modelForwardOffset}
                   isMoving={!isDead && !isGhost && !remembered && isMoving}
                   isDownedVariant={isDownedModelVariant}
+                  mainHandPresentation={
+                    type === 'player' ? mainHandPresentation : undefined
+                  }
                 />
               </ErrorBoundary>
             ) : (

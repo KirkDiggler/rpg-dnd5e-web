@@ -74,9 +74,55 @@ describe('DungeonPreview3D rendered shell parity', () => {
     const gameScene = buildScene3D(atlas, HEX_SIZE, gate.layout);
     expect(gameScene.floorTiles.size).toBeGreaterThan(0);
     expect(container.querySelectorAll('ambientLight')).toHaveLength(1);
+    expect(
+      container.querySelector('ambientLight')?.getAttribute('intensity')
+    ).toBe('0.2');
     expect(container.querySelectorAll('directionalLight')).toHaveLength(1);
+    expect(
+      container.querySelector('directionalLight')?.getAttribute('intensity')
+    ).toBe('0.1');
+    const pointLight = container.querySelector('pointLight');
+    expect(container.querySelectorAll('pointLight')).toHaveLength(1);
+    expect(pointLight?.getAttribute('color')).toBe('#ff9d52');
+    expect(pointLight?.getAttribute('intensity')).toBe('2.8');
+    expect(pointLight?.getAttribute('distance')).toBe('5.5');
+    expect(pointLight?.getAttribute('decay')).toBe('2');
     expect(container.querySelectorAll('mesh').length).toBeGreaterThan(0);
     expect(container.querySelectorAll('primitive').length).toBeGreaterThan(0);
+  });
+
+  it('shows a point-light budget diagnostic only in the builder', async () => {
+    const budgetDoc = referenceTombDoc();
+    const occupiedCells = new Set(
+      budgetDoc.place
+        .filter((prop) => prop.ref === 'dnd5e:props:brazier')
+        .map((prop) => `${prop.at.q},${prop.at.r}`)
+    );
+    const additionalCells = budgetDoc.regions[0]!.cells.filter(
+      (cell) => !occupiedCells.has(`${cell.q},${cell.r}`)
+    );
+    budgetDoc.place = [
+      ...budgetDoc.place,
+      ...Array.from({ length: 12 }, (_, index) => ({
+        ref: 'dnd5e:props:brazier',
+        at: additionalCells[index]!,
+        blocksMovement: true,
+        blocksLos: false,
+      })),
+    ];
+    render(
+      <DungeonPreview3D
+        atlas={fixtureAtlasOf(budgetDoc) as GetAtlasResponse}
+        doc={budgetDoc}
+        status="ready"
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('preview-lighting-diagnostics').textContent
+      ).toBe('12 of 13 placed light sources active near this view')
+    );
   });
 
   it('shows the actual rendered legacy banner after the provider fallback callback', async () => {

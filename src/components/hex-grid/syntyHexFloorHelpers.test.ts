@@ -2,11 +2,28 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   computeFloorPoolColor,
+  CRYPT_DARK_FLOOR_TINT,
+  cryptFloorBaseColor,
   MAX_FLOOR_POOL_BLEND,
   type FloorPoolLight,
 } from './syntyHexFloorHelpers';
 
 const BASE = new THREE.Color(0.35, 0.38, 0.46);
+
+describe('cryptFloorBaseColor', () => {
+  it('lerps from the dark regional floor to the current crypt tint', () => {
+    expect(cryptFloorBaseColor(0).getHexString()).toBe('101318');
+    expect(isCloseTo(cryptFloorBaseColor(1), BASE)).toBe(true);
+    const half = cryptFloorBaseColor(0.5);
+    expect(half.r).toBeGreaterThan(CRYPT_DARK_FLOOR_TINT.r);
+    expect(half.r).toBeLessThan(BASE.r);
+  });
+
+  it('clamps exposure without mutating the shared dark tint', () => {
+    expect(cryptFloorBaseColor(-1).getHexString()).toBe('101318');
+    expect(isCloseTo(cryptFloorBaseColor(2), BASE)).toBe(true);
+  });
+});
 
 function isCloseTo(a: THREE.Color, b: THREE.Color, eps = 1e-6): boolean {
   return (
@@ -79,6 +96,48 @@ describe('computeFloorPoolColor', () => {
     const distTo = (c: THREE.Color, t: THREE.Color) =>
       Math.abs(c.r - t.r) + Math.abs(c.g - t.g) + Math.abs(c.b - t.b);
     expect(distTo(result, warm)).toBeLessThan(distTo(result, green));
+  });
+
+  it('applies floorPoolStrength to the quadratic weight', () => {
+    const fullStrength: FloorPoolLight[] = [
+      {
+        position: [0, 1.2, 0],
+        color: '#ff9d52',
+        distance: 5.5,
+        floorPoolStrength: 1,
+      },
+    ];
+    const halfStrength: FloorPoolLight[] = [
+      { ...fullStrength[0], floorPoolStrength: 0.5 },
+    ];
+    const movement = (color: THREE.Color) =>
+      Math.abs(color.r - BASE.r) +
+      Math.abs(color.g - BASE.g) +
+      Math.abs(color.b - BASE.b);
+
+    expect(
+      movement(computeFloorPoolColor(BASE, 0, 0, halfStrength))
+    ).toBeLessThan(movement(computeFloorPoolColor(BASE, 0, 0, fullStrength)));
+  });
+
+  it('ignores non-positive floorPoolStrength', () => {
+    const lights: FloorPoolLight[] = [
+      {
+        position: [0, 1.2, 0],
+        color: '#ff9d52',
+        distance: 5.5,
+        floorPoolStrength: 0,
+      },
+      {
+        position: [0, 1.2, 0],
+        color: '#3ddc84',
+        distance: 5.5,
+        floorPoolStrength: -1,
+      },
+    ];
+    expect(isCloseTo(computeFloorPoolColor(BASE, 0, 0, lights), BASE)).toBe(
+      true
+    );
   });
 
   it('never mutates the base color instance', () => {

@@ -27,3 +27,22 @@
 
 - Existing owner `CharacterData.equipped` is sufficient for the acting-player follow-up.
 - No proto, API, toolkit, provider-manifest, or multiplayer transport change is created by this Concept.
+
+## Production review extension (#832, 2026-08-27)
+
+The historical verdict above remains the #821 provisional record. The live
+Concept now imports the production exact-ref resolver instead of retaining a
+second candidate map, and exposes fighter, barbarian, monk, and rogue against
+unarmed plus the 12 outputs promoted by `rpg-game-assets#71`.
+
+- Runtime URLs are `/models/synty/weapons/<id>.glb` for the exact supported
+  `dnd5e:item:<id>` refs.
+- Every promoted output is 4.0 MB decoded against the 4.5 MB provider budget.
+- `townfolk-main-hand-v1` replaces the old provisional-fighter label; merged
+  provider evidence proves the same sampled `Hand_R` matrices across all four
+  current class rigs.
+- The Concept remains a visual fixture matrix. The real session route owns the
+  separate `CharacterData.equipped.main_hand` authority proof documented in
+  `docs/evidence/832-authoritative-main-hand/`.
+- Two-hand contact, finger posing, combat/bow animation, peer equipment, and
+  weapons outside the current provider roster remain outside this contract.

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthoredWallRun } from '../../hooks/authoredWallRuns';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
+import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import {
   __resetDungeonShellProviderForTests,
   getDungeonShellCatalogSnapshot,
@@ -89,6 +90,7 @@ function scene(): Scene3D {
     floorTiles,
     props: [],
     archetypes: ['crypt'],
+    lighting: buildDungeonLightingFacts([], [], []),
     wallRuns,
     doorGaps: [],
   };

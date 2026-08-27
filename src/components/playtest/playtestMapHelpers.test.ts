@@ -21,6 +21,10 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { describe, expect, it } from 'vitest';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
+import {
+  DUNGEON_LIGHT_SOURCE_REFS,
+  dungeonLightSourceSpec,
+} from '../../rendering/dungeonLightSources';
 import { hexDistance } from '../hex-grid/hexMath';
 import { PROP_KEYS } from '../hex-grid/propManifest';
 import {
@@ -965,7 +969,7 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
     expect(lights).toHaveLength(1);
   });
 
-  it('candle lights use the sickly-green glow color, not a neutral/white default', () => {
+  it('candle lights use the approved warm fire color', () => {
     const props = [
       {
         entityId: 'a',
@@ -976,7 +980,7 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
       },
     ];
     const [light] = buildCryptMoodLights(props);
-    expect(light!.color).toBe('#3ddc84');
+    expect(light!.color).toBe('#ff9d52');
   });
 
   it('every light has a finite world-space position and positive intensity/distance falloff', () => {
@@ -1004,6 +1008,28 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
     expect(candleCount).toBe(4);
     const lights = buildCryptMoodLights(props);
     expect(lights).toHaveLength(candleCount);
+  });
+
+  it('projects every manifest source through the legacy helper using shared color, intensity, and distance', () => {
+    for (const ref of DUNGEON_LIGHT_SOURCE_REFS) {
+      const spec = dungeonLightSourceSpec(ref);
+      expect(spec).toBeDefined();
+      const propRefId = ref.split(':').pop()!;
+      const [light] = buildCryptMoodLights([
+        {
+          entityId: propRefId,
+          name: propRefId,
+          position: { x: 0, y: 0, z: 0 },
+          type: 'obstacle' as const,
+          propRefId,
+        },
+      ]);
+      expect(light).toMatchObject({
+        color: spec!.color,
+        intensity: spec!.intensity,
+        distance: spec!.distance,
+      });
+    }
   });
 
   it('produces a light for each of the three known light-anchor props (candles, brazier, torch-ornate) — rpg-toolkit#839 light-anchor set pieces, rpg-dnd5e-web#569', () => {
@@ -1034,7 +1060,7 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
     expect(lights).toHaveLength(3);
   });
 
-  it('brazier and torch-ornate lights use the warm-orange glow color (the door-light family), not the candle green', () => {
+  it('brazier and torch-ornate lights use the warm-orange glow color (the door-light family)', () => {
     const [brazier] = buildCryptMoodLights([
       {
         entityId: 'b',
@@ -1149,21 +1175,19 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
     expect(moodLightFor('candle-stand').color).toBe('#ff9d52');
   });
 
-  it('glowing-orb and the rune props share a SECOND, cool accent color distinct from both the warm family and the candles green', () => {
+  it('glowing-orb and the rune props share the approved cool arcane color distinct from the warm family', () => {
     const orb = moodLightFor('glowing-orb');
     const marker = moodLightFor('rune-marker');
     const pillar = moodLightFor('rune-pillar');
     expect(orb.color).toBe(marker.color);
     expect(orb.color).toBe(pillar.color);
-    expect(orb.color).not.toBe('#ff9d52');
-    expect(orb.color).not.toBe('#3ddc84');
+    expect(orb.color).toBe('#3d84dc');
   });
 
-  it("glowing-orb matches the candles accent pools' reach — a single set-piece anchor standing in for several small pools", () => {
+  it('glowing-orb uses the approved cool arcane calibration', () => {
     const orb = moodLightFor('glowing-orb');
-    const candle = moodLightFor('candles');
-    expect(orb.intensity).toBe(candle.intensity);
-    expect(orb.distance).toBe(candle.distance);
+    expect(orb.intensity).toBe(2);
+    expect(orb.distance).toBe(4.5);
   });
 
   it('brazier is still the single brightest/widest light even after the wave-1 additions', () => {
@@ -1529,7 +1553,7 @@ describe('buildThemeMoodLights (rpg-dnd5e-web#558 real-route mood-light assembly
     // distance) spec, since MoodPointLight carries no entityId to check
     // directly. Each of the 4 non-far types keeps its full count; only the
     // lone far torch-ornate is dropped, leaving 2 of its 3 instances.
-    expect(lights.filter((l) => l.distance === 4.5)).toHaveLength(2); // candles
+    expect(lights.filter((l) => l.distance === 2.6)).toHaveLength(2); // candles
     expect(lights.filter((l) => l.distance === 5.5)).toHaveLength(2); // braziers
     expect(lights.filter((l) => l.distance === 3.6)).toHaveLength(2); // torch-ornate (near only)
     expect(lights.filter((l) => l.distance === 3)).toHaveLength(2); // doors

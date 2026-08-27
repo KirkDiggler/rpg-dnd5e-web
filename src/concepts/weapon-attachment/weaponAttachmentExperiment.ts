@@ -1,18 +1,32 @@
-import {
-  refKey,
-  type EquippedMap,
-  type RefLike,
+import type {
+  EquippedMap,
+  RefLike,
 } from '@/components/game/equipment/equipmentTypes';
 import type {
   MainHandAttachmentCode,
   MainHandPresentation,
   MainHandSocket,
 } from '@/components/hex-grid/mainHandPresentation';
+import {
+  CURRENT_MAIN_HAND_WEAPONS,
+  TOWNFOLK_MAIN_HAND_SOCKET,
+  resolveMainHandPresentation,
+  type CurrentMainHandWeaponId,
+} from '@/components/hex-grid/mainHandWeapons';
 
-export type WeaponEquipmentState = 'unarmed' | 'longsword' | 'shortbow';
+export type WeaponClassId = 'fighter' | 'barbarian' | 'monk' | 'rogue';
+export type WeaponEquipmentState = 'unarmed' | CurrentMainHandWeaponId;
 export type WeaponMotion = 'idle' | 'walk';
 export type WeaponView = 'close' | 'orbit' | 'play';
 export type WeaponFacing = 0 | 1 | 2 | 3 | 4 | 5;
+
+export function formatTextureBudget(
+  decodedTextureMb: number,
+  budgetMb: number
+): string {
+  const comparator = decodedTextureMb <= budgetMb ? '<=' : '>';
+  return `${decodedTextureMb} MB ${comparator} ${budgetMb} MB production budget`;
+}
 
 const itemRef = (id: string): RefLike => ({
   module: 'dnd5e',
@@ -20,18 +34,9 @@ const itemRef = (id: string): RefLike => ({
   id,
 });
 
-export const PROVISIONAL_FIGHTER_SOCKET: MainHandSocket = Object.freeze({
-  bone: 'Hand_R',
-  boneUnitMeters: 0.01,
-  positionMeters: [
-    -0.11356871832209599, 0.0437807216160595, -0.0070717729664129085,
-  ] as const,
-  rotationQuaternion: [
-    -0.31717459916354807, -0.45555976264236875, 0.6828311428133312,
-    0.47498148472569474,
-  ] as const,
-  scale: 1,
-});
+/** @deprecated Kept for the historical #821 verdict API. */
+export const PROVISIONAL_FIGHTER_SOCKET: MainHandSocket =
+  TOWNFOLK_MAIN_HAND_SOCKET;
 
 interface Candidate {
   ref: string;
@@ -41,36 +46,37 @@ interface Candidate {
   budgetMb: number;
 }
 
-const CANDIDATES: Record<string, Candidate> = {
-  'dnd5e:item:longsword': {
-    ref: 'dnd5e:item:longsword',
-    source: 'SM_Wep_Slayer_01 · rejected oversized longsword candidate',
-    weaponUrl: '/models/synty/characters/weapons/fighter-weapon.glb',
-    decodedTextureMb: 16,
-    budgetMb: 4.5,
-  },
-  'dnd5e:item:shortbow': {
-    ref: 'dnd5e:item:shortbow',
-    source: 'SM_Prop_Bow_01 · accepted provisional shortbow candidate',
-    weaponUrl: '/models/synty/characters/weapons/bow-01.glb',
-    decodedTextureMb: 64,
-    budgetMb: 4.5,
-  },
-};
+const CANDIDATES: Record<string, Candidate> = Object.fromEntries(
+  CURRENT_MAIN_HAND_WEAPONS.map((weapon) => [
+    weapon.ref,
+    {
+      ref: weapon.ref,
+      source: 'rpg-game-assets#71 · promoted v1 provider output',
+      weaponUrl: weapon.weaponUrl,
+      decodedTextureMb: 4,
+      budgetMb: 4.5,
+    },
+  ])
+);
 
-export const WEAPON_ATTACHMENT_FIXTURES: Record<
-  WeaponEquipmentState,
-  { label: string; equipped: EquippedMap }
+type WeaponFixture = { label: string; equipped: EquippedMap };
+
+const MAPPED_WEAPON_FIXTURES: Readonly<Record<string, WeaponFixture>> =
+  Object.fromEntries(
+    CURRENT_MAIN_HAND_WEAPONS.map((weapon) => [
+      weapon.id,
+      {
+        label: weapon.label,
+        equipped: { main_hand: itemRef(weapon.id) },
+      },
+    ])
+  );
+
+export const WEAPON_ATTACHMENT_FIXTURES: Readonly<
+  Record<string, WeaponFixture>
 > = {
   unarmed: { label: 'Unarmed', equipped: {} },
-  longsword: {
-    label: 'Longsword',
-    equipped: { main_hand: itemRef('longsword') },
-  },
-  shortbow: {
-    label: 'Shortbow',
-    equipped: { main_hand: itemRef('shortbow') },
-  },
+  ...MAPPED_WEAPON_FIXTURES,
 };
 
 export type MainHandResolution =
@@ -86,20 +92,14 @@ export type MainHandResolution =
 export function resolveProvisionalMainHand(
   equipped: EquippedMap
 ): MainHandResolution {
-  const ref = equipped.main_hand;
-  if (!ref) return { code: 'unarmed' };
-  const key = refKey(ref);
-  const candidate = CANDIDATES[key];
-  if (!candidate) return { code: 'unmapped-ref', ref: key };
+  const resolution = resolveMainHandPresentation(equipped);
+  if (resolution.code !== 'mapped') return resolution;
+
   return {
     code: 'mapped',
-    ref: key,
-    candidate,
-    presentation: {
-      ref: key,
-      weaponUrl: candidate.weaponUrl,
-      socket: PROVISIONAL_FIGHTER_SOCKET,
-    },
+    ref: resolution.ref,
+    candidate: CANDIDATES[resolution.ref]!,
+    presentation: resolution.presentation,
   };
 }
 
@@ -120,8 +120,7 @@ export interface WeaponConceptCoverage {
 
 const EQUIPMENT_ORDER: WeaponEquipmentState[] = [
   'unarmed',
-  'longsword',
-  'shortbow',
+  ...CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.id),
 ];
 const MOTION_ORDER: WeaponMotion[] = ['idle', 'walk'];
 const VIEW_ORDER: WeaponView[] = ['close', 'orbit', 'play'];
@@ -166,7 +165,7 @@ export function canRecordWeaponVerdict(
 
 export interface WeaponConceptVerdict {
   warning: 'NON-PRODUCTION CONCEPT EVIDENCE';
-  fighterModel: '/models/synty/characters/fighter.glb';
+  classModels: Record<WeaponClassId, string>;
   socket: MainHandSocket;
   candidates: Candidate[];
   coverage: WeaponConceptCoverage;
@@ -180,8 +179,13 @@ export function weaponConceptVerdict(
   }
   return {
     warning: 'NON-PRODUCTION CONCEPT EVIDENCE',
-    fighterModel: '/models/synty/characters/fighter.glb',
-    socket: PROVISIONAL_FIGHTER_SOCKET,
+    classModels: {
+      fighter: '/models/synty/characters/fighter.glb',
+      barbarian: '/models/synty/characters/barbarian.glb',
+      monk: '/models/synty/characters/monk.glb',
+      rogue: '/models/synty/characters/rogue.glb',
+    },
+    socket: TOWNFOLK_MAIN_HAND_SOCKET,
     candidates: Object.values(CANDIDATES),
     coverage: coverageFor(observations),
   };

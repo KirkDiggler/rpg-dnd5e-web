@@ -4,6 +4,7 @@ import {
   POLAR_ANGLE,
   sphericalCameraPosition,
 } from '@/author/preview3d/playCameraRig';
+import { resolveClassCharacterModelUrl } from '@/components/hex-grid/classCharacterModels';
 import type {
   MainHandAttachmentStatus,
   MainHandPresentation,
@@ -26,7 +27,11 @@ import {
   WeaponAttachmentPreview,
   WeaponAttachmentScene,
 } from './WeaponAttachmentPreview';
-import { resolveProvisionalMainHand } from './weaponAttachmentExperiment';
+import {
+  resolveProvisionalMainHand,
+  type WeaponClassId,
+  type WeaponEquipmentState,
+} from './weaponAttachmentExperiment';
 
 const mockAttachmentStatusState: {
   current?: MainHandAttachmentStatus;
@@ -94,6 +99,7 @@ vi.mock('@react-three/drei', () => ({
 
 vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
   ClassCharacterModel: (props: {
+    url: string;
     isMoving: boolean;
     facingRotation: number;
     mainHandPresentation?: { ref: string; weaponUrl: string };
@@ -110,6 +116,7 @@ vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
       <group
         name="mock-real-class-character-model"
         userData={{
+          url: props.url,
           isMoving: props.isMoving,
           facingRotation: props.facingRotation,
           ref: props.mainHandPresentation?.ref ?? 'unarmed',
@@ -201,6 +208,49 @@ describe('WeaponAttachmentScene', () => {
       facing: 3,
       attachmentCode: 'attached',
     });
+  });
+
+  it('renders the selected current class model instead of a fighter-only model', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WeaponAttachmentScene
+        classId="barbarian"
+        equipmentState="unarmed"
+        motion="idle"
+        view="orbit"
+        facing={0}
+        presentation={undefined}
+        onAttachmentStatus={() => {}}
+        onRenderObserved={() => {}}
+      />
+    );
+
+    const model = renderer.scene.findAll(
+      (node) => node.props.name === 'mock-real-class-character-model'
+    )[0]!;
+    expect(model.props.userData.url).toBe(
+      resolveClassCharacterModelUrl('barbarian', false)
+    );
+  });
+
+  it('degrades without mounting a class model when an unexpected class is unmapped', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WeaponAttachmentScene
+        classId={'wizard' as WeaponClassId}
+        equipmentState="unarmed"
+        motion="idle"
+        view="orbit"
+        facing={0}
+        presentation={undefined}
+        onAttachmentStatus={() => {}}
+        onRenderObserved={() => {}}
+      />
+    );
+
+    expect(
+      renderer.scene.findAll(
+        (node) => node.props.name === 'mock-real-class-character-model'
+      )
+    ).toHaveLength(0);
   });
 
   it('acknowledges valid unarmed observation in the orbit branch', async () => {
@@ -503,14 +553,15 @@ describe('WeaponAttachmentPreview props', () => {
     expectTypeOf<
       ComponentProps<typeof WeaponAttachmentPreview>
     >().toMatchTypeOf<{
-      equipmentState: 'unarmed' | 'longsword' | 'shortbow';
+      classId?: WeaponClassId;
+      equipmentState: WeaponEquipmentState;
       motion: 'idle' | 'walk';
       view: 'close' | 'orbit' | 'play';
       facing: 0 | 1 | 2 | 3 | 4 | 5;
       presentation?: MainHandPresentation;
       onAttachmentStatus?: (status: MainHandAttachmentStatus) => void;
       onRenderObserved: (observation: {
-        equipmentState: 'unarmed' | 'longsword' | 'shortbow';
+        equipmentState: WeaponEquipmentState;
         motion: 'idle' | 'walk';
         view: 'close' | 'orbit' | 'play';
         facing: 0 | 1 | 2 | 3 | 4 | 5;

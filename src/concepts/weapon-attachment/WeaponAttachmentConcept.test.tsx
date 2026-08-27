@@ -3,17 +3,23 @@ import { useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConceptsView } from '../ConceptsView';
 import { WeaponAttachmentConcept } from './WeaponAttachmentConcept';
+import {
+  formatTextureBudget,
+  type WeaponClassId,
+  type WeaponEquipmentState,
+} from './weaponAttachmentExperiment';
 
 vi.mock('./WeaponAttachmentPreview', () => ({
   WeaponAttachmentPreview: (props: {
-    equipmentState: 'unarmed' | 'longsword' | 'shortbow';
+    classId?: WeaponClassId;
+    equipmentState: WeaponEquipmentState;
     motion: 'idle' | 'walk';
     view: 'close' | 'orbit' | 'play';
     facing: 0 | 1 | 2 | 3 | 4 | 5;
     presentation?: { ref: string };
     onAttachmentStatus: (status: { code: 'unarmed' | 'attached' }) => void;
     onRenderObserved: (observation: {
-      equipmentState: 'unarmed' | 'longsword' | 'shortbow';
+      equipmentState: WeaponEquipmentState;
       motion: 'idle' | 'walk';
       view: 'close' | 'orbit' | 'play';
       facing: 0 | 1 | 2 | 3 | 4 | 5;
@@ -51,7 +57,10 @@ vi.mock('./WeaponAttachmentPreview', () => ({
     ]);
 
     return (
-      <div data-testid="mock-weapon-preview">
+      <div
+        data-testid="mock-weapon-preview"
+        data-class-id={props.classId ?? 'fighter'}
+      >
         {props.equipmentState}|{props.motion}|{props.view}|{props.facing}
       </div>
     );
@@ -84,6 +93,13 @@ function forbiddenTransformControls() {
 }
 
 describe('WeaponAttachmentConcept', () => {
+  it('formats texture budget comparisons from the measured values', () => {
+    expect(formatTextureBudget(4, 4.5)).toBe(
+      '4 MB <= 4.5 MB production budget'
+    );
+    expect(formatTextureBudget(8, 4.5)).toBe('8 MB > 4.5 MB production budget');
+  });
+
   beforeEach(() => {
     setSearch('/');
   });
@@ -114,10 +130,13 @@ describe('WeaponAttachmentConcept', () => {
       'dnd5e:item:longsword'
     );
     expect(screen.getByTestId('candidate-source').textContent).toContain(
-      'SM_Wep_Slayer_01'
+      'rpg-game-assets#71'
+    );
+    expect(screen.getByTestId('candidate-url').textContent).toContain(
+      '/models/synty/weapons/longsword.glb'
     );
     expect(screen.getByTestId('texture-warning').textContent).toContain(
-      '16 MB > 4.5 MB'
+      '4 MB <= 4.5 MB'
     );
     expect(screen.getByTestId('attachment-status').textContent).toContain(
       'attached'
@@ -128,9 +147,23 @@ describe('WeaponAttachmentConcept', () => {
       'dnd5e:item:shortbow'
     );
     expect(screen.getByTestId('texture-warning').textContent).toContain(
-      '64 MB > 4.5 MB'
+      '4 MB <= 4.5 MB'
     );
 
+    for (const label of [
+      'Shortsword',
+      'Dagger',
+      'Greataxe',
+      'Quarterstaff',
+      'Greatsword',
+      'Battleaxe',
+      'Handaxe',
+      'Club',
+      'Greatclub',
+      'Warhammer',
+    ]) {
+      fireEvent.click(screen.getByRole('button', { name: label }));
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Walk' }));
     fireEvent.click(screen.getByRole('button', { name: 'Full orbit' }));
     fireEvent.click(screen.getByRole('button', { name: 'Hand close-up' }));
@@ -141,7 +174,7 @@ describe('WeaponAttachmentConcept', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Unarmed' }));
 
     expect(screen.getByTestId('coverage-status').textContent).toContain(
-      'equipment 3/3 · motion 2/2 · views 3/3 · facings 6/6'
+      'equipment 13/13 · motion 2/2 · views 3/3 · facings 6/6'
     );
 
     const record = screen.getByRole('button', {
@@ -151,6 +184,43 @@ describe('WeaponAttachmentConcept', () => {
     fireEvent.click(record);
     expect(screen.getByTestId('provisional-verdict').textContent).toContain(
       'NON-PRODUCTION CONCEPT EVIDENCE'
+    );
+  });
+
+  it('reviews every current class against the complete 12-weapon provider roster', () => {
+    render(<WeaponAttachmentConcept />);
+
+    for (const label of ['Fighter', 'Barbarian', 'Monk', 'Rogue']) {
+      expect(screen.getByRole('button', { name: label })).toBeTruthy();
+    }
+    for (const label of [
+      'Shortbow',
+      'Longsword',
+      'Shortsword',
+      'Dagger',
+      'Greataxe',
+      'Quarterstaff',
+      'Greatsword',
+      'Battleaxe',
+      'Handaxe',
+      'Club',
+      'Greatclub',
+      'Warhammer',
+    ]) {
+      expect(screen.getByRole('button', { name: label })).toBeTruthy();
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rogue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Greatsword' }));
+
+    expect(screen.getByTestId('mock-weapon-preview').dataset.classId).toBe(
+      'rogue'
+    );
+    expect(screen.getByTestId('equipped-ref').textContent).toContain(
+      'dnd5e:item:greatsword'
+    );
+    expect(screen.getByTestId('candidate-url').textContent).toContain(
+      '/models/synty/weapons/greatsword.glb'
     );
   });
 

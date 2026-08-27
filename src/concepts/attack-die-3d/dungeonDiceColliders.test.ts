@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene3D } from '../../components/session/atlasToScene3D';
+import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import {
   buildDungeonDiceColliders,
   chooseDungeonDiceOrigin,
@@ -44,6 +45,7 @@ const scene: Scene3D = {
     },
   ],
   archetypes: [],
+  lighting: buildDungeonLightingFacts([], [], []),
 };
 
 describe('chooseDungeonDiceOrigin', () => {

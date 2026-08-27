@@ -26,6 +26,7 @@ import {
   type EntityStatus,
 } from '../../hooks/useEncounterState';
 import { CUTAWAY_TALL_WALL_HEIGHT } from '../../rendering/calibrationConstants';
+import { dungeonLightSourceSpec } from '../../rendering/dungeonLightSources';
 import {
   coordToKey,
   cubeToWorld,
@@ -769,8 +770,8 @@ export function buildCryptLayout(): CryptLayout {
 // ---------------------------------------------------------------------
 // buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mid-flight scope
 // addition — Kirk's POLYGON Dark Fortress reference: near-dark ambient
-// with sickly green pools of light around light-source props, warm
-// orange around braziers/torches). Simple R3F point lights with distance
+// with warm fire and cool arcane pools of light around source props). Simple
+// R3F point lights with distance
 // falloff, not a lighting engine — this just turns light-source props
 // into <pointLight> configs; HexGrid renders them.
 // ---------------------------------------------------------------------
@@ -779,84 +780,6 @@ export function buildCryptLayout(): CryptLayout {
  * flame height, not tied to any specific prop's own model height (this is
  * a lighting approximation, not a per-model attachment point). */
 const MOOD_LIGHT_HEIGHT = 1.2;
-
-/** Warm-orange glow — the "warm torch contrast" half of Kirk's POLYGON
- * Dark Fortress reference palette. Shared by five distinct fixtures
- * (brazier, torch-ornate, lantern, candle-stand, and the door lights
- * below) so the palette reads as one consistent warm-light family rather
- * than near-identical oranges picked independently. */
-const WARM_LIGHT_COLOR = '#ff9d52';
-
-/** Saturated rune-blue glow — the SECOND accent half of the palette
- * (issue #623, look-lab wave-1), alongside `candles`' sickly-green pools
- * rather than duplicating that hue. Same channel-brightness/saturation
- * "weight" as `candles`' `#3ddc84` (just hue-shifted from green toward
- * blue) so the two cool accents read as siblings, not an arbitrary third
- * color. Shared by glowing-orb/rune-marker/rune-pillar. */
-const RUNE_BLUE_COLOR = '#3d84dc';
-
-interface MoodLightSpec {
-  color: string;
-  intensity: number;
-  distance: number;
-}
-
-/**
- * propRefId -> mood light spec (color + falloff), for every light-anchor
- * prop rpg-toolkit#839 places in a generated crypt (rpg-dnd5e-web#569),
- * plus the wave-1 light props catalogued for look-lab (rpg-game-assets#36,
- * issue #623). `candles` shipped first (#558); every other entry has a
- * shipped catalog piece (propManifest.ts) but only starts actually
- * appearing in a TOOLKIT-GENERATED real layout once that prop is wired
- * into toolkit's own placement logic — look-lab.yaml's authored content is
- * the only real-route caller today.
- *
- * Intensity/distance are tuned by role, not just color, smallest to
- * largest reach:
- * - rune-marker: a subtle floor plaque — the smallest reach of any entry
- *   here, dressing rather than a real light source (judged by screenshot
- *   per issue #623 — cheap to drop if it doesn't read well).
- * - rune-pillar: the same subtle-glow treatment as rune-marker, a shade
- *   more since it's a taller obstacle piece, not a flat floor decal.
- * - candles: the sickly-green ACCENT POOLS — a room can hold several
- *   (buildCryptLayout's demo places 2 per chamber), so each stays modest;
- *   many small pools read better than one loud one. Unchanged from #558.
- * - candle-stand / lantern: warm secondary/accent fixtures, same
- *   "several per room, stay modest" reasoning as torch-ornate below —
- *   candle-stand a shade softer (a floor candelabra, not wall-mounted),
- *   lantern a shade softer still (the smallest light-bearing prop of the
- *   set, per its own raw dimensions in propManifest.ts).
- * - torch-ornate: a warm wall-mounted dressing piece — a real light
- *   source (unlike the door glow below, which is an inferred door-frame
- *   highlight with no prop behind it), but still a secondary/accent
- *   fixture a room can hold several of, so only a shade past the door
- *   glow's own falloff.
- * - glowing-orb: the cool ROOM ANCHOR half of the new accent pair — a
- *   deliberate set piece (2-hex footprint, per propManifest.ts), so it
- *   gets the same reach as `candles`' accent pools despite being a single
- *   larger fixture rather than several small ones.
- * - brazier: the warm ROOM ANCHOR — toolkit#839 places at most one per
- *   room, so it needs the largest reach of any entry to plausibly read as
- *   the room's own light source: brighter and wider than every accent
- *   fixture above.
- *
- * A `Map`, not a plain object: `propRefId` traces back to server-sent
- * obstacle_ref/prop_ref ids (Copilot review, PR #588) — a plain-object
- * index lookup would resolve a propRefId of `'constructor'`/`'toString'`/
- * etc. through the prototype chain to a truthy `Function`, slipping past
- * `if (!spec) continue` below and pushing a light built from `undefined`
- * fields. `Map.prototype.get` has no such prototype-chain fallback.
- */
-const MOOD_LIGHT_SPEC_BY_PROP_REF: Map<string, MoodLightSpec> = new Map([
-  ['rune-marker', { color: RUNE_BLUE_COLOR, intensity: 0.7, distance: 2.2 }],
-  ['rune-pillar', { color: RUNE_BLUE_COLOR, intensity: 0.9, distance: 2.6 }],
-  ['candles', { color: '#3ddc84', intensity: 2, distance: 4.5 }],
-  ['candle-stand', { color: WARM_LIGHT_COLOR, intensity: 1.4, distance: 3.2 }],
-  ['lantern', { color: WARM_LIGHT_COLOR, intensity: 1.3, distance: 3 }],
-  ['torch-ornate', { color: WARM_LIGHT_COLOR, intensity: 1.6, distance: 3.6 }],
-  ['glowing-orb', { color: RUNE_BLUE_COLOR, intensity: 2, distance: 4.5 }],
-  ['brazier', { color: WARM_LIGHT_COLOR, intensity: 2.8, distance: 5.5 }],
-]);
 
 export interface MoodPointLight {
   position: [number, number, number];
@@ -878,7 +801,7 @@ export function buildCryptMoodLights(
   const lights: MoodPointLight[] = [];
   for (const prop of props) {
     const spec = prop.propRefId
-      ? MOOD_LIGHT_SPEC_BY_PROP_REF.get(prop.propRefId)
+      ? dungeonLightSourceSpec(`dnd5e:props:${prop.propRefId}`)
       : undefined;
     if (!spec) continue;
     const world = cubeToWorld(prop.position, HEX_SIZE);
@@ -892,10 +815,9 @@ export function buildCryptMoodLights(
   return lights;
 }
 
-/** Warm-orange glow color for door lights below — shares WARM_LIGHT_COLOR
- * with the brazier/torch-ornate entries above rather than hand-picking its
- * own shade, so all three warm fixtures read as one family. */
-const DOOR_LIGHT_COLOR = WARM_LIGHT_COLOR;
+/** Warm-orange glow color for separately inferred door lights below. Door
+ * lights have no source prop and therefore remain outside the shared manifest. */
+const DOOR_LIGHT_COLOR = '#ff9d52';
 
 /**
  * A small warm point light at each door's own cell — two practical wins
@@ -1006,7 +928,7 @@ export const CRYPT_DIRECTIONAL_INTENSITY = 0.28;
  * one brazier lit and another dark in the SAME room): the original 8 was
  * sized against "the fixed 3-room demo tops out at 6" — before wave-1's
  * catalog (rpg-game-assets#36) added candle-stand/lantern/glowing-orb/
- * rune-marker/rune-pillar to MOOD_LIGHT_SPEC_BY_PROP_REF. The look-lab
+ * rune-marker/rune-pillar to the shared dungeon light-source manifest. The look-lab
  * gallery's row1 shelf ALONE places 8 light-anchor props plus row6's own
  * brazier — 9, already over the old budget, confirmed live via a raw (9)
  * vs capped (8) light count on this exact room. `capMoodLights` was
@@ -1073,8 +995,8 @@ export function capMoodLights(
  *
  * A toolkit-GENERATED crypt encounter (api#702) places obstacle props like
  * obelisk/pillar/coffin/altar/statue — none of which match
- * `MOOD_LIGHT_SPEC_BY_PROP_REF`'s keys, so `buildCryptMoodLights`
- * legitimately contributes zero lights for one of those until
+ * shared manifest's keys, so `buildCryptMoodLights` legitimately contributes
+ * zero lights for one of those until
  * rpg-toolkit#839's light-anchor placement lands. That's correct, not a
  * bug: the real route still gets ambient + door lights, matching the
  * demo's "warm torch contrast" half of the palette, just not the

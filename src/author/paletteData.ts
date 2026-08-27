@@ -18,6 +18,7 @@
  */
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS, type PropRole } from '@/components/hex-grid/propManifest';
+import { isDungeonLightSourceRef } from '../rendering/dungeonLightSources';
 
 export interface PaletteProp {
   ref: string;
@@ -41,40 +42,13 @@ export type PaletteCategory =
   | 'structural'
   | 'markers';
 
-/** Light-emitting props, called out into their own category per Kirk's
- * ask ("Lighting = light-emitting props (brazier, candles, glowing-orb)")
- * — a hand-picked subset of PALETTE_PROPS, not derivable from `role`
- * (brazier/candles/glowing-orb are all `role: 'decor'`, same as
- * non-light-emitting decor like books or banners).
- *
- * Expanded 2026-08-07 from 3 to 8 keys to match the game's OWN
- * light-source classification exactly — `MOOD_LIGHT_SPEC_BY_PROP_REF`
- * (`src/components/playtest/playtestMapHelpers.ts`), the authoritative,
- * game-derived answer to "which props actually cast mood light," not a
- * guess from prop names. Every one of these 8 keys is now also in
- * `walkLighting.ts`'s own `LIGHT_SPEC_BY_PROP_REF` copy — a key added
- * here without a matching entry there would sit in the Lighting category
- * but stay visually inert (no point light) in the author-walkthrough's
- * Walk mode, same trap this expansion is closing for candle-stand/
- * lantern/torch-ornate/rune-marker/rune-pillar. Note `torch` (plain
- * TorchStick) and `stone-lantern` are DELIBERATELY excluded — the game's
- * own table doesn't classify either as a light source either, so this
- * palette doesn't invent one. */
-const LIGHTING_PROP_KEYS = new Set<string>([
-  'dnd5e:props:brazier',
-  'dnd5e:props:candles',
-  'dnd5e:props:glowing-orb',
-  'dnd5e:props:candle-stand',
-  'dnd5e:props:lantern',
-  'dnd5e:props:torch-ornate',
-  'dnd5e:props:rune-marker',
-  'dnd5e:props:rune-pillar',
-]);
-
+/** Light-emitting props are categorized from the shared eight-ref manifest
+ * in `src/rendering/dungeonLightSources.ts`. Plain torch and stone-lantern
+ * remain ordinary props because they are not manifest sources. */
 export function categoryForProp(
   ref: string
 ): Extract<PaletteCategory, 'obstacles-props' | 'lighting'> {
-  return LIGHTING_PROP_KEYS.has(ref) ? 'lighting' : 'obstacles-props';
+  return isDungeonLightSourceRef(ref) ? 'lighting' : 'obstacles-props';
 }
 
 /**
