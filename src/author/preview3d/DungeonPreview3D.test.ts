@@ -13,6 +13,7 @@ import {
 } from '@/components/session/atlasToScene3D';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { resolveDungeonLighting } from '../../rendering/dungeonLighting';
 import { cryptPropShowcaseDoc } from '../fixtures/cryptPropShowcase';
 import { fixtureAtlasOf } from '../fixtures/fixtureAtlas';
 import { referenceTombDoc } from '../fixtures/referenceTomb';
@@ -39,17 +40,21 @@ function tombWithFacedProp() {
 describe('previewScene', () => {
   const atlas = fixtureAtlasOf(referenceTombDoc());
 
-  it('mounts the shared shell rather than duplicating floor or wall leaves', () => {
+  it('mounts the shared environment rather than duplicating floor, wall, light, or prop leaves', () => {
     const source = readFileSync(
       'src/author/preview3d/DungeonPreview3D.tsx',
       'utf8'
     );
-    expect(source.match(/<DungeonShell\b/g)).toHaveLength(1);
+    expect(source.match(/<DungeonEnvironment\b/g)).toHaveLength(1);
+    expect(source).not.toMatch(/<DungeonSceneLights\b/);
+    expect(source).not.toMatch(/<DungeonShell\b/);
+    expect(source).not.toMatch(/<AtlasPropModel\b/);
     expect(source).not.toMatch(/<SyntyHexFloor\b/);
     expect(source).not.toMatch(/<AtlasWalls\b/);
     expect(source).not.toMatch(/\bdoors=/);
     expect(source).not.toMatch(/\bonDoorClick=/);
-    expect(source).toContain('onFallbackReason={setShellFallbackReason}');
+    expect(source).toContain('onShellFallbackReason={setShellFallbackReason}');
+    expect(source).toContain('onLightingDiagnostics={setLightingDiagnostics}');
   });
 
   it('produces the same tiles, runs and door gaps the session route builds', () => {
@@ -66,6 +71,10 @@ describe('previewScene', () => {
     expect(preview.scene.wallRuns).toEqual(game.wallRuns);
     expect(preview.scene.doorGaps).toEqual(game.doorGaps);
     expect(preview.scene.props).toEqual(game.props);
+    const focus = { x: 2.5, z: -1.25 };
+    expect(resolveDungeonLighting(preview.scene.lighting, focus)).toEqual(
+      resolveDungeonLighting(game.lighting, focus)
+    );
     // two seams, one doorway each
     expect(preview.scene.doorGaps).toHaveLength(2);
     expect(preview.scene.wallRuns.length).toBeGreaterThan(0);
