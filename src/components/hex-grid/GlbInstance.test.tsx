@@ -294,6 +294,65 @@ describe('GlbInstance — non-uniform scale baking (W3/W4 GlbInstance fix)', () 
     ]);
   });
 
+  it('keeps the placement root exact and applies an optional offset only to the cloned child without mutating shared geometry', async () => {
+    const source = (
+      useGLTF as unknown as (url: string) => { scene: THREE.Group }
+    )('/models/synty/env/child-offset.glb').scene;
+    const sourceMesh = source.children[0] as THREE.Mesh;
+    sourceMesh.geometry.computeBoundingBox();
+    const sourceBoundsBefore = sourceMesh.geometry.boundingBox!.clone();
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <GlbInstance
+        file="child-offset.glb"
+        position={{ x: 3, z: 4 }}
+        positionY={0.2}
+        rotationY={Math.PI / 2}
+        scale={[2, 3, 4]}
+        localOffset={[0.25, 0.5, -0.75]}
+      />
+    );
+    const groupNodes = renderer.scene.findAll(
+      (node) => (node as { type?: string }).type === 'Group'
+    ) as unknown as Array<{
+      props: {
+        object?: THREE.Group;
+        position?: [number, number, number];
+        rotation?: [number, number, number];
+      };
+    }>;
+    const hingeRoot = groupNodes.find(
+      (node) =>
+        node.props.position?.[0] === 3 &&
+        node.props.position[1] === 0.2 &&
+        node.props.position[2] === 4
+    );
+    expect(hingeRoot?.props.rotation).toEqual([0, Math.PI / 2, 0]);
+    const translatedChild = groupNodes.find((node) => node.props.object);
+    expect(translatedChild?.props.position).toEqual([0.25, 0.5, -0.75]);
+    expect(translatedChild?.props.rotation).toEqual([0, 0, 0]);
+
+    const defaultRenderer = await ReactThreeTestRenderer.create(
+      <GlbInstance
+        file="child-offset.glb"
+        position={{ x: 0, z: 0 }}
+        rotationY={0}
+        scale={[2, 3, 4]}
+      />
+    );
+    expect(findMesh(renderer).geometry).toBe(
+      findMesh(defaultRenderer).geometry
+    );
+    sourceMesh.geometry.computeBoundingBox();
+    expect(sourceMesh.geometry.boundingBox!.min.toArray()).toEqual(
+      sourceBoundsBefore.min.toArray()
+    );
+    expect(sourceMesh.geometry.boundingBox!.max.toArray()).toEqual(
+      sourceBoundsBefore.max.toArray()
+    );
+    expect(source.position.toArray()).toEqual([0, 0, 0]);
+  });
+
   it('two instances with the same file but DIFFERENT non-uniform scale get distinct geometries', async () => {
     const rendererA = await ReactThreeTestRenderer.create(
       <GlbInstance

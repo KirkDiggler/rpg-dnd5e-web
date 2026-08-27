@@ -10,6 +10,10 @@ import type { WorldPos } from './hexMath';
 import { DOOR_FRAME_CALIBRATED_WIDTH } from './syntyHexWallHelpers';
 
 export const SHELL_DOOR_COVER_MARGIN = 0.02;
+// Provider measurements and runtime vertex buffers cross a float32 boundary.
+// Keep the fitted target one seam-tolerance beyond the contract so measured
+// rendered geometry remains >= 0.02 rather than rounding a few ulps below it.
+const SHELL_DOOR_COVER_ROUNDING_GUARD = 1e-6;
 export const SHELL_DOOR_FRAME_FOREGROUND_MARGIN = 0.01;
 
 export interface ShellDimensions {
@@ -220,23 +224,49 @@ export function deriveShellDoorGeometry(
   };
 }
 
-export function shellDoorLeafScale(
+export interface ShellDoorLeafFit {
+  scale: [number, number, number];
+  localTranslation: [number, number, number];
+}
+
+/** Fit the baked leaf geometry to the scaled frame aperture while leaving the
+ * hinge group fixed. `hingeGroupLocalX` is gapStart expressed in the frame's
+ * local X coordinates; the returned translation belongs only on the child. */
+export function shellDoorLeafFit(
   leaf: { bounds: { min: ShellVec3; max: ShellVec3 } },
   opening: ShellOpening,
-  frameScale: [number, number, number]
-): [number, number, number] {
+  frameScale: [number, number, number],
+  hingeGroupLocalX: number
+): ShellDoorLeafFit {
   const leafRaw = shellRawDimensions(leaf.bounds);
   const frameScaleX = finitePositive(frameScale[0], 'door frame X scale');
   const frameScaleY = finitePositive(frameScale[1], 'door frame Y scale');
-  const openingWidth = opening.max[0] - opening.min[0];
-  const openingHeight = opening.max[1] - opening.min[1];
-  finitePositive(openingWidth, 'opening width');
-  finitePositive(openingHeight, 'opening height');
-  return [
-    (openingWidth * frameScaleX + 2 * SHELL_DOOR_COVER_MARGIN) / leafRaw.width,
-    (openingHeight * frameScaleY + SHELL_DOOR_COVER_MARGIN) / leafRaw.height,
+  if (!Number.isFinite(hingeGroupLocalX))
+    throw new Error('door hinge local X must be finite');
+
+  const fittedCover = SHELL_DOOR_COVER_MARGIN + SHELL_DOOR_COVER_ROUNDING_GUARD;
+  const targetMinX = opening.min[0] * frameScaleX - fittedCover;
+  const targetMaxX = opening.max[0] * frameScaleX + fittedCover;
+  const targetFloor = opening.min[1] * frameScaleY;
+  const targetTop = opening.max[1] * frameScaleY + fittedCover;
+  const scale: [number, number, number] = [
+    finitePositive(targetMaxX - targetMinX, 'target opening width') /
+      leafRaw.width,
+    finitePositive(targetTop - targetFloor, 'target opening height') /
+      leafRaw.height,
     SYNTY_SCALE,
   ];
+
+  return {
+    scale,
+    localTranslation: [
+      targetMinX - hingeGroupLocalX - leaf.bounds.min[0] * scale[0],
+      // GlbInstance base-anchors baked non-uniform geometry before applying
+      // this child translation, so its effective local minimum Y is zero.
+      targetFloor,
+      0,
+    ],
+  };
 }
 
 export function shellComponentPivotOffset(

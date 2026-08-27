@@ -164,6 +164,9 @@ export interface GlbInstanceProps {
   /** Additive world-space vertical placement. Defaults to zero so every
    * existing caller retains its original floor-relative transform. */
   positionY?: number;
+  /** Optional translation for the cloned geometry below an exact placement
+   * root. A zero/omitted offset retains the existing single-primitive path. */
+  localOffset?: [number, number, number];
   rotationY: number;
   scale: [number, number, number] | number;
   /** Multiplicative color tint for this instance only — clones each
@@ -197,6 +200,7 @@ function GlbInstanceObject({
   tint,
   remembered = false,
   positionY = 0,
+  localOffset,
   sourceScene,
 }: GlbInstanceProps & { sourceScene: THREE.Object3D }) {
   const scene = sourceScene;
@@ -305,6 +309,22 @@ function GlbInstanceObject({
       created.forEach((mat) => mat.dispose());
     };
   }, [originalMaterials, remembered, tint]);
+
+  const translatedChild = localOffset?.some((value) => value !== 0);
+  if (translatedChild) {
+    return (
+      <group
+        position={[position.x, positionY, position.z]}
+        rotation={[0, rotationY, 0]}
+      >
+        <primitive
+          object={cloned}
+          position={localOffset}
+          rotation={[0, 0, 0]}
+        />
+      </group>
+    );
+  }
 
   return (
     <primitive
