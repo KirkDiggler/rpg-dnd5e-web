@@ -86,21 +86,37 @@ describe('cryptLightingShowcaseDoc', () => {
     const tombCellKeys = tomb.cells.map((cell) =>
       coordToKey(positionToCube({ x: cell.q, y: cell.r } as never))
     );
+    const tombCellsWithPools = tombCellKeys.flatMap((cellKey) => {
+      const tile = scene.floorTiles.get(cellKey);
+      const pools = plan.floorPoolsByCell.get(cellKey) ?? [];
+      if (!tile || pools.length === 0) return [];
+      return [{ cellKey, tile, pools }];
+    });
+    expect(tombCellsWithPools.length).toBeGreaterThan(0);
+
+    const darkTombCell = tombCellsWithPools.find(({ tile, pools }) => {
+      const world = cubeToWorld(tile, HEX_SIZE);
+      return pools.every(
+        (pool) =>
+          Math.hypot(world.x - pool.position[0], world.z - pool.position[2]) >=
+          pool.distance
+      );
+    });
+    expect(darkTombCell).toBeDefined();
+    if (!darkTombCell) return;
+
+    const { cellKey, tile, pools } = darkTombCell;
+    const world = cubeToWorld(tile, HEX_SIZE);
+    for (const pool of pools) {
+      expect(
+        Math.hypot(world.x - pool.position[0], world.z - pool.position[2])
+      ).toBeGreaterThanOrEqual(pool.distance);
+    }
+    const base = cryptFloorBaseColor(
+      plan.floorExposureByCell.get(cellKey) ?? 0
+    );
     expect(
-      tombCellKeys.some((cellKey) => {
-        const tile = scene.floorTiles.get(cellKey);
-        if (!tile) return false;
-        const base = cryptFloorBaseColor(
-          plan.floorExposureByCell.get(cellKey) ?? 0
-        );
-        const world = cubeToWorld(tile, HEX_SIZE);
-        return computeFloorPoolColor(
-          base,
-          world.x,
-          world.z,
-          plan.floorPoolsByCell.get(cellKey) ?? []
-        ).equals(base);
-      })
+      computeFloorPoolColor(base, world.x, world.z, pools).equals(base)
     ).toBe(true);
   });
 
