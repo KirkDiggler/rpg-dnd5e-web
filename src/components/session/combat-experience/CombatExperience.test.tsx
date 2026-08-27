@@ -366,3 +366,58 @@ describe('CombatExperience responsive and accessibility contract', () => {
     );
   });
 });
+
+describe('damage toasts', () => {
+  it('raises a toast on the map when a hit is revealed, and none before', () => {
+    const { rerender } = render(<CombatExperience {...propsFor()} />);
+    expect(screen.queryByTestId('damage-toasts')).toBeNull();
+
+    rerender(
+      <CombatExperience
+        {...propsFor(fresh, {
+          result: {
+            attackId: 'atk-1',
+            actor: 'Aldric Vale',
+            target: 'Skeleton Guard',
+            action: 'Longsword',
+            d20: 18,
+            total: 23,
+            against: 13,
+            hit: true,
+            critical: false,
+            damage: 8,
+            damageType: 'slashing',
+            targetIsViewer: false,
+          },
+        })}
+      />
+    );
+
+    const toasts = screen.getByTestId('damage-toasts');
+    expect(toasts.textContent).toContain('8 slashing damage');
+    expect(toasts.textContent).toContain('Skeleton Guard');
+    expect(toasts.textContent).toContain('−8');
+  });
+
+  it('says nothing on a miss', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          result: {
+            attackId: 'atk-2',
+            actor: 'Skeleton Guard',
+            target: 'Aldric Vale',
+            action: 'Shortsword',
+            d20: 3,
+            total: 5,
+            against: 16,
+            hit: false,
+            critical: false,
+            targetIsViewer: true,
+          },
+        })}
+      />
+    );
+    expect(screen.queryByTestId('damage-toasts')).toBeNull();
+  });
+});

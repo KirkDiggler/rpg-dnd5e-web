@@ -236,6 +236,7 @@ const attackOutcome = Object.freeze({
   critical: false,
   damage: 8,
   damageType: 'slashing',
+  targetIsViewer: false,
 });
 
 const fieldSources = Object.freeze({

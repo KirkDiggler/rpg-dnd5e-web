@@ -6,11 +6,13 @@ import {
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
+import { DamageToasts } from './DamageToasts';
 import { DiceDrawer } from './DiceDrawer';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
 import { StoryLog } from './StoryLog';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
+import { useDamageToasts } from './useDamageToasts';
 
 function portraitOf(name: string): string {
   return name
@@ -117,6 +119,9 @@ export function CombatExperience({
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
+  // Fed the REVEALED outcome, so a hit announces itself when the roll lands
+  // rather than when the event arrived — see damageToasts.ts.
+  const damageToasts = useDamageToasts(result);
   const activeParticipant = participants.find(
     (participant) => participant.active
   );
@@ -221,6 +226,8 @@ export function CombatExperience({
             <strong>Synchronizing</strong>
           </div>
         )}
+
+        <DamageToasts toasts={damageToasts} />
 
         <StoryLog
           story={story}

@@ -1449,3 +1449,75 @@
     right: 0;
   }
 }
+
+/* Damage toasts — a flourish over the map, right of centre so they clear the
+   initiative rail on the left and sit clear of the story log's 318px column
+   on the right. Pointer-events off: they must never eat a click meant for a
+   hex or a target underneath. */
+.damageToasts {
+  position: absolute;
+  z-index: 6;
+  top: 96px;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.damageToast {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--sc-line);
+  border-radius: 999px;
+  background: rgba(10, 17, 20, 0.88);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  animation: damageToastIn 160ms ease-out;
+}
+
+.damageToast > strong {
+  color: #f2c46b;
+  font:
+    700 16px Cinzel,
+    serif;
+}
+
+.damageToast > span {
+  color: #d7e2e6;
+  font-size: 11px;
+}
+
+.damageToast > small {
+  color: #8fa3ab;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* Damage the viewer took reads hot; damage they dealt stays gold. */
+.damageToastIncoming {
+  border-color: rgba(214, 106, 106, 0.55);
+}
+
+.damageToastIncoming > strong {
+  color: #e07a7a;
+}
+
+.damageToastCritical > strong {
+  text-shadow: 0 0 10px currentcolor;
+}
+
+@keyframes damageToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

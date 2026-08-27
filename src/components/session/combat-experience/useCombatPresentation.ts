@@ -12,6 +12,7 @@ import {
   selectCurrentDiceEvents,
   selectCurrentPresentation,
   selectLiveAnnouncement,
+  selectUnresolvedAttackTargets,
   selectVisibleResult,
   selectVisibleStory,
   type AttackResponseFact,
@@ -38,6 +39,9 @@ export interface UseCombatPresentationResult {
   readonly story: readonly CombatExperienceStoryExchange[];
   readonly result?: CombatExperienceAttackOutcome;
   readonly liveAnnouncement: string | null;
+  /** Targets whose attack roll has not been revealed yet — the map holds
+   * their downed reveal until it has (`downedReveal.ts`). */
+  readonly unresolvedAttackTargets: ReadonlySet<string>;
   readonly debug: readonly string[];
   readonly diceEvents: readonly DicePresentationEvent[];
   readonly semanticFallback: boolean;
@@ -181,6 +185,10 @@ export function useCombatPresentation(
 
   const story = useMemo(() => selectVisibleStory(state), [state]);
   const result = useMemo(() => selectVisibleResult(state), [state]);
+  const unresolvedAttackTargets = useMemo(
+    () => selectUnresolvedAttackTargets(state),
+    [state]
+  );
   const liveAnnouncement = useMemo(
     () => selectLiveAnnouncement(state),
     [state]
@@ -209,6 +217,7 @@ export function useCombatPresentation(
     story,
     result,
     liveAnnouncement,
+    unresolvedAttackTargets,
     debug: state.debug,
     diceEvents,
     semanticFallback: current?.semanticFallback ?? false,

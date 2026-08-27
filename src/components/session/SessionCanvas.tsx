@@ -154,7 +154,7 @@ export interface SessionCanvasProps {
    * advances, so a `GetView` refetch that moves one of these simply
    * relocates it on the next render. Undefined/empty draws nothing
    * extra. */
-  otherMembers?: SightedMember[];
+  otherMembers?: readonly SightedMember[];
   /** The session roster keyed by member id (`useSessionRoster` —
    * rpg-project#264): the PUBLIC identity each sighted member renders
    * with. A missing map (fetch failed, not landed yet) or a missing

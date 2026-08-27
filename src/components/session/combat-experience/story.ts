@@ -249,6 +249,7 @@ export function buildCombatAttackOutcome(
       critical: struck.critical,
       damage: struck.damage,
       damageType: word || undefined,
+      targetIsViewer: struck.target === context.viewerMember,
     });
   }
   if (event.body.case === 'missed' && event.kind === EventKind.MISSED) {
@@ -266,6 +267,7 @@ export function buildCombatAttackOutcome(
       against: missed.against,
       hit: false,
       critical: false,
+      targetIsViewer: missed.target === context.viewerMember,
     });
   }
   return undefined;

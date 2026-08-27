@@ -143,6 +143,7 @@ describe('StoryLog auto-follow', () => {
             hit: true,
             critical: false,
             damage: 7,
+            targetIsViewer: false,
           },
         })}
       />
