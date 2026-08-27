@@ -4,6 +4,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type ReactElement,
 } from 'react';
 import type {
   AttackDie3DProps,
@@ -21,9 +22,14 @@ import {
 import { createDicePresentationRelease } from './dicePresentationRelease';
 import { DiceTray3D } from './DiceTray3D';
 import {
+  RollGroupPresentation,
+  type DiceRollGroupPresentationProps,
+} from './RollGroupPresentation';
+import {
   createNeutralVisualThrowProfile,
   type VisualThrowProfileV1,
 } from './visualThrowProfile';
+export type { DiceRollGroupPresentationProps } from './RollGroupPresentation';
 
 export interface DiceTrayPresentationDevelopmentRenderer {
   scene: AttackDie3DProps['sceneOverride'];
@@ -568,7 +574,7 @@ function DiceTrayPresentationInstance({
   );
 }
 
-export function DiceTrayPresentation({
+function DiceTrayPresentationLegacy({
   label,
   events,
   witnessRole,
@@ -622,5 +628,21 @@ export function DiceTrayPresentation({
       developmentOnlyRenderer={developmentOnlyRenderer}
       forceFailure={forceFailure}
     />
+  );
+}
+
+export function DiceTrayPresentation(
+  props: DiceRollGroupPresentationProps
+): ReactElement | null;
+export function DiceTrayPresentation(
+  props: DiceTrayPresentationProps
+): ReactElement | null;
+export function DiceTrayPresentation(
+  props: DiceTrayPresentationProps | DiceRollGroupPresentationProps
+): ReactElement | null {
+  if ('mode' in props && props.mode === 'roll-group')
+    return <RollGroupPresentation {...props} />;
+  return (
+    <DiceTrayPresentationLegacy {...(props as DiceTrayPresentationProps)} />
   );
 }
