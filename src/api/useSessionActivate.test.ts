@@ -3,7 +3,8 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
-  activateFn: vi.fn<() => Promise<ActivateResponse>>(),
+  activateFn:
+    vi.fn<(req: Record<string, unknown>) => Promise<ActivateResponse>>(),
 }));
 
 vi.mock('./client', () => ({
@@ -47,10 +48,7 @@ describe('useSessionActivate', () => {
     // THE SELECTOR IS THE ABILITY. Nothing here names Rage — the server
     // decided which offer that id refers to, and a client that also named it
     // would give the two a way to disagree.
-    const sent = hoisted.activateFn.mock.calls[0]![0] as Record<
-      string,
-      unknown
-    >;
+    const sent = hoisted.activateFn.mock.calls[0]![0];
     expect(sent).not.toHaveProperty('ability');
     expect(sent).not.toHaveProperty('abilityRef');
   });
