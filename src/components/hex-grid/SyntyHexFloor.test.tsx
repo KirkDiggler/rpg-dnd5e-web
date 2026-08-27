@@ -499,15 +499,25 @@ describe('SyntyHexFloor regional floor lighting', () => {
         ],
       ]),
     };
-    const plain = await ReactThreeTestRenderer.create(
+    const noPool = await ReactThreeTestRenderer.create(
       <SyntyHexFloor
         floorTiles={tiles([0, 0, 0], [1, -1, 0])}
         hexSize={1}
         profile={CRYPT_FLOOR_PROFILE}
         spaceTheme="crypt"
+        floorLighting={{
+          exposureByCell: new Map([
+            ['0,0,0', 0],
+            ['1,-1,0', 1],
+          ]),
+          poolsByCell: new Map(),
+        }}
       />
     );
-    const plainUvs = floorMeshes(plain).map((mesh) =>
+    const noPoolColors = floorTileColors(noPool);
+    expect(noPoolColors[0]!.getHexString()).toBe('101318');
+    expect(noPoolColors[1]!.getHexString()).toBe(CRYPT_TINT.getHexString());
+    const plainUvs = floorMeshes(noPool).map((mesh) =>
       Array.from(mesh.geometry.getAttribute('uv').array)
     );
     const renderer = await ReactThreeTestRenderer.create(
