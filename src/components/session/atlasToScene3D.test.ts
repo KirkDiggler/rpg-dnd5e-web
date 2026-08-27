@@ -15,6 +15,7 @@
  * cross-checked against the real reference-tomb capture.
  */
 import { coordToKey } from '@/components/hex-grid/hexMath';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { describe, expect, it } from 'vitest';
 import { hexCenter } from '../../concepts/session-tomb/atlas';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
@@ -106,6 +107,68 @@ describe('buildScene3D', () => {
         'flat'
       )
     ).toThrow(/pointy-top hexes only.*#763/);
+  });
+
+  it('normalizes authored region lighting and recognized prop sources once', () => {
+    const scene = buildScene3D(
+      {
+        cells: [pos(0, 0), pos(1, 0)],
+        props: [
+          {
+            ref: 'dnd5e:props:brazier',
+            at: pos(0, 0),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+            facing: 'ne',
+            offsetX: 0.25,
+            offsetY: -0.15,
+            offsetZ: 0.4,
+          },
+          {
+            ref: 'dnd5e:props:pillar',
+            at: pos(1, 0),
+            blocksMovement: true,
+            blocksLineOfSight: true,
+          },
+        ],
+        boundaries: [],
+        doorways: [],
+        regions: [
+          {
+            id: 'bright',
+            archetype: 'crypt',
+            cells: [pos(0, 0)],
+            lighting: { intensity: 0.6 },
+          },
+          {
+            id: 'dark',
+            archetype: 'crypt',
+            cells: [pos(1, 0)],
+            lighting: { intensity: 0.15 },
+          },
+        ],
+      } as never,
+      1,
+      'pointy'
+    );
+
+    expect(scene.lighting.mode).toBe('crypt');
+    expect(scene.lighting.intensityByCell).toEqual(
+      new Map([
+        ['0,0,0', 0.6],
+        ['1,-1,0', 0.15],
+      ])
+    );
+    expect(scene.lighting.sources).toHaveLength(1);
+    expect(scene.lighting.sources[0]?.ref).toBe('dnd5e:props:brazier');
+    expect(scene.lighting.sources[0]?.position).toEqual([
+      0.25,
+      0.4 + DUNGEON_SURFACE_Y + 0.9,
+      -0.15,
+    ]);
+    expect(scene.lighting.sources[0]?.position[1]).not.toBe(
+      0.4 + DUNGEON_SURFACE_Y + 0.9 + 0.4
+    );
   });
 
   it('copies region archetypes in order into a frozen scene field', () => {

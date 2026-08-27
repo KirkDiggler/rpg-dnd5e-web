@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthoredWallRun } from '../../hooks/authoredWallRuns';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
+import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import type { DungeonShellProfile } from '../../rendering/dungeonShellManifest';
 import type { DungeonShellCatalogSnapshot } from '../../rendering/dungeonShellProvider';
 import type { Scene3D } from './atlasToScene3D';
@@ -210,6 +211,7 @@ function scene(archetypes: string[] = ['crypt']): Scene3D {
     floorTiles,
     props: [],
     archetypes,
+    lighting: buildDungeonLightingFacts([], [], []),
     wallRuns,
     doorGaps,
   };

@@ -61,6 +61,12 @@ import {
   layoutFromWire,
   type HexLayout,
 } from '../../concepts/session-tomb/atlas';
+import {
+  buildDungeonLightingFacts,
+  type DungeonLightingFacts,
+  type DungeonLightingRegionInput,
+  type DungeonLightingSourceInput,
+} from '../../rendering/dungeonLighting';
 import { boundariesToWallRuns, type DoorGapPiece } from './atlasWallRuns';
 import { positionToCube, worldPositionOf } from './positionBridge';
 
@@ -111,6 +117,7 @@ export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
   props: SceneProp3D[];
   archetypes: readonly string[];
+  lighting: DungeonLightingFacts;
   wallRuns: AuthoredWallRun[];
   doorGaps: DoorGapPiece[];
 }
@@ -195,7 +202,8 @@ export function buildScene3D(
   }
 
   const props: SceneProp3D[] = [];
-  for (const prop of atlas.props) {
+  const lightingSources: DungeonLightingSourceInput[] = [];
+  for (const [propIndex, prop] of atlas.props.entries()) {
     if (!prop.at) continue;
     // `?? ''` / `?? 0`: an older server or a stale client-side proto
     // schema (the exact live-walk failure this guards, rpg-project#261
@@ -209,7 +217,7 @@ export function buildScene3D(
     // — "said nothing" and "said zero/center" render identically by
     // design (the design doc's own words), and a schema skew degrades
     // to that same "unfaced, centered" default instead of vanishing.
-    props.push({
+    const sceneProp = {
       ref: prop.ref,
       position: positionToCube(prop.at),
       facing: prop.facing ?? '',
@@ -218,10 +226,38 @@ export function buildScene3D(
         y: prop.offsetY ?? 0,
         z: prop.offsetZ ?? 0,
       },
+    };
+    props.push(sceneProp);
+    const cellKey = coordToKey(sceneProp.position);
+    const groundedPosition = propWorldPosition(sceneProp, hexSize);
+    lightingSources.push({
+      key: `${prop.ref}|${cellKey}|${propIndex}`,
+      ref: prop.ref,
+      cellKey,
+      groundedPosition: [
+        groundedPosition.x,
+        groundedPosition.y,
+        groundedPosition.z,
+      ],
     });
   }
 
+  const lightingRegions: DungeonLightingRegionInput[] = atlas.regions.map(
+    (region) => ({
+      id: region.id,
+      archetype: region.archetype,
+      intensity: region.lighting?.intensity ?? Number.NaN,
+      cellKeys: (region.cells ?? []).map((cell) =>
+        coordToKey(positionToCube(cell))
+      ),
+    })
+  );
+  const lighting = buildDungeonLightingFacts(
+    [...floorTiles.keys()],
+    lightingRegions,
+    lightingSources
+  );
   const { wallRuns, doorGaps } = boundariesToWallRuns(atlas, hexSize);
 
-  return { floorTiles, props, archetypes, wallRuns, doorGaps };
+  return { floorTiles, props, archetypes, lighting, wallRuns, doorGaps };
 }

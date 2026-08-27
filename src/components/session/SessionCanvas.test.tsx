@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
+import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import { resolveClassCharacterModelUrl } from '../hex-grid/classCharacterModels';
 import { facingToYaw } from '../hex-grid/facingYaw';
 import { cubeToWorld } from '../hex-grid/hexMath';
@@ -151,6 +152,7 @@ function scene(): Scene3D {
     floorTiles: floorTiles([0, 0, 0], [1, -1, 0], [1, 0, -1]),
     props: [],
     archetypes: [],
+    lighting: buildDungeonLightingFacts([], [], []),
     wallRuns,
     doorGaps,
   };
