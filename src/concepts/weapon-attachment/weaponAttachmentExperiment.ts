@@ -20,6 +20,14 @@ export type WeaponMotion = 'idle' | 'walk';
 export type WeaponView = 'close' | 'orbit' | 'play';
 export type WeaponFacing = 0 | 1 | 2 | 3 | 4 | 5;
 
+export function formatTextureBudget(
+  decodedTextureMb: number,
+  budgetMb: number
+): string {
+  const comparator = decodedTextureMb <= budgetMb ? '<=' : '>';
+  return `${decodedTextureMb} MB ${comparator} ${budgetMb} MB production budget`;
+}
+
 const itemRef = (id: string): RefLike => ({
   module: 'dnd5e',
   type: 'item',

@@ -3,9 +3,10 @@ import { useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConceptsView } from '../ConceptsView';
 import { WeaponAttachmentConcept } from './WeaponAttachmentConcept';
-import type {
-  WeaponClassId,
-  WeaponEquipmentState,
+import {
+  formatTextureBudget,
+  type WeaponClassId,
+  type WeaponEquipmentState,
 } from './weaponAttachmentExperiment';
 
 vi.mock('./WeaponAttachmentPreview', () => ({
@@ -92,6 +93,13 @@ function forbiddenTransformControls() {
 }
 
 describe('WeaponAttachmentConcept', () => {
+  it('formats texture budget comparisons from the measured values', () => {
+    expect(formatTextureBudget(4, 4.5)).toBe(
+      '4 MB <= 4.5 MB production budget'
+    );
+    expect(formatTextureBudget(8, 4.5)).toBe('8 MB > 4.5 MB production budget');
+  });
+
   beforeEach(() => {
     setSearch('/');
   });

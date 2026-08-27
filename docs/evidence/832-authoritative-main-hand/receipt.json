@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/832",
   "status": "ready for review",
-  "implementationCommit": "30bc00574a2f6998a5940b87bc0998e4cbac8b0d",
+  "implementationCommit": "e0e92fdbcc6632863bab9f13f35600564868bbb3",
   "provider": {
     "repository": "KirkDiggler/rpg-game-assets",
     "commit": "d30372848df81b387f821f14129aced27ec709d4",
@@ -189,5 +189,5 @@
     "combatOrBowAnimation": false,
     "weaponsBeyondCurrentProviderRoster": false
   },
-  "reviewFixCommit": "8ff69fbd3eb34f47f596a3bcb78bb56e11166af0"
+  "reviewFixCommit": "4e449eb8ed488b8c68733df6983e6d8e670b2687"
 }

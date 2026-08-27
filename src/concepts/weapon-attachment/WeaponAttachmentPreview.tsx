@@ -210,6 +210,7 @@ export function WeaponAttachmentScene({
 }: WeaponAttachmentPreviewProps) {
   const [attachmentStatus, setAttachmentStatus] =
     useState<MainHandAttachmentStatus>();
+  const classModelUrl = resolveClassCharacterModelUrl(classId, false);
   const lastObservedKey = useRef<string | undefined>(undefined);
   const handleMainHandStatus = useCallback(
     (status: MainHandAttachmentStatus) => {
@@ -280,13 +281,15 @@ export function WeaponAttachmentScene({
       <ambientLight intensity={0.9} />
       <directionalLight position={[5, 8, 4]} intensity={1.1} />
       <Suspense fallback={null}>
-        <ClassCharacterModel
-          url={resolveClassCharacterModelUrl(classId, false)!}
-          isMoving={motion === 'walk'}
-          facingRotation={facingToRotationY(facing)}
-          mainHandPresentation={presentation}
-          onMainHandStatus={handleMainHandStatus}
-        />
+        {classModelUrl ? (
+          <ClassCharacterModel
+            url={classModelUrl}
+            isMoving={motion === 'walk'}
+            facingRotation={facingToRotationY(facing)}
+            mainHandPresentation={presentation}
+            onMainHandStatus={handleMainHandStatus}
+          />
+        ) : null}
       </Suspense>
       <gridHelper
         args={[8, 16, '#354d4b', '#1d2928']}

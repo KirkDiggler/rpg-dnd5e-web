@@ -9,6 +9,7 @@ import {
   WEAPON_ATTACHMENT_FIXTURES,
   canRecordWeaponVerdict,
   coverageFor,
+  formatTextureBudget,
   resolveProvisionalMainHand,
   weaponConceptVerdict,
   type WeaponClassId,
@@ -193,7 +194,10 @@ export function WeaponAttachmentConcept() {
     resolution.code === 'mapped' ? resolution.candidate.weaponUrl : 'none';
   const textureBudget =
     resolution.code === 'mapped'
-      ? `${resolution.candidate.decodedTextureMb} MB <= ${resolution.candidate.budgetMb} MB production budget`
+      ? formatTextureBudget(
+          resolution.candidate.decodedTextureMb,
+          resolution.candidate.budgetMb
+        )
       : 'none';
 
   return (

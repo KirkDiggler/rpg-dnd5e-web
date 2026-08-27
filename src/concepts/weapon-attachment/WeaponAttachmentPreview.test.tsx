@@ -232,6 +232,27 @@ describe('WeaponAttachmentScene', () => {
     );
   });
 
+  it('degrades without mounting a class model when an unexpected class is unmapped', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <WeaponAttachmentScene
+        classId={'wizard' as WeaponClassId}
+        equipmentState="unarmed"
+        motion="idle"
+        view="orbit"
+        facing={0}
+        presentation={undefined}
+        onAttachmentStatus={() => {}}
+        onRenderObserved={() => {}}
+      />
+    );
+
+    expect(
+      renderer.scene.findAll(
+        (node) => node.props.name === 'mock-real-class-character-model'
+      )
+    ).toHaveLength(0);
+  });
+
   it('acknowledges valid unarmed observation in the orbit branch', async () => {
     const onRenderObserved = vi.fn();
     const renderer = await ReactThreeTestRenderer.create(
