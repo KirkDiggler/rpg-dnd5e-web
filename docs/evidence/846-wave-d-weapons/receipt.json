@@ -1,0 +1,452 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/846",
+  "status": "ready for review",
+  "codeHead": "e4a3521b575c80c40f12853e202a56bfa447ca3b",
+  "capturedAtUtc": "2026-08-28T23:22:17.988Z",
+  "provider": {
+    "repository": "KirkDiggler/rpg-game-assets",
+    "commit": "cf3bd0bd325d9440a6d28f1d39601845bdfbcdde",
+    "syncedManifestPath": "public/models/synty/weapons/manifest.json",
+    "manifestSha256": "030ddd69117aed1b124f69320bc2def039d45eba0b7840644974108aaf117795",
+    "exactBytesVerifiedBeforeCapture": true,
+    "waveDOutputs": {
+      "light-crossbow": {
+        "path": "/models/synty/weapons/light-crossbow.glb",
+        "sha256": "84ee7b3798bf56c39afe9772caa48d9f1c82ff1684f22d2d30d1d328b6a10712"
+      },
+      "longbow": {
+        "path": "/models/synty/weapons/longbow.glb",
+        "sha256": "42eb8ea762adec72803415ac11d7917c45df2a76855c3adcb0054741d8e5485e"
+      },
+      "javelin": {
+        "path": "/models/synty/weapons/javelin.glb",
+        "sha256": "2b0a7ba06a56c581cb5817bfb5c1be3bf9a70c6aba64cb91c234b921bf6a9c14"
+      },
+      "rapier": {
+        "path": "/models/synty/weapons/rapier.glb",
+        "sha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+      }
+    }
+  },
+  "captureRuntime": {
+    "webPort": 3024,
+    "surface": "production build compiled with Vite development mode and served by Vite preview",
+    "browser": {
+      "engine": "Chromium",
+      "version": "151.0.7922.169",
+      "playwright": "1.61.1"
+    },
+    "startup": {
+      "rootHttpStatus": 200,
+      "conceptHttpStatus": 200,
+      "serverStartupErrors": 0
+    }
+  },
+  "conceptEvidence": {
+    "boundary": "Visual fixture compatibility through CURRENT_MAIN_HAND_WEAPONS and the shared ClassCharacterModel; not inventory authority.",
+    "idleCapture": {
+      "motion": "idle",
+      "view": "orbit",
+      "facing": 0,
+      "assetRequestMethod": "GET",
+      "observations": [
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:light-crossbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-crossbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "84ee7b3798bf56c39afe9772caa48d9f1c82ff1684f22d2d30d1d328b6a10712"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:longbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/longbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "42eb8ea762adec72803415ac11d7917c45df2a76855c3adcb0054741d8e5485e"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:javelin",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/javelin.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2b0a7ba06a56c581cb5817bfb5c1be3bf9a70c6aba64cb91c234b921bf6a9c14"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:rapier",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/rapier.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:light-crossbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-crossbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "84ee7b3798bf56c39afe9772caa48d9f1c82ff1684f22d2d30d1d328b6a10712"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:longbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/longbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "42eb8ea762adec72803415ac11d7917c45df2a76855c3adcb0054741d8e5485e"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:javelin",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/javelin.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2b0a7ba06a56c581cb5817bfb5c1be3bf9a70c6aba64cb91c234b921bf6a9c14"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:rapier",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/rapier.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:light-crossbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-crossbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "84ee7b3798bf56c39afe9772caa48d9f1c82ff1684f22d2d30d1d328b6a10712"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:longbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/longbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "42eb8ea762adec72803415ac11d7917c45df2a76855c3adcb0054741d8e5485e"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:javelin",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/javelin.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2b0a7ba06a56c581cb5817bfb5c1be3bf9a70c6aba64cb91c234b921bf6a9c14"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:rapier",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/rapier.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:light-crossbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-crossbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "84ee7b3798bf56c39afe9772caa48d9f1c82ff1684f22d2d30d1d328b6a10712"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:longbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/longbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "42eb8ea762adec72803415ac11d7917c45df2a76855c3adcb0054741d8e5485e"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:javelin",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/javelin.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2b0a7ba06a56c581cb5817bfb5c1be3bf9a70c6aba64cb91c234b921bf6a9c14"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:rapier",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/rapier.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+        }
+      ]
+    },
+    "fighterWalkCapture": {
+      "motion": "walk",
+      "view": "orbit",
+      "facing": 0,
+      "assetRequestMethod": "GET",
+      "observations": [
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:light-crossbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-crossbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "84ee7b3798bf56c39afe9772caa48d9f1c82ff1684f22d2d30d1d328b6a10712"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:longbow",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/longbow.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "42eb8ea762adec72803415ac11d7917c45df2a76855c3adcb0054741d8e5485e"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:javelin",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/javelin.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2b0a7ba06a56c581cb5817bfb5c1be3bf9a70c6aba64cb91c234b921bf6a9c14"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:rapier",
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/rapier.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+        }
+      ]
+    },
+    "totals": {
+      "idle": 16,
+      "fighterWalk": 4,
+      "attached": 20,
+      "exactGlbHttp200": 20,
+      "browserConsoleErrors": 0,
+      "pageErrors": 0,
+      "unexpectedRequestFailures": 0
+    },
+    "walkScope": "Full-body Full orbit Walk rigid-attachment evidence only; no combat animation, finger posing, or second-hand contact claim."
+  },
+  "authoritativeRoute": {
+    "owner": {
+      "display": "Stantoni0",
+      "class": "Fighter"
+    },
+    "ownedLightCrossbowObservedFromOwnerUi": true,
+    "observedInitialRefs": {
+      "main_hand": "dnd5e:item:warhammer",
+      "off_hand": "dnd5e:item:shield"
+    },
+    "initialOwnerSlots": {
+      "main_hand": "Main hand: Warhammer \u2014 click to unequip",
+      "off_hand": "Off hand: Shield \u2014 click to unequip",
+      "armor": "Armor: Chain Mail \u2014 click to unequip"
+    },
+    "stages": [
+      {
+        "stage": "Observed initial \u00b7 Warhammer",
+        "observedMainHand": "dnd5e:item:warhammer",
+        "ownerSlots": {
+          "main_hand": "Main hand: Warhammer \u2014 click to unequip",
+          "off_hand": "Off hand: Shield \u2014 click to unequip",
+          "armor": "Armor: Chain Mail \u2014 click to unequip"
+        },
+        "authorityResponse": null,
+        "assetResponse": {
+          "method": "GET",
+          "status": 200,
+          "path": "/models/synty/weapons/warhammer.glb",
+          "sha256": "4ae41ac3e03eb425f0b933b9fa256ae769627d92a299560997f4e2c75c3376e0"
+        },
+        "ownerReadResponses": {
+          "method": "POST",
+          "path": "/dnd5e.api.v1alpha2.character.CharacterService/GetCharacterData",
+          "statuses": [
+            200,
+            200
+          ]
+        }
+      },
+      {
+        "stage": "EquipItem response \u00b7 Light Crossbow",
+        "observedMainHand": "dnd5e:item:light-crossbow",
+        "ownerSlots": {
+          "main_hand": "Main hand: Light Crossbow \u2014 click to unequip",
+          "off_hand": "Off hand: empty",
+          "armor": "Armor: Chain Mail \u2014 click to unequip"
+        },
+        "authorityResponse": {
+          "method": "POST",
+          "status": 200,
+          "path": "/dnd5e.api.v1alpha2.character.CharacterService/EquipItem",
+          "responsePresentation": "complete CharacterData replacement rendered immediately"
+        },
+        "assetResponse": {
+          "method": "GET",
+          "status": 200,
+          "path": "/models/synty/weapons/light-crossbow.glb",
+          "sha256": "84ee7b3798bf56c39afe9772caa48d9f1c82ff1684f22d2d30d1d328b6a10712"
+        }
+      },
+      {
+        "stage": "Fresh context \u00b7 Light Crossbow restored",
+        "observedMainHand": "dnd5e:item:light-crossbow",
+        "ownerSlots": {
+          "main_hand": "Main hand: Light Crossbow \u2014 click to unequip",
+          "off_hand": "Off hand: empty",
+          "armor": "Armor: Chain Mail \u2014 click to unequip"
+        },
+        "authorityResponse": null,
+        "assetResponse": {
+          "method": "GET",
+          "status": 200,
+          "path": "/models/synty/weapons/light-crossbow.glb",
+          "sha256": "84ee7b3798bf56c39afe9772caa48d9f1c82ff1684f22d2d30d1d328b6a10712"
+        },
+        "ownerReadResponses": {
+          "method": "POST",
+          "path": "/dnd5e.api.v1alpha2.character.CharacterService/GetCharacterData",
+          "statuses": [
+            200,
+            200
+          ]
+        }
+      },
+      {
+        "stage": "UnequipItem response \u00b7 Unarmed",
+        "observedMainHand": null,
+        "ownerSlots": {
+          "main_hand": "Main hand: empty",
+          "off_hand": "Off hand: empty",
+          "armor": "Armor: Chain Mail \u2014 click to unequip"
+        },
+        "authorityResponse": {
+          "method": "POST",
+          "status": 200,
+          "path": "/dnd5e.api.v1alpha2.character.CharacterService/UnequipItem",
+          "responsePresentation": "complete CharacterData replacement rendered immediately"
+        },
+        "assetResponse": null
+      },
+      {
+        "stage": "Fresh context \u00b7 Unarmed restored",
+        "observedMainHand": null,
+        "ownerSlots": {
+          "main_hand": "Main hand: empty",
+          "off_hand": "Off hand: empty",
+          "armor": "Armor: Chain Mail \u2014 click to unequip"
+        },
+        "authorityResponse": null,
+        "assetResponse": null,
+        "ownerReadResponses": {
+          "method": "POST",
+          "path": "/dnd5e.api.v1alpha2.character.CharacterService/GetCharacterData",
+          "statuses": [
+            200,
+            200
+          ]
+        }
+      },
+      {
+        "stage": "Restored exact initial owner state \u00b7 Warhammer + Shield",
+        "observedMainHand": "dnd5e:item:warhammer",
+        "ownerSlots": {
+          "main_hand": "Main hand: Warhammer \u2014 click to unequip",
+          "off_hand": "Off hand: Shield \u2014 click to unequip",
+          "armor": "Armor: Chain Mail \u2014 click to unequip"
+        },
+        "authorityResponse": [
+          {
+            "method": "POST",
+            "status": 200,
+            "path": "/dnd5e.api.v1alpha2.character.CharacterService/EquipItem",
+            "responsePresentation": "complete CharacterData replacement rendered immediately"
+          },
+          {
+            "method": "POST",
+            "status": 200,
+            "path": "/dnd5e.api.v1alpha2.character.CharacterService/EquipItem",
+            "itemRef": "dnd5e:item:shield",
+            "slot": "off_hand",
+            "responsePresentation": "complete CharacterData replacement rendered immediately"
+          }
+        ],
+        "assetResponse": {
+          "method": "GET",
+          "status": 200,
+          "path": "/models/synty/weapons/warhammer.glb",
+          "sha256": "4ae41ac3e03eb425f0b933b9fa256ae769627d92a299560997f4e2c75c3376e0"
+        }
+      }
+    ],
+    "finalMainHand": "dnd5e:item:warhammer",
+    "finalOwnerSlots": {
+      "main_hand": "Main hand: Warhammer \u2014 click to unequip",
+      "off_hand": "Off hand: Shield \u2014 click to unequip",
+      "armor": "Armor: Chain Mail \u2014 click to unequip"
+    },
+    "exactInitialOwnerStateRestored": true,
+    "relevantResponseStatus": 200,
+    "browserConsoleErrors": 0,
+    "pageErrors": 0,
+    "unexpectedRequestFailures": 0,
+    "note": "Light Crossbow is two-handed, so its complete EquipItem response moved the observed Shield to carried inventory. Restoration re-equipped both observed Warhammer and observed Shield; final slots exactly equal initial slots."
+  },
+  "expectedTransportTermination": {
+    "countedSeparatelyFromRequestFailures": true,
+    "method": "POST",
+    "path": "/dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby",
+    "responseStatus": 200,
+    "terminalError": "net::ERR_ABORTED",
+    "reason": "Each short-lived seat-recovery stream intentionally aborts after its first authoritative lobby snapshot.",
+    "conceptContexts": 20,
+    "authoritativeContexts": 3,
+    "totalOccurrences": 23
+  },
+  "sheets": [
+    {
+      "path": "docs/evidence/846-wave-d-weapons/wave-d-four-class-contact-sheet.png",
+      "sha256": "5e49b73d93756cc5c13a89254a3df2febae22f79a55d3d53c0a0313da32a3214",
+      "dimensions": [
+        2098,
+        1984
+      ]
+    },
+    {
+      "path": "docs/evidence/846-wave-d-weapons/wave-d-fighter-walk-contact-sheet.png",
+      "sha256": "b66b0aa847fd3733634ba2fcc9dfed5030698c67e191d835df537b0aab92eb07",
+      "dimensions": [
+        2098,
+        598
+      ]
+    },
+    {
+      "path": "docs/evidence/846-wave-d-weapons/authoritative-light-crossbow-contact-sheet.png",
+      "sha256": "ca765dac986d381bda5c727849409da95bb957bd1f74c11168c32beeac445804",
+      "dimensions": [
+        1914,
+        2304
+      ]
+    }
+  ],
+  "scope": {
+    "actingOwnerEquipmentOnly": true,
+    "peerEquipmentInferred": false,
+    "otherClassInventoryInferred": false,
+    "offHandEvidenceBeyondExactOwnerRestoration": false,
+    "combatOrBowAnimation": false,
+    "secondHandContactOrFingerPosing": false,
+    "licensedAssetsCommitted": false
+  },
+  "errors": {
+    "browserConsole": 0,
+    "page": 0,
+    "unexpectedRequests": 0,
+    "expectedStreamAbortsRecordedSeparately": 23
+  }
+}
