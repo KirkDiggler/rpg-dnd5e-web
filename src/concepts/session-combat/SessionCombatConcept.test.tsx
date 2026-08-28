@@ -35,6 +35,7 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
   DiceTrayPresentation: ({
     events,
     onReleaseRequest,
+    onTelemetry,
   }: {
     events: Array<{
       type: string;
@@ -42,6 +43,7 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
       die?: { presetId: string; authoritativeResult: number };
     }>;
     onReleaseRequest?: (event: unknown) => void;
+    onTelemetry?: (telemetry: Record<string, unknown>) => void;
   }) => {
     const request = events.find(
       (event) => event.type === 'dice-presentation-requested'
@@ -54,7 +56,7 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
       >
         <button
           type="button"
-          onClick={() =>
+          onClick={() => {
             onReleaseRequest?.({
               schemaVersion: 1,
               type: 'dice-presentation-released',
@@ -74,8 +76,19 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
                   motionSeed: 19,
                 },
               },
-            })
-          }
+            });
+            // The real tray reports the die AT REST once the throw finishes,
+            // and that observation is what reveals the outcome now. This stub
+            // has no motion to run, so it lands immediately — but it must
+            // still report, or it would stand in for a tray that never does.
+            onTelemetry?.({
+              presentationToken: 1,
+              requestedResult: request.die?.authoritativeResult,
+              renderer: '3d',
+              state: 'observed',
+              exactTargetHeld: true,
+            });
+          }}
         >
           Release die
         </button>
@@ -85,6 +98,14 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
 }));
 
 import { SessionCombatConcept } from './SessionCombatConcept';
+
+/** The tooltip card a button describes itself by. */
+function tooltipOf(button: HTMLElement): HTMLElement {
+  const id = button.getAttribute('aria-describedby');
+  const tooltip = id ? document.getElementById(id) : null;
+  if (!tooltip) throw new Error('button has no tooltip');
+  return tooltip;
+}
 
 describe('SessionCombatConcept shared-shell checkpoint', () => {
   it('composes all stable gameplay regions through the production-owned shell', () => {
@@ -115,7 +136,9 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     render(<SessionCombatConcept />);
 
     const longsword = screen.getByRole('button', { name: /Longsword/ });
-    expect(longsword.title).toBe('dnd5e:weapons:longsword');
+    // Authored identity, straight from the provider — the client never maps
+    // a ref to a name of its own.
+    expect(longsword.dataset.attackRef).toBe('dnd5e:weapons:longsword');
     fireEvent.click(longsword);
 
     expect(longsword.getAttribute('aria-pressed')).toBe('true');
@@ -178,7 +201,9 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(screen.getAllByText('10 ft')).toHaveLength(2);
     const longsword = screen.getByRole('button', { name: /Longsword/ });
     expect((longsword as HTMLButtonElement).disabled).toBe(true);
-    expect(longsword.title).toBe('Action: 1 needed, 0 left.');
+    expect(tooltipOf(longsword).textContent).toContain(
+      'Action: 1 needed, 0 left.'
+    );
     expect(
       (screen.getByRole('button', { name: 'End turn' }) as HTMLButtonElement)
         .disabled

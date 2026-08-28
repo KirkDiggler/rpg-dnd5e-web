@@ -22,6 +22,7 @@ export interface UseMoveIndicatorArgs {
   locked: boolean;
   hoveredEntityId?: string | null;
   attackable?: boolean;
+  budgetFeet?: number;
 }
 
 export function useMoveIndicator({
@@ -31,6 +32,7 @@ export function useMoveIndicator({
   locked,
   hoveredEntityId,
   attackable,
+  budgetFeet,
 }: UseMoveIndicatorArgs): MoveIndicatorSelection | null {
   return useMemo(
     () =>
@@ -41,7 +43,8 @@ export function useMoveIndicator({
         locked,
         hoveredEntityId,
         attackable,
+        budgetFeet,
       }),
-    [hovered, from, pathIndex, locked, hoveredEntityId, attackable]
+    [hovered, from, pathIndex, locked, hoveredEntityId, attackable, budgetFeet]
   );
 }

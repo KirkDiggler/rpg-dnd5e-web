@@ -71,6 +71,14 @@ function propsFor(
   } as CombatExperienceProps;
 }
 
+/** The tooltip card a button describes itself by. */
+function tooltipOf(button: HTMLElement): HTMLElement {
+  const id = button.getAttribute('aria-describedby');
+  const tooltip = id ? document.getElementById(id) : null;
+  if (!tooltip) throw new Error('button has no tooltip');
+  return tooltip;
+}
+
 describe('CombatExperience shared production shell', () => {
   it('owns the approved five-region composition at the 1024px structure floor', () => {
     render(<CombatExperience {...propsFor()} />);
@@ -202,10 +210,15 @@ describe('CombatExperience shared production shell', () => {
 
     const attack = screen.getByRole('button', { name: /Longsword/ });
     expect((attack as HTMLButtonElement).disabled).toBe(true);
-    expect(attack.title).toBe('Action: 1 needed, 0 left.');
-    expect(screen.getByRole('button', { name: /Move/ }).title).toBe(
-      '10 ft remaining'
+    expect(attack.dataset.attackRef).toBe('dnd5e:weapons:longsword');
+    // Refusal copy verbatim, and Move's feet shown as a number -- never
+    // converted into a path price.
+    expect(tooltipOf(attack).textContent).toContain(
+      'Action: 1 needed, 0 left.'
     );
+    expect(
+      tooltipOf(screen.getByRole('button', { name: /Move/ })).textContent
+    ).toContain('10 ft left');
     expect(
       (screen.getByRole('button', { name: 'End turn' }) as HTMLButtonElement)
         .disabled
@@ -364,5 +377,133 @@ describe('CombatExperience responsive and accessibility contract', () => {
     expect(css).toMatch(
       /\.combatExperienceFillParent\s+\.gameFrame\s*\{[^}]*height:\s*100%;[^}]*border-radius:\s*0;/s
     );
+  });
+});
+
+describe('damage toasts', () => {
+  it('raises a toast on the map when a hit is revealed, and none before', () => {
+    const { rerender } = render(<CombatExperience {...propsFor()} />);
+    expect(screen.queryByTestId('damage-toasts')).toBeNull();
+
+    rerender(
+      <CombatExperience
+        {...propsFor(fresh, {
+          result: {
+            attackId: 'atk-1',
+            actor: 'Aldric Vale',
+            target: 'Skeleton Guard',
+            action: 'Longsword',
+            d20: 18,
+            total: 23,
+            against: 13,
+            hit: true,
+            critical: false,
+            damage: 8,
+            damageType: 'slashing',
+            targetIsViewer: false,
+          },
+        })}
+      />
+    );
+
+    const toasts = screen.getByTestId('damage-toasts');
+    expect(toasts.textContent).toContain('8 slashing damage');
+    expect(toasts.textContent).toContain('Skeleton Guard');
+    expect(toasts.textContent).toContain('−8');
+  });
+
+  it('says nothing on a miss', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          result: {
+            attackId: 'atk-2',
+            actor: 'Skeleton Guard',
+            target: 'Aldric Vale',
+            action: 'Shortsword',
+            d20: 3,
+            total: 5,
+            against: 16,
+            hit: false,
+            critical: false,
+            targetIsViewer: true,
+          },
+        })}
+      />
+    );
+    expect(screen.queryByTestId('damage-toasts')).toBeNull();
+  });
+
+  it('keeps the strike and the downed line out of the log while the die rolls', () => {
+    // Kirk 2026-08-28: "the damage and downed is showing in the combat log
+    // before the roll has finished". A die IS presented here, so the whole
+    // tail from the strike onward waits for it to land.
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          // The hold protects the viewer's OWN roll; a spectator has no
+          // suspense to keep.
+          diceWitnessRole: 'roller',
+          diceEvents: [
+            {
+              schemaVersion: 1,
+              type: 'dice-presentation-requested',
+              eventId: 'atk-1:request',
+              presentationId: 'atk-1',
+              roller: { entityId: 'aldric', role: 'player' },
+              die: {
+                presetId: 'dice.original.carved.d20',
+                authoritativeResult: 18,
+              },
+            },
+          ] as never,
+          story: [
+            {
+              id: 'turn-start',
+              eyebrow: 'Combat',
+              headline: 'Round 2',
+              detail: '',
+              tone: 'neutral',
+            },
+            {
+              id: 'atk-1',
+              eyebrow: 'Aldric Vale · Longsword',
+              headline: 'Aldric Vale strikes Skeleton Guard',
+              detail: '8 slashing damage',
+              tone: 'success',
+            },
+            {
+              id: 'downed-1',
+              eyebrow: 'Combat',
+              headline: 'Skeleton Guard is downed',
+              detail: '',
+              tone: 'danger',
+            },
+          ],
+          result: {
+            attackId: 'atk-1',
+            actor: 'Aldric Vale',
+            target: 'Skeleton Guard',
+            action: 'Longsword',
+            d20: 18,
+            total: 23,
+            against: 13,
+            hit: true,
+            critical: false,
+            damage: 8,
+            damageType: 'slashing',
+            targetIsViewer: false,
+          },
+        })}
+      />
+    );
+
+    const log = screen.getByTestId('session-combat-log');
+    expect(log.textContent).toContain('Round 2');
+    expect(log.textContent).not.toContain('strikes Skeleton Guard');
+    expect(log.textContent).not.toContain('is downed');
+    expect(log.textContent).not.toContain('8 slashing');
+    // ...and no toast either, for the same reason.
+    expect(screen.queryByTestId('damage-toasts')).toBeNull();
   });
 });

@@ -1,3 +1,5 @@
+import { isScrolledAwayFromBottom } from '@/components/game/combatLogScroll';
+import { useEffect, useRef, useState } from 'react';
 import styles from './CombatExperience.module.css';
 import { isCombatDebugEnabled } from './diagnostics';
 import type {
@@ -78,6 +80,32 @@ export function StoryLog({
   // A stale/persisted Debug preference cannot turn raw wire facts into the
   // production Story surface when diagnostics are unavailable.
   const visibleMode = debugEnabled && mode === 'debug' ? 'debug' : 'story';
+
+  // Auto-follow. The log is a live narration: a new beat the player cannot
+  // see has not been told to them. Pinned to the newest entry by default,
+  // and released the moment they scroll up to re-read an earlier beat --
+  // otherwise every arriving event yanks them back down mid-read. Scrolling
+  // back to the bottom re-pins.
+  //
+  // One ref serves both feeds: `visibleMode` renders exactly one of them, so
+  // the ref only ever holds the mounted container, and the mode itself is a
+  // dependency so switching feeds re-pins the newly mounted one.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !pinnedToBottom) return;
+    el.scrollTop = el.scrollHeight;
+  }, [story.length, result, debug.length, visibleMode, pinnedToBottom]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setPinnedToBottom(
+      !isScrolledAwayFromBottom(el.scrollTop, el.scrollHeight, el.clientHeight)
+    );
+  };
   const streamLabel =
     streamState === 'live'
       ? 'Live'
@@ -111,6 +139,9 @@ export function StoryLog({
 
       {visibleMode === 'story' ? (
         <div
+          ref={scrollRef}
+          data-testid="session-combat-log-scroll"
+          onScroll={handleScroll}
           className={styles.storyEntries}
           role="log"
           aria-live="polite"
@@ -129,6 +160,9 @@ export function StoryLog({
         </div>
       ) : (
         <div
+          ref={scrollRef}
+          data-testid="session-combat-log-scroll"
+          onScroll={handleScroll}
           className={styles.debugFeed}
           aria-label="Raw debug feed"
           aria-live="off"

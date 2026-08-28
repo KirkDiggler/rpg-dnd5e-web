@@ -46,7 +46,9 @@ import {
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
+import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
+import { holdDownedReveal } from './downedReveal';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
 import {
@@ -351,6 +353,16 @@ function SessionEncounterScope({
     scheduleRefresh(['turn', 'afford']);
   };
 
+  // `struck` and `downed` both refresh 'view' (see refreshKeysForEvent
+  // below), so the killing blow's DOWNED standing arrives from the server
+  // while the player's own d20 is still tumbling. Hold the felled subject on
+  // its feet until that roll has actually been revealed; nothing else about
+  // the sighting is touched. See downedReveal.ts.
+  const revealedMembers = useMemo(
+    () => holdDownedReveal(otherMembers, combat.unresolvedAttackTargets),
+    [otherMembers, combat.unresolvedAttackTargets]
+  );
+
   const refreshKeysForEvent = useCallback(
     (event: SessionEvent): SessionRefreshKey[] => {
       switch (event.body.case) {
@@ -606,12 +618,13 @@ function SessionEncounterScope({
                 onMovementPresentationComplete={
                   runEnded === null ? handleWalkAnimationComplete : undefined
                 }
-                otherMembers={otherMembers}
+                otherMembers={revealedMembers}
                 attackableTargets={
                   runEnded === null ? [...attackableTargets] : []
                 }
                 pathIndex={lastGoodPathIndexRef.current}
                 turnLocked={turnLocked}
+                movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
               />
             )}
             onSelectDeclaration={combat.onSelectDeclaration}

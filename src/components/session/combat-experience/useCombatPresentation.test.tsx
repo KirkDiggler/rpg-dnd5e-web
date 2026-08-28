@@ -644,6 +644,7 @@ describe('StoryLog developer diagnostics gate', () => {
           attackId: '9:crypt-run:23',
           actor: 'Aldric',
           target: 'Skeleton Guard',
+          targetIsViewer: false,
           action: 'Longsword',
           d20: 12,
           total: 17,

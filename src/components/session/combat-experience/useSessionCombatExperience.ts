@@ -70,6 +70,9 @@ export interface UseSessionCombatExperienceResult {
   story: readonly CombatExperienceStoryExchange[];
   debug: readonly string[];
   result?: CombatExperienceAttackOutcome;
+  /** Targets whose attack roll has not been revealed on screen yet. The map
+   * holds their downed reveal until it has — see `downedReveal.ts`. */
+  unresolvedAttackTargets: ReadonlySet<string>;
   diceEvents: readonly DicePresentationEvent[];
   diceSemanticFallback: boolean;
   diceWitnessRole: 'roller' | 'spectator';
@@ -674,6 +677,7 @@ export function useSessionCombatExperience({
       story: pacing.story,
       debug: presentation.debug,
       result: pacing.result,
+      unresolvedAttackTargets: presentation.unresolvedAttackTargets,
       diceEvents: presentation.diceEvents,
       diceSemanticFallback: presentation.semanticFallback,
       diceWitnessRole: presentation.diceWitnessRole,
@@ -707,6 +711,7 @@ export function useSessionCombatExperience({
       presentation.onDiceReleaseRequest,
       presentation.onSemanticReleaseRequest,
       presentation.semanticFallback,
+      presentation.unresolvedAttackTargets,
       presentationState,
       recoverStaleDeclaration,
       showTurnNotice,

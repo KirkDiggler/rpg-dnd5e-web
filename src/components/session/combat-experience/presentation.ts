@@ -1198,6 +1198,34 @@ export function selectVisibleResult(
   });
 }
 
+/**
+ * Targets of attacks whose roll has NOT yet been revealed to this viewer.
+ *
+ * `isVisible` is already the codebase's answer to "has this attack resolved
+ * on screen" — it is what gates the Story result. This reuses it rather than
+ * growing a second, drifting definition, and reports who each unresolved
+ * attack was aimed at so the map can hold that target's downed reveal until
+ * the roll lands (`downedReveal.ts`).
+ *
+ * The set is narrow by construction. `initialRecord` only withholds
+ * settlement for the local player's own LIVE attack (`'armed'`, awaiting the
+ * dice) or for a record whose roller role is not known yet (`'unresolved'`);
+ * a monster's attack, and every catch-up record, settle `'auto'` and are
+ * visible immediately. Conflicted records are excluded — they are forced to
+ * `'auto'` anyway, and a conflict must never be able to wedge the map.
+ */
+export function selectUnresolvedAttackTargets(
+  state: CombatPresentationState
+): ReadonlySet<string> {
+  const targets = new Set<string>();
+  for (const record of state.presentations) {
+    if (record.conflicted) continue;
+    if (isVisible(record)) continue;
+    targets.add(record.authority.target);
+  }
+  return targets;
+}
+
 export function selectLiveAnnouncement(
   state: CombatPresentationState
 ): string | null {

@@ -15,6 +15,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { bandFollowsFocus } from './cameraDials';
 
 const WHEEL_BAND_STEP_INTERVAL_MS = 120;
 
@@ -49,6 +50,9 @@ interface CameraControlsOptions {
       zoom: number;
       polar: number;
       focusLead: number;
+      /** Whether a move by the followed character re-centres the camera —
+       * see CAMERA_BAND_FOLLOWS_FOCUS in cameraDials.ts. */
+      follow: boolean;
     }[];
   } | null;
   /**
@@ -118,12 +122,11 @@ export function useCameraControls({
   // Track lerp target for auto-center
   const lerpTarget = useRef<THREE.Vector3 | null>(null);
 
-  // Update lerp target when focusTarget changes
-  useEffect(() => {
-    if (focusTarget) {
-      lerpTarget.current = focusTarget.clone();
-    }
-  }, [focusTarget]);
+  // The last focus position actually acted on. Compared BY VALUE, so the
+  // auto-centre decision is made once per real move — not again whenever this
+  // effect's dependencies happen to change identity, which would re-centre a
+  // camera the player had deliberately left parked.
+  const lastFocus = useRef<THREE.Vector3 | null>(null);
 
   /**
    * How far "zoomed in" we currently are, normalised to 0 (furthest out) → 1
@@ -167,6 +170,17 @@ export function useCameraControls({
     }
     return bands[orthoBandIndex.current] ?? null;
   }, [curve, camera]);
+
+  // Auto-centre on the followed character — but only from the bands that want
+  // it. Pulled back, the camera is a planning view the player framed on
+  // purpose; see CAMERA_BAND_FOLLOWS_FOCUS in cameraDials.ts.
+  useEffect(() => {
+    if (!focusTarget) return;
+    if (lastFocus.current?.equals(focusTarget)) return;
+    lastFocus.current = focusTarget.clone();
+    if (!bandFollowsFocus(currentOrthoBand(), perspective)) return;
+    lerpTarget.current = focusTarget.clone();
+  }, [focusTarget, currentOrthoBand, perspective]);
 
   /** Smooth perspective close progress; orthographic cameras use exact bands. */
   const easedPerspectiveCloseT = useCallback((): number => {

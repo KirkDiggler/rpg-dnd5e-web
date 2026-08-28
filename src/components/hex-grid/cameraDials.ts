@@ -129,12 +129,65 @@ export interface CameraDials {
       zoom: number;
       polar: number;
       focusLead: number;
+      /** Whether a move by the followed character re-centres the camera on
+       * them. See `CAMERA_BAND_FOLLOWS_FOCUS` for why the wide bands say no. */
+      follow: boolean;
     }[];
   } | null;
   /** Orthographic zoom range and starting point. */
   zoomMin: number;
   zoomMax: number;
   zoomStart: number;
+}
+
+/**
+ * Does a band re-centre on the character when they move?
+ *
+ * Indexed to the five authored bands, zoomed-OUT first:
+ * `[overview, tabletop, tactical, shoulder, detail]`.
+ *
+ * The wide three say no. Pulled back, the camera is a PLANNING view — the
+ * player has framed a room, or a doorway, or the monster they are about to
+ * walk around, and yanking that framing onto the mini every time it takes a
+ * step throws away the thing they deliberately set up. It also fights the
+ * pan they just made. Close in, the opposite is true: the shoulder and detail
+ * bands exist to sit behind the character, and a character who walks out of
+ * frame there is simply lost.
+ *
+ * This is the same "closeness" gradient `focusLead` already encodes — 0 for
+ * the wide bands, a quarter lead at tactical, full at shoulder and detail —
+ * so the two dials agree about where the camera stops being a map and starts
+ * being a viewpoint.
+ *
+ * Kirk, 2026-08-28: "if the camera is in tabletop or tactical and I move the
+ * camera should not center on me. the camera should stay put." Overview joins
+ * them because it is wider still, and because this module's own doc comment
+ * already treats "overview/tabletop" as one reading of the map.
+ */
+export const CAMERA_BAND_FOLLOWS_FOCUS: readonly boolean[] = [
+  false, // overview
+  false, // tabletop
+  false, // tactical
+  true, // shoulder
+  true, // detail
+];
+
+/**
+ * Whether the camera should chase a new focus target right now.
+ *
+ * Perspective is a separate, still-opt-in projection with no authored bands
+ * of its own (`?camera=persp`), so it keeps the follow-always behavior rather
+ * than silently inheriting a policy written for the orthographic ladder. An
+ * unresolved band (no curve, or `?pitchCurve=0`'s fixed angle) follows too:
+ * that is the pre-band behavior, and the band ladder is what earns the
+ * exception.
+ */
+export function bandFollowsFocus(
+  band: { follow: boolean } | null | undefined,
+  perspective: boolean
+): boolean {
+  if (perspective) return true;
+  return band?.follow ?? true;
 }
 
 /** Finite-number query param, or null when absent/garbage. */
@@ -201,22 +254,35 @@ export function parseCameraDials(search: string): CameraDials {
           polarNear,
           focusLead: DEFAULT_CLOSE_FOCUS_LEAD,
           bands: [
-            { zoom: zoomMin, polar: polarFar, focusLead: 0 },
-            { zoom: tabletopZoom, polar: polarFar, focusLead: 0 },
+            {
+              zoom: zoomMin,
+              polar: polarFar,
+              focusLead: 0,
+              follow: CAMERA_BAND_FOLLOWS_FOCUS[0]!,
+            },
+            {
+              zoom: tabletopZoom,
+              polar: polarFar,
+              focusLead: 0,
+              follow: CAMERA_BAND_FOLLOWS_FOCUS[1]!,
+            },
             {
               zoom: zoomStart,
               polar: (polarFar + polarNear) / 2,
               focusLead: DEFAULT_CLOSE_FOCUS_LEAD / 4,
+              follow: CAMERA_BAND_FOLLOWS_FOCUS[2]!,
             },
             {
               zoom: shoulderZoom,
               polar: polarNear,
               focusLead: DEFAULT_CLOSE_FOCUS_LEAD,
+              follow: CAMERA_BAND_FOLLOWS_FOCUS[3]!,
             },
             {
               zoom: zoomMax,
               polar: polarNear,
               focusLead: DEFAULT_CLOSE_FOCUS_LEAD,
+              follow: CAMERA_BAND_FOLLOWS_FOCUS[4]!,
             },
           ],
         }

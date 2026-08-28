@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildAtlasPathIndex, findAtlasPath } from './atlasPath';
-import { selectMoveIndicator } from './moveIndicator';
+import { affordableCellCount, selectMoveIndicator } from './moveIndicator';
 import { cubeToPosition } from './positionBridge';
 
 const pos = (x: number, y: number) => ({ x, y }) as never;
@@ -71,6 +71,8 @@ describe('selectMoveIndicator', () => {
     expect(selection).toEqual({
       kind: 'path',
       path: findAtlasPath(index, from, hovered),
+      // No budget supplied — every cell reads affordable.
+      affordable: 3,
     });
   });
 
@@ -226,5 +228,75 @@ describe('selectMoveIndicator', () => {
         attackable: true, // meaningless without an id — ignored
       })
     ).toMatchObject({ kind: 'path' });
+  });
+});
+
+describe('the movement budget marks the path', () => {
+  const from = { x: 0, y: 0, z: 0 };
+  // The 1x3 corridor's far end: a 3-cell path (start included), so two
+  // cells are ENTERED and the server prices the walk at 10 feet.
+  const hovered = { x: 2, y: -1, z: -1 };
+
+  function selectionWithBudget(budgetFeet: number | undefined) {
+    return selectMoveIndicator({
+      hovered,
+      from,
+      pathIndex: corridorIndex(),
+      locked: false,
+      budgetFeet,
+    });
+  }
+
+  it('carries the WHOLE path regardless of budget, so a click still sends what the preview drew', () => {
+    const index = corridorIndex();
+    const full = findAtlasPath(index, from, hovered);
+
+    for (const budget of [undefined, 0, 5, 10, 999]) {
+      const selection = selectionWithBudget(budget);
+      expect(selection).toMatchObject({ kind: 'path', path: full });
+    }
+  });
+
+  it('affords exactly the cells the budget pays for', () => {
+    // 10 ft buys both steps: the full 3-cell path.
+    expect(selectionWithBudget(10)).toMatchObject({ affordable: 3 });
+    // 5 ft buys one step: start + one entered cell.
+    expect(selectionWithBudget(5)).toMatchObject({ affordable: 2 });
+    // A budget that does not divide evenly cannot buy a partial cell.
+    expect(selectionWithBudget(9)).toMatchObject({ affordable: 2 });
+  });
+
+  it('treats 0 feet as a real answer, not as "no budget"', () => {
+    // Standing still is free, so the walker's own cell is still affordable —
+    // but nothing beyond it is. This is the case that would break if a
+    // caller folded a present 0 into undefined.
+    expect(selectionWithBudget(0)).toMatchObject({ affordable: 1 });
+    expect(selectionWithBudget(undefined)).toMatchObject({ affordable: 3 });
+  });
+
+  it('never affords more cells than the path has', () => {
+    expect(selectionWithBudget(999)).toMatchObject({ affordable: 3 });
+  });
+});
+
+describe('affordableCellCount', () => {
+  it('is the identity on path length when no budget applies', () => {
+    expect(affordableCellCount(4, undefined)).toBe(4);
+    expect(affordableCellCount(0, undefined)).toBe(0);
+  });
+
+  it('counts the free start cell plus one cell per five feet', () => {
+    expect(affordableCellCount(9, 0)).toBe(1);
+    expect(affordableCellCount(9, 5)).toBe(2);
+    expect(affordableCellCount(9, 30)).toBe(7);
+  });
+
+  it('clamps to the path and refuses to read a negative budget as credit', () => {
+    expect(affordableCellCount(3, 100)).toBe(3);
+    expect(affordableCellCount(3, -5)).toBe(1);
+  });
+
+  it('has nothing to afford in an empty path', () => {
+    expect(affordableCellCount(0, 30)).toBe(0);
   });
 });

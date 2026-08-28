@@ -62,6 +62,10 @@ export interface CombatExperienceAttackOutcome {
   critical: boolean;
   damage?: number;
   damageType?: string;
+  /** Whether the viewer is the one being hit. Resolved from the raw member
+   * id at projection time, never by matching display names — two members may
+   * share a name, and "was that me?" must not depend on that. */
+  targetIsViewer: boolean;
 }
 
 export interface CombatExperienceMapRenderProps {

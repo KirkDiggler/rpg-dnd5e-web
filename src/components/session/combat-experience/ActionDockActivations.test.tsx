@@ -42,6 +42,24 @@ function dockWith(declarations: Declaration[], onSelect = vi.fn()) {
   return onSelect;
 }
 
+/** The decorative tooltip card in the same offer slot as a button. */
+function cardFor(button: HTMLElement): HTMLElement {
+  const card = button
+    .closest('span')
+    ?.querySelector<HTMLElement>('[class*="actionTooltip"]');
+  if (!card) throw new Error('no tooltip card in this offer slot');
+  return card;
+}
+
+/** The node a button points at with aria-describedby. */
+function describedTooltip(button: HTMLElement): HTMLElement {
+  const id = button.getAttribute('aria-describedby');
+  if (!id) throw new Error('button has no aria-describedby');
+  const tooltip = document.getElementById(id);
+  if (!tooltip) throw new Error(`no tooltip with id ${id}`);
+  return tooltip;
+}
+
 describe('ActionDock renders what a member can activate', () => {
   // THE LABEL COMES FROM THE SERVER. There is no ref-to-name table in this
   // client, so an ability renamed upstream renames the button with no client
@@ -81,7 +99,11 @@ describe('ActionDock renders what a member can activate', () => {
 
     const rage = screen.getByRole('button', { name: /Rage/ });
     expect((rage as HTMLButtonElement).disabled).toBe(true);
-    expect(rage.getAttribute('title')).toBe('no rage uses remaining');
+    // The refusal now lives in the tooltip the button describes itself by,
+    // rather than a native title -- same contract, the server's own words.
+    expect(describedTooltip(rage).textContent).toContain(
+      'no rage uses remaining'
+    );
   });
 
   it('hands the whole declaration back on click, selector included', () => {
@@ -128,6 +150,73 @@ describe('ActionDock renders what a member can activate', () => {
 
     const help = screen.getByRole('button', { name: /Help/ });
     expect((help as HTMLButtonElement).disabled).toBe(true);
-    expect(help.getAttribute('title')).toBe('no ally within reach');
+    expect(describedTooltip(help).textContent).toContain(
+      'no ally within reach'
+    );
+  });
+
+  // Copilot on #839: the visual card is revealed with `visibility`, and a node
+  // hidden that way is an unreliable aria-describedby target. So the
+  // description is its own genuinely-rendered sr-only node, and the card is
+  // decoration.
+  it('describes the button with a real node, not the visibility-hidden card', () => {
+    dockWith([
+      activation({
+        ability: { ref: 'dnd5e:features:rage', name: 'Rage' },
+        slot: Slot.BONUS,
+      }),
+    ]);
+
+    const rage = screen.getByRole('button', { name: /Rage/ });
+    const description = describedTooltip(rage);
+
+    // Not the decorative card...
+    expect(description.getAttribute('aria-hidden')).toBeNull();
+    // ...and outside the button, so it never joins the accessible NAME.
+    expect(rage.contains(description)).toBe(false);
+    expect(description.textContent).toContain('Rage');
+    expect(description.textContent).toContain('Bonus action');
+  });
+
+  it('hides the decorative card from assistive tech so nothing is said twice', () => {
+    dockWith([activation()]);
+
+    const dodge = screen.getByRole('button', { name: /Dodge/ });
+    const card = cardFor(dodge);
+    expect(card.getAttribute('aria-hidden')).toBe('true');
+    expect(card.textContent).toContain('Dodge');
+  });
+
+  // Kirk's screenshot, 2026-08-28: on a REFUSED offer the card was washed out
+  // and the dock's identity row painted straight through it.
+  // `.actionOffer:disabled` sets opacity; opacity applies to the whole subtree
+  // AND opens a stacking context; and the card used to be a child of the
+  // button. It has to stay a sibling -- the bug was worst on exactly the offer
+  // whose refusal the card exists to explain.
+  it('keeps the card outside the button, so a disabled offer cannot fade it', () => {
+    dockWith([
+      activation({
+        available: false,
+        why: { text: 'no target in reach' },
+        ability: { ref: 'dnd5e:weapons:greataxe', name: 'Greataxe' },
+      }),
+    ]);
+
+    const greataxe = screen.getByRole('button', { name: /Greataxe/ });
+    expect((greataxe as HTMLButtonElement).disabled).toBe(true);
+
+    const card = cardFor(greataxe);
+    expect(greataxe.contains(card)).toBe(false);
+    expect(card.textContent).toContain('no target in reach');
+  });
+
+  it('keeps the whole tooltip out of the button’s accessible name', () => {
+    dockWith([activation()]);
+    // Had the description been rendered inside the button, its lines would
+    // join the name and the button would answer to "Costs". Asserted this way
+    // rather than on an exact string, because accessible-name whitespace
+    // differs between jsdom and real browsers and is not the point here.
+    expect(screen.queryByRole('button', { name: /Costs/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Dodge/ })).toBeTruthy();
   });
 });
