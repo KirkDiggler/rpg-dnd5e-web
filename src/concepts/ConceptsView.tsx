@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
-import { DungeonBuilderConcept } from '../author/DungeonBuilderConcept';
-import { PropCompositionConcept } from '../author/PropCompositionConcept';
+import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
+import { DungeonBuilderSandbox } from '../author/DungeonBuilderSandbox';
+import { AttackDie3DConcept } from './attack-die-3d/AttackDie3DConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
@@ -9,8 +10,12 @@ import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
+import { SessionCombatConcept } from './session-combat/SessionCombatConcept';
+import { SessionTombConcept } from './session-tomb/SessionTombConcept';
+import { WeaponAttachmentConcept } from './weapon-attachment/WeaponAttachmentConcept';
 
 type ConceptPage =
+  | 'attack-die-3d'
   | 'class-selection'
   | 'encounter-dock'
   | 'combat-panel'
@@ -18,10 +23,14 @@ type ConceptPage =
   | 'combat-pacing'
   | 'just-roll'
   | 'fog-of-war'
+  | 'session-combat'
+  | 'session-tomb'
+  | 'weapon-attachment'
   | 'dungeon-builder'
-  | 'prop-composition';
+  | 'asset-anchor-lab';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
+  { id: 'attack-die-3d', label: 'Attack Die 3D' },
   { id: 'class-selection', label: 'Class Selection' },
   { id: 'encounter-dock', label: 'Encounter Dock' },
   { id: 'combat-panel', label: 'Combat Panel' },
@@ -29,8 +38,11 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'combat-pacing', label: 'Combat Pacing' },
   { id: 'just-roll', label: 'Just Roll' },
   { id: 'fog-of-war', label: 'Fog of War' },
+  { id: 'session-combat', label: 'Session Combat' },
+  { id: 'session-tomb', label: 'Session Tomb' },
+  { id: 'weapon-attachment', label: 'Weapon Attachment' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
-  { id: 'prop-composition', label: 'Prop Composition' },
+  { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
 ];
 
 interface ConceptsViewProps {
@@ -109,6 +121,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
       >
+        {activePage === 'attack-die-3d' && <AttackDie3DConcept />}
         {activePage === 'class-selection' && <ClassSelectionConcept />}
         {activePage === 'encounter-dock' && <EncounterDockConcept />}
         {activePage === 'combat-panel' && <CombatPanelConcept />}
@@ -116,16 +129,17 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'combat-pacing' && <CombatPacingConcept />}
         {activePage === 'just-roll' && <JustRollConcept />}
         {activePage === 'fog-of-war' && <FogOfWarConcept />}
+        {activePage === 'session-combat' && <SessionCombatConcept />}
+        {activePage === 'session-tomb' && <SessionTombConcept />}
+        {activePage === 'weapon-attachment' && <WeaponAttachmentConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
             `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
-            tab is the dev sandbox — same component tree, `forceFixtures`
-            so it never calls PutDungeon and never depends on a running
-            server, per Kirk's ask ("a dev one that is hooked to fixture
-            data"). */}
-        {activePage === 'dungeon-builder' && (
-          <DungeonBuilderConcept forceFixtures />
-        )}
-        {activePage === 'prop-composition' && <PropCompositionConcept />}
+            tab is the dev sandbox — the same `DungeonBuilder` on a fixture
+            compile (`DungeonBuilderSandbox` hands it `fixtureCompile`), so
+            it never calls PutDungeon and never depends on a running server,
+            per Kirk's ask ("a dev one that is hooked to fixture data"). */}
+        {activePage === 'dungeon-builder' && <DungeonBuilderSandbox />}
+        {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
       </motion.div>
     </div>
   );

@@ -117,6 +117,42 @@ describe('remembered entities are inert', () => {
     expect(handlerCount(renderer, 'onPointerOver')).toBeGreaterThan(0);
   });
 
+  it("calls onPointerOver/onPointerOut with the entity id — rpg-project#249, the hover half of the same fix onClick already needed (Kirk's own live-walk finding: the hover affordance never resolved over the model, only the bare hex beside it)", async () => {
+    const onPointerOver = vi.fn();
+    const onPointerOut = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        type="monster"
+        monsterRefId="skeleton"
+        onClick={() => {}}
+        onPointerOver={onPointerOver}
+        onPointerOut={onPointerOut}
+      />
+    );
+
+    const nodes = renderer.scene.findAll(
+      (node) =>
+        typeof (node as { props?: Record<string, unknown> }).props
+          ?.onPointerOver === 'function'
+    ) as Array<{ props: Record<string, unknown> }>;
+    expect(nodes.length).toBeGreaterThan(0);
+    (
+      nodes[0]!.props.onPointerOver as (e: {
+        stopPropagation: () => void;
+      }) => void
+    )({ stopPropagation: () => {} });
+    expect(onPointerOver).toHaveBeenCalledWith('goblin-1');
+
+    const outNodes = renderer.scene.findAll(
+      (node) =>
+        typeof (node as { props?: Record<string, unknown> }).props
+          ?.onPointerOut === 'function'
+    ) as Array<{ props: Record<string, unknown> }>;
+    (outNodes[0]!.props.onPointerOut as () => void)();
+    expect(onPointerOut).toHaveBeenCalledTimes(1);
+  });
+
   it('renders a remembered obstacle without handlers', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <HexEntity

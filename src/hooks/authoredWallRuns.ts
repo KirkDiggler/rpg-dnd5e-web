@@ -83,6 +83,15 @@ export interface AuthoredWallEdgeInput {
    * of tiling straight through the door opening.
    */
   isDoor: boolean;
+  /**
+   * The authored wall-height MULTIPLIER of the standard rendered wall
+   * height (rpg-project#273), `0`/omitted = not authored = standard.
+   * Height joins the CHAIN-IDENTITY criteria: a chain SPLITS where
+   * adjacent edges disagree on height, exactly as doors split runs —
+   * a half-authored wall must not average into one run that renders a
+   * height nobody wrote.
+   */
+  height?: number;
 }
 
 /** One straight authored wall run — a chain of contiguous, straight-enough
@@ -96,6 +105,11 @@ export interface AuthoredWallRun extends WallRunSegment {
    * wallRunMeshHelpers.segmentKey's "derive from the segment's own
    * identity, not position" rule). */
   key: string;
+  /** The run's authored height multiplier — uniform across the whole
+   * chain by construction (height is a chain-break criterion, see
+   * `AuthoredWallEdgeInput.height`). `0` = not authored: render the
+   * standard height, never multiply by the raw value. */
+  height: number;
   /** Unit vector (world x/z) this run's tiled pieces should face outward
    * — see wallRuns.ts's `EnvelopeRun.facing` doc comment for the defect
    * this corrects (a tiled piece's detailed face vs. flat back). Derived
@@ -105,7 +119,15 @@ export interface AuthoredWallRun extends WallRunSegment {
   facing: WorldPos;
 }
 
-function vertexKey(p: WorldPos): string {
+/** Exported so a caller building the same `AuthoredWallEdgeInput[]` this
+ * module chains can recover, from a resulting run's own `key`, exactly
+ * WHICH of the caller's own edges (real cube `from`/`to` cell identity)
+ * contributed to that run -- by recomputing this SAME token for each of
+ * its own edges and matching against the key's own `;`-joined tokens
+ * (rpg-dnd5e-web#799: atlasWallRuns.ts's seam-fit needs each
+ * constituent boundary PAIR's cell identity, which a hex-CORNER vertex
+ * alone can't disambiguate -- a corner is shared by up to 3 cells). */
+export function vertexKey(p: WorldPos): string {
   // Hex-corner world positions are deterministic trig results (same
   // formula, same inputs -> bit-identical floats) for any two edges
   // genuinely sharing a vertex, but round anyway as a defensive tolerance
@@ -260,6 +282,22 @@ export function computeAuthoredWallRuns(
     }
   }
 
+  // Height boundaries are hard breaks, exactly as door vertices are
+  // (rpg-project#273): a vertex whose incident non-door edges disagree
+  // on height both STOPS a walk and STARTS chains, so a run is
+  // height-uniform by construction and the boundary lands on the exact
+  // authored edge, not wherever an arbitrary walk happened to notice.
+  const heightOf = (g: EdgeGeom): number => g.input.height ?? 0;
+  const heightBreakKeys = new Set<string>();
+  const heightsAtVertex = new Map<string, number>();
+  for (const g of nonDoor) {
+    for (const key of [g.aKey, g.bKey]) {
+      const seen = heightsAtVertex.get(key);
+      if (seen === undefined) heightsAtVertex.set(key, heightOf(g));
+      else if (seen !== heightOf(g)) heightBreakKeys.add(key);
+    }
+  }
+
   const vertexPos = new Map<string, WorldPos>();
   for (const g of geoms) {
     vertexPos.set(g.aKey, g.a);
@@ -328,11 +366,27 @@ export function computeAuthoredWallRuns(
     const visited: WorldPos[] = [otherEnd(firstEdge, startKey).pos];
     let currentKey = otherEnd(firstEdge, startKey).key;
 
-    while (!doorVertexKeys.has(currentKey)) {
-      const options = (adjacency.get(currentKey) ?? []).filter(
-        (g) => !used.has(g)
-      );
-      if (options.length !== 1) break; // dead end (0) or branch/junction (2+)
+    while (
+      !doorVertexKeys.has(currentKey) &&
+      !heightBreakKeys.has(currentKey)
+    ) {
+      // Softness is the vertex's TRUE degree, never its unused-edge
+      // count (rpg-dnd5e-web#808, Kirk's walk: "the bottom room east
+      // wall does not match the corner"). The original check counted
+      // only UNUSED incident edges, so a genuine branch vertex
+      // degraded to "soft" once an earlier chain had consumed one of
+      // its edges — a later walk then continued straight THROUGH the
+      // junction, absorbing the far side into its own chain (measured:
+      // a 3-way corner's diagonal overshooting the junction and taking
+      // two of the crossing wall's edges with it), with the outcome
+      // depending on which chain happened to walk first. This module's
+      // own contract (header doc: "break at any branch/junction — a
+      // vertex with more than 2 wall edges") is a statement about the
+      // GRAPH, so it is asked of the graph.
+      const incident = adjacency.get(currentKey) ?? [];
+      if (incident.length !== 2) break; // dead end (<2) or branch/junction (3+)
+      const options = incident.filter((g) => !used.has(g));
+      if (options.length !== 1) break; // the one continuation is already taken
       const next = options[0]!;
       const candidateEnd = otherEnd(next, currentKey);
       const fitsWithinTolerance = [...visited, candidateEnd.pos].every(
@@ -461,7 +515,9 @@ export function computeAuthoredWallRuns(
       .map((g) => g.input.id ?? `${g.aKey}|${g.bKey}`)
       .sort()
       .join(';');
-    runs.push({ start, end, key, facing });
+    // Uniform across the chain by the height-break rule above; the
+    // first edge speaks for all of them.
+    runs.push({ start, end, key, facing, height: heightOf(chainEdges[0]!) });
   }
 
   // Phase 1: start a chain from every hard-break vertex (branch, dead end,
@@ -469,7 +525,8 @@ export function computeAuthoredWallRuns(
   const allVertexKeys = new Set<string>(adjacency.keys());
   for (const key of allVertexKeys) {
     const degree = (adjacency.get(key) ?? []).length;
-    const isHardBreak = degree !== 2 || doorVertexKeys.has(key);
+    const isHardBreak =
+      degree !== 2 || doorVertexKeys.has(key) || heightBreakKeys.has(key);
     if (!isHardBreak) continue;
     for (const g of adjacency.get(key) ?? []) {
       if (used.has(g)) continue;

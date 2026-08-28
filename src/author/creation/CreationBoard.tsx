@@ -1,1812 +1,1077 @@
 /**
- * CreationBoard — the "New Dungeon" freeform canvas: draw walls, place
- * doors, mark start/end/holes, place props/monsters with facing. Renders
- * off the SAME `DungeonDoc`/CST edit mode's `Board.tsx` does (the CST
- * unification — see CONTRACT.md's "unifying New Dungeon onto the shared
- * CST" section) via `doc.canvas`/`doc.walls`/`doc.holes`/`doc.start`/
- * `doc.end`/`doc.place` — all top-level, absolute-`[col,row]` fields,
- * `place:` included (the decided target-dialect shape: room-scoped
- * `place:` is v1's own heritage, not something a from-scratch canvas
- * with zero rooms needs to fake — see TARGET-YAML.md's "top-level
- * placement" section; an earlier round briefly tried a synthetic
- * `archetype: canvas` bridge room instead, rejected, see CONTRACT.md).
- * Still its own specialized renderer, not `Board.tsx` itself — creation
- * mode's own tools (edge-painting walls with a live stroke, the Region
- * paint brush, start/end/hole markers) are genuinely different
- * interactions from the compiled edit board's click-to-place/drag-to-move
- * — but the underlying CELL GEOMETRY is now identical (see
- * "HEX-TRUE" below), not a second coordinate system.
+ * CreationBoard — the centre column: one SVG hex canvas in AXIAL,
+ * drawn under the dungeon's own `orientation` (design §1). Void is
+ * everything unpainted; the floor/void envelope is never drawn by the
+ * author (the runtime implies it), so the board shows only what the
+ * file says: regions, declared walls, door edges, the start, placements
+ * — and, in red, whatever the compiler's `FieldError.path`s name.
  *
- * **HEX-TRUE (2026-08-03)**: this board used to render a plain rectangular
- * grid (`FLAT_COL_SPACING`/`FLAT_ROW_SPACING`, axis-aligned cells/edges).
- * Kirk, diagnosing it directly: "that new dungeon is squares... our walls
- * as we lay them out cannot follow along the edge... any hex that is not
- * 100% uncovered would not be traversable by the players" — a square grid
- * only exposes 4 of a hex's 6 real adjacencies, so a region that reads as
- * fully enclosed on squares can have two invisible open edges in hex
- * reality (players walk through the diagonals — false enclosure); and
- * "walls look like vertical blinds along the side edges" — disconnected
- * parallel slats where real hex edges share corners and chain into a
- * continuous run. This board now renders every cell/edge/marker through
- * `creationGeometry.ts`'s hex functions, which build on the SAME
- * `hexLayout.ts` math the compiled edit-mode `Board.tsx` renders with —
- * one coordinate space, not two. The canvas dimension semantics (a
- * `{width,height}` grid of `[col,row]` cells) are unchanged.
- *
- * Client-side only in the sense that matters — no server call happens
- * here (design.md defers wall/shape authoring to P4+; there is no real
- * schema for any of this yet). But the DOCUMENT is real: it round-trips
- * through the same `yaml` CST parser/serializer, the same YAML pane, the
- * same Inspector, as edit mode's document.
- *
- * Wall interaction: EDGE-PAINTING, not cell-painting (a finding worth
- * recording: cell-painting — mark a cell solid/floor — was the other
- * obvious option, simpler to hit-test, but doors need to sit ON a
- * specific wall segment, and the real EncounterService.Space.walls wire
- * type is already edge-native (`Wall{from,to,kind,id}`, confirmed against
- * fog-of-war's CONTRACT.md research) — edge-painting is both what Kirk
- * literally described ("draw the walls") and the shape that maps onto
- * the real wire type without translation. Click-drag paints a stroke of
- * same-state edges (first edge touched decides add-vs-erase for the
- * whole stroke), same interaction grammar as any paint tool. See
- * `creationGeometry.ts`'s `nearestEdge` doc comment for why the hex
- * version of this drag no longer needs an orientation lock to stay
- * CONNECTED (unlike the square predecessor's crenellated-comb bug) — the
- * lock (`dragFamily`) survives here only to hold one deliberate "which of
- * the 3 parallel-edge families" choice for the whole stroke.
+ * Tools act through the document mutators in `dungeonYaml.ts`; this
+ * component never holds a `[col,row]` (see `hexOffset.ts`).
  */
+import { facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
-  facingDirection,
-  HEX_FACING_LABELS,
-} from '@/components/hex-grid/authorGridHelpers';
-import { cubeToWorld } from '@/components/hex-grid/hexMath';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
-import type { DungeonDoc, WallDoc, WallKind } from '../dungeonYaml';
-import { BOARD_HEX_SIZE, cellCenter, type CellPos } from '../hexLayout';
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+} from 'react';
+import type { Point } from '../../concepts/session-tomb/atlas';
 import {
-  END_COLOR,
-  regionArchetypeColor,
-  resolveMarkerStyle,
+  doorEdgeOwners,
+  floorOwners,
+  isMonsterRef,
+  removeWalls,
+  type DungeonDoc,
+  type ErrorTarget,
+} from '../dungeonYaml';
+import { axialKey, edgeKey, type Axial, type Edge } from '../hexOffset';
+import {
+  BOSS_COLOR,
+  DOOR_LOCKED_STROKE,
+  DOOR_STROKE,
+  ERROR_STROKE,
+  HOVER_STROKE,
+  litColor,
+  MONSTER_COLOR,
+  PROP_COLOR,
+  regionColor,
   START_COLOR,
+  VOID_FILL,
+  VOID_STROKE,
+  WALL_STROKE,
 } from '../markerStyle';
-import { PlacementMarker } from '../PlacementMarker';
-import { regionCentroid } from '../regionGeometry';
-import { regionsByPaintOrder } from '../regionTree';
-import type { BoardTool, PlacementSelection } from '../types';
-import type { BoardEditing } from '../useBoardEditing';
-import { canvasPlacementRejectReason } from './canvasFloor';
+import { thumbForRef } from '../paletteData';
+import type { BoardTool, Selection } from '../types';
+import { boardWallScene } from './boardWallRuns';
 import {
-  creationCellCenter,
-  creationCellPolygon,
-  dragFamily,
-  nearestCreationCell,
+  cellCenter,
+  cellsInBounds,
+  cornersPath,
+  edgeSegment,
+  growBounds,
   nearestEdge,
-  openBoundaryEdges,
-  pointToSegmentDistSq,
-  wallGeometry,
-  type EdgeGeometry,
-} from './creationGeometry';
-import type { CreationGrid } from './creationTypes';
-import { DEFAULT_CANVAS } from './emptyCanvasDoc';
+  neededBounds,
+  viewRectFor,
+  type GridBounds,
+} from './canvasGeometry';
+import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
 import {
-  cornerPoint,
-  nearestCorner,
-  sameCorner,
-  type CornerRef,
-} from './hexCorner';
-import {
-  clipSegmentToShrunkHex,
-  isValidDoorCell,
-  nearestWallAngleFamily,
-  snapStraightEndpoint,
-  standableFootprintKeys,
-  straightWallCrossedEdges,
-  straightWallFootprint,
-  straightWallFootprintCoverage,
-  straightWallsFootprintCoverage,
-  straightWallsFootprintSet,
-  wallLineDoorCellAt,
-  type WallAxisFamily,
-} from './straightWallGeometry';
-import type { RegionEditing } from './useRegionEditing';
+  applyDoorDraw,
+  applyReshape,
+  applyWallDraw,
+  applyWallErase,
+  chainEndpoints,
+  deriveDoorAdd,
+  deriveWallAdd,
+  deriveWallErase,
+  GESTURE_TUNING,
+  nearestRunIndex,
+  runVertices,
+  snapGesturePoint,
+  tautPath,
+  type RunVertex,
+} from './wallGesture';
 
-interface CreationBoardProps {
+export const BOARD_HEX_SIZE = 24;
+
+/** Screen pixels per SVG user unit — fixed, so the canvas never rescales
+ * to fit; it scrolls. */
+export const BOARD_SCALE = 1.25;
+
+export interface CreationBoardProps {
   doc: DungeonDoc;
-  edit: BoardEditing;
-  tool: BoardTool | null;
-  /** Wraps `edit.setSelectedPlacement` with the caller's own
-   * clear-other-selections discipline (a tool/palette selection must
-   * drop the moment a placement is picked, same as edit mode) — the
-   * board calls this instead of `edit.setSelectedPlacement` directly. */
-  onSelectPlacement: (sel: PlacementSelection | null) => void;
-  onReject: (message: string) => void;
-  onToggleWallEdge: (
-    from: [number, number],
-    to: [number, number],
-    kind: WallKind,
-    on: boolean
-  ) => void;
-  /** Straight Wall tool: commits one new `wallLines:` entry per stroke,
-   * corner-anchored (unlike `onToggleWallEdge`'s per-edge, cell-adjacent
-   * painting). See `hexCorner.ts`/`straightWallGeometry.ts`. */
-  onAddStraightWall: (from: CornerRef, to: CornerRef) => void;
-  /** Removes a SELECTED straight wall (see this component's own
-   * selection-vs-endpoint-drag interaction model,
-   * `selectedWallLineIndex`/`draggingEndpoint` below) — click no longer
-   * deletes on its own; it selects. Reachable two ways: the
-   * Delete/Backspace key (this component's own keydown effect) and the
-   * board's own small delete button rendered near the selected wall's
-   * midpoint (`straightWallDeleteButtonHit`/`straightWallDeleteButtonPoint`)
-   * — the keyboard path alone was undiscoverable (Kirk: "gonna need a
-   * way to delete a wall... had a small section with no way to remove
-   * it"), so this is now the primary, VISIBLE affordance. */
-  onRemoveStraightWallAt: (index: number) => void;
-  /** Endpoint-drag commit: fine-tune one end of an EXISTING straight wall
-   * to a new corner, snapped corner-to-corner. */
-  onSetStraightWallEndpoint: (
-    lineIndex: number,
-    which: 'from' | 'to',
-    corner: CornerRef
-  ) => void;
-  /** Door tool, applied to a straight wall — toggles a door AT the
-   * clicked footprint cell (add if absent, remove if present), same
-   * "click an existing wall to flip its state" gesture the edge Wall/
-   * Door pair already gives `doc.walls`, now cell-addressed instead of
-   * line-wide. See TARGET-YAML.md's "Straight walls: doors" section. */
-  onToggleStraightWallDoorAt: (
-    lineIndex: number,
-    cell: [number, number]
-  ) => void;
-  onToggleHole: (col: number, row: number) => void;
-  onSetPoint: (kind: 'start' | 'end', col: number, row: number) => void;
-  /** Cell-authored semantic region editing (rpg-project#180) — only
-   * meaningful when `tool === 'region'`; the board reads `regionEdit`'s
-   * own `pendingCells`/`selectedRegionId` to decide what a click does.
-   * See `useRegionEditing.ts`'s own doc comment. */
-  regionEdit: RegionEditing;
+  tool: BoardTool;
+  selection: Selection;
+  /** The region the brush paints into. */
+  activeRegionId: string | null;
+  /** Compiler error paths to highlight (already resolved by the caller
+   * so the board and the error list agree on what each one names). */
+  errorTargets: ErrorTarget[];
+  onPaint: (cell: Axial) => void;
+  onErase: (cell: Axial) => void;
+  onEdgeClick: (edge: Edge) => void;
+  /** The wall drag's commit (#804): the RAW taut chain of the released
+   * drag — the owner applies the same `applyWallDraw` the preview used,
+   * so the preview IS the commit. */
+  onWallDraw: (chain: Edge[]) => void;
+  /** Shift/right-drag erase along the same derived path (ruling 3). */
+  onWallErase: (chain: Edge[]) => void;
+  /** Rulings 2 + 4: an endpoint or shared-corner drag replaces each
+   * incident run's old edges with its chain re-derived from that run's
+   * own fixed far endpoint. Raw chains; the owner applies the same
+   * `applyReshape` the preview used. */
+  onWallReshape: (oldChains: Edge[][], newChains: Edge[][]) => void;
+  /** A door drag's chain becomes ONE door's edges[] (design §Doors
+   * compose); a door click stays today's per-edge toggle. */
+  onDoorDraw: (chain: Edge[]) => void;
+  onCellClick: (cell: Axial) => void;
+  onSelect: (selection: Selection) => void;
 }
 
-// Same 6-direction convention authorGridHelpers.ts already defines for
-// hex grids (HEX_FACING_LABELS, order E,NE,NW,W,SW,SE) — the facing arrow
-// convention was never square-canvas-specific in the first place (it
-// already used real hex angles even when the canvas underneath it was
-// still flat squares — TARGET-YAML.md's "reused the existing 6-direction
-// convention, not a rectangular compass" finding), so it's unchanged by
-// the hex-true rendering round.
-const FACING_ANGLES_DEG = HEX_FACING_LABELS.map((_, i) => {
-  const dir = facingDirection(i);
-  const world = cubeToWorld(dir, 1);
-  return (Math.atan2(world.z, world.x) * 180) / Math.PI;
-});
-
-/** This edge's wall, or `undefined` if none is drawn there — a direct
- * `doc.walls` scan (creation-mode canvases are small enough that this is
- * cheap; edit mode's own equivalent lookups are CST-side, in
- * dungeonYaml.ts, for the same reason: nothing here needs an index). */
-function wallAtEdge(
-  doc: DungeonDoc,
-  from: [number, number],
-  to: [number, number]
-): WallDoc | undefined {
-  return doc.walls.find(
-    (w) =>
-      w.from[0] === from[0] &&
-      w.from[1] === from[1] &&
-      w.to[0] === to[0] &&
-      w.to[1] === to[1]
-  );
+/** Pointer → SVG user space, via the SVG's own CTM. jsdom has neither
+ * `getScreenCTM` nor layout, so the fallback is the origin — the tests
+ * only rely on the edge being one of the cell's six. */
+function svgPoint(svg: SVGSVGElement, e: PointerEvent): Point {
+  const ctm =
+    typeof svg.getScreenCTM === 'function' ? svg.getScreenCTM() : null;
+  if (!ctm || typeof DOMPoint === 'undefined') return { x: 0, y: 0 };
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+  return { x: p.x, y: p.y };
 }
 
-/** Index of the `doc.wallLines` entry nearest `point`, within `maxDist`
- * board units, or `null` if none is close enough — the straight-wall
- * tool's own click-to-SELECT hit test, and (with a tighter radius) the
- * Door tool's "click an existing straight wall" test. Point-to-segment
- * distance against the wall's own world-space line (`cornerPoint(from)`
- * to `cornerPoint(to)`), same primitive `creationGeometry.ts`'s
- * `nearestEdge` uses internally, exported from there for this purpose. */
-function straightWallLineIndexNear(
-  doc: DungeonDoc,
-  point: CellPos,
-  maxDist = 8
-): number | null {
-  let best: number | null = null;
-  let bestDistSq = maxDist * maxDist;
-  doc.wallLines.forEach((line, i) => {
-    const a = cornerPoint(line.from);
-    const b = cornerPoint(line.to);
-    const d = pointToSegmentDistSq(point, a, b);
-    if (d < bestDistSq) {
-      bestDistSq = d;
-      best = i;
-    }
-  });
-  return best;
+/** One in-flight wall drag (#804). `pressEdge` carries the click
+ * fallback: a press that never moves off its snapped corner stays
+ * today's single-edge toggle, released on pointer up. */
+interface DrawGesture {
+  kind: 'draw' | 'erase';
+  /** The door tool inherits the same drag (design §Doors compose): one
+   * drag's chain becomes ONE door's edges[]. Erase stays wall-only. */
+  tool: 'wall' | 'door';
+  a: CornerRef;
+  b: CornerRef;
+  moved: boolean;
+  pressEdge: Edge;
 }
 
-/** Which endpoint HANDLE (if any) of the SELECTED straight wall `point`
- * landed on — a tighter, dedicated hit test distinct from
- * `straightWallLineIndexNear`'s whole-line distance, since a handle is a
- * small target at a specific corner, not "closest to the line anywhere
- * along its length." Checked before line-select/new-draw resolution on
- * pointer-down so grabbing a handle always wins over redrawing/
- * reselecting when the two targets overlap (a handle sits ON the line by
- * construction). */
-function straightWallHandleHit(
-  doc: DungeonDoc,
-  lineIndex: number,
-  point: CellPos,
-  maxDist = 10
-): 'from' | 'to' | null {
-  const line = doc.wallLines[lineIndex];
-  if (!line) return null;
-  const fromPt = cornerPoint(line.from);
-  const toPt = cornerPoint(line.to);
-  const dFrom = Math.hypot(point.x - fromPt.x, point.y - fromPt.y);
-  const dTo = Math.hypot(point.x - toPt.x, point.y - toPt.y);
-  if (dFrom > maxDist && dTo > maxDist) return null;
-  return dFrom <= dTo ? 'from' : 'to';
+/** An endpoint or shared-corner grab (rulings 2 + 4): every incident
+ * chain re-derives from its own fixed far endpoint to wherever B goes.
+ * The endpoint grab is the one-incident-chain case. */
+interface ReshapeGesture {
+  kind: 'reshape';
+  chains: { far: CornerRef; old: Edge[] }[];
+  origin: CornerRef;
+  b: CornerRef;
+  moved: boolean;
+  /** Indices of the grabbed runs — their own vertices are excluded
+   * from the magnetism targets so the drag doesn't stick to itself. */
+  draggedRuns: number[];
 }
 
-/** Where the SELECTED straight wall's own delete button renders — offset
- * perpendicular from the line's midpoint by `OFFSET` board units, so the
- * button sits clear of the drawn stroke/footprint hatch instead of on
- * top of it. Shared between the render pass and `straightWallDeleteButtonHit`
- * below so the two can never drift apart (the render/hit-test split every
- * other overlay in this component already follows). */
-function straightWallDeleteButtonPoint(
-  from: CornerRef,
-  to: CornerRef
-): CellPos {
-  const fromPt = cornerPoint(from);
-  const toPt = cornerPoint(to);
-  const mid = { x: (fromPt.x + toPt.x) / 2, y: (fromPt.y + toPt.y) / 2 };
-  const dx = toPt.x - fromPt.x;
-  const dy = toPt.y - fromPt.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const OFFSET = 16;
-  return {
-    x: mid.x + (-dy / len) * OFFSET,
-    y: mid.y + (dx / len) * OFFSET,
-  };
-}
-
-/** Hit test for the SELECTED straight wall's own delete button (Kirk:
- * "gonna need a way to delete a wall... had a small section with no way
- * to remove it" — Delete/Backspace-on-selection already worked from the
- * round above, this is the missing VISIBLE affordance). Uses the wall's
- * own COMMITTED `from`/`to` — this button is only clickable while NOT
- * mid-endpoint-drag (a handle hit is checked first in `handlePointerDown`
- * and captures the gesture), so it never needs the live drag position
- * `straightWallHandleHit`'s render counterpart accounts for. */
-function straightWallDeleteButtonHit(
-  doc: DungeonDoc,
-  lineIndex: number,
-  point: CellPos,
-  maxDist = 10
-): boolean {
-  const line = doc.wallLines[lineIndex];
-  if (!line) return false;
-  const btn = straightWallDeleteButtonPoint(line.from, line.to);
-  return Math.hypot(point.x - btn.x, point.y - btn.y) <= maxDist;
-}
-
-const CELL_SIZE = BOARD_HEX_SIZE - 1.5;
-
-/** Floor opacity for a footprint hatch cell at near-zero coverage — the
- * 2D sibling of `DungeonPreview3D.tsx`'s own `FOOTPRINT_DIM_MIN_OPACITY`,
- * same reasoning: even the faintest genuine clip stays visible, never
- * fully invisible, while a heavily-clipped cell still reads at full
- * strength (opacity scales linearly from here up to 1 as coverage
- * approaches `hexCoverageFraction`'s own 0.5 maximum). */
-const FOOTPRINT_HATCH_MIN_OPACITY = 0.25;
-
-/**
- * Every visual element for ONE straight wall's own line — footprint
- * hatch, blocked-crossing dashes (movement semantics (a)/(b), see
- * `straightWallGeometry.ts`'s own doc comments), and the line itself,
- * carved into segments around any `doors:` openings (a gap where the
- * solid stroke simply isn't drawn, plus a small hinge marker at each
- * opening's own midpoint — TARGET-YAML.md's "Straight walls: doors"
- * section for the exact traversability semantic this renders). A door
- * whose cell has fallen OUT of the line's own raw footprint (e.g. an
- * endpoint drag shrank it) renders a ⚠ warning instead of a hinge —
- * flagged, never silently dropped, same discipline this file's other
- * footprint-interaction checks already follow.
- *
- * Shared between the committed `wallLines:` render pass and the live
- * "drawing a brand-new wall" stroke preview — a wall being actively
- * drawn always passes an empty `doors` list (it has none of its own
- * yet), and `provisional` swaps the amber/dashed "not committed"
- * treatment this component uses everywhere else for in-progress content.
- *
- * `snapped` (only meaningful while `provisional`) is whether the CURRENT
- * `to`/endpoint-drag position is actually locked to one of
- * `straightWallGeometry.ts`'s 3 hex-edge angle families, vs. a free
- * angle — Kirk's ask, "snapped state should be subtly visible": a locked
- * preview reads solid and bright; a free one keeps the original dashed,
- * dimmer amber this tool always had.
- */
-function straightWallLineElements(
-  keyPrefix: string,
-  from: CornerRef,
-  to: CornerRef,
-  doors: readonly { cell: [number, number] }[],
-  grid: CreationGrid,
-  provisional: boolean,
-  snapped: boolean = false
-): ReactElement[] {
-  const els: ReactElement[] = [];
-  const a = cornerPoint(from);
-  const b = cornerPoint(to);
-  const doorCells = doors.map((d) => d.cell);
-  const footprintColor = provisional ? '#ffb347' : '#c94f4f';
-  const lineColor = !provisional ? '#e8e2d8' : snapped ? '#fff3c4' : '#ffb347';
-  // Coverage-based standability (rpg-project#169's live-design follow-up
-  // with Kirk, 2026-08-07): every genuinely-touched cell still renders
-  // (an author needs to see the wall's real footprint, standable or not),
-  // but a lightly-clipped, standable cell reads visibly lighter than a
-  // heavily-clipped, blocked one — the same light-vs-full de-emphasis
-  // `DungeonPreview3D.tsx`'s own `FootprintDimCell` now applies, one
-  // coordinate space over.
-  const footprintCoverage = straightWallFootprintCoverage(
-    from,
-    to,
-    grid,
-    doorCells
-  );
-  const footprint = [...footprintCoverage.keys()].map(
-    (key) => key.split(',').map(Number) as [number, number]
-  );
-
-  for (const [col, row] of footprint) {
-    const coverage = footprintCoverage.get(`${col},${row}`) ?? 0.5;
-    const opacity =
-      FOOTPRINT_HATCH_MIN_OPACITY +
-      (1 - FOOTPRINT_HATCH_MIN_OPACITY) * Math.min(1, coverage / 0.5);
-    const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
-      .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-      .join(' ');
-    els.push(
-      <polygon
-        key={`${keyPrefix}-fp-${col}-${row}`}
-        points={corners}
-        fill="url(#db-footprint-hatch)"
-        stroke={footprintColor}
-        strokeWidth={1.5}
-        strokeDasharray={provisional ? '3 2' : undefined}
-        opacity={opacity}
-        pointerEvents="none"
-      />
-    );
-  }
-
-  for (const edge of straightWallCrossedEdges(from, to, grid, footprint)) {
-    els.push(
-      <line
-        key={`${keyPrefix}-cross-${edge.cellA.join(',')}-${edge.cellB.join(',')}`}
-        x1={edge.a.x}
-        y1={edge.a.y}
-        x2={edge.b.x}
-        y2={edge.b.y}
-        stroke={footprintColor}
-        strokeWidth={2.5}
-        strokeDasharray="2 2"
-        pointerEvents="none"
-      />
-    );
-  }
-
-  const lerp = (t: number) => ({
-    x: a.x + (b.x - a.x) * t,
-    y: a.y + (b.y - a.y) * t,
-  });
-  // The geometric [t0,t1] interval the line spans through each door's
-  // cell — unshrunk (epsilon 0), since this is a visual gap, not the
-  // footprint-membership test (`straightWallFootprint` above already
-  // handles that with the real epsilon). Carves the solid stroke into
-  // the complementary segments around every door.
-  const doorIntervals = doorCells
-    .map((cell) => clipSegmentToShrunkHex(a, b, cell[0], cell[1], 0))
-    .filter((iv): iv is [number, number] => iv !== null)
-    .sort((x, y) => x[0] - y[0]);
-  let cursor = 0;
-  const segments: [number, number][] = [];
-  for (const [t0, t1] of doorIntervals) {
-    if (t0 > cursor) segments.push([cursor, t0]);
-    cursor = Math.max(cursor, t1);
-  }
-  if (cursor < 1) segments.push([cursor, 1]);
-  segments.forEach(([t0, t1], i) => {
-    const p0 = lerp(t0);
-    const p1 = lerp(t1);
-    els.push(
-      <line
-        key={`${keyPrefix}-seg-${i}`}
-        x1={p0.x}
-        y1={p0.y}
-        x2={p1.x}
-        y2={p1.y}
-        stroke={lineColor}
-        strokeWidth={provisional ? 3 : 4}
-        strokeDasharray={provisional && !snapped ? '5 3' : undefined}
-        strokeLinecap="round"
-        opacity={provisional ? (snapped ? 1 : 0.85) : 1}
-      />
-    );
-  });
-
-  // A hinge marker at each real door's own opening midpoint — same
-  // amber-dot visual language the edge Wall/Door pair's own door hinge
-  // already uses. A door whose cell no longer clips (stranded by an
-  // endpoint drag) gets a ⚠ instead, per this function's own doc
-  // comment.
-  doorCells.forEach((cell, i) => {
-    const valid = isValidDoorCell(from, to, grid, cell);
-    const interval = clipSegmentToShrunkHex(a, b, cell[0], cell[1], 0);
-    if (!valid || !interval) {
-      const c = creationCellCenter(cell[0], cell[1]);
-      els.push(
-        <text
-          key={`${keyPrefix}-door-${i}-stranded`}
-          x={c.x}
-          y={c.y + 3}
-          textAnchor="middle"
-          fill="#ff6a6a"
-          fontSize={11}
-          fontWeight={700}
-          pointerEvents="none"
-          style={{ paintOrder: 'stroke', stroke: '#100d0b', strokeWidth: 3 }}
-        >
-          ⚠
-        </text>
-      );
-      return;
-    }
-    const mid = lerp((interval[0] + interval[1]) / 2);
-    els.push(
-      <circle
-        key={`${keyPrefix}-door-${i}-hinge`}
-        cx={mid.x}
-        cy={mid.y}
-        r={3.5}
-        fill="#100d0b"
-        stroke="#ffb347"
-        strokeWidth={1.5}
-        pointerEvents="none"
-      />
-    );
-  });
-
-  return els;
-}
+type DragOrReshape = DrawGesture | ReshapeGesture;
 
 export function CreationBoard({
   doc,
-  edit,
   tool,
-  onSelectPlacement,
-  onReject,
-  onToggleWallEdge,
-  onAddStraightWall,
-  onRemoveStraightWallAt,
-  onSetStraightWallEndpoint,
-  onToggleStraightWallDoorAt,
-  onToggleHole,
-  onSetPoint,
-  regionEdit,
+  selection,
+  activeRegionId,
+  errorTargets,
+  onPaint,
+  onErase,
+  onEdgeClick,
+  onWallDraw,
+  onWallErase,
+  onWallReshape,
+  onDoorDraw,
+  onCellClick,
+  onSelect,
 }: CreationBoardProps) {
+  const o = doc.orientation;
+  const size = BOARD_HEX_SIZE;
   const svgRef = useRef<SVGSVGElement>(null);
-  const [hoverEdge, setHoverEdge] = useState<EdgeGeometry | null>(null);
-  const [stroke, setStroke] = useState<{
-    addMode: boolean;
-    startPoint: { x: number; y: number };
-    /** `null` until the drag has moved far enough to tell direction — see
-     * `handlePointerMove`'s own comment. One of the 3 parallel-edge
-     * families (`creationGeometry.ts`'s `dragFamily`), not an 'h'/'v'
-     * pair — a hex cell has 3 edge orientations, not 2. */
-    family: 0 | 1 | 2 | null;
-  } | null>(null);
-  const [dragPlacement, setDragPlacement] = useState<PlacementSelection | null>(
-    null
+  const [hoverEdge, setHoverEdge] = useState<Edge | null>(null);
+  const [hoverCell, setHoverCell] = useState<Axial | null>(null);
+  const painting = useRef<'paint' | 'erase' | null>(null);
+
+  const owners = useMemo(() => floorOwners(doc), [doc]);
+  const floor = useMemo(
+    () => doc.regions.flatMap((r) => r.cells),
+    [doc.regions]
   );
-  /** Region-brush drag state (Kirk's ask: "building a region should have
-   * us draw the shape. right now we have to click every square") — `mode`
-   * is decided ONCE, from the FIRST cell's own membership (or a Shift
-   * override, the "modifier... removes" eraser), then held for the whole
-   * stroke, mirroring the wall stroke's own `addMode`. `touched` is a
-   * per-stroke, once-per-cell dedup set — without it, a slow drag firing
-   * many pointer-move events over the SAME cell would call the mutator
-   * repeatedly for no reason (each call is already idempotent against
-   * `mode`, so this is a perf/no-op guard, not a correctness one). */
-  const [regionStroke, setRegionStroke] = useState<{
-    mode: 'add' | 'erase';
-    touched: Set<string>;
-  } | null>(null);
-  /** Straight Wall tool's own drag state — genuinely different shape
-   * from `stroke` above: an edge-wall stroke paints a whole CHAIN of
-   * edges as it goes; a straight-wall stroke has exactly ONE `from`/`to`
-   * CORNER pair, committed once on pointer-up. `lockedFamily` mirrors
-   * `stroke.family`'s "undecided until the drag clears a threshold, then
-   * held for the rest of the stroke" shape — see
-   * `straightWallGeometry.ts`'s `nearestWallAngleFamily` for the 3 real
-   * hex-edge families it locks to, tolerance-gated (Kirk's fix for "my
-   * line was angled ever so slightly"). It persists through a transient
-   * Alt-held "free angle" override (`handlePointerMove` reads `e.altKey`
-   * live, every move — Shift is already the region tool's own eraser
-   * modifier, so this tool uses Alt instead) rather than being discarded
-   * by it: releasing Alt mid-drag restores whatever family was already
-   * locked in, rather than re-deciding from scratch. `snapped` is a pure
-   * render hint — whether the CURRENT `toCorner` actually came from a
-   * family snap (accounting for that live Alt override), driving the
-   * "brighter when locked" preview treatment. `clickTarget` is resolved
-   * on pointer-DOWN (which existing straight wall, if any, was clicked)
-   * but only acted on at pointer-UP, and only if the whole gesture turns
-   * out to have been a CLICK rather than a real drag (see
-   * `handlePointerUp`) — a drag starting on top of an existing line
-   * still draws a new one, consistent with every other tool's
-   * click-vs-drag split in this component. A click on an existing line
-   * now SELECTS it (shows endpoint handles) rather than deleting it —
-   * delete moved to the Delete/Backspace key on a selection, see the
-   * keydown effect below. */
-  const [straightStroke, setStraightStroke] = useState<{
-    fromCorner: CornerRef;
-    toCorner: CornerRef;
-    lockedFamily: WallAxisFamily | null;
-    snapped: boolean;
-    startPoint: CellPos;
-    clickTarget: number | null;
-  } | null>(null);
-  /** Which `doc.wallLines` entry is selected — shows draggable endpoint
-   * handles (fine-tuning by hand, corner-to-corner snapped) and becomes
-   * the target of the Delete/Backspace key. Only meaningful while
-   * `tool === 'straightWall'`; reset whenever the tool changes (see the
-   * effect below) so a stale selection can't linger into an unrelated
-   * tool's interactions. */
-  const [selectedWallLineIndex, setSelectedWallLineIndex] = useState<
-    number | null
-  >(null);
-  /** An endpoint HANDLE drag in progress — `current` is the live,
-   * angle-family-snapped position tracking the pointer (same 3-family/
-   * Alt-bypass rule the initial draw uses, recomputed fresh every move
-   * since the OTHER end of the line is already fixed — no "undecided,
-   * noisy short vector" phase to protect against the way a brand-new
-   * stroke has), committed via `onSetStraightWallEndpoint` on pointer-up
-   * (unless it would collapse the line onto its own other endpoint,
-   * which is rejected instead — see `handlePointerUp`). `snapped` is the
-   * same render hint `straightStroke` carries. */
-  const [draggingEndpoint, setDraggingEndpoint] = useState<{
-    lineIndex: number;
-    which: 'from' | 'to';
-    current: CornerRef;
-    snapped: boolean;
-  } | null>(null);
+  // The paintable extent only grows (see `growBounds`); it resets when the
+  // document's orientation changes, which only `New`/`Open` can do.
+  const boundsRef = useRef<{ o: string; bounds: GridBounds | null }>({
+    o,
+    bounds: null,
+  });
+  if (boundsRef.current.o !== o) boundsRef.current = { o, bounds: null };
+  const bounds = growBounds(boundsRef.current.bounds, neededBounds(floor, o));
+  boundsRef.current.bounds = bounds;
+  const grid = useMemo(() => cellsInBounds(bounds, o), [bounds, o]);
+  const view = useMemo(() => viewRectFor(grid, size, o), [grid, size, o]);
+  const viewBox = `${view.x} ${view.y} ${view.width} ${view.height}`;
 
-  useEffect(() => {
-    setSelectedWallLineIndex(null);
-    setDraggingEndpoint(null);
-  }, [tool]);
-
-  useEffect(() => {
-    if (tool !== 'straightWall' || selectedWallLineIndex === null) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        onRemoveStraightWallAt(selectedWallLineIndex);
-        setSelectedWallLineIndex(null);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [tool, selectedWallLineIndex, onRemoveStraightWallAt]);
-
-  /** Esc deselects a region being edited (`RegionPanel.tsx`'s own status
-   * hint now advertises this — "Esc to deselect" — Kirk's discoverability
-   * ask, "is there a way to add the region after we create it?"). Also
-   * clears an in-progress NEW-region paint session when nothing is
-   * selected yet, the same "back out of what I'm doing" meaning Esc
-   * carries in the rest of this component. Mirrors the Delete/Backspace
-   * effect above: same TEXTAREA/INPUT-target guard so Esc while editing a
-   * region's name/id field doesn't unexpectedly blow away the selection. */
-  useEffect(() => {
-    if (tool !== 'region') return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      const targetTag = (e.target as HTMLElement)?.tagName;
-      if (targetTag === 'TEXTAREA' || targetTag === 'INPUT') return;
-      if (e.key !== 'Escape') return;
-      if (regionEdit.selectedRegionId) {
-        regionEdit.selectRegion(null);
-      } else if (regionEdit.pendingCells.length > 0) {
-        regionEdit.clearPending();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [tool, regionEdit]);
-
-  const grid = doc.canvas ?? DEFAULT_CANVAS;
-
-  const toBoardPoint = (clientX: number, clientY: number) => {
-    const svg = svgRef.current;
-    if (!svg) return { x: 0, y: 0 };
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const ctm = svg.getScreenCTM();
-    const p = ctm ? pt.matrixTransform(ctm.inverse()) : { x: 0, y: 0 };
-    return { x: p.x, y: p.y };
-  };
-
-  const applyEdgeAction = (edge: EdgeGeometry, addModeOverride?: boolean) => {
-    if (tool === 'wall') {
-      const existing = wallAtEdge(doc, edge.cellA, edge.cellB);
-      const shouldAdd = addModeOverride ?? !existing;
-      onToggleWallEdge(edge.cellA, edge.cellB, 'solid', shouldAdd);
-    } else if (tool === 'door') {
-      const existing = wallAtEdge(doc, edge.cellA, edge.cellB);
-      if (!existing) {
-        onReject('Doors sit on a drawn wall — draw a wall here first.');
-        return;
-      }
-      onToggleWallEdge(
-        edge.cellA,
-        edge.cellB,
-        existing.kind === 'door' ? 'solid' : 'door',
-        true
-      );
+  // Scroll compensation: when the extent grows to the LEFT or UP the SVG's
+  // origin moves, which would shift everything under the pointer by the
+  // same amount. Move the scroll position by exactly that delta in the
+  // same layout pass so nothing on screen moves. Growth to the right or
+  // down needs nothing — it only lengthens the scrollable area.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const padRef = useRef<HTMLDivElement>(null);
+  const originRef = useRef<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const prev = originRef.current;
+    originRef.current = { x: view.x, y: view.y };
+    if (!el) return;
+    if (prev === null) {
+      // First layout: centre on the authored floor (or the origin).
+      const target =
+        floor.length > 0
+          ? floor.reduce(
+              (acc, c) => {
+                const p = cellCenter(c, size, o);
+                return {
+                  x: acc.x + p.x / floor.length,
+                  y: acc.y + p.y / floor.length,
+                };
+              },
+              { x: 0, y: 0 }
+            )
+          : cellCenter({ q: 0, r: 0 }, size, o);
+      const pad = padRef.current ? getComputedStyle(padRef.current) : null;
+      const padX = pad ? parseFloat(pad.paddingLeft) || 0 : 0;
+      const padY = pad ? parseFloat(pad.paddingTop) || 0 : 0;
+      el.scrollLeft =
+        padX + (target.x - view.x) * BOARD_SCALE - el.clientWidth / 2;
+      el.scrollTop =
+        padY + (target.y - view.y) * BOARD_SCALE - el.clientHeight / 2;
+      return;
     }
-  };
-
-  const handlePointerDown: React.PointerEventHandler<SVGSVGElement> = (e) => {
-    const p = toBoardPoint(e.clientX, e.clientY);
-
-    // A palette selection always means "place this on click", regardless
-    // of which tool button is still highlighted — it must be checked
-    // before the tool branches below, not after, or it's unreachable
-    // whenever the caller also passes a tool alongside it (which
-    // CreationConcept does, so the toolbar visually falls back to
-    // select/move once something's been placed).
-    if (edit.selectedPalette) {
-      const cell = nearestCreationCell(p, grid);
-      // Boss stays room-scoped even in the target dialect (dungeonspec's
-      // validateBossCardinality needs an owning archetype:boss room —
-      // see TARGET-YAML.md's "top-level placement" section) — a
-      // from-scratch canvas has zero rooms, so there is nowhere honest
-      // for a boss pin to go yet. Same guard Board.tsx's own click
-      // handler makes for edit mode (moveBoss throws if the target room
-      // has no existing boss: entry); rejecting here avoids an uncaught
-      // DungeonParseError instead of just avoiding a bad UX.
-      if (edit.selectedPalette.kind === 'boss') {
-        onReject(
-          'Boss stays room-scoped — this canvas has no rooms yet to hold one (see TARGET-YAML.md).'
-        );
-        return;
-      }
-      // rpg-project#169's creation-3D-editing unit: this click used to
-      // reach `edit.handlePlace` unconditionally — no occupied/footprint/
-      // hole check at all, a real gap (a click could silently stack a
-      // second placement on an existing one, or place inside a straight
-      // wall's own footprint or a hole). `canvasPlacementRejectReason` is
-      // the SAME predicate the 3D click-to-place layer now consults
-      // (`DungeonPreview3D.tsx`), so the two views can never disagree
-      // about where a click is legal — see that function's own doc
-      // comment (`canvasFloor.ts`) for the exact three gates.
-      //
-      // PLACEABLE vs. STANDABLE (rpg-project#169's "props on footprint
-      // cells" unit, refined by the coverage-based-standability live
-      // design round with Kirk, 2026-08-07): a prop only needs real
-      // floor, not standable floor — Kirk's exact ask, a bookcase resting
-      // against a drawn wall — so `'prop'` skips the footprint gate
-      // entirely, coverage or not. `'monster'` still requires standable
-      // ground, now COVERAGE-based rather than the original "any touch at
-      // all blocks" rule: a lightly-clipped cell below
-      // `STANDABLE_COVERAGE_THRESHOLD` is real floor again for a monster
-      // too (`'boss'` never reaches here, rejected above).
-      const footprint = standableFootprintKeys(
-        straightWallsFootprintCoverage(doc.wallLines, grid)
-      );
-      const reject = canvasPlacementRejectReason(
+    const dx = (prev.x - view.x) * BOARD_SCALE;
+    const dy = (prev.y - view.y) * BOARD_SCALE;
+    if (dx !== 0) el.scrollLeft += dx;
+    if (dy !== 0) el.scrollTop += dy;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- centre once, then only compensate origin moves
+  }, [view.x, view.y]);
+  const regionIndex = useMemo(
+    () => new Map(doc.regions.map((r, i) => [r.id, i] as const)),
+    [doc.regions]
+  );
+  const regionById = useMemo(
+    () => new Map(doc.regions.map((r) => [r.id, r] as const)),
+    [doc.regions]
+  );
+  const doorOwners = useMemo(() => doorEdgeOwners(doc), [doc]);
+  // The straightened picture (#800): existing walls and doors drawn as
+  // the SAME runs the 3D preview and game will render, via the shared
+  // geometry module — null on a flat-top document, where the board
+  // keeps its literal edge drawing (3D refuses flat-top by name, #763,
+  // so the literal edges ARE the honest picture there). Derived from
+  // the document directly, not the debounced server compile, so the
+  // wall the author just clicked straightens immediately.
+  const wallScene = useMemo(() => boardWallScene(doc, size), [doc, size]);
+  const [gesture, setGesture] = useState<DragOrReshape | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
+  // The magnetism targets and (later) drag handles: the lattice
+  // vertices at the ends of the COMMITTED doc's rendered chains —
+  // never the mid-gesture candidate's, or the endpoint would chase its
+  // own preview.
+  const vertices = useMemo(
+    () => (wallScene ? runVertices(wallScene.runs, size, o) : []),
+    [wallScene, size, o]
+  );
+  // THE PREVIEW IS THE COMMIT: the candidate document is the same
+  // mutator composition the release applies (wallGesture's apply*),
+  // and its runs come from the same shared geometry module. On
+  // flat-top docs boardWallScene stays null and the literal edge
+  // drawing below previews the candidate doc instead — the honest
+  // picture there (#763).
+  const chains = useMemo(() => {
+    if (!gesture) return [];
+    if (gesture.kind === 'reshape') {
+      return gesture.chains.map((c) => tautPath(c.far, gesture.b, size, o));
+    }
+    return [tautPath(gesture.a, gesture.b, size, o)];
+  }, [gesture, size, o]);
+  const previewDoc = useMemo(() => {
+    if (!gesture || !gesture.moved) return null;
+    if (gesture.kind === 'reshape') {
+      return applyReshape(
         doc,
-        cell[0],
-        cell[1],
-        footprint,
-        edit.selectedPalette.kind !== 'prop'
+        gesture.chains.map((c) => c.old),
+        chains
       );
-      if (reject) {
-        onReject(reject);
-        return;
-      }
-      edit.handlePlace(null, cell);
-      return;
     }
-    if (tool === null) {
-      // Placement drag is started from the marker itself (onPointerDown
-      // there); clicking empty board space here just deselects.
-      onSelectPlacement(null);
-      return;
-    }
-    if (tool === 'start' || tool === 'end') {
-      const cell = nearestCreationCell(p, grid);
-      onSetPoint(tool, cell[0], cell[1]);
-      return;
-    }
-    if (tool === 'hole') {
-      const cell = nearestCreationCell(p, grid);
-      onToggleHole(cell[0], cell[1]);
-      return;
-    }
-    if (tool === 'region') {
-      const cell = nearestCreationCell(p, grid);
-      const cellKey = `${cell[0]},${cell[1]}`;
-      if (regionEdit.selectedRegionId) {
-        // Editing an existing region's membership. Mode for the WHOLE
-        // drag is decided here, from this first cell — Shift forces
-        // erase (the "modifier... removes" affordance) regardless of
-        // this cell's own state; otherwise erase iff this cell is
-        // already a member, matching the pre-drag-brush single-click
-        // toggle feel. `beginStroke` opens this gesture's paint/skip
-        // tally BEFORE the first cell's own mutator call so that cell is
-        // counted too — `setSelectedRegionCellMembership` now pre-checks
-        // overlap per cell and accumulates a rejected one into the tally
-        // instead of flooding an immediate toast (region-brush honesty
-        // round — see `useRegionEditing.ts`'s own header comment).
-        const region = doc.regions.find(
-          (r) => r.id === regionEdit.selectedRegionId
-        );
-        const isMember =
-          region?.cells.some((c) => c[0] === cell[0] && c[1] === cell[1]) ??
-          false;
-        const mode: 'add' | 'erase' = e.shiftKey
-          ? 'erase'
-          : isMember
-            ? 'erase'
-            : 'add';
-        regionEdit.beginStroke();
-        regionEdit.setSelectedRegionCellMembership(cell, mode === 'add');
-        setRegionStroke({ mode, touched: new Set([cellKey]) });
-        return;
-      }
-      // No region selected yet: a click on an EXISTING region's cell
-      // selects it for editing (only when there's no in-progress new-
-      // region paint session — a mid-paint click always means "toggle
-      // this cell into the region I'm painting," even if it happens to
-      // land on another region's territory, since createRegion's own
-      // overlap check is what should catch that, not a silent
-      // reinterpretation of the click). A SELECT click never starts a
-      // paint stroke — it's a discrete action, not a drag gesture; the
-      // author drags to paint on a SEPARATE gesture after selecting.
-      // Otherwise, this is the first cell of a pending-region paint
-      // stroke — same add-vs-erase mode decision as the selected-region
-      // branch above.
-      const hit =
-        regionEdit.pendingCells.length === 0
-          ? doc.regions.find((r) =>
-              r.cells.some((c) => c[0] === cell[0] && c[1] === cell[1])
-            )
-          : undefined;
-      if (hit) {
-        regionEdit.selectRegion(hit.id);
-        return;
-      }
-      const isPending = regionEdit.pendingCells.some(
-        (c) => c[0] === cell[0] && c[1] === cell[1]
+    if (gesture.kind === 'erase') return applyWallErase(doc, chains[0]);
+    return gesture.tool === 'door'
+      ? applyDoorDraw(doc, chains[0])
+      : applyWallDraw(doc, chains[0]);
+  }, [gesture, doc, chains]);
+  const previewScene = useMemo(
+    () => (previewDoc ? boardWallScene(previewDoc, size) : null),
+    [previewDoc, size]
+  );
+  // The faint literal trace of the candidate edges (draw), or of the
+  // edges about to be removed (erase).
+  const traceEdges = useMemo(() => {
+    if (!gesture || !gesture.moved) return [];
+    if (gesture.kind === 'reshape') {
+      const base = removeWalls(
+        doc,
+        gesture.chains.flatMap((c) => c.old)
       );
-      const mode: 'add' | 'erase' = e.shiftKey
-        ? 'erase'
-        : isPending
-          ? 'erase'
-          : 'add';
-      regionEdit.beginStroke();
-      regionEdit.setPendingCellMembership(cell, mode === 'add');
-      setRegionStroke({ mode, touched: new Set([cellKey]) });
-      return;
+      // Two re-derived chains can share an edge near the dragged
+      // vertex; dedup so the trace draws (and keys) each edge once.
+      const seen = new Set<string>();
+      return chains
+        .flatMap((c) => deriveWallAdd(base, c))
+        .filter((edge) => {
+          const key = edgeKey(edge);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
     }
-    if (tool === 'straightWall') {
-      // A handle on the CURRENTLY SELECTED wall always wins over
-      // redrawing/reselecting — it sits ON the line by construction, so
-      // this must be checked first, not as a fallback. The delete button
-      // is checked right after — it also sits near the selected line, so
-      // it must win over a redraw/reselect too, but never over a handle
-      // (the two are rendered offset from each other, so overlap is rare,
-      // but a handle grab is still the more specific/intentional gesture).
-      if (selectedWallLineIndex !== null) {
-        const handle = straightWallHandleHit(doc, selectedWallLineIndex, p);
-        if (handle) {
-          const line = doc.wallLines[selectedWallLineIndex];
-          setDraggingEndpoint({
-            lineIndex: selectedWallLineIndex,
-            which: handle,
-            current: handle === 'from' ? line.from : line.to,
-            snapped: false,
-          });
-          return;
-        }
-        if (straightWallDeleteButtonHit(doc, selectedWallLineIndex, p)) {
-          onRemoveStraightWallAt(selectedWallLineIndex);
-          setSelectedWallLineIndex(null);
-          return;
+    if (gesture.kind === 'erase') return deriveWallErase(doc, chains[0]);
+    return gesture.tool === 'door'
+      ? deriveDoorAdd(doc, chains[0])
+      : deriveWallAdd(doc, chains[0]);
+  }, [gesture, doc, chains]);
+  const displayDoc = previewDoc ?? doc;
+  const scene = previewDoc ? previewScene : wallScene;
+  // Manipulation rides SELECTION (Kirk's walk ruling, 2026-08-25 —
+  // Strava-route-builder grammar): selecting a wall shows its handles
+  // immediately and they drag right there with the Select tool; the
+  // wall tool stays pure draw/erase, so pressing near a chain end
+  // CONTINUES the wall instead of grabbing it (the old hover-grab made
+  // continuation impossible within the pickup radius).
+  const selectedRunIndices = useMemo(() => {
+    if (!wallScene || selection?.kind !== 'wall') return new Set<number>();
+    const keys = new Set(selection.edges.map(edgeKey));
+    const indices = new Set<number>();
+    wallScene.runs.forEach((r, i) => {
+      if (r.edges.some((edge) => keys.has(edgeKey(edge)))) indices.add(i);
+    });
+    return indices;
+  }, [wallScene, selection]);
+  const handleVertices = useMemo(
+    () =>
+      selectedRunIndices.size === 0
+        ? []
+        : vertices.filter((v) => v.runs.some((i) => selectedRunIndices.has(i))),
+    [vertices, selectedRunIndices]
+  );
+  // The selected wall's handle nearest `p`, within the pickup radius —
+  // used for the hover affordance AND hit-tested directly on pointer
+  // down (Copilot review, PR #808: gating the press on hover state
+  // misses direct-touch input, which presses without a hover pass).
+  const handleAt = useCallback(
+    (p: Point): RunVertex | null => {
+      let best: RunVertex | null = null;
+      let bestDist = GESTURE_TUNING.cornerSnapRadius * size;
+      for (const v of handleVertices) {
+        const d = Math.hypot(v.point.x - p.x, v.point.y - p.y);
+        if (d <= bestDist) {
+          best = v;
+          bestDist = d;
         }
       }
-      const corner = nearestCorner(p, grid);
-      // Resolved now (which existing straight wall, if any, sits under
-      // the click) but only ACTED on at pointer-up, and only if this
-      // whole gesture turns out to have been a click rather than a real
-      // drag — see `straightStroke`'s own doc comment. A click SELECTS
-      // (shows endpoint handles); it no longer deletes.
-      const hit = straightWallLineIndexNear(doc, p);
-      setStraightStroke({
-        fromCorner: corner,
-        toCorner: corner,
-        lockedFamily: null,
-        snapped: false,
-        startPoint: p,
-        clickTarget: hit,
+      return best;
+    },
+    [handleVertices, size]
+  );
+  const hoverVertex = useMemo(
+    () =>
+      tool !== 'select' || gesture || !hoverPoint ? null : handleAt(hoverPoint),
+    [tool, gesture, hoverPoint, handleAt]
+  );
+  useEffect(() => {
+    if (!gesture) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setGesture(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [gesture]);
+  const doorById = useMemo(
+    () => new Map(doc.doors.map((d) => [d.id, d] as const)),
+    [doc.doors]
+  );
+
+  const errorCells = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of errorTargets) {
+      if (t.kind === 'cell' || t.kind === 'placement') s.add(axialKey(t.cell));
+      if (t.kind === 'start' && doc.start) s.add(axialKey(doc.start));
+      if (t.kind === 'region') {
+        for (const c of regionById.get(t.regionId)?.cells ?? []) {
+          s.add(axialKey(c));
+        }
+      }
+    }
+    return s;
+  }, [errorTargets, doc.start, regionById]);
+  const errorEdges = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of errorTargets) {
+      if (t.kind === 'edge') s.add(edgeKey(t.edge));
+      if (t.kind === 'door') {
+        for (const e of doc.doors.find((d) => d.id === t.doorId)?.edges ?? []) {
+          s.add(edgeKey(e));
+        }
+      }
+    }
+    return s;
+  }, [errorTargets, doc.doors]);
+
+  const edgeTool = tool === 'wall' || tool === 'door';
+
+  const applyBrush = useCallback(
+    (cell: Axial, mode: 'paint' | 'erase') => {
+      if (mode === 'paint') onPaint(cell);
+      else onErase(cell);
+    },
+    [onPaint, onErase]
+  );
+
+  const handleCellDown = (cell: Axial, e: PointerEvent<SVGPolygonElement>) => {
+    e.preventDefault();
+    if (tool === 'region' || tool === 'erase') {
+      const mode =
+        tool === 'erase' || e.shiftKey || e.button === 2 ? 'erase' : 'paint';
+      painting.current = mode;
+      applyBrush(cell, mode);
+      return;
+    }
+    if (edgeTool) {
+      if (!svgRef.current || !owners.has(axialKey(cell))) return;
+      const p = svgPoint(svgRef.current, e);
+      const pressEdge = nearestEdge(cell, p, size, o);
+      if (tool === 'wall') {
+        const erase = e.shiftKey || e.button === 2;
+        // Press anchors A (wall-vertex magnetism first, then the
+        // corner lattice); release decides click vs drag. Shift or
+        // right button erases along the derived path (ruling 3).
+        // Pressing at an existing chain's rendered end magnetizes A
+        // onto its vertex — that is how a wall is CONTINUED.
+        const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
+        setGesture({
+          kind: erase ? 'erase' : 'draw',
+          tool: 'wall',
+          a,
+          b: a,
+          moved: false,
+          pressEdge,
+        });
+        setHoverEdge(null);
+        return;
+      }
+      if (e.shiftKey || e.button === 2) {
+        onEdgeClick(pressEdge);
+        return;
+      }
+      const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
+      setGesture({
+        kind: 'draw',
+        tool: 'door',
+        a,
+        b: a,
+        moved: false,
+        pressEdge,
       });
+      setHoverEdge(null);
       return;
     }
-    const edge = nearestEdge(p, grid);
-    if (tool === 'door') {
-      // A straight wall's own line rarely coincides with a hex edge (see
-      // straightWallGeometry.ts's own header comment), so a click meant
-      // to carve/remove a door on a STRAIGHT wall needs its own hit test
-      // rather than falling through to the edge-wall lookup below, which
-      // would usually just find the nearest (unrelated) edge-wall
-      // candidate instead. Tight radius, checked first: a straight wall
-      // directly under the click always wins over an edge-wall toggle.
-      const lineHit = straightWallLineIndexNear(doc, p, 8);
-      if (lineHit !== null) {
-        const line = doc.wallLines[lineHit];
-        const cell = wallLineDoorCellAt(line.from, line.to, grid, p);
-        if (cell) {
-          onToggleStraightWallDoorAt(lineHit, cell);
-        } else {
-          onReject(
-            'That spot on the wall doesn’t clip a cell — doors can only open a cell the wall’s own line actually blocks.'
+    if (tool === 'select') {
+      // A handle on the selected wall grabs its incident chains
+      // (rulings 2 + 4, riding selection): each re-derives from its own
+      // far endpoint — the chain's OTHER odd-degree lattice vertex.
+      // Hit-tested against the press point itself, not hover state.
+      const grabbed =
+        wallScene && svgRef.current
+          ? handleAt(svgPoint(svgRef.current, e))
+          : null;
+      if (grabbed && wallScene) {
+        const chainsToDrag = grabbed.runs.flatMap((runIndex) => {
+          const edges = wallScene.runs[runIndex]?.edges ?? [];
+          const far = chainEndpoints(edges, size, o).find(
+            (r) => !sameCorner(r, grabbed.ref, size, o)
           );
+          return far ? [{ far, old: [...edges] }] : [];
+        });
+        if (chainsToDrag.length > 0) {
+          setGesture({
+            kind: 'reshape',
+            chains: chainsToDrag,
+            origin: grabbed.ref,
+            b: grabbed.ref,
+            moved: false,
+            draggedRuns: grabbed.runs,
+          });
+          setHoverEdge(null);
+          return;
         }
+      }
+      const key = axialKey(cell);
+      const placementIndex = doc.place.findIndex((p) => axialKey(p.at) === key);
+      if (placementIndex !== -1) {
+        onSelect({ kind: 'placement', index: placementIndex });
         return;
       }
-      if (!edge) return;
-      applyEdgeAction(edge);
+      if (hoverEdge && doorOwners.has(edgeKey(hoverEdge))) {
+        onSelect({ kind: 'door', id: doorOwners.get(edgeKey(hoverEdge))! });
+        return;
+      }
+      // A rendered run selects the doc edges behind it, resolved at
+      // click time from the derived scene — no wall id exists and none
+      // is added (#804). Flat-top docs draw literal edges, not runs, so
+      // there is nothing to hit here by construction.
+      if (wallScene && svgRef.current) {
+        const hit = nearestRunIndex(
+          wallScene.runs,
+          svgPoint(svgRef.current, e),
+          size
+        );
+        if (hit !== null) {
+          onSelect({ kind: 'wall', edges: wallScene.runs[hit].edges });
+          return;
+        }
+      }
+      const owner = owners.get(key);
+      if (owner) onSelect({ kind: 'region', id: owner });
+      else onSelect({ kind: 'dungeon' });
       return;
     }
-    if (!edge) return;
-    if (tool === 'wall') {
-      const existing = wallAtEdge(doc, edge.cellA, edge.cellB);
-      setStroke({ addMode: !existing, startPoint: p, family: null });
-      applyEdgeAction(edge, !existing);
-    }
+    onCellClick(cell);
   };
 
-  // A quarter cell of movement before committing to a direction — small
-  // enough to feel immediate, large enough not to fire on hand-tremor.
-  // Board-space, not tied to any one axis (hex has 3 edge families, not
-  // 2), so this compares against the hex radius directly rather than a
-  // per-axis spacing constant the square predecessor had.
-  const DIRECTION_LOCK_THRESHOLD = BOARD_HEX_SIZE * 0.5;
-
-  const handlePointerMove: React.PointerEventHandler<SVGSVGElement> = (e) => {
-    const p = toBoardPoint(e.clientX, e.clientY);
-    if (dragPlacement) {
-      const cell = nearestCreationCell(p, grid);
-      edit.handleMove(dragPlacement, null, cell);
-      return;
+  const handleCellMove = (cell: Axial, e: PointerEvent<SVGPolygonElement>) => {
+    setHoverCell(cell);
+    if (painting.current && (tool === 'region' || tool === 'erase')) {
+      applyBrush(cell, painting.current);
     }
-    if (draggingEndpoint) {
-      // The line's OTHER (fixed) endpoint anchors the angle-family check
-      // — always well-defined from the very first move, unlike a
-      // brand-new stroke's own `startPoint`, so this recomputes live on
-      // every move rather than locking once (see `draggingEndpoint`'s
-      // own doc comment). `e.altKey` is the free-angle bypass — Shift is
-      // already the region tool's own eraser modifier (see this
-      // component's region-tool pointer-down branch), so this tool uses
-      // Alt instead.
-      const line = doc.wallLines[draggingEndpoint.lineIndex];
-      const otherEnd =
-        draggingEndpoint.which === 'from' ? line?.to : line?.from;
-      let axis: WallAxisFamily | null = null;
-      if (otherEnd && !e.altKey) {
-        const otherPoint = cornerPoint(otherEnd);
-        axis = nearestWallAngleFamily(p.x - otherPoint.x, p.y - otherPoint.y);
-      }
-      const current =
-        otherEnd && axis
-          ? snapStraightEndpoint(otherEnd, p, axis, grid)
-          : nearestCorner(p, grid);
-      setDraggingEndpoint({
-        ...draggingEndpoint,
-        current,
-        snapped: axis !== null,
+    if (gesture && svgRef.current) {
+      // Every move re-snaps B: wall vertices first, then the corner
+      // lattice, with angle magnetism toward the seam families unless
+      // Alt is held (ruling 1). The preview re-derives from the doc on
+      // every change of B — O(chain) + the shared module's O(walls).
+      // A reshape drag skips angle magnetism (several chains would each
+      // want their own origin) and never magnetizes to the vertices of
+      // the runs being dragged — B would stick to its own old position.
+      const p = svgPoint(svgRef.current, e);
+      const anchor = gesture.kind === 'reshape' ? gesture.origin : gesture.a;
+      const b = snapGesturePoint(p, size, o, {
+        origin:
+          gesture.kind === 'reshape'
+            ? undefined
+            : cornerPoint(gesture.a, size, o),
+        alt: e.altKey,
+        wallVertices:
+          gesture.kind === 'reshape'
+            ? vertices.filter(
+                (v) => !v.runs.some((i) => gesture.draggedRuns.includes(i))
+              )
+            : vertices,
       });
-      return;
-    }
-    if (tool === 'straightWall' && straightStroke) {
-      const dx = p.x - straightStroke.startPoint.x;
-      const dy = p.y - straightStroke.startPoint.y;
-      const pastThreshold = Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD;
-      let lockedFamily = straightStroke.lockedFamily;
-      // "Undecided until the drag clears a threshold, then locked for
-      // the rest of the stroke" — same shape the edge-wall tool's
-      // `family` uses just below, generalized from a forced 2-way pick
-      // to a tolerance-gated 3-family one that can also lock to "free"
-      // (`nearestWallAngleFamily` returning `null`, e.g. a drag aimed
-      // well off every family — see that function's own doc comment).
-      // Held-Alt at the moment of the lock decision skips it entirely,
-      // leaving `lockedFamily` re-triable on the NEXT move — releasing
-      // Alt mid-drag lets a real family lock in from wherever the drag
-      // is aimed at that point, rather than committing to "free"
-      // permanently just because Alt happened to be down at first.
-      if (lockedFamily === null && pastThreshold && !e.altKey) {
-        lockedFamily = nearestWallAngleFamily(dx, dy);
+      const moved = gesture.moved || !sameCorner(b, anchor, size, o);
+      if (moved !== gesture.moved || !sameCorner(b, gesture.b, size, o)) {
+        setGesture({ ...gesture, b, moved });
       }
-      const effectiveAxis = e.altKey ? null : lockedFamily;
-      const toCorner = !pastThreshold
-        ? straightStroke.fromCorner
-        : effectiveAxis
-          ? snapStraightEndpoint(
-              straightStroke.fromCorner,
-              p,
-              effectiveAxis,
-              grid
-            )
-          : nearestCorner(p, grid);
-      setStraightStroke({
-        ...straightStroke,
-        lockedFamily,
-        toCorner,
-        snapped: pastThreshold && effectiveAxis !== null,
-      });
       return;
     }
-    if (tool === 'wall' || tool === 'door') {
-      if (stroke && tool === 'wall') {
-        let family = stroke.family;
-        if (family === null) {
-          // A drag along one of the 3 hex edge families draws a wall in
-          // that family (dragFamily picks whichever family's own edge
-          // LINE is most nearly parallel to the drag vector — tracing a
-          // wall means dragging roughly along it). Locked once per
-          // stroke so a long drag can't wander onto an unrelated third
-          // family mid-way — see creationGeometry.ts's `nearestEdge` doc
-          // comment for why this is a stabilizer, not (like the square
-          // predecessor's h/v lock) a correctness fix: a hex cell's 6
-          // nearest-edge regions already tile with no gap, so a plain
-          // unlocked pick can't produce the old crenellated-comb bug.
-          const dx = p.x - stroke.startPoint.x;
-          const dy = p.y - stroke.startPoint.y;
-          if (Math.hypot(dx, dy) >= DIRECTION_LOCK_THRESHOLD) {
-            family = dragFamily(dx, dy);
-            setStroke({ ...stroke, family });
-          }
-        }
-        const edge = nearestEdge(p, grid, family ?? undefined);
-        setHoverEdge(edge);
-        if (edge)
-          onToggleWallEdge(edge.cellA, edge.cellB, 'solid', stroke.addMode);
+    if (tool === 'select' && svgRef.current) {
+      setHoverPoint(svgPoint(svgRef.current, e));
+    }
+    if ((edgeTool || tool === 'select') && svgRef.current) {
+      if (!owners.has(axialKey(cell))) {
+        setHoverEdge(null);
         return;
       }
-      const edge = nearestEdge(p, grid);
-      setHoverEdge(edge);
+      const edge = nearestEdge(cell, svgPoint(svgRef.current, e), size, o);
+      setHoverEdge(
+        owners.has(axialKey(edge[1])) &&
+          (edgeTool || doorOwners.has(edgeKey(edge)))
+          ? edge
+          : null
+      );
     } else {
       setHoverEdge(null);
     }
-    if (tool === 'region' && regionStroke) {
-      const cell = nearestCreationCell(p, grid);
-      const key = `${cell[0]},${cell[1]}`;
-      if (!regionStroke.touched.has(key)) {
-        regionStroke.touched.add(key);
-        if (regionEdit.selectedRegionId) {
-          regionEdit.setSelectedRegionCellMembership(
-            cell,
-            regionStroke.mode === 'add'
-          );
-        } else {
-          regionEdit.setPendingCellMembership(
-            cell,
-            regionStroke.mode === 'add'
-          );
-        }
-      }
-    }
   };
 
-  const handlePointerUp: React.PointerEventHandler<SVGSVGElement> = () => {
-    setStroke(null);
-    setDragPlacement(null);
-    setRegionStroke(null);
-    // Flushes the region brush's own paint/skip tally (region-brush
-    // honesty round) — a no-op when no region-tool stroke was active this
-    // gesture (every OTHER tool's pointer-up passes through this same
-    // shared handler, and `endStroke` itself guards on that).
-    regionEdit.endStroke();
-    if (draggingEndpoint) {
-      const line = doc.wallLines[draggingEndpoint.lineIndex];
-      const otherEnd =
-        draggingEndpoint.which === 'from' ? line?.to : line?.from;
-      if (line && otherEnd && sameCorner(draggingEndpoint.current, otherEnd)) {
-        // Dragging an endpoint onto its own line's other end would
-        // collapse it to a single point — rejected, not silently
-        // clamped to "closest different corner," so the author sees why
-        // nothing moved rather than the handle jumping somewhere
-        // unrequested.
-        onReject('A straight wall’s two ends can’t land on the same corner.');
-      } else {
-        onSetStraightWallEndpoint(
-          draggingEndpoint.lineIndex,
-          draggingEndpoint.which,
-          draggingEndpoint.current
-        );
+  const endPaint = () => {
+    painting.current = null;
+  };
+
+  // Release commits (or falls back to the single-edge click); releasing
+  // with B back on A after moving, or Escape, or leaving the canvas,
+  // cancels.
+  const finishGesture = () => {
+    if (!gesture) return;
+    setGesture(null);
+    if (gesture.kind === 'reshape') {
+      // Released in place = no-op; released elsewhere replaces every
+      // grabbed chain with its re-derived one.
+      if (!gesture.moved || sameCorner(gesture.origin, gesture.b, size, o)) {
+        return;
       }
-      setDraggingEndpoint(null);
+      onWallReshape(
+        gesture.chains.map((c) => c.old),
+        chains
+      );
       return;
     }
-    if (straightStroke) {
-      const moved = !sameCorner(
-        straightStroke.fromCorner,
-        straightStroke.toCorner
-      );
-      if (moved) {
-        onAddStraightWall(straightStroke.fromCorner, straightStroke.toCorner);
-        setSelectedWallLineIndex(null);
-      } else if (straightStroke.clickTarget !== null) {
-        // A CLICK (no real drag) landing on an existing straight wall
-        // SELECTS it (shows endpoint handles) — clicking the SAME
-        // already-selected wall again deselects it; a drag that merely
-        // STARTS on top of one still draws a new segment (the `moved`
-        // branch above), consistent with every other tool's
-        // click-vs-drag split in this component. Deleting a selected
-        // wall is now the Delete/Backspace key, not a click — see the
-        // keydown effect above.
-        setSelectedWallLineIndex((current) =>
-          current === straightStroke.clickTarget
-            ? null
-            : straightStroke.clickTarget
-        );
-      } else {
-        setSelectedWallLineIndex(null);
-      }
-      setStraightStroke(null);
+    if (!gesture.moved) {
+      onEdgeClick(gesture.pressEdge);
+      return;
     }
+    if (sameCorner(gesture.a, gesture.b, size, o)) return;
+    if (gesture.kind === 'erase') onWallErase(chains[0]);
+    else if (gesture.tool === 'door') onDoorDraw(chains[0]);
+    else onWallDraw(chains[0]);
   };
 
-  // --- base grid: one hex polygon per cell, replacing the square
-  // predecessor's tiled-rect pattern background. Also the extent-tracking
-  // pass the viewBox below is computed from — a hex canvas' true bounding
-  // box isn't a clean `width*height` rectangle the way a square grid's
-  // was (see hexLayout.ts's own "the floor plan shears diagonally"
-  // finding, CONTRACT.md), so it's derived from real corner positions
-  // like Board.tsx's compiled-board viewBox already does, not recomputed
-  // by a second, parallel formula.
-  let minX = Infinity,
-    maxX = -Infinity,
-    minY = Infinity,
-    maxY = -Infinity;
-  const trackExtent = (x: number, y: number) => {
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-  };
-  const trackCellExtent = (col: number, row: number) => {
-    creationCellPolygon(col, row).forEach(([x, y]) => trackExtent(x, y));
-  };
-
-  const cellEls: ReactElement[] = [];
-  for (let col = 0; col < grid.width; col++) {
-    for (let row = 0; row < grid.height; row++) {
-      const corners = creationCellPolygon(col, row);
-      corners.forEach(([x, y]) => trackExtent(x, y));
-      const points = corners
-        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-        .join(' ');
-      cellEls.push(
-        <polygon
-          key={`cell-${col}-${row}`}
-          points={points}
-          fill="#1a1512"
-          stroke="#2a2521"
-          strokeWidth={1}
-          pointerEvents="none"
-        />
-      );
-    }
-  }
-
-  const wallEls: ReactElement[] = [];
-  for (const wall of doc.walls) {
-    const edge = wallGeometry(wall.from, wall.to);
-    wallEls.push(
-      <line
-        key={`${wall.from.join(',')}-${wall.to.join(',')}`}
-        x1={edge.a.x}
-        y1={edge.a.y}
-        x2={edge.b.x}
-        y2={edge.b.y}
-        stroke={wall.kind === 'door' ? '#ffb347' : '#e8e2d8'}
-        strokeWidth={wall.kind === 'door' ? 3 : 4}
-        strokeLinecap="round"
-      />
-    );
-    if (wall.kind === 'door') {
-      wallEls.push(
-        <circle
-          key={`${wall.from.join(',')}-${wall.to.join(',')}-hinge`}
-          cx={edge.mid.x}
-          cy={edge.mid.y}
-          r={3.5}
-          fill="#100d0b"
-          stroke="#ffb347"
-          strokeWidth={1.5}
-        />
-      );
-    }
-  }
-
-  // Straight walls — genuinely different rendering job from wallEls
-  // above: each entry ALSO needs its FOOTPRINT (every hex its line
-  // clips, per Kirk's "any hex that is not 100% uncovered would not be
-  // traversable" rule) drawn as a hatched overlay, its blocked EDGE
-  // crossings, and now (this unit) its own `doors:` openings carved as
-  // real gaps — see `straightWallLineElements`'s own doc comment for the
-  // full rendering job, shared with the live "drawing a new wall"
-  // preview below.
-  //
-  // A line whose endpoint is CURRENTLY being drag-adjusted
-  // (`draggingEndpoint`) renders its LIVE (not-yet-committed) position —
-  // amber/provisional, same as any other in-progress content — instead
-  // of its last-committed one, so the drag itself gives real-time
-  // footprint feedback.
-  const straightWallEls: ReactElement[] = [];
-  doc.wallLines.forEach((line, index) => {
-    const dragging =
-      draggingEndpoint && draggingEndpoint.lineIndex === index
-        ? draggingEndpoint
-        : null;
-    const from = dragging?.which === 'from' ? dragging.current : line.from;
-    const to = dragging?.which === 'to' ? dragging.current : line.to;
-    straightWallEls.push(
-      ...straightWallLineElements(
-        `swall-${index}`,
-        from,
-        to,
-        line.doors,
-        grid,
-        !!dragging,
-        dragging?.snapped ?? false
-      )
-    );
-  });
-
-  // Endpoint HANDLES for the SELECTED straight wall — draggable,
-  // corner-to-corner-snapped fine-tuning (Kirk: "it always hangs over a
-  // little" — this is the fix). Purely visual: the actual hit-test lives
-  // in `handlePointerDown`'s own `straightWallHandleHit` call, coordinate
-  // math against the same points these circles render at, matching how
-  // every other overlay in this component works (`pointerEvents="none"`
-  // throughout, hit-testing done once at the SVG root).
-  const straightWallHandleEls: ReactElement[] = [];
-  if (tool === 'straightWall' && selectedWallLineIndex !== null) {
-    const line = doc.wallLines[selectedWallLineIndex];
-    if (line) {
-      const dragging =
-        draggingEndpoint && draggingEndpoint.lineIndex === selectedWallLineIndex
-          ? draggingEndpoint
-          : null;
-      const handlePoints: [string, CornerRef][] = [
-        ['from', dragging?.which === 'from' ? dragging.current : line.from],
-        ['to', dragging?.which === 'to' ? dragging.current : line.to],
-      ];
-      for (const [label, corner] of handlePoints) {
-        const p = cornerPoint(corner);
-        straightWallHandleEls.push(
-          <circle
-            key={`swall-handle-${label}`}
-            cx={p.x}
-            cy={p.y}
-            r={6}
-            fill="#14110f"
-            stroke="#5fd1c9"
-            strokeWidth={2.5}
-            pointerEvents="none"
-          />
-        );
-      }
-
-      // Delete button (Kirk: "gonna need a way to delete a wall... had a
-      // small section with no way to remove it" — Delete/Backspace on a
-      // selection already worked from the round above; nothing on the
-      // board ever told the author that, so this is the missing VISIBLE
-      // affordance, not new removal logic). Uses the wall's own
-      // COMMITTED `line.from`/`line.to` (matching `straightWallDeleteButtonHit`'s
-      // own hit-test exactly) rather than the live drag position — the
-      // button isn't clickable mid-endpoint-drag anyway (the pointer is
-      // already captured by that gesture), so it simply holds its last
-      // position until the drag ends and the wall re-renders. Doors on
-      // the wall are removed WITH it (`removeWallLineAt` splices the
-      // whole entry; `doors:` lives nested inside), called out in the
-      // caption rather than a hover tooltip — every other overlay in
-      // this component is `pointerEvents="none"`, so a native `<title>`
-      // would never actually fire.
-      const deleteBtn = straightWallDeleteButtonPoint(line.from, line.to);
-      const doorCount = line.doors.length;
-      straightWallHandleEls.push(
-        <g key="swall-delete-btn" pointerEvents="none">
-          <circle
-            cx={deleteBtn.x}
-            cy={deleteBtn.y}
-            r={9}
-            fill="#3a1c18"
-            stroke="#ff9a8a"
-            strokeWidth={2}
-          />
-          <text
-            x={deleteBtn.x}
-            y={deleteBtn.y + 4}
-            textAnchor="middle"
-            fontSize={12}
-            fontWeight={700}
-            fill="#ff9a8a"
-          >
-            ×
-          </text>
-          <text
-            x={deleteBtn.x}
-            y={deleteBtn.y + 22}
-            textAnchor="middle"
-            fontSize={9}
-            fill="#ff9a8a"
-          >
-            {`delete${doorCount > 0 ? ` (+${doorCount} door${doorCount === 1 ? '' : 's'})` : ''}`}
-          </text>
-        </g>
-      );
-    }
-  }
-
-  // Live drag preview for a brand-NEW wall being drawn (not an endpoint
-  // drag on an existing one, handled above) — same rendering job, amber/
-  // provisional, no doors of its own yet.
-  const strokeHasMoved =
-    !!straightStroke &&
-    !sameCorner(straightStroke.fromCorner, straightStroke.toCorner);
-  const straightPreviewEls: ReactElement[] =
-    tool === 'straightWall' && straightStroke && strokeHasMoved
-      ? straightWallLineElements(
-          'swall-preview',
-          straightStroke.fromCorner,
-          straightStroke.toCorner,
-          [],
-          grid,
-          true,
-          straightStroke.snapped
-        )
-      : [];
-  const previewFootprint: [number, number][] =
-    tool === 'straightWall' && straightStroke && strokeHasMoved
-      ? straightWallFootprint(
-          straightStroke.fromCorner,
-          straightStroke.toCorner,
-          grid
-        )
-      : [];
-
-  // Union of every straight wall's footprint — committed (using each
-  // line's LIVE position if its endpoint is currently being drag-
-  // adjusted, not its last-committed one, so the flag system stays
-  // consistent with what the hatch overlay above is already showing)
-  // AND the live new-wall-draw preview, if one is in progress — what
-  // placements/start/end/region cells below are checked against so a
-  // newly-drawn footprint FLAGS anything it now covers instead of
-  // silently deleting or moving it. Live preview is included
-  // deliberately: an author dragging a wall over an existing monster
-  // should see the warning appear before even releasing the pointer, not
-  // just after.
-  const committedFootprint = straightWallsFootprintSet(
-    doc.wallLines.map((line, index) => {
-      const dragging =
-        draggingEndpoint && draggingEndpoint.lineIndex === index
-          ? draggingEndpoint
-          : null;
-      if (!dragging) return line;
-      return {
-        from: dragging.which === 'from' ? dragging.current : line.from,
-        to: dragging.which === 'to' ? dragging.current : line.to,
-        doors: line.doors,
-      };
-    }),
-    grid
+  const selectedRegion = selection?.kind === 'region' ? selection.id : null;
+  const selectedDoor = selection?.kind === 'door' ? selection.id : null;
+  // A selected wall is a set of doc edges; a run reads as selected when
+  // any of its source edges is in the set (the runs re-derive on every
+  // doc change, so membership is resolved at render time).
+  const selectedWallKeys = useMemo(
+    () =>
+      selection?.kind === 'wall' ? new Set(selection.edges.map(edgeKey)) : null,
+    [selection]
   );
-  const footprintKeys = new Set(committedFootprint);
-  for (const [col, row] of previewFootprint) {
-    footprintKeys.add(`${col},${row}`);
+  const selectedPlacement =
+    selection?.kind === 'placement' ? selection.index : null;
+
+  // Literal hex-edge lines. With the straightened picture on (pointy),
+  // walls and doors render as runs instead, and only ERROR edges stay
+  // literal, drawn on top of the runs — an error is edge-scoped truth
+  // about what the author clicked, not about the fitted line (#800).
+  // On a flat-top document everything stays literal, as before.
+  const straightened = scene !== null;
+  const edgeLines: {
+    key: string;
+    edge: Edge;
+    stroke: string;
+    width: number;
+    dash?: string;
+  }[] = [];
+  for (const w of displayDoc.walls) {
+    const isError = errorEdges.has(edgeKey(w.edge));
+    if (straightened && !isError) continue;
+    edgeLines.push({
+      key: `w:${edgeKey(w.edge)}`,
+      edge: w.edge,
+      stroke: isError ? ERROR_STROKE : WALL_STROKE,
+      width: 4,
+    });
   }
-  const inFootprint = (col: number, row: number) =>
-    footprintKeys.has(`${col},${row}`);
-
-  // Coverage-based standability (rpg-project#169's live-design follow-up
-  // with Kirk, 2026-08-07) — a SEPARATE, narrower check from `inFootprint`
-  // above: `inFootprint` stays the raw "any touch at all" set (the
-  // flagging warnings below — placements/start/end/regions — stay
-  // maximally sensitive, informational, never silently dropped). This one
-  // answers "is this specific cell blocked for STANDING" and is used only
-  // by `renderPlacement`'s own monster-only warning ring, below — a
-  // lightly-clipped cell is no longer a real block for anything that
-  // doesn't need standable ground.
-  const committedFootprintCoverage = straightWallsFootprintCoverage(
-    doc.wallLines.map((line, index) => {
-      const dragging =
-        draggingEndpoint && draggingEndpoint.lineIndex === index
-          ? draggingEndpoint
-          : null;
-      if (!dragging) return line;
-      return {
-        from: dragging.which === 'from' ? dragging.current : line.from,
-        to: dragging.which === 'to' ? dragging.current : line.to,
-        doors: line.doors,
-      };
-    }),
-    grid
-  );
-  const standableFootprint = standableFootprintKeys(committedFootprintCoverage);
-  const inStandableFootprint = (col: number, row: number) =>
-    standableFootprint.has(`${col},${row}`);
-
-  // Same dark/dashed treatment Board.tsx (edit mode) uses for a target-
-  // dialect hole — one visual language for "no floor here" across both
-  // boards. Hex polygon now, not an axis-aligned rect.
-  const holeEls: ReactElement[] = doc.holes.map(([col, row]) => {
-    const corners = creationCellPolygon(col, row, CELL_SIZE * 0.75)
-      .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-      .join(' ');
-    return (
-      <polygon
-        key={`hole-${col}-${row}`}
-        points={corners}
-        fill="#050403"
-        stroke="#2a1a33"
-        strokeWidth={1.5}
-        strokeDasharray="3 2"
-        pointerEvents="none"
-      />
-    );
-  });
-
-  // Cell-authored semantic regions (rpg-project#180) — a tinted hex
-  // polygon per member cell (archetype-colored via `regionArchetypeColor`,
-  // the SAME color the edit-mode hex board's read-only overlay uses) plus
-  // one label at the region's centroid. `pointerEvents="none"` throughout:
-  // the board's own `handlePointerDown` already resolves "was an existing
-  // region clicked" via `nearestCreationCell` + a `doc.regions` scan, so
-  // these elements are purely visual, not a second independent hit-test
-  // surface. Painted biggest-first (`regionsByPaintOrder`, shared with
-  // `Board.tsx`'s read-only overlay) so a nested region's overlay draws
-  // on top of its container's, "innermost visible."
-  const regionEls: ReactElement[] = [];
-  // A region's claim over a straight wall's FOOTPRINT band, rendered
-  // SEPARATELY from `regionEls` and painted much later in this
-  // component's own SVG child order (after `straightWallEls`, see the
-  // return below) — region-brush honesty round, 2026-08-06. Kirk, live
-  // authoring: "the shared hexes look like the unplayable piece the wall
-  // goes through" — his first region's brush swept up a wall's footprint
-  // cells, and the crimson hatch (drawn LATER than `regionEls` in the old
-  // paint order, so it visually sat ON TOP) buried both the region's own
-  // tint AND this file's existing "⚠" warning underneath it, making a
-  // real membership fact unreadable. The fix is paint order, not new
-  // data: same `inFootprint` cells, same region color, just drawn AFTER
-  // the hatch instead of before it, at a stronger opacity so the claim is
-  // unmistakable rather than a second faint layer under a loud one. Doors
-  // NOT footprint cells are unaffected — this list is empty whenever
-  // `inFootprint` never fires for a region's own cells.
-  const regionFootprintClaimEls: ReactElement[] = [];
-  for (const region of regionsByPaintOrder(doc.regions)) {
-    const color = regionArchetypeColor(region.archetype);
-    const selected = regionEdit.selectedRegionId === region.id;
-    for (const [col, row] of region.cells) {
-      const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
-        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-        .join(' ');
-      regionEls.push(
-        <polygon
-          key={`region-${region.id}-${col}-${row}`}
-          points={corners}
-          fill={color}
-          fillOpacity={selected ? 0.32 : 0.18}
-          stroke={color}
-          strokeWidth={selected ? 2 : 1}
-          strokeDasharray={selected ? undefined : '3 2'}
-          pointerEvents="none"
-        />
-      );
-      // A straight wall's footprint landing inside a region's own cells
-      // is FLAGGED, never auto-removed from the region — Kirk's rule
-      // makes the cell impassable, but membership is an authoring fact
-      // this tool has no business silently rewriting (same "flag, don't
-      // delete" discipline the placement/start/end checks below follow).
-      // Do NOT make footprint cells unpaintable — they're legal region
-      // members (semantic vs physical, settled) — this is visibility
-      // only, never a membership restriction.
-      if (inFootprint(col, row)) {
-        const c = creationCellCenter(col, row);
-        regionFootprintClaimEls.push(
-          <polygon
-            key={`region-${region.id}-${col}-${row}-fp-claim`}
-            points={corners}
-            fill={color}
-            fillOpacity={0.55}
-            stroke={color}
-            strokeWidth={2}
-            pointerEvents="none"
-          />,
-          <text
-            key={`region-${region.id}-${col}-${row}-fp-warn`}
-            x={c.x}
-            y={c.y + 3}
-            textAnchor="middle"
-            fill="#ff6a6a"
-            fontSize={11}
-            fontWeight={700}
-            pointerEvents="none"
-            style={{ paintOrder: 'stroke', stroke: '#100d0b', strokeWidth: 3 }}
-          >
-            ⚠
-          </text>
-        );
-      }
-    }
-    const centroid = regionCentroid(region.cells);
-    const labelPos = creationCellCenter(centroid.col, centroid.row);
-    regionEls.push(
-      <text
-        key={`region-${region.id}-label`}
-        x={labelPos.x}
-        y={labelPos.y + 3}
-        textAnchor="middle"
-        fill={color}
-        fontSize={10}
-        fontWeight={700}
-        pointerEvents="none"
-        style={{ paintOrder: 'stroke', stroke: '#100d0b', strokeWidth: 3 }}
-      >
-        {region.name ?? region.id}
-      </text>
-    );
-
-    // OPEN boundary edges — Kirk's false-enclosure worry made visible
-    // (creationGeometry.ts's `openBoundaryEdges` doc comment has the full
-    // rationale). Drawn for EVERY region, not just the selected one — an
-    // author scanning the whole board should be able to see at a glance
-    // which regions are actually sealed, not have to select each one in
-    // turn to find out. A hot, unmissable red/orange, deliberately louder
-    // than the region's own archetype-colored fill (this file's "loud
-    // beats subtle" precedent, CONTRACT.md) — a gap in a boundary is a
-    // correctness fact, not a decoration.
-    for (const edge of openBoundaryEdges(region.cells, doc.walls)) {
-      regionEls.push(
-        <line
-          key={`region-${region.id}-open-${edge.cellA.join(',')}-${edge.cellB.join(',')}`}
-          x1={edge.a.x}
-          y1={edge.a.y}
-          x2={edge.b.x}
-          y2={edge.b.y}
-          stroke="#ff5a3a"
-          strokeWidth={3}
-          strokeLinecap="round"
-          pointerEvents="none"
-        />
-      );
+  for (const d of displayDoc.doors) {
+    for (const e of d.edges) {
+      const k = edgeKey(e);
+      const isError = errorEdges.has(k);
+      if (straightened && !isError) continue;
+      edgeLines.push({
+        key: `d:${k}`,
+        edge: e,
+        stroke: isError
+          ? ERROR_STROKE
+          : d.locked
+            ? DOOR_LOCKED_STROKE
+            : DOOR_STROKE,
+        width: d.id === selectedDoor ? 6 : 4,
+        dash: d.closed || d.locked ? undefined : '4 3',
+      });
     }
   }
-
-  // The in-progress, not-yet-created region's own pending cells — same
-  // hex-polygon treatment, dashed amber to read as "not committed yet"
-  // (matching this file's own hover-edge/wall-drawing amber-for-
-  // provisional convention elsewhere in this component).
-  const pendingRegionEls: ReactElement[] = regionEdit.pendingCells.map(
-    ([col, row]) => {
-      const corners = creationCellPolygon(col, row, CELL_SIZE * 0.92)
-        .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-        .join(' ');
-      return (
-        <polygon
-          key={`region-pending-${col}-${row}`}
-          points={corners}
-          fill="#ffb347"
-          fillOpacity={0.28}
-          stroke="#ffb347"
-          strokeWidth={2}
-          strokeDasharray="3 2"
-          pointerEvents="none"
-        />
-      );
-    }
-  );
-
-  // The board's own evidence for the most recent rejected/partial region
-  // paint or create (region-brush honesty round, 2026-08-06) — Kirk: "it
-  // says 'one or more cells already belong to another region'... with NO
-  // indication which cells." `regionEdit.conflictFlash` names WHICH
-  // cells and whose (the toast, flashed by the same caller, names the
-  // owning region); this renders those cells with a pulsing white
-  // outline — deliberately distinct from every other overlay this file
-  // draws (a region's own colored tint, the footprint hatch's crimson
-  // diagonal, the open-boundary line's solid red) so "look here, THIS is
-  // what collided" can't be confused with an existing steady-state
-  // warning. Rendered LAST (see the return below) so it always wins the
-  // paint order regardless of what else is under it. SVG-native
-  // `<animate>`, not a CSS keyframe — this file has no stylesheet of its
-  // own to add one to, and this is the only element that needs to pulse.
-  const conflictFlashEls: ReactElement[] = (
-    regionEdit.conflictFlash?.cells ?? []
-  ).map(([col, row]) => {
-    const corners = creationCellPolygon(col, row, CELL_SIZE * 0.98)
-      .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-      .join(' ');
-    return (
-      <polygon
-        key={`region-conflict-${col}-${row}`}
-        points={corners}
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth={3}
-        pointerEvents="none"
-      >
-        <animate
-          attributeName="stroke-opacity"
-          values="1;0.15;1"
-          dur="0.9s"
-          repeatCount="indefinite"
-        />
-      </polygon>
-    );
-  });
-
-  const renderPlacement = (
-    ref: string,
-    at: [number, number],
-    facing: number | null,
-    sel: PlacementSelection
-  ) => {
-    const center = creationCellCenter(at[0], at[1]);
-    const style = resolveMarkerStyle(ref);
-    // roomId comparison matters here even though every creation-mode
-    // placement shares roomId: null today — matches Board.tsx's own
-    // isSelected check (roomId + index, not index alone), the correct
-    // general form now that PlacementSelection.roomId is a real,
-    // meaningful discriminator rather than an implicit assumption.
-    const selected =
-      !!edit.selectedPlacement &&
-      !edit.selectedPlacement.boss &&
-      !sel.boss &&
-      edit.selectedPlacement.roomId === sel.roomId &&
-      edit.selectedPlacement.index === sel.index;
-    const angle = facing !== null ? FACING_ANGLES_DEG[facing] : null;
-    // A straight wall's footprint landing on an EXISTING placement is
-    // FLAGGED, never silently deleted or moved — reusing the same "⚠,
-    // hot color, unmissable" visual language `Board.tsx`'s
-    // "⚠ PARTY SPAWN (BLOCKED!)" warning uses for edit mode's compiled
-    // entrance-blocked check, adapted here since a generic placement
-    // marker (unlike the START/END circle below) has no text label of
-    // its own to prefix.
-    //
-    // PLACEABLE vs. STANDABLE (rpg-project#169's "props on footprint
-    // cells" unit, refined by the coverage-based-standability live design
-    // round with Kirk, 2026-08-07): a footprint cell is no longer an
-    // error condition for a PROP — it's the intended target (Kirk's exact
-    // ask, a bookcase against a drawn wall) — so a prop on one renders
-    // normally, no warning. A monster still can't stand on a cell whose
-    // coverage meets `STANDABLE_COVERAGE_THRESHOLD` — `inStandableFootprint`
-    // (not the raw `inFootprint`, which flags ANY touch at all) — so the
-    // warning is scoped to genuinely-blocked cells now, not every cell the
-    // wall merely grazes. Matches `canvasPlacementRejectReason`'s own
-    // `requiresStandable` split at PLACEMENT time — this is the same rule
-    // applied retroactively, to a wall drawn AFTER the placement already
-    // existed.
-    const blocked =
-      inStandableFootprint(at[0], at[1]) && ref.startsWith('dnd5e:monsters:');
-    return (
-      <g
-        key={sel.boss ? 'boss' : `place-${sel.index}`}
-        onPointerDown={(e) => {
-          if (tool !== null) return;
-          e.stopPropagation();
-          onSelectPlacement(sel);
-          setDragPlacement(sel);
-        }}
-        style={{ cursor: tool === null ? 'grab' : 'default' }}
-      >
-        <PlacementMarker
-          center={center}
-          color={style.color}
-          short={style.short}
-          selected={selected}
-        />
-        {angle !== null && (
-          <g transform={`translate(${center.x},${center.y}) rotate(${angle})`}>
-            <polygon
-              points="14,0 22,-4 22,4"
-              fill="#ffd76a"
-              stroke="#000"
-              strokeWidth={0.5}
-            />
-          </g>
-        )}
-        {blocked && (
-          <g pointerEvents="none">
-            <circle
-              cx={center.x}
-              cy={center.y}
-              r={16}
-              fill="none"
-              stroke="#ff3b3b"
-              strokeWidth={2}
-              strokeDasharray="3 2"
-            />
-            <text
-              x={center.x}
-              y={center.y - 20}
-              textAnchor="middle"
-              fill="#ff6a6a"
-              fontSize={10}
-              fontWeight={700}
-              style={{
-                paintOrder: 'stroke',
-                stroke: '#100d0b',
-                strokeWidth: 3,
-              }}
-            >
-              ⚠ IN WALL FOOTPRINT
-            </text>
-          </g>
-        )}
-      </g>
-    );
-  };
-
-  const placementEls = doc.place.map((p, index) =>
-    renderPlacement(p.ref, p.at, p.facing, { roomId: null, index })
-  );
-
-  if (doc.start) trackCellExtent(doc.start[0], doc.start[1]);
-  if (doc.end) trackCellExtent(doc.end[0], doc.end[1]);
-
-  const pad = BOARD_HEX_SIZE * 1.6;
-  const vx = minX - pad;
-  const vy = minY - pad;
-  const vw = maxX - minX + pad * 2;
-  const vh = maxY - minY + pad * 2;
 
   return (
-    <svg
-      ref={svgRef}
-      viewBox={`${vx} ${vy} ${vw} ${vh}`}
-      width={Math.max(vw, 600)}
-      height={Math.max(vh, 420)}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
-      style={{
-        cursor:
-          tool === 'wall' ||
-          tool === 'straightWall' ||
-          tool === 'door' ||
-          tool === 'region'
-            ? 'crosshair'
-            : 'default',
-      }}
+    <div
+      ref={scrollRef}
+      data-testid="creation-viewport"
+      className="dg-viewport"
+      style={{ background: VOID_FILL }}
     >
-      <defs>
-        {/* Straight-wall footprint hatch — deliberately distinct from
-            the region open-boundary overlay's plain solid red LINE
-            (`openBoundaryEdges` above): a crimson diagonal HATCH fill
-            reads as "this ground is gone," not just "this line is a
-            problem," matching the task's own ask for a visually
-            distinct treatment from the region worry overlay. */}
-        <pattern
-          id="db-footprint-hatch"
-          patternUnits="userSpaceOnUse"
-          width={7}
-          height={7}
-          patternTransform="rotate(45)"
+      <div ref={padRef} className="dg-viewport-pad">
+        <svg
+          ref={svgRef}
+          data-testid="creation-board"
+          viewBox={viewBox}
+          width={view.width * BOARD_SCALE}
+          height={view.height * BOARD_SCALE}
+          className="select-none block"
+          style={{
+            background: VOID_FILL,
+            touchAction: 'none',
+            cursor:
+              gesture?.kind === 'reshape'
+                ? 'grabbing'
+                : hoverVertex
+                  ? 'grab'
+                  : cursorFor(tool),
+          }}
+          onPointerUp={() => {
+            endPaint();
+            finishGesture();
+          }}
+          onPointerCancel={() => {
+            // A browser-canceled pointer (touch interruption, capture
+            // loss) must drop the in-flight gesture WITHOUT committing
+            // it — otherwise a later unrelated pointer-up would commit
+            // the stale chain (Copilot review, PR #808).
+            endPaint();
+            setGesture(null);
+            setHoverEdge(null);
+            setHoverCell(null);
+            setHoverPoint(null);
+          }}
+          onPointerLeave={() => {
+            endPaint();
+            setGesture(null);
+            setHoverEdge(null);
+            setHoverCell(null);
+            setHoverPoint(null);
+          }}
+          onContextMenu={(e) => e.preventDefault()}
         >
-          <rect width={7} height={7} fill="#2a0e0e" fillOpacity={0.55} />
-          <line x1={0} y1={0} x2={0} y2={7} stroke="#c94f4f" strokeWidth={3} />
-        </pattern>
-      </defs>
-
-      {cellEls}
-
-      {regionEls}
-      {pendingRegionEls}
-      {wallEls}
-      {straightWallEls}
-      {straightPreviewEls}
-      {straightWallHandleEls}
-      {holeEls}
-      {/* Drawn AFTER the straight-wall footprint hatch above so a
-          region's claim over a footprint/band cell tints OVER the hatch
-          instead of sitting invisibly under it — see this array's own
-          doc comment. */}
-      {regionFootprintClaimEls}
-
-      {hoverEdge && (tool === 'wall' || tool === 'door') && (
-        <line
-          x1={hoverEdge.a.x}
-          y1={hoverEdge.a.y}
-          x2={hoverEdge.b.x}
-          y2={hoverEdge.b.y}
-          stroke={tool === 'door' ? '#ffb347' : '#5fd1c9'}
-          strokeWidth={4}
-          strokeLinecap="round"
-          opacity={0.55}
-          pointerEvents="none"
-        />
-      )}
-
-      {doc.start &&
-        (() => {
-          const c = cellCenter(doc.start[0], doc.start[1]);
-          // Reuses Board.tsx's exact "⚠ ... (BLOCKED!)" visual language
-          // (edit mode's isEntranceBlocked check) — a straight wall's
-          // footprint landing on the start cell is the creation-mode
-          // analog of that same fact, so it gets the same treatment
-          // rather than a new one invented for this tool.
-          const blocked = inFootprint(doc.start[0], doc.start[1]);
-          return (
-            <g pointerEvents="none">
-              <circle
-                cx={c.x}
-                cy={c.y}
-                r={13}
-                fill="none"
-                stroke={blocked ? '#ff3b3b' : START_COLOR}
-                strokeWidth={2.5}
-                strokeDasharray="4 3"
+          <g data-layer="cells">
+            {grid.map((cell) => {
+              const key = axialKey(cell);
+              const ownerId = owners.get(key);
+              const region = ownerId ? regionById.get(ownerId) : undefined;
+              const index = ownerId ? (regionIndex.get(ownerId) ?? 0) : 0;
+              const fill = region
+                ? litColor(regionColor(index), region.lighting.intensity)
+                : VOID_FILL;
+              const isSelectedRegion = !!ownerId && ownerId === selectedRegion;
+              const isActive = !!ownerId && ownerId === activeRegionId;
+              const isError = errorCells.has(key);
+              const isHover = hoverCell && axialKey(hoverCell) === key;
+              return (
+                <polygon
+                  key={key}
+                  data-cell={key}
+                  data-region={ownerId ?? ''}
+                  points={cornersPath(cell, size, o)}
+                  fill={fill}
+                  stroke={
+                    isError
+                      ? ERROR_STROKE
+                      : isSelectedRegion
+                        ? HOVER_STROKE
+                        : region
+                          ? regionColor(index)
+                          : VOID_STROKE
+                  }
+                  strokeWidth={isError ? 2.5 : isSelectedRegion ? 1.5 : 1}
+                  strokeOpacity={region ? (isActive ? 1 : 0.6) : 1}
+                  opacity={
+                    isHover && (tool === 'region' || tool === 'erase') ? 0.8 : 1
+                  }
+                  onPointerDown={(e) => handleCellDown(cell, e)}
+                  onPointerMove={(e) => handleCellMove(cell, e)}
+                  onPointerEnter={(e) => handleCellMove(cell, e)}
+                />
+              );
+            })}
+          </g>
+          <g data-layer="start" pointerEvents="none">
+            {doc.start && (
+              <Start
+                cell={doc.start}
+                size={size}
+                o={o}
+                error={errorTargets.some((t) => t.kind === 'start')}
               />
-              <text
-                x={c.x}
-                y={c.y - 18}
-                textAnchor="middle"
-                fill={blocked ? '#ff6a6a' : '#8fe8e0'}
-                fontSize={10}
-                fontWeight={700}
-              >
-                {blocked ? '⚠ START (BLOCKED!)' : 'START'}
-              </text>
+            )}
+          </g>
+          <g data-layer="placements" pointerEvents="none">
+            {doc.place.map((p, i) => {
+              const cell = cellCenter(p.at, size, o);
+              // Offset is a fraction of the cell size, visual only — the
+              // marker moves within its hex, the cell it's keyed to
+              // (selection, errors, deletion) never changes.
+              const c = {
+                x: cell.x + (p.offset?.[0] ?? 0) * size,
+                y: cell.y + (p.offset?.[1] ?? 0) * size,
+              };
+              const thumb = thumbForRef(p.ref);
+              const monster = isMonsterRef(p.ref);
+              const color = monster
+                ? p.boss
+                  ? BOSS_COLOR
+                  : MONSTER_COLOR
+                : PROP_COLOR;
+              const r = size * 0.62;
+              const selected = i === selectedPlacement;
+              const error = errorTargets.some(
+                (t) => t.kind === 'placement' && t.index === i
+              );
+              const facingDeg =
+                p.facing !== undefined ? facingAngleDeg(p.facing) : undefined;
+              return (
+                <g key={`${p.ref}:${axialKey(p.at)}`} data-placement={i}>
+                  <circle
+                    cx={c.x}
+                    cy={c.y}
+                    r={r}
+                    fill={color}
+                    stroke={
+                      error
+                        ? ERROR_STROKE
+                        : selected
+                          ? HOVER_STROKE
+                          : '#00000088'
+                    }
+                    strokeWidth={error || selected ? 3 : 1}
+                  />
+                  {thumb ? (
+                    <image
+                      href={thumb}
+                      x={c.x - r * 0.85}
+                      y={c.y - r * 0.85}
+                      width={r * 1.7}
+                      height={r * 1.7}
+                      clipPath="circle(50%)"
+                    />
+                  ) : (
+                    <text
+                      x={c.x}
+                      y={c.y + 4}
+                      textAnchor="middle"
+                      fontSize={size * 0.5}
+                      fill="#fff"
+                    >
+                      {p.ref.split(':').pop()?.slice(0, 2).toUpperCase()}
+                    </text>
+                  )}
+                  {facingDeg !== undefined && (
+                    <line
+                      data-facing-tick={i}
+                      x1={c.x + Math.cos((facingDeg * Math.PI) / 180) * r}
+                      y1={c.y + Math.sin((facingDeg * Math.PI) / 180) * r}
+                      x2={c.x + Math.cos((facingDeg * Math.PI) / 180) * r * 1.6}
+                      y2={c.y + Math.sin((facingDeg * Math.PI) / 180) * r * 1.6}
+                      stroke={WALL_STROKE}
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                    />
+                  )}
+                  {p.boss && (
+                    <text
+                      x={c.x}
+                      y={c.y - r - 2}
+                      textAnchor="middle"
+                      fontSize={size * 0.45}
+                      fill="#ffd166"
+                    >
+                      ★
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </g>
+          <g data-layer="edges" pointerEvents="none" strokeLinecap="round">
+            {/* Straight runs first, then the gap-aligned doors, then any
+                literal (error) edges on top, then the hover edge. The
+                door keeps its stroke identity (locked/closed/selected)
+                but sits IN the run's gap, exactly where 3D will put it;
+                hit-testing stays edge-based (this layer takes no
+                pointer events). */}
+            {scene?.runs.map((r) => {
+              const isSelected =
+                !!selectedWallKeys &&
+                r.edges.some((edge) => selectedWallKeys.has(edgeKey(edge)));
+              return (
+                <g key={`run:${r.key}`}>
+                  <line
+                    data-run={r.key}
+                    data-selected={isSelected || undefined}
+                    stroke={isSelected ? HOVER_STROKE : WALL_STROKE}
+                    strokeWidth={isSelected ? 6 : 4}
+                    x1={r.a.x}
+                    y1={r.a.y}
+                    x2={r.b.x}
+                    y2={r.b.y}
+                  />
+                  {r.height > 0 && (
+                    <text
+                      data-run-height={r.key}
+                      x={(r.a.x + r.b.x) / 2}
+                      y={(r.a.y + r.b.y) / 2 - 6}
+                      textAnchor="middle"
+                      fontSize={11}
+                      fill={WALL_STROKE}
+                      stroke="none"
+                    >
+                      ×{r.height}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+            {scene?.doors.map((d) => {
+              const doorDoc = doorById.get(d.doorId);
+              return (
+                <line
+                  key={`dr:${edgeKey(d.edge)}`}
+                  data-door-run={edgeKey(d.edge)}
+                  x1={d.a.x}
+                  y1={d.a.y}
+                  x2={d.b.x}
+                  y2={d.b.y}
+                  stroke={doorDoc?.locked ? DOOR_LOCKED_STROKE : DOOR_STROKE}
+                  strokeWidth={d.doorId === selectedDoor ? 6 : 4}
+                  strokeDasharray={
+                    doorDoc?.closed || doorDoc?.locked ? undefined : '4 3'
+                  }
+                />
+              );
+            })}
+            {edgeLines.map((l) => {
+              const seg = edgeSegment(l.edge, size, o);
+              if (!seg) return null;
+              return (
+                <line
+                  key={l.key}
+                  data-edge={l.key}
+                  x1={seg.a.x}
+                  y1={seg.a.y}
+                  x2={seg.b.x}
+                  y2={seg.b.y}
+                  stroke={l.stroke}
+                  strokeWidth={l.width}
+                  strokeDasharray={l.dash}
+                />
+              );
+            })}
+            {hoverEdge &&
+              (() => {
+                const seg = edgeSegment(hoverEdge, size, o);
+                if (!seg) return null;
+                return (
+                  <line
+                    data-edge="hover"
+                    x1={seg.a.x}
+                    y1={seg.a.y}
+                    x2={seg.b.x}
+                    y2={seg.b.y}
+                    stroke={HOVER_STROKE}
+                    strokeWidth={6}
+                    strokeOpacity={0.55}
+                  />
+                );
+              })()}
+          </g>
+          {tool === 'select' && !gesture && (
+            <g data-layer="handles" pointerEvents="none">
+              {/* The selected wall's endpoints and shared corners are
+                  drag handles, visible the moment it is selected
+                  (Kirk's walk ruling: manipulation rides selection,
+                  the Strava-route-builder grammar). Drawn at the
+                  RENDERED endpoints — the points the author sees. */}
+              {handleVertices.map((v) => {
+                const hot =
+                  hoverVertex !== null &&
+                  sameCorner(v.ref, hoverVertex.ref, size, o);
+                return (
+                  <circle
+                    key={`vx:${v.point.x.toFixed(2)},${v.point.y.toFixed(2)}`}
+                    data-run-vertex={v.runs.length}
+                    cx={v.point.x}
+                    cy={v.point.y}
+                    r={size * (hot ? 0.22 : 0.12)}
+                    fill={hot ? HOVER_STROKE : WALL_STROKE}
+                    fillOpacity={hot ? 0.9 : 0.5}
+                    stroke={hot ? HOVER_STROKE : 'none'}
+                  />
+                );
+              })}
             </g>
-          );
-        })()}
-      {doc.end &&
-        (() => {
-          const c = cellCenter(doc.end[0], doc.end[1]);
-          const blocked = inFootprint(doc.end[0], doc.end[1]);
-          return (
-            <g pointerEvents="none">
-              <circle
-                cx={c.x}
-                cy={c.y}
-                r={13}
-                fill="none"
-                stroke={blocked ? '#ff3b3b' : END_COLOR}
-                strokeWidth={2.5}
-                strokeDasharray="4 3"
-              />
-              <text
-                x={c.x}
-                y={c.y - 18}
-                textAnchor="middle"
-                fill={blocked ? '#ff6a6a' : '#ffd76a'}
-                fontSize={10}
-                fontWeight={700}
-              >
-                {blocked ? '⚠ END (BLOCKED!)' : 'END'}
-              </text>
+          )}
+          {gesture && gesture.moved && (
+            <g data-layer="gesture" pointerEvents="none">
+              {/* The faint literal trace of the candidate edges — the
+                  chain the drag derived (skipped pairs shown absent),
+                  or the walls the erase will remove. The straightened
+                  result is already live above via the candidate doc. */}
+              {traceEdges.map((edge) => {
+                const seg = edgeSegment(edge, size, o);
+                if (!seg) return null;
+                return (
+                  <line
+                    key={`trace:${edgeKey(edge)}`}
+                    data-gesture-trace={edgeKey(edge)}
+                    x1={seg.a.x}
+                    y1={seg.a.y}
+                    x2={seg.b.x}
+                    y2={seg.b.y}
+                    stroke={
+                      gesture.kind === 'erase' ? ERROR_STROKE : HOVER_STROKE
+                    }
+                    strokeWidth={3}
+                    strokeOpacity={0.4}
+                    strokeDasharray="3 3"
+                  />
+                );
+              })}
+              {(gesture.kind === 'reshape'
+                ? [gesture.b, ...gesture.chains.map((c) => c.far)]
+                : [gesture.a, gesture.b]
+              ).map((end, i) => {
+                const p = cornerPoint(end, size, o);
+                return (
+                  <circle
+                    key={`end:${i}`}
+                    data-gesture-end={i}
+                    cx={p.x}
+                    cy={p.y}
+                    r={size * 0.18}
+                    fill="none"
+                    stroke={HOVER_STROKE}
+                    strokeWidth={2}
+                  />
+                );
+              })}
             </g>
-          );
-        })()}
-
-      {placementEls}
-      {conflictFlashEls}
-    </svg>
+          )}
+        </svg>
+      </div>
+    </div>
   );
+}
+
+function Start({
+  cell,
+  size,
+  o,
+  error,
+}: {
+  cell: Axial;
+  size: number;
+  o: DungeonDoc['orientation'];
+  error: boolean;
+}) {
+  const c = cellCenter(cell, size, o);
+  return (
+    <g data-start={axialKey(cell)}>
+      <circle
+        cx={c.x}
+        cy={c.y}
+        r={size * 0.5}
+        fill="none"
+        stroke={error ? ERROR_STROKE : START_COLOR}
+        strokeWidth={3}
+      />
+      <text
+        x={c.x}
+        y={c.y + size * 0.2}
+        textAnchor="middle"
+        fontSize={size * 0.55}
+        fontWeight={700}
+        fill={error ? ERROR_STROKE : START_COLOR}
+      >
+        S
+      </text>
+    </g>
+  );
+}
+
+function cursorFor(tool: BoardTool): string {
+  switch (tool) {
+    case 'region':
+    case 'erase':
+      return 'crosshair';
+    case 'wall':
+    case 'door':
+      return 'cell';
+    default:
+      return 'pointer';
+  }
 }

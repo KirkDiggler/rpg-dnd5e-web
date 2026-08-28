@@ -22,45 +22,33 @@
  */
 
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
+import type { DungeonShellFloorProfile } from '@/rendering/dungeonShellManifest';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useTexture } from '@react-three/drei';
 import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { dungeonFloorUv } from './dungeonFloorUv';
 import { cubeToWorld, hexCorners } from './hexMath';
 import { CRYPT_MEMORY_COLOR } from './sceneKnowledge';
 import {
   computeFloorPoolColor,
+  CRYPT_FLOOR_TINT,
+  cryptFloorBaseColor,
+  type DungeonFloorLighting,
   type FloorPoolLight,
 } from './syntyHexFloorHelpers';
 
 const TEX_BASE = '/models/synty/textures/';
 const FLOOR_TEXTURE = TEX_BASE + 'Dungeons_Texture_FloorTiles_01.png';
 
-// Sits above ShadedHexFloor's extruded top (0.05-0.15) so the two never
-// z-fight if both are ever mounted at once during a toggle transition.
-const FLOOR_Y = 0.2;
-
-/**
- * Crypt-theme floor tint (mid-flight scope addition, rpg-dnd5e-web#558 PR
- * review — Kirk: the floor's unlit MeshBasicMaterial renders full-bright
- * regardless of the scene's near-dark mood lighting, so candle/door light
- * pools visibly land on walls/props but not the floor — "the glowing-white-
- * board effect defeats the whole treatment"). Multiplies the floor texture,
- * same direction as the wall tint (WALL_TINT_BY_THEME in SyntyHexWall.tsx).
- *
- * REVISED (rpg-dnd5e-web#558 follow-up, Kirk's live-webview darkness
- * report): this now feeds an UNLIT `meshBasicMaterial` again (see
- * `isCrypt`'s branch below), not the lit `MeshStandardMaterial` the
- * comment above originally described — see that doc comment and this
- * PR's body for the full tone-mapping-variance rationale. Kept the same
- * color value across the swap so this is purely a lit-vs-unlit A/B, not
- * also a simultaneous hue change.
- */
-const CRYPT_FLOOR_TINT = new THREE.Color(0.35, 0.38, 0.46);
+// DUNGEON_SURFACE_Y sits above ShadedHexFloor's extruded top (0.05-0.15),
+// so the two never z-fight if both mount during a toggle transition.
 
 interface SyntyHexFloorTileProps {
   tile: AbsoluteFloorTile;
   hexSize: number;
   texture: THREE.Texture;
+  profile?: DungeonShellFloorProfile;
   /** True for a tile in `themeFloorHexKeys` (rpg-dnd5e-web#558's crypt
    * demo) OR when the whole space is themed `'crypt'` (rpg-dnd5e-web#558
    * real-route consumption) — swaps in `CRYPT_FLOOR_TINT`. Both branches
@@ -69,6 +57,7 @@ interface SyntyHexFloorTileProps {
    * color, not the lit/unlit material family, as of the #558 follow-up. */
   isCrypt: boolean;
   isRemembered: boolean;
+  baseColor: THREE.Color;
   /** Mood lights (candles/braziers/torches/doors) to pool toward, via
    * `computeFloorPoolColor` (syntyHexFloorHelpers.ts) — deterministic,
    * device-independent color blending, NOT a lit material (see that
@@ -96,22 +85,19 @@ function SyntyHexFloorTile({
   tile,
   hexSize,
   texture,
+  profile,
   isCrypt,
   isRemembered,
+  baseColor,
   poolLights,
   litSurfaces,
 }: SyntyHexFloorTileProps) {
   const world = cubeToWorld({ x: tile.x, y: tile.y, z: tile.z }, hexSize);
   const cryptColor = useMemo(() => {
     if (!isCrypt) return CRYPT_FLOOR_TINT;
-    if (!poolLights || poolLights.length === 0) return CRYPT_FLOOR_TINT;
-    return computeFloorPoolColor(
-      CRYPT_FLOOR_TINT,
-      world.x,
-      world.z,
-      poolLights
-    );
-  }, [isCrypt, poolLights, world.x, world.z]);
+    if (!poolLights || poolLights.length === 0) return baseColor;
+    return computeFloorPoolColor(baseColor, world.x, world.z, poolLights);
+  }, [baseColor, isCrypt, poolLights, world.x, world.z]);
   const geometry = useMemo(() => {
     const shape = new THREE.Shape();
     const corners = hexCorners({ x: 0, z: 0 }, hexSize);
@@ -137,14 +123,28 @@ function SyntyHexFloorTile({
     // this is lifted from).
     const pos = geo.getAttribute('position');
     const uv = new Float32Array(pos.count * 2);
-    for (let i = 0; i < pos.count; i++) {
-      uv[i * 2] = (pos.getX(i) + hexSize) / (2 * hexSize);
-      uv[i * 2 + 1] = (pos.getY(i) + hexSize) / (2 * hexSize);
+    if (profile) {
+      for (let i = 0; i < pos.count; i++) {
+        const absoluteX = world.x + pos.getX(i);
+        const absoluteZ = world.z - pos.getY(i);
+        const [u, v] = dungeonFloorUv(
+          absoluteX,
+          absoluteZ,
+          profile.worldUnitsPerRepeat
+        );
+        uv[i * 2] = u;
+        uv[i * 2 + 1] = v;
+      }
+    } else {
+      for (let i = 0; i < pos.count; i++) {
+        uv[i * 2] = (pos.getX(i) + hexSize) / (2 * hexSize);
+        uv[i * 2 + 1] = (pos.getY(i) + hexSize) / (2 * hexSize);
+      }
     }
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.rotateX(-Math.PI / 2);
     return geo;
-  }, [hexSize]);
+  }, [hexSize, profile, world.x, world.z]);
 
   // rpg-dnd5e-web#481: MeshStandardMaterial (PBR, lit) rendered this floor
   // nearly invisible in the deployed environment — under the scene's
@@ -179,7 +179,7 @@ function SyntyHexFloorTile({
   // doesn't fully close the tone-mapping question — only the floor's
   // slice of it).
   return (
-    <mesh geometry={geometry} position={[world.x, FLOOR_Y, world.z]}>
+    <mesh geometry={geometry} position={[world.x, DUNGEON_SURFACE_Y, world.z]}>
       {isRemembered ? (
         <meshBasicMaterial
           color={CRYPT_MEMORY_COLOR}
@@ -237,9 +237,14 @@ export interface SyntyHexFloorProps {
    * unchanged. Empty/undefined (every caller before the look-lab lighting
    * experiment) is a no-op. */
   poolLights?: readonly FloorPoolLight[];
+  /** Regional exposure and source pools resolved by DungeonLightingPlan.
+   * A per-cell pool entry wins over the legacy global poolLights fallback. */
+  floorLighting?: DungeonFloorLighting;
   /** See `SyntyHexFloorTileProps.litSurfaces` — dev/Kirk-only A/B,
    * default false/undefined for every caller. */
   litSurfaces?: boolean;
+  /** Optional absolute-world floor texture profile for continuous masonry. */
+  profile?: DungeonShellFloorProfile;
 }
 
 export function SyntyHexFloor({
@@ -249,19 +254,24 @@ export function SyntyHexFloor({
   rememberedFloorHexKeys,
   spaceTheme,
   poolLights,
+  floorLighting,
   litSurfaces,
+  profile,
 }: SyntyHexFloorProps) {
   // useTexture returns drei's shared, URL-keyed texture cache — mutating it
   // directly during render is a render-phase side effect on shared state
   // (Copilot review on #472). Clone it and configure the clone instead.
-  const baseMap = useTexture(FLOOR_TEXTURE);
+  const textureUrl = profile
+    ? `/models/synty/${profile.diffuse}`
+    : FLOOR_TEXTURE;
+  const baseMap = useTexture(textureUrl);
   const floorMap = useMemo(() => {
     const t = baseMap.clone();
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(2, 2);
+    t.repeat.set(profile ? 1 : 2, profile ? 1 : 2);
     t.needsUpdate = true;
     return t;
-  }, [baseMap]);
+  }, [baseMap, profile]);
 
   useEffect(() => {
     return () => floorMap.dispose();
@@ -273,17 +283,25 @@ export function SyntyHexFloor({
     <Suspense fallback={null}>
       {tiles.map((tile) => {
         const key = `${tile.x},${tile.y},${tile.z}`;
+        const intensity = floorLighting?.exposureByCell.get(key);
+        const baseColor =
+          intensity === undefined
+            ? CRYPT_FLOOR_TINT
+            : cryptFloorBaseColor(intensity);
+        const lights = floorLighting?.poolsByCell.get(key) ?? poolLights ?? [];
         return (
           <SyntyHexFloorTile
             key={key}
             tile={tile}
             hexSize={hexSize}
             texture={floorMap}
+            profile={profile}
             isCrypt={
               spaceTheme === 'crypt' || (themeFloorHexKeys?.has(key) ?? false)
             }
             isRemembered={rememberedFloorHexKeys?.has(key) ?? false}
-            poolLights={poolLights}
+            baseColor={baseColor}
+            poolLights={lights}
             litSurfaces={litSurfaces}
           />
         );

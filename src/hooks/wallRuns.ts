@@ -445,14 +445,30 @@ function boundsOf(hexes: CubeCoord[]): Bounds | undefined {
   return { minCol, maxCol, minRow, maxRow };
 }
 
-function distance(a: WorldPos, b: WorldPos): number {
+/**
+ * Exported starting with the session-route straight-wall presentation
+ * (rpg-dnd5e-web#762 slice 1, Kirk's ruling: "we had straight walls
+ * previously... making the walls follow the hex shapes is not a good
+ * idea"). This function and the four below it (`unitDirection`,
+ * `outwardNormal`, `lineIntersection`, `buildEnvelopeSegment`) are pure
+ * WorldPos vector math with no dependency on `RegionInput`/
+ * `ConnectorDoorInput` or this file's reveal-fog widening -- safe to share
+ * with a caller building runs from a wire that has no "region"/reveal
+ * concept at all. `hexColumn`/`hexRow`/`cubeAtColRow` are deliberately
+ * NOT in that reusable set: they encode this file's own "odd-q" toolkit
+ * offset convention (this file's own header doc), which a caller must
+ * verify against its own data before assuming -- a different wire's
+ * dungeons may use a different offset convention entirely (found true in
+ * practice: the session wire's reference tomb is "odd-r", not "odd-q").
+ */
+export function distance(a: WorldPos, b: WorldPos): number {
   return Math.hypot(b.x - a.x, b.z - a.z);
 }
 
 /** Unit direction from a to b; {0,0} for coincident points (a degenerate
  * single-hex-tall/wide region) — callers get a zero-length extension,
  * never NaN. */
-function unitDirection(a: WorldPos, b: WorldPos): WorldPos {
+export function unitDirection(a: WorldPos, b: WorldPos): WorldPos {
   const len = distance(a, b);
   if (len === 0) return { x: 0, z: 0 };
   return { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
@@ -460,7 +476,7 @@ function unitDirection(a: WorldPos, b: WorldPos): WorldPos {
 
 /** One of the two perpendiculars to `dir`, whichever points away from
  * `center` at the run's midpoint `mid` — "outward" for an envelope side. */
-function outwardNormal(
+export function outwardNormal(
   dir: WorldPos,
   center: WorldPos,
   mid: WorldPos
@@ -483,7 +499,7 @@ function outwardNormal(
  * real room shape's 'left'/'right' vs 'top'/'bottom' sides, but callers
  * fall back to a sane default rather than dividing by ~0.
  */
-function lineIntersection(
+export function lineIntersection(
   a1: WorldPos,
   d1: WorldPos,
   a2: WorldPos,
@@ -503,7 +519,7 @@ function lineIntersection(
  * `startExtension`/`endExtension` generally differ) extension distance,
  * then translate the whole segment along the outward normal by
  * `envelopeOffset` (the clip-clearance dial). */
-function buildEnvelopeSegment(
+export function buildEnvelopeSegment(
   rawStart: WorldPos,
   rawEnd: WorldPos,
   roomCenter: WorldPos,
@@ -557,7 +573,7 @@ function buildEnvelopeSegment(
  * (see `DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES` below for why left/
  * right sides need their own, much smaller default).
  */
-const DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES = Math.sqrt(3);
+export const DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES = Math.sqrt(3);
 
 /**
  * Round-2 W3/W4 finding (Kirk's live walk: "a wall going through the
@@ -593,7 +609,7 @@ const DEFAULT_ENVELOPE_OFFSET_TOP_BOTTOM_HEXES = Math.sqrt(3);
  * inside the 1.5-unit ceiling before the neighboring connector/door —
  * 0.5 world units of margin before intruding on anything there.
  */
-const DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES = 1.0;
+export const DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES = 1.0;
 
 /**
  * See WallRunsInput.envelopeCornerOverlapMargin's own doc comment for
@@ -606,7 +622,7 @@ const DEFAULT_ENVELOPE_OFFSET_LEFT_RIGHT_HEXES = 1.0;
  * other geometry constant in this file) — it's derived from rendered
  * wall THICKNESS, which has nothing to do with hex size.
  */
-const DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN = 0.16;
+export const DEFAULT_ENVELOPE_CORNER_OVERLAP_MARGIN = 0.16;
 
 /**
  * The four envelope runs (left/right/top/bottom) AND the four envelope

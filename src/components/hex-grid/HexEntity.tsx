@@ -32,6 +32,7 @@ import {
   SYNTY_GLB_FORWARD_OFFSET,
 } from './facing';
 import { cubeToWorld, type CubeCoord } from './hexMath';
+import type { MainHandPresentation } from './mainHandPresentation';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
@@ -53,6 +54,17 @@ export interface HexEntityProps {
   hexSize: number;
   isSelected?: boolean;
   onClick?: (entityId: string) => void;
+  /** Fires when the pointer enters this entity's own model geometry —
+   * rpg-project#249, Kirk's own live-walk finding: the hover affordance
+   * ("Attack <name>" / its shortfall) only resolved over the raw hex,
+   * never over the model itself, because nothing reported hover at the
+   * entity level; a caller reading only the ground plane's own
+   * `onPointerMove` never learns the cursor is over a mesh sitting in
+   * front of it along the same ray. Same reasoning as `onClick`'s own
+   * doc comment below — one resolution path, not two. */
+  onPointerOver?: (entityId: string) => void;
+  /** Fires when the pointer leaves this entity's own model geometry. */
+  onPointerOut?: () => void;
   /** Character data for texture/shader customization */
   character?: Character;
   /** Monster data for texture selection (includes monsterType) */
@@ -86,6 +98,9 @@ export interface HexEntityProps {
    * entities (rpg-dnd5e-web#501). Unmapped/undefined falls back to
    * MediumHumanoid, unchanged (the #479 boundary lineage). */
   classRefId?: string;
+  /** Exact owner-authoritative visual projection for this player's main hand.
+   * Undefined means unarmed; only class GLBs consume it. */
+  mainHandPresentation?: MainHandPresentation;
   /** True for a CHARACTER entity carrying the "unconscious" condition —
    * swaps to the class's downed GLB variant (rpg-dnd5e-web#501). */
   isDowned?: boolean;
@@ -280,6 +295,8 @@ export function HexEntity({
   hexSize,
   isSelected = false,
   onClick,
+  onPointerOver: onPointerOverProp,
+  onPointerOut: onPointerOutProp,
   character,
   monster,
   monsterRefId,
@@ -290,6 +307,7 @@ export function HexEntity({
   isGhost = false,
   knowledgeState,
   classRefId,
+  mainHandPresentation,
   isDowned = false,
   obstacleType,
   propRefId,
@@ -416,9 +434,11 @@ export function HexEntity({
           onPointerOver: (e: { stopPropagation: () => void }) => {
             e.stopPropagation();
             document.body.style.cursor = 'pointer';
+            onPointerOverProp?.(entityId);
           },
           onPointerOut: () => {
             document.body.style.cursor = 'auto';
+            onPointerOutProp?.();
           },
         };
 
@@ -598,6 +618,9 @@ export function HexEntity({
                   facingRotation={modelForwardOffset}
                   isMoving={!isDead && !isGhost && !remembered && isMoving}
                   isDownedVariant={isDownedModelVariant}
+                  mainHandPresentation={
+                    type === 'player' ? mainHandPresentation : undefined
+                  }
                 />
               </ErrorBoundary>
             ) : (

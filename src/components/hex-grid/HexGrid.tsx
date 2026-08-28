@@ -22,7 +22,7 @@ import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 // "MEASURED, not inferred" facing-offset discipline (facing.ts's own doc
 // comment on a prior naive-derivation hazard) — importing the single
 // existing measurement is the only way to GUARANTEE agreement with it.
-import { facingToRotationY } from '@/author/boardGeometry';
+import { facingToRotationY } from '@/components/hex-grid/authorGridHelpers';
 import {
   doorHexKinds,
   doorHexPositions,

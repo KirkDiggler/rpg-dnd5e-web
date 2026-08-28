@@ -4,7 +4,7 @@
  * unit). Gated by `useAuthoringGate` so the SAME production bundle is
  * correct in both worlds: deployed with authoring off server-side shows
  * nothing here at all; the day the deployed compose flips
- * `RPG_AUTHORING_ENABLED=1` this button lights up with zero client
+ * `RPG_AUTHORING_ENABLED=1` (probe: `GetDungeon("reference-tomb")`) this button lights up with zero client
  * change. Deliberately real chrome — not folded into the bottom-right
  * dev-tools cluster in `App.tsx`, not `isDevelopment`-gated, visible to
  * every player.

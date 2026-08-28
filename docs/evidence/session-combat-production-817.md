@@ -1,0 +1,205 @@
+# Session combat production promotion — #817
+
+- Date: 2026-08-25
+- Final evidence reconciliation: 2026-08-26
+
+## Evidence targets
+
+These targets are intentionally separate:
+
+- **Authenticated live behavior:** web code
+  `301b9a39c12dd3eeffec3c55b136e095dc22ec45` (`301b9a3`) against merged API
+  runtime `f1aa9d2`. The numbered live journey below applies only to this pair.
+- **Reviewed rebased PR integration:**
+  `ae3b60cf45f450dc6d39df474e0dec3840c10e3d` (`ae3b60c`), based on
+  `3fa05eb7c3d47910c51b8f79330fd36a5b1078b2`. This is the PR head before this
+  documentation-only reconciliation commit. Range-diff review found the
+  session-combat non-documentation patches patch-equivalent to the pre-rebase
+  series; this integration also includes the upstream full-window Dungeon
+  Builder and equipped main-hand weapon attachment.
+- **Final post-rebase visual witness:** actual-asset frame captures at
+  `ae3b60c`. This covers the rebased render integration, not authenticated API
+  behavior.
+
+## Reproducible concept target
+
+- Development deep link: `?concept=session-combat`
+- Required viewports: `1280x800`, `1024x768`
+- Shared renderer: `src/components/session/combat-experience/CombatExperience.tsx`
+- Production route: `src/components/session/SessionEncounterView.tsx`
+
+## Automated evidence — PASS
+
+`SessionEncounterView.test.tsx` mounts the production shared shell and proves
+panel-first exact Attack targeting, unavailable provider reasons, no unarmed map
+dispatch, ambiguity and malformed-target-kind refusal, exact Move/End Turn
+selectors, authenticated-owner private cache isolation, public map/action
+operation during initial private failure, Turn/Afford freshness and synchronous
+event invalidation, unified no-retry FAILED_PRECONDITION recovery for all three
+verbs, stable public-roster dice ownership through FightEnded, authoritative-only
+result fields, coalesced refresh, immediate Debug, presentation-only
+other-member pacing, catch-up Story, equipment response replacement, reconnect,
+scope reset, doors, roster pull, movement reconciliation, and the run-ended
+overlay.
+
+At rebased integration head `ae3b60c`, the post-rebase full suite reported 221
+passed + 1 skipped test files and 3504 passed + 1 skipped tests.
+`npm run ci-check` and a standalone `npm run build` were green. GitHub's PR
+checks at that exact head were also green for lint/type check, tests, deploy
+preview, and Security Audit. The Security Audit result remains non-blocking
+because its workflow uses `continue-on-error`: `npm audit` exited nonzero with
+6 vulnerabilities (1 low, 5 high). This is pre-existing dependency risk, not
+hidden.
+
+This reconciliation commit changes only this evidence document. Its requested
+validation is the formatting and diff checks recorded below; it does not relabel
+the `ae3b60c` full-suite totals as a later exact-head test run.
+
+## Visual witness — PASS
+
+The authorized recapture used the actual synced licensed assets, system Chrome,
+and SwiftShader. Captures targeted the game frame element rather than the whole
+browser page:
+
+| Browser viewport | Captured frame | SHA-256 |
+|---|---|---|
+| `1280x800` | `1216x800` | `63524e028e3c7ddc703999665fffe01c8eb4459ccda8f7f8fc514fa6bbfa198d` |
+| `1024x768` | `960x768` | `2829379aa2bfc4b658c86ea21d599f5372934e2d7d43abba5292eef304b5deb1` |
+
+These are the final rebased actual-asset captures at `ae3b60c` and supersede all
+earlier visual hashes. Both viewports had zero console errors and zero page
+errors. The frame capture script did not monitor request status or
+`requestfailed` events, so no HTTP-status claim is made for this visual run.
+The frame and map had real dimensions, and there was no overlap with global
+development tools. The screenshots remain at private local paths and are
+intentionally not committed; the hashes identify the reviewed files without
+publishing licensed material.
+
+The earlier missing-assets/pending-capture statement, collapsed pre-fix capture,
+and previous post-fix hashes are superseded by this PASS. No fallback,
+placeholder, intercepted asset, private log, screenshot, or licensed asset is
+evidence committed here.
+
+## Authenticated two-context live journey — PASS at `301b9a3` / API `f1aa9d2`
+
+Every fact in items 1–10 and the associated error, interaction, and cleanup
+notes below was witnessed at web code `301b9a3` against API `f1aa9d2`. No
+authenticated behavior re-run was performed after the rebase.
+
+The complete untracked report is
+`/home/kirk/game-dev/.superpowers/sdd/plan/task-14-live-report.md`. Its 69 private
+artifacts remain under `/tmp/session-combat-live-817/`; do not copy those
+screenshots, private logs, Redis captures, or licensed assets into git.
+
+Two independent browser contexts used `Dev toolkit-sandbox-fighter` and
+`Dev toolkit-sandbox-barbarian`. The principal run used lobby
+`lobby_3183ef21-744b-4133-852b-4a0bb52cad6e`, join ref
+`join_d67d8c92-8b9a-47fa-a138-e4741e135e3a`, and session
+`137fb64c-1092-4412-9fdb-40e56a85b918` in `reference-tomb`. Results by required
+witness:
+
+1. **Shared session and privacy:** the real 224-cell map, roster, props,
+   monsters, Story, and initiative rendered. Fighter private data was `12/12`,
+   AC 16; Barbarian private data was `14/14`, AC 12. Equipment differed by
+   owner, and neither DOM exposed the peer's exact HP.
+2. **Panel-first Longsword:** combat formed at sequence 16. `Afford` supplied
+   `dnd5e:weapons:longsword`; map clicks before arming sent no Attack, and
+   arming the panel action alone sent no Attack.
+3. **Availability reasons:** the Barbarian candidate was enabled as
+   `Available`; both Skeleton candidates were disabled with
+   `Unavailable: target out of reach`. Clicking a disabled candidate dispatched
+   no Attack.
+4. **Exact declaration/request/outcome:** `SessionService.AttackRequest` sent
+   session `137fb64c-1092-4412-9fdb-40e56a85b918`, attacker
+   `char_2ed37e2a-8d4f-4ee4-b8cc-bfe246d032eb`, target
+   `char_d80b367c-d815-4c4c-8085-3fe2df9d02dd`, and declaration ID
+   `v1.rkme8u-Yt7vzF-cVzeFgIqa3X7XeLSuMJ6XaifTR-DE`. The authoritative response
+   was `roll=17 total=22 against=12 hit=true critical=false damage=10`,
+   `attack.ref=dnd5e:weapons:longsword`, and `attack.name=Longsword`.
+5. **Dice roles:** the actor initially saw a concealed `?` and had to use the
+   real Roll d20 control. The witness auto-settled the same roll read-only,
+   without Roll or Grab controls; the actor then settled to the same result.
+6. **Story and Debug:** actor Story concealed the strike until release, while
+   Debug immediately showed the typed roll, total, AC, damage, weapon ref, and
+   components. Story became readable after release.
+7. **Owner HP refresh/privacy:** the target's authenticated
+   `GetCharacterData` refresh changed only the Barbarian dock from `14/14` to
+   `4/14`; the Fighter retained `12/12` and never received the peer's exact HP.
+8. **Spent state and selectors:** Longsword became disabled with
+   `action: 1 needed, 0 left`. Move to `(4,4)` sent selector
+   `v1.n4ncMkCqYuD_AND8Zkt0TV3lAwvnLbPCWTyTR81gd3Q`; End Turn sent
+   `v1.7HmEoUAKk_xzzSkLrDm08JsUlDenVuk7l5KdITMcHLs`. Monster turns resolved and
+   sequence 25 advanced initiative to round 2.
+9. **Terminal-stream recovery:** in independent session
+   `b84b9804-1186-4f34-b3c5-1c86afc4527d`, only the Barbarian stream was ended
+   successfully with zero messages. A real Fighter move at sequence 7 was
+   recovered by `GetStory(fromSeq=7)` in **744 ms**, rendered as `source=catchup`,
+   with zero later live stream Event deliveries.
+10. **Allowed alternative branch:** the run did not play through a terminal
+    `FightEnded`, so terminal declaration removal was not claimed. Instead it
+    verified the specified world-clock branch twice: free roam, no turn economy,
+    `clock=1`, round 0, no active participant, and empty declarations.
+
+There were zero page errors and zero HTTP responses at or above 400 in either
+live context. Expected development/intentional stream-cancellation logs are
+listed in the full report and were not treated as product failures. After real
+pointer attempts showed headless orthographic wall geometry made deterministic
+floor ray hits unreliable, map destinations used the rendered `SessionCanvas`
+Fiber callback into the production walk handler; no API client was called
+directly, and Attack targeting remained visible DOM interaction.
+
+Cleanup stopped the browser controller and deleted exactly the 32 keys belonging
+to the two player pointers and six lobbies, join refs, and sessions created by
+the gate. No wildcard deletion or flush was used, created-session residuals were
+zero, and pre-existing data was untouched.
+
+## Copilot review and final fixes
+
+- Inline comments `3859462714` and `3859462730` were fixed in
+  `4074ed2f26531d946bbdb535544b55332f2311dd` and replied to inline. Both
+  GraphQL review threads now report `resolved=true` and are outdated after
+  subsequent commits.
+- RED was `2 failed | 15 passed`; focused GREEN was `17 passed`. The subsequent
+  pacing/drawer/combat/concept gate was `16 files passed | 219 tests passed`.
+- The shared review frame/fill-parent separation landed in `c603400`; Concepts
+  global dev-tool suppression landed in `7967805`; final App-level coverage
+  landed in `301b9a3`.
+- The pre-rebase review-fix gates passed Prettier, ESLint, TypeScript, build,
+  focused tests, full tests, `npm run ci-check`, and `git diff --check`. The
+  separately attributed rebased-head counts and checks are recorded above.
+
+## Rebase integration — PASS
+
+On 2026-08-26 the clean feature head `bc40aa9cfb693b15022c4ec7437e676d50e217f1`
+was rebased with `git rebase origin/dev` onto
+`3fa05eb7c3d47910c51b8f79330fd36a5b1078b2`. The replayed non-documentation
+code head was `7e61b8c204ba51d49af963d8bf1c2c3a14351e15`; evidence corrections then
+produced `6304f55f406489f342f112469e26eb84a01e5631`, and the reviewed PR
+integration head was `ae3b60c`.
+
+Range-diffing the pre-rebase series
+`12b9c8a69ae0335e076872f8b89cba3fe025f5aa..bc40aa9cfb693b15022c4ec7437e676d50e217f1`
+against the rebased series
+`3fa05eb7c3d47910c51b8f79330fd36a5b1078b2..6304f55f406489f342f112469e26eb84a01e5631`
+found every non-documentation session-combat patch equivalent. Differences were
+limited to documentation reconciled with upstream content. Three documentation
+conflicts across two replayed commits were resolved as a semantic union:
+session-combat's shared/promoted-shell documentation was kept alongside the
+upstream weapon-attachment concept registration, accepted/rejected candidate
+verdict, and provider gaps. No source conflict occurred.
+
+Review confirmed that the upstream full-window Dungeon Builder layout remains
+intact, Concepts still suppresses the global development-tool overlay, the
+upstream `ClassCharacterModel` main-hand attachment contract remains intact,
+and the session route continues to choose character identity/body only from the
+public roster boundary. The deleted production `CombatPanel`, `DeclarationRow`,
+and related old controller path remain absent.
+
+Post-rebase gates passed at `ae3b60c`: 22 focused files / 252 tests, the full
+suite totals recorded above, `npm run ci-check`, standalone `npm run build`
+(3392 modules; expected large-chunk warning only), `git diff --check`,
+conflict-marker scan, legacy-symbol scan, and upstream-path preservation checks.
+The final rebased actual-asset frames provide visual coverage of the upstream
+render integration. They do not substitute for an authenticated behavior run,
+and no authenticated live claim is advanced beyond the journey at `301b9a3` /
+API `f1aa9d2`.

@@ -64,25 +64,6 @@ export interface PropVariant {
    * consumers that don't know about this field are unaffected.
    */
   companions?: PropCompanion[];
-  /**
-   * Extra scale multiplier on top of SYNTY_SCALE (rpg-game-assets#36
-   * wave-1, issue #623 fast-follow — Kirk's prop-check verdict: "the room
-   * will be big so I think a rug would be a percentage of the space").
-   * Undefined/omitted means 1 (every existing variant, unchanged) — this
-   * is NOT the same lever as `footprintHexes` (which stays placement-
-   * sanity DATA, never a scale input, per its own doc comment above) —
-   * `renderScale` is an explicit, deliberate visual-size override for a
-   * SPECIFIC variant, picked by eye against a real room, not derived from
-   * measured geometry. Today only the `rug` key's pieces use it (~2x, so
-   * Rug_01's short axis reads as roughly 2-3 hexes wide rather than ~1.3
-   * — see this file's own doc comment on that key for the exact
-   * calculation). Fixed per-variant multiplier for v1 — a true
-   * "percentage of the room's own footprint" would need the room's own
-   * dimensions threaded down to PropModel, which no caller does today;
-   * revisit if rooms start varying enough in size that one fixed rug
-   * scale stops looking right across all of them.
-   */
-  renderScale?: number;
 }
 
 /** Base path props are synced to under public/ (npm run assets:sync
@@ -434,8 +415,8 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
   ],
   'dnd5e:props:skeleton-cage': [
     {
-      name: 'SM_Prop_Skeleton_Cage_01',
-      file: 'props/SM_Prop_Skeleton_Cage_01.glb',
+      name: 'Crypt_Skeleton_Cage_01',
+      file: 'props/Crypt_Skeleton_Cage_01.glb',
       role: 'obstacle',
       footprintHexes: 1,
       blocksLoS: true,
@@ -452,10 +433,10 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
   ],
   'dnd5e:props:skeleton-table': [
     {
-      name: 'SM_Prop_Skeleton_Table_01',
-      file: 'props/SM_Prop_Skeleton_Table_01.glb',
+      name: 'Crypt_Skeleton_Table_01',
+      file: 'props/Crypt_Skeleton_Table_01.glb',
       role: 'cover',
-      footprintHexes: 1,
+      footprintHexes: 3,
       blocksLoS: false,
     },
   ],
@@ -694,41 +675,13 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
       blocksLoS: false,
     },
   ],
-  // renderScale 2 on all three (rpg-game-assets#36 wave-1, issue #623
-  // fast-follow — Kirk: "the room will be big so I think a rug would be
-  // a percentage of the space"): each variant's raw geometry has its
-  // SHORT axis around 1.2-1.3 hex-widths at plain SYNTY_SCALE (e.g.
-  // Rug_01's 2.929-unit depth * 0.75 SYNTY_SCALE / (sqrt(3) hex-width)
-  // ~= 1.27) — a uniform 2x brings every variant's short axis to
-  // ~2.4-2.6 hexes, landing in Kirk's "roughly 2-3 hexes" target
-  // consistently across all three rather than needing a different
-  // multiplier per variant. See PropVariant.renderScale's own doc
-  // comment for why this is a fixed multiplier, not yet a true
-  // percentage-of-room-size calculation.
   'dnd5e:props:rug': [
     {
-      name: 'SM_Prop_Rug_01',
-      file: 'props/SM_Prop_Rug_01.glb',
-      role: 'decor',
-      footprintHexes: 10,
-      blocksLoS: false,
-      renderScale: 2,
-    },
-    {
-      name: 'SM_Prop_Rug_02',
-      file: 'props/SM_Prop_Rug_02.glb',
+      name: 'Crypt_Rug_01',
+      file: 'props/Crypt_Rug_01.glb',
       role: 'decor',
       footprintHexes: 5,
       blocksLoS: false,
-      renderScale: 2,
-    },
-    {
-      name: 'SM_Prop_Rug_03',
-      file: 'props/SM_Prop_Rug_03.glb',
-      role: 'decor',
-      footprintHexes: 4,
-      blocksLoS: false,
-      renderScale: 2,
     },
   ],
   'dnd5e:props:wall-banner': [

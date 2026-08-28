@@ -1,0 +1,244 @@
+.dg-root {
+  display: grid;
+  /* The inspector/YAML rail earns width on a wide builder — YAML lines were
+     clipping at a flat 340px — while staying exactly 340px until the builder
+     itself passes ~1420px, so nothing moves on a laptop. The 24% is of the
+     grid's OWN width, not the viewport: a `vw` here would widen the rail in
+     mounts that are themselves width-capped (the Concepts Lab), stealing
+     from the canvas rather than adding to it. */
+  grid-template-columns: 220px minmax(0, 1fr) clamp(340px, 24%, 560px);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  /* Fill the height the mount hands us instead of guessing the chrome above:
+     the old `calc(100vh - 140px)` assumed 140px and was wrong on the Concepts
+     Lab mount (262px), which pushed the builder's bottom below the fold. */
+  height: 100%;
+  min-height: 560px;
+  color: var(--text-primary);
+}
+/* `.dg-root` fills its parent, so a mount in ordinary document flow has to
+   hand it a definite box — this is that box. The `/author` shell is instead a
+   viewport-tall flex column and gives the builder the height that is left, so
+   it needs no stage. Mounting `<DungeonBuilder>` outside a sized parent
+   without this class leaves the grid at content height and its panes stop
+   scrolling internally. */
+.dg-stage {
+  height: 80vh;
+  min-height: 560px;
+}
+.dg-topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dg-col {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+  min-height: 0;
+}
+.dg-center {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dg-center-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.dg-center-body {
+  flex: 1;
+  min-height: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0b0d11;
+}
+.dg-right {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+.dg-h {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 0 0 6px;
+}
+.dg-tool,
+.dg-mini,
+.dg-verb {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 5px 8px;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dg-tool--on {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 20%, var(--bg-primary));
+}
+.dg-mini {
+  font-size: 11px;
+  padding: 3px 7px;
+}
+.dg-verb {
+  font-weight: 600;
+}
+.dg-verb--primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #fff;
+}
+.dg-verb:disabled,
+.dg-mini:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dg-danger {
+  color: #f87171;
+}
+.dg-chip {
+  aspect-ratio: 1;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1a1d24;
+  color: #eee;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.dg-chip--on {
+  outline: 2px solid #fff;
+}
+.dg-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  opacity: 0.95;
+}
+.dg-facing-compass {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  margin: 6px auto 2px;
+}
+.dg-facing-btn {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 22px;
+  text-align: center;
+}
+.dg-facing-center {
+  font-size: 14px;
+  padding: 3px 6px;
+}
+.dg-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.dg-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  color: var(--text-primary);
+  padding: 4px 6px;
+  font-size: 13px;
+}
+.dg-yaml {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 8px;
+  white-space: pre;
+}
+.dg-errors {
+  max-height: 140px;
+  overflow: auto;
+  margin: 0;
+  padding: 6px 8px 6px 22px;
+  background: #3b0a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #fecaca;
+}
+.dg-errors code {
+  color: #fff;
+}
+.dg-preview-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  opacity: 0.75;
+  font-size: 13px;
+}
+.dg-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111827;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  font-size: 13px;
+  z-index: 50;
+}
+.dg-picker {
+  min-width: 260px;
+  white-space: nowrap;
+}
+.dg-picker .dg-mini {
+  text-align: left;
+}
+.dg-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: scroll;
+  /* The board compensates scroll itself when its extent grows leftward/
+     upward; the browser's own scroll anchoring must not double it. */
+  overflow-anchor: none;
+}
+/* Half a viewport of slack on every side, so there is always scroll room
+   to compensate growth and the author can always look past the edge. */
+.dg-viewport-pad {
+  padding: 50vh 50vw;
+  width: max-content;
+  scrollbar-width: thin;
+  scrollbar-color: #3a4150 #0b0d11;
+}
+.dg-viewport::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.dg-viewport::-webkit-scrollbar-thumb {
+  background: #3a4150;
+  border-radius: 6px;
+}
+.dg-viewport::-webkit-scrollbar-track {
+  background: #0b0d11;
+}

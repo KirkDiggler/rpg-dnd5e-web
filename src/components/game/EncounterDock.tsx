@@ -366,15 +366,25 @@ export function EncounterDock({
               width: 360,
               maxWidth: '45%',
               zIndex: 4,
-              // #556 gate: the log floats OVER the map — without this, its
-              // ~360px footprint pointer-captures the bottom-right map
-              // region (move tiles / armed targets unclickable) in every
-              // state. Click-through by design: targeting and movement
-              // beat scroll-back; the log is informational. Deliberate
-              // trade-off: no scroll-back while floating (the 📜 toggle
-              // still hides/shows; a hover-reveal scroll affordance is a
-              // possible future refinement).
-              pointerEvents: 'none',
+              // #556 made this click-through (pointer-events: none) so the
+              // log's ~360px footprint never pointer-captured the
+              // bottom-right map region (move tiles / armed targets stayed
+              // clickable underneath it) — but click-through also meant no
+              // scroll-back: every wheel/touch gesture over the panel fell
+              // straight through hit-testing to the R3F canvas beneath it
+              // and zoomed the camera instead (useCameraControls.ts's wheel
+              // listener is bound to the canvas element, so it's the only
+              // thing left to receive an event the log was never a hit-test
+              // candidate for). #738 (Kirk: "our combat log — which I
+              // cannot even scroll — should tell the story") supersedes
+              // that trade-off the other way: the log is a default-open,
+              // opt-in-visible panel (round 7: "we always want to see the
+              // info there", the 📜 toggle hides it for anyone who wants
+              // click-through back) — scroll-back wins. `auto` restores
+              // normal hit-testing so wheel/touch/click land on the panel
+              // itself; overflow-y: auto on combat-log-scroll then handles
+              // scrolling with no extra listener needed.
+              pointerEvents: 'auto',
             }}
           >
             <CombatLog entries={combatLogEntries} translucent />

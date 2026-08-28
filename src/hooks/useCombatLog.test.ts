@@ -5,6 +5,7 @@ import type {
   EncounterEnded,
   EntityDamaged,
   EntityDied,
+  EntityMoved,
   EntityRemoved,
   EntityStabilized,
   StatusApplied,
@@ -12,8 +13,13 @@ import type {
   TurnEnded,
   TurnStarted,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/events_pb';
+import {
+  EncounterMode,
+  EntityType,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import type { EntityMovedContext } from './useCombatLog';
 import { useCombatLog } from './useCombatLog';
 
 describe('useCombatLog', () => {
@@ -175,6 +181,52 @@ describe('useCombatLog', () => {
     });
   });
 
+  it('carries target_rationale defensively for lowest-hp/lowest-ac targeting (rpg-api-protos#215, pre-proto-bump)', () => {
+    const { result } = renderHook(() => useCombatLog());
+    const lowestHp = {
+      actorEntityId: 'skeleton-1',
+      actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+      targetEntityId: 'char-alice',
+      targetRationale: 'dnd5e:targeting:lowest-hp',
+    } as unknown as ActionResolved;
+    const lowestAc = {
+      actorEntityId: 'skeleton-1',
+      actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+      targetEntityId: 'char-bob',
+      targetRationale: 'dnd5e:targeting:lowest-ac',
+    } as unknown as ActionResolved;
+
+    act(() => {
+      result.current.recordActionResolved(lowestHp);
+      result.current.recordActionResolved(lowestAc);
+    });
+
+    expect(result.current.entries[0]).toMatchObject({
+      kind: 'actionResolved',
+      targetRationale: 'dnd5e:targeting:lowest-hp',
+    });
+    expect(result.current.entries[1]).toMatchObject({
+      kind: 'actionResolved',
+      targetRationale: 'dnd5e:targeting:lowest-ac',
+    });
+  });
+
+  it('leaves target_rationale undefined when the event carries none (regression, pre-proto-bump default)', () => {
+    const { result } = renderHook(() => useCombatLog());
+    const event = {
+      actorEntityId: 'skeleton-1',
+      actionRef: { module: 'dnd5e', type: 'action', id: 'attack' },
+      targetEntityId: 'char-alice',
+    } as unknown as ActionResolved;
+
+    act(() => result.current.recordActionResolved(event));
+
+    expect(
+      (result.current.entries[0] as { targetRationale?: string })
+        .targetRationale
+    ).toBeUndefined();
+  });
+
   it('assigns stable, monotonically increasing ids independent of array position', () => {
     const { result } = renderHook(() => useCombatLog());
     const died = { entityId: 'x' } as unknown as EntityDied;
@@ -205,5 +257,141 @@ describe('useCombatLog', () => {
     expect(result.current.entries[result.current.entries.length - 1]?.id).toBe(
       104
     );
+  });
+
+  describe('recordEntityMoved (#738 story pass)', () => {
+    const moved = (entityId: string): EntityMoved =>
+      ({ entityId, from: undefined, to: undefined, actualPath: [] }) as never;
+
+    const baseContext = (): EntityMovedContext => ({
+      movingEntityType: EntityType.MONSTER,
+      mode: EncounterMode.TURN_BASED,
+      from: { x: 0, y: 0, z: 0 },
+      to: { x: 1, y: -1, z: 0 },
+      characterPositions: [],
+    });
+
+    it('produces a "closes" entry when a monster moves nearer its nearest character', () => {
+      const { result } = renderHook(() => useCombatLog());
+
+      act(() => {
+        result.current.recordEntityMoved(moved('skeleton-1'), {
+          ...baseContext(),
+          from: { x: 0, y: 0, z: 0 },
+          to: { x: 3, y: -3, z: 0 },
+          characterPositions: [
+            { entityId: 'char-finn', position: { x: 5, y: -5, z: 0 } },
+          ],
+        });
+      });
+
+      expect(result.current.entries).toHaveLength(1);
+      expect(result.current.entries[0]).toMatchObject({
+        kind: 'entityMoved',
+        narration: { verb: 'closes', targetEntityId: 'char-finn' },
+      });
+    });
+
+    it('walks past a closer healthy target to narrate closing on the farther, more urgent one (the acceptance-run gap)', () => {
+      const { result } = renderHook(() => useCombatLog());
+
+      act(() => {
+        result.current.recordEntityMoved(moved('skeleton-1'), {
+          ...baseContext(),
+          // Skeleton starts adjacent to the healthy fighter but ends its
+          // move next to the wounded one five hexes further out.
+          from: { x: 0, y: 0, z: 0 },
+          to: { x: 5, y: -5, z: 0 },
+          characterPositions: [
+            { entityId: 'char-healthy', position: { x: 1, y: -1, z: 0 } },
+            { entityId: 'char-wounded', position: { x: 6, y: -6, z: 0 } },
+          ],
+        });
+      });
+
+      expect(result.current.entries[0]).toMatchObject({
+        narration: { verb: 'closes', targetEntityId: 'char-wounded' },
+      });
+    });
+
+    it('produces a "retreats" entry when a monster moves away from its nearest character', () => {
+      const { result } = renderHook(() => useCombatLog());
+
+      act(() => {
+        result.current.recordEntityMoved(moved('skeleton-1'), {
+          ...baseContext(),
+          from: { x: 1, y: -1, z: 0 },
+          to: { x: 4, y: -4, z: 0 },
+          characterPositions: [
+            { entityId: 'char-finn', position: { x: 0, y: 0, z: 0 } },
+          ],
+        });
+      });
+
+      expect(result.current.entries[0]).toMatchObject({
+        narration: { verb: 'retreats' },
+      });
+    });
+
+    it('degrades to a neutral "moves" entry when no prior position is known', () => {
+      const { result } = renderHook(() => useCombatLog());
+
+      act(() => {
+        result.current.recordEntityMoved(moved('skeleton-1'), {
+          ...baseContext(),
+          from: undefined,
+          characterPositions: [
+            { entityId: 'char-finn', position: { x: 5, y: -5, z: 0 } },
+          ],
+        });
+      });
+
+      expect(result.current.entries[0]).toMatchObject({
+        narration: { verb: 'moves' },
+      });
+    });
+
+    it('produces no entry for a CHARACTER (player) move — noise the log deliberately omits', () => {
+      const { result } = renderHook(() => useCombatLog());
+
+      act(() => {
+        result.current.recordEntityMoved(moved('char-alice'), {
+          ...baseContext(),
+          movingEntityType: EntityType.CHARACTER,
+        });
+      });
+
+      expect(result.current.entries).toHaveLength(0);
+    });
+
+    it('produces no entry outside TURN_BASED mode — free-roam movement is silent', () => {
+      const { result } = renderHook(() => useCombatLog());
+
+      act(() => {
+        result.current.recordEntityMoved(moved('skeleton-1'), {
+          ...baseContext(),
+          mode: EncounterMode.FREE_ROAM,
+        });
+      });
+
+      expect(result.current.entries).toHaveLength(0);
+    });
+
+    it('stamps the current round like every other entry kind', () => {
+      const { result } = renderHook(() => useCombatLog());
+
+      act(() => {
+        result.current.recordTurnStarted({
+          entityId: 'skeleton-1',
+          round: 3,
+        } as unknown as TurnStarted);
+        result.current.recordEntityMoved(moved('skeleton-1'), baseContext());
+      });
+
+      expect(result.current.entries[1]).toMatchObject({
+        round: 3,
+        kind: 'entityMoved',
+      });
+    });
   });
 });

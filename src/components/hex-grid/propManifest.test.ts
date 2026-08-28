@@ -65,6 +65,36 @@ describe('resolvePropVariant', () => {
     const variants = PROP_KEYS['dnd5e:props:rock-pile'];
     expect(variants?.map((v) => v.role).sort()).toEqual(['cover', 'obstacle']);
   });
+
+  it('maps the crypt specimen keys one-to-one to approved assembly artifacts', () => {
+    const expected = {
+      'dnd5e:props:skeleton-cage': {
+        name: 'Crypt_Skeleton_Cage_01',
+        file: 'props/Crypt_Skeleton_Cage_01.glb',
+        role: 'obstacle',
+        blocksLoS: true,
+      },
+      'dnd5e:props:skeleton-table': {
+        name: 'Crypt_Skeleton_Table_01',
+        file: 'props/Crypt_Skeleton_Table_01.glb',
+        role: 'cover',
+        blocksLoS: false,
+      },
+      'dnd5e:props:rug': {
+        name: 'Crypt_Rug_01',
+        file: 'props/Crypt_Rug_01.glb',
+        role: 'decor',
+        blocksLoS: false,
+      },
+    } as const;
+    for (const [key, contract] of Object.entries(expected)) {
+      expect(PROP_KEYS[key]).toHaveLength(1);
+      expect(PROP_KEYS[key]?.[0]).toMatchObject(contract);
+      expect(Number.isInteger(PROP_KEYS[key]?.[0]?.footprintHexes)).toBe(true);
+      expect(PROP_KEYS[key]?.[0]?.footprintHexes).toBeGreaterThan(0);
+      expect(PROP_KEYS[key]?.[0]).not.toHaveProperty('renderScale');
+    }
+  });
 });
 
 describe('resolvePropModelUrl', () => {

@@ -1,9 +1,12 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { getPlayerId } from './api/auth';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
+import { useLobbyCharacterId } from './api/useLobbyCharacterId';
 import { useMyActiveLobby } from './api/useMyActiveLobby';
 import './App.css';
+import { shouldRenderGlobalDevTools, type AppView } from './appView';
 import { AuthorView } from './author/AuthorView';
 import { DungeonBuilderHomeButton } from './author/DungeonBuilderHomeButton';
 import { CharacterDraftProvider } from './character/creation/CharacterDraftContext';
@@ -12,11 +15,25 @@ import { useCharacterDraft } from './character/creation/useCharacterDraft';
 import { CharacterSheet } from './character/sheet/CharacterSheet';
 import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
-import { PlaytestHarness } from './components/playtest/PlaytestHarness';
 import { ThemeSelector } from './components/ThemeSelector';
+import { ErrorDisplay } from './components/ui/Feedback';
 import { ConceptsView } from './concepts/ConceptsView';
+import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
+import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { DiscordDebugPanel, useDiscord } from './discord';
+import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
+
+const LazyToolkitContributorSandbox =
+  import.meta.env.MODE === 'development'
+    ? lazy(() =>
+        import('./toolkit-contributor-sandbox/ToolkitContributorSandbox').then(
+          ({ ToolkitContributorSandbox }) => ({
+            default: ToolkitContributorSandbox,
+          })
+        )
+      )
+    : null;
 
 /**
  * Dev-only deep link: `?concept=<id>` opens the Concepts Lab directly and must
@@ -28,23 +45,13 @@ const hasConceptDeepLink = (): boolean =>
   typeof window !== 'undefined' &&
   new URLSearchParams(window.location.search).has('concept');
 
-type AppView =
-  | 'home'
-  | 'character-creation'
-  | 'character-sheet'
-  | 'lobby'
-  | 'concepts'
-  | 'author';
-
 function AppContent() {
-  // Stable gate: dev mode + encounterId URL param → render PlaytestHarness.
+  // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
   // /playtest is a permanent verification surface (design.md), not slated
   // for removal — this gate stays.
-  const [showPlaytestHarness] = useState(
-    () =>
-      import.meta.env.MODE === 'development' &&
-      !!new URLSearchParams(window.location.search).get('encounterId')
+  const [attackDieDevRoute] = useState(() =>
+    selectAttackDieDevRoute(import.meta.env.MODE, window.location.search)
   );
 
   // Same shape as showPlaytestHarness above: dev-only, no app chrome.
@@ -82,6 +89,10 @@ function AppContent() {
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
+  const showGlobalDevTools = shouldRenderGlobalDevTools(
+    import.meta.env.MODE,
+    currentView
+  );
   // Dev override: ?playerId=alice|bob lets two tabs run as different players
   // without Discord (slice 2 playtest infrastructure)
   const devPlayerIdOverride = isDevelopment
@@ -90,9 +101,16 @@ function AppContent() {
   // Sync dev override into gRPC auth store so outbound RPCs carry the right
   // player ID. useLayoutEffect fires before child effects, preventing races.
   useDevPlayerIdAuth(devPlayerIdOverride);
+  // The UI's identity must be the SAME id the auth interceptor sends, or the
+  // lobby roster can't find "me": the server stamps members with the header
+  // id, and a UI that believes it is someone else hides Ready state and the
+  // host's Start button. getPlayerId() already falls back to
+  // VITE_DEV_PLAYER_ID the way the interceptor does, so ask it rather than
+  // re-deriving a second (and previously disagreeing) fallback here.
   const playerId =
     discord.user?.id ||
     devPlayerIdOverride ||
+    getPlayerId() ||
     (isDevelopment ? 'test-player' : null);
 
   // Resume-after-refresh (#444): ask the server, once, whether this player
@@ -103,17 +121,32 @@ function AppContent() {
   // mirroring /playtest's dev-only ?encounterId= gate but server-driven and
   // available for real players.
   const myActiveLobby = useMyActiveLobby(playerId);
+  const resumedLobbyCharacter = useLobbyCharacterId(
+    myActiveLobby.data?.encounterId ? myActiveLobby.data.lobbyId : '',
+    playerId ?? ''
+  );
+  const resumeLoading =
+    myActiveLobby.loading ||
+    Boolean(myActiveLobby.data?.encounterId && resumedLobbyCharacter.loading);
+  const resumeIdentityError =
+    myActiveLobby.data?.encounterId &&
+    !resumedLobbyCharacter.loading &&
+    !resumedLobbyCharacter.characterId
+      ? (resumedLobbyCharacter.error?.message ??
+        'The running encounter has no recoverable character seat.')
+      : null;
   useEffect(() => {
     if (hasConceptDeepLink()) return; // deep link owns the view
     if (!myActiveLobby.data) return;
     if (myActiveLobby.data.encounterId) {
+      if (resumedLobbyCharacter.loading || resumeIdentityError) return;
       setResumeEncounterId(myActiveLobby.data.encounterId);
       setCurrentView('lobby');
     } else if (myActiveLobby.data.lobbyId) {
       setResumeLobbyId(myActiveLobby.data.lobbyId);
       setCurrentView('lobby');
     }
-  }, [myActiveLobby.data]);
+  }, [myActiveLobby.data, resumedLobbyCharacter.loading, resumeIdentityError]);
 
   const handleCreateCharacter = async () => {
     try {
@@ -173,6 +206,16 @@ function AppContent() {
     setCurrentView('author');
   };
 
+  // Save & Play from the Dungeon Builder (rpg-project#256): the builder
+  // already started the encounter on the authored key; drop straight
+  // into it the same way resume-after-refresh does.
+  const handlePlayAuthored = (encounterId: string, characterId: string) => {
+    setResumeLobbyId(null);
+    setLobbyCharacterId(characterId);
+    setResumeEncounterId(encounterId);
+    setCurrentView('lobby');
+  };
+
   // Carousel selection handler
   const handleCarouselSelect = (id: string, type: 'character' | 'draft') => {
     setSelectedId(id);
@@ -207,11 +250,12 @@ function AppContent() {
     }
   };
 
-  if (showPlaytestHarness) {
+  if (attackDieDevRoute.kind !== 'normal') {
     return (
-      <div className="min-h-screen">
-        <PlaytestHarness />
-      </div>
+      <AttackDieDevRouteSurface
+        route={attackDieDevRoute}
+        playerId={playerId || 'test-player'}
+      />
     );
   }
 
@@ -223,18 +267,27 @@ function AppContent() {
     );
   }
 
+  // Views that own the whole window rather than sitting in a centred reading
+  // column. The character sheet was the first; the Dungeon Builder is the
+  // second — it is an application surface, and every pixel the shell reserves
+  // is a pixel its canvas never gets. Both draw their own chrome, so the
+  // shell's header row is theirs to skip as well.
+  const fullBleed =
+    currentView === 'character-sheet' || currentView === 'author';
+
   return (
     <div
-      className={`min-h-screen ${currentView === 'character-sheet' ? 'p-0' : 'p-8'}`}
+      className={`min-h-screen ${fullBleed ? 'p-0' : 'p-8'}`}
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className={currentView === 'character-sheet' ? '' : 'max-w-7xl mx-auto'}
+        className={fullBleed ? '' : 'max-w-7xl mx-auto'}
       >
-        {/* Header - Hide on character sheet and lobby */}
-        {currentView !== 'character-sheet' && currentView !== 'lobby' && (
+        {/* Header — full-bleed views draw their own chrome, and the lobby
+            has none. */}
+        {!fullBleed && currentView !== 'lobby' && (
           <div className="flex justify-end items-center mb-6">
             <ThemeSelector />
           </div>
@@ -289,7 +342,7 @@ function AppContent() {
         ) : currentView === 'lobby' &&
           (lobbyCharacterId || resumeEncounterId || resumeLobbyId) ? (
           <GameView
-            characterId={lobbyCharacterId ?? undefined}
+            characterId={lobbyCharacterId ?? resumedLobbyCharacter.characterId}
             playerId={playerId || 'test-player'}
             onBack={handleBackToHome}
             initialEncounterId={resumeEncounterId ?? undefined}
@@ -298,8 +351,19 @@ function AppContent() {
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
         ) : currentView === 'author' ? (
-          <AuthorView onBack={handleBackToHome} />
-        ) : currentView === 'home' && myActiveLobby.loading ? (
+          <AuthorView
+            onBack={handleBackToHome}
+            characterId={selectedType === 'character' ? selectedId : null}
+            onPlay={handlePlayAuthored}
+          />
+        ) : currentView === 'home' && resumeIdentityError ? (
+          <div className="flex items-center justify-center h-screen">
+            <ErrorDisplay
+              title="Unable to resume the running encounter"
+              message={resumeIdentityError}
+            />
+          </div>
+        ) : currentView === 'home' && resumeLoading ? (
           // Resume-after-refresh (#444): hold Home's content one beat while
           // GetMyActiveLobby resolves, so a resumable session (routed via
           // the effect above, which flips currentView to 'lobby') never
@@ -347,7 +411,7 @@ function AppContent() {
         )}
 
         {/* Dev tools buttons */}
-        {isDevelopment && (
+        {showGlobalDevTools && (
           <div className="fixed bottom-4 right-4 z-50 flex gap-2">
             <button
               onClick={handleOpenConcepts}
@@ -366,8 +430,9 @@ function AppContent() {
           </div>
         )}
 
-        {/* Discord debug panel - show based on state */}
-        {showDebugPanel && (
+        {/* Preserve the requested debug state while keeping all global dev
+            surfaces out of Concepts Lab. */}
+        {showGlobalDevTools && showDebugPanel && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -459,6 +524,20 @@ function HomeView({
 }
 
 function App() {
+  if (
+    isToolkitContributorSandboxRoute(
+      import.meta.env.MODE,
+      window.location.search
+    ) &&
+    LazyToolkitContributorSandbox
+  ) {
+    return (
+      <Suspense fallback={null}>
+        <LazyToolkitContributorSandbox />
+      </Suspense>
+    );
+  }
+
   return (
     <CharacterDraftProvider>
       <AppContent />
