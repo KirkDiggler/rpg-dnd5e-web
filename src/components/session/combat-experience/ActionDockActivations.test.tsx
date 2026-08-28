@@ -42,7 +42,7 @@ function dockWith(declarations: Declaration[], onSelect = vi.fn()) {
   return onSelect;
 }
 
-/** The tooltip card a button points at with aria-describedby. */
+/** The node a button points at with aria-describedby. */
 function describedTooltip(button: HTMLElement): HTMLElement {
   const id = button.getAttribute('aria-describedby');
   if (!id) throw new Error('button has no aria-describedby');
@@ -144,5 +144,49 @@ describe('ActionDock renders what a member can activate', () => {
     expect(describedTooltip(help).textContent).toContain(
       'no ally within reach'
     );
+  });
+
+  // Copilot on #839: the visual card is revealed with `visibility`, and a node
+  // hidden that way is an unreliable aria-describedby target. So the
+  // description is its own genuinely-rendered sr-only node, and the card is
+  // decoration.
+  it('describes the button with a real node, not the visibility-hidden card', () => {
+    dockWith([
+      activation({
+        ability: { ref: 'dnd5e:features:rage', name: 'Rage' },
+        slot: Slot.BONUS,
+      }),
+    ]);
+
+    const rage = screen.getByRole('button', { name: /Rage/ });
+    const description = describedTooltip(rage);
+
+    // Not the decorative card...
+    expect(description.getAttribute('aria-hidden')).toBeNull();
+    // ...and outside the button, so it never joins the accessible NAME.
+    expect(rage.contains(description)).toBe(false);
+    expect(description.textContent).toContain('Rage');
+    expect(description.textContent).toContain('Bonus action');
+  });
+
+  it('hides the decorative card from assistive tech so nothing is said twice', () => {
+    dockWith([activation()]);
+
+    const dodge = screen.getByRole('button', { name: /Dodge/ });
+    const card = dodge.querySelector(
+      '[aria-hidden="true"][class*="actionTooltip"]'
+    );
+    expect(card).not.toBeNull();
+    expect(card!.textContent).toContain('Dodge');
+  });
+
+  it('keeps the whole tooltip out of the button’s accessible name', () => {
+    dockWith([activation()]);
+    // Had the description been rendered inside the button, its lines would
+    // join the name and the button would answer to "Costs". Asserted this way
+    // rather than on an exact string, because accessible-name whitespace
+    // differs between jsdom and real browsers and is not the point here.
+    expect(screen.queryByRole('button', { name: /Costs/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Dodge/ })).toBeTruthy();
   });
 });

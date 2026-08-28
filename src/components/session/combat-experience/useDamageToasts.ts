@@ -17,6 +17,10 @@ export function useDamageToasts(
   ttlMs: number = DAMAGE_TOAST_TTL_MS
 ): readonly DamageToast[] {
   const [toasts, setToasts] = useState<readonly DamageToast[]>([]);
+  // Deliberately unbounded, unlike `timers`: this holds only attack ids, and
+  // "one toast per attack, forever" is the guarantee — evicting old ids to save
+  // a few kilobytes would let a catch-up replay re-announce a fight the player
+  // already watched.
   const announced = useRef(new Set<string>());
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -38,13 +42,18 @@ export function useDamageToasts(
     announced.current.add(toast.id);
 
     setToasts((current) => [...current, toast].slice(-DAMAGE_TOAST_LIMIT));
-    timers.current.push(
-      setTimeout(() => {
-        setToasts((current) =>
-          current.filter((entry) => entry.id !== toast.id)
-        );
-      }, ttlMs)
-    );
+
+    const handle = setTimeout(() => {
+      setToasts((current) => current.filter((entry) => entry.id !== toast.id));
+      // Drop the spent handle, IN PLACE. Only PENDING timers belong here;
+      // pushing and never removing would grow the array for the life of the
+      // fight and hold every fired closure alive with it (Copilot on #839).
+      // Spliced rather than reassigned so the unmount cleanup, which captured
+      // this array at mount, still sees the same one.
+      const index = timers.current.indexOf(handle);
+      if (index >= 0) timers.current.splice(index, 1);
+    }, ttlMs);
+    timers.current.push(handle);
   }, [result, ttlMs]);
 
   return toasts;

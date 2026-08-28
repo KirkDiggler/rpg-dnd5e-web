@@ -116,4 +116,40 @@ describe('useDamageToasts', () => {
     );
     expect(result.current).toEqual([]);
   });
+
+  it('keeps only PENDING timers, so a long fight does not accumulate handles', () => {
+    // The array is internal, so observe it through what unmount has left to
+    // clean up: once every toast has expired there should be nothing pending.
+    // Before the fix, spent handles were never removed and unmount cleared all
+    // of them — holding each fired closure alive for the whole fight.
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { rerender, unmount } = renderHook(
+      ({ hit }: { hit?: CombatExperienceAttackOutcome }) =>
+        useDamageToasts(hit),
+      {
+        initialProps: {
+          hit: outcome('a') as CombatExperienceAttackOutcome | undefined,
+        },
+      }
+    );
+    for (const id of ['b', 'c', 'd']) rerender({ hit: outcome(id) });
+
+    act(() => void vi.advanceTimersByTime(DAMAGE_TOAST_TTL_MS + 1));
+    clearSpy.mockClear();
+    unmount();
+
+    expect(clearSpy).not.toHaveBeenCalled();
+    clearSpy.mockRestore();
+  });
+
+  it('still clears a timer that has NOT fired when the surface unmounts', () => {
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { unmount } = renderHook(() => useDamageToasts(outcome('a')));
+
+    clearSpy.mockClear();
+    unmount();
+
+    expect(clearSpy).toHaveBeenCalledTimes(1);
+    clearSpy.mockRestore();
+  });
 });

@@ -6,6 +6,7 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
+  actionTooltipText,
   buildActionTooltip,
   slotLabel,
   type ActionTooltip,
@@ -54,19 +55,17 @@ function declarationIcon(declaration: Declaration): string {
 }
 
 /**
- * The hover/focus card. Always in the DOM (CSS reveals it), so it can be the
- * button's `aria-describedby` target and read by assistive tech without a
- * pointer — which the native `title` it replaces could not manage reliably.
+ * The hover/focus card — SIGHTED USERS ONLY, and `aria-hidden` for that
+ * reason. It is revealed with `visibility`, and a node hidden that way is an
+ * unreliable `aria-describedby` target (Copilot on #839): the spec keeps a
+ * directly-referenced hidden node in the description, but support for that
+ * has never been uniform. So the description is a separate, genuinely
+ * rendered sr-only node (`ActionDescription`) and this card is decoration,
+ * which also stops the same sentence being announced twice.
  */
-function ActionTooltipCard({
-  tooltip,
-  id,
-}: {
-  tooltip: ActionTooltip;
-  id: string;
-}) {
+function ActionTooltipCard({ tooltip }: { tooltip: ActionTooltip }) {
   return (
-    <span className={styles.actionTooltip} id={id} role="tooltip">
+    <span className={styles.actionTooltip} aria-hidden="true">
       <strong>{tooltip.title}</strong>
       {tooltip.lines.map((line) => (
         <span key={line.label}>
@@ -77,6 +76,28 @@ function ActionTooltipCard({
       {tooltip.refusal && (
         <span className={styles.actionTooltipRefusal}>{tooltip.refusal}</span>
       )}
+    </span>
+  );
+}
+
+/**
+ * The button's accessible description: the same facts as the card, flattened.
+ *
+ * Rendered OUTSIDE the button on purpose. Text inside a button joins its
+ * accessible NAME, and a name that recites the whole tooltip is worse than no
+ * tooltip at all. Absolutely positioned and clipped, so it costs the flex row
+ * no layout.
+ */
+function ActionDescription({
+  tooltip,
+  id,
+}: {
+  tooltip: ActionTooltip;
+  id: string;
+}) {
+  return (
+    <span className={styles.semanticOnly} id={id}>
+      {actionTooltipText(tooltip)}
     </span>
   );
 }
@@ -99,40 +120,45 @@ function ActionDeclaration({
   const label = declarationLabel(declaration);
   const unavailable = declaration.why?.text || 'Unavailable';
   const tooltip = buildActionTooltip(declaration);
-  const tooltipId = `action-tooltip-${declaration.id}-${index}`;
+  const describedById = `action-desc-${declaration.id}-${index}`;
 
   return (
-    <button
-      type="button"
-      className={`${styles.actionOffer} ${armed ? styles.actionOfferArmed : ''}`}
-      disabled={!authorityFresh || !declaration.available}
-      // The authored weapon identity, kept addressable without putting a raw
-      // ref in a player's tooltip. Asserting on this is how "the client never
-      // maps refs to names itself" stays checkable.
-      data-attack-ref={declaration.attack?.ref || undefined}
-      aria-describedby={tooltipId}
-      aria-pressed={armed}
-      onClick={() => onSelect(declaration)}
-    >
-      {/* Stale authority is announced ONCE by the dock's own status line;
+    <>
+      <button
+        type="button"
+        className={`${styles.actionOffer} ${armed ? styles.actionOfferArmed : ''}`}
+        disabled={!authorityFresh || !declaration.available}
+        // The authored weapon identity, kept addressable without putting a raw
+        // ref in a player's tooltip. Asserting on this is how "the client never
+        // maps refs to names itself" stays checkable.
+        data-attack-ref={declaration.attack?.ref || undefined}
+        aria-describedby={describedById}
+        aria-pressed={armed}
+        onClick={() => onSelect(declaration)}
+      >
+        {/* Stale authority is announced ONCE by the dock's own status line;
           repeating it in every tooltip is noise, and two copies of the same
           sentence is a worse read than one. */}
-      <ActionTooltipCard tooltip={tooltip} id={tooltipId} />
-      <span className={styles.actionIcon} aria-hidden="true">
-        {declarationIcon(declaration)}
-      </span>
-      <span className={styles.actionLabel}>
-        {label}
-        {declaration.verb === Verb.MOVE &&
-          declaration.remaining !== undefined && (
-            <small>{declaration.remaining} ft</small>
-          )}
-      </span>
-      <CostBadge slot={declaration.slot} />
-      {!declaration.available && (
-        <span className={styles.semanticOnly}>Unavailable: {unavailable}</span>
-      )}
-    </button>
+        <ActionTooltipCard tooltip={tooltip} />
+        <span className={styles.actionIcon} aria-hidden="true">
+          {declarationIcon(declaration)}
+        </span>
+        <span className={styles.actionLabel}>
+          {label}
+          {declaration.verb === Verb.MOVE &&
+            declaration.remaining !== undefined && (
+              <small>{declaration.remaining} ft</small>
+            )}
+        </span>
+        <CostBadge slot={declaration.slot} />
+        {!declaration.available && (
+          <span className={styles.semanticOnly}>
+            Unavailable: {unavailable}
+          </span>
+        )}
+      </button>
+      <ActionDescription tooltip={tooltip} id={describedById} />
+    </>
   );
 }
 
