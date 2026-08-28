@@ -23,8 +23,14 @@ export function installRollGroupRendererGuard(
     if (renderer.render === guardedRender) renderer.render = previousRender;
     if (renderer.debug.onShaderError === shaderError)
       renderer.debug.onShaderError = previousShaderError;
-    if (renderer.debug.checkShaderErrors)
-      renderer.debug.checkShaderErrors = previousCheckShaderErrors;
+    // Restored unconditionally, unlike the two hooks above. Those can prove
+    // ownership by identity — the function is still the one we installed — but
+    // a boolean cannot, and the old test ("is it currently true?") answered a
+    // different question. With `previousCheckShaderErrors === true` and someone
+    // flipping it false mid-guard, that test skipped the restore and left the
+    // renderer in a debug configuration nobody chose. This guard is what
+    // changed the flag, so this guard puts it back (Copilot on #838).
+    renderer.debug.checkShaderErrors = previousCheckShaderErrors;
   };
   const fail = (reason: string) => {
     if (failed) return;
