@@ -57,21 +57,23 @@ owned `dnd5e:item:light-crossbow` inventory row. No other-class inventory or
 peer equipment was queried or inferred.
 
 1. `GetCharacterData` HTTP 200 presented the exact observed initial
-   `main_hand` `dnd5e:item:warhammer`, with Shield in `off_hand` and Chain Mail
-   equipped.
+   `main_hand` `dnd5e:item:warhammer`, with Shield in `off_hand`, Chain Mail
+   equipped, and presented AC `18`.
 2. `EquipItem` POST HTTP 200 returned the complete replacement
    `CharacterData`; Light Crossbow appeared immediately in the renderer and
-   owner equipment UI. Its exact GLB returned HTTP 200.
+   owner equipment UI, the two-handed equip moved Shield to carried inventory,
+   and presented AC became `16`. Its exact GLB returned HTTP 200.
 3. A fresh browser context recovered the owner seat, called `GetCharacterData`
-   HTTP 200, and restored Light Crossbow.
+   HTTP 200, and restored Light Crossbow with presented AC `16`.
 4. `UnequipItem` POST HTTP 200 returned the complete replacement
-   `CharacterData`; the renderer and main-hand slot became unarmed immediately.
+   `CharacterData`; the renderer and main-hand slot became unarmed immediately
+   with presented AC `16`.
 5. Another fresh context called `GetCharacterData` HTTP 200 and remained
-   unarmed.
+   unarmed with presented AC `16`.
 6. Restoration used the exact observed owner items: `EquipItem` HTTP 200 for
    Warhammer, then `EquipItem` HTTP 200 for the Shield displaced by the
-   two-handed Light Crossbow. Final main hand, off hand, armor, and AC match the
-   observed initial presentation exactly.
+   two-handed Light Crossbow. Final main hand, off hand, armor, and presented AC
+   `18` exactly match the observed initial presentation.
 
 All relevant owner RPC and asset responses were HTTP 200. Final captured stages
 had zero console errors, page errors, and unexpected request failures. Each of
@@ -81,17 +83,25 @@ that POST first returned HTTP 200 and then ended as `net::ERR_ABORTED`. The 23
 expected one-snapshot terminations are recorded separately in `receipt.json`;
 they are not session request failures.
 
-## Contact-sheet hashes
+## Contact-sheet integrity
 
-| Sheet | Dimensions | SHA-256 |
-| --- | --- | --- |
-| `wave-d-four-class-contact-sheet.png` | 2098 × 1984 | `5e49b73d93756cc5c13a89254a3df2febae22f79a55d3d53c0a0313da32a3214` |
-| `wave-d-fighter-walk-contact-sheet.png` | 2098 × 598 | `b66b0aa847fd3733634ba2fcc9dfed5030698c67e191d835df537b0aab92eb07` |
-| `authoritative-light-crossbow-contact-sheet.png` | 1914 × 2304 | `ca765dac986d381bda5c727849409da95bb957bd1f74c11168c32beeac445804` |
+| Sheet | Media type | Bytes | Dimensions | SHA-256 |
+| --- | --- | ---: | --- | --- |
+| `wave-d-four-class-contact-sheet.png` | `image/png` | 639133 | 2098 × 1984 | `5e49b73d93756cc5c13a89254a3df2febae22f79a55d3d53c0a0313da32a3214` |
+| `wave-d-fighter-walk-contact-sheet.png` | `image/png` | 202198 | 2098 × 598 | `b66b0aa847fd3733634ba2fcc9dfed5030698c67e191d835df537b0aab92eb07` |
+| `authoritative-light-crossbow-contact-sheet.png` | `image/png` | 2828238 | 1914 × 2304 | `506d1fb2881d3b5627d434cef48886f139625a914bb5b46bbbd5c8c49c5265a9` |
+
+Fix Round 1 explicitly re-encoded the authoritative sheet from its decoded RGB
+pixels as PNG with fixed compression and no metadata. The pre-normalization
+blob in this checkout already had PNG magic `89504e470d0a1a0a` and Pillow format
+`PNG`, rather than JPEG magic. Re-encoding changed only container bytes:
+dimensions stayed `1914 × 2304`, and the before/after decoded RGB SHA-256 is
+`d24783889b5d2971fb0efd0f2f0bbaf05ed044394d8841b55d8b0ba6353dea90`.
 
 `receipt.json` contains all 16 idle observations, four Walk observations,
-authoritative methods/statuses/states, expected transport termination record,
-error totals, and the exact sheet hashes.
+authoritative methods/statuses/states and presented AC, expected transport
+termination record, error totals, exact sheet hashes/sizes/media, and the
+before/after pixel-continuity proof.
 
 ## Verification
 
@@ -101,6 +111,42 @@ npm run test:run -- \
   src/components/hex-grid/mainHandWeapons.test.ts \
   src/concepts/weapon-attachment/weaponAttachmentExperiment.test.ts \
   src/concepts/weapon-attachment/WeaponAttachmentConcept.test.tsx
+
+python3 - <<'PY'
+import hashlib, json
+from pathlib import Path
+from PIL import Image
+
+receipt = json.loads(Path('docs/evidence/846-wave-d-weapons/receipt.json').read_text())
+png_magic = bytes.fromhex('89504e470d0a1a0a')
+integrity = receipt['integrity']
+assert (integrity['requiredExtension'], integrity['requiredMediaType'], integrity['requiredMagicHex'], integrity['requiredPillowFormat']) == ('.png', 'image/png', png_magic.hex(), 'PNG')
+for sheet in receipt['sheets']:
+    path = Path(sheet['path'])
+    data = path.read_bytes()
+    assert path.suffix == '.png'
+    assert sheet['mediaType'] == 'image/png'
+    assert sheet['magicHex'] == png_magic.hex() and data[:8] == png_magic
+    assert sheet['byteSize'] == len(data)
+    assert sheet['sha256'] == hashlib.sha256(data).hexdigest()
+    with Image.open(path) as image:
+        assert sheet['pillowFormat'] == image.format == 'PNG'
+        assert sheet['dimensions'] == list(image.size)
+        assert sheet['decodedRgbSha256'] == hashlib.sha256(image.convert('RGB').tobytes()).hexdigest()
+        assert sheet['volatileMetadataPresent'] is False and not image.info
+authoritative = receipt['authoritativeRoute']
+assert [stage['presentedArmorClass'] for stage in authoritative['stages']] == [18, 16, 16, 16, 16, 18]
+assert authoritative['initialOwnerState']['slots'] == authoritative['finalOwnerState']['slots']
+assert authoritative['initialOwnerState']['presentedArmorClass'] == authoritative['finalOwnerState']['presentedArmorClass'] == 18
+facts = authoritative['exactRestorationFacts']
+assert facts['slotsEqual'] is facts['presentedArmorClassEqual'] is True
+assert facts['stagePresentedArmorClasses'] == [18, 16, 16, 16, 16, 18]
+continuity = integrity['authoritativeSheetPixelContinuity']
+assert continuity['beforeDimensions'] == continuity['afterDimensions'] == [1914, 2304]
+assert continuity['beforeDecodedRgbSha256'] == continuity['afterDecodedRgbSha256']
+assert continuity['pixelsUnchanged'] is True
+print('sheet media integrity and authoritative AC parity: pass')
+PY
 ```
 
 The browser evidence used Playwright with the actual Chromium renderer and the
