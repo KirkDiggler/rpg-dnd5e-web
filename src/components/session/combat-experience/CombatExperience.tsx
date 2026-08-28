@@ -10,6 +10,7 @@ import { DamageToasts } from './DamageToasts';
 import { DiceDrawer } from './DiceDrawer';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
 import { StoryLog } from './StoryLog';
+import { holdStoryUntilSettled } from './storyReveal';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
 import { useDamageToasts } from './useDamageToasts';
@@ -120,10 +121,18 @@ export function CombatExperience({
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
-  // A die is only worth waiting for when one is actually being animated: the
-  // semantic fallback shows no die, and an attack with no dice presentation
-  // (a monster's swing, which settles 'auto') has no landing to wait for.
-  const diePresented = !diceSemanticFallback && diceEvents.length > 0;
+  // A die is only worth waiting for when THIS viewer is the one rolling it.
+  //
+  // Spectating is the case that made the first version of this wrong: an
+  // 'auto'-settled record still carries a neutral release in `diceEvents`, so
+  // "are there dice events" answered yes for a monster's swing at the player
+  // and held a log line nobody was rolling for. There is also no suspense to
+  // protect there — the roll is not the viewer's to make, and catch-up history
+  // must never be paced at all.
+  const diePresented =
+    diceWitnessRole === 'roller' &&
+    !diceSemanticFallback &&
+    diceEvents.length > 0;
   // `result` goes visible when the die is THROWN, not when it lands. Hold it
   // until the die is observed at rest — see useDiceSettleGate.ts.
   const { settledResult, onDiceTelemetry } = useDiceSettleGate({
@@ -131,6 +140,14 @@ export function CombatExperience({
     diePresented,
   });
   const damageToasts = useDamageToasts(settledResult);
+  // The log narrates the same beat the toast announces, so it waits on the
+  // same signal. Withholding the toast alone would have left the strike, its
+  // damage, and the downed line that follows still spoiling the roll from the
+  // log — see storyReveal.ts.
+  const revealedStory = holdStoryUntilSettled(
+    story,
+    result && !settledResult ? result.attackId : undefined
+  );
   const activeParticipant = participants.find(
     (participant) => participant.active
   );
@@ -239,12 +256,12 @@ export function CombatExperience({
         <DamageToasts toasts={damageToasts} />
 
         <StoryLog
-          story={story}
+          story={revealedStory}
           debug={debug}
           mode={logMode}
           streamState={streamState}
           onModeChange={onLogModeChange}
-          result={result}
+          result={settledResult}
           diagnosticsEnabled={diagnosticsEnabled}
         />
 

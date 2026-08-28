@@ -78,12 +78,26 @@ export function useDiceSettleGate({
   // simply does not match, and starts its own wait.
   const [settledAttackId, setSettledAttackId] = useState<string>();
 
-  // The attack a telemetry callback should credit. Telemetry fires from a
-  // render frame well after the throw, so an effect-synced ref is current by
-  // the time it is read.
+  // The attack a telemetry callback should credit.
   const currentAttackId = useRef<string | undefined>(undefined);
+
+  // A landing that arrived BEFORE this hook knew which attack it belonged to.
+  //
+  // The outcome only becomes visible on release, so on the very first render
+  // after a throw there is a window where the die has reported but `result`
+  // has not reached us yet. A real 3D die takes ~1.9s to settle and never hits
+  // it — but the window is real, anything that lands in the same tick as its
+  // release falls into it, and an observation dropped there would strand the
+  // log until the fallback timer. So it is held and credited to the attack
+  // that arrives next, which is the presentation it came from.
+  const landedEarly = useRef(false);
+
   useEffect(() => {
     currentAttackId.current = result?.attackId;
+    if (result?.attackId && landedEarly.current) {
+      landedEarly.current = false;
+      setSettledAttackId(result.attackId);
+    }
   }, [result?.attackId]);
 
   const onDiceTelemetry = useCallback((telemetry: AttackDieTelemetry) => {
@@ -92,6 +106,7 @@ export function useDiceSettleGate({
     if (telemetry.state !== 'observed') return;
     const attackId = currentAttackId.current;
     if (attackId) setSettledAttackId(attackId);
+    else landedEarly.current = true;
   }, []);
 
   const attackId = result?.attackId;

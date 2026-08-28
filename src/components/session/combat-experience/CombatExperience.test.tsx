@@ -433,4 +433,77 @@ describe('damage toasts', () => {
     );
     expect(screen.queryByTestId('damage-toasts')).toBeNull();
   });
+
+  it('keeps the strike and the downed line out of the log while the die rolls', () => {
+    // Kirk 2026-08-28: "the damage and downed is showing in the combat log
+    // before the roll has finished". A die IS presented here, so the whole
+    // tail from the strike onward waits for it to land.
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          // The hold protects the viewer's OWN roll; a spectator has no
+          // suspense to keep.
+          diceWitnessRole: 'roller',
+          diceEvents: [
+            {
+              schemaVersion: 1,
+              type: 'dice-presentation-requested',
+              eventId: 'atk-1:request',
+              presentationId: 'atk-1',
+              roller: { entityId: 'aldric', role: 'player' },
+              die: {
+                presetId: 'dice.original.carved.d20',
+                authoritativeResult: 18,
+              },
+            },
+          ] as never,
+          story: [
+            {
+              id: 'turn-start',
+              eyebrow: 'Combat',
+              headline: 'Round 2',
+              detail: '',
+              tone: 'neutral',
+            },
+            {
+              id: 'atk-1',
+              eyebrow: 'Aldric Vale · Longsword',
+              headline: 'Aldric Vale strikes Skeleton Guard',
+              detail: '8 slashing damage',
+              tone: 'success',
+            },
+            {
+              id: 'downed-1',
+              eyebrow: 'Combat',
+              headline: 'Skeleton Guard is downed',
+              detail: '',
+              tone: 'danger',
+            },
+          ],
+          result: {
+            attackId: 'atk-1',
+            actor: 'Aldric Vale',
+            target: 'Skeleton Guard',
+            action: 'Longsword',
+            d20: 18,
+            total: 23,
+            against: 13,
+            hit: true,
+            critical: false,
+            damage: 8,
+            damageType: 'slashing',
+            targetIsViewer: false,
+          },
+        })}
+      />
+    );
+
+    const log = screen.getByTestId('session-combat-log');
+    expect(log.textContent).toContain('Round 2');
+    expect(log.textContent).not.toContain('strikes Skeleton Guard');
+    expect(log.textContent).not.toContain('is downed');
+    expect(log.textContent).not.toContain('8 slashing');
+    // ...and no toast either, for the same reason.
+    expect(screen.queryByTestId('damage-toasts')).toBeNull();
+  });
 });

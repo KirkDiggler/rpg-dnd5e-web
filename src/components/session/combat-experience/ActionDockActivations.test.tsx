@@ -42,6 +42,15 @@ function dockWith(declarations: Declaration[], onSelect = vi.fn()) {
   return onSelect;
 }
 
+/** The decorative tooltip card in the same offer slot as a button. */
+function cardFor(button: HTMLElement): HTMLElement {
+  const card = button
+    .closest('span')
+    ?.querySelector<HTMLElement>('[class*="actionTooltip"]');
+  if (!card) throw new Error('no tooltip card in this offer slot');
+  return card;
+}
+
 /** The node a button points at with aria-describedby. */
 function describedTooltip(button: HTMLElement): HTMLElement {
   const id = button.getAttribute('aria-describedby');
@@ -173,11 +182,32 @@ describe('ActionDock renders what a member can activate', () => {
     dockWith([activation()]);
 
     const dodge = screen.getByRole('button', { name: /Dodge/ });
-    const card = dodge.querySelector(
-      '[aria-hidden="true"][class*="actionTooltip"]'
-    );
-    expect(card).not.toBeNull();
-    expect(card!.textContent).toContain('Dodge');
+    const card = cardFor(dodge);
+    expect(card.getAttribute('aria-hidden')).toBe('true');
+    expect(card.textContent).toContain('Dodge');
+  });
+
+  // Kirk's screenshot, 2026-08-28: on a REFUSED offer the card was washed out
+  // and the dock's identity row painted straight through it.
+  // `.actionOffer:disabled` sets opacity; opacity applies to the whole subtree
+  // AND opens a stacking context; and the card used to be a child of the
+  // button. It has to stay a sibling -- the bug was worst on exactly the offer
+  // whose refusal the card exists to explain.
+  it('keeps the card outside the button, so a disabled offer cannot fade it', () => {
+    dockWith([
+      activation({
+        available: false,
+        why: { text: 'no target in reach' },
+        ability: { ref: 'dnd5e:weapons:greataxe', name: 'Greataxe' },
+      }),
+    ]);
+
+    const greataxe = screen.getByRole('button', { name: /Greataxe/ });
+    expect((greataxe as HTMLButtonElement).disabled).toBe(true);
+
+    const card = cardFor(greataxe);
+    expect(greataxe.contains(card)).toBe(false);
+    expect(card.textContent).toContain('no target in reach');
   });
 
   it('keeps the whole tooltip out of the button’s accessible name', () => {

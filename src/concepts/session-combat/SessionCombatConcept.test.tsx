@@ -35,6 +35,7 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
   DiceTrayPresentation: ({
     events,
     onReleaseRequest,
+    onTelemetry,
   }: {
     events: Array<{
       type: string;
@@ -42,6 +43,7 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
       die?: { presetId: string; authoritativeResult: number };
     }>;
     onReleaseRequest?: (event: unknown) => void;
+    onTelemetry?: (telemetry: Record<string, unknown>) => void;
   }) => {
     const request = events.find(
       (event) => event.type === 'dice-presentation-requested'
@@ -54,7 +56,7 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
       >
         <button
           type="button"
-          onClick={() =>
+          onClick={() => {
             onReleaseRequest?.({
               schemaVersion: 1,
               type: 'dice-presentation-released',
@@ -74,8 +76,19 @@ vi.mock('../../components/ui/dice/DiceTrayPresentation', () => ({
                   motionSeed: 19,
                 },
               },
-            })
-          }
+            });
+            // The real tray reports the die AT REST once the throw finishes,
+            // and that observation is what reveals the outcome now. This stub
+            // has no motion to run, so it lands immediately — but it must
+            // still report, or it would stand in for a tray that never does.
+            onTelemetry?.({
+              presentationToken: 1,
+              requestedResult: request.die?.authoritativeResult,
+              renderer: '3d',
+              state: 'observed',
+              exactTargetHeld: true,
+            });
+          }}
         >
           Release die
         </button>

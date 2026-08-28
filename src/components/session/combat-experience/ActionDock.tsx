@@ -62,6 +62,14 @@ function declarationIcon(declaration: Declaration): string {
  * has never been uniform. So the description is a separate, genuinely
  * rendered sr-only node (`ActionDescription`) and this card is decoration,
  * which also stops the same sentence being announced twice.
+ *
+ * Rendered as a SIBLING of the button, never a child. `.actionOffer:disabled`
+ * carries `opacity: 0.48`, and opacity applies to the whole subtree — nested
+ * inside the button, this card was washed out to 48% exactly when it mattered
+ * most: on the refused offer whose refusal it exists to explain. Opacity also
+ * opens a stacking context, which trapped the card's `z-index` inside the
+ * button and let the dock's identity row paint straight over it. Two symptoms,
+ * one cause (Kirk, screenshot 2026-08-28).
  */
 function ActionTooltipCard({ tooltip }: { tooltip: ActionTooltip }) {
   return (
@@ -123,7 +131,9 @@ function ActionDeclaration({
   const describedById = `action-desc-${declaration.id}-${index}`;
 
   return (
-    <>
+    // Positioned wrapper. The card anchors to THIS, not to the button, so the
+    // disabled button's opacity can never reach it.
+    <span className={styles.actionOfferSlot}>
       <button
         type="button"
         className={`${styles.actionOffer} ${armed ? styles.actionOfferArmed : ''}`}
@@ -136,10 +146,6 @@ function ActionDeclaration({
         aria-pressed={armed}
         onClick={() => onSelect(declaration)}
       >
-        {/* Stale authority is announced ONCE by the dock's own status line;
-          repeating it in every tooltip is noise, and two copies of the same
-          sentence is a worse read than one. */}
-        <ActionTooltipCard tooltip={tooltip} />
         <span className={styles.actionIcon} aria-hidden="true">
           {declarationIcon(declaration)}
         </span>
@@ -157,8 +163,12 @@ function ActionDeclaration({
           </span>
         )}
       </button>
+      {/* Stale authority is announced ONCE by the dock's own status line;
+          repeating it in every tooltip is noise, and two copies of the same
+          sentence is a worse read than one. */}
+      <ActionTooltipCard tooltip={tooltip} />
       <ActionDescription tooltip={tooltip} id={describedById} />
-    </>
+    </span>
   );
 }
 

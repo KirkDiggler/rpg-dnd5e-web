@@ -856,6 +856,32 @@
   text-align: right;
 }
 
+/* The header's right-hand cluster: status copy plus the collapse control.
+   Grouped so the header keeps its two-part space-between rhythm instead of
+   spreading three children across the width. */
+.diceDrawerHeaderEnd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The cue doubles as the open/close control, so it needs to look pressable
+   when it is one. Sized to match the collapsed pill's third grid column. */
+button.diceDrawerCue {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out;
+}
+
+button.diceDrawerCue:hover,
+button.diceDrawerCue:focus-visible {
+  border-color: var(--sc-gold);
+  background: rgba(232, 183, 95, 0.14);
+}
+
 .dicePresentationStage {
   height: 242px;
   min-height: 0;
@@ -1522,9 +1548,20 @@
   }
 }
 
-/* Action-bar tooltips. Always in the DOM so the card can be the button's
-   aria-describedby target; revealed on hover and on keyboard focus. Pointer
-   events off so it can never swallow the click meant for the button under it. */
+/* The slot that owns an offer: the button plus its tooltip and its sr-only
+   description. The tooltip anchors HERE rather than inside the button, because
+   `.actionOffer:disabled` sets opacity and that would wash out the card and
+   trap its z-index. Hovering the slot is the same gesture as hovering the
+   button, and it keeps working when the button is disabled — which is exactly
+   when the player most wants to know why. */
+.actionOfferSlot {
+  position: relative;
+  display: flex;
+}
+
+/* Action-bar tooltips. Always in the DOM; revealed on hover and on keyboard
+   focus. Pointer events off so it can never swallow the click meant for the
+   button under it. */
 .actionTooltip {
   position: absolute;
   z-index: 8;
@@ -1553,8 +1590,8 @@
   visibility: hidden;
 }
 
-.actionOffer:hover > .actionTooltip,
-.actionOffer:focus-visible > .actionTooltip {
+.actionOfferSlot:hover > .actionTooltip,
+.actionOfferSlot:focus-within > .actionTooltip {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   visibility: visible;
