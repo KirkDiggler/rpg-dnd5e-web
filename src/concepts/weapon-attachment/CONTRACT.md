@@ -30,14 +30,17 @@
 
 ## Production review extension (#832, 2026-08-27)
 
-The historical verdict above remains the #821 provisional record. The live
-Concept now imports the production exact-ref resolver instead of retaining a
-second candidate map, and exposes fighter, barbarian, monk, and rogue against
-unarmed plus the 12 outputs promoted by `rpg-game-assets#71`.
+The historical verdict above remains the #821 provisional record. The first
+production-backed extension proved fighter, barbarian, monk, and rogue against
+unarmed plus the 12 outputs promoted by `rpg-game-assets#71`. The current live
+Concept still imports the production exact-ref resolver instead of retaining a
+second candidate map, and now exposes those four classes against unarmed plus
+all 16 exact supported outputs from `rpg-game-assets#78 · 16-item provider
+manifest`.
 
 - Runtime URLs are `/models/synty/weapons/<id>.glb` for the exact supported
   `dnd5e:item:<id>` refs.
-- Every promoted output is 4.0 MB decoded against the 4.5 MB provider budget.
+- Every current output is 4.0 MB decoded against the 4.5 MB provider budget.
 - `townfolk-main-hand-v1` replaces the old provisional-fighter label; merged
   provider evidence proves the same sampled `Hand_R` matrices across all four
   current class rigs.

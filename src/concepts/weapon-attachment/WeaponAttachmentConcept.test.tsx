@@ -130,7 +130,7 @@ describe('WeaponAttachmentConcept', () => {
       'dnd5e:item:longsword'
     );
     expect(screen.getByTestId('candidate-source').textContent).toContain(
-      'rpg-game-assets#71'
+      'rpg-game-assets#78 · 16-item provider manifest'
     );
     expect(screen.getByTestId('candidate-url').textContent).toContain(
       '/models/synty/weapons/longsword.glb'
@@ -161,6 +161,10 @@ describe('WeaponAttachmentConcept', () => {
       'Club',
       'Greatclub',
       'Warhammer',
+      'Light Crossbow',
+      'Longbow',
+      'Javelin',
+      'Rapier',
     ]) {
       fireEvent.click(screen.getByRole('button', { name: label }));
     }
@@ -174,7 +178,7 @@ describe('WeaponAttachmentConcept', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Unarmed' }));
 
     expect(screen.getByTestId('coverage-status').textContent).toContain(
-      'equipment 13/13 · motion 2/2 · views 3/3 · facings 6/6'
+      'equipment 17/17 · motion 2/2 · views 3/3 · facings 6/6'
     );
 
     const record = screen.getByRole('button', {
@@ -187,7 +191,7 @@ describe('WeaponAttachmentConcept', () => {
     );
   });
 
-  it('reviews every current class against the complete 12-weapon provider roster', () => {
+  it('reviews every current class against the complete 16-weapon provider roster', () => {
     render(<WeaponAttachmentConcept />);
 
     for (const label of ['Fighter', 'Barbarian', 'Monk', 'Rogue']) {
@@ -206,6 +210,10 @@ describe('WeaponAttachmentConcept', () => {
       'Club',
       'Greatclub',
       'Warhammer',
+      'Light Crossbow',
+      'Longbow',
+      'Javelin',
+      'Rapier',
     ]) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }

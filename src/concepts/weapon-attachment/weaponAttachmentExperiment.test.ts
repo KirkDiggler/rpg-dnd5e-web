@@ -27,7 +27,7 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:longsword',
       candidate: {
         ref: 'dnd5e:item:longsword',
-        source: 'rpg-game-assets#71 · promoted v1 provider output',
+        source: 'rpg-game-assets#78 · 16-item provider manifest',
         weaponUrl: '/models/synty/weapons/longsword.glb',
         decodedTextureMb: 4,
         budgetMb: 4.5,
@@ -45,7 +45,7 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:shortbow',
       candidate: {
         ref: 'dnd5e:item:shortbow',
-        source: 'rpg-game-assets#71 · promoted v1 provider output',
+        source: 'rpg-game-assets#78 · 16-item provider manifest',
         weaponUrl: '/models/synty/weapons/shortbow.glb',
         decodedTextureMb: 4,
         budgetMb: 4.5,
@@ -132,6 +132,13 @@ describe('weapon attachment experiment', () => {
       observation({ equipmentState: 'club', attachmentCode: 'attached' }),
       observation({ equipmentState: 'greatclub', attachmentCode: 'attached' }),
       observation({ equipmentState: 'warhammer', attachmentCode: 'attached' }),
+      observation({
+        equipmentState: 'light-crossbow',
+        attachmentCode: 'attached',
+      }),
+      observation({ equipmentState: 'longbow', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'javelin', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'rapier', attachmentCode: 'attached' }),
     ];
 
     expect(coverageFor(observations)).toEqual({
@@ -149,6 +156,10 @@ describe('weapon attachment experiment', () => {
         'club',
         'greatclub',
         'warhammer',
+        'light-crossbow',
+        'longbow',
+        'javelin',
+        'rapier',
       ],
       motions: ['idle', 'walk'],
       views: ['close', 'orbit', 'play'],
