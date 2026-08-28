@@ -61,4 +61,43 @@ describe('roll group renderer failure seams', () => {
       'render failure: WebGL creation failed'
     );
   });
+
+  it('puts checkShaderErrors back even if someone else moved it meanwhile', () => {
+    // The old dispose asked "is it currently true?" as a stand-in for "do I
+    // still own this". With a previous value of TRUE and anything flipping the
+    // flag false while the guard was installed, that test skipped the restore
+    // and left the renderer in a debug configuration nobody chose.
+    const renderer = rendererWith(() => undefined);
+    renderer.debug.checkShaderErrors = true;
+
+    const guard = installRollGroupRendererGuard(
+      renderer,
+      new Scene(),
+      new PerspectiveCamera(),
+      vi.fn()
+    );
+    expect(renderer.debug.checkShaderErrors).toBe(true);
+
+    // Another owner turns diagnostics off while we hold the guard.
+    renderer.debug.checkShaderErrors = false;
+    guard.dispose();
+
+    expect(renderer.debug.checkShaderErrors).toBe(true);
+  });
+
+  it('restores a previously-false flag it turned on', () => {
+    const renderer = rendererWith(() => undefined);
+    expect(renderer.debug.checkShaderErrors).toBe(false);
+
+    const guard = installRollGroupRendererGuard(
+      renderer,
+      new Scene(),
+      new PerspectiveCamera(),
+      vi.fn()
+    );
+    expect(renderer.debug.checkShaderErrors).toBe(true);
+
+    guard.dispose();
+    expect(renderer.debug.checkShaderErrors).toBe(false);
+  });
 });
