@@ -15,7 +15,7 @@ Fighter session route.
 - Manifest SHA-256:
   `030ddd69117aed1b124f69320bc2def039d45eba0b7840644974108aaf117795`
 - Web code HEAD:
-  `e4a3521b575c80c40f12853e202a56bfa447ca3b`
+  `ee12811f078a5e7fb1d4b9a5d0e3fe0e20c75ec7`
 
 The exact synced bytes were verified before browser capture:
 
