@@ -1,101 +1,71 @@
 # Modular Elf Fighter route evidence (#849)
 
-This evidence folder proves the public Elf Fighter route against the **merged** provider authority from `rpg-game-assets` PR #81.
+This evidence folder rebinds the PR proof to the merged opaque-hair provider correction from `rpg-game-assets` provider PR #84.
 
 ## Merged provider authority
 
 Verified through GitHub and provider Git:
 
-- provider PR: [#81](https://github.com/KirkDiggler/rpg-game-assets/pull/81) `asset: generate fixed-look modular Elf Fighter`
+- provider PR #84: [#84](https://github.com/KirkDiggler/rpg-game-assets/pull/84) `fix: keep modular Elf Fighter hair opaque (#83)`
 - PR state: `MERGED`
-- merge commit: `ddf77063fcecb0a8598bc2e9333ba37bbcae1acb`
+- merge commit: `098dc9bb977199ea212a00d2742d5055a8f1a7dd`
 - merge commit is an ancestor of provider `origin/main`
 
-A detached temporary provider worktree was created at that merge commit and used for `npm run assets:sync`.
+A detached temporary provider worktree was created at that exact merge commit, used for `npm run assets:sync`, then removed.
 
-## Synced merged bytes
+## Synced corrected bytes
 
-The synced runtime files hash exactly to the approved values:
+The synced runtime files hash exactly to the approved corrected values:
 
 - `public/models/synty/characters/race-class/manifest.json`
-  - sha256 `0bb8b1d33ae0d403d322e85c52d8df209c77f224408a888d8c02e753302ad56b`
+  - sha256 `446581a10dbdbde7c06b9c884d18c96f71852714a093e844e1bb316bc987fa94`
 - `public/models/synty/characters/race-class/elf-fighter.glb`
-  - sha256 `53ccc878a2ed40fc9e52391b942b9afc4ccda2267a7d8cdbdf1689730832e41d`
+  - sha256 `3060e6bc2712c3699c3abceb78480fd24007d628ef9c928c5bcffcd53ca7aa39`
 
-Merged manifest facts:
+Corrected manifest / model facts:
 
 - combination `elf:fighter`
 - model `/models/synty/characters/race-class/elf-fighter.glb`
 - animations `Idle_Relaxed`, `Walk_Forward`
-- rig family `modular-fantasy-hero-v1`
 - socket profile `modular-fantasy-hero-main-hand-v1`
-- merged manifest socket values deep-equal the web repo's `MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET` constant
+- manifest socket values deep-equal the web repo's `MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET`
+- glTF material default is `OPAQUE` (`alphaMode` absent)
+- embedded atlas alpha extrema are `[255,255]`
+- `Chr_Hair_01` present
+- `Chr_Hair_38 absent`
 
-These merged bytes are hash-identical to the pre-merge provider branch bytes used for the recorded live route capture, so the browser proof below remains authoritative without a second live run.
+## Fresh real-browser recapture
 
-## Recorded live route capture reused for merged bytes
-
-All browser `goto()` calls used `waitUntil: 'domcontentloaded'`, never `networkidle`.
-
-Real route used:
-
-1. Home
-2. `Create`
-3. real wizard: Elf -> Fighter -> Dueling -> martial-weapon choice `Greatsword`
-4. `Play`
-5. `Create lobby`
-6. choose `The Reference Tomb`
-7. `Ready up`
-8. `Start`
-
-Live player/character used for the recorded capture:
+A fresh browser context loaded the existing reviewed player/session where available:
 
 - player id: `modular-elf-fighter-849-live-935106`
-- character: `Task849ElfGS-935106`
-
-### Real idle / exact public model
-
-From the recorded real session route before movement:
-
-- `GetCharacterData` returned `200`
+- route: `http://127.0.0.1:3011/?playerId=modular-elf-fighter-849-live-935106`
 - exact public model request `GET /models/synty/characters/race-class/elf-fighter.glb` returned `200`
-- recorded browser counts for the captured proof window only: exact model request count `1`, page errors `0`, request failures `0`, console errors `0`
+- exact response sha256 `3060e6bc2712c3699c3abceb78480fd24007d628ef9c928c5bcffcd53ca7aa39`
+- authoritative Greatsword model request returned `200`
+- real `SessionService/Move` returned `200`
+- `Walking…` was visible during the walk capture
 
-Screenshot:
+Final screenshots for the PR evidence:
 
-- `idle-real-route.png`
+- `profile-real-route.png` — side/profile ponytail proof with opaque hair
+- `front-real-route.png` — front/three-quarter live production camera
+- `rotation-pop-boundary-real-route.png` — slight camera rotation at the previous pop boundary
+- `greatsword-equipped-real-route.png` — authoritative `MAIN HAND Greatsword`
+- `walk-real-route.png` — real walk with `Walking…`
 
-### Authoritative main-hand attachment
+## Browser proof window and known outside noise
 
-The real character flow did **not** auto-equip the selected martial weapon; it arrived as carried inventory. The authoritative attach proof therefore used the real in-session Equipment UI:
+Browser zero counts are scoped to the captured proof window only.
 
-- `Equipment` -> `Greatsword — equip to Main hand`
-- `EquipItem` returned `200`
-- `GET /models/synty/weapons/greatsword.glb` returned `200`
-- the Equipment panel then showed `MAIN HAND Greatsword`, and the rendered live model visibly carried the greatsword
+Within the captured proof window:
 
-Screenshot:
+- model request count `1`
+- console errors `0`
+- page errors `0`
+- unexpected request failures `0`
 
-- `main-hand-equipped-real-route.png`
+These appeared outside the captured proof window and were kept separate from the verdict counts:
 
-### Real walk
-
-After equipping, a real floor click dispatched `SessionService/Move` and the route entered `Walking…` state.
-
-- `Move` returned `200`
-- mid-walk body text included `Walking…`
-- post-move combat/log state recorded `MOVEMENT ... Position -1, 4.`
-
-Screenshots:
-
-- `walk-real-route.png`
-- `walk-after-real-route.png`
-
-## Browser noise kept separate from the captured proof window
-
-Two known non-product blockers were observed outside the captured proof window:
-
-- home/lobby authoring probe: `AuthoringService.GetDungeon` unimplemented on lab2
-- expected route-transition abort noise from old stream/request teardown
-
-These appeared only during bootstrap / session transition. Within the captured proof window (idle, equip, and walk capture phases), there were no new console errors, no page errors, and no request failures.
+- route-transition aborts from the old stream / `GetCharacterData` teardown
+- `AuthoringService.GetDungeon` unimplemented on lab2 during the home/lobby probe

@@ -1,20 +1,35 @@
 {
+  "schemaVersion": 1,
+  "providerCommit": "098dc9bb977199ea212a00d2742d5055a8f1a7dd",
+  "providerManifestSha256": "446581a10dbdbde7c06b9c884d18c96f71852714a093e844e1bb316bc987fa94",
+  "elfFighterSha256": "3060e6bc2712c3699c3abceb78480fd24007d628ef9c928c5bcffcd53ca7aa39",
+  "materialAlphaMode": "OPAQUE",
+  "hairMesh": "Chr_Hair_01",
+  "modelUrl": "/models/synty/characters/race-class/elf-fighter.glb",
+  "socketProfile": "modular-fantasy-hero-main-hand-v1",
   "animations": [
     "Idle_Relaxed",
     "Walk_Forward"
   ],
+  "captures": [
+    "profile-real-route.png",
+    "front-real-route.png",
+    "rotation-pop-boundary-real-route.png",
+    "greatsword-equipped-real-route.png",
+    "walk-real-route.png"
+  ],
   "browser": {
     "scope": "captured-proof-window",
-    "consoleErrors": 0,
+    "url": "http://127.0.0.1:3011/?playerId=modular-elf-fighter-849-live-935106",
+    "playerId": "modular-elf-fighter-849-live-935106",
     "modelRequestCount": 1,
     "modelResponseStatus": 200,
+    "modelResponseSha256": "3060e6bc2712c3699c3abceb78480fd24007d628ef9c928c5bcffcd53ca7aa39",
+    "greatswordResponseStatus": 200,
+    "moveResponseStatus": 200,
+    "walkingSeen": true,
+    "consoleErrors": 0,
     "pageErrors": 0,
     "unexpectedRequestFailures": 0
-  },
-  "elfFighterSha256": "53ccc878a2ed40fc9e52391b942b9afc4ccda2267a7d8cdbdf1689730832e41d",
-  "modelUrl": "/models/synty/characters/race-class/elf-fighter.glb",
-  "providerCommit": "ddf77063fcecb0a8598bc2e9333ba37bbcae1acb",
-  "providerManifestSha256": "0bb8b1d33ae0d403d322e85c52d8df209c77f224408a888d8c02e753302ad56b",
-  "schemaVersion": 1,
-  "socketProfile": "modular-fantasy-hero-main-hand-v1"
+  }
 }
