@@ -11,9 +11,18 @@
 
 const CLASS_CHARACTER_MODEL_BASE = '/models/synty/characters/';
 
+export type CharacterRigFamily = 'townfolk-v1' | 'modular-fantasy-hero-v1';
+
+type PlayerCharacterModelSource = 'race-class' | 'class';
+
 interface ClassCharacterModelEntry {
   model: string;
   downed: string;
+}
+
+interface RaceClassCharacterModelEntry {
+  model: string;
+  rigFamily: CharacterRigFamily;
 }
 
 /** Keyed by CharacterData.class_ref.id (lowercase, e.g. "rogue") — matches
@@ -25,6 +34,56 @@ const CLASS_CHARACTER_MODELS: Record<string, ClassCharacterModelEntry> = {
   monk: { model: 'monk.glb', downed: 'monk-downed.glb' },
   rogue: { model: 'rogue.glb', downed: 'rogue-downed.glb' },
 };
+
+const RACE_CLASS_CHARACTER_MODELS: Record<
+  string,
+  RaceClassCharacterModelEntry
+> = {
+  'elf:fighter': {
+    model: 'race-class/elf-fighter.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+};
+
+function normalizeRefId(refId: string | undefined): string | undefined {
+  return refId?.trim().toLowerCase();
+}
+
+function resolveClassCharacterModelResolutionFromNormalizedClassRefId(
+  normalizedClassRefId: string,
+  isDowned: boolean
+): PlayerCharacterModelResolution | undefined {
+  const entry = CLASS_CHARACTER_MODELS[normalizedClassRefId];
+  if (!entry) return undefined;
+  return {
+    url: CLASS_CHARACTER_MODEL_BASE + (isDowned ? entry.downed : entry.model),
+    rigFamily: 'townfolk-v1',
+    source: 'class',
+  };
+}
+
+function resolveRaceClassCharacterModelResolution(
+  normalizedRaceRefId: string | undefined,
+  normalizedClassRefId: string
+): PlayerCharacterModelResolution | undefined {
+  if (!normalizedRaceRefId) return undefined;
+  const entry =
+    RACE_CLASS_CHARACTER_MODELS[
+      `${normalizedRaceRefId}:${normalizedClassRefId}`
+    ];
+  if (!entry) return undefined;
+  return {
+    url: CLASS_CHARACTER_MODEL_BASE + entry.model,
+    rigFamily: entry.rigFamily,
+    source: 'race-class',
+  };
+}
+
+export interface PlayerCharacterModelResolution {
+  url: string;
+  rigFamily: CharacterRigFamily;
+  source: PlayerCharacterModelSource;
+}
 
 /**
  * Resolve a class GLB URL for a server class ref id, if one is mapped.
@@ -47,10 +106,34 @@ export function resolveClassCharacterModelUrl(
   classRefId: string | undefined,
   isDowned: boolean
 ): string | undefined {
-  if (!classRefId) return undefined;
-  const entry = CLASS_CHARACTER_MODELS[classRefId.trim().toLowerCase()];
-  if (!entry) return undefined;
-  return CLASS_CHARACTER_MODEL_BASE + (isDowned ? entry.downed : entry.model);
+  const normalizedClassRefId = normalizeRefId(classRefId);
+  if (!normalizedClassRefId) return undefined;
+  return resolveClassCharacterModelResolutionFromNormalizedClassRefId(
+    normalizedClassRefId,
+    isDowned
+  )?.url;
+}
+
+export function resolvePlayerCharacterModel(
+  raceRefId: string | undefined,
+  classRefId: string | undefined,
+  isDowned: boolean
+): PlayerCharacterModelResolution | undefined {
+  const normalizedClassRefId = normalizeRefId(classRefId);
+  if (!normalizedClassRefId) return undefined;
+
+  if (!isDowned) {
+    const raceClassResolution = resolveRaceClassCharacterModelResolution(
+      normalizeRefId(raceRefId),
+      normalizedClassRefId
+    );
+    if (raceClassResolution) return raceClassResolution;
+  }
+
+  return resolveClassCharacterModelResolutionFromNormalizedClassRefId(
+    normalizedClassRefId,
+    isDowned
+  );
 }
 
 /**
