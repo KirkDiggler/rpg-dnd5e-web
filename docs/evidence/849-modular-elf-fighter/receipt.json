@@ -4,6 +4,7 @@
     "Walk_Forward"
   ],
   "browser": {
+    "scope": "captured-proof-window",
     "consoleErrors": 0,
     "modelRequestCount": 1,
     "modelResponseStatus": 200,

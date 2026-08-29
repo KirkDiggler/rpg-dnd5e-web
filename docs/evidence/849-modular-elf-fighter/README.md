@@ -59,7 +59,7 @@ From the recorded real session route before movement:
 
 - `GetCharacterData` returned `200`
 - exact public model request `GET /models/synty/characters/race-class/elf-fighter.glb` returned `200`
-- recorded browser counts for the proof route: exact model request count `1`, page errors `0`, request failures `0`, steady-state console errors `0`
+- recorded browser counts for the captured proof window only: exact model request count `1`, page errors `0`, request failures `0`, console errors `0`
 
 Screenshot:
 
@@ -91,11 +91,11 @@ Screenshots:
 - `walk-real-route.png`
 - `walk-after-real-route.png`
 
-## Browser noise kept separate from route proof
+## Browser noise kept separate from the captured proof window
 
-Two known non-product blockers were observed outside the steady-state proof window:
+Two known non-product blockers were observed outside the captured proof window:
 
 - home/lobby authoring probe: `AuthoringService.GetDungeon` unimplemented on lab2
 - expected route-transition abort noise from old stream/request teardown
 
-These appeared only during bootstrap / session transition. Idle, equip, and walk capture phases had no new console errors, no page errors, and no request failures.
+These appeared only during bootstrap / session transition. Within the captured proof window (idle, equip, and walk capture phases), there were no new console errors, no page errors, and no request failures.

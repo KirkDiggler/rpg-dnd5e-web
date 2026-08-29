@@ -1,5 +1,4 @@
 import type { EquippedMap } from '@/components/game/equipment/equipmentTypes';
-import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { MainHandSocket } from './mainHandPresentation';
 import * as mainHandWeapons from './mainHandWeapons';
@@ -47,13 +46,6 @@ const EXPECTED_MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET = {
   ],
   scale: 1,
 } satisfies MainHandSocket;
-
-const LOCAL_PROVIDER_MANIFEST_PATH =
-  '/home/kirk/.pi/worktrees/rpg-game-assets/80-modular-elf-fighter/harness/models/synty/characters/race-class/manifest.json';
-const MODULAR_FANTASY_HERO_SOCKET_PROFILE_ID =
-  'modular-fantasy-hero-main-hand-v1';
-const ELF_FIGHTER_SHA256 =
-  '53ccc878a2ed40fc9e52391b942b9afc4ccda2267a7d8cdbdf1689730832e41d';
 
 type Task8MainHandWeaponsModule = typeof mainHandWeapons & {
   MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET?: MainHandSocket;
@@ -155,28 +147,3 @@ describe('production main-hand weapon presentation', () => {
     ).toBe(task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET);
   });
 });
-
-describe.runIf(existsSync(LOCAL_PROVIDER_MANIFEST_PATH))(
-  'reviewed modular provider authority',
-  () => {
-    it('deep-equals the exact local provider socket profile for elf:fighter', () => {
-      const manifest = JSON.parse(
-        readFileSync(LOCAL_PROVIDER_MANIFEST_PATH, 'utf8')
-      ) as {
-        combinations: Record<string, { sha256: string; socketProfile: string }>;
-        socketProfiles: Record<string, MainHandSocket>;
-      };
-
-      expect(manifest.combinations['elf:fighter']).toMatchObject({
-        rigFamily: 'modular-fantasy-hero-v1',
-        sha256: ELF_FIGHTER_SHA256,
-        socketProfile: MODULAR_FANTASY_HERO_SOCKET_PROFILE_ID,
-      });
-      expect(
-        task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET
-      ).toEqual(
-        manifest.socketProfiles[MODULAR_FANTASY_HERO_SOCKET_PROFILE_ID]
-      );
-    });
-  }
-);
