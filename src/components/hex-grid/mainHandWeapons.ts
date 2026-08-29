@@ -17,7 +17,7 @@ export interface MainHandWeaponDefinition {
 /**
  * Shared by the four current Townfolk class rigs. Provider evidence #67
  * measured exact-equal Hand_R matrices across fighter, barbarian, monk, and
- * rogue over sampled idle/walk frames; provider #71 binds every current weapon
+ * rogue over sampled idle/walk frames; provider #78 binds every current weapon
  * output to this accepted profile.
  */
 export const TOWNFOLK_MAIN_HAND_SOCKET: MainHandSocket = Object.freeze({
@@ -34,9 +34,12 @@ export const TOWNFOLK_MAIN_HAND_SOCKET: MainHandSocket = Object.freeze({
 });
 
 /**
- * The complete current provider roster from rpg-game-assets#71. This is an
- * exact presentation lookup, not weapon rules: no proficiency, handedness, or
- * attack identity is inferred here.
+ * The complete current 16-item provider roster from rpg-game-assets#78
+ * (provider commit cf3bd0bd325d9440a6d28f1d39601845bdfbcdde,
+ * weapons/manifest.json sha256
+ * 030ddd69117aed1b124f69320bc2def039d45eba0b7840644974108aaf117795). This is
+ * an exact presentation lookup, not weapon rules: no proficiency,
+ * handedness, or attack identity is inferred here.
  */
 export const CURRENT_MAIN_HAND_WEAPONS = Object.freeze([
   {
@@ -110,6 +113,30 @@ export const CURRENT_MAIN_HAND_WEAPONS = Object.freeze([
     id: 'warhammer',
     label: 'Warhammer',
     weaponUrl: '/models/synty/weapons/warhammer.glb',
+  },
+  {
+    ref: 'dnd5e:item:light-crossbow',
+    id: 'light-crossbow',
+    label: 'Light Crossbow',
+    weaponUrl: '/models/synty/weapons/light-crossbow.glb',
+  },
+  {
+    ref: 'dnd5e:item:longbow',
+    id: 'longbow',
+    label: 'Longbow',
+    weaponUrl: '/models/synty/weapons/longbow.glb',
+  },
+  {
+    ref: 'dnd5e:item:javelin',
+    id: 'javelin',
+    label: 'Javelin',
+    weaponUrl: '/models/synty/weapons/javelin.glb',
+  },
+  {
+    ref: 'dnd5e:item:rapier',
+    id: 'rapier',
+    label: 'Rapier',
+    weaponUrl: '/models/synty/weapons/rapier.glb',
   },
 ] as const satisfies readonly MainHandWeaponDefinition[]);
 

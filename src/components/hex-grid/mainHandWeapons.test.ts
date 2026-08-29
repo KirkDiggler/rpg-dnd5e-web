@@ -23,6 +23,14 @@ const EXPECTED_WEAPONS = [
   ['club', 'Club', '/models/synty/weapons/club.glb'],
   ['greatclub', 'Greatclub', '/models/synty/weapons/greatclub.glb'],
   ['warhammer', 'Warhammer', '/models/synty/weapons/warhammer.glb'],
+  [
+    'light-crossbow',
+    'Light Crossbow',
+    '/models/synty/weapons/light-crossbow.glb',
+  ],
+  ['longbow', 'Longbow', '/models/synty/weapons/longbow.glb'],
+  ['javelin', 'Javelin', '/models/synty/weapons/javelin.glb'],
+  ['rapier', 'Rapier', '/models/synty/weapons/rapier.glb'],
 ] as const;
 
 describe('production main-hand weapon presentation', () => {
@@ -49,8 +57,8 @@ describe('production main-hand weapon presentation', () => {
     }
   );
 
-  it('exposes exactly the current 12-item provider roster', () => {
-    expect(CURRENT_MAIN_HAND_WEAPONS).toHaveLength(12);
+  it('exposes exactly the current 16-item provider roster', () => {
+    expect(CURRENT_MAIN_HAND_WEAPONS).toHaveLength(16);
     expect(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.ref)).toEqual(
       EXPECTED_WEAPONS.map(([id]) => `dnd5e:item:${id}`)
     );
@@ -61,9 +69,9 @@ describe('production main-hand weapon presentation', () => {
   });
 
   it('refuses unknown and attack-shaped refs instead of guessing', () => {
-    expect(resolveMainHandPresentation(equipped('rapier'))).toEqual({
+    expect(resolveMainHandPresentation(equipped('dart'))).toEqual({
       code: 'unmapped-ref',
-      ref: 'dnd5e:item:rapier',
+      ref: 'dnd5e:item:dart',
     });
     expect(
       resolveMainHandPresentation({
