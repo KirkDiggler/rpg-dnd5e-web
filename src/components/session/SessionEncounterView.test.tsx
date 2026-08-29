@@ -460,6 +460,10 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('uses public roster identity/body on the world clock and private CharacterData only for sheet status', async () => {
     readyScene();
+    const rosterLoad = deferred<{
+      members: Awaited<ReturnType<typeof hoisted.getRosterFn>>['members'];
+    }>();
+    hoisted.getRosterFn.mockReturnValueOnce(rosterLoad.promise);
     hoisted.getCharacterDataFn.mockResolvedValue({
       character: privateCharacterData({
         classRef: { module: 'private', type: 'class', id: 'wizard' },
@@ -469,8 +473,39 @@ describe('SessionEncounterView production combat integration', () => {
 
     await waitFor(() => screen.getByTestId('session-canvas'));
     expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
-    expect(hoisted.lastCanvasProps.current?.characterName).toBe('Aldric');
-    expect(hoisted.lastCanvasProps.current?.classRefId).toBe('fighter');
+    expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
+    expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
+
+    await act(async () => {
+      rosterLoad.resolve({
+        members: [
+          {
+            id: 'char-1',
+            kind: MemberKind.PLAYER,
+            name: 'Aldric',
+            classRef: 'fighter',
+            raceRef: 'human',
+            monsterRef: '',
+          },
+          {
+            id: 'skeleton-1',
+            kind: MemberKind.MONSTER,
+            name: 'Skeleton',
+            classRef: '',
+            raceRef: '',
+            monsterRef: 'dnd5e:monsters:skeleton',
+          },
+        ],
+      });
+      await rosterLoad.promise;
+    });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current).toMatchObject({
+        characterName: 'Aldric',
+        classRefId: 'fighter',
+      })
+    );
+    expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
     const dock = screen.getByTestId('session-combat-dock');
     within(dock).getByText('Aldric');
     within(dock).getByText(/level 3 fighter/i);
