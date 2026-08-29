@@ -1,0 +1,19 @@
+{
+  "animations": [
+    "Idle_Relaxed",
+    "Walk_Forward"
+  ],
+  "browser": {
+    "consoleErrors": 0,
+    "modelRequestCount": 1,
+    "modelResponseStatus": 200,
+    "pageErrors": 0,
+    "unexpectedRequestFailures": 0
+  },
+  "elfFighterSha256": "53ccc878a2ed40fc9e52391b942b9afc4ccda2267a7d8cdbdf1689730832e41d",
+  "modelUrl": "/models/synty/characters/race-class/elf-fighter.glb",
+  "providerCommit": "ddf77063fcecb0a8598bc2e9333ba37bbcae1acb",
+  "providerManifestSha256": "0bb8b1d33ae0d403d322e85c52d8df209c77f224408a888d8c02e753302ad56b",
+  "schemaVersion": 1,
+  "socketProfile": "modular-fantasy-hero-main-hand-v1"
+}
