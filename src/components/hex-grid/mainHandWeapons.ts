@@ -2,6 +2,7 @@ import {
   refKey,
   type EquippedMap,
 } from '@/components/game/equipment/equipmentTypes';
+import type { CharacterRigFamily } from './classCharacterModels';
 import type {
   MainHandPresentation,
   MainHandSocket,
@@ -32,6 +33,34 @@ export const TOWNFOLK_MAIN_HAND_SOCKET: MainHandSocket = Object.freeze({
   ] as const),
   scale: 1,
 });
+
+/** Exact reviewed provider socket profile `modular-fantasy-hero-main-hand-v1`
+ * from rpg-game-assets PR #81 (reviewed head 8aa058dbfaac0f5d7cd239a1ede63ef1a7a2fbe4),
+ * copied by value so this repo stays independent of provider checkout. */
+export const MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET: MainHandSocket =
+  Object.freeze({
+    bone: 'Hand_R',
+    boneUnitMeters: 0.01,
+    positionMeters: Object.freeze([
+      -0.113634511828, 0.043524894863, -0.006868128199,
+    ] as const),
+    rotationQuaternion: Object.freeze([
+      -0.31697111189640637, -0.4555468694563118, 0.6829896921327775,
+      0.47490151020194044,
+    ] as const),
+    scale: 1,
+  });
+
+export function mainHandSocketForRigFamily(
+  rigFamily: CharacterRigFamily
+): MainHandSocket {
+  switch (rigFamily) {
+    case 'modular-fantasy-hero-v1':
+      return MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET;
+    case 'townfolk-v1':
+      return TOWNFOLK_MAIN_HAND_SOCKET;
+  }
+}
 
 /**
  * The complete current 16-item provider roster from rpg-game-assets#78

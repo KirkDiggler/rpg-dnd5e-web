@@ -33,6 +33,7 @@ import {
 } from './facing';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import type { MainHandPresentation } from './mainHandPresentation';
+import { mainHandSocketForRigFamily } from './mainHandWeapons';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
@@ -477,10 +478,14 @@ export function HexEntity({
     // standing models win when shipped; missing/blank race falls back to the
     // honest class GLB, and unmapped class still falls through to the known
     // MediumHumanoid placeholder.
-    const classModelUrl =
+    const playerModelResolution =
       type === 'player'
-        ? resolvePlayerCharacterModel(raceRefId, classRefId, isDowned)?.url
+        ? resolvePlayerCharacterModel(raceRefId, classRefId, isDowned)
         : undefined;
+    const classModelUrl = playerModelResolution?.url;
+    const mainHandSocketOverride = playerModelResolution
+      ? mainHandSocketForRigFamily(playerModelResolution.rigFamily)
+      : undefined;
     // Monster npc GLB (rpg-dnd5e-web#559) — the same resolve-or-undefined
     // shape as classModelUrl above, one entry per promoted crypt-roster
     // monster (monsterModels.ts). `isDead` (not `isDowned`, which is a
@@ -625,6 +630,7 @@ export function HexEntity({
                   mainHandPresentation={
                     type === 'player' ? mainHandPresentation : undefined
                   }
+                  mainHandSocketOverride={mainHandSocketOverride}
                 />
               </ErrorBoundary>
             ) : (

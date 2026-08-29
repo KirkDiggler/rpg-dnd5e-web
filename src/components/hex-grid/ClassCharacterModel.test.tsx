@@ -1,9 +1,11 @@
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import type { ComponentProps } from 'react';
 import * as THREE from 'three';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type {
   MainHandAttachmentStatus,
   MainHandPresentation,
+  MainHandSocket,
 } from './mainHandPresentation';
 
 const fighterUrl = '/models/synty/characters/fighter.glb';
@@ -23,6 +25,30 @@ const socket = {
   ],
   scale: 1,
 };
+const modularFantasyHeroSocket = {
+  bone: 'Hand_R',
+  boneUnitMeters: 0.01,
+  positionMeters: [-0.113634511828, 0.043524894863, -0.006868128199] as [
+    number,
+    number,
+    number,
+  ],
+  rotationQuaternion: [
+    -0.31697111189640637, -0.4555468694563118, 0.6829896921327775,
+    0.47490151020194044,
+  ] as [number, number, number, number],
+  scale: 1,
+} satisfies MainHandSocket;
+
+type Task8ClassCharacterModelProps = ComponentProps<
+  typeof ClassCharacterModel
+> & {
+  mainHandSocketOverride?: MainHandSocket;
+};
+
+const Task8ClassCharacterModel = ClassCharacterModel as unknown as (
+  props: Task8ClassCharacterModelProps
+) => ReturnType<typeof ClassCharacterModel>;
 
 const gltf = vi.hoisted(() => ({
   scenes: new Map<string, THREE.Group>(),
@@ -77,6 +103,26 @@ function presentationFor(weaponUrl: string): MainHandPresentation {
   };
 }
 
+function handBone(
+  renderer: Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>
+): THREE.Bone {
+  return renderer.scene.findAll(
+    (node) =>
+      node.instance instanceof THREE.Bone &&
+      (node.instance as THREE.Bone).name === 'Hand_R'
+  )[0]!.instance as THREE.Bone;
+}
+
+function expectVectorCloseTo(
+  actual: readonly number[],
+  expected: readonly number[]
+) {
+  expect(actual).toHaveLength(expected.length);
+  actual.forEach((value, index) => {
+    expect(value).toBeCloseTo(expected[index]!, 9);
+  });
+}
+
 beforeAll(() => {
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -120,11 +166,7 @@ it('remounts the actual ref+URL attachment path when the ref stays the same', as
     />
   );
 
-  const hand = renderer.scene.findAll(
-    (node) =>
-      node.instance instanceof THREE.Bone &&
-      (node.instance as THREE.Bone).name === 'Hand_R'
-  )[0]!.instance as THREE.Bone;
+  const hand = handBone(renderer);
   const firstClone = hand.children[0]!;
 
   expect(
@@ -157,4 +199,52 @@ it('remounts the actual ref+URL attachment path when the ref stays the same', as
     ref: 'dnd5e:item:longsword',
     weaponUrl: remappedWeapon,
   });
+});
+
+it('attaches the clone at the override socket and leaves the input presentation unchanged', async () => {
+  const mainHandPresentation = presentationFor(firstWeapon);
+  const originalPresentation = {
+    ref: mainHandPresentation.ref,
+    weaponUrl: mainHandPresentation.weaponUrl,
+    socket: {
+      bone: mainHandPresentation.socket.bone,
+      boneUnitMeters: mainHandPresentation.socket.boneUnitMeters,
+      positionMeters: [...mainHandPresentation.socket.positionMeters] as [
+        number,
+        number,
+        number,
+      ],
+      rotationQuaternion: [
+        ...mainHandPresentation.socket.rotationQuaternion,
+      ] as [number, number, number, number],
+      scale: mainHandPresentation.socket.scale,
+    },
+  } satisfies MainHandPresentation;
+
+  const renderer = await ReactThreeTestRenderer.create(
+    <Task8ClassCharacterModel
+      url={fighterUrl}
+      mainHandPresentation={mainHandPresentation}
+      mainHandSocketOverride={modularFantasyHeroSocket}
+    />
+  );
+
+  const attachedClone = handBone(renderer).children[0]!;
+  const unitsPerMeter = 1 / modularFantasyHeroSocket.boneUnitMeters;
+
+  expectVectorCloseTo(attachedClone.position.toArray(), [
+    modularFantasyHeroSocket.positionMeters[0] * unitsPerMeter,
+    modularFantasyHeroSocket.positionMeters[1] * unitsPerMeter,
+    modularFantasyHeroSocket.positionMeters[2] * unitsPerMeter,
+  ]);
+  expectVectorCloseTo(attachedClone.quaternion.toArray(), [
+    ...modularFantasyHeroSocket.rotationQuaternion,
+  ]);
+  expectVectorCloseTo(attachedClone.scale.toArray(), [
+    modularFantasyHeroSocket.scale * unitsPerMeter,
+    modularFantasyHeroSocket.scale * unitsPerMeter,
+    modularFantasyHeroSocket.scale * unitsPerMeter,
+  ]);
+  expect(mainHandPresentation).toEqual(originalPresentation);
+  expect(mainHandPresentation.socket).toBe(socket);
 });

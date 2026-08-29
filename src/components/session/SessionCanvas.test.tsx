@@ -18,7 +18,15 @@ import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { readFileSync } from 'node:fs';
 import { useEffect, useLayoutEffect } from 'react';
 import * as THREE from 'three';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import { facingToYaw } from '../hex-grid/facingYaw';
@@ -45,6 +53,12 @@ const gltfMockState = vi.hoisted(() => ({
 const mediumHumanoidMockState = vi.hoisted(() => ({
   markerPrefix: '__test-medium-humanoid__',
 }));
+
+beforeAll(() => {
+  (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+});
 
 beforeEach(() => {
   __resetDungeonShellProviderForTests();
@@ -183,6 +197,28 @@ function scene(): Scene3D {
 const ELF_FIGHTER_URL = '/models/synty/characters/race-class/elf-fighter.glb';
 const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
 const MEDIUM_HUMANOID_MARKER = mediumHumanoidMockState.markerPrefix + 'human';
+const TOWNFOLK_MAIN_HAND_SOCKET = {
+  bone: 'Hand_R',
+  boneUnitMeters: 0.01,
+  positionMeters: [
+    -0.11356871832209599, 0.0437807216160595, -0.0070717729664129085,
+  ] as const,
+  rotationQuaternion: [
+    -0.31717459916354807, -0.45555976264236875, 0.6828311428133312,
+    0.47498148472569474,
+  ] as const,
+  scale: 1,
+};
+const MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET = {
+  bone: 'Hand_R',
+  boneUnitMeters: 0.01,
+  positionMeters: [-0.113634511828, 0.043524894863, -0.006868128199] as const,
+  rotationQuaternion: [
+    -0.31697111189640637, -0.4555468694563118, 0.6829896921327775,
+    0.47490151020194044,
+  ] as const,
+  scale: 1,
+};
 
 function renderSession(scene3D = scene()) {
   return ReactThreeTestRenderer.create(
@@ -270,6 +306,28 @@ function lightIntensity(
       (candidate as { instance?: { type?: string } }).instance?.type === type
   ) as unknown as { instance: { intensity: number } };
   return node.instance.intensity;
+}
+
+function attachedMainHandRoot(
+  renderer: Awaited<ReturnType<typeof renderSession>>
+): THREE.Object3D {
+  const hand = renderer.scene.findAll(
+    (node) =>
+      node.instance instanceof THREE.Bone &&
+      (node.instance as THREE.Bone).name === 'Hand_R'
+  )[0]!.instance as THREE.Bone;
+  expect(hand.children.length).toBeGreaterThan(0);
+  return hand.children[0]!;
+}
+
+function expectVectorCloseTo(
+  actual: readonly number[],
+  expected: readonly number[]
+) {
+  expect(actual).toHaveLength(expected.length);
+  actual.forEach((value, index) => {
+    expect(value).toBeCloseTo(expected[index]!, 6);
+  });
 }
 
 function expectOneVisiblePlaceholder(
@@ -854,6 +912,78 @@ describe('SessionScene', () => {
           (node.instance as THREE.Mesh).name.includes(weaponUrl)
       );
       expect(weaponMeshes.length).toBeGreaterThan(0);
+    });
+
+    it('applies the reviewed modular rig-family override to the exact local Elf Fighter model', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId="fighter"
+          raceRefId="elf"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          mainHandPresentation={{
+            ref: 'dnd5e:item:longsword',
+            weaponUrl: '/models/synty/weapons/longsword.glb',
+            socket: TOWNFOLK_MAIN_HAND_SOCKET,
+          }}
+        />
+      );
+
+      const attached = attachedMainHandRoot(renderer);
+      const unitsPerMeter =
+        1 / MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.boneUnitMeters;
+
+      expectVectorCloseTo(attached.position.toArray(), [
+        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+      ]);
+      expectVectorCloseTo(attached.quaternion.toArray(), [
+        ...MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.rotationQuaternion,
+      ]);
+      expectVectorCloseTo(attached.scale.toArray(), [
+        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+      ]);
+    });
+
+    it('keeps class-model fallback players on the Townfolk socket family', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId="fighter"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          mainHandPresentation={{
+            ref: 'dnd5e:item:longsword',
+            weaponUrl: '/models/synty/weapons/longsword.glb',
+            socket: MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET,
+          }}
+        />
+      );
+
+      const attached = attachedMainHandRoot(renderer);
+      const unitsPerMeter = 1 / TOWNFOLK_MAIN_HAND_SOCKET.boneUnitMeters;
+
+      expectVectorCloseTo(attached.position.toArray(), [
+        TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+        TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+        TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+      ]);
+      expectVectorCloseTo(attached.quaternion.toArray(), [
+        ...TOWNFOLK_MAIN_HAND_SOCKET.rotationQuaternion,
+      ]);
+      expectVectorCloseTo(attached.scale.toArray(), [
+        TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+        TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+        TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+      ]);
     });
   });
 

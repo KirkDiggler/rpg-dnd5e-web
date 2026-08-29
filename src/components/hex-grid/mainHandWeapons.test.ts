@@ -1,10 +1,14 @@
 import type { EquippedMap } from '@/components/game/equipment/equipmentTypes';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import {
+import type { MainHandSocket } from './mainHandPresentation';
+import * as mainHandWeapons from './mainHandWeapons';
+
+const {
   CURRENT_MAIN_HAND_WEAPONS,
   TOWNFOLK_MAIN_HAND_SOCKET,
   resolveMainHandPresentation,
-} from './mainHandWeapons';
+} = mainHandWeapons;
 
 const itemRef = (id: string) => ({ module: 'dnd5e', type: 'item', id });
 const equipped = (id?: string): EquippedMap =>
@@ -32,6 +36,33 @@ const EXPECTED_WEAPONS = [
   ['javelin', 'Javelin', '/models/synty/weapons/javelin.glb'],
   ['rapier', 'Rapier', '/models/synty/weapons/rapier.glb'],
 ] as const;
+
+const EXPECTED_MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET = {
+  bone: 'Hand_R',
+  boneUnitMeters: 0.01,
+  positionMeters: [-0.113634511828, 0.043524894863, -0.006868128199],
+  rotationQuaternion: [
+    -0.31697111189640637, -0.4555468694563118, 0.6829896921327775,
+    0.47490151020194044,
+  ],
+  scale: 1,
+} satisfies MainHandSocket;
+
+const LOCAL_PROVIDER_MANIFEST_PATH =
+  '/home/kirk/.pi/worktrees/rpg-game-assets/80-modular-elf-fighter/harness/models/synty/characters/race-class/manifest.json';
+const MODULAR_FANTASY_HERO_SOCKET_PROFILE_ID =
+  'modular-fantasy-hero-main-hand-v1';
+const ELF_FIGHTER_SHA256 =
+  '53ccc878a2ed40fc9e52391b942b9afc4ccda2267a7d8cdbdf1689730832e41d';
+
+type Task8MainHandWeaponsModule = typeof mainHandWeapons & {
+  MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET?: MainHandSocket;
+  mainHandSocketForRigFamily?: (
+    rigFamily: 'townfolk-v1' | 'modular-fantasy-hero-v1'
+  ) => MainHandSocket;
+};
+
+const task8MainHandWeapons = mainHandWeapons as Task8MainHandWeaponsModule;
 
 describe('production main-hand weapon presentation', () => {
   it.each(EXPECTED_WEAPONS)(
@@ -101,4 +132,51 @@ describe('production main-hand weapon presentation', () => {
       expect(result.presentation?.socket).toBe(TOWNFOLK_MAIN_HAND_SOCKET);
     }
   });
+
+  it('pins the reviewed modular-fantasy-hero socket and returns stable rig-family identities', () => {
+    expect(task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET).toEqual(
+      EXPECTED_MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET
+    );
+    expect(task8MainHandWeapons.mainHandSocketForRigFamily).toBeTypeOf(
+      'function'
+    );
+    if (
+      !task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET ||
+      !task8MainHandWeapons.mainHandSocketForRigFamily
+    ) {
+      return;
+    }
+
+    expect(task8MainHandWeapons.mainHandSocketForRigFamily('townfolk-v1')).toBe(
+      TOWNFOLK_MAIN_HAND_SOCKET
+    );
+    expect(
+      task8MainHandWeapons.mainHandSocketForRigFamily('modular-fantasy-hero-v1')
+    ).toBe(task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET);
+  });
 });
+
+describe.runIf(existsSync(LOCAL_PROVIDER_MANIFEST_PATH))(
+  'reviewed modular provider authority',
+  () => {
+    it('deep-equals the exact local provider socket profile for elf:fighter', () => {
+      const manifest = JSON.parse(
+        readFileSync(LOCAL_PROVIDER_MANIFEST_PATH, 'utf8')
+      ) as {
+        combinations: Record<string, { sha256: string; socketProfile: string }>;
+        socketProfiles: Record<string, MainHandSocket>;
+      };
+
+      expect(manifest.combinations['elf:fighter']).toMatchObject({
+        rigFamily: 'modular-fantasy-hero-v1',
+        sha256: ELF_FIGHTER_SHA256,
+        socketProfile: MODULAR_FANTASY_HERO_SOCKET_PROFILE_ID,
+      });
+      expect(
+        task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET
+      ).toEqual(
+        manifest.socketProfiles[MODULAR_FANTASY_HERO_SOCKET_PROFILE_ID]
+      );
+    });
+  }
+);
