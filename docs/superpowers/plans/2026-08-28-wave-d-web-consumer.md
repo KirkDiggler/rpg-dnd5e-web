@@ -174,7 +174,7 @@ Using the sandbox Fighter:
 2. open a fresh browser context and verify reconnect restores Light Crossbow;
 3. unequip and capture immediate unarmed presentation;
 4. open another fresh context and verify unarmed restoration;
-5. restore the original Longsword state before finishing.
+5. restore the exact observed initial owner state before finishing.
 
 Require relevant owner/asset responses HTTP 200 and no unexpected console/page/request failures.
 
