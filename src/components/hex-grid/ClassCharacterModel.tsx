@@ -56,6 +56,7 @@ import { MainHandAttachmentSlot } from './MainHandAttachment';
 import {
   type MainHandAttachmentStatus,
   type MainHandPresentation,
+  type MainHandSocket,
 } from './mainHandPresentation';
 import { cloneCryptMaterials } from './sceneKnowledge';
 
@@ -82,6 +83,7 @@ export interface ClassCharacterModelProps {
    * standing-model caller. */
   isDownedVariant?: boolean;
   mainHandPresentation?: MainHandPresentation;
+  mainHandSocketOverride?: MainHandSocket;
   onMainHandStatus?: (status: MainHandAttachmentStatus) => void;
 }
 
@@ -94,6 +96,7 @@ export function ClassCharacterModel({
   isMoving = false,
   isDownedVariant = false,
   mainHandPresentation,
+  mainHandSocketOverride,
   onMainHandStatus,
 }: ClassCharacterModelProps) {
   // useGLTF returns drei's shared, URL-keyed cache — mutating it directly
@@ -265,6 +268,14 @@ export function ClassCharacterModel({
     if (resolvedClipName) state.invalidate();
   });
 
+  const effectiveMainHandPresentation = useMemo(
+    () =>
+      mainHandPresentation && mainHandSocketOverride
+        ? { ...mainHandPresentation, socket: mainHandSocketOverride }
+        : mainHandPresentation,
+    [mainHandPresentation, mainHandSocketOverride]
+  );
+
   return (
     <>
       <primitive
@@ -274,12 +285,12 @@ export function ClassCharacterModel({
       />
       <MainHandAttachmentSlot
         key={
-          mainHandPresentation
-            ? `${mainHandPresentation.ref}|${mainHandPresentation.weaponUrl}`
+          effectiveMainHandPresentation
+            ? `${effectiveMainHandPresentation.ref}|${effectiveMainHandPresentation.weaponUrl}`
             : 'unarmed'
         }
         characterRoot={cloned}
-        presentation={mainHandPresentation}
+        presentation={effectiveMainHandPresentation}
         onStatus={onMainHandStatus}
       />
     </>

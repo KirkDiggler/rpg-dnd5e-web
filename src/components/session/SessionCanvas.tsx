@@ -114,6 +114,11 @@ export interface SessionCanvasProps {
   characterName: string;
   /** Public roster body ref; private CharacterData does not choose models. */
   classRefId: string | undefined;
+  /** Public roster race ref; private CharacterData does not choose models. */
+  raceRefId?: string;
+  /** Public turn-participant standing for the local player; never derived from
+   * owner-private HP state. */
+  localIsDowned?: boolean;
   /** Owner-authoritative equipped main-hand presentation for the local player.
    * Never applied to `otherMembers`, whose equipment is not public today. */
   mainHandPresentation?: MainHandPresentation;
@@ -207,7 +212,9 @@ export function SessionScene({
   characterId,
   characterName,
   classRefId,
+  raceRefId,
   mainHandPresentation,
+  localIsDowned = false,
   myPosition,
   movePath,
   moveSeq,
@@ -457,6 +464,8 @@ export function SessionScene({
         type="player"
         hexSize={hexSize}
         classRefId={classRefId}
+        raceRefId={raceRefId}
+        isDowned={localIsDowned}
         mainHandPresentation={mainHandPresentation}
         movePath={movePath}
         moveSeq={moveSeq}
@@ -492,12 +501,24 @@ export function SessionScene({
               ? roster?.get(member.subject)?.classRef
               : undefined
           }
+          raceRefId={
+            member.kind === MemberKind.PLAYER
+              ? roster?.get(member.subject)?.raceRef || undefined
+              : undefined
+          }
           monsterRefId={
             monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
             member.monsterRefId
           }
           knowledgeState={member.remembered ? 'remembered' : undefined}
-          isDead={isSightedDowned(member.standing)}
+          isDowned={
+            member.kind === MemberKind.PLAYER &&
+            isSightedDowned(member.standing)
+          }
+          isDead={
+            member.kind !== MemberKind.PLAYER &&
+            isSightedDowned(member.standing)
+          }
           onClick={handleTargetClick}
           onPointerOver={setMeshHoveredSubject}
           onPointerOut={() => setMeshHoveredSubject(null)}

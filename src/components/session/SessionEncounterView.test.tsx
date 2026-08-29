@@ -467,7 +467,28 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.getCharacterDataFn.mockResolvedValue({
       character: privateCharacterData({
         classRef: { module: 'private', type: 'class', id: 'wizard' },
+        raceRef: { module: 'private', type: 'race', id: 'human' },
       }),
+    });
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+        {
+          id: 'skeleton-1',
+          kind: MemberKind.MONSTER,
+          name: 'Skeleton',
+          classRef: '',
+          raceRef: '',
+          monsterRef: 'dnd5e:monsters:skeleton',
+        },
+      ],
     });
     renderView();
 
@@ -475,6 +496,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
     expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
     expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.raceRefId).toBeUndefined();
 
     await act(async () => {
       rosterLoad.resolve({
@@ -484,7 +506,7 @@ describe('SessionEncounterView production combat integration', () => {
             kind: MemberKind.PLAYER,
             name: 'Aldric',
             classRef: 'fighter',
-            raceRef: 'human',
+            raceRef: 'elf',
             monsterRef: '',
           },
           {
@@ -503,6 +525,7 @@ describe('SessionEncounterView production combat integration', () => {
       expect(hoisted.lastCanvasProps.current).toMatchObject({
         characterName: 'Aldric',
         classRefId: 'fighter',
+        raceRefId: 'elf',
       })
     );
     expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
@@ -511,6 +534,54 @@ describe('SessionEncounterView production combat integration', () => {
     within(dock).getByText(/level 3 fighter/i);
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
     screen.getByText('24/28');
+  });
+
+  it('derives the local downed state from the public turn participant instead of private HP state', async () => {
+    readyTurn();
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 2,
+      order: ['char-1'],
+      participants: [
+        participant('char-1', {
+          active: true,
+          standing: Standing.DOWNED,
+          name: 'Turn Snapshot Name',
+        }),
+      ],
+    });
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+      ],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        hitPoints: { current: 24, max: 28, temp: 0 },
+      }),
+    });
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => {
+      const currentCanvasProps = hoisted.lastCanvasProps.current as
+        | (SessionCanvasProps & { localIsDowned?: boolean })
+        | null;
+      expect(currentCanvasProps).toMatchObject({
+        characterName: 'Aldric',
+        classRefId: 'fighter',
+        raceRefId: 'elf',
+        localIsDowned: true,
+      });
+    });
   });
 
   it('projects owner-authoritative main_hand into the local canvas presentation', async () => {
@@ -606,6 +677,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
     expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
     expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.raceRefId).toBeUndefined();
   });
 
   it('keeps an already-drawn canvas mounted through a failed background Where refresh', async () => {

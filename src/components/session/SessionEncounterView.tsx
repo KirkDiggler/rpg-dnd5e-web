@@ -27,6 +27,7 @@ import {
   ClockKind,
   DoorState,
   MemberKind,
+  Standing,
   TargetKind,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -517,6 +518,10 @@ function SessionEncounterScope({
   const ownRoster = roster.get(member);
   const characterName = ownRoster?.name || 'You';
   const classRefId = ownRoster?.classRef || undefined;
+  const raceRefId = ownRoster?.raceRef || undefined;
+  const localIsDowned =
+    turnParticipants.find((participant) => participant.member === member)
+      ?.standing === Standing.DOWNED;
   const mainHandResolution = useMemo(
     () => resolveMainHandPresentation(characterData?.equipped ?? {}),
     [characterData?.equipped]
@@ -606,6 +611,8 @@ function SessionEncounterScope({
                 characterId={member}
                 characterName={characterName}
                 classRefId={classRefId}
+                raceRefId={raceRefId}
+                localIsDowned={localIsDowned}
                 mainHandPresentation={mainHandResolution.presentation}
                 roster={roster}
                 doors={doors}

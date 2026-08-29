@@ -24,7 +24,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { ClassCharacterModel } from './ClassCharacterModel';
-import { resolveClassCharacterModelUrl } from './classCharacterModels';
+import { resolvePlayerCharacterModel } from './classCharacterModels';
 import {
   DEFAULT_HEADING_BY_TYPE,
   MEDIUM_HUMANOID_FORWARD_OFFSET,
@@ -33,6 +33,7 @@ import {
 } from './facing';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import type { MainHandPresentation } from './mainHandPresentation';
+import { mainHandSocketForRigFamily } from './mainHandWeapons';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
@@ -94,10 +95,14 @@ export interface HexEntityProps {
    * Undefined means live, so every existing caller is unchanged.
    */
   knowledgeState?: SceneKnowledgeState;
-  /** v1alpha2 CharacterData.class_ref.id — resolves a class GLB for player
-   * entities (rpg-dnd5e-web#501). Unmapped/undefined falls back to
-   * MediumHumanoid, unchanged (the #479 boundary lineage). */
+  /** Public roster class ref id — resolves a player GLB when one is mapped.
+   * Unmapped/undefined falls back to MediumHumanoid, unchanged (the #479
+   * boundary lineage). */
   classRefId?: string;
+  /** Public roster race ref id — paired with classRefId for exact promoted
+   * player models; blank/missing falls back to honest class or neutral
+   * placeholder. */
+  raceRefId?: string;
   /** Exact owner-authoritative visual projection for this player's main hand.
    * Undefined means unarmed; only class GLBs consume it. */
   mainHandPresentation?: MainHandPresentation;
@@ -307,6 +312,7 @@ export function HexEntity({
   isGhost = false,
   knowledgeState,
   classRefId,
+  raceRefId,
   mainHandPresentation,
   isDowned = false,
   obstacleType,
@@ -468,15 +474,18 @@ export function HexEntity({
       : resolveWeaponType(character, 'offHand');
     const shield = isTwoHanded ? undefined : resolveShield(character);
 
-    // Player class GLB (rpg-dnd5e-web#501). Unmapped class / missing
-    // classRefId falls through to undefined here, which is exactly the
-    // MediumHumanoid fallback signal below (the #479 boundary lineage: a
-    // data gap degrades to the known-working placeholder, never a broken
-    // model ref).
-    const classModelUrl =
+    // Player GLB (public race/class identity). Exact promoted race+class
+    // standing models win when shipped; missing/blank race falls back to the
+    // honest class GLB, and unmapped class still falls through to the known
+    // MediumHumanoid placeholder.
+    const playerModelResolution =
       type === 'player'
-        ? resolveClassCharacterModelUrl(classRefId, isDowned)
+        ? resolvePlayerCharacterModel(raceRefId, classRefId, isDowned)
         : undefined;
+    const classModelUrl = playerModelResolution?.url;
+    const mainHandSocketOverride = playerModelResolution
+      ? mainHandSocketForRigFamily(playerModelResolution.rigFamily)
+      : undefined;
     // Monster npc GLB (rpg-dnd5e-web#559) — the same resolve-or-undefined
     // shape as classModelUrl above, one entry per promoted crypt-roster
     // monster (monsterModels.ts). `isDead` (not `isDowned`, which is a
@@ -621,6 +630,7 @@ export function HexEntity({
                   mainHandPresentation={
                     type === 'player' ? mainHandPresentation : undefined
                   }
+                  mainHandSocketOverride={mainHandSocketOverride}
                 />
               </ErrorBoundary>
             ) : (
