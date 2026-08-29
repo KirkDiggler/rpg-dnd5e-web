@@ -652,6 +652,8 @@ describe('SessionEncounterView production combat integration', () => {
   it('clears the turn Move selector when authority transitions to world clock before the next free-roam request', async () => {
     readyScene();
     const turnParticipants = [participant('char-1', { active: true })];
+    const postFightTurnRefresh = deferred<unknown>();
+    const postFightAffordRefresh = deferred<unknown>();
     hoisted.turnFn
       .mockResolvedValueOnce({
         clock: ClockKind.TURN,
@@ -660,19 +662,21 @@ describe('SessionEncounterView production combat integration', () => {
         order: ['char-1'],
         participants: turnParticipants,
       })
-      .mockResolvedValue({
+      .mockResolvedValueOnce({
         clock: ClockKind.WORLD,
         active: '',
         round: 0,
         order: [],
         participants: [],
-      });
+      })
+      .mockReturnValue(postFightTurnRefresh.promise);
     hoisted.affordFn
       .mockResolvedValueOnce({
         clock: ClockKind.TURN,
         declarations: [moveDeclaration()],
       })
-      .mockResolvedValue({ clock: ClockKind.WORLD, declarations: [] });
+      .mockResolvedValueOnce({ clock: ClockKind.WORLD, declarations: [] })
+      .mockReturnValue(postFightAffordRefresh.promise);
     hoisted.moveFn.mockResolvedValue({ steps: [] });
     const ended = deferredStream([
       event(EventKind.FIGHT_ENDED, {
@@ -693,11 +697,44 @@ describe('SessionEncounterView production combat integration', () => {
       )
     );
 
-    ended.release();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
     await waitFor(() => screen.getByTestId('session-combat-free-roam'));
+
+    ended.release();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(3));
+    await waitFor(() => screen.getByTestId('session-combat-free-roam'));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true)
+    );
+
+    await act(async () => {
+      postFightTurnRefresh.resolve({
+        clock: ClockKind.WORLD,
+        active: '',
+        round: 0,
+        order: [],
+        participants: [],
+      });
+      postFightAffordRefresh.resolve({
+        clock: ClockKind.WORLD,
+        declarations: [],
+      });
+      await Promise.all([
+        postFightTurnRefresh.promise,
+        postFightAffordRefresh.promise,
+      ]);
+    });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false)
+    );
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
+    await waitFor(() => expect(hoisted.moveFn).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(hoisted.moveFn).toHaveBeenLastCalledWith(
         expect.objectContaining({ declarationId: '' })
