@@ -25,9 +25,10 @@ interface RaceClassCharacterModelEntry {
   rigFamily: CharacterRigFamily;
 }
 
-/** Keyed by CharacterData.class_ref.id (lowercase, e.g. "rogue") — matches
- * the server's class ref convention verified live in rpg-dnd5e-web#493/#497
- * (devseed's "rogue level 2", "barbarian level 1", etc.). */
+/** Keyed by PublicMemberInfo.classRef (lowercase, e.g. "rogue") — matches
+ * the server's public class ref convention verified live in
+ * rpg-dnd5e-web#493/#497 (devseed's "rogue level 2", "barbarian level 1",
+ * etc.). */
 const CLASS_CHARACTER_MODELS: Record<string, ClassCharacterModelEntry> = {
   fighter: { model: 'fighter.glb', downed: 'fighter-downed.glb' },
   barbarian: { model: 'barbarian.glb', downed: 'barbarian-downed.glb' },

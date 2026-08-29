@@ -536,6 +536,54 @@ describe('SessionEncounterView production combat integration', () => {
     screen.getByText('24/28');
   });
 
+  it('derives the local downed state from the public turn participant instead of private HP state', async () => {
+    readyTurn();
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 2,
+      order: ['char-1'],
+      participants: [
+        participant('char-1', {
+          active: true,
+          standing: Standing.DOWNED,
+          name: 'Turn Snapshot Name',
+        }),
+      ],
+    });
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+      ],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        hitPoints: { current: 24, max: 28, temp: 0 },
+      }),
+    });
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => {
+      const currentCanvasProps = hoisted.lastCanvasProps.current as
+        | (SessionCanvasProps & { localIsDowned?: boolean })
+        | null;
+      expect(currentCanvasProps).toMatchObject({
+        characterName: 'Aldric',
+        classRefId: 'fighter',
+        raceRefId: 'elf',
+        localIsDowned: true,
+      });
+    });
+  });
+
   it('projects owner-authoritative main_hand into the local canvas presentation', async () => {
     readyScene();
     hoisted.getCharacterDataFn.mockResolvedValue({

@@ -196,6 +196,7 @@ function scene(): Scene3D {
 
 const ELF_FIGHTER_URL = '/models/synty/characters/race-class/elf-fighter.glb';
 const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
+const FIGHTER_DOWNED_URL = '/models/synty/characters/fighter-downed.glb';
 const MEDIUM_HUMANOID_MARKER = mediumHumanoidMockState.markerPrefix + 'human';
 const TOWNFOLK_MAIN_HAND_SOCKET = {
   bone: 'Hand_R',
@@ -503,6 +504,61 @@ describe('SessionScene', () => {
         (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
     );
     expect(exactMeshes.length).toBeGreaterThan(0);
+  });
+
+  it('uses the Fighter downed class GLB, not the standing exact Elf Fighter GLB, for an authoritatively downed local player and keeps the Townfolk socket', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        {...({
+          scene: scene(),
+          hexSize: 1,
+          characterId: 'char-1',
+          characterName: 'Toolkit Sandbox Fighter',
+          classRefId: 'fighter',
+          raceRefId: 'elf',
+          localIsDowned: true,
+          myPosition: { x: 0, y: 0, z: 0 },
+          mainHandPresentation: {
+            ref: 'dnd5e:item:longsword',
+            weaponUrl: '/models/synty/weapons/longsword.glb',
+            socket: TOWNFOLK_MAIN_HAND_SOCKET,
+          },
+        } as Parameters<typeof SessionScene>[0] & {
+          localIsDowned: boolean;
+        })}
+      />
+    );
+
+    const downedMeshes = renderer.scene.findAll(
+      (node) =>
+        node.type === 'Mesh' &&
+        (node.instance as THREE.Mesh).name.includes(FIGHTER_DOWNED_URL)
+    );
+    const exactMeshes = renderer.scene.findAll(
+      (node) =>
+        node.type === 'Mesh' &&
+        (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
+    );
+
+    expect(downedMeshes.length).toBeGreaterThan(0);
+    expect(exactMeshes).toHaveLength(0);
+
+    const attached = attachedMainHandRoot(renderer);
+    const unitsPerMeter = 1 / TOWNFOLK_MAIN_HAND_SOCKET.boneUnitMeters;
+
+    expectVectorCloseTo(attached.position.toArray(), [
+      TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+      TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+      TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+    ]);
+    expectVectorCloseTo(attached.quaternion.toArray(), [
+      ...TOWNFOLK_MAIN_HAND_SOCKET.rotationQuaternion,
+    ]);
+    expectVectorCloseTo(attached.scale.toArray(), [
+      TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+      TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+      TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+    ]);
   });
 
   it('keeps the local MediumHumanoid fallback when the exact Elf Fighter model URL fails to load', async () => {
@@ -1031,6 +1087,47 @@ describe('SessionScene', () => {
           (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
       );
       expect(exactMeshes.length).toBeGreaterThan(0);
+    });
+
+    it('a downed PLAYER-kind member with a roster entry mounts the Fighter downed class GLB, not the standing exact Elf Fighter GLB', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[{ ...sightedPlayer, standing: Standing.DOWNED }]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'fighter',
+                  raceRef: 'elf',
+                  monsterRef: '',
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+      const downedMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(FIGHTER_DOWNED_URL)
+      );
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
+      );
+      expect(downedMeshes.length).toBeGreaterThan(0);
+      expect(exactMeshes).toHaveLength(0);
     });
 
     it('a PLAYER-kind member with NO roster entry keeps the neutral placeholder — a missing row degrades, never blocks', async () => {
