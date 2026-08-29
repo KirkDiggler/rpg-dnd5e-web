@@ -120,7 +120,9 @@ run 3/3: Test Files 275 passed | 1 skipped (276); Tests 4153 passed | 2 skipped 
 
 ## Commit SHA
 
-TBD before commit; update after commit.
+Fix commit: `e32526ded00bd43f0f6caacbc3b192c27e7d550d` (`test: make free-roam callback authority deterministic`).
+
+This report is finalized in a follow-up docs commit because a commit object cannot contain its own final SHA before it exists.
 
 ## Self-review and concerns
 
