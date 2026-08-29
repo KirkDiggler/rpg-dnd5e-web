@@ -42,6 +42,10 @@ const gltfMockState = vi.hoisted(() => ({
   pending: new Promise<never>(() => undefined),
 }));
 
+const mediumHumanoidMockState = vi.hoisted(() => ({
+  markerPrefix: '__test-medium-humanoid__',
+}));
+
 beforeEach(() => {
   __resetDungeonShellProviderForTests();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
@@ -86,6 +90,17 @@ vi.mock('@react-three/drei', () => {
     }),
   };
 });
+
+vi.mock('../hex-grid/MediumHumanoid', () => ({
+  MediumHumanoid: ({ variant }: { variant?: string }) => (
+    <mesh
+      name={`${mediumHumanoidMockState.markerPrefix}${variant ?? 'unknown'}`}
+    >
+      <boxGeometry args={[0.35, 0.9, 0.35]} />
+      <meshStandardMaterial color={0xff00ff} />
+    </mesh>
+  ),
+}));
 
 import { SessionScene } from './SessionCanvas';
 
@@ -167,6 +182,7 @@ function scene(): Scene3D {
 
 const ELF_FIGHTER_URL = '/models/synty/characters/race-class/elf-fighter.glb';
 const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
+const MEDIUM_HUMANOID_MARKER = mediumHumanoidMockState.markerPrefix + 'human';
 
 function renderSession(scene3D = scene()) {
   return ReactThreeTestRenderer.create(
@@ -235,6 +251,14 @@ function meshInstances(
   return renderer.scene
     .findAllByType('Mesh')
     .map((node) => (node as unknown as { instance: THREE.Mesh }).instance);
+}
+
+function mediumHumanoidMarkers(
+  renderer: Awaited<ReturnType<typeof renderSession>>
+): THREE.Mesh[] {
+  return meshInstances(renderer).filter((mesh) =>
+    mesh.name.includes(MEDIUM_HUMANOID_MARKER)
+  );
 }
 
 function lightIntensity(
@@ -452,16 +476,7 @@ describe('SessionScene', () => {
           (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
       );
       expect(exactMeshes).toHaveLength(0);
-      const floorMeshes = outcome.renderer.scene
-        .findAll((node) => node.type === 'Mesh')
-        .filter(
-          (node) =>
-            (node.instance as THREE.Mesh).position.y === DUNGEON_SURFACE_Y
-        );
-      const allMeshes = outcome.renderer.scene.findAll(
-        (node) => node.type === 'Mesh'
-      );
-      expect(allMeshes.length).toBeGreaterThan(floorMeshes.length);
+      expect(mediumHumanoidMarkers(outcome.renderer)).toHaveLength(1);
     }
   });
 
@@ -913,7 +928,7 @@ describe('SessionScene', () => {
       );
       expect(classMeshes).toHaveLength(0);
       expect(exactMeshes).toHaveLength(0);
-      expect(renderer.scene.children.length).toBeGreaterThan(0);
+      expect(mediumHumanoidMarkers(renderer)).toHaveLength(2);
     });
 
     it("a MONSTER-kind member's model resolves from the roster's authored ref — no subject-derived monsterRefId needed", async () => {
