@@ -67,7 +67,7 @@ Change exact length to 16. Change unknown-ref coverage to `dnd5e:item:dart`; kee
 
 - [ ] **Step 3: Run focused test and confirm RED**
 
-Run: `npm run test:run -- src/components/hex-grid/mainHandWeapons.test.ts`  
+Run: `npm run test:run -- src/components/hex-grid/mainHandWeapons.test.ts`
 Expected: four mappings/length fail and Rapier is still unmapped.
 
 - [ ] **Step 4: Append four production definitions**
