@@ -128,6 +128,38 @@ describe('resolvePlayerCharacterModel', () => {
     ).toEqual(expected);
   });
 
+  it('falls back to the class model when raceRefId is missing', () => {
+    const expected = asResolution({
+      url: '/models/synty/characters/fighter.glb',
+      rigFamily: 'townfolk-v1',
+      source: 'class',
+    });
+
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        undefined,
+        'fighter',
+        false
+      )
+    ).toEqual(expected);
+  });
+
+  it('treats a blank raceRefId as missing and falls back to the class model', () => {
+    const expected = asResolution({
+      url: '/models/synty/characters/fighter.glb',
+      rigFamily: 'townfolk-v1',
+      source: 'class',
+    });
+
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        '   ',
+        'fighter',
+        false
+      )
+    ).toEqual(expected);
+  });
+
   it('returns undefined for an unknown class', () => {
     expect(
       classCharacterModels.resolvePlayerCharacterModel?.('elf', 'wizard', false)

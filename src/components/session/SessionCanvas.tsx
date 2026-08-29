@@ -114,6 +114,8 @@ export interface SessionCanvasProps {
   characterName: string;
   /** Public roster body ref; private CharacterData does not choose models. */
   classRefId: string | undefined;
+  /** Public roster race ref; private CharacterData does not choose models. */
+  raceRefId?: string;
   /** Owner-authoritative equipped main-hand presentation for the local player.
    * Never applied to `otherMembers`, whose equipment is not public today. */
   mainHandPresentation?: MainHandPresentation;
@@ -207,6 +209,7 @@ export function SessionScene({
   characterId,
   characterName,
   classRefId,
+  raceRefId,
   mainHandPresentation,
   myPosition,
   movePath,
@@ -457,6 +460,7 @@ export function SessionScene({
         type="player"
         hexSize={hexSize}
         classRefId={classRefId}
+        raceRefId={raceRefId}
         mainHandPresentation={mainHandPresentation}
         movePath={movePath}
         moveSeq={moveSeq}
@@ -490,6 +494,11 @@ export function SessionScene({
           classRefId={
             member.kind === MemberKind.PLAYER
               ? roster?.get(member.subject)?.classRef
+              : undefined
+          }
+          raceRefId={
+            member.kind === MemberKind.PLAYER
+              ? roster?.get(member.subject)?.raceRef || undefined
               : undefined
           }
           monsterRefId={

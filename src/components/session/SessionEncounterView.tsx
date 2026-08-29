@@ -517,6 +517,7 @@ function SessionEncounterScope({
   const ownRoster = roster.get(member);
   const characterName = ownRoster?.name || 'You';
   const classRefId = ownRoster?.classRef || undefined;
+  const raceRefId = ownRoster?.raceRef || undefined;
   const mainHandResolution = useMemo(
     () => resolveMainHandPresentation(characterData?.equipped ?? {}),
     [characterData?.equipped]
@@ -606,6 +607,7 @@ function SessionEncounterScope({
                 characterId={member}
                 characterName={characterName}
                 classRefId={classRefId}
+                raceRefId={raceRefId}
                 mainHandPresentation={mainHandResolution.presentation}
                 roster={roster}
                 doors={doors}

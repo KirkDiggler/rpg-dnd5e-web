@@ -21,7 +21,6 @@ import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
-import { resolveClassCharacterModelUrl } from '../hex-grid/classCharacterModels';
 import { facingToYaw } from '../hex-grid/facingYaw';
 import { cubeToWorld } from '../hex-grid/hexMath';
 import { buildAtlasPathIndex } from './atlasPath';
@@ -165,6 +164,9 @@ function scene(): Scene3D {
     doorGaps,
   };
 }
+
+const ELF_FIGHTER_URL = '/models/synty/characters/race-class/elf-fighter.glb';
+const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
 
 function renderSession(scene3D = scene()) {
   return ReactThreeTestRenderer.create(
@@ -398,6 +400,69 @@ describe('SessionScene', () => {
     // the three floor tiles already counted.
     const allMeshes = renderer.scene.findAll((node) => node.type === 'Mesh');
     expect(allMeshes.length).toBeGreaterThan(floorMeshes.length);
+  });
+
+  it('mounts the exact local public Elf Fighter model URL', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Toolkit Sandbox Fighter"
+        classRefId="fighter"
+        raceRefId="elf"
+        myPosition={{ x: 0, y: 0, z: 0 }}
+      />
+    );
+
+    const exactMeshes = renderer.scene.findAll(
+      (node) =>
+        node.type === 'Mesh' &&
+        (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
+    );
+    expect(exactMeshes.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the local MediumHumanoid fallback when the exact Elf Fighter model URL fails to load', async () => {
+    gltfMockState.failedUrls.add(ELF_FIGHTER_URL);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const outcome = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Toolkit Sandbox Fighter"
+        classRefId="fighter"
+        raceRefId="elf"
+        myPosition={{ x: 0, y: 0, z: 0 }}
+      />
+    ).then(
+      (renderer) => ({ renderer }),
+      (error: unknown) => ({ error })
+    );
+    consoleError.mockRestore();
+
+    expect(outcome).toHaveProperty('renderer');
+    if ('renderer' in outcome) {
+      const exactMeshes = outcome.renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
+      );
+      expect(exactMeshes).toHaveLength(0);
+      const floorMeshes = outcome.renderer.scene
+        .findAll((node) => node.type === 'Mesh')
+        .filter(
+          (node) =>
+            (node.instance as THREE.Mesh).position.y === DUNGEON_SURFACE_Y
+        );
+      const allMeshes = outcome.renderer.scene.findAll(
+        (node) => node.type === 'Mesh'
+      );
+      expect(allMeshes.length).toBeGreaterThan(floorMeshes.length);
+    }
   });
 
   it('places a mapped AtlasProp on the same dungeon surface as the floor', async () => {
@@ -788,7 +853,7 @@ describe('SessionScene', () => {
       standing: Standing.UP,
     };
 
-    it('a PLAYER-kind member with a roster entry mounts their CLASS GLB, not the neutral placeholder', async () => {
+    it('a PLAYER-kind member with a roster entry mounts their exact public Elf Fighter GLB, not the neutral placeholder', async () => {
       const renderer = await ReactThreeTestRenderer.create(
         <SessionScene
           scene={scene()}
@@ -807,7 +872,7 @@ describe('SessionScene', () => {
                   kind: MemberKind.PLAYER,
                   name: 'Bob',
                   classRef: 'fighter',
-                  raceRef: 'human',
+                  raceRef: 'elf',
                   monsterRef: '',
                 } as PublicMemberInfo,
               ],
@@ -815,16 +880,12 @@ describe('SessionScene', () => {
           }
         />
       );
-      // Mocked useGLTF names its mesh after the resolved URL — the fighter
-      // class GLB path appears only when the class model actually mounted.
-      const expectedUrl = resolveClassCharacterModelUrl('fighter', false);
-      expect(expectedUrl).toBeTruthy();
-      const classMeshes = renderer.scene.findAll(
+      const exactMeshes = renderer.scene.findAll(
         (node) =>
           node.type === 'Mesh' &&
-          (node.instance as THREE.Mesh).name.includes(expectedUrl as string)
+          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
       );
-      expect(classMeshes.length).toBeGreaterThan(0);
+      expect(exactMeshes.length).toBeGreaterThan(0);
     });
 
     it('a PLAYER-kind member with NO roster entry keeps the neutral placeholder — a missing row degrades, never blocks', async () => {
@@ -840,13 +901,18 @@ describe('SessionScene', () => {
           roster={new Map()}
         />
       );
-      const expectedUrl = resolveClassCharacterModelUrl('fighter', false);
       const classMeshes = renderer.scene.findAll(
         (node) =>
           node.type === 'Mesh' &&
-          (node.instance as THREE.Mesh).name.includes(expectedUrl as string)
+          (node.instance as THREE.Mesh).name.includes(FIGHTER_CLASS_URL)
+      );
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
       );
       expect(classMeshes).toHaveLength(0);
+      expect(exactMeshes).toHaveLength(0);
       expect(renderer.scene.children.length).toBeGreaterThan(0);
     });
 

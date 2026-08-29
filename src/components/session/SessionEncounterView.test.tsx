@@ -467,7 +467,28 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.getCharacterDataFn.mockResolvedValue({
       character: privateCharacterData({
         classRef: { module: 'private', type: 'class', id: 'wizard' },
+        raceRef: { module: 'private', type: 'race', id: 'human' },
       }),
+    });
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+        {
+          id: 'skeleton-1',
+          kind: MemberKind.MONSTER,
+          name: 'Skeleton',
+          classRef: '',
+          raceRef: '',
+          monsterRef: 'dnd5e:monsters:skeleton',
+        },
+      ],
     });
     renderView();
 
@@ -475,6 +496,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
     expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
     expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.raceRefId).toBeUndefined();
 
     await act(async () => {
       rosterLoad.resolve({
@@ -484,7 +506,7 @@ describe('SessionEncounterView production combat integration', () => {
             kind: MemberKind.PLAYER,
             name: 'Aldric',
             classRef: 'fighter',
-            raceRef: 'human',
+            raceRef: 'elf',
             monsterRef: '',
           },
           {
@@ -503,6 +525,7 @@ describe('SessionEncounterView production combat integration', () => {
       expect(hoisted.lastCanvasProps.current).toMatchObject({
         characterName: 'Aldric',
         classRefId: 'fighter',
+        raceRefId: 'elf',
       })
     );
     expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
@@ -606,6 +629,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
     expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
     expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.raceRefId).toBeUndefined();
   });
 
   it('keeps an already-drawn canvas mounted through a failed background Where refresh', async () => {
