@@ -1101,22 +1101,35 @@ describe('SessionEncounterView production combat integration', () => {
     });
     const burst = deferredStream([struck(), turnEnded()]);
     hoisted.streamEventsFn.mockReturnValue(burst.stream);
-    renderView();
+    const { unmount } = renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
     await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
 
-    burst.release();
-    await waitFor(() => screen.getByText("Skeleton's turn."));
-    // Authority reconciliation is immediate, before the 300ms Story cursor.
-    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        burst.release();
+        await vi.advanceTimersByTimeAsync(0);
+      });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
-    await waitFor(() => screen.getAllByText(/source=live/i));
-    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
-    expect(screen.queryByText(/Skeleton strikes Aldric/i)).toBeNull();
-    await waitFor(() => screen.getByText(/Skeleton strikes Aldric/i), {
-      timeout: 1500,
-    });
+      screen.getByText("Skeleton's turn.");
+      // Authority reconciliation is immediate, before the 300ms Story cursor.
+      expect(hoisted.getViewFn).toHaveBeenCalledTimes(2);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+      expect(screen.getAllByText(/source=live/i)).toHaveLength(2);
+      fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+      expect(screen.queryByText(/Skeleton strikes Aldric/i)).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      screen.getByText(/Skeleton strikes Aldric/i);
+    } finally {
+      unmount();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('renders catch-up Story immediately instead of replaying retained history slowly', async () => {
