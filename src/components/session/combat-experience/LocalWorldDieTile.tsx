@@ -26,6 +26,9 @@ export interface LocalWorldDieTileProps {
     held: LocalWorldDieHeldState,
     profile: VisualThrowProfileV1
   ) => void;
+  readonly physicsMode?: 'direct' | 'planned';
+  readonly onPhysicsModeChange?: (mode: 'direct' | 'planned') => void;
+  readonly planSummary?: string;
   readonly onRevealResult?: () => void;
 }
 
@@ -267,13 +270,27 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
               : 'Loading the carved d20'}
         </small>
       </div>
-      <button
-        type="button"
-        disabled
-        title="Live Roll arrives with release physics"
+      <div
+        className={styles.localWorldDieMode}
+        role="group"
+        aria-label="Dice playback mode"
       >
-        Roll d20
-      </button>
+        <button
+          type="button"
+          aria-pressed={(props.physicsMode ?? 'direct') === 'direct'}
+          onClick={() => props.onPhysicsModeChange?.('direct')}
+        >
+          Direct
+        </button>
+        <button
+          type="button"
+          aria-pressed={props.physicsMode === 'planned'}
+          onClick={() => props.onPhysicsModeChange?.('planned')}
+        >
+          Planned
+        </button>
+        {props.planSummary && <small>{props.planSummary}</small>}
+      </div>
     </aside>
   );
 }

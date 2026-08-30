@@ -36,6 +36,7 @@ import {
 } from './localWorldDieColliders';
 import { isLocalWorldDieFloorPoint } from './localWorldDieFloor';
 import { localWorldDieLaunch } from './localWorldDieMotion';
+import type { LocalWorldDiePlanTerminal } from './localWorldDiePreSimulation';
 
 export interface LocalWorldDieHeldState {
   readonly position: readonly [number, number];
@@ -50,6 +51,7 @@ export type LocalWorldDieCommand =
       kind: 'released';
       held: LocalWorldDieHeldState;
       profile: VisualThrowProfileV1;
+      plannedTerminal?: LocalWorldDiePlanTerminal;
     }>;
 
 export interface LocalWorldDieLayerProps {
@@ -141,6 +143,7 @@ function DieBody({
   const { rapier } = useRapier();
   const launched = useRef(false);
   const launchAge = useRef(0);
+  const physicsStep = useRef(0);
   const settledTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
   );
@@ -191,6 +194,7 @@ function DieBody({
     if (!body) return;
     assist.current = undefined;
     launchAge.current = 0;
+    physicsStep.current = 0;
     if (settledTimer.current !== undefined) {
       clearTimeout(settledTimer.current);
       settledTimer.current = undefined;
@@ -234,6 +238,23 @@ function DieBody({
   useAfterPhysicsStep(() => {
     const body = bodyRef.current;
     if (!body || !launched.current || assist.current) return;
+    physicsStep.current += 1;
+    const plannedTerminal =
+      command.kind === 'released' ? command.plannedTerminal : undefined;
+    if (plannedTerminal && physicsStep.current >= plannedTerminal.step) {
+      if (plannedTerminal.kind === 'off-table') {
+        launched.current = false;
+        body.setBodyType(rapier.RigidBodyType.KinematicPositionBased, true);
+        body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        setVisible(false);
+        onTerminal('off-table');
+      } else {
+        beginAssist();
+      }
+      return;
+    }
+    if (plannedTerminal) return;
     const position = body.translation();
     const offTable =
       position.y < DUNGEON_SURFACE_Y - 0.5 ||

@@ -55,11 +55,13 @@ import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
 import { localWorldDieReleaseEvent } from './local-world-die/localWorldDieAuthority';
+import { buildLocalWorldDieColliders } from './local-world-die/localWorldDieColliders';
 import {
   type LocalWorldDieCommand,
   type LocalWorldDieHeldState,
   LocalWorldDieLayer,
 } from './local-world-die/LocalWorldDieLayer';
+import { preSimulateLocalWorldDie } from './local-world-die/localWorldDiePreSimulation';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
 import {
@@ -373,6 +375,15 @@ function SessionEncounterScope({
     () => holdDownedReveal(otherMembers, combat.unresolvedAttackTargets),
     [otherMembers, combat.unresolvedAttackTargets]
   );
+  const localWorldDieOpenDoors = useMemo(
+    () =>
+      new Set(
+        [...doors]
+          .filter(([, door]) => door.state === DoorState.OPEN)
+          .map(([id]) => id)
+      ),
+    [doors]
+  );
   const localWorldDieRequest = combat.diceEvents.find(
     (event): event is DicePresentationRequestedEvent =>
       event.type === 'dice-presentation-requested'
@@ -384,11 +395,18 @@ function SessionEncounterScope({
   const localWorldDieProfile = useRef<VisualThrowProfileV1 | undefined>(
     undefined
   );
+  const localWorldDiePlanningOperation = useRef(0);
   const [localWorldDieCommand, setLocalWorldDieCommand] =
     useState<LocalWorldDieCommand>({ id: 0, kind: 'reset' });
   const [localWorldDieReady, setLocalWorldDieReady] = useState(false);
   const [localWorldDieRolling, setLocalWorldDieRolling] = useState(false);
   const [localWorldDieSettled, setLocalWorldDieSettled] = useState(false);
+  const [localWorldDiePhysicsMode, setLocalWorldDiePhysicsMode] = useState<
+    'direct' | 'planned'
+  >('direct');
+  const [localWorldDiePlanSummary, setLocalWorldDiePlanSummary] = useState<
+    string | undefined
+  >(undefined);
   const localWorldDiePhysical =
     combat.diceWitnessRole === 'roller' &&
     combat.phase === 'awaiting-roll' &&
@@ -396,12 +414,15 @@ function SessionEncounterScope({
     localWorldDieRequest !== undefined;
 
   useEffect(() => {
+    localWorldDiePlanningOperation.current += 1;
     setLocalWorldDieSettled(false);
+    setLocalWorldDiePlanSummary(undefined);
     localWorldDieProfile.current = undefined;
   }, [localWorldDieRequest?.presentationId]);
 
   useEffect(() => {
     if (localWorldDiePhysical) return;
+    localWorldDiePlanningOperation.current += 1;
     setLocalWorldDieCommand({
       id: localWorldDieCommandId.current++,
       kind: 'reset',
@@ -430,14 +451,60 @@ function SessionEncounterScope({
     (held: LocalWorldDieHeldState, profile: VisualThrowProfileV1) => {
       localWorldDieProfile.current = profile;
       setLocalWorldDieRolling(true);
+      if (localWorldDiePhysicsMode === 'direct') {
+        setLocalWorldDieCommand({
+          id: localWorldDieCommandId.current++,
+          kind: 'released',
+          held,
+          profile,
+        });
+        return;
+      }
+
+      const scene = lastGoodSceneRef.current;
+      if (!scene) return;
+      const operation = ++localWorldDiePlanningOperation.current;
       setLocalWorldDieCommand({
         id: localWorldDieCommandId.current++,
-        kind: 'released',
+        kind: 'held',
+        held,
+      });
+      void preSimulateLocalWorldDie({
+        scene,
+        colliders: buildLocalWorldDieColliders(scene, localWorldDieOpenDoors),
         held,
         profile,
-      });
+      }).then(
+        (terminal) => {
+          if (
+            localWorldDiePlanningOperation.current !== operation ||
+            !localWorldDiePhysical
+          )
+            return;
+          setLocalWorldDiePlanSummary(
+            `Planned ${terminal.elapsedMs.toFixed(1)} ms · ${terminal.kind} @ ${terminal.step}`
+          );
+          setLocalWorldDieCommand({
+            id: localWorldDieCommandId.current++,
+            kind: 'released',
+            held,
+            profile,
+            plannedTerminal: terminal,
+          });
+        },
+        () => {
+          if (localWorldDiePlanningOperation.current !== operation) return;
+          setLocalWorldDiePlanSummary('Planning failed · direct fallback');
+          setLocalWorldDieCommand({
+            id: localWorldDieCommandId.current++,
+            kind: 'released',
+            held,
+            profile,
+          });
+        }
+      );
     },
-    []
+    [localWorldDieOpenDoors, localWorldDiePhysical, localWorldDiePhysicsMode]
   );
   const handleLocalWorldDieTerminal = useCallback(
     (kind: 'settled' | 'off-table' | 'failure') => {
@@ -453,6 +520,11 @@ function SessionEncounterScope({
       const profile = localWorldDieProfile.current;
       if (!request || !profile) return;
       setLocalWorldDieSettled(true);
+      setLocalWorldDieRolling(false);
+      setLocalWorldDieCommand({
+        id: localWorldDieCommandId.current++,
+        kind: 'reset',
+      });
       combat.onDiceReleaseRequest(localWorldDieReleaseEvent(request, profile));
     },
     [combat, localWorldDieRequest]
@@ -631,15 +703,6 @@ function SessionEncounterScope({
     : characterDataError
       ? ('unavailable' as const)
       : ('loading' as const);
-  const localWorldDieOpenDoors = useMemo(
-    () =>
-      new Set(
-        [...doors]
-          .filter(([, door]) => door.state === DoorState.OPEN)
-          .map(([id]) => id)
-      ),
-    [doors]
-  );
   const localWorldDieControl =
     combat.diceWitnessRole === 'roller' && combat.phase === 'awaiting-roll' ? (
       combat.diceSemanticFallback ? (
@@ -647,7 +710,9 @@ function SessionEncounterScope({
           mode="fallback"
           onRevealResult={combat.onDiceSemanticReleaseRequest}
         />
-      ) : lastGoodSceneRef.current && !localWorldDieRolling ? (
+      ) : lastGoodSceneRef.current &&
+        !localWorldDieRolling &&
+        !localWorldDieSettled ? (
         <LocalWorldDieTile
           mode="ready"
           pickupReady={localWorldDieReady}
@@ -655,6 +720,9 @@ function SessionEncounterScope({
           projectionRef={localWorldDieProjectionRef}
           onHeldChange={handleLocalWorldDieHeld}
           onRelease={handleLocalWorldDieRelease}
+          physicsMode={localWorldDiePhysicsMode}
+          onPhysicsModeChange={setLocalWorldDiePhysicsMode}
+          planSummary={localWorldDiePlanSummary}
         />
       ) : null
     ) : null;
