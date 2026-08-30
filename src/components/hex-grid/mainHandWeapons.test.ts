@@ -34,6 +34,12 @@ const EXPECTED_WEAPONS = [
   ['longbow', 'Longbow', '/models/synty/weapons/longbow.glb'],
   ['javelin', 'Javelin', '/models/synty/weapons/javelin.glb'],
   ['rapier', 'Rapier', '/models/synty/weapons/rapier.glb'],
+  ['light-hammer', 'Light Hammer', '/models/synty/weapons/light-hammer.glb'],
+  ['mace', 'Mace', '/models/synty/weapons/mace.glb'],
+  ['sickle', 'Sickle', '/models/synty/weapons/sickle.glb'],
+  ['spear', 'Spear', '/models/synty/weapons/spear.glb'],
+  ['sling', 'Sling', '/models/synty/weapons/sling.glb'],
+  ['dart', 'Dart', '/models/synty/weapons/dart.glb'],
 ] as const;
 
 const EXPECTED_MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET = {
@@ -80,21 +86,32 @@ describe('production main-hand weapon presentation', () => {
     }
   );
 
-  it('exposes exactly the current 16-item provider roster', () => {
-    expect(CURRENT_MAIN_HAND_WEAPONS).toHaveLength(16);
-    expect(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.ref)).toEqual(
-      EXPECTED_WEAPONS.map(([id]) => `dnd5e:item:${id}`)
+  it('exposes the exact 22-item provider roster in order with no duplicates', () => {
+    expect(CURRENT_MAIN_HAND_WEAPONS).toEqual(
+      EXPECTED_WEAPONS.map(([id, label, weaponUrl]) => ({
+        ref: `dnd5e:item:${id}`,
+        id,
+        label,
+        weaponUrl,
+      }))
     );
+
+    expect(
+      new Set(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.ref)).size
+    ).toBe(22);
+    expect(
+      new Set(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.weaponUrl)).size
+    ).toBe(22);
   });
 
   it('treats absent main_hand as intentionally unarmed', () => {
     expect(resolveMainHandPresentation({})).toEqual({ code: 'unarmed' });
   });
 
-  it('refuses unknown and attack-shaped refs instead of guessing', () => {
-    expect(resolveMainHandPresentation(equipped('dart'))).toEqual({
+  it('refuses unknown exact item refs and attack-shaped refs instead of guessing', () => {
+    expect(resolveMainHandPresentation(equipped('morningstar'))).toEqual({
       code: 'unmapped-ref',
-      ref: 'dnd5e:item:dart',
+      ref: 'dnd5e:item:morningstar',
     });
     expect(
       resolveMainHandPresentation({

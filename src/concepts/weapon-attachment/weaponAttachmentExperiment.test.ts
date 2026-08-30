@@ -27,7 +27,7 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:longsword',
       candidate: {
         ref: 'dnd5e:item:longsword',
-        source: 'rpg-game-assets#78 · 16-item provider manifest',
+        source: 'rpg-game-assets#91 · 22-item provider manifest',
         weaponUrl: '/models/synty/weapons/longsword.glb',
         decodedTextureMb: 4,
         budgetMb: 4.5,
@@ -45,7 +45,7 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:shortbow',
       candidate: {
         ref: 'dnd5e:item:shortbow',
-        source: 'rpg-game-assets#78 · 16-item provider manifest',
+        source: 'rpg-game-assets#91 · 22-item provider manifest',
         weaponUrl: '/models/synty/weapons/shortbow.glb',
         decodedTextureMb: 4,
         budgetMb: 4.5,
@@ -139,6 +139,15 @@ describe('weapon attachment experiment', () => {
       observation({ equipmentState: 'longbow', attachmentCode: 'attached' }),
       observation({ equipmentState: 'javelin', attachmentCode: 'attached' }),
       observation({ equipmentState: 'rapier', attachmentCode: 'attached' }),
+      observation({
+        equipmentState: 'light-hammer',
+        attachmentCode: 'attached',
+      }),
+      observation({ equipmentState: 'mace', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'sickle', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'spear', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'sling', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'dart', attachmentCode: 'attached' }),
     ];
 
     expect(coverageFor(observations)).toEqual({
@@ -160,6 +169,12 @@ describe('weapon attachment experiment', () => {
         'longbow',
         'javelin',
         'rapier',
+        'light-hammer',
+        'mace',
+        'sickle',
+        'spear',
+        'sling',
+        'dart',
       ],
       motions: ['idle', 'walk'],
       views: ['close', 'orbit', 'play'],

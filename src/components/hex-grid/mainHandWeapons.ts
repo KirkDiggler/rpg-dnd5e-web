@@ -18,7 +18,7 @@ export interface MainHandWeaponDefinition {
 /**
  * Shared by the four current Townfolk class rigs. Provider evidence #67
  * measured exact-equal Hand_R matrices across fighter, barbarian, monk, and
- * rogue over sampled idle/walk frames; provider #78 binds every current weapon
+ * rogue over sampled idle/walk frames; provider #91 binds every current weapon
  * output to this accepted profile.
  */
 export const TOWNFOLK_MAIN_HAND_SOCKET: MainHandSocket = Object.freeze({
@@ -63,10 +63,10 @@ export function mainHandSocketForRigFamily(
 }
 
 /**
- * The complete current 16-item provider roster from rpg-game-assets#78
- * (provider commit cf3bd0bd325d9440a6d28f1d39601845bdfbcdde,
+ * The complete current 22-item provider roster from rpg-game-assets#91
+ * (provider commit 11b78a0f24278a54f057a5a1abf416d30c0a879b,
  * weapons/manifest.json sha256
- * 030ddd69117aed1b124f69320bc2def039d45eba0b7840644974108aaf117795). This is
+ * 729282ee2a05b0d1b9f194066e7aa4da5f3682b2a5811cfbc13de4353b8d68be). This is
  * an exact presentation lookup, not weapon rules: no proficiency,
  * handedness, or attack identity is inferred here.
  */
@@ -166,6 +166,42 @@ export const CURRENT_MAIN_HAND_WEAPONS = Object.freeze([
     id: 'rapier',
     label: 'Rapier',
     weaponUrl: '/models/synty/weapons/rapier.glb',
+  },
+  {
+    ref: 'dnd5e:item:light-hammer',
+    id: 'light-hammer',
+    label: 'Light Hammer',
+    weaponUrl: '/models/synty/weapons/light-hammer.glb',
+  },
+  {
+    ref: 'dnd5e:item:mace',
+    id: 'mace',
+    label: 'Mace',
+    weaponUrl: '/models/synty/weapons/mace.glb',
+  },
+  {
+    ref: 'dnd5e:item:sickle',
+    id: 'sickle',
+    label: 'Sickle',
+    weaponUrl: '/models/synty/weapons/sickle.glb',
+  },
+  {
+    ref: 'dnd5e:item:spear',
+    id: 'spear',
+    label: 'Spear',
+    weaponUrl: '/models/synty/weapons/spear.glb',
+  },
+  {
+    ref: 'dnd5e:item:sling',
+    id: 'sling',
+    label: 'Sling',
+    weaponUrl: '/models/synty/weapons/sling.glb',
+  },
+  {
+    ref: 'dnd5e:item:dart',
+    id: 'dart',
+    label: 'Dart',
+    weaponUrl: '/models/synty/weapons/dart.glb',
   },
 ] as const satisfies readonly MainHandWeaponDefinition[]);
 
