@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/861",
   "status": "ready for review",
-  "codeHead": "75335c924b53f42e1240e362d50c620bef55a28b",
+  "codeHead": "45fba578b9c44cdc289094b3f08526b84fd5ce65",
   "capturedAtUtc": "2026-08-30T10:39:12.273668Z",
   "provider": {
     "repository": "KirkDiggler/rpg-game-assets",
@@ -414,7 +414,9 @@
       "repository": "KirkDiggler/rpg-api",
       "issue": 860,
       "pullRequest": 863,
-      "mergeOrder": "API fixture PR must merge before this web slice"
+      "state": "merged",
+      "mergedCommit": "ddc20b18a6a1f784ed3cac64b40144763194b74f",
+      "mergeOrder": "satisfied: API fixture PR merged before this web slice"
     },
     "actingIdentity": "weapon-gallery",
     "ownerDisplay": "Weapon Gallery",

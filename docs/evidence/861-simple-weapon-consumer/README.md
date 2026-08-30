@@ -11,12 +11,12 @@ equipment RPCs.
 
 ## Binding
 
-- Web code HEAD: `75335c924b53f42e1240e362d50c620bef55a28b`
+- Web code HEAD: `45fba578b9c44cdc289094b3f08526b84fd5ce65`
 - Provider: `KirkDiggler/rpg-game-assets`
 - Provider commit: `11b78a0f24278a54f057a5a1abf416d30c0a879b`
 - Synced manifest: `public/models/synty/weapons/manifest.json`
 - Manifest SHA-256: `729282ee2a05b0d1b9f194066e7aa4da5f3682b2a5811cfbc13de4353b8d68be`
-- Authority fixture dependency: `KirkDiggler/rpg-api#860`, implemented by API PR #863. The API fixture PR must merge before this web slice so the repeatable `weapon-gallery` seed remains durable.
+- Authority fixture dependency: `KirkDiggler/rpg-api#860`, implemented by API PR #863 and merged to API `dev` at `ddc20b18a6a1f784ed3cac64b40144763194b74f`. The required merge order is satisfied and the repeatable `weapon-gallery` seed is durable.
 
 | Ref | Browser path | SHA-256 |
 | --- | --- | --- |
