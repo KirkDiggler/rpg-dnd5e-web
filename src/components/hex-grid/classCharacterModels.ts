@@ -72,6 +72,38 @@ const RACE_CLASS_CHARACTER_MODELS: Record<
     model: 'race-class/elf-rogue.glb',
     rigFamily: 'modular-fantasy-hero-v1',
   },
+  'half-elf:barbarian': {
+    model: 'race-class/half-elf-barbarian.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'half-elf:fighter': {
+    model: 'race-class/half-elf-fighter.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'half-elf:monk': {
+    model: 'race-class/half-elf-monk.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'half-elf:rogue': {
+    model: 'race-class/half-elf-rogue.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'tiefling:barbarian': {
+    model: 'race-class/tiefling-barbarian.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'tiefling:fighter': {
+    model: 'race-class/tiefling-fighter.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'tiefling:monk': {
+    model: 'race-class/tiefling-monk.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'tiefling:rogue': {
+    model: 'race-class/tiefling-rogue.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
 };
 
 function normalizeRefId(refId: string | undefined): string | undefined {
