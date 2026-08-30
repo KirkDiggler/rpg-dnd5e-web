@@ -410,6 +410,12 @@
   },
   "authoritativeRoute": {
     "surface": "normal web UI under the dedicated dev identity; Home -> Play -> Lobby/Resume -> Session equipment popover; no direct API mutation script",
+    "fixtureDependency": {
+      "repository": "KirkDiggler/rpg-api",
+      "issue": 860,
+      "pullRequest": 863,
+      "mergeOrder": "API fixture PR must merge before this web slice"
+    },
     "actingIdentity": "weapon-gallery",
     "ownerDisplay": "Weapon Gallery",
     "ownerClass": "fighter",

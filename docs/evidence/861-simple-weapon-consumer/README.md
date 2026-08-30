@@ -16,6 +16,7 @@ equipment RPCs.
 - Provider commit: `11b78a0f24278a54f057a5a1abf416d30c0a879b`
 - Synced manifest: `public/models/synty/weapons/manifest.json`
 - Manifest SHA-256: `729282ee2a05b0d1b9f194066e7aa4da5f3682b2a5811cfbc13de4353b8d68be`
+- Authority fixture dependency: `KirkDiggler/rpg-api#860`, implemented by API PR #863. The API fixture PR must merge before this web slice so the repeatable `weapon-gallery` seed remains durable.
 
 | Ref | Browser path | SHA-256 |
 | --- | --- | --- |
