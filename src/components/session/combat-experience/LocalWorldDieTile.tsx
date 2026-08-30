@@ -3,6 +3,10 @@ import type { LocalWorldDieHeldState } from '@/components/session/local-world-di
 import { isLocalWorldDieFloorPoint } from '@/components/session/local-world-die/localWorldDieFloor';
 import type { TrayPlaneProjection } from '@/components/ui/dice/trayPlaneProjection';
 import {
+  createVisualThrowProfile,
+  type VisualThrowProfileV1,
+} from '@/components/ui/dice/visualThrowProfile';
+import {
   useCallback,
   useEffect,
   useRef,
@@ -18,6 +22,10 @@ export interface LocalWorldDieTileProps {
   readonly scene?: Scene3D;
   readonly projectionRef?: MutableRefObject<TrayPlaneProjection | undefined>;
   readonly onHeldChange?: (held: LocalWorldDieHeldState | undefined) => void;
+  readonly onRelease?: (
+    held: LocalWorldDieHeldState,
+    profile: VisualThrowProfileV1
+  ) => void;
   readonly onRevealResult?: () => void;
 }
 
@@ -33,14 +41,24 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
   const captureOwner = useRef<HTMLButtonElement | undefined>(undefined);
   const heldRef = useRef<LocalWorldDieHeldState | undefined>(undefined);
   const lastClientY = useRef(0);
+  const previousSample = useRef<
+    | { readonly position: readonly [number, number]; readonly timeMs: number }
+    | undefined
+  >(undefined);
+  const filteredVelocity = useRef<readonly [number, number]>([0, 0]);
+  const releaseSequence = useRef(1);
   const [handedOff, setHandedOff] = useState(false);
 
   const clear = useCallback((notify = true) => {
     const pointerId = activePointer.current;
     const owner = captureOwner.current;
+    const hadGesture =
+      activePointer.current !== undefined || heldRef.current !== undefined;
     activePointer.current = undefined;
     captureOwner.current = undefined;
     heldRef.current = undefined;
+    previousSample.current = undefined;
+    filteredVelocity.current = [0, 0];
     setHandedOff(false);
     if (pointerId !== undefined && owner?.hasPointerCapture(pointerId)) {
       try {
@@ -49,7 +67,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
         // Capture may already be gone.
       }
     }
-    if (notify) integrationRef.current.onHeldChange?.(undefined);
+    if (notify && hadGesture) integrationRef.current.onHeldChange?.(undefined);
   }, []);
 
   useEffect(() => () => clear(), [clear]);
@@ -75,6 +93,8 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       activePointer.current = event.pointerId;
       captureOwner.current = event.currentTarget;
       lastClientY.current = event.clientY;
+      previousSample.current = undefined;
+      filteredVelocity.current = [0, 0];
       suppress(event);
     },
     []
@@ -113,6 +133,25 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       }
       lastClientY.current = event.clientY;
       if (!next) return;
+      const previousSampleValue = previousSample.current;
+      if (previousSampleValue && (event.buttons & 2) === 0) {
+        const dt = Math.max(
+          1 / 240,
+          Math.min(0.1, (event.timeStamp - previousSampleValue.timeMs) / 1000)
+        );
+        const instantX =
+          (next.position[0] - previousSampleValue.position[0]) / dt;
+        const instantZ =
+          (next.position[1] - previousSampleValue.position[1]) / dt;
+        filteredVelocity.current = [
+          filteredVelocity.current[0] * 0.55 + instantX * 0.45,
+          filteredVelocity.current[1] * 0.55 + instantZ * 0.45,
+        ];
+      }
+      previousSample.current = {
+        position: next.position,
+        timeMs: event.timeStamp,
+      };
       const frozen = Object.freeze({
         position: Object.freeze([...next.position] as [number, number]),
         height: next.height,
@@ -129,6 +168,29 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       if (activePointer.current !== event.pointerId || event.button !== 0)
         return;
       suppress(event);
+      const held = heldRef.current;
+      const onRelease = integrationRef.current.onRelease;
+      if (held && onRelease) {
+        const speed = Math.hypot(...filteredVelocity.current);
+        const direction: readonly [number, number] =
+          speed > 0.001
+            ? [
+                filteredVelocity.current[0] / speed,
+                filteredVelocity.current[1] / speed,
+              ]
+            : [0, 0];
+        const profile = createVisualThrowProfile({
+          releasePosition: [0.5, 0.5],
+          releaseDirection: direction,
+          releaseSpeed: Math.min(1, speed / 12),
+          shakeEnergy: Math.min(1, speed / 16),
+          spinBias: 0,
+          motionSeed: Math.imul(releaseSequence.current++, 2_654_435_761) >>> 0,
+        });
+        clear(false);
+        onRelease(held, profile);
+        return;
+      }
       clear();
     },
     [clear]

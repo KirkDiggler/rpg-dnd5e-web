@@ -108,6 +108,7 @@ export function CombatExperience({
   diceSemanticFallback,
   diceWitnessRole,
   localWorldDieControl,
+  localWorldDieSettled = false,
   location,
   pacingNotice,
   renderMap,
@@ -131,6 +132,7 @@ export function CombatExperience({
   const diePresented =
     diceWitnessRole === 'roller' &&
     !diceSemanticFallback &&
+    !localWorldDieSettled &&
     diceEvents.length > 0;
   // `result` goes visible when the die is THROWN, not when it lands. Hold it
   // until the die is observed at rest — see useDiceSettleGate.ts.

@@ -24,6 +24,23 @@ describe('attack die material', () => {
     expect(materials.numeral.metalness).toBe(0.08);
   });
 
+  it('supports local emissive readability without changing scene lighting', () => {
+    const materials = createMaterialFreeDiceMaterials({
+      bodyColor: '#365b91',
+      numeralColor: '#fffbe8',
+      roughness: 0.58,
+      metalness: 0.08,
+      bodyEmissive: '#10233f',
+      numeralEmissive: '#fff4cf',
+      emissiveIntensity: 0.32,
+    });
+
+    expect(materials.body.emissive.getHexString()).toBe('10233f');
+    expect(materials.numeral.emissive.getHexString()).toBe('fff4cf');
+    expect(materials.body.emissiveIntensity).toBe(0.32);
+    expect(materials.numeral.emissiveIntensity).toBe(0.32);
+  });
+
   it.each([
     [{ bodyColor: '', numeralColor: '#fff', roughness: 0.5, metalness: 0.5 }],
     [

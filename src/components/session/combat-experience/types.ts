@@ -107,6 +107,8 @@ interface CombatExperienceBaseProps {
   diceRollerName?: string;
   /** Production actor-only checkpoint control. `null` suppresses the default tile. */
   localWorldDieControl?: ReactNode;
+  /** The actor-only world die has already reached its visible terminal. */
+  localWorldDieSettled?: boolean;
   location: { name: string; area: string };
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;

@@ -12,6 +12,9 @@ export interface DiceMaterialTreatment {
   readonly numeralColor: string;
   readonly roughness: number;
   readonly metalness: number;
+  readonly bodyEmissive?: string;
+  readonly numeralEmissive?: string;
+  readonly emissiveIntensity?: number;
 }
 
 function validMaterialTreatment(treatment: DiceMaterialTreatment) {
@@ -25,7 +28,10 @@ function validMaterialTreatment(treatment: DiceMaterialTreatment) {
     treatment.roughness <= 1 &&
     Number.isFinite(treatment.metalness) &&
     treatment.metalness >= 0 &&
-    treatment.metalness <= 1
+    treatment.metalness <= 1 &&
+    (treatment.emissiveIntensity === undefined ||
+      (Number.isFinite(treatment.emissiveIntensity) &&
+        treatment.emissiveIntensity >= 0))
   );
 }
 
@@ -36,7 +42,7 @@ export function createMaterialFreeDiceMaterials(
   if (!validMaterialTreatment(treatment))
     throw Error('invalid material-free dice treatment');
 
-  const treatedClone = (color: string, name: string) => {
+  const treatedClone = (color: string, name: string, emissive?: string) => {
     const material =
       sourceMaterial instanceof MeshStandardMaterial
         ? sourceMaterial.clone()
@@ -44,13 +50,25 @@ export function createMaterialFreeDiceMaterials(
     material.color.set(color);
     material.roughness = treatment.roughness;
     material.metalness = treatment.metalness;
+    if (emissive) {
+      material.emissive.set(emissive);
+      material.emissiveIntensity = treatment.emissiveIntensity ?? 0;
+    }
     material.name = name;
     material.needsUpdate = true;
     return material;
   };
   return {
-    body: treatedClone(treatment.bodyColor, 'attack-die-runtime-body'),
-    numeral: treatedClone(treatment.numeralColor, 'attack-die-runtime-numeral'),
+    body: treatedClone(
+      treatment.bodyColor,
+      'attack-die-runtime-body',
+      treatment.bodyEmissive
+    ),
+    numeral: treatedClone(
+      treatment.numeralColor,
+      'attack-die-runtime-numeral',
+      treatment.numeralEmissive
+    ),
   };
 }
 
