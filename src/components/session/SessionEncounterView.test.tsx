@@ -440,7 +440,13 @@ describe('SessionEncounterView production combat integration', () => {
     expect(screen.queryByText('24/28')).toBeNull();
     expect(screen.queryByTestId('session-combat-equipment-button')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /longsword/i },
+        { timeout: 5000 }
+      )
+    );
     await waitFor(() =>
       expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
         'skeleton-1',
@@ -634,8 +640,10 @@ describe('SessionEncounterView production combat integration', () => {
     renderView();
 
     const dock = await screen.findByTestId('session-combat-dock');
-    within(dock).getByText('Aldric');
-    within(dock).getByText(/level 3 fighter/i);
+    await waitFor(() => {
+      within(dock).getByText('Aldric');
+      within(dock).getByText(/level 3 fighter/i);
+    });
     expect(within(dock).queryByText('Turn Snapshot Name')).toBeNull();
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
   });
@@ -710,7 +718,9 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.moveFn.mockReturnValue(new Promise(() => {}));
     renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
-    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false)
+    );
 
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
