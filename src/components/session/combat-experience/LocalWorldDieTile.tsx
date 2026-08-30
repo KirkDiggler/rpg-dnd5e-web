@@ -26,11 +26,7 @@ export interface LocalWorldDieTileProps {
     held: LocalWorldDieHeldState,
     profile: VisualThrowProfileV1
   ) => void;
-  readonly physicsMode?: 'direct' | 'planned' | 'published';
-  readonly onPhysicsModeChange?: (
-    mode: 'direct' | 'planned' | 'published'
-  ) => void;
-  readonly planSummary?: string;
+  readonly onRoll?: () => void;
   readonly onRevealResult?: () => void;
 }
 
@@ -222,8 +218,8 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
           20
         </span>
         <div>
-          <strong>{props.planSummary ?? 'Throw in progress'}</strong>
-          <small>Same local body · no witness playback</small>
+          <strong>Shared dice presentation</strong>
+          <small>Throwing in the dungeon</small>
         </div>
       </aside>
     );
@@ -291,34 +287,14 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
               : 'Loading the carved d20'}
         </small>
       </div>
-      <div
-        className={styles.localWorldDieMode}
-        role="group"
-        aria-label="Dice playback mode"
+      <button
+        type="button"
+        aria-label="Roll d20"
+        disabled={handedOff || !props.onRoll}
+        onClick={props.onRoll}
       >
-        <button
-          type="button"
-          aria-pressed={(props.physicsMode ?? 'direct') === 'direct'}
-          onClick={() => props.onPhysicsModeChange?.('direct')}
-        >
-          Direct
-        </button>
-        <button
-          type="button"
-          aria-pressed={props.physicsMode === 'planned'}
-          onClick={() => props.onPhysicsModeChange?.('planned')}
-        >
-          Planned
-        </button>
-        <button
-          type="button"
-          aria-pressed={props.physicsMode === 'published'}
-          onClick={() => props.onPhysicsModeChange?.('published')}
-        >
-          Published
-        </button>
-        {props.planSummary && <small>{props.planSummary}</small>}
-      </div>
+        Roll
+      </button>
     </aside>
   );
 }

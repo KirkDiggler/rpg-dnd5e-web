@@ -66,6 +66,7 @@ const hoisted = vi.hoisted(() => ({
   moveFn: vi.fn(),
   streamEventsFn: vi.fn(),
   streamDiceThrowsFn: vi.fn(),
+  publishDiceThrowFn: vi.fn(),
   getStoryFn: vi.fn(),
   getViewFn: vi.fn(),
   getRosterFn: vi.fn(),
@@ -104,6 +105,7 @@ vi.mock('../../api/characterHooks', () => ({
 vi.mock('@/api/client', () => ({
   sessionPresentationClient: {
     streamDiceThrows: hoisted.streamDiceThrowsFn,
+    publishDiceThrow: hoisted.publishDiceThrowFn,
   },
   sessionClient: {
     move: hoisted.moveFn,
@@ -245,15 +247,20 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function deferredDiceStream() {
-  const gate = deferred<DiceThrowPlan>();
+function deferredDiceStream(planCount = 1) {
+  const gates = Array.from({ length: planCount }, () =>
+    deferred<DiceThrowPlan>()
+  );
+  let publishIndex = 0;
   return {
     stream: {
       [Symbol.asyncIterator]: async function* () {
-        yield await gate.promise;
+        for (const gate of gates) yield await gate.promise;
       },
     },
-    publish: (plan: DiceThrowPlan) => gate.resolve(plan),
+    publish: (plan: DiceThrowPlan) => {
+      gates[publishIndex++]?.resolve(plan);
+    },
   };
 }
 
@@ -358,6 +365,7 @@ beforeEach(() => {
     hoisted.moveFn,
     hoisted.streamEventsFn,
     hoisted.streamDiceThrowsFn,
+    hoisted.publishDiceThrowFn,
     hoisted.getStoryFn,
     hoisted.getViewFn,
     hoisted.getRosterFn,
@@ -1165,6 +1173,88 @@ describe('SessionEncounterView production combat integration', () => {
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
   });
 
+  it('automatically plans and publishes the actor throw without a playback selector', async () => {
+    readyTurn();
+    hoisted.attackFn.mockResolvedValue({
+      seq: 7n,
+      roll: 17,
+      total: 20,
+      against: 13,
+      hit: true,
+      critical: false,
+      damage: 6,
+      attack: attackDeclaration().attack,
+    });
+    hoisted.publishDiceThrowFn.mockImplementation(async (input) => {
+      const draft = input.draft!;
+      return {
+        plan: create(DiceThrowPlanSchema, {
+          schemaVersion: draft.schemaVersion,
+          session: input.session,
+          presentationId: draft.presentationId,
+          authoritySeq: draft.authoritySeq,
+          roller: input.member,
+          attempt: draft.attempt,
+          physicsSchema: draft.physicsSchema,
+          colliderFingerprint: draft.colliderFingerprint,
+          bodies: draft.bodies,
+          contacts: draft.contacts,
+          terminal: draft.terminal,
+        }),
+      };
+    });
+    renderView();
+    await screen.findByRole('button', { name: /longsword/i });
+    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+
+    await screen.findByText('Preparing die');
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+
+    await screen.findByText('Shared dice presentation');
+    await waitFor(() =>
+      expect(hoisted.publishDiceThrowFn).toHaveBeenCalledTimes(1)
+    );
+    expect(hoisted.publishDiceThrowFn.mock.calls[0]?.[0]).toMatchObject({
+      session: 'enc-1',
+      member: 'char-1',
+      draft: {
+        presentationId: 'session:enc-1:7',
+        authoritySeq: 7n,
+        attempt: 1,
+      },
+    });
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({
+        kind: 'released',
+        plannedTerminal: { step: expect.any(Number) },
+      })
+    );
+    expect(screen.queryByRole('group', { name: /playback mode/i })).toBeNull();
+
+    const firstAttemptLayer =
+      hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(firstAttemptLayer)) {
+        firstAttemptLayer.props.onTerminal('off-table');
+      }
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(hoisted.publishDiceThrowFn).toHaveBeenCalledTimes(2)
+    );
+    expect(hoisted.publishDiceThrowFn.mock.calls[1]?.[0]?.draft?.attempt).toBe(
+      2
+    );
+  });
+
   it('mounts one noninteractive witness command for an admitted live player plan', async () => {
     readyScene();
     hoisted.getRosterFn.mockResolvedValue({
@@ -1195,32 +1285,30 @@ describe('SessionEncounterView production combat integration', () => {
         },
       ],
     });
-    hoisted.streamEventsFn.mockReturnValue(
-      fakeStream([
-        event(
-          EventKind.STRUCK,
-          {
-            case: 'struck',
-            value: {
-              attacker: 'char-2',
-              target: 'skeleton-1',
-              roll: 14,
-              total: 18,
-              against: 13,
-              damage: 5,
-              attack: attackDeclaration().attack,
-              critical: false,
-            },
-          } as SessionEvent['body'],
-          42n
-        ),
-      ])
-    );
-    const livePlans = deferredDiceStream();
+    const authoritativeStrike = deferredStream([
+      event(
+        EventKind.STRUCK,
+        {
+          case: 'struck',
+          value: {
+            attacker: 'char-2',
+            target: 'skeleton-1',
+            roll: 14,
+            total: 18,
+            against: 13,
+            damage: 5,
+            attack: attackDeclaration().attack,
+            critical: false,
+          },
+        } as SessionEvent['body'],
+        42n
+      ),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(authoritativeStrike.stream);
+    const livePlans = deferredDiceStream(2);
     hoisted.streamDiceThrowsFn.mockReturnValue(livePlans.stream);
     renderView();
 
-    await screen.findByText(/Lyra strikes Skeleton/i);
     await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
     const scene = hoisted.lastCanvasProps.current!.scene;
     const fingerprint = await fingerprintLocalWorldDieColliders(
@@ -1239,7 +1327,7 @@ describe('SessionEncounterView production combat integration', () => {
       angularVelocity: { x: 0, y: 0, z: 0 },
     };
     const planned: LocalWorldDiePlanTerminal = {
-      kind: 'settled',
+      kind: 'off-table',
       step: 42,
       elapsedMs: 4,
       fingerprint,
@@ -1267,7 +1355,10 @@ describe('SessionEncounterView production combat integration', () => {
     });
 
     await act(async () => livePlans.publish(accepted));
+    expect(currentLocalWorldDieCommand()?.kind).not.toBe('witness');
 
+    authoritativeStrike.release();
+    await screen.findByText(/Lyra strikes Skeleton/i);
     await waitFor(() =>
       expect(currentLocalWorldDieCommand()?.kind).toBe('witness')
     );
@@ -1279,11 +1370,48 @@ describe('SessionEncounterView production combat integration', () => {
     });
     expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
 
-    const layer = hoisted.lastCanvasProps.current?.presentationLayer;
-    expect(isValidElement<LocalWorldDieLayerProps>(layer)).toBe(true);
+    const firstLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    expect(isValidElement<LocalWorldDieLayerProps>(firstLayer)).toBe(true);
     act(() => {
-      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
-        layer.props.onTerminal('settled');
+      if (isValidElement<LocalWorldDieLayerProps>(firstLayer)) {
+        firstLayer.props.onTerminal('off-table');
+      }
+    });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.presentationLayer).toBeNull()
+    );
+
+    const retryDraft = localWorldDieDraft({
+      presentationId: 'session:enc-1:42',
+      authoritySeq: 42n,
+      attempt: 2,
+      plan: { ...planned, kind: 'settled' },
+    });
+    const retryAccepted = create(DiceThrowPlanSchema, {
+      schemaVersion: retryDraft.schemaVersion,
+      session: 'enc-1',
+      presentationId: retryDraft.presentationId,
+      authoritySeq: retryDraft.authoritySeq,
+      roller: 'char-2',
+      attempt: retryDraft.attempt,
+      physicsSchema: retryDraft.physicsSchema,
+      colliderFingerprint: retryDraft.colliderFingerprint,
+      bodies: retryDraft.bodies,
+      contacts: retryDraft.contacts,
+      terminal: retryDraft.terminal,
+    });
+    await act(async () => livePlans.publish(retryAccepted));
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({
+        kind: 'witness',
+        plan: { attempt: 2, terminal: { kind: 'settled' } },
+      })
+    );
+
+    const retryLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(retryLayer)) {
+        retryLayer.props.onTerminal('settled');
       }
     });
     await waitFor(() =>

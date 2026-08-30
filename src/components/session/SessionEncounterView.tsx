@@ -21,7 +21,10 @@ import { useSessionView } from '@/api/useSessionView';
 import { useSessionWhere } from '@/api/useSessionWhere';
 import { useUnequipItem } from '@/api/useUnequipItem';
 import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePresentationEvent';
-import type { VisualThrowProfileV1 } from '@/components/ui/dice/visualThrowProfile';
+import {
+  createNeutralVisualThrowProfile,
+  type VisualThrowProfileV1,
+} from '@/components/ui/dice/visualThrowProfile';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -38,7 +41,7 @@ import { createPortal } from 'react-dom';
 import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent } from '../game/equipment/equipmentTypes';
-import { HEX_SIZE } from '../hex-grid/hexMath';
+import { cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
@@ -66,7 +69,11 @@ import {
   preSimulateLocalWorldDie,
 } from './local-world-die/localWorldDiePreSimulation';
 import { publishLocalWorldDie } from './local-world-die/localWorldDiePublish';
-import { admitLocalWorldDieWitnessPlan } from './local-world-die/localWorldDieWitnessPlan';
+import { LocalWorldDieWitnessInbox } from './local-world-die/localWorldDieWitnessInbox';
+import type {
+  LocalWorldDieWitnessExpectation,
+  LocalWorldDieWitnessPlan,
+} from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
@@ -410,24 +417,29 @@ function SessionEncounterScope({
     undefined
   );
   const localWorldDiePlanningOperation = useRef(0);
-  const localWorldDieAttempt = useRef(1);
   const admittedWitnessPlans = useRef(new Set<string>());
+  const witnessInbox = useRef(
+    new LocalWorldDieWitnessInbox({ ttlMs: 1_500, capacity: 16 })
+  );
   const witnessExpectationRef = useRef<
-    Parameters<typeof admitLocalWorldDieWitnessPlan>[1] | undefined
+    LocalWorldDieWitnessExpectation | undefined
   >(undefined);
   const [localWorldDieCommand, setLocalWorldDieCommand] =
     useState<LocalWorldDieCommand>({ id: 0, kind: 'reset' });
   const [localWorldDieReady, setLocalWorldDieReady] = useState(false);
   const [localWorldDieRolling, setLocalWorldDieRolling] = useState(false);
+  const [localWorldDieAttemptState, setLocalWorldDieAttemptState] = useState({
+    presentationId: localWorldDieRequest?.presentationId,
+    attempt: 1,
+  });
+  const localWorldDieAttempt =
+    localWorldDieAttemptState.presentationId ===
+    localWorldDieRequest?.presentationId
+      ? localWorldDieAttemptState.attempt
+      : 1;
   const [localWorldDieWitnessActive, setLocalWorldDieWitnessActive] =
     useState(false);
   const [localWorldDieSettled, setLocalWorldDieSettled] = useState(false);
-  const [localWorldDiePhysicsMode, setLocalWorldDiePhysicsMode] = useState<
-    'direct' | 'planned' | 'published'
-  >('direct');
-  const [localWorldDiePlanSummary, setLocalWorldDiePlanSummary] = useState<
-    string | undefined
-  >(undefined);
   const localWorldDiePhysical =
     combat.diceWitnessRole === 'roller' &&
     combat.phase === 'awaiting-roll' &&
@@ -456,22 +468,46 @@ function SessionEncounterScope({
   const witnessAuthoritySeq = localWorldDieRequest
     ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
     : undefined;
-  witnessExpectationRef.current =
-    combat.diceWitnessRole === 'spectator' &&
-    localWorldDieRequest?.roller.role === 'player' &&
-    localWorldDieRequest.roller.entityId !== member &&
-    witnessAuthoritySeq !== undefined &&
-    localWorldDieFingerprint
-      ? {
-          session: sessionId,
-          presentationId: localWorldDieRequest.presentationId,
-          authoritySeq: witnessAuthoritySeq,
-          roller: localWorldDieRequest.roller.entityId,
-          attempt: localWorldDieAttempt.current,
-          viewerMember: member,
-          fingerprint: localWorldDieFingerprint,
-        }
-      : undefined;
+  const witnessExpectation = useMemo(
+    () =>
+      combat.diceWitnessRole === 'spectator' &&
+      localWorldDieRequest?.roller.role === 'player' &&
+      localWorldDieRequest.roller.entityId !== member &&
+      witnessAuthoritySeq !== undefined &&
+      localWorldDieFingerprint
+        ? {
+            session: sessionId,
+            presentationId: localWorldDieRequest.presentationId,
+            authoritySeq: witnessAuthoritySeq,
+            roller: localWorldDieRequest.roller.entityId,
+            attempt: localWorldDieAttempt,
+            viewerMember: member,
+            fingerprint: localWorldDieFingerprint,
+          }
+        : undefined,
+    [
+      combat.diceWitnessRole,
+      localWorldDieAttempt,
+      localWorldDieFingerprint,
+      localWorldDieRequest,
+      member,
+      sessionId,
+      witnessAuthoritySeq,
+    ]
+  );
+  witnessExpectationRef.current = witnessExpectation;
+
+  const playWitnessPlan = useCallback((plan: LocalWorldDieWitnessPlan) => {
+    const identity = `${plan.presentationId}:${plan.attempt}`;
+    if (admittedWitnessPlans.current.has(identity)) return;
+    admittedWitnessPlans.current.add(identity);
+    setLocalWorldDieWitnessActive(true);
+    setLocalWorldDieCommand({
+      id: localWorldDieCommandId.current++,
+      kind: 'witness',
+      plan,
+    });
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -480,34 +516,38 @@ function SessionEncounterScope({
       member,
       signal: controller.signal,
       onPlan: (wirePlan) => {
-        const expected = witnessExpectationRef.current;
-        if (!expected) return;
-        const plan = admitLocalWorldDieWitnessPlan(wirePlan, expected);
-        if (!plan) return;
-        const identity = `${plan.presentationId}:${plan.attempt}`;
-        if (admittedWitnessPlans.current.has(identity)) return;
-        admittedWitnessPlans.current.add(identity);
-        setLocalWorldDieWitnessActive(true);
-        setLocalWorldDieCommand({
-          id: localWorldDieCommandId.current++,
-          kind: 'witness',
-          plan,
-        });
+        const plan = witnessInbox.current.offer(
+          wirePlan,
+          witnessExpectationRef.current,
+          performance.now()
+        );
+        if (plan) playWitnessPlan(plan);
       },
       onUnavailable: () => {},
     });
     return () => controller.abort();
-  }, [member, sessionId]);
+  }, [member, playWitnessPlan, sessionId]);
 
   useEffect(() => {
     localWorldDiePlanningOperation.current += 1;
-    localWorldDieAttempt.current = 1;
+    setLocalWorldDieAttemptState({
+      presentationId: localWorldDieRequest?.presentationId,
+      attempt: 1,
+    });
     admittedWitnessPlans.current.clear();
     setLocalWorldDieWitnessActive(false);
     setLocalWorldDieSettled(false);
-    setLocalWorldDiePlanSummary(undefined);
     localWorldDieProfile.current = undefined;
   }, [localWorldDieRequest?.presentationId]);
+
+  useEffect(() => {
+    if (!witnessExpectation) return;
+    const plan = witnessInbox.current.reconsider(
+      witnessExpectation,
+      performance.now()
+    );
+    if (plan) playWitnessPlan(plan);
+  }, [playWitnessPlan, witnessExpectation]);
 
   useEffect(() => {
     if (localWorldDiePhysical) return;
@@ -540,23 +580,6 @@ function SessionEncounterScope({
     (held: LocalWorldDieHeldState, profile: VisualThrowProfileV1) => {
       localWorldDieProfile.current = profile;
       setLocalWorldDieRolling(true);
-      setLocalWorldDiePlanSummary(
-        localWorldDiePhysicsMode === 'direct'
-          ? 'Direct throw'
-          : localWorldDiePhysicsMode === 'published'
-            ? 'Planning + publishing…'
-            : 'Planning locally…'
-      );
-      if (localWorldDiePhysicsMode === 'direct') {
-        setLocalWorldDieCommand({
-          id: localWorldDieCommandId.current++,
-          kind: 'released',
-          held,
-          profile,
-        });
-        return;
-      }
-
       const scene = lastGoodSceneRef.current;
       if (!scene) return;
       const operation = ++localWorldDiePlanningOperation.current;
@@ -577,37 +600,27 @@ function SessionEncounterScope({
             !localWorldDiePhysical
           )
             return;
-          let summary = `Planned ${terminal.elapsedMs.toFixed(1)} ms`;
-          if (localWorldDiePhysicsMode === 'published') {
-            const request = localWorldDieRequest;
-            const authoritySeq = request
-              ? authoritySeqFromPresentationId(request.presentationId)
-              : undefined;
-            if (!request || authoritySeq === undefined) {
-              summary += ' · publish identity unavailable';
-            } else {
-              try {
-                const publication = await publishLocalWorldDie({
-                  session: sessionId,
-                  member,
-                  presentationId: request.presentationId,
-                  authoritySeq,
-                  attempt: localWorldDieAttempt.current,
-                  plan: terminal,
-                });
-                if (localWorldDiePlanningOperation.current !== operation)
-                  return;
-                summary += ` · network ${publication.roundTripMs.toFixed(1)} ms`;
-              } catch {
-                if (localWorldDiePlanningOperation.current !== operation)
-                  return;
-                summary += ' · publish failed';
-              }
+          const request = localWorldDieRequest;
+          const authoritySeq = request
+            ? authoritySeqFromPresentationId(request.presentationId)
+            : undefined;
+          if (request && authoritySeq !== undefined) {
+            try {
+              await publishLocalWorldDie({
+                session: sessionId,
+                member,
+                presentationId: request.presentationId,
+                authoritySeq,
+                attempt: localWorldDieAttempt,
+                plan: terminal,
+              });
+              if (localWorldDiePlanningOperation.current !== operation) return;
+            } catch {
+              if (localWorldDiePlanningOperation.current !== operation) return;
+              // Decorative transport failure keeps the authoritative actor
+              // functional through the same local planned playback.
             }
           }
-          setLocalWorldDiePlanSummary(
-            `${summary} · ${terminal.kind} @ ${terminal.step}`
-          );
           setLocalWorldDieCommand({
             id: localWorldDieCommandId.current++,
             kind: 'released',
@@ -618,7 +631,6 @@ function SessionEncounterScope({
         },
         () => {
           if (localWorldDiePlanningOperation.current !== operation) return;
-          setLocalWorldDiePlanSummary('Planning failed · direct fallback');
           setLocalWorldDieCommand({
             id: localWorldDieCommandId.current++,
             kind: 'released',
@@ -629,18 +641,38 @@ function SessionEncounterScope({
       );
     },
     [
+      localWorldDieAttempt,
       localWorldDieOpenDoors,
       localWorldDiePhysical,
-      localWorldDiePhysicsMode,
       localWorldDieRequest,
       member,
       sessionId,
     ]
   );
+  const handleLocalWorldDieRoll = useCallback(() => {
+    const origin = lastGoodPositionRef.current;
+    if (!origin) return;
+    const world = cubeToWorld(origin, HEX_SIZE);
+    const authoritySeq = localWorldDieRequest
+      ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
+      : undefined;
+    handleLocalWorldDieRelease(
+      { position: [world.x, world.z], height: 1.25 },
+      createNeutralVisualThrowProfile(
+        Number((authoritySeq ?? 0n) & 0xffff_ffffn)
+      )
+    );
+  }, [handleLocalWorldDieRelease, localWorldDieRequest]);
+
   const handleLocalWorldDieTerminal = useCallback(
     (kind: 'settled' | 'off-table' | 'failure') => {
       if (localWorldDieWitnessActive) {
-        if (kind === 'off-table') localWorldDieAttempt.current += 1;
+        if (kind === 'off-table') {
+          setLocalWorldDieAttemptState({
+            presentationId: localWorldDieRequest?.presentationId,
+            attempt: localWorldDieAttempt + 1,
+          });
+        }
         setLocalWorldDieWitnessActive(false);
         setLocalWorldDieCommand({
           id: localWorldDieCommandId.current++,
@@ -649,7 +681,10 @@ function SessionEncounterScope({
         return;
       }
       if (kind === 'off-table') {
-        localWorldDieAttempt.current += 1;
+        setLocalWorldDieAttemptState({
+          presentationId: localWorldDieRequest?.presentationId,
+          attempt: localWorldDieAttempt + 1,
+        });
         setLocalWorldDieRolling(false);
         setLocalWorldDieCommand({
           id: localWorldDieCommandId.current++,
@@ -668,7 +703,12 @@ function SessionEncounterScope({
       });
       combat.onDiceReleaseRequest(localWorldDieReleaseEvent(request, profile));
     },
-    [combat, localWorldDieRequest, localWorldDieWitnessActive]
+    [
+      combat,
+      localWorldDieAttempt,
+      localWorldDieRequest,
+      localWorldDieWitnessActive,
+    ]
   );
 
   const refreshKeysForEvent = useCallback(
@@ -847,10 +887,7 @@ function SessionEncounterScope({
   const localWorldDieControl =
     combat.diceWitnessRole === 'roller' && combat.phase === 'awaiting-roll' ? (
       localWorldDieRolling ? (
-        <LocalWorldDieTile
-          mode="status"
-          planSummary={localWorldDiePlanSummary}
-        />
+        <LocalWorldDieTile mode="status" />
       ) : combat.diceSemanticFallback ? (
         <LocalWorldDieTile
           mode="fallback"
@@ -866,9 +903,7 @@ function SessionEncounterScope({
           projectionRef={localWorldDieProjectionRef}
           onHeldChange={handleLocalWorldDieHeld}
           onRelease={handleLocalWorldDieRelease}
-          physicsMode={localWorldDiePhysicsMode}
-          onPhysicsModeChange={setLocalWorldDiePhysicsMode}
-          planSummary={localWorldDiePlanSummary}
+          onRoll={handleLocalWorldDieRoll}
         />
       ) : null
     ) : null;

@@ -215,22 +215,6 @@
   pointer-events: auto;
 }
 
-.localWorldDieMode {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.localWorldDieMode button[aria-pressed='true'] {
-  border-color: var(--sc-gold-bright);
-  color: var(--sc-gold-bright);
-}
-
-.localWorldDieMode small {
-  max-width: 150px;
-  margin-left: 4px;
-}
-
 .combatExperienceFillParent {
   height: 100%;
 }

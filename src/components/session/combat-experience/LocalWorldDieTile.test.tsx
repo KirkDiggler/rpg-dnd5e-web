@@ -44,6 +44,33 @@ describe('LocalWorldDieTile pickup checkpoint', () => {
     expect(screen.queryByRole('button', { name: 'Pick up d20' })).toBeNull();
   });
 
+  it('offers one shared throw path without experimental playback controls', () => {
+    render(<LocalWorldDieTile mode="ready" pickupReady />);
+
+    expect(screen.queryByRole('group', { name: /playback mode/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Direct' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Planned' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Published' })).toBeNull();
+  });
+
+  it('describes an in-progress throw as shared presentation', () => {
+    render(<LocalWorldDieTile mode="status" />);
+
+    expect(screen.getByText('Shared dice presentation')).toBeTruthy();
+    expect(screen.queryByText(/no witness playback/i)).toBeNull();
+  });
+
+  it('keeps an accessible neutral Roll action available before pickup is ready', () => {
+    const onRoll = vi.fn();
+    render(
+      <LocalWorldDieTile mode="ready" pickupReady={false} onRoll={onRoll} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+
+    expect(onRoll).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps pointer capture through handoff and reports held world movement', () => {
     const projectionRef: { current: TrayPlaneProjection | undefined } = {
       current: projection(),
