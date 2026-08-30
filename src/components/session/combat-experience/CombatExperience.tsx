@@ -7,7 +7,7 @@ import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
 import { DamageToasts } from './DamageToasts';
-import { DiceDrawer } from './DiceDrawer';
+import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
 import { StoryLog } from './StoryLog';
 import { holdStoryUntilSettled } from './storyReveal';
@@ -107,7 +107,6 @@ export function CombatExperience({
   diceEvents,
   diceSemanticFallback,
   diceWitnessRole,
-  diceRollerName,
   location,
   pacingNotice,
   renderMap,
@@ -117,7 +116,6 @@ export function CombatExperience({
   onLogModeChange,
   onOpenEquipment,
   equipmentOpen,
-  onDiceReleaseRequest,
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
@@ -135,7 +133,7 @@ export function CombatExperience({
     diceEvents.length > 0;
   // `result` goes visible when the die is THROWN, not when it lands. Hold it
   // until the die is observed at rest — see useDiceSettleGate.ts.
-  const { settledResult, onDiceTelemetry } = useDiceSettleGate({
+  const { settledResult } = useDiceSettleGate({
     result,
     diePresented,
   });
@@ -265,26 +263,15 @@ export function CombatExperience({
           diagnosticsEnabled={diagnosticsEnabled}
         />
 
-        {diceWitnessRole === 'roller' ? (
-          <DiceDrawer
-            phase={phase}
-            events={diceEvents}
-            rollerName={diceRollerName ?? viewerName}
-            semanticFallback={diceSemanticFallback}
-            witnessRole="roller"
-            onReleaseRequest={onDiceReleaseRequest}
-            onSemanticReleaseRequest={onDiceSemanticReleaseRequest}
-            onDiceTelemetry={onDiceTelemetry}
-          />
-        ) : (
-          <DiceDrawer
-            phase={phase}
-            events={diceEvents}
-            rollerName={diceRollerName ?? viewerName}
-            semanticFallback={diceSemanticFallback}
-            witnessRole="spectator"
-            onDiceTelemetry={onDiceTelemetry}
-          />
+        {diceWitnessRole === 'roller' && phase === 'awaiting-roll' && (
+          <div className={styles.localWorldDieControlLayer}>
+            <LocalWorldDieTile
+              mode={diceSemanticFallback ? 'fallback' : 'ready'}
+              onRevealResult={
+                diceSemanticFallback ? onDiceSemanticReleaseRequest : undefined
+              }
+            />
+          </div>
         )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
