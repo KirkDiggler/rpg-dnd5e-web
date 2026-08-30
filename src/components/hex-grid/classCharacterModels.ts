@@ -40,8 +40,20 @@ const RACE_CLASS_CHARACTER_MODELS: Record<
   string,
   RaceClassCharacterModelEntry
 > = {
+  'elf:barbarian': {
+    model: 'race-class/elf-barbarian.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
   'elf:fighter': {
     model: 'race-class/elf-fighter.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'elf:monk': {
+    model: 'race-class/elf-monk.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'elf:rogue': {
+    model: 'race-class/elf-rogue.glb',
     rigFamily: 'modular-fantasy-hero-v1',
   },
 };

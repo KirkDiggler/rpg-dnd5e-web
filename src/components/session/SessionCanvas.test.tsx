@@ -194,7 +194,13 @@ function scene(): Scene3D {
   };
 }
 
-const ELF_FIGHTER_URL = '/models/synty/characters/race-class/elf-fighter.glb';
+const ELF_CLASS_URLS = {
+  barbarian: '/models/synty/characters/race-class/elf-barbarian.glb',
+  fighter: '/models/synty/characters/race-class/elf-fighter.glb',
+  monk: '/models/synty/characters/race-class/elf-monk.glb',
+  rogue: '/models/synty/characters/race-class/elf-rogue.glb',
+} as const;
+const ELF_FIGHTER_URL = ELF_CLASS_URLS.fighter;
 const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
 const FIGHTER_DOWNED_URL = '/models/synty/characters/fighter-downed.glb';
 const MEDIUM_HUMANOID_MARKER = mediumHumanoidMockState.markerPrefix + 'human';
@@ -485,25 +491,27 @@ describe('SessionScene', () => {
     expect(allMeshes.length).toBeGreaterThan(floorMeshes.length);
   });
 
-  it('mounts the exact local public Elf Fighter model URL', async () => {
-    const renderer = await ReactThreeTestRenderer.create(
-      <SessionScene
-        scene={scene()}
-        hexSize={1}
-        characterId="char-1"
-        characterName="Toolkit Sandbox Fighter"
-        classRefId="fighter"
-        raceRefId="elf"
-        myPosition={{ x: 0, y: 0, z: 0 }}
-      />
-    );
+  it('mounts every exact local public Elf starter-class model URL', async () => {
+    for (const [classRefId, modelUrl] of Object.entries(ELF_CLASS_URLS)) {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName={`Toolkit Sandbox ${classRefId}`}
+          classRefId={classRefId}
+          raceRefId="elf"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+        />
+      );
 
-    const exactMeshes = renderer.scene.findAll(
-      (node) =>
-        node.type === 'Mesh' &&
-        (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
-    );
-    expect(exactMeshes.length).toBeGreaterThan(0);
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(modelUrl)
+      );
+      expect(exactMeshes.length, classRefId).toBeGreaterThan(0);
+    }
   });
 
   it('uses the Fighter downed class GLB, not the standing exact Elf Fighter GLB, for an authoritatively downed local player and keeps the Townfolk socket', async () => {
@@ -1054,7 +1062,7 @@ describe('SessionScene', () => {
       standing: Standing.UP,
     };
 
-    it('a PLAYER-kind member with a roster entry mounts their exact public Elf Fighter GLB, not the neutral placeholder', async () => {
+    it('a PLAYER-kind member with a roster entry mounts their exact public Elf Rogue GLB, not the neutral placeholder', async () => {
       const renderer = await ReactThreeTestRenderer.create(
         <SessionScene
           scene={scene()}
@@ -1072,7 +1080,7 @@ describe('SessionScene', () => {
                   id: 'char-bob',
                   kind: MemberKind.PLAYER,
                   name: 'Bob',
-                  classRef: 'fighter',
+                  classRef: 'rogue',
                   raceRef: 'elf',
                   monsterRef: '',
                 } as PublicMemberInfo,
@@ -1084,7 +1092,7 @@ describe('SessionScene', () => {
       const exactMeshes = renderer.scene.findAll(
         (node) =>
           node.type === 'Mesh' &&
-          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
+          (node.instance as THREE.Mesh).name.includes(ELF_CLASS_URLS.rogue)
       );
       expect(exactMeshes.length).toBeGreaterThan(0);
     });
