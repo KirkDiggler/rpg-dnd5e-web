@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "providerCommit": "7ac84ec04c049cd62ed66e577189b976d59f8db5",
+  "providerManifestSha256": "0dc904a1212afa4d328cf8c7f0d715e269c10c7d6e899d539e426f786a390094",
+  "providerInventorySha256": "62c41ccd3e6810630655a7e7616767c2ca331773f2c703318d009c2d0978fc50",
+  "tieflingAtlas": {
+    "sourceSha256": "457eea3ae525036ac05fa1fa6935e5c56e0b63f9166488a7139a5f9c441cfea2",
+    "derivedSha256": "38fcf12eecdcb9075b9a944857eec3c52aefb82b8e2f3f06355c58009a267e67",
+    "changedPixelCount": 247941
+  },
+  "combinations": {
+    "half-elf:barbarian": {
+      "modelUrl": "/models/synty/characters/race-class/half-elf-barbarian.glb",
+      "sha256": "9dde33258b69ec66bd694f705fcc035d307a388b1518027571f33ffc75b76ca8"
+    },
+    "half-elf:fighter": {
+      "modelUrl": "/models/synty/characters/race-class/half-elf-fighter.glb",
+      "sha256": "d8a82b5a803a030e6f7c384f93b7a29e0cf288f52c4daa8ebaaec6818f8d639b"
+    },
+    "half-elf:monk": {
+      "modelUrl": "/models/synty/characters/race-class/half-elf-monk.glb",
+      "sha256": "ba9c7d636ecb06eb0d65ab509d527b27b28b17e534f0cc9861331076eaca6924"
+    },
+    "half-elf:rogue": {
+      "modelUrl": "/models/synty/characters/race-class/half-elf-rogue.glb",
+      "sha256": "ff8c8a978880afaafa0428a28dae7a027806c4d6931c3ea79107dd51d3687754"
+    },
+    "tiefling:barbarian": {
+      "modelUrl": "/models/synty/characters/race-class/tiefling-barbarian.glb",
+      "sha256": "06e819db490b185fcfa66f5197bab95f632d70297695d216e237b0aa50f884a1"
+    },
+    "tiefling:fighter": {
+      "modelUrl": "/models/synty/characters/race-class/tiefling-fighter.glb",
+      "sha256": "ebdefbc679fc8d01defe201b890fea0608a96b43215f701c241b34f7281363f7"
+    },
+    "tiefling:monk": {
+      "modelUrl": "/models/synty/characters/race-class/tiefling-monk.glb",
+      "sha256": "b44a642a305018eefd5276d39ed30ef4f6f6b27ab71795e63a173393a0ee1fa6"
+    },
+    "tiefling:rogue": {
+      "modelUrl": "/models/synty/characters/race-class/tiefling-rogue.glb",
+      "sha256": "ebb2d827df5906079e808bd78d9904775d3b25143776b0817c08b17f81a98a04"
+    }
+  },
+  "rigFamily": "modular-fantasy-hero-v1",
+  "socketProfile": "modular-fantasy-hero-main-hand-v1",
+  "proportions": [1, 1, 1],
+  "animations": ["Idle_Relaxed", "Walk_Forward"],
+  "normalCreation": {
+    "fixturePatch": false,
+    "players": [
+      "H862 Half-Elf Barbarian",
+      "H862 Half-Elf Fighter",
+      "H862 Half-Elf Monk",
+      "H862 Half-Elf Rogue",
+      "T862 Tiefling Barbarian",
+      "T862 Tiefling Fighter",
+      "T862 Tiefling Monk",
+      "T862 Tiefling Rogue"
+    ],
+    "halfElfRaceChoices": {
+      "language": "Dwarvish",
+      "skills": ["Arcana", "Persuasion"]
+    },
+    "finalizeDraftSucceeded": 8
+  },
+  "equipment": {
+    "method": "dnd5e.api.v1alpha2.character.CharacterService.EquipItem",
+    "storagePatch": false,
+    "mainHands": {
+      "barbarian": "dnd5e:item:greataxe",
+      "fighter": "dnd5e:item:greatsword",
+      "monk": "dnd5e:item:shortsword",
+      "rogue": "dnd5e:item:rapier"
+    }
+  },
+  "weaponResponses": {
+    "greataxe": {"status": 200, "sha256": "39c08c15e778c1f1c915478001204f218382c47cad3c1306626784f7ca398bb7"},
+    "greatsword": {"status": 200, "sha256": "600d83e67e47ff461efc94c43bde39e09139c3778ec82cfd86d47e03fb26eea1"},
+    "shortsword": {"status": 200, "sha256": "ee5f39b67f7d77df01a9425c5a2a371603eff83138d236ba5049033a7dc4ce9b"},
+    "rapier": {"status": 200, "sha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"}
+  },
+  "browser": {
+    "scope": "captured-proof-windows",
+    "modelResponses": 8,
+    "modelStatus": 200,
+    "movementRpc": "two-step Half-Elf Barbarian SessionService.Move succeeded",
+    "walkingSeen": true,
+    "consoleErrors": 0,
+    "pageErrors": 0,
+    "unexpectedRequestFailures": 0
+  },
+  "captures": [
+    "halfelf-four-classes-close-real-route.png",
+    "halfelf-four-classes-rotated-real-route.png",
+    "halfelf-barbarian-walk-real-route.png",
+    "halfelf-barbarian-greataxe-real-route.png",
+    "halfelf-fighter-greatsword-real-route.png",
+    "halfelf-monk-shortsword-real-route.png",
+    "halfelf-rogue-rapier-real-route.png",
+    "tiefling-four-classes-close-real-route.png",
+    "tiefling-four-classes-rotated-real-route.png",
+    "tiefling-barbarian-walk-real-route.png",
+    "tiefling-barbarian-greataxe-real-route.png",
+    "tiefling-fighter-greatsword-real-route.png",
+    "tiefling-monk-shortsword-real-route.png",
+    "tiefling-rogue-rapier-real-route.png"
+  ]
+}

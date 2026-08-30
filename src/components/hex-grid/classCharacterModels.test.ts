@@ -122,7 +122,28 @@ describe('resolvePlayerCharacterModel', () => {
     }
   );
 
-  it.each(['elf', 'dwarf'])(
+  it.each(['half-elf', 'tiefling'])(
+    'resolves every exact standing %s starter-class model',
+    (raceRefId) => {
+      for (const classRefId of ['barbarian', 'fighter', 'monk', 'rogue']) {
+        const expected = asResolution({
+          url: `/models/synty/characters/race-class/${raceRefId}-${classRefId}.glb`,
+          rigFamily: 'modular-fantasy-hero-v1',
+          source: 'race-class',
+        });
+
+        expect(
+          classCharacterModels.resolvePlayerCharacterModel?.(
+            ` ${raceRefId.toUpperCase()} `,
+            ` ${classRefId.toUpperCase()} `,
+            false
+          )
+        ).toEqual(expected);
+      }
+    }
+  );
+
+  it.each(['elf', 'dwarf', 'half-elf', 'tiefling'])(
     'falls back to the class model for a downed %s Fighter',
     (raceRefId) => {
       const expected = asResolution({

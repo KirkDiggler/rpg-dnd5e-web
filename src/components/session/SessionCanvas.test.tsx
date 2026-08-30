@@ -206,6 +206,18 @@ const DWARF_CLASS_URLS = {
   monk: '/models/synty/characters/race-class/dwarf-monk.glb',
   rogue: '/models/synty/characters/race-class/dwarf-rogue.glb',
 } as const;
+const HALF_ELF_CLASS_URLS = {
+  barbarian: '/models/synty/characters/race-class/half-elf-barbarian.glb',
+  fighter: '/models/synty/characters/race-class/half-elf-fighter.glb',
+  monk: '/models/synty/characters/race-class/half-elf-monk.glb',
+  rogue: '/models/synty/characters/race-class/half-elf-rogue.glb',
+} as const;
+const TIEFLING_CLASS_URLS = {
+  barbarian: '/models/synty/characters/race-class/tiefling-barbarian.glb',
+  fighter: '/models/synty/characters/race-class/tiefling-fighter.glb',
+  monk: '/models/synty/characters/race-class/tiefling-monk.glb',
+  rogue: '/models/synty/characters/race-class/tiefling-rogue.glb',
+} as const;
 const ELF_FIGHTER_URL = ELF_CLASS_URLS.fighter;
 const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
 const FIGHTER_DOWNED_URL = '/models/synty/characters/fighter-downed.glb';
@@ -542,6 +554,35 @@ describe('SessionScene', () => {
       expect(exactMeshes.length, classRefId).toBeGreaterThan(0);
     }
   });
+
+  it.each([
+    ['half-elf', HALF_ELF_CLASS_URLS],
+    ['tiefling', TIEFLING_CLASS_URLS],
+  ] as const)(
+    'mounts every exact local public %s starter-class model URL',
+    async (raceRefId, classUrls) => {
+      for (const [classRefId, modelUrl] of Object.entries(classUrls)) {
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName={`Toolkit Sandbox ${classRefId}`}
+            classRefId={classRefId}
+            raceRefId={raceRefId}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+          />
+        );
+
+        const exactMeshes = renderer.scene.findAll(
+          (node) =>
+            node.type === 'Mesh' &&
+            (node.instance as THREE.Mesh).name.includes(modelUrl)
+        );
+        expect(exactMeshes.length, classRefId).toBeGreaterThan(0);
+      }
+    }
+  );
 
   it('uses the Fighter downed class GLB, not the standing exact Elf Fighter GLB, for an authoritatively downed local player and keeps the Townfolk socket', async () => {
     const renderer = await ReactThreeTestRenderer.create(
@@ -1007,42 +1048,48 @@ describe('SessionScene', () => {
       expect(weaponMeshes.length).toBeGreaterThan(0);
     });
 
-    it('applies the reviewed modular rig-family override to the exact local Elf Fighter model', async () => {
-      const renderer = await ReactThreeTestRenderer.create(
-        <SessionScene
-          scene={scene()}
-          hexSize={1}
-          characterId="char-1"
-          characterName="Toolkit Sandbox Fighter"
-          classRefId="fighter"
-          raceRefId="elf"
-          myPosition={{ x: 0, y: 0, z: 0 }}
-          mainHandPresentation={{
-            ref: 'dnd5e:item:longsword',
-            weaponUrl: '/models/synty/weapons/longsword.glb',
-            socket: TOWNFOLK_MAIN_HAND_SOCKET,
-          }}
-        />
-      );
+    it.each(['elf', 'dwarf', 'half-elf', 'tiefling'])(
+      'applies the reviewed modular rig-family override to the exact local %s Fighter model',
+      async (raceRefId) => {
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName="Toolkit Sandbox Fighter"
+            classRefId="fighter"
+            raceRefId={raceRefId}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+            mainHandPresentation={{
+              ref: 'dnd5e:item:longsword',
+              weaponUrl: '/models/synty/weapons/longsword.glb',
+              socket: TOWNFOLK_MAIN_HAND_SOCKET,
+            }}
+          />
+        );
 
-      const attached = attachedMainHandRoot(renderer);
-      const unitsPerMeter =
-        1 / MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.boneUnitMeters;
+        const attached = attachedMainHandRoot(renderer);
+        const unitsPerMeter =
+          1 / MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.boneUnitMeters;
 
-      expectVectorCloseTo(attached.position.toArray(), [
-        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
-        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
-        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
-      ]);
-      expectVectorCloseTo(attached.quaternion.toArray(), [
-        ...MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.rotationQuaternion,
-      ]);
-      expectVectorCloseTo(attached.scale.toArray(), [
-        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
-        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
-        MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
-      ]);
-    });
+        expectVectorCloseTo(attached.position.toArray(), [
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[0] *
+            unitsPerMeter,
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[1] *
+            unitsPerMeter,
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[2] *
+            unitsPerMeter,
+        ]);
+        expectVectorCloseTo(attached.quaternion.toArray(), [
+          ...MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.rotationQuaternion,
+        ]);
+        expectVectorCloseTo(attached.scale.toArray(), [
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+        ]);
+      }
+    );
 
     it('keeps class-model fallback players on the Townfolk socket family', async () => {
       const renderer = await ReactThreeTestRenderer.create(
@@ -1160,6 +1207,47 @@ describe('SessionScene', () => {
       );
       expect(exactMeshes.length).toBeGreaterThan(0);
     });
+
+    it.each([
+      ['half-elf', 'rogue', HALF_ELF_CLASS_URLS.rogue],
+      ['tiefling', 'monk', TIEFLING_CLASS_URLS.monk],
+    ])(
+      'a PLAYER-kind member mounts their exact public %s %s GLB',
+      async (raceRef, classRef, modelUrl) => {
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName="Toolkit Sandbox Fighter"
+            classRefId={undefined}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+            otherMembers={[sightedPlayer]}
+            roster={
+              new Map([
+                [
+                  'char-bob',
+                  {
+                    id: 'char-bob',
+                    kind: MemberKind.PLAYER,
+                    name: 'Bob',
+                    classRef,
+                    raceRef,
+                    monsterRef: '',
+                  } as PublicMemberInfo,
+                ],
+              ])
+            }
+          />
+        );
+        const exactMeshes = renderer.scene.findAll(
+          (node) =>
+            node.type === 'Mesh' &&
+            (node.instance as THREE.Mesh).name.includes(modelUrl)
+        );
+        expect(exactMeshes.length).toBeGreaterThan(0);
+      }
+    );
 
     it('a downed PLAYER-kind member with a roster entry mounts the Fighter downed class GLB, not the standing exact Elf Fighter GLB', async () => {
       const renderer = await ReactThreeTestRenderer.create(
