@@ -29,10 +29,7 @@ import {
   type MutableRefObject,
 } from 'react';
 import { IcosahedronGeometry, Quaternion } from 'three';
-import {
-  buildLocalWorldDieColliders,
-  type LocalWorldDieCollider,
-} from './localWorldDieColliders';
+import type { LocalWorldDieCollider } from './localWorldDieColliders';
 import {
   localWorldDieCommandTerminal,
   localWorldDieDynamicState,
@@ -44,7 +41,7 @@ import { localWorldDieLaunch } from './localWorldDieMotion';
 export interface LocalWorldDieLayerProps {
   readonly command: LocalWorldDieCommand;
   readonly scene: Scene3D;
-  readonly openDoorIds: ReadonlySet<string>;
+  readonly colliders: readonly LocalWorldDieCollider[];
   readonly authoritativeFace: number;
   readonly projectionRef: MutableRefObject<TrayPlaneProjection | undefined>;
   readonly onReadyChange: (ready: boolean) => void;
@@ -333,7 +330,7 @@ function DieBody({
 export function LocalWorldDieLayer({
   command,
   scene,
-  openDoorIds,
+  colliders,
   authoritativeFace,
   projectionRef,
   onReadyChange,
@@ -346,11 +343,8 @@ export function LocalWorldDieLayer({
   const [worldReady, setWorldReady] = useState(false);
   const [bodyReady, setBodyReady] = useState(false);
   const [meshReady, setMeshReady] = useState(false);
+  const runtimeFailureReported = useRef(false);
   const source = useMemo(() => runtimeSource(snapshot), [snapshot]);
-  const colliders = useMemo(
-    () => buildLocalWorldDieColliders(scene, openDoorIds),
-    [openDoorIds, scene]
-  );
   const target = useMemo(
     () =>
       source
@@ -376,6 +370,16 @@ export function LocalWorldDieLayer({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (snapshot.status !== 'failed') {
+      runtimeFailureReported.current = false;
+      return;
+    }
+    if (runtimeFailureReported.current) return;
+    runtimeFailureReported.current = true;
+    onTerminal('failure');
+  }, [onTerminal, snapshot.status]);
 
   const ready =
     Boolean(source && target) &&

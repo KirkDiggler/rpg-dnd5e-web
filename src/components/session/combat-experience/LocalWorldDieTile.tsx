@@ -41,6 +41,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
   const activePointer = useRef<number | undefined>(undefined);
   const captureOwner = useRef<HTMLButtonElement | undefined>(undefined);
   const heldRef = useRef<LocalWorldDieHeldState | undefined>(undefined);
+  const releaseValid = useRef(false);
   const lastClientY = useRef(0);
   const previousSample = useRef<
     | { readonly position: readonly [number, number]; readonly timeMs: number }
@@ -58,6 +59,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
     activePointer.current = undefined;
     captureOwner.current = undefined;
     heldRef.current = undefined;
+    releaseValid.current = false;
     previousSample.current = undefined;
     filteredVelocity.current = [0, 0];
     setHandedOff(false);
@@ -94,6 +96,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       activePointer.current = event.pointerId;
       captureOwner.current = event.currentTarget;
       lastClientY.current = event.clientY;
+      releaseValid.current = false;
       previousSample.current = undefined;
       filteredVelocity.current = [0, 0];
       suppress(event);
@@ -110,8 +113,9 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       if (!current.scene || !projection) return;
 
       const previous = heldRef.current;
+      const lifting = Boolean(previous && (event.buttons & 2) !== 0);
       let next: LocalWorldDieHeldState | undefined;
-      if (previous && (event.buttons & 2) !== 0) {
+      if (previous && lifting) {
         const height = Math.min(
           3,
           Math.max(
@@ -133,7 +137,11 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
         }
       }
       lastClientY.current = event.clientY;
-      if (!next) return;
+      if (!next) {
+        releaseValid.current = false;
+        return;
+      }
+      if (!lifting) releaseValid.current = true;
       const previousSampleValue = previousSample.current;
       if (previousSampleValue && (event.buttons & 2) === 0) {
         const dt = Math.max(
@@ -171,7 +179,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       suppress(event);
       const held = heldRef.current;
       const onRelease = integrationRef.current.onRelease;
-      if (held && onRelease) {
+      if (held && releaseValid.current && onRelease) {
         const speed = Math.hypot(...filteredVelocity.current);
         const direction: readonly [number, number] =
           speed > 0.001

@@ -58,6 +58,12 @@ export function buildLocalWorldDieColliders(
       rotationY: door.rotationY,
     });
   }
+  const kindOrder = { floor: 0, wall: 1, door: 2 } as const;
+  colliders.sort((left, right) => {
+    const byKind = kindOrder[left.kind] - kindOrder[right.kind];
+    if (byKind !== 0) return byKind;
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
   return Object.freeze(
     colliders.map((collider) =>
       Object.freeze({

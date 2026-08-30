@@ -57,8 +57,11 @@ import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
+import {
+  createLocalWorldDieAttemptSnapshot,
+  type LocalWorldDieAttemptSnapshot,
+} from './local-world-die/localWorldDieAttemptSnapshot';
 import { localWorldDieReleaseEvent } from './local-world-die/localWorldDieAuthority';
-import { buildLocalWorldDieColliders } from './local-world-die/localWorldDieColliders';
 import type {
   LocalWorldDieCommand,
   LocalWorldDieHeldState,
@@ -424,10 +427,15 @@ function SessionEncounterScope({
   const witnessExpectationRef = useRef<
     LocalWorldDieWitnessExpectation | undefined
   >(undefined);
+  const localWorldDieAttemptSnapshotRef = useRef<
+    LocalWorldDieAttemptSnapshot | undefined
+  >(undefined);
   const [localWorldDieCommand, setLocalWorldDieCommand] =
     useState<LocalWorldDieCommand>({ id: 0, kind: 'reset' });
   const [localWorldDieReady, setLocalWorldDieReady] = useState(false);
   const [localWorldDieRolling, setLocalWorldDieRolling] = useState(false);
+  const [localWorldDiePendingRoll, setLocalWorldDiePendingRoll] =
+    useState(false);
   const [localWorldDieAttemptState, setLocalWorldDieAttemptState] = useState({
     presentationId: localWorldDieRequest?.presentationId,
     attempt: 1,
@@ -440,30 +448,60 @@ function SessionEncounterScope({
   const [localWorldDieWitnessActive, setLocalWorldDieWitnessActive] =
     useState(false);
   const [localWorldDieSettled, setLocalWorldDieSettled] = useState(false);
+  const [localWorldDiePresentationFailed, setLocalWorldDiePresentationFailed] =
+    useState(false);
   const localWorldDiePhysical =
     combat.diceWitnessRole === 'roller' &&
     combat.phase === 'awaiting-roll' &&
     !combat.diceSemanticFallback &&
     localWorldDieRequest !== undefined;
-  const [localWorldDieFingerprint, setLocalWorldDieFingerprint] = useState<
-    Uint8Array | undefined
-  >(undefined);
+  const snapshotScene = lastGoodSceneRef.current;
+  const localWorldDieAttemptScopeKey =
+    localWorldDieRequest && snapshotScene
+      ? `${sessionId.length}:${sessionId}:${localWorldDieRequest.presentationId.length}:${localWorldDieRequest.presentationId}:${localWorldDieRequest.roller.entityId.length}:${localWorldDieRequest.roller.entityId}:${localWorldDieAttempt}`
+      : undefined;
+  if (!localWorldDieAttemptScopeKey || !snapshotScene) {
+    localWorldDieAttemptSnapshotRef.current = undefined;
+  } else if (
+    localWorldDieAttemptSnapshotRef.current?.scopeKey !==
+    localWorldDieAttemptScopeKey
+  ) {
+    localWorldDieAttemptSnapshotRef.current =
+      createLocalWorldDieAttemptSnapshot({
+        scopeKey: localWorldDieAttemptScopeKey,
+        scene: snapshotScene,
+        openDoorIds: localWorldDieOpenDoors,
+      });
+  }
+  const localWorldDieAttemptSnapshot = localWorldDieAttemptSnapshotRef.current;
+  const [localWorldDieFingerprintState, setLocalWorldDieFingerprintState] =
+    useState<
+      Readonly<{ scopeKey: string; fingerprint: Uint8Array }> | undefined
+    >(undefined);
+  const localWorldDieFingerprint =
+    localWorldDieFingerprintState &&
+    localWorldDieAttemptSnapshot &&
+    localWorldDieFingerprintState.scopeKey ===
+      localWorldDieAttemptSnapshot.scopeKey
+      ? localWorldDieFingerprintState.fingerprint
+      : undefined;
 
   useEffect(() => {
     let active = true;
-    if (!scene) {
-      setLocalWorldDieFingerprint(undefined);
-      return;
-    }
+    if (!localWorldDieAttemptSnapshot) return;
     void fingerprintLocalWorldDieColliders(
-      buildLocalWorldDieColliders(scene, localWorldDieOpenDoors)
+      localWorldDieAttemptSnapshot.colliders
     ).then((fingerprint) => {
-      if (active) setLocalWorldDieFingerprint(fingerprint);
+      if (!active) return;
+      setLocalWorldDieFingerprintState({
+        scopeKey: localWorldDieAttemptSnapshot.scopeKey,
+        fingerprint,
+      });
     });
     return () => {
       active = false;
     };
-  }, [localWorldDieOpenDoors, scene]);
+  }, [localWorldDieAttemptSnapshot]);
 
   const witnessAuthoritySeq = localWorldDieRequest
     ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
@@ -537,6 +575,8 @@ function SessionEncounterScope({
     admittedWitnessPlans.current.clear();
     setLocalWorldDieWitnessActive(false);
     setLocalWorldDieSettled(false);
+    setLocalWorldDiePresentationFailed(false);
+    setLocalWorldDiePendingRoll(false);
     localWorldDieProfile.current = undefined;
   }, [localWorldDieRequest?.presentationId]);
 
@@ -576,12 +616,26 @@ function SessionEncounterScope({
     },
     [localWorldDieRolling]
   );
+  const failLocalWorldDiePresentation = useCallback(() => {
+    localWorldDiePlanningOperation.current += 1;
+    setLocalWorldDieRolling(false);
+    setLocalWorldDiePendingRoll(false);
+    setLocalWorldDiePresentationFailed(true);
+    setLocalWorldDieCommand({
+      id: localWorldDieCommandId.current++,
+      kind: 'reset',
+    });
+  }, []);
+
   const handleLocalWorldDieRelease = useCallback(
     (held: LocalWorldDieHeldState, profile: VisualThrowProfileV1) => {
       localWorldDieProfile.current = profile;
       setLocalWorldDieRolling(true);
-      const scene = lastGoodSceneRef.current;
-      if (!scene) return;
+      const snapshot = localWorldDieAttemptSnapshotRef.current;
+      if (!snapshot) {
+        failLocalWorldDiePresentation();
+        return;
+      }
       const operation = ++localWorldDiePlanningOperation.current;
       setLocalWorldDieCommand({
         id: localWorldDieCommandId.current++,
@@ -589,8 +643,8 @@ function SessionEncounterScope({
         held,
       });
       void preSimulateLocalWorldDie({
-        scene,
-        colliders: buildLocalWorldDieColliders(scene, localWorldDieOpenDoors),
+        scene: snapshot.scene,
+        colliders: snapshot.colliders,
         held,
         profile,
       }).then(
@@ -631,25 +685,20 @@ function SessionEncounterScope({
         },
         () => {
           if (localWorldDiePlanningOperation.current !== operation) return;
-          setLocalWorldDieCommand({
-            id: localWorldDieCommandId.current++,
-            kind: 'released',
-            held,
-            profile,
-          });
+          failLocalWorldDiePresentation();
         }
       );
     },
     [
+      failLocalWorldDiePresentation,
       localWorldDieAttempt,
-      localWorldDieOpenDoors,
       localWorldDiePhysical,
       localWorldDieRequest,
       member,
       sessionId,
     ]
   );
-  const handleLocalWorldDieRoll = useCallback(() => {
+  const runLocalWorldDieNeutralRoll = useCallback(() => {
     const origin = lastGoodPositionRef.current;
     if (!origin) return;
     const world = cubeToWorld(origin, HEX_SIZE);
@@ -663,6 +712,43 @@ function SessionEncounterScope({
       )
     );
   }, [handleLocalWorldDieRelease, localWorldDieRequest]);
+  const handleLocalWorldDieRoll = useCallback(() => {
+    if (!localWorldDieReady) {
+      setLocalWorldDiePendingRoll(true);
+      return;
+    }
+    runLocalWorldDieNeutralRoll();
+  }, [localWorldDieReady, runLocalWorldDieNeutralRoll]);
+
+  useEffect(() => {
+    if (!localWorldDiePendingRoll || !localWorldDieReady) return;
+    setLocalWorldDiePendingRoll(false);
+    runLocalWorldDieNeutralRoll();
+  }, [
+    localWorldDiePendingRoll,
+    localWorldDieReady,
+    runLocalWorldDieNeutralRoll,
+  ]);
+
+  const handleLocalWorldDieFailureReveal = useCallback(() => {
+    const request = localWorldDieRequest;
+    if (!request) return;
+    const authoritySeq = authoritySeqFromPresentationId(request.presentationId);
+    const profile =
+      localWorldDieProfile.current ??
+      createNeutralVisualThrowProfile(
+        Number((authoritySeq ?? 0n) & 0xffff_ffffn)
+      );
+    setLocalWorldDiePresentationFailed(false);
+    setLocalWorldDiePendingRoll(false);
+    setLocalWorldDieSettled(true);
+    setLocalWorldDieRolling(false);
+    setLocalWorldDieCommand({
+      id: localWorldDieCommandId.current++,
+      kind: 'reset',
+    });
+    combat.onDiceReleaseRequest(localWorldDieReleaseEvent(request, profile));
+  }, [combat, localWorldDieRequest]);
 
   const handleLocalWorldDieTerminal = useCallback(
     (kind: 'settled' | 'off-table' | 'failure') => {
@@ -678,6 +764,10 @@ function SessionEncounterScope({
           id: localWorldDieCommandId.current++,
           kind: 'reset',
         });
+        return;
+      }
+      if (kind === 'failure') {
+        failLocalWorldDiePresentation();
         return;
       }
       if (kind === 'off-table') {
@@ -705,6 +795,7 @@ function SessionEncounterScope({
     },
     [
       combat,
+      failLocalWorldDiePresentation,
       localWorldDieAttempt,
       localWorldDieRequest,
       localWorldDieWitnessActive,
@@ -886,20 +977,25 @@ function SessionEncounterScope({
       : ('loading' as const);
   const localWorldDieControl =
     combat.diceWitnessRole === 'roller' && combat.phase === 'awaiting-roll' ? (
-      localWorldDieRolling ? (
+      localWorldDiePresentationFailed ? (
+        <LocalWorldDieTile
+          mode="fallback"
+          onRevealResult={handleLocalWorldDieFailureReveal}
+        />
+      ) : localWorldDieRolling ? (
         <LocalWorldDieTile mode="status" />
       ) : combat.diceSemanticFallback ? (
         <LocalWorldDieTile
           mode="fallback"
           onRevealResult={combat.onDiceSemanticReleaseRequest}
         />
-      ) : lastGoodSceneRef.current &&
+      ) : localWorldDieAttemptSnapshot &&
         !localWorldDieRolling &&
         !localWorldDieSettled ? (
         <LocalWorldDieTile
           mode="ready"
           pickupReady={localWorldDieReady}
-          scene={lastGoodSceneRef.current}
+          scene={localWorldDieAttemptSnapshot.scene}
           projectionRef={localWorldDieProjectionRef}
           onHeldChange={handleLocalWorldDieHeld}
           onRelease={handleLocalWorldDieRelease}
@@ -909,12 +1005,12 @@ function SessionEncounterScope({
     ) : null;
   const localWorldDieLayer =
     (localWorldDiePhysical || localWorldDieWitnessActive) &&
-    lastGoodSceneRef.current &&
+    localWorldDieAttemptSnapshot &&
     localWorldDieRequest ? (
       <LocalWorldDieLayer
         command={localWorldDieCommand}
-        scene={lastGoodSceneRef.current}
-        openDoorIds={localWorldDieOpenDoors}
+        scene={localWorldDieAttemptSnapshot.scene}
+        colliders={localWorldDieAttemptSnapshot.colliders}
         authoritativeFace={localWorldDieRequest.die.authoritativeResult}
         projectionRef={localWorldDieProjectionRef}
         onReadyChange={setLocalWorldDieReady}

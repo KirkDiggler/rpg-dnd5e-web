@@ -120,6 +120,53 @@ describe('LocalWorldDieTile pickup checkpoint', () => {
     expect(onHeldChange).toHaveBeenLastCalledWith(undefined);
   });
 
+  it('cancels instead of publishing when release leaves valid floor', () => {
+    let point: readonly [number, number] = [0, 0];
+    const projectionRef: { current: TrayPlaneProjection | undefined } = {
+      current: {
+        ...projection(),
+        screenToPlane: () => point,
+      },
+    };
+    const onHeldChange = vi.fn();
+    const onRelease = vi.fn();
+    render(
+      <LocalWorldDieTile
+        mode="ready"
+        pickupReady
+        scene={scene()}
+        projectionRef={projectionRef}
+        onHeldChange={onHeldChange}
+        onRelease={onRelease}
+      />
+    );
+    const pickup = screen.getByRole('button', { name: 'Pick up d20' });
+    installCapture(pickup);
+    fireEvent.pointerDown(pickup, {
+      pointerId: 12,
+      button: 0,
+      buttons: 1,
+    });
+    fireEvent.pointerMove(pickup, {
+      pointerId: 12,
+      buttons: 1,
+    });
+    point = [50, 50];
+    fireEvent.pointerMove(pickup, {
+      pointerId: 12,
+      buttons: 1,
+    });
+    fireEvent.pointerUp(pickup, {
+      pointerId: 12,
+      button: 0,
+      buttons: 0,
+    });
+
+    expect(onRelease).not.toHaveBeenCalled();
+    expect(onHeldChange).toHaveBeenLastCalledWith(undefined);
+    expect(pickup.className).not.toContain('localWorldDieCaptureHidden');
+  });
+
   it('freezes X/Z while left and right adjust lift height', () => {
     const projectionRef: { current: TrayPlaneProjection | undefined } = {
       current: projection(),
