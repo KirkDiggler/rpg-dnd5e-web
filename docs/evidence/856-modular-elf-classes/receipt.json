@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "providerCommit": "b62c1e55c0a419e25a5a412f9bf3dccf0421df07",
+  "providerManifestSha256": "30efda1002b6cc9bd0286c18fd2e3275f25e8505f4ebf524236dd7eff33217cd",
+  "combinations": {
+    "elf:barbarian": {
+      "modelUrl": "/models/synty/characters/race-class/elf-barbarian.glb",
+      "sha256": "e436883e6adf7e9912bffafc8734351cd970fb6154263e0fe96e842f490ef80d"
+    },
+    "elf:fighter": {
+      "modelUrl": "/models/synty/characters/race-class/elf-fighter.glb",
+      "sha256": "3060e6bc2712c3699c3abceb78480fd24007d628ef9c928c5bcffcd53ca7aa39"
+    },
+    "elf:monk": {
+      "modelUrl": "/models/synty/characters/race-class/elf-monk.glb",
+      "sha256": "4167695e5268a84dfdbf202a883c6012825216902afa60f7b88bbc6349236206"
+    },
+    "elf:rogue": {
+      "modelUrl": "/models/synty/characters/race-class/elf-rogue.glb",
+      "sha256": "939e38fbb1121a6b185e7edf427f6b0a7867597a004e94c41f0982db3df82365"
+    }
+  },
+  "rigFamily": "modular-fantasy-hero-v1",
+  "socketProfile": "modular-fantasy-hero-main-hand-v1",
+  "materialAlphaMode": "OPAQUE",
+  "hairMesh": "Chr_Hair_01",
+  "animations": [
+    "Idle_Relaxed",
+    "Walk_Forward"
+  ],
+  "captures": [
+    "three-elf-classes-close-real-route.png",
+    "three-elf-classes-rotated-real-route.png",
+    "barbarian-walk-real-route.png",
+    "monk-shortsword-real-route.png",
+    "rogue-rapier-real-route.png"
+  ],
+  "browser": {
+    "scope": "captured-proof-window",
+    "url": "http://127.0.0.1:3012/?playerId=phase-b-elf-barbarian-856",
+    "players": [
+      "B856 Elf Barbarian",
+      "B856 Elf Monk",
+      "B856 Elf Rogue"
+    ],
+    "modelResponses": {
+      "elf:barbarian": {
+        "status": 200,
+        "sha256": "e436883e6adf7e9912bffafc8734351cd970fb6154263e0fe96e842f490ef80d"
+      },
+      "elf:monk": {
+        "status": 200,
+        "sha256": "4167695e5268a84dfdbf202a883c6012825216902afa60f7b88bbc6349236206"
+      },
+      "elf:rogue": {
+        "status": 200,
+        "sha256": "939e38fbb1121a6b185e7edf427f6b0a7867597a004e94c41f0982db3df82365"
+      }
+    },
+    "weaponResponses": {
+      "greataxe": {
+        "status": 200,
+        "sha256": "39c08c15e778c1f1c915478001204f218382c47cad3c1306626784f7ca398bb7"
+      },
+      "shortsword": {
+        "status": 200,
+        "sha256": "ee5f39b67f7d77df01a9425c5a2a371603eff83138d236ba5049033a7dc4ce9b"
+      },
+      "rapier": {
+        "status": 200,
+        "sha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+      }
+    },
+    "walkingSeen": true,
+    "movementStoryObserved": "B856 Elf Barbarian moves — Position -1, 4.",
+    "consoleErrors": 0,
+    "pageErrors": 0,
+    "unexpectedRequestFailures": 0
+  }
+}

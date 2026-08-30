@@ -84,21 +84,24 @@ describe('resolveIdleClipName', () => {
 });
 
 describe('resolvePlayerCharacterModel', () => {
-  it('resolves the exact standing Elf Fighter race-class model', () => {
-    const expected = asResolution({
-      url: '/models/synty/characters/race-class/elf-fighter.glb',
-      rigFamily: 'modular-fantasy-hero-v1',
-      source: 'race-class',
-    });
+  it.each(['barbarian', 'fighter', 'monk', 'rogue'])(
+    'resolves the exact standing Elf %s race-class model',
+    (classRefId) => {
+      const expected = asResolution({
+        url: `/models/synty/characters/race-class/elf-${classRefId}.glb`,
+        rigFamily: 'modular-fantasy-hero-v1',
+        source: 'race-class',
+      });
 
-    expect(
-      classCharacterModels.resolvePlayerCharacterModel?.(
-        ' Elf ',
-        ' FIGHTER ',
-        false
-      )
-    ).toEqual(expected);
-  });
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel?.(
+          ' Elf ',
+          ` ${classRefId.toUpperCase()} `,
+          false
+        )
+      ).toEqual(expected);
+    }
+  );
 
   it('falls back to the class model for a downed Elf Fighter', () => {
     const expected = asResolution({
