@@ -40,6 +40,22 @@ const RACE_CLASS_CHARACTER_MODELS: Record<
   string,
   RaceClassCharacterModelEntry
 > = {
+  'dwarf:barbarian': {
+    model: 'race-class/dwarf-barbarian.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'dwarf:fighter': {
+    model: 'race-class/dwarf-fighter.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'dwarf:monk': {
+    model: 'race-class/dwarf-monk.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'dwarf:rogue': {
+    model: 'race-class/dwarf-rogue.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
   'elf:barbarian': {
     model: 'race-class/elf-barbarian.glb',
     rigFamily: 'modular-fantasy-hero-v1',

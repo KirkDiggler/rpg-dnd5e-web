@@ -103,19 +103,45 @@ describe('resolvePlayerCharacterModel', () => {
     }
   );
 
-  it('falls back to the class model for a downed Elf Fighter', () => {
-    const expected = asResolution({
-      url: '/models/synty/characters/fighter-downed.glb',
-      rigFamily: 'townfolk-v1',
-      source: 'class',
-    });
+  it.each(['barbarian', 'fighter', 'monk', 'rogue'])(
+    'resolves the exact standing Dwarf %s race-class model',
+    (classRefId) => {
+      const expected = asResolution({
+        url: `/models/synty/characters/race-class/dwarf-${classRefId}.glb`,
+        rigFamily: 'modular-fantasy-hero-v1',
+        source: 'race-class',
+      });
 
-    expect(
-      classCharacterModels.resolvePlayerCharacterModel?.('elf', 'fighter', true)
-    ).toEqual(expected);
-  });
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel?.(
+          ' Dwarf ',
+          ` ${classRefId.toUpperCase()} `,
+          false
+        )
+      ).toEqual(expected);
+    }
+  );
 
-  it('falls back to the class model for unpromoted known classes', () => {
+  it.each(['elf', 'dwarf'])(
+    'falls back to the class model for a downed %s Fighter',
+    (raceRefId) => {
+      const expected = asResolution({
+        url: '/models/synty/characters/fighter-downed.glb',
+        rigFamily: 'townfolk-v1',
+        source: 'class',
+      });
+
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel?.(
+          raceRefId,
+          'fighter',
+          true
+        )
+      ).toEqual(expected);
+    }
+  );
+
+  it('falls back to the class model for unpromoted known race-class combinations', () => {
     const expected = asResolution({
       url: '/models/synty/characters/barbarian.glb',
       rigFamily: 'townfolk-v1',
@@ -124,7 +150,7 @@ describe('resolvePlayerCharacterModel', () => {
 
     expect(
       classCharacterModels.resolvePlayerCharacterModel?.(
-        ' dwarf ',
+        ' human ',
         ' barbarian ',
         false
       )
