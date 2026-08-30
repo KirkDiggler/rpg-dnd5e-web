@@ -200,6 +200,12 @@ const ELF_CLASS_URLS = {
   monk: '/models/synty/characters/race-class/elf-monk.glb',
   rogue: '/models/synty/characters/race-class/elf-rogue.glb',
 } as const;
+const DWARF_CLASS_URLS = {
+  barbarian: '/models/synty/characters/race-class/dwarf-barbarian.glb',
+  fighter: '/models/synty/characters/race-class/dwarf-fighter.glb',
+  monk: '/models/synty/characters/race-class/dwarf-monk.glb',
+  rogue: '/models/synty/characters/race-class/dwarf-rogue.glb',
+} as const;
 const ELF_FIGHTER_URL = ELF_CLASS_URLS.fighter;
 const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
 const FIGHTER_DOWNED_URL = '/models/synty/characters/fighter-downed.glb';
@@ -501,6 +507,29 @@ describe('SessionScene', () => {
           characterName={`Toolkit Sandbox ${classRefId}`}
           classRefId={classRefId}
           raceRefId="elf"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+        />
+      );
+
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(modelUrl)
+      );
+      expect(exactMeshes.length, classRefId).toBeGreaterThan(0);
+    }
+  });
+
+  it('mounts every exact local public Dwarf starter-class model URL', async () => {
+    for (const [classRefId, modelUrl] of Object.entries(DWARF_CLASS_URLS)) {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName={`Toolkit Sandbox ${classRefId}`}
+          classRefId={classRefId}
+          raceRefId="dwarf"
           myPosition={{ x: 0, y: 0, z: 0 }}
         />
       );
@@ -1093,6 +1122,41 @@ describe('SessionScene', () => {
         (node) =>
           node.type === 'Mesh' &&
           (node.instance as THREE.Mesh).name.includes(ELF_CLASS_URLS.rogue)
+      );
+      expect(exactMeshes.length).toBeGreaterThan(0);
+    });
+
+    it('a PLAYER-kind member with a roster entry mounts their exact public Dwarf Monk GLB, not the neutral placeholder', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[sightedPlayer]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'monk',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(DWARF_CLASS_URLS.monk)
       );
       expect(exactMeshes.length).toBeGreaterThan(0);
     });
