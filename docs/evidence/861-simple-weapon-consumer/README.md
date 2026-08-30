@@ -51,12 +51,13 @@ records the normal web UI sequence for the dedicated `weapon-gallery` identity.
 The owner is displayed as Weapon Gallery, Human Fighter. Character/lobby/session
 identifiers are intentionally redacted and not published.
 
-- `ListCharacters` HTTP 200 returned exactly one Weapon Gallery character. The
-  server-owned inventory contained 22 weapon refs with no duplicates, plus
-  non-weapon gear.
+- The normal web character list returned exactly one Weapon Gallery character.
+  The server-owned inventory contained 22 weapon refs with no duplicates, plus
+  non-weapon gear; no separate HTTP-status claim is made for that list result.
 - Initial `GetCharacterData` HTTP 200 showed equipped slots `{}`; presented AC
   `12` (`10 + 2 DEX`); main-hand damage empty.
-- The owner equipment popover exposed an enabled carried Dart row.
+- The owner equipment popover exposed an enabled carried Dart row, visibly shown
+  in the first authoritative contact-sheet tile.
 - `EquipItem` HTTP 200 returned complete `CharacterData`; the UI/renderer showed
   `main_hand: dnd5e:item:dart`, main-hand damage `1d4 piercing damage`, and the
   Dart GLB loaded with HTTP 200 and the exact SHA-256.
@@ -77,7 +78,7 @@ all zero.
 | --- | ---: | --- | --- |
 | `simple-weapon-four-class-contact-sheet.png` | 322388 | 2226 × 1180 | `ee1e00116529e9b7704a6790c791b25e60ca08f29625b26c185af5f666533b83` |
 | `simple-weapon-fighter-walk-contact-sheet.png` | 102945 | 2226 × 343 | `2e98c1fe412e2ad44f032fb42bd179157fd0a3474f3afb71e20dd344ca42eed4` |
-| `authoritative-dart-fighter-contact-sheet.png` | 880280 | 1114 × 1862 | `524ef1295e02b108fafaf091a1821a0a0a9639bcf6b375a1e13b2b17dd462449` |
+| `authoritative-dart-fighter-contact-sheet.png` | 872965 | 1114 × 1862 | `6a559eff8f1587f6ca265fb28a0fdfa12a145b53a9bd30a59510273f38e2dd8f` |
 
 `receipt.json` also binds PNG magic, Pillow media format, and decoded RGB hashes.
 

@@ -444,7 +444,8 @@
         "dnd5e:item:sling",
         "dnd5e:item:dart"
       ],
-      "duplicateWeaponRefs": false
+      "duplicateWeaponRefs": false,
+      "evidenceSource": "normal web UI character selection/list result; HTTP status not separately bound"
     },
     "initialOwnerState": {
       "equipped": {},
@@ -480,16 +481,17 @@
     "stages": [
       {
         "name": "initial-owner-ui-dart-row",
-        "screenshot": "docs/evidence/861-simple-weapon-consumer/01-initial-owner-ui-dart-row.png",
         "equipped": {},
         "presentedArmorClass": 12,
         "armorClassNote": "10 + 2 DEX",
         "mainHandDamage": "",
-        "dartRowEnabled": true
+        "dartRowEnabled": true,
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 1,
+        "dartRowVisibleInContactSheet": true
       },
       {
         "name": "equip-dart-immediate",
-        "screenshot": "docs/evidence/861-simple-weapon-consumer/02-equip-dart-immediate.png",
         "equipped": {
           "main_hand": "dnd5e:item:dart"
         },
@@ -503,21 +505,23 @@
         "dartAsset": {
           "httpStatus": 200,
           "sha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
-        }
+        },
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 2
       },
       {
         "name": "fresh-context-restores-dart",
-        "screenshot": "docs/evidence/861-simple-weapon-consumer/03-fresh-context-restores-dart.png",
         "equipped": {
           "main_hand": "dnd5e:item:dart"
         },
         "presentedArmorClass": 12,
         "armorClassNote": "10 + 2 DEX",
-        "mainHandDamage": "1d4 piercing damage"
+        "mainHandDamage": "1d4 piercing damage",
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 3
       },
       {
         "name": "unequip-dart-immediate-unarmed",
-        "screenshot": "docs/evidence/861-simple-weapon-consumer/04-unequip-dart-immediate-unarmed.png",
         "equipped": {},
         "presentedArmorClass": 12,
         "armorClassNote": "10 + 2 DEX",
@@ -525,27 +529,30 @@
         "rpc": {
           "method": "UnequipItem",
           "httpStatus": 200
-        }
+        },
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 4
       },
       {
         "name": "fresh-context-restores-unarmed",
-        "screenshot": "docs/evidence/861-simple-weapon-consumer/05-fresh-context-restores-unarmed.png",
         "equipped": {},
         "presentedArmorClass": 12,
         "armorClassNote": "10 + 2 DEX",
-        "mainHandDamage": ""
+        "mainHandDamage": "",
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 5
       },
       {
         "name": "restore-exact-initial-in-same-context",
-        "screenshot": "docs/evidence/861-simple-weapon-consumer/06-restore-exact-initial.png",
         "equipped": {},
         "presentedArmorClass": 12,
         "armorClassNote": "10 + 2 DEX",
-        "mainHandDamage": ""
+        "mainHandDamage": "",
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 6
       },
       {
         "name": "fresh-context-verifies-restored-initial",
-        "screenshot": "docs/evidence/861-simple-weapon-consumer/07-fresh-final-restored-initial.png",
         "equipped": {},
         "presentedArmorClass": 12,
         "armorClassNote": "10 + 2 DEX",
@@ -554,7 +561,9 @@
           "slotsEqual": true,
           "armorClassEqual": true,
           "mainHandDamageEqual": true
-        }
+        },
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 7
       }
     ],
     "dartAssetResponses": [
@@ -759,14 +768,14 @@
       "path": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
       "mediaType": "image/png",
       "magicHex": "89504e470d0a1a0a",
-      "byteSize": 880280,
-      "sha256": "524ef1295e02b108fafaf091a1821a0a0a9639bcf6b375a1e13b2b17dd462449",
+      "byteSize": 872965,
+      "sha256": "6a559eff8f1587f6ca265fb28a0fdfa12a145b53a9bd30a59510273f38e2dd8f",
       "pillowFormat": "PNG",
       "dimensions": [
         1114,
         1862
       ],
-      "decodedRgbSha256": "35eae2254170d74da7a1baffad879df62737243079bad9a22d4aed19895d625f",
+      "decodedRgbSha256": "b453d236d51f84f13de1d77889e00a8532e49fd9c1108bd3d4be7b853601b865",
       "volatileMetadataPresent": false
     }
   ],
