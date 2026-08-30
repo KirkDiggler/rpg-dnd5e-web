@@ -107,6 +107,7 @@ export function CombatExperience({
   diceEvents,
   diceSemanticFallback,
   diceWitnessRole,
+  localWorldDieControl,
   location,
   pacingNotice,
   renderMap,
@@ -263,16 +264,25 @@ export function CombatExperience({
           diagnosticsEnabled={diagnosticsEnabled}
         />
 
-        {diceWitnessRole === 'roller' && phase === 'awaiting-roll' && (
-          <div className={styles.localWorldDieControlLayer}>
-            <LocalWorldDieTile
-              mode={diceSemanticFallback ? 'fallback' : 'ready'}
-              onRevealResult={
-                diceSemanticFallback ? onDiceSemanticReleaseRequest : undefined
-              }
-            />
-          </div>
-        )}
+        {diceWitnessRole === 'roller' &&
+          phase === 'awaiting-roll' &&
+          localWorldDieControl !== null && (
+            <div className={styles.localWorldDieControlLayer}>
+              {localWorldDieControl !== undefined ? (
+                localWorldDieControl
+              ) : (
+                <LocalWorldDieTile
+                  mode={diceSemanticFallback ? 'fallback' : 'ready'}
+                  pickupReady={!diceSemanticFallback}
+                  onRevealResult={
+                    diceSemanticFallback
+                      ? onDiceSemanticReleaseRequest
+                      : undefined
+                  }
+                />
+              )}
+            </div>
+          )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
           <div className={styles.identityRow}>

@@ -39,6 +39,7 @@ import type { EquipIntent } from '../game/equipment/equipmentTypes';
 import { HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { Button } from '../ui/Button';
+import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { buildAtlasPathIndex } from './atlasPath';
 import {
@@ -47,9 +48,14 @@ import {
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
+import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
+import {
+  type LocalWorldDieHeldState,
+  LocalWorldDieLayer,
+} from './local-world-die/LocalWorldDieLayer';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
 import {
@@ -363,6 +369,24 @@ function SessionEncounterScope({
     () => holdDownedReveal(otherMembers, combat.unresolvedAttackTargets),
     [otherMembers, combat.unresolvedAttackTargets]
   );
+  const localWorldDieProjectionRef = useRef<TrayPlaneProjection | undefined>(
+    undefined
+  );
+  const [localWorldDieHeld, setLocalWorldDieHeld] = useState<
+    LocalWorldDieHeldState | undefined
+  >(undefined);
+  const [localWorldDieReady, setLocalWorldDieReady] = useState(false);
+  const localWorldDiePhysical =
+    combat.diceWitnessRole === 'roller' &&
+    combat.phase === 'awaiting-roll' &&
+    !combat.diceSemanticFallback;
+
+  useEffect(() => {
+    if (localWorldDiePhysical) return;
+    setLocalWorldDieHeld(undefined);
+    setLocalWorldDieReady(false);
+    localWorldDieProjectionRef.current = undefined;
+  }, [localWorldDiePhysical]);
 
   const refreshKeysForEvent = useCallback(
     (event: SessionEvent): SessionRefreshKey[] => {
@@ -537,6 +561,30 @@ function SessionEncounterScope({
     : characterDataError
       ? ('unavailable' as const)
       : ('loading' as const);
+  const localWorldDieControl =
+    combat.diceWitnessRole === 'roller' && combat.phase === 'awaiting-roll' ? (
+      combat.diceSemanticFallback ? (
+        <LocalWorldDieTile
+          mode="fallback"
+          onRevealResult={combat.onDiceSemanticReleaseRequest}
+        />
+      ) : lastGoodSceneRef.current ? (
+        <LocalWorldDieTile
+          mode="ready"
+          pickupReady={localWorldDieReady}
+          scene={lastGoodSceneRef.current}
+          projectionRef={localWorldDieProjectionRef}
+          onHeldChange={setLocalWorldDieHeld}
+        />
+      ) : null
+    ) : null;
+  const localWorldDieLayer = localWorldDiePhysical ? (
+    <LocalWorldDieLayer
+      held={localWorldDieHeld}
+      projectionRef={localWorldDieProjectionRef}
+      onReadyChange={setLocalWorldDieReady}
+    />
+  ) : null;
 
   let content: React.ReactNode;
   if (!characterId) {
@@ -602,6 +650,7 @@ function SessionEncounterScope({
             diceEvents={combat.diceEvents}
             diceSemanticFallback={combat.diceSemanticFallback}
             diceRollerName={combat.diceRollerName}
+            localWorldDieControl={localWorldDieControl}
             location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
             pacingNotice={combat.pacingNotice}
             renderMap={({ attackableTargets, onTargetClick }) => (
@@ -632,6 +681,7 @@ function SessionEncounterScope({
                 pathIndex={lastGoodPathIndexRef.current}
                 turnLocked={turnLocked}
                 movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
+                presentationLayer={localWorldDieLayer}
               />
             )}
             onSelectDeclaration={combat.onSelectDeclaration}

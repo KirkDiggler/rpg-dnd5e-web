@@ -1119,7 +1119,7 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
     });
 
-    await waitFor(() => screen.getByText(/Roll your carved iron d20/i));
+    await waitFor(() => screen.getByText('Preparing die'));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
     localStrike.release();
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));

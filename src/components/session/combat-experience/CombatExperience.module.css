@@ -210,6 +210,11 @@
   font-weight: 800;
 }
 
+.localWorldDieCaptureHidden {
+  opacity: 0;
+  pointer-events: auto;
+}
+
 .combatExperienceFillParent {
   height: 100%;
 }
