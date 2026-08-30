@@ -155,6 +155,66 @@
   width: 100%;
 }
 
+.localWorldDieControlLayer {
+  position: absolute;
+  z-index: 7;
+  top: 104px;
+  right: 346px;
+}
+
+.localWorldDieTile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid rgba(232, 183, 95, 0.5);
+  border-radius: 10px;
+  color: var(--sc-ink);
+  background: rgba(12, 20, 24, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+}
+
+.localWorldDieTile div {
+  display: grid;
+  gap: 2px;
+}
+
+.localWorldDieTile small {
+  color: var(--sc-muted);
+  font-size: 11px;
+}
+
+.localWorldDieTile button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid rgba(232, 183, 95, 0.45);
+  border-radius: 7px;
+  color: var(--sc-ink);
+  background: rgba(32, 45, 50, 0.98);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.localWorldDieToken {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(232, 183, 95, 0.6);
+  border-radius: 9px;
+  color: var(--sc-gold-bright);
+  background: rgba(29, 51, 89, 0.92);
+  font-weight: 800;
+}
+
+.localWorldDieCaptureHidden {
+  opacity: 0;
+  pointer-events: auto;
+}
+
 .combatExperienceFillParent {
   height: 100%;
 }

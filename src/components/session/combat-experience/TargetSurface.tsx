@@ -126,7 +126,7 @@ export function TargetSurface({
           <strong>
             {attackName} → {targetName}
           </strong>
-          <span>Roll in the dice drawer</span>
+          <span>Roll the attack die</span>
         </div>
       )}
       {phase === 'released-waiting-event' && targetName && (
