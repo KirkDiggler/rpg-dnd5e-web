@@ -1,5 +1,5 @@
 import type { Scene3D } from '@/components/session/atlasToScene3D';
-import type { LocalWorldDieHeldState } from '@/components/session/local-world-die/LocalWorldDieLayer';
+import type { LocalWorldDieHeldState } from '@/components/session/local-world-die/localWorldDieCommand';
 import { isLocalWorldDieFloorPoint } from '@/components/session/local-world-die/localWorldDieFloor';
 import type { TrayPlaneProjection } from '@/components/ui/dice/trayPlaneProjection';
 import {

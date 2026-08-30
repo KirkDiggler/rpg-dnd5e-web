@@ -3,8 +3,8 @@ import type { VisualThrowProfileV1 } from '@/components/ui/dice/visualThrowProfi
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import * as RAPIER from '@dimforge/rapier3d-compat';
 import { IcosahedronGeometry } from 'three';
-import type { LocalWorldDieHeldState } from './LocalWorldDieLayer';
 import type { LocalWorldDieCollider } from './localWorldDieColliders';
+import type { LocalWorldDieHeldState } from './localWorldDieCommand';
 import { isLocalWorldDieFloorPoint } from './localWorldDieFloor';
 import { localWorldDieLaunch } from './localWorldDieMotion';
 
@@ -56,7 +56,7 @@ function snapshotState(body: RAPIER.RigidBody): LocalWorldDieRigidBodyState {
   });
 }
 
-async function colliderFingerprint(
+export async function fingerprintLocalWorldDieColliders(
   colliders: readonly LocalWorldDieCollider[]
 ): Promise<Uint8Array> {
   const canonical = colliders.map((collider) => ({
@@ -82,7 +82,7 @@ export async function preSimulateLocalWorldDie(
   }>
 ): Promise<LocalWorldDiePlanTerminal> {
   const started = performance.now();
-  const fingerprint = await colliderFingerprint(input.colliders);
+  const fingerprint = await fingerprintLocalWorldDieColliders(input.colliders);
   await ensureRapier();
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = 1 / 60;

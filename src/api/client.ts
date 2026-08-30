@@ -164,7 +164,7 @@ export const encounterClient = createClient(EncounterService, transport);
 export const sessionClient = createClient(SessionService, transport);
 
 // Decorative dice coordination remains separate from authoritative SessionService.
-// The actor-only checkpoint uses only PublishDiceThrow; no stream is opened.
+// Published actors use the unary call; visual-only witnesses consume the live stream.
 export const sessionPresentationClient = createClient(
   SessionPresentationService,
   transport

@@ -9,7 +9,6 @@ import { resolveRuntimeDiceSettlement } from '@/components/ui/dice/diceSettlemen
 import { RuntimeDiceMesh } from '@/components/ui/dice/RuntimeDiceMesh';
 import type { TrayPlaneProjection } from '@/components/ui/dice/trayPlaneProjection';
 import { TrayPlaneProjectionBridge } from '@/components/ui/dice/TrayPlaneProjectionBridge';
-import type { VisualThrowProfileV1 } from '@/components/ui/dice/visualThrowProfile';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useFrame } from '@react-three/fiber';
 import {
@@ -34,25 +33,13 @@ import {
   buildLocalWorldDieColliders,
   type LocalWorldDieCollider,
 } from './localWorldDieColliders';
+import {
+  localWorldDieCommandTerminal,
+  localWorldDieDynamicState,
+  type LocalWorldDieCommand,
+} from './localWorldDieCommand';
 import { isLocalWorldDieFloorPoint } from './localWorldDieFloor';
 import { localWorldDieLaunch } from './localWorldDieMotion';
-import type { LocalWorldDiePlanTerminal } from './localWorldDiePreSimulation';
-
-export interface LocalWorldDieHeldState {
-  readonly position: readonly [number, number];
-  readonly height: number;
-}
-
-export type LocalWorldDieCommand =
-  | Readonly<{ id: number; kind: 'reset' }>
-  | Readonly<{ id: number; kind: 'held'; held: LocalWorldDieHeldState }>
-  | Readonly<{
-      id: number;
-      kind: 'released';
-      held: LocalWorldDieHeldState;
-      profile: VisualThrowProfileV1;
-      plannedTerminal?: LocalWorldDiePlanTerminal;
-    }>;
 
 export interface LocalWorldDieLayerProps {
   readonly command: LocalWorldDieCommand;
@@ -213,6 +200,17 @@ function DieBody({
       return;
     }
     setVisible(true);
+    if (command.kind === 'witness') {
+      const witnessState = localWorldDieDynamicState(command)!;
+      launched.current = true;
+      body.setBodyType(rapier.RigidBodyType.Dynamic, true);
+      body.setTranslation(witnessState.position, true);
+      body.setRotation(witnessState.rotation, true);
+      body.setLinvel(witnessState.linearVelocity, true);
+      body.setAngvel(witnessState.angularVelocity, true);
+      body.wakeUp();
+      return;
+    }
     const { position, height } = command.held;
     if (command.kind === 'held') {
       launched.current = false;
@@ -239,8 +237,7 @@ function DieBody({
     const body = bodyRef.current;
     if (!body || !launched.current || assist.current) return;
     physicsStep.current += 1;
-    const plannedTerminal =
-      command.kind === 'released' ? command.plannedTerminal : undefined;
+    const plannedTerminal = localWorldDieCommandTerminal(command);
     if (plannedTerminal && physicsStep.current >= plannedTerminal.step) {
       if (plannedTerminal.kind === 'off-table') {
         launched.current = false;
