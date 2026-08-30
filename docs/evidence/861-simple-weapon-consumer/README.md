@@ -11,7 +11,7 @@ equipment RPCs.
 
 ## Binding
 
-- Web code HEAD: `5f0c2c7c8830911bb839342c2e860f4aa92c484a`
+- Web code HEAD: `75335c924b53f42e1240e362d50c620bef55a28b`
 - Provider: `KirkDiggler/rpg-game-assets`
 - Provider commit: `11b78a0f24278a54f057a5a1abf416d30c0a879b`
 - Synced manifest: `public/models/synty/weapons/manifest.json`
