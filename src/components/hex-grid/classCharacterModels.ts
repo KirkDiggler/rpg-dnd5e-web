@@ -88,6 +88,38 @@ const RACE_CLASS_CHARACTER_MODELS: Record<
     model: 'race-class/half-elf-rogue.glb',
     rigFamily: 'modular-fantasy-hero-v1',
   },
+  'halfling:barbarian': {
+    model: 'race-class/halfling-barbarian.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'halfling:fighter': {
+    model: 'race-class/halfling-fighter.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'halfling:monk': {
+    model: 'race-class/halfling-monk.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'halfling:rogue': {
+    model: 'race-class/halfling-rogue.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'gnome:barbarian': {
+    model: 'race-class/gnome-barbarian.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'gnome:fighter': {
+    model: 'race-class/gnome-fighter.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'gnome:monk': {
+    model: 'race-class/gnome-monk.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'gnome:rogue': {
+    model: 'race-class/gnome-rogue.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
   'tiefling:barbarian': {
     model: 'race-class/tiefling-barbarian.glb',
     rigFamily: 'modular-fantasy-hero-v1',
