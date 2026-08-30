@@ -122,7 +122,7 @@ describe('resolvePlayerCharacterModel', () => {
     }
   );
 
-  it.each(['half-elf', 'tiefling'])(
+  it.each(['half-elf', 'tiefling', 'halfling', 'gnome'])(
     'resolves every exact standing %s starter-class model',
     (raceRefId) => {
       for (const classRefId of ['barbarian', 'fighter', 'monk', 'rogue']) {
@@ -143,7 +143,7 @@ describe('resolvePlayerCharacterModel', () => {
     }
   );
 
-  it.each(['elf', 'dwarf', 'half-elf', 'tiefling'])(
+  it.each(['elf', 'dwarf', 'half-elf', 'tiefling', 'halfling', 'gnome'])(
     'falls back to the class model for a downed %s Fighter',
     (raceRefId) => {
       const expected = asResolution({

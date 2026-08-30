@@ -218,6 +218,18 @@ const TIEFLING_CLASS_URLS = {
   monk: '/models/synty/characters/race-class/tiefling-monk.glb',
   rogue: '/models/synty/characters/race-class/tiefling-rogue.glb',
 } as const;
+const HALFLING_CLASS_URLS = {
+  barbarian: '/models/synty/characters/race-class/halfling-barbarian.glb',
+  fighter: '/models/synty/characters/race-class/halfling-fighter.glb',
+  monk: '/models/synty/characters/race-class/halfling-monk.glb',
+  rogue: '/models/synty/characters/race-class/halfling-rogue.glb',
+} as const;
+const GNOME_CLASS_URLS = {
+  barbarian: '/models/synty/characters/race-class/gnome-barbarian.glb',
+  fighter: '/models/synty/characters/race-class/gnome-fighter.glb',
+  monk: '/models/synty/characters/race-class/gnome-monk.glb',
+  rogue: '/models/synty/characters/race-class/gnome-rogue.glb',
+} as const;
 const ELF_FIGHTER_URL = ELF_CLASS_URLS.fighter;
 const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
 const FIGHTER_DOWNED_URL = '/models/synty/characters/fighter-downed.glb';
@@ -558,6 +570,8 @@ describe('SessionScene', () => {
   it.each([
     ['half-elf', HALF_ELF_CLASS_URLS],
     ['tiefling', TIEFLING_CLASS_URLS],
+    ['halfling', HALFLING_CLASS_URLS],
+    ['gnome', GNOME_CLASS_URLS],
   ] as const)(
     'mounts every exact local public %s starter-class model URL',
     async (raceRefId, classUrls) => {
@@ -1048,7 +1062,7 @@ describe('SessionScene', () => {
       expect(weaponMeshes.length).toBeGreaterThan(0);
     });
 
-    it.each(['elf', 'dwarf', 'half-elf', 'tiefling'])(
+    it.each(['elf', 'dwarf', 'half-elf', 'tiefling', 'halfling', 'gnome'])(
       'applies the reviewed modular rig-family override to the exact local %s Fighter model',
       async (raceRefId) => {
         const renderer = await ReactThreeTestRenderer.create(
@@ -1211,6 +1225,8 @@ describe('SessionScene', () => {
     it.each([
       ['half-elf', 'rogue', HALF_ELF_CLASS_URLS.rogue],
       ['tiefling', 'monk', TIEFLING_CLASS_URLS.monk],
+      ['halfling', 'barbarian', HALFLING_CLASS_URLS.barbarian],
+      ['gnome', 'fighter', GNOME_CLASS_URLS.fighter],
     ])(
       'a PLAYER-kind member mounts their exact public %s %s GLB',
       async (raceRef, classRef, modelUrl) => {
