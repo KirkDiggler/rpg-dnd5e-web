@@ -17,7 +17,7 @@ import {
 import styles from './CombatExperience.module.css';
 
 export interface LocalWorldDieTileProps {
-  readonly mode: 'ready' | 'fallback';
+  readonly mode: 'ready' | 'fallback' | 'status';
   readonly pickupReady?: boolean;
   readonly scene?: Scene3D;
   readonly projectionRef?: MutableRefObject<TrayPlaneProjection | undefined>;
@@ -26,8 +26,10 @@ export interface LocalWorldDieTileProps {
     held: LocalWorldDieHeldState,
     profile: VisualThrowProfileV1
   ) => void;
-  readonly physicsMode?: 'direct' | 'planned';
-  readonly onPhysicsModeChange?: (mode: 'direct' | 'planned') => void;
+  readonly physicsMode?: 'direct' | 'planned' | 'published';
+  readonly onPhysicsModeChange?: (
+    mode: 'direct' | 'planned' | 'published'
+  ) => void;
   readonly planSummary?: string;
   readonly onRevealResult?: () => void;
 }
@@ -208,6 +210,25 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
     [clear]
   );
 
+  if (props.mode === 'status') {
+    return (
+      <aside
+        data-testid="local-world-die-tile"
+        className={styles.localWorldDieTile}
+        aria-label="Attack die"
+        role="status"
+      >
+        <span className={styles.localWorldDieToken} aria-hidden="true">
+          20
+        </span>
+        <div>
+          <strong>{props.planSummary ?? 'Throw in progress'}</strong>
+          <small>Same local body · no witness playback</small>
+        </div>
+      </aside>
+    );
+  }
+
   if (props.mode === 'fallback') {
     return (
       <aside
@@ -288,6 +309,13 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
           onClick={() => props.onPhysicsModeChange?.('planned')}
         >
           Planned
+        </button>
+        <button
+          type="button"
+          aria-pressed={props.physicsMode === 'published'}
+          onClick={() => props.onPhysicsModeChange?.('published')}
+        >
+          Published
         </button>
         {props.planSummary && <small>{props.planSummary}</small>}
       </div>
