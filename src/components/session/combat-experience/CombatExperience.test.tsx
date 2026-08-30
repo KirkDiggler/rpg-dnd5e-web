@@ -80,15 +80,61 @@ function tooltipOf(button: HTMLElement): HTMLElement {
 }
 
 describe('CombatExperience shared production shell', () => {
-  it('owns the approved five-region composition at the 1024px structure floor', () => {
+  it('keeps dice UI absent while no local attack roll is armed', () => {
     render(<CombatExperience {...propsFor()} />);
 
     expect(screen.getByTestId('combat-experience-shell')).toBeTruthy();
     expect(screen.getByTestId('session-combat-initiative')).toBeTruthy();
     expect(screen.getByTestId('session-combat-map')).toBeTruthy();
     expect(screen.getByTestId('session-combat-dock')).toBeTruthy();
-    expect(screen.getByTestId('session-combat-dice-drawer')).toBeTruthy();
     expect(screen.getByTestId('session-combat-log')).toBeTruthy();
+    expect(screen.queryByTestId('session-combat-dice-drawer')).toBeNull();
+    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
+  });
+
+  it('shows one compact local tile for an armed roller without mounting the legacy tray', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          phase: 'awaiting-roll',
+          diceWitnessRole: 'roller',
+          onDiceReleaseRequest: vi.fn(),
+          onDiceSemanticReleaseRequest: vi.fn(),
+        })}
+      />
+    );
+
+    expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
+    expect(screen.getByText('Attack die ready')).toBeTruthy();
+    expect(screen.queryByTestId('session-combat-dice-drawer')).toBeNull();
+    expect(screen.queryByTestId('real-dice-presentation')).toBeNull();
+  });
+
+  it('keeps the local tile actor-only and preserves explicit semantic reveal', () => {
+    const onReveal = vi.fn();
+    const { rerender } = render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          phase: 'awaiting-roll',
+          diceWitnessRole: 'spectator',
+        })}
+      />
+    );
+    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
+
+    rerender(
+      <CombatExperience
+        {...propsFor(fresh, {
+          phase: 'awaiting-roll',
+          diceWitnessRole: 'roller',
+          diceSemanticFallback: true,
+          onDiceReleaseRequest: vi.fn(),
+          onDiceSemanticReleaseRequest: onReveal,
+        })}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal result' }));
+    expect(onReveal).toHaveBeenCalledTimes(1);
   });
 
   it('defaults to the fixed review frame and requires an explicit fill-parent layout', () => {

@@ -120,7 +120,8 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(screen.getByTestId('session-combat-initiative')).toBeTruthy();
     expect(screen.getByTestId('session-combat-map')).toBeTruthy();
     expect(screen.getByTestId('session-combat-dock')).toBeTruthy();
-    expect(screen.getByTestId('session-combat-dice-drawer')).toBeTruthy();
+    expect(screen.queryByTestId('session-combat-dice-drawer')).toBeNull();
+    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
     expect(screen.getByTestId('session-combat-log')).toBeTruthy();
   });
 
@@ -155,7 +156,8 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
       screen.getByRole('button', { name: 'Map target skeleton-guard' })
     );
     expect(screen.getByText('Attack declared')).toBeTruthy();
-    expect(screen.getByText('Roll in the dice drawer')).toBeTruthy();
+    expect(screen.getByText('Roll the attack die')).toBeTruthy();
+    expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
   });
 
   it('uses the center only for a transient fresh-turn orientation', () => {
@@ -249,7 +251,7 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
 
     expect(screen.getByText('Attack declared')).toBeTruthy();
-    expect(screen.getByTestId('real-dice-presentation')).toBeTruthy();
+    expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
     expect(screen.getByText(/seq=18 clock=6/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Spent turn' }));
@@ -260,7 +262,7 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
         .getByRole('button', { name: /Longsword/ })
         .getAttribute('aria-pressed')
     ).toBe('false');
-    expect(screen.queryByTestId('real-dice-presentation')).toBeNull();
+    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
     expect(screen.queryByText('Choose an action or move')).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Story' }).getAttribute('aria-pressed')
@@ -269,18 +271,18 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(screen.getByText('Aldric turns the blow aside')).toBeTruthy();
   });
 
-  it('reveals the authoritative result story only after dice release delivery', () => {
+  it('keeps the authoritative story concealed while awaiting the local die and clears the tile in the settled review state', () => {
     render(<SessionCombatConcept />);
     fireEvent.click(screen.getByRole('button', { name: /Longsword/ }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Map target skeleton-guard' })
     );
 
-    const presentation = screen.getByTestId('real-dice-presentation');
-    expect(presentation.dataset.result).toBe('12');
+    expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
     expect(screen.queryByText('Aldric strikes Skeleton Guard')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Release die' }));
-    expect(screen.getByText('Aldric strikes Skeleton Guard')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Settled' }));
+    expect(screen.getByText('Result delivered')).toBeTruthy();
+    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
   });
 });
