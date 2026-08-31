@@ -2,6 +2,16 @@ import * as THREE from 'three';
 
 const DEFAULT_BIND_TOLERANCE = 1e-5;
 
+export type SkinnedAccessoryBindFailureCode =
+  | 'invalid-tolerance'
+  | 'body-skeleton-count'
+  | 'accessory-mesh-count'
+  | 'accessory-skeleton'
+  | 'duplicate-body-bone'
+  | 'missing-body-bone'
+  | 'inverse-bind-mismatch'
+  | 'bind-matrix-mismatch';
+
 export type SkinnedAccessoryBindResult =
   | {
       readonly ok: true;
@@ -13,21 +23,10 @@ export type SkinnedAccessoryBindResult =
     }
   | {
       readonly ok: false;
-      readonly code:
-        | 'body-skeleton-count'
-        | 'accessory-mesh-count'
-        | 'duplicate-body-bone'
-        | 'missing-body-bone'
-        | 'inverse-bind-mismatch'
-        | 'bind-matrix-mismatch';
+      readonly code: SkinnedAccessoryBindFailureCode;
       readonly message: string;
       readonly missingBoneNames: readonly string[];
     };
-
-type BindFailureCode = Exclude<
-  SkinnedAccessoryBindResult,
-  { ok: true }
->['code'];
 
 interface BodyBoneBinding {
   readonly bone: THREE.Bone;
@@ -35,7 +34,7 @@ interface BodyBoneBinding {
 }
 
 function failure(
-  code: BindFailureCode,
+  code: SkinnedAccessoryBindFailureCode,
   message: string,
   missingBoneNames: readonly string[] = []
 ): SkinnedAccessoryBindResult {
@@ -108,6 +107,13 @@ export function bindSkinnedAccessory(
   accessoryRoot: THREE.Object3D,
   tolerance = DEFAULT_BIND_TOLERANCE
 ): SkinnedAccessoryBindResult {
+  if (!Number.isFinite(tolerance) || tolerance < 0) {
+    return failure(
+      'invalid-tolerance',
+      'Bind tolerance must be a finite non-negative number.'
+    );
+  }
+
   const bodyMeshes = collectSkinnedMeshes(bodyRoot);
   const bodySkeleton = bodyMeshes[0]?.skeleton;
   if (
@@ -138,6 +144,13 @@ export function bindSkinnedAccessory(
 
   const accessoryMesh = accessoryMeshes[0]!;
   const accessorySkeleton = accessoryMesh.skeleton;
+  if (!(accessorySkeleton instanceof THREE.Skeleton)) {
+    return failure(
+      'accessory-skeleton',
+      'Accessory SkinnedMesh must be bound to a THREE.Skeleton before attachment.'
+    );
+  }
+
   const bodyBoneByName = new Map<string, BodyBoneBinding>();
   for (let index = 0; index < bodySkeleton.bones.length; index += 1) {
     const bone = bodySkeleton.bones[index]!;

@@ -266,6 +266,72 @@ describe('bindSkinnedAccessory', () => {
     expect(fixture.accessoryMesh.parent).toBe(fixture.accessoryRoot);
   });
 
+  it.each([
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['NaN', Number.NaN],
+    ['negative', -Number.EPSILON],
+  ] as const)(
+    'rejects %s tolerance before matrix comparisons can weaken equivalence',
+    (_label, tolerance) => {
+      const fixture = makeFixture();
+      fixture.accessoryMesh.skeleton.boneInverses[1]!.elements[12] +=
+        DEFAULT_TOLERANCE * 1.1;
+      fixture.accessoryMesh.bindMatrix.elements[13] += DEFAULT_TOLERANCE * 1.1;
+
+      expectFailure(
+        bindSkinnedAccessory(
+          fixture.bodyRoot,
+          fixture.accessoryRoot,
+          tolerance
+        ),
+        'invalid-tolerance'
+      );
+      expect(fixture.accessoryMesh.parent).toBe(fixture.accessoryRoot);
+    }
+  );
+
+  it('treats zero tolerance as exact equality only', () => {
+    const exactFixture = makeFixture();
+
+    const exactResult = bindSkinnedAccessory(
+      exactFixture.bodyRoot,
+      exactFixture.accessoryRoot,
+      0
+    );
+
+    expect(exactResult.ok).toBe(true);
+
+    const mismatchedFixture = makeFixture();
+    mismatchedFixture.accessoryMesh.skeleton.boneInverses[1]!.elements[12] +=
+      Number.EPSILON;
+
+    expectFailure(
+      bindSkinnedAccessory(
+        mismatchedFixture.bodyRoot,
+        mismatchedFixture.accessoryRoot,
+        0
+      ),
+      'inverse-bind-mismatch'
+    );
+    expect(mismatchedFixture.accessoryMesh.parent).toBe(
+      mismatchedFixture.accessoryRoot
+    );
+  });
+
+  it('honors a positive finite custom tolerance at its equality boundary', () => {
+    const fixture = makeFixture();
+    const tolerance = 0.01;
+    fixture.accessoryMesh.skeleton.boneInverses[1]!.elements[12] += tolerance;
+
+    const result = bindSkinnedAccessory(
+      fixture.bodyRoot,
+      fixture.accessoryRoot,
+      tolerance
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
   it('rejects equivalent body wrappers whose bind matrices differ', () => {
     const fixture = makeFixture();
     const equivalentSkeleton = new THREE.Skeleton(
@@ -308,6 +374,34 @@ describe('bindSkinnedAccessory', () => {
       bindSkinnedAccessory(fixture.bodyRoot, fixture.accessoryRoot),
       'accessory-mesh-count'
     );
+  });
+
+  it('rejects an unbound accessory SkinnedMesh without mutating hierarchy, material, or geometry', () => {
+    const fixture = makeFixture();
+    fixture.accessoryRoot.clear();
+    const accessoryGeometry = new THREE.BufferGeometry();
+    const accessoryMaterial = new THREE.MeshStandardMaterial();
+    const unboundAccessoryMesh = new THREE.SkinnedMesh(
+      accessoryGeometry,
+      accessoryMaterial
+    );
+    unboundAccessoryMesh.add(fixture.accessoryBones[0]!);
+    fixture.accessoryRoot.add(unboundAccessoryMesh);
+    const originalRootChildren = [...fixture.accessoryRoot.children];
+    const originalMeshChildren = [...unboundAccessoryMesh.children];
+    const originalSkeleton = unboundAccessoryMesh.skeleton;
+
+    expectFailure(
+      bindSkinnedAccessory(fixture.bodyRoot, fixture.accessoryRoot),
+      'accessory-skeleton'
+    );
+
+    expect(fixture.accessoryRoot.children).toEqual(originalRootChildren);
+    expect(unboundAccessoryMesh.parent).toBe(fixture.accessoryRoot);
+    expect(unboundAccessoryMesh.children).toEqual(originalMeshChildren);
+    expect(unboundAccessoryMesh.geometry).toBe(accessoryGeometry);
+    expect(unboundAccessoryMesh.material).toBe(accessoryMaterial);
+    expect(unboundAccessoryMesh.skeleton).toBe(originalSkeleton);
   });
 
   it('reports every accessory joint missing from the body by exact name', () => {
