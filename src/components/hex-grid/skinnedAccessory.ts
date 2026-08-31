@@ -61,6 +61,25 @@ function matricesMatch(
   });
 }
 
+function skeletonsShareArmature(
+  canonical: THREE.Skeleton,
+  candidate: THREE.Skeleton,
+  tolerance: number
+): boolean {
+  if (candidate.bones.length !== canonical.bones.length) return false;
+
+  return canonical.bones.every((bone, index) => {
+    const canonicalInverse = canonical.boneInverses[index];
+    const candidateInverse = candidate.boneInverses[index];
+    return (
+      candidate.bones[index] === bone &&
+      canonicalInverse !== undefined &&
+      candidateInverse !== undefined &&
+      matricesMatch(canonicalInverse, candidateInverse, tolerance)
+    );
+  });
+}
+
 function findBodyRootBone(skeleton: THREE.Skeleton): THREE.Bone | undefined {
   const bodyBones = new Set(skeleton.bones);
   return (
@@ -94,11 +113,18 @@ export function bindSkinnedAccessory(
   if (
     !(bodySkeleton instanceof THREE.Skeleton) ||
     bodySkeleton.bones.length === 0 ||
-    bodyMeshes.some((mesh) => mesh.skeleton !== bodySkeleton)
+    bodyMeshes.some((mesh) => {
+      const skeleton = mesh.skeleton;
+      return (
+        skeleton !== bodySkeleton &&
+        (!(skeleton instanceof THREE.Skeleton) ||
+          !skeletonsShareArmature(bodySkeleton, skeleton, tolerance))
+      );
+    })
   ) {
     return failure(
       'body-skeleton-count',
-      'Body must contain one authoritative Skeleton shared by every SkinnedMesh.'
+      'Body must contain one authoritative armature shared by every SkinnedMesh.'
     );
   }
 

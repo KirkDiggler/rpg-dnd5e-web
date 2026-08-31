@@ -9,6 +9,7 @@ const BODY_BIND_MATRIX = new THREE.Matrix4().makeTranslation(3, 4, 5);
 interface RigFixture {
   readonly bodyRoot: THREE.Group;
   readonly bodySkeleton: THREE.Skeleton;
+  readonly bodyMeshes: readonly [THREE.SkinnedMesh, THREE.SkinnedMesh];
   readonly bodyBones: readonly THREE.Bone[];
   readonly bodyInverses: readonly THREE.Matrix4[];
   readonly accessoryRoot: THREE.Group;
@@ -57,8 +58,12 @@ function makeFixture(
   const bodyBones = makeBoneChain(BODY_BONE_NAMES);
   const bodyInverses = makeBodyInverses();
   const bodySkeleton = new THREE.Skeleton(bodyBones, bodyInverses);
+  const bodyMeshes = [
+    makeSkinnedMesh(bodySkeleton),
+    makeSkinnedMesh(bodySkeleton),
+  ] as const;
   bodyRoot.add(bodyBones[0]!);
-  bodyRoot.add(makeSkinnedMesh(bodySkeleton), makeSkinnedMesh(bodySkeleton));
+  bodyRoot.add(...bodyMeshes);
 
   const bodyInverseByName = new Map<string, THREE.Matrix4>(
     BODY_BONE_NAMES.map((name, index) => [name, bodyInverses[index]!])
@@ -78,6 +83,7 @@ function makeFixture(
   return {
     bodyRoot,
     bodySkeleton,
+    bodyMeshes,
     bodyBones,
     bodyInverses,
     accessoryRoot,
@@ -172,23 +178,109 @@ describe('bindSkinnedAccessory', () => {
     ]);
   });
 
-  it('requires one authoritative body Skeleton while allowing shared body meshes', () => {
-    const fixture = makeFixture();
-    const noBodySkin = new THREE.Group();
+  it('chooses one canonical Skeleton from equivalent body wrappers', () => {
+    const fixture = makeFixture(BODY_BONE_NAMES);
+    const equivalentSkeleton = new THREE.Skeleton(
+      [...fixture.bodyBones],
+      [...fixture.bodyInverses]
+    );
+    fixture.bodyMeshes[1].bind(equivalentSkeleton, BODY_BIND_MATRIX);
 
-    expectFailure(
-      bindSkinnedAccessory(noBodySkin, fixture.accessoryRoot),
-      'body-skeleton-count'
+    expect(equivalentSkeleton).not.toBe(fixture.bodySkeleton);
+    equivalentSkeleton.bones.forEach((bone, index) => {
+      expect(bone).toBe(fixture.bodyBones[index]);
+      expect(equivalentSkeleton.boneInverses[index]).toBe(
+        fixture.bodyInverses[index]
+      );
+    });
+
+    const result = bindSkinnedAccessory(
+      fixture.bodyRoot,
+      fixture.accessoryRoot
     );
 
-    const otherBones = makeBoneChain(BODY_BONE_NAMES);
-    const otherSkeleton = new THREE.Skeleton(otherBones, makeBodyInverses());
-    fixture.bodyRoot.add(otherBones[0]!, makeSkinnedMesh(otherSkeleton));
+    expect(result).not.toMatchObject({
+      ok: false,
+      code: 'body-skeleton-count',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.mesh.skeleton).toBe(fixture.bodySkeleton);
+    expect(result.ownsSkeletonWrapper).toBe(false);
+    expect(result.mappedBoneUuids).toEqual(
+      fixture.bodyBones.map((bone) => bone.uuid)
+    );
+  });
+
+  it('requires at least one body skin', () => {
+    const fixture = makeFixture();
+
+    expectFailure(
+      bindSkinnedAccessory(new THREE.Group(), fixture.accessoryRoot),
+      'body-skeleton-count'
+    );
+  });
+
+  it('rejects an unbound body SkinnedMesh without mutating the accessory', () => {
+    const fixture = makeFixture();
+    fixture.bodyRoot.add(new THREE.SkinnedMesh());
 
     expectFailure(
       bindSkinnedAccessory(fixture.bodyRoot, fixture.accessoryRoot),
       'body-skeleton-count'
     );
+    expect(fixture.accessoryMesh.parent).toBe(fixture.accessoryRoot);
+  });
+
+  it('rejects same-name body wrappers backed by different Bone objects', () => {
+    const fixture = makeFixture();
+    const otherBones = makeBoneChain(BODY_BONE_NAMES);
+    const otherSkeleton = new THREE.Skeleton(otherBones, makeBodyInverses());
+    fixture.bodyRoot.add(otherBones[0]!);
+    fixture.bodyMeshes[1].bind(otherSkeleton, BODY_BIND_MATRIX);
+
+    expectFailure(
+      bindSkinnedAccessory(fixture.bodyRoot, fixture.accessoryRoot),
+      'body-skeleton-count'
+    );
+    expect(fixture.accessoryMesh.parent).toBe(fixture.accessoryRoot);
+  });
+
+  it('rejects body wrappers whose inverse matrices differ', () => {
+    const fixture = makeFixture();
+    const mismatchedInverses = fixture.bodyInverses.map((inverse) =>
+      inverse.clone()
+    );
+    mismatchedInverses[1]!.elements[13] += DEFAULT_TOLERANCE * 1.1;
+    const mismatchedSkeleton = new THREE.Skeleton(
+      [...fixture.bodyBones],
+      mismatchedInverses
+    );
+    fixture.bodyMeshes[1].bind(mismatchedSkeleton, BODY_BIND_MATRIX);
+
+    expectFailure(
+      bindSkinnedAccessory(fixture.bodyRoot, fixture.accessoryRoot),
+      'body-skeleton-count'
+    );
+    expect(fixture.accessoryMesh.parent).toBe(fixture.accessoryRoot);
+  });
+
+  it('rejects equivalent body wrappers whose bind matrices differ', () => {
+    const fixture = makeFixture();
+    const equivalentSkeleton = new THREE.Skeleton(
+      [...fixture.bodyBones],
+      [...fixture.bodyInverses]
+    );
+    const mismatchedBindMatrix = BODY_BIND_MATRIX.clone();
+    mismatchedBindMatrix.elements[14] += DEFAULT_TOLERANCE * 1.1;
+    fixture.bodyMeshes[1].bind(equivalentSkeleton, mismatchedBindMatrix);
+
+    expectFailure(
+      bindSkinnedAccessory(fixture.bodyRoot, fixture.accessoryRoot),
+      'bind-matrix-mismatch'
+    );
+    expect(fixture.accessoryMesh.parent).toBe(fixture.accessoryRoot);
   });
 
   it('rejects duplicate body bone names instead of choosing one', () => {
