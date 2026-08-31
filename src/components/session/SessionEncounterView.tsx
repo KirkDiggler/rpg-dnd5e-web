@@ -43,6 +43,7 @@ import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent } from '../game/equipment/equipmentTypes';
 import { cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
+import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
@@ -964,6 +965,10 @@ function SessionEncounterScope({
     () => resolveMainHandPresentation(characterData?.equipped ?? {}),
     [characterData?.equipped]
   );
+  const offHandResolution = useMemo(
+    () => resolveOffHandPresentation(characterData?.equipped ?? {}),
+    [characterData?.equipped]
+  );
   const loading = atlasLoading || whereLoading;
   const blockingError = atlasError ?? whereError;
   const privateStatus = characterData
@@ -1096,6 +1101,7 @@ function SessionEncounterScope({
                 raceRefId={raceRefId}
                 localIsDowned={localIsDowned}
                 mainHandPresentation={mainHandResolution.presentation}
+                offHandPresentation={offHandResolution.presentation}
                 roster={roster}
                 doors={doors}
                 onDoorClick={runEnded === null ? handleDoorClick : undefined}

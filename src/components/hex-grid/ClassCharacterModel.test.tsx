@@ -7,6 +7,10 @@ import type {
   MainHandPresentation,
   MainHandSocket,
 } from './mainHandPresentation';
+import type {
+  OffHandAttachmentStatus,
+  OffHandPresentation,
+} from './offHandEquipment';
 
 const fighterUrl = '/models/synty/characters/fighter.glb';
 const failedWeapon = '/models/synty/characters/weapons/fighter-weapon.glb';
@@ -44,6 +48,8 @@ type Task8ClassCharacterModelProps = ComponentProps<
   typeof ClassCharacterModel
 > & {
   mainHandSocketOverride?: MainHandSocket;
+  offHandPresentation?: OffHandPresentation;
+  onOffHandStatus?: (status: OffHandAttachmentStatus) => void;
 };
 
 const Task8ClassCharacterModel = ClassCharacterModel as unknown as (
@@ -69,12 +75,14 @@ vi.mock('@react-three/drei', () => ({
         root.name = 'Root';
         const hand = new THREE.Bone();
         hand.name = 'Hand_R';
+        const offHand = new THREE.Bone();
+        offHand.name = 'Hand_L';
         const body = new THREE.Mesh(
           new THREE.BoxGeometry(),
           new THREE.MeshStandardMaterial()
         );
         body.name = 'fighter-body';
-        root.add(hand, body);
+        root.add(hand, offHand, body);
         scene.add(root);
       } else {
         const mesh = new THREE.Mesh(
@@ -132,6 +140,79 @@ beforeAll(() => {
 afterEach(() => {
   gltf.scenes.clear();
   gltf.failed.clear();
+});
+
+it('mounts main and off-hand assets independently on their exact bones', async () => {
+  const offStatuses: OffHandAttachmentStatus[] = [];
+  const offHandPresentation: OffHandPresentation = {
+    ref: 'dnd5e:item:shield',
+    assetUrl: '/models/synty/off-hand/shield.glb',
+    assetKind: 'shield',
+    socket: {
+      bone: 'Hand_L',
+      boneUnitMeters: 0.01,
+      positionMeters: [0, 0, 0],
+      rotationQuaternion: [0, 0, 0, 1],
+      scale: 1,
+    },
+  };
+  const renderer = await ReactThreeTestRenderer.create(
+    <Task8ClassCharacterModel
+      url={fighterUrl}
+      mainHandPresentation={presentationFor(firstWeapon)}
+      offHandPresentation={offHandPresentation}
+      onOffHandStatus={(status) => offStatuses.push(status)}
+    />
+  );
+
+  const right = renderer.scene.findAll(
+    (node) =>
+      node.instance instanceof THREE.Bone && node.instance.name === 'Hand_R'
+  )[0]!.instance as THREE.Bone;
+  const left = renderer.scene.findAll(
+    (node) =>
+      node.instance instanceof THREE.Bone && node.instance.name === 'Hand_L'
+  )[0]!.instance as THREE.Bone;
+  expect(right.children).toHaveLength(1);
+  expect(left.children).toHaveLength(1);
+  expect(offStatuses.at(-1)?.code).toBe('attached');
+});
+
+it('cleans both slots when the same exact ref and URL are equipped in both hands', async () => {
+  const sharedUrl = '/models/synty/weapons/dagger.glb';
+  const main = presentationFor(sharedUrl);
+  main.ref = 'dnd5e:item:dagger';
+  const off: OffHandPresentation = {
+    ref: 'dnd5e:item:dagger',
+    assetUrl: sharedUrl,
+    assetKind: 'weapon',
+    socket: {
+      bone: 'Hand_L',
+      boneUnitMeters: 0.01,
+      positionMeters: [0, 0, 0],
+      rotationQuaternion: [0, 0, 0, 1],
+      scale: 1,
+    },
+  };
+  const renderer = await ReactThreeTestRenderer.create(
+    <Task8ClassCharacterModel
+      url={fighterUrl}
+      mainHandPresentation={main}
+      offHandPresentation={off}
+    />
+  );
+  const bones = (name: string) =>
+    renderer.scene.findAll(
+      (node) =>
+        node.instance instanceof THREE.Bone && node.instance.name === name
+    )[0]!.instance as THREE.Bone;
+  expect(bones('Hand_R').children).toHaveLength(1);
+  expect(bones('Hand_L').children).toHaveLength(1);
+
+  await renderer.update(<Task8ClassCharacterModel url={fighterUrl} />);
+
+  expect(bones('Hand_R').children).toHaveLength(0);
+  expect(bones('Hand_L').children).toHaveLength(0);
 });
 
 it('keeps the fighter rendered when only its weapon load fails', async () => {

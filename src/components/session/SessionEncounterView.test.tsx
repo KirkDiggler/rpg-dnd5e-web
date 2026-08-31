@@ -667,6 +667,38 @@ describe('SessionEncounterView production combat integration', () => {
     );
   });
 
+  it('projects owner-authoritative off_hand into the local canvas presentation', async () => {
+    readyScene();
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        equipped: {
+          off_hand: { module: 'dnd5e', type: 'item', id: 'shield' },
+        },
+      }),
+    });
+    renderView();
+
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.offHandPresentation).toEqual({
+        ref: 'dnd5e:item:shield',
+        assetUrl: '/models/synty/off-hand/shield.glb',
+        assetKind: 'shield',
+        socket: {
+          bone: 'Hand_L',
+          boneUnitMeters: 0.01,
+          positionMeters: [
+            0.08494041442871093, -0.02545013666152954, -0.06444666385650635,
+          ],
+          rotationQuaternion: [
+            0.6342147588729858, 0.538684606552124, 0.31252291798591614,
+            0.45817017555236816,
+          ],
+          scale: 1,
+        },
+      })
+    );
+  });
+
   it('keeps dock identity on the public roster during a turn instead of Turn participants or private CharacterData', async () => {
     readyTurn();
     hoisted.turnFn.mockResolvedValue({

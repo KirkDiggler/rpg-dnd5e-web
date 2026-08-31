@@ -37,6 +37,10 @@ import { mainHandSocketForRigFamily } from './mainHandWeapons';
 import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
 import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
+import {
+  offHandSocketForRigFamily,
+  type OffHandPresentation,
+} from './offHandEquipment';
 import { PROPS_MODEL_BASE } from './propManifest';
 import { PropModel } from './PropModel';
 import {
@@ -106,6 +110,9 @@ export interface HexEntityProps {
   /** Exact owner-authoritative visual projection for this player's main hand.
    * Undefined means unarmed; only class GLBs consume it. */
   mainHandPresentation?: MainHandPresentation;
+  /** Exact owner-private visual projection for this player's off hand.
+   * Undefined means no reviewed off-hand presentation. */
+  offHandPresentation?: OffHandPresentation;
   /** True for a CHARACTER entity carrying the "unconscious" condition —
    * swaps to the class's downed GLB variant (rpg-dnd5e-web#501). */
   isDowned?: boolean;
@@ -314,6 +321,7 @@ export function HexEntity({
   classRefId,
   raceRefId,
   mainHandPresentation,
+  offHandPresentation,
   isDowned = false,
   obstacleType,
   propRefId,
@@ -486,6 +494,9 @@ export function HexEntity({
     const mainHandSocketOverride = playerModelResolution
       ? mainHandSocketForRigFamily(playerModelResolution.rigFamily)
       : undefined;
+    const offHandSocketOverride = playerModelResolution
+      ? offHandSocketForRigFamily(playerModelResolution.rigFamily)
+      : undefined;
     // Monster npc GLB (rpg-dnd5e-web#559) — the same resolve-or-undefined
     // shape as classModelUrl above, one entry per promoted crypt-roster
     // monster (monsterModels.ts). `isDead` (not `isDowned`, which is a
@@ -553,8 +564,8 @@ export function HexEntity({
         hairColor={remembered ? cryptHex : isDead ? '#333' : hairColor}
         facialHairStyle={facialHairStyle}
         mainHandWeapon={mainHandWeapon}
-        offHandWeapon={offHandWeapon}
-        shield={shield}
+        offHandWeapon={type === 'player' ? undefined : offHandWeapon}
+        shield={type === 'player' ? undefined : shield}
         showOutline={!isDead && !remembered}
         ghostAmount={isGhost ? 1.0 : 0.0}
       />
@@ -631,6 +642,10 @@ export function HexEntity({
                     type === 'player' ? mainHandPresentation : undefined
                   }
                   mainHandSocketOverride={mainHandSocketOverride}
+                  offHandPresentation={
+                    type === 'player' ? offHandPresentation : undefined
+                  }
+                  offHandSocketOverride={offHandSocketOverride}
                 />
               </ErrorBoundary>
             ) : (

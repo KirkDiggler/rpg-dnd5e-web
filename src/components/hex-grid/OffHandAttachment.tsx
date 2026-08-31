@@ -3,36 +3,35 @@ import * as THREE from 'three';
 import { BoneAttachmentSlot } from './BoneAttachmentSlot';
 import type { BoneAttachmentStatus, BonePresentation } from './boneAttachment';
 import {
-  mainHandStatusFromBone,
-  type MainHandAttachmentStatus,
-  type MainHandPresentation,
-} from './mainHandPresentation';
+  offHandStatusFromBone,
+  type OffHandAttachmentStatus,
+  type OffHandPresentation,
+} from './offHandEquipment';
 
-export interface MainHandAttachmentSlotProps {
+export interface OffHandAttachmentSlotProps {
   characterRoot: THREE.Object3D;
-  presentation?: MainHandPresentation;
-  onStatus?: (status: MainHandAttachmentStatus) => void;
+  presentation?: OffHandPresentation;
+  onStatus?: (status: OffHandAttachmentStatus) => void;
 }
 
-export function MainHandAttachmentSlot({
+export function OffHandAttachmentSlot({
   characterRoot,
   presentation,
   onStatus,
-}: MainHandAttachmentSlotProps) {
+}: OffHandAttachmentSlotProps) {
   const genericPresentation = useMemo<BonePresentation | undefined>(
     () =>
       presentation
         ? {
             ref: presentation.ref,
-            assetUrl: presentation.weaponUrl,
+            assetUrl: presentation.assetUrl,
             socket: presentation.socket,
           }
         : undefined,
     [presentation]
   );
   const handleStatus = useCallback(
-    (status: BoneAttachmentStatus) =>
-      onStatus?.(mainHandStatusFromBone(status)),
+    (status: BoneAttachmentStatus) => onStatus?.(offHandStatusFromBone(status)),
     [onStatus]
   );
   return (

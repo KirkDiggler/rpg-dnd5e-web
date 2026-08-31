@@ -64,6 +64,7 @@ import { readCameraDials } from '../hex-grid/cameraDials';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
+import type { OffHandPresentation } from '../hex-grid/offHandEquipment';
 import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
@@ -122,6 +123,9 @@ export interface SessionCanvasProps {
   /** Owner-authoritative equipped main-hand presentation for the local player.
    * Never applied to `otherMembers`, whose equipment is not public today. */
   mainHandPresentation?: MainHandPresentation;
+  /** Owner-authoritative reviewed off-hand presentation for the local player.
+   * Never applied to peers. */
+  offHandPresentation?: OffHandPresentation;
   myPosition: CubeCoord;
   /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
    * (`MoveResponse.steps`, already bridged to cube coords) — passed
@@ -214,6 +218,7 @@ export function SessionScene({
   classRefId,
   raceRefId,
   mainHandPresentation,
+  offHandPresentation,
   localIsDowned = false,
   myPosition,
   movePath,
@@ -467,6 +472,7 @@ export function SessionScene({
         raceRefId={raceRefId}
         isDowned={localIsDowned}
         mainHandPresentation={mainHandPresentation}
+        offHandPresentation={offHandPresentation}
         movePath={movePath}
         moveSeq={moveSeq}
         onMovementPresentationComplete={(_entityId, completedMoveSeq) =>

@@ -10,6 +10,7 @@ import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
+import { OffHandAttachmentConcept } from './off-hand-attachment/OffHandAttachmentConcept';
 import { SessionCombatConcept } from './session-combat/SessionCombatConcept';
 import { SessionTombConcept } from './session-tomb/SessionTombConcept';
 import { WeaponAttachmentConcept } from './weapon-attachment/WeaponAttachmentConcept';
@@ -26,6 +27,7 @@ type ConceptPage =
   | 'session-combat'
   | 'session-tomb'
   | 'weapon-attachment'
+  | 'off-hand-attachment'
   | 'dungeon-builder'
   | 'asset-anchor-lab';
 
@@ -41,6 +43,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'session-combat', label: 'Session Combat' },
   { id: 'session-tomb', label: 'Session Tomb' },
   { id: 'weapon-attachment', label: 'Weapon Attachment' },
+  { id: 'off-hand-attachment', label: 'Off-Hand Attachment' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
 ];
@@ -96,6 +99,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
           <button
             key={page.id}
             onClick={() => setActivePage(page.id)}
+            aria-pressed={activePage === page.id}
             className="px-4 py-2 rounded text-sm font-medium transition-colors"
             style={{
               backgroundColor:
@@ -132,6 +136,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'session-combat' && <SessionCombatConcept />}
         {activePage === 'session-tomb' && <SessionTombConcept />}
         {activePage === 'weapon-attachment' && <WeaponAttachmentConcept />}
+        {activePage === 'off-hand-attachment' && <OffHandAttachmentConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
             `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
             tab is the dev sandbox — the same `DungeonBuilder` on a fixture

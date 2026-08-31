@@ -84,7 +84,9 @@ vi.mock('@react-three/drei', () => {
     if (name.includes('/models/synty/characters/')) {
       const hand = new THREE.Bone();
       hand.name = 'Hand_R';
-      scene.add(hand);
+      const offHand = new THREE.Bone();
+      offHand.name = 'Hand_L';
+      scene.add(hand, offHand);
     }
     return scene;
   };
@@ -116,6 +118,10 @@ vi.mock('../hex-grid/MediumHumanoid', () => ({
   ),
 }));
 
+import {
+  MODULAR_FANTASY_HERO_OFF_HAND_SOCKET,
+  TOWNFOLK_OFF_HAND_SOCKET,
+} from '../hex-grid/offHandEquipment';
 import { SessionScene } from './SessionCanvas';
 
 function floorTiles(...coords: Array<[number, number, number]>) {
@@ -358,6 +364,18 @@ function attachedMainHandRoot(
     (node) =>
       node.instance instanceof THREE.Bone &&
       (node.instance as THREE.Bone).name === 'Hand_R'
+  )[0]!.instance as THREE.Bone;
+  expect(hand.children.length).toBeGreaterThan(0);
+  return hand.children[0]!;
+}
+
+function attachedOffHandRoot(
+  renderer: Awaited<ReturnType<typeof renderSession>>
+): THREE.Object3D {
+  const hand = renderer.scene.findAll(
+    (node) =>
+      node.instance instanceof THREE.Bone &&
+      (node.instance as THREE.Bone).name === 'Hand_L'
   )[0]!.instance as THREE.Bone;
   expect(hand.children.length).toBeGreaterThan(0);
   return hand.children[0]!;
@@ -1067,6 +1085,61 @@ describe('SessionScene', () => {
           (node.instance as THREE.Mesh).name.includes(weaponUrl)
       );
       expect(weaponMeshes.length).toBeGreaterThan(0);
+    });
+
+    it('mounts exact off-hand presentation independently on the local class character', async () => {
+      const assetUrl = '/models/synty/off-hand/shield.glb';
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId="fighter"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          offHandPresentation={{
+            ref: 'dnd5e:item:shield',
+            assetUrl,
+            assetKind: 'shield',
+            socket: TOWNFOLK_OFF_HAND_SOCKET,
+          }}
+        />
+      );
+
+      expect(
+        attachedOffHandRoot(renderer).getObjectByName(assetUrl)
+      ).toBeDefined();
+    });
+
+    it('uses the modular off-hand socket for exact modular player models', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId="fighter"
+          raceRefId="elf"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          offHandPresentation={{
+            ref: 'dnd5e:item:dagger',
+            assetUrl: '/models/synty/weapons/dagger.glb',
+            assetKind: 'weapon',
+            socket: TOWNFOLK_OFF_HAND_SOCKET,
+          }}
+        />
+      );
+      const attached = attachedOffHandRoot(renderer);
+      const unitsPerMeter =
+        1 / MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.boneUnitMeters;
+      expectVectorCloseTo(attached.position.toArray(), [
+        MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+        MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+        MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+      ]);
+      expectVectorCloseTo(attached.quaternion.toArray(), [
+        ...MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.rotationQuaternion,
+      ]);
     });
 
     it.each([
