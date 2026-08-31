@@ -36,7 +36,7 @@ confidence: high — verified by reading hexUtils.ts, hexMath.ts, useMovementRan
 | `HexDoor.tsx`                              | Door geometry, open/closed state visual                                                                                  |
 | `HexEntity.tsx`                            | Entity container — positions the resolved class/monster model and threads the local owner's exact main-hand presentation |
 | `ClassCharacterModel.tsx`                  | Animated Synty class/monster GLB clone; attaches a normalized standalone main-hand GLB beneath cloned `Hand_R`           |
-| `mainHandWeapons.ts`                       | Exact 12-ref production presentation catalog plus shared `townfolk-main-hand-v1` socket; no equipment rules              |
+| `mainHandWeapons.ts`                       | Exact 27-ref production presentation catalog plus shared `townfolk-main-hand-v1` socket; no equipment rules              |
 | `MediumHumanoid.tsx`                       | 12-part OBJ voxel character fallback assembly                                                                            |
 | `CharacterHair.tsx`, `CharacterWeapon.tsx` | Legacy OBJ hair/weapon attachments used by the fallback renderer                                                         |
 | `MovementRangeBorder.tsx`                  | BFS range visualization outline                                                                                          |

@@ -35,7 +35,7 @@ production-backed extension proved fighter, barbarian, monk, and rogue against
 unarmed plus the 12 outputs promoted by `rpg-game-assets#71`. The current live
 Concept still imports the production exact-ref resolver instead of retaining a
 second candidate map, and now exposes those four classes against unarmed plus
-all 22 exact supported outputs from `rpg-game-assets#91 · 22-item provider
+all 27 exact supported outputs from `rpg-game-assets#100 · 27-item provider
 manifest`.
 
 - Runtime URLs are `/models/synty/weapons/<id>.glb` for the exact supported

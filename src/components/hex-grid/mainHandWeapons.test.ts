@@ -40,6 +40,11 @@ const EXPECTED_WEAPONS = [
   ['spear', 'Spear', '/models/synty/weapons/spear.glb'],
   ['sling', 'Sling', '/models/synty/weapons/sling.glb'],
   ['dart', 'Dart', '/models/synty/weapons/dart.glb'],
+  ['halberd', 'Halberd', '/models/synty/weapons/halberd.glb'],
+  ['maul', 'Maul', '/models/synty/weapons/maul.glb'],
+  ['morningstar', 'Morningstar', '/models/synty/weapons/morningstar.glb'],
+  ['pike', 'Pike', '/models/synty/weapons/pike.glb'],
+  ['war-pick', 'War Pick', '/models/synty/weapons/war-pick.glb'],
 ] as const;
 
 const EXPECTED_MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET = {
@@ -86,7 +91,7 @@ describe('production main-hand weapon presentation', () => {
     }
   );
 
-  it('exposes the exact 22-item provider roster in order with no duplicates', () => {
+  it('exposes the exact 27-item provider roster in order with no duplicates', () => {
     expect(CURRENT_MAIN_HAND_WEAPONS).toEqual(
       EXPECTED_WEAPONS.map(([id, label, weaponUrl]) => ({
         ref: `dnd5e:item:${id}`,
@@ -98,10 +103,10 @@ describe('production main-hand weapon presentation', () => {
 
     expect(
       new Set(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.ref)).size
-    ).toBe(22);
+    ).toBe(27);
     expect(
       new Set(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.weaponUrl)).size
-    ).toBe(22);
+    ).toBe(27);
   });
 
   it('treats absent main_hand as intentionally unarmed', () => {
@@ -109,9 +114,9 @@ describe('production main-hand weapon presentation', () => {
   });
 
   it('refuses unknown exact item refs and attack-shaped refs instead of guessing', () => {
-    expect(resolveMainHandPresentation(equipped('morningstar'))).toEqual({
+    expect(resolveMainHandPresentation(equipped('flail'))).toEqual({
       code: 'unmapped-ref',
-      ref: 'dnd5e:item:morningstar',
+      ref: 'dnd5e:item:flail',
     });
     expect(
       resolveMainHandPresentation({

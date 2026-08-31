@@ -18,7 +18,7 @@ export interface MainHandWeaponDefinition {
 /**
  * Shared by the four current Townfolk class rigs. Provider evidence #67
  * measured exact-equal Hand_R matrices across fighter, barbarian, monk, and
- * rogue over sampled idle/walk frames; provider #91 binds every current weapon
+ * rogue over sampled idle/walk frames; provider #100 binds every current weapon
  * output to this accepted profile.
  */
 export const TOWNFOLK_MAIN_HAND_SOCKET: MainHandSocket = Object.freeze({
@@ -63,10 +63,10 @@ export function mainHandSocketForRigFamily(
 }
 
 /**
- * The complete current 22-item provider roster from rpg-game-assets#91
- * (provider commit 11b78a0f24278a54f057a5a1abf416d30c0a879b,
+ * The complete current 27-item provider roster from rpg-game-assets#100
+ * (provider commit a67f916880718a84b502b66b2b63683b03990f59,
  * weapons/manifest.json sha256
- * 729282ee2a05b0d1b9f194066e7aa4da5f3682b2a5811cfbc13de4353b8d68be). This is
+ * cec88cd26d95568de01e6d1181184ced0eb4212c28d0cf1524b30c640fc449db). This is
  * an exact presentation lookup, not weapon rules: no proficiency,
  * handedness, or attack identity is inferred here.
  */
@@ -202,6 +202,36 @@ export const CURRENT_MAIN_HAND_WEAPONS = Object.freeze([
     id: 'dart',
     label: 'Dart',
     weaponUrl: '/models/synty/weapons/dart.glb',
+  },
+  {
+    ref: 'dnd5e:item:halberd',
+    id: 'halberd',
+    label: 'Halberd',
+    weaponUrl: '/models/synty/weapons/halberd.glb',
+  },
+  {
+    ref: 'dnd5e:item:maul',
+    id: 'maul',
+    label: 'Maul',
+    weaponUrl: '/models/synty/weapons/maul.glb',
+  },
+  {
+    ref: 'dnd5e:item:morningstar',
+    id: 'morningstar',
+    label: 'Morningstar',
+    weaponUrl: '/models/synty/weapons/morningstar.glb',
+  },
+  {
+    ref: 'dnd5e:item:pike',
+    id: 'pike',
+    label: 'Pike',
+    weaponUrl: '/models/synty/weapons/pike.glb',
+  },
+  {
+    ref: 'dnd5e:item:war-pick',
+    id: 'war-pick',
+    label: 'War Pick',
+    weaponUrl: '/models/synty/weapons/war-pick.glb',
   },
 ] as const satisfies readonly MainHandWeaponDefinition[]);
 
