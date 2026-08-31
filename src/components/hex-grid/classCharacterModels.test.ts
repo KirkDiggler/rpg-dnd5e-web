@@ -122,7 +122,7 @@ describe('resolvePlayerCharacterModel', () => {
     }
   );
 
-  it.each(['half-elf', 'tiefling', 'halfling', 'gnome'])(
+  it.each(['half-elf', 'tiefling', 'halfling', 'gnome', 'half-orc'])(
     'resolves every exact standing %s starter-class model',
     (raceRefId) => {
       for (const classRefId of ['barbarian', 'fighter', 'monk', 'rogue']) {
@@ -143,24 +143,29 @@ describe('resolvePlayerCharacterModel', () => {
     }
   );
 
-  it.each(['elf', 'dwarf', 'half-elf', 'tiefling', 'halfling', 'gnome'])(
-    'falls back to the class model for a downed %s Fighter',
-    (raceRefId) => {
-      const expected = asResolution({
-        url: '/models/synty/characters/fighter-downed.glb',
-        rigFamily: 'townfolk-v1',
-        source: 'class',
-      });
+  it.each([
+    'elf',
+    'dwarf',
+    'half-elf',
+    'tiefling',
+    'halfling',
+    'gnome',
+    'half-orc',
+  ])('falls back to the class model for a downed %s Fighter', (raceRefId) => {
+    const expected = asResolution({
+      url: '/models/synty/characters/fighter-downed.glb',
+      rigFamily: 'townfolk-v1',
+      source: 'class',
+    });
 
-      expect(
-        classCharacterModels.resolvePlayerCharacterModel?.(
-          raceRefId,
-          'fighter',
-          true
-        )
-      ).toEqual(expected);
-    }
-  );
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        raceRefId,
+        'fighter',
+        true
+      )
+    ).toEqual(expected);
+  });
 
   it('falls back to the class model for unpromoted known race-class combinations', () => {
     const expected = asResolution({

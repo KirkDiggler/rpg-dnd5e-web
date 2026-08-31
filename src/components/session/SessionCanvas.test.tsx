@@ -230,6 +230,12 @@ const GNOME_CLASS_URLS = {
   monk: '/models/synty/characters/race-class/gnome-monk.glb',
   rogue: '/models/synty/characters/race-class/gnome-rogue.glb',
 } as const;
+const HALF_ORC_CLASS_URLS = {
+  barbarian: '/models/synty/characters/race-class/half-orc-barbarian.glb',
+  fighter: '/models/synty/characters/race-class/half-orc-fighter.glb',
+  monk: '/models/synty/characters/race-class/half-orc-monk.glb',
+  rogue: '/models/synty/characters/race-class/half-orc-rogue.glb',
+} as const;
 const ELF_FIGHTER_URL = ELF_CLASS_URLS.fighter;
 const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
 const FIGHTER_DOWNED_URL = '/models/synty/characters/fighter-downed.glb';
@@ -572,6 +578,7 @@ describe('SessionScene', () => {
     ['tiefling', TIEFLING_CLASS_URLS],
     ['halfling', HALFLING_CLASS_URLS],
     ['gnome', GNOME_CLASS_URLS],
+    ['half-orc', HALF_ORC_CLASS_URLS],
   ] as const)(
     'mounts every exact local public %s starter-class model URL',
     async (raceRefId, classUrls) => {
@@ -1062,7 +1069,15 @@ describe('SessionScene', () => {
       expect(weaponMeshes.length).toBeGreaterThan(0);
     });
 
-    it.each(['elf', 'dwarf', 'half-elf', 'tiefling', 'halfling', 'gnome'])(
+    it.each([
+      'elf',
+      'dwarf',
+      'half-elf',
+      'tiefling',
+      'halfling',
+      'gnome',
+      'half-orc',
+    ])(
       'applies the reviewed modular rig-family override to the exact local %s Fighter model',
       async (raceRefId) => {
         const renderer = await ReactThreeTestRenderer.create(
@@ -1227,6 +1242,7 @@ describe('SessionScene', () => {
       ['tiefling', 'monk', TIEFLING_CLASS_URLS.monk],
       ['halfling', 'barbarian', HALFLING_CLASS_URLS.barbarian],
       ['gnome', 'fighter', GNOME_CLASS_URLS.fighter],
+      ['half-orc', 'rogue', HALF_ORC_CLASS_URLS.rogue],
     ])(
       'a PLAYER-kind member mounts their exact public %s %s GLB',
       async (raceRef, classRef, modelUrl) => {
