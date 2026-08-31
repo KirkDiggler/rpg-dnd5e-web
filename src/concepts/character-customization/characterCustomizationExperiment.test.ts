@@ -20,7 +20,9 @@ const attachedStatus = (
   slot: 'scalp' | 'facial-hair',
   styleRef: string,
   url: string,
-  identity: string
+  identity: string,
+  treatment: CharacterCustomizationRenderObservation['fixture']['treatment'] = SURFACE_PRESETS.hair,
+  materialUuid = `${identity}-${slot}-material`
 ) => ({
   code: 'attached' as const,
   slot,
@@ -29,6 +31,7 @@ const attachedStatus = (
   bodyRootBoneUuid: `${identity}-root`,
   mappedBoneNames: ['Head'],
   mappedBoneUuids: [`${identity}-head`],
+  instanceMaterials: [{ materialUuid, ...treatment }],
 });
 
 function observation(
@@ -61,7 +64,8 @@ function observation(
           resolution.slot,
           resolution.styleRef,
           resolution.asset.url,
-          identity
+          identity,
+          fixture.treatment
         );
 
   return {
@@ -73,17 +77,18 @@ function observation(
       'scalp',
       SCALP_OPTIONS[0].styleRef,
       SCALP_OPTIONS[0].url,
-      'reference'
+      'reference',
+      SURFACE_PRESETS.hair
     ),
     referenceFacialHairStatus: attachedStatus(
       'facial-hair',
       FACIAL_HAIR_OPTIONS[1].styleRef,
       FACIAL_HAIR_OPTIONS[1].url,
-      'reference'
+      'reference',
+      SURFACE_PRESETS.hair
     ),
     sceneCommitted: true,
     mountedAccessoryArmatures: 0,
-    referenceTwinIsolation: true,
     ...overrides,
   };
 }
@@ -244,7 +249,22 @@ describe('character customization verdict coverage', () => {
       { ...good, sceneCommitted: false },
       { ...good, mountedAccessoryArmatures: 1 },
     ];
-    const nonIsolated = { ...good, referenceTwinIsolation: false };
+    const isolatedCandidate = observation('default', 'default', 'clothLike');
+    const controlledScalp = isolatedCandidate.scalpStatus;
+    if (controlledScalp.code !== 'attached') {
+      throw new Error('default scalp must be attached');
+    }
+    const nonIsolated = {
+      ...isolatedCandidate,
+      referenceScalpStatus: attachedStatus(
+        'scalp',
+        SCALP_OPTIONS[0].styleRef,
+        SCALP_OPTIONS[0].url,
+        'reference',
+        SURFACE_PRESETS.hair,
+        controlledScalp.instanceMaterials[0]!.materialUuid
+      ),
+    };
 
     expect(coverageFor(invalid).scalpSelections).toEqual([]);
     expect(coverageFor([nonIsolated])).toMatchObject({

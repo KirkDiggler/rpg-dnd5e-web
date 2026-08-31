@@ -16,6 +16,7 @@ import type {
 } from './characterCustomizationExperiment';
 
 const previewState = vi.hoisted(() => ({
+  publishDiagnostics: true,
   latest: undefined as
     | {
         fixture: CharacterCustomizationFixture;
@@ -37,6 +38,7 @@ vi.mock('./CharacterCustomizationPreview', () => ({
     previewState.latest = { fixture, surfacePreset, resolution };
 
     useEffect(() => {
+      if (!previewState.publishDiagnostics) return;
       const statusFor = (
         resolution:
           | ResolvedCustomizationFixture['scalp']
@@ -55,6 +57,12 @@ vi.mock('./CharacterCustomizationPreview', () => ({
           bodyRootBoneUuid: `${identity}-root-bone`,
           mappedBoneNames: ['Root', 'Head'],
           mappedBoneUuids: [`${identity}-root`, `${identity}-head`],
+          instanceMaterials: [
+            {
+              materialUuid: `${identity}-${resolution.slot}-material`,
+              ...fixture.treatment,
+            },
+          ],
         };
       };
       const scalpStatus = statusFor(resolution.scalp, 'controlled');
@@ -67,6 +75,14 @@ vi.mock('./CharacterCustomizationPreview', () => ({
         bodyRootBoneUuid: 'reference-root-bone',
         mappedBoneNames: ['Root', 'Head'],
         mappedBoneUuids: ['reference-root', 'reference-head'],
+        instanceMaterials: [
+          {
+            materialUuid: 'reference-scalp-material',
+            baseColorSrgb: '#5A3825' as const,
+            roughness: 0.72,
+            metalness: 0,
+          },
+        ],
       };
       const referenceFacialHairStatus = {
         code: 'attached' as const,
@@ -76,6 +92,14 @@ vi.mock('./CharacterCustomizationPreview', () => ({
         bodyRootBoneUuid: 'reference-root-bone',
         mappedBoneNames: ['Root', 'Head'],
         mappedBoneUuids: ['reference-root', 'reference-head'],
+        instanceMaterials: [
+          {
+            materialUuid: 'reference-facial-hair-material',
+            baseColorSrgb: '#5A3825' as const,
+            roughness: 0.72,
+            metalness: 0,
+          },
+        ],
       };
       onDiagnostics({
         scalpStatus,
@@ -85,10 +109,10 @@ vi.mock('./CharacterCustomizationPreview', () => ({
         mountedAccessoryArmatures:
           scalpStatus && facialHairStatus ? 0 : 'unknown',
         referenceTwinIsolation: false,
-        sceneCommitted: true,
+        sceneCommitted: false,
         weaponStatus: { code: 'unarmed' },
       });
-    }, [onDiagnostics, resolution]);
+    }, [fixture.treatment, onDiagnostics, resolution]);
 
     return (
       <div data-testid="mock-customization-preview">
@@ -105,6 +129,7 @@ function setSearch(search: string) {
 
 beforeEach(() => {
   previewState.latest = undefined;
+  previewState.publishDiagnostics = true;
   setSearch('/');
 });
 
@@ -229,6 +254,12 @@ describe('CharacterCustomizationConcept', () => {
       'controlled-head'
     );
     expect(screen.getByTestId('armature-count').textContent).toContain('0');
+    expect(screen.getByTestId('material-evidence').textContent).toContain(
+      'controlled-scalp-material'
+    );
+    expect(screen.getByTestId('material-evidence').textContent).toContain(
+      '"baseColorSrgb": "#5A3825"'
+    );
     expect(screen.getByTestId('attachment-status-json').textContent).toContain(
       '"bodyRootBoneUuid": "controlled-root-bone"'
     );
@@ -237,6 +268,40 @@ describe('CharacterCustomizationConcept', () => {
     );
     expect(screen.getByTestId('fixture-json').textContent).toContain(
       '"showWeaponWitness": false'
+    );
+  });
+
+  it('synchronously fences stale slot and weapon diagnostics after rapid changes', () => {
+    render(<CharacterCustomizationConcept />);
+    expect(screen.getByTestId('scalp-status').textContent).toBe('attached');
+
+    previewState.publishDiagnostics = false;
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Scalp style' })).getByRole(
+        'button',
+        { name: 'Hair 08' }
+      )
+    );
+
+    expect(screen.getByTestId('scalp-style-ref').textContent).toBe(
+      SCALP_OPTIONS[1].styleRef
+    );
+    expect(screen.getByTestId('scalp-url').textContent).toBe(
+      SCALP_OPTIONS[1].url
+    );
+    expect(screen.getByTestId('scalp-status').textContent).toBe(
+      'awaiting-render'
+    );
+    const exactStatus = JSON.parse(
+      screen.getByTestId('attachment-status-json').textContent ?? '{}'
+    );
+    expect(exactStatus.controlled.scalp).toBeUndefined();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Canonical weapon witness' })
+    );
+    expect(screen.getByTestId('animation-weapon-status').textContent).toContain(
+      'loading'
     );
   });
 

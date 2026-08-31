@@ -27,8 +27,16 @@ responded independently to `none`. Exact terminal diagnostics showed:
 - controlled and reference root identities remained distinct;
 - mounted source accessory armatures: `0`;
 - no missing mapped bones; and
-- a positive reference-twin isolation witness after changing the controlled
-  treatment.
+- four nonempty, pairwise instance-owned material UUIDs across the two active
+  controlled and two reference accessories, with controlled/reference UUID
+  sets disjoint.
+
+The positive reference-twin isolation witness is now derived only after a
+committed renderer frame reads those runtime materials back. In the final
+nondefault witness, both controlled materials actually reported `#C02626`,
+roughness `0.25`, and metalness `1`, while both reference materials still
+reported the immutable hair defaults `#5A3825`, roughness `0.72`, and metalness
+`0`. Requested props alone cannot earn this witness.
 
 The Concept's coverage verdict completed at scalp `5/5`, facial hair `5/5`,
 motions `2/2`, views `3/3`, presets `4/4`, simultaneous alternate pair `yes`,
@@ -57,9 +65,10 @@ default.
 Both active controlled slots receive the same treatment value. The browser
 matrix visibly exercised black (`#111111`), blond (`#D8B36A`), and red
 (`#C02626`) treatments; arbitrary roughness/metalness values; and the pinned
-hair, cloth-like, leather-like, and metal-like presets. Materials are cloned per
-attachment instance, so these changes did not recolor the immutable brown-hair
-reference twin.
+hair, cloth-like, leather-like, and metal-like presets. Every attached status
+reported the actual cloned material UUID, base color, roughness, and metalness.
+The browser matrix required those controlled actuals to match the current
+fixture and the reference actuals to remain the immutable brown-hair defaults.
 
 ## Provider-backed evidence
 
@@ -81,10 +90,19 @@ surface.
 ## Evidence gate
 
 An observation earns coverage only when the status identities match the current
-fixture, the reference statuses match their immutable defaults, every active
-accessory reports mapped body Bone identities, source armature count is zero,
-and the R3F renderer frame advances after readiness. URL success alone cannot
-produce an observation.
+slot, style ref, and URL; the reference statuses match their immutable defaults;
+every active accessory reports mapped body Bone identities and nonempty runtime
+material evidence; all actual surface values match the current controlled or
+reference treatment; source armature count is zero; and the R3F renderer frame
+advances after readiness. URL success alone cannot produce an observation.
+
+Reference isolation receives separate positive credit only for a committed,
+nondefault controlled treatment with disjoint controlled/reference material
+UUIDs and unchanged reference actuals. Missing material evidence, shared UUIDs,
+controlled-value mismatches, or a mutated reference are refused. The visible
+inspector applies the same identity fence synchronously, including the optional
+weapon ref/URL/bone, so rapid changes show awaiting/loading evidence rather than
+facts retained from a previous selection.
 
 The successful run recorded zero page errors, request failures, or HTTP error
 responses. Chrome emitted only its acknowledged WebGL `ReadPixels` performance

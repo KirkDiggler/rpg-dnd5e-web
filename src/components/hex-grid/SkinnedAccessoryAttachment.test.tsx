@@ -157,7 +157,7 @@ afterEach(() => {
 describe('SkinnedAccessoryAttachment', () => {
   it('reports loading then attaches one exact rebound mesh', async () => {
     const body = makeBody();
-    makeAccessory(FIRST_URL);
+    const sourceAccessory = makeAccessory(FIRST_URL);
     const statuses: SkinnedAccessoryStatus[] = [];
     const accessory = presentation(FIRST_URL);
 
@@ -180,7 +180,7 @@ describe('SkinnedAccessoryAttachment', () => {
       'loading',
       'attached',
     ]);
-    expect(statuses.at(-1)).toEqual({
+    expect(statuses.at(-1)).toMatchObject({
       code: 'attached',
       slot: 'scalp',
       styleRef: accessory.styleRef,
@@ -191,7 +191,27 @@ describe('SkinnedAccessoryAttachment', () => {
         body.skeleton.bones[0]!.uuid,
         body.skeleton.bones[2]!.uuid,
       ],
+      instanceMaterials: [
+        {
+          baseColorSrgb: TREATMENT.baseColorSrgb,
+          roughness: TREATMENT.roughness,
+          metalness: TREATMENT.metalness,
+        },
+      ],
     });
+    const attachedStatus = statuses.at(-1);
+    expect(attachedStatus?.code).toBe('attached');
+    if (attachedStatus?.code !== 'attached') {
+      throw new Error('expected attached material evidence');
+    }
+    const mountedMaterial = (attached[0] as THREE.SkinnedMesh)
+      .material as THREE.MeshStandardMaterial;
+    expect(attachedStatus.instanceMaterials[0]?.materialUuid).toBe(
+      mountedMaterial.uuid
+    );
+    expect(attachedStatus.instanceMaterials[0]?.materialUuid).not.toBe(
+      sourceAccessory.material.uuid
+    );
     expect(renderState.invalidate).toHaveBeenCalledOnce();
 
     await renderer.unmount();

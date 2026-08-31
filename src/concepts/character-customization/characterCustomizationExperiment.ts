@@ -64,6 +64,14 @@ export const DEFAULT_CUSTOMIZATION_FIXTURE: CharacterCustomizationFixture =
     showWeaponWitness: false,
   });
 
+export const REFERENCE_CUSTOMIZATION_FIXTURE: CharacterCustomizationFixture =
+  Object.freeze({
+    ...DEFAULT_CUSTOMIZATION_FIXTURE,
+    scalp: DEFAULT_SCALP_STYLE_REF,
+    facialHair: DEFAULT_FACIAL_HAIR_STYLE_REF,
+    treatment: SURFACE_PRESETS.hair,
+  });
+
 export type StyleResolution =
   | {
       readonly code: 'none';
@@ -142,7 +150,6 @@ export interface CharacterCustomizationRenderObservation {
   readonly referenceFacialHairStatus: SkinnedAccessoryStatus;
   readonly sceneCommitted: boolean;
   readonly mountedAccessoryArmatures: number;
-  readonly referenceTwinIsolation: boolean;
 }
 
 export interface CharacterCustomizationCoverage {
@@ -180,7 +187,19 @@ function attachedStatusMatches(
     status.url === resolution.asset.url &&
     status.bodyRootBoneUuid.length > 0 &&
     status.mappedBoneNames.length > 0 &&
-    status.mappedBoneNames.length === status.mappedBoneUuids.length
+    status.mappedBoneNames.length === status.mappedBoneUuids.length &&
+    status.instanceMaterials.length > 0 &&
+    status.instanceMaterials.every(
+      (material) =>
+        material.materialUuid.trim().length > 0 &&
+        /^#[0-9A-F]{6}$/i.test(material.baseColorSrgb) &&
+        Number.isFinite(material.roughness) &&
+        material.roughness >= 0 &&
+        material.roughness <= 1 &&
+        Number.isFinite(material.metalness) &&
+        material.metalness >= 0 &&
+        material.metalness <= 1
+    )
   );
 }
 
@@ -214,6 +233,44 @@ function bodyIdentityIsCoherent(
   return first.bodyRootBoneUuid === second.bodyRootBoneUuid;
 }
 
+function attachedStatuses(
+  ...statuses: readonly SkinnedAccessoryStatus[]
+): Extract<SkinnedAccessoryStatus, { code: 'attached' }>[] {
+  return statuses.filter(
+    (status): status is Extract<SkinnedAccessoryStatus, { code: 'attached' }> =>
+      status.code === 'attached'
+  );
+}
+
+function actualMaterialsMatch(
+  statuses: readonly Extract<SkinnedAccessoryStatus, { code: 'attached' }>[],
+  treatment: RuntimeSurfaceTreatment
+): boolean {
+  return statuses.every((status) =>
+    status.instanceMaterials.every((material) =>
+      sameTreatment(material, treatment)
+    )
+  );
+}
+
+function surfaceEvidenceMatchesFixture(
+  observation: CharacterCustomizationRenderObservation
+): boolean {
+  return (
+    actualMaterialsMatch(
+      attachedStatuses(observation.scalpStatus, observation.facialHairStatus),
+      observation.fixture.treatment
+    ) &&
+    actualMaterialsMatch(
+      attachedStatuses(
+        observation.referenceScalpStatus,
+        observation.referenceFacialHairStatus
+      ),
+      REFERENCE_CUSTOMIZATION_FIXTURE.treatment
+    )
+  );
+}
+
 export function isPositiveCustomizationObservation(
   observation: CharacterCustomizationRenderObservation
 ): boolean {
@@ -230,12 +287,9 @@ export function isPositiveCustomizationObservation(
     return false;
   }
 
-  const referenceFixture: CharacterCustomizationFixture = {
-    ...DEFAULT_CUSTOMIZATION_FIXTURE,
-    scalp: DEFAULT_SCALP_STYLE_REF,
-    facialHair: DEFAULT_FACIAL_HAIR_STYLE_REF,
-  };
-  const reference = resolveCustomizationFixture(referenceFixture);
+  const reference = resolveCustomizationFixture(
+    REFERENCE_CUSTOMIZATION_FIXTURE
+  );
   return (
     statusMatchesResolution(
       observation.referenceScalpStatus,
@@ -252,7 +306,64 @@ export function isPositiveCustomizationObservation(
     bodyIdentityIsCoherent(
       observation.referenceScalpStatus,
       observation.referenceFacialHairStatus
+    ) &&
+    surfaceEvidenceMatchesFixture(observation)
+  );
+}
+
+export function hasPositiveReferenceTwinIsolation(
+  observation: CharacterCustomizationRenderObservation
+): boolean {
+  if (!isPositiveCustomizationObservation(observation)) return false;
+  if (
+    sameTreatment(
+      observation.fixture.treatment,
+      REFERENCE_CUSTOMIZATION_FIXTURE.treatment
     )
+  ) {
+    return false;
+  }
+
+  const controlled = attachedStatuses(
+    observation.scalpStatus,
+    observation.facialHairStatus
+  );
+  const reference = attachedStatuses(
+    observation.referenceScalpStatus,
+    observation.referenceFacialHairStatus
+  );
+  if (controlled.length === 0 || reference.length === 0) return false;
+
+  const controlledRoots = new Set(
+    controlled.map((status) => status.bodyRootBoneUuid)
+  );
+  const referenceRoots = new Set(
+    reference.map((status) => status.bodyRootBoneUuid)
+  );
+  if (
+    controlledRoots.size !== 1 ||
+    referenceRoots.size !== 1 ||
+    controlledRoots.values().next().value ===
+      referenceRoots.values().next().value
+  ) {
+    return false;
+  }
+
+  const controlledMaterialUuids = controlled.flatMap((status) =>
+    status.instanceMaterials.map((material) => material.materialUuid)
+  );
+  const referenceMaterialUuids = reference.flatMap((status) =>
+    status.instanceMaterials.map((material) => material.materialUuid)
+  );
+  if (
+    new Set(controlledMaterialUuids).size !== controlledMaterialUuids.length ||
+    new Set(referenceMaterialUuids).size !== referenceMaterialUuids.length
+  ) {
+    return false;
+  }
+  const controlledIdentitySet = new Set(controlledMaterialUuids);
+  return referenceMaterialUuids.every(
+    (materialUuid) => !controlledIdentitySet.has(materialUuid)
   );
 }
 
@@ -302,7 +413,7 @@ export function coverageFor(
           DEFAULT_FACIAL_HAIR_STYLE_REF
         )
     ),
-    referenceTwinIsolation: valid.some((row) => row.referenceTwinIsolation),
+    referenceTwinIsolation: valid.some(hasPositiveReferenceTwinIsolation),
   };
 }
 

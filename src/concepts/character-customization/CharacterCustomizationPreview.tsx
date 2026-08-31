@@ -9,10 +9,6 @@ import {
 } from '@/author/preview3d/playCameraRig';
 import { ClassCharacterModel } from '@/components/hex-grid/ClassCharacterModel';
 import type { MainHandAttachmentStatus } from '@/components/hex-grid/mainHandPresentation';
-import {
-  MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET,
-  resolveMainHandPresentation,
-} from '@/components/hex-grid/mainHandWeapons';
 import type { SkinnedAccessoryStatus } from '@/components/hex-grid/SkinnedAccessoryAttachment';
 import {
   OrbitControls,
@@ -29,21 +25,23 @@ import {
   useState,
 } from 'react';
 import { Matrix4, Quaternion, Vector3 } from 'three';
+import { CHARACTER_CUSTOMIZATION_BODY } from './characterCustomizationAssets';
 import {
-  CHARACTER_CUSTOMIZATION_BODY,
-  DEFAULT_FACIAL_HAIR_STYLE_REF,
-  DEFAULT_SCALP_STYLE_REF,
-} from './characterCustomizationAssets';
+  CUSTOMIZATION_WEAPON_PRESENTATION,
+  REFERENCE_CUSTOMIZATION_RESOLUTION,
+  commitCustomizationObservationAfterRendererFrame,
+  customizationObservationKey,
+  deriveCustomizationEvidence,
+  sameAccessoryStatus,
+  sameWeaponStatus,
+  type CharacterCustomizationDiagnostics,
+  type PendingCustomizationObservation,
+} from './characterCustomizationDiagnostics';
 import {
-  DEFAULT_CUSTOMIZATION_FIXTURE,
-  SURFACE_PRESETS,
-  resolveCustomizationFixture,
-  statusMatchesResolution,
   type ActiveSurfacePreset,
   type CharacterCustomizationFixture,
   type CharacterCustomizationRenderObservation,
   type ResolvedCustomizationFixture,
-  type StyleResolution,
 } from './characterCustomizationExperiment';
 
 const CONTROLLED_POSITION = [-0.62, 0, 0] as const;
@@ -53,25 +51,6 @@ const CLOSE_CAMERA_TARGET = [-0.28, 0.92, 0] as const;
 const ORBIT_CAMERA_POSITION = [2.8, 1.9, 3.65] as const;
 const ORBIT_CAMERA_TARGET = [0.05, 0.68, 0] as const;
 const TACTICAL_CAMERA_TARGET = [0.05, 0.58, 0] as const;
-
-const REFERENCE_FIXTURE: CharacterCustomizationFixture = Object.freeze({
-  ...DEFAULT_CUSTOMIZATION_FIXTURE,
-  scalp: DEFAULT_SCALP_STYLE_REF,
-  facialHair: DEFAULT_FACIAL_HAIR_STYLE_REF,
-  treatment: SURFACE_PRESETS.hair,
-});
-const REFERENCE_RESOLUTION = resolveCustomizationFixture(REFERENCE_FIXTURE);
-
-const canonicalWeaponResolution = resolveMainHandPresentation({
-  main_hand: { module: 'dnd5e', type: 'item', id: 'warhammer' },
-});
-const CANONICAL_WEAPON_PRESENTATION =
-  canonicalWeaponResolution.code === 'mapped'
-    ? canonicalWeaponResolution.presentation
-    : undefined;
-const UNARMED_STATUS: MainHandAttachmentStatus = Object.freeze({
-  code: 'unarmed',
-});
 
 function lookAtQuaternion(
   position: readonly [number, number, number],
@@ -164,140 +143,17 @@ function TacticalCamera() {
   );
 }
 
-function sameStringArray(
-  left: readonly string[],
-  right: readonly string[]
-): boolean {
-  return (
-    left === right ||
-    (left.length === right.length &&
-      left.every((value, index) => value === right[index]))
-  );
-}
-
-function sameAccessoryStatus(
-  left: SkinnedAccessoryStatus | undefined,
-  right: SkinnedAccessoryStatus
-): boolean {
-  if (!left || left.code !== right.code || left.slot !== right.slot) {
-    return false;
-  }
-  switch (right.code) {
-    case 'none':
-      return true;
-    case 'loading':
-      return left.code === 'loading' && left.styleRef === right.styleRef;
-    case 'rejected':
-      return (
-        left.code === 'rejected' &&
-        left.styleRef === right.styleRef &&
-        left.url === right.url &&
-        left.message === right.message
-      );
-    case 'attached':
-      return (
-        left.code === 'attached' &&
-        left.styleRef === right.styleRef &&
-        left.url === right.url &&
-        left.bodyRootBoneUuid === right.bodyRootBoneUuid &&
-        sameStringArray(left.mappedBoneNames, right.mappedBoneNames) &&
-        sameStringArray(left.mappedBoneUuids, right.mappedBoneUuids)
-      );
-  }
-}
-
-function sameWeaponStatus(
-  left: MainHandAttachmentStatus | undefined,
-  right: MainHandAttachmentStatus
-): boolean {
-  return (
-    left?.code === right.code &&
-    left?.ref === right.ref &&
-    left?.weaponUrl === right.weaponUrl &&
-    left?.bone === right.bone &&
-    left?.message === right.message
-  );
-}
-
-function statusForCurrentResolution(
-  status: SkinnedAccessoryStatus | undefined,
-  resolution: StyleResolution
-): SkinnedAccessoryStatus | undefined {
-  if (resolution.code === 'none') {
-    return { code: 'none', slot: resolution.slot };
-  }
-  if (resolution.code === 'unmapped' || !status || status.code === 'none') {
-    return undefined;
-  }
-  if (
-    status.slot !== resolution.slot ||
-    status.styleRef !== resolution.styleRef
-  ) {
-    return undefined;
-  }
-  if (
-    (status.code === 'attached' || status.code === 'rejected') &&
-    status.url !== resolution.asset.url
-  ) {
-    return undefined;
-  }
-  return status;
-}
-
-function isTerminalStatus(status: SkinnedAccessoryStatus | undefined): boolean {
-  return (
-    status?.code === 'none' ||
-    status?.code === 'attached' ||
-    status?.code === 'rejected'
-  );
-}
-
-function attachedBodyRoot(
-  ...statuses: readonly (SkinnedAccessoryStatus | undefined)[]
-): string | undefined {
-  return statuses.find((status) => status?.code === 'attached')
-    ?.bodyRootBoneUuid;
-}
-
-function treatmentsDiffer(
-  left: CharacterCustomizationFixture['treatment'],
-  right: CharacterCustomizationFixture['treatment']
-): boolean {
-  return (
-    left.baseColorSrgb.toUpperCase() !== right.baseColorSrgb.toUpperCase() ||
-    left.roughness !== right.roughness ||
-    left.metalness !== right.metalness
-  );
-}
-
-export interface CharacterCustomizationDiagnostics {
-  readonly scalpStatus?: SkinnedAccessoryStatus;
-  readonly facialHairStatus?: SkinnedAccessoryStatus;
-  readonly referenceScalpStatus?: SkinnedAccessoryStatus;
-  readonly referenceFacialHairStatus?: SkinnedAccessoryStatus;
-  readonly mountedAccessoryArmatures: 0 | 'unknown';
-  readonly referenceTwinIsolation: boolean;
-  readonly sceneCommitted: boolean;
-  readonly weaponStatus: MainHandAttachmentStatus;
-}
-
 interface PendingCommit {
   readonly key: string;
   readonly rendererFrameAtReadiness: number;
-  readonly observation: Omit<
-    CharacterCustomizationRenderObservation,
-    'sceneCommitted'
-  >;
+  readonly observation: PendingCustomizationObservation;
 }
 
 function SceneCommitWitness({
   observation,
   onRenderObserved,
 }: {
-  readonly observation?: Omit<
-    CharacterCustomizationRenderObservation,
-    'sceneCommitted'
-  >;
+  readonly observation?: PendingCustomizationObservation;
   readonly onRenderObserved: (
     observation: CharacterCustomizationRenderObservation
   ) => void;
@@ -307,7 +163,9 @@ function SceneCommitWitness({
   const lastReportedKey = useRef<string | undefined>(undefined);
   const callbackRef = useRef(onRenderObserved);
   callbackRef.current = onRenderObserved;
-  const key = observation ? JSON.stringify(observation) : undefined;
+  const key = observation
+    ? customizationObservationKey(observation)
+    : undefined;
 
   useEffect(() => {
     if (!key) {
@@ -329,15 +187,21 @@ function SceneCommitWitness({
       invalidateFrame();
       return;
     }
-    if (gl.info.render.frame <= pending.current.rendererFrameAtReadiness) {
+    const committed = pending.current;
+    const committedObservation =
+      commitCustomizationObservationAfterRendererFrame(
+        committed.observation,
+        committed.rendererFrameAtReadiness,
+        gl.info.render.frame
+      );
+    if (!committedObservation) {
       invalidateFrame();
       return;
     }
 
-    const committed = pending.current;
     pending.current = undefined;
     lastReportedKey.current = key;
-    callbackRef.current({ ...committed.observation, sceneCommitted: true });
+    callbackRef.current(committedObservation);
   });
 
   return null;
@@ -371,11 +235,9 @@ export function CharacterCustomizationScene({
   const [weaponStatus, setWeaponStatus] = useState<MainHandAttachmentStatus>({
     code: 'unarmed',
   });
-  const [sceneCommitted, setSceneCommitted] = useState(false);
-
-  useEffect(() => {
-    setSceneCommitted(false);
-  }, [fixture, resolution, surfacePreset]);
+  const [committedObservationKey, setCommittedObservationKey] = useState<
+    string | undefined
+  >();
 
   const handleControlledStatus = useCallback(
     (status: SkinnedAccessoryStatus) => {
@@ -404,122 +266,47 @@ export function CharacterCustomizationScene({
   }, []);
   const handleRenderObserved = useCallback(
     (observation: CharacterCustomizationRenderObservation) => {
-      setSceneCommitted(true);
+      const pendingObservation: PendingCustomizationObservation = {
+        fixture: observation.fixture,
+        surfacePreset: observation.surfacePreset,
+        scalpStatus: observation.scalpStatus,
+        facialHairStatus: observation.facialHairStatus,
+        referenceScalpStatus: observation.referenceScalpStatus,
+        referenceFacialHairStatus: observation.referenceFacialHairStatus,
+        mountedAccessoryArmatures: observation.mountedAccessoryArmatures,
+      };
+      setCommittedObservationKey(
+        customizationObservationKey(pendingObservation)
+      );
       onRenderObserved(observation);
     },
     [onRenderObserved]
   );
 
-  const scalpStatus = statusForCurrentResolution(
-    controlledStatuses.scalp,
-    resolution.scalp
-  );
-  const facialHairStatus = statusForCurrentResolution(
-    controlledStatuses['facial-hair'],
-    resolution.facialHair
-  );
-  const referenceScalpStatus = statusForCurrentResolution(
-    referenceStatuses.scalp,
-    REFERENCE_RESOLUTION.scalp
-  );
-  const referenceFacialHairStatus = statusForCurrentResolution(
-    referenceStatuses['facial-hair'],
-    REFERENCE_RESOLUTION.facialHair
-  );
-
-  const allStatusesTerminal =
-    isTerminalStatus(scalpStatus) &&
-    isTerminalStatus(facialHairStatus) &&
-    referenceScalpStatus?.code === 'attached' &&
-    referenceFacialHairStatus?.code === 'attached';
-  const mountedAccessoryArmatures = allStatusesTerminal ? 0 : 'unknown';
-  const controlledRoot = attachedBodyRoot(scalpStatus, facialHairStatus);
-  const referenceRoot = attachedBodyRoot(
-    referenceScalpStatus,
-    referenceFacialHairStatus
-  );
-  const referenceTwinIsolation = Boolean(
-    controlledRoot &&
-    referenceRoot &&
-    controlledRoot !== referenceRoot &&
-    treatmentsDiffer(fixture.treatment, REFERENCE_FIXTURE.treatment)
-  );
-  const effectiveWeaponStatus = fixture.showWeaponWitness
-    ? weaponStatus
-    : UNARMED_STATUS;
-
-  const diagnostics = useMemo<CharacterCustomizationDiagnostics>(
-    () => ({
-      scalpStatus,
-      facialHairStatus,
-      referenceScalpStatus,
-      referenceFacialHairStatus,
-      mountedAccessoryArmatures,
-      referenceTwinIsolation,
-      sceneCommitted,
-      weaponStatus: effectiveWeaponStatus,
-    }),
+  const evidence = useMemo(
+    () =>
+      deriveCustomizationEvidence({
+        fixture,
+        surfacePreset,
+        resolution,
+        controlledStatuses,
+        referenceStatuses,
+        weaponStatus,
+        committedObservationKey,
+      }),
     [
-      effectiveWeaponStatus,
-      facialHairStatus,
-      mountedAccessoryArmatures,
-      referenceFacialHairStatus,
-      referenceScalpStatus,
-      referenceTwinIsolation,
-      scalpStatus,
-      sceneCommitted,
+      committedObservationKey,
+      controlledStatuses,
+      fixture,
+      referenceStatuses,
+      resolution,
+      surfacePreset,
+      weaponStatus,
     ]
   );
+  const { diagnostics, pendingObservation: observation } = evidence;
 
   useEffect(() => onDiagnostics(diagnostics), [diagnostics, onDiagnostics]);
-
-  const observation = useMemo<
-    Omit<CharacterCustomizationRenderObservation, 'sceneCommitted'> | undefined
-  >(() => {
-    if (
-      mountedAccessoryArmatures !== 0 ||
-      !scalpStatus ||
-      !facialHairStatus ||
-      !referenceScalpStatus ||
-      !referenceFacialHairStatus ||
-      !statusMatchesResolution(scalpStatus, resolution.scalp) ||
-      !statusMatchesResolution(facialHairStatus, resolution.facialHair) ||
-      !statusMatchesResolution(
-        referenceScalpStatus,
-        REFERENCE_RESOLUTION.scalp
-      ) ||
-      !statusMatchesResolution(
-        referenceFacialHairStatus,
-        REFERENCE_RESOLUTION.facialHair
-      )
-    ) {
-      return undefined;
-    }
-    return {
-      fixture: {
-        ...fixture,
-        treatment: { ...fixture.treatment },
-      },
-      surfacePreset,
-      scalpStatus,
-      facialHairStatus,
-      referenceScalpStatus,
-      referenceFacialHairStatus,
-      mountedAccessoryArmatures,
-      referenceTwinIsolation,
-    };
-  }, [
-    facialHairStatus,
-    fixture,
-    mountedAccessoryArmatures,
-    referenceFacialHairStatus,
-    referenceScalpStatus,
-    referenceTwinIsolation,
-    resolution.facialHair,
-    resolution.scalp,
-    scalpStatus,
-    surfacePreset,
-  ]);
 
   return (
     <>
@@ -544,10 +331,9 @@ export function CharacterCustomizationScene({
             onAccessoryStatus={handleControlledStatus}
             mainHandPresentation={
               fixture.showWeaponWitness
-                ? CANONICAL_WEAPON_PRESENTATION
+                ? CUSTOMIZATION_WEAPON_PRESENTATION
                 : undefined
             }
-            mainHandSocketOverride={MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET}
             onMainHandStatus={handleWeaponStatus}
           />
         </group>
@@ -555,7 +341,7 @@ export function CharacterCustomizationScene({
           <ClassCharacterModel
             url={CHARACTER_CUSTOMIZATION_BODY.url}
             isMoving={fixture.motion === 'walk'}
-            accessories={REFERENCE_RESOLUTION.presentations}
+            accessories={REFERENCE_CUSTOMIZATION_RESOLUTION.presentations}
             onAccessoryStatus={handleReferenceStatus}
           />
         </group>

@@ -17,7 +17,7 @@ function validateUnitInterval(value: number, name: string): void {
 export function applyRuntimeSurfaceTreatment(
   mesh: THREE.SkinnedMesh,
   treatment: RuntimeSurfaceTreatment
-): readonly THREE.Material[] {
+): readonly THREE.MeshStandardMaterial[] {
   if (!EXACT_SRGB_HEX.test(treatment.baseColorSrgb)) {
     throw new TypeError('baseColorSrgb must be an exact #RRGGBB color.');
   }

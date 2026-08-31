@@ -24,6 +24,11 @@ export interface SkinnedAccessoryPresentation {
   readonly treatment: RuntimeSurfaceTreatment;
 }
 
+/** Values read back from an attachment's per-instance cloned materials. */
+export interface SkinnedAccessoryMaterialEvidence extends RuntimeSurfaceTreatment {
+  readonly materialUuid: string;
+}
+
 export type SkinnedAccessoryStatus =
   | {
       readonly code: 'none';
@@ -33,6 +38,7 @@ export type SkinnedAccessoryStatus =
       readonly code: 'loading';
       readonly slot: SkinnedAccessoryPresentation['slot'];
       readonly styleRef: string;
+      readonly url: string;
     }
   | {
       readonly code: 'attached';
@@ -42,6 +48,7 @@ export type SkinnedAccessoryStatus =
       readonly bodyRootBoneUuid: string;
       readonly mappedBoneNames: readonly string[];
       readonly mappedBoneUuids: readonly string[];
+      readonly instanceMaterials: readonly SkinnedAccessoryMaterialEvidence[];
     }
   | {
       readonly code: 'rejected';
@@ -119,6 +126,7 @@ function LoadedAttachment({
       code: 'loading',
       slot: identity.slot,
       styleRef: identity.styleRef,
+      url: identity.url,
     });
 
     let accessoryRoot: THREE.Object3D;
@@ -141,7 +149,7 @@ function LoadedAttachment({
       return;
     }
 
-    let createdMaterials: readonly THREE.Material[];
+    let createdMaterials: readonly THREE.MeshStandardMaterial[];
     try {
       createdMaterials = applyRuntimeSurfaceTreatment(result.mesh, {
         baseColorSrgb,
@@ -168,6 +176,13 @@ function LoadedAttachment({
       bodyRootBoneUuid: result.bodyRootBoneUuid,
       mappedBoneNames: result.mappedBoneNames,
       mappedBoneUuids: result.mappedBoneUuids,
+      instanceMaterials: createdMaterials.map((material) => ({
+        materialUuid: material.uuid,
+        baseColorSrgb:
+          `#${material.color.getHexString().toUpperCase()}` as `#${string}`,
+        roughness: material.roughness,
+        metalness: material.metalness,
+      })),
     });
 
     return () => {
@@ -277,6 +292,7 @@ export function SkinnedAccessoryAttachment({
       code: 'loading',
       slot: identity.slot,
       styleRef: identity.styleRef,
+      url: identity.url,
     }),
     [identity]
   );
