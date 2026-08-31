@@ -1,20 +1,21 @@
 # Character Customization Concept Contract
 
 This is durable **non-production Concept evidence** for rpg-dnd5e-web#877. It
-records what the fixture-first browser lab proved; it does not add or request a
-production character field, provider manifest, persistence path, API, proto, or
-toolkit behavior.
+records what the fixture-first browser lab proved and the exact merged Concept
+provider publication it consumed; it does not add or request a production
+character field, persistence path, API, proto, or toolkit behavior.
 
 Reproducible development route:
 `/?concept=character-customization`.
 
 ## Verdict
 
-The local Chrome 151 browser gate passed on 2026-09-01 after commit `f5c4ea9`
-made the pure binder accept the real `SkeletonUtils.clone()` representation:
-multiple Skeleton wrapper objects are equivalent only when they preserve the
-same exact ordered body Bone objects, compatible inverses, and compatible mesh
-bind matrices.
+The post-rebase Chrome 151 browser gate passed against bytes synchronized from
+provider PR #109's exact merge `4c208fad5a950d2103d763a9c8aac96d3bb342b1`
+(reviewed feature head `6c567b5939ba308a3a35b2d4e5354111e30e9f44`).
+The pure binder accepts the real `SkeletonUtils.clone()` representation only
+when multiple Skeleton wrapper objects preserve the same exact ordered body
+Bone objects, compatible inverses, and compatible mesh bind matrices.
 
 The controlled and reference Dwarf bodies rendered simultaneously. Every
 scalp and facial-hair candidate visibly mounted, animated with its body, and
@@ -72,20 +73,27 @@ fixture and the reference actuals to remain the immutable brown-hair defaults.
 
 ## Provider-backed evidence
 
-The lab uses the local ignored prefix
+The lab uses the ignored web prefix
 `/models/synty/concepts/character-customization/` and pins URL, byte size, and
-SHA-256 in `characterCustomizationAssets.ts`. A real browser fetched and hashed
-the body and all six selectable accessory GLBs; all seven returned HTTP 200 and
-matched those exact pins.
+SHA-256 in `characterCustomizationAssets.ts`. The merged provider manifest is
+`d1d8a815c0241986c6f5367a6de82340722a5bae08d2c62307224d42b1ff7c10`;
+the complete inventory file/tree are
+`b2ef0d7a975de9aa69c9531138f88a48a6e1fc5c1dfbb716b22627d9c3b91222` /
+`c29bd470169026d07bf00fc6d30180a80e29b723f56b19b81adff89b468d00af`.
+The synchronized manifest was byte-identical to that merge, and zero files
+under `public/models/synty/` are tracked here.
 
-The successful matrix covered Hair 04/08/16, Facial Hair 01/02/03, both `none`
-states, default aliases, and a Hair 08 + Facial Hair 03 alternate pair. It also
-covered `Idle_Relaxed`, `Walk_Forward`, close, dragged orbit, tactical play,
-rapid changes, and the optional canonical main-hand attachment witness.
+The fresh 26-observation matrix covered Hair 04/08/16, Facial Hair 01/02/03,
+both `none` states, default aliases, and a Hair 08 + Facial Hair 03 alternate
+pair. It covered `Idle_Relaxed`, `Walk_Forward`, close, a real dragged orbit,
+tactical play, rapid changes, and the canonical main-hand attachment witness.
+A real browser fetched and hashed all seven GLBs; every response was HTTP 200
+with the exact provider size/hash.
 
-These files are local provider candidates and remain gitignored. This contract
-does not publish them or promise that the URLs are a production provider
-surface.
+The exact receipt and compact tracked screenshots are under
+`docs/evidence/877-character-customization-concept/`. This publication is a
+Concept provider surface, not a promise that these URLs are a production
+provider or CDN contract.
 
 ## Evidence gate
 
@@ -104,14 +112,17 @@ inspector applies the same identity fence synchronously, including the optional
 weapon ref/URL/bone, so rapid changes show awaiting/loading evidence rather than
 facts retained from a previous selection.
 
-The successful run recorded zero page errors, request failures, or HTTP error
-responses. Chrome emitted only its acknowledged WebGL `ReadPixels` performance
-notices; those are not application failures.
+The fresh publication run recorded zero unexpected app-console errors, page
+errors, request failures, or HTTP error responses. Chrome emitted only its
+acknowledged WebGL `ReadPixels` performance notices. App-level startup reads
+outside the Concept received valid empty gRPC-web fixture responses, so this is
+not gameplay/API evidence.
 
-Ignored local evidence is under
-`evidence/task-6-character-customization/resume/`, including per-state canvas
-screenshots, the complete full-page verdict, exact status/fixture observations,
-network/console events, and seven browser hash receipts in `matrix.json`.
+`docs/evidence/877-character-customization-concept/receipt.json` binds the
+provider merge/feature head, manifest/inventory, all seven outputs, shared
+rig/inverse-bind/socket facts, provider GLB preservation, browser summary, and
+the hashes of eleven representative tracked screenshots. It contains no
+private source path or timestamp-dependent hash input.
 
 ## Not a production contract or Platform ask
 
@@ -121,7 +132,8 @@ treatment work for this measured Dwarf/body/accessory set. It does not decide:
 - where race/body/scalp/facial-hair refs live in production character data;
 - whether color and PBR treatment are persisted, provider-owned, or derived;
 - the production allowlist, defaults, validation, or migration behavior;
-- provider publication, CDN/manifest paths, or asset budgets; or
+- whether the Concept provider surface becomes a production CDN/manifest or
+  asset-budget contract; or
 - how a live character editor saves, authorizes, or broadcasts changes.
 
 Those require separate product/provider/Platform decisions. The Concept adds no

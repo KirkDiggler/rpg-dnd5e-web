@@ -1,0 +1,358 @@
+{
+  "schemaVersion": 1,
+  "providerCommit": "4c208fad5a950d2103d763a9c8aac96d3bb342b1",
+  "providerFeatureHead": "6c567b5939ba308a3a35b2d4e5354111e30e9f44",
+  "providerManifestSha256": "d1d8a815c0241986c6f5367a6de82340722a5bae08d2c62307224d42b1ff7c10",
+  "providerInventorySha256": "b2ef0d7a975de9aa69c9531138f88a48a6e1fc5c1dfbb716b22627d9c3b91222",
+  "providerInventoryTreeSha256": "c29bd470169026d07bf00fc6d30180a80e29b723f56b19b81adff89b468d00af",
+  "body": {
+    "publicPath": "/models/synty/concepts/character-customization/dwarf-fighter-body.glb",
+    "byteSize": 786668,
+    "sha256": "8d70f73d57abe0a1bb8ec4b6b45eda27fc7841a12479fe7c745ea0b7020d64f6",
+    "sourceMeshes": [
+      "Chr_Head_Male_00",
+      "Chr_Ear_Ear_01",
+      "Chr_Torso_Male_16",
+      "Chr_Hips_Male_16",
+      "Chr_ArmUpperLeft_Male_16",
+      "Chr_ArmUpperRight_Male_16",
+      "Chr_ArmLowerLeft_Male_16",
+      "Chr_ArmLowerRight_Male_16",
+      "Chr_HandLeft_Male_16",
+      "Chr_HandRight_Male_16",
+      "Chr_LegLeft_Male_16",
+      "Chr_LegRight_Male_16"
+    ],
+    "styleRef": null,
+    "rigFamily": "modular-fantasy-hero-v1",
+    "boneCount": 63,
+    "animations": ["Idle_Relaxed", "Walk_Forward"]
+  },
+  "slots": {
+    "scalp": {
+      "defaultStyleRef": "modular-fantasy-hero:hair:04",
+      "options": [
+        {
+          "publicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
+          "byteSize": 36936,
+          "sha256": "cc896dc487bf18193ec2dbcd4f289711e45f9b1ecea468a1cb7582af1b154f2b",
+          "sourceMesh": "Chr_Hair_04",
+          "styleRef": "modular-fantasy-hero:hair:04"
+        },
+        {
+          "publicPath": "/models/synty/concepts/character-customization/scalp/hair-08.glb",
+          "byteSize": 40888,
+          "sha256": "a4b091376e152d022aef73021f20130c949c6a91ebd44a3fad6f398b42f19f97",
+          "sourceMesh": "Chr_Hair_08",
+          "styleRef": "modular-fantasy-hero:hair:08"
+        },
+        {
+          "publicPath": "/models/synty/concepts/character-customization/scalp/hair-16.glb",
+          "byteSize": 43488,
+          "sha256": "ff71f18f62e172125be519e800d62f26ff88db5ee25915341ff63f5e1df14f73",
+          "sourceMesh": "Chr_Hair_16",
+          "styleRef": "modular-fantasy-hero:hair:16"
+        }
+      ]
+    },
+    "facialHair": {
+      "defaultStyleRef": "modular-fantasy-hero:facial-hair:02",
+      "options": [
+        {
+          "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-01.glb",
+          "byteSize": 55064,
+          "sha256": "49ccf51ea94778445fb4b0fe068776d6f8e6a7d37ae76171315baf0a9c970255",
+          "sourceMesh": "Chr_FacialHair_Male_01",
+          "styleRef": "modular-fantasy-hero:facial-hair:01"
+        },
+        {
+          "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
+          "byteSize": 64652,
+          "sha256": "fab5f63914339fd1c12fd09a9145396906e7da5c378ef6f8f6c37edeb62f7890",
+          "sourceMesh": "Chr_FacialHair_Male_02",
+          "styleRef": "modular-fantasy-hero:facial-hair:02"
+        },
+        {
+          "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb",
+          "byteSize": 38544,
+          "sha256": "fd5cc26275a796b45dc3af5da492678ddb18165effc002fc86df02f6859a5108",
+          "sourceMesh": "Chr_FacialHair_Male_03",
+          "styleRef": "modular-fantasy-hero:facial-hair:03"
+        }
+      ]
+    }
+  },
+  "sharedRig": {
+    "family": "modular-fantasy-hero-v1",
+    "boneCount": 63,
+    "boneOrder": [
+      "Root",
+      "Hips",
+      "Spine_01",
+      "Spine_02",
+      "Spine_03",
+      "Neck",
+      "Head",
+      "Eyes",
+      "Eyebrows",
+      "Head_Attachment",
+      "Clavicle_L",
+      "Shoulder_L",
+      "Elbow_L",
+      "Hand_L",
+      "Thumb_01",
+      "Thumb_02",
+      "Thumb_03",
+      "IndexFinger_01",
+      "IndexFinger_02",
+      "IndexFinger_03",
+      "IndexFinger_04",
+      "Finger_01",
+      "Finger_02",
+      "Finger_03",
+      "Finger_04",
+      "Elbow_Attachment_L",
+      "Shoulder_Attachment_L",
+      "Clavicle_R",
+      "Shoulder_R",
+      "Elbow_R",
+      "Hand_R",
+      "Thumb_01.001",
+      "Thumb_02.001",
+      "Thumb_03.001",
+      "IndexFinger_01.001",
+      "IndexFinger_02.001",
+      "IndexFinger_03.001",
+      "IndexFinger_04.001",
+      "Finger_01.001",
+      "Finger_02.001",
+      "Finger_03.001",
+      "Finger_04.001",
+      "Elbow_Attachment_R",
+      "Shoulder_Attachment_R",
+      "Back_Attachment",
+      "Cape_Attachment_01",
+      "Cape_Attachment_02",
+      "Cape_Attachment_03",
+      "Cape_Attachment_04",
+      "Chest_Attachment",
+      "UpperLeg_R",
+      "LowerLeg_R",
+      "Ankle_R",
+      "Ball_R",
+      "Toes_R",
+      "Knee_Attachment_R",
+      "UpperLeg_L",
+      "LowerLeg_L",
+      "Ankle_L",
+      "Ball_L",
+      "Toes_L",
+      "Knee_Attachment_L",
+      "Hips_Attachment"
+    ],
+    "inverseBindSha256": "ced85b4f006ee0261b87c9d607c42ae596e4f1f908576bd67649f73207f8265d",
+    "accessoryWeightedBones": ["Head"]
+  },
+  "surface": {
+    "mode": "uniform-pbr-v1",
+    "defaultBaseColorSrgb": "#5A3825",
+    "defaultRoughness": 0.72,
+    "defaultMetalness": 0
+  },
+  "socketWitness": {
+    "profileId": "modular-fantasy-hero-main-hand-v1",
+    "socketBone": "Hand_R",
+    "contractVersion": "hand-r-rest-animation-semantics-v1",
+    "decodedSemanticSha256": "81eb990e5b2df6753777e4eaff59ebeb207cac3e0863cb84fc44b016485f14bf",
+    "matchesProviderProductionDwarf": true,
+    "providerProductionDwarfSha256": "7e1c611b5b5e02a709e75ed71deeccdc30242e0716da469adc2ddaa559068224",
+    "clips": [
+      { "name": "Idle_Relaxed", "hierarchyChannels": 9 },
+      { "name": "Walk_Forward", "hierarchyChannels": 9 }
+    ]
+  },
+  "providerGlbPreservation": {
+    "baselineGlbCount": 1231,
+    "baselineSnapshotJsonSha256": "da8fc4228681fee4ea229251e4f63d2503d5d66dc258ea6eb9c958195e308df3",
+    "conceptGlbCount": 7,
+    "conceptSnapshotJsonSha256": "953569a27afe60fd5fd5269938e0f01227e2bc2f83943c95d6aeb74daf72fd05"
+  },
+  "productionGlbsChanged": [],
+  "browserMatrix": {
+    "verdict": "PASS",
+    "route": "/?concept=character-customization",
+    "browser": "Chrome 151.0.7922.169",
+    "viewport": { "width": 1600, "height": 1100, "deviceScaleFactor": 1 },
+    "observations": 26,
+    "exactCurrentIdentityChecks": 26,
+    "runtimeMaterialValueRowsChecked": 100,
+    "materialUuidIsolation": true,
+    "materialValueIsolation": true,
+    "mappedBones": 63,
+    "mountedSourceArmatures": 0,
+    "coverage": {
+      "scalp": "5/5",
+      "facialHair": "5/5",
+      "motions": "2/2",
+      "views": "3/3",
+      "presets": "4/4",
+      "simultaneousAlternatePair": true,
+      "referenceTwinIsolation": true
+    },
+    "finalIdentity": {
+      "fixture": {
+        "scalp": "modular-fantasy-hero:hair:08",
+        "facialHair": "modular-fantasy-hero:facial-hair:03",
+        "treatment": {
+          "baseColorSrgb": "#C02626",
+          "roughness": 0.25,
+          "metalness": 1
+        },
+        "motion": "walk",
+        "view": "play",
+        "showWeaponWitness": true
+      },
+      "controlled": {
+        "scalpStyleRef": "modular-fantasy-hero:hair:08",
+        "scalpPublicPath": "/models/synty/concepts/character-customization/scalp/hair-08.glb",
+        "facialHairStyleRef": "modular-fantasy-hero:facial-hair:03",
+        "facialHairPublicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb"
+      },
+      "reference": {
+        "scalpStyleRef": "modular-fantasy-hero:hair:04",
+        "scalpPublicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
+        "facialHairStyleRef": "modular-fantasy-hero:facial-hair:02",
+        "facialHairPublicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
+        "treatment": {
+          "baseColorSrgb": "#5A3825",
+          "roughness": 0.72,
+          "metalness": 0
+        }
+      }
+    },
+    "weaponWitness": {
+      "styleRef": "dnd5e:item:longsword",
+      "bone": "Hand_R",
+      "status": "attached"
+    },
+    "httpAssets": [
+      {
+        "publicPath": "/models/synty/concepts/character-customization/dwarf-fighter-body.glb",
+        "status": 200,
+        "byteSize": 786668,
+        "sha256": "8d70f73d57abe0a1bb8ec4b6b45eda27fc7841a12479fe7c745ea0b7020d64f6"
+      },
+      {
+        "publicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
+        "status": 200,
+        "byteSize": 36936,
+        "sha256": "cc896dc487bf18193ec2dbcd4f289711e45f9b1ecea468a1cb7582af1b154f2b"
+      },
+      {
+        "publicPath": "/models/synty/concepts/character-customization/scalp/hair-08.glb",
+        "status": 200,
+        "byteSize": 40888,
+        "sha256": "a4b091376e152d022aef73021f20130c949c6a91ebd44a3fad6f398b42f19f97"
+      },
+      {
+        "publicPath": "/models/synty/concepts/character-customization/scalp/hair-16.glb",
+        "status": 200,
+        "byteSize": 43488,
+        "sha256": "ff71f18f62e172125be519e800d62f26ff88db5ee25915341ff63f5e1df14f73"
+      },
+      {
+        "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-01.glb",
+        "status": 200,
+        "byteSize": 55064,
+        "sha256": "49ccf51ea94778445fb4b0fe068776d6f8e6a7d37ae76171315baf0a9c970255"
+      },
+      {
+        "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
+        "status": 200,
+        "byteSize": 64652,
+        "sha256": "fab5f63914339fd1c12fd09a9145396906e7da5c378ef6f8f6c37edeb62f7890"
+      },
+      {
+        "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb",
+        "status": 200,
+        "byteSize": 38544,
+        "sha256": "fd5cc26275a796b45dc3af5da492678ddb18165effc002fc86df02f6859a5108"
+      }
+    ],
+    "unrelatedStartupRpcFixture": "valid-empty-grpc-web-responses",
+    "failures": {
+      "appConsole": 0,
+      "page": 0,
+      "request": 0,
+      "http": 0
+    }
+  },
+  "evidence": [
+    {
+      "path": "default-close.png",
+      "sha256": "1cfaf1ed343cf83493fcfcffad392bb1000b9d6038f2817d6d2f49de4ccbba8c",
+      "byteSize": 80669,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "none-both.png",
+      "sha256": "942841504bb6fcea2a64a3b15bc176e284f2bcb8649e3ddb7eae4502ffb40197",
+      "byteSize": 78322,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "combined-alternate-arbitrary-color.png",
+      "sha256": "5433aec31c1c7672088bdb0c132d39fe55651b86a24949f238f445728f57f2b2",
+      "byteSize": 80260,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "surface-cloth.png",
+      "sha256": "ecaff6ea874b22c0c225007bb02a7a4f004e9397156d0df62f51726adb59540a",
+      "byteSize": 79681,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "surface-leather.png",
+      "sha256": "5bcdc2e1e454bca9a3b34aa3ce08b6ce5390fb9ba86e0b8691a6f320dd24b3c6",
+      "byteSize": 80148,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "surface-metal.png",
+      "sha256": "f1cfbf6b86be3aeb8c392db180609139e669e6f8ea7972d48385b0bdf4730f9d",
+      "byteSize": 79414,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "walk.png",
+      "sha256": "539a6c51e998e209982671571c448cd8821b6bb9d612e5fa9cfc0c4e4bc99692",
+      "byteSize": 83109,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "orbit.png",
+      "sha256": "8695d5ce35f6f948d359c721c66dada43ca682f7d0a36b20c4e42b45104cc465",
+      "byteSize": 62372,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "tactical-twin-isolation.png",
+      "sha256": "303e727951a713e2d9dc7e1883ad1ecea59b4a83f677c0bf05c6a90f0ce6575d",
+      "byteSize": 48543,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "weapon-witness.png",
+      "sha256": "766172612a3842a6e897a3ef5bc444aec01e9c6e7bba0a5f559d342d6c0f5cca",
+      "byteSize": 49500,
+      "dimensions": [838, 560]
+    },
+    {
+      "path": "completed-inspector.png",
+      "sha256": "af804dd695841cf36a7f33a36b2fa2b2a90355bb6bde899ee420cba7fe45ad34",
+      "byteSize": 52152,
+      "dimensions": [366, 787]
+    }
+  ]
+}
