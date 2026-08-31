@@ -1,6 +1,8 @@
 // @vitest-environment node
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   CHARACTER_CUSTOMIZATION_BODY,
@@ -9,7 +11,9 @@ import {
   FACIAL_HAIR_OPTIONS,
   SCALP_OPTIONS,
 } from '../src/concepts/character-customization/characterCustomizationAssets';
+import { CUSTOMIZATION_WEAPON_PRESENTATION } from '../src/concepts/character-customization/characterCustomizationDiagnostics';
 
+const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 const evidenceRoot = new URL(
   '../docs/evidence/877-character-customization-concept/',
   import.meta.url
@@ -137,6 +141,17 @@ const expectedScalp = [
   },
 ] as const;
 
+const defaultTreatment = {
+  baseColorSrgb: '#5A3825',
+  roughness: 0.72,
+  metalness: 0,
+} as const;
+const finalControlledTreatment = {
+  baseColorSrgb: '#C02626',
+  roughness: 0.25,
+  metalness: 1,
+} as const;
+
 const expectedFacialHair = [
   {
     publicPath:
@@ -161,6 +176,198 @@ const expectedFacialHair = [
     sha256: 'fd5cc26275a796b45dc3af5da492678ddb18165effc002fc86df02f6859a5108',
     sourceMesh: 'Chr_FacialHair_Male_03',
     styleRef: 'modular-fantasy-hero:facial-hair:03',
+  },
+] as const;
+
+const expectedHttpAssets = [
+  expectedBody,
+  ...expectedScalp,
+  ...expectedFacialHair,
+].map(({ publicPath, byteSize, sha256 }) => ({
+  publicPath,
+  status: 200,
+  byteSize,
+  sha256,
+}));
+
+const expectedWeaponWitness = {
+  styleRef: CUSTOMIZATION_WEAPON_PRESENTATION.ref,
+  publicPath: CUSTOMIZATION_WEAPON_PRESENTATION.weaponUrl,
+  bone: CUSTOMIZATION_WEAPON_PRESENTATION.socket.bone,
+  status: 'attached',
+} as const;
+
+const expectedRequiredWalkStates = [
+  {
+    name: 'alternate-scalp-default-facial-hair-walk',
+    fixture: {
+      scalp: 'modular-fantasy-hero:hair:08',
+      facialHair: 'default',
+      treatment: defaultTreatment,
+      motion: 'walk',
+      view: 'close',
+      showWeaponWitness: false,
+    },
+    current: {
+      scalp: {
+        styleRef: 'modular-fantasy-hero:hair:08',
+        publicPath:
+          '/models/synty/concepts/character-customization/scalp/hair-08.glb',
+        status: 'attached',
+      },
+      facialHair: {
+        styleRef: 'modular-fantasy-hero:facial-hair:02',
+        publicPath:
+          '/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb',
+        status: 'attached',
+      },
+    },
+    reference: {
+      scalp: {
+        styleRef: 'modular-fantasy-hero:hair:04',
+        publicPath:
+          '/models/synty/concepts/character-customization/scalp/hair-04.glb',
+        status: 'attached',
+      },
+      facialHair: {
+        styleRef: 'modular-fantasy-hero:facial-hair:02',
+        publicPath:
+          '/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb',
+        status: 'attached',
+      },
+    },
+    animation: 'Walk_Forward',
+    mappedBones: 63,
+    mountedSourceArmatures: 0,
+    controlledTreatment: defaultTreatment,
+    referenceTreatment: defaultTreatment,
+    screenshot: 'walk-alternate-scalp-default-facial-hair.png',
+  },
+  {
+    name: 'default-scalp-alternate-facial-hair-walk',
+    fixture: {
+      scalp: 'default',
+      facialHair: 'modular-fantasy-hero:facial-hair:03',
+      treatment: defaultTreatment,
+      motion: 'walk',
+      view: 'close',
+      showWeaponWitness: false,
+    },
+    current: {
+      scalp: {
+        styleRef: 'modular-fantasy-hero:hair:04',
+        publicPath:
+          '/models/synty/concepts/character-customization/scalp/hair-04.glb',
+        status: 'attached',
+      },
+      facialHair: {
+        styleRef: 'modular-fantasy-hero:facial-hair:03',
+        publicPath:
+          '/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb',
+        status: 'attached',
+      },
+    },
+    reference: {
+      scalp: {
+        styleRef: 'modular-fantasy-hero:hair:04',
+        publicPath:
+          '/models/synty/concepts/character-customization/scalp/hair-04.glb',
+        status: 'attached',
+      },
+      facialHair: {
+        styleRef: 'modular-fantasy-hero:facial-hair:02',
+        publicPath:
+          '/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb',
+        status: 'attached',
+      },
+    },
+    animation: 'Walk_Forward',
+    mappedBones: 63,
+    mountedSourceArmatures: 0,
+    controlledTreatment: defaultTreatment,
+    referenceTreatment: defaultTreatment,
+    screenshot: 'walk-default-scalp-alternate-facial-hair.png',
+  },
+] as const;
+
+const expectedEvidence = [
+  {
+    path: 'default-close.png',
+    sha256: '1cfaf1ed343cf83493fcfcffad392bb1000b9d6038f2817d6d2f49de4ccbba8c',
+    byteSize: 80_669,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'none-both.png',
+    sha256: '310929d6634463cf350cd2ad73ea07fceed64f4ff9dee79e72ae3beb4f16ba77',
+    byteSize: 78_307,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'combined-alternate-arbitrary-color.png',
+    sha256: '85fd456b8d508565802703b3e5743894a9aa5ac6257a363956934f9f99a4b8c8',
+    byteSize: 80_151,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'surface-cloth.png',
+    sha256: 'e13715ee155d57dd356d248526771134816bc411b421d0c8d57f22b9d4dd5f37',
+    byteSize: 79_880,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'surface-leather.png',
+    sha256: '71be21d65b3e15352e1e3148f4a4d13450991b1c6596431e74bb7078b57eedda',
+    byteSize: 79_472,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'surface-metal.png',
+    sha256: '83420815105646715a6f23721d1e5fbfc3dd115b5ff6f7119050480789e52f35',
+    byteSize: 80_117,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'walk-alternate-scalp-default-facial-hair.png',
+    sha256: 'bfad92571dcf0170a088351d54df081e3a7ed96b49a07ee62106eaca383ba843',
+    byteSize: 83_476,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'walk-default-scalp-alternate-facial-hair.png',
+    sha256: '4aaaaf9a8824b3de9976791b6b89a1c69f3458ca9f2d08abd54a323825404245',
+    byteSize: 84_538,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'walk.png',
+    sha256: '0d4d8f05b04abd2f97ba9f9f00c57dc4d9ad933046d110da38f1c0d531196d90',
+    byteSize: 82_857,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'orbit.png',
+    sha256: '810509d91917005bffc6b30afdfaabbd1518cd4a16e31988e3fece7ffc192b57',
+    byteSize: 62_346,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'tactical-twin-isolation.png',
+    sha256: '4a06110d667fc3cd7d35da3a3ee253d9797fe492ce88cd233b69d740e3c336ba',
+    byteSize: 48_767,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'weapon-witness.png',
+    sha256: '41feb9f2ef3dba8cd1200333cc51fa708ee54f8b4a6e1611fb3d25fa0a1b5a72',
+    byteSize: 49_957,
+    dimensions: [838, 560],
+  },
+  {
+    path: 'completed-inspector.png',
+    sha256: '06befbf5fd269fdb8f686ff10640b8c7b2855e10c21d2d3342ec2d43dcc63f90',
+    byteSize: 52_067,
+    dimensions: [366, 787],
   },
 ] as const;
 
@@ -193,21 +400,7 @@ interface PublicationReceipt {
   readonly socketWitness: unknown;
   readonly providerGlbPreservation: unknown;
   readonly productionGlbsChanged: readonly string[];
-  readonly browserMatrix: {
-    readonly verdict: string;
-    readonly route: string;
-    readonly browser: string;
-    readonly observations: number;
-    readonly exactCurrentIdentityChecks: number;
-    readonly materialUuidIsolation: boolean;
-    readonly materialValueIsolation: boolean;
-    readonly mappedBones: number;
-    readonly mountedSourceArmatures: number;
-    readonly coverage: unknown;
-    readonly weaponWitness: unknown;
-    readonly httpAssets: unknown;
-    readonly failures: unknown;
-  };
+  readonly browserMatrix: Record<string, unknown>;
   readonly evidence: readonly EvidenceImage[];
 }
 
@@ -303,11 +496,24 @@ describe('character-customization Concept publication', () => {
       DEFAULT_FACIAL_HAIR_STYLE_REF
     );
 
-    const gitignore = readFileSync(
-      new URL('../.gitignore', import.meta.url),
-      'utf8'
-    );
-    expect(gitignore).toContain('public/models/synty/');
+    expect(() =>
+      execFileSync(
+        'git',
+        [
+          'check-ignore',
+          '--quiet',
+          '--',
+          'public/models/synty/concepts/character-customization/dwarf-fighter-body.glb',
+        ],
+        { cwd: repositoryRoot }
+      )
+    ).not.toThrow();
+    expect(
+      execFileSync('git', ['ls-files', '--', 'public/models/synty'], {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+      })
+    ).toBe('');
   });
 
   it('pins the shared rig, inverse binds, surface, and socket witness', () => {
@@ -357,12 +563,29 @@ describe('character-customization Concept publication', () => {
 
   it('records the complete fresh browser matrix and exact HTTP receipts', () => {
     const receipt = loadReceipt();
-    expect(receipt.browserMatrix).toMatchObject({
+    expect({
+      ref: CUSTOMIZATION_WEAPON_PRESENTATION.ref,
+      publicPath: CUSTOMIZATION_WEAPON_PRESENTATION.weaponUrl,
+      bone: CUSTOMIZATION_WEAPON_PRESENTATION.socket.bone,
+    }).toEqual({
+      ref: 'dnd5e:item:warhammer',
+      publicPath: '/models/synty/weapons/warhammer.glb',
+      bone: 'Hand_R',
+    });
+    expect(receipt.browserMatrix).toEqual({
       verdict: 'PASS',
       route: '/?concept=character-customization',
       browser: 'Chrome 151.0.7922.169',
-      observations: 26,
-      exactCurrentIdentityChecks: 26,
+      viewport: { width: 1600, height: 1100, deviceScaleFactor: 1 },
+      observations: 28,
+      observationAccounting: {
+        scriptedCheckpoints: 28,
+        conceptAccumulatedUniquePositiveObservations: 45,
+        relationship:
+          'scripted-explicit-checkpoints-vs-all-distinct-positive-committed-concept-frames',
+      },
+      exactCurrentIdentityChecks: 28,
+      runtimeMaterialValueRowsChecked: 108,
       materialUuidIsolation: true,
       materialValueIsolation: true,
       mappedBones: 63,
@@ -376,11 +599,66 @@ describe('character-customization Concept publication', () => {
         simultaneousAlternatePair: true,
         referenceTwinIsolation: true,
       },
-      weaponWitness: {
-        styleRef: 'dnd5e:item:longsword',
-        bone: 'Hand_R',
-        status: 'attached',
+      requiredWalkStates: expectedRequiredWalkStates,
+      finalIdentity: {
+        fixture: {
+          scalp: 'modular-fantasy-hero:hair:08',
+          facialHair: 'modular-fantasy-hero:facial-hair:03',
+          treatment: finalControlledTreatment,
+          motion: 'walk',
+          view: 'play',
+          showWeaponWitness: true,
+        },
+        controlled: {
+          bodyRootBoneUuid: '1d5204a1-09ef-40bd-96ff-ea09280027cf',
+          scalp: {
+            styleRef: 'modular-fantasy-hero:hair:08',
+            publicPath:
+              '/models/synty/concepts/character-customization/scalp/hair-08.glb',
+            status: 'attached',
+            material: {
+              materialUuid: '5d51633c-24e6-405c-89e2-a8ae75fab75c',
+              ...finalControlledTreatment,
+            },
+          },
+          facialHair: {
+            styleRef: 'modular-fantasy-hero:facial-hair:03',
+            publicPath:
+              '/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb',
+            status: 'attached',
+            material: {
+              materialUuid: '41a1eead-5e99-4896-9bd1-ee81ae21933b',
+              ...finalControlledTreatment,
+            },
+          },
+        },
+        reference: {
+          bodyRootBoneUuid: '34460149-31dc-40c5-a220-33d6bdfc030a',
+          scalp: {
+            styleRef: 'modular-fantasy-hero:hair:04',
+            publicPath:
+              '/models/synty/concepts/character-customization/scalp/hair-04.glb',
+            status: 'attached',
+            material: {
+              materialUuid: '7e34aa43-344d-4020-a674-801ec32d80a8',
+              ...defaultTreatment,
+            },
+          },
+          facialHair: {
+            styleRef: 'modular-fantasy-hero:facial-hair:02',
+            publicPath:
+              '/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb',
+            status: 'attached',
+            material: {
+              materialUuid: 'd612b19d-0925-48a0-8177-e1ce724648a7',
+              ...defaultTreatment,
+            },
+          },
+        },
       },
+      weaponWitness: expectedWeaponWitness,
+      httpAssets: expectedHttpAssets,
+      unrelatedStartupRpcFixture: 'valid-empty-grpc-web-responses',
       failures: {
         appConsole: 0,
         page: 0,
@@ -388,31 +666,12 @@ describe('character-customization Concept publication', () => {
         http: 0,
       },
     });
-    expect(receipt.browserMatrix.httpAssets).toEqual(
-      publicRows(receipt).map(({ publicPath, byteSize, sha256 }) => ({
-        publicPath,
-        status: 200,
-        byteSize,
-        sha256,
-      }))
-    );
+    expect(receipt.browserMatrix.httpAssets).toEqual(expectedHttpAssets);
   });
 
   it('binds the compact tracked PNG evidence and remains portable', () => {
     const receipt = loadReceipt();
-    expect(receipt.evidence.map(({ path }) => path)).toEqual([
-      'default-close.png',
-      'none-both.png',
-      'combined-alternate-arbitrary-color.png',
-      'surface-cloth.png',
-      'surface-leather.png',
-      'surface-metal.png',
-      'walk.png',
-      'orbit.png',
-      'tactical-twin-isolation.png',
-      'weapon-witness.png',
-      'completed-inspector.png',
-    ]);
+    expect(receipt.evidence).toEqual(expectedEvidence);
     for (const image of receipt.evidence) {
       expect(image.path).toMatch(/^[a-z0-9-]+\.png$/);
       expect(image.sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -438,6 +697,9 @@ describe('character-customization Concept publication', () => {
     expect(portableText).not.toMatch(/\/home\/|\/tmp\/|Downloads\/synty/);
     expect(JSON.stringify(receipt)).not.toMatch(
       /"(?:timestamp|createdAt|capturedAt|generatedAt)"/
+    );
+    expect(portableText).toContain(
+      'Scripted checkpoints and Concept observations are different counters:'
     );
   });
 });

@@ -16,20 +16,22 @@ The synchronized provider bytes remain under the existing ignored `public/models
 
 ## Fresh browser matrix
 
-The complete matrix was repeated against Vite on port 3014 after the rebase and exact merged-provider synchronization. Chrome `151.0.7922.169` passed 26 explicit proof observations:
+The qualifying matrix was repeated against Vite on port 3014 after exact merged-provider synchronization. Chrome `151.0.7922.169` passed 28 explicit scripted checkpoints:
 
-- exact current slot/style/URL identity on every observation, including both `none` states;
+- exact current slot/style/URL identity on every checkpoint, including both `none` states;
 - all three scalp and all three facial-hair options plus both default aliases;
-- all active accessories mapped to 63 unique current body Bone identities;
-- zero mounted source accessory armatures;
+- the two required pairwise walk states: Hair 08 + default Facial Hair 02, and default Hair 04 + Facial Hair 03;
+- `Walk_Forward`, both controlled attachments, both reference attachments, 63 mapped bones, zero source armatures, and exact controlled/reference treatment values at each required walk checkpoint;
 - instance-owned runtime material UUIDs unique within each twin and disjoint across controlled/reference twins;
-- 100 runtime material rows read back with controlled values equal to the current fixture and reference values fixed at `#5A3825`, roughness `0.72`, metalness `0`;
+- 108 runtime material rows read back with controlled values equal to the current fixture and reference values fixed at `#5A3825`, roughness `0.72`, metalness `0`;
 - scalp `5/5`, facial hair `5/5`, motions `2/2`, views `3/3`, presets `4/4`, simultaneous alternate pair, and positive reference-twin isolation;
 - Hair 08 + Facial Hair 03 at arbitrary red `#C02626`, including walk, orbit interaction, tactical play, and rapid changes;
-- canonical longsword attached to `Hand_R` while the final alternate pair walked; and
-- all seven GLBs fetched by the real browser with HTTP 200 and exact receipt size/hash.
+- the application-exported canonical witness `dnd5e:item:warhammer` at exact URL `/models/synty/weapons/warhammer.glb`, attached to `Hand_R` while the final alternate pair walked; and
+- all seven customization GLBs fetched by the real browser with HTTP 200 and exact receipt size/hash.
 
-The proof window had zero unexpected app-console errors, page errors, request failures, and HTTP failures. App-level startup reads outside the Concept were isolated with valid empty gRPC-web fixture responses; no gameplay/API result is claimed. Chrome's acknowledged WebGL `ReadPixels` performance notices were the only warnings.
+Scripted checkpoints and Concept observations are different counters: the receipt has 28 deliberate matrix rows, while the in-page Concept verdict accumulated 45 unique positive committed frames. The Concept counter also records distinct valid intermediary frames produced while controls settle between scripted checkpoints; it is therefore expected to be larger. `receipt.json` and the publication test pin both exact counts and this relationship.
+
+The proof window had zero unexpected app-console errors, page errors, request failures, and HTTP failures. App-level startup reads outside the Concept were isolated with valid empty gRPC-web fixture responses; the exact receipt marker is `valid-empty-grpc-web-responses`, and no gameplay/API result is claimed. Chrome's four acknowledged WebGL `ReadPixels` performance notices were the only warnings.
 
 ## Compact visual evidence
 
@@ -41,10 +43,12 @@ The proof window had zero unexpected app-console errors, page errors, request fa
 | [surface-cloth.png](surface-cloth.png) | Cloth-like treatment comparison |
 | [surface-leather.png](surface-leather.png) | Leather-like treatment comparison |
 | [surface-metal.png](surface-metal.png) | Metal-like treatment comparison |
-| [walk.png](walk.png) | Alternate pair during `Walk_Forward` |
+| [walk-alternate-scalp-default-facial-hair.png](walk-alternate-scalp-default-facial-hair.png) | Hair 08 + default Facial Hair 02 during `Walk_Forward` |
+| [walk-default-scalp-alternate-facial-hair.png](walk-default-scalp-alternate-facial-hair.png) | Default Hair 04 + Facial Hair 03 during `Walk_Forward` |
+| [walk.png](walk.png) | Combined alternate pair during `Walk_Forward` |
 | [orbit.png](orbit.png) | Full-orbit evidence view; the matrix also performed a real drag |
 | [tactical-twin-isolation.png](tactical-twin-isolation.png) | Final tactical alternate pair beside the unchanged reference twin |
-| [weapon-witness.png](weapon-witness.png) | Canonical longsword witness attached during the final walk/tactical state |
-| [completed-inspector.png](completed-inspector.png) | Compact recorded verdict with complete coverage |
+| [weapon-witness.png](weapon-witness.png) | Canonical warhammer witness attached during the final walk/tactical state |
+| [completed-inspector.png](completed-inspector.png) | Compact recorded verdict showing 45 accumulated Concept observations and complete coverage |
 
-The PNG hashes, sizes, and dimensions are bound in `receipt.json` and checked by `scripts/characterCustomizationConceptPublication.test.ts`.
+The 13 PNG hashes, sizes, and dimensions are independently fixed in `scripts/characterCustomizationConceptPublication.test.ts`, checked against `receipt.json`, and then checked against the tracked bytes. Updating a receipt row alone cannot authorize replacement evidence.

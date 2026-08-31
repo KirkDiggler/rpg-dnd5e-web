@@ -83,12 +83,23 @@ the complete inventory file/tree are
 The synchronized manifest was byte-identical to that merge, and zero files
 under `public/models/synty/` are tracked here.
 
-The fresh 26-observation matrix covered Hair 04/08/16, Facial Hair 01/02/03,
-both `none` states, default aliases, and a Hair 08 + Facial Hair 03 alternate
-pair. It covered `Idle_Relaxed`, `Walk_Forward`, close, a real dragged orbit,
-tactical play, rapid changes, and the canonical main-hand attachment witness.
-A real browser fetched and hashed all seven GLBs; every response was HTTP 200
-with the exact provider size/hash.
+The fresh matrix recorded 28 deliberate scripted checkpoints covering Hair
+04/08/16, Facial Hair 01/02/03, both `none` states, default aliases, and a Hair
+08 + Facial Hair 03 alternate pair. It separately proved the two required walk
+pairs: Hair 08 + default Facial Hair 02, and default Hair 04 + Facial Hair 03.
+Both rows reported exact current refs/URLs, `Walk_Forward`, four attached slots,
+63 mapped bones, zero source armatures, and exact controlled/reference material
+values. It also covered `Idle_Relaxed`, close, a real dragged orbit, tactical
+play, rapid changes, and the canonical `dnd5e:item:warhammer` witness at
+`/models/synty/weapons/warhammer.glb` on `Hand_R`. A real browser fetched and
+hashed all seven customization GLBs; every response was HTTP 200 with the exact
+provider size/hash.
+
+The scripted matrix count is not the Concept verdict counter. The latter
+accumulates every distinct positive committed frame, including valid
+intermediary frames while controls settle, and reached 45. The receipt and
+publication test independently pin 28 scripted checkpoints, 45 accumulated
+Concept observations, and that distinction.
 
 The exact receipt and compact tracked screenshots are under
 `docs/evidence/877-character-customization-concept/`. This publication is a
@@ -121,7 +132,9 @@ not gameplay/API evidence.
 `docs/evidence/877-character-customization-concept/receipt.json` binds the
 provider merge/feature head, manifest/inventory, all seven outputs, shared
 rig/inverse-bind/socket facts, provider GLB preservation, browser summary, and
-the hashes of eleven representative tracked screenshots. It contains no
+the hashes of 13 representative tracked screenshots. The publication test has
+an independent exact filename/hash/size/dimension table and semantically checks
+both the active Git ignore and zero tracked Synty files. The receipt contains no
 private source path or timestamp-dependent hash input.
 
 ## Not a production contract or Platform ask

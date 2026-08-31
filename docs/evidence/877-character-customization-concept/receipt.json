@@ -26,7 +26,10 @@
     "styleRef": null,
     "rigFamily": "modular-fantasy-hero-v1",
     "boneCount": 63,
-    "animations": ["Idle_Relaxed", "Walk_Forward"]
+    "animations": [
+      "Idle_Relaxed",
+      "Walk_Forward"
+    ]
   },
   "slots": {
     "scalp": {
@@ -151,7 +154,9 @@
       "Hips_Attachment"
     ],
     "inverseBindSha256": "ced85b4f006ee0261b87c9d607c42ae596e4f1f908576bd67649f73207f8265d",
-    "accessoryWeightedBones": ["Head"]
+    "accessoryWeightedBones": [
+      "Head"
+    ]
   },
   "surface": {
     "mode": "uniform-pbr-v1",
@@ -167,8 +172,14 @@
     "matchesProviderProductionDwarf": true,
     "providerProductionDwarfSha256": "7e1c611b5b5e02a709e75ed71deeccdc30242e0716da469adc2ddaa559068224",
     "clips": [
-      { "name": "Idle_Relaxed", "hierarchyChannels": 9 },
-      { "name": "Walk_Forward", "hierarchyChannels": 9 }
+      {
+        "name": "Idle_Relaxed",
+        "hierarchyChannels": 9
+      },
+      {
+        "name": "Walk_Forward",
+        "hierarchyChannels": 9
+      }
     ]
   },
   "providerGlbPreservation": {
@@ -182,10 +193,19 @@
     "verdict": "PASS",
     "route": "/?concept=character-customization",
     "browser": "Chrome 151.0.7922.169",
-    "viewport": { "width": 1600, "height": 1100, "deviceScaleFactor": 1 },
-    "observations": 26,
-    "exactCurrentIdentityChecks": 26,
-    "runtimeMaterialValueRowsChecked": 100,
+    "viewport": {
+      "width": 1600,
+      "height": 1100,
+      "deviceScaleFactor": 1
+    },
+    "observations": 28,
+    "observationAccounting": {
+      "scriptedCheckpoints": 28,
+      "conceptAccumulatedUniquePositiveObservations": 45,
+      "relationship": "scripted-explicit-checkpoints-vs-all-distinct-positive-committed-concept-frames"
+    },
+    "exactCurrentIdentityChecks": 28,
+    "runtimeMaterialValueRowsChecked": 108,
     "materialUuidIsolation": true,
     "materialValueIsolation": true,
     "mappedBones": 63,
@@ -199,6 +219,114 @@
       "simultaneousAlternatePair": true,
       "referenceTwinIsolation": true
     },
+    "requiredWalkStates": [
+      {
+        "name": "alternate-scalp-default-facial-hair-walk",
+        "fixture": {
+          "scalp": "modular-fantasy-hero:hair:08",
+          "facialHair": "default",
+          "treatment": {
+            "baseColorSrgb": "#5A3825",
+            "roughness": 0.72,
+            "metalness": 0
+          },
+          "motion": "walk",
+          "view": "close",
+          "showWeaponWitness": false
+        },
+        "current": {
+          "scalp": {
+            "styleRef": "modular-fantasy-hero:hair:08",
+            "publicPath": "/models/synty/concepts/character-customization/scalp/hair-08.glb",
+            "status": "attached"
+          },
+          "facialHair": {
+            "styleRef": "modular-fantasy-hero:facial-hair:02",
+            "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
+            "status": "attached"
+          }
+        },
+        "reference": {
+          "scalp": {
+            "styleRef": "modular-fantasy-hero:hair:04",
+            "publicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
+            "status": "attached"
+          },
+          "facialHair": {
+            "styleRef": "modular-fantasy-hero:facial-hair:02",
+            "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
+            "status": "attached"
+          }
+        },
+        "animation": "Walk_Forward",
+        "mappedBones": 63,
+        "mountedSourceArmatures": 0,
+        "controlledTreatment": {
+          "baseColorSrgb": "#5A3825",
+          "roughness": 0.72,
+          "metalness": 0
+        },
+        "referenceTreatment": {
+          "baseColorSrgb": "#5A3825",
+          "roughness": 0.72,
+          "metalness": 0
+        },
+        "screenshot": "walk-alternate-scalp-default-facial-hair.png"
+      },
+      {
+        "name": "default-scalp-alternate-facial-hair-walk",
+        "fixture": {
+          "scalp": "default",
+          "facialHair": "modular-fantasy-hero:facial-hair:03",
+          "treatment": {
+            "baseColorSrgb": "#5A3825",
+            "roughness": 0.72,
+            "metalness": 0
+          },
+          "motion": "walk",
+          "view": "close",
+          "showWeaponWitness": false
+        },
+        "current": {
+          "scalp": {
+            "styleRef": "modular-fantasy-hero:hair:04",
+            "publicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
+            "status": "attached"
+          },
+          "facialHair": {
+            "styleRef": "modular-fantasy-hero:facial-hair:03",
+            "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb",
+            "status": "attached"
+          }
+        },
+        "reference": {
+          "scalp": {
+            "styleRef": "modular-fantasy-hero:hair:04",
+            "publicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
+            "status": "attached"
+          },
+          "facialHair": {
+            "styleRef": "modular-fantasy-hero:facial-hair:02",
+            "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
+            "status": "attached"
+          }
+        },
+        "animation": "Walk_Forward",
+        "mappedBones": 63,
+        "mountedSourceArmatures": 0,
+        "controlledTreatment": {
+          "baseColorSrgb": "#5A3825",
+          "roughness": 0.72,
+          "metalness": 0
+        },
+        "referenceTreatment": {
+          "baseColorSrgb": "#5A3825",
+          "roughness": 0.72,
+          "metalness": 0
+        },
+        "screenshot": "walk-default-scalp-alternate-facial-hair.png"
+      }
+    ],
     "finalIdentity": {
       "fixture": {
         "scalp": "modular-fantasy-hero:hair:08",
@@ -213,25 +341,59 @@
         "showWeaponWitness": true
       },
       "controlled": {
-        "scalpStyleRef": "modular-fantasy-hero:hair:08",
-        "scalpPublicPath": "/models/synty/concepts/character-customization/scalp/hair-08.glb",
-        "facialHairStyleRef": "modular-fantasy-hero:facial-hair:03",
-        "facialHairPublicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb"
+        "bodyRootBoneUuid": "1d5204a1-09ef-40bd-96ff-ea09280027cf",
+        "scalp": {
+          "styleRef": "modular-fantasy-hero:hair:08",
+          "publicPath": "/models/synty/concepts/character-customization/scalp/hair-08.glb",
+          "status": "attached",
+          "material": {
+            "materialUuid": "5d51633c-24e6-405c-89e2-a8ae75fab75c",
+            "baseColorSrgb": "#C02626",
+            "roughness": 0.25,
+            "metalness": 1
+          }
+        },
+        "facialHair": {
+          "styleRef": "modular-fantasy-hero:facial-hair:03",
+          "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb",
+          "status": "attached",
+          "material": {
+            "materialUuid": "41a1eead-5e99-4896-9bd1-ee81ae21933b",
+            "baseColorSrgb": "#C02626",
+            "roughness": 0.25,
+            "metalness": 1
+          }
+        }
       },
       "reference": {
-        "scalpStyleRef": "modular-fantasy-hero:hair:04",
-        "scalpPublicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
-        "facialHairStyleRef": "modular-fantasy-hero:facial-hair:02",
-        "facialHairPublicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
-        "treatment": {
-          "baseColorSrgb": "#5A3825",
-          "roughness": 0.72,
-          "metalness": 0
+        "bodyRootBoneUuid": "34460149-31dc-40c5-a220-33d6bdfc030a",
+        "scalp": {
+          "styleRef": "modular-fantasy-hero:hair:04",
+          "publicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
+          "status": "attached",
+          "material": {
+            "materialUuid": "7e34aa43-344d-4020-a674-801ec32d80a8",
+            "baseColorSrgb": "#5A3825",
+            "roughness": 0.72,
+            "metalness": 0
+          }
+        },
+        "facialHair": {
+          "styleRef": "modular-fantasy-hero:facial-hair:02",
+          "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
+          "status": "attached",
+          "material": {
+            "materialUuid": "d612b19d-0925-48a0-8177-e1ce724648a7",
+            "baseColorSrgb": "#5A3825",
+            "roughness": 0.72,
+            "metalness": 0
+          }
         }
       }
     },
     "weaponWitness": {
-      "styleRef": "dnd5e:item:longsword",
+      "styleRef": "dnd5e:item:warhammer",
+      "publicPath": "/models/synty/weapons/warhammer.glb",
       "bone": "Hand_R",
       "status": "attached"
     },
@@ -292,67 +454,118 @@
       "path": "default-close.png",
       "sha256": "1cfaf1ed343cf83493fcfcffad392bb1000b9d6038f2817d6d2f49de4ccbba8c",
       "byteSize": 80669,
-      "dimensions": [838, 560]
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "none-both.png",
-      "sha256": "942841504bb6fcea2a64a3b15bc176e284f2bcb8649e3ddb7eae4502ffb40197",
-      "byteSize": 78322,
-      "dimensions": [838, 560]
+      "sha256": "310929d6634463cf350cd2ad73ea07fceed64f4ff9dee79e72ae3beb4f16ba77",
+      "byteSize": 78307,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "combined-alternate-arbitrary-color.png",
-      "sha256": "5433aec31c1c7672088bdb0c132d39fe55651b86a24949f238f445728f57f2b2",
-      "byteSize": 80260,
-      "dimensions": [838, 560]
+      "sha256": "85fd456b8d508565802703b3e5743894a9aa5ac6257a363956934f9f99a4b8c8",
+      "byteSize": 80151,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "surface-cloth.png",
-      "sha256": "ecaff6ea874b22c0c225007bb02a7a4f004e9397156d0df62f51726adb59540a",
-      "byteSize": 79681,
-      "dimensions": [838, 560]
+      "sha256": "e13715ee155d57dd356d248526771134816bc411b421d0c8d57f22b9d4dd5f37",
+      "byteSize": 79880,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "surface-leather.png",
-      "sha256": "5bcdc2e1e454bca9a3b34aa3ce08b6ce5390fb9ba86e0b8691a6f320dd24b3c6",
-      "byteSize": 80148,
-      "dimensions": [838, 560]
+      "sha256": "71be21d65b3e15352e1e3148f4a4d13450991b1c6596431e74bb7078b57eedda",
+      "byteSize": 79472,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "surface-metal.png",
-      "sha256": "f1cfbf6b86be3aeb8c392db180609139e669e6f8ea7972d48385b0bdf4730f9d",
-      "byteSize": 79414,
-      "dimensions": [838, 560]
+      "sha256": "83420815105646715a6f23721d1e5fbfc3dd115b5ff6f7119050480789e52f35",
+      "byteSize": 80117,
+      "dimensions": [
+        838,
+        560
+      ]
+    },
+    {
+      "path": "walk-alternate-scalp-default-facial-hair.png",
+      "sha256": "bfad92571dcf0170a088351d54df081e3a7ed96b49a07ee62106eaca383ba843",
+      "byteSize": 83476,
+      "dimensions": [
+        838,
+        560
+      ]
+    },
+    {
+      "path": "walk-default-scalp-alternate-facial-hair.png",
+      "sha256": "4aaaaf9a8824b3de9976791b6b89a1c69f3458ca9f2d08abd54a323825404245",
+      "byteSize": 84538,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "walk.png",
-      "sha256": "539a6c51e998e209982671571c448cd8821b6bb9d612e5fa9cfc0c4e4bc99692",
-      "byteSize": 83109,
-      "dimensions": [838, 560]
+      "sha256": "0d4d8f05b04abd2f97ba9f9f00c57dc4d9ad933046d110da38f1c0d531196d90",
+      "byteSize": 82857,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "orbit.png",
-      "sha256": "8695d5ce35f6f948d359c721c66dada43ca682f7d0a36b20c4e42b45104cc465",
-      "byteSize": 62372,
-      "dimensions": [838, 560]
+      "sha256": "810509d91917005bffc6b30afdfaabbd1518cd4a16e31988e3fece7ffc192b57",
+      "byteSize": 62346,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "tactical-twin-isolation.png",
-      "sha256": "303e727951a713e2d9dc7e1883ad1ecea59b4a83f677c0bf05c6a90f0ce6575d",
-      "byteSize": 48543,
-      "dimensions": [838, 560]
+      "sha256": "4a06110d667fc3cd7d35da3a3ee253d9797fe492ce88cd233b69d740e3c336ba",
+      "byteSize": 48767,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "weapon-witness.png",
-      "sha256": "766172612a3842a6e897a3ef5bc444aec01e9c6e7bba0a5f559d342d6c0f5cca",
-      "byteSize": 49500,
-      "dimensions": [838, 560]
+      "sha256": "41feb9f2ef3dba8cd1200333cc51fa708ee54f8b4a6e1611fb3d25fa0a1b5a72",
+      "byteSize": 49957,
+      "dimensions": [
+        838,
+        560
+      ]
     },
     {
       "path": "completed-inspector.png",
-      "sha256": "af804dd695841cf36a7f33a36b2fa2b2a90355bb6bde899ee420cba7fe45ad34",
-      "byteSize": 52152,
-      "dimensions": [366, 787]
+      "sha256": "06befbf5fd269fdb8f686ff10640b8c7b2855e10c21d2d3342ec2d43dcc63f90",
+      "byteSize": 52067,
+      "dimensions": [
+        366,
+        787
+      ]
     }
   ]
 }
