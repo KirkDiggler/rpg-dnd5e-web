@@ -1,4 +1,6 @@
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { act, render } from '@testing-library/react';
+import { StrictMode } from 'react';
 import * as THREE from 'three';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { RuntimeSurfaceTreatment } from './runtimeSurfaceTreatment';
@@ -9,11 +11,9 @@ import type {
 
 const gltf = vi.hoisted(() => ({
   scenes: new Map<string, THREE.Group>(),
+  errors: new Map<string, Error>(),
   requests: [] as string[],
-  pending: new Map<
-    string,
-    { readonly promise: Promise<void>; readonly resolve: () => void }
-  >(),
+  pending: new Map<string, { readonly promise: Promise<void> }>(),
 }));
 
 const renderState = vi.hoisted(() => ({
@@ -25,6 +25,9 @@ vi.mock('@react-three/drei', () => ({
     gltf.requests.push(url);
     const pending = gltf.pending.get(url);
     if (pending) throw pending.promise;
+
+    const error = gltf.errors.get(url);
+    if (error) throw error;
 
     const scene = gltf.scenes.get(url);
     if (!scene) throw new Error(`missing synthetic GLTF ${url}`);
@@ -49,6 +52,7 @@ import { SkinnedAccessoryAttachment } from './SkinnedAccessoryAttachment';
 const FIRST_URL = '/concept/accessories/hair-short.glb';
 const SECOND_URL = '/concept/accessories/hair-long.glb';
 const REJECTED_URL = '/concept/accessories/hair-rejected.glb';
+const LOAD_REJECTED_URL = '/concept/accessories/hair-load-rejected.glb';
 const TREATMENT = {
   baseColorSrgb: '#6B3F26',
   roughness: 0.8,
@@ -118,8 +122,22 @@ function suspend(url: string): () => void {
     gltf.pending.delete(url);
     settle();
   };
-  gltf.pending.set(url, { promise, resolve });
+  gltf.pending.set(url, { promise });
   return resolve;
+}
+
+function suspendThenReject(url: string): (error: Error) => void {
+  let settle!: (error: Error) => void;
+  const promise = new Promise<void>((_resolve, reject) => {
+    settle = reject;
+  });
+  const reject = (error: Error) => {
+    gltf.pending.delete(url);
+    gltf.errors.set(url, error);
+    settle(error);
+  };
+  gltf.pending.set(url, { promise });
+  return reject;
 }
 
 beforeAll(() => {
@@ -130,6 +148,7 @@ beforeAll(() => {
 
 afterEach(() => {
   gltf.scenes.clear();
+  gltf.errors.clear();
   gltf.requests.length = 0;
   gltf.pending.clear();
   renderState.invalidate.mockReset();
@@ -176,6 +195,90 @@ describe('SkinnedAccessoryAttachment', () => {
     expect(renderState.invalidate).toHaveBeenCalledOnce();
 
     await renderer.unmount();
+  });
+
+  it('publishes and mounts a pending attachment after it resolves in StrictMode', async () => {
+    const body = makeBody();
+    makeAccessory(FIRST_URL);
+    const resolveLoad = suspend(FIRST_URL);
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const accessory = presentation(FIRST_URL);
+
+    const { unmount } = render(
+      <StrictMode>
+        <SkinnedAccessoryAttachment
+          characterRoot={body.root}
+          presentation={accessory}
+          onStatus={(status) => statuses.push(status)}
+        />
+      </StrictMode>
+    );
+
+    expect(statuses.at(-1)?.code).toBe('loading');
+    expect(body.root.getObjectByName(`accessory:${FIRST_URL}`)).toBeUndefined();
+    renderState.invalidate.mockClear();
+
+    await act(async () => {
+      resolveLoad();
+      await Promise.resolve();
+    });
+
+    expect(statuses.at(-1)).toMatchObject({
+      code: 'attached',
+      slot: 'scalp',
+      styleRef: accessory.styleRef,
+      url: FIRST_URL,
+    });
+    expect(body.mesh.parent).toBe(body.root);
+    expect(body.root.getObjectByName(`accessory:${FIRST_URL}`)).toBeDefined();
+    expect(renderState.invalidate).toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('publishes and invalidates a pending load rejection in StrictMode without mounting', async () => {
+    const body = makeBody();
+    const rejectLoad = suspendThenReject(LOAD_REJECTED_URL);
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const accessory = presentation(
+      LOAD_REJECTED_URL,
+      'concept:hair:load-rejected'
+    );
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    const { unmount } = render(
+      <StrictMode>
+        <SkinnedAccessoryAttachment
+          characterRoot={body.root}
+          presentation={accessory}
+          onStatus={(status) => statuses.push(status)}
+        />
+      </StrictMode>
+    );
+
+    expect(statuses.at(-1)?.code).toBe('loading');
+    renderState.invalidate.mockClear();
+
+    await act(async () => {
+      rejectLoad(new Error('pending accessory load failed'));
+      await Promise.resolve();
+    });
+
+    expect(statuses.at(-1)).toEqual({
+      code: 'rejected',
+      slot: 'scalp',
+      styleRef: accessory.styleRef,
+      url: LOAD_REJECTED_URL,
+      message: 'pending accessory load failed',
+    });
+    expect(body.mesh.parent).toBe(body.root);
+    expect(body.root.children).toEqual([body.skeleton.bones[0], body.mesh]);
+    expect(renderState.invalidate).toHaveBeenCalled();
+
+    consoleError.mockRestore();
+    unmount();
   });
 
   it('ignores a stale suspended style after a new presentation attaches', async () => {

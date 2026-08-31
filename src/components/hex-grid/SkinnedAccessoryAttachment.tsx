@@ -262,12 +262,15 @@ export function SkinnedAccessoryAttachment({
     return true;
   }, []);
 
-  useEffect(
-    () => () => {
+  // StrictMode replays setup -> cleanup -> setup without another render. Restore
+  // the committed identity in setup so the cleanup probe cannot disarm the
+  // terminal-status fence while a Suspense load remains pending.
+  useEffect(() => {
+    currentIdentity.current = identity;
+    return () => {
       if (currentIdentity.current === identity) currentIdentity.current = null;
-    },
-    [identity]
-  );
+    };
+  }, [identity]);
 
   const loading = useMemo<SkinnedAccessoryStatus>(
     () => ({
