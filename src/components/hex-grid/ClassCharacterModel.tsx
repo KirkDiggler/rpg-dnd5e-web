@@ -64,6 +64,11 @@ import type {
   OffHandPresentation,
 } from './offHandEquipment';
 import { cloneCryptMaterials } from './sceneKnowledge';
+import {
+  SkinnedAccessoryAttachment,
+  type SkinnedAccessoryPresentation,
+  type SkinnedAccessoryStatus,
+} from './SkinnedAccessoryAttachment';
 
 export interface ClassCharacterModelProps {
   url: string;
@@ -93,6 +98,8 @@ export interface ClassCharacterModelProps {
   offHandPresentation?: OffHandPresentation;
   offHandSocketOverride?: OffHandPresentation['socket'];
   onOffHandStatus?: (status: OffHandAttachmentStatus) => void;
+  accessories?: readonly SkinnedAccessoryPresentation[];
+  onAccessoryStatus?: (status: SkinnedAccessoryStatus) => void;
 }
 
 export function ClassCharacterModel({
@@ -109,6 +116,8 @@ export function ClassCharacterModel({
   offHandPresentation,
   offHandSocketOverride,
   onOffHandStatus,
+  accessories,
+  onAccessoryStatus,
 }: ClassCharacterModelProps) {
   // useGLTF returns drei's shared, URL-keyed cache — mutating it directly
   // during render is a render-phase side effect on shared state (same
@@ -322,6 +331,14 @@ export function ClassCharacterModel({
         presentation={effectiveOffHandPresentation}
         onStatus={onOffHandStatus}
       />
+      {accessories?.map((accessory) => (
+        <SkinnedAccessoryAttachment
+          key={`${accessory.slot}|${accessory.styleRef}|${accessory.url}`}
+          characterRoot={cloned}
+          presentation={accessory}
+          onStatus={onAccessoryStatus}
+        />
+      ))}
     </>
   );
 }
