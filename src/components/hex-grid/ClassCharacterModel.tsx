@@ -58,6 +58,11 @@ import {
   type MainHandPresentation,
   type MainHandSocket,
 } from './mainHandPresentation';
+import { OffHandAttachmentSlot } from './OffHandAttachment';
+import type {
+  OffHandAttachmentStatus,
+  OffHandPresentation,
+} from './offHandEquipment';
 import { cloneCryptMaterials } from './sceneKnowledge';
 
 export interface ClassCharacterModelProps {
@@ -85,6 +90,9 @@ export interface ClassCharacterModelProps {
   mainHandPresentation?: MainHandPresentation;
   mainHandSocketOverride?: MainHandSocket;
   onMainHandStatus?: (status: MainHandAttachmentStatus) => void;
+  offHandPresentation?: OffHandPresentation;
+  offHandSocketOverride?: OffHandPresentation['socket'];
+  onOffHandStatus?: (status: OffHandAttachmentStatus) => void;
 }
 
 export function ClassCharacterModel({
@@ -98,6 +106,9 @@ export function ClassCharacterModel({
   mainHandPresentation,
   mainHandSocketOverride,
   onMainHandStatus,
+  offHandPresentation,
+  offHandSocketOverride,
+  onOffHandStatus,
 }: ClassCharacterModelProps) {
   // useGLTF returns drei's shared, URL-keyed cache — mutating it directly
   // during render is a render-phase side effect on shared state (same
@@ -268,6 +279,14 @@ export function ClassCharacterModel({
     if (resolvedClipName) state.invalidate();
   });
 
+  const effectiveOffHandPresentation = useMemo(
+    () =>
+      offHandPresentation && offHandSocketOverride
+        ? { ...offHandPresentation, socket: offHandSocketOverride }
+        : offHandPresentation,
+    [offHandPresentation, offHandSocketOverride]
+  );
+
   const effectiveMainHandPresentation = useMemo(
     () =>
       mainHandPresentation && mainHandSocketOverride
@@ -286,12 +305,22 @@ export function ClassCharacterModel({
       <MainHandAttachmentSlot
         key={
           effectiveMainHandPresentation
-            ? `${effectiveMainHandPresentation.ref}|${effectiveMainHandPresentation.weaponUrl}`
-            : 'unarmed'
+            ? `main-hand|${effectiveMainHandPresentation.ref}|${effectiveMainHandPresentation.weaponUrl}`
+            : 'main-hand|unarmed'
         }
         characterRoot={cloned}
         presentation={effectiveMainHandPresentation}
         onStatus={onMainHandStatus}
+      />
+      <OffHandAttachmentSlot
+        key={
+          effectiveOffHandPresentation
+            ? `off-hand|${effectiveOffHandPresentation.ref}|${effectiveOffHandPresentation.assetUrl}`
+            : 'off-hand|empty'
+        }
+        characterRoot={cloned}
+        presentation={effectiveOffHandPresentation}
+        onStatus={onOffHandStatus}
       />
     </>
   );

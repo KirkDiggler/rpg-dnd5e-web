@@ -94,13 +94,13 @@ one file per verb, mirroring `useTakeAction`/`useInteract`.
   combat log (both anchor bottom-right); the log's own open/hidden
   preference is untouched and restores the instant the popover closes.
 
-### Session-route main-hand presentation (#832)
+### Session-route owner hand presentation (#832, #878)
 
 The live `SessionEncounterView` already owns the authenticated player's
-owner-private `CharacterData` cache. It now projects only
-`equipped.main_hand` through `src/components/hex-grid/mainHandWeapons.ts` and
-passes the resulting presentation through `SessionCanvas` and `HexEntity` to
-`ClassCharacterModel`.
+owner-private `CharacterData` cache. It projects `equipped.main_hand` through
+`mainHandWeapons.ts` and the reviewed `equipped.off_hand` catalog through
+`offHandEquipment.ts`, then passes both presentations through `SessionCanvas`
+and `HexEntity` to `ClassCharacterModel`.
 
 The resolver is display-only and exact-ref-only: the current 27 promoted
 `dnd5e:item:*` refs (provider commit `a67f916880718a84b502b66b2b63683b03990f59`,
@@ -116,9 +116,18 @@ model changes on that same render. A cold running-encounter resume recovers the
 authenticated player's character ID from the retained lobby's first snapshot
 before `GetCharacterData` restores equipment.
 
+The off-hand catalog consumes exact provider merge
+`71dff14f57afe41ff320dee15081123ec1daddc2` / manifest
+`bdfbf2484ab15fd0d054222f16f127922e8a6ea0aea2e5ce430bb97aaeb8c790`:
+Shield, Dagger, Shortsword, Handaxe, and Sickle. Dagger/Shortsword reuse the
+canonical weapon GLBs; Handaxe/Sickle use provider-baked left-hand variants.
+Unsupported and attack-shaped refs remain visually empty. Townfolk and modular
+rigs each use one `Hand_L` socket; the browser owns no item transform table.
+
 Only the acting player's private equipment reaches this path. A sighted peer's
-public roster entry has no equipment projection, so peer weapons remain a
-separate contract rather than a client guess.
+public roster entry has no equipment projection, so peer hand equipment remains
+a separate contract rather than a client guess. Existing server equip/unequip,
+AC, damage, two-handed displacement, and reconnect authority are unchanged.
 
 ## Scope decisions
 
