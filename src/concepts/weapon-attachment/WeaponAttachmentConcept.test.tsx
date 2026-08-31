@@ -130,7 +130,7 @@ describe('WeaponAttachmentConcept', () => {
       'dnd5e:item:longsword'
     );
     expect(screen.getByTestId('candidate-source').textContent).toContain(
-      'rpg-game-assets#91 · 22-item provider manifest'
+      'rpg-game-assets#100 · 27-item provider manifest'
     );
     expect(screen.getByTestId('candidate-url').textContent).toContain(
       '/models/synty/weapons/longsword.glb'
@@ -171,6 +171,11 @@ describe('WeaponAttachmentConcept', () => {
       'Spear',
       'Sling',
       'Dart',
+      'Halberd',
+      'Maul',
+      'Morningstar',
+      'Pike',
+      'War Pick',
     ]) {
       fireEvent.click(screen.getByRole('button', { name: label }));
     }
@@ -184,7 +189,7 @@ describe('WeaponAttachmentConcept', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Unarmed' }));
 
     expect(screen.getByTestId('coverage-status').textContent).toContain(
-      'equipment 23/23 · motion 2/2 · views 3/3 · facings 6/6'
+      'equipment 28/28 · motion 2/2 · views 3/3 · facings 6/6'
     );
 
     const record = screen.getByRole('button', {
@@ -197,7 +202,7 @@ describe('WeaponAttachmentConcept', () => {
     );
   });
 
-  it('reviews every current class against the complete 22-weapon provider roster', () => {
+  it('reviews every current class against the complete 27-weapon provider roster', () => {
     render(<WeaponAttachmentConcept />);
 
     for (const label of ['Fighter', 'Barbarian', 'Monk', 'Rogue']) {
@@ -226,6 +231,11 @@ describe('WeaponAttachmentConcept', () => {
       'Spear',
       'Sling',
       'Dart',
+      'Halberd',
+      'Maul',
+      'Morningstar',
+      'Pike',
+      'War Pick',
     ]) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
@@ -288,7 +298,33 @@ describe('WeaponAttachmentConcept', () => {
         `dnd5e:item:${id}`
       );
       expect(screen.getByTestId('candidate-source').textContent).toContain(
-        'rpg-game-assets#91 · 22-item provider manifest'
+        'rpg-game-assets#100 · 27-item provider manifest'
+      );
+      expect(screen.getByTestId('candidate-url').textContent).toContain(
+        `/models/synty/weapons/${id}.glb`
+      );
+    }
+
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(forbiddenTransformControls()).toEqual([]);
+  });
+
+  it('exposes the five appended heavy/polearm labels with exact provider source and URL', () => {
+    render(<WeaponAttachmentConcept />);
+
+    for (const [label, id] of [
+      ['Halberd', 'halberd'],
+      ['Maul', 'maul'],
+      ['Morningstar', 'morningstar'],
+      ['Pike', 'pike'],
+      ['War Pick', 'war-pick'],
+    ] as const) {
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      expect(screen.getByTestId('equipped-ref').textContent).toContain(
+        `dnd5e:item:${id}`
+      );
+      expect(screen.getByTestId('candidate-source').textContent).toContain(
+        'rpg-game-assets#100 · 27-item provider manifest'
       );
       expect(screen.getByTestId('candidate-url').textContent).toContain(
         `/models/synty/weapons/${id}.glb`

@@ -27,7 +27,7 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:longsword',
       candidate: {
         ref: 'dnd5e:item:longsword',
-        source: 'rpg-game-assets#91 · 22-item provider manifest',
+        source: 'rpg-game-assets#100 · 27-item provider manifest',
         weaponUrl: '/models/synty/weapons/longsword.glb',
         decodedTextureMb: 4,
         budgetMb: 4.5,
@@ -45,7 +45,7 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:shortbow',
       candidate: {
         ref: 'dnd5e:item:shortbow',
-        source: 'rpg-game-assets#91 · 22-item provider manifest',
+        source: 'rpg-game-assets#100 · 27-item provider manifest',
         weaponUrl: '/models/synty/weapons/shortbow.glb',
         decodedTextureMb: 4,
         budgetMb: 4.5,
@@ -148,6 +148,14 @@ describe('weapon attachment experiment', () => {
       observation({ equipmentState: 'spear', attachmentCode: 'attached' }),
       observation({ equipmentState: 'sling', attachmentCode: 'attached' }),
       observation({ equipmentState: 'dart', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'halberd', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'maul', attachmentCode: 'attached' }),
+      observation({
+        equipmentState: 'morningstar',
+        attachmentCode: 'attached',
+      }),
+      observation({ equipmentState: 'pike', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'war-pick', attachmentCode: 'attached' }),
     ];
 
     expect(coverageFor(observations)).toEqual({
@@ -175,6 +183,11 @@ describe('weapon attachment experiment', () => {
         'spear',
         'sling',
         'dart',
+        'halberd',
+        'maul',
+        'morningstar',
+        'pike',
+        'war-pick',
       ],
       motions: ['idle', 'walk'],
       views: ['close', 'orbit', 'play'],
