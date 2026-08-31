@@ -88,6 +88,22 @@ const RACE_CLASS_CHARACTER_MODELS: Record<
     model: 'race-class/half-elf-rogue.glb',
     rigFamily: 'modular-fantasy-hero-v1',
   },
+  'half-orc:barbarian': {
+    model: 'race-class/half-orc-barbarian.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'half-orc:fighter': {
+    model: 'race-class/half-orc-fighter.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'half-orc:monk': {
+    model: 'race-class/half-orc-monk.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
+  'half-orc:rogue': {
+    model: 'race-class/half-orc-rogue.glb',
+    rigFamily: 'modular-fantasy-hero-v1',
+  },
   'halfling:barbarian': {
     model: 'race-class/halfling-barbarian.glb',
     rigFamily: 'modular-fantasy-hero-v1',
