@@ -1,7 +1,7 @@
 ---
 name: /concepts route
 description: Fixture-first UI sandbox and shared production-component review harnesses
-updated: 2026-08-25
+updated: 2026-09-01
 confidence: high — verified by reading ConceptsView.tsx and the concepts/ directory
 ---
 
@@ -98,6 +98,19 @@ proof, accepted `SM_Prop_Bow_01` provisionally for shortbow, rejected
 `SM_Wep_Slayer_01` as an oversized final-longsword candidate, and left open
 provider gaps around final semantic asset selection, normalized production
 exports, socket receipt, and texture budget.
+
+`src/concepts/character-customization/` — the rpg-dnd5e-web#877
+provider-backed Learn lab, registered as `?concept=character-customization`.
+It renders two actual `ClassCharacterModel` instances: independently selected
+scalp/facial-hair accessories with one controlled runtime surface treatment,
+and an immutable default reference twin. The inspector exposes exact refs,
+URLs, hashes, bind statuses, ordered mapped body Bone identities, mounted
+source-armature count, fixture JSON, and an R3F-commit-fenced coverage gate.
+The local browser matrix passed every style/none state, black/blond/red,
+all four PBR presets plus arbitrary sliders, idle/walk, close/orbit/tactical,
+rapid changes, reference isolation, and the optional canonical weapon witness.
+`src/concepts/character-customization/CONTRACT.md` records the measured success
+and its non-production/provider/Platform boundaries; local GLBs remain ignored.
 
 ## Promotion process
 

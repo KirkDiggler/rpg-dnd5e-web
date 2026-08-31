@@ -37,6 +37,17 @@ convenience and is load-bearing before anyone notices.
 The concept page itself is the composition root — it wires both halves, and in
 production that wiring is what gets replaced by a real subscription.
 
+## Character customization evidence
+
+`character-customization/` is the #877 fixture-first Learn lab at
+`?concept=character-customization`. It renders two real `ClassCharacterModel`
+instances against ignored provider candidates: one controlled body with exact
+scalp/facial-hair selections and shared runtime surface treatment, plus one
+immutable default reference twin. Its inspector exposes exact bind identities,
+source-armature count, asset receipts, fixture JSON, and an R3F-commit-fenced
+coverage verdict. The successful browser contract and explicit non-production
+boundaries are in `character-customization/CONTRACT.md`.
+
 ## Adding one
 
 1. `src/concepts/<name>/`
