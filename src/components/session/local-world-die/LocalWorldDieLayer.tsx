@@ -151,13 +151,17 @@ function DieBody({
 
   useEffect(() => {
     if (bodyRef.current) onBodyReady();
-    return () => {
+  }, [onBodyReady]);
+
+  useEffect(
+    () => () => {
       if (settledTimer.current !== undefined) {
         clearTimeout(settledTimer.current);
         settledTimer.current = undefined;
       }
-    };
-  }, [onBodyReady]);
+    },
+    []
+  );
 
   const beginAssist = useCallback(() => {
     const body = bodyRef.current;
