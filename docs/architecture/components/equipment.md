@@ -102,14 +102,14 @@ owner-private `CharacterData` cache. It now projects only
 passes the resulting presentation through `SessionCanvas` and `HexEntity` to
 `ClassCharacterModel`.
 
-The resolver is display-only and exact-ref-only: the current 22 promoted
-`dnd5e:item:*` refs (provider commit `11b78a0f24278a54f057a5a1abf416d30c0a879b`,
+The resolver is display-only and exact-ref-only: the current 27 promoted
+`dnd5e:item:*` refs (provider commit `a67f916880718a84b502b66b2b63683b03990f59`,
 `weapons/manifest.json` sha256
-`729282ee2a05b0d1b9f194066e7aa4da5f3682b2a5811cfbc13de4353b8d68be`) map to
+`cec88cd26d95568de01e6d1181184ced0eb4212c28d0cf1524b30c640fc449db`) map to
 `/models/synty/weapons/*.glb`, including Light Crossbow, Longbow, Javelin,
-Rapier, Light Hammer, Mace, Sickle, Spear, Sling, and Dart appended after the
-original twelve. Attack refs and unknown items such as Morningstar remain
-unarmed. All four current class rigs share
+Rapier, Light Hammer, Mace, Sickle, Spear, Sling, Dart, Halberd, Maul,
+Morningstar, Pike, and War Pick appended after the original twelve. Attack refs
+and unknown items such as Flail remain unarmed. All four current class rigs share
 `townfolk-main-hand-v1`; no class × weapon offset table exists. Equip/unequip
 continues replacing the complete owner cache from the RPC response, so the
 model changes on that same render. A cold running-encounter resume recovers the
