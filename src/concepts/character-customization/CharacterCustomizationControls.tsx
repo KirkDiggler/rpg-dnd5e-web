@@ -140,7 +140,7 @@ export function CharacterCustomizationControls({
 }: CharacterCustomizationControlsProps) {
   return (
     <section
-      className="grid gap-4 rounded border p-4 md:grid-cols-2"
+      className="grid gap-4 rounded border p-4"
       style={{ borderColor: 'var(--border-primary)' }}
     >
       <StyleSelector

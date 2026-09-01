@@ -108,6 +108,17 @@ export const CHARACTER_CUSTOMIZATION_ASSETS = Object.freeze([
   ...FACIAL_HAIR_OPTIONS,
 ]);
 
+export const CHARACTER_CUSTOMIZATION_ACCESSORY_URLS = Object.freeze([
+  ...SCALP_OPTIONS.map((option) => option.url),
+  ...FACIAL_HAIR_OPTIONS.map((option) => option.url),
+]);
+
+export function preloadCharacterCustomizationAccessories(
+  preload: (url: string) => unknown
+): void {
+  CHARACTER_CUSTOMIZATION_ACCESSORY_URLS.forEach((url) => preload(url));
+}
+
 export function optionsForSlot(
   slot: CharacterCustomizationSlot
 ): readonly CharacterCustomizationAsset[] {

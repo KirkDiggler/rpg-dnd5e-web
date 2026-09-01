@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useGLTF } from '@react-three/drei';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { preloadCharacterCustomizationAccessories } from './characterCustomizationAssets';
 import { CharacterCustomizationControls } from './CharacterCustomizationControls';
 import {
   EMPTY_CUSTOMIZATION_DIAGNOSTICS,
@@ -48,6 +50,10 @@ export function CharacterCustomizationConcept() {
   >([]);
   const [verdictJson, setVerdictJson] = useState<string>();
   const observedKeys = useRef(new Set<string>());
+
+  useEffect(() => {
+    preloadCharacterCustomizationAccessories(useGLTF.preload);
+  }, []);
 
   const resolution = useMemo(
     () => resolveCustomizationFixture(fixture),
@@ -112,8 +118,14 @@ export function CharacterCustomizationConcept() {
         </p>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_25rem]">
-        <main className="space-y-5">
+      <div
+        data-testid="character-customization-workspace"
+        className="grid gap-6 lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] lg:items-start 2xl:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)_minmax(20rem,25rem)]"
+      >
+        <div
+          data-testid="character-customization-controls-pane"
+          className="lg:sticky lg:top-4 lg:max-h-[560px] lg:self-start lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
+        >
           <CharacterCustomizationControls
             fixture={fixture}
             surfacePreset={surfacePreset}
@@ -121,31 +133,37 @@ export function CharacterCustomizationConcept() {
             onTreatmentChange={updateTreatment}
             onPreset={applyPreset}
           />
+        </div>
 
-          <section
-            className="rounded border p-2"
-            style={{ borderColor: 'var(--border-primary)' }}
-          >
-            <CharacterCustomizationPreview
-              fixture={fixture}
-              surfacePreset={surfacePreset}
-              resolution={resolution}
-              onDiagnostics={setDiagnostics}
-              onRenderObserved={handleObserved}
-            />
-          </section>
-        </main>
+        <section
+          data-testid="character-customization-preview-pane"
+          className="rounded border p-2 lg:sticky lg:top-4 lg:self-start"
+          style={{ borderColor: 'var(--border-primary)' }}
+        >
+          <CharacterCustomizationPreview
+            fixture={fixture}
+            surfacePreset={surfacePreset}
+            resolution={resolution}
+            onDiagnostics={setDiagnostics}
+            onRenderObserved={handleObserved}
+          />
+        </section>
 
-        <CharacterCustomizationInspector
-          fixture={fixture}
-          surfacePreset={surfacePreset}
-          resolution={resolution}
-          storedDiagnostics={diagnostics}
-          coverage={coverage}
-          canRecord={canRecord}
-          verdictJson={verdictJson}
-          onRecord={recordVerdict}
-        />
+        <div
+          data-testid="character-customization-inspector-pane"
+          className="lg:sticky lg:top-4 lg:col-span-2 lg:max-h-[560px] lg:self-start lg:overflow-y-auto lg:overscroll-contain 2xl:sticky 2xl:col-span-1"
+        >
+          <CharacterCustomizationInspector
+            fixture={fixture}
+            surfacePreset={surfacePreset}
+            resolution={resolution}
+            storedDiagnostics={diagnostics}
+            coverage={coverage}
+            canRecord={canRecord}
+            verdictJson={verdictJson}
+            onRecord={recordVerdict}
+          />
+        </div>
       </div>
     </div>
   );

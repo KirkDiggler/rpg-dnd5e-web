@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import {
   applyRuntimeSurfaceTreatment,
+  updateRuntimeSurfaceTreatment,
   type RuntimeSurfaceTreatment,
 } from './runtimeSurfaceTreatment';
 import { bindSkinnedAccessory } from './skinnedAccessory';
@@ -45,6 +46,7 @@ export type SkinnedAccessoryStatus =
       readonly slot: SkinnedAccessoryPresentation['slot'];
       readonly styleRef: string;
       readonly url: string;
+      readonly meshUuid: string;
       readonly bodyRootBoneUuid: string;
       readonly mappedBoneNames: readonly string[];
       readonly mappedBoneUuids: readonly string[];
@@ -111,6 +113,49 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+interface MountedAttachment {
+  readonly identity: PresentationIdentity;
+  readonly mesh: THREE.SkinnedMesh;
+  readonly materials: readonly THREE.MeshStandardMaterial[];
+  readonly bodyRootBoneUuid: string;
+  readonly mappedBoneNames: readonly string[];
+  readonly mappedBoneUuids: readonly string[];
+  readonly ownsSkeletonWrapper: boolean;
+}
+
+function attachedStatus(mounted: MountedAttachment): SkinnedAccessoryStatus {
+  return {
+    code: 'attached',
+    slot: mounted.identity.slot,
+    styleRef: mounted.identity.styleRef,
+    url: mounted.identity.url,
+    meshUuid: mounted.mesh.uuid,
+    bodyRootBoneUuid: mounted.bodyRootBoneUuid,
+    mappedBoneNames: mounted.mappedBoneNames,
+    mappedBoneUuids: mounted.mappedBoneUuids,
+    instanceMaterials: mounted.materials.map((material) => ({
+      materialUuid: material.uuid,
+      baseColorSrgb:
+        `#${material.color.getHexString().toUpperCase()}` as `#${string}`,
+      roughness: material.roughness,
+      metalness: material.metalness,
+    })),
+  };
+}
+
+function materialsMatchTreatment(
+  materials: readonly THREE.MeshStandardMaterial[],
+  treatment: RuntimeSurfaceTreatment
+): boolean {
+  return materials.every(
+    (material) =>
+      `#${material.color.getHexString().toUpperCase()}` ===
+        treatment.baseColorSrgb.toUpperCase() &&
+      material.roughness === treatment.roughness &&
+      material.metalness === treatment.metalness
+  );
+}
+
 function LoadedAttachment({
   characterRoot,
   identity,
@@ -119,8 +164,16 @@ function LoadedAttachment({
   reportStatus,
 }: LoadedAttachmentProps) {
   const { scene } = useGLTF(identity.url);
+  const mountedAttachment = useRef<MountedAttachment | undefined>(undefined);
+  const currentTreatment = useRef(presentation.treatment);
+  const currentInvalidate = useRef(invalidate);
+  currentTreatment.current = presentation.treatment;
+  currentInvalidate.current = invalidate;
   const { baseColorSrgb, roughness, metalness } = presentation.treatment;
 
+  // Identity owns cloning, rebinding, mounting, and cleanup. Treatment values
+  // deliberately stay behind a ref so color/PBR changes cannot replay this
+  // lifecycle and make the accessory disappear for a frame.
   useEffect(() => {
     reportStatus(identity, {
       code: 'loading',
@@ -136,7 +189,7 @@ function LoadedAttachment({
       if (
         reportStatus(identity, rejectionStatus(identity, errorMessage(error)))
       ) {
-        invalidate();
+        currentInvalidate.current();
       }
       return;
     }
@@ -144,63 +197,89 @@ function LoadedAttachment({
     const result = bindSkinnedAccessory(characterRoot, accessoryRoot);
     if (!result.ok) {
       if (reportStatus(identity, rejectionStatus(identity, result.message))) {
-        invalidate();
+        currentInvalidate.current();
       }
       return;
     }
 
-    let createdMaterials: readonly THREE.MeshStandardMaterial[];
+    let materials: readonly THREE.MeshStandardMaterial[];
     try {
-      createdMaterials = applyRuntimeSurfaceTreatment(result.mesh, {
-        baseColorSrgb,
-        roughness,
-        metalness,
-      });
+      materials = applyRuntimeSurfaceTreatment(
+        result.mesh,
+        currentTreatment.current
+      );
     } catch (error) {
       if (result.ownsSkeletonWrapper) result.mesh.skeleton.dispose();
       if (
         reportStatus(identity, rejectionStatus(identity, errorMessage(error)))
       ) {
-        invalidate();
+        currentInvalidate.current();
       }
       return;
     }
 
-    characterRoot.add(result.mesh);
-    invalidate();
-    reportStatus(identity, {
-      code: 'attached',
-      slot: identity.slot,
-      styleRef: identity.styleRef,
-      url: identity.url,
+    const mounted: MountedAttachment = {
+      identity,
+      mesh: result.mesh,
+      materials,
       bodyRootBoneUuid: result.bodyRootBoneUuid,
       mappedBoneNames: result.mappedBoneNames,
       mappedBoneUuids: result.mappedBoneUuids,
-      instanceMaterials: createdMaterials.map((material) => ({
-        materialUuid: material.uuid,
-        baseColorSrgb:
-          `#${material.color.getHexString().toUpperCase()}` as `#${string}`,
-        roughness: material.roughness,
-        metalness: material.metalness,
-      })),
-    });
+      ownsSkeletonWrapper: result.ownsSkeletonWrapper,
+    };
+    mountedAttachment.current = mounted;
+    characterRoot.add(mounted.mesh);
+    currentInvalidate.current();
+    if (!reportStatus(identity, attachedStatus(mounted))) {
+      // In StrictMode's setup -> cleanup -> setup probe, child passive effects
+      // run before the parent's identity-restoring setup. Retry only for the
+      // still-mounted instance after that setup so diagnostics cannot retain
+      // UUIDs from the disposed probe instance.
+      queueMicrotask(() => {
+        if (mountedAttachment.current === mounted) {
+          reportStatus(identity, attachedStatus(mounted));
+        }
+      });
+    }
 
     return () => {
-      characterRoot.remove(result.mesh);
-      createdMaterials.forEach((material) => material.dispose());
-      if (result.ownsSkeletonWrapper) result.mesh.skeleton.dispose();
-      invalidate();
+      if (mountedAttachment.current === mounted) {
+        mountedAttachment.current = undefined;
+      }
+      characterRoot.remove(mounted.mesh);
+      mounted.materials.forEach((material) => material.dispose());
+      if (mounted.ownsSkeletonWrapper) mounted.mesh.skeleton.dispose();
+      currentInvalidate.current();
     };
-  }, [
-    baseColorSrgb,
-    characterRoot,
-    identity,
-    invalidate,
-    metalness,
-    reportStatus,
-    roughness,
-    scene,
-  ]);
+  }, [characterRoot, identity, reportStatus, scene]);
+
+  // The mounted mesh and its instance-owned material objects remain stable.
+  // Mutate only their supported surface fields, then publish values read back
+  // from those same material identities for the diagnostics fence.
+  useEffect(() => {
+    const mounted = mountedAttachment.current;
+    if (!mounted || mounted.identity !== identity) return;
+    const treatment: RuntimeSurfaceTreatment = {
+      baseColorSrgb,
+      roughness,
+      metalness,
+    };
+    if (materialsMatchTreatment(mounted.materials, treatment)) return;
+
+    try {
+      updateRuntimeSurfaceTreatment(mounted.materials, treatment);
+    } catch (error) {
+      if (
+        reportStatus(identity, rejectionStatus(identity, errorMessage(error)))
+      ) {
+        currentInvalidate.current();
+      }
+      return;
+    }
+    if (reportStatus(identity, attachedStatus(mounted))) {
+      currentInvalidate.current();
+    }
+  }, [baseColorSrgb, identity, metalness, reportStatus, roughness]);
 
   return null;
 }

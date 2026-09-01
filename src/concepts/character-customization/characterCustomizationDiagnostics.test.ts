@@ -15,6 +15,7 @@ import {
   commitCustomizationObservationAfterRendererFrame,
   customizationObservationKey,
   deriveCustomizationEvidence,
+  sameAccessoryStatus,
   type DeriveCustomizationEvidenceInput,
 } from './characterCustomizationDiagnostics';
 import {
@@ -51,6 +52,7 @@ function attached(
     slot,
     styleRef,
     url,
+    meshUuid: `${identity}-${slot}-mesh`,
     bodyRootBoneUuid: `${identity}-root`,
     mappedBoneNames: ['Root', 'Head'],
     mappedBoneUuids: [`${identity}-root`, `${identity}-head`],
@@ -121,6 +123,25 @@ function committedInput(
 }
 
 describe('deriveCustomizationEvidence identity fences', () => {
+  it('treats a changed mounted mesh UUID as new exact status evidence', () => {
+    const first = attached(
+      'scalp',
+      DEFAULT_SCALP_STYLE_REF,
+      SCALP_OPTIONS[0].url,
+      'controlled',
+      RED_TREATMENT
+    );
+    if (first.code !== 'attached') throw new Error('expected attachment');
+
+    expect(sameAccessoryStatus(first, first)).toBe(true);
+    expect(
+      sameAccessoryStatus(first, {
+        ...first,
+        meshUuid: 'replacement-mesh',
+      })
+    ).toBe(false);
+  });
+
   it('drops stale slot facts synchronously during rapid style changes', () => {
     const fixture: CharacterCustomizationFixture = {
       ...DEFAULT_CUSTOMIZATION_FIXTURE,

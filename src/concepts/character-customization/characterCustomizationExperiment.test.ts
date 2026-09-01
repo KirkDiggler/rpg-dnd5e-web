@@ -28,6 +28,7 @@ const attachedStatus = (
   slot,
   styleRef,
   url,
+  meshUuid: `${identity}-${slot}-mesh`,
   bodyRootBoneUuid: `${identity}-root`,
   mappedBoneNames: ['Head'],
   mappedBoneUuids: [`${identity}-head`],

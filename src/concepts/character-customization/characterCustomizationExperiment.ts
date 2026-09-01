@@ -185,6 +185,7 @@ function attachedStatusMatches(
     status.slot === resolution.slot &&
     status.styleRef === resolution.styleRef &&
     status.url === resolution.asset.url &&
+    status.meshUuid.length > 0 &&
     status.bodyRootBoneUuid.length > 0 &&
     status.mappedBoneNames.length > 0 &&
     status.mappedBoneNames.length === status.mappedBoneUuids.length &&

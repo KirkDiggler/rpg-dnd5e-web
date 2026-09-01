@@ -207,6 +207,18 @@ function SceneCommitWitness({
   return null;
 }
 
+function publishAccessoryStatusEvent(
+  instance: 'controlled' | 'reference',
+  status: SkinnedAccessoryStatus
+): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('character-customization:accessory-status', {
+      detail: { instance, status },
+    })
+  );
+}
+
 export interface CharacterCustomizationPreviewProps {
   readonly fixture: CharacterCustomizationFixture;
   readonly surfacePreset: ActiveSurfacePreset;
@@ -241,6 +253,7 @@ export function CharacterCustomizationScene({
 
   const handleControlledStatus = useCallback(
     (status: SkinnedAccessoryStatus) => {
+      publishAccessoryStatusEvent('controlled', status);
       setControlledStatuses((current) =>
         sameAccessoryStatus(current[status.slot], status)
           ? current
@@ -251,6 +264,7 @@ export function CharacterCustomizationScene({
   );
   const handleReferenceStatus = useCallback(
     (status: SkinnedAccessoryStatus) => {
+      publishAccessoryStatusEvent('reference', status);
       setReferenceStatuses((current) =>
         sameAccessoryStatus(current[status.slot], status)
           ? current

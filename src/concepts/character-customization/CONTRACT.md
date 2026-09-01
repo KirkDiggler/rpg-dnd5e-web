@@ -83,9 +83,10 @@ the complete inventory file/tree are
 The synchronized manifest was byte-identical to that merge, and zero files
 under `public/models/synty/` are tracked here.
 
-The fresh matrix recorded 28 deliberate scripted checkpoints covering Hair
-04/08/16, Facial Hair 01/02/03, both `none` states, default aliases, and a Hair
-08 + Facial Hair 03 alternate pair. It separately proved the two required walk
+The fresh matrix recorded 29 deliberate scripted checkpoints covering Hair
+04/08/16, Facial Hair 01/02/03, both `none` states, default aliases, a Hair
+08 + Facial Hair 03 alternate pair, and the treatment-identity stability
+checkpoint. It separately proved the two required walk
 pairs: Hair 08 + default Facial Hair 02, and default Hair 04 + Facial Hair 03.
 Both rows reported exact current refs/URLs, `Walk_Forward`, four attached slots,
 63 mapped bones, zero source armatures, and exact controlled/reference material
@@ -95,10 +96,22 @@ play, rapid changes, and the canonical `dnd5e:item:warhammer` witness at
 hashed all seven customization GLBs; every response was HTTP 200 with the exact
 provider size/hash.
 
+Five rapid treatment-only changes produced ten controlled `attached` events
+and zero `loading` events. Both mounted controlled mesh UUIDs and both
+instance-owned material UUIDs were unchanged before/after; exact actuals
+finished at `#C02626`, roughness `0.31`, and metalness `0.64`. This is separate
+from style identity changes, which may remount. All six accessory URLs were
+preloaded on Concept mount.
+
+At 1600 px, the controls, 560 px renderer, and inspector were visible in one
+row. At 1280 px, controls and renderer remained side by side with the inspector
+below. Controls and inspector were sticky, bounded to 560 px, and internally
+scrollable.
+
 The scripted matrix count is not the Concept verdict counter. The latter
 accumulates every distinct positive committed frame, including valid
-intermediary frames while controls settle, and reached 45. The receipt and
-publication test independently pin 28 scripted checkpoints, 45 accumulated
+intermediary frames while controls settle, and reached 49. The receipt and
+publication test independently pin 29 scripted checkpoints, 49 accumulated
 Concept observations, and that distinction.
 
 The exact receipt and compact tracked screenshots are under
@@ -132,7 +145,7 @@ not gameplay/API evidence.
 `docs/evidence/877-character-customization-concept/receipt.json` binds the
 provider merge/feature head, manifest/inventory, all seven outputs, shared
 rig/inverse-bind/socket facts, provider GLB preservation, browser summary, and
-the hashes of 13 representative tracked screenshots. The publication test has
+the hashes of 15 representative tracked screenshots. The publication test has
 an independent exact filename/hash/size/dimension table and semantically checks
 both the active Git ignore and zero tracked Synty files. The receipt contains no
 private source path or timestamp-dependent hash input.

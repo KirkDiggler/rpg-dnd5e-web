@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import {
   applyRuntimeSurfaceTreatment,
+  updateRuntimeSurfaceTreatment,
   type RuntimeSurfaceTreatment,
 } from './runtimeSurfaceTreatment';
 
@@ -22,6 +23,57 @@ function makeMesh(
 ): THREE.SkinnedMesh {
   return new THREE.SkinnedMesh(new THREE.BufferGeometry(), material);
 }
+
+describe('updateRuntimeSurfaceTreatment', () => {
+  it('updates actual values in place while preserving every material identity', () => {
+    const materials = [
+      new THREE.MeshStandardMaterial({
+        color: '#ffffff',
+        roughness: 0.1,
+        metalness: 0.9,
+      }),
+      new THREE.MeshStandardMaterial({
+        color: '#112233',
+        roughness: 0.2,
+        metalness: 0.8,
+      }),
+    ];
+    const identities = materials.map((material) => ({
+      material,
+      uuid: material.uuid,
+    }));
+
+    const updated = updateRuntimeSurfaceTreatment(materials, BLOND_HAIR);
+
+    expect(updated).toBe(materials);
+    updated.forEach((material, index) => {
+      expect(material).toBe(identities[index]!.material);
+      expect(material.uuid).toBe(identities[index]!.uuid);
+      expect(material.color.getHexString()).toBe('d8b36a');
+      expect(material.roughness).toBe(BLOND_HAIR.roughness);
+      expect(material.metalness).toBe(BLOND_HAIR.metalness);
+      expect(material.version).toBeGreaterThan(0);
+    });
+  });
+
+  it('validates the complete treatment before changing any actual value', () => {
+    const material = new THREE.MeshStandardMaterial({
+      color: '#abcdef',
+      roughness: 0.25,
+      metalness: 0.75,
+    });
+
+    expect(() =>
+      updateRuntimeSurfaceTreatment([material], {
+        ...RED_LEATHER,
+        metalness: Number.NaN,
+      })
+    ).toThrow(RangeError);
+    expect(material.color.getHexString()).toBe('abcdef');
+    expect(material.roughness).toBe(0.25);
+    expect(material.metalness).toBe(0.75);
+  });
+});
 
 describe('applyRuntimeSurfaceTreatment', () => {
   it('clones and treats every standard material while preserving array shape', () => {

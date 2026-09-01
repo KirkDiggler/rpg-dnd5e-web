@@ -198,14 +198,113 @@
       "height": 1100,
       "deviceScaleFactor": 1
     },
-    "observations": 28,
+    "layout": {
+      "wideDesktop1600": {
+        "arrangement": "controls|preview|inspector",
+        "controls": {
+          "x": 160,
+          "width": 352,
+          "height": 560,
+          "scrollHeight": 1016
+        },
+        "preview": {
+          "x": 536,
+          "width": 480,
+          "rendererHeight": 560
+        },
+        "inspector": {
+          "x": 1040,
+          "width": 400,
+          "height": 560,
+          "scrollHeight": 1555
+        },
+        "stickyInternalPanes": true
+      },
+      "ordinaryDesktop1280": {
+        "arrangement": "controls|preview then inspector",
+        "controls": {
+          "x": 32,
+          "y": 350,
+          "width": 384,
+          "height": 560
+        },
+        "preview": {
+          "x": 440,
+          "y": 350,
+          "width": 808,
+          "rendererHeight": 560
+        },
+        "inspector": {
+          "x": 32,
+          "y": 952,
+          "width": 1216,
+          "height": 560
+        }
+      }
+    },
+    "accessoryPreload": {
+      "count": 6,
+      "publicPaths": [
+        "/models/synty/concepts/character-customization/scalp/hair-04.glb",
+        "/models/synty/concepts/character-customization/scalp/hair-08.glb",
+        "/models/synty/concepts/character-customization/scalp/hair-16.glb",
+        "/models/synty/concepts/character-customization/facial-hair/facial-hair-01.glb",
+        "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
+        "/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb"
+      ]
+    },
+    "treatmentOnlyStability": {
+      "checkpoint": "00b-treatment-stable",
+      "statusEvents": 10,
+      "loadingStatusEvents": 0,
+      "meshIdentityStable": true,
+      "materialIdentityStable": true,
+      "before": [
+        {
+          "slot": "scalp",
+          "meshUuid": "2074f693-dcc9-4a12-a80e-c2adbf10eb89",
+          "materialUuids": [
+            "414a8b6a-5195-41cf-97a9-0ac5f77677ce"
+          ]
+        },
+        {
+          "slot": "facialHair",
+          "meshUuid": "f468de40-b4d5-4f46-a162-5c8064008c60",
+          "materialUuids": [
+            "712d3a00-e943-41c1-a1f8-3f8474b861bb"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "slot": "scalp",
+          "meshUuid": "2074f693-dcc9-4a12-a80e-c2adbf10eb89",
+          "materialUuids": [
+            "414a8b6a-5195-41cf-97a9-0ac5f77677ce"
+          ]
+        },
+        {
+          "slot": "facialHair",
+          "meshUuid": "f468de40-b4d5-4f46-a162-5c8064008c60",
+          "materialUuids": [
+            "712d3a00-e943-41c1-a1f8-3f8474b861bb"
+          ]
+        }
+      ],
+      "finalTreatment": {
+        "baseColorSrgb": "#C02626",
+        "roughness": 0.31,
+        "metalness": 0.64
+      }
+    },
+    "observations": 29,
     "observationAccounting": {
-      "scriptedCheckpoints": 28,
-      "conceptAccumulatedUniquePositiveObservations": 45,
+      "scriptedCheckpoints": 29,
+      "conceptAccumulatedUniquePositiveObservations": 49,
       "relationship": "scripted-explicit-checkpoints-vs-all-distinct-positive-committed-concept-frames"
     },
-    "exactCurrentIdentityChecks": 28,
-    "runtimeMaterialValueRowsChecked": 108,
+    "exactCurrentIdentityChecks": 29,
+    "runtimeMaterialValueRowsChecked": 112,
     "materialUuidIsolation": true,
     "materialValueIsolation": true,
     "mappedBones": 63,
@@ -341,13 +440,14 @@
         "showWeaponWitness": true
       },
       "controlled": {
-        "bodyRootBoneUuid": "1d5204a1-09ef-40bd-96ff-ea09280027cf",
+        "bodyRootBoneUuid": "5a0f2468-e78f-4e42-8e63-ce272ac05eb1",
         "scalp": {
           "styleRef": "modular-fantasy-hero:hair:08",
           "publicPath": "/models/synty/concepts/character-customization/scalp/hair-08.glb",
           "status": "attached",
+          "meshUuid": "9c3d7870-8724-4202-acf7-ffbf56c23cf9",
           "material": {
-            "materialUuid": "5d51633c-24e6-405c-89e2-a8ae75fab75c",
+            "materialUuid": "be71e611-b279-4813-8fe5-036333366808",
             "baseColorSrgb": "#C02626",
             "roughness": 0.25,
             "metalness": 1
@@ -357,8 +457,9 @@
           "styleRef": "modular-fantasy-hero:facial-hair:03",
           "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-03.glb",
           "status": "attached",
+          "meshUuid": "b1499c4d-fc34-4f55-9385-d5ce749a40fb",
           "material": {
-            "materialUuid": "41a1eead-5e99-4896-9bd1-ee81ae21933b",
+            "materialUuid": "9b435428-1267-4276-9b89-ab807b7a027f",
             "baseColorSrgb": "#C02626",
             "roughness": 0.25,
             "metalness": 1
@@ -366,13 +467,14 @@
         }
       },
       "reference": {
-        "bodyRootBoneUuid": "34460149-31dc-40c5-a220-33d6bdfc030a",
+        "bodyRootBoneUuid": "7093abcf-39b9-4ab4-bf61-e7abdf0ae89a",
         "scalp": {
           "styleRef": "modular-fantasy-hero:hair:04",
           "publicPath": "/models/synty/concepts/character-customization/scalp/hair-04.glb",
           "status": "attached",
+          "meshUuid": "8704e050-46c4-487b-9d42-dbee3f0d4f4d",
           "material": {
-            "materialUuid": "7e34aa43-344d-4020-a674-801ec32d80a8",
+            "materialUuid": "4d500558-8476-45b0-bec0-fb904a484d3c",
             "baseColorSrgb": "#5A3825",
             "roughness": 0.72,
             "metalness": 0
@@ -382,8 +484,9 @@
           "styleRef": "modular-fantasy-hero:facial-hair:02",
           "publicPath": "/models/synty/concepts/character-customization/facial-hair/facial-hair-02.glb",
           "status": "attached",
+          "meshUuid": "831d7adc-d55d-4f07-a6a3-3eede79dadcd",
           "material": {
-            "materialUuid": "d612b19d-0925-48a0-8177-e1ce724648a7",
+            "materialUuid": "0590b869-f2e1-4a93-aa23-46ae1350d615",
             "baseColorSrgb": "#5A3825",
             "roughness": 0.72,
             "metalness": 0
@@ -452,116 +555,134 @@
   "evidence": [
     {
       "path": "default-close.png",
-      "sha256": "1cfaf1ed343cf83493fcfcffad392bb1000b9d6038f2817d6d2f49de4ccbba8c",
-      "byteSize": 80669,
+      "sha256": "7fab0ed85a32300c256cf7c32a14591043869a8c6a6eb6f246fd2cc06af41ce6",
+      "byteSize": 69002,
       "dimensions": [
-        838,
+        462,
+        560
+      ]
+    },
+    {
+      "path": "workspace-wide.png",
+      "sha256": "60d146be2941faa67442c9360e25eb8062ca714486abdb38d0a8a0ba9eaf2d20",
+      "byteSize": 176881,
+      "dimensions": [
+        1280,
+        578
+      ]
+    },
+    {
+      "path": "treatment-stable.png",
+      "sha256": "290c66330ab42cd3d84ef12736f3326337c9c2510dad602d324b22d7c3219be3",
+      "byteSize": 69376,
+      "dimensions": [
+        462,
         560
       ]
     },
     {
       "path": "none-both.png",
-      "sha256": "310929d6634463cf350cd2ad73ea07fceed64f4ff9dee79e72ae3beb4f16ba77",
-      "byteSize": 78307,
+      "sha256": "ceecb66b0c77b980f5ffe0a67b4fccbf2c1459fbc01e9295ebf3f62437885054",
+      "byteSize": 65370,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "combined-alternate-arbitrary-color.png",
-      "sha256": "85fd456b8d508565802703b3e5743894a9aa5ac6257a363956934f9f99a4b8c8",
-      "byteSize": 80151,
+      "sha256": "a19190063751e632f0b169cac4662866971b9d964e788c00f72b8add4324de58",
+      "byteSize": 67511,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "surface-cloth.png",
-      "sha256": "e13715ee155d57dd356d248526771134816bc411b421d0c8d57f22b9d4dd5f37",
-      "byteSize": 79880,
+      "sha256": "981df4f932c98cfafd360154cb9d5a1a25ab2f555060206a54495b96fea69d8b",
+      "byteSize": 68199,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "surface-leather.png",
-      "sha256": "71be21d65b3e15352e1e3148f4a4d13450991b1c6596431e74bb7078b57eedda",
-      "byteSize": 79472,
+      "sha256": "9e3dd78bfd8877ba019da0e4c6ca441aceba9ad30dc5eda1d241977eac4d462c",
+      "byteSize": 67438,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "surface-metal.png",
-      "sha256": "83420815105646715a6f23721d1e5fbfc3dd115b5ff6f7119050480789e52f35",
-      "byteSize": 80117,
+      "sha256": "355f591c5103a2b9eb164dc07db19f16aeaf2a836d8072accac6a29263b0e8c0",
+      "byteSize": 66951,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "walk-alternate-scalp-default-facial-hair.png",
-      "sha256": "bfad92571dcf0170a088351d54df081e3a7ed96b49a07ee62106eaca383ba843",
-      "byteSize": 83476,
+      "sha256": "34e1ad54dab1e184220e4283858d63c1ab95d3aeefb06165755afbe8532dbc31",
+      "byteSize": 69966,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "walk-default-scalp-alternate-facial-hair.png",
-      "sha256": "4aaaaf9a8824b3de9976791b6b89a1c69f3458ca9f2d08abd54a323825404245",
-      "byteSize": 84538,
+      "sha256": "09a86cefa2b002af9b4ed8242e9bc5ee5c4db6e6925152f6716a50c7e74e5ffa",
+      "byteSize": 71689,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "walk.png",
-      "sha256": "0d4d8f05b04abd2f97ba9f9f00c57dc4d9ad933046d110da38f1c0d531196d90",
-      "byteSize": 82857,
+      "sha256": "5ea83dc5a925b51c980c7116160087422d0c9367c469974cd6ff73abecf5c3ab",
+      "byteSize": 68571,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "orbit.png",
-      "sha256": "810509d91917005bffc6b30afdfaabbd1518cd4a16e31988e3fece7ffc192b57",
-      "byteSize": 62346,
+      "sha256": "b73aa2c3c5b69065c2637febf01a1adba5c69c1eb59927391ea4f69389e5c707",
+      "byteSize": 29736,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "tactical-twin-isolation.png",
-      "sha256": "4a06110d667fc3cd7d35da3a3ee253d9797fe492ce88cd233b69d740e3c336ba",
-      "byteSize": 48767,
+      "sha256": "1bb18b7b478a28245b7c50efb517384eb1b6373e46eac1f724a17f23470c7882",
+      "byteSize": 39049,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "weapon-witness.png",
-      "sha256": "41feb9f2ef3dba8cd1200333cc51fa708ee54f8b4a6e1611fb3d25fa0a1b5a72",
-      "byteSize": 49957,
+      "sha256": "3c64ee1439169c69667e50b675345b993516ad536911a8e152d87738a7525fdf",
+      "byteSize": 39588,
       "dimensions": [
-        838,
+        462,
         560
       ]
     },
     {
       "path": "completed-inspector.png",
-      "sha256": "06befbf5fd269fdb8f686ff10640b8c7b2855e10c21d2d3342ec2d43dcc63f90",
-      "byteSize": 52067,
+      "sha256": "f5c769d48fc2580e8a1586f01b8f67dda062bfde7c175783e332ef87fc014870",
+      "byteSize": 31121,
       "dimensions": [
         366,
         787

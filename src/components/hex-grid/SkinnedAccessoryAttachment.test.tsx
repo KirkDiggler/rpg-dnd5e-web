@@ -151,7 +151,7 @@ afterEach(() => {
   gltf.errors.clear();
   gltf.requests.length = 0;
   gltf.pending.clear();
-  renderState.invalidate.mockReset();
+  renderState.invalidate = vi.fn();
 });
 
 describe('SkinnedAccessoryAttachment', () => {
@@ -252,6 +252,62 @@ describe('SkinnedAccessoryAttachment', () => {
     expect(body.mesh.parent).toBe(body.root);
     expect(body.root.getObjectByName(`accessory:${FIRST_URL}`)).toBeDefined();
     expect(renderState.invalidate).toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('keeps the mounted identities stable across a StrictMode treatment update', async () => {
+    const body = makeBody();
+    makeAccessory(FIRST_URL);
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const first = presentation(FIRST_URL);
+    const { rerender, unmount } = render(
+      <StrictMode>
+        <SkinnedAccessoryAttachment
+          characterRoot={body.root}
+          presentation={first}
+          onStatus={(status) => statuses.push(status)}
+        />
+      </StrictMode>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const mountedMesh = body.root.getObjectByName(
+      `accessory:${FIRST_URL}`
+    ) as THREE.SkinnedMesh;
+    const mountedMaterial = mountedMesh.material as THREE.MeshStandardMaterial;
+    expect(statuses.at(-1)).toMatchObject({
+      code: 'attached',
+      meshUuid: mountedMesh.uuid,
+      instanceMaterials: [{ materialUuid: mountedMaterial.uuid }],
+    });
+    statuses.length = 0;
+
+    rerender(
+      <StrictMode>
+        <SkinnedAccessoryAttachment
+          characterRoot={body.root}
+          presentation={presentation(FIRST_URL, first.styleRef, {
+            ...TREATMENT,
+            baseColorSrgb: '#D8B36A',
+          })}
+          onStatus={(status) => statuses.push(status)}
+        />
+      </StrictMode>
+    );
+
+    const updatedMesh = body.root.getObjectByName(
+      `accessory:${FIRST_URL}`
+    ) as THREE.SkinnedMesh;
+    expect(updatedMesh).toBe(mountedMesh);
+    expect(updatedMesh.material).toBe(mountedMaterial);
+    expect(statuses.map((status) => status.code)).toEqual(['attached']);
+    expect(statuses[0]).toMatchObject({
+      code: 'attached',
+      meshUuid: mountedMesh.uuid,
+      instanceMaterials: [{ materialUuid: mountedMaterial.uuid }],
+    });
 
     unmount();
   });
@@ -497,45 +553,83 @@ describe('SkinnedAccessoryAttachment', () => {
     expect(bodySkeletonDispose).not.toHaveBeenCalled();
   });
 
-  it('rebuilds treatment changes without retaining the old mesh or material', async () => {
+  it('updates treatment in place without a loading or attachment lifecycle pop', async () => {
     const body = makeBody();
-    makeAccessory(FIRST_URL);
+    const sourceAccessory = makeAccessory(FIRST_URL);
+    const sourceClone = vi.spyOn(sourceAccessory.root, 'clone');
+    const bind = vi.spyOn(THREE.SkinnedMesh.prototype, 'bind');
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const lifecycle: string[] = [];
+    body.root.addEventListener('childadded', (event) => {
+      if (event.child.name.startsWith('accessory:')) {
+        lifecycle.push(`added:${event.child.uuid}`);
+      }
+    });
+    body.root.addEventListener('childremoved', (event) => {
+      if (event.child.name.startsWith('accessory:')) {
+        lifecycle.push(`removed:${event.child.uuid}`);
+      }
+    });
+
     const first = presentation(FIRST_URL);
     const renderer = await ReactThreeTestRenderer.create(
       <SkinnedAccessoryAttachment
         characterRoot={body.root}
         presentation={first}
+        onStatus={(status) => statuses.push(status)}
       />
     );
-    const oldMesh = body.root.getObjectByName(
+    const mountedMesh = body.root.getObjectByName(
       `accessory:${FIRST_URL}`
     ) as THREE.SkinnedMesh;
-    const oldMaterial = oldMesh.material as THREE.MeshStandardMaterial;
-    const oldMaterialDispose = vi.spyOn(oldMaterial, 'dispose');
+    const mountedMaterial = mountedMesh.material as THREE.MeshStandardMaterial;
+    const materialUuid = mountedMaterial.uuid;
+    const materialDispose = vi.spyOn(mountedMaterial, 'dispose');
+    statuses.length = 0;
+    lifecycle.length = 0;
+    sourceClone.mockClear();
+    bind.mockClear();
     renderState.invalidate.mockClear();
+    const updatedInvalidate = vi.fn();
+    renderState.invalidate = updatedInvalidate;
 
-    const recolored = presentation(FIRST_URL, first.styleRef, {
-      ...TREATMENT,
+    const updatedTreatment = {
       baseColorSrgb: '#D8B36A',
-    });
+      roughness: 0.33,
+      metalness: 0.66,
+    } as const satisfies RuntimeSurfaceTreatment;
+    const recolored = presentation(FIRST_URL, first.styleRef, updatedTreatment);
     await renderer.update(
       <SkinnedAccessoryAttachment
         characterRoot={body.root}
         presentation={recolored}
+        onStatus={(status) => statuses.push(status)}
       />
     );
 
-    const replacement = body.root.getObjectByName(
+    const updatedMesh = body.root.getObjectByName(
       `accessory:${FIRST_URL}`
     ) as THREE.SkinnedMesh;
-    expect(replacement).not.toBe(oldMesh);
-    expect(oldMesh.parent).toBeNull();
-    expect(oldMaterialDispose).toHaveBeenCalledOnce();
-    expect(
-      (replacement.material as THREE.MeshStandardMaterial).color.getHexString()
-    ).toBe('d8b36a');
-    expect(renderState.invalidate).toHaveBeenCalledTimes(2);
+    expect(updatedMesh).toBe(mountedMesh);
+    expect(updatedMesh.parent).toBe(body.root);
+    expect(updatedMesh.material).toBe(mountedMaterial);
+    expect(mountedMaterial.uuid).toBe(materialUuid);
+    expect(mountedMaterial.color.getHexString()).toBe('d8b36a');
+    expect(mountedMaterial.roughness).toBe(updatedTreatment.roughness);
+    expect(mountedMaterial.metalness).toBe(updatedTreatment.metalness);
+    expect(statuses.map((status) => status.code)).toEqual(['attached']);
+    expect(statuses[0]).toMatchObject({
+      code: 'attached',
+      meshUuid: mountedMesh.uuid,
+      instanceMaterials: [{ materialUuid, ...updatedTreatment }],
+    });
+    expect(lifecycle).toEqual([]);
+    expect(sourceClone).not.toHaveBeenCalled();
+    expect(bind).not.toHaveBeenCalled();
+    expect(materialDispose).not.toHaveBeenCalled();
+    expect(updatedInvalidate).toHaveBeenCalledOnce();
 
+    bind.mockRestore();
     await renderer.unmount();
   });
 });

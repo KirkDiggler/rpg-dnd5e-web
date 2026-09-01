@@ -15,6 +15,8 @@ import type {
   ResolvedCustomizationFixture,
 } from './characterCustomizationExperiment';
 
+const gltfPreload = vi.hoisted(() => vi.fn());
+
 const previewState = vi.hoisted(() => ({
   publishDiagnostics: true,
   latest: undefined as
@@ -25,6 +27,14 @@ const previewState = vi.hoisted(() => ({
       }
     | undefined,
 }));
+
+vi.mock('@react-three/drei', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@react-three/drei')>();
+  return {
+    ...actual,
+    useGLTF: Object.assign(actual.useGLTF, { preload: gltfPreload }),
+  };
+});
 
 vi.mock('./CharacterCustomizationPreview', () => ({
   CharacterCustomizationPreview: (props: {
@@ -54,6 +64,7 @@ vi.mock('./CharacterCustomizationPreview', () => ({
           slot: resolution.slot,
           styleRef: resolution.styleRef,
           url: resolution.asset.url,
+          meshUuid: `${identity}-${resolution.slot}-mesh`,
           bodyRootBoneUuid: `${identity}-root-bone`,
           mappedBoneNames: ['Root', 'Head'],
           mappedBoneUuids: [`${identity}-root`, `${identity}-head`],
@@ -72,6 +83,7 @@ vi.mock('./CharacterCustomizationPreview', () => ({
         slot: 'scalp' as const,
         styleRef: DEFAULT_SCALP_STYLE_REF,
         url: SCALP_OPTIONS[0].url,
+        meshUuid: 'reference-scalp-mesh',
         bodyRootBoneUuid: 'reference-root-bone',
         mappedBoneNames: ['Root', 'Head'],
         mappedBoneUuids: ['reference-root', 'reference-head'],
@@ -89,6 +101,7 @@ vi.mock('./CharacterCustomizationPreview', () => ({
         slot: 'facial-hair' as const,
         styleRef: DEFAULT_FACIAL_HAIR_STYLE_REF,
         url: FACIAL_HAIR_OPTIONS[1].url,
+        meshUuid: 'reference-facial-hair-mesh',
         bodyRootBoneUuid: 'reference-root-bone',
         mappedBoneNames: ['Root', 'Head'],
         mappedBoneUuids: ['reference-root', 'reference-head'],
@@ -128,6 +141,7 @@ function setSearch(search: string) {
 }
 
 beforeEach(() => {
+  gltfPreload.mockReset();
   previewState.latest = undefined;
   previewState.publishDiagnostics = true;
   setSearch('/');
@@ -144,6 +158,41 @@ describe('CharacterCustomizationConcept', () => {
     expect(
       screen.getByRole('heading', { name: /Character Customization Lab/i })
     ).toBeTruthy();
+  });
+
+  it('preloads all six exact Concept accessory URLs when the lab mounts', () => {
+    render(<CharacterCustomizationConcept />);
+
+    expect(gltfPreload.mock.calls.map(([url]) => url)).toEqual([
+      ...SCALP_OPTIONS.map((option) => option.url),
+      ...FACIAL_HAIR_OPTIONS.map((option) => option.url),
+    ]);
+  });
+
+  it('lays out bounded controls beside the preview with a responsive inspector pane', () => {
+    render(<CharacterCustomizationConcept />);
+
+    const workspace = screen.getByTestId('character-customization-workspace');
+    const controls = screen.getByTestId(
+      'character-customization-controls-pane'
+    );
+    const preview = screen.getByTestId('character-customization-preview-pane');
+    const inspector = screen.getByTestId(
+      'character-customization-inspector-pane'
+    );
+
+    expect(workspace.className).toContain('lg:grid-cols-');
+    expect(workspace.className).toContain('2xl:grid-cols-');
+    expect([...workspace.children]).toEqual([controls, preview, inspector]);
+    expect(controls.className).toContain('lg:sticky');
+    expect(controls.className).toContain('lg:max-h-[560px]');
+    expect(controls.className).toContain('lg:overflow-y-auto');
+    expect(preview.className).toContain('lg:sticky');
+    expect(inspector.className).toContain('lg:col-span-2');
+    expect(inspector.className).toContain('lg:max-h-[560px]');
+    expect(inspector.className).toContain('lg:overflow-y-auto');
+    expect(inspector.className).toContain('2xl:col-span-1');
+    expect(inspector.className).toContain('2xl:sticky');
   });
 
   it('controls both slots independently with every exact provider option', () => {

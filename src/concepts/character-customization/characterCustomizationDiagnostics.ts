@@ -119,6 +119,7 @@ export function sameAccessoryStatus(
         left.code === 'attached' &&
         left.styleRef === right.styleRef &&
         left.url === right.url &&
+        left.meshUuid === right.meshUuid &&
         left.bodyRootBoneUuid === right.bodyRootBoneUuid &&
         sameStringArray(left.mappedBoneNames, right.mappedBoneNames) &&
         sameStringArray(left.mappedBoneUuids, right.mappedBoneUuids) &&
