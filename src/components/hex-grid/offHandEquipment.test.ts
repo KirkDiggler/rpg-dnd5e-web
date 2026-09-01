@@ -13,7 +13,7 @@ const equipped = (type: string, id: string): EquippedMap => ({
 });
 
 describe('off-hand presentation catalog', () => {
-  it('uses the exact reviewed five-item order and provider URLs', () => {
+  it('uses the exact reviewed six-item order and provider URLs', () => {
     expect(CURRENT_OFF_HAND_ITEMS).toEqual([
       {
         ref: 'dnd5e:item:shield',
@@ -50,6 +50,13 @@ describe('off-hand presentation catalog', () => {
         assetKind: 'weapon',
         assetUrl: '/models/synty/off-hand/sickle.glb',
       },
+      {
+        ref: 'dnd5e:item:scimitar',
+        id: 'scimitar',
+        label: 'Scimitar',
+        assetKind: 'weapon',
+        assetUrl: '/models/synty/off-hand/scimitar.glb',
+      },
     ]);
   });
 
@@ -81,14 +88,28 @@ describe('off-hand presentation catalog', () => {
         assetUrl: '/models/synty/off-hand/handaxe.glb',
       },
     });
-    expect(resolveOffHandPresentation(equipped('item', 'war-pick'))).toEqual({
-      code: 'unmapped-ref',
-      ref: 'dnd5e:item:war-pick',
+    expect(
+      resolveOffHandPresentation(equipped('item', 'scimitar'))
+    ).toMatchObject({
+      code: 'mapped',
+      presentation: {
+        ref: 'dnd5e:item:scimitar',
+        assetUrl: '/models/synty/off-hand/scimitar.glb',
+        assetKind: 'weapon',
+      },
     });
-    expect(resolveOffHandPresentation(equipped('weapons', 'dagger'))).toEqual({
-      code: 'unmapped-ref',
-      ref: 'dnd5e:weapons:dagger',
-    });
+    for (const id of ['war-pick', 'glaive', 'trident', 'lance']) {
+      expect(resolveOffHandPresentation(equipped('item', id))).toEqual({
+        code: 'unmapped-ref',
+        ref: `dnd5e:item:${id}`,
+      });
+    }
+    expect(resolveOffHandPresentation(equipped('weapons', 'scimitar'))).toEqual(
+      {
+        code: 'unmapped-ref',
+        ref: 'dnd5e:weapons:scimitar',
+      }
+    );
     expect(resolveOffHandPresentation({})).toEqual({ code: 'empty-off-hand' });
   });
 

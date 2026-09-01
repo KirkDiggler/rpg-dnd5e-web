@@ -9,7 +9,11 @@ export type OffHandStateId =
   | 'empty'
   | 'shield-only'
   | 'longsword-shield'
-  | 'shortsword-dagger';
+  | 'shortsword-dagger'
+  | 'glaive-main'
+  | 'trident-main'
+  | 'scimitar-main'
+  | 'dual-scimitars';
 export type OffHandClassId = 'fighter' | 'barbarian' | 'monk' | 'rogue';
 export type OffHandRaceId =
   | 'human'
@@ -52,6 +56,19 @@ export const OFF_HAND_FIXTURES: readonly OffHandFixture[] = Object.freeze([
   fixture('shortsword-dagger', 'Shortsword + Dagger', {
     main_hand: itemRef('shortsword'),
     off_hand: itemRef('dagger'),
+  }),
+  fixture('glaive-main', 'Glaive main', {
+    main_hand: itemRef('glaive'),
+  }),
+  fixture('trident-main', 'Trident main', {
+    main_hand: itemRef('trident'),
+  }),
+  fixture('scimitar-main', 'Scimitar main', {
+    main_hand: itemRef('scimitar'),
+  }),
+  fixture('dual-scimitars', 'Dual Scimitars', {
+    main_hand: itemRef('scimitar'),
+    off_hand: itemRef('scimitar'),
   }),
 ]);
 

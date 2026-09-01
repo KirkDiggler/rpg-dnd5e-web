@@ -105,27 +105,27 @@ owner-private `CharacterData` cache. It projects `equipped.main_hand` through
 `offHandEquipment.ts`, then passes both presentations through `SessionCanvas`
 and `HexEntity` to `ClassCharacterModel`.
 
-The resolver is display-only and exact-ref-only: the current 27 promoted
-`dnd5e:item:*` refs (provider commit `a67f916880718a84b502b66b2b63683b03990f59`,
+The resolver is display-only and exact-ref-only: the current 30 promoted
+`dnd5e:item:*` refs (provider commit `00cbd7cdcc338edaa249e3707492341fe1c4a416`,
 `weapons/manifest.json` sha256
-`cec88cd26d95568de01e6d1181184ced0eb4212c28d0cf1524b30c640fc449db`) map to
-`/models/synty/weapons/*.glb`, including Light Crossbow, Longbow, Javelin,
-Rapier, Light Hammer, Mace, Sickle, Spear, Sling, Dart, Halberd, Maul,
-Morningstar, Pike, and War Pick appended after the original twelve. Attack refs
-and unknown items such as Flail remain unarmed. All four current class rigs share
-`townfolk-main-hand-v1`; no class × weapon offset table exists. Equip/unequip
+`eb0c2fd4402c05e8ac68c9b950d9fd9f6d3784e2ec16a9e36fac06bb45eba46a`) map to
+`/models/synty/weapons/*.glb`. Glaive, Scimitar, and Trident append after the
+prior 27-item roster without changing its order or paths. Attack refs and
+unknown items such as Flail and Lance remain unarmed. All four current class
+rigs share `townfolk-main-hand-v1`; no class × weapon offset table exists. Equip/unequip
 continues replacing the complete owner cache from the RPC response, so the
 model changes on that same render. A cold running-encounter resume recovers the
 authenticated player's character ID from the retained lobby's first snapshot
 before `GetCharacterData` restores equipment.
 
 The off-hand catalog consumes exact provider merge
-`71dff14f57afe41ff320dee15081123ec1daddc2` / manifest
-`bdfbf2484ab15fd0d054222f16f127922e8a6ea0aea2e5ce430bb97aaeb8c790`:
-Shield, Dagger, Shortsword, Handaxe, and Sickle. Dagger/Shortsword reuse the
-canonical weapon GLBs; Handaxe/Sickle use provider-baked left-hand variants.
-Unsupported and attack-shaped refs remain visually empty. Townfolk and modular
-rigs each use one `Hand_L` socket; the browser owns no item transform table.
+`00cbd7cdcc338edaa249e3707492341fe1c4a416` / manifest
+`975833c55e9bf405573ebb4e911f8fb1a3fe50e680cb4718f21c6b4587feadf1`:
+Shield, Dagger, Shortsword, Handaxe, Sickle, and Scimitar. Dagger/Shortsword
+reuse the canonical weapon GLBs; Handaxe/Sickle/Scimitar use provider-baked
+left-hand variants. Unsupported and attack-shaped refs remain visually empty.
+Townfolk and modular rigs each use one `Hand_L` socket; the browser owns no item
+transform table.
 
 Only the acting player's private equipment reaches this path. A sighted peer's
 public roster entry has no equipment projection, so peer hand equipment remains

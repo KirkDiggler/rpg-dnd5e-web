@@ -35,7 +35,7 @@ production-backed extension proved fighter, barbarian, monk, and rogue against
 unarmed plus the 12 outputs promoted by `rpg-game-assets#71`. The current live
 Concept still imports the production exact-ref resolver instead of retaining a
 second candidate map, and now exposes those four classes against unarmed plus
-all 27 exact supported outputs from `rpg-game-assets#100 · 27-item provider
+all 30 exact supported outputs from `rpg-game-assets#114 · 30-item provider
 manifest`.
 
 - Runtime URLs are `/models/synty/weapons/<id>.glb` for the exact supported
@@ -49,3 +49,5 @@ manifest`.
   `docs/evidence/832-authoritative-main-hand/`.
 - Two-hand contact, finger posing, combat/bow animation, peer equipment, and
   weapons outside the current provider roster remain outside this contract.
+- Glaive, Scimitar, and Trident append after the historical 27 outputs and are
+  exposed automatically by the production catalog-backed Concept controls.

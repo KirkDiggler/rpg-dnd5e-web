@@ -63,10 +63,10 @@ export function mainHandSocketForRigFamily(
 }
 
 /**
- * The complete current 27-item provider roster from rpg-game-assets#100
- * (provider commit a67f916880718a84b502b66b2b63683b03990f59,
+ * The complete current 30-item provider roster from rpg-game-assets#114
+ * (provider commit 00cbd7cdcc338edaa249e3707492341fe1c4a416,
  * weapons/manifest.json sha256
- * cec88cd26d95568de01e6d1181184ced0eb4212c28d0cf1524b30c640fc449db). This is
+ * eb0c2fd4402c05e8ac68c9b950d9fd9f6d3784e2ec16a9e36fac06bb45eba46a). This is
  * an exact presentation lookup, not weapon rules: no proficiency,
  * handedness, or attack identity is inferred here.
  */
@@ -232,6 +232,24 @@ export const CURRENT_MAIN_HAND_WEAPONS = Object.freeze([
     id: 'war-pick',
     label: 'War Pick',
     weaponUrl: '/models/synty/weapons/war-pick.glb',
+  },
+  {
+    ref: 'dnd5e:item:glaive',
+    id: 'glaive',
+    label: 'Glaive',
+    weaponUrl: '/models/synty/weapons/glaive.glb',
+  },
+  {
+    ref: 'dnd5e:item:scimitar',
+    id: 'scimitar',
+    label: 'Scimitar',
+    weaponUrl: '/models/synty/weapons/scimitar.glb',
+  },
+  {
+    ref: 'dnd5e:item:trident',
+    id: 'trident',
+    label: 'Trident',
+    weaponUrl: '/models/synty/weapons/trident.glb',
   },
 ] as const satisfies readonly MainHandWeaponDefinition[]);
 
