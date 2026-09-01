@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
 import { DungeonBuilderSandbox } from '../author/DungeonBuilderSandbox';
 import { AttackDie3DConcept } from './attack-die-3d/AttackDie3DConcept';
+import { CharacterCustomizationConcept } from './character-customization/CharacterCustomizationConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
@@ -18,6 +19,7 @@ import { WeaponAttachmentConcept } from './weapon-attachment/WeaponAttachmentCon
 type ConceptPage =
   | 'attack-die-3d'
   | 'class-selection'
+  | 'character-customization'
   | 'encounter-dock'
   | 'combat-panel'
   | 'equipment'
@@ -34,6 +36,7 @@ type ConceptPage =
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'attack-die-3d', label: 'Attack Die 3D' },
   { id: 'class-selection', label: 'Class Selection' },
+  { id: 'character-customization', label: 'Character Customization' },
   { id: 'encounter-dock', label: 'Encounter Dock' },
   { id: 'combat-panel', label: 'Combat Panel' },
   { id: 'equipment', label: 'Equipment' },
@@ -127,6 +130,9 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
       >
         {activePage === 'attack-die-3d' && <AttackDie3DConcept />}
         {activePage === 'class-selection' && <ClassSelectionConcept />}
+        {activePage === 'character-customization' && (
+          <CharacterCustomizationConcept />
+        )}
         {activePage === 'encounter-dock' && <EncounterDockConcept />}
         {activePage === 'combat-panel' && <CombatPanelConcept />}
         {activePage === 'equipment' && <EquipmentConcept />}

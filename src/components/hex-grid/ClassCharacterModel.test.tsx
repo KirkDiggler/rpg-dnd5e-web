@@ -11,12 +11,17 @@ import type {
   OffHandAttachmentStatus,
   OffHandPresentation,
 } from './offHandEquipment';
+import type {
+  SkinnedAccessoryPresentation,
+  SkinnedAccessoryStatus,
+} from './SkinnedAccessoryAttachment';
 
 const fighterUrl = '/models/synty/characters/fighter.glb';
 const failedWeapon = '/models/synty/characters/weapons/fighter-weapon.glb';
 const firstWeapon = '/models/synty/characters/weapons/fighter-weapon-a.glb';
 const remappedWeapon =
   '/models/synty/characters/weapons/fighter-weapon-remap.glb';
+const rejectedAccessory = '/concept/accessories/rejected-hair.glb';
 const socket = {
   bone: 'Hand_R',
   boneUnitMeters: 0.01,
@@ -59,10 +64,12 @@ const Task8ClassCharacterModel = ClassCharacterModel as unknown as (
 const gltf = vi.hoisted(() => ({
   scenes: new Map<string, THREE.Group>(),
   failed: new Set<string>(),
+  requests: [] as string[],
 }));
 
 vi.mock('@react-three/drei', () => ({
   useGLTF: (url: string) => {
+    gltf.requests.push(url);
     if (gltf.failed.has(url)) throw new Error(`failed ${url}`);
 
     let scene = gltf.scenes.get(url);
@@ -73,17 +80,42 @@ vi.mock('@react-three/drei', () => ({
       if (url === fighterUrl) {
         const root = new THREE.Group();
         root.name = 'Root';
+        const rootBone = new THREE.Bone();
+        rootBone.name = 'Root';
         const hand = new THREE.Bone();
         hand.name = 'Hand_R';
         const offHand = new THREE.Bone();
         offHand.name = 'Hand_L';
-        const body = new THREE.Mesh(
+        rootBone.add(hand, offHand);
+        const skeleton = new THREE.Skeleton(
+          [rootBone, hand, offHand],
+          [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()]
+        );
+        const body = new THREE.SkinnedMesh(
           new THREE.BoxGeometry(),
           new THREE.MeshStandardMaterial()
         );
         body.name = 'fighter-body';
-        root.add(hand, offHand, body);
+        body.bind(skeleton, new THREE.Matrix4());
+        root.add(rootBone, body);
         scene.add(root);
+      } else if (url === rejectedAccessory) {
+        const rootBone = new THREE.Bone();
+        rootBone.name = 'Root';
+        const missingBone = new THREE.Bone();
+        missingBone.name = 'Tail';
+        rootBone.add(missingBone);
+        const skeleton = new THREE.Skeleton(
+          [rootBone, missingBone],
+          [new THREE.Matrix4(), new THREE.Matrix4()]
+        );
+        const mesh = new THREE.SkinnedMesh(
+          new THREE.BoxGeometry(),
+          new THREE.MeshStandardMaterial()
+        );
+        mesh.name = `cached-mesh:${url}`;
+        mesh.bind(skeleton, new THREE.Matrix4());
+        scene.add(rootBone, mesh);
       } else {
         const mesh = new THREE.Mesh(
           new THREE.BoxGeometry(),
@@ -140,6 +172,66 @@ beforeAll(() => {
 afterEach(() => {
   gltf.scenes.clear();
   gltf.failed.clear();
+  gltf.requests.length = 0;
+});
+
+it('does not mount an accessory loader when accessories are absent', async () => {
+  const renderer = await ReactThreeTestRenderer.create(
+    <ClassCharacterModel url={fighterUrl} />
+  );
+
+  expect(gltf.requests).toEqual([fighterUrl]);
+  expect(
+    renderer.scene.findAll(
+      (node) =>
+        (node.instance as { name?: string } | undefined)?.name ===
+        'fighter-body'
+    )
+  ).toHaveLength(1);
+
+  await renderer.unmount();
+});
+
+it('keeps the real body mounted and reports a rejected accessory bind', async () => {
+  const statuses: SkinnedAccessoryStatus[] = [];
+  const accessories: readonly SkinnedAccessoryPresentation[] = [
+    {
+      slot: 'scalp',
+      styleRef: 'concept:hair:rejected',
+      url: rejectedAccessory,
+      treatment: {
+        baseColorSrgb: '#6B3F26',
+        roughness: 0.8,
+        metalness: 0.05,
+      },
+    },
+  ];
+
+  const renderer = await ReactThreeTestRenderer.create(
+    <ClassCharacterModel
+      url={fighterUrl}
+      accessories={accessories}
+      onAccessoryStatus={(status) => statuses.push(status)}
+    />
+  );
+
+  expect(gltf.requests).toContain(rejectedAccessory);
+  expect(
+    renderer.scene.findAll(
+      (node) =>
+        (node.instance as { name?: string } | undefined)?.name ===
+        'fighter-body'
+    )
+  ).toHaveLength(1);
+  expect(statuses.at(-1)).toMatchObject({
+    code: 'rejected',
+    slot: 'scalp',
+    styleRef: 'concept:hair:rejected',
+    url: rejectedAccessory,
+    message: 'Body Skeleton is missing accessory bones: Tail.',
+  });
+
+  await renderer.unmount();
 });
 
 it('mounts main and off-hand assets independently on their exact bones', async () => {
