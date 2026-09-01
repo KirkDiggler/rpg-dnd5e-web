@@ -18,8 +18,8 @@ export interface MainHandWeaponDefinition {
 /**
  * Shared by the four current Townfolk class rigs. Provider evidence #67
  * measured exact-equal Hand_R matrices across fighter, barbarian, monk, and
- * rogue over sampled idle/walk frames; provider #100 binds every current weapon
- * output to this accepted profile.
+ * rogue over sampled idle/walk frames; cumulative provider #114 binds all 30
+ * current weapon outputs to this accepted rig-family profile.
  */
 export const TOWNFOLK_MAIN_HAND_SOCKET: MainHandSocket = Object.freeze({
   bone: 'Hand_R',
