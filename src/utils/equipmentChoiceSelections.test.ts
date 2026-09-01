@@ -101,6 +101,46 @@ describe('persisted equipment-choice hydration', () => {
   });
 });
 
+describe('equipment choice serialization', () => {
+  it('preserves two identical authoritative selections as two ordered wire entries', () => {
+    const converted = convertEquipmentChoiceToProto(
+      {
+        choiceId: 'fighter-starting-equipment',
+        bundleId: 'fighter-pack-a',
+        categorySelections: [
+          {
+            categoryIndex: 0,
+            equipmentIds: ['longsword-selection', 'longsword-selection'],
+          },
+        ],
+      },
+      ChoiceSource.CLASS
+    );
+
+    expect(converted.selection).toEqual({
+      case: 'equipment',
+      value: create(EquipmentSelectionSchema, {
+        items: [
+          create(EquipmentSelectionItemSchema, {
+            equipment: {
+              case: 'otherEquipmentId',
+              value: 'longsword-selection',
+            },
+            quantity: 1,
+          }),
+          create(EquipmentSelectionItemSchema, {
+            equipment: {
+              case: 'otherEquipmentId',
+              value: 'longsword-selection',
+            },
+            quantity: 1,
+          }),
+        ],
+      }),
+    });
+  });
+});
+
 describe('persisted mixed-bundle round trip (fixed item + enum-backed categories)', () => {
   // The real wire shape from rpg-api: a fixed bundle item and toolkit-
   // enumerated category selections are never `other_equipment_id` — they
