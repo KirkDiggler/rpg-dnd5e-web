@@ -82,7 +82,7 @@ describe('persisted equipment-choice hydration', () => {
     expect(isCompleteEquipmentChoice(declaredChoice, reconstructed)).toBe(true);
   });
 
-  it('keeps a legacy same-category duplicate invalid, including at final-submit gating', () => {
+  it('accepts a repeated same-category ID by declared count, including at final-submit gating', () => {
     const persisted = persistedDraftChoice([
       'longsword-selection',
       'longsword-selection',
@@ -94,9 +94,9 @@ describe('persisted equipment-choice hydration', () => {
         declaredChoice,
         reconstructEquipmentChoice(declaredChoice, persisted)
       )
-    ).toBe(false);
+    ).toBe(true);
     expect(hasNoInvalidEquipmentChoices([declaredChoice], [persisted])).toBe(
-      false
+      true
     );
   });
 });

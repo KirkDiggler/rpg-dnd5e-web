@@ -1,11 +1,11 @@
 ---
 name: equipment
 description: The equipment chip + popover on the live game screen — wire-shaped components shared with the /concepts bench
-updated: 2026-07-22
-confidence: high — verified by reading the components/hooks in full and by a live MCP playtest against a running rpg-api/rpg-toolkit stack
+updated: 2026-08-31
+confidence: high automated — quantity-aware carried/equipped rendering is component-tested; the original equip flow was also live-playtested against rpg-api/rpg-toolkit
 ---
 
-# Equipment (rpg-dnd5e-web#571)
+# Equipment (rpg-dnd5e-web#571, #880)
 
 The equipment chip + popover on `EncounterDock`, letting a player equip/
 unequip mid-run and see server-computed AC/damage update. Originated as
@@ -29,8 +29,11 @@ Production components: `src/components/game/equipment/`
 - `EquipmentSlots.tsx` — the worn/wielded picture, one HUD-framed socket
   per `SlotDef`. Click an occupied socket -> `UnequipItem` intent.
 - `InventoryLight.tsx` — the carried-items list (a compact list, not a
-  grid). Click an equippable row -> `EquipItem` intent targeting
-  `targetSlotFor`'s pick.
+  grid). Each owner stack subtracts equipped occurrences of its full
+  `{module,type,id}` ref; a multi-copy stack remains visible with its carried
+  count (including `×1`) until every copy is equipped. A legacy zero quantity
+  displays as one rollout-compatible copy. Click an equippable row ->
+  `EquipItem` intent targeting `targetSlotFor`'s pick.
 - `EquipmentPopover.tsx` — composes the two above plus the AC/damage
   readout header. Fully prop-driven: no fixture dependency, no internal
   equip-simulation state — the caller owns `equipped`/`items`/`slots`/
@@ -151,9 +154,10 @@ AC, damage, two-handed displacement, and reconnect authority are unchanged.
   `ideas/equipment/item-icons/design.md` for the full coverage boundary
   and tier rationale (dedicated/approximate/generic — recorded metadata,
   not rendered in v1).
-- **No drag-and-drop, encumbrance, or stacking** — per the `/concepts`
-  bench's original scope decisions (CONTRACT.md), unchanged by
-  promotion.
+- **No drag-and-drop or encumbrance.** Owner-authored stack quantities are
+  display input (#880), not client inventory rules: equip intent and server
+  legality remain unchanged. The `/concepts` fixture simulator still uses
+  single-copy items and does not model stack mutations.
 
 ## Tests
 
@@ -163,7 +167,8 @@ AC, damage, two-handed displacement, and reconnect authority are unchanged.
 - `src/api/useEquipItem.test.ts` / `useUnequipItem.test.ts` — RPC request
   shape, loading/error state, mirroring `useTakeAction.test.ts`.
 - `src/components/game/equipment/{EquipmentSlots,InventoryLight,EquipmentPopover}.test.tsx`
-  — prop-driven rendering, intent emission, icon fallback, `busy` gating.
+  — prop-driven rendering, quantity-aware carried counts, repeated refs in
+  both sockets, intent emission, icon fallback, `busy` gating.
 - `src/hooks/useEncounterState.test.ts` — snapshot/appear equipment
   hydration, `applyCharacterEquipment` (including the `entityAC`
   refresh), preservation across entries/characters.

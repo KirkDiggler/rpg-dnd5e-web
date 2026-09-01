@@ -99,6 +99,7 @@ function equipmentFixture(): CharacterEquipment {
         iconKey: '',
         kind: 'weapon',
         slotKeys: ['main_hand', 'off_hand'],
+        quantity: 1,
       },
       {
         ref: { module: 'dnd5e', type: 'item', id: 'shield' },
@@ -107,6 +108,7 @@ function equipmentFixture(): CharacterEquipment {
         iconKey: '',
         kind: 'shield',
         slotKeys: ['off_hand'],
+        quantity: 1,
       },
       {
         ref: { module: 'dnd5e', type: 'item', id: 'greatsword' },
@@ -115,6 +117,7 @@ function equipmentFixture(): CharacterEquipment {
         iconKey: '',
         kind: 'weapon',
         slotKeys: ['main_hand'],
+        quantity: 1,
       },
     ],
     slots: [

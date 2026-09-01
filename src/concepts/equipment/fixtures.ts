@@ -80,6 +80,7 @@ const item = (
   statLine,
   iconKey,
   slotKeys,
+  quantity: 1,
   twoHanded,
 });
 
