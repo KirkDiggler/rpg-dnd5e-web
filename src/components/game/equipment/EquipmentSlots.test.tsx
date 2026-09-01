@@ -17,6 +17,7 @@ const ITEMS: ItemLike[] = [
     iconKey: 'icons/weapons/longsword.png',
     kind: 'weapon',
     slotKeys: ['main_hand', 'off_hand'],
+    quantity: 2,
   },
 ];
 
@@ -51,6 +52,27 @@ describe('EquipmentSlots', () => {
     expect(socket.textContent).toContain('Longsword');
     expect(socket.textContent).toContain('1d8 slashing · versatile');
     expect((socket as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('renders the same multi-copy ref in both occupied sockets', () => {
+    const equipped: EquippedMap = {
+      main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
+      off_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
+    };
+    render(
+      <EquipmentSlots
+        slots={SLOTS}
+        equipped={equipped}
+        items={ITEMS}
+        onIntent={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId('equip-socket-main_hand').textContent).toContain(
+      'Longsword'
+    );
+    expect(screen.getByTestId('equip-socket-off_hand').textContent).toContain(
+      'Longsword'
+    );
   });
 
   it('emits an UnequipItem intent when an occupied socket is clicked', () => {

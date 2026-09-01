@@ -43,6 +43,8 @@ export interface ItemLike {
   kind: string;
   /** Slot keys this item may occupy, e.g. ["main_hand", "off_hand"]. */
   slotKeys: string[];
+  /** Number of copies owned, authored by the server. */
+  quantity: number;
 }
 
 /** slot key -> the Ref worn/wielded there — matches CharacterData.equipped. */

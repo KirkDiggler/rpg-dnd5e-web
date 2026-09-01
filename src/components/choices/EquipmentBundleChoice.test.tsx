@@ -133,7 +133,7 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
     );
   });
 
-  it('disables an already selected option in sibling slots to prevent pointer duplicates', () => {
+  it('allows the same authoritative option in multiple slots by pointer', () => {
     const onSelectionChange = vi.fn();
     render(
       <EquipmentBundleChoice
@@ -152,19 +152,20 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
     );
     fireEvent.click(second);
 
-    const duplicate = within(screen.getByRole('listbox')).getByTestId(
+    const repeatedOption = within(screen.getByRole('listbox')).getByTestId(
       'equipment-category-0-slot-1-option-club-selection'
     );
-    expect(duplicate.getAttribute('aria-disabled')).toBe('true');
-    fireEvent.click(duplicate);
+    expect(repeatedOption.getAttribute('aria-disabled')).toBeNull();
+    fireEvent.click(repeatedOption);
 
     expect(onSelectionChange).toHaveBeenLastCalledWith(
       'bundle-a',
-      new Map([[0, [CLUB]]])
+      new Map([[0, [CLUB, CLUB]]])
     );
+    expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
   });
 
-  it('skips a sibling-held option when selected by keyboard', () => {
+  it('allows the same authoritative option in multiple slots by keyboard', () => {
     const onSelectionChange = vi.fn();
     render(
       <EquipmentBundleChoice
@@ -185,17 +186,17 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
     second.focus();
     fireEvent.keyDown(second, { key: 'ArrowDown' });
     expect(second.getAttribute('aria-activedescendant')).toBe(
-      'equipment-category-0-slot-1-option-dart-selection'
+      'equipment-category-0-slot-1-option-club-selection'
     );
     fireEvent.keyDown(second, { key: 'Enter' });
 
     expect(onSelectionChange).toHaveBeenLastCalledWith(
       'bundle-a',
-      new Map([[0, [CLUB, DART]]])
+      new Map([[0, [CLUB, CLUB]]])
     );
   });
 
-  it('re-enables an old option after its sibling changes selection', () => {
+  it('keeps a sibling-held option enabled without requiring another slot to change', () => {
     render(
       <EquipmentBundleChoice
         choice={choice({ choose: 2 })}
@@ -216,24 +217,10 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
       within(screen.getByRole('listbox'))
         .getByTestId('equipment-category-0-slot-1-option-club-selection')
         .getAttribute('aria-disabled')
-    ).toBe('true');
-    fireEvent.keyDown(second, { key: 'Escape' });
-
-    fireEvent.click(first);
-    fireEvent.click(
-      within(screen.getByRole('listbox')).getByTestId(
-        'equipment-category-0-slot-0-option-dart-selection'
-      )
-    );
-    fireEvent.click(second);
-    expect(
-      within(screen.getByRole('listbox'))
-        .getByTestId('equipment-category-0-slot-1-option-club-selection')
-        .getAttribute('aria-disabled')
     ).toBeNull();
   });
 
-  it('surfaces legacy hydrated duplicate values and requires correction', () => {
+  it('hydrates repeated authoritative selection IDs as complete', () => {
     render(
       <EquipmentBundleChoice
         choice={choice({ choose: 2 })}
@@ -245,10 +232,8 @@ describe('EquipmentBundleChoice — authoritative category options (#690)', () =
       />
     );
 
-    expect(screen.getByRole('alert').textContent).toMatch(/different item/i);
-    expect(
-      screen.getByText(/Please complete all category selections/)
-    ).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText(/Equipment selection complete/)).toBeTruthy();
   });
 
   it('announces a persisted equipment correction instead of completion for unconsumed wire data', () => {

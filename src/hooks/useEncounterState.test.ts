@@ -102,6 +102,7 @@ function testEquipment(
         iconKey: '',
         kind: 'weapon',
         slotKeys: ['main_hand', 'off_hand'],
+        quantity: 1,
       },
     ],
     slots: [

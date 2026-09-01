@@ -146,8 +146,10 @@ function draftState(
 }
 
 describe('InteractiveCharacterSheet persisted equipment guard', () => {
-  it('disables finalization and does not invoke FinalizeDraft for a same-category legacy duplicate', () => {
-    const finalizeDraft = vi.fn<() => Promise<string>>();
+  it('allows finalization for a same-category repeated equipment selection', () => {
+    const finalizeDraft = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValue('char-1');
     render(
       <CharacterDraftContext.Provider value={draftState(finalizeDraft)}>
         <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
@@ -155,9 +157,9 @@ describe('InteractiveCharacterSheet persisted equipment guard', () => {
     );
 
     const finalize = screen.getByRole('button', { name: /begin adventure/i });
-    expect(finalize.getAttribute('disabled')).not.toBeNull();
+    expect(finalize.getAttribute('disabled')).toBeNull();
     fireEvent.click(finalize);
-    expect(finalizeDraft).not.toHaveBeenCalled();
+    expect(finalizeDraft).toHaveBeenCalled();
   });
 });
 

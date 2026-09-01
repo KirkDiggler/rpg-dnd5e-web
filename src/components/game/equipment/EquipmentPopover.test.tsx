@@ -14,6 +14,7 @@ const ITEMS: ItemLike[] = [
     iconKey: '',
     kind: 'weapon',
     slotKeys: ['main_hand'],
+    quantity: 1,
   },
 ];
 const EQUIPPED: EquippedMap = {
