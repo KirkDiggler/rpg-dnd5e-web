@@ -159,6 +159,60 @@ describe('DungeonBuilder', () => {
   });
 });
 
+describe("DungeonBuilder — the right rail is the author's to control", () => {
+  it('folds the inspector away and remembers it, leaving the YAML pane standing', async () => {
+    window.localStorage.clear();
+    const { unmount } = render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const fold = () => screen.getByRole('button', { name: /Inspector/i });
+    expect(fold().getAttribute('aria-expanded')).toBe('true');
+    // The inspector's own fields are on screen while it is open.
+    expect(screen.queryByDisplayValue('The Reference Tomb')).not.toBeNull();
+
+    fireEvent.click(fold());
+    expect(fold().getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByDisplayValue('The Reference Tomb')).toBeNull();
+    // Folding the inspector must not take the YAML with it — the whole point
+    // is to give the YAML the height the inspector was using.
+    expect(screen.getByTestId('yaml-pane')).toBeTruthy();
+
+    // It is a preference, so it survives a remount.
+    unmount();
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    expect(
+      screen
+        .getByRole('button', { name: /Inspector/i })
+        .getAttribute('aria-expanded')
+    ).toBe('false');
+    window.localStorage.clear();
+  });
+
+  it('offers a resize handle that reports itself to assistive tech', () => {
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const grip = screen.getByRole('separator', {
+      name: /Resize the inspector rail/i,
+    });
+    expect(grip.getAttribute('aria-orientation')).toBe('vertical');
+  });
+});
+
 describe('DungeonBuilder — concealment links to the door (rpg-dnd5e-web#893)', () => {
   /** The rpg-dnd5e-web#890 shape: a door drawn concealed, its region left
    * unticked — one authored fact stated once, the other never caught up. */

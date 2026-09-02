@@ -63,6 +63,58 @@
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
+  /* The grip below is positioned against this. */
+  position: relative;
+}
+/* The rail's resize handle. It sits IN the grid's own 12px gutter rather
+   than taking a track of its own, so the columns stay the three the layout
+   has always had and an author who never drags sees no change at all.
+   `clamp(340px, 24%, 560px)` remains the default; dragging writes an inline
+   `grid-template-columns` over it and double-clicking clears it again. */
+.dg-grip {
+  position: absolute;
+  left: -12px;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  cursor: col-resize;
+  /* Without this the browser claims the gesture for scrolling and the rail
+     never moves on a touch device. */
+  touch-action: none;
+}
+.dg-grip::after {
+  content: '';
+  position: absolute;
+  inset: 0 5px;
+  border-radius: 1px;
+  background: var(--border-primary);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.dg-grip:hover::after,
+.dg-grip:focus-visible::after {
+  opacity: 1;
+}
+/* The inspector's fold. Folded, its `.dg-col` is just this button, so the
+   rail's `auto` row collapses to it and the YAML pane takes the rest of the
+   height instead of sharing it. */
+.dg-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0 0 6px;
+  color: var(--text-primary);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.dg-fold:hover {
+  opacity: 1;
 }
 .dg-h {
   font-size: 11px;
