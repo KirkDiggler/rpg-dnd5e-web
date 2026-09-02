@@ -185,6 +185,17 @@
 .dg-errors code {
   color: #fff;
 }
+.dg-warnings {
+  max-height: 140px;
+  overflow: auto;
+  margin: 0;
+  padding: 6px 8px 6px 22px;
+  background: #3b2a0a;
+  border: 1px solid #92651d;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #fde8c2;
+}
 .dg-preview-empty {
   height: 100%;
   display: flex;

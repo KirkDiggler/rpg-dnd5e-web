@@ -10,6 +10,7 @@ import {
   wallKeys,
   type ApproachDoc,
   type CheckDoc,
+  type ConcealmentDerivation,
   type DoorDoc,
   type DungeonDoc,
   type PlacementDoc,
@@ -22,6 +23,10 @@ import { APPROACH_ABILITIES, TARGETINGS, type Selection } from './types';
 export interface InspectorProps {
   doc: DungeonDoc;
   selection: Selection;
+  /** The current door-links-to-region derivation (rpg-dnd5e-web#893) —
+   * which regions the concealed doors currently explain, so the region
+   * panel can lock the checkbox and name the door. */
+  concealment: ConcealmentDerivation;
   onDungeon: (
     patch: Partial<Pick<DungeonDoc, 'key' | 'name' | 'void'>>
   ) => void;
@@ -65,6 +70,8 @@ export function Inspector(props: InspectorProps) {
             doc.regions.filter((r) => r.id !== region.id).map((r) => r.id)
           )
         }
+        isDerived={!!props.concealment.regionIds?.has(region.id)}
+        derivedByDoorId={props.concealment.doorByRegion.get(region.id)}
         onChange={(patch) => props.onRegion(region.id, patch)}
         onRemove={() => props.onRemoveRegion(region.id)}
       />

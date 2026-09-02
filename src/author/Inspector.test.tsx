@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { ConcealmentDerivation } from './dungeonYaml';
 import {
   addDoor,
   emptyDungeon,
@@ -23,6 +24,11 @@ function propDoc(
 
 function noop() {}
 
+const EMPTY_CONCEALMENT: ConcealmentDerivation = {
+  regionIds: new Set(),
+  doorByRegion: new Map(),
+};
+
 function mountPlacement(
   doc: DungeonDoc,
   overrides: Partial<{
@@ -32,6 +38,7 @@ function mountPlacement(
   return render(
     <Inspector
       doc={doc}
+      concealment={EMPTY_CONCEALMENT}
       selection={{ kind: 'placement', index: 0 }}
       onDungeon={noop}
       onRegion={noop}
@@ -137,6 +144,7 @@ describe('wall selection (#804)', () => {
     render(
       <Inspector
         doc={doc}
+        concealment={EMPTY_CONCEALMENT}
         selection={{ kind: 'wall', edges: doc.walls.map((w) => w.edge) }}
         onDungeon={noop}
         onRegion={noop}
@@ -170,6 +178,7 @@ describe('wall selection (#804)', () => {
     render(
       <Inspector
         doc={doc}
+        concealment={EMPTY_CONCEALMENT}
         selection={{ kind: 'wall', edges: doc.walls.map((w) => w.edge) }}
         onDungeon={noop}
         onRegion={noop}
@@ -232,6 +241,7 @@ describe('wall selection (#804)', () => {
     render(
       <Inspector
         doc={doc}
+        concealment={EMPTY_CONCEALMENT}
         selection={{ kind: 'wall', edges: [[p(0, 0), p(1, 0)]] }}
         onDungeon={noop}
         onRegion={noop}
@@ -265,6 +275,7 @@ function mountDoor(
   return render(
     <Inspector
       doc={doc}
+      concealment={EMPTY_CONCEALMENT}
       selection={{ kind: 'door', id: doc.doors[0]!.id }}
       onDungeon={noop}
       onRegion={noop}
