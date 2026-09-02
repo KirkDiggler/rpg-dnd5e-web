@@ -8,6 +8,12 @@
 import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import { __resetDungeonShellProviderForTests } from '@/rendering/dungeonShellProvider';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { create } from '@bufbuild/protobuf';
+import {
+  HairCustomizationSchema,
+  StyleSelectionSchema,
+  type HairCustomization,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   MemberKind,
@@ -47,6 +53,7 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
 const gltfMockState = vi.hoisted(() => ({
   failedUrls: new Set<string>(),
   pendingUrls: new Set<string>(),
+  requests: [] as string[],
   pending: new Promise<never>(() => undefined),
 }));
 
@@ -68,12 +75,62 @@ beforeEach(() => {
 afterEach(() => {
   gltfMockState.failedUrls.clear();
   gltfMockState.pendingUrls.clear();
+  gltfMockState.requests.length = 0;
   window.history.replaceState({}, '', '/');
   vi.unstubAllGlobals();
 });
 
 vi.mock('@react-three/drei', () => {
+  const makeSkinned = (name: string, accessory: boolean) => {
+    const scene = new THREE.Group();
+    const root = new THREE.Bone();
+    root.name = 'Root';
+    const head = new THREE.Bone();
+    head.name = 'Head';
+    root.add(head);
+    const bones = accessory ? [root, head] : [root, head];
+    if (!accessory) {
+      const hand = new THREE.Bone();
+      hand.name = 'Hand_R';
+      const offHand = new THREE.Bone();
+      offHand.name = 'Hand_L';
+      head.add(hand, offHand);
+      bones.push(hand, offHand);
+    }
+    const mesh = new THREE.SkinnedMesh(
+      new THREE.BoxGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    );
+    mesh.name = `${name}:skinned`;
+    mesh.bind(
+      new THREE.Skeleton(
+        bones,
+        bones.map(() => new THREE.Matrix4())
+      ),
+      new THREE.Matrix4()
+    );
+    // Keep the existing ordinary-Mesh marker shape so all pre-Task-9 URL
+    // assertions still observe the same test boundary while the sibling
+    // SkinnedMesh supplies the real attachment contract for new tests.
+    const marker = new THREE.Mesh(
+      new THREE.BoxGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    );
+    marker.name = name;
+    mesh.add(marker);
+    scene.add(root, mesh);
+    return scene;
+  };
   const make = (name = '') => {
+    if (name.includes('/characters/customization/dwarf-v1/bodies/')) {
+      return makeSkinned(name, false);
+    }
+    if (
+      name.includes('/characters/customization/dwarf-v1/scalp/') ||
+      name.includes('/characters/customization/dwarf-v1/facial-hair/')
+    ) {
+      return makeSkinned(name, true);
+    }
     const scene = new THREE.Group();
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(),
@@ -92,6 +149,7 @@ vi.mock('@react-three/drei', () => {
   };
   return {
     useGLTF: (url: string) => {
+      gltfMockState.requests.push(url);
       if (gltfMockState.failedUrls.has(url)) {
         throw new Error(`failed to load ${url}`);
       }
@@ -207,11 +265,43 @@ const ELF_CLASS_URLS = {
   rogue: '/models/synty/characters/race-class/elf-rogue.glb',
 } as const;
 const DWARF_CLASS_URLS = {
-  barbarian: '/models/synty/characters/race-class/dwarf-barbarian.glb',
-  fighter: '/models/synty/characters/race-class/dwarf-fighter.glb',
-  monk: '/models/synty/characters/race-class/dwarf-monk.glb',
-  rogue: '/models/synty/characters/race-class/dwarf-rogue.glb',
+  barbarian:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-barbarian-body.glb',
+  fighter:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-fighter-body.glb',
+  monk: '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-monk-body.glb',
+  rogue:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-rogue-body.glb',
 } as const;
+const DWARF_FIGHTER_FALLBACK_URL =
+  '/models/synty/characters/race-class/dwarf-fighter.glb';
+const HAIR_38_URL =
+  '/models/synty/characters/customization/dwarf-v1/scalp/hair-38.glb';
+const FACIAL_HAIR_01_URL =
+  '/models/synty/characters/customization/dwarf-v1/facial-hair/facial-hair-01.glb';
+const DEFAULT_HAIR_URL =
+  '/models/synty/characters/customization/dwarf-v1/scalp/hair-04.glb';
+const DEFAULT_FACIAL_HAIR_URL =
+  '/models/synty/characters/customization/dwarf-v1/facial-hair/facial-hair-02.glb';
+
+function customHair(colorSrgb = 0x8a4b32, roughness = 0.2): HairCustomization {
+  return create(HairCustomizationSchema, {
+    scalp: create(StyleSelectionSchema, {
+      selection: {
+        case: 'styleRef',
+        value: 'modular-fantasy-hero:hair:38',
+      },
+    }),
+    facialHair: create(StyleSelectionSchema, {
+      selection: {
+        case: 'styleRef',
+        value: 'modular-fantasy-hero:facial-hair:01',
+      },
+    }),
+    colorSrgb,
+    roughness,
+  });
+}
 const HALF_ELF_CLASS_URLS = {
   barbarian: '/models/synty/characters/race-class/half-elf-barbarian.glb',
   fighter: '/models/synty/characters/race-class/half-elf-fighter.glb',
@@ -709,6 +799,68 @@ describe('SessionScene', () => {
       expect(exactMeshes).toHaveLength(0);
       expect(mediumHumanoidMarkers(outcome.renderer)).toHaveLength(1);
     }
+  });
+
+  it('falls from a failed modular Dwarf body to its exact generated immutable class fallback without accessories', async () => {
+    gltfMockState.failedUrls.add(DWARF_CLASS_URLS.fighter);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const hair = customHair();
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        {...({
+          scene: scene(),
+          hexSize: 1,
+          characterId: 'char-1',
+          characterName: 'Dwarf Fighter',
+          classRefId: 'fighter',
+          raceRefId: 'dwarf',
+          localHair: hair,
+          myPosition: { x: 0, y: 0, z: 0 },
+        } as Parameters<typeof SessionScene>[0] & {
+          localHair: HairCustomization;
+        })}
+      />
+    );
+    consoleError.mockRestore();
+
+    expect(gltfMockState.requests).toContain(DWARF_CLASS_URLS.fighter);
+    expect(gltfMockState.requests).toContain(DWARF_FIGHTER_FALLBACK_URL);
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name === DWARF_FIGHTER_FALLBACK_URL
+      ).length
+    ).toBeGreaterThan(0);
+    expect(gltfMockState.requests).not.toContain(HAIR_38_URL);
+    expect(gltfMockState.requests).not.toContain(FACIAL_HAIR_01_URL);
+    expect(mediumHumanoidMarkers(renderer)).toHaveLength(0);
+  });
+
+  it('falls from failed modular and generated Dwarf bodies to the existing generic model fallback', async () => {
+    gltfMockState.failedUrls.add(DWARF_CLASS_URLS.fighter);
+    gltfMockState.failedUrls.add(DWARF_FIGHTER_FALLBACK_URL);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Dwarf Fighter"
+        classRefId="fighter"
+        raceRefId="dwarf"
+        myPosition={{ x: 0, y: 0, z: 0 }}
+      />
+    );
+    consoleError.mockRestore();
+
+    expect(gltfMockState.requests).toContain(DWARF_CLASS_URLS.fighter);
+    expect(gltfMockState.requests).toContain(DWARF_FIGHTER_FALLBACK_URL);
+    expect(mediumHumanoidMarkers(renderer)).toHaveLength(1);
   });
 
   it('places a mapped AtlasProp on the same dungeon surface as the floor', async () => {
@@ -1308,6 +1460,227 @@ describe('SessionScene', () => {
           (node.instance as THREE.Mesh).name.includes(DWARF_CLASS_URLS.monk)
       );
       expect(exactMeshes.length).toBeGreaterThan(0);
+    });
+
+    it('renders equal local Appearance and peer roster customization through the same Dwarf accessory presentation', async () => {
+      const hair = customHair();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...({
+            scene: scene(),
+            hexSize: 1,
+            characterId: 'char-1',
+            characterName: 'Owner',
+            classRefId: 'fighter',
+            raceRefId: 'dwarf',
+            localHair: hair,
+            myPosition: { x: 0, y: 0, z: 0 },
+            otherMembers: [sightedPlayer],
+            roster: new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'rogue',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                  customization: { hair },
+                } as PublicMemberInfo,
+              ],
+            ]),
+          } as Parameters<typeof SessionScene>[0] & {
+            localHair: HairCustomization;
+          })}
+        />
+      );
+
+      const materialUuids: string[] = [];
+      for (const url of [HAIR_38_URL, FACIAL_HAIR_01_URL]) {
+        const accessories = renderer.scene.findAll(
+          (node) => (node.instance as THREE.Mesh).name === `${url}:skinned`
+        );
+        expect(accessories, url).toHaveLength(2);
+        for (const accessory of accessories) {
+          const material = (accessory.instance as THREE.Mesh)
+            .material as THREE.MeshStandardMaterial;
+          materialUuids.push(material.uuid);
+          expect(material.color.getHexString()).toBe('8a4b32');
+          expect(material.roughness).toBeCloseTo(0.2);
+          expect(material.metalness).toBe(0);
+        }
+      }
+      expect(new Set(materialUuids).size).toBe(4);
+      expect(gltfMockState.requests.some((url) => url.endsWith('.png'))).toBe(
+        false
+      );
+    });
+
+    it('keeps different owner/peer treatments on disjoint per-instance material UUIDs', async () => {
+      const ownerHair = customHair(0x8a4b32, 0.2);
+      const peerHair = customHair(0xd6b26e, 0.55);
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...({
+            scene: scene(),
+            hexSize: 1,
+            characterId: 'char-1',
+            characterName: 'Owner',
+            classRefId: 'fighter',
+            raceRefId: 'dwarf',
+            localHair: ownerHair,
+            myPosition: { x: 0, y: 0, z: 0 },
+            otherMembers: [sightedPlayer],
+            roster: new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'rogue',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                  customization: { hair: peerHair },
+                } as PublicMemberInfo,
+              ],
+            ]),
+          } as Parameters<typeof SessionScene>[0] & {
+            localHair: HairCustomization;
+          })}
+        />
+      );
+
+      const scalpMaterials = renderer.scene
+        .findAll(
+          (node) =>
+            (node.instance as THREE.Mesh).name === `${HAIR_38_URL}:skinned`
+        )
+        .map(
+          (node) =>
+            (node.instance as THREE.Mesh).material as THREE.MeshStandardMaterial
+        );
+      expect(scalpMaterials).toHaveLength(2);
+      expect(
+        new Set(scalpMaterials.map((material) => material.uuid)).size
+      ).toBe(2);
+      expect(
+        scalpMaterials.map((material) => ({
+          color: material.color.getHexString(),
+          roughness: material.roughness,
+        }))
+      ).toEqual(
+        expect.arrayContaining([
+          { color: '8a4b32', roughness: expect.closeTo(0.2) },
+          { color: 'd6b26e', roughness: expect.closeTo(0.55) },
+        ])
+      );
+    });
+
+    it('uses provider defaults for an absent peer roster customization', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Owner"
+          classRefId="fighter"
+          raceRefId="human"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[sightedPlayer]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'monk',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+
+      for (const url of [DEFAULT_HAIR_URL, DEFAULT_FACIAL_HAIR_URL]) {
+        expect(
+          renderer.scene.findAll(
+            (node) =>
+              node.type === 'Mesh' && (node.instance as THREE.Mesh).name === url
+          ),
+          url
+        ).toHaveLength(1);
+      }
+    });
+
+    it('ignores hair customization for non-Dwarves, monsters, and downed Dwarves', async () => {
+      const hair = customHair();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...({
+            scene: scene(),
+            hexSize: 1,
+            characterId: 'char-1',
+            characterName: 'Elf Owner',
+            classRefId: 'fighter',
+            raceRefId: 'elf',
+            localHair: hair,
+            myPosition: { x: 0, y: 0, z: 0 },
+            otherMembers: [
+              { ...sightedPlayer, standing: Standing.DOWNED },
+              {
+                ...sightedPlayer,
+                subject: 'monster-1',
+                kind: MemberKind.MONSTER,
+                position: { x: 1, y: 0, z: -1 },
+              },
+            ],
+            roster: new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'fighter',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                  customization: { hair },
+                } as PublicMemberInfo,
+              ],
+              [
+                'monster-1',
+                {
+                  id: 'monster-1',
+                  kind: MemberKind.MONSTER,
+                  name: 'Monster',
+                  classRef: 'fighter',
+                  raceRef: 'dwarf',
+                  monsterRef: 'dnd5e:monsters:skeleton',
+                  customization: { hair },
+                } as PublicMemberInfo,
+              ],
+            ]),
+          } as Parameters<typeof SessionScene>[0] & {
+            localHair: HairCustomization;
+          })}
+        />
+      );
+
+      for (const url of [HAIR_38_URL, FACIAL_HAIR_01_URL]) {
+        expect(
+          renderer.scene.findAll(
+            (node) =>
+              node.type === 'Mesh' && (node.instance as THREE.Mesh).name === url
+          ),
+          url
+        ).toHaveLength(0);
+      }
     });
 
     it.each([

@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import {
+  applyRuntimeSurfaceTreatment,
+  type RuntimeSurfaceTreatment,
+} from './runtimeSurfaceTreatment';
 
 const DEFAULT_BIND_TOLERANCE = 1e-5;
 
@@ -11,6 +16,26 @@ export type SkinnedAccessoryBindFailureCode =
   | 'missing-body-bone'
   | 'inverse-bind-mismatch'
   | 'bind-matrix-mismatch';
+
+export interface SkinnedAccessoryPresentation {
+  readonly slot: 'scalp' | 'facial-hair';
+  readonly styleRef: string;
+  readonly url: string;
+  readonly treatment: RuntimeSurfaceTreatment;
+}
+
+export interface SkinnedAccessoryBindingEvidence {
+  readonly bodyRootBoneUuid: string;
+  readonly mappedBoneNames: readonly string[];
+  readonly mappedBoneUuids: readonly string[];
+}
+
+export interface PreparedSkinnedAccessory {
+  readonly mesh: THREE.SkinnedMesh;
+  readonly materials: readonly THREE.MeshStandardMaterial[];
+  readonly dispose: () => void;
+  readonly evidence: SkinnedAccessoryBindingEvidence;
+}
 
 export type SkinnedAccessoryBindResult =
   | {
@@ -41,10 +66,24 @@ function failure(
   return { ok: false, code, message, missingBoneNames };
 }
 
-function collectSkinnedMeshes(root: THREE.Object3D): THREE.SkinnedMesh[] {
+const MOUNTED_ACCESSORIES = new WeakSet<THREE.SkinnedMesh>();
+
+export function markMountedSkinnedAccessory(mesh: THREE.SkinnedMesh): void {
+  MOUNTED_ACCESSORIES.add(mesh);
+}
+
+function collectSkinnedMeshes(
+  root: THREE.Object3D,
+  excludeMountedAccessories = false
+): THREE.SkinnedMesh[] {
   const meshes: THREE.SkinnedMesh[] = [];
   root.traverse((node) => {
-    if (node instanceof THREE.SkinnedMesh) meshes.push(node);
+    if (
+      node instanceof THREE.SkinnedMesh &&
+      (!excludeMountedAccessories || !MOUNTED_ACCESSORIES.has(node))
+    ) {
+      meshes.push(node);
+    }
   });
   return meshes;
 }
@@ -114,7 +153,7 @@ export function bindSkinnedAccessory(
     );
   }
 
-  const bodyMeshes = collectSkinnedMeshes(bodyRoot);
+  const bodyMeshes = collectSkinnedMeshes(bodyRoot, true);
   const bodySkeleton = bodyMeshes[0]?.skeleton;
   if (
     !(bodySkeleton instanceof THREE.Skeleton) ||
@@ -233,5 +272,66 @@ export function bindSkinnedAccessory(
     bodyRootBoneUuid: bodyRootBone.uuid,
     mappedBoneUuids: mappedBones.map((bone) => bone.uuid),
     ownsSkeletonWrapper: !reusesBodySkeleton,
+  };
+}
+
+function disposeSkeletons(skeletons: Iterable<THREE.Skeleton>): void {
+  for (const skeleton of skeletons) skeleton.dispose();
+}
+
+/**
+ * Clone and exact-bind a provider accessory without mounting it. Source GLTF
+ * geometry/materials remain cache-owned; only cloned material and Skeleton
+ * wrapper identities are owned by the returned preparation.
+ */
+export function prepareSkinnedAccessory(
+  characterRoot: THREE.Object3D,
+  sourceScene: THREE.Object3D,
+  presentation: SkinnedAccessoryPresentation
+): PreparedSkinnedAccessory {
+  const accessoryRoot = cloneSkeleton(sourceScene);
+  const clonedSkeletons = new Set<THREE.Skeleton>();
+  accessoryRoot.traverse((node) => {
+    if (node instanceof THREE.SkinnedMesh) clonedSkeletons.add(node.skeleton);
+  });
+
+  const result = bindSkinnedAccessory(characterRoot, accessoryRoot);
+  if (!result.ok) {
+    disposeSkeletons(clonedSkeletons);
+    throw new Error(result.message);
+  }
+
+  // bindSkinnedAccessory replaces the clone's source Skeleton wrapper with
+  // either the authoritative body Skeleton or one exact mapped wrapper. The
+  // now-detached clone wrappers are ours and must not survive preparation.
+  clonedSkeletons.delete(result.mesh.skeleton);
+  disposeSkeletons(clonedSkeletons);
+
+  let materials: readonly THREE.MeshStandardMaterial[];
+  try {
+    materials = applyRuntimeSurfaceTreatment(
+      result.mesh,
+      presentation.treatment
+    );
+  } catch (error) {
+    if (result.ownsSkeletonWrapper) result.mesh.skeleton.dispose();
+    throw error;
+  }
+
+  let disposed = false;
+  return {
+    mesh: result.mesh,
+    materials,
+    evidence: {
+      bodyRootBoneUuid: result.bodyRootBoneUuid,
+      mappedBoneNames: result.mappedBoneNames,
+      mappedBoneUuids: result.mappedBoneUuids,
+    },
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      materials.forEach((material) => material.dispose());
+      if (result.ownsSkeletonWrapper) result.mesh.skeleton.dispose();
+    },
   };
 }

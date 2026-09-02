@@ -45,6 +45,7 @@
  */
 
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
+import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type {
   DoorInfo,
   PublicMemberInfo,
@@ -117,6 +118,9 @@ export interface SessionCanvasProps {
   classRefId: string | undefined;
   /** Public roster race ref; private CharacterData does not choose models. */
   raceRefId?: string;
+  /** Owner-private GetCharacterData Appearance.hair. Peer hair never enters
+   * through this prop; it remains on each public roster row. */
+  localHair?: HairCustomization;
   /** Public turn-participant standing for the local player; never derived from
    * owner-private HP state. */
   localIsDowned?: boolean;
@@ -217,6 +221,7 @@ export function SessionScene({
   characterName,
   classRefId,
   raceRefId,
+  localHair,
   mainHandPresentation,
   offHandPresentation,
   localIsDowned = false,
@@ -470,6 +475,7 @@ export function SessionScene({
         hexSize={hexSize}
         classRefId={classRefId}
         raceRefId={raceRefId}
+        hairCustomization={localHair}
         isDowned={localIsDowned}
         mainHandPresentation={mainHandPresentation}
         offHandPresentation={offHandPresentation}
@@ -510,6 +516,11 @@ export function SessionScene({
           raceRefId={
             member.kind === MemberKind.PLAYER
               ? roster?.get(member.subject)?.raceRef || undefined
+              : undefined
+          }
+          hairCustomization={
+            member.kind === MemberKind.PLAYER
+              ? roster?.get(member.subject)?.customization?.hair
               : undefined
           }
           monsterRefId={
