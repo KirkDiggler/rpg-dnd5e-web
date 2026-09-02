@@ -13,8 +13,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { withoutGitLocalEnvironment } from './testGitEnvironment';
 
 const roots: string[] = [];
+const gitEnvironment = withoutGitLocalEnvironment(process.env);
 afterEach(async () =>
   Promise.all(
     roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))
@@ -26,7 +28,11 @@ function commitFixture(assets: string, message: string): void {
     ['add', '--all'],
     ['commit', '--quiet', '-m', message],
   ]) {
-    const result = spawnSync('git', args, { cwd: assets, encoding: 'utf8' });
+    const result = spawnSync('git', args, {
+      cwd: assets,
+      encoding: 'utf8',
+      env: gitEnvironment,
+    });
     expect(result.status, result.stderr).toBe(0);
   }
 }
@@ -54,7 +60,11 @@ async function fixture() {
     ['config', 'user.name', 'Asset Fixture'],
     ['config', 'user.email', 'fixture@example.invalid'],
   ]) {
-    const result = spawnSync('git', args, { cwd: assets, encoding: 'utf8' });
+    const result = spawnSync('git', args, {
+      cwd: assets,
+      encoding: 'utf8',
+      env: gitEnvironment,
+    });
     expect(result.status, result.stderr).toBe(0);
   }
   commitFixture(assets, 'fixture');
@@ -108,7 +118,7 @@ printf 'generated fixture\\n' > "$OUTPUT"
 
 function syncEnvironment(fixtureValue: Awaited<ReturnType<typeof fixture>>) {
   return {
-    ...process.env,
+    ...gitEnvironment,
     RPG_GAME_ASSETS_PATH: fixtureValue.assets,
     RPG_DWARF_CATALOG_GENERATOR: fixtureValue.fakeGenerator,
     RPG_DWARF_CATALOG_RUNNER: fixtureValue.fakeRunner,

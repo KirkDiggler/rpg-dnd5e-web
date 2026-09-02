@@ -13,11 +13,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
+import { withoutGitLocalEnvironment } from './testGitEnvironment';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const syncScript = join(repoRoot, 'scripts', 'sync-game-assets.sh');
 const temporaryRoots: string[] = [];
+const gitEnvironment = withoutGitLocalEnvironment(process.env);
 
 async function temporaryRoot() {
   const root = await mkdtemp(join(tmpdir(), 'game-assets-sync-'));
@@ -71,23 +73,31 @@ async function makeFixture() {
   );
   await put(join(assetsRoot, 'evidence', 'review.glb'), 'review-only');
 
-  await execFileAsync('git', ['init', '--quiet'], { cwd: assetsRoot });
+  await execFileAsync('git', ['init', '--quiet'], {
+    cwd: assetsRoot,
+    env: gitEnvironment,
+  });
   await execFileAsync('git', ['config', 'user.name', 'Asset Fixture'], {
     cwd: assetsRoot,
+    env: gitEnvironment,
   });
   await execFileAsync(
     'git',
     ['config', 'user.email', 'fixture@example.invalid'],
-    { cwd: assetsRoot }
+    { cwd: assetsRoot, env: gitEnvironment }
   );
-  await execFileAsync('git', ['add', '.'], { cwd: assetsRoot });
+  await execFileAsync('git', ['add', '.'], {
+    cwd: assetsRoot,
+    env: gitEnvironment,
+  });
   await execFileAsync('git', ['commit', '--quiet', '-m', 'fixture'], {
     cwd: assetsRoot,
+    env: gitEnvironment,
   });
   const { stdout: providerHead } = await execFileAsync(
     'git',
     ['rev-parse', 'HEAD'],
-    { cwd: assetsRoot }
+    { cwd: assetsRoot, env: gitEnvironment }
   );
 
   const fakeGenerator = join(root, 'fake-catalog-generator.ts');
@@ -131,7 +141,7 @@ async function runSync(assetsRoot: string, webRoot: string, generator: string) {
   return execFileAsync('sh', [syncScript], {
     cwd: repoRoot,
     env: {
-      ...process.env,
+      ...gitEnvironment,
       RPG_GAME_ASSETS_PATH: assetsRoot,
       RPG_WEB_ROOT: webRoot,
       RPG_DWARF_CATALOG_GENERATOR: generator,
@@ -220,11 +230,12 @@ describe('private game asset sync boundary', () => {
       );
       await execFileAsync('git', ['add', '--all'], {
         cwd: fixture.assetsRoot,
+        env: gitEnvironment,
       });
       await execFileAsync(
         'git',
         ['commit', '--quiet', '-m', `remove ${missingRoot}`],
-        { cwd: fixture.assetsRoot }
+        { cwd: fixture.assetsRoot, env: gitEnvironment }
       );
       const syntySentinel = join(fixture.syntyDestination, 'keep-synty.txt');
       const customSentinel = join(
@@ -315,6 +326,7 @@ describe('private game asset sync boundary', () => {
       await expect(
         execFileAsync('git', ['check-ignore', '--quiet', '--no-index', probe], {
           cwd: repoRoot,
+          env: gitEnvironment,
         })
       ).resolves.toBeDefined();
     }
