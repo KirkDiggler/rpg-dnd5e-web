@@ -1,5 +1,10 @@
+import { resolveDwarfCustomizationModel } from '@/character/customization/dwarfCustomization';
 import { summarizeHair } from '@/character/customization/hairSummary';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import {
+  Class,
+  Race,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { Card } from '../../../components/ui/Card';
 
 interface DnDAppearanceProps {
@@ -7,6 +12,40 @@ interface DnDAppearanceProps {
 }
 
 export function DnDAppearance({ character }: DnDAppearanceProps) {
+  const hasIdentity =
+    character.race !== Race.UNSPECIFIED &&
+    character.class !== Class.UNSPECIFIED;
+  const customizationModel = hasIdentity
+    ? resolveDwarfCustomizationModel(
+        Race[character.race],
+        Class[character.class]
+      )
+    : undefined;
+
+  if (!customizationModel) {
+    return (
+      <Card className="p-4">
+        <h4
+          className="mb-4 text-center text-lg font-bold"
+          style={{
+            fontFamily: 'Cinzel, serif',
+            color: 'var(--text-primary)',
+          }}
+        >
+          APPEARANCE
+        </h4>
+        <p
+          className="text-center text-sm"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          {hasIdentity
+            ? 'Hair customization is not supported for this race and class.'
+            : 'Hair customization unavailable: race and class are required.'}
+        </p>
+      </Card>
+    );
+  }
+
   const summary = summarizeHair(character.appearance?.hair);
 
   return (
