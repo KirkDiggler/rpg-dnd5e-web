@@ -13,7 +13,10 @@ const RACE_LABELS = {
 } as const;
 
 function normalizeRef(value: string | undefined): string | undefined {
-  const normalized = value?.trim().toLowerCase();
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-');
   return normalized || undefined;
 }
 

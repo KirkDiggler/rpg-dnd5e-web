@@ -145,7 +145,10 @@ const RACE_CLASS_CHARACTER_MODELS: Record<
 };
 
 function normalizeRefId(refId: string | undefined): string | undefined {
-  return refId?.trim().toLowerCase();
+  return refId
+    ?.trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-');
 }
 
 function resolveClassCharacterModelResolutionFromNormalizedClassRefId(

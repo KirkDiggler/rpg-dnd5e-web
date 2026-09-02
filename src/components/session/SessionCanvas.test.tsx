@@ -283,6 +283,12 @@ const DWARF_CLASS_URLS = {
 } as const;
 const DWARF_FIGHTER_FALLBACK_URL =
   '/models/synty/characters/race-class/dwarf-fighter.glb';
+const HUMAN_FIGHTER_BODY_URL =
+  '/models/synty/characters/customization/human-v1/bodies/human-fighter-body.glb';
+const HUMAN_FIGHTER_FALLBACK_URL =
+  '/models/synty/characters/customization/human-v1/fallbacks/human-fighter-complete.glb';
+const HUMAN_DEFAULT_HAIR_URL =
+  '/models/synty/characters/customization/human-v1/scalp/hair-16.glb';
 const HAIR_38_URL =
   '/models/synty/characters/customization/dwarf-v1/scalp/hair-38.glb';
 const FACIAL_HAIR_01_URL =
@@ -843,6 +849,45 @@ describe('SessionScene', () => {
     expect(gltfMockState.requests).not.toContain(HAIR_38_URL);
     expect(gltfMockState.requests).not.toContain(FACIAL_HAIR_01_URL);
     expect(mediumHumanoidMarkers(renderer)).toHaveLength(0);
+  });
+
+  it('falls from a failed Human active body to its generated complete fallback without accessories', async () => {
+    gltfMockState.failedUrls.add(HUMAN_FIGHTER_BODY_URL);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        {...({
+          scene: scene(),
+          hexSize: 1,
+          characterId: 'char-1',
+          characterName: 'Human Fighter',
+          classRefId: 'fighter',
+          raceRefId: 'human',
+          localHair: customHair(),
+          myPosition: { x: 0, y: 0, z: 0 },
+        } as Parameters<typeof SessionScene>[0] & {
+          localHair: HairCustomization;
+        })}
+      />
+    );
+    consoleError.mockRestore();
+
+    expect(gltfMockState.requests).toContain(HUMAN_FIGHTER_BODY_URL);
+    expect(gltfMockState.requests).toContain(HUMAN_FIGHTER_FALLBACK_URL);
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(
+            HUMAN_FIGHTER_FALLBACK_URL
+          )
+      ).length
+    ).toBeGreaterThan(0);
+    for (const url of customStyleUrls('human')) {
+      expect(gltfMockState.requests).not.toContain(url);
+    }
   });
 
   it('falls from failed modular and generated Dwarf bodies to the existing generic model fallback', async () => {
@@ -1625,6 +1670,13 @@ describe('SessionScene', () => {
         />
       );
 
+      expect(
+        renderer.scene.findAll(
+          (node) =>
+            node.type === 'Mesh' &&
+            (node.instance as THREE.Mesh).name === HUMAN_DEFAULT_HAIR_URL
+        )
+      ).toHaveLength(1);
       for (const url of [DEFAULT_HAIR_URL, DEFAULT_FACIAL_HAIR_URL]) {
         expect(
           renderer.scene.findAll(

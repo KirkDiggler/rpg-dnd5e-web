@@ -30,6 +30,11 @@ describe('profile-driven customization model resolution', () => {
     ).toMatchObject({
       customizationProfileRef: 'modular-fantasy-hero-v1:human',
     });
+    expect(
+      resolveCharacterCustomizationModel('HALF_ORC', 'ROGUE')
+    ).toMatchObject({
+      customizationProfileRef: 'modular-fantasy-hero-v1:half-orc',
+    });
     expect(resolveCharacterCustomizationModel('dragonborn', 'fighter')).toBe(
       undefined
     );

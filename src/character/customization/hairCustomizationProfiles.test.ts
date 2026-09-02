@@ -98,6 +98,13 @@ describe('profile-driven hair presentation', () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it('normalizes enum-style underscore race refs used by finalized sheets', () => {
+    expect(
+      resolveHairPresentation({ raceRefId: 'HALF_ELF', classRefId: 'FIGHTER' })
+        .profileRef
+    ).toBe('modular-fantasy-hero-v1:half-elf');
+  });
+
   it('ignores unsupported races and classes without borrowing another profile', () => {
     expect(
       resolveHairPresentation({
