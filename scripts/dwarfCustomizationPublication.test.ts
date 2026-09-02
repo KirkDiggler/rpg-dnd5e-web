@@ -111,10 +111,15 @@ describe('production Dwarf customization publication', () => {
       ),
     ];
     expect(assets).toHaveLength(120);
-    for (const asset of assets) {
-      const path = publicFile(asset.url);
-      expect(existsSync(path), asset.url).toBe(true);
-      expect(sha256(readFileSync(path)), asset.url).toBe(asset.sha256);
+    const present = assets.filter((asset) => existsSync(publicFile(asset.url)));
+    // A developer checkout with an explicit provider sync must contain and
+    // hash-verify the complete authority. A clean CI clone correctly contains
+    // none of the licensed ignored bytes. Partial/stale mirrors fail closed.
+    expect([0, assets.length]).toContain(present.length);
+    for (const asset of present) {
+      expect(sha256(readFileSync(publicFile(asset.url))), asset.url).toBe(
+        asset.sha256
+      );
     }
     expect(
       execFileSync('git', ['ls-files', '--', 'public/models/synty'], {
@@ -125,7 +130,7 @@ describe('production Dwarf customization publication', () => {
     expect(() =>
       execFileSync(
         'git',
-        ['check-ignore', '--quiet', '--', publicFile(assets[0]!.url)],
+        ['check-ignore', '--quiet', '--no-index', publicFile(assets[0]!.url)],
         { cwd: repositoryRoot }
       )
     ).not.toThrow();
