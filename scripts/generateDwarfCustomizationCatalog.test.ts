@@ -392,6 +392,9 @@ describe('renderDwarfCustomizationCatalogModule', () => {
     expect(first).toContain(metadata.providerCommit);
     expect(first).toContain(metadata.manifestSha256);
     expect(first).toContain('export interface DwarfCustomizationCatalog');
+    expect(first).toContain(
+      'Provider schema-v2 projection: nested slot objects are intentional consumer truth.'
+    );
     expect(first).toContain('Object.freeze');
     expect(first).not.toContain('sourceMesh');
     expect(first).not.toContain('Chr_Hair_');

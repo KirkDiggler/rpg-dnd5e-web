@@ -1,5 +1,6 @@
 /**
  * GENERATED FILE — DO NOT EDIT.
+ * Provider schema-v2 projection: nested slot objects are intentional consumer truth.
  * Provider commit: 69a229aabe4a366039dd06a68148a8ff9e0ca4e8
  * Source manifest SHA-256: 10ba18b4281ea65b757d959ab7caa888adced2b106e2dc3b2e6ae0d19688ba4a
  */

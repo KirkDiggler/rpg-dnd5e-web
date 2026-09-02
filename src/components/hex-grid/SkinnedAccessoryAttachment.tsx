@@ -73,6 +73,7 @@ type ReportStatus = (
 
 interface MountedAttachment extends PreparedSkinnedAccessory {
   readonly identity: PresentationIdentity;
+  baseSurface: RuntimeSurfaceTreatment;
   appliedTreatmentKey: string;
 }
 
@@ -111,6 +112,17 @@ function attachedStatus(mounted: MountedAttachment): SkinnedAccessoryStatus {
       metalness: material.metalness,
     })),
   };
+}
+
+function identitiesMatch(
+  left: PresentationIdentity,
+  right: PresentationIdentity
+): boolean {
+  return (
+    left.slot === right.slot &&
+    left.styleRef === right.styleRef &&
+    left.url === right.url
+  );
 }
 
 function treatmentKey(
@@ -334,6 +346,7 @@ export function SkinnedAccessoryAttachment({
       const next: MountedAttachment = {
         ...prepared,
         identity: reportedIdentity,
+        baseSurface: { ...currentSurface },
         appliedTreatmentKey: treatmentKey(currentSurface, currentEntity),
       };
       const previous = activeRef.current;
@@ -376,25 +389,38 @@ export function SkinnedAccessoryAttachment({
   const { baseColorSrgb, roughness, metalness } = presentation.treatment;
   useEffect(() => {
     const active = activeRef.current;
-    if (!active || active.identity !== identity) return;
-    const surface: RuntimeSurfaceTreatment = {
+    if (!active) return;
+    const requestedMatchesActive = identitiesMatch(active.identity, identity);
+    const requestedSurface: RuntimeSurfaceTreatment = {
       baseColorSrgb,
       roughness,
       metalness,
     };
+    // A requested replacement owns no material state until it commits. While
+    // B is pending or rejected, reapply entity overlays from mounted A's own
+    // persisted base rather than leaking B's surface into the retained mesh.
+    const activeSurface = requestedMatchesActive
+      ? requestedSurface
+      : active.baseSurface;
     const entity = { isSelected, isGhost, remembered };
-    const nextKey = treatmentKey(surface, entity);
+    const nextKey = treatmentKey(activeSurface, entity);
     if (active.appliedTreatmentKey === nextKey) return;
     try {
-      updateRuntimeAccessorySurfaceTreatment(active.materials, surface, entity);
+      updateRuntimeAccessorySurfaceTreatment(
+        active.materials,
+        activeSurface,
+        entity
+      );
     } catch (error) {
       rejectPrepared(identity, error);
       return;
     }
+    if (requestedMatchesActive) active.baseSurface = { ...requestedSurface };
     active.appliedTreatmentKey = nextKey;
-    if (reportStatus(identity, attachedStatus(active))) {
-      currentInvalidate.current();
+    if (requestedMatchesActive) {
+      reportStatus(identity, attachedStatus(active));
     }
+    currentInvalidate.current();
   }, [
     baseColorSrgb,
     identity,

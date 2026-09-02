@@ -810,6 +810,7 @@ export function renderDwarfCustomizationCatalogModule(
   const json = JSON.stringify(catalog, null, 2);
   const source = `/**
  * GENERATED FILE — DO NOT EDIT.
+ * Provider schema-v2 projection: nested slot objects are intentional consumer truth.
  * Provider commit: ${authority.providerCommit}
  * Source manifest SHA-256: ${authority.manifestSha256}
  */
