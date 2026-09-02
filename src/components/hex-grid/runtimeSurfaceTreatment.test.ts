@@ -1,10 +1,18 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  applyRuntimeEntityMaterialOverlay,
   applyRuntimeSurfaceTreatment,
+  updateRuntimeAccessorySurfaceTreatment,
   updateRuntimeSurfaceTreatment,
   type RuntimeSurfaceTreatment,
 } from './runtimeSurfaceTreatment';
+import {
+  CRYPT_MEMORY_COLOR,
+  CRYPT_MEMORY_EMISSIVE,
+  CRYPT_MEMORY_EMISSIVE_INTENSITY,
+  CRYPT_MEMORY_OPACITY,
+} from './sceneKnowledge';
 
 const RED_LEATHER = {
   baseColorSrgb: '#6B3F26',
@@ -72,6 +80,73 @@ describe('updateRuntimeSurfaceTreatment', () => {
     expect(material.color.getHexString()).toBe('abcdef');
     expect(material.roughness).toBe(0.25);
     expect(material.metalness).toBe(0.75);
+  });
+});
+
+describe('runtime entity material overlays', () => {
+  it('composes selected emissive and ghost opacity on the same material identities', () => {
+    const material = new THREE.MeshStandardMaterial({ color: '#5A3825' });
+    const uuid = material.uuid;
+
+    const result = applyRuntimeEntityMaterialOverlay([material], {
+      isSelected: true,
+      isGhost: true,
+      remembered: false,
+    });
+
+    expect(result[0]).toBe(material);
+    expect(material.uuid).toBe(uuid);
+    expect(material.emissive.getHexString()).toBe('ffffff');
+    expect(material.emissiveIntensity).toBe(0.25);
+    expect(material.transparent).toBe(true);
+    expect(material.opacity).toBe(0.35);
+  });
+
+  it('gives remembered treatment precedence with the exact shared crypt semantics', () => {
+    const material = new THREE.MeshStandardMaterial({ color: '#5A3825' });
+    const expectedColor = new THREE.Color('#5A3825').multiply(
+      CRYPT_MEMORY_COLOR
+    );
+
+    applyRuntimeEntityMaterialOverlay([material], {
+      isSelected: true,
+      isGhost: true,
+      remembered: true,
+    });
+
+    expect(material.color.getHex()).toBe(expectedColor.getHex());
+    expect(material.emissive.getHex()).toBe(CRYPT_MEMORY_EMISSIVE.getHex());
+    expect(material.emissiveIntensity).toBe(CRYPT_MEMORY_EMISSIVE_INTENSITY);
+    expect(material.transparent).toBe(false);
+    expect(material.opacity).toBe(CRYPT_MEMORY_OPACITY);
+    expect(material.depthWrite).toBe(true);
+  });
+
+  it('restores persisted hair surface values after remembered without replacing materials', () => {
+    const material = new THREE.MeshStandardMaterial({ color: '#ffffff' });
+    const uuid = material.uuid;
+
+    updateRuntimeAccessorySurfaceTreatment([material], RED_LEATHER, {
+      isSelected: false,
+      isGhost: false,
+      remembered: true,
+    });
+    expect(material.color.getHexString()).not.toBe('6b3f26');
+
+    updateRuntimeAccessorySurfaceTreatment([material], RED_LEATHER, {
+      isSelected: false,
+      isGhost: false,
+      remembered: false,
+    });
+
+    expect(material.uuid).toBe(uuid);
+    expect(material.color.getHexString()).toBe('6b3f26');
+    expect(material.roughness).toBe(RED_LEATHER.roughness);
+    expect(material.metalness).toBe(RED_LEATHER.metalness);
+    expect(material.emissive.getHexString()).toBe('000000');
+    expect(material.transparent).toBe(false);
+    expect(material.opacity).toBe(1);
+    expect(material.depthWrite).toBe(true);
   });
 });
 

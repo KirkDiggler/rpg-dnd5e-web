@@ -1,3 +1,8 @@
+import {
+  DWARF_CUSTOMIZATION_CATALOG,
+  type DwarfStarterClass,
+} from '@/generated/dwarfCustomizationCatalog';
+
 /**
  * Class-named character model lookup (rpg-dnd5e-web#501). rpg-game-assets
  * (closes rpg-dnd5e-web#488) shipped class-aliased GLBs at
@@ -40,22 +45,6 @@ const RACE_CLASS_CHARACTER_MODELS: Record<
   string,
   RaceClassCharacterModelEntry
 > = {
-  'dwarf:barbarian': {
-    model: 'race-class/dwarf-barbarian.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'dwarf:fighter': {
-    model: 'race-class/dwarf-fighter.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'dwarf:monk': {
-    model: 'race-class/dwarf-monk.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'dwarf:rogue': {
-    model: 'race-class/dwarf-rogue.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
   'elf:barbarian': {
     model: 'race-class/elf-barbarian.glb',
     rigFamily: 'modular-fantasy-hero-v1',
@@ -162,8 +151,10 @@ function resolveClassCharacterModelResolutionFromNormalizedClassRefId(
   normalizedClassRefId: string,
   isDowned: boolean
 ): PlayerCharacterModelResolution | undefined {
-  const entry = CLASS_CHARACTER_MODELS[normalizedClassRefId];
-  if (!entry) return undefined;
+  if (!Object.hasOwn(CLASS_CHARACTER_MODELS, normalizedClassRefId)) {
+    return undefined;
+  }
+  const entry = CLASS_CHARACTER_MODELS[normalizedClassRefId]!;
   return {
     url: CLASS_CHARACTER_MODEL_BASE + (isDowned ? entry.downed : entry.model),
     rigFamily: 'townfolk-v1',
@@ -176,6 +167,25 @@ function resolveRaceClassCharacterModelResolution(
   normalizedClassRefId: string
 ): PlayerCharacterModelResolution | undefined {
   if (!normalizedRaceRefId) return undefined;
+  if (normalizedRaceRefId === DWARF_CUSTOMIZATION_CATALOG.raceRef) {
+    if (
+      !Object.hasOwn(DWARF_CUSTOMIZATION_CATALOG.bodies, normalizedClassRefId)
+    ) {
+      return undefined;
+    }
+    const body =
+      DWARF_CUSTOMIZATION_CATALOG.bodies[
+        normalizedClassRefId as DwarfStarterClass
+      ];
+    return {
+      url: body.url,
+      rigFamily: DWARF_CUSTOMIZATION_CATALOG.rigFamily,
+      source: 'race-class',
+      customizationProfileRef: DWARF_CUSTOMIZATION_CATALOG.profileRef,
+      fallbackUrl: body.fallbackUrl,
+      fallbackSha256: body.fallbackSha256,
+    };
+  }
   const entry =
     RACE_CLASS_CHARACTER_MODELS[
       `${normalizedRaceRefId}:${normalizedClassRefId}`
@@ -192,6 +202,9 @@ export interface PlayerCharacterModelResolution {
   url: string;
   rigFamily: CharacterRigFamily;
   source: PlayerCharacterModelSource;
+  customizationProfileRef?: string;
+  fallbackUrl?: string;
+  fallbackSha256?: string;
 }
 
 /**

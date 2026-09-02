@@ -103,13 +103,33 @@ describe('resolvePlayerCharacterModel', () => {
     }
   );
 
-  it.each(['barbarian', 'fighter', 'monk', 'rogue'])(
-    'resolves the exact standing Dwarf %s race-class model',
-    (classRefId) => {
+  it.each([
+    [
+      'barbarian',
+      'dfd29de0d5a3611f6e92b88e7f706587ef705b332f0a8a949ee23919396a9a7f',
+    ],
+    [
+      'fighter',
+      '7e1c611b5b5e02a709e75ed71deeccdc30242e0716da469adc2ddaa559068224',
+    ],
+    [
+      'monk',
+      'e44a953e0678b029a379822a0593b21111fb7052c18152750ded94eed7086247',
+    ],
+    [
+      'rogue',
+      'a6de5c8247d8fdd8eae3888ee10faa9eddb73b624be92e81c25993b24063cfe7',
+    ],
+  ] as const)(
+    'resolves the generated active and immutable fallback Dwarf %s body',
+    (classRefId, fallbackSha256) => {
       const expected = asResolution({
-        url: `/models/synty/characters/race-class/dwarf-${classRefId}.glb`,
+        url: `/models/synty/characters/customization/dwarf-v1/bodies/dwarf-${classRefId}-body.glb`,
         rigFamily: 'modular-fantasy-hero-v1',
         source: 'race-class',
+        customizationProfileRef: 'modular-fantasy-hero-v1:dwarf',
+        fallbackUrl: `/models/synty/characters/race-class/dwarf-${classRefId}.glb`,
+        fallbackSha256,
       });
 
       expect(
@@ -218,6 +238,13 @@ describe('resolvePlayerCharacterModel', () => {
   it('returns undefined for an unknown class', () => {
     expect(
       classCharacterModels.resolvePlayerCharacterModel?.('elf', 'wizard', false)
+    ).toBeUndefined();
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        'dwarf',
+        '__proto__',
+        false
+      )
     ).toBeUndefined();
   });
 });

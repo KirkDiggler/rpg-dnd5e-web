@@ -63,7 +63,7 @@ import type {
   OffHandAttachmentStatus,
   OffHandPresentation,
 } from './offHandEquipment';
-import { cloneCryptMaterials } from './sceneKnowledge';
+import { applyRuntimeEntityMaterialOverlay } from './runtimeSurfaceTreatment';
 import {
   SkinnedAccessoryAttachment,
   type SkinnedAccessoryPresentation,
@@ -190,34 +190,17 @@ export function ClassCharacterModel({
     // disposed in any of them).
     const created: THREE.Material[] = [];
     originalMaterials.forEach((mat, mesh) => {
-      // Memory wins over every other tint. Uses the one shared crypt
-      // treatment (sceneKnowledge) rather than approximating it here, so
-      // remembered geometry and remembered entities cannot drift apart.
-      if (remembered) {
-        const crypt = cloneCryptMaterials(mat);
-        (Array.isArray(crypt) ? crypt : [crypt]).forEach((m) =>
-          created.push(m)
-        );
-        mesh.material = crypt;
-        return;
-      }
       const wasArray = Array.isArray(mat);
       const materials = wasArray ? mat : [mat];
-      const tinted = materials.map((m) => {
-        const tintedMat = m.clone();
-        created.push(tintedMat);
-        // emissive/emissiveIntensity are Standard/Physical-material-only;
-        // transparent/opacity are on the THREE.Material base and safe for
-        // any material type a GLB might legally use.
-        if (isSelected && tintedMat instanceof THREE.MeshStandardMaterial) {
-          tintedMat.emissive = new THREE.Color('#ffffff');
-          tintedMat.emissiveIntensity = 0.25;
-        }
-        if (isGhost) {
-          tintedMat.transparent = true;
-          tintedMat.opacity = 0.35;
-        }
-        return tintedMat;
+      const tinted = materials.map((material) => {
+        const clone = material.clone();
+        created.push(clone);
+        return clone;
+      });
+      applyRuntimeEntityMaterialOverlay(tinted, {
+        isSelected,
+        isGhost,
+        remembered,
       });
       mesh.material = wasArray ? tinted : tinted[0]!;
     });
@@ -333,9 +316,12 @@ export function ClassCharacterModel({
       />
       {accessories?.map((accessory) => (
         <SkinnedAccessoryAttachment
-          key={`${accessory.slot}|${accessory.styleRef}|${accessory.url}`}
+          key={accessory.slot}
           characterRoot={cloned}
           presentation={accessory}
+          isSelected={isSelected}
+          isGhost={isGhost}
+          remembered={remembered}
           onStatus={onAccessoryStatus}
         />
       ))}

@@ -207,10 +207,13 @@ const ELF_CLASS_URLS = {
   rogue: '/models/synty/characters/race-class/elf-rogue.glb',
 } as const;
 const DWARF_CLASS_URLS = {
-  barbarian: '/models/synty/characters/race-class/dwarf-barbarian.glb',
-  fighter: '/models/synty/characters/race-class/dwarf-fighter.glb',
-  monk: '/models/synty/characters/race-class/dwarf-monk.glb',
-  rogue: '/models/synty/characters/race-class/dwarf-rogue.glb',
+  barbarian:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-barbarian-body.glb',
+  fighter:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-fighter-body.glb',
+  monk: '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-monk-body.glb',
+  rogue:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-rogue-body.glb',
 } as const;
 const HALF_ELF_CLASS_URLS = {
   barbarian: '/models/synty/characters/race-class/half-elf-barbarian.glb',

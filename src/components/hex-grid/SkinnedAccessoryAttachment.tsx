@@ -5,25 +5,25 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type ReactNode,
 } from 'react';
 import * as THREE from 'three';
-import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import {
-  applyRuntimeSurfaceTreatment,
-  updateRuntimeSurfaceTreatment,
+  updateRuntimeAccessorySurfaceTreatment,
+  type RuntimeEntityMaterialTreatment,
   type RuntimeSurfaceTreatment,
 } from './runtimeSurfaceTreatment';
-import { bindSkinnedAccessory } from './skinnedAccessory';
+import {
+  markMountedSkinnedAccessory,
+  prepareSkinnedAccessory,
+  type PreparedSkinnedAccessory,
+  type SkinnedAccessoryPresentation,
+} from './skinnedAccessory';
 
-export interface SkinnedAccessoryPresentation {
-  readonly slot: 'scalp' | 'facial-hair';
-  readonly styleRef: string;
-  readonly url: string;
-  readonly treatment: RuntimeSurfaceTreatment;
-}
+export type { SkinnedAccessoryPresentation } from './skinnedAccessory';
 
 /** Values read back from an attachment's per-instance cloned materials. */
 export interface SkinnedAccessoryMaterialEvidence extends RuntimeSurfaceTreatment {
@@ -71,6 +71,62 @@ type ReportStatus = (
   status: SkinnedAccessoryStatus
 ) => boolean;
 
+interface MountedAttachment extends PreparedSkinnedAccessory {
+  readonly identity: PresentationIdentity;
+  appliedTreatmentKey: string;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function rejectionStatus(
+  identity: PresentationIdentity,
+  message: string
+): SkinnedAccessoryStatus {
+  return {
+    code: 'rejected',
+    slot: identity.slot,
+    styleRef: identity.styleRef,
+    url: identity.url,
+    message,
+  };
+}
+
+function attachedStatus(mounted: MountedAttachment): SkinnedAccessoryStatus {
+  return {
+    code: 'attached',
+    slot: mounted.identity.slot,
+    styleRef: mounted.identity.styleRef,
+    url: mounted.identity.url,
+    meshUuid: mounted.mesh.uuid,
+    bodyRootBoneUuid: mounted.evidence.bodyRootBoneUuid,
+    mappedBoneNames: mounted.evidence.mappedBoneNames,
+    mappedBoneUuids: mounted.evidence.mappedBoneUuids,
+    instanceMaterials: mounted.materials.map((material) => ({
+      materialUuid: material.uuid,
+      baseColorSrgb:
+        `#${material.color.getHexString().toUpperCase()}` as `#${string}`,
+      roughness: material.roughness,
+      metalness: material.metalness,
+    })),
+  };
+}
+
+function treatmentKey(
+  surface: RuntimeSurfaceTreatment,
+  entity: RuntimeEntityMaterialTreatment
+): string {
+  return [
+    surface.baseColorSrgb.toUpperCase(),
+    surface.roughness,
+    surface.metalness,
+    entity.isSelected,
+    entity.isGhost,
+    entity.remembered,
+  ].join('|');
+}
+
 interface StatusReporterProps {
   readonly identity: PresentationIdentity;
   readonly status: SkinnedAccessoryStatus;
@@ -91,195 +147,59 @@ function StatusReporter({
 interface LoadedAttachmentProps {
   readonly characterRoot: THREE.Object3D;
   readonly identity: PresentationIdentity;
-  readonly presentation: SkinnedAccessoryPresentation;
-  readonly invalidate: () => void;
+  readonly getPresentation: () => SkinnedAccessoryPresentation;
+  readonly commitPrepared: (
+    identity: PresentationIdentity,
+    prepared: PreparedSkinnedAccessory
+  ) => void;
+  readonly rejectPrepared: (
+    identity: PresentationIdentity,
+    error: unknown
+  ) => void;
   readonly reportStatus: ReportStatus;
-}
-
-function rejectionStatus(
-  identity: PresentationIdentity,
-  message: string
-): SkinnedAccessoryStatus {
-  return {
-    code: 'rejected',
-    slot: identity.slot,
-    styleRef: identity.styleRef,
-    url: identity.url,
-    message,
-  };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-interface MountedAttachment {
-  readonly identity: PresentationIdentity;
-  readonly mesh: THREE.SkinnedMesh;
-  readonly materials: readonly THREE.MeshStandardMaterial[];
-  readonly bodyRootBoneUuid: string;
-  readonly mappedBoneNames: readonly string[];
-  readonly mappedBoneUuids: readonly string[];
-  readonly ownsSkeletonWrapper: boolean;
-}
-
-function attachedStatus(mounted: MountedAttachment): SkinnedAccessoryStatus {
-  return {
-    code: 'attached',
-    slot: mounted.identity.slot,
-    styleRef: mounted.identity.styleRef,
-    url: mounted.identity.url,
-    meshUuid: mounted.mesh.uuid,
-    bodyRootBoneUuid: mounted.bodyRootBoneUuid,
-    mappedBoneNames: mounted.mappedBoneNames,
-    mappedBoneUuids: mounted.mappedBoneUuids,
-    instanceMaterials: mounted.materials.map((material) => ({
-      materialUuid: material.uuid,
-      baseColorSrgb:
-        `#${material.color.getHexString().toUpperCase()}` as `#${string}`,
-      roughness: material.roughness,
-      metalness: material.metalness,
-    })),
-  };
-}
-
-function materialsMatchTreatment(
-  materials: readonly THREE.MeshStandardMaterial[],
-  treatment: RuntimeSurfaceTreatment
-): boolean {
-  return materials.every(
-    (material) =>
-      `#${material.color.getHexString().toUpperCase()}` ===
-        treatment.baseColorSrgb.toUpperCase() &&
-      material.roughness === treatment.roughness &&
-      material.metalness === treatment.metalness
-  );
 }
 
 function LoadedAttachment({
   characterRoot,
   identity,
-  presentation,
-  invalidate,
+  getPresentation,
+  commitPrepared,
+  rejectPrepared,
   reportStatus,
 }: LoadedAttachmentProps) {
   const { scene } = useGLTF(identity.url);
-  const mountedAttachment = useRef<MountedAttachment | undefined>(undefined);
-  const currentTreatment = useRef(presentation.treatment);
-  const currentInvalidate = useRef(invalidate);
-  currentTreatment.current = presentation.treatment;
-  currentInvalidate.current = invalidate;
-  const { baseColorSrgb, roughness, metalness } = presentation.treatment;
 
-  // Identity owns cloning, rebinding, mounting, and cleanup. Treatment values
-  // deliberately stay behind a ref so color/PBR changes cannot replay this
-  // lifecycle and make the accessory disappear for a frame.
-  useEffect(() => {
+  useLayoutEffect(() => {
     reportStatus(identity, {
       code: 'loading',
       slot: identity.slot,
       styleRef: identity.styleRef,
       url: identity.url,
     });
-
-    let accessoryRoot: THREE.Object3D;
+    let prepared: PreparedSkinnedAccessory;
     try {
-      accessoryRoot = cloneSkeleton(scene);
-    } catch (error) {
-      if (
-        reportStatus(identity, rejectionStatus(identity, errorMessage(error)))
-      ) {
-        currentInvalidate.current();
-      }
-      return;
-    }
-
-    const result = bindSkinnedAccessory(characterRoot, accessoryRoot);
-    if (!result.ok) {
-      if (reportStatus(identity, rejectionStatus(identity, result.message))) {
-        currentInvalidate.current();
-      }
-      return;
-    }
-
-    let materials: readonly THREE.MeshStandardMaterial[];
-    try {
-      materials = applyRuntimeSurfaceTreatment(
-        result.mesh,
-        currentTreatment.current
+      prepared = prepareSkinnedAccessory(
+        characterRoot,
+        scene,
+        getPresentation()
       );
     } catch (error) {
-      if (result.ownsSkeletonWrapper) result.mesh.skeleton.dispose();
-      if (
-        reportStatus(identity, rejectionStatus(identity, errorMessage(error)))
-      ) {
-        currentInvalidate.current();
-      }
+      rejectPrepared(identity, error);
       return;
     }
-
-    const mounted: MountedAttachment = {
-      identity,
-      mesh: result.mesh,
-      materials,
-      bodyRootBoneUuid: result.bodyRootBoneUuid,
-      mappedBoneNames: result.mappedBoneNames,
-      mappedBoneUuids: result.mappedBoneUuids,
-      ownsSkeletonWrapper: result.ownsSkeletonWrapper,
-    };
-    mountedAttachment.current = mounted;
-    characterRoot.add(mounted.mesh);
-    currentInvalidate.current();
-    if (!reportStatus(identity, attachedStatus(mounted))) {
-      // In StrictMode's setup -> cleanup -> setup probe, child passive effects
-      // run before the parent's identity-restoring setup. Retry only for the
-      // still-mounted instance after that setup so diagnostics cannot retain
-      // UUIDs from the disposed probe instance.
-      queueMicrotask(() => {
-        if (mountedAttachment.current === mounted) {
-          reportStatus(identity, attachedStatus(mounted));
-        }
-      });
-    }
-
-    return () => {
-      if (mountedAttachment.current === mounted) {
-        mountedAttachment.current = undefined;
-      }
-      characterRoot.remove(mounted.mesh);
-      mounted.materials.forEach((material) => material.dispose());
-      if (mounted.ownsSkeletonWrapper) mounted.mesh.skeleton.dispose();
-      currentInvalidate.current();
-    };
-  }, [characterRoot, identity, reportStatus, scene]);
-
-  // The mounted mesh and its instance-owned material objects remain stable.
-  // Mutate only their supported surface fields, then publish values read back
-  // from those same material identities for the diagnostics fence.
-  useEffect(() => {
-    const mounted = mountedAttachment.current;
-    if (!mounted || mounted.identity !== identity) return;
-    const treatment: RuntimeSurfaceTreatment = {
-      baseColorSrgb,
-      roughness,
-      metalness,
-    };
-    if (materialsMatchTreatment(mounted.materials, treatment)) return;
-
-    try {
-      updateRuntimeSurfaceTreatment(mounted.materials, treatment);
-    } catch (error) {
-      if (
-        reportStatus(identity, rejectionStatus(identity, errorMessage(error)))
-      ) {
-        currentInvalidate.current();
-      }
-      return;
-    }
-    if (reportStatus(identity, attachedStatus(mounted))) {
-      currentInvalidate.current();
-    }
-  }, [baseColorSrgb, identity, metalness, reportStatus, roughness]);
+    commitPrepared(identity, prepared);
+    // Identity changes deliberately do not clean the mounted preparation.
+    // The stable slot owner retains it until a newer preparation commits;
+    // owner unmount owns the final active cleanup.
+  }, [
+    characterRoot,
+    commitPrepared,
+    getPresentation,
+    identity,
+    rejectPrepared,
+    reportStatus,
+    scene,
+  ]);
 
   return null;
 }
@@ -318,15 +238,30 @@ class AttachmentErrorBoundary extends Component<
 export interface SkinnedAccessoryAttachmentProps {
   readonly characterRoot: THREE.Object3D;
   readonly presentation: SkinnedAccessoryPresentation;
+  readonly isSelected?: boolean;
+  readonly isGhost?: boolean;
+  readonly remembered?: boolean;
   readonly onStatus?: (status: SkinnedAccessoryStatus) => void;
 }
 
 export function SkinnedAccessoryAttachment({
   characterRoot,
   presentation,
+  isSelected = false,
+  isGhost = false,
+  remembered = false,
   onStatus,
 }: SkinnedAccessoryAttachmentProps) {
   const invalidate = useThree((state) => state.invalidate);
+  const currentInvalidate = useRef(invalidate);
+  const currentOnStatus = useRef(onStatus);
+  const currentPresentation = useRef(presentation);
+  const currentEntityTreatment = useRef<RuntimeEntityMaterialTreatment>({
+    isSelected,
+    isGhost,
+    remembered,
+  });
+  const activeRef = useRef<MountedAttachment | undefined>(undefined);
   const identity = useMemo<PresentationIdentity>(
     () => ({
       slot: presentation.slot,
@@ -335,11 +270,15 @@ export function SkinnedAccessoryAttachment({
     }),
     [presentation.slot, presentation.styleRef, presentation.url]
   );
-  const currentIdentity = useRef<PresentationIdentity | null>(identity);
+  const currentIdentity = useRef(identity);
   const loadingReportedFor = useRef<PresentationIdentity | null>(null);
-  const currentOnStatus = useRef(onStatus);
   currentIdentity.current = identity;
+  currentInvalidate.current = invalidate;
   currentOnStatus.current = onStatus;
+  currentPresentation.current = presentation;
+  currentEntityTreatment.current = { isSelected, isGhost, remembered };
+
+  const getPresentation = useCallback(() => currentPresentation.current, []);
 
   const reportStatus = useCallback<ReportStatus>((reportedIdentity, status) => {
     if (currentIdentity.current !== reportedIdentity) return false;
@@ -356,15 +295,117 @@ export function SkinnedAccessoryAttachment({
     return true;
   }, []);
 
-  // StrictMode replays setup -> cleanup -> setup without another render. Restore
-  // the committed identity in setup so the cleanup probe cannot disarm the
-  // terminal-status fence while a Suspense load remains pending.
-  useEffect(() => {
-    currentIdentity.current = identity;
+  const rejectPrepared = useCallback(
+    (reportedIdentity: PresentationIdentity, error: unknown) => {
+      if (
+        reportStatus(
+          reportedIdentity,
+          rejectionStatus(reportedIdentity, errorMessage(error))
+        )
+      ) {
+        currentInvalidate.current();
+      }
+    },
+    [reportStatus]
+  );
+
+  const commitPrepared = useCallback(
+    (
+      reportedIdentity: PresentationIdentity,
+      prepared: PreparedSkinnedAccessory
+    ) => {
+      if (currentIdentity.current !== reportedIdentity) {
+        prepared.dispose();
+        return;
+      }
+      const currentSurface = currentPresentation.current.treatment;
+      const currentEntity = currentEntityTreatment.current;
+      try {
+        updateRuntimeAccessorySurfaceTreatment(
+          prepared.materials,
+          currentSurface,
+          currentEntity
+        );
+      } catch (error) {
+        prepared.dispose();
+        rejectPrepared(reportedIdentity, error);
+        return;
+      }
+      const next: MountedAttachment = {
+        ...prepared,
+        identity: reportedIdentity,
+        appliedTreatmentKey: treatmentKey(currentSurface, currentEntity),
+      };
+      const previous = activeRef.current;
+
+      // One layout turn: next becomes renderable before the prior valid mesh
+      // is removed, so no committed frame can observe an empty slot. Marking
+      // keeps later preparations from mistaking this runtime subset skin for
+      // another authoritative body skin.
+      markMountedSkinnedAccessory(next.mesh);
+      characterRoot.add(next.mesh);
+      if (previous) {
+        characterRoot.remove(previous.mesh);
+        previous.dispose();
+      }
+      activeRef.current = next;
+      currentInvalidate.current();
+      if (!reportStatus(reportedIdentity, attachedStatus(next))) {
+        prepared.dispose();
+        characterRoot.remove(next.mesh);
+        if (activeRef.current === next) activeRef.current = undefined;
+      }
+    },
+    [characterRoot, rejectPrepared, reportStatus]
+  );
+
+  // The slot owner, not an identity-keyed loader child, owns final cleanup.
+  // React StrictMode's setup/cleanup/setup probe therefore disposes only its
+  // own prepared instance; cached source scene resources remain untouched.
+  useLayoutEffect(() => {
     return () => {
-      if (currentIdentity.current === identity) currentIdentity.current = null;
+      const active = activeRef.current;
+      if (!active) return;
+      activeRef.current = undefined;
+      characterRoot.remove(active.mesh);
+      active.dispose();
+      currentInvalidate.current();
     };
-  }, [identity]);
+  }, [characterRoot]);
+
+  const { baseColorSrgb, roughness, metalness } = presentation.treatment;
+  useEffect(() => {
+    const active = activeRef.current;
+    if (!active || active.identity !== identity) return;
+    const surface: RuntimeSurfaceTreatment = {
+      baseColorSrgb,
+      roughness,
+      metalness,
+    };
+    const entity = { isSelected, isGhost, remembered };
+    const nextKey = treatmentKey(surface, entity);
+    if (active.appliedTreatmentKey === nextKey) return;
+    try {
+      updateRuntimeAccessorySurfaceTreatment(active.materials, surface, entity);
+    } catch (error) {
+      rejectPrepared(identity, error);
+      return;
+    }
+    active.appliedTreatmentKey = nextKey;
+    if (reportStatus(identity, attachedStatus(active))) {
+      currentInvalidate.current();
+    }
+  }, [
+    baseColorSrgb,
+    identity,
+    isGhost,
+    isSelected,
+    metalness,
+    rejectPrepared,
+    remembered,
+    reportStatus,
+    roughness,
+  ]);
 
   const loading = useMemo<SkinnedAccessoryStatus>(
     () => ({
@@ -375,11 +416,11 @@ export function SkinnedAccessoryAttachment({
     }),
     [identity]
   );
-  const key = `${identity.slot}|${identity.styleRef}|${identity.url}`;
+  const requestKey = `${identity.slot}|${identity.url}`;
 
   return (
     <AttachmentErrorBoundary
-      key={key}
+      key={requestKey}
       identity={identity}
       invalidate={invalidate}
       reportStatus={reportStatus}
@@ -394,10 +435,12 @@ export function SkinnedAccessoryAttachment({
         }
       >
         <LoadedAttachment
+          key={requestKey}
           characterRoot={characterRoot}
           identity={identity}
-          presentation={presentation}
-          invalidate={invalidate}
+          getPresentation={getPresentation}
+          commitPrepared={commitPrepared}
+          rejectPrepared={rejectPrepared}
           reportStatus={reportStatus}
         />
       </Suspense>

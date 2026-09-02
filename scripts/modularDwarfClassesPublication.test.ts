@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { resolvePlayerCharacterModel } from '../src/components/hex-grid/classCharacterModels';
 
 const receiptUrl = new URL(
   '../docs/evidence/858-modular-dwarf-classes/receipt.json',
@@ -10,14 +11,6 @@ const readmeUrl = new URL(
   '../docs/evidence/858-modular-dwarf-classes/README.md',
   import.meta.url
 );
-const resolverSource = readFileSync(
-  new URL(
-    '../src/components/hex-grid/classCharacterModels.ts',
-    import.meta.url
-  ),
-  'utf8'
-);
-
 function loadReceipt(): Record<string, unknown> {
   expect(existsSync(receiptUrl)).toBe(true);
   if (!existsSync(receiptUrl)) return {};
@@ -60,12 +53,16 @@ describe('modular Dwarf class publication', () => {
     });
   });
 
-  it('keeps all exact Dwarf entries on the modular rig family', () => {
+  it('retains every published Dwarf model as the generated production fallback', () => {
     for (const classRef of ['barbarian', 'fighter', 'monk', 'rogue']) {
-      expect(resolverSource).toContain(`'dwarf:${classRef}'`);
-      expect(resolverSource).toContain(
-        `model: 'race-class/dwarf-${classRef}.glb'`
-      );
+      expect(
+        resolvePlayerCharacterModel('dwarf', classRef, false)
+      ).toMatchObject({
+        url: `/models/synty/characters/customization/dwarf-v1/bodies/dwarf-${classRef}-body.glb`,
+        rigFamily: 'modular-fantasy-hero-v1',
+        customizationProfileRef: 'modular-fantasy-hero-v1:dwarf',
+        fallbackUrl: `/models/synty/characters/race-class/dwarf-${classRef}.glb`,
+      });
     }
     expect(loadReceipt().socketProfile).toBe(
       'modular-fantasy-hero-main-hand-v1'

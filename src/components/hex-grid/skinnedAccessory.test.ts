@@ -213,6 +213,20 @@ describe('bindSkinnedAccessory', () => {
     );
   });
 
+  it('rejects an unmarked subset Skeleton among authoritative body skins', () => {
+    const fixture = makeFixture(BODY_BONE_NAMES);
+    const subsetSkeleton = new THREE.Skeleton(
+      [fixture.bodyBones[0]!, fixture.bodyBones[2]!],
+      [fixture.bodyInverses[0]!, fixture.bodyInverses[2]!]
+    );
+    fixture.bodyMeshes[1].bind(subsetSkeleton, BODY_BIND_MATRIX);
+
+    expectFailure(
+      bindSkinnedAccessory(fixture.bodyRoot, fixture.accessoryRoot),
+      'body-skeleton-count'
+    );
+  });
+
   it('requires at least one body skin', () => {
     const fixture = makeFixture();
 

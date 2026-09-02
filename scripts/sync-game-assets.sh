@@ -9,6 +9,8 @@
 #   RPG_GAME_ASSETS_PATH    explicit private provider checkout (never updated)
 #   RPG_GAME_ASSETS_DIR     legacy private provider checkout override
 #   RPG_WEB_ROOT            destination web checkout
+#   RPG_DWARF_CATALOG_GENERATOR test-only generator override
+#   RPG_DWARF_CATALOG_RUNNER    test-only TypeScript runner override
 #   ASSETS_SYNC_SKIP_UPDATE skip clone/pull when set to 1
 
 set -e
@@ -42,6 +44,42 @@ if [ "$EXPLICIT_ASSETS_SOURCE" != "1" ] && [ "${ASSETS_SYNC_SKIP_UPDATE:-0}" != 
   fi
 fi
 
+# A generated tracked catalog may never describe a moving or locally-mutated
+# source. Resolve and validate the provider authority before either rsync
+# destination can be changed.
+if [ ! -d "$ASSETS_DIR" ] || [ -L "$ASSETS_DIR" ]; then
+  echo "ERROR: provider root must be a real non-symlink directory: $ASSETS_DIR" >&2
+  exit 1
+fi
+ASSETS_DIR=$(CDPATH= cd -- "$ASSETS_DIR" && pwd -P)
+if ! ASSETS_HEAD=$(git -C "$ASSETS_DIR" rev-parse --verify 'HEAD^{commit}'); then
+  echo "ERROR: provider HEAD must resolve to an exact commit" >&2
+  exit 1
+fi
+case "$ASSETS_HEAD" in
+  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+  *)
+    echo "ERROR: provider HEAD must be an exact 40-character commit id" >&2
+    exit 1
+    ;;
+esac
+if [ -n "$(git -C "$ASSETS_DIR" status --porcelain=v1 --untracked-files=all)" ]; then
+  echo "ERROR: provider checkout must be exactly clean" >&2
+  exit 1
+fi
+echo "Pinned clean rpg-game-assets provider at $ASSETS_HEAD"
+
+CATALOG_GENERATOR=${RPG_DWARF_CATALOG_GENERATOR:-$SCRIPT_DIR/generateDwarfCustomizationCatalog.ts}
+CATALOG_RUNNER=${RPG_DWARF_CATALOG_RUNNER:-$WEB_ROOT/node_modules/.bin/tsx}
+if [ ! -f "$CATALOG_GENERATOR" ] || [ -L "$CATALOG_GENERATOR" ]; then
+  echo "ERROR: Dwarf catalog generator must be a real file: $CATALOG_GENERATOR" >&2
+  exit 1
+fi
+if [ ! -x "$CATALOG_RUNNER" ]; then
+  echo "ERROR: Dwarf catalog TypeScript runner is unavailable: $CATALOG_RUNNER" >&2
+  exit 1
+fi
+
 SYNTY_SRC="$ASSETS_DIR/harness/models/synty"
 CUSTOM_DICE_SRC="$ASSETS_DIR/harness/models/custom-dice"
 SYNTY_DEST="$WEB_ROOT/public/models/synty"
@@ -73,4 +111,8 @@ sync_runtime_root() {
 sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
 sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
 
-echo "Done. public/models/{synty,custom-dice}/ now mirror the approved rpg-game-assets runtime roots."
+"$CATALOG_RUNNER" "$CATALOG_GENERATOR" \
+  --provider-root "$ASSETS_DIR" \
+  --output "$WEB_ROOT/src/generated/dwarfCustomizationCatalog.ts"
+
+echo "Done. public/models/{synty,custom-dice}/ mirror the approved provider and the Dwarf catalog is current."
