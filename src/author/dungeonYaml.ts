@@ -828,8 +828,13 @@ export interface ConcealmentDerivation {
  *
  * A region genuinely disconnected from start — no concealed door
  * anywhere on its only paths, so it is unreachable in `full` as well —
- * is left alone: that is the toolkit's "give it another way in" error to
- * raise, not a secret this module should invent. */
+ * is left alone: this module does not invent a secret for it. That is
+ * a deliberate choice, NOT a claim the engine catches the gap some
+ * other way — measured live (PR #894 review), a disconnected region
+ * with no concealment authored anywhere in the file compiles with zero
+ * errors today. Closing that gap is a validator question, tracked
+ * separately; this module's job stays narrow: derive from what IS
+ * authored, don't guess at what a silent void might mean. */
 export function deriveConcealment(doc: DungeonDoc): ConcealmentDerivation {
   const graph = buildRegionGraph(doc);
   const doorByRegion = new Map<string, string>();
