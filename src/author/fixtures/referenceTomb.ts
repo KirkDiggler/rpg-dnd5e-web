@@ -75,7 +75,7 @@ export function referenceTombDoc(): DungeonDoc {
       {
         id: 'hall-tomb',
         edges: [hallTombDoor],
-        locked: { dc: 12, ability: 'dex' },
+        locked: [{ ability: 'dex', dc: 12 }],
       },
     ],
     place: [

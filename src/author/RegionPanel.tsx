@@ -11,7 +11,9 @@ import { ARCHETYPES } from './types';
 export interface RegionPanelProps {
   region: RegionDoc;
   onChange: (
-    patch: Partial<Pick<RegionDoc, 'id' | 'name' | 'archetype' | 'lighting'>>
+    patch: Partial<
+      Pick<RegionDoc, 'id' | 'name' | 'archetype' | 'lighting' | 'concealed'>
+    >
   ) => void;
   onRemove: () => void;
   /** Ids already taken by other regions — a rename into one is refused. */
@@ -85,6 +87,21 @@ export function RegionPanel({
           }
         />
       </label>
+      <label className="dg-check">
+        <input
+          type="checkbox"
+          checked={!!region.concealed}
+          onChange={(e) => onChange({ concealed: e.target.checked })}
+        />
+        concealed
+      </label>
+      <div className="text-xs opacity-70">
+        Hidden space — its floor, props and every boundary touching it are
+        withheld until a door into it is found and opened. Declared here, never
+        inferred from a door (rpg-project#351): a room only reachable through a
+        concealed door must be concealed too, and a concealed room anyone can
+        walk into is refused server-side.
+      </div>
       <div className="text-xs opacity-70">{region.cells.length} cells</div>
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
         remove region

@@ -118,6 +118,8 @@ export function CombatExperience({
   onLogModeChange,
   onOpenEquipment,
   equipmentOpen,
+  onSearch,
+  searchPending = false,
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
@@ -383,6 +385,19 @@ export function CombatExperience({
             onSelectDeclaration={onSelectDeclaration}
             onEndTurn={onEndTurn}
           />
+          {onSearch && (
+            <button
+              type="button"
+              className={styles.equipmentButton}
+              data-testid="session-combat-search-button"
+              disabled={searchPending}
+              title="Search the room you're standing in"
+              onClick={onSearch}
+            >
+              <span aria-hidden="true">🔍</span>
+              {searchPending ? 'Searching…' : 'Search'}
+            </button>
+          )}
         </div>
       </div>
     </div>

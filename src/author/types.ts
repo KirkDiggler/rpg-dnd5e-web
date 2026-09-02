@@ -35,6 +35,36 @@ export const ARCHETYPES = ['crypt', 'cave', 'sewer', 'ruin', 'hall'] as const;
 
 export const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const;
 
+/** Every opaque ability-or-skill ref a check approach may roll: the six
+ * raw abilities plus the standard skill list, exactly as
+ * dungeonspec.ApproachSpec.Ability names them (plain lowercase words,
+ * hyphenated where the skill itself is two words). Shared by a door's
+ * lock rows and its find-check rows — both are the same CheckSpec shape
+ * (rpg-project#350), so one dropdown vocabulary serves both. Not backed
+ * by the character sheet's proto Skill enum: dungeonspec carries this
+ * opaquely, same as ABILITIES already did. */
+export const APPROACH_ABILITIES = [
+  ...ABILITIES,
+  'acrobatics',
+  'animal-handling',
+  'arcana',
+  'athletics',
+  'deception',
+  'history',
+  'insight',
+  'intimidation',
+  'investigation',
+  'medicine',
+  'nature',
+  'perception',
+  'performance',
+  'persuasion',
+  'religion',
+  'sleight-of-hand',
+  'stealth',
+  'survival',
+] as const;
+
 export const TARGETINGS = [
   'closest',
   'lowest-health',

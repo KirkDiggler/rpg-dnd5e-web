@@ -74,7 +74,7 @@ describe('cryptPropShowcaseDoc', () => {
     expect(doc.doors).toHaveLength(1);
     expect(doc.doors[0]).toMatchObject({
       id: 'crypt-sealed-gate',
-      locked: { dc: 15, ability: 'dex' },
+      locked: [{ ability: 'dex', dc: 15 }],
     });
     expect(doc.doors[0]?.closed).toBeUndefined();
   });

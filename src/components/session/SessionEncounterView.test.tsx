@@ -74,6 +74,7 @@ const hoisted = vi.hoisted(() => ({
   getDoorsFn: vi.fn(),
   openDoorFn: vi.fn(),
   unlockFn: vi.fn(),
+  searchFn: vi.fn(),
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
@@ -117,6 +118,7 @@ vi.mock('@/api/client', () => ({
     getDoors: hoisted.getDoorsFn,
     openDoor: hoisted.openDoorFn,
     unlock: hoisted.unlockFn,
+    search: hoisted.searchFn,
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
@@ -1876,6 +1878,121 @@ describe('SessionEncounterView production combat integration', () => {
       })
     );
     await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
+  });
+
+  describe('concealed-door reveal wiring (rpg-project#886)', () => {
+    // A member-scoped atlas whose one region claims the searcher's own
+    // resting cell — `readyScene()`'s default atlas authors NO regions,
+    // so the search button (gated on a resolved region) never appears
+    // there. This is the fixture every test below needs to see it.
+    function readySearchableScene() {
+      readyScene();
+      hoisted.atlasResult.atlas = pointyAtlas({
+        regions: [
+          {
+            id: 'entrance-hall',
+            name: 'Entrance Hall',
+            archetype: 'crypt',
+            cells: [{ x: 0, y: 0 }],
+            lighting: { intensity: 1 },
+          },
+        ],
+      });
+    }
+
+    it('a doorRevealed event refreshes both doors and atlas — the recipient patches its cached GetDoors AND GetAtlas', async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      const reveal = deferredStream([
+        event(EventKind.DOOR_REVEALED, {
+          case: 'doorRevealed',
+          value: {},
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1));
+      expect(hoisted.atlasResult.refetch).not.toHaveBeenCalled();
+
+      reveal.release();
+      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(hoisted.atlasResult.refetch).toHaveBeenCalledTimes(1)
+      );
+    });
+
+    it('a regionRevealed event refreshes atlas alone — no door list changed', async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      const reveal = deferredStream([
+        event(EventKind.REGION_REVEALED, {
+          case: 'regionRevealed',
+          value: {},
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1));
+
+      reveal.release();
+      await waitFor(() =>
+        expect(hoisted.atlasResult.refetch).toHaveBeenCalledTimes(1)
+      );
+      expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("the search button is absent until the searcher's own region is known", async () => {
+      readyScene(); // default atlas authors no regions
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      expect(screen.queryByTestId('session-combat-search-button')).toBeNull();
+    });
+
+    it('clicking Search sends session/member/region and shows the same notice regardless of what the response carries — the secrecy law (rpg-project#886)', async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      // Two structurally different resolved values: an outcome-carrying
+      // reader would have to pick a different message for one of them.
+      // This assertion is the point — see searchNotice.ts.
+      hoisted.searchFn.mockResolvedValueOnce({
+        saved: { ok: true },
+      } as never);
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      const button = await screen.findByTestId('session-combat-search-button');
+      fireEvent.click(button);
+      await waitFor(() =>
+        expect(hoisted.searchFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          member: 'char-1',
+          region: 'entrance-hall',
+        })
+      );
+      const firstNotice = await screen.findByText('You search the area.');
+      expect(firstNotice).toBeTruthy();
+
+      hoisted.searchFn.mockResolvedValueOnce({} as never);
+      fireEvent.click(button);
+      await waitFor(() => expect(hoisted.searchFn).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText('You search the area.')).toBeTruthy();
+    });
+
+    it('a transport failure shows the error, not the search notice — a real RPC failure is not a check outcome', async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      hoisted.searchFn.mockRejectedValue(new Error('session not found'));
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      const button = await screen.findByTestId('session-combat-search-button');
+      fireEvent.click(button);
+      await waitFor(() => screen.getByText('session not found'));
+      expect(screen.queryByText('You search the area.')).toBeNull();
+    });
   });
 
   it('replaces private equipment state directly from UnequipItem response without a read or client recompute', async () => {
