@@ -7,6 +7,7 @@ import {
 import { CustomizationSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { AppearanceSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { describe, expect, it } from 'vitest';
+import { DWARF_CUSTOMIZATION_CATALOG } from '../../generated/dwarfCustomizationCatalog';
 import { resolveHairPresentation, rgb24ToHex } from './hairCustomization';
 
 function style(styleRef: string) {
@@ -151,6 +152,63 @@ describe('resolveHairPresentation', () => {
       },
     ]);
     expect(JSON.stringify(result.accessories)).not.toContain(malicious);
+  });
+
+  it('keeps valid facial hair when an unknown scalp ref is rejected', () => {
+    const customization = create(AppearanceSchema, {
+      hair: create(HairCustomizationSchema, {
+        scalp: style('modular-fantasy-hero:hair:missing'),
+        facialHair: style('modular-fantasy-hero:facial-hair:18'),
+      }),
+    });
+
+    const result = resolveHairPresentation({
+      ...dwarfFighter,
+      customization,
+    });
+
+    expect(result.accessories).toEqual([
+      {
+        slot: 'facial-hair',
+        styleRef: 'modular-fantasy-hero:facial-hair:18',
+        url: '/models/synty/characters/customization/dwarf-v1/facial-hair/facial-hair-18.glb',
+        treatment: {
+          baseColorSrgb: '#5A3825',
+          roughness: 0.72,
+          metalness: 0,
+        },
+      },
+    ]);
+    expect(result.diagnostics).toEqual([
+      {
+        code: 'unknown-style-ref',
+        slot: 'scalp',
+        requestedStyleRef: 'modular-fantasy-hero:hair:missing',
+      },
+    ]);
+  });
+
+  it('reports a missing provider default as a contract diagnostic without guessing a URL', () => {
+    const mutableScalp = DWARF_CUSTOMIZATION_CATALOG.slots.scalp as {
+      defaultStyleRef: string;
+    };
+    const originalDefault = mutableScalp.defaultStyleRef;
+    mutableScalp.defaultStyleRef = 'modular-fantasy-hero:hair:not-declared';
+    try {
+      const result = resolveHairPresentation(dwarfFighter);
+      expect(result.accessories).toHaveLength(1);
+      expect(result.accessories[0]?.slot).toBe('facial-hair');
+      expect(result.diagnostics).toEqual([
+        {
+          code: 'unknown-style-ref',
+          slot: 'scalp',
+          requestedStyleRef: 'modular-fantasy-hero:hair:not-declared',
+        },
+      ]);
+      expect(JSON.stringify(result.accessories)).not.toContain('not-declared');
+    } finally {
+      mutableScalp.defaultStyleRef = originalDefault;
+    }
   });
 
   it('diagnoses a present selection with no oneof arm and mounts no accessory for that slot', () => {

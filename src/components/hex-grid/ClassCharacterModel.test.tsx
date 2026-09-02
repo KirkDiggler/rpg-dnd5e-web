@@ -245,6 +245,66 @@ it('keeps the real body mounted and reports a rejected accessory bind', async ()
   await renderer.unmount();
 });
 
+it('isolates a rejected scalp from the body and valid facial-hair sibling', async () => {
+  const statuses: SkinnedAccessoryStatus[] = [];
+  const treatment = {
+    baseColorSrgb: '#5A3825',
+    roughness: 0.72,
+    metalness: 0,
+  } as const;
+  const renderer = await ReactThreeTestRenderer.create(
+    <ClassCharacterModel
+      url={fighterUrl}
+      accessories={[
+        {
+          slot: 'scalp',
+          styleRef: 'concept:hair:rejected',
+          url: rejectedAccessory,
+          treatment,
+        },
+        {
+          slot: 'facial-hair',
+          styleRef: 'concept:facial-hair:valid',
+          url: compatibleAccessory,
+          treatment,
+        },
+      ]}
+      onAccessoryStatus={(status) => statuses.push(status)}
+    />
+  );
+
+  expect(
+    renderer.scene.findAll(
+      (node) =>
+        (node.instance as { name?: string } | undefined)?.name ===
+        'fighter-body'
+    )
+  ).toHaveLength(1);
+  expect(
+    renderer.scene.findAll(
+      (node) =>
+        (node.instance as { name?: string } | undefined)?.name ===
+        `cached-mesh:${compatibleAccessory}`
+    )
+  ).toHaveLength(1);
+  expect(statuses).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        code: 'rejected',
+        slot: 'scalp',
+        styleRef: 'concept:hair:rejected',
+      }),
+      expect.objectContaining({
+        code: 'attached',
+        slot: 'facial-hair',
+        styleRef: 'concept:facial-hair:valid',
+      }),
+    ])
+  );
+
+  await renderer.unmount();
+});
+
 it('applies body-equivalent entity overlays to accessories and restores their persisted base in place', async () => {
   const treatment = {
     baseColorSrgb: '#5A3825',

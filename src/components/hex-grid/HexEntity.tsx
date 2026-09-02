@@ -5,6 +5,7 @@
  * at the specified hex position.
  */
 
+import { resolveHairPresentation } from '@/character/customization/hairCustomization';
 import type {
   FacialHairStyle,
   HairStyle,
@@ -13,6 +14,7 @@ import type {
 } from '@/config/attachmentModels';
 import { isTwoHandedWeapon, WEAPON_CONFIGS } from '@/config/attachmentModels';
 import type { HeadVariant } from '@/config/characterModels';
+import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
@@ -107,6 +109,10 @@ export interface HexEntityProps {
    * player models; blank/missing falls back to honest class or neutral
    * placeholder. */
   raceRefId?: string;
+  /** Provider-neutral hair intent. Owner Appearance.hair and peer public
+   * roster Customization.hair both enter this one typed boundary. Only a
+   * standing supported Dwarf body consumes it. */
+  hairCustomization?: HairCustomization;
   /** Exact owner-authoritative visual projection for this player's main hand.
    * Undefined means unarmed; only class GLBs consume it. */
   mainHandPresentation?: MainHandPresentation;
@@ -320,6 +326,7 @@ export function HexEntity({
   knowledgeState,
   classRefId,
   raceRefId,
+  hairCustomization,
   mainHandPresentation,
   offHandPresentation,
   isDowned = false,
@@ -391,9 +398,9 @@ export function HexEntity({
   // render rather than a bare boolean so a later class/monster-ref/asset
   // change (or the file becoming available again) isn't permanently masked
   // by a stale failure from a different url.
-  const [failedEntityModelUrl, setFailedEntityModelUrl] = useState<
-    string | undefined
-  >(undefined);
+  const [failedEntityModelUrls, setFailedEntityModelUrls] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
 
   // R3F runs the canvas in frameloop="demand" mode (HexGrid.tsx). When only
   // the ghost flag changes (entity stays at last_known position), no other
@@ -508,6 +515,25 @@ export function HexEntity({
     // entity, so combining them into one resolved url + one sticky-failure
     // slot (failedEntityModelUrl above) is safe.
     const resolvedModelUrl = classModelUrl ?? monsterModelUrl;
+    // Only generated provider truth can name the complete immutable Dwarf
+    // fallback. Non-Dwarves and monsters retain their existing one-step
+    // degradation straight to MediumHumanoid.
+    const generatedClassFallbackUrl =
+      type === 'player' ? playerModelResolution?.fallbackUrl : undefined;
+    const effectiveModelUrl = [resolvedModelUrl, generatedClassFallbackUrl]
+      .filter((url): url is string => Boolean(url))
+      .find((url) => !failedEntityModelUrls.has(url));
+    const isPrimaryCustomizationBody =
+      effectiveModelUrl === classModelUrl &&
+      playerModelResolution?.customizationProfileRef !== undefined &&
+      !isDowned;
+    const hairPresentation = isPrimaryCustomizationBody
+      ? resolveHairPresentation({
+          raceRefId,
+          classRefId,
+          customization: { hair: hairCustomization },
+        })
+      : undefined;
     // Same per-type selection the two resolver calls above already made
     // (isDowned for player, isDead for monster) — exposed as its own value
     // so ClassCharacterModel knows whether a zero-clip mount is expected
@@ -524,13 +550,6 @@ export function HexEntity({
       type === 'player'
         ? SYNTY_GLB_FORWARD_OFFSET
         : POLYGON_DUNGEON_FORWARD_OFFSET;
-    // undefined once resolvedModelUrl itself is undefined, or once THIS url
-    // has failed to load — never stuck failed against a different url.
-    const effectiveModelUrl =
-      resolvedModelUrl && resolvedModelUrl !== failedEntityModelUrl
-        ? resolvedModelUrl
-        : undefined;
-
     // Shared fallback element — used both as the "no class model" branch
     // and as the ErrorBoundary fallback when a mapped class model exists
     // but its GLB fails to load (missing/unsynced asset, bad file, etc.).
@@ -616,8 +635,15 @@ export function HexEntity({
           >
             {effectiveModelUrl ? (
               <ErrorBoundary
+                key={effectiveModelUrl}
                 fallback={mediumHumanoidElement}
-                onError={() => setFailedEntityModelUrl(effectiveModelUrl)}
+                onError={() =>
+                  setFailedEntityModelUrls((failed) => {
+                    const next = new Set(failed);
+                    next.add(effectiveModelUrl);
+                    return next;
+                  })
+                }
               >
                 <ClassCharacterModel
                   url={effectiveModelUrl}
@@ -635,6 +661,7 @@ export function HexEntity({
                     type === 'player' ? offHandPresentation : undefined
                   }
                   offHandSocketOverride={offHandSocketOverride}
+                  accessories={hairPresentation?.accessories}
                 />
               </ErrorBoundary>
             ) : (
