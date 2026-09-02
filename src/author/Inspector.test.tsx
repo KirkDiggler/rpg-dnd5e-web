@@ -6,6 +6,7 @@ import {
   emptyDungeon,
   paintCell,
   placeAt,
+  wallEdges,
   type DungeonDoc,
 } from './dungeonYaml';
 import { fromOffset } from './hexOffset';
@@ -138,14 +139,14 @@ describe('wall selection (#804)', () => {
     doc = {
       ...doc,
       regions: [{ ...doc.regions[0], cells: [p(0, 0), p(1, 0), p(0, 1)] }],
-      walls: [{ edge: [p(0, 0), p(1, 0)] }, { edge: [p(0, 0), p(0, 1)] }],
+      walls: [{ edges: [[p(0, 0), p(1, 0)]] }, { edges: [[p(0, 0), p(0, 1)]] }],
     };
     const onRemoveWall = vi.fn();
     render(
       <Inspector
         doc={doc}
         concealment={EMPTY_CONCEALMENT}
-        selection={{ kind: 'wall', edges: doc.walls.map((w) => w.edge) }}
+        selection={{ kind: 'wall', edges: wallEdges(doc) }}
         onDungeon={noop}
         onRegion={noop}
         onRemoveRegion={noop}
@@ -161,7 +162,7 @@ describe('wall selection (#804)', () => {
       'Wall — 2 edges'
     );
     fireEvent.click(screen.getByRole('button', { name: /delete wall/i }));
-    expect(onRemoveWall).toHaveBeenCalledWith(doc.walls.map((w) => w.edge));
+    expect(onRemoveWall).toHaveBeenCalledWith(wallEdges(doc));
   });
 
   it('the wall height stepper reports chain-level stamps: a value for the whole selection, standard clears it (rpg-project#273)', () => {
@@ -170,8 +171,8 @@ describe('wall selection (#804)', () => {
       ...doc,
       regions: [{ ...doc.regions[0], cells: [p(0, 0), p(1, 0), p(0, 1)] }],
       walls: [
-        { edge: [p(0, 0), p(1, 0)], height: 2 },
-        { edge: [p(0, 0), p(0, 1)], height: 2 },
+        { edges: [[p(0, 0), p(1, 0)]], height: 2 },
+        { edges: [[p(0, 0), p(0, 1)]], height: 2 },
       ],
     };
     const onSetWallHeight = vi.fn();
@@ -179,7 +180,7 @@ describe('wall selection (#804)', () => {
       <Inspector
         doc={doc}
         concealment={EMPTY_CONCEALMENT}
-        selection={{ kind: 'wall', edges: doc.walls.map((w) => w.edge) }}
+        selection={{ kind: 'wall', edges: wallEdges(doc) }}
         onDungeon={noop}
         onRegion={noop}
         onRemoveRegion={noop}
@@ -194,22 +195,13 @@ describe('wall selection (#804)', () => {
     const stepper = screen.getByTestId('wall-height') as HTMLInputElement;
     expect(stepper.value).toBe('2');
     fireEvent.change(stepper, { target: { value: '3' } });
-    expect(onSetWallHeight).toHaveBeenLastCalledWith(
-      doc.walls.map((w) => w.edge),
-      3
-    );
+    expect(onSetWallHeight).toHaveBeenLastCalledWith(wallEdges(doc), 3);
     // Stepping down to 1 IS "standard": the doc entry clears rather
     // than writing the redundant 1.
     fireEvent.change(stepper, { target: { value: '1' } });
-    expect(onSetWallHeight).toHaveBeenLastCalledWith(
-      doc.walls.map((w) => w.edge),
-      undefined
-    );
+    expect(onSetWallHeight).toHaveBeenLastCalledWith(wallEdges(doc), undefined);
     fireEvent.click(screen.getByTestId('wall-height-standard'));
-    expect(onSetWallHeight).toHaveBeenLastCalledWith(
-      doc.walls.map((w) => w.edge),
-      undefined
-    );
+    expect(onSetWallHeight).toHaveBeenLastCalledWith(wallEdges(doc), undefined);
   });
 
   it('the offset height control has its own [0,3] range and emits a triple — dropping back to the floor emits a pair (rpg-project#272)', () => {

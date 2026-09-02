@@ -21,6 +21,7 @@ import {
 } from 'react';
 import type { Point } from '../../concepts/session-tomb/atlas';
 import {
+  compiledWalls,
   doorEdgeOwners,
   floorOwners,
   isMonsterRef,
@@ -648,12 +649,12 @@ export function CreationBoard({
     width: number;
     dash?: string;
   }[] = [];
-  for (const w of displayDoc.walls) {
-    const isError = errorEdges.has(edgeKey(w.edge));
+  for (const { edge } of compiledWalls(displayDoc)) {
+    const isError = errorEdges.has(edgeKey(edge));
     if (straightened && !isError) continue;
     edgeLines.push({
-      key: `w:${edgeKey(w.edge)}`,
-      edge: w.edge,
+      key: `w:${edgeKey(edge)}`,
+      edge,
       stroke: isError ? ERROR_STROKE : WALL_STROKE,
       width: 4,
     });

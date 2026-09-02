@@ -11,6 +11,7 @@ import {
   paintCell,
   placeAt,
   toggleWall,
+  wallEdges,
   type DungeonDoc,
 } from '../dungeonYaml';
 import { axialKey, edgeKey, fromOffset, type Edge } from '../hexOffset';
@@ -333,7 +334,7 @@ describe('wall gesture affordances (#804)', () => {
     const doc = walledDoc();
     const { container } = mount(doc, {
       tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
+      selection: { kind: 'wall', edges: wallEdges(doc) },
     });
     // One single-edge run: two endpoint vertices, each with exactly one
     // incident run, visible the moment the wall is selected.
@@ -356,7 +357,7 @@ describe('wall gesture affordances (#804)', () => {
     const doc = walledDoc();
     const { container } = mount(doc, {
       tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
+      selection: { kind: 'wall', edges: wallEdges(doc) },
     });
     const selected = container.querySelectorAll('[data-run][data-selected]');
     expect(selected).toHaveLength(1);
@@ -479,7 +480,7 @@ describe('gesture plumbing — press, drag, release (#804)', () => {
     const doc = addWalls(floorDoc(), wall);
     const { container } = mount(doc, {
       tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
+      selection: { kind: 'wall', edges: wallEdges(doc) },
       onWallReshape,
     });
     const svg = enableSvgCtm(container);

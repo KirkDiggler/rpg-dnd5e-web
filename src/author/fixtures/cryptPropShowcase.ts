@@ -32,7 +32,7 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
     if (edgeKey(edge) !== doorKey) uniqueEdges.set(edgeKey(edge), edge);
   }
   const walls = [...uniqueEdges.values()].map((edge) => ({
-    edge,
+    edges: [edge],
     ...(raisedBranch.some((candidate) => edgeKey(candidate) === edgeKey(edge))
       ? { height: 2 }
       : {}),

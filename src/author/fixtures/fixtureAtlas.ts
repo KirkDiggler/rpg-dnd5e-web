@@ -17,7 +17,7 @@ import {
   GridKind,
   HexLayout,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { isMonsterRef, type DungeonDoc } from '../dungeonYaml';
+import { compiledWalls, isMonsterRef, type DungeonDoc } from '../dungeonYaml';
 import { compareAxial, type Axial } from '../hexOffset';
 
 const pos = (a: Axial) => ({ x: a.q, y: a.r });
@@ -44,7 +44,7 @@ export function fixtureAtlasOf(doc: DungeonDoc): GetAtlasResponse {
         offsetY: p.offset?.[1] ?? 0,
         offsetZ: p.offset?.[2] ?? 0,
       })),
-    boundaries: doc.walls.map(({ edge: [a, b], height }) => ({
+    boundaries: compiledWalls(doc).map(({ edge: [a, b], height }) => ({
       from: pos(a),
       to: pos(b),
       blocksMovement: true,

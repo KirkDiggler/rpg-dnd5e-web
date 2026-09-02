@@ -18,11 +18,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   addWalls,
+  compiledWalls,
   emitDungeon,
   emptyDungeon,
   paintCell,
   setWallHeights,
   toggleDoorEdge,
+  wallEdges,
+  wallHeightByEdge,
   type DungeonDoc,
 } from '../dungeonYaml';
 import { edgeKey, fromOffset, normalizeEdge, type Edge } from '../hexOffset';
@@ -213,9 +216,7 @@ describe('derivation rules — floor filter, door break, dedup', () => {
     expect(keys(derived)).toEqual(keys(VERT.chain.slice(1)));
     // …and committing still yields the full seam exactly once.
     const committed = applyWallDraw(doc, tautPath(VERT.a, VERT.b, SIZE, o));
-    expect(keys(committed.walls.map((w) => w.edge)).sort()).toEqual(
-      keys(VERT.chain).sort()
-    );
+    expect(keys(wallEdges(committed)).sort()).toEqual(keys(VERT.chain).sort());
   });
 });
 
@@ -368,7 +369,7 @@ describe('shared-corner drag (ruling 4) — every incident chain re-derives to t
       keys([E([1, 1], [2, 0]), E([1, 1], [2, 1]), E([1, 1], [2, 2])])
     );
     const committed = applyReshape(doc, [chainA, chainB], [newA, newB]);
-    expect(keys(committed.walls.map((w) => w.edge)).sort()).toEqual(
+    expect(keys(wallEdges(committed)).sort()).toEqual(
       keys([...newA, ...newB]).sort()
     );
   });
@@ -381,9 +382,7 @@ describe('shared-corner drag (ruling 4) — every incident chain re-derives to t
     const newA = tautPath(ref(0, 1, 3), newVertex, SIZE, o);
     const newB = tautPath(ref(1, 0, 1), newVertex, SIZE, o);
     const committed = applyReshape(doc, [chainA, chainB], [newA, newB]);
-    const byKey = new Map(
-      committed.walls.map((w) => [edgeKey(w.edge), w.height])
-    );
+    const byKey = wallHeightByEdge(committed);
     for (const e of newA) {
       expect(byKey.get(edgeKey(e))).toBe(2);
     }
@@ -446,11 +445,19 @@ describe('door tool inherits the drag — one chain, ONE door', () => {
     expect(doc.walls).toHaveLength(0);
   });
 
-  it('a door drag over existing walls replaces them — an edge is a wall OR a door', () => {
-    const doc = applyDoorDraw(addWalls(fixtureDoc(), HORIZ.chain), HORIZ.chain);
-    expect(doc.walls).toHaveLength(0);
+  it('a door drag over an existing wall leaves the wall standing — a door stands IN a wall', () => {
+    const walled = addWalls(fixtureDoc(), HORIZ.chain);
+    const doc = applyDoorDraw(walled, HORIZ.chain);
     expect(doc.doors).toHaveLength(1);
     expect(keys(doc.doors[0].edges)).toEqual(keys(HORIZ.chain));
+
+    // rpg-project#355 reverses "an edge is a wall OR a door": the run keeps
+    // every crossing it was drawn through, so the author's one wall stays
+    // one entry instead of coming apart where the door went in.
+    expect(keys(wallEdges(doc)).sort()).toEqual(keys(HORIZ.chain).sort());
+    // The atlas still sees no wall there — the client mirrors the server's
+    // subtraction — and deleting the door would give this stretch back.
+    expect(compiledWalls(doc)).toHaveLength(0);
   });
 });
 

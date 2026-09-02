@@ -4,6 +4,7 @@ import {
   addRegion,
   addWalls,
   applyDerivedConcealment,
+  compiledWalls,
   deriveConcealment,
   detectConcealmentLeaks,
   emitDungeon,
@@ -22,6 +23,7 @@ import {
   updateDoor,
   updatePlacement,
   updateRegion,
+  wallEdges,
   type DungeonDoc,
 } from './dungeonYaml';
 import { referenceTombDoc } from './fixtures/referenceTomb';
@@ -231,6 +233,107 @@ describe('emitDungeon / parseDungeon', () => {
     expect(emitDungeon(reparsed)).toBe(text);
   });
 
+  it('a drawn stroke is ONE entry: the run round-trips byte-for-byte with its height written once (rpg-project#355)', () => {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ]) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    const chain: Edge[] = [
+      [p(0, 0), p(0, 1)],
+      [p(1, 0), p(1, 1)],
+      [p(2, 0), p(2, 1)],
+    ];
+    doc = addWalls(doc, chain, 2);
+
+    // The stroke the author drew survives as ONE wall, not three edges —
+    // this is the whole point: a dungeon reads as the walls somebody drew.
+    expect(doc.walls).toHaveLength(1);
+    expect(doc.walls[0].edges).toHaveLength(3);
+
+    const text = emitDungeon(doc);
+    expect(text).toContain('  - height: 2\n    edges:\n');
+    const wallsBlock = text.slice(
+      text.indexOf('walls:'),
+      text.indexOf('doors:')
+    );
+    expect(wallsBlock.match(/^ {6}- \[\[/gm)).toHaveLength(3);
+    // The height is written ONCE for the run, not repeated per edge.
+    expect(wallsBlock.match(/height: 2/g)).toHaveLength(1);
+
+    const reparsed = parseDungeon(text);
+    expect(reparsed.walls).toHaveLength(1);
+    expect(reparsed.walls[0].edges).toHaveLength(3);
+    expect(reparsed.walls[0].height).toBe(2);
+    expect(emitDungeon(reparsed)).toBe(text);
+  });
+
+  it("a run's name round-trips and is carried unread", () => {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ]) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    doc = addWalls(doc, [
+      [p(0, 0), p(0, 1)],
+      [p(1, 0), p(1, 1)],
+    ]);
+    doc = { ...doc, walls: [{ ...doc.walls[0], name: 'north wall' }] };
+
+    const text = emitDungeon(doc);
+    expect(text).toContain('  - name: north wall\n    edges:\n');
+    const reparsed = parseDungeon(text);
+    expect(reparsed.walls[0].name).toBe('north wall');
+    expect(emitDungeon(reparsed)).toBe(text);
+  });
+
+  it('grouping has NO mechanical consequence: the same edges grouped differently reach the atlas identically (rpg-project#355)', () => {
+    let base = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ]) {
+      base = paintCell(base, 'region-1', p(c, r));
+    }
+    const chain: Edge[] = [
+      [p(0, 0), p(0, 1)],
+      [p(1, 0), p(1, 1)],
+      [p(2, 0), p(2, 1)],
+    ];
+
+    // One stroke of three edges...
+    const grouped = addWalls(base, chain);
+    // ...and the same three edges drawn one at a time.
+    let loose = base;
+    for (const e of chain) loose = addWalls(loose, [e]);
+
+    expect(grouped.walls).toHaveLength(1);
+    expect(loose.walls).toHaveLength(3);
+
+    const keysOf = (d: DungeonDoc) =>
+      compiledWalls(d)
+        .map((w) => `${edgeKey(w.edge)}@${w.height ?? 'std'}`)
+        .sort();
+    expect(keysOf(grouped)).toEqual(keysOf(loose));
+    // A flat document still emits the bare pairs it always did, so nothing
+    // already on disk churns just because runs became expressible.
+    expect(emitDungeon(loose)).toContain('walls:\n  - [[');
+  });
+
   it('refuses a wall object with an unknown key, a missing edge, or a non-number height', () => {
     const head =
       'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nwalls:\n';
@@ -238,7 +341,15 @@ describe('emitDungeon / parseDungeon', () => {
       parseDungeon(head + '  - { between: [[0,0],[1,0]], hieght: 2 }\n')
     ).toThrow(/walls\[0\]: unknown key "hieght"/);
     expect(() => parseDungeon(head + '  - { height: 2 }\n')).toThrow(
-      /walls\[0\]\.between/
+      /walls\[0\]: a wall object must name its edge in `between` or its run in `edges`/
+    );
+    expect(() =>
+      parseDungeon(
+        head + '  - { between: [[0,0],[1,0]], edges: [[[0,0],[1,0]]] }\n'
+      )
+    ).toThrow(/never both/);
+    expect(() => parseDungeon(head + '  - { edges: [] }\n')).toThrow(
+      /walls\[0\]\.edges: a wall run with no edges stands nowhere/
     );
     expect(() =>
       parseDungeon(head + '  - { between: [[0,0],[1,0]], height: tall }\n')
@@ -530,18 +641,32 @@ describe('mutators', () => {
     expect(toggleWall(doc, [p(0, 0), p(1, 0)])).toBe(doc);
   });
 
-  it('an edge is a wall OR a door, never both', () => {
+  it('a door stands in a wall, and deleting the door gives the wall back', () => {
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(0, 0));
     doc = paintCell(doc, 'region-1', p(1, 0));
     doc = toggleWall(doc, [p(0, 0), p(1, 0)]);
     doc = toggleDoorEdge(doc, [p(0, 0), p(1, 0)]);
-    expect(doc.walls).toHaveLength(0);
+
+    // rpg-project#355 reverses "an edge is a wall OR a door". The run KEEPS
+    // the crossing and the door sits in it — which is what lets one drawn
+    // wall stay one entry instead of coming apart at every doorway.
+    expect(wallEdges(doc)).toHaveLength(1);
     expect(doc.doors).toEqual([{ id: 'door-1', edges: [[p(0, 0), p(1, 0)]] }]);
-    // the wall tool leaves a door edge alone
-    expect(toggleWall(doc, [p(0, 0), p(1, 0)])).toBe(doc);
-    // clicking it again with the door tool removes the door
-    expect(toggleDoorEdge(doc, [p(1, 0), p(0, 0)]).doors).toHaveLength(0);
+    // ...and the wall still does not reach the atlas while the door holds
+    // that crossing: the client mirrors the server's own subtraction.
+    expect(compiledWalls(doc)).toHaveLength(0);
+
+    // The wall tool may draw on a door's edge, since a wall may run through
+    // one. Drawing over the wall already there is idempotent, so this is a
+    // removal, and now nothing is left underneath the door.
+    expect(wallEdges(toggleWall(doc, [p(0, 0), p(1, 0)]))).toHaveLength(0);
+
+    // Deleting the door gives the wall back rather than leaving a hole
+    // nobody authored — the behaviour the old exclusive rule got wrong.
+    const reopened = toggleDoorEdge(doc, [p(1, 0), p(0, 0)]);
+    expect(reopened.doors).toHaveLength(0);
+    expect(compiledWalls(reopened)).toHaveLength(1);
   });
 
   it('setWallHeights stamps every named edge, clears back to standard with undefined, and dies with an erased wall', () => {
@@ -558,7 +683,7 @@ describe('mutators', () => {
     const e2: Edge = [p(0, 1), p(1, 1)];
     doc = addWalls(doc, [e1, e2]);
     doc = setWallHeights(doc, [e1, e2], 2.5);
-    expect(doc.walls.map((w) => w.height)).toEqual([2.5, 2.5]);
+    expect(doc.walls.map((w) => w.height)).toEqual([2.5]);
     // Clearing is the same chain-level stamp.
     doc = setWallHeights(doc, [e1], undefined);
     expect(doc.walls.map((w) => w.height)).toEqual([undefined, 2.5]);
@@ -568,7 +693,9 @@ describe('mutators', () => {
     // standard, never a resurrected stale height.
     doc = removeWalls(doc, [e2]);
     doc = addWalls(doc, [e2]);
-    const redrawn = doc.walls.find((w) => edgeKey(w.edge) === edgeKey(e2));
+    const redrawn = doc.walls.find((w) =>
+      w.edges.some((x) => edgeKey(x) === edgeKey(e2))
+    );
     expect(redrawn?.height).toBeUndefined();
   });
 
@@ -590,7 +717,12 @@ describe('mutators', () => {
       ],
       3
     );
-    expect(doc.walls.map((w) => w.height)).toEqual([3, 3]);
+    // One stroke is ONE run (rpg-project#355), so the height it carries is
+    // written once for the whole wall rather than repeated per edge — the
+    // entire point of grouping, seen from the model side.
+    expect(doc.walls).toHaveLength(1);
+    expect(doc.walls[0].edges).toHaveLength(2);
+    expect(doc.walls.map((w) => w.height)).toEqual([3]);
   });
 
   it('erasing a cell takes its walls, door edges, start and placement with it', () => {
@@ -739,5 +871,40 @@ describe('resolveErrorPath', () => {
     }
     expect(resolveErrorPath(doc, 'key')).toEqual({ kind: 'document' });
     expect(resolveErrorPath(doc, 'walls[999]')).toEqual({ kind: 'document' });
+  });
+
+  it('a defect inside a run draws on THAT crossing, not on the whole wall (rpg-project#355)', () => {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ]) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    doc = addWalls(doc, [
+      [p(0, 0), p(0, 1)],
+      [p(1, 0), p(1, 1)],
+      [p(2, 0), p(2, 1)],
+    ]);
+
+    // The server addresses an edge inside a run as walls[i].edges[j], and
+    // the builder has to draw the refusal on that one crossing.
+    expect(resolveErrorPath(doc, 'walls[0].edges[2]')).toEqual({
+      kind: 'edge',
+      edge: [p(2, 0), p(2, 1)],
+    });
+    // A defect on the RUN itself names no single crossing, so it draws
+    // where the wall visibly starts.
+    expect(resolveErrorPath(doc, 'walls[0].height')).toEqual({
+      kind: 'edge',
+      edge: [p(0, 0), p(0, 1)],
+    });
+    expect(resolveErrorPath(doc, 'walls[0].edges[9]')).toEqual({
+      kind: 'document',
+    });
   });
 });
