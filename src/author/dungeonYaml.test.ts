@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDoor,
+  addRegion,
   addWalls,
+  applyDerivedConcealment,
+  deriveConcealment,
+  detectConcealmentLeaks,
   emitDungeon,
   emptyDungeon,
   eraseCell,
@@ -382,6 +386,117 @@ describe('emitDungeon / parseDungeon', () => {
       expect(placement.offset).toBeUndefined();
     }
     expect(emitDungeon(referenceTombDoc())).not.toMatch(/facing:|offset:/);
+  });
+});
+
+describe('deriveConcealment / detectConcealmentLeaks / applyDerivedConcealment (rpg-dnd5e-web#893)', () => {
+  /** region-1: [0,0],[1,0], start [0,0] — region-2: [2,0], reachable only
+   * through a door on the [1,0]-[2,0] edge, concealed by the caller. */
+  function alcoveDoc(): DungeonDoc {
+    let doc = emptyDungeon();
+    doc = addRegion(doc);
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    doc = paintCell(doc, 'region-1', p(1, 0));
+    doc = paintCell(doc, 'region-2', p(2, 0));
+    doc = addDoor(doc, [[p(1, 0), p(2, 0)]]);
+    doc = updateDoor(doc, doc.doors[0]!.id, {
+      concealed: [{ ability: 'perception', dc: 15 }],
+    });
+    doc = setStart(doc, p(0, 0));
+    return doc;
+  }
+
+  it('derives the region reachable only through a concealed door', () => {
+    const doc = alcoveDoc();
+    const { regionIds, doorByRegion } = deriveConcealment(doc);
+    expect(regionIds).toEqual(new Set(['region-2']));
+    expect(doorByRegion.get('region-2')).toBe(doc.doors[0]!.id);
+    // The door's crossing touches region-1 too (its visible side) — but
+    // the inspector only ever consults doorByRegion for a CONCEALED
+    // region, and region-1 is not one.
+    expect(doorByRegion.get('region-1')).toBe(doc.doors[0]!.id);
+  });
+
+  it('composes across a chain: a room past the hidden room needs no door of its own', () => {
+    let doc = alcoveDoc();
+    doc = addRegion(doc); // region-3
+    doc = paintCell(doc, 'region-3', p(3, 0));
+    // A bare, unwalled edge — no door — between region-2 and region-3.
+    const { regionIds, doorByRegion } = deriveConcealment(doc);
+    expect(regionIds).toEqual(new Set(['region-2', 'region-3']));
+    expect(doorByRegion.has('region-3')).toBe(false);
+  });
+
+  it('derives nothing without a start to measure reachability from', () => {
+    const doc = alcoveDoc();
+    const noStart = { ...doc, start: null };
+    expect(deriveConcealment(noStart).regionIds).toBeNull();
+    expect(detectConcealmentLeaks(noStart)).toEqual([]);
+  });
+
+  it('leaves an orphaned region alone — no concealed door explains it, so this module invents nothing', () => {
+    let doc = alcoveDoc();
+    doc = addRegion(doc); // region-3, painted but never connected to anything
+    doc = paintCell(doc, 'region-3', p(10, 10));
+    const { regionIds } = deriveConcealment(doc);
+    expect(regionIds).toEqual(new Set(['region-2']));
+  });
+
+  it('names the leak once when a concealed door hides nothing — the room is already reachable another way', () => {
+    let doc = alcoveDoc();
+    // A second, bare edge from region-1 straight into region-2's cell —
+    // the room the door "hides" was never exclusive to it.
+    doc = paintCell(doc, 'region-1', p(2, 1));
+    const { regionIds } = deriveConcealment(doc);
+    expect(regionIds).toEqual(new Set()); // no longer exclusive to the door
+    const leaks = detectConcealmentLeaks(doc);
+    expect(leaks).toHaveLength(1);
+    expect(leaks[0]!.doorId).toBe(doc.doors[0]!.id);
+    expect(leaks[0]!.message).toContain('Region 2');
+    expect(leaks[0]!.message).toContain('Region 1');
+  });
+
+  it('applyDerivedConcealment writes concealed: true on the newly-hidden region', () => {
+    const doc = alcoveDoc();
+    const { doc: next, derivedIds } = applyDerivedConcealment(doc, new Set());
+    expect(next.regions.find((r) => r.id === 'region-2')?.concealed).toBe(true);
+    expect(
+      next.regions.find((r) => r.id === 'region-1')?.concealed
+    ).toBeUndefined();
+    expect(derivedIds).toEqual(new Set(['region-2']));
+    // Idempotent: re-applying with the ratchet it just returned changes nothing.
+    expect(applyDerivedConcealment(next, derivedIds).doc).toBe(next);
+  });
+
+  it('unmarking the door strips concealment IT derived, going back to the same doc', () => {
+    const doc = alcoveDoc();
+    const derived = applyDerivedConcealment(doc, new Set());
+    const unmarked = updateDoor(derived.doc, derived.doc.doors[0]!.id, {
+      concealed: undefined,
+    });
+    const restored = applyDerivedConcealment(unmarked, derived.derivedIds);
+    expect(
+      restored.doc.regions.find((r) => r.id === 'region-2')?.concealed
+    ).toBeUndefined();
+    expect(restored.derivedIds).toEqual(new Set());
+  });
+
+  it('never strips concealment a person set by hand — a region with no door behind it at all', () => {
+    let doc = alcoveDoc();
+    // region-1 itself is hand-marked concealed, with no door gating it —
+    // rpg-dnd5e-web#890's surviving case.
+    doc = updateRegion(doc, 'region-1', { concealed: true });
+    const { doc: next, derivedIds } = applyDerivedConcealment(doc, new Set());
+    expect(next.regions.find((r) => r.id === 'region-1')?.concealed).toBe(true);
+    expect(derivedIds.has('region-1')).toBe(false);
+    // Unmarking the (unrelated) door leaves the hand-set region untouched.
+    const unmarked = updateDoor(next, next.doors[0]!.id, {
+      concealed: undefined,
+    });
+    const restored = applyDerivedConcealment(unmarked, derivedIds);
+    expect(
+      restored.doc.regions.find((r) => r.id === 'region-1')?.concealed
+    ).toBe(true);
   });
 });
 

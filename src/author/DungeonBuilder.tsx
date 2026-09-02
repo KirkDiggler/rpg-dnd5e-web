@@ -37,6 +37,9 @@ import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
   addRegion,
+  applyDerivedConcealment,
+  deriveConcealment,
+  detectConcealmentLeaks,
   DungeonParseError,
   emitDungeon,
   emptyDungeon,
@@ -115,6 +118,11 @@ export interface DungeonBuilderProps {
   playDisabledReason?: string | null;
 }
 
+/** `concealment.regionIds` is `null` only when there is no start to
+ * derive reachability from — the canvas has nothing to highlight either
+ * way, and a shared empty set keeps that a stable reference. */
+const EMPTY_REGION_IDS: ReadonlySet<string> = new Set();
+
 const PROP_DEFAULTS = new Map(
   PALETTE_PROPS.map((p) => [
     p.ref,
@@ -160,9 +168,27 @@ export function DungeonBuilder({
   onPlay,
   playDisabledReason = null,
 }: DungeonBuilderProps) {
-  const [doc, setDoc] = useState<DungeonDoc>(() =>
-    initialDoc(initialYaml, persistDraft)
+  // The FIRST doc runs through the same derivation every later edit
+  // does (rpg-dnd5e-web#893) — a loaded draft, `initialYaml`, or an old
+  // file hand-authored before this existed may have a concealed door
+  // whose region was never ticked (rpg-dnd5e-web#890's bug); this
+  // self-heals it before the first compile rather than leaving it for
+  // the next edit to fix by accident. Computed once at mount — the
+  // `useMemo([])` a component-scoped one-time computation, same spirit
+  // as `docGeneration` below being a ref rather than state.
+  const initialDerivation = useMemo(
+    () =>
+      applyDerivedConcealment(initialDoc(initialYaml, persistDraft), new Set()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only: initialYaml/persistDraft are launch-time props, same assumption `initialDoc` already makes
+    []
   );
+  const [doc, setDoc] = useState<DungeonDoc>(() => initialDerivation.doc);
+  // The ratchet's memory (rpg-dnd5e-web#893): the region ids `applyDoc`
+  // itself set concealed most recently, so a region a person concealed
+  // by hand — never in this set — is never stripped when the graph
+  // changes. Read by `applyDoc`'s updater and kept in step by the
+  // toast/derivation effect below, after each commit.
+  const derivedIdsRef = useRef<Set<string>>(initialDerivation.derivedIds);
   const [tool, setTool] = useState<BoardTool>('region');
   const [selection, setSelection] = useState<Selection>({ kind: 'dungeon' });
   const [activeRegionId, setActiveRegionId] = useState<string | null>(
@@ -242,15 +268,69 @@ export function DungeonBuilder({
   );
   const hasErrors = errors.length > 0;
 
+  // The door-links-to-region derivation (rpg-dnd5e-web#893), recomputed
+  // straight from the document on every render — the canvas highlight
+  // and the region panel's provenance note both read this directly, no
+  // ratchet needed for DISPLAY (only `applyDoc`'s write path needs to
+  // remember what IT set, to know what it may take back).
+  const concealment = useMemo(() => deriveConcealment(doc), [doc]);
+  // Concealed doors that currently hide nothing (rpg-dnd5e-web#893's leak
+  // case) — not a compiler defect, so it rides beside `errors` rather
+  // than inside it; the document still compiles and Save stays enabled.
+  const leaks = useMemo(() => detectConcealmentLeaks(doc), [doc]);
+
+  // Every document mutator (`dungeonYaml.ts`) is pure and knows nothing
+  // of concealment; every edit re-derives it on top, ratcheted so a
+  // region a person concealed by hand is never stripped (`applyDoc`'s
+  // own doc comment). This is the ONE place `setDoc` is called with a
+  // raw mutator result — every handler below goes through this instead.
+  const applyDoc = useCallback(
+    (updater: DungeonDoc | ((d: DungeonDoc) => DungeonDoc)) => {
+      setDoc((d) => {
+        const raw = typeof updater === 'function' ? updater(d) : updater;
+        if (raw === d) return d;
+        return applyDerivedConcealment(raw, derivedIdsRef.current).doc;
+      });
+    },
+    []
+  );
+
+  // Keeps the ratchet's memory in step with what the document now says
+  // is derived, and shows the author what just went dark — "derived
+  // state that appears silently is the cost of this approach, and
+  // visibility is what pays it" (rpg-dnd5e-web#893). Runs after every
+  // commit, so `applyDoc`'s NEXT call always reads a ref that matches
+  // the document as of the previous one.
+  useEffect(() => {
+    const current = concealment.regionIds ?? new Set<string>();
+    const newlyHidden = [...current].filter(
+      (id) => !derivedIdsRef.current.has(id)
+    );
+    derivedIdsRef.current = current;
+    if (newlyHidden.length === 0) return;
+    const names = newlyHidden
+      .map((id) => doc.regions.find((r) => r.id === id)?.name || id)
+      .join(', ');
+    showToast(`now hidden: ${names} — reachable only through a concealed door`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doc.regions is read only for names, not a reachability input
+  }, [concealment, showToast]);
+
   // Every document replacement bumps this; a late async Open whose
   // generation is no longer current is dropped rather than overwriting a
   // newer document (New, Load, or a second Open).
   const docGeneration = useRef(0);
   const replaceDoc = (next: DungeonDoc) => {
     docGeneration.current += 1;
-    setDoc(next);
+    // New/Open/Load self-heal the same way the first mount does (see
+    // `initialDerivation` above): nothing in the incoming file is
+    // presumed strippable yet, so only newly-required concealment gets
+    // added here — anything the file already declared stays exactly as
+    // written.
+    const derived = applyDerivedConcealment(next, new Set());
+    setDoc(derived.doc);
+    derivedIdsRef.current = derived.derivedIds;
     setSelection({ kind: 'dungeon' });
-    setActiveRegionId(next.regions[0]?.id ?? null);
+    setActiveRegionId(derived.doc.regions[0]?.id ?? null);
   };
 
   const handleNew = (orientation: Orientation) => {
@@ -311,23 +391,23 @@ export function DungeonBuilder({
   };
 
   const handlePaint = (cell: Axial) => {
-    if (activeRegionId) setDoc((d) => paintCell(d, activeRegionId, cell));
+    if (activeRegionId) applyDoc((d) => paintCell(d, activeRegionId, cell));
   };
-  const handleErase = (cell: Axial) => setDoc((d) => eraseCell(d, cell));
+  const handleErase = (cell: Axial) => applyDoc((d) => eraseCell(d, cell));
   // The wall drag commits its RAW taut chain; applying the same
   // mutator composition the board's live preview used (wallGesture's
   // apply*) is what makes the preview the commit (#804).
   const handleWallDraw = (chain: Edge[]) => {
-    setDoc((d) => applyWallDraw(d, chain));
+    applyDoc((d) => applyWallDraw(d, chain));
   };
   const handleWallErase = (chain: Edge[]) => {
-    setDoc((d) => applyWallErase(d, chain));
+    applyDoc((d) => applyWallErase(d, chain));
   };
   // Manipulation rides selection (Kirk's walk ruling): keep the wall
   // selected through a reshape by re-selecting the edges the re-derived
   // chains produced, so its handles stay up for the next grab.
   const handleWallReshape = (oldChains: Edge[][], newChains: Edge[][]) => {
-    setDoc((d) => {
+    applyDoc((d) => {
       const next = applyReshape(d, oldChains, newChains);
       if (next !== d) {
         const untouched = new Set(
@@ -348,7 +428,7 @@ export function DungeonBuilder({
   };
   // One drag, ONE door — and select it, same as the click path does.
   const handleDoorDraw = (chain: Edge[]) => {
-    setDoc((d) => {
+    applyDoc((d) => {
       const next = applyDoorDraw(d, chain);
       if (next !== d && next.doors.length > 0) {
         setSelection({
@@ -360,10 +440,10 @@ export function DungeonBuilder({
     });
   };
   const handleEdgeClick = (edge: Edge) => {
-    if (tool === 'wall') setDoc((d) => toggleWall(d, edge));
+    if (tool === 'wall') applyDoc((d) => toggleWall(d, edge));
     if (tool === 'door') {
       const doorId = selection.kind === 'door' ? selection.id : undefined;
-      setDoc((d) => {
+      applyDoc((d) => {
         const next = toggleDoorEdge(d, edge, doorId);
         if (next !== d && next.doors.length > 0 && !doorId) {
           setSelection({
@@ -376,7 +456,7 @@ export function DungeonBuilder({
     }
   };
   const handleCellClick = (cell: Axial) => {
-    if (tool === 'start') setDoc((d) => setStart(d, cell));
+    if (tool === 'start') applyDoc((d) => setStart(d, cell));
     if (tool === 'place' && armed) {
       const defaults = isMonsterRef(armed.ref)
         ? {}
@@ -384,7 +464,7 @@ export function DungeonBuilder({
             blocksMovement: true,
             blocksLos: false,
           });
-      setDoc((d) => {
+      applyDoc((d) => {
         const next = placeAt(d, { ref: armed.ref, at: cell, ...defaults });
         if (next !== d) {
           setSelection({ kind: 'placement', index: next.place.length - 1 });
@@ -504,7 +584,7 @@ export function DungeonBuilder({
             setSelection({ kind: 'region', id });
           }}
           onAddRegion={() => {
-            setDoc((d) => {
+            applyDoc((d) => {
               const next = addRegion(d);
               const id = next.regions[next.regions.length - 1].id;
               setActiveRegionId(id);
@@ -546,6 +626,7 @@ export function DungeonBuilder({
               selection={selection}
               activeRegionId={activeRegionId}
               errorTargets={errorTargets}
+              concealedRegionIds={concealment.regionIds ?? EMPTY_REGION_IDS}
               onPaint={handlePaint}
               onErase={handleErase}
               onEdgeClick={handleEdgeClick}
@@ -572,42 +653,43 @@ export function DungeonBuilder({
           <Inspector
             doc={doc}
             selection={selection}
-            onDungeon={(patch) => setDoc((d) => updateDungeon(d, patch))}
+            concealment={concealment}
+            onDungeon={(patch) => applyDoc((d) => updateDungeon(d, patch))}
             onRegion={(id, patch) => {
-              setDoc((d) => updateRegion(d, id, patch));
+              applyDoc((d) => updateRegion(d, id, patch));
               if (patch.id !== undefined) {
                 setSelection({ kind: 'region', id: patch.id });
                 if (activeRegionId === id) setActiveRegionId(patch.id);
               }
             }}
             onRemoveRegion={(id) => {
-              setDoc((d) => removeRegion(d, id));
+              applyDoc((d) => removeRegion(d, id));
               setSelection({ kind: 'dungeon' });
             }}
             onDoor={(id, patch) => {
-              setDoc((d) => updateDoor(d, id, patch));
+              applyDoc((d) => updateDoor(d, id, patch));
               if (patch.id !== undefined)
                 setSelection({ kind: 'door', id: patch.id });
             }}
             onRemoveWall={(edges) => {
-              setDoc((d) => removeWalls(d, edges));
+              applyDoc((d) => removeWalls(d, edges));
               setSelection({ kind: 'dungeon' });
             }}
             onSetWallHeight={(edges, height) => {
-              setDoc((d) => setWallHeights(d, edges, height));
+              applyDoc((d) => setWallHeights(d, edges, height));
             }}
             onRemoveDoor={(id) => {
-              setDoc((d) => ({
+              applyDoc((d) => ({
                 ...d,
                 doors: d.doors.filter((x) => x.id !== id),
               }));
               setSelection({ kind: 'dungeon' });
             }}
             onPlacement={(index, patch) =>
-              setDoc((d) => updatePlacement(d, index, patch))
+              applyDoc((d) => updatePlacement(d, index, patch))
             }
             onRemovePlacement={(index) => {
-              setDoc((d) => removePlacement(d, index));
+              applyDoc((d) => removePlacement(d, index));
               setSelection({ kind: 'dungeon' });
             }}
           />
@@ -617,6 +699,7 @@ export function DungeonBuilder({
             yaml={yaml}
             filename={`${doc.key || 'dungeon'}.yaml`}
             errors={errors}
+            warnings={leaks}
             statusLine={statusLine}
             allowFileIO={allowYamlFileIO}
             onLoad={handleLoadText}

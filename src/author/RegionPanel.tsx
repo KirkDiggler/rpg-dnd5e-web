@@ -18,6 +18,13 @@ export interface RegionPanelProps {
   onRemove: () => void;
   /** Ids already taken by other regions — a rename into one is refused. */
   takenIds: Set<string>;
+  /** Set when this region is CURRENTLY derived — reachable only through
+   * a concealed door (rpg-dnd5e-web#893) — naming the door that
+   * explains it when one touches it directly. The checkbox is locked
+   * while this holds: unchecking it would just be re-ticked on the
+   * next edit, since the door is still what makes the room hidden. */
+  derivedByDoorId?: string;
+  isDerived: boolean;
 }
 
 export function RegionPanel({
@@ -25,6 +32,8 @@ export function RegionPanel({
   onChange,
   onRemove,
   takenIds,
+  derivedByDoorId,
+  isDerived,
 }: RegionPanelProps) {
   const uid = useId();
   return (
@@ -91,16 +100,35 @@ export function RegionPanel({
         <input
           type="checkbox"
           checked={!!region.concealed}
+          disabled={isDerived}
+          title={
+            isDerived
+              ? 'derived — reachable only through a concealed door; unmark the door to reveal this room'
+              : undefined
+          }
           onChange={(e) => onChange({ concealed: e.target.checked })}
         />
         concealed
+        {isDerived && (
+          <span className="text-xs opacity-70">
+            {' '}
+            — derived
+            {derivedByDoorId ? ` from ${derivedByDoorId}` : ''}
+          </span>
+        )}
       </label>
       <div className="text-xs opacity-70">
-        Hidden space — its floor, props and every boundary touching it are
-        withheld until a door into it is found and opened. Declared here, never
-        inferred from a door (rpg-project#351): a room only reachable through a
-        concealed door must be concealed too, and a concealed room anyone can
-        walk into is refused server-side.
+        {isDerived
+          ? `Hidden space, derived: this room is reachable only through ${
+              derivedByDoorId
+                ? `its concealed door (${derivedByDoorId})`
+                : 'a chain of concealed doors'
+            } (rpg-dnd5e-web#893) — unmark that door to reveal it again. Its floor, props and every boundary touching it are withheld until the door is found and opened.`
+          : 'Hidden space — its floor, props and every boundary touching it are ' +
+            'withheld until a door into it is found and opened. A region concealed ' +
+            'here with no concealed door behind it is your own call (a puzzle room, ' +
+            'say); the server still refuses a concealed room anyone can walk into ' +
+            '(rpg-project#351).'}
       </div>
       <div className="text-xs opacity-70">{region.cells.length} cells</div>
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>

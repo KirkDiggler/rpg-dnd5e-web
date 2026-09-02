@@ -15,10 +15,20 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuthoringClient } from './authoringRpc';
 import { staleAtlasNotice } from './authoringRpc';
 import { DungeonBuilder } from './DungeonBuilder';
-import { emitDungeon } from './dungeonYaml';
+import {
+  addDoor,
+  addRegion,
+  emitDungeon,
+  emptyDungeon,
+  paintCell,
+  setStart,
+  updateDoor,
+} from './dungeonYaml';
 import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
 import { referenceTombDoc } from './fixtures/referenceTomb';
-import { axialKey, fromOffset } from './hexOffset';
+import { axialKey, fromOffset, type Axial } from './hexOffset';
+
+const p = (c: number, r: number): Axial => fromOffset('pointy', [c, r]);
 
 vi.mock('@/api/useListDungeons', () => ({
   useListDungeons: () => ({
@@ -146,6 +156,72 @@ describe('DungeonBuilder', () => {
     expect(client.putDungeon).toHaveBeenCalledWith(
       expect.objectContaining({ validateOnly: false })
     );
+  });
+});
+
+describe('DungeonBuilder — concealment links to the door (rpg-dnd5e-web#893)', () => {
+  /** The rpg-dnd5e-web#890 shape: a door drawn concealed, its region left
+   * unticked — one authored fact stated once, the other never caught up. */
+  function buggyYaml(): string {
+    let doc = emptyDungeon();
+    doc = addRegion(doc); // region-2
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    doc = paintCell(doc, 'region-1', p(1, 0));
+    doc = paintCell(doc, 'region-2', p(2, 0));
+    doc = addDoor(doc, [[p(1, 0), p(2, 0)]]);
+    doc = updateDoor(doc, doc.doors[0]!.id, {
+      concealed: [{ ability: 'perception', dc: 15 }],
+    });
+    doc = setStart(doc, p(0, 0));
+    return emitDungeon(doc);
+  }
+
+  it('self-heals the #890 shape on load: the region ticks concealed and the canvas shows it, without hand-tracing anything', async () => {
+    const client = fakeClient([]);
+    render(
+      <DungeonBuilder
+        authoringClient={client}
+        initialYaml={buggyYaml()}
+        persistDraft={false}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'concealed: true'
+      )
+    );
+    const region2Cell = document.querySelector(
+      `[data-cell="${axialKey(p(2, 0))}"]`
+    );
+    expect(region2Cell?.getAttribute('data-concealed')).toBe('true');
+    const region1Cell = document.querySelector(
+      `[data-cell="${axialKey(p(0, 0))}"]`
+    );
+    expect(region1Cell?.getAttribute('data-concealed')).toBeNull();
+  });
+
+  it('the derived region panel locks the checkbox and names the provenance (unmark-strips itself is covered as a pure function in dungeonYaml.test.ts)', async () => {
+    const client = fakeClient([]);
+    render(
+      <DungeonBuilder
+        authoringClient={client}
+        initialYaml={buggyYaml()}
+        persistDraft={false}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'concealed: true'
+      )
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }));
+    fireEvent.pointerDown(
+      document.querySelector(`[data-cell="${axialKey(p(2, 0))}"]`)!
+    );
+    const checkbox = screen.getByLabelText(/concealed/) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    expect(checkbox.disabled).toBe(true);
+    expect(screen.getByTestId('region-panel').textContent).toContain('derived');
   });
 });
 

@@ -17,6 +17,7 @@ describe('RegionPanel', () => {
       <RegionPanel
         region={region}
         takenIds={new Set(['tomb'])}
+        isDerived={false}
         onChange={onChange}
         onRemove={() => {}}
       />
@@ -51,6 +52,7 @@ describe('RegionPanel', () => {
       <RegionPanel
         region={region}
         takenIds={new Set()}
+        isDerived={false}
         onChange={onChange}
         onRemove={() => {}}
       />
@@ -65,6 +67,7 @@ describe('RegionPanel', () => {
       <RegionPanel
         region={{ ...region, concealed: true }}
         takenIds={new Set()}
+        isDerived={false}
         onChange={onChange}
         onRemove={() => {}}
       />

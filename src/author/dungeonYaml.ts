@@ -23,6 +23,7 @@
 import { parse as parseYamlText } from 'yaml';
 import {
   axialKey,
+  axialNeighbors,
   compareAxial,
   edgeKey,
   fromOffset,
@@ -698,6 +699,202 @@ export function placementAt(
 }
 
 // ---------------------------------------------------------------------------
+// Concealment derivation (rpg-dnd5e-web#893) — "concealment links to the
+// door": a region's hidden status is DERIVED from which doors are marked
+// concealed, rather than declared a second time by hand for every room
+// behind one. This walks the SAME region-for-region "ways" the toolkit's
+// own coherence check does (dungeonspec/validate.go's `concealment()`) —
+// every non-wall crossing between two DIFFERENT regions, one way per door,
+// deduped — so a document this module derives satisfies that check without
+// repeating it (this module still "only refuses what it cannot represent",
+// per the header comment; the server stays the validator of record).
+// ---------------------------------------------------------------------------
+
+/** The region graph `deriveConcealment` walks. `open` carries every way
+ * that needs no search to use — an unwalled crossing, or a door that is
+ * NOT concealed — so reachability over `open` alone is what a party can
+ * walk to from the start without finding anything. `full` adds every
+ * concealed door's own crossing on top: the dungeon's actual physical
+ * connectivity, secrets included. `concealedDoorCrossings` is kept
+ * separately, per door, for leak detection and provenance — which region
+ * pairs each concealed door itself joins. */
+interface RegionGraph {
+  open: Map<string, Set<string>>;
+  full: Map<string, Set<string>>;
+  concealedDoorCrossings: Map<string, [string, string][]>;
+}
+
+function addRegionEdge(
+  graph: Map<string, Set<string>>,
+  a: string,
+  b: string
+): void {
+  if (!graph.has(a)) graph.set(a, new Set());
+  if (!graph.has(b)) graph.set(b, new Set());
+  graph.get(a)!.add(b);
+  graph.get(b)!.add(a);
+}
+
+function buildRegionGraph(doc: DungeonDoc): RegionGraph {
+  const owners = floorOwners(doc);
+  const walls = wallKeys(doc);
+  const doorEdges = doorEdgeOwners(doc);
+  const doorById = new Map(doc.doors.map((d) => [d.id, d] as const));
+  const open: Map<string, Set<string>> = new Map();
+  const full: Map<string, Set<string>> = new Map();
+  const concealedDoorCrossings = new Map<string, [string, string][]>();
+  const seenCrossing = new Set<string>();
+
+  for (const region of doc.regions) {
+    for (const cell of region.cells) {
+      for (const n of axialNeighbors(cell)) {
+        const there = owners.get(axialKey(n));
+        if (!there || there === region.id) continue;
+        const ek = edgeKey([cell, n]);
+        if (seenCrossing.has(ek)) continue;
+        seenCrossing.add(ek);
+        if (walls.has(ek)) continue; // a wall is not a way in
+
+        const [a, b] =
+          region.id <= there ? [region.id, there] : [there, region.id];
+        const doorId = doorEdges.get(ek);
+        const door = doorId ? doorById.get(doorId) : undefined;
+        if (door && door.concealed !== undefined) {
+          addRegionEdge(full, a, b);
+          const list = concealedDoorCrossings.get(door.id) ?? [];
+          if (!list.some(([x, y]) => x === a && y === b)) list.push([a, b]);
+          concealedDoorCrossings.set(door.id, list);
+          continue; // a concealed door's own crossing never joins `open`
+        }
+        addRegionEdge(open, a, b);
+        addRegionEdge(full, a, b);
+      }
+    }
+  }
+  return { open, full, concealedDoorCrossings };
+}
+
+function startRegionId(doc: DungeonDoc): string | null {
+  if (!doc.start) return null;
+  return floorOwners(doc).get(axialKey(doc.start)) ?? null;
+}
+
+interface RegionBfs {
+  visited: Set<string>;
+  parent: Map<string, string>;
+  depth: Map<string, number>;
+}
+
+function bfsRegions(start: string, graph: Map<string, Set<string>>): RegionBfs {
+  const visited = new Set([start]);
+  const parent = new Map<string, string>();
+  const depth = new Map([[start, 0]]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const next of graph.get(cur) ?? []) {
+      if (visited.has(next)) continue;
+      visited.add(next);
+      parent.set(next, cur);
+      depth.set(next, (depth.get(cur) ?? 0) + 1);
+      queue.push(next);
+    }
+  }
+  return { visited, parent, depth };
+}
+
+export interface ConcealmentDerivation {
+  /** Region ids reachable only by ALSO crossing a concealed door — the
+   * space `deriveConcealment` marks concealed. `null` when there is no
+   * start to derive reachability from (already its own reported defect,
+   * `validation.start()`'s "the dungeon does not say where the party
+   * starts" — this module has nothing to add on top of that). */
+  regionIds: Set<string> | null;
+  /** Region id -> a concealed door whose own crossing touches it
+   * directly, for the inspector's provenance note. A region hidden only
+   * by sitting past ANOTHER hidden region — no door of its own — has no
+   * entry here even though it IS in `regionIds`. */
+  doorByRegion: Map<string, string>;
+}
+
+/** The derivation itself (rpg-dnd5e-web#893's ruling): a region is hidden
+ * space when the party can reach it crossing concealed doors but NOT
+ * without them — reachable in the full graph, unreachable in the open
+ * one. Concealed-to-concealed adjacency composes for free here, the same
+ * way it does in the toolkit's own check: a region behind a concealed
+ * door that opens onto ANOTHER hidden region through a plain, unwalled
+ * gap is `full`-reachable only via the door, so it lands in the result
+ * too, door of its own or not.
+ *
+ * A region genuinely disconnected from start — no concealed door
+ * anywhere on its only paths, so it is unreachable in `full` as well —
+ * is left alone: that is the toolkit's "give it another way in" error to
+ * raise, not a secret this module should invent. */
+export function deriveConcealment(doc: DungeonDoc): ConcealmentDerivation {
+  const graph = buildRegionGraph(doc);
+  const doorByRegion = new Map<string, string>();
+  for (const [doorId, pairs] of graph.concealedDoorCrossings) {
+    for (const [a, b] of pairs) {
+      if (!doorByRegion.has(a)) doorByRegion.set(a, doorId);
+      if (!doorByRegion.has(b)) doorByRegion.set(b, doorId);
+    }
+  }
+  const start = startRegionId(doc);
+  if (!start) return { regionIds: null, doorByRegion };
+  const openReach = bfsRegions(start, graph.open).visited;
+  const fullReach = bfsRegions(start, graph.full).visited;
+  const regionIds = new Set<string>();
+  for (const id of fullReach) {
+    if (!openReach.has(id)) regionIds.add(id);
+  }
+  return { regionIds, doorByRegion };
+}
+
+export interface ConcealmentLeak {
+  doorId: string;
+  message: string;
+}
+
+/** A concealed door whose crossing isolates nothing: both regions it
+ * connects are ALSO reachable without it, so marking it concealed hides
+ * no space (rpg-dnd5e-web#893's leak case). This is not a defect the
+ * toolkit's own compiler reports — a concealed door's crossing is never
+ * itself "a walk-in", so `concealment()`'s frontier check passes it
+ * whether or not the room behind it actually goes dark — so it would
+ * otherwise ship silently: the checkbox reads concealed, nothing is
+ * actually hidden. Reported ONCE per door, naming the region that should
+ * have gone dark and where its other way in actually is, rather than
+ * once per leaking edge. */
+export function detectConcealmentLeaks(doc: DungeonDoc): ConcealmentLeak[] {
+  const graph = buildRegionGraph(doc);
+  const start = startRegionId(doc);
+  if (!start) return [];
+  const bfs = bfsRegions(start, graph.open);
+  const name = (id: string) => doc.regions.find((r) => r.id === id)?.name || id;
+  const leaks: ConcealmentLeak[] = [];
+  for (const door of doc.doors) {
+    if (door.concealed === undefined) continue;
+    const pairs = graph.concealedDoorCrossings.get(door.id) ?? [];
+    const leaking = pairs.filter(
+      ([a, b]) => bfs.visited.has(a) && bfs.visited.has(b)
+    );
+    if (leaking.length === 0) continue;
+    const [a, b] = leaking[0];
+    const depthA = bfs.depth.get(a) ?? 0;
+    const depthB = bfs.depth.get(b) ?? 0;
+    const far = depthA >= depthB ? a : b;
+    const near = far === a ? b : a;
+    const entry = bfs.parent.get(far);
+    const source = entry && entry !== far ? entry : near;
+    leaks.push({
+      doorId: door.id,
+      message: `${door.id} is concealed, but ${name(far)} is already reachable from ${name(source)} without passing through it`,
+    });
+  }
+  return leaks;
+}
+
+// ---------------------------------------------------------------------------
 // Mutators — every one returns a NEW doc (React state), never mutates.
 // ---------------------------------------------------------------------------
 
@@ -1076,6 +1273,44 @@ export function updateRegion(
       if (!next.concealed) delete next.concealed;
       return next;
     }),
+  };
+}
+
+/** Apply `deriveConcealment` to `doc`, ratcheted against `priorDerivedIds`
+ * — the region ids THIS function itself set concealed last time it ran
+ * (rpg-dnd5e-web#893). A region newly required goes to `concealed: true`;
+ * a region no longer required comes back off ONLY when it is in
+ * `priorDerivedIds` — concealment a person set by hand (never in that
+ * set, because this function never put it there) is never touched, so
+ * unmarking a door cannot silently strip a hand-authored secret. Returns
+ * the SAME doc when nothing changed, same convention as every mutator
+ * here. */
+export function applyDerivedConcealment(
+  doc: DungeonDoc,
+  priorDerivedIds: ReadonlySet<string>
+): { doc: DungeonDoc; derivedIds: Set<string> } {
+  const { regionIds } = deriveConcealment(doc);
+  if (regionIds === null) {
+    return { doc, derivedIds: new Set(priorDerivedIds) };
+  }
+  let changed = false;
+  const regions = doc.regions.map((r): RegionDoc => {
+    if (regionIds.has(r.id)) {
+      if (r.concealed) return r;
+      changed = true;
+      return { ...r, concealed: true };
+    }
+    if (r.concealed && priorDerivedIds.has(r.id)) {
+      changed = true;
+      const next: RegionDoc = { ...r };
+      delete next.concealed;
+      return next;
+    }
+    return r;
+  });
+  return {
+    doc: changed ? { ...doc, regions } : doc,
+    derivedIds: regionIds,
   };
 }
 

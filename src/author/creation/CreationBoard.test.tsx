@@ -26,6 +26,7 @@ import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
 import { chainEndpoints, runVertices, tautPath } from './wallGesture';
 
 const p = (c: number, r: number) => fromOffset('pointy', [c, r]);
+const EMPTY_REGION_IDS: ReadonlySet<string> = new Set();
 
 function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
   const calls: { paint: string[]; erase: string[]; edges: Edge[] } = {
@@ -40,6 +41,7 @@ function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
       selection={{ kind: 'dungeon' }}
       activeRegionId="region-1"
       errorTargets={[]}
+      concealedRegionIds={EMPTY_REGION_IDS}
       onPaint={(c) => calls.paint.push(axialKey(c))}
       onErase={(c) => calls.erase.push(axialKey(c))}
       onEdgeClick={(e) => calls.edges.push(e)}
@@ -192,6 +194,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         selection={{ kind: 'dungeon' }}
         activeRegionId="region-1"
         errorTargets={[]}
+        concealedRegionIds={EMPTY_REGION_IDS}
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
@@ -237,6 +240,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         selection={{ kind: 'dungeon' }}
         activeRegionId="region-1"
         errorTargets={[]}
+        concealedRegionIds={EMPTY_REGION_IDS}
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}

@@ -37,3 +37,8 @@ export const HOVER_STROKE = '#ffffff';
 export const MONSTER_COLOR = '#a02020';
 export const BOSS_COLOR = '#7a1414';
 export const PROP_COLOR = '#b8922a';
+/** A region the builder currently derives as concealed (rpg-dnd5e-web#893)
+ * — "reachable only through a concealed door". Distinct from every other
+ * stroke on the board (door orange, error red, wall cream, hover white)
+ * so a newly-hidden room reads as its own kind of fact, not an error. */
+export const CONCEALED_STROKE = '#a855f7';

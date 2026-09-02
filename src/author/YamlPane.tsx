@@ -11,6 +11,10 @@ export interface YamlPaneProps {
   yaml: string;
   filename: string;
   errors: FieldError[];
+  /** Concealment leaks the compiler itself never reports — a concealed
+   * door whose room is already reachable another way (rpg-dnd5e-web#893).
+   * Shown distinctly from `errors`: the document still compiles. */
+  warnings?: { message: string }[];
   statusLine: string;
   allowFileIO?: boolean;
   onLoad: (text: string) => void;
@@ -20,6 +24,7 @@ export function YamlPane({
   yaml,
   filename,
   errors,
+  warnings = [],
   statusLine,
   allowFileIO = true,
   onLoad,
@@ -69,6 +74,13 @@ export function YamlPane({
             <li key={`${err.path}-${i}`}>
               <code>{err.path}</code> {err.message}
             </li>
+          ))}
+        </ul>
+      )}
+      {warnings.length > 0 && (
+        <ul className="dg-warnings" data-testid="warning-list">
+          {warnings.map((w, i) => (
+            <li key={i}>{w.message}</li>
           ))}
         </ul>
       )}

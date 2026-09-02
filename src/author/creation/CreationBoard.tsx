@@ -31,6 +31,7 @@ import {
 import { axialKey, edgeKey, type Axial, type Edge } from '../hexOffset';
 import {
   BOSS_COLOR,
+  CONCEALED_STROKE,
   DOOR_LOCKED_STROKE,
   DOOR_STROKE,
   ERROR_STROKE,
@@ -91,6 +92,11 @@ export interface CreationBoardProps {
   /** Compiler error paths to highlight (already resolved by the caller
    * so the board and the error list agree on what each one names). */
   errorTargets: ErrorTarget[];
+  /** Region ids `deriveConcealment` currently derives as hidden
+   * (rpg-dnd5e-web#893) — highlighted so linking concealment to the
+   * door does not become an invisible side effect of ticking its
+   * checkbox. */
+  concealedRegionIds: ReadonlySet<string>;
   onPaint: (cell: Axial) => void;
   onErase: (cell: Axial) => void;
   onEdgeClick: (edge: Edge) => void;
@@ -159,6 +165,7 @@ export function CreationBoard({
   selection,
   activeRegionId,
   errorTargets,
+  concealedRegionIds,
   onPaint,
   onErase,
   onEdgeClick,
@@ -731,12 +738,14 @@ export function CreationBoard({
               const isSelectedRegion = !!ownerId && ownerId === selectedRegion;
               const isActive = !!ownerId && ownerId === activeRegionId;
               const isError = errorCells.has(key);
+              const isConcealed = !!ownerId && concealedRegionIds.has(ownerId);
               const isHover = hoverCell && axialKey(hoverCell) === key;
               return (
                 <polygon
                   key={key}
                   data-cell={key}
                   data-region={ownerId ?? ''}
+                  data-concealed={isConcealed || undefined}
                   points={cornersPath(cell, size, o)}
                   fill={fill}
                   stroke={
@@ -744,11 +753,20 @@ export function CreationBoard({
                       ? ERROR_STROKE
                       : isSelectedRegion
                         ? HOVER_STROKE
-                        : region
-                          ? regionColor(index)
-                          : VOID_STROKE
+                        : isConcealed
+                          ? CONCEALED_STROKE
+                          : region
+                            ? regionColor(index)
+                            : VOID_STROKE
                   }
-                  strokeWidth={isError ? 2.5 : isSelectedRegion ? 1.5 : 1}
+                  strokeWidth={
+                    isError ? 2.5 : isSelectedRegion ? 1.5 : isConcealed ? 2 : 1
+                  }
+                  strokeDasharray={
+                    isConcealed && !isError && !isSelectedRegion
+                      ? '3 2'
+                      : undefined
+                  }
                   strokeOpacity={region ? (isActive ? 1 : 0.6) : 1}
                   opacity={
                     isHover && (tool === 'region' || tool === 'erase') ? 0.8 : 1
