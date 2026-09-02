@@ -14,11 +14,23 @@ describe('summarizeHair', () => {
           scalp: create(StyleSelectionSchema),
           colorSrgb: 0x1000000,
           roughness: Number.NaN,
-        })
+        }),
+        'dwarf'
       )
     ).toEqual({
       scalp: 'Unavailable',
       facialHair: 'Default (Facial Hair 02)',
+      colorHex: '#5A3825',
+      roughness: 0.72,
+      colorIsDefault: true,
+      roughnessIsDefault: true,
+    });
+  });
+
+  it('summarizes provider default-none without inventing a facial style', () => {
+    expect(summarizeHair(undefined, 'human')).toEqual({
+      scalp: 'Default (Hair 16)',
+      facialHair: 'Default (None)',
       colorHex: '#5A3825',
       roughness: 0.72,
       colorIsDefault: true,

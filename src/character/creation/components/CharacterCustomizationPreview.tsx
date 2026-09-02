@@ -1,4 +1,7 @@
-import { resolveDwarfCustomizationModel } from '@/character/customization/dwarfCustomization';
+import {
+  characterCustomizationRaceLabel,
+  resolveCharacterCustomizationModel,
+} from '@/character/customization/characterCustomization';
 import { resolveHairPresentation } from '@/character/customization/hairCustomization';
 import { ClassCharacterModel } from '@/components/hex-grid/ClassCharacterModel';
 import type { SkinnedAccessoryStatus } from '@/components/hex-grid/SkinnedAccessoryAttachment';
@@ -7,20 +10,21 @@ import { OrbitControls } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Suspense, useMemo } from 'react';
 
-interface DwarfCustomizationPreviewProps {
+interface CharacterCustomizationPreviewProps {
   raceRefId?: string;
   classRefId?: string;
   appearance: Appearance;
   onAccessoryStatus?: (status: SkinnedAccessoryStatus) => void;
 }
 
-export function DwarfCustomizationPreview({
+export function CharacterCustomizationPreview({
   raceRefId,
   classRefId,
   appearance,
   onAccessoryStatus,
-}: DwarfCustomizationPreviewProps) {
-  const model = resolveDwarfCustomizationModel(raceRefId, classRefId);
+}: CharacterCustomizationPreviewProps) {
+  const model = resolveCharacterCustomizationModel(raceRefId, classRefId);
+  const raceLabel = characterCustomizationRaceLabel(raceRefId);
   const accessories = useMemo(
     () =>
       resolveHairPresentation({
@@ -38,7 +42,7 @@ export function DwarfCustomizationPreview({
       frameloop="demand"
       camera={{ position: [0, 1.15, 2.6], fov: 38 }}
       style={{ background: 'transparent' }}
-      aria-label="Dwarf appearance preview"
+      aria-label={`${raceLabel ?? 'Character'} appearance preview`}
     >
       <ambientLight intensity={1.1} />
       <directionalLight position={[4, 6, 4]} intensity={1.4} />

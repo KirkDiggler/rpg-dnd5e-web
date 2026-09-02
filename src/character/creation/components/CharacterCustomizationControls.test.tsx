@@ -1,3 +1,4 @@
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
 import { create } from '@bufbuild/protobuf';
 import {
   HairCustomizationSchema,
@@ -5,13 +6,14 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { DwarfCustomizationControls } from './DwarfCustomizationControls';
+import { CharacterCustomizationControls } from './CharacterCustomizationControls';
 
-describe('DwarfCustomizationControls defensive persisted values', () => {
+describe('CharacterCustomizationControls defensive persisted values', () => {
   it('shows provider surface defaults and drops invalid fields on the next edit', () => {
     const onChange = vi.fn();
     render(
-      <DwarfCustomizationControls
+      <CharacterCustomizationControls
+        profile={CHARACTER_CUSTOMIZATION_CATALOG.profiles.dwarf}
         hair={create(HairCustomizationSchema, {
           scalp: create(StyleSelectionSchema),
           colorSrgb: 0x1000000,
