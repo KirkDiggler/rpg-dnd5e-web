@@ -1,0 +1,332 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/884",
+  "webBase": "a04f54649fe7163bec0a4d2e13689c0baf1123db",
+  "codeHead": "331748475ab7c9aafb627990ee6ce68ac9845383",
+  "provider": {
+    "repository": "KirkDiggler/rpg-game-assets",
+    "merge": "00cbd7cdcc338edaa249e3707492341fe1c4a416",
+    "mainManifestPath": "harness/models/synty/weapons/manifest.json",
+    "syncedMainManifestPath": "public/models/synty/weapons/manifest.json",
+    "mainManifestSha256": "eb0c2fd4402c05e8ac68c9b950d9fd9f6d3784e2ec16a9e36fac06bb45eba46a",
+    "offManifestPath": "harness/models/synty/off-hand/manifest.json",
+    "syncedOffManifestPath": "public/models/synty/off-hand/manifest.json",
+    "offManifestSha256": "975833c55e9bf405573ebb4e911f8fb1a3fe50e680cb4718f21c6b4587feadf1",
+    "catalogCounts": {
+      "main": 30,
+      "offHand": 6
+    },
+    "probes": [
+      {
+        "url": "/models/synty/weapons/glaive.glb",
+        "status": 200,
+        "size": 477376,
+        "sha256": "e365d7644ddea55ad07f08e77062c6b3f12a100526be3d5c781040ba97c0949a",
+        "expected": "e365d7644ddea55ad07f08e77062c6b3f12a100526be3d5c781040ba97c0949a",
+        "match": true
+      },
+      {
+        "url": "/models/synty/weapons/scimitar.glb",
+        "status": 200,
+        "size": 141120,
+        "sha256": "b52ce09087b918105574fdb9f5c0249d976cf541c1d5d043310ac1050d1b66e0",
+        "expected": "b52ce09087b918105574fdb9f5c0249d976cf541c1d5d043310ac1050d1b66e0",
+        "match": true
+      },
+      {
+        "url": "/models/synty/weapons/trident.glb",
+        "status": 200,
+        "size": 383548,
+        "sha256": "e07c9ff79aad12dd0d1ba8452ecf7ee092e4da4318ff5918e9ded700fd04fcc4",
+        "expected": "e07c9ff79aad12dd0d1ba8452ecf7ee092e4da4318ff5918e9ded700fd04fcc4",
+        "match": true
+      },
+      {
+        "url": "/models/synty/off-hand/scimitar.glb",
+        "status": 200,
+        "size": 141116,
+        "sha256": "faf280a7c4edb920a3b0a7a78a953ed1bba59cea557d720801487079fee8563a",
+        "expected": "faf280a7c4edb920a3b0a7a78a953ed1bba59cea557d720801487079fee8563a",
+        "match": true
+      }
+    ]
+  },
+  "gallery": {
+    "repository": "KirkDiggler/rpg-api",
+    "merge": "789013dc4957c1482e29927383116645c55e161e",
+    "weaponRows": 30,
+    "scimitarRows": 1,
+    "scimitarQuantity": 2
+  },
+  "concept": {
+    "counts": {
+      "townfolk": 16,
+      "modular": 28,
+      "walk": 8,
+      "total": 52
+    },
+    "states": [
+      "Glaive main",
+      "Trident main",
+      "Scimitar main",
+      "Dual Scimitars"
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "unexpectedRequestFailures": [],
+    "expectedContextCloseFailures": [
+      {
+        "url": "http://localhost:8080/dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby",
+        "error": "net::ERR_ABORTED"
+      }
+    ]
+  },
+  "authority": {
+    "rpc": [
+      {
+        "stage": "initial",
+        "url": "http://localhost:8080/dnd5e.api.v1alpha2.character.CharacterService/EquipItem",
+        "status": 200
+      },
+      {
+        "stage": "glaive-reconnect",
+        "url": "http://localhost:8080/dnd5e.api.v1alpha2.character.CharacterService/UnequipItem",
+        "status": 200
+      },
+      {
+        "stage": "dual-initial",
+        "url": "http://localhost:8080/dnd5e.api.v1alpha2.character.CharacterService/EquipItem",
+        "status": 200
+      },
+      {
+        "stage": "dual-initial",
+        "url": "http://localhost:8080/dnd5e.api.v1alpha2.character.CharacterService/EquipItem",
+        "status": 200
+      },
+      {
+        "stage": "dual-reconnect",
+        "url": "http://localhost:8080/dnd5e.api.v1alpha2.character.CharacterService/UnequipItem",
+        "status": 200
+      },
+      {
+        "stage": "dual-reconnect",
+        "url": "http://localhost:8080/dnd5e.api.v1alpha2.character.CharacterService/UnequipItem",
+        "status": 200
+      }
+    ],
+    "glaiveStages": [
+      {
+        "name": "01-initial-empty",
+        "slots": "MAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX)\nMAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "02-glaive-equipped",
+        "slots": "MAIN HAND\nGlaive\n1d10 slashing damage \u00b7 heavy, reach, two-handed\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX) \u00b7 1d10 slashing damage\nMAIN HAND\nGlaive\n1d10 slashing damage \u00b7 heavy, reach, two-handed\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "03-glaive-reconnected",
+        "slots": "MAIN HAND\nGlaive\n1d10 slashing damage \u00b7 heavy, reach, two-handed\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX) \u00b7 1d10 slashing damage\nMAIN HAND\nGlaive\n1d10 slashing damage \u00b7 heavy, reach, two-handed\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "04-glaive-unequipped",
+        "slots": "MAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX)\nMAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "05-empty-reconnected",
+        "slots": "MAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX)\nMAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      }
+    ],
+    "dualStages": [
+      {
+        "name": "06-dual-initial-empty",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX)\nMAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "07-dual-scimitars-equipped",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX) \u00b7 1d6 slashing damage \u00b7 off-hand 1d6 slashing damage\nMAIN HAND\nScimitar\n1d6 slashing damage \u00b7 finesse, light\nOFF HAND\nScimitar\n1d6 slashing damage \u00b7 finesse, light\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "08-dual-scimitars-reconnected",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX) \u00b7 1d6 slashing damage \u00b7 off-hand 1d6 slashing damage\nMAIN HAND\nScimitar\n1d6 slashing damage \u00b7 finesse, light\nOFF HAND\nScimitar\n1d6 slashing damage \u00b7 finesse, light\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "09-off-scimitar-unequipped",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX) \u00b7 1d6 slashing damage\nMAIN HAND\nScimitar\n1d6 slashing damage \u00b7 finesse, light\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "10-both-scimitars-unequipped",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX)\nMAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      },
+      {
+        "name": "11-final-empty-reconnected",
+        "summary": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX)\nMAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+      }
+    ],
+    "initialOwnerState": {
+      "equipped": {},
+      "armorClass": 12,
+      "hitPoints": "12/12",
+      "speed": "30 ft",
+      "damage": ""
+    },
+    "finalOwnerState": {
+      "equipped": {},
+      "armorClass": 12,
+      "hitPoints": "12/12",
+      "speed": "30 ft",
+      "damage": ""
+    },
+    "finalProbe": {
+      "hp": "12/12",
+      "armor": 12,
+      "move": "30 ft",
+      "damage": null,
+      "equipped": {
+        "main": null,
+        "off": null,
+        "armor": null
+      },
+      "panel": "Weapon Gallery \u00b7 Fighter\nAC 12 (10 + 2 DEX)\nMAIN HAND\n\u2014 empty \u2014\nOFF HAND\n\u2014 empty \u2014\nARMOR\n\u2014 empty \u2014\nCARRIED"
+    },
+    "consoleErrors": [],
+    "pageErrors": [],
+    "unexpectedErrors": [],
+    "expectedContextCloseFailures": [
+      {
+        "stage": "initial",
+        "url": "http://localhost:8080/dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby",
+        "error": "net::ERR_ABORTED"
+      },
+      {
+        "stage": "glaive-reconnect",
+        "url": "http://localhost:8080/dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby",
+        "error": "net::ERR_ABORTED"
+      },
+      {
+        "stage": "empty-reconnect",
+        "url": "http://localhost:8080/dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby",
+        "error": "net::ERR_ABORTED"
+      },
+      {
+        "stage": "dual-initial",
+        "url": "http://localhost:8080/dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby",
+        "error": "net::ERR_ABORTED"
+      },
+      {
+        "stage": "dual-reconnect",
+        "url": "http://localhost:8080/dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby",
+        "error": "net::ERR_ABORTED"
+      },
+      {
+        "stage": "dual-final-reconnect",
+        "url": "http://localhost:8080/dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby",
+        "error": "net::ERR_ABORTED"
+      }
+    ]
+  },
+  "media": [
+    {
+      "name": "authoritative-specialist-sequence.png",
+      "sizeBytes": 1373258,
+      "sha256": "a7afc66c3961ae5c62730dc003d2eebfde2d1775a6374411ef35d86252348068",
+      "dimensions": [
+        1800,
+        1860
+      ],
+      "mode": "RGB",
+      "decodedRgbSha256": "69f87f180cf3b5d34900f04dbdfeb1bdfb010d8ac5b876054b5d122833ac7efc",
+      "chunks": [
+        "IHDR",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IEND"
+      ]
+    },
+    {
+      "name": "specialist-modular-idle.png",
+      "sizeBytes": 393215,
+      "sha256": "13257c56ce318c1efabb33abde246fb532ddbb1f80b9eba3f55dcecac81d8c95",
+      "dimensions": [
+        2060,
+        1965
+      ],
+      "mode": "RGB",
+      "decodedRgbSha256": "ee61822f90ed0839716c0349bf3081266fed4a541f14df1c14c9df97fef26d5b",
+      "chunks": [
+        "IHDR",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IEND"
+      ]
+    },
+    {
+      "name": "specialist-townfolk-idle.png",
+      "sizeBytes": 227585,
+      "sha256": "5b15a83e7dbd57185247a0fb4e59f4ddd8eb0e37333f6a4f8a47cced0455aa94",
+      "dimensions": [
+        2060,
+        1155
+      ],
+      "mode": "RGB",
+      "decodedRgbSha256": "a08095fb57d4a29830510711c0710965fa740dbbdb8734fa7c0b9d5e5b84a03c",
+      "chunks": [
+        "IHDR",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IEND"
+      ]
+    },
+    {
+      "name": "specialist-walk.png",
+      "sizeBytes": 122481,
+      "sha256": "b5f01c5aa603668ec629b6347e6e578e8582f63122d1f57d4baf9eaf530cbc57",
+      "dimensions": [
+        2060,
+        615
+      ],
+      "mode": "RGB",
+      "decodedRgbSha256": "d6158d16641785b82a7b92f4413da158f9361b09a913fe759acb030c97356d42",
+      "chunks": [
+        "IHDR",
+        "IDAT",
+        "IDAT",
+        "IEND"
+      ]
+    }
+  ],
+  "licenseBoundary": {
+    "trackedGlbs": [],
+    "trackedGlbCount": 0,
+    "licensedRuntimeAssetsIgnored": true
+  }
+}

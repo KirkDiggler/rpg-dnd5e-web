@@ -27,7 +27,7 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:longsword',
       candidate: {
         ref: 'dnd5e:item:longsword',
-        source: 'rpg-game-assets#100 · 27-item provider manifest',
+        source: 'rpg-game-assets#114 · 30-item provider manifest',
         weaponUrl: '/models/synty/weapons/longsword.glb',
         decodedTextureMb: 4,
         budgetMb: 4.5,
@@ -45,7 +45,7 @@ describe('weapon attachment experiment', () => {
       ref: 'dnd5e:item:shortbow',
       candidate: {
         ref: 'dnd5e:item:shortbow',
-        source: 'rpg-game-assets#100 · 27-item provider manifest',
+        source: 'rpg-game-assets#114 · 30-item provider manifest',
         weaponUrl: '/models/synty/weapons/shortbow.glb',
         decodedTextureMb: 4,
         budgetMb: 4.5,
@@ -156,6 +156,9 @@ describe('weapon attachment experiment', () => {
       }),
       observation({ equipmentState: 'pike', attachmentCode: 'attached' }),
       observation({ equipmentState: 'war-pick', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'glaive', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'scimitar', attachmentCode: 'attached' }),
+      observation({ equipmentState: 'trident', attachmentCode: 'attached' }),
     ];
 
     expect(coverageFor(observations)).toEqual({
@@ -188,6 +191,9 @@ describe('weapon attachment experiment', () => {
         'morningstar',
         'pike',
         'war-pick',
+        'glaive',
+        'scimitar',
+        'trident',
       ],
       motions: ['idle', 'walk'],
       views: ['close', 'orbit', 'play'],

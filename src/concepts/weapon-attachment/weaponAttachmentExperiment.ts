@@ -51,7 +51,7 @@ const CANDIDATES: Record<string, Candidate> = Object.fromEntries(
     weapon.ref,
     {
       ref: weapon.ref,
-      source: 'rpg-game-assets#100 · 27-item provider manifest',
+      source: 'rpg-game-assets#114 · 30-item provider manifest',
       weaponUrl: weapon.weaponUrl,
       decodedTextureMb: 4,
       budgetMb: 4.5,

@@ -36,8 +36,8 @@ export interface OffHandAttachmentStatus {
   message?: string;
 }
 
-/** Exact provider profiles from rpg-game-assets@71dff14, manifest sha256
- * bdfbf2484ab15fd0d054222f16f127922e8a6ea0aea2e5ce430bb97aaeb8c790. */
+/** Exact provider profiles from rpg-game-assets@00cbd7c, manifest sha256
+ * 975833c55e9bf405573ebb4e911f8fb1a3fe50e680cb4718f21c6b4587feadf1. */
 export const TOWNFOLK_OFF_HAND_SOCKET: HandSocket = Object.freeze({
   bone: 'Hand_L',
   boneUnitMeters: 0.01,
@@ -110,6 +110,13 @@ export const CURRENT_OFF_HAND_ITEMS = Object.freeze([
     label: 'Sickle',
     assetKind: 'weapon',
     assetUrl: '/models/synty/off-hand/sickle.glb',
+  },
+  {
+    ref: 'dnd5e:item:scimitar',
+    id: 'scimitar',
+    label: 'Scimitar',
+    assetKind: 'weapon',
+    assetUrl: '/models/synty/off-hand/scimitar.glb',
   },
 ] as const satisfies readonly OffHandItemDefinition[]);
 
