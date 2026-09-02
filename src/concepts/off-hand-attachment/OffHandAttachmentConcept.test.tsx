@@ -20,13 +20,17 @@ vi.mock('./OffHandAttachmentPreview', () => ({
 }));
 
 describe('OffHandAttachmentConcept', () => {
-  it('exposes four exact states and no transform controls', () => {
+  it('preserves historical controls and exposes all four specialist states', () => {
     render(<OffHandAttachmentConcept />);
     for (const label of [
       'Empty',
       'Shield only',
       'Longsword + Shield',
       'Shortsword + Dagger',
+      'Glaive main',
+      'Trident main',
+      'Scimitar main',
+      'Dual Scimitars',
     ]) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
@@ -37,12 +41,10 @@ describe('OffHandAttachmentConcept', () => {
 
   it('drives the production-backed preview controls', () => {
     render(<OffHandAttachmentConcept />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Shortsword + Dagger' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Dual Scimitars' }));
     fireEvent.click(screen.getByRole('button', { name: 'Walk' }));
     expect(screen.getByTestId('mock-off-hand-preview').textContent).toContain(
-      'shortsword-dagger'
+      'dual-scimitars'
     );
     expect(screen.getByTestId('mock-off-hand-preview').textContent).toContain(
       'walk'

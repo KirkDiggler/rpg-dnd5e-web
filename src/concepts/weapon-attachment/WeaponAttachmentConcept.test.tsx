@@ -130,7 +130,7 @@ describe('WeaponAttachmentConcept', () => {
       'dnd5e:item:longsword'
     );
     expect(screen.getByTestId('candidate-source').textContent).toContain(
-      'rpg-game-assets#100 · 27-item provider manifest'
+      'rpg-game-assets#114 · 30-item provider manifest'
     );
     expect(screen.getByTestId('candidate-url').textContent).toContain(
       '/models/synty/weapons/longsword.glb'
@@ -176,6 +176,9 @@ describe('WeaponAttachmentConcept', () => {
       'Morningstar',
       'Pike',
       'War Pick',
+      'Glaive',
+      'Scimitar',
+      'Trident',
     ]) {
       fireEvent.click(screen.getByRole('button', { name: label }));
     }
@@ -189,7 +192,7 @@ describe('WeaponAttachmentConcept', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Unarmed' }));
 
     expect(screen.getByTestId('coverage-status').textContent).toContain(
-      'equipment 28/28 · motion 2/2 · views 3/3 · facings 6/6'
+      'equipment 31/31 · motion 2/2 · views 3/3 · facings 6/6'
     );
 
     const record = screen.getByRole('button', {
@@ -202,7 +205,7 @@ describe('WeaponAttachmentConcept', () => {
     );
   });
 
-  it('reviews every current class against the complete 27-weapon provider roster', () => {
+  it('reviews every current class against the complete 30-weapon provider roster', () => {
     render(<WeaponAttachmentConcept />);
 
     for (const label of ['Fighter', 'Barbarian', 'Monk', 'Rogue']) {
@@ -236,6 +239,9 @@ describe('WeaponAttachmentConcept', () => {
       'Morningstar',
       'Pike',
       'War Pick',
+      'Glaive',
+      'Scimitar',
+      'Trident',
     ]) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
@@ -298,7 +304,7 @@ describe('WeaponAttachmentConcept', () => {
         `dnd5e:item:${id}`
       );
       expect(screen.getByTestId('candidate-source').textContent).toContain(
-        'rpg-game-assets#100 · 27-item provider manifest'
+        'rpg-game-assets#114 · 30-item provider manifest'
       );
       expect(screen.getByTestId('candidate-url').textContent).toContain(
         `/models/synty/weapons/${id}.glb`
@@ -324,7 +330,7 @@ describe('WeaponAttachmentConcept', () => {
         `dnd5e:item:${id}`
       );
       expect(screen.getByTestId('candidate-source').textContent).toContain(
-        'rpg-game-assets#100 · 27-item provider manifest'
+        'rpg-game-assets#114 · 30-item provider manifest'
       );
       expect(screen.getByTestId('candidate-url').textContent).toContain(
         `/models/synty/weapons/${id}.glb`
@@ -333,6 +339,27 @@ describe('WeaponAttachmentConcept', () => {
 
     expect(screen.queryByRole('table')).toBeNull();
     expect(forbiddenTransformControls()).toEqual([]);
+  });
+
+  it('exposes the three specialist labels from the production catalog', () => {
+    render(<WeaponAttachmentConcept />);
+
+    for (const [label, id] of [
+      ['Glaive', 'glaive'],
+      ['Scimitar', 'scimitar'],
+      ['Trident', 'trident'],
+    ] as const) {
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      expect(screen.getByTestId('equipped-ref').textContent).toContain(
+        `dnd5e:item:${id}`
+      );
+      expect(screen.getByTestId('candidate-source').textContent).toContain(
+        'rpg-game-assets#114 · 30-item provider manifest'
+      );
+      expect(screen.getByTestId('candidate-url').textContent).toContain(
+        `/models/synty/weapons/${id}.glb`
+      );
+    }
   });
 
   it('falls back to documented defaults when deep-link params are invalid', () => {

@@ -45,6 +45,9 @@ const EXPECTED_WEAPONS = [
   ['morningstar', 'Morningstar', '/models/synty/weapons/morningstar.glb'],
   ['pike', 'Pike', '/models/synty/weapons/pike.glb'],
   ['war-pick', 'War Pick', '/models/synty/weapons/war-pick.glb'],
+  ['glaive', 'Glaive', '/models/synty/weapons/glaive.glb'],
+  ['scimitar', 'Scimitar', '/models/synty/weapons/scimitar.glb'],
+  ['trident', 'Trident', '/models/synty/weapons/trident.glb'],
 ] as const;
 
 const EXPECTED_MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET = {
@@ -91,7 +94,7 @@ describe('production main-hand weapon presentation', () => {
     }
   );
 
-  it('exposes the exact 27-item provider roster in order with no duplicates', () => {
+  it('exposes the exact 30-item provider roster in order with no duplicates', () => {
     expect(CURRENT_MAIN_HAND_WEAPONS).toEqual(
       EXPECTED_WEAPONS.map(([id, label, weaponUrl]) => ({
         ref: `dnd5e:item:${id}`,
@@ -103,29 +106,33 @@ describe('production main-hand weapon presentation', () => {
 
     expect(
       new Set(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.ref)).size
-    ).toBe(27);
+    ).toBe(30);
     expect(
       new Set(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.weaponUrl)).size
-    ).toBe(27);
+    ).toBe(30);
   });
 
   it('treats absent main_hand as intentionally unarmed', () => {
     expect(resolveMainHandPresentation({})).toEqual({ code: 'unarmed' });
   });
 
-  it('refuses unknown exact item refs and attack-shaped refs instead of guessing', () => {
-    expect(resolveMainHandPresentation(equipped('flail'))).toEqual({
-      code: 'unmapped-ref',
-      ref: 'dnd5e:item:flail',
-    });
-    expect(
-      resolveMainHandPresentation({
-        main_hand: { module: 'dnd5e', type: 'weapons', id: 'longsword' },
-      })
-    ).toEqual({
-      code: 'unmapped-ref',
-      ref: 'dnd5e:weapons:longsword',
-    });
+  it('refuses unknown, Lance, and attack-shaped refs instead of guessing', () => {
+    for (const id of ['flail', 'lance']) {
+      expect(resolveMainHandPresentation(equipped(id))).toEqual({
+        code: 'unmapped-ref',
+        ref: `dnd5e:item:${id}`,
+      });
+    }
+    for (const id of ['glaive', 'scimitar', 'trident']) {
+      expect(
+        resolveMainHandPresentation({
+          main_hand: { module: 'dnd5e', type: 'weapons', id },
+        })
+      ).toEqual({
+        code: 'unmapped-ref',
+        ref: `dnd5e:weapons:${id}`,
+      });
+    }
   });
 
   it('uses the one accepted townfolk socket for every mapped weapon', () => {
