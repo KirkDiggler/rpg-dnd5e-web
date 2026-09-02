@@ -22,6 +22,9 @@ const firstWeapon = '/models/synty/characters/weapons/fighter-weapon-a.glb';
 const remappedWeapon =
   '/models/synty/characters/weapons/fighter-weapon-remap.glb';
 const rejectedAccessory = '/concept/accessories/rejected-hair.glb';
+const compatibleAccessory = '/concept/accessories/compatible-hair.glb';
+const secondCompatibleAccessory =
+  '/concept/accessories/compatible-hair-long.glb';
 const socket = {
   bone: 'Hand_R',
   boneUnitMeters: 0.01,
@@ -99,15 +102,23 @@ vi.mock('@react-three/drei', () => ({
         body.bind(skeleton, new THREE.Matrix4());
         root.add(rootBone, body);
         scene.add(root);
-      } else if (url === rejectedAccessory) {
+      } else if (
+        url === rejectedAccessory ||
+        url === compatibleAccessory ||
+        url === secondCompatibleAccessory
+      ) {
         const rootBone = new THREE.Bone();
         rootBone.name = 'Root';
-        const missingBone = new THREE.Bone();
-        missingBone.name = 'Tail';
-        rootBone.add(missingBone);
+        const accessoryBones = [rootBone];
+        if (url === rejectedAccessory) {
+          const missingBone = new THREE.Bone();
+          missingBone.name = 'Tail';
+          rootBone.add(missingBone);
+          accessoryBones.push(missingBone);
+        }
         const skeleton = new THREE.Skeleton(
-          [rootBone, missingBone],
-          [new THREE.Matrix4(), new THREE.Matrix4()]
+          accessoryBones,
+          accessoryBones.map(() => new THREE.Matrix4())
         );
         const mesh = new THREE.SkinnedMesh(
           new THREE.BoxGeometry(),
@@ -231,6 +242,200 @@ it('keeps the real body mounted and reports a rejected accessory bind', async ()
     message: 'Body Skeleton is missing accessory bones: Tail.',
   });
 
+  await renderer.unmount();
+});
+
+it('isolates a rejected scalp from the body and valid facial-hair sibling', async () => {
+  const statuses: SkinnedAccessoryStatus[] = [];
+  const treatment = {
+    baseColorSrgb: '#5A3825',
+    roughness: 0.72,
+    metalness: 0,
+  } as const;
+  const renderer = await ReactThreeTestRenderer.create(
+    <ClassCharacterModel
+      url={fighterUrl}
+      accessories={[
+        {
+          slot: 'scalp',
+          styleRef: 'concept:hair:rejected',
+          url: rejectedAccessory,
+          treatment,
+        },
+        {
+          slot: 'facial-hair',
+          styleRef: 'concept:facial-hair:valid',
+          url: compatibleAccessory,
+          treatment,
+        },
+      ]}
+      onAccessoryStatus={(status) => statuses.push(status)}
+    />
+  );
+
+  expect(
+    renderer.scene.findAll(
+      (node) =>
+        (node.instance as { name?: string } | undefined)?.name ===
+        'fighter-body'
+    )
+  ).toHaveLength(1);
+  expect(
+    renderer.scene.findAll(
+      (node) =>
+        (node.instance as { name?: string } | undefined)?.name ===
+        `cached-mesh:${compatibleAccessory}`
+    )
+  ).toHaveLength(1);
+  expect(statuses).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        code: 'rejected',
+        slot: 'scalp',
+        styleRef: 'concept:hair:rejected',
+      }),
+      expect.objectContaining({
+        code: 'attached',
+        slot: 'facial-hair',
+        styleRef: 'concept:facial-hair:valid',
+      }),
+    ])
+  );
+
+  await renderer.unmount();
+});
+
+it('applies body-equivalent entity overlays to accessories and restores their persisted base in place', async () => {
+  const treatment = {
+    baseColorSrgb: '#5A3825',
+    roughness: 0.72,
+    metalness: 0,
+  } as const;
+  const accessories: readonly SkinnedAccessoryPresentation[] = [
+    {
+      slot: 'scalp',
+      styleRef: 'modular-fantasy-hero:hair:04',
+      url: compatibleAccessory,
+      treatment,
+    },
+  ];
+  const renderer = await ReactThreeTestRenderer.create(
+    <ClassCharacterModel
+      url={fighterUrl}
+      accessories={accessories}
+      isSelected
+    />
+  );
+  const body = renderer.scene.findAll(
+    (node) =>
+      (node.instance as { name?: string } | undefined)?.name === 'fighter-body'
+  )[0]!.instance as THREE.SkinnedMesh;
+  const hair = body.parent!.parent!.getObjectByName(
+    `cached-mesh:${compatibleAccessory}`
+  ) as THREE.SkinnedMesh;
+  const bodyMaterial = body.material as THREE.MeshStandardMaterial;
+  const hairMaterial = hair.material as THREE.MeshStandardMaterial;
+  const hairUuid = hair.uuid;
+  const materialUuid = hairMaterial.uuid;
+
+  expect(bodyMaterial.emissive.getHexString()).toBe('ffffff');
+  expect(hairMaterial.emissive.getHexString()).toBe('ffffff');
+  expect(hairMaterial.emissiveIntensity).toBe(0.25);
+
+  await renderer.update(
+    <ClassCharacterModel url={fighterUrl} accessories={accessories} isGhost />
+  );
+  expect(body.material).not.toBe(bodyMaterial);
+  expect((body.material as THREE.Material).opacity).toBe(0.35);
+  expect(hair.material).toBe(hairMaterial);
+  expect(hairMaterial.opacity).toBe(0.35);
+  expect(hairMaterial.transparent).toBe(true);
+
+  await renderer.update(
+    <ClassCharacterModel
+      url={fighterUrl}
+      accessories={accessories}
+      remembered
+    />
+  );
+  const expectedRememberedHair = new THREE.Color(
+    treatment.baseColorSrgb
+  ).multiply(new THREE.Color('#465366'));
+  expect(hairMaterial.color.getHex()).toBe(expectedRememberedHair.getHex());
+  expect(hairMaterial.emissive.getHexString()).toBe('111923');
+  expect(hairMaterial.opacity).toBe(1);
+
+  await renderer.update(
+    <ClassCharacterModel url={fighterUrl} accessories={accessories} />
+  );
+  expect(hair.uuid).toBe(hairUuid);
+  expect(hair.material).toBe(hairMaterial);
+  expect(hairMaterial.uuid).toBe(materialUuid);
+  expect(hairMaterial.color.getHexString()).toBe('5a3825');
+  expect(hairMaterial.roughness).toBe(treatment.roughness);
+  expect(hairMaterial.metalness).toBe(treatment.metalness);
+  expect(hairMaterial.emissive.getHexString()).toBe('000000');
+  expect(hairMaterial.transparent).toBe(false);
+  expect(hairMaterial.opacity).toBe(1);
+
+  await renderer.unmount();
+});
+
+it('keeps one slot owner across style changes so replacement adds before old cleanup', async () => {
+  const treatment = {
+    baseColorSrgb: '#5A3825',
+    roughness: 0.72,
+    metalness: 0,
+  } as const;
+  const first: SkinnedAccessoryPresentation = {
+    slot: 'scalp',
+    styleRef: 'modular-fantasy-hero:hair:04',
+    url: compatibleAccessory,
+    treatment,
+  };
+  const renderer = await ReactThreeTestRenderer.create(
+    <ClassCharacterModel url={fighterUrl} accessories={[first]} />
+  );
+  const body = renderer.scene.findAll(
+    (node) =>
+      (node.instance as { name?: string } | undefined)?.name === 'fighter-body'
+  )[0]!.instance as THREE.SkinnedMesh;
+  const root = body.parent!.parent!;
+  const oldHair = root.getObjectByName(
+    `cached-mesh:${compatibleAccessory}`
+  ) as THREE.SkinnedMesh;
+  const oldMaterial = oldHair.material as THREE.MeshStandardMaterial;
+  const lifecycle: string[] = [];
+  root.addEventListener('childadded', (event) => {
+    if (event.child.name.startsWith('cached-mesh:/concept/accessories/')) {
+      lifecycle.push(`added:${event.child.name}`);
+    }
+  });
+  root.addEventListener('childremoved', (event) => {
+    if (event.child.name.startsWith('cached-mesh:/concept/accessories/')) {
+      lifecycle.push(`removed:${event.child.name}`);
+    }
+  });
+  oldMaterial.addEventListener('dispose', () => lifecycle.push('disposed:old'));
+
+  const second: SkinnedAccessoryPresentation = {
+    ...first,
+    styleRef: 'modular-fantasy-hero:hair:38',
+    url: secondCompatibleAccessory,
+  };
+  await renderer.update(
+    <ClassCharacterModel url={fighterUrl} accessories={[second]} />
+  );
+
+  expect(lifecycle).toEqual([
+    `added:cached-mesh:${secondCompatibleAccessory}`,
+    `removed:cached-mesh:${compatibleAccessory}`,
+    'disposed:old',
+  ]);
+  expect(oldHair.parent).toBeNull();
+  expect(
+    root.getObjectByName(`cached-mesh:${secondCompatibleAccessory}`)
+  ).toBeDefined();
   await renderer.unmount();
 });
 

@@ -1,5 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import type {
+  Appearance,
   BackgroundInfo,
   CharacterDraft,
   ClassInfo,
@@ -7,7 +8,6 @@ import type {
   SubclassInfo,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
-  AppearanceSchema,
   CreateDraftRequestSchema,
   FinalizeDraftRequestSchema,
   UpdateAbilityScoresRequestSchema,
@@ -1129,49 +1129,34 @@ export function CharacterDraftProvider({ children }: { children: ReactNode }) {
   );
 
   const updateAppearance = useCallback(
-    async (appearance: {
-      skinTone?: string;
-      primaryColor?: string;
-      secondaryColor?: string;
-      eyeColor?: string;
-    }) => {
-      // Update local state optimistically
-      setDraft((prev) =>
-        prev
-          ? ({
-              ...prev,
-              appearance: create(AppearanceSchema, {
-                skinTone: appearance.skinTone || '',
-                primaryColor: appearance.primaryColor || '',
-                secondaryColor: appearance.secondaryColor || '',
-                eyeColor: appearance.eyeColor || '',
-              }),
-            } as CharacterDraft)
-          : prev
-      );
+    async (appearance: Appearance): Promise<CharacterDraft> => {
+      if (!draftId) {
+        const error = new Error('Cannot update appearance without a draft');
+        setError(error);
+        throw error;
+      }
 
-      // Save to API if draft exists
-      if (draftId) {
-        setSaving(true);
-        try {
-          const request = create(UpdateAppearanceRequestSchema, {
+      setSaving(true);
+      setError(null);
+      try {
+        const response = await updateAppearanceAPI(
+          create(UpdateAppearanceRequestSchema, {
             draftId,
-            appearance: create(AppearanceSchema, {
-              skinTone: appearance.skinTone || '',
-              primaryColor: appearance.primaryColor || '',
-              secondaryColor: appearance.secondaryColor || '',
-              eyeColor: appearance.eyeColor || '',
-            }),
-          });
-          await updateAppearanceAPI(request);
-        } catch (err) {
-          setError(
-            err instanceof Error ? err : new Error('Failed to save appearance')
-          );
-          throw err;
-        } finally {
-          setSaving(false);
+            appearance,
+          })
+        );
+        if (!response.draft) {
+          throw new Error('Appearance update returned no draft');
         }
+        setDraft(response.draft);
+        return response.draft;
+      } catch (err) {
+        const error =
+          err instanceof Error ? err : new Error('Failed to save appearance');
+        setError(error);
+        throw error;
+      } finally {
+        setSaving(false);
       }
     },
     [draftId, updateAppearanceAPI]

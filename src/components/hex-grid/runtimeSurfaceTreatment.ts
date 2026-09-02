@@ -1,9 +1,21 @@
 import * as THREE from 'three';
+import {
+  CRYPT_MEMORY_COLOR,
+  CRYPT_MEMORY_EMISSIVE,
+  CRYPT_MEMORY_EMISSIVE_INTENSITY,
+  CRYPT_MEMORY_OPACITY,
+} from './sceneKnowledge';
 
 export interface RuntimeSurfaceTreatment {
   readonly baseColorSrgb: `#${string}`;
   readonly roughness: number;
   readonly metalness: number;
+}
+
+export interface RuntimeEntityMaterialTreatment {
+  readonly isSelected: boolean;
+  readonly isGhost: boolean;
+  readonly remembered: boolean;
 }
 
 const EXACT_SRGB_HEX = /^#[0-9A-F]{6}$/i;
@@ -45,6 +57,58 @@ export function updateRuntimeSurfaceTreatment<
     material.needsUpdate = true;
   });
   return materials;
+}
+
+export function applyRuntimeEntityMaterialOverlay<
+  T extends readonly THREE.Material[],
+>(materials: T, treatment: RuntimeEntityMaterialTreatment): T {
+  materials.forEach((material) => {
+    if (treatment.remembered) {
+      if ('color' in material && material.color instanceof THREE.Color) {
+        material.color.multiply(CRYPT_MEMORY_COLOR);
+      }
+      if (material instanceof THREE.MeshStandardMaterial) {
+        material.emissive.copy(CRYPT_MEMORY_EMISSIVE);
+        material.emissiveIntensity = CRYPT_MEMORY_EMISSIVE_INTENSITY;
+      }
+      material.transparent = false;
+      material.opacity = CRYPT_MEMORY_OPACITY;
+      material.depthWrite = true;
+      material.needsUpdate = true;
+      return;
+    }
+    if (
+      treatment.isSelected &&
+      material instanceof THREE.MeshStandardMaterial
+    ) {
+      material.emissive.set('#ffffff');
+      material.emissiveIntensity = 0.25;
+    }
+    if (treatment.isGhost) {
+      material.transparent = true;
+      material.opacity = 0.35;
+    }
+    material.needsUpdate = true;
+  });
+  return materials;
+}
+
+export function updateRuntimeAccessorySurfaceTreatment<
+  T extends readonly THREE.MeshStandardMaterial[],
+>(
+  materials: T,
+  surface: RuntimeSurfaceTreatment,
+  entity: RuntimeEntityMaterialTreatment
+): T {
+  updateRuntimeSurfaceTreatment(materials, surface);
+  materials.forEach((material) => {
+    material.emissive.set('#000000');
+    material.emissiveIntensity = 1;
+    material.transparent = false;
+    material.opacity = 1;
+    material.depthWrite = true;
+  });
+  return applyRuntimeEntityMaterialOverlay(materials, entity);
 }
 
 export function applyRuntimeSurfaceTreatment(

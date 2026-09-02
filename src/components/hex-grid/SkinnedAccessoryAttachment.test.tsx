@@ -1,6 +1,6 @@
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { act, render } from '@testing-library/react';
-import { StrictMode } from 'react';
+import { StrictMode, type ComponentProps } from 'react';
 import * as THREE from 'three';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { RuntimeSurfaceTreatment } from './runtimeSurfaceTreatment';
@@ -57,6 +57,11 @@ const TREATMENT = {
   baseColorSrgb: '#6B3F26',
   roughness: 0.8,
   metalness: 0.05,
+} as const satisfies RuntimeSurfaceTreatment;
+const REQUESTED_TREATMENT = {
+  baseColorSrgb: '#D8B36A',
+  roughness: 0.33,
+  metalness: 0.66,
 } as const satisfies RuntimeSurfaceTreatment;
 
 interface Rig {
@@ -138,6 +143,78 @@ function suspendThenReject(url: string): (error: Error) => void {
   };
   gltf.pending.set(url, { promise });
   return reject;
+}
+
+type AccessoryRenderer = Awaited<
+  ReturnType<typeof ReactThreeTestRenderer.create>
+>;
+
+async function expectRetainedActiveTreatmentTransitions({
+  renderer,
+  body,
+  requested,
+  statuses,
+}: {
+  readonly renderer: AccessoryRenderer;
+  readonly body: Rig;
+  readonly requested: SkinnedAccessoryPresentation;
+  readonly statuses: SkinnedAccessoryStatus[];
+}) {
+  const activeMesh = body.root.getObjectByName(
+    `accessory:${FIRST_URL}`
+  ) as THREE.SkinnedMesh;
+  const activeMaterial = activeMesh.material as THREE.MeshStandardMaterial;
+  const meshUuid = activeMesh.uuid;
+  const materialUuid = activeMaterial.uuid;
+  const statusCount = statuses.length;
+  const update = async (
+    entity: Pick<
+      ComponentProps<typeof SkinnedAccessoryAttachment>,
+      'isSelected' | 'isGhost' | 'remembered'
+    >
+  ) => {
+    await renderer.update(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={requested}
+        onStatus={(status) => statuses.push(status)}
+        {...entity}
+      />
+    );
+    expect(activeMesh.uuid).toBe(meshUuid);
+    expect(activeMesh.material).toBe(activeMaterial);
+    expect(activeMaterial.uuid).toBe(materialUuid);
+    expect(activeMaterial.roughness).toBe(TREATMENT.roughness);
+    expect(activeMaterial.metalness).toBe(TREATMENT.metalness);
+    expect(statuses).toHaveLength(statusCount);
+  };
+
+  await update({ isSelected: true });
+  expect(activeMaterial.color.getHexString()).toBe('6b3f26');
+  expect(activeMaterial.emissive.getHexString()).toBe('ffffff');
+  expect(activeMaterial.emissiveIntensity).toBe(0.25);
+
+  await update({ isGhost: true });
+  expect(activeMaterial.color.getHexString()).toBe('6b3f26');
+  expect(activeMaterial.emissive.getHexString()).toBe('000000');
+  expect(activeMaterial.transparent).toBe(true);
+  expect(activeMaterial.opacity).toBe(0.35);
+
+  await update({ remembered: true });
+  const rememberedColor = new THREE.Color(TREATMENT.baseColorSrgb).multiply(
+    new THREE.Color('#465366')
+  );
+  expect(activeMaterial.color.getHex()).toBe(rememberedColor.getHex());
+  expect(activeMaterial.emissive.getHexString()).toBe('111923');
+  expect(activeMaterial.transparent).toBe(false);
+  expect(activeMaterial.opacity).toBe(1);
+
+  await update({});
+  expect(activeMaterial.color.getHexString()).toBe('6b3f26');
+  expect(activeMaterial.emissive.getHexString()).toBe('000000');
+  expect(activeMaterial.transparent).toBe(false);
+  expect(activeMaterial.opacity).toBe(1);
+  expect(JSON.stringify(statuses.slice(statusCount))).not.toContain('loading');
 }
 
 beforeAll(() => {
@@ -367,7 +444,6 @@ describe('SkinnedAccessoryAttachment', () => {
 
     const renderer = await ReactThreeTestRenderer.create(
       <SkinnedAccessoryAttachment
-        key={`${first.slot}|${first.styleRef}|${first.url}`}
         characterRoot={body.root}
         presentation={first}
         onStatus={(status) => statuses.push(status)}
@@ -378,7 +454,6 @@ describe('SkinnedAccessoryAttachment', () => {
     const second = presentation(SECOND_URL, 'concept:hair:long');
     await renderer.update(
       <SkinnedAccessoryAttachment
-        key={`${second.slot}|${second.styleRef}|${second.url}`}
         characterRoot={body.root}
         presentation={second}
         onStatus={(status) => statuses.push(status)}
@@ -408,7 +483,109 @@ describe('SkinnedAccessoryAttachment', () => {
     await renderer.unmount();
   });
 
-  it('removes and disposes the old style before mounting its replacement', async () => {
+  it('keeps the old style mounted while its replacement is suspended', async () => {
+    const body = makeBody();
+    makeAccessory(FIRST_URL);
+    makeAccessory(SECOND_URL);
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const first = presentation(FIRST_URL);
+    const renderer = await ReactThreeTestRenderer.create(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={first}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+    const oldMesh = body.root.getObjectByName(`accessory:${FIRST_URL}`);
+    const resolveSecond = suspend(SECOND_URL);
+
+    const second = presentation(SECOND_URL, 'concept:hair:long');
+    await renderer.update(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={second}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+
+    expect(statuses.at(-1)).toMatchObject({
+      code: 'loading',
+      styleRef: second.styleRef,
+      url: SECOND_URL,
+    });
+    expect(oldMesh?.parent).toBe(body.root);
+    expect(
+      body.root.getObjectByName(`accessory:${SECOND_URL}`)
+    ).toBeUndefined();
+
+    await ReactThreeTestRenderer.act(async () => {
+      resolveSecond();
+      await Promise.resolve();
+    });
+
+    expect(oldMesh?.parent).toBeNull();
+    expect(body.root.getObjectByName(`accessory:${SECOND_URL}`)).toBeDefined();
+    expect(statuses.at(-1)).toMatchObject({
+      code: 'attached',
+      styleRef: second.styleRef,
+      url: SECOND_URL,
+    });
+    await renderer.unmount();
+  });
+
+  it('updates retained A through every entity treatment while B is suspended', async () => {
+    const body = makeBody();
+    makeAccessory(FIRST_URL);
+    makeAccessory(SECOND_URL);
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const renderer = await ReactThreeTestRenderer.create(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={presentation(FIRST_URL)}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+    const resolveSecond = suspend(SECOND_URL);
+    const requested = presentation(
+      SECOND_URL,
+      'concept:hair:long',
+      REQUESTED_TREATMENT
+    );
+    await renderer.update(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={requested}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+    expect(statuses.at(-1)).toMatchObject({
+      code: 'loading',
+      styleRef: requested.styleRef,
+    });
+
+    await expectRetainedActiveTreatmentTransitions({
+      renderer,
+      body,
+      requested,
+      statuses,
+    });
+
+    await ReactThreeTestRenderer.act(async () => {
+      resolveSecond();
+      await Promise.resolve();
+    });
+    const replacement = body.root.getObjectByName(
+      `accessory:${SECOND_URL}`
+    ) as THREE.SkinnedMesh;
+    const replacementMaterial =
+      replacement.material as THREE.MeshStandardMaterial;
+    expect(replacementMaterial.color.getHexString()).toBe('d8b36a');
+    expect(replacementMaterial.roughness).toBe(REQUESTED_TREATMENT.roughness);
+    expect(replacementMaterial.metalness).toBe(REQUESTED_TREATMENT.metalness);
+    await renderer.unmount();
+  });
+
+  it('mounts the prepared replacement before removing and disposing the old style', async () => {
     const body = makeBody();
     makeAccessory(FIRST_URL);
     makeAccessory(SECOND_URL);
@@ -429,7 +606,7 @@ describe('SkinnedAccessoryAttachment', () => {
     const first = presentation(FIRST_URL);
     const renderer = await ReactThreeTestRenderer.create(
       <SkinnedAccessoryAttachment
-        key={`${first.slot}|${first.styleRef}|${first.url}`}
+        key={first.slot}
         characterRoot={body.root}
         presentation={first}
       />
@@ -446,26 +623,168 @@ describe('SkinnedAccessoryAttachment', () => {
     const second = presentation(SECOND_URL, 'concept:hair:long');
     await renderer.update(
       <SkinnedAccessoryAttachment
-        key={`${second.slot}|${second.styleRef}|${second.url}`}
+        key={second.slot}
         characterRoot={body.root}
         presentation={second}
       />
     );
 
     expect(lifecycle).toEqual([
+      `added:accessory:${SECOND_URL}`,
       `removed:accessory:${FIRST_URL}`,
       'disposed:first-material',
-      `added:accessory:${SECOND_URL}`,
     ]);
     expect(oldMesh.parent).toBeNull();
     expect(body.root.getObjectByName(`accessory:${FIRST_URL}`)).toBeUndefined();
-    expect(body.root.getObjectByName(`accessory:${SECOND_URL}`)).toBeDefined();
+    const replacement = body.root.getObjectByName(
+      `accessory:${SECOND_URL}`
+    ) as THREE.SkinnedMesh;
+    expect(replacement).toBeDefined();
+    expect(
+      replacement.children.some((child) => child instanceof THREE.Bone)
+    ).toBe(false);
+    expect(
+      body.root.children.filter(
+        (child) =>
+          child instanceof THREE.Bone &&
+          !body.skeleton.bones.includes(child as THREE.Bone)
+      )
+    ).toEqual([]);
     expect(body.root.children).toHaveLength(3);
 
     await renderer.unmount();
   });
 
-  it('rejects an incompatible bind without disturbing the body', async () => {
+  it('leaves the previous valid style mounted when a replacement bind is rejected', async () => {
+    const body = makeBody();
+    makeAccessory(FIRST_URL);
+    makeAccessory(REJECTED_URL, ['Root', 'Tail']);
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const first = presentation(FIRST_URL);
+    const renderer = await ReactThreeTestRenderer.create(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={first}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+    const oldMesh = body.root.getObjectByName(`accessory:${FIRST_URL}`);
+
+    const rejected = presentation(
+      REJECTED_URL,
+      'concept:hair:rejected-replacement'
+    );
+    await renderer.update(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={rejected}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+
+    expect(oldMesh?.parent).toBe(body.root);
+    expect(
+      body.root.getObjectByName(`accessory:${REJECTED_URL}`)
+    ).toBeUndefined();
+    expect(statuses.at(-1)).toEqual({
+      code: 'rejected',
+      slot: 'scalp',
+      styleRef: rejected.styleRef,
+      url: REJECTED_URL,
+      message: 'Body Skeleton is missing accessory bones: Tail.',
+    });
+    await renderer.unmount();
+  });
+
+  it('updates retained A through every entity treatment after B is rejected', async () => {
+    const body = makeBody();
+    makeAccessory(FIRST_URL);
+    makeAccessory(REJECTED_URL, ['Root', 'Tail']);
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const renderer = await ReactThreeTestRenderer.create(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={presentation(FIRST_URL)}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+    const requested = presentation(
+      REJECTED_URL,
+      'concept:hair:rejected-replacement',
+      REQUESTED_TREATMENT
+    );
+    await renderer.update(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={requested}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+    expect(statuses.at(-1)).toMatchObject({
+      code: 'rejected',
+      styleRef: requested.styleRef,
+    });
+
+    await expectRetainedActiveTreatmentTransitions({
+      renderer,
+      body,
+      requested,
+      statuses,
+    });
+
+    expect(statuses.at(-1)).toMatchObject({
+      code: 'rejected',
+      styleRef: requested.styleRef,
+    });
+    await renderer.unmount();
+  });
+
+  it('leaves the previous valid style mounted when a replacement load rejects', async () => {
+    const body = makeBody();
+    makeAccessory(FIRST_URL);
+    const rejectSecond = suspendThenReject(LOAD_REJECTED_URL);
+    const statuses: SkinnedAccessoryStatus[] = [];
+    const renderer = await ReactThreeTestRenderer.create(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={presentation(FIRST_URL)}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+    const oldMesh = body.root.getObjectByName(`accessory:${FIRST_URL}`);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const rejected = presentation(
+      LOAD_REJECTED_URL,
+      'concept:hair:load-rejected-replacement'
+    );
+
+    await renderer.update(
+      <SkinnedAccessoryAttachment
+        characterRoot={body.root}
+        presentation={rejected}
+        onStatus={(status) => statuses.push(status)}
+      />
+    );
+    await ReactThreeTestRenderer.act(async () => {
+      rejectSecond(new Error('replacement load failed'));
+      await Promise.resolve();
+    });
+
+    expect(oldMesh?.parent).toBe(body.root);
+    expect(statuses.at(-1)).toEqual({
+      code: 'rejected',
+      slot: 'scalp',
+      styleRef: rejected.styleRef,
+      url: LOAD_REJECTED_URL,
+      message: 'replacement load failed',
+    });
+    consoleError.mockRestore();
+    await renderer.unmount();
+  });
+
+  it('rejects an incompatible initial bind without disturbing the body', async () => {
     const body = makeBody();
     makeAccessory(REJECTED_URL, ['Root', 'Tail']);
     const statuses: SkinnedAccessoryStatus[] = [];

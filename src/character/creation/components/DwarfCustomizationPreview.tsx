@@ -1,0 +1,63 @@
+import { resolveDwarfCustomizationModel } from '@/character/customization/dwarfCustomization';
+import { resolveHairPresentation } from '@/character/customization/hairCustomization';
+import { ClassCharacterModel } from '@/components/hex-grid/ClassCharacterModel';
+import type { SkinnedAccessoryStatus } from '@/components/hex-grid/SkinnedAccessoryAttachment';
+import type { Appearance } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { OrbitControls } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
+import { Suspense, useMemo } from 'react';
+
+interface DwarfCustomizationPreviewProps {
+  raceRefId?: string;
+  classRefId?: string;
+  appearance: Appearance;
+  onAccessoryStatus?: (status: SkinnedAccessoryStatus) => void;
+}
+
+export function DwarfCustomizationPreview({
+  raceRefId,
+  classRefId,
+  appearance,
+  onAccessoryStatus,
+}: DwarfCustomizationPreviewProps) {
+  const model = resolveDwarfCustomizationModel(raceRefId, classRefId);
+  const accessories = useMemo(
+    () =>
+      resolveHairPresentation({
+        raceRefId,
+        classRefId,
+        customization: appearance,
+      }).accessories,
+    [appearance, classRefId, raceRefId]
+  );
+
+  if (!model) return null;
+
+  return (
+    <Canvas
+      frameloop="demand"
+      camera={{ position: [0, 1.15, 2.6], fov: 38 }}
+      style={{ background: 'transparent' }}
+      aria-label="Dwarf appearance preview"
+    >
+      <ambientLight intensity={1.1} />
+      <directionalLight position={[4, 6, 4]} intensity={1.4} />
+      <directionalLight position={[-3, 2, -2]} intensity={0.5} />
+      <Suspense fallback={null}>
+        <ClassCharacterModel
+          url={model.url}
+          facingRotation={Math.PI}
+          accessories={accessories}
+          onAccessoryStatus={onAccessoryStatus}
+        />
+      </Suspense>
+      <OrbitControls
+        enablePan={false}
+        enableZoom
+        minDistance={1.5}
+        maxDistance={4.5}
+        target={[0, 0.85, 0]}
+      />
+    </Canvas>
+  );
+}

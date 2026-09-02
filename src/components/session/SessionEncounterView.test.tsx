@@ -1,6 +1,11 @@
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
+  HairCustomizationSchema,
+  StyleSelectionSchema,
+  type HairCustomization,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import {
   DiceThrowPlanSchema,
   type DiceThrowPlan,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/presentation/v1alpha1/service_pb';
@@ -64,6 +69,13 @@ const hoisted = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   getCharacterFn: vi.fn(),
+  getCharacterHookFn: vi.fn(),
+  characterResult: {
+    data: null as { appearance?: { hair?: HairCustomization } } | null,
+    loading: false,
+    error: null as Error | null,
+    refetch: vi.fn(),
+  },
   moveFn: vi.fn(),
   streamEventsFn: vi.fn(),
   streamDiceThrowsFn: vi.fn(),
@@ -99,9 +111,16 @@ vi.mock('../../api/useSessionWhere', () => ({
   useSessionWhere: () => hoisted.whereResult,
 }));
 
-// This legacy source must remain unused by the production session route.
+// This imperative legacy source remains unused by the production session route.
 vi.mock('../../api/characterHooks', () => ({
   useGetCharacter: () => ({ getCharacter: hoisted.getCharacterFn }),
+}));
+
+vi.mock('../../api/hooks', () => ({
+  useGetCharacter: (characterId: string) => {
+    hoisted.getCharacterHookFn(characterId);
+    return hoisted.characterResult;
+  },
 }));
 
 vi.mock('@/api/client', () => ({
@@ -350,6 +369,12 @@ function renderView(
 beforeEach(() => {
   nextSeq = 1n;
   hoisted.lastCanvasProps.current = null;
+  Object.assign(hoisted.characterResult, {
+    data: null,
+    loading: false,
+    error: null,
+  });
+  hoisted.characterResult.refetch.mockReset();
   Object.assign(hoisted.atlasResult, {
     atlas: null,
     loading: true,
@@ -365,6 +390,7 @@ beforeEach(() => {
 
   for (const mock of [
     hoisted.getCharacterFn,
+    hoisted.getCharacterHookFn,
     hoisted.moveFn,
     hoisted.streamEventsFn,
     hoisted.streamDiceThrowsFn,
@@ -588,6 +614,72 @@ describe('SessionEncounterView production combat integration', () => {
     within(dock).getByText(/level 3 fighter/i);
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
     screen.getByText('24/28');
+  });
+
+  it('passes owner Appearance.hair to SessionCanvas while peers remain roster-only with no private sheet fetch', async () => {
+    readyScene();
+    const hair = create(HairCustomizationSchema, {
+      scalp: create(StyleSelectionSchema, {
+        selection: {
+          case: 'styleRef',
+          value: 'modular-fantasy-hero:hair:38',
+        },
+      }),
+      facialHair: create(StyleSelectionSchema, {
+        selection: {
+          case: 'styleRef',
+          value: 'modular-fantasy-hero:facial-hair:01',
+        },
+      }),
+      colorSrgb: 0xd6b26e,
+      roughness: 0.55,
+    });
+    hoisted.characterResult.data = { appearance: { hair } };
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData(),
+    });
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Owner',
+          classRef: 'barbarian',
+          raceRef: 'dwarf',
+          monsterRef: '',
+        },
+        {
+          id: 'char-peer',
+          kind: MemberKind.PLAYER,
+          name: 'Peer',
+          classRef: 'rogue',
+          raceRef: 'dwarf',
+          monsterRef: '',
+          customization: { hair },
+        },
+      ],
+    });
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => {
+      const props = hoisted.lastCanvasProps.current as
+        | (SessionCanvasProps & { localHair?: HairCustomization })
+        | null;
+      expect(props?.localHair).toEqual(hair);
+      expect(props?.roster?.get('char-peer')?.customization?.hair).toEqual(
+        hair
+      );
+    });
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledWith(
+      expect.objectContaining({ characterId: 'char-1' }),
+      expect.any(Object)
+    );
+    expect(hoisted.getCharacterHookFn).toHaveBeenCalled();
+    expect(
+      new Set(hoisted.getCharacterHookFn.mock.calls.map(([id]) => id))
+    ).toEqual(new Set(['char-1']));
   });
 
   it('derives the local downed state from the public turn participant instead of private HP state', async () => {

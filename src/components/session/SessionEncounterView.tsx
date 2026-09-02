@@ -10,6 +10,7 @@
  * damage, HP, equipment, or other game rule is constructed here.
  */
 import { sessionClient } from '@/api/client';
+import { useGetCharacter } from '@/api/hooks';
 import { useCharacterData } from '@/api/useCharacterData';
 import { useEquipItem } from '@/api/useEquipItem';
 import { useSessionAfford } from '@/api/useSessionAfford';
@@ -161,6 +162,10 @@ function SessionEncounterScope({
   onBack,
 }: SessionEncounterViewProps) {
   const member = characterId ?? '';
+  // GetCharacter is the local owner's complete creation projection and the
+  // only private session source that carries Appearance.hair. Peer looks stay
+  // on public roster Customization and never trigger another sheet read.
+  const { data: ownerCharacter } = useGetCharacter(member);
   const {
     atlas,
     loading: atlasLoading,
@@ -1168,6 +1173,7 @@ function SessionEncounterScope({
                 characterName={characterName}
                 classRefId={classRefId}
                 raceRefId={raceRefId}
+                localHair={ownerCharacter?.appearance?.hair}
                 localIsDowned={localIsDowned}
                 mainHandPresentation={mainHandResolution.presentation}
                 offHandPresentation={offHandResolution.presentation}
