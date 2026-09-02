@@ -8,7 +8,12 @@ import { CustomizationSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/ap
 import { AppearanceSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { describe, expect, it } from 'vitest';
 import { DWARF_CUSTOMIZATION_CATALOG } from '../../generated/dwarfCustomizationCatalog';
-import { resolveHairPresentation, rgb24ToHex } from './hairCustomization';
+import {
+  resolveHairColorSrgb,
+  resolveHairPresentation,
+  resolveHairRoughness,
+  rgb24ToHex,
+} from './hairCustomization';
 
 function style(styleRef: string) {
   return create(StyleSelectionSchema, {
@@ -38,6 +43,24 @@ describe('rgb24ToHex', () => {
       expect(rgb24ToHex(value)).toBe(expected);
     }
   );
+});
+
+describe('provider surface normalization', () => {
+  it('keeps inclusive valid values and defaults invalid values without clamping', () => {
+    expect(resolveHairColorSrgb(0)).toBe(0);
+    expect(resolveHairColorSrgb(0xffffff)).toBe(0xffffff);
+    expect(resolveHairColorSrgb(0x1000000)).toBe(
+      DWARF_CUSTOMIZATION_CATALOG.surface.defaultColorSrgb
+    );
+    expect(resolveHairRoughness(0)).toBe(0);
+    expect(resolveHairRoughness(1)).toBe(1);
+    expect(resolveHairRoughness(Number.NaN)).toBe(
+      DWARF_CUSTOMIZATION_CATALOG.surface.defaultRoughness
+    );
+    expect(resolveHairRoughness(-0.01)).toBe(
+      DWARF_CUSTOMIZATION_CATALOG.surface.defaultRoughness
+    );
+  });
 });
 
 describe('resolveHairPresentation', () => {

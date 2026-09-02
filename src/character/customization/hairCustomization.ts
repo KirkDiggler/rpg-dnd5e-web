@@ -5,7 +5,8 @@ import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e
 export type HairSlotSelection =
   | { readonly kind: 'default' }
   | { readonly kind: 'none' }
-  | { readonly kind: 'style'; readonly styleRef: string };
+  | { readonly kind: 'style'; readonly styleRef: string }
+  | { readonly kind: 'invalid' };
 
 export type HairResolutionDiagnostic =
   | {
@@ -48,7 +49,9 @@ interface ResolvableStyle {
   readonly url: string;
 }
 
-const STARTER_CLASSES = new Set(['barbarian', 'fighter', 'monk', 'rogue']);
+const STARTER_CLASSES = new Set(
+  Object.keys(DWARF_CUSTOMIZATION_CATALOG.bodies)
+);
 const SCALP_BY_REF: ReadonlyMap<string, ResolvableStyle> = new Map(
   DWARF_CUSTOMIZATION_CATALOG.slots.scalp.options.map((option) => [
     option.styleRef,
@@ -65,6 +68,20 @@ const FACIAL_HAIR_BY_REF: ReadonlyMap<string, ResolvableStyle> = new Map(
 function normalizeRef(value: string | undefined): string | undefined {
   const normalized = value?.trim().toLowerCase();
   return normalized || undefined;
+}
+
+export function resolveHairColorSrgb(value: number | undefined): number {
+  return value === undefined ||
+    (Number.isInteger(value) && value >= 0 && value <= 0xffffff)
+    ? (value ?? DWARF_CUSTOMIZATION_CATALOG.defaults.colorSrgb)
+    : DWARF_CUSTOMIZATION_CATALOG.defaults.colorSrgb;
+}
+
+export function resolveHairRoughness(value: number | undefined): number {
+  return value === undefined ||
+    (Number.isFinite(value) && value >= 0 && value <= 1)
+    ? (value ?? DWARF_CUSTOMIZATION_CATALOG.defaults.roughness)
+    : DWARF_CUSTOMIZATION_CATALOG.defaults.roughness;
 }
 
 export function rgb24ToHex(value: number): `#${string}` {
@@ -96,6 +113,10 @@ function resolveSlot(
     return undefined;
   }
   if (selection.kind === 'none') return undefined;
+  if (selection.kind === 'invalid') {
+    diagnostics.push({ code: 'invalid-selection', slot });
+    return undefined;
+  }
 
   const defaultStyleRef =
     slot === 'scalp'
@@ -148,13 +169,7 @@ export function resolveHairPresentation({
 
   const hair = customization?.hair;
   const requestedColor = hair?.colorSrgb;
-  const colorSrgb =
-    requestedColor === undefined ||
-    (Number.isInteger(requestedColor) &&
-      requestedColor >= 0 &&
-      requestedColor <= 0xffffff)
-      ? (requestedColor ?? DWARF_CUSTOMIZATION_CATALOG.defaults.colorSrgb)
-      : DWARF_CUSTOMIZATION_CATALOG.defaults.colorSrgb;
+  const colorSrgb = resolveHairColorSrgb(requestedColor);
   if (requestedColor !== undefined && colorSrgb !== requestedColor) {
     diagnostics.push({
       code: 'invalid-color-srgb',
@@ -163,13 +178,7 @@ export function resolveHairPresentation({
   }
 
   const requestedRoughness = hair?.roughness;
-  const roughness =
-    requestedRoughness === undefined ||
-    (Number.isFinite(requestedRoughness) &&
-      requestedRoughness >= 0 &&
-      requestedRoughness <= 1)
-      ? (requestedRoughness ?? DWARF_CUSTOMIZATION_CATALOG.defaults.roughness)
-      : DWARF_CUSTOMIZATION_CATALOG.defaults.roughness;
+  const roughness = resolveHairRoughness(requestedRoughness);
   if (requestedRoughness !== undefined && roughness !== requestedRoughness) {
     diagnostics.push({
       code: 'invalid-roughness',

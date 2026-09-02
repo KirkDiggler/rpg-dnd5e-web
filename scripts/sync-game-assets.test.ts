@@ -96,7 +96,7 @@ async function makeFixture() {
     `const { execFileSync } = require('node:child_process');
 const { existsSync, mkdirSync, writeFileSync } = require('node:fs');
 const { dirname, join } = require('node:path');
-enum Phase { AfterSync = 'after-sync' }
+enum Phase { BeforeSync = 'before-sync' }
 const value = (name: string): string => process.argv[process.argv.indexOf(name) + 1];
 const providerRoot = value('--provider-root');
 const output = value('--output');
@@ -104,7 +104,7 @@ const copiedFirst = existsSync(join(process.env.RPG_WEB_ROOT, 'public/models/syn
   existsSync(join(process.env.RPG_WEB_ROOT, 'public/models/custom-dice/d20.glb'));
 const head = execFileSync('git', ['-C', providerRoot, 'rev-parse', '--verify', 'HEAD^{commit}'], { encoding: 'utf8' }).trim();
 mkdirSync(dirname(output), { recursive: true });
-writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: Phase.AfterSync }));
+writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: Phase.BeforeSync }));
 `
   );
   const generatedCatalog = join(
@@ -202,9 +202,9 @@ describe('private game asset sync boundary', () => {
       readFile(fixture.generatedCatalog, 'utf8').then(JSON.parse)
     ).resolves.toEqual({
       providerRoot: fixture.assetsRoot,
-      copiedFirst: true,
+      copiedFirst: false,
       head: fixture.providerHead,
-      phase: 'after-sync',
+      phase: 'before-sync',
     });
   });
 
@@ -250,6 +250,38 @@ describe('private game asset sync boundary', () => {
       );
     }
   );
+
+  it('runs catalog validation before mutating either runtime destination', async () => {
+    const fixture = await makeFixture();
+    const failingGenerator = join(
+      await temporaryRoot(),
+      'failing-catalog-generator.ts'
+    );
+    await put(
+      failingGenerator,
+      `throw new Error('catalog validation failed');\n`
+    );
+    const syntySentinel = join(fixture.syntyDestination, 'keep-synty.txt');
+    const customSentinel = join(
+      fixture.customDiceDestination,
+      'keep-custom.txt'
+    );
+    await put(syntySentinel, 'do-not-mutate');
+    await put(customSentinel, 'do-not-mutate');
+
+    await expect(
+      runSync(fixture.assetsRoot, fixture.webRoot, failingGenerator)
+    ).rejects.toMatchObject({
+      code: expect.any(Number),
+      stderr: expect.stringContaining('catalog validation failed'),
+    });
+    await expect(readFile(syntySentinel, 'utf8')).resolves.toBe(
+      'do-not-mutate'
+    );
+    await expect(readFile(customSentinel, 'utf8')).resolves.toBe(
+      'do-not-mutate'
+    );
+  });
 
   it('rejects a dirty provider before mutating either runtime destination', async () => {
     const fixture = await makeFixture();

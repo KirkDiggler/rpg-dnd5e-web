@@ -63,6 +63,26 @@ describe('HairStyleGrid', () => {
     expect(onChange).toHaveBeenLastCalledWith({ kind: 'none' });
   });
 
+  it('surfaces an invalid arm-less persisted selection instead of presenting Default', () => {
+    render(
+      <HairStyleGrid
+        slot="scalp"
+        selection={{ kind: 'invalid' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    const group = screen.getByRole('group', { name: 'Scalp hair' });
+    expect(within(group).getByRole('alert').textContent).toContain(
+      'Current selection is unavailable. Choose a replacement.'
+    );
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .every((button) => button.getAttribute('aria-pressed') === 'false')
+    ).toBe(true);
+  });
+
   it('replaces a failed provider thumbnail with its visible label', () => {
     render(
       <HairStyleGrid

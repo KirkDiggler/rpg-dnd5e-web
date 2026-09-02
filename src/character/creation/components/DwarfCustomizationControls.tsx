@@ -1,8 +1,9 @@
 import {
+  resolveHairColorSrgb,
+  resolveHairRoughness,
   rgb24ToHex,
   type HairSlotSelection,
 } from '@/character/customization/hairCustomization';
-import { DWARF_CUSTOMIZATION_CATALOG } from '@/generated/dwarfCustomizationCatalog';
 import { create } from '@bufbuild/protobuf';
 import { EmptySchema } from '@bufbuild/protobuf/wkt';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
@@ -23,7 +24,28 @@ function slotSelection(value: HairCustomization['scalp']): HairSlotSelection {
   if (value.selection.case === 'styleRef') {
     return { kind: 'style', styleRef: value.selection.value };
   }
-  return { kind: 'default' };
+  return { kind: 'invalid' };
+}
+
+function editableSelection(
+  value: HairCustomization['scalp']
+): HairCustomization['scalp'] {
+  return value?.selection.case === 'styleRef' ||
+    value?.selection.case === 'none'
+    ? value
+    : undefined;
+}
+
+function editableColor(value: number | undefined): number | undefined {
+  return value !== undefined && resolveHairColorSrgb(value) === value
+    ? value
+    : undefined;
+}
+
+function editableRoughness(value: number | undefined): number | undefined {
+  return value !== undefined && resolveHairRoughness(value) === value
+    ? value
+    : undefined;
 }
 
 function styleSelection(selection: HairSlotSelection) {
@@ -38,6 +60,8 @@ function styleSelection(selection: HairSlotSelection) {
       return create(StyleSelectionSchema, {
         selection: { case: 'styleRef', value: selection.styleRef },
       });
+    case 'invalid':
+      return undefined;
   }
 }
 
@@ -72,19 +96,16 @@ export function DwarfCustomizationControls({
   ) => {
     onChange(
       optionalHair({
-        scalp: hair?.scalp,
-        facialHair: hair?.facialHair,
-        colorSrgb: hair?.colorSrgb,
-        roughness: hair?.roughness,
+        scalp: editableSelection(hair?.scalp),
+        facialHair: editableSelection(hair?.facialHair),
+        colorSrgb: editableColor(hair?.colorSrgb),
+        roughness: editableRoughness(hair?.roughness),
         ...patch,
       })
     );
   };
-  const displayedColor = rgb24ToHex(
-    hair?.colorSrgb ?? DWARF_CUSTOMIZATION_CATALOG.surface.defaultColorSrgb
-  );
-  const displayedRoughness =
-    hair?.roughness ?? DWARF_CUSTOMIZATION_CATALOG.surface.defaultRoughness;
+  const displayedColor = rgb24ToHex(resolveHairColorSrgb(hair?.colorSrgb));
+  const displayedRoughness = resolveHairRoughness(hair?.roughness);
 
   return (
     <div className="space-y-6">

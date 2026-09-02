@@ -363,11 +363,11 @@ export function SkinnedAccessoryAttachment({
       }
       activeRef.current = next;
       currentInvalidate.current();
-      if (!reportStatus(reportedIdentity, attachedStatus(next))) {
-        prepared.dispose();
-        characterRoot.remove(next.mesh);
-        if (activeRef.current === next) activeRef.current = undefined;
-      }
+      // The synchronous identity guard at the top of this commit still holds:
+      // no external callback runs until reportStatus itself. Do not retain an
+      // impossible rollback branch that would discard both the prior and next
+      // valid meshes after the prior has already been disposed.
+      reportStatus(reportedIdentity, attachedStatus(next));
     },
     [characterRoot, rejectPrepared, reportStatus]
   );

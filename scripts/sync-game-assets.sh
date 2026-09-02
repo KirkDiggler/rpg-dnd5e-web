@@ -106,13 +106,22 @@ sync_runtime_root() {
     "$SRC/" "$DEST/"
 }
 
+# Validate and generate against the clean provider before either rsync --delete
+# can mutate a destination. The tracked catalog becomes visible only after both
+# independent runtime mirrors succeed.
+CATALOG_OUTPUT="$WEB_ROOT/src/generated/dwarfCustomizationCatalog.ts"
+mkdir -p "$(dirname "$CATALOG_OUTPUT")"
+CATALOG_STAGE=$(mktemp "$WEB_ROOT/src/generated/.dwarf-customization.XXXXXX")
+trap 'rm -f "$CATALOG_STAGE"' EXIT HUP INT TERM
+"$CATALOG_RUNNER" "$CATALOG_GENERATOR" \
+  --provider-root "$ASSETS_DIR" \
+  --output "$CATALOG_STAGE"
+
 # Keep these as independent mirrors: neither runtime root is allowed to supply
 # or delete files in the other.
 sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
 sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
-
-"$CATALOG_RUNNER" "$CATALOG_GENERATOR" \
-  --provider-root "$ASSETS_DIR" \
-  --output "$WEB_ROOT/src/generated/dwarfCustomizationCatalog.ts"
+mv -f "$CATALOG_STAGE" "$CATALOG_OUTPUT"
+trap - EXIT HUP INT TERM
 
 echo "Done. public/models/{synty,custom-dice}/ mirror the approved provider and the Dwarf catalog is current."

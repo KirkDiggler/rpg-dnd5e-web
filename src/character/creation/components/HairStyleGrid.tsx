@@ -110,6 +110,11 @@ export function HairStyleGrid({
       <legend className="text-sm font-semibold text-[var(--text-primary)]">
         {label}
       </legend>
+      {selection.kind === 'invalid' && (
+        <p role="alert" className="text-xs text-amber-300">
+          Current selection is unavailable. Choose a replacement.
+        </p>
+      )}
       <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5">
         <GeneratedChoiceButton
           label="Default"

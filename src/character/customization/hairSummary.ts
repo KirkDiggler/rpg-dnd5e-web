@@ -3,7 +3,11 @@ import type {
   HairCustomization,
   StyleSelection,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
-import { rgb24ToHex } from './hairCustomization';
+import {
+  resolveHairColorSrgb,
+  resolveHairRoughness,
+  rgb24ToHex,
+} from './hairCustomization';
 
 export interface HairSummary {
   scalp: string;
@@ -40,16 +44,17 @@ function selectionLabel(
 export function summarizeHair(
   hair: HairCustomization | undefined
 ): HairSummary {
-  const colorIsDefault = hair?.colorSrgb === undefined;
-  const roughnessIsDefault = hair?.roughness === undefined;
+  const colorSrgb = resolveHairColorSrgb(hair?.colorSrgb);
+  const roughness = resolveHairRoughness(hair?.roughness);
+  const colorIsDefault =
+    hair?.colorSrgb === undefined || colorSrgb !== hair.colorSrgb;
+  const roughnessIsDefault =
+    hair?.roughness === undefined || roughness !== hair.roughness;
   return {
     scalp: selectionLabel('scalp', hair?.scalp),
     facialHair: selectionLabel('facialHair', hair?.facialHair),
-    colorHex: rgb24ToHex(
-      hair?.colorSrgb ?? DWARF_CUSTOMIZATION_CATALOG.surface.defaultColorSrgb
-    ),
-    roughness:
-      hair?.roughness ?? DWARF_CUSTOMIZATION_CATALOG.surface.defaultRoughness,
+    colorHex: rgb24ToHex(colorSrgb),
+    roughness,
     colorIsDefault,
     roughnessIsDefault,
   };

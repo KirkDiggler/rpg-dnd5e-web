@@ -178,6 +178,20 @@ const Y_OFFSET = 0.1; // Small Y offset to sit above the hex plane
 
 // Clear the default 0.20 Synty floor and slightly negative GLB foot minima.
 const CHARACTER_Y_OFFSET = 0.21;
+const CRYPT_HEX = `#${CRYPT_MEMORY_COLOR.getHexString()}`;
+
+/** Keeps generic fallback state treatment independent of retired appearance fields. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function mediumHumanoidFallbackColors(
+  remembered: boolean,
+  isDead: boolean
+) {
+  return {
+    skinTone: remembered ? CRYPT_HEX : isDead ? '#555' : undefined,
+    primaryColor: remembered ? CRYPT_HEX : isDead ? '#444' : undefined,
+    secondaryColor: remembered ? CRYPT_HEX : isDead ? '#333' : undefined,
+  } as const;
+}
 
 /**
  * Whether the dead/downed corpse tilt (60 degrees about Z) should apply.
@@ -364,7 +378,7 @@ export function HexEntity({
   // The fallback humanoid is cel-shaded from flat colours rather than GLB
   // materials, so its crypt treatment is those colours sourced from the one
   // shared constant — not a second palette.
-  const cryptHex = `#${CRYPT_MEMORY_COLOR.getHexString()}`;
+  const cryptHex = CRYPT_HEX;
   const { isMoving } = useHexMovePath(
     position,
     remembered ? undefined : movePath,
@@ -558,6 +572,7 @@ export function HexEntity({
     // ErrorBoundary wrapping) and would otherwise unmount this entity's
     // whole Canvas tree instead of degrading to the known-working
     // placeholder (the #479 boundary lineage).
+    const fallbackColors = mediumHumanoidFallbackColors(remembered, isDead);
     const mediumHumanoidElement = (
       <MediumHumanoid
         color={remembered ? cryptHex : color}
@@ -568,6 +583,9 @@ export function HexEntity({
         race={characterRace}
         characterClass={characterClass}
         monsterType={monsterType}
+        skinTone={fallbackColors.skinTone}
+        primaryColor={fallbackColors.primaryColor}
+        secondaryColor={fallbackColors.secondaryColor}
         hairStyle={hairStyle}
         hairColor={remembered ? cryptHex : isDead ? '#333' : hairColor}
         facialHairStyle={facialHairStyle}
