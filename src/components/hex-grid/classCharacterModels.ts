@@ -1,7 +1,8 @@
 import {
-  DWARF_CUSTOMIZATION_CATALOG,
-  type DwarfStarterClass,
-} from '@/generated/dwarfCustomizationCatalog';
+  CHARACTER_CUSTOMIZATION_CATALOG,
+  type CustomizationRaceRef,
+  type CustomizationStarterClass,
+} from '@/generated/characterCustomizationCatalog';
 
 /**
  * Class-named character model lookup (rpg-dnd5e-web#501). rpg-game-assets
@@ -167,21 +168,21 @@ function resolveRaceClassCharacterModelResolution(
   normalizedClassRefId: string
 ): PlayerCharacterModelResolution | undefined {
   if (!normalizedRaceRefId) return undefined;
-  if (normalizedRaceRefId === DWARF_CUSTOMIZATION_CATALOG.raceRef) {
-    if (
-      !Object.hasOwn(DWARF_CUSTOMIZATION_CATALOG.bodies, normalizedClassRefId)
-    ) {
-      return undefined;
-    }
-    const body =
-      DWARF_CUSTOMIZATION_CATALOG.bodies[
-        normalizedClassRefId as DwarfStarterClass
+  if (
+    Object.hasOwn(CHARACTER_CUSTOMIZATION_CATALOG.profiles, normalizedRaceRefId)
+  ) {
+    const profile =
+      CHARACTER_CUSTOMIZATION_CATALOG.profiles[
+        normalizedRaceRefId as CustomizationRaceRef
       ];
+    if (!Object.hasOwn(profile.bodies, normalizedClassRefId)) return undefined;
+    const body =
+      profile.bodies[normalizedClassRefId as CustomizationStarterClass];
     return {
       url: body.url,
-      rigFamily: DWARF_CUSTOMIZATION_CATALOG.rigFamily,
+      rigFamily: profile.rigFamily,
       source: 'race-class',
-      customizationProfileRef: DWARF_CUSTOMIZATION_CATALOG.profileRef,
+      customizationProfileRef: profile.profileRef,
       fallbackUrl: body.fallbackUrl,
       fallbackSha256: body.fallbackSha256,
     };
