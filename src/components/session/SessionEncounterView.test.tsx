@@ -1993,6 +1993,30 @@ describe('SessionEncounterView production combat integration', () => {
       await waitFor(() => screen.getByText('session not found'));
       expect(screen.queryByText('You search the area.')).toBeNull();
     });
+
+    it("a doorRevealed/regionRevealed beat clears a standing search notice — matches doorNotice's own staleness reset on the 'door' case", async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      hoisted.searchFn.mockResolvedValue({} as never);
+      const reveal = deferredStream([
+        event(EventKind.DOOR_REVEALED, {
+          case: 'doorRevealed',
+          value: {},
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      const button = await screen.findByTestId('session-combat-search-button');
+      fireEvent.click(button);
+      await screen.findByText('You search the area.');
+
+      reveal.release();
+      await waitFor(() =>
+        expect(screen.queryByText('You search the area.')).toBeNull()
+      );
+    });
   });
 
   it('replaces private equipment state directly from UnequipItem response without a read or client recompute', async () => {

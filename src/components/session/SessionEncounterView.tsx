@@ -232,6 +232,15 @@ function SessionEncounterScope({
     () => regionAt(atlas, wherePosition),
     [atlas, wherePosition]
   );
+  // "You search the area" stops describing the player's surroundings the
+  // moment those surroundings change — matches `doorNotice`'s own
+  // staleness law, just for a different trigger (a door's notice goes
+  // stale when the door's OWN state moves on; a search's notice goes
+  // stale when the SEARCHER moves on). Cosmetic only — the text is
+  // content-invariant either way, so this has no secrecy implication.
+  useEffect(() => {
+    setSearchNotice(null);
+  }, [region, member]);
   const layoutOutcome = useMemo(
     () => (atlas ? resolveSceneLayout(atlas) : null),
     [atlas]
@@ -883,6 +892,14 @@ function SessionEncounterScope({
       acceptStreamEvent(event, metadata);
 
       if (event.body.case === 'door') setDoorNotice(null);
+      // The same law: a DOOR_REVEALED/REGION_REVEALED beat is search's own
+      // "the world moved on" signal, mirroring the 'door' case above.
+      if (
+        event.body.case === 'doorRevealed' ||
+        event.body.case === 'regionRevealed'
+      ) {
+        setSearchNotice(null);
+      }
       if (event.body.case === 'ended' || event.kind === EventKind.ENDED) {
         // Equipment must disappear in the same authoritative event update,
         // before the modal receives focus or can be layered over the panel.
