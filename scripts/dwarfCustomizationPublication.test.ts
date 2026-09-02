@@ -24,7 +24,11 @@ interface Receipt {
     proto: { release: string; lockCommit: string };
     api: { requiredMerge: string; environmentHead: string };
     provider: { merge: string; manifestSha256: string };
-    web: { implementationHead: string; catalogSha256: string };
+    web: {
+      implementationHead: string;
+      reviewFixHead: string;
+      catalogSha256: string;
+    };
   };
   humanVerdict: { quote: string; gameLoaded: boolean };
   normalGame: {
@@ -79,6 +83,7 @@ describe('production Dwarf customization publication', () => {
       },
       web: {
         implementationHead: 'bb45804b1e2dcdfa53674e8e838c95c6e4a1e578',
+        reviewFixHead: 'b176f7fb09d817f399b11c6d3da09b7afceb6ede',
         catalogSha256:
           '4bb16ef6b34964b514e10018e4e64e79b6bd016cfa8ff9e3d04eb35d1911ce45',
       },
