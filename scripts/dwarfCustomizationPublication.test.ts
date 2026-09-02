@@ -112,10 +112,22 @@ describe('production Dwarf customization publication', () => {
     ];
     expect(assets).toHaveLength(120);
     const present = assets.filter((asset) => existsSync(publicFile(asset.url)));
+    const missing = assets.filter(
+      (asset) => !existsSync(publicFile(asset.url))
+    );
     // A developer checkout with an explicit provider sync must contain and
     // hash-verify the complete authority. A clean CI clone correctly contains
     // none of the licensed ignored bytes. Partial/stale mirrors fail closed.
-    expect([0, assets.length]).toContain(present.length);
+    expect(
+      [0, assets.length],
+      `partial customization mirror: present=${present.map((asset) => asset.url).join(',')} missing=${missing.map((asset) => asset.url).join(',')}`
+    ).toContain(present.length);
+    if (process.env.RPG_REQUIRE_SYNCED_CUSTOMIZATION_ASSETS === '1') {
+      expect(
+        present,
+        'RPG_REQUIRE_SYNCED_CUSTOMIZATION_ASSETS=1 requires the complete licensed mirror'
+      ).toHaveLength(assets.length);
+    }
     for (const asset of present) {
       expect(sha256(readFileSync(publicFile(asset.url))), asset.url).toBe(
         asset.sha256
@@ -127,13 +139,18 @@ describe('production Dwarf customization publication', () => {
         encoding: 'utf8',
       })
     ).toBe('');
-    expect(() =>
-      execFileSync(
-        'git',
-        ['check-ignore', '--quiet', '--no-index', publicFile(assets[0]!.url)],
-        { cwd: repositoryRoot }
-      )
-    ).not.toThrow();
+    // `--no-index` proves the ignore pattern even when bytes are absent or
+    // force-added. Keep this paired with the unconditional ls-files assertion
+    // above, which independently rejects every tracked licensed byte.
+    for (const asset of assets) {
+      expect(() =>
+        execFileSync(
+          'git',
+          ['check-ignore', '--quiet', '--no-index', publicFile(asset.url)],
+          { cwd: repositoryRoot }
+        )
+      ).not.toThrow();
+    }
   });
 
   it('records the exact human verdict and honest normal-game runtime readback', () => {
