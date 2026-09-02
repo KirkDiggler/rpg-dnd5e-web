@@ -63,6 +63,7 @@ import {
   doorEdgeOwners,
   floorOwners,
   removeWalls,
+  wallHeightByEdge,
   wallKeys,
   type DungeonDoc,
 } from '../dungeonYaml';
@@ -295,9 +296,7 @@ export function applyReshape(
   // are height-uniform by the stepper's chain-level stamp, and a
   // hand-edited mixed chain resolves to its first edge's value rather
   // than silently dropping to standard.
-  const byKey = new Map(
-    doc.walls.map((w) => [edgeKey(w.edge), w.height] as const)
-  );
+  const byKey = wallHeightByEdge(doc);
   const heightOf = (chain: readonly Edge[]): number | undefined => {
     for (const e of chain) {
       const h = byKey.get(edgeKey(e));

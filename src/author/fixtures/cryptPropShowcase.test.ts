@@ -3,7 +3,7 @@ import { hexEdgeBetween } from '../../components/hex-grid/hexMath';
 import { boundariesToWallRuns } from '../../components/session/atlasWallRuns';
 import { vertexKey } from '../../hooks/authoredWallRuns';
 import { sandboxDocForSearch } from '../DungeonBuilderSandbox';
-import { emitDungeon, parseDungeon } from '../dungeonYaml';
+import { compiledWalls, emitDungeon, parseDungeon } from '../dungeonYaml';
 import { fromOffset } from '../hexOffset';
 import { cryptPropShowcaseDoc } from './cryptPropShowcase';
 import { fixtureAtlasOf } from './fixtureAtlas';
@@ -37,7 +37,7 @@ describe('cryptPropShowcaseDoc', () => {
     const atlas = fixtureAtlasOf(doc);
     const scene = boundariesToWallRuns(atlas, 1);
     const endpointDegree = new Map<string, number>();
-    for (const wall of doc.walls) {
+    for (const wall of compiledWalls(doc)) {
       const { a, b } = hexEdgeBetween(
         {
           x: wall.edge[0].q,

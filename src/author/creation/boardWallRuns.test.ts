@@ -18,6 +18,7 @@ import {
   paintCell,
   setWallHeights,
   toggleWall,
+  wallEdges,
 } from '../dungeonYaml';
 import { fixtureAtlasOf } from '../fixtures/fixtureAtlas';
 import { referenceTombDoc } from '../fixtures/referenceTomb';
@@ -124,9 +125,7 @@ describe('boardWallScene', () => {
     const threaded = scene2d.runs.flatMap((r) => r.edges).map(edgeKey);
     // Every doc wall appears in exactly one run's source list, and no
     // run carries an edge the doc doesn't have.
-    expect(threaded.sort()).toEqual(
-      doc.walls.map((w) => edgeKey(w.edge)).sort()
-    );
+    expect(threaded.sort()).toEqual(wallEdges(doc).map(edgeKey).sort());
     for (const run of scene2d.runs) {
       expect(run.edges.length).toBeGreaterThan(0);
     }
@@ -137,7 +136,7 @@ describe('boardWallScene', () => {
     // the chain at the height boundary and each side must carry its own
     // multiplier out to the board.
     const doc = referenceTombDoc();
-    const raisedEdges = doc.walls.slice(0, 3).map((w) => w.edge);
+    const raisedEdges = wallEdges(doc).slice(0, 3);
     const raisedKeys = new Set(raisedEdges.map(edgeKey));
     const raisedDoc = setWallHeights(doc, raisedEdges, 2);
     const scene2d = boardWallScene(raisedDoc, BOARD_HEX_SIZE)!;

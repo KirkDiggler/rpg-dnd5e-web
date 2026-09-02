@@ -60,6 +60,7 @@ import {
   updateDungeon,
   updatePlacement,
   updateRegion,
+  wallEdges,
   type DungeonDoc,
 } from './dungeonYaml';
 import { edgeKey, type Axial, type Edge, type Orientation } from './hexOffset';
@@ -411,16 +412,16 @@ export function DungeonBuilder({
       const next = applyReshape(d, oldChains, newChains);
       if (next !== d) {
         const untouched = new Set(
-          removeWalls(
-            d,
-            oldChains.flatMap((c) => c)
-          ).walls.map((w) => edgeKey(w.edge))
+          wallEdges(
+            removeWalls(
+              d,
+              oldChains.flatMap((c) => c)
+            )
+          ).map(edgeKey)
         );
         setSelection({
           kind: 'wall',
-          edges: next.walls
-            .filter((w) => !untouched.has(edgeKey(w.edge)))
-            .map((w) => w.edge),
+          edges: wallEdges(next).filter((e) => !untouched.has(edgeKey(e))),
         });
       }
       return next;

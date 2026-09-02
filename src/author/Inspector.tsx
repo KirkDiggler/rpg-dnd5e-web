@@ -7,6 +7,7 @@
 import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
   isMonsterRef,
+  wallHeightByEdge,
   wallKeys,
   type ApproachDoc,
   type CheckDoc,
@@ -95,9 +96,7 @@ export function Inspector(props: InspectorProps) {
     const present = wallKeys(doc);
     const edges = selection.edges.filter((e) => present.has(edgeKey(e)));
     if (edges.length === 0) return <DungeonPanel {...props} />;
-    const heightByKey = new Map(
-      doc.walls.map((w) => [edgeKey(w.edge), w.height] as const)
-    );
+    const heightByKey = wallHeightByEdge(doc);
     return (
       <WallPanel
         edges={edges}

@@ -59,7 +59,7 @@ export function referenceTombDoc(): DungeonDoc {
   const doorKeys = new Set([entranceHallDoor, hallTombDoor].map(axialPairKey));
   const walls = [...seamEdges(entrance, hall), ...seamEdges(hall, tomb)]
     .filter((e) => !doorKeys.has(axialPairKey(e)))
-    .map((edge) => ({ edge }));
+    .map((edge) => ({ edges: [edge] }));
 
   return {
     version: 2,

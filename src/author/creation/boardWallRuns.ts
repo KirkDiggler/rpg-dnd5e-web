@@ -69,7 +69,7 @@ import {
   type GetAtlasResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type { Point } from '../../concepts/session-tomb/atlas';
-import type { DungeonDoc } from '../dungeonYaml';
+import { compiledWalls, type DungeonDoc } from '../dungeonYaml';
 import { compareAxial, type Axial, type Edge } from '../hexOffset';
 
 // cubeToWorld is re-exported so the test can pin the projection identity
@@ -158,7 +158,7 @@ export function docAtlasFacts(doc: DungeonDoc): {
     d.edges.map((edge) => ({ doorId: d.id, edge }))
   );
   const wallSourcesByToken = new Map<string, Edge>();
-  for (const { edge } of doc.walls) {
+  for (const { edge } of compiledWalls(doc)) {
     const { a, b } = hexEdgeBetween(
       positionToCube({ x: edge[0].q, y: edge[0].r } as never),
       positionToCube({ x: edge[1].q, y: edge[1].r } as never),
@@ -171,7 +171,7 @@ export function docAtlasFacts(doc: DungeonDoc): {
       .flatMap((r) => r.cells)
       .sort(compareAxial)
       .map(pos),
-    boundaries: doc.walls.map(({ edge: [a, b], height }) => ({
+    boundaries: compiledWalls(doc).map(({ edge: [a, b], height }) => ({
       from: pos(a),
       to: pos(b),
       blocksMovement: true,
