@@ -34,7 +34,7 @@ import {
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import type { MainHandPresentation } from './mainHandPresentation';
 import { mainHandSocketForRigFamily } from './mainHandWeapons';
-import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
+import { MediumHumanoid } from './MediumHumanoid';
 import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
 import {
@@ -462,12 +462,6 @@ export function HexEntity({
     const characterRace = character?.race;
     const monsterType = monster?.monsterType;
 
-    // Resolve appearance from proto data
-    const appearance = character?.appearance;
-    const skinTone: SkinTone | string = appearance?.skinTone || 'medium';
-    const primaryColor = appearance?.primaryColor || undefined;
-    const secondaryColor = appearance?.secondaryColor || undefined;
-
     // Resolve head variant from race
     const headVariant = getHeadVariant(characterRace);
 
@@ -555,11 +549,6 @@ export function HexEntity({
         race={characterRace}
         characterClass={characterClass}
         monsterType={monsterType}
-        skinTone={remembered ? cryptHex : isDead ? '#555' : skinTone}
-        primaryColor={remembered ? cryptHex : isDead ? '#444' : primaryColor}
-        secondaryColor={
-          remembered ? cryptHex : isDead ? '#333' : secondaryColor
-        }
         hairStyle={hairStyle}
         hairColor={remembered ? cryptHex : isDead ? '#333' : hairColor}
         facialHairStyle={facialHairStyle}

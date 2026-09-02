@@ -1,65 +1,18 @@
+import { summarizeHair } from '@/character/customization/hairSummary';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { Card } from '../../../components/ui/Card';
-import {
-  ACCENT_COLOR_PRESETS,
-  ARMOR_COLOR_PRESETS,
-  DEFAULT_APPEARANCE,
-  EYE_COLOR_PRESETS,
-  SKIN_TONE_PRESETS,
-} from '../../../config/appearancePresets';
 
 interface DnDAppearanceProps {
   character: Character;
 }
 
-function getColorName(
-  hex: string,
-  presets: { name: string; hex: string }[]
-): string {
-  const preset = presets.find((p) => p.hex.toLowerCase() === hex.toLowerCase());
-  return preset?.name || 'Custom';
-}
-
-function ColorSwatch({ color, label }: { color: string; label: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className="w-6 h-6 rounded border"
-        style={{
-          backgroundColor: color,
-          borderColor: 'var(--border-primary)',
-        }}
-      />
-      <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
-        {label}
-      </span>
-    </div>
-  );
-}
-
 export function DnDAppearance({ character }: DnDAppearanceProps) {
-  const appearance = character.appearance || {
-    skinTone: DEFAULT_APPEARANCE.skinTone,
-    primaryColor: DEFAULT_APPEARANCE.primaryColor,
-    secondaryColor: DEFAULT_APPEARANCE.secondaryColor,
-    eyeColor: DEFAULT_APPEARANCE.eyeColor,
-  };
-
-  const skinName = getColorName(appearance.skinTone, SKIN_TONE_PRESETS);
-  const eyeName = getColorName(appearance.eyeColor, EYE_COLOR_PRESETS);
-  const primaryName = getColorName(
-    appearance.primaryColor,
-    ARMOR_COLOR_PRESETS
-  );
-  const accentName = getColorName(
-    appearance.secondaryColor,
-    ACCENT_COLOR_PRESETS
-  );
+  const summary = summarizeHair(character.appearance?.hair);
 
   return (
     <Card className="p-4">
       <h4
-        className="text-lg font-bold mb-4 text-center"
+        className="mb-4 text-center text-lg font-bold"
         style={{
           fontFamily: 'Cinzel, serif',
           color: 'var(--text-primary)',
@@ -68,21 +21,50 @@ export function DnDAppearance({ character }: DnDAppearanceProps) {
         APPEARANCE
       </h4>
 
-      <div className="grid grid-cols-2 gap-3">
-        <ColorSwatch color={appearance.skinTone} label={`Skin: ${skinName}`} />
-        <ColorSwatch color={appearance.eyeColor} label={`Eyes: ${eyeName}`} />
-        <ColorSwatch
-          color={appearance.primaryColor}
-          label={`Primary: ${primaryName}`}
-        />
-        <ColorSwatch
-          color={appearance.secondaryColor}
-          label={`Accent: ${accentName}`}
-        />
-      </div>
+      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="sr-only">Scalp hair</dt>
+          <dd style={{ color: 'var(--text-primary)' }}>
+            Scalp: {summary.scalp}
+          </dd>
+        </div>
+        <div>
+          <dt className="sr-only">Facial hair</dt>
+          <dd style={{ color: 'var(--text-primary)' }}>
+            Facial: {summary.facialHair}
+          </dd>
+        </div>
+        <div>
+          <dt className="sr-only">Hair color</dt>
+          <dd
+            className="flex items-center gap-2"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            <span
+              aria-hidden="true"
+              className="h-6 w-6 rounded border"
+              style={{
+                backgroundColor: summary.colorHex,
+                borderColor: 'var(--border-primary)',
+              }}
+            />
+            <span>
+              {summary.colorIsDefault ? 'Default hair color' : 'Hair color'} ·{' '}
+              {summary.colorHex}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt className="sr-only">Hair roughness</dt>
+          <dd style={{ color: 'var(--text-primary)' }}>
+            {summary.roughnessIsDefault ? 'Default roughness' : 'Roughness'} ·{' '}
+            {summary.roughness.toFixed(2)}
+          </dd>
+        </div>
+      </dl>
 
       <p
-        className="text-xs mt-3 text-center italic"
+        className="mt-3 text-center text-xs italic"
         style={{ color: 'var(--text-muted)' }}
       >
         Set during character creation

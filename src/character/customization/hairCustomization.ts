@@ -99,8 +99,8 @@ function resolveSlot(
 
   const defaultStyleRef =
     slot === 'scalp'
-      ? DWARF_CUSTOMIZATION_CATALOG.defaults.scalpStyleRef
-      : DWARF_CUSTOMIZATION_CATALOG.defaults.facialHairStyleRef;
+      ? DWARF_CUSTOMIZATION_CATALOG.slots.scalp.defaultStyleRef
+      : DWARF_CUSTOMIZATION_CATALOG.slots.facialHair.defaultStyleRef;
   const requestedStyleRef =
     selection.kind === 'default' ? defaultStyleRef : selection.styleRef;
   const options = slot === 'scalp' ? SCALP_BY_REF : FACIAL_HAIR_BY_REF;

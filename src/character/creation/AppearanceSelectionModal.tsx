@@ -1,302 +1,168 @@
-/**
- * AppearanceSelectionModal - Modal for customizing character appearance
- *
- * Features:
- * - Left panel: Color controls (skin tone, armor colors, eye color)
- * - Right panel: Live 3D preview of the character
- */
-
-import { AppearanceEditor } from '@/components/AppearanceEditor';
-import { MediumHumanoid } from '@/components/hex-grid/MediumHumanoid';
-import type { CharacterAppearance } from '@/config/appearancePresets';
-import { DEFAULT_APPEARANCE } from '@/config/appearancePresets';
-import { Class } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
-import { OrbitControls } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
-import { Suspense, useEffect, useState } from 'react';
+import { resolveDwarfCustomizationModel } from '@/character/customization/dwarfCustomization';
+import { create } from '@bufbuild/protobuf';
+import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import { HairCustomizationSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import type { Appearance } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { AppearanceSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { DwarfCustomizationControls } from './components/DwarfCustomizationControls';
+import { DwarfCustomizationPreview } from './components/DwarfCustomizationPreview';
 
-// Helper to get CSS variable values for portals
-function getCSSVariable(name: string, fallback: string): string {
-  if (typeof window !== 'undefined') {
-    const value = getComputedStyle(document.documentElement)
-      .getPropertyValue(name)
-      .trim();
-    return value || fallback;
-  }
-  return fallback;
-}
-
-interface AppearanceSelectionModalProps {
+export interface AppearanceSelectionModalProps {
   isOpen: boolean;
-  currentAppearance?: Partial<CharacterAppearance>;
-  characterClass?: Class;
-  onConfirm: (appearance: CharacterAppearance) => void;
+  raceRefId?: string;
+  classRefId?: string;
+  currentAppearance?: Appearance;
+  onConfirm: (appearance: Appearance) => void | Promise<void>;
   onClose: () => void;
 }
 
-function CharacterPreview({
-  appearance,
-  characterClass,
-}: {
-  appearance: CharacterAppearance;
-  characterClass?: Class;
-}) {
-  return (
-    <Canvas
-      frameloop="demand"
-      camera={{ position: [0, 1.5, 3], fov: 45 }}
-      style={{ background: 'transparent' }}
-    >
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[5, 5, 5]} intensity={0.8} />
-      <directionalLight position={[-5, 3, -5]} intensity={0.3} />
+function copyHair(hair: HairCustomization | undefined) {
+  return hair ? create(HairCustomizationSchema, hair) : undefined;
+}
 
-      <Suspense fallback={null}>
-        <group position={[0, -0.8, 0]}>
-          <MediumHumanoid
-            scale={0.012}
-            characterClass={characterClass || Class.FIGHTER}
-            skinTone={appearance.skinTone}
-            primaryColor={appearance.primaryColor}
-            secondaryColor={appearance.secondaryColor}
-            eyeColor={appearance.eyeColor}
-            facingRotation={0}
-          />
-        </group>
-      </Suspense>
+function editableAppearance(currentAppearance: Appearance | undefined) {
+  return create(AppearanceSchema, {
+    hair: copyHair(currentAppearance?.hair),
+  });
+}
 
-      <OrbitControls
-        enablePan={false}
-        enableZoom={true}
-        minDistance={2}
-        maxDistance={5}
-        target={[0, 0.5, 0]}
-      />
-    </Canvas>
-  );
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Could not save appearance';
 }
 
 export function AppearanceSelectionModal({
   isOpen,
+  raceRefId,
+  classRefId,
   currentAppearance,
-  characterClass,
   onConfirm,
   onClose,
 }: AppearanceSelectionModalProps) {
-  const [appearance, setAppearance] = useState<CharacterAppearance>({
-    skinTone: currentAppearance?.skinTone || DEFAULT_APPEARANCE.skinTone,
-    primaryColor:
-      currentAppearance?.primaryColor || DEFAULT_APPEARANCE.primaryColor,
-    secondaryColor:
-      currentAppearance?.secondaryColor || DEFAULT_APPEARANCE.secondaryColor,
-    eyeColor: currentAppearance?.eyeColor || DEFAULT_APPEARANCE.eyeColor,
-  });
+  const [appearance, setAppearance] = useState(() =>
+    editableAppearance(currentAppearance)
+  );
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const model = resolveDwarfCustomizationModel(raceRefId, classRefId);
 
-  // Sync with prop changes
   useEffect(() => {
-    if (currentAppearance) {
-      setAppearance({
-        skinTone: currentAppearance.skinTone || DEFAULT_APPEARANCE.skinTone,
-        primaryColor:
-          currentAppearance.primaryColor || DEFAULT_APPEARANCE.primaryColor,
-        secondaryColor:
-          currentAppearance.secondaryColor || DEFAULT_APPEARANCE.secondaryColor,
-        eyeColor: currentAppearance.eyeColor || DEFAULT_APPEARANCE.eyeColor,
-      });
+    if (!isOpen) return;
+    setAppearance(editableAppearance(currentAppearance));
+    setSaveError(null);
+  }, [currentAppearance, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !model) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !saving) onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, model, onClose, saving]);
+
+  if (!isOpen || !model) return null;
+
+  const close = () => {
+    if (!saving) onClose();
+  };
+
+  const apply = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onConfirm(editableAppearance(appearance));
+      onClose();
+    } catch (error) {
+      setSaveError(errorMessage(error));
+    } finally {
+      setSaving(false);
     }
-  }, [currentAppearance]);
-
-  const handleConfirm = () => {
-    onConfirm(appearance);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  // Inline styles for the portal elements
-  const overlayStyles: React.CSSProperties = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 50,
-    backdropFilter: 'blur(4px)',
-  };
-
-  const modalStyles: React.CSSProperties = {
-    backgroundColor: getCSSVariable('--bg-primary', '#1a1a1a'),
-    maxWidth: '900px',
-    width: '90%',
-    maxHeight: '85vh',
-    borderRadius: '8px',
-    border: `2px solid ${getCSSVariable('--border-primary', '#333')}`,
-    display: 'flex',
-    flexDirection: 'column',
-    position: 'relative',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    color: getCSSVariable('--text-primary', '#ffffff'),
-  };
-
-  const headerStyles: React.CSSProperties = {
-    padding: '1.5rem',
-    borderBottom: `1px solid ${getCSSVariable('--border-primary', '#333')}`,
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  };
-
-  const contentStyles: React.CSSProperties = {
-    display: 'flex',
-    flex: 1,
-    overflow: 'hidden',
-    minHeight: '400px',
-  };
-
-  const leftPanelStyles: React.CSSProperties = {
-    width: '320px',
-    borderRight: `1px solid ${getCSSVariable('--border-primary', '#333')}`,
-    padding: '1.5rem',
-    overflowY: 'auto',
-  };
-
-  const rightPanelStyles: React.CSSProperties = {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    backgroundColor: getCSSVariable('--bg-secondary', '#2a2a2a'),
-    position: 'relative',
-  };
-
-  const previewContainerStyles: React.CSSProperties = {
-    flex: 1,
-    position: 'relative',
-  };
-
-  const previewLabelStyles: React.CSSProperties = {
-    position: 'absolute',
-    bottom: '1rem',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    fontSize: '0.75rem',
-    color: getCSSVariable('--text-muted', '#666'),
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    padding: '0.25rem 0.75rem',
-    borderRadius: '4px',
-  };
-
-  const footerStyles: React.CSSProperties = {
-    padding: '1rem 1.5rem',
-    borderTop: `1px solid ${getCSSVariable('--border-primary', '#333')}`,
-    display: 'flex',
-    gap: '1rem',
-    justifyContent: 'flex-end',
-  };
-
-  const buttonStyles: React.CSSProperties = {
-    padding: '0.5rem 1rem',
-    borderRadius: '4px',
-    fontSize: '0.875rem',
-    fontWeight: 500,
-    cursor: 'pointer',
-    transition: 'background-color 0.2s',
-  };
-
-  const cancelButtonStyles: React.CSSProperties = {
-    ...buttonStyles,
-    backgroundColor: 'transparent',
-    border: `1px solid ${getCSSVariable('--border-primary', '#333')}`,
-    color: getCSSVariable('--text-primary', '#ffffff'),
-  };
-
-  const confirmButtonStyles: React.CSSProperties = {
-    ...buttonStyles,
-    backgroundColor: getCSSVariable('--accent-primary', '#5865F2'),
-    border: 'none',
-    color: 'white',
   };
 
   return createPortal(
-    <div style={overlayStyles} onClick={onClose}>
-      <div style={modalStyles} onClick={(e) => e.stopPropagation()}>
-        <div style={headerStyles}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-            Customize Appearance
-          </h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm sm:p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) close();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dwarf-appearance-title"
+        className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border-2 border-[var(--border-primary)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-2xl sm:max-h-[92dvh]"
+      >
+        <header className="flex items-center justify-between border-b border-[var(--border-primary)] px-4 py-3 sm:px-6">
+          <div>
+            <h2
+              id="dwarf-appearance-title"
+              className="font-serif text-xl font-bold sm:text-2xl"
+            >
+              Customize Dwarf Hair
+            </h2>
+            <p className="text-xs text-[var(--text-muted)] sm:text-sm">
+              Choose scalp hair, facial hair, color, and finish.
+            </p>
+          </div>
           <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: getCSSVariable('--text-muted', '#999'),
-              fontSize: '1.5rem',
-              cursor: 'pointer',
-            }}
+            type="button"
+            aria-label="Close appearance picker"
+            onClick={close}
+            disabled={saving}
+            className="rounded p-2 text-2xl leading-none text-[var(--text-muted)] hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50"
           >
             ×
           </button>
-        </div>
+        </header>
 
-        <div style={contentStyles}>
-          <div style={leftPanelStyles}>
-            <AppearanceEditor
-              appearance={appearance}
-              onChange={setAppearance}
+        <div className="grid min-h-0 flex-1 grid-rows-[minmax(10rem,30vh)_minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(22rem,1fr)_minmax(20rem,0.8fr)] lg:grid-rows-1">
+          <div className="order-2 overflow-y-auto p-4 sm:p-6 lg:order-1">
+            <DwarfCustomizationControls
+              hair={appearance.hair}
+              onChange={(hair) =>
+                setAppearance(create(AppearanceSchema, { hair }))
+              }
             />
           </div>
-
-          <div style={rightPanelStyles}>
-            <div style={previewContainerStyles}>
-              <CharacterPreview
-                appearance={appearance}
-                characterClass={characterClass}
-              />
-              <div style={previewLabelStyles}>Drag to rotate</div>
-            </div>
+          <div className="order-1 min-h-40 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)] lg:order-2 lg:border-b-0 lg:border-l">
+            <DwarfCustomizationPreview
+              raceRefId={raceRefId}
+              classRefId={classRefId}
+              appearance={appearance}
+            />
+            <p className="pointer-events-none -mt-8 text-center text-xs text-[var(--text-muted)]">
+              Drag to rotate · scroll to zoom
+            </p>
           </div>
         </div>
 
-        <div style={footerStyles}>
+        <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-[var(--border-primary)] px-4 py-3 sm:px-6">
+          {saveError && (
+            <p role="alert" className="mr-auto text-sm text-red-300">
+              {saveError}
+            </p>
+          )}
           <button
-            onClick={onClose}
-            style={cancelButtonStyles}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = getCSSVariable(
-                '--bg-secondary',
-                '#2a2a2a'
-              );
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
+            type="button"
+            onClick={close}
+            disabled={saving}
+            className="rounded-md border border-[var(--border-primary)] px-4 py-2 font-medium hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
-            onClick={handleConfirm}
-            style={confirmButtonStyles}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = getCSSVariable(
-                '--accent-hover',
-                '#4752C4'
-              );
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = getCSSVariable(
-                '--accent-primary',
-                '#5865F2'
-              );
-            }}
+            type="button"
+            onClick={() => void apply()}
+            disabled={saving}
+            className="rounded-md bg-[var(--accent-primary)] px-4 py-2 font-semibold text-white hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50"
           >
-            Apply
+            {saving ? 'Applying…' : 'Apply'}
           </button>
-        </div>
-      </div>
+        </footer>
+      </section>
     </div>,
     document.body
   );
