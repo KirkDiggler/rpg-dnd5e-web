@@ -743,6 +743,8 @@ const EXPECTED_OTHER_KIND = {
   exited: EventKind.EXITED,
   ended: EventKind.ENDED,
   door: EventKind.DOOR,
+  doorRevealed: EventKind.DOOR_REVEALED,
+  regionRevealed: EventKind.REGION_REVEALED,
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -830,6 +832,16 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         total: event.body.value.total,
         beaten: event.body.value.beaten,
       });
+    // DOOR_REVEALED / REGION_REVEALED carry no attack-adjacent facts this
+    // presentation layer narrates today — the beat's job is done by the
+    // atlas/doors refetch `SessionEncounterView.refreshKeysForEvent`
+    // already fires on it (rpg-project#350/#886). A Story-log narration
+    // ("you find a hidden door") is a named follow-up, not this wave's:
+    // returning undefined here means the beat is accepted and updates
+    // state correctly, just without an otherStory entry of its own.
+    case 'doorRevealed':
+    case 'regionRevealed':
+      return undefined;
   }
 }
 

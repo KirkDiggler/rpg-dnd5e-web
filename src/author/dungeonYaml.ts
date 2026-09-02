@@ -43,19 +43,48 @@ export interface RegionDoc {
   archetype: string;
   lighting: { intensity: number };
   cells: Axial[];
+  /** Hidden space — "the room hides with its door" (rpg-project#351).
+   * DECLARED HERE, NEVER CASCADED from a concealed door: the room and its
+   * door are separate authored facts (dungeonspec.RegionSpec.Concealed).
+   * Server-validated coherence (a walk-in room cannot be a secret; a room
+   * only reachable through a concealed door must be concealed too) is not
+   * repeated client-side — this module only refuses what it cannot
+   * represent. Omitted means not concealed; only ever written `true`. */
+  concealed?: boolean;
 }
 
-export interface LockDoc {
-  dc: number;
+/** One authored check's approach: an ability or skill, an optional tool,
+ * and the DC that route must beat — mirrors dungeonspec's `ApproachSpec`
+ * (rpg-project#350). Every field is opaque; this module never interprets
+ * `ability` or `tool`. */
+export interface ApproachDoc {
   ability: string;
+  tool?: string;
+  dc: number;
 }
+
+/** A door's lock or its find check: the accepted approaches through it,
+ * success by any listed one, each priced with its own DC. Mirrors
+ * dungeonspec's `CheckSpec` — a bare list, not a wrapping object, because
+ * the builder authors a check as approach rows and the file reads as the
+ * rows it is. */
+export type CheckDoc = ApproachDoc[];
 
 export interface DoorDoc {
   id: string;
   edges: Edge[];
   /** Omitted = open doorway; `closed` = shut, not locked; `locked` wins. */
   closed?: boolean;
-  locked?: LockDoc;
+  /** NIL, NOT LEN 0, IS "NOT LOCKED" (dungeonspec.DoorSpec.Locked's law):
+   * an authored-but-empty list is a lock with no way through it, refused
+   * server-side by name — this module still represents it (round-trips
+   * unchanged) rather than silently reading it as open. */
+  locked?: CheckDoc;
+  /** The find check that hides this door — COMPOSES with plain, closed,
+   * or locked underneath; whether a door is shut and whether anyone knows
+   * it is there are separate authored facts (rpg-project#350). Same
+   * nil-vs-empty law as `locked`. */
+  concealed?: CheckDoc;
 }
 
 /** A placement's authored offset: `[x, y]` or `[x, y, height]`
@@ -215,6 +244,36 @@ function list(v: unknown, path: string): unknown[] {
   return v;
 }
 
+/** One `{ ability, tool?, dc }` row — mirrors dungeonspec's `ApproachSpec`
+ * parse. `tool` is written only when present, same optional-field
+ * convention as every other doc type here. */
+function approach(v: unknown, path: string): ApproachDoc {
+  if (!isRecord(v)) throw new DungeonParseError(`${path}: expected a map`);
+  expectKeys(v, ['ability', 'tool', 'dc'], path);
+  if (!Number.isInteger(v.dc)) {
+    throw new DungeonParseError(`${path}.dc: expected an integer`);
+  }
+  const out: ApproachDoc = {
+    ability: str(v, 'ability', path),
+    dc: v.dc as number,
+  };
+  if (v.tool !== undefined && v.tool !== null) {
+    out.tool = str(v, 'tool', path);
+  }
+  return out;
+}
+
+/** A bare list of approach rows — a door's `locked` or `concealed`. An
+ * authored-but-empty list parses through unchanged (this module only
+ * refuses what it cannot represent; "at least one approach" is the
+ * server's refusal to make, not the loader's). */
+function checkList(v: unknown, path: string): CheckDoc {
+  if (!Array.isArray(v)) {
+    throw new DungeonParseError(`${path}: expected a list`);
+  }
+  return v.map((a, i) => approach(a, `${path}[${i}]`));
+}
+
 export function parseDungeon(text: string): DungeonDoc {
   let raw: unknown;
   try {
@@ -258,7 +317,11 @@ export function parseDungeon(text: string): DungeonDoc {
   const regions = list(raw.regions, 'regions').map((r, i): RegionDoc => {
     const path = `regions[${i}]`;
     if (!isRecord(r)) throw new DungeonParseError(`${path}: expected a map`);
-    expectKeys(r, ['id', 'name', 'archetype', 'lighting', 'cells'], path);
+    expectKeys(
+      r,
+      ['id', 'name', 'archetype', 'lighting', 'cells', 'concealed'],
+      path
+    );
     const lighting = r.lighting;
     let intensity = 0;
     if (lighting !== undefined && lighting !== null) {
@@ -281,13 +344,20 @@ export function parseDungeon(text: string): DungeonDoc {
         );
       }
     }
-    return {
+    const region: RegionDoc = {
       id: str(r, 'id', path),
       name: str(r, 'name', path, ''),
       archetype: str(r, 'archetype', path, ''),
       lighting: { intensity },
       cells,
     };
+    if (r.concealed !== undefined && r.concealed !== null) {
+      if (typeof r.concealed !== 'boolean') {
+        throw new DungeonParseError(`${path}.concealed: expected a boolean`);
+      }
+      if (r.concealed) region.concealed = true;
+    }
+    return region;
   });
 
   const start =
@@ -319,7 +389,7 @@ export function parseDungeon(text: string): DungeonDoc {
   const doors = list(raw.doors, 'doors').map((d, i): DoorDoc => {
     const path = `doors[${i}]`;
     if (!isRecord(d)) throw new DungeonParseError(`${path}: expected a map`);
-    expectKeys(d, ['id', 'edges', 'closed', 'locked'], path);
+    expectKeys(d, ['id', 'edges', 'closed', 'locked', 'concealed'], path);
     const door: DoorDoc = {
       id: str(d, 'id', path),
       edges: list(d.edges, `${path}.edges`).map((e, j) =>
@@ -333,17 +403,10 @@ export function parseDungeon(text: string): DungeonDoc {
       if (d.closed) door.closed = true;
     }
     if (d.locked !== undefined && d.locked !== null) {
-      if (!isRecord(d.locked)) {
-        throw new DungeonParseError(`${path}.locked: expected a map`);
-      }
-      expectKeys(d.locked, ['dc', 'ability'], `${path}.locked`);
-      if (!Number.isInteger(d.locked.dc)) {
-        throw new DungeonParseError(`${path}.locked.dc: expected an integer`);
-      }
-      door.locked = {
-        dc: d.locked.dc as number,
-        ability: str(d.locked, 'ability', `${path}.locked`),
-      };
+      door.locked = checkList(d.locked, `${path}.locked`);
+    }
+    if (d.concealed !== undefined && d.concealed !== null) {
+      door.concealed = checkList(d.concealed, `${path}.concealed`);
     }
     return door;
   });
@@ -423,6 +486,15 @@ function scalar(s: string): string {
 }
 
 const fmtPair = ([c, r]: OffsetPair): string => `[${c},${r}]`;
+
+/** One `{ ability, tool?, dc }` row, key order matching
+ * dungeonspec.ApproachSpec's own field order (ability, tool, dc). */
+function fmtApproach(a: ApproachDoc): string {
+  const fields = [`ability: ${scalar(a.ability)}`];
+  if (a.tool !== undefined) fields.push(`tool: ${scalar(a.tool)}`);
+  fields.push(`dc: ${a.dc}`);
+  return `{ ${fields.join(', ')} }`;
+}
 
 function compareOffset(a: OffsetPair, b: OffsetPair): number {
   return a[1] - b[1] || a[0] - b[0];
@@ -514,6 +586,9 @@ export function emitDungeon(doc: DungeonDoc): string {
           );
         }
       }
+      if (region.concealed) {
+        out.push('    concealed: true');
+      }
     }
   }
 
@@ -542,12 +617,13 @@ export function emitDungeon(doc: DungeonDoc): string {
     for (const { door: d, edges } of layout.doors) {
       out.push(`  - id: ${scalar(d.id)}`);
       out.push(`    edges: [${edges.map((e) => fmtEdge(o, e)).join(',')}]`);
-      if (d.locked) {
-        out.push(
-          `    locked: { dc: ${d.locked.dc}, ability: ${scalar(d.locked.ability)} }`
-        );
+      if (d.locked !== undefined) {
+        out.push(`    locked: [${d.locked.map(fmtApproach).join(', ')}]`);
       } else if (d.closed) {
         out.push('    closed: true');
+      }
+      if (d.concealed !== undefined) {
+        out.push(`    concealed: [${d.concealed.map(fmtApproach).join(', ')}]`);
       }
     }
   }
@@ -881,7 +957,7 @@ export function toggleDoorEdge(
 export function updateDoor(
   doc: DungeonDoc,
   doorId: string,
-  patch: Partial<Pick<DoorDoc, 'id' | 'closed' | 'locked'>>
+  patch: Partial<Pick<DoorDoc, 'id' | 'closed' | 'locked' | 'concealed'>>
 ): DungeonDoc {
   return {
     ...doc,
@@ -890,6 +966,7 @@ export function updateDoor(
       const next: DoorDoc = { ...d, ...patch };
       if (!next.closed) delete next.closed;
       if (!next.locked) delete next.locked;
+      if (!next.concealed) delete next.concealed;
       return next;
     }),
   };
@@ -987,13 +1064,18 @@ export function removeRegion(doc: DungeonDoc, regionId: string): DungeonDoc {
 export function updateRegion(
   doc: DungeonDoc,
   regionId: string,
-  patch: Partial<Pick<RegionDoc, 'id' | 'name' | 'archetype' | 'lighting'>>
+  patch: Partial<
+    Pick<RegionDoc, 'id' | 'name' | 'archetype' | 'lighting' | 'concealed'>
+  >
 ): DungeonDoc {
   return {
     ...doc,
-    regions: doc.regions.map((r) =>
-      r.id === regionId ? { ...r, ...patch } : r
-    ),
+    regions: doc.regions.map((r) => {
+      if (r.id !== regionId) return r;
+      const next: RegionDoc = { ...r, ...patch };
+      if (!next.concealed) delete next.concealed;
+      return next;
+    }),
   };
 }
 

@@ -8,6 +8,8 @@ import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
   isMonsterRef,
   wallKeys,
+  type ApproachDoc,
+  type CheckDoc,
   type DoorDoc,
   type DungeonDoc,
   type PlacementDoc,
@@ -15,7 +17,7 @@ import {
 } from './dungeonYaml';
 import { edgeKey, type Edge } from './hexOffset';
 import { RegionPanel } from './RegionPanel';
-import { ABILITIES, TARGETINGS, type Selection } from './types';
+import { APPROACH_ABILITIES, TARGETINGS, type Selection } from './types';
 
 export interface InspectorProps {
   doc: DungeonDoc;
@@ -28,14 +30,14 @@ export interface InspectorProps {
     patch: Partial<
       Pick<
         DungeonDoc['regions'][number],
-        'id' | 'name' | 'archetype' | 'lighting'
+        'id' | 'name' | 'archetype' | 'lighting' | 'concealed'
       >
     >
   ) => void;
   onRemoveRegion: (id: string) => void;
   onDoor: (
     id: string,
-    patch: Partial<Pick<DoorDoc, 'id' | 'closed' | 'locked'>>
+    patch: Partial<Pick<DoorDoc, 'id' | 'closed' | 'locked' | 'concealed'>>
   ) => void;
   onRemoveDoor: (id: string) => void;
   onPlacement: (
@@ -227,13 +229,118 @@ function WallPanel({
   );
 }
 
+/** One `{ ability, tool?, dc }` row-editor for a `CheckDoc` — shared by
+ * a door's lock and its find check (rpg-project#350/#886): both are the
+ * same approach-list shape, success by any listed row. The last row
+ * can't be removed while the check is on: an authored-but-empty check is
+ * refused server-side (dungeonspec's "at least one approach" law), and
+ * this control never authors that state through normal use — turning
+ * the check off entirely is the caller's job (the state select / the
+ * concealed checkbox), not a side effect of deleting rows here. */
+function ApproachRows({
+  approaches,
+  onChange,
+  testIdPrefix,
+  defaultAbility,
+}: {
+  approaches: CheckDoc;
+  onChange: (next: CheckDoc) => void;
+  testIdPrefix: string;
+  defaultAbility: string;
+}) {
+  const patchRow = (i: number, patch: Partial<ApproachDoc>) =>
+    onChange(
+      approaches.map((row, j) => (j === i ? { ...row, ...patch } : row))
+    );
+  return (
+    <div className="flex flex-col gap-2">
+      {approaches.map((a, i) => (
+        <div
+          key={i}
+          className="flex gap-2 items-end"
+          data-testid={`${testIdPrefix}-approach-${i}`}
+        >
+          <label className="dg-label flex-1">
+            ability
+            <select
+              className="dg-input"
+              value={a.ability}
+              onChange={(e) => patchRow(i, { ability: e.target.value })}
+            >
+              {!APPROACH_ABILITIES.includes(a.ability as never) && (
+                <option value={a.ability}>{a.ability || '(none)'}</option>
+              )}
+              {APPROACH_ABILITIES.map((ab) => (
+                <option key={ab} value={ab}>
+                  {ab}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="dg-label flex-1">
+            tool
+            <input
+              className="dg-input"
+              placeholder="(none)"
+              value={a.tool ?? ''}
+              onChange={(e) => {
+                const tool = e.target.value;
+                if (tool) {
+                  patchRow(i, { tool });
+                  return;
+                }
+                const rest: ApproachDoc = {
+                  ability: a.ability,
+                  dc: a.dc,
+                };
+                onChange(approaches.map((row, j) => (j === i ? rest : row)));
+              }}
+            />
+          </label>
+          <label className="dg-label" style={{ width: '5rem' }}>
+            dc
+            <input
+              className="dg-input"
+              type="number"
+              min={1}
+              value={a.dc}
+              onChange={(e) => patchRow(i, { dc: Number(e.target.value) || 0 })}
+            />
+          </label>
+          <button
+            type="button"
+            className="dg-mini dg-danger"
+            aria-label="remove approach"
+            disabled={approaches.length <= 1}
+            onClick={() => onChange(approaches.filter((_, j) => j !== i))}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="dg-mini"
+        data-testid={`${testIdPrefix}-add-approach`}
+        onClick={() =>
+          onChange([...approaches, { ability: defaultAbility, dc: 12 }])
+        }
+      >
+        add an approach
+      </button>
+    </div>
+  );
+}
+
 function DoorPanel({
   door,
   onChange,
   onRemove,
 }: {
   door: DoorDoc;
-  onChange: (patch: Partial<Pick<DoorDoc, 'id' | 'closed' | 'locked'>>) => void;
+  onChange: (
+    patch: Partial<Pick<DoorDoc, 'id' | 'closed' | 'locked' | 'concealed'>>
+  ) => void;
   onRemove: () => void;
 }) {
   const state = door.locked ? 'locked' : door.closed ? 'closed' : 'open';
@@ -265,7 +372,7 @@ function DoorPanel({
             else
               onChange({
                 closed: false,
-                locked: door.locked ?? { dc: 12, ability: 'dex' },
+                locked: door.locked ?? [{ ability: 'dex', dc: 12 }],
               });
           }}
         >
@@ -275,39 +382,44 @@ function DoorPanel({
         </select>
       </label>
       {door.locked && (
-        <div className="flex gap-2">
-          <label className="dg-label flex-1">
-            dc
-            <input
-              className="dg-input"
-              type="number"
-              min={1}
-              value={door.locked.dc}
-              onChange={(e) =>
-                onChange({
-                  locked: { ...door.locked!, dc: Number(e.target.value) || 0 },
-                })
-              }
-            />
-          </label>
-          <label className="dg-label flex-1">
-            ability
-            <select
-              className="dg-input"
-              value={door.locked.ability}
-              onChange={(e) =>
-                onChange({
-                  locked: { ...door.locked!, ability: e.target.value },
-                })
-              }
-            >
-              {ABILITIES.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="flex flex-col gap-1">
+          <div className="text-xs opacity-70">
+            lock — success by any listed approach
+          </div>
+          <ApproachRows
+            approaches={door.locked}
+            onChange={(next) => onChange({ locked: next })}
+            testIdPrefix="lock"
+            defaultAbility="dex"
+          />
+        </div>
+      )}
+      <label className="dg-check">
+        <input
+          type="checkbox"
+          checked={!!door.concealed}
+          onChange={(e) =>
+            onChange({
+              concealed: e.target.checked
+                ? (door.concealed ?? [{ ability: 'perception', dc: 15 }])
+                : undefined,
+            })
+          }
+        />
+        concealed
+      </label>
+      {door.concealed && (
+        <div className="flex flex-col gap-1">
+          <div className="text-xs opacity-70">
+            find check — success by any listed approach; unfound, the door is
+            absent from a searcher's scene, masked as a wall
+          </div>
+          <ApproachRows
+            approaches={door.concealed}
+            onChange={(next) => onChange({ concealed: next })}
+            testIdPrefix="find"
+            defaultAbility="perception"
+          />
         </div>
       )}
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>

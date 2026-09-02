@@ -66,7 +66,7 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
       {
         id: 'crypt-sealed-gate',
         edges: [doorEdge],
-        locked: { dc: 15, ability: 'dex' },
+        locked: [{ ability: 'dex', dc: 15 }],
       },
     ],
     place: [

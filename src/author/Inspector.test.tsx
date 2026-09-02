@@ -1,6 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { emptyDungeon, placeAt, type DungeonDoc } from './dungeonYaml';
+import {
+  addDoor,
+  emptyDungeon,
+  paintCell,
+  placeAt,
+  type DungeonDoc,
+} from './dungeonYaml';
 import { fromOffset } from './hexOffset';
 import { Inspector } from './Inspector';
 
@@ -239,5 +245,166 @@ describe('wall selection (#804)', () => {
       />
     );
     expect(screen.getByTestId('dungeon-panel')).toBeTruthy();
+  });
+});
+
+function doorDoc(): DungeonDoc {
+  let doc = emptyDungeon('pointy');
+  doc = paintCell(doc, 'region-1', p(0, 0));
+  doc = paintCell(doc, 'region-1', p(1, 0));
+  doc = addDoor(doc, [[p(0, 0), p(1, 0)]]);
+  return doc;
+}
+
+function mountDoor(
+  doc: DungeonDoc,
+  overrides: Partial<{
+    onDoor: (id: string, patch: Record<string, unknown>) => void;
+  }> = {}
+) {
+  return render(
+    <Inspector
+      doc={doc}
+      selection={{ kind: 'door', id: doc.doors[0]!.id }}
+      onDungeon={noop}
+      onRegion={noop}
+      onRemoveRegion={noop}
+      onDoor={overrides.onDoor ?? noop}
+      onRemoveDoor={noop}
+      onPlacement={noop}
+      onRemovePlacement={noop}
+      onRemoveWall={noop}
+      onSetWallHeight={noop}
+    />
+  );
+}
+
+describe('DoorPanel concealed + approach rows (rpg-project#350/#886)', () => {
+  it('is unchecked and shows no find-check rows for a plain doorway', () => {
+    mountDoor(doorDoc());
+    expect(
+      (screen.getByLabelText('concealed') as HTMLInputElement).checked
+    ).toBe(false);
+    expect(screen.queryByTestId('find-approach-0')).toBeNull();
+  });
+
+  it('checking concealed seeds one perception row and reports it', () => {
+    const onDoor = vi.fn();
+    const doc = doorDoc();
+    mountDoor(doc, { onDoor });
+    fireEvent.click(screen.getByLabelText('concealed'));
+    expect(onDoor).toHaveBeenCalledWith(doc.doors[0]!.id, {
+      concealed: [{ ability: 'perception', dc: 15 }],
+    });
+  });
+
+  it('unchecking concealed reports undefined, not an empty list', () => {
+    const onDoor = vi.fn();
+    const doc = {
+      ...doorDoc(),
+    };
+    doc.doors = [
+      { ...doc.doors[0]!, concealed: [{ ability: 'perception', dc: 15 }] },
+    ];
+    mountDoor(doc, { onDoor });
+    fireEvent.click(screen.getByLabelText('concealed'));
+    expect(onDoor).toHaveBeenCalledWith(doc.doors[0]!.id, {
+      concealed: undefined,
+    });
+  });
+
+  it('"add an approach" grows the find check with a second row', () => {
+    const onDoor = vi.fn();
+    const doc = doorDoc();
+    doc.doors = [
+      { ...doc.doors[0]!, concealed: [{ ability: 'perception', dc: 15 }] },
+    ];
+    mountDoor(doc, { onDoor });
+    fireEvent.click(screen.getByTestId('find-add-approach'));
+    expect(onDoor).toHaveBeenCalledWith(doc.doors[0]!.id, {
+      concealed: [
+        { ability: 'perception', dc: 15 },
+        { ability: 'perception', dc: 12 },
+      ],
+    });
+  });
+
+  it('the last approach row cannot be removed; a second row can', () => {
+    const onDoor = vi.fn();
+    const doc = doorDoc();
+    doc.doors = [
+      {
+        ...doc.doors[0]!,
+        concealed: [
+          { ability: 'perception', dc: 15 },
+          { ability: 'investigation', dc: 12 },
+        ],
+      },
+    ];
+    mountDoor(doc, { onDoor });
+    const removeButtons = screen.getAllByLabelText('remove approach');
+    expect(removeButtons).toHaveLength(2);
+    fireEvent.click(removeButtons[1]!);
+    expect(onDoor).toHaveBeenCalledWith(doc.doors[0]!.id, {
+      concealed: [{ ability: 'perception', dc: 15 }],
+    });
+
+    onDoor.mockClear();
+    const single = {
+      ...doc,
+      doors: [
+        { ...doc.doors[0]!, concealed: [{ ability: 'perception', dc: 15 }] },
+      ],
+    };
+    mountDoor(single, { onDoor });
+    const lastRemove = screen.getAllByLabelText('remove approach').at(-1)!;
+    expect((lastRemove as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("editing a find-check row's dc reports the patched list, ability and tool untouched", () => {
+    const onDoor = vi.fn();
+    const doc = doorDoc();
+    doc.doors = [
+      { ...doc.doors[0]!, concealed: [{ ability: 'perception', dc: 15 }] },
+    ];
+    mountDoor(doc, { onDoor });
+    fireEvent.change(
+      screen
+        .getByTestId('find-approach-0')
+        .querySelector('input[type="number"]')!,
+      {
+        target: { value: '18' },
+      }
+    );
+    expect(onDoor).toHaveBeenCalledWith(doc.doors[0]!.id, {
+      concealed: [{ ability: 'perception', dc: 18 }],
+    });
+  });
+
+  it('switching state to locked seeds a dex approach row, editable the same way', () => {
+    const onDoor = vi.fn();
+    const doc = doorDoc();
+    mountDoor(doc, { onDoor });
+    fireEvent.change(screen.getByLabelText('state'), {
+      target: { value: 'locked' },
+    });
+    expect(onDoor).toHaveBeenCalledWith(doc.doors[0]!.id, {
+      closed: false,
+      locked: [{ ability: 'dex', dc: 12 }],
+    });
+  });
+
+  it('lock and find-check rows compose independently — both render at once', () => {
+    const doc = doorDoc();
+    doc.doors = [
+      {
+        ...doc.doors[0]!,
+        locked: [{ ability: 'dex', dc: 12 }],
+        concealed: [{ ability: 'perception', dc: 15 }],
+      },
+    ];
+    mountDoor(doc);
+    expect(screen.getByTestId('lock-approach-0')).toBeTruthy();
+    expect(screen.getByTestId('find-approach-0')).toBeTruthy();
   });
 });

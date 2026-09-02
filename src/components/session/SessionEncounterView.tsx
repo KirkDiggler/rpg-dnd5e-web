@@ -16,6 +16,7 @@ import { useSessionAfford } from '@/api/useSessionAfford';
 import { useSessionAtlas } from '@/api/useSessionAtlas';
 import { useSessionDoors } from '@/api/useSessionDoors';
 import { useSessionRoster } from '@/api/useSessionRoster';
+import { useSessionSearch } from '@/api/useSessionSearch';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionView } from '@/api/useSessionView';
 import { useSessionWhere } from '@/api/useSessionWhere';
@@ -48,6 +49,7 @@ import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { buildAtlasPathIndex } from './atlasPath';
+import { regionAt } from './atlasRegion';
 import {
   buildScene3D,
   positionToCube,
@@ -79,6 +81,7 @@ import type {
   LocalWorldDieWitnessPlan,
 } from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
+import { SEARCH_NOTICE } from './searchNotice';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
 import {
@@ -163,7 +166,7 @@ function SessionEncounterScope({
     loading: atlasLoading,
     error: atlasError,
     refetch: refetchAtlas,
-  } = useSessionAtlas(sessionId);
+  } = useSessionAtlas(sessionId, member);
   const {
     position: wherePosition,
     loading: whereLoading,
@@ -172,7 +175,8 @@ function SessionEncounterScope({
   } = useSessionWhere(sessionId, member);
   const { sightings, refetch: refetchView } = useSessionView(sessionId, member);
   const { roster, refetch: refetchRoster } = useSessionRoster(sessionId);
-  const { doors, refetch: refetchDoors } = useSessionDoors(sessionId);
+  const { doors, refetch: refetchDoors } = useSessionDoors(sessionId, member);
+  const { search, loading: searching } = useSessionSearch();
   const {
     clock: affordClock,
     declarations: affordDeclarations,
@@ -202,6 +206,7 @@ function SessionEncounterScope({
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
   const encounterContentRef = useRef<HTMLDivElement>(null);
   const leaveRunButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -220,6 +225,22 @@ function SessionEncounterScope({
     return () => underlying?.removeAttribute('inert');
   }, [runEnded]);
 
+  // The searcher's own current region, resolved from data this member's
+  // own atlas already carries — never chosen, never guessed (the law: "a
+  // player cannot target structure they do not know exists").
+  const region = useMemo(
+    () => regionAt(atlas, wherePosition),
+    [atlas, wherePosition]
+  );
+  // "You search the area" stops describing the player's surroundings the
+  // moment those surroundings change — matches `doorNotice`'s own
+  // staleness law, just for a different trigger (a door's notice goes
+  // stale when the door's OWN state moves on; a search's notice goes
+  // stale when the SEARCHER moves on). Cosmetic only — the text is
+  // content-invariant either way, so this has no secrecy implication.
+  useEffect(() => {
+    setSearchNotice(null);
+  }, [region, member]);
   const layoutOutcome = useMemo(
     () => (atlas ? resolveSceneLayout(atlas) : null),
     [atlas]
@@ -355,9 +376,11 @@ function SessionEncounterScope({
       where: refetchWhere,
       roster: refetchRoster,
       doors: refetchDoors,
+      atlas: refetchAtlas,
     }),
     [
       refetchAfford,
+      refetchAtlas,
       refetchCharacterData,
       refetchDoors,
       refetchRoster,
@@ -826,6 +849,21 @@ function SessionEncounterScope({
           return ['roster'];
         case 'door':
           return ['doors'];
+        // DOOR_REVEALED / REGION_REVEALED patch this recipient's cached
+        // GetDoors / GetAtlas views in place, per the protos' own doc
+        // comment on both messages. Chosen refresh path (deliberate, per
+        // rpg-project#886): re-run the now member-scoped GetDoors/GetAtlas
+        // rather than splice the event's own doorways/boundaries/props
+        // payload into the cached atlas by hand — reveals are rare beats,
+        // not a hot path, and reusing the already-proven fetch path costs
+        // one extra round trip in exchange for not inventing new
+        // merge/dedup logic this wave has no live server to verify
+        // against. A doorRevealed door may also compose with a lock, so
+        // its DoorInfo belongs in 'doors' too, not atlas alone.
+        case 'doorRevealed':
+          return ['doors', 'atlas'];
+        case 'regionRevealed':
+          return ['atlas'];
         case 'exited':
         case undefined:
           return event.kind === EventKind.ENDED
@@ -854,6 +892,14 @@ function SessionEncounterScope({
       acceptStreamEvent(event, metadata);
 
       if (event.body.case === 'door') setDoorNotice(null);
+      // The same law: a DOOR_REVEALED/REGION_REVEALED beat is search's own
+      // "the world moved on" signal, mirroring the 'door' case above.
+      if (
+        event.body.case === 'doorRevealed' ||
+        event.body.case === 'regionRevealed'
+      ) {
+        setSearchNotice(null);
+      }
       if (event.body.case === 'ended' || event.kind === EventKind.ENDED) {
         // Equipment must disappear in the same authoritative event update,
         // before the modal receives focus or can be layered over the panel.
@@ -925,6 +971,29 @@ function SessionEncounterScope({
     },
     [doors, member, scheduleRefresh, sessionId]
   );
+
+  // THE SECRECY LAW, ENFORCED HERE (rpg-project#350/#886): SearchResponse
+  // carries no outcome, so this handler never reads `response` at all —
+  // only whether the call itself resolved or threw. A find or a fruitless
+  // room both land on the exact same `setSearchNotice(SEARCH_NOTICE)`
+  // call; only a genuine RPC/transport failure (a caller defect, never a
+  // check outcome) gets a different message, the same distinction
+  // `handleDoorClick` already draws. A find still reaches the searcher —
+  // later, as its own recipient-scoped DOOR_REVEALED beat on the stream,
+  // handled by `refreshKeysForEvent` — never through this call's return
+  // value, so no refresh is scheduled here.
+  const handleSearch = useCallback(() => {
+    if (!member || !region) return;
+    setSearchNotice(null);
+    void (async () => {
+      try {
+        await search({ session: sessionId, member, region });
+        setSearchNotice(SEARCH_NOTICE);
+      } catch (error) {
+        setSearchNotice(errorMessage(error));
+      }
+    })();
+  }, [member, region, search, sessionId]);
 
   const handleEquipIntent = useCallback(
     async (intent: EquipIntent) => {
@@ -1133,6 +1202,8 @@ function SessionEncounterScope({
                 : undefined
             }
             equipmentOpen={characterData ? equipmentOpen : false}
+            onSearch={runEnded === null && region ? handleSearch : undefined}
+            searchPending={searching}
             {...(combat.diceWitnessRole === 'roller'
               ? {
                   diceWitnessRole: 'roller' as const,
@@ -1164,6 +1235,7 @@ function SessionEncounterScope({
               </span>
             )}
             {doorNotice && <span>{doorNotice}</span>}
+            {searchNotice && <span>{searchNotice}</span>}
           </div>
 
           <div

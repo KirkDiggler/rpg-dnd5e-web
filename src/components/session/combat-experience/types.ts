@@ -119,6 +119,16 @@ interface CombatExperienceBaseProps {
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onOpenEquipment?: () => void;
   equipmentOpen?: boolean;
+  /**
+   * Search the region the viewer stands in (rpg-project#350/#886).
+   * Universally attemptable — no prerequisites, no turn requirement,
+   * independent of `clock`/`authorityFresh` — so `undefined` means only
+   * "the viewer's region is not known yet," never "not your turn." A
+   * find is never learned here: it arrives later as its own reveal beat.
+   */
+  onSearch?: () => void;
+  /** A search RPC is in flight; disables the button without hiding it. */
+  searchPending?: boolean;
   /** Explicit Concepts diagnostic surface; allowed independently of DEV. */
   diagnosticsEnabled?: boolean;
 }

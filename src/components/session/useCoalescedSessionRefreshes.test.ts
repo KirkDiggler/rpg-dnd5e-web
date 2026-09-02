@@ -25,6 +25,7 @@ function callbacksWith(
     where: resolved,
     roster: resolved,
     doors: resolved,
+    atlas: resolved,
     ...overrides,
   };
 }

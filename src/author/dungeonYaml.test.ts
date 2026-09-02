@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addDoor,
   addWalls,
   emitDungeon,
   emptyDungeon,
@@ -14,7 +15,9 @@ import {
   setWallHeights,
   toggleDoorEdge,
   toggleWall,
+  updateDoor,
   updatePlacement,
+  updateRegion,
   type DungeonDoc,
 } from './dungeonYaml';
 import { referenceTombDoc } from './fixtures/referenceTomb';
@@ -58,7 +61,7 @@ describe('emitDungeon / parseDungeon', () => {
     const entranceRows = lines.filter((l) => /^ {6}- \[\[[0-5],\d\]/.test(l));
     expect(entranceRows).toHaveLength(8);
     expect(text).toContain('start: [1, 3]');
-    expect(text).toContain('    locked: { dc: 12, ability: dex }');
+    expect(text).toContain('    locked: [{ ability: dex, dc: 12 }]');
     expect(text).toContain(
       '  - { ref: "dnd5e:props:pillar", at: [8,2], blocks_movement: true, blocks_los: true }'
     );
@@ -236,6 +239,141 @@ describe('emitDungeon / parseDungeon', () => {
     expect(() =>
       parseDungeon(head + '  - { between: [[0,0],[1,0]], height: tall }\n')
     ).toThrow(/walls\[0\]\.height: expected a number/);
+  });
+
+  describe('concealed doors and regions (rpg-project#350/#351)', () => {
+    function twoCellDoc(): DungeonDoc {
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
+      doc = paintCell(doc, 'region-1', p(1, 0));
+      return doc;
+    }
+
+    it("a door's concealed find check round-trips byte-for-byte and COMPOSES with an open doorway underneath", () => {
+      let doc = twoCellDoc();
+      doc = addDoor(doc, [[p(0, 0), p(1, 0)]]);
+      doc = updateDoor(doc, doc.doors[0]!.id, {
+        concealed: [
+          { ability: 'perception', dc: 15 },
+          {
+            ability: 'investigation',
+            tool: 'dnd5e:item:magnifying-glass',
+            dc: 12,
+          },
+        ],
+      });
+      const text = emitDungeon(doc);
+      // `scalar()` double-quotes the tool ref: its colon is not in the
+      // plain-scalar character set (same rule a `ref:` place field hits).
+      expect(text).toContain(
+        '    concealed: [{ ability: perception, dc: 15 }, { ability: investigation, tool: "dnd5e:item:magnifying-glass", dc: 12 }]'
+      );
+      expect(text).not.toContain('closed');
+      expect(text).not.toContain('locked');
+      const reparsed = parseDungeon(text);
+      expect(reparsed.doors[0]!.concealed).toEqual(doc.doors[0]!.concealed);
+      expect(reparsed.doors[0]!.closed).toBeUndefined();
+      expect(reparsed.doors[0]!.locked).toBeUndefined();
+      expect(emitDungeon(reparsed)).toBe(text);
+    });
+
+    it('a concealed door composes with locked and with closed underneath — concealment never displaces the state', () => {
+      let locked = twoCellDoc();
+      locked = addDoor(locked, [[p(0, 0), p(1, 0)]]);
+      locked = updateDoor(locked, locked.doors[0]!.id, {
+        locked: [{ ability: 'dex', dc: 12 }],
+        concealed: [{ ability: 'perception', dc: 15 }],
+      });
+      const lockedText = emitDungeon(locked);
+      expect(lockedText).toContain('    locked: [{ ability: dex, dc: 12 }]');
+      expect(lockedText).toContain(
+        '    concealed: [{ ability: perception, dc: 15 }]'
+      );
+      expect(emitDungeon(parseDungeon(lockedText))).toBe(lockedText);
+
+      let closed = twoCellDoc();
+      closed = addDoor(closed, [[p(0, 0), p(1, 0)]]);
+      closed = updateDoor(closed, closed.doors[0]!.id, {
+        closed: true,
+        concealed: [{ ability: 'perception', dc: 15 }],
+      });
+      const closedText = emitDungeon(closed);
+      expect(closedText).toContain('    closed: true');
+      expect(closedText).toContain(
+        '    concealed: [{ ability: perception, dc: 15 }]'
+      );
+      expect(emitDungeon(parseDungeon(closedText))).toBe(closedText);
+    });
+
+    it('toggling concealed off removes the key entirely rather than leaving an authored-but-falsy field', () => {
+      let doc = twoCellDoc();
+      doc = addDoor(doc, [[p(0, 0), p(1, 0)]]);
+      doc = updateDoor(doc, doc.doors[0]!.id, {
+        concealed: [{ ability: 'perception', dc: 15 }],
+      });
+      expect(doc.doors[0]).toHaveProperty('concealed');
+      doc = updateDoor(doc, doc.doors[0]!.id, { concealed: undefined });
+      expect(doc.doors[0]).not.toHaveProperty('concealed');
+      expect(emitDungeon(doc)).not.toContain('concealed');
+    });
+
+    it('an authored-but-empty check list round-trips unchanged — this loader only refuses what it cannot represent', () => {
+      let doc = twoCellDoc();
+      doc = addDoor(doc, [[p(0, 0), p(1, 0)]]);
+      doc = updateDoor(doc, doc.doors[0]!.id, { concealed: [] });
+      const text = emitDungeon(doc);
+      expect(text).toContain('    concealed: []');
+      const reparsed = parseDungeon(text);
+      expect(reparsed.doors[0]!.concealed).toEqual([]);
+      expect(emitDungeon(reparsed)).toBe(text);
+    });
+
+    it("a region's concealed marker round-trips byte-for-byte and is declared, never inferred from a door", () => {
+      let doc = twoCellDoc();
+      doc = updateRegion(doc, 'region-1', { concealed: true });
+      const text = emitDungeon(doc);
+      expect(text).toContain('    concealed: true');
+      const reparsed = parseDungeon(text);
+      expect(reparsed.regions[0]!.concealed).toBe(true);
+      expect(emitDungeon(reparsed)).toBe(text);
+
+      // Toggling back off drops the key rather than writing `concealed: false`.
+      const unconcealed = updateRegion(doc, 'region-1', { concealed: false });
+      expect(unconcealed.regions[0]).not.toHaveProperty('concealed');
+      expect(emitDungeon(unconcealed)).not.toContain('concealed');
+    });
+
+    it('an empty new dungeon writes no concealed key on its one starter region', () => {
+      expect(emitDungeon(emptyDungeon())).not.toContain('concealed');
+    });
+
+    it('refuses a non-boolean region concealed and a non-list door concealed', () => {
+      const head =
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\n';
+      expect(() =>
+        parseDungeon(
+          `${head}regions:\n  - id: r1\n    name: R\n    archetype: crypt\n    lighting: { intensity: 1 }\n    cells: []\n    concealed: yes-please\n`
+        )
+      ).toThrow(/regions\[0\]\.concealed: expected a boolean/);
+      expect(() =>
+        parseDungeon(
+          `${head}regions: []\ndoors:\n  - id: d1\n    edges: []\n    concealed: { ability: perception, dc: 15 }\n`
+        )
+      ).toThrow(/doors\[0\]\.concealed: expected a list/);
+    });
+
+    it('refuses an approach row missing its ability, or with a non-integer dc', () => {
+      const head =
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\ndoors:\n  - id: d1\n    edges: []\n';
+      expect(() =>
+        parseDungeon(`${head}    concealed: [{ dc: 15 }]\n`)
+      ).toThrow(/doors\[0\]\.concealed\[0\]\.ability: required/);
+      expect(() =>
+        parseDungeon(
+          `${head}    concealed: [{ ability: perception, dc: high }]\n`
+        )
+      ).toThrow(/doors\[0\]\.concealed\[0\]\.dc: expected an integer/);
+    });
   });
 
   it('the reference tomb has no facing/offset anywhere — the additive fields change nothing absent', () => {
@@ -464,7 +602,7 @@ describe('resolveErrorPath', () => {
       kind: 'edge',
       edge: [p(15, 3), p(16, 3)],
     });
-    expect(resolveErrorPath(doc, 'doors[1].locked.dc')).toEqual({
+    expect(resolveErrorPath(doc, 'doors[1].locked[0].dc')).toEqual({
       kind: 'door',
       doorId: 'hall-tomb',
     });

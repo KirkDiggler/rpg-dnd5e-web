@@ -16,25 +16,34 @@ const EMPTY_DOORS: ReadonlyMap<string, DoorInfo> = new Map();
 /**
  * Fetches the session's doors (`SessionService.GetDoors`) — the LIVE half
  * of the atlas's doorways (rpg-project#268). `GetAtlas` says where a
- * door's edges are and never changes; this says what each door is doing
- * now: open, closed, or locked with its DC (public down to the number —
- * full data until v1.0).
+ * door's edges are; this says what each door is doing now: open, closed,
+ * or locked with its DC (public down to the number — full data until
+ * v1.0). Concealed structure `member` has not found is absent from EVERY
+ * door-list, this one included (rpg-project#350/#351) — `member` is
+ * REQUIRED on the wire (`GetDoorsRequest.member`, added
+ * rpg-api-protos#266) and bound to the authenticated caller by the host,
+ * the same law `GetAtlasRequest.member` states.
  *
  * LOAD ONCE, REFRESH FROM THE STREAM: door state changes exactly when a
- * DOOR event says it did, so this hook fetches on mount and the only other
- * fetch a caller should fire is `refetch` on a `door` event — the same
- * pull-on-signal shape `useSessionRoster` set (rpg-project#264). A failed
- * refetch keeps the last-known doors rather than blanking them: a door
- * drawn in its last-known state beats a doorway drawn stateless.
+ * DOOR event says it did, and a concealed door's existence changes exactly
+ * when a DOOR_REVEALED event says it did, so this hook fetches on mount
+ * and the only other fetches a caller should fire are `refetch` on a
+ * `door` or `doorRevealed` event — the same pull-on-signal shape
+ * `useSessionRoster` set (rpg-project#264). A failed refetch keeps the
+ * last-known doors rather than blanking them: a door drawn in its
+ * last-known state beats a doorway drawn stateless.
  */
-export function useSessionDoors(session: string): UseSessionDoorsResult {
+export function useSessionDoors(
+  session: string,
+  member: string
+): UseSessionDoorsResult {
   const [doors, setDoors] =
     useState<ReadonlyMap<string, DoorInfo>>(EMPTY_DOORS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const fetchDoors = useCallback(async () => {
-    if (!session) {
+    if (!session || !member) {
       setDoors(EMPTY_DOORS);
       setError(null);
       setLoading(false);
@@ -43,24 +52,24 @@ export function useSessionDoors(session: string): UseSessionDoorsResult {
     setLoading(true);
     setError(null);
     try {
-      const response = await sessionClient.getDoors({ session });
+      const response = await sessionClient.getDoors({ session, member });
       setDoors(new Map(response.doors.map((d) => [d.door, d])));
     } catch (err) {
       setError(err instanceof Error ? err : new Error('GetDoors RPC failed'));
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, [session, member]);
 
   useEffect(() => {
-    if (!session) {
+    if (!session || !member) {
       setDoors(EMPTY_DOORS);
       setError(null);
       setLoading(false);
       return;
     }
     void fetchDoors();
-  }, [session, fetchDoors]);
+  }, [session, member, fetchDoors]);
 
   return { doors, loading, error, refetch: fetchDoors };
 }
