@@ -136,6 +136,15 @@ export interface CameraDials {
   /** WASD pan, world units per second. */
   panSpeed: number;
   /**
+   * Where Q/E and middle-drag rotation pivot (`?orbitPivot=`). `view`
+   * (default, today's behavior) pivots on the orbit target itself — the
+   * camera's own look-at point, which never leaves screen center by
+   * construction. `me` pivots on the local player's own mini instead, so
+   * the mini holds its screen position and the board turns around it
+   * (Kirk, 2026-09-03). See `orbitPivot.ts`.
+   */
+  orbitPivot: 'view' | 'me';
+  /**
    * Vertical FOV in DEGREES (perspective only) — degrees, not radians,
    * because that is what `<Canvas camera={{ fov }}>` wants; keeping the unit
    * matched to the consumer avoids a silent conversion bug at the call site.
@@ -273,11 +282,13 @@ export function parseCameraDials(search: string): CameraDials {
 
   const rotateSpeedDegPerSec =
     num(params, 'rotateSpeed') ?? DEFAULT_ROTATE_SPEED_DEG_PER_SEC;
+  const orbitPivot = params.get('orbitPivot') === 'me' ? 'me' : 'view';
 
   return {
     perspective,
     rotateSpeed: deg(rotateSpeedDegPerSec),
     panSpeed: num(params, 'panSpeed') ?? DEFAULT_PAN_SPEED_PER_SEC,
+    orbitPivot,
     fovDeg: num(params, 'fov') ?? DEFAULT_PERSP_FOV_DEG,
     minDistance: num(params, 'minDist') ?? DEFAULT_MIN_DISTANCE,
     maxDistance: num(params, 'maxDist') ?? DEFAULT_MAX_DISTANCE,

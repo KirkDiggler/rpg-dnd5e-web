@@ -694,6 +694,7 @@ function Scene({
     polarAngle: Math.PI / 3.5, // ~51 degrees from vertical - slightly lower tactical angle
     panSpeed: cameraDials.panSpeed,
     rotateSpeed: cameraDials.rotateSpeed,
+    orbitPivot: cameraDials.orbitPivot,
     minZoom: cameraDials.zoomMin,
     maxZoom: cameraDials.zoomMax,
     focusTarget,

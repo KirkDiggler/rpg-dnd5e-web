@@ -20,6 +20,7 @@ import {
   DEFAULT_PAN_SPEED_PER_SEC,
   DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
 } from './cameraDials';
+import { rotateAboutPivot } from './orbitPivot';
 
 /** `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, converted to this module's own
  * radian-based azimuth math. */
@@ -44,8 +45,20 @@ interface CameraControlsOptions {
   minZoom?: number;
   /** Maximum zoom level */
   maxZoom?: number;
-  /** When set, camera lerps target to this position. Cleared on manual pan. */
+  /** When set, camera lerps target to this position. Cleared on manual pan.
+   * Also doubles as the `orbitPivot: 'me'` pivot point below — the local
+   * player's own RAW world position (both call sites build it straight from
+   * the entity's live position, with no focus-lead applied). */
   focusTarget?: THREE.Vector3 | null;
+  /**
+   * Where Q/E (and, later, middle-drag) rotation pivots (`?orbitPivot=`,
+   * cameraDials.ts). `view` (default) pivots on `target` itself — today's
+   * behavior, unchanged. `me` pivots on `focusTarget` instead, so the local
+   * player's mini holds its screen position and the board turns around it;
+   * falls back to `view` when `focusTarget` is unset (no mini to pivot on).
+   * See orbitPivot.ts.
+   */
+  orbitPivot?: 'view' | 'me';
   /**
    * Banded zoom/pitch (`?pitchCurve=1`, see cameraDials.ts). Each orthographic
    * wheel gesture selects one authored zoom/polar/focus band. The final detail
@@ -87,6 +100,7 @@ export function useCameraControls({
   minZoom = 20,
   maxZoom = 200,
   focusTarget,
+  orbitPivot = 'view',
   curve = null,
   perspective = false,
   minDistance = 5,
@@ -255,6 +269,29 @@ export function useCameraControls({
     camera.position.set(x, y, z);
     camera.lookAt(focusX, target.y, focusZ);
   }, [target, currentPolar, camera, currentFocusLead]);
+
+  /**
+   * Apply one azimuth change of `deltaTheta` radians (positive = Q's
+   * direction, negative = E's — see orbitPivot.ts's own doc comment on the
+   * shared sign convention). `orbitPivot: 'view'` (default) is exactly
+   * today's behavior: only azimuth changes, so `target` — the camera's own
+   * look-at point — never leaves screen center. `orbitPivot: 'me'` also
+   * carries `target` through the SAME rotation around `focusTarget` (the
+   * mini's raw position), so the mini's screen position stays fixed and the
+   * board turns around it instead. Does NOT touch `lerpTarget.current` —
+   * rotating is not "manually reframing away from the character" the way
+   * WASD/right-drag pan are, so it never cancels an active follow.
+   */
+  const applyAzimuthDelta = useCallback(
+    (deltaTheta: number) => {
+      if (orbitPivot === 'me' && focusTarget) {
+        const rotated = rotateAboutPivot(target, focusTarget, deltaTheta);
+        target.set(rotated.x, rotated.y, rotated.z);
+      }
+      azimuth.current += deltaTheta;
+    },
+    [orbitPivot, focusTarget, target]
+  );
 
   // Handle keyboard events
   useEffect(() => {
@@ -451,12 +488,12 @@ export function useCameraControls({
       }
       // Still process rotation during lerp
       if (q) {
-        azimuth.current += rotateSpeed * delta;
+        applyAzimuthDelta(rotateSpeed * delta);
         updateCamera();
         invalidate();
       }
       if (e) {
-        azimuth.current -= rotateSpeed * delta;
+        applyAzimuthDelta(-rotateSpeed * delta);
         updateCamera();
         invalidate();
       }
@@ -501,11 +538,11 @@ export function useCameraControls({
 
     // Q/E rotation
     if (q) {
-      azimuth.current += rotateStep;
+      applyAzimuthDelta(rotateStep);
       changed = true;
     }
     if (e) {
-      azimuth.current -= rotateStep;
+      applyAzimuthDelta(-rotateStep);
       changed = true;
     }
 

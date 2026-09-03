@@ -157,6 +157,12 @@ describe('parseCameraDials', () => {
     expect(dials.panSpeed).toBe(40);
   });
 
+  it('defaults orbitPivot to view and only accepts the literal "me"', () => {
+    expect(parseCameraDials('').orbitPivot).toBe('view');
+    expect(parseCameraDials('?orbitPivot=me').orbitPivot).toBe('me');
+    expect(parseCameraDials('?orbitPivot=bogus').orbitPivot).toBe('view');
+  });
+
   it('ignores non-numeric and empty values instead of poisoning the camera with NaN', () => {
     const dials = parseCameraDials('?pitchFar=&fov=abc&zoomMax=');
     // A blank angle falls back to the shipped default rather than to NaN —
