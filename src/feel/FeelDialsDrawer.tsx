@@ -12,6 +12,13 @@
  * Two sections in this ONE drawer, replacing the old bare
  * `<DiscordDebugPanel>` toggle in App.tsx: "Feel dials" first (this file's
  * own camera/dice controls), the existing Debug content second.
+ *
+ * z-index note: `SessionEncounterView` portals its entire view straight
+ * into `document.body` at `zIndex: 100` (and its own "run ended" overlay
+ * reaches `zIndex: 1000`) — a plain `z-[100]` here loses that tie on DOM
+ * order and renders invisibly behind the live session view. This sits
+ * above both, and above the generic `Dialog` (3010), while staying below
+ * the app's real toast layer (99999) so a critical toast still wins.
  */
 import { DiscordDebugPanel } from '@/discord';
 import { useState, type ChangeEvent } from 'react';
@@ -196,7 +203,7 @@ export function FeelDialsDrawer({ open, onClose }: FeelDialsDrawerProps) {
     <div
       data-testid="feel-dials-drawer"
       aria-hidden={!open}
-      className={`fixed inset-y-0 right-0 z-[100] flex w-full max-w-sm flex-col overflow-y-auto bg-gray-900 text-white shadow-2xl transition-transform duration-300 ease-out ${
+      className={`fixed inset-y-0 right-0 z-[5000] flex w-full max-w-sm flex-col overflow-y-auto bg-gray-900 text-white shadow-2xl transition-transform duration-300 ease-out ${
         open ? 'translate-x-0' : 'pointer-events-none translate-x-full'
       }`}
     >

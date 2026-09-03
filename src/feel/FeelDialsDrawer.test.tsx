@@ -45,6 +45,20 @@ describe('FeelDialsDrawer', () => {
     );
   });
 
+  it("clears SessionEncounterView's own stacking layers — jsdom cannot check real paint order, so this pins the z-index number instead", () => {
+    // SessionEncounterView portals its whole view into document.body at
+    // zIndex: 100 and its "run ended" overlay reaches zIndex: 1000; a
+    // drawer z-index at or below either would render invisibly behind a
+    // live session (found live, not by this suite — see FeelDialsDrawer's
+    // own doc comment).
+    render(<FeelDialsDrawer open onClose={() => {}} />);
+    const match = screen
+      .getByTestId('feel-dials-drawer')
+      .className.match(/z-\[(\d+)\]/);
+    expect(match).not.toBeNull();
+    expect(Number(match![1])).toBeGreaterThan(1000);
+  });
+
   it('the close button calls onClose', () => {
     const onClose = vi.fn();
     render(<FeelDialsDrawer open onClose={onClose} />);
