@@ -43,6 +43,21 @@ const DEFAULT_DRAG_ROTATE_RAD_PER_PX =
 
 const WHEEL_BAND_STEP_INTERVAL_MS = 120;
 
+/**
+ * Cap, in seconds, on the frame delta used for USER-INPUT-DRIVEN motion
+ * (Q/E rotate, WASD pan). R3F reads the raw clock delta with no cap of its
+ * own (`state.clock.getDelta()` under the hood), and this canvas runs
+ * `frameloop="demand"`, so the FIRST frame after an idle gap or a
+ * backgrounded tab can arrive with a delta of several seconds. At the
+ * `rotateSpeed` default (70°/s) that is a multi-radian snap on a single
+ * frame — 0.1s caps it to at most 7°, an ordinary frame's worth of motion.
+ * The follow lerp is deliberately NOT capped by this — its own
+ * `1 - 0.001^delta` factor already saturates toward a full snap for a large
+ * delta, which is the CORRECT behavior there (catch up immediately) rather
+ * than something this needs to guard against.
+ */
+const MAX_INPUT_DELTA_S = 0.1;
+
 /** Current revealed-floor bounding box, world units, XZ-plane centre +
  * extent — the `Home` key's own fit target (#906, cameraFit.ts). */
 export interface RevealedBounds {
@@ -560,12 +575,18 @@ export function useCameraControls({
     maxDistance,
     worldPerPixel,
     currentPolar,
+    currentOrthoBand,
     applyAzimuthDelta,
     dragRotate,
   ]);
 
   // Update each frame based on key state
   useFrame((_, delta) => {
+    // Capped delta for Q/E rotate and WASD pan only — see
+    // MAX_INPUT_DELTA_S's own doc comment. The lerp branch below
+    // deliberately keeps using the RAW `delta`.
+    const inputDelta = Math.min(delta, MAX_INPUT_DELTA_S);
+
     // F (#906): bring the target to the local player's mini, band
     // unchanged. Reuses the SAME lerp mechanism the auto-follow bands
     // already drive (see `lerpTarget` above) — a manual request for exactly
@@ -633,12 +654,12 @@ export function useCameraControls({
       }
       // Still process rotation during lerp
       if (q) {
-        applyAzimuthDelta(rotateSpeed * delta);
+        applyAzimuthDelta(rotateSpeed * inputDelta);
         updateCamera();
         invalidate();
       }
       if (e) {
-        applyAzimuthDelta(-rotateSpeed * delta);
+        applyAzimuthDelta(-rotateSpeed * inputDelta);
         updateCamera();
         invalidate();
       }
@@ -661,8 +682,8 @@ export function useCameraControls({
     );
     right.current.set(Math.sin(azimuth.current), 0, -Math.cos(azimuth.current));
 
-    const panStep = panSpeed * delta;
-    const rotateStep = rotateSpeed * delta;
+    const panStep = panSpeed * inputDelta;
+    const rotateStep = rotateSpeed * inputDelta;
 
     if (w) {
       target.addScaledVector(forward.current, panStep);
