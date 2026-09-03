@@ -555,9 +555,16 @@ export function DungeonBuilder({
       )
     );
   };
-  const endRailDrag = () => {
+  const endRailDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!dragRef.current) return;
     dragRef.current = null;
+    // RELEASE THE CAPTURE EXPLICITLY. Without this the grip keeps every
+    // subsequent pointer event, so the canvas goes dead after one resize —
+    // the room tool stopped previewing and the brush stopped painting, and
+    // nothing about it looked like the rail's fault.
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
     writeRailWidth(railWidth);
   };
   // Double-click hands the rail back to the CSS default, so a drag is never

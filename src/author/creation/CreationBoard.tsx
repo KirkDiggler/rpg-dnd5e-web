@@ -30,12 +30,19 @@ import {
   type DungeonDoc,
   type ErrorTarget,
 } from '../dungeonYaml';
-import { axialKey, edgeKey, type Axial, type Edge } from '../hexOffset';
+import {
+  axialKey,
+  axialNeighbors,
+  edgeKey,
+  type Axial,
+  type Edge,
+} from '../hexOffset';
 import {
   BOSS_COLOR,
   CONCEALED_STROKE,
   DOOR_LOCKED_STROKE,
   DOOR_STROKE,
+  ENVELOPE_STROKE,
   ERROR_STROKE,
   HOVER_STROKE,
   litColor,
@@ -677,6 +684,22 @@ export function CreationBoard({
     width: number;
     dash?: string;
   }[] = [];
+  // The implied envelope FIRST, so authored walls and doors draw over it.
+  // Every crossing from floor into void is impassable by the runtime's own
+  // rule; showing it is what makes a freshly dragged room look like a room
+  // instead of a patch of floor.
+  for (const cell of floor) {
+    for (const n of axialNeighbors(cell)) {
+      if (owners.has(axialKey(n))) continue;
+      const edge: Edge = [cell, n];
+      edgeLines.push({
+        key: `env:${edgeKey(edge)}`,
+        edge,
+        stroke: ENVELOPE_STROKE,
+        width: 2.5,
+      });
+    }
+  }
   for (const { edge } of compiledWalls(displayDoc)) {
     const isError = errorEdges.has(edgeKey(edge));
     if (straightened && !isError) continue;

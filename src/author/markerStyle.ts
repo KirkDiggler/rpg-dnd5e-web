@@ -29,6 +29,14 @@ export function litColor(hex: string, intensity: number): string {
 export const VOID_FILL = '#0b0d11';
 export const VOID_STROKE = '#22262e';
 export const WALL_STROKE = '#f4f1ea';
+/** The floor/void envelope. The runtime implies it — a crossing from floor
+ * into void is one nobody can make, and authoring a wall there is refused
+ * ("the envelope is implied, never written") — so it is drawn DIMMER than an
+ * authored wall: it is a fact about the floor's edge, not a thing in the file.
+ * Drawn at all because a room that is sealed but shows no boundary does not
+ * read as a room (rpg-dnd5e-web#902, Kirk: "i click room and drag across but
+ * am left without a room"). */
+export const ENVELOPE_STROKE = 'rgba(244, 241, 234, 0.34)';
 export const DOOR_STROKE = '#d97706';
 export const DOOR_LOCKED_STROKE = '#dc2626';
 export const START_COLOR = '#22c55e';

@@ -21,6 +21,7 @@ import {
   toOffset,
   type Edge,
 } from '../hexOffset';
+import { ENVELOPE_STROKE, WALL_STROKE } from '../markerStyle';
 import { boardWallScene } from './boardWallRuns';
 import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
 import {
@@ -531,6 +532,40 @@ describe('gesture plumbing — press, drag, release (#804)', () => {
  * join), so a future preview/commit path that bypassed the magnetism
  * would fail here, not on a walk.
  */
+describe('the implied envelope is drawn (rpg-dnd5e-web#902)', () => {
+  it('outlines the floor so a freshly dragged room reads as a room', () => {
+    // One cell: six crossings into void, so six envelope segments.
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(2, 2));
+    const { container, unmount } = mount(doc, { tool: 'room' });
+    const envelope = () =>
+      [...container.querySelectorAll('[data-edge^="env:"]')].length;
+    expect(envelope()).toBe(6);
+    unmount();
+
+    // Two neighbours share an edge, so that crossing is NOT envelope:
+    // 12 sides minus the 2 half-edges they share = 10.
+    let pair = emptyDungeon();
+    pair = paintCell(pair, 'region-1', p(2, 2));
+    pair = paintCell(pair, 'region-1', p(3, 2));
+    const { container: c2 } = mount(pair, { tool: 'room' });
+    expect([...c2.querySelectorAll('[data-edge^="env:"]')]).toHaveLength(10);
+  });
+
+  it('is drawn dimmer than an authored wall, because it is implied not written', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(2, 2));
+    const { container } = mount(doc, { tool: 'select' });
+    const env = container.querySelector('[data-edge^="env:"]')!;
+    expect(env).toBeTruthy();
+    // The envelope is a fact about the floor's edge, not a line in the file,
+    // so it must not be mistakable for an authored wall.
+    expect(env.getAttribute('stroke')).toBe(ENVELOPE_STROKE);
+    expect(env.getAttribute('stroke')).not.toBe(WALL_STROKE);
+    expect(Number(env.getAttribute('stroke-width'))).toBeLessThan(4);
+  });
+});
+
 describe('the room tool paints a rectangle (rpg-dnd5e-web#902)', () => {
   it('commits the two dragged corners, and previews exactly what it will paint', () => {
     let doc = emptyDungeon();
