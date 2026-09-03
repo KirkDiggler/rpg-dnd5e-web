@@ -5,6 +5,7 @@ import {
   addDoor,
   emptyDungeon,
   paintCell,
+  paintScenery,
   placeAt,
   wallEdges,
   type DungeonDoc,
@@ -409,5 +410,54 @@ describe('DoorPanel concealed + approach rows (rpg-project#350/#886)', () => {
     mountDoor(doc);
     expect(screen.getByTestId('lock-approach-0')).toBeTruthy();
     expect(screen.getByTestId('find-approach-0')).toBeTruthy();
+  });
+});
+
+describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', () => {
+  it('adds the scenery cells to the floor count', () => {
+    let doc = emptyDungeon();
+    for (const c of [0, 1, 2]) doc = paintCell(doc, 'region-1', p(c, 0));
+    const { rerender } = render(
+      <Inspector
+        doc={doc}
+        concealment={EMPTY_CONCEALMENT}
+        selection={{ kind: 'dungeon' }}
+        onDungeon={noop}
+        onRegion={noop}
+        onRemoveRegion={noop}
+        onDoor={noop}
+        onRemoveDoor={noop}
+        onPlacement={noop}
+        onRemovePlacement={noop}
+        onRemoveWall={noop}
+        onSetWallHeight={noop}
+      />
+    );
+    expect(screen.getByText(/floor cells/).textContent).toContain(
+      '3 floor cells'
+    );
+
+    // Scenery is floor (design §1.1), so the line that says "floor cells"
+    // has to count it — the strip is not invisible to the summary.
+    const withStrip = paintScenery(paintScenery(doc, p(3, 0)), p(4, 0));
+    rerender(
+      <Inspector
+        doc={withStrip}
+        concealment={EMPTY_CONCEALMENT}
+        selection={{ kind: 'dungeon' }}
+        onDungeon={noop}
+        onRegion={noop}
+        onRemoveRegion={noop}
+        onDoor={noop}
+        onRemoveDoor={noop}
+        onPlacement={noop}
+        onRemovePlacement={noop}
+        onRemoveWall={noop}
+        onSetWallHeight={noop}
+      />
+    );
+    expect(screen.getByText(/floor cells/).textContent).toContain(
+      '5 floor cells'
+    );
   });
 });

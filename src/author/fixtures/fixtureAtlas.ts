@@ -4,9 +4,11 @@
  * and the preview tests. It is NOT a compiler and proves nothing about
  * the real atlas — the real one comes from `PutDungeon` (the server's
  * projection, the game's own message). It mirrors the wire's plain
- * facts only: cells = the regions' union; boundaries = the declared
- * walls (the void envelope is implied, never listed); doorways = door
- * edges; props = non-monster placements; regions as authored.
+ * facts only: cells = ALL FLOOR (the regions' union plus `scenery`,
+ * since on the wire "a cell in `cells` and in no region is scenery" —
+ * design §5.1, rpg-project#360); boundaries = the declared walls (the
+ * void envelope is implied, never listed); doorways = door edges;
+ * props = non-monster placements; regions as authored.
  */
 import { create } from '@bufbuild/protobuf';
 import {
@@ -23,8 +25,7 @@ import { compareAxial, type Axial } from '../hexOffset';
 const pos = (a: Axial) => ({ x: a.q, y: a.r });
 
 export function fixtureAtlasOf(doc: DungeonDoc): GetAtlasResponse {
-  const cells = doc.regions
-    .flatMap((r) => r.cells)
+  const cells = [...doc.regions.flatMap((r) => r.cells), ...doc.scenery]
     .sort(compareAxial)
     .map(pos);
   return create(GetAtlasResponseSchema, {
