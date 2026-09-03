@@ -9,8 +9,8 @@
 #   RPG_GAME_ASSETS_PATH    explicit private provider checkout (never updated)
 #   RPG_GAME_ASSETS_DIR     legacy private provider checkout override
 #   RPG_WEB_ROOT            destination web checkout
-#   RPG_DWARF_CATALOG_GENERATOR test-only generator override
-#   RPG_DWARF_CATALOG_RUNNER    test-only TypeScript runner override
+#   RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR test-only generator override
+#   RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER    test-only TypeScript runner override
 #   ASSETS_SYNC_SKIP_UPDATE skip clone/pull when set to 1
 
 set -e
@@ -69,14 +69,14 @@ if [ -n "$(git -C "$ASSETS_DIR" status --porcelain=v1 --untracked-files=all)" ];
 fi
 echo "Pinned clean rpg-game-assets provider at $ASSETS_HEAD"
 
-CATALOG_GENERATOR=${RPG_DWARF_CATALOG_GENERATOR:-$SCRIPT_DIR/generateDwarfCustomizationCatalog.ts}
-CATALOG_RUNNER=${RPG_DWARF_CATALOG_RUNNER:-$WEB_ROOT/node_modules/.bin/tsx}
+CATALOG_GENERATOR=${RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR:-${RPG_DWARF_CATALOG_GENERATOR:-$SCRIPT_DIR/generateCharacterCustomizationCatalog.ts}}
+CATALOG_RUNNER=${RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER:-${RPG_DWARF_CATALOG_RUNNER:-$WEB_ROOT/node_modules/.bin/tsx}}
 if [ ! -f "$CATALOG_GENERATOR" ] || [ -L "$CATALOG_GENERATOR" ]; then
-  echo "ERROR: Dwarf catalog generator must be a real file: $CATALOG_GENERATOR" >&2
+  echo "ERROR: customization catalog generator must be a real file: $CATALOG_GENERATOR" >&2
   exit 1
 fi
 if [ ! -x "$CATALOG_RUNNER" ]; then
-  echo "ERROR: Dwarf catalog TypeScript runner is unavailable: $CATALOG_RUNNER" >&2
+  echo "ERROR: customization catalog TypeScript runner is unavailable: $CATALOG_RUNNER" >&2
   exit 1
 fi
 
@@ -109,9 +109,9 @@ sync_runtime_root() {
 # Validate and generate against the clean provider before either rsync --delete
 # can mutate a destination. The tracked catalog becomes visible only after both
 # independent runtime mirrors succeed.
-CATALOG_OUTPUT="$WEB_ROOT/src/generated/dwarfCustomizationCatalog.ts"
+CATALOG_OUTPUT="$WEB_ROOT/src/generated/characterCustomizationCatalog.ts"
 mkdir -p "$(dirname "$CATALOG_OUTPUT")"
-CATALOG_STAGE=$(mktemp "$WEB_ROOT/src/generated/.dwarf-customization.XXXXXX")
+CATALOG_STAGE=$(mktemp "$WEB_ROOT/src/generated/.character-customization.XXXXXX")
 trap 'rm -f "$CATALOG_STAGE"' EXIT HUP INT TERM
 "$CATALOG_RUNNER" "$CATALOG_GENERATOR" \
   --provider-root "$ASSETS_DIR" \
@@ -124,4 +124,4 @@ sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
 mv -f "$CATALOG_STAGE" "$CATALOG_OUTPUT"
 trap - EXIT HUP INT TERM
 
-echo "Done. public/models/{synty,custom-dice}/ mirror the approved provider and the Dwarf catalog is current."
+echo "Done. public/models/{synty,custom-dice}/ mirror the approved provider and the aggregate customization catalog is current."

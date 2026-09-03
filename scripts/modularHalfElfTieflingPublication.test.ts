@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { CustomizationRaceRef } from '../src/generated/characterCustomizationCatalog';
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '../src/generated/characterCustomizationCatalog';
 
 const evidenceRoot = new URL(
   '../docs/evidence/862-halfelf-tiefling-classes/',
@@ -8,14 +10,6 @@ const evidenceRoot = new URL(
 );
 const receiptUrl = new URL('receipt.json', evidenceRoot);
 const readmeUrl = new URL('README.md', evidenceRoot);
-const resolverSource = readFileSync(
-  new URL(
-    '../src/components/hex-grid/classCharacterModels.ts',
-    import.meta.url
-  ),
-  'utf8'
-);
-
 const expectedCombinations = {
   'half-elf:barbarian': {
     modelUrl: '/models/synty/characters/race-class/half-elf-barbarian.glb',
@@ -80,12 +74,16 @@ describe('modular Half-Elf and Tiefling publication', () => {
     expect(receipt.socketProfile).toBe('modular-fantasy-hero-main-hand-v1');
   });
 
-  it('keeps all eight exact resolver entries on the modular rig family', () => {
+  it('keeps all eight historical outputs as exact generated profile fallbacks', () => {
     for (const [key, facts] of Object.entries(expectedCombinations)) {
-      expect(resolverSource).toContain(`'${key}'`);
-      expect(resolverSource).toContain(
-        `model: '${facts.modelUrl.replace('/models/synty/characters/', '')}'`
-      );
+      const [raceRef, classRef] = key.split(':') as [
+        CustomizationRaceRef,
+        'barbarian' | 'fighter' | 'monk' | 'rogue',
+      ];
+      const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles[raceRef];
+      expect(profile.bodies[classRef].fallbackUrl).toBe(facts.modelUrl);
+      expect(profile.bodies[classRef].fallbackSha256).toBe(facts.sha256);
+      expect(profile.rigFamily).toBe('modular-fantasy-hero-v1');
     }
   });
 

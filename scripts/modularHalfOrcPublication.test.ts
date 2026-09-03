@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '../src/generated/characterCustomizationCatalog';
 
 const evidenceRoot = new URL(
   '../docs/evidence/871-half-orc-classes/',
@@ -8,14 +9,6 @@ const evidenceRoot = new URL(
 );
 const receiptUrl = new URL('receipt.json', evidenceRoot);
 const readmeUrl = new URL('README.md', evidenceRoot);
-const resolverSource = readFileSync(
-  new URL(
-    '../src/components/hex-grid/classCharacterModels.ts',
-    import.meta.url
-  ),
-  'utf8'
-);
-
 const expectedCombinations = {
   'half-orc:barbarian': {
     modelUrl: '/models/synty/characters/race-class/half-orc-barbarian.glb',
@@ -85,12 +78,17 @@ describe('modular Half-Orc publication', () => {
     });
   });
 
-  it('keeps all four resolver rows on the shared modular rig family', () => {
+  it('keeps all four historical Half-Orc outputs as exact profile fallbacks', () => {
+    const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles['half-orc'];
     for (const [key, facts] of Object.entries(expectedCombinations)) {
-      expect(resolverSource).toContain(`'${key}'`);
-      expect(resolverSource).toContain(
-        `model: '${facts.modelUrl.replace('/models/synty/characters/', '')}'`
-      );
+      const classRef = key.split(':')[1] as
+        | 'barbarian'
+        | 'fighter'
+        | 'monk'
+        | 'rogue';
+      expect(profile.bodies[classRef].fallbackUrl).toBe(facts.modelUrl);
+      expect(profile.bodies[classRef].fallbackSha256).toBe(facts.sha256);
+      expect(profile.rigFamily).toBe('modular-fantasy-hero-v1');
     }
   });
 

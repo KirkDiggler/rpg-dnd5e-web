@@ -1,6 +1,9 @@
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { HairStyleGrid } from './HairStyleGrid';
+
+const dwarf = CHARACTER_CUSTOMIZATION_CATALOG.profiles.dwarf;
 
 describe('HairStyleGrid', () => {
   it.each([
@@ -11,6 +14,7 @@ describe('HairStyleGrid', () => {
     (slot, label, expectedCount) => {
       render(
         <HairStyleGrid
+          profile={dwarf}
           slot={slot}
           selection={{ kind: 'default' }}
           onChange={vi.fn()}
@@ -31,6 +35,7 @@ describe('HairStyleGrid', () => {
     const onChange = vi.fn();
     render(
       <HairStyleGrid
+        profile={dwarf}
         slot="scalp"
         selection={{
           kind: 'style',
@@ -63,9 +68,30 @@ describe('HairStyleGrid', () => {
     expect(onChange).toHaveBeenLastCalledWith({ kind: 'none' });
   });
 
+  it('uses the selected profile thumbnails rather than borrowing Dwarf bytes', () => {
+    render(
+      <HairStyleGrid
+        profile={CHARACTER_CUSTOMIZATION_CATALOG.profiles.human}
+        slot="scalp"
+        selection={{ kind: 'default' }}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Hair 38' })
+        .querySelector('img')
+        ?.getAttribute('src')
+    ).toBe(
+      '/models/synty/characters/customization/human-v1/thumbnails/scalp/hair-38.png'
+    );
+  });
+
   it('surfaces an invalid arm-less persisted selection instead of presenting Default', () => {
     render(
       <HairStyleGrid
+        profile={dwarf}
         slot="scalp"
         selection={{ kind: 'invalid' }}
         onChange={vi.fn()}
@@ -86,6 +112,7 @@ describe('HairStyleGrid', () => {
   it('replaces a failed provider thumbnail with its visible label', () => {
     render(
       <HairStyleGrid
+        profile={dwarf}
         slot="facialHair"
         selection={{ kind: 'default' }}
         onChange={vi.fn()}

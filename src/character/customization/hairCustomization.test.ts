@@ -7,13 +7,16 @@ import {
 import { CustomizationSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { AppearanceSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { describe, expect, it } from 'vitest';
-import { DWARF_CUSTOMIZATION_CATALOG } from '../../generated/dwarfCustomizationCatalog';
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '../../generated/characterCustomizationCatalog';
 import {
   resolveHairColorSrgb,
   resolveHairPresentation,
   resolveHairRoughness,
   rgb24ToHex,
 } from './hairCustomization';
+
+const DWARF_CUSTOMIZATION_CATALOG =
+  CHARACTER_CUSTOMIZATION_CATALOG.profiles.dwarf;
 
 function style(styleRef: string) {
   return create(StyleSelectionSchema, {
@@ -213,10 +216,11 @@ describe('resolveHairPresentation', () => {
 
   it('reports a missing provider default as a contract diagnostic without guessing a URL', () => {
     const mutableScalp = DWARF_CUSTOMIZATION_CATALOG.slots.scalp as {
-      defaultStyleRef: string;
+      defaultSelection: { kind: 'style'; styleRef: string };
     };
-    const originalDefault = mutableScalp.defaultStyleRef;
-    mutableScalp.defaultStyleRef = 'modular-fantasy-hero:hair:not-declared';
+    const originalDefault = mutableScalp.defaultSelection.styleRef;
+    mutableScalp.defaultSelection.styleRef =
+      'modular-fantasy-hero:hair:not-declared';
     try {
       const result = resolveHairPresentation(dwarfFighter);
       expect(result.accessories).toHaveLength(1);
@@ -230,7 +234,7 @@ describe('resolveHairPresentation', () => {
       ]);
       expect(JSON.stringify(result.accessories)).not.toContain('not-declared');
     } finally {
-      mutableScalp.defaultStyleRef = originalDefault;
+      mutableScalp.defaultSelection.styleRef = originalDefault;
     }
   });
 
@@ -251,13 +255,16 @@ describe('resolveHairPresentation', () => {
     );
   });
 
-  it('diagnoses unsupported race and class instead of applying Dwarf provider truth', () => {
+  it('diagnoses unsupported race and class without borrowing provider truth', () => {
     expect(
-      resolveHairPresentation({ raceRefId: 'elf', classRefId: 'fighter' })
+      resolveHairPresentation({
+        raceRefId: 'dragonborn',
+        classRefId: 'fighter',
+      })
     ).toEqual({
-      profileRef: 'modular-fantasy-hero-v1:dwarf',
+      profileRef: undefined,
       accessories: [],
-      diagnostics: [{ code: 'unsupported-race', requestedRef: 'elf' }],
+      diagnostics: [{ code: 'unsupported-race', requestedRef: 'dragonborn' }],
     });
     expect(
       resolveHairPresentation({ raceRefId: 'dwarf', classRefId: 'wizard' })

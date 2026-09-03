@@ -1,4 +1,4 @@
-import { resolveDwarfCustomizationModel } from '@/character/customization/dwarfCustomization';
+import { resolveCharacterCustomizationModel } from '@/character/customization/characterCustomization';
 import { summarizeHair } from '@/character/customization/hairSummary';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
@@ -15,14 +15,15 @@ export function DnDAppearance({ character }: DnDAppearanceProps) {
   const hasIdentity =
     character.race !== Race.UNSPECIFIED &&
     character.class !== Class.UNSPECIFIED;
+  const raceRefId = hasIdentity ? Race[character.race] : undefined;
   const customizationModel = hasIdentity
-    ? resolveDwarfCustomizationModel(
-        Race[character.race],
-        Class[character.class]
-      )
+    ? resolveCharacterCustomizationModel(raceRefId, Class[character.class])
+    : undefined;
+  const summary = customizationModel
+    ? summarizeHair(character.appearance?.hair, raceRefId)
     : undefined;
 
-  if (!customizationModel) {
+  if (!customizationModel || !summary) {
     return (
       <Card className="p-4">
         <h4
@@ -45,8 +46,6 @@ export function DnDAppearance({ character }: DnDAppearanceProps) {
       </Card>
     );
   }
-
-  const summary = summarizeHair(character.appearance?.hair);
 
   return (
     <Card className="p-4">

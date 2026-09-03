@@ -1,4 +1,5 @@
-import { DWARF_CUSTOMIZATION_CATALOG } from '@/generated/dwarfCustomizationCatalog';
+import { getCharacterCustomizationProfile } from '@/character/customization/characterCustomization';
+import type { CharacterCustomizationProfile } from '@/generated/characterCustomizationCatalog';
 import type {
   HairCustomization,
   StyleSelection,
@@ -21,15 +22,18 @@ export interface HairSummary {
 type CatalogSlot = 'scalp' | 'facialHair';
 
 function selectionLabel(
+  profile: CharacterCustomizationProfile,
   slot: CatalogSlot,
   selection: StyleSelection | undefined
 ): string {
-  const slotCatalog = DWARF_CUSTOMIZATION_CATALOG.slots[slot];
+  const slotCatalog = profile.slots[slot];
   if (!selection) {
+    const defaultSelection = slotCatalog.defaultSelection;
+    if (defaultSelection.kind === 'none') return 'Default (None)';
     const defaultOption = slotCatalog.options.find(
-      (option) => option.styleRef === slotCatalog.defaultStyleRef
+      (option) => option.styleRef === defaultSelection.styleRef
     );
-    return `Default (${defaultOption?.label ?? slotCatalog.defaultStyleRef})`;
+    return `Default (${defaultOption?.label ?? defaultSelection.styleRef})`;
   }
   if (selection.selection.case === 'none') return 'None';
   if (selection.selection.case === 'styleRef') {
@@ -42,8 +46,11 @@ function selectionLabel(
 }
 
 export function summarizeHair(
-  hair: HairCustomization | undefined
-): HairSummary {
+  hair: HairCustomization | undefined,
+  raceRefId: string | undefined
+): HairSummary | undefined {
+  const profile = getCharacterCustomizationProfile(raceRefId);
+  if (!profile) return undefined;
   const colorSrgb = resolveHairColorSrgb(hair?.colorSrgb);
   const roughness = resolveHairRoughness(hair?.roughness);
   const colorIsDefault =
@@ -51,8 +58,8 @@ export function summarizeHair(
   const roughnessIsDefault =
     hair?.roughness === undefined || roughness !== hair.roughness;
   return {
-    scalp: selectionLabel('scalp', hair?.scalp),
-    facialHair: selectionLabel('facialHair', hair?.facialHair),
+    scalp: selectionLabel(profile, 'scalp', hair?.scalp),
+    facialHair: selectionLabel(profile, 'facialHair', hair?.facialHair),
     colorHex: rgb24ToHex(colorSrgb),
     roughness,
     colorIsDefault,

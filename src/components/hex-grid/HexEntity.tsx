@@ -529,9 +529,8 @@ export function HexEntity({
     // entity, so combining them into one resolved url + one sticky-failure
     // slot (failedEntityModelUrl above) is safe.
     const resolvedModelUrl = classModelUrl ?? monsterModelUrl;
-    // Only generated provider truth can name the complete immutable Dwarf
-    // fallback. Non-Dwarves and monsters retain their existing one-step
-    // degradation straight to MediumHumanoid.
+    // Only generated profile truth can name an exact complete class fallback.
+    // Monsters and unsupported profiles retain one-step MediumHumanoid degradation.
     const generatedClassFallbackUrl =
       type === 'player' ? playerModelResolution?.fallbackUrl : undefined;
     const effectiveModelUrl = [resolvedModelUrl, generatedClassFallbackUrl]
