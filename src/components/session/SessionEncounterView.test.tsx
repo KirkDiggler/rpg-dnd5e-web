@@ -2130,6 +2130,43 @@ describe('SessionEncounterView production combat integration', () => {
       );
       expect(screen.queryByTestId('vendor-popover')).toBeNull();
     });
+
+    it('clicking a second world NPC while one popover is open never leaves the FIRST vendor stale on a failed second click (Copilot review, PR #920)', async () => {
+      readyScene();
+      hoisted.interactFn.mockResolvedValueOnce({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: '',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      expect(screen.getByTestId('vendor-popover').textContent).toContain(
+        'Demo Merchant'
+      );
+
+      // A second click, on a DIFFERENT world NPC, fails — the first
+      // vendor's popover must not linger showing stale inventory.
+      hoisted.interactFn.mockRejectedValueOnce(new Error('too far away'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('other-npc-1');
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText('too far away')).toBeTruthy()
+      );
+      expect(screen.queryByTestId('vendor-popover')).toBeNull();
+    });
   });
 
   describe('concealed-door reveal wiring (rpg-project#886)', () => {

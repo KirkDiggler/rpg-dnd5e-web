@@ -22,7 +22,7 @@ export interface UseInteractResult {
 /**
  * Thin wrapper around `SessionService.Interact` (v1alpha1) — mirrors
  * `useSessionAttack`: one file per verb, `loading` true while in flight,
- * `error` set on failure (cleared on the next successful call), the
+ * `error` cleared at the start of every call and set again on failure, the
  * returned promise rejects so the caller decides what to show.
  *
  * Not to be confused with `useInteract` (`src/api/useInteract.ts`), which

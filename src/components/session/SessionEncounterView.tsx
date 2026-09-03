@@ -1048,6 +1048,10 @@ function SessionEncounterScope({
     (subject: string) => {
       if (!member) return;
       setVendorNotice(null);
+      // Clear any already-open vendor before firing — a failed or
+      // descriptor-less response for THIS click must never leave a
+      // PREVIOUS vendor's stale popover on screen (Copilot review, PR #920).
+      setActiveVendor(null);
       void (async () => {
         try {
           const response = await interact({
