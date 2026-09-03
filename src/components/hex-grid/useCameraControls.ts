@@ -2,11 +2,14 @@
  * Custom camera controls for HexGrid
  *
  * - WASD to pan
- * - Q/E to rotate (Y-axis only) — the ONLY way to rotate
+ * - Q/E to rotate (Y-axis only)
  * - Mouse wheel to zoom
  * - Right-click drag to pan ("grab the board"). This used to rotate; Kirk
  *   moved it to panning so rotation lives on Q/E alone and the mouse does
  *   the thing a mouse on a map is expected to do.
+ * - Middle-click drag to rotate azimuth only (`?dragRotate=`,
+ *   cameraDials.ts — #906). Horizontal only, no tilt — same "no free-look"
+ *   rule as everything else here.
  * - Tilt is never under direct player control: it is either a fixed angle
  *   (the default, unchanged) or a function of zoom via the `curve` option
  *   (`?pitchCurve=1`, see cameraDials.ts). There is deliberately no free-look.
@@ -17,6 +20,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
   bandFollowsFocus,
+  DEFAULT_DRAG_ROTATE_DEG_PER_PX,
   DEFAULT_PAN_SPEED_PER_SEC,
   DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
 } from './cameraDials';
@@ -26,6 +30,11 @@ import { rotateAboutPivot } from './orbitPivot';
  * radian-based azimuth math. */
 const DEFAULT_ROTATE_SPEED_RAD_PER_SEC =
   (DEFAULT_ROTATE_SPEED_DEG_PER_SEC * Math.PI) / 180;
+
+/** `DEFAULT_DRAG_ROTATE_DEG_PER_PX`, converted to this module's own
+ * radian-based azimuth math. */
+const DEFAULT_DRAG_ROTATE_RAD_PER_PX =
+  (DEFAULT_DRAG_ROTATE_DEG_PER_PX * Math.PI) / 180;
 
 const WHEEL_BAND_STEP_INTERVAL_MS = 120;
 
@@ -59,6 +68,10 @@ interface CameraControlsOptions {
    * See orbitPivot.ts.
    */
   orbitPivot?: 'view' | 'me';
+  /** Middle-drag rotation speed, RADIANS per pixel (`?dragRotate=`,
+   * cameraDials.ts, authored there in degrees per pixel). Horizontal only —
+   * no free tilt. */
+  dragRotate?: number;
   /**
    * Banded zoom/pitch (`?pitchCurve=1`, see cameraDials.ts). Each orthographic
    * wheel gesture selects one authored zoom/polar/focus band. The final detail
@@ -101,6 +114,7 @@ export function useCameraControls({
   maxZoom = 200,
   focusTarget,
   orbitPivot = 'view',
+  dragRotate = DEFAULT_DRAG_ROTATE_RAD_PER_PX,
   curve = null,
   perspective = false,
   minDistance = 5,
@@ -125,6 +139,15 @@ export function useCameraControls({
     isRightDown: false,
     lastX: 0,
     lastY: 0,
+  });
+
+  // Middle-button drag: azimuth rotation only, no tilt (`?dragRotate=`,
+  // cameraDials.ts — the module header doc comment's own "no free-look"
+  // rule). Deliberately its own ref, independent of `mouse` above — right-
+  // drag pan and middle-drag rotate are unrelated gestures.
+  const middleDrag = useRef({
+    active: false,
+    lastX: 0,
   });
 
   // Reusable vectors for camera movement (avoid allocations in useFrame)
@@ -333,12 +356,42 @@ export function useCameraControls({
   useEffect(() => {
     const canvas = gl.domElement;
 
+    // Middle-button rotate. Tracked with WINDOW-level listeners (added only
+    // for the duration of the drag), unlike right-drag pan's canvas-scoped
+    // ones above/below — a fast horizontal swing easily carries the cursor
+    // off the canvas, and losing the drag there would read as broken rather
+    // than as an edge case.
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (!middleDrag.current.active) return;
+      const dx = e.clientX - middleDrag.current.lastX;
+      middleDrag.current.lastX = e.clientX;
+      // Vertical ignored — no free tilt (module header doc comment).
+      applyAzimuthDelta(dx * dragRotate);
+      updateCamera();
+      invalidate();
+    };
+    const endMiddleDrag = () => {
+      if (!middleDrag.current.active) return;
+      middleDrag.current.active = false;
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', endMiddleDrag);
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) {
         // Right click
         mouse.current.isRightDown = true;
         mouse.current.lastX = e.clientX;
         mouse.current.lastY = e.clientY;
+      } else if (e.button === 1) {
+        // Middle click — prevent the browser's autoscroll affordance, then
+        // rotate on drag instead. Right+left chord is NOT a camera gesture
+        // (Kirk: it already means "lift the die" on the die tile), so this
+        // is scoped to the middle button alone.
+        e.preventDefault();
+        middleDrag.current = { active: true, lastX: e.clientX };
+        window.addEventListener('mousemove', handleWindowMouseMove);
+        window.addEventListener('mouseup', endMiddleDrag);
       }
     };
 
@@ -446,6 +499,7 @@ export function useCameraControls({
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('contextmenu', handleContextMenu);
+      endMiddleDrag();
     };
     // target included so effect re-initializes if target reference changes
   }, [
@@ -462,6 +516,8 @@ export function useCameraControls({
     maxDistance,
     worldPerPixel,
     currentPolar,
+    applyAzimuthDelta,
+    dragRotate,
   ]);
 
   // Update each frame based on key state

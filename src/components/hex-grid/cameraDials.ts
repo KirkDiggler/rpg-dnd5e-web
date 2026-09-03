@@ -123,6 +123,12 @@ export const DEFAULT_ROTATE_SPEED_DEG_PER_SEC = 70;
  */
 export const DEFAULT_PAN_SPEED_PER_SEC = 18;
 
+/**
+ * Middle-drag rotation speed, degrees per pixel. Kirk's own dial table for
+ * this slice: "~0.4".
+ */
+export const DEFAULT_DRAG_ROTATE_DEG_PER_PX = 0.4;
+
 export interface CameraDials {
   /** Perspective projection instead of the default orthographic. */
   perspective: boolean;
@@ -144,6 +150,12 @@ export interface CameraDials {
    * (Kirk, 2026-09-03). See `orbitPivot.ts`.
    */
   orbitPivot: 'view' | 'me';
+  /**
+   * Middle-drag rotation, RADIANS per pixel — converted here from the
+   * `dragRotate` URL dial (authored in degrees per pixel, same convention as
+   * `rotateSpeed` above).
+   */
+  dragRotate: number;
   /**
    * Vertical FOV in DEGREES (perspective only) — degrees, not radians,
    * because that is what `<Canvas camera={{ fov }}>` wants; keeping the unit
@@ -283,12 +295,15 @@ export function parseCameraDials(search: string): CameraDials {
   const rotateSpeedDegPerSec =
     num(params, 'rotateSpeed') ?? DEFAULT_ROTATE_SPEED_DEG_PER_SEC;
   const orbitPivot = params.get('orbitPivot') === 'me' ? 'me' : 'view';
+  const dragRotateDegPerPx =
+    num(params, 'dragRotate') ?? DEFAULT_DRAG_ROTATE_DEG_PER_PX;
 
   return {
     perspective,
     rotateSpeed: deg(rotateSpeedDegPerSec),
     panSpeed: num(params, 'panSpeed') ?? DEFAULT_PAN_SPEED_PER_SEC,
     orbitPivot,
+    dragRotate: deg(dragRotateDegPerPx),
     fovDeg: num(params, 'fov') ?? DEFAULT_PERSP_FOV_DEG,
     minDistance: num(params, 'minDist') ?? DEFAULT_MIN_DISTANCE,
     maxDistance: num(params, 'maxDist') ?? DEFAULT_MAX_DISTANCE,

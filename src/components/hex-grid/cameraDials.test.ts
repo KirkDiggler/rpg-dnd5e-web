@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_DRAG_ROTATE_DEG_PER_PX,
   DEFAULT_MAX_DISTANCE,
   DEFAULT_MIN_DISTANCE,
   DEFAULT_PAN_SPEED_PER_SEC,
@@ -161,6 +162,13 @@ describe('parseCameraDials', () => {
     expect(parseCameraDials('').orbitPivot).toBe('view');
     expect(parseCameraDials('?orbitPivot=me').orbitPivot).toBe('me');
     expect(parseCameraDials('?orbitPivot=bogus').orbitPivot).toBe('view');
+  });
+
+  it('resolves dragRotate to the shared default, authored in degrees per pixel', () => {
+    const dials = parseCameraDials('');
+    expect(dials.dragRotate).toBeCloseTo(rad(DEFAULT_DRAG_ROTATE_DEG_PER_PX));
+    const overridden = parseCameraDials('?dragRotate=1.2');
+    expect(overridden.dragRotate).toBeCloseTo(rad(1.2));
   });
 
   it('ignores non-numeric and empty values instead of poisoning the camera with NaN', () => {

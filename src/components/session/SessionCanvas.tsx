@@ -273,6 +273,7 @@ export function SessionScene({
     panSpeed: cameraDials.panSpeed,
     rotateSpeed: cameraDials.rotateSpeed,
     orbitPivot: cameraDials.orbitPivot,
+    dragRotate: cameraDials.dragRotate,
     minZoom: cameraDials.zoomMin,
     maxZoom: cameraDials.zoomMax,
     curve: cameraDials.curve,
