@@ -9,6 +9,7 @@ import { resolveRuntimeDiceSettlement } from '@/components/ui/dice/diceSettlemen
 import { RuntimeDiceMesh } from '@/components/ui/dice/RuntimeDiceMesh';
 import type { TrayPlaneProjection } from '@/components/ui/dice/trayPlaneProjection';
 import { TrayPlaneProjectionBridge } from '@/components/ui/dice/TrayPlaneProjectionBridge';
+import { useDiceDials } from '@/feel/useFeelDials';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useFrame } from '@react-three/fiber';
 import {
@@ -31,7 +32,6 @@ import {
 import { IcosahedronGeometry, Quaternion } from 'three';
 import {
   localWorldDieDimensions,
-  readDiceDials,
   type LocalWorldDieDimensions,
 } from './diceDials';
 import type { LocalWorldDieCollider } from './localWorldDieColliders';
@@ -474,9 +474,11 @@ export function LocalWorldDieLayer({
   const [bodyReady, setBodyReady] = useState(false);
   const [meshReady, setMeshReady] = useState(false);
   const runtimeFailureReported = useRef(false);
-  // `?dieScale=` (diceDials.ts) — read once, like cameraDials.ts's own
-  // `readCameraDials()` call sites.
-  const dieScale = useMemo(() => readDiceDials().dieScale, []);
+  // `?dieScale=` (diceDials.ts) — LIVE (#906 batch 2), though in practice
+  // this whole component only mounts while a throw is in flight (see
+  // SessionEncounterView.tsx's own note), so a drawer edit takes effect
+  // starting with the next throw rather than reshaping an in-flight one.
+  const dieScale = useDiceDials().dieScale;
   const dimensions = useMemo(
     () => localWorldDieDimensions(dieScale),
     [dieScale]

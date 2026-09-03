@@ -44,6 +44,7 @@
  * falling back to the ground plane's own hit otherwise.
  */
 
+import { useCameraDials } from '@/feel/useFeelDials';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type {
@@ -61,7 +62,6 @@ import {
   type ReactNode,
 } from 'react';
 import * as THREE from 'three';
-import { readCameraDials } from '../hex-grid/cameraDials';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
@@ -266,7 +266,10 @@ export function SessionScene({
     () => new THREE.Vector3(target.x, 0, target.z),
     [target.x, target.z]
   );
-  const cameraDials = useMemo(() => readCameraDials(), []);
+  // LIVE (#906 batch 2) — see HexGrid.tsx's own identical note: rotateSpeed/
+  // panSpeed/orbitPivot/the zoom-pitch ladder apply on the next render, no
+  // remount; perspective/fovDeg/minDistance/maxDistance stay URL-only.
+  const cameraDials = useCameraDials();
   // Revealed-floor bbox — HexGrid.tsx's own `revealedBounds` computation,
   // equivalent for this route's `scene.floorTiles`. Feeds `Home`'s
   // on-demand fit (#906, cameraFit.ts) only; never acted on by itself.
@@ -584,7 +587,11 @@ export function SessionScene({
  * (WASD/Q-E/wheel/right-drag) takes over placement from there.
  */
 export function SessionCanvas(props: SessionCanvasProps) {
-  const cameraDials = useMemo(() => readCameraDials(), []);
+  // Mount-time Canvas config only — see HexGrid.tsx's own `canvasDials` doc
+  // comment: a drawer edit to zoomStart/fovDeg takes effect at the next
+  // remount (the `key` below only follows `perspective`, which is
+  // URL-only and never changes live).
+  const cameraDials = useCameraDials();
   return (
     <Canvas
       key={cameraDials.perspective ? 'persp' : 'ortho'}

@@ -23,6 +23,7 @@ import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 // comment on a prior naive-derivation hazard) — importing the single
 // existing measurement is the only way to GUARANTEE agreement with it.
 import { facingToRotationY } from '@/components/hex-grid/authorGridHelpers';
+import { useCameraDials } from '@/feel/useFeelDials';
 import {
   doorHexKinds,
   doorHexPositions,
@@ -51,7 +52,6 @@ import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
-import { readCameraDials } from './cameraDials';
 import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexEntity } from './HexEntity';
 import {
@@ -694,10 +694,16 @@ function Scene({
     return new THREE.Vector3(worldPos.x, 0, worldPos.z);
   }, [myPosX, myPosY, myPosZ]);
 
-  // Camera-feel dials (`?camera=persp`, `?pitchCurve=1`, ...) — read once,
-  // all-off by default, so with no query params this call is exactly the
-  // fixed-angle orthographic rig it has always been. See cameraDials.ts.
-  const cameraDials = useMemo(() => readCameraDials(), []);
+  // Camera-feel dials (`?camera=persp`, `?pitchCurve=1`, ...) — all-off by
+  // default, so with no query params this is exactly the fixed-angle
+  // orthographic rig it has always been. LIVE (#906 batch 2): the drawer's
+  // registered dials (rotateSpeed, panSpeed, orbitPivot, the zoom/pitch
+  // ladder) apply on the very next render, no remount — useCameraControls
+  // reads them as plain props closed over fresh each frame. `perspective`/
+  // `fovDeg`/`minDistance`/`maxDistance` stay URL-only (see
+  // CAMERA_DIAL_SPECS's own doc comment), so those three cannot change
+  // without a page reload regardless. See cameraDials.ts.
+  const cameraDials = useCameraDials();
 
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
@@ -1178,10 +1184,14 @@ export function HexGrid(props: HexGridProps) {
 
   // Camera-feel dials again out here: Scene reads them for the CONTROLS, but
   // the projection itself is a `<Canvas>` prop and Scene lives inside it.
-  // Both call the same read-once parser rather than sharing state, so there
-  // is nothing to keep in sync. Default (no query params) is unchanged:
-  // orthographic, zoom 80.
-  const canvasDials = useMemo(() => readCameraDials(), []);
+  // Both now read the SAME live store (#906 batch 2), so there is nothing to
+  // keep in sync. Default (no query params) is unchanged: orthographic,
+  // zoom 80. NOT fully live here, though: `zoomStart`/`fovDeg` only apply as
+  // the Canvas's INITIAL camera config, and the `key` below only changes
+  // with `perspective` (URL-only, so it never changes live) — a drawer edit
+  // to zoomStart updates this value but does not itself force the Canvas to
+  // re-mount and pick it up; it takes effect at the next natural remount.
+  const canvasDials = useCameraDials();
 
   // Handle WebGL context loss/restore for GPU protection
   const handleCanvasCreated = useCallback(

@@ -485,6 +485,32 @@ export function cameraDialsFrom(values: DialValues): CameraDials {
 }
 
 /**
+ * The perspective escape hatch's own four fields (`?camera=persp`, `fov`,
+ * `minDist`, `maxDist`) — deliberately URL-only (this module's own doc
+ * comment), so read directly from the query string here rather than
+ * through the registry/store `cameraDialsFrom` draws everything else from.
+ *
+ * `useCameraDials()` (feel/useFeelDials.ts) layers this on top of the
+ * store-derived result once, at mount — a store-only `cameraDialsFrom`
+ * would otherwise always resolve `perspective: false`, since `camera=persp`
+ * is intentionally not a registered dial and so never appears in `values`
+ * at all. Skipping this step was the exact regression a `SessionCanvas`
+ * test caught: switching that call site to the live hook silently dropped
+ * `?camera=persp` support entirely.
+ */
+export function perspectiveOverrides(
+  search: string
+): Pick<CameraDials, 'perspective' | 'fovDeg' | 'minDistance' | 'maxDistance'> {
+  const params = new URLSearchParams(search);
+  return {
+    perspective: params.get('camera') === 'persp',
+    fovDeg: num(params, 'fov') ?? DEFAULT_PERSP_FOV_DEG,
+    minDistance: num(params, 'minDist') ?? DEFAULT_MIN_DISTANCE,
+    maxDistance: num(params, 'maxDist') ?? DEFAULT_MAX_DISTANCE,
+  };
+}
+
+/**
  * Every camera dial a player would tune, registered for the feel dials
  * drawer (#906 batch 2, `feel/dials.ts` aggregates this with
  * `DICE_DIAL_SPECS`). `camera=persp` stays URL-only per this module's own

@@ -27,6 +27,7 @@ import {
   createNeutralVisualThrowProfile,
   type VisualThrowProfileV1,
 } from '@/components/ui/dice/visualThrowProfile';
+import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -61,10 +62,7 @@ import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
-import {
-  localWorldDieDimensions,
-  readDiceDials,
-} from './local-world-die/diceDials';
+import { localWorldDieDimensions } from './local-world-die/diceDials';
 import {
   createLocalWorldDieAttemptSnapshot,
   type LocalWorldDieAttemptSnapshot,
@@ -731,9 +729,11 @@ function SessionEncounterScope({
       sessionId,
     ]
   );
-  // `?dieScale=`/`?rollFlash=` (diceDials.ts) — read once, same convention
-  // as LocalWorldDieLayer.tsx's own dieScale/dimensions.
-  const diceDials = useMemo(() => readDiceDials(), []);
+  // `?dieScale=`/`?rollFlash=` (diceDials.ts) — LIVE (#906 batch 2). Note
+  // dieScale specifically: LocalWorldDieLayer.tsx only mounts while a throw
+  // is in flight, so in practice a drawer edit here takes effect the next
+  // time the die is thrown, not mid-throw.
+  const diceDials = useDiceDials();
   // The no-drag "Roll" button below needs the same held-height default the
   // drag gesture uses.
   const localWorldDieDimensionsForNeutralRoll = useMemo(

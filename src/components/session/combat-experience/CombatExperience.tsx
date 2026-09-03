@@ -1,10 +1,9 @@
-import { readDiceDials } from '@/components/session/local-world-die/diceDials';
+import { useDiceDials } from '@/feel/useFeelDials';
 import {
   ClockKind,
   Standing,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
-import { useMemo } from 'react';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
@@ -147,12 +146,11 @@ export function CombatExperience({
     diePresented,
   });
   const damageToasts = useDamageToasts(settledResult);
-  // `?rollFlash=` (diceDials.ts) — read once, same convention as
-  // cameraDials.ts's own call sites. `settledResult` is the SAME signal
-  // useDamageToasts uses — see rollFlash.ts's own doc comment for why that
-  // already produces "at settle" for the roller and "at result arrival" for
-  // a spectator, with no extra logic needed here.
-  const rollFlashDial = useMemo(() => readDiceDials().rollFlash, []);
+  // `?rollFlash=` (diceDials.ts) — LIVE (#906 batch 2). `settledResult` is
+  // the SAME signal useDamageToasts uses — see rollFlash.ts's own doc
+  // comment for why that already produces "at settle" for the roller and
+  // "at result arrival" for a spectator, with no extra logic needed here.
+  const rollFlashDial = useDiceDials().rollFlash;
   const rollFlashes = useRollFlash(
     settledResult,
     rollFlashDial === 'toast' || rollFlashDial === 'both'

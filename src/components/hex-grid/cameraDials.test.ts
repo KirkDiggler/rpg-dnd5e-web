@@ -13,6 +13,7 @@ import {
   DRAG_SECONDS_PER_PIXEL,
   bandFollowsFocus,
   parseCameraDials,
+  perspectiveOverrides,
 } from './cameraDials';
 
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -258,5 +259,34 @@ describe('bandFollowsFocus', () => {
   it('follows in perspective, which has no authored bands of its own', () => {
     expect(bandFollowsFocus({ follow: false }, true)).toBe(true);
     expect(bandFollowsFocus(null, true)).toBe(true);
+  });
+});
+
+describe('perspectiveOverrides', () => {
+  // #906 batch 2 regression this pins down: useCameraDials() (the live,
+  // store-driven hook) layers this on top of cameraDialsFrom, since
+  // `camera=persp` is deliberately not a registered dial and cameraDialsFrom
+  // alone can never see it — a SessionCanvas render test caught the gap
+  // when this file's own call site first switched to the hook.
+  it('defaults off with the shipped perspective fallbacks', () => {
+    const result = perspectiveOverrides('');
+    expect(result.perspective).toBe(false);
+    expect(result.fovDeg).toBe(DEFAULT_PERSP_FOV_DEG);
+    expect(result.minDistance).toBe(DEFAULT_MIN_DISTANCE);
+    expect(result.maxDistance).toBe(DEFAULT_MAX_DISTANCE);
+  });
+
+  it('turns on only for the literal ?camera=persp', () => {
+    expect(perspectiveOverrides('?camera=persp').perspective).toBe(true);
+    expect(perspectiveOverrides('?camera=ortho').perspective).toBe(false);
+  });
+
+  it('carries fov/minDist/maxDist overrides', () => {
+    const result = perspectiveOverrides(
+      '?camera=persp&fov=40&minDist=2&maxDist=50'
+    );
+    expect(result.fovDeg).toBe(40);
+    expect(result.minDistance).toBe(2);
+    expect(result.maxDistance).toBe(50);
   });
 });
