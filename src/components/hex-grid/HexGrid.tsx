@@ -610,12 +610,12 @@ function Scene({
     [walls, onDoorClick, rememberedWallHexKeys]
   );
 
-  // Grid center: bbox center of all revealed floor tiles. Used only as the
-  // camera's one-time starting position below — see stableTarget.
-  const gridCenter = useMemo(() => {
-    if (floorTiles.size === 0) {
-      return new THREE.Vector3(0, 0, 0);
-    }
+  // Revealed-floor bbox: center + extent of all revealed floor tiles.
+  // `gridCenter` (below) is the camera's one-time starting position — see
+  // stableTarget. The full bounds also feed `Home`'s on-demand fit (#906,
+  // cameraFit.ts) via useCameraControls' `revealedBounds` option.
+  const revealedBounds = useMemo(() => {
+    if (floorTiles.size === 0) return null;
     let minX = Infinity,
       maxX = -Infinity;
     let minZ = Infinity,
@@ -630,8 +630,24 @@ function Scene({
       minZ = Math.min(minZ, worldPos.z);
       maxZ = Math.max(maxZ, worldPos.z);
     }
-    return new THREE.Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+    // Tile centers alone understate the revealed footprint — each tile's
+    // own visual extent reaches roughly HEX_SIZE beyond its center, so pad
+    // one hex radius on every side.
+    return {
+      centerX: (minX + maxX) / 2,
+      centerZ: (minZ + maxZ) / 2,
+      width: maxX - minX + HEX_SIZE * 2,
+      height: maxZ - minZ + HEX_SIZE * 2,
+    };
   }, [floorTiles]);
+
+  const gridCenter = useMemo(
+    () =>
+      revealedBounds
+        ? new THREE.Vector3(revealedBounds.centerX, 0, revealedBounds.centerZ)
+        : new THREE.Vector3(0, 0, 0),
+    [revealedBounds]
+  );
 
   // Stable base target for useCameraControls' panning, seeded once from
   // the first non-empty gridCenter and frozen after that.
@@ -703,6 +719,7 @@ function Scene({
     perspective: cameraDials.perspective,
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
+    revealedBounds,
   });
 
   // Build entity map for interaction hook (excludes dead entities so they

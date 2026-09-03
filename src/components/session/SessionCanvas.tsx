@@ -267,6 +267,32 @@ export function SessionScene({
     [target.x, target.z]
   );
   const cameraDials = useMemo(() => readCameraDials(), []);
+  // Revealed-floor bbox — HexGrid.tsx's own `revealedBounds` computation,
+  // equivalent for this route's `scene.floorTiles`. Feeds `Home`'s
+  // on-demand fit (#906, cameraFit.ts) only; never acted on by itself.
+  const revealedBounds = useMemo(() => {
+    if (scene.floorTiles.size === 0) return null;
+    let minX = Infinity,
+      maxX = -Infinity;
+    let minZ = Infinity,
+      maxZ = -Infinity;
+    for (const tile of scene.floorTiles.values()) {
+      const worldPos = cubeToWorld(
+        { x: tile.x, y: tile.y, z: tile.z },
+        hexSize
+      );
+      minX = Math.min(minX, worldPos.x);
+      maxX = Math.max(maxX, worldPos.x);
+      minZ = Math.min(minZ, worldPos.z);
+      maxZ = Math.max(maxZ, worldPos.z);
+    }
+    return {
+      centerX: (minX + maxX) / 2,
+      centerZ: (minZ + maxZ) / 2,
+      width: maxX - minX + hexSize * 2,
+      height: maxZ - minZ + hexSize * 2,
+    };
+  }, [scene.floorTiles, hexSize]);
   useCameraControls({
     target: initialTargetRef.current,
     focusTarget,
@@ -280,6 +306,7 @@ export function SessionScene({
     perspective: cameraDials.perspective,
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
+    revealedBounds,
   });
 
   const attackableSet = useMemo(

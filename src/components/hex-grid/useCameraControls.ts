@@ -10,6 +10,10 @@
  * - Middle-click drag to rotate azimuth only (`?dragRotate=`,
  *   cameraDials.ts — #906). Horizontal only, no tilt — same "no free-look"
  *   rule as everything else here.
+ * - F brings the target to the local player's mini without changing the
+ *   zoom band (#906).
+ * - Home fits the revealed board on demand — never automatically (#906,
+ *   rpg-dnd5e-web#457). See cameraFit.ts.
  * - Tilt is never under direct player control: it is either a fixed angle
  *   (the default, unchanged) or a function of zoom via the `curve` option
  *   (`?pitchCurve=1`, see cameraDials.ts). There is deliberately no free-look.
@@ -24,6 +28,7 @@ import {
   DEFAULT_PAN_SPEED_PER_SEC,
   DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
 } from './cameraDials';
+import { fitBandIndexForBbox } from './cameraFit';
 import { rotateAboutPivot } from './orbitPivot';
 
 /** `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, converted to this module's own
@@ -37,6 +42,15 @@ const DEFAULT_DRAG_ROTATE_RAD_PER_PX =
   (DEFAULT_DRAG_ROTATE_DEG_PER_PX * Math.PI) / 180;
 
 const WHEEL_BAND_STEP_INTERVAL_MS = 120;
+
+/** Current revealed-floor bounding box, world units, XZ-plane centre +
+ * extent — the `Home` key's own fit target (#906, cameraFit.ts). */
+export interface RevealedBounds {
+  readonly centerX: number;
+  readonly centerZ: number;
+  readonly width: number;
+  readonly height: number;
+}
 
 interface CameraControlsOptions {
   /** Target point to orbit around */
@@ -103,6 +117,13 @@ interface CameraControlsOptions {
   /** Perspective dolly range in world units (ignored when orthographic). */
   minDistance?: number;
   maxDistance?: number;
+  /** Current revealed-floor bounds — the `Home` key's fit target (#906).
+   * `null`/`undefined` (nothing revealed yet, or the caller doesn't track
+   * this) makes `Home` a no-op. Recomputed by the caller as more floor is
+   * revealed; only READ on an actual `Home` keypress, never acted on by
+   * itself — see rpg-dnd5e-web#457, the auto-reframing regression this
+   * guards against. */
+  revealedBounds?: RevealedBounds | null;
 }
 
 export function useCameraControls({
@@ -119,6 +140,7 @@ export function useCameraControls({
   perspective = false,
   minDistance = 5,
   maxDistance = 100,
+  revealedBounds,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
 
@@ -131,6 +153,22 @@ export function useCameraControls({
     q: false,
     e: false,
   });
+
+  // F/Home (#906): one-shot actions, not held state like WASD/QE above —
+  // set true on keydown, consumed (and cleared back to false) the next
+  // useFrame tick, so each physical press fires exactly once regardless of
+  // how long the key stays down. Handled in useFrame (not the keydown
+  // handler itself) so they always run with THIS render's fresh `curve`/
+  // `target`/`updateCamera`/`focusTarget` closures, matching how Q/E rotation
+  // and WASD pan already defer their real work to useFrame.
+  const oneShotKeys = useRef({ focus: false, fit: false });
+
+  // Latest `revealedBounds` prop, mirrored into a ref every render so the
+  // `Home` handling above (which only runs inside useFrame, not on every
+  // prop change) always reads the CURRENT bounds without needing to
+  // reinitialize anything when more floor is revealed mid-exploration.
+  const revealedBoundsRef = useRef(revealedBounds);
+  revealedBoundsRef.current = revealedBounds;
 
   // Track mouse state for right-click drag (pans the board — rotation is
   // Q/E only, per Kirk: "use Q and E to rotate and rt click could move the
@@ -322,7 +360,13 @@ export function useCameraControls({
       const key = e.key.toLowerCase();
       if (key in keys.current) {
         keys.current[key as keyof typeof keys.current] = true;
+        return;
       }
+      // F/Home are one-shot (#906) — ignore OS auto-repeat while held so a
+      // long press fires once, not on every repeat interval.
+      if (e.repeat) return;
+      if (key === 'f') oneShotKeys.current.focus = true;
+      else if (key === 'home') oneShotKeys.current.fit = true;
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -522,6 +566,51 @@ export function useCameraControls({
 
   // Update each frame based on key state
   useFrame((_, delta) => {
+    // F (#906): bring the target to the local player's mini, band
+    // unchanged. Reuses the SAME lerp mechanism the auto-follow bands
+    // already drive (see `lerpTarget` above) — a manual request for exactly
+    // what those bands do automatically.
+    if (oneShotKeys.current.focus) {
+      oneShotKeys.current.focus = false;
+      if (focusTarget) {
+        lerpTarget.current = focusTarget.clone();
+        invalidate();
+      }
+    }
+
+    // Home (#906): fit the revealed board ON THIS KEYPRESS ONLY — never
+    // automatic (rpg-dnd5e-web#457's own regression). No-op without both an
+    // orthographic band ladder and a revealed bbox to fit.
+    if (oneShotKeys.current.fit) {
+      oneShotKeys.current.fit = false;
+      const bounds = revealedBoundsRef.current;
+      if (
+        bounds &&
+        curve &&
+        curve.bands.length > 0 &&
+        camera instanceof THREE.OrthographicCamera
+      ) {
+        const widthPx = gl.domElement.clientWidth || 1;
+        const heightPx = gl.domElement.clientHeight || 1;
+        const fitIndex = fitBandIndexForBbox(
+          { width: bounds.width, height: bounds.height },
+          { widthPx, heightPx },
+          curve.bands
+        );
+        if (fitIndex >= 0) {
+          orthoBandIndex.current = fitIndex;
+          camera.zoom = curve.bands[fitIndex]!.zoom;
+          camera.updateProjectionMatrix();
+          target.set(bounds.centerX, target.y, bounds.centerZ);
+          // A deliberate reframe, exactly like WASD/right-drag pan — without
+          // this the auto-follow lerp would yank the board straight back.
+          lerpTarget.current = null;
+          updateCamera();
+        }
+      }
+      invalidate();
+    }
+
     const { w, a, s, d, q, e } = keys.current;
 
     // If user is panning, cancel any active lerp
