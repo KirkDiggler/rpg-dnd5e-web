@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { FEEL_LAB_LAYER_Z } from './feel/layer';
 
 const hoisted = vi.hoisted(() => ({
   activeLobby: {
@@ -203,5 +204,27 @@ describe('App global development tools', () => {
     expect(screen.queryByTitle('Open Concepts Lab')).toBeNull();
     expect(screen.queryByTitle('Show Debug Panel')).toBeNull();
     expect(screen.queryByText('Discord Debug Panel')).toBeNull();
+  });
+
+  it('shares FEEL_LAB_LAYER_Z with the drawer, not its own z-index — #906 round 4: the button row painted behind a live session for the same reason the drawer once did', () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+
+    const wrench = screen.getByTitle('Show Debug Panel');
+    const row = wrench.parentElement as HTMLElement;
+    expect(row.style.zIndex).toBe(String(FEEL_LAB_LAYER_Z));
+  });
+
+  it('sits above the combat dock (174px tall) rather than inside its band', () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+
+    const wrench = screen.getByTitle('Show Debug Panel');
+    const row = wrench.parentElement as HTMLElement;
+    // bottom-48 = 12rem = 192px, clearing the dock's 174px with room to
+    // spare; the old bottom-4 (16px) sat well inside it.
+    const classes = row.className.split(/\s+/);
+    expect(classes).toContain('bottom-48');
+    expect(classes).not.toContain('bottom-4');
   });
 });

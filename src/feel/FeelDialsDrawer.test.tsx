@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ALL_DIAL_SPECS, defaultDialValues } from './dials';
 import { resetAll } from './dialStore';
 import { FeelDialsDrawer } from './FeelDialsDrawer';
+import { FEEL_LAB_LAYER_Z } from './layer';
 
 vi.mock('@/discord', () => ({
   DiscordDebugPanel: () => <div data-testid="stub-discord-debug-panel" />,
@@ -45,18 +46,18 @@ describe('FeelDialsDrawer', () => {
     );
   });
 
-  it("clears SessionEncounterView's own stacking layers — jsdom cannot check real paint order, so this pins the z-index number instead", () => {
+  it('uses the shared FEEL_LAB_LAYER_Z, not a private number — jsdom cannot check real paint order, so this pins identity with the constant instead', () => {
     // SessionEncounterView portals its whole view into document.body at
     // zIndex: 100 and its "run ended" overlay reaches zIndex: 1000; a
     // drawer z-index at or below either would render invisibly behind a
     // live session (found live, not by this suite — see FeelDialsDrawer's
-    // own doc comment).
+    // own doc comment). The App.tsx wrench row lost the same fight once
+    // already (#906 round 4) — pinning identity with the shared constant,
+    // not just "some number above 1000", is what keeps both in sync.
     render(<FeelDialsDrawer open onClose={() => {}} />);
-    const match = screen
-      .getByTestId('feel-dials-drawer')
-      .className.match(/z-\[(\d+)\]/);
-    expect(match).not.toBeNull();
-    expect(Number(match![1])).toBeGreaterThan(1000);
+    const el = screen.getByTestId('feel-dials-drawer');
+    expect(el.style.zIndex).toBe(String(FEEL_LAB_LAYER_Z));
+    expect(FEEL_LAB_LAYER_Z).toBeGreaterThan(1000);
   });
 
   it('the close button calls onClose', () => {

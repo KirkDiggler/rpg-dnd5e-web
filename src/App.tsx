@@ -23,6 +23,7 @@ import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { useDiscord } from './discord';
 import { FeelDialsDrawer } from './feel/FeelDialsDrawer';
+import { FEEL_LAB_LAYER_Z } from './feel/layer';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
 
 const LazyToolkitContributorSandbox =
@@ -433,9 +434,20 @@ function AppContent() {
           />
         )}
 
-        {/* Dev tools buttons */}
+        {/* Dev tools buttons. #906 round 4: this row paints behind a live
+            session route for the same reason the drawer once did —
+            SessionEncounterView portals its whole view into document.body
+            at zIndex: 100 — so it shares FEEL_LAB_LAYER_Z with the drawer
+            rather than its own z-50 (see src/feel/layer.ts). It's also
+            lifted from bottom-4 to bottom-48 (192px) to clear the combat
+            dock, which is 174px tall and spans the full width at the
+            bottom of the screen — at bottom-4 the buttons sat inside that
+            band and the End Turn button intercepted every click. */}
         {showGlobalDevTools && (
-          <div className="fixed bottom-4 right-4 z-50 flex gap-2">
+          <div
+            style={{ zIndex: FEEL_LAB_LAYER_Z }}
+            className="fixed bottom-48 right-4 flex gap-2"
+          >
             <button
               onClick={handleOpenConcepts}
               className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
