@@ -104,9 +104,37 @@ export const DEFAULT_ZOOM_MAX = 140;
  */
 export const DEFAULT_ZOOM_START = 80;
 
+/**
+ * Q/E rotation speed, degrees per second — until #906 this was 0.02–0.03
+ * RADIANS PER RENDERED FRAME with no delta scaling (69–103°/s at 60Hz, double
+ * that at 120Hz — see useCameraControls.ts's own useFrame). 70°/s is
+ * HexGrid.tsx's own pre-#906 call-site value (0.02 rad/frame @ 60Hz ≈
+ * 68.75°/s) rounded to a clean number and promoted to
+ * useCameraControls' own default, so both routes agree without either
+ * overriding it — the session route previously omitted the override and
+ * silently ran the hook's OWN default (0.03 rad/frame, a different speed).
+ */
+export const DEFAULT_ROTATE_SPEED_DEG_PER_SEC = 70;
+
+/**
+ * WASD pan speed, world units per second — HexGrid.tsx's own pre-#906
+ * call-site value (0.3 units/frame) at 60Hz. Same promotion as
+ * `DEFAULT_ROTATE_SPEED_DEG_PER_SEC` above.
+ */
+export const DEFAULT_PAN_SPEED_PER_SEC = 18;
+
 export interface CameraDials {
   /** Perspective projection instead of the default orthographic. */
   perspective: boolean;
+  /**
+   * Q/E rotation, RADIANS per second — converted here from the `rotateSpeed`
+   * URL dial (authored in degrees per second, matching `fovDeg`'s own
+   * "author in the human unit, convert once here" convention) because
+   * useCameraControls.ts's azimuth math is radian-based throughout.
+   */
+  rotateSpeed: number;
+  /** WASD pan, world units per second. */
+  panSpeed: number;
   /**
    * Vertical FOV in DEGREES (perspective only) — degrees, not radians,
    * because that is what `<Canvas camera={{ fov }}>` wants; keeping the unit
@@ -243,8 +271,13 @@ export function parseCameraDials(search: string): CameraDials {
   const tabletopZoom = zoomMin + (zoomStart - zoomMin) * tabletopProgress;
   const shoulderZoom = zoomStart + (zoomMax - zoomStart) / 2;
 
+  const rotateSpeedDegPerSec =
+    num(params, 'rotateSpeed') ?? DEFAULT_ROTATE_SPEED_DEG_PER_SEC;
+
   return {
     perspective,
+    rotateSpeed: deg(rotateSpeedDegPerSec),
+    panSpeed: num(params, 'panSpeed') ?? DEFAULT_PAN_SPEED_PER_SEC,
     fovDeg: num(params, 'fov') ?? DEFAULT_PERSP_FOV_DEG,
     minDistance: num(params, 'minDist') ?? DEFAULT_MIN_DISTANCE,
     maxDistance: num(params, 'maxDist') ?? DEFAULT_MAX_DISTANCE,

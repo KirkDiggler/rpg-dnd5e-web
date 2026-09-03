@@ -686,9 +686,14 @@ function Scene({
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
     target: stableTarget,
+    // Kept as this route's own literal override — the pitch curve (default
+    // ON) drives polar angle per zoom band and only falls back to this fixed
+    // value under `?pitchCurve=0`. Unrelated to the #906 rotate/pan dials
+    // below, which both routes now share via cameraDials instead of
+    // diverging per-route literals.
     polarAngle: Math.PI / 3.5, // ~51 degrees from vertical - slightly lower tactical angle
-    panSpeed: 0.3,
-    rotateSpeed: 0.02,
+    panSpeed: cameraDials.panSpeed,
+    rotateSpeed: cameraDials.rotateSpeed,
     minZoom: cameraDials.zoomMin,
     maxZoom: cameraDials.zoomMax,
     focusTarget,

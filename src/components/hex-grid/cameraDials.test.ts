@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_MAX_DISTANCE,
   DEFAULT_MIN_DISTANCE,
+  DEFAULT_PAN_SPEED_PER_SEC,
   DEFAULT_PERSP_FOV_DEG,
   DEFAULT_PITCH_FAR_DEG,
   DEFAULT_PITCH_NEAR_DEG,
+  DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
   DEFAULT_ZOOM_MAX,
   DEFAULT_ZOOM_MIN,
   bandFollowsFocus,
@@ -135,6 +137,24 @@ describe('parseCameraDials', () => {
       expect(dials.zoomMin).toBeLessThanOrEqual(dials.zoomStart);
       expect(dials.zoomStart).toBeLessThanOrEqual(dials.zoomMax);
     }
+  });
+
+  it('resolves rotateSpeed/panSpeed to the shared, time-based #906 defaults', () => {
+    // Both routes used to diverge here (HexGrid.tsx overrode with 0.02
+    // rad/frame + 0.3 units/frame; SessionCanvas silently ran the hook's own
+    // 0.03/0.5 rad-or-unit-per-FRAME defaults). #906 promotes ONE shared
+    // per-second default and both call sites now read it from here.
+    const dials = parseCameraDials('');
+    expect(dials.rotateSpeed).toBeCloseTo(
+      rad(DEFAULT_ROTATE_SPEED_DEG_PER_SEC)
+    );
+    expect(dials.panSpeed).toBe(DEFAULT_PAN_SPEED_PER_SEC);
+  });
+
+  it('carries rotateSpeed/panSpeed URL overrides, authored in deg/s and units/s', () => {
+    const dials = parseCameraDials('?rotateSpeed=120&panSpeed=40');
+    expect(dials.rotateSpeed).toBeCloseTo(rad(120));
+    expect(dials.panSpeed).toBe(40);
   });
 
   it('ignores non-numeric and empty values instead of poisoning the camera with NaN', () => {

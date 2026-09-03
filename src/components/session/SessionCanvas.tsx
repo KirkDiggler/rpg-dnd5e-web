@@ -270,6 +270,8 @@ export function SessionScene({
   useCameraControls({
     target: initialTargetRef.current,
     focusTarget,
+    panSpeed: cameraDials.panSpeed,
+    rotateSpeed: cameraDials.rotateSpeed,
     minZoom: cameraDials.zoomMin,
     maxZoom: cameraDials.zoomMax,
     curve: cameraDials.curve,

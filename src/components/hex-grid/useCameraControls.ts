@@ -15,7 +15,16 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { bandFollowsFocus } from './cameraDials';
+import {
+  bandFollowsFocus,
+  DEFAULT_PAN_SPEED_PER_SEC,
+  DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
+} from './cameraDials';
+
+/** `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, converted to this module's own
+ * radian-based azimuth math. */
+const DEFAULT_ROTATE_SPEED_RAD_PER_SEC =
+  (DEFAULT_ROTATE_SPEED_DEG_PER_SEC * Math.PI) / 180;
 
 const WHEEL_BAND_STEP_INTERVAL_MS = 120;
 
@@ -24,9 +33,12 @@ interface CameraControlsOptions {
   target: THREE.Vector3;
   /** Fixed polar angle (tilt from vertical) in radians */
   polarAngle?: number;
-  /** Pan speed multiplier */
+  /** WASD pan speed, world units PER SECOND (`?panSpeed=`, cameraDials.ts).
+   * Multiplied by frame delta below — until #906 this was applied as a flat
+   * per-frame step with no delta scaling. */
   panSpeed?: number;
-  /** Rotation speed multiplier */
+  /** Q/E rotation speed, RADIANS per second (`?rotateSpeed=`, cameraDials.ts,
+   * authored there in degrees). Same delta-scaling note as `panSpeed`. */
   rotateSpeed?: number;
   /** Minimum zoom level */
   minZoom?: number;
@@ -70,8 +82,8 @@ interface CameraControlsOptions {
 export function useCameraControls({
   target,
   polarAngle = Math.PI / 4, // 45 degrees from vertical by default
-  panSpeed = 0.5,
-  rotateSpeed = 0.03,
+  panSpeed = DEFAULT_PAN_SPEED_PER_SEC,
+  rotateSpeed = DEFAULT_ROTATE_SPEED_RAD_PER_SEC,
   minZoom = 20,
   maxZoom = 200,
   focusTarget,
@@ -439,12 +451,12 @@ export function useCameraControls({
       }
       // Still process rotation during lerp
       if (q) {
-        azimuth.current += rotateSpeed;
+        azimuth.current += rotateSpeed * delta;
         updateCamera();
         invalidate();
       }
       if (e) {
-        azimuth.current -= rotateSpeed;
+        azimuth.current -= rotateSpeed * delta;
         updateCamera();
         invalidate();
       }
@@ -467,30 +479,33 @@ export function useCameraControls({
     );
     right.current.set(Math.sin(azimuth.current), 0, -Math.cos(azimuth.current));
 
+    const panStep = panSpeed * delta;
+    const rotateStep = rotateSpeed * delta;
+
     if (w) {
-      target.addScaledVector(forward.current, panSpeed);
+      target.addScaledVector(forward.current, panStep);
       changed = true;
     }
     if (s) {
-      target.addScaledVector(forward.current, -panSpeed);
+      target.addScaledVector(forward.current, -panStep);
       changed = true;
     }
     if (a) {
-      target.addScaledVector(right.current, -panSpeed);
+      target.addScaledVector(right.current, -panStep);
       changed = true;
     }
     if (d) {
-      target.addScaledVector(right.current, panSpeed);
+      target.addScaledVector(right.current, panStep);
       changed = true;
     }
 
     // Q/E rotation
     if (q) {
-      azimuth.current += rotateSpeed;
+      azimuth.current += rotateStep;
       changed = true;
     }
     if (e) {
-      azimuth.current -= rotateSpeed;
+      azimuth.current -= rotateStep;
       changed = true;
     }
 
