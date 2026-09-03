@@ -73,6 +73,6 @@ it('remounts the production character when the resolved model URL changes', () =
     lifecycle.events.filter((event) => event.startsWith('mount:'))
   ).toHaveLength(2);
   expect(lifecycle.events).toContain(
-    'unmount:/models/synty/characters/fighter.glb'
+    'unmount:/models/synty/characters/customization/human-v1/bodies/human-fighter-body.glb'
   );
 });

@@ -124,15 +124,18 @@ describe('aggregate production character customization publication', () => {
         encoding: 'utf8',
       })
     ).toBe('');
-    for (const asset of assets) {
-      expect(() =>
-        execFileSync(
-          'git',
-          ['check-ignore', '--quiet', '--no-index', publicFile(asset.url)],
-          { cwd: repositoryRoot }
-        )
-      ).not.toThrow();
-    }
+    const ignored = execFileSync(
+      'git',
+      ['check-ignore', '--no-index', '--stdin'],
+      {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+        input: assets.map((asset) => publicFile(asset.url)).join('\n') + '\n',
+      }
+    )
+      .trim()
+      .split('\n');
+    expect(ignored).toHaveLength(assets.length);
   });
 
   it('publishes exact style-or-none defaults and four classes for every profile', () => {
