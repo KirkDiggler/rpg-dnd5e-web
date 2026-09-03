@@ -6,9 +6,10 @@
  *
  * Kirk, 2026-09-03: "Dice at real-table proportion: a d20 is ~20mm on a
  * 1-inch cell, ~80% of a cell. Today's die is 0.55 world units on a
- * 1.73-unit hex, ~32%." `dieScale` is the lever for that live comparison —
- * `?dieScale=2.5` gets close to the ~80%-of-a-cell reference size
- * (0.55*2.5 / 1.73 ≈ 79%) without moving the shipped default.
+ * 1.73-unit hex, ~32%." `dieScale` is the lever for that live comparison.
+ * Kirk's first live session verdict — "dieScale of 2 feels really good" —
+ * promoted `2` to the shipped default (0.55*2 / 1.73 ≈ 64% of a cell); a
+ * further `?dieScale=2.5` gets closer still to the ~80% reference (≈79%).
  *
  * # What scales together
  *
@@ -43,7 +44,9 @@
  */
 import { numberDial } from '@/utils/queryDial';
 
-export const DEFAULT_DIE_SCALE = 1;
+/** Kirk's first live session verdict, 2026-09-03: "dieScale of 2 feels
+ * really good." Promoted from the original shipped default (1). */
+export const DEFAULT_DIE_SCALE = 2;
 
 /**
  * `off` (default): no roll flash. `die`: the natural d20 flashes at the
@@ -55,8 +58,8 @@ export type RollFlashDial = 'off' | 'die' | 'toast' | 'both';
 
 export interface DiceDials {
   /** Multiplier scaling the die's physical dimensions and visual size
-   * together (`?dieScale=`). The default (1) is today's shipped die,
-   * unchanged. */
+   * together (`?dieScale=`). Default 2 — Kirk's own keeper verdict, see
+   * `DEFAULT_DIE_SCALE`. */
   dieScale: number;
   /** `?rollFlash=` — off by default. See `RollFlashDial` above. */
   rollFlash: RollFlashDial;

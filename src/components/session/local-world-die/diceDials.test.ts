@@ -11,9 +11,9 @@ import {
 } from './diceDials';
 
 describe('parseDiceDials', () => {
-  it("defaults dieScale to 1 — today's shipped die, unchanged", () => {
+  it('defaults dieScale to 2 — Kirk\'s first live session keeper ("dieScale of 2 feels really good")', () => {
     expect(parseDiceDials('').dieScale).toBe(DEFAULT_DIE_SCALE);
-    expect(DEFAULT_DIE_SCALE).toBe(1);
+    expect(DEFAULT_DIE_SCALE).toBe(2);
   });
 
   it('carries an explicit dieScale override', () => {
@@ -45,7 +45,7 @@ describe('parseDiceDials', () => {
 });
 
 describe('localWorldDieDimensions', () => {
-  it("reproduces today's shipped dimensions at dieScale=1", () => {
+  it('reproduces the BASE dimensions unmultiplied at dieScale=1', () => {
     const dims = localWorldDieDimensions(1);
     expect(dims.hullRadius).toBe(BASE_DIE_HULL_RADIUS);
     expect(dims.restHeightAboveSurface).toBe(
