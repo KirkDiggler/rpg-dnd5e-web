@@ -887,7 +887,7 @@ describe('the room tool (rpg-dnd5e-web#902)', () => {
 
   it('takes cells from whatever region held them, and is a no-op when it owns them all', () => {
     let doc = emptyDungeon();
-    doc = addRegion(doc, 'region-2');
+    doc = addRegion(doc); // mints region-2
     doc = paintRect(doc, 'region-1', p(0, 0), p(2, 0));
     doc = paintRect(doc, 'region-2', p(1, 0), p(3, 0));
 
