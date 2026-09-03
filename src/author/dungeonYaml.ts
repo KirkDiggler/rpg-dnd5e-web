@@ -1112,9 +1112,14 @@ export function rectCells(o: Orientation, a: Axial, b: Axial): Axial[] {
  * shared boundary is already walled, so nothing is added there. Door edges are
  * left alone too — the tool does not wall up a doorway somebody placed.
  *
- * The whole perimeter is ONE run, so the file reads as the room it is and a
- * height set on it applies to the room. Delete a single edge with the wall
- * tool to open a doorway between two rooms. */
+ * The perimeter is emitted as FOUR runs, one per side, not one run around the
+ * whole room. A single run wrapping a closed loop is chained and straightened
+ * as one path by the renderer, which fits a wonky quadrilateral through it —
+ * Kirk, looking at exactly that: "if that room drawer made 4 edges all inline
+ * maybe we can salvage this." Per side, each fits its own line.
+ *
+ * Delete a single edge with the wall tool to open a doorway between two
+ * rooms. */
 export function wallRoom(doc: DungeonDoc, a: Axial, b: Axial): DungeonDoc {
   const cells = rectCells(doc.orientation, a, b);
   const inRoom = new Set(cells.map(axialKey));
@@ -1122,7 +1127,12 @@ export function wallRoom(doc: DungeonDoc, a: Axial, b: Axial): DungeonDoc {
   const taken = wallKeys(doc);
   const doors = doorEdgeOwners(doc);
   const seen = new Set<string>();
-  const edges: Edge[] = [];
+  const edges: { edge: Edge; side: (typeof SIDES)[number] }[] = [];
+  const o = doc.orientation;
+  const offsets = cells.map((c) => toOffset(o, c));
+  const c0 = Math.min(...offsets.map((x) => x[0]));
+  const r0 = Math.min(...offsets.map((x) => x[1]));
+  const r1 = Math.max(...offsets.map((x) => x[1]));
   for (const cell of cells) {
     if (!owners.has(axialKey(cell))) continue;
     for (const n of axialNeighbors(cell)) {
@@ -1132,13 +1142,32 @@ export function wallRoom(doc: DungeonDoc, a: Axial, b: Axial): DungeonDoc {
       const key = edgeKey(edge);
       if (seen.has(key) || taken.has(key) || doors.has(key)) continue;
       seen.add(key);
-      edges.push(edge);
+      // Which side the neighbour lies past. Row first, so a diagonal
+      // neighbour off a corner counts as north/south rather than splitting
+      // the corner between two runs.
+      const [nc, nr] = toOffset(o, n);
+      const side =
+        nr < r0 ? 'north' : nr > r1 ? 'south' : nc < c0 ? 'west' : 'east';
+      edges.push({ edge, side });
     }
   }
   if (edges.length === 0) return doc;
-  const n = doc.walls.filter((w) => w.name?.startsWith('room ')).length + 1;
-  return { ...doc, walls: [...doc.walls, { name: `room ${n}`, edges }] };
+  const n =
+    new Set(
+      doc.walls
+        .map((w) => /^room (\d+)/.exec(w.name ?? '')?.[1])
+        .filter(Boolean)
+    ).size + 1;
+  const added = SIDES.map((side) => ({
+    name: `room ${n} ${side}`,
+    edges: edges.filter((e) => e.side === side).map((e) => e.edge),
+  })).filter((run) => run.edges.length > 0);
+  return { ...doc, walls: [...doc.walls, ...added] };
 }
+
+/** The four sides a room's boundary edge can belong to, in the order they are
+ * written — so a room reads top-down in the file the way it is drawn. */
+const SIDES = ['north', 'east', 'south', 'west'] as const;
 
 /** Paint the whole rectangle `a`..`b` into `regionId` — the room tool's
  * commit (rpg-dnd5e-web#902).

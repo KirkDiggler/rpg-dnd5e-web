@@ -841,13 +841,17 @@ describe('the room tool (rpg-dnd5e-web#902)', () => {
     doc = paintRect(doc, 'region-1', p(0, 0), p(7, 4));
 
     doc = wallRoom(doc, p(1, 1), p(3, 3));
-    expect(doc.walls).toHaveLength(1);
-    const first = wallEdges(doc).length;
-    expect(first).toBeGreaterThan(0);
+    // One run PER SIDE, so the renderer straightens each side on its own
+    // instead of fitting one path around a closed loop.
+    expect(doc.walls.length).toBeGreaterThan(1);
+    expect(doc.walls.every((w) => /^room 1 /.test(w.name ?? ''))).toBe(true);
+    expect(wallEdges(doc).length).toBeGreaterThan(0);
 
     // A room drawn flush beside it must NOT double the shared boundary.
+    const runsAfterFirst = doc.walls.length;
     doc = wallRoom(doc, p(4, 1), p(6, 3));
-    expect(doc.walls).toHaveLength(2);
+    expect(doc.walls.length).toBeGreaterThan(runsAfterFirst);
+    expect(doc.walls.some((w) => /^room 2 /.test(w.name ?? ''))).toBe(true);
     const keys = wallEdges(doc).map(edgeKey);
     expect(new Set(keys).size).toBe(keys.length); // no edge walled twice
   });

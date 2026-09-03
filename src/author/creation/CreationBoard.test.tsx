@@ -567,14 +567,16 @@ describe('one wall at a time (rpg-dnd5e-web#902)', () => {
       for (let r = 0; r <= 2; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
     }
     doc = wallRoom(doc, p(1, 0), p(2, 2));
-    const run = doc.walls[0].edges;
-    const before = run.length;
+    // The room is several runs now (one per side), so ask the whole wall.
+    const all = wallEdges(doc);
+    const before = all.length;
+    expect(before).toBeGreaterThan(1);
 
-    const opened = toggleWall(doc, run[0]);
+    const opened = toggleWall(doc, all[0]);
     expect(wallEdges(opened)).toHaveLength(before - 1);
     // The rest of the room's wall is untouched — this is a doorway, not a
     // demolition.
-    expect(wallEdges(opened).map(edgeKey)).toEqual(run.slice(1).map(edgeKey));
+    expect(wallEdges(opened).map(edgeKey)).toEqual(all.slice(1).map(edgeKey));
   });
 });
 
