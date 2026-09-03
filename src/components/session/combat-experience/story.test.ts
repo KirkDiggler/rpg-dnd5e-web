@@ -256,6 +256,36 @@ describe('typed combat Story', () => {
     expect(entry?.detail).not.toContain('2d6');
   });
 
+  it('falls back to aggregate damage instead of equating a partial traced expression to the full total', () => {
+    const facts = createAttackAuthorityFixture({ damage: 12 });
+    if (facts.event.body.case !== 'struck') throw new Error('expected strike');
+    facts.event.body.value.damageComponents = [
+      create(DamageComponentSchema, {
+        source: 'ability',
+        damageType: DamageType.SLASHING,
+        roll: create(RollComponentSchema, {
+          source: rollSource('provider:ability:strength', 'Strength'),
+          modifier: 3,
+        }),
+      }),
+      create(DamageComponentSchema, {
+        source: 'weapon',
+        sourceRef: 'legacy:greatsword',
+        dice: '2d6',
+        finalRolls: [4, 5],
+        flatBonus: 0,
+        damageType: DamageType.SLASHING,
+      }),
+    ];
+
+    const [entry] = buildCombatStory([visible(facts.event)], context);
+
+    expect(entry?.detail).toBe(
+      'd20 12 · total 17 against AC 13 · Hit · 12 slashing damage'
+    );
+    expect(entry?.detail).not.toContain('3 Strength = 12');
+  });
+
   it('renders a Missed event without inventing zero damage', () => {
     const facts = createAttackAuthorityFixture({
       hit: false,

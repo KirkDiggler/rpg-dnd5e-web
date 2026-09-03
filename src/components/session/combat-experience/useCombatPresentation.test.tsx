@@ -792,7 +792,7 @@ describe('useCombatPresentation', () => {
       );
 
       expect(result.current.story[0]?.detail).toBe(
-        'Second Wind rolled 2d6 [1 → 4, 5] (kept [4, 5]) + 0 Provider label + 3 Modifier label = 12; ' +
+        'Second Wind rolled 2d6 [1 → 4, 5] (kept indices [0, 1]) + 0 Provider label + 3 Modifier label = 12; ' +
           '2 applied (8 → 10 HP).'
       );
       expect(result.current.diceEvents).toEqual([]);
@@ -816,7 +816,7 @@ describe('useCombatPresentation', () => {
       );
 
       expect(result.current.story[0]?.detail).toContain(
-        '2d6 [1 → 4, 5] (kept [4, 5]) + 0 Provider label × 0 Multiplier label = 12 slashing damage'
+        '2d6 [1 → 4, 5] (kept indices [0, 1]) + 0 Provider label × 0 Multiplier label = 12 slashing damage'
       );
       expect(result.current.diceEvents).toHaveLength(2);
       expect(
@@ -1399,6 +1399,78 @@ describe('useCombatPresentation', () => {
     ]);
     expect(result.current.state.diagnostics).toEqual([]);
   });
+
+  it.each([
+    { label: '0 from -0', first: 0, later: -0 },
+    { label: 'NaN from +Infinity', first: Number.NaN, later: Infinity },
+    { label: 'NaN from -Infinity', first: Number.NaN, later: -Infinity },
+    { label: '+Infinity from -Infinity', first: Infinity, later: -Infinity },
+  ])(
+    'distinguishes special numeric damage facts: $label',
+    ({ first, later }) => {
+      const original = tracedDamageEvent((components) => {
+        components[1]!.multiplier = first;
+      });
+      const changed = tracedDamageEvent((components) => {
+        components[1]!.multiplier = later;
+      });
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() => result.current.acceptStreamEvent(original, { source: 'live' }));
+      act(() =>
+        result.current.acceptStreamEvent(changed, { source: 'catchup' })
+      );
+
+      expect(result.current.story).toEqual([]);
+      expect(result.current.state.identities).toMatchObject([
+        { category: 'attack', conflicted: true },
+      ]);
+      expect(result.current.state.diagnostics.at(-1)).toContain(
+        'conflicting typed attack facts'
+      );
+    }
+  );
+
+  it.each([
+    { label: '-0', value: -0 },
+    { label: 'NaN', value: Number.NaN },
+    { label: '+Infinity', value: Infinity },
+    { label: '-Infinity', value: -Infinity },
+  ])(
+    'deduplicates identical special numeric damage facts: $label',
+    ({ value }) => {
+      const first = tracedDamageEvent((components) => {
+        components[1]!.multiplier = value;
+      });
+      const duplicate = tracedDamageEvent((components) => {
+        components[1]!.multiplier = value;
+      });
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() => result.current.acceptStreamEvent(first, { source: 'live' }));
+      act(() =>
+        result.current.acceptStreamEvent(duplicate, { source: 'catchup' })
+      );
+
+      expect(result.current.story).toHaveLength(1);
+      expect(result.current.state.identities).toMatchObject([
+        { category: 'attack', conflicted: false },
+      ]);
+      expect(result.current.state.diagnostics).toEqual([]);
+    }
+  );
 
   it('keeps a genuinely unknown bodyless kind on the raw Debug path without inventing Story', () => {
     const { result } = renderHook(() =>

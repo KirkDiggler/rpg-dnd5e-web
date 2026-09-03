@@ -138,7 +138,30 @@ describe('roll trace presentation', () => {
     });
 
     expect(formatRollCalculation(calculation)).toBe(
-      '2d8 [1 → 3 → 7, 2] (kept [7]) + 1d4 [4] = 91'
+      '2d8 [1 → 3 → 7, 2] (kept indices [0]) + 1d4 [4] = 91'
+    );
+  });
+
+  it('retains kept die identity when final faces are duplicates', () => {
+    const calculation = create(RollCalculationSchema, {
+      components: [
+        create(RollComponentSchema, {
+          source: source('anything:advantage', 'Advantage'),
+          dice: create(DiceTraceSchema, {
+            notation: '2d20',
+            dieSize: 20,
+            originalRolls: [5, 5],
+            finalRolls: [5, 5],
+            keptIndices: [0],
+            subtotal: 5,
+          }),
+        }),
+      ],
+      total: 5,
+    });
+
+    expect(formatRollCalculation(calculation)).toBe(
+      '2d20 [5, 5] (kept indices [0]) = 5'
     );
   });
 
@@ -208,7 +231,7 @@ describe('roll trace presentation', () => {
     );
   });
 
-  it('does not fabricate traces from absent, empty, or legacy-only facts', () => {
+  it('uses an all-or-nothing fallback for wholly legacy, mixed, and empty new damage components', () => {
     const legacy = create(DamageComponentSchema, {
       source: 'weapon',
       sourceRef: 'legacy:weapon',
@@ -217,8 +240,22 @@ describe('roll trace presentation', () => {
       flatBonus: 3,
       damageType: DamageType.SLASHING,
     });
+    const emptyNew = create(DamageComponentSchema, {
+      source: 'effect',
+      damageType: DamageType.SLASHING,
+      roll: create(RollComponentSchema, {
+        source: source('anything:empty', 'Empty provider source'),
+      }),
+    });
 
     expect(formatDamageRolls([legacy])).toBeUndefined();
+    expect(
+      formatDamageRolls([...greatswordComponents(), legacy])
+    ).toBeUndefined();
+    expect(formatDamageRolls([emptyNew])).toBeUndefined();
+    expect(
+      formatDamageRolls([...greatswordComponents(), emptyNew])
+    ).toBeUndefined();
     expect(formatDamageRolls([])).toBeUndefined();
     expect(
       formatRollCalculation(
@@ -228,5 +265,21 @@ describe('roll trace presentation', () => {
     expect(
       formatRollCalculation(undefined as unknown as RollCalculation)
     ).toBeUndefined();
+  });
+
+  it('accepts a valid multiplier-only new damage component', () => {
+    const multiplier = create(DamageComponentSchema, {
+      source: 'monster_trait',
+      damageType: DamageType.SLASHING,
+      multiplier: 0,
+      roll: create(RollComponentSchema, {
+        source: source('anything:immunity', 'Provider Immunity'),
+      }),
+    });
+
+    expect(formatDamageRolls([multiplier])).toBe('× 0 Provider Immunity');
+    expect(formatDamageRolls([...greatswordComponents(), multiplier])).toBe(
+      '2d6 [1 → 4, 5] + 3 Strength × 0 Provider Immunity'
+    );
   });
 });

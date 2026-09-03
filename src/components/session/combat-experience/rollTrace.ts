@@ -46,12 +46,7 @@ function formatDice(trace: DiceTrace | undefined): string | undefined {
   if (!trace?.notation) return undefined;
   const kept = trace.keptIndices ?? [];
   const keptText =
-    kept.length === 0
-      ? ''
-      : ` (kept [${kept
-          .map((index) => trace.finalRolls?.[index])
-          .map((face) => (face === undefined ? '?' : String(face)))
-          .join(', ')}])`;
+    kept.length === 0 ? '' : ` (kept indices [${kept.join(', ')}])`;
   return `${trace.notation} ${rollFaces(trace)}${keptText}`;
 }
 
@@ -118,14 +113,16 @@ export function formatRollCalculation(
 export function formatDamageRolls(
   components: readonly DamageComponent[]
 ): string | undefined {
+  if (components.length === 0) return undefined;
   let text = '';
   for (const component of components) {
-    if (component.roll) {
-      for (const term of componentTerms(component.roll)) {
-        text = appendAdditiveTerm(text, term);
-      }
-    }
-    if (component.roll && component.multiplier !== undefined) {
+    if (!component.roll) return undefined;
+    const terms = componentTerms(component.roll);
+    const hasMultiplier = component.multiplier !== undefined;
+    if (terms.length === 0 && !hasMultiplier) return undefined;
+
+    for (const term of terms) text = appendAdditiveTerm(text, term);
+    if (hasMultiplier) {
       const source = providerText(component.roll.source);
       text += `${text ? ' ' : ''}× ${component.multiplier}${source ? ` ${source}` : ''}`;
     }
