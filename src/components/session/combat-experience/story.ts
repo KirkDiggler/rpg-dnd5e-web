@@ -51,6 +51,80 @@ function attackName(attack: AttackRef | undefined): string {
   return attack?.name || attack?.ref || 'Attack';
 }
 
+function healingArithmetic(
+  roll: number,
+  modifier: number,
+  requested: number
+): string | undefined {
+  if (roll === 0 && modifier === 0) return undefined;
+  if (modifier > 0) return `${roll} + ${modifier} = ${requested}`;
+  if (modifier < 0) return `${roll} - ${Math.abs(modifier)} = ${requested}`;
+  return `${roll} = ${requested}`;
+}
+
+function buildActivationResultStory(
+  event: Event,
+  context: CombatStoryContext
+): CombatExperienceStoryExchange | undefined {
+  if (
+    event.body.case !== 'activationResult' ||
+    event.kind !== EventKind.ACTIVATION_RESULT
+  ) {
+    return undefined;
+  }
+
+  const actor = memberName(event.body.value.actor, context);
+  const base = { id: storyId(event), eyebrow: 'Ability result' };
+  switch (event.body.value.result.case) {
+    case 'healingApplied': {
+      const healing = event.body.value.result.value;
+      const arithmetic = healingArithmetic(
+        healing.roll,
+        healing.modifier,
+        healing.requested
+      );
+      const source = healing.sourceName || 'Healing';
+      return Object.freeze({
+        ...base,
+        headline: `${memberName(healing.target, context)} recovers ${healing.amount} HP`,
+        detail:
+          `${source}${arithmetic ? ` rolled ${arithmetic}` : ''}; ` +
+          `${healing.amount} applied (${healing.hpBefore} → ${healing.hpAfter} HP).`,
+        tone: 'success',
+      });
+    }
+    case 'conditionApplied': {
+      const condition = event.body.value.result.value;
+      return Object.freeze({
+        ...base,
+        headline: `${memberName(condition.target, context)} begins ${condition.name}`,
+        detail: `Applied by ${actor}.`,
+        tone: 'success',
+      });
+    }
+    case 'conditionRemoved': {
+      const condition = event.body.value.result.value;
+      return Object.freeze({
+        ...base,
+        headline: `${memberName(condition.target, context)} is no longer ${condition.name}`,
+        detail: condition.reason,
+        tone: 'neutral',
+      });
+    }
+    case 'capacityGranted': {
+      const capacity = event.body.value.result.value;
+      return Object.freeze({
+        ...base,
+        headline: `${memberName(capacity.member, context)} gains capacity`,
+        detail: capacity.description,
+        tone: 'success',
+      });
+    }
+    case undefined:
+      return undefined;
+  }
+}
+
 function attackTone(
   attacker: string,
   target: string,
@@ -195,8 +269,26 @@ function buildOtherStory(
         tone: door.beaten ? 'success' : 'neutral',
       });
     }
+    case 'activated': {
+      if (event.kind !== EventKind.ACTIVATED) return undefined;
+      const activated = event.body.value;
+      const actor = memberName(activated.actor, context);
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Ability',
+        headline: `${actor} uses ${activated.ability?.name || 'Ability'}`,
+        detail: activated.target
+          ? `${memberName(activated.target, context)} is the target.`
+          : `Story sequence ${event.seq}.`,
+        tone: 'neutral',
+      });
+    }
+    case 'activationResult':
+      return buildActivationResultStory(event, context);
     case 'struck':
     case 'missed':
+    case 'doorRevealed':
+    case 'regionRevealed':
     case undefined:
       return undefined;
   }

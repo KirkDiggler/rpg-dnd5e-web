@@ -1,10 +1,19 @@
 import { create } from '@bufbuild/protobuf';
 import {
+  ActivatedSchema,
+  ActivationResultSchema,
+  CapacityGrantedSchema,
+  ConditionAppliedSchema,
+  ConditionRemovedSchema,
   DownedSchema,
   EventKind,
   EventSchema,
+  HealingAppliedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import { DamageType } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  AbilityRefSchema,
+  DamageType,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
 import {
@@ -26,6 +35,65 @@ function visible(
   source: CombatStoryFact['source'] = 'live'
 ): CombatStoryFact {
   return { event, source, visible: true };
+}
+
+function activated(seq = 24n) {
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    at: 10n,
+    recipient: 'aldric',
+    kind: EventKind.ACTIVATED,
+    body: {
+      case: 'activated',
+      value: create(ActivatedSchema, {
+        actor: 'aldric',
+        ability: create(AbilityRefSchema, {
+          ref: 'dnd5e:features:second-wind',
+          name: 'Second Wind',
+        }),
+        target: 'aldric',
+      }),
+    },
+  });
+}
+
+function healingResult(
+  modifier: number,
+  requested: number,
+  seq = 25n,
+  roll = 6,
+  amount = 2,
+  hpBefore = 8,
+  hpAfter = 10
+) {
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    at: 10n,
+    recipient: 'aldric',
+    kind: EventKind.ACTIVATION_RESULT,
+    body: {
+      case: 'activationResult',
+      value: create(ActivationResultSchema, {
+        actor: 'aldric',
+        result: {
+          case: 'healingApplied',
+          value: create(HealingAppliedSchema, {
+            target: 'aldric',
+            amount,
+            requested,
+            roll,
+            modifier,
+            sourceRef: 'dnd5e:features:second-wind',
+            sourceName: 'Second Wind',
+            hpBefore,
+            hpAfter,
+          }),
+        },
+      }),
+    },
+  });
 }
 
 describe('typed combat Story', () => {
@@ -91,6 +159,154 @@ describe('typed combat Story', () => {
     expect(entry?.detail).toBe('d20 3 · total 8 against AC 13 · Miss');
     expect(outcome).not.toHaveProperty('damage');
     expect(outcome?.hit).toBe(false);
+  });
+
+  it('renders Activated and each healing result as ordered separate entries with applied HP and positive arithmetic', () => {
+    const activation = activated();
+    const healing = healingResult(1, 7);
+    activation.payload = new TextEncoder().encode('Use Parsed Ref Name');
+    healing.payload = new TextEncoder().encode('Heal 999 HP');
+
+    const story = buildCombatStory(
+      [visible(activation), visible(healing)],
+      context
+    );
+
+    expect(story.map((entry) => entry.headline)).toEqual([
+      'Aldric uses Second Wind',
+      'Aldric recovers 2 HP',
+    ]);
+    expect(story[1]?.detail).toBe(
+      'Second Wind rolled 6 + 1 = 7; 2 applied (8 → 10 HP).'
+    );
+    expect(JSON.stringify(story)).not.toMatch(/Parsed Ref|999/);
+  });
+
+  it.each([
+    {
+      label: 'negative',
+      modifier: -1,
+      requested: 5,
+      detail: 'Second Wind rolled 6 - 1 = 5; 2 applied (8 → 10 HP).',
+    },
+    {
+      label: 'zero',
+      modifier: 0,
+      requested: 6,
+      detail: 'Second Wind rolled 6 = 6; 2 applied (8 → 10 HP).',
+    },
+  ])(
+    'formats $label healing modifiers without invalid signed prose',
+    (test) => {
+      const [entry] = buildCombatStory(
+        [visible(healingResult(test.modifier, test.requested))],
+        context
+      );
+
+      expect(entry?.detail).toBe(test.detail);
+      expect(entry?.detail).not.toContain('+ -');
+    }
+  );
+
+  it('keeps nonzero roll arithmetic when authoritative clamping applies zero healing', () => {
+    const [entry] = buildCombatStory(
+      [visible(healingResult(1, 7, 25n, 6, 0, 10, 10))],
+      context
+    );
+
+    expect(entry?.headline).toBe('Aldric recovers 0 HP');
+    expect(entry?.detail).toBe(
+      'Second Wind rolled 6 + 1 = 7; 0 applied (10 → 10 HP).'
+    );
+  });
+
+  it('omits healing arithmetic only when both raw roll inputs are zero', () => {
+    const [entry] = buildCombatStory(
+      [visible(healingResult(0, 0, 25n, 0))],
+      context
+    );
+
+    expect(entry?.detail).toBe('Second Wind; 2 applied (8 → 10 HP).');
+  });
+
+  it('renders every non-healing activation result from its typed provider fields', () => {
+    const conditionApplied = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 26n,
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: create(ActivationResultSchema, {
+          actor: 'aldric',
+          result: {
+            case: 'conditionApplied',
+            value: create(ConditionAppliedSchema, {
+              target: 'aldric',
+              ref: 'dnd5e:conditions:raging',
+              name: 'Raging',
+            }),
+          },
+        }),
+      },
+    });
+    const conditionRemoved = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 27n,
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: create(ActivationResultSchema, {
+          actor: 'aldric',
+          result: {
+            case: 'conditionRemoved',
+            value: create(ConditionRemovedSchema, {
+              target: 'skeleton-guard',
+              ref: 'module:condition:provider-slug',
+              name: 'Provider Ward',
+              reason: 'the ward expired',
+            }),
+          },
+        }),
+      },
+    });
+    const capacity = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 28n,
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: create(ActivationResultSchema, {
+          actor: 'aldric',
+          result: {
+            case: 'capacityGranted',
+            value: create(CapacityGrantedSchema, {
+              member: 'aldric',
+              description: '30ft movement',
+            }),
+          },
+        }),
+      },
+    });
+
+    const story = buildCombatStory(
+      [visible(conditionApplied), visible(conditionRemoved), visible(capacity)],
+      context
+    );
+
+    expect(story).toMatchObject([
+      {
+        headline: 'Aldric begins Raging',
+      },
+      {
+        headline: 'Skeleton Guard is no longer Provider Ward',
+        detail: 'the ward expired',
+      },
+      {
+        headline: 'Aldric gains capacity',
+        detail: '30ft movement',
+      },
+    ]);
+    expect(JSON.stringify(story)).not.toContain('provider-slug');
   });
 
   it('omits a buffered actor event rather than falling back to payload prose', () => {

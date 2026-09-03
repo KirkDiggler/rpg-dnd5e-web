@@ -202,6 +202,78 @@ export function formatDebugLine(
           `roll=${b.roll} total=${b.total} against=${b.against} ${attackText(b.attack)}`,
       };
     }
+    case 'activated': {
+      const b = event.body.value;
+      const target = b.target ? ` target=${name(b.target)}` : ' target=';
+      return {
+        seq,
+        ids: b.target ? [b.actor, b.target] : [b.actor],
+        text:
+          `${prefix} activated actor=${name(b.actor)} ` +
+          `ability.ref=${b.ability?.ref ?? '?'} ability.name=${b.ability ? `"${b.ability.name}"` : '?'}${target}`,
+      };
+    }
+    case 'activationResult': {
+      const b = event.body.value;
+      const actor = `${prefix} activation_result actor=${name(b.actor)}`;
+      switch (b.result.case) {
+        case 'healingApplied': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.target],
+            text:
+              `${actor} result=healing_applied target=${name(result.target)} ` +
+              `amount=${result.amount} requested=${result.requested} ` +
+              `roll=${result.roll} modifier=${result.modifier} ` +
+              `hp.before=${result.hpBefore} hp.after=${result.hpAfter} ` +
+              `source.ref=${result.sourceRef} source.name="${result.sourceName}"`,
+          };
+        }
+        case 'conditionApplied': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.target],
+            text:
+              `${actor} result=condition_applied target=${name(result.target)} ` +
+              `condition.ref=${result.ref} condition.name="${result.name}"`,
+          };
+        }
+        case 'conditionRemoved': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.target],
+            text:
+              `${actor} result=condition_removed target=${name(result.target)} ` +
+              `condition.ref=${result.ref} condition.name="${result.name}" ` +
+              `reason="${result.reason}"`,
+          };
+        }
+        case 'capacityGranted': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.member],
+            text:
+              `${actor} result=capacity_granted member=${name(result.member)} ` +
+              `description="${result.description}"`,
+          };
+        }
+        case undefined:
+          return {
+            seq,
+            ids: [b.actor],
+            text: `${actor} result=none`,
+          };
+      }
+      return {
+        seq,
+        ids: [b.actor],
+        text: `${actor} result=unknown body=${safeJson(b.result)}`,
+      };
+    }
     case 'downed': {
       const b = event.body.value;
       return {

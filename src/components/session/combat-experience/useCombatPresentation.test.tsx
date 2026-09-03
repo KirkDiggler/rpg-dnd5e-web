@@ -6,10 +6,17 @@ import { createDicePresentationRelease } from '@/components/ui/dice/dicePresenta
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { create } from '@bufbuild/protobuf';
 import {
+  ActivatedSchema,
+  ActivationResultSchema,
+  CapacityGrantedSchema,
+  ConditionAppliedSchema,
+  ConditionRemovedSchema,
   EventKind,
   EventSchema,
+  HealingAppliedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
+  AbilityRefSchema,
   MemberKind,
   ParticipantSchema,
   Standing,
@@ -66,6 +73,53 @@ function StrictWrapper({ children }: PropsWithChildren) {
 const unsafeSemanticFacts = createAttackAuthorityFixture({
   session: `unsafe-${'x'.repeat(140)}`,
 });
+
+function activatedEvent(kind = EventKind.ACTIVATED, seq = 24n) {
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    kind,
+    body: {
+      case: 'activated',
+      value: create(ActivatedSchema, {
+        actor: 'aldric',
+        ability: create(AbilityRefSchema, {
+          ref: 'dnd5e:features:second-wind',
+          name: 'Second Wind',
+        }),
+        target: 'aldric',
+      }),
+    },
+  });
+}
+
+function healingResultEvent(amount = 2, seq = 25n) {
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    kind: EventKind.ACTIVATION_RESULT,
+    body: {
+      case: 'activationResult',
+      value: create(ActivationResultSchema, {
+        actor: 'aldric',
+        result: {
+          case: 'healingApplied',
+          value: create(HealingAppliedSchema, {
+            target: 'aldric',
+            amount,
+            requested: 7,
+            roll: 6,
+            modifier: 1,
+            sourceRef: 'dnd5e:features:second-wind',
+            sourceName: 'Second Wind',
+            hpBefore: 8,
+            hpAfter: 10,
+          }),
+        },
+      }),
+    },
+  });
+}
 
 function SemanticFallbackHarness() {
   const presentation = useCombatPresentation({
@@ -276,6 +330,230 @@ describe('useCombatPresentation', () => {
     expect(result.current.diceEvents).toEqual([]);
     expect(result.current.diceWitnessRole).toBe('spectator');
     expect(result.current.phase).toBe('fresh');
+  });
+
+  it('accepts Activated and ActivationResult through live/catch-up presentation as ordered separate Story and Debug entries', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(activatedEvent(), { source: 'live' })
+    );
+    act(() =>
+      result.current.acceptStreamEvent(healingResultEvent(), {
+        source: 'catchup',
+      })
+    );
+
+    expect(result.current.story.map((entry) => entry.headline)).toEqual([
+      'Aldric uses Second Wind',
+      'Aldric recovers 2 HP',
+    ]);
+    expect(result.current.debug).toHaveLength(2);
+    expect(result.current.debug[0]).toContain('activated actor=Aldric');
+    expect(result.current.debug[1]).toContain(
+      'activation_result actor=Aldric result=healing_applied'
+    );
+    expect(result.current.liveAnnouncement).toBeNull();
+  });
+
+  it('admits every generated ActivationResult body case through the shared presentation reducer', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+    const resultEvents = [
+      healingResultEvent(2, 31n),
+      create(EventSchema, {
+        session: 'crypt-run',
+        seq: 32n,
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: create(ActivationResultSchema, {
+            actor: 'aldric',
+            result: {
+              case: 'conditionApplied',
+              value: create(ConditionAppliedSchema, {
+                target: 'aldric',
+                ref: 'dnd5e:conditions:raging',
+                name: 'Raging',
+              }),
+            },
+          }),
+        },
+      }),
+      create(EventSchema, {
+        session: 'crypt-run',
+        seq: 33n,
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: create(ActivationResultSchema, {
+            actor: 'aldric',
+            result: {
+              case: 'conditionRemoved',
+              value: create(ConditionRemovedSchema, {
+                target: 'skeleton-guard',
+                ref: 'provider:condition:ward',
+                name: 'Provider Ward',
+                reason: 'the ward expired',
+              }),
+            },
+          }),
+        },
+      }),
+      create(EventSchema, {
+        session: 'crypt-run',
+        seq: 34n,
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: create(ActivationResultSchema, {
+            actor: 'aldric',
+            result: {
+              case: 'capacityGranted',
+              value: create(CapacityGrantedSchema, {
+                member: 'aldric',
+                description: '30ft movement',
+              }),
+            },
+          }),
+        },
+      }),
+    ];
+
+    for (const [index, event] of resultEvents.entries()) {
+      act(() =>
+        result.current.acceptStreamEvent(event, {
+          source: index % 2 === 0 ? 'live' : 'catchup',
+        })
+      );
+    }
+
+    expect(result.current.story.map((entry) => entry.headline)).toEqual([
+      'Aldric recovers 2 HP',
+      'Aldric begins Raging',
+      'Skeleton Guard is no longer Provider Ward',
+      'Aldric gains capacity',
+    ]);
+    expect(result.current.debug).toEqual([
+      expect.stringContaining('result=healing_applied'),
+      expect.stringContaining('result=condition_applied'),
+      expect.stringContaining('result=condition_removed'),
+      expect.stringContaining('result=capacity_granted'),
+    ]);
+    expect(result.current.state.identities).toHaveLength(4);
+    expect(
+      result.current.state.identities.every(
+        (identity) => identity.category === 'other' && !identity.conflicted
+      )
+    ).toBe(true);
+  });
+
+  it('rejects activation kind/body mismatches and conflicts on differing same-key typed result facts', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(
+        activatedEvent(EventKind.ACTIVATION_RESULT, 26n),
+        { source: 'live' }
+      )
+    );
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.identities).toEqual([]);
+    expect(result.current.state.diagnostics.at(-1)).toContain(
+      'kind/body mismatch'
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(
+        create(EventSchema, {
+          session: 'crypt-run',
+          seq: 27n,
+          kind: EventKind.ACTIVATED,
+        }),
+        { source: 'catchup' }
+      )
+    );
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.identities).toEqual([]);
+    expect(result.current.state.diagnostics.at(-1)).toContain(
+      'kind/body mismatch'
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(healingResultEvent(), { source: 'live' })
+    );
+    const conflicting = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 25n,
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: create(ActivationResultSchema, {
+          actor: 'aldric',
+          result: {
+            case: 'conditionApplied',
+            value: create(ConditionAppliedSchema, {
+              target: 'aldric',
+              ref: 'dnd5e:conditions:raging',
+              name: 'Raging',
+            }),
+          },
+        }),
+      },
+    });
+    act(() =>
+      result.current.acceptStreamEvent(conflicting, { source: 'catchup' })
+    );
+
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.identities[0]?.conflicted).toBe(true);
+    expect(result.current.state.diagnostics.at(-1)).toContain(
+      'conflicting typed facts'
+    );
+  });
+
+  it('keeps a genuinely unknown bodyless kind on the raw Debug path without inventing Story', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+    const unknown = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 30n,
+      kind: EventKind.UNKNOWN,
+      payload: new Uint8Array([1, 2, 3]),
+    });
+
+    act(() => result.current.acceptStreamEvent(unknown, { source: 'catchup' }));
+
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.identities).toMatchObject([
+      { category: 'other', conflicted: false },
+    ]);
+    expect(result.current.debug).toEqual([
+      'seq=30 clock=0 kind=UNKNOWN body=null source=catchup',
+    ]);
+    expect(result.current.state.diagnostics).toEqual([]);
   });
 
   it('uses stable public-roster roles and lets roster names win when they arrive after the hook mounts', () => {
