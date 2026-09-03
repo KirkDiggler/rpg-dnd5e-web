@@ -6,10 +6,17 @@ import { createDicePresentationRelease } from '@/components/ui/dice/dicePresenta
 import { createNeutralVisualThrowProfile } from '@/components/ui/dice/visualThrowProfile';
 import { create } from '@bufbuild/protobuf';
 import {
+  ActivatedSchema,
+  ActivationResultSchema,
+  CapacityGrantedSchema,
+  ConditionAppliedSchema,
+  ConditionRemovedSchema,
   EventKind,
   EventSchema,
+  HealingAppliedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
+  AbilityRefSchema,
   MemberKind,
   ParticipantSchema,
   Standing,
@@ -66,6 +73,218 @@ function StrictWrapper({ children }: PropsWithChildren) {
 const unsafeSemanticFacts = createAttackAuthorityFixture({
   session: `unsafe-${'x'.repeat(140)}`,
 });
+
+interface ActivatedFixtureOverrides {
+  actor: string;
+  abilityRef: string;
+  abilityName: string;
+  target: string;
+}
+
+function activatedEvent(
+  kind = EventKind.ACTIVATED,
+  seq = 24n,
+  overrides: Partial<ActivatedFixtureOverrides> = {}
+) {
+  const fixture = {
+    actor: 'aldric',
+    abilityRef: 'dnd5e:features:second_wind',
+    abilityName: 'Second Wind',
+    target: '',
+    ...overrides,
+  };
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    kind,
+    body: {
+      case: 'activated',
+      value: create(ActivatedSchema, {
+        actor: fixture.actor,
+        ability: create(AbilityRefSchema, {
+          ref: fixture.abilityRef,
+          name: fixture.abilityName,
+        }),
+        target: fixture.target,
+      }),
+    },
+  });
+}
+
+interface HealingFixtureOverrides {
+  actor: string;
+  target: string;
+  amount: number;
+  requested: number;
+  roll: number;
+  modifier: number;
+  sourceRef: string;
+  sourceName: string;
+  hpBefore: number;
+  hpAfter: number;
+}
+
+function healingResultEvent(
+  amount = 2,
+  seq = 25n,
+  overrides: Partial<HealingFixtureOverrides> = {}
+) {
+  const fixture = {
+    actor: 'aldric',
+    target: 'aldric',
+    amount,
+    requested: 7,
+    roll: 6,
+    modifier: 1,
+    sourceRef: 'dnd5e:features:second_wind',
+    sourceName: 'Second Wind',
+    hpBefore: 8,
+    hpAfter: 10,
+    ...overrides,
+  };
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    kind: EventKind.ACTIVATION_RESULT,
+    body: {
+      case: 'activationResult',
+      value: create(ActivationResultSchema, {
+        actor: fixture.actor,
+        result: {
+          case: 'healingApplied',
+          value: create(HealingAppliedSchema, {
+            target: fixture.target,
+            amount: fixture.amount,
+            requested: fixture.requested,
+            roll: fixture.roll,
+            modifier: fixture.modifier,
+            sourceRef: fixture.sourceRef,
+            sourceName: fixture.sourceName,
+            hpBefore: fixture.hpBefore,
+            hpAfter: fixture.hpAfter,
+          }),
+        },
+      }),
+    },
+  });
+}
+
+interface ConditionAppliedFixtureOverrides {
+  actor: string;
+  target: string;
+  ref: string;
+  name: string;
+}
+
+function conditionAppliedResultEvent(
+  overrides: Partial<ConditionAppliedFixtureOverrides> = {},
+  seq = 26n
+) {
+  const fixture = {
+    actor: 'aldric',
+    target: 'aldric',
+    ref: 'dnd5e:conditions:raging',
+    name: 'Raging',
+    ...overrides,
+  };
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    kind: EventKind.ACTIVATION_RESULT,
+    body: {
+      case: 'activationResult',
+      value: create(ActivationResultSchema, {
+        actor: fixture.actor,
+        result: {
+          case: 'conditionApplied',
+          value: create(ConditionAppliedSchema, {
+            target: fixture.target,
+            ref: fixture.ref,
+            name: fixture.name,
+          }),
+        },
+      }),
+    },
+  });
+}
+
+interface ConditionRemovedFixtureOverrides {
+  actor: string;
+  target: string;
+  ref: string;
+  name: string;
+  reason: string;
+}
+
+function conditionRemovedResultEvent(
+  overrides: Partial<ConditionRemovedFixtureOverrides> = {},
+  seq = 27n
+) {
+  const fixture = {
+    actor: 'aldric',
+    target: 'skeleton-guard',
+    ref: 'dnd5e:conditions:raging',
+    name: 'Raging',
+    reason: 'expired',
+    ...overrides,
+  };
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    kind: EventKind.ACTIVATION_RESULT,
+    body: {
+      case: 'activationResult',
+      value: create(ActivationResultSchema, {
+        actor: fixture.actor,
+        result: {
+          case: 'conditionRemoved',
+          value: create(ConditionRemovedSchema, {
+            target: fixture.target,
+            ref: fixture.ref,
+            name: fixture.name,
+            reason: fixture.reason,
+          }),
+        },
+      }),
+    },
+  });
+}
+
+interface CapacityFixtureOverrides {
+  actor: string;
+  member: string;
+  description: string;
+}
+
+function capacityResultEvent(
+  overrides: Partial<CapacityFixtureOverrides> = {},
+  seq = 28n
+) {
+  const fixture = {
+    actor: 'aldric',
+    member: 'aldric',
+    description: '30ft movement',
+    ...overrides,
+  };
+  return create(EventSchema, {
+    session: 'crypt-run',
+    seq,
+    kind: EventKind.ACTIVATION_RESULT,
+    body: {
+      case: 'activationResult',
+      value: create(ActivationResultSchema, {
+        actor: fixture.actor,
+        result: {
+          case: 'capacityGranted',
+          value: create(CapacityGrantedSchema, {
+            member: fixture.member,
+            description: fixture.description,
+          }),
+        },
+      }),
+    },
+  });
+}
 
 function SemanticFallbackHarness() {
   const presentation = useCombatPresentation({
@@ -276,6 +495,440 @@ describe('useCombatPresentation', () => {
     expect(result.current.diceEvents).toEqual([]);
     expect(result.current.diceWitnessRole).toBe('spectator');
     expect(result.current.phase).toBe('fresh');
+  });
+
+  it('accepts Activated and ActivationResult through live/catch-up presentation as ordered separate Story and Debug entries', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(activatedEvent(), { source: 'live' })
+    );
+    act(() =>
+      result.current.acceptStreamEvent(healingResultEvent(), {
+        source: 'catchup',
+      })
+    );
+
+    expect(result.current.story.map((entry) => entry.headline)).toEqual([
+      'Aldric uses Second Wind',
+      'Aldric recovers 2 HP',
+    ]);
+    expect(result.current.debug).toHaveLength(2);
+    expect(result.current.debug[0]).toContain('activated actor=Aldric');
+    expect(result.current.debug[1]).toContain(
+      'activation_result actor=Aldric result=healing_applied'
+    );
+    expect(result.current.liveAnnouncement).toBeNull();
+  });
+
+  it('admits every generated ActivationResult body case through the shared presentation reducer', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+    const resultEvents = [
+      healingResultEvent(2, 31n),
+      create(EventSchema, {
+        session: 'crypt-run',
+        seq: 32n,
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: create(ActivationResultSchema, {
+            actor: 'aldric',
+            result: {
+              case: 'conditionApplied',
+              value: create(ConditionAppliedSchema, {
+                target: 'aldric',
+                ref: 'dnd5e:conditions:raging',
+                name: 'Raging',
+              }),
+            },
+          }),
+        },
+      }),
+      create(EventSchema, {
+        session: 'crypt-run',
+        seq: 33n,
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: create(ActivationResultSchema, {
+            actor: 'aldric',
+            result: {
+              case: 'conditionRemoved',
+              value: create(ConditionRemovedSchema, {
+                target: 'skeleton-guard',
+                ref: 'provider:condition:ward',
+                name: 'Provider Ward',
+                reason: 'the ward expired',
+              }),
+            },
+          }),
+        },
+      }),
+      create(EventSchema, {
+        session: 'crypt-run',
+        seq: 34n,
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: create(ActivationResultSchema, {
+            actor: 'aldric',
+            result: {
+              case: 'capacityGranted',
+              value: create(CapacityGrantedSchema, {
+                member: 'aldric',
+                description: '30ft movement',
+              }),
+            },
+          }),
+        },
+      }),
+    ];
+
+    for (const [index, event] of resultEvents.entries()) {
+      act(() =>
+        result.current.acceptStreamEvent(event, {
+          source: index % 2 === 0 ? 'live' : 'catchup',
+        })
+      );
+    }
+
+    expect(result.current.story.map((entry) => entry.headline)).toEqual([
+      'Aldric recovers 2 HP',
+      'Aldric begins Raging',
+      'Skeleton Guard is no longer Provider Ward',
+      'Aldric gains capacity',
+    ]);
+    expect(result.current.debug).toEqual([
+      expect.stringContaining('result=healing_applied'),
+      expect.stringContaining('result=condition_applied'),
+      expect.stringContaining('result=condition_removed'),
+      expect.stringContaining('result=capacity_granted'),
+    ]);
+    expect(result.current.state.identities).toHaveLength(4);
+    expect(
+      result.current.state.identities.every(
+        (identity) => identity.category === 'other' && !identity.conflicted
+      )
+    ).toBe(true);
+  });
+
+  it('rejects activation kind/body mismatches and conflicts on differing same-key typed result facts', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(
+        activatedEvent(EventKind.ACTIVATION_RESULT, 26n),
+        { source: 'live' }
+      )
+    );
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.identities).toEqual([]);
+    expect(result.current.state.diagnostics.at(-1)).toContain(
+      'kind/body mismatch'
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(
+        create(EventSchema, {
+          session: 'crypt-run',
+          seq: 27n,
+          kind: EventKind.ACTIVATED,
+        }),
+        { source: 'catchup' }
+      )
+    );
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.identities).toEqual([]);
+    expect(result.current.state.diagnostics.at(-1)).toContain(
+      'kind/body mismatch'
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(healingResultEvent(), { source: 'live' })
+    );
+    const conflicting = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 25n,
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: create(ActivationResultSchema, {
+          actor: 'aldric',
+          result: {
+            case: 'conditionApplied',
+            value: create(ConditionAppliedSchema, {
+              target: 'aldric',
+              ref: 'dnd5e:conditions:raging',
+              name: 'Raging',
+            }),
+          },
+        }),
+      },
+    });
+    act(() =>
+      result.current.acceptStreamEvent(conflicting, { source: 'catchup' })
+    );
+
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.identities[0]?.conflicted).toBe(true);
+    expect(result.current.state.diagnostics.at(-1)).toContain(
+      'conflicting typed facts'
+    );
+  });
+
+  it.each([
+    {
+      label: 'Activated actor',
+      original: () => activatedEvent(),
+      changed: () =>
+        activatedEvent(EventKind.ACTIVATED, 24n, {
+          actor: 'skeleton-guard',
+        }),
+    },
+    {
+      label: 'Activated ability ref',
+      original: () => activatedEvent(),
+      changed: () =>
+        activatedEvent(EventKind.ACTIVATED, 24n, {
+          abilityRef: 'provider:feature:changed',
+        }),
+    },
+    {
+      label: 'Activated ability name',
+      original: () => activatedEvent(),
+      changed: () =>
+        activatedEvent(EventKind.ACTIVATED, 24n, {
+          abilityName: 'Changed ability',
+        }),
+    },
+    {
+      label: 'Activated target',
+      original: () => activatedEvent(),
+      changed: () =>
+        activatedEvent(EventKind.ACTIVATED, 24n, {
+          target: 'skeleton-guard',
+        }),
+    },
+    {
+      label: 'HealingApplied actor',
+      original: () => healingResultEvent(),
+      changed: () => healingResultEvent(2, 25n, { actor: 'skeleton-guard' }),
+    },
+    {
+      label: 'HealingApplied target',
+      original: () => healingResultEvent(),
+      changed: () => healingResultEvent(2, 25n, { target: 'skeleton-guard' }),
+    },
+    {
+      label: 'HealingApplied amount',
+      original: () => healingResultEvent(),
+      changed: () => healingResultEvent(3),
+    },
+    {
+      label: 'HealingApplied requested',
+      original: () => healingResultEvent(),
+      changed: () => healingResultEvent(2, 25n, { requested: 8 }),
+    },
+    {
+      label: 'HealingApplied roll',
+      original: () => healingResultEvent(),
+      changed: () => healingResultEvent(2, 25n, { roll: 5 }),
+    },
+    {
+      label: 'HealingApplied modifier',
+      original: () => healingResultEvent(),
+      changed: () => healingResultEvent(2, 25n, { modifier: 2 }),
+    },
+    {
+      label: 'HealingApplied source ref',
+      original: () => healingResultEvent(),
+      changed: () =>
+        healingResultEvent(2, 25n, {
+          sourceRef: 'provider:feature:changed',
+        }),
+    },
+    {
+      label: 'HealingApplied source name',
+      original: () => healingResultEvent(),
+      changed: () =>
+        healingResultEvent(2, 25n, { sourceName: 'Changed source' }),
+    },
+    {
+      label: 'HealingApplied hpBefore',
+      original: () => healingResultEvent(),
+      changed: () => healingResultEvent(2, 25n, { hpBefore: 7 }),
+    },
+    {
+      label: 'HealingApplied hpAfter',
+      original: () => healingResultEvent(),
+      changed: () => healingResultEvent(2, 25n, { hpAfter: 9 }),
+    },
+    {
+      label: 'ConditionApplied actor',
+      original: () => conditionAppliedResultEvent(),
+      changed: () => conditionAppliedResultEvent({ actor: 'skeleton-guard' }),
+    },
+    {
+      label: 'ConditionApplied target',
+      original: () => conditionAppliedResultEvent(),
+      changed: () => conditionAppliedResultEvent({ target: 'skeleton-guard' }),
+    },
+    {
+      label: 'ConditionApplied ref',
+      original: () => conditionAppliedResultEvent(),
+      changed: () =>
+        conditionAppliedResultEvent({ ref: 'provider:condition:changed' }),
+    },
+    {
+      label: 'ConditionApplied name',
+      original: () => conditionAppliedResultEvent(),
+      changed: () => conditionAppliedResultEvent({ name: 'Changed condition' }),
+    },
+    {
+      label: 'ConditionRemoved actor',
+      original: () => conditionRemovedResultEvent(),
+      changed: () => conditionRemovedResultEvent({ actor: 'skeleton-guard' }),
+    },
+    {
+      label: 'ConditionRemoved target',
+      original: () => conditionRemovedResultEvent(),
+      changed: () => conditionRemovedResultEvent({ target: 'aldric' }),
+    },
+    {
+      label: 'ConditionRemoved ref',
+      original: () => conditionRemovedResultEvent(),
+      changed: () =>
+        conditionRemovedResultEvent({ ref: 'provider:condition:changed' }),
+    },
+    {
+      label: 'ConditionRemoved name',
+      original: () => conditionRemovedResultEvent(),
+      changed: () => conditionRemovedResultEvent({ name: 'Changed condition' }),
+    },
+    {
+      label: 'ConditionRemoved reason',
+      original: () => conditionRemovedResultEvent(),
+      changed: () => conditionRemovedResultEvent({ reason: 'changed reason' }),
+    },
+    {
+      label: 'CapacityGranted actor',
+      original: () => capacityResultEvent(),
+      changed: () => capacityResultEvent({ actor: 'skeleton-guard' }),
+    },
+    {
+      label: 'CapacityGranted member',
+      original: () => capacityResultEvent(),
+      changed: () => capacityResultEvent({ member: 'skeleton-guard' }),
+    },
+    {
+      label: 'CapacityGranted description',
+      original: () => capacityResultEvent(),
+      changed: () => capacityResultEvent({ description: 'changed capacity' }),
+    },
+  ])(
+    '$label mutation conflicts and suppresses Story for the duplicate identity',
+    ({ original, changed }) => {
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() =>
+        result.current.acceptStreamEvent(original(), { source: 'live' })
+      );
+      expect(result.current.story).toHaveLength(1);
+
+      act(() =>
+        result.current.acceptStreamEvent(changed(), { source: 'catchup' })
+      );
+
+      expect(result.current.story).toEqual([]);
+      expect(result.current.state.identities).toMatchObject([
+        { category: 'other', conflicted: true },
+      ]);
+      expect(result.current.state.diagnostics.at(-1)).toContain(
+        'conflicting typed facts'
+      );
+    }
+  );
+
+  it.each([
+    { label: 'Activated', event: () => activatedEvent() },
+    { label: 'HealingApplied', event: () => healingResultEvent() },
+    { label: 'ConditionApplied', event: () => conditionAppliedResultEvent() },
+    { label: 'ConditionRemoved', event: () => conditionRemovedResultEvent() },
+    { label: 'CapacityGranted', event: () => capacityResultEvent() },
+  ])(
+    '$label exact duplicates remain non-conflicted and deduplicated',
+    ({ event }) => {
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() => result.current.acceptStreamEvent(event(), { source: 'live' }));
+      act(() =>
+        result.current.acceptStreamEvent(event(), { source: 'catchup' })
+      );
+
+      expect(result.current.story).toHaveLength(1);
+      expect(result.current.state.otherStory).toHaveLength(1);
+      expect(result.current.state.identities).toMatchObject([
+        { category: 'other', conflicted: false },
+      ]);
+      expect(result.current.state.diagnostics).toEqual([]);
+    }
+  );
+
+  it('keeps a genuinely unknown bodyless kind on the raw Debug path without inventing Story', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+    const unknown = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 30n,
+      kind: EventKind.UNKNOWN,
+      payload: new Uint8Array([1, 2, 3]),
+    });
+
+    act(() => result.current.acceptStreamEvent(unknown, { source: 'catchup' }));
+
+    expect(result.current.story).toEqual([]);
+    expect(result.current.state.identities).toMatchObject([
+      { category: 'other', conflicted: false },
+    ]);
+    expect(result.current.debug).toEqual([
+      'seq=30 clock=0 kind=UNKNOWN body=null source=catchup',
+    ]);
+    expect(result.current.state.diagnostics).toEqual([]);
   });
 
   it('uses stable public-roster roles and lets roster names win when they arrive after the hook mounts', () => {

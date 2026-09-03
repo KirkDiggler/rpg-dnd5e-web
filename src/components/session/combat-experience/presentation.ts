@@ -745,6 +745,8 @@ const EXPECTED_OTHER_KIND = {
   door: EventKind.DOOR,
   doorRevealed: EventKind.DOOR_REVEALED,
   regionRevealed: EventKind.REGION_REVEALED,
+  activated: EventKind.ACTIVATED,
+  activationResult: EventKind.ACTIVATION_RESULT,
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -759,6 +761,8 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.DOOR,
   EventKind.STRUCK,
   EventKind.MISSED,
+  EventKind.ACTIVATED,
+  EventKind.ACTIVATION_RESULT,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -832,6 +836,73 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         total: event.body.value.total,
         beaten: event.body.value.beaten,
       });
+    case 'activated':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        actor: event.body.value.actor,
+        ability: event.body.value.ability
+          ? Object.freeze({
+              ref: event.body.value.ability.ref,
+              name: event.body.value.ability.name,
+            })
+          : null,
+        target: event.body.value.target,
+      });
+    case 'activationResult': {
+      const activation = event.body.value;
+      switch (activation.result.case) {
+        case 'healingApplied':
+          return Object.freeze({
+            kind: event.kind,
+            bodyCase,
+            actor: activation.actor,
+            resultCase: activation.result.case,
+            target: activation.result.value.target,
+            amount: activation.result.value.amount,
+            requested: activation.result.value.requested,
+            roll: activation.result.value.roll,
+            modifier: activation.result.value.modifier,
+            sourceRef: activation.result.value.sourceRef,
+            sourceName: activation.result.value.sourceName,
+            hpBefore: activation.result.value.hpBefore,
+            hpAfter: activation.result.value.hpAfter,
+          });
+        case 'conditionApplied':
+          return Object.freeze({
+            kind: event.kind,
+            bodyCase,
+            actor: activation.actor,
+            resultCase: activation.result.case,
+            target: activation.result.value.target,
+            ref: activation.result.value.ref,
+            name: activation.result.value.name,
+          });
+        case 'conditionRemoved':
+          return Object.freeze({
+            kind: event.kind,
+            bodyCase,
+            actor: activation.actor,
+            resultCase: activation.result.case,
+            target: activation.result.value.target,
+            ref: activation.result.value.ref,
+            name: activation.result.value.name,
+            reason: activation.result.value.reason,
+          });
+        case 'capacityGranted':
+          return Object.freeze({
+            kind: event.kind,
+            bodyCase,
+            actor: activation.actor,
+            resultCase: activation.result.case,
+            member: activation.result.value.member,
+            description: activation.result.value.description,
+          });
+        case undefined:
+          return undefined;
+      }
+      return undefined;
+    }
     // DOOR_REVEALED / REGION_REVEALED carry no attack-adjacent facts this
     // presentation layer narrates today — the beat's job is done by the
     // atlas/doors refetch `SessionEncounterView.refreshKeysForEvent`

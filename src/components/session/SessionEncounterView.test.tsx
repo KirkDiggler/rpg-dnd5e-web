@@ -10,11 +10,15 @@ import {
   type DiceThrowPlan,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/presentation/v1alpha1/service_pb';
 import {
+  ActivatedSchema,
+  ActivationResultSchema,
   EventKind,
   EventSchema,
+  HealingAppliedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
+  AbilityRefSchema,
   AttackRefSchema,
   ClockKind,
   DamageType,
@@ -477,6 +481,41 @@ const turnEnded = () =>
     case: 'turnEnded',
     value: { member: 'skeleton-1', next: 'char-1' },
   } as SessionEvent['body']);
+
+const activated = () =>
+  event(EventKind.ACTIVATED, {
+    case: 'activated',
+    value: create(ActivatedSchema, {
+      actor: 'char-1',
+      ability: create(AbilityRefSchema, {
+        ref: 'dnd5e:features:second_wind',
+        name: 'Second Wind',
+      }),
+      target: '',
+    }),
+  });
+
+const activationResult = () =>
+  event(EventKind.ACTIVATION_RESULT, {
+    case: 'activationResult',
+    value: create(ActivationResultSchema, {
+      actor: 'char-1',
+      result: {
+        case: 'healingApplied',
+        value: create(HealingAppliedSchema, {
+          target: 'char-1',
+          amount: 2,
+          requested: 7,
+          roll: 6,
+          modifier: 1,
+          sourceRef: 'dnd5e:features:second_wind',
+          sourceName: 'Second Wind',
+          hpBefore: 8,
+          hpAfter: 10,
+        }),
+      },
+    }),
+  });
 
 describe('SessionEncounterView production combat integration', () => {
   it('shows a clear error when no character is bound', () => {
@@ -1780,6 +1819,52 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses only the unconditional Turn/Afford refresh for Activated', async () => {
+    readyTurn();
+    const live = deferredStream([activated()]);
+    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1)
+    );
+
+    live.release();
+
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    expect(hoisted.getViewFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
+    await waitFor(() => screen.getByText('Aldric uses Second Wind'));
+  });
+
+  it('refreshes CharacterData, Afford, and View for ActivationResult through the unconditional funnel', async () => {
+    readyTurn();
+    const live = deferredStream([activationResult()]);
+    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1)
+    );
+
+    live.release();
+
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+    await waitFor(() => screen.getByText('Aldric recovers 2 HP'));
   });
 
   it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation or raw Debug', async () => {
