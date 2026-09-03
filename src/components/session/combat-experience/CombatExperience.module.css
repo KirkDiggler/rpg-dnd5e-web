@@ -1608,6 +1608,43 @@ button.diceDrawerCue:focus-visible {
   }
 }
 
+/* Roll flash gets its OWN stack, ABOVE .damageToasts rather than sharing its
+   slot — Kirk: "the hit is overlapping the damage. I think they are separate
+   presentations." A single attack fires both at once (the roll flash on
+   settle, the damage toast on the same reveal for a hit), so sharing one
+   slot put them exactly on top of each other. Placed above rather than
+   beside: the roll causally precedes the damage it produces, so reading
+   top-to-bottom follows the same order the fight narrates it in, and it
+   keeps both centered on the same axis without splitting the width budget
+   at narrow viewports. The gap (top: 16px vs .damageToasts' 96px) comfortably
+   clears a multi-line damage toast stack underneath. */
+.rollFlashToasts {
+  position: absolute;
+  z-index: 6;
+  top: 16px;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.rollFlashToast {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid rgba(242, 196, 107, 0.4);
+  border-radius: 999px;
+  background: rgba(10, 17, 20, 0.88);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  animation: damageToastIn 160ms ease-out;
+  color: #d7e2e6;
+  font-size: 11px;
+}
+
 /* The slot that owns an offer: the button plus its tooltip and its sr-only
    description. The tooltip anchors HERE rather than inside the button, because
    `.actionOffer:disabled` sets opacity and that would wash out the card and
