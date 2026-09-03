@@ -222,10 +222,6 @@ function AppContent() {
     setCurrentView('home');
   };
 
-  const handleOpenConcepts = () => {
-    setCurrentView('concepts');
-  };
-
   const handleOpenAuthor = () => {
     setCurrentView('author');
   };
@@ -448,13 +444,6 @@ function AppContent() {
             style={{ zIndex: FEEL_LAB_LAYER_Z }}
             className="fixed bottom-48 right-4 flex gap-2"
           >
-            <button
-              onClick={handleOpenConcepts}
-              className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
-              title="Open Concepts Lab"
-            >
-              🧪
-            </button>
             <button
               onClick={() => setShowDebugPanel(!showDebugPanel)}
               className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"

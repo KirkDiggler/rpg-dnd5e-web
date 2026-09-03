@@ -171,29 +171,28 @@ describe('App running-encounter resume', () => {
 });
 
 describe('App global development tools', () => {
-  it('hides the controls and open Discord panel in Concepts, then restores them on Back', () => {
+  it('shows only the wrench — #906 round 5: Kirk, "we do not need the concepts lab in there"', () => {
     vi.stubEnv('MODE', 'development');
     render(<App />);
 
     expect(screen.getByText('Home View')).toBeTruthy();
-    const openConcepts = screen.getByTitle('Open Concepts Lab');
     expect(screen.getByTitle('Show Debug Panel')).toBeTruthy();
-
-    fireEvent.click(screen.getByTitle('Show Debug Panel'));
-    expect(screen.getByTitle('Hide Debug Panel')).toBeTruthy();
-    expect(screen.getByText('Discord Debug Panel')).toBeTruthy();
-
-    fireEvent.click(openConcepts);
-    expect(screen.getByRole('heading', { name: 'Concepts Lab' })).toBeTruthy();
     expect(screen.queryByTitle('Open Concepts Lab')).toBeNull();
-    expect(screen.queryByTitle('Hide Debug Panel')).toBeNull();
+    expect(screen.queryByText('🧪')).toBeNull();
+  });
+
+  it('hides the wrench in Concepts (reachable only via the ?concept= deep link now, not a button), then restores it on Back', () => {
+    vi.stubEnv('MODE', 'development');
+    window.history.pushState({}, '', '/?concept=some-concept');
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Concepts Lab' })).toBeTruthy();
+    expect(screen.queryByTitle('Show Debug Panel')).toBeNull();
     expect(screen.queryByText('Discord Debug Panel')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByText('Home View')).toBeTruthy();
-    expect(screen.getByTitle('Open Concepts Lab')).toBeTruthy();
-    expect(screen.getByTitle('Hide Debug Panel')).toBeTruthy();
-    expect(screen.getByText('Discord Debug Panel')).toBeTruthy();
+    expect(screen.getByTitle('Show Debug Panel')).toBeTruthy();
   });
 
   it('does not render global development tools in production', () => {
@@ -201,7 +200,6 @@ describe('App global development tools', () => {
     render(<App />);
 
     expect(screen.getByText('Home View')).toBeTruthy();
-    expect(screen.queryByTitle('Open Concepts Lab')).toBeNull();
     expect(screen.queryByTitle('Show Debug Panel')).toBeNull();
     expect(screen.queryByText('Discord Debug Panel')).toBeNull();
   });
