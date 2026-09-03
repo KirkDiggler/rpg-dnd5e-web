@@ -34,6 +34,8 @@
  * the close end affordable at all.
  */
 
+import { numberDial } from '@/utils/queryDial';
+
 /** Degrees → radians. Dials are authored in degrees; the camera wants radians. */
 const deg = (d: number): number => (d * Math.PI) / 180;
 
@@ -239,13 +241,9 @@ export function bandFollowsFocus(
   return band?.follow ?? true;
 }
 
-/** Finite-number query param, or null when absent/garbage. */
-function num(params: URLSearchParams, key: string): number | null {
-  const raw = params.get(key);
-  if (raw === null || raw.trim() === '') return null;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+/** Extracted to `src/utils/queryDial.ts` (#906) so diceDials.ts can parse
+ * `?dieScale=` the same way, without a second copy drifting from this one. */
+const num = numberDial;
 
 /**
  * Pure parser over a query string — the whole point of splitting this out of

@@ -29,6 +29,11 @@ import {
   type MutableRefObject,
 } from 'react';
 import { IcosahedronGeometry, Quaternion } from 'three';
+import {
+  localWorldDieDimensions,
+  readDiceDials,
+  type LocalWorldDieDimensions,
+} from './diceDials';
 import type { LocalWorldDieCollider } from './localWorldDieColliders';
 import {
   localWorldDieCommandTerminal,
@@ -49,8 +54,6 @@ export interface LocalWorldDieLayerProps {
 }
 
 const PRESET_ID = 'dice.original.carved.d20';
-const DIE_RADIUS = 0.275;
-const RESET_POSITION = Object.freeze([0, DUNGEON_SURFACE_Y + 0.75, 0] as const);
 const STATIC_POSE: DiceMotionPose = Object.freeze({
   quaternion: Object.freeze([0, 0, 0, 1] as const),
   translation: Object.freeze([0, 0, 0] as const),
@@ -111,6 +114,8 @@ function DieBody({
   source,
   target,
   scene,
+  dieScale,
+  dimensions,
   onBodyReady,
   onMeshReady,
   onTerminal,
@@ -119,6 +124,12 @@ function DieBody({
   readonly source: NonNullable<ReturnType<typeof runtimeSource>>;
   readonly target?: readonly [number, number, number, number];
   readonly scene: Scene3D;
+  /** Raw `?dieScale=` multiplier — passed straight through to
+   * `RuntimeDiceMesh`'s own `sizeScale` for the visual mesh/shadow, which
+   * are single local multiplications with nothing else to derive here (see
+   * diceDials.ts's own doc comment). */
+  readonly dieScale: number;
+  readonly dimensions: LocalWorldDieDimensions;
   readonly onBodyReady: () => void;
   readonly onMeshReady: () => void;
   readonly onTerminal: (kind: 'settled' | 'off-table' | 'failure') => void;
@@ -140,14 +151,26 @@ function DieBody({
     | undefined
   >(undefined);
   const [visible, setVisible] = useState(false);
+  // [x, y, z] rest position — `?dieScale=` (diceDials.ts) scales its height
+  // above the surface together with the hull/mesh/shadow, so a bigger die
+  // still sits ON the dungeon surface rather than floating or clipping into
+  // it. Memoized (like the old frozen module constant it replaces) so its
+  // reference stays stable across renders — `dieScale` never changes for the
+  // component's lifetime, but an unstable reference here would re-run the
+  // reset effect below, and re-apply the RigidBody's `position` prop, on
+  // every unrelated render.
+  const resetPosition = useMemo<readonly [number, number, number]>(
+    () => [0, DUNGEON_SURFACE_Y + dimensions.restHeightAboveSurface, 0],
+    [dimensions.restHeightAboveSurface]
+  );
   const hull = useMemo(() => {
-    const geometry = new IcosahedronGeometry(DIE_RADIUS, 0);
+    const geometry = new IcosahedronGeometry(dimensions.hullRadius, 0);
     const vertices = new Float32Array(
       geometry.getAttribute('position').array as ArrayLike<number>
     );
     geometry.dispose();
     return vertices;
-  }, []);
+  }, [dimensions.hullRadius]);
 
   useEffect(() => {
     if (bodyRef.current) onBodyReady();
@@ -192,7 +215,7 @@ function DieBody({
       setVisible(false);
       body.setBodyType(rapier.RigidBodyType.KinematicPositionBased, true);
       body.setTranslation(
-        { x: RESET_POSITION[0], y: RESET_POSITION[1], z: RESET_POSITION[2] },
+        { x: resetPosition[0], y: resetPosition[1], z: resetPosition[2] },
         true
       );
       body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
@@ -232,7 +255,7 @@ function DieBody({
     body.setLinvel(launch.linearVelocity, true);
     body.setAngvel(launch.angularVelocity, true);
     body.wakeUp();
-  }, [command, rapier.RigidBodyType]);
+  }, [command, rapier.RigidBodyType, resetPosition]);
 
   useAfterPhysicsStep(() => {
     const body = bodyRef.current;
@@ -307,7 +330,7 @@ function DieBody({
         ref={bodyRef}
         type="kinematicPosition"
         colliders={false}
-        position={RESET_POSITION}
+        position={resetPosition}
         restitution={0.48}
         friction={0.72}
         linearDamping={0.22}
@@ -325,6 +348,7 @@ function DieBody({
           onFailure={() => onTerminal('failure')}
           selectedGroupName="local-world-die-d20"
           shadowName="local-world-die-shadow"
+          sizeScale={dieScale}
         />
       </RigidBody>
     </group>
@@ -348,6 +372,13 @@ export function LocalWorldDieLayer({
   const [bodyReady, setBodyReady] = useState(false);
   const [meshReady, setMeshReady] = useState(false);
   const runtimeFailureReported = useRef(false);
+  // `?dieScale=` (diceDials.ts) — read once, like cameraDials.ts's own
+  // `readCameraDials()` call sites.
+  const dieScale = useMemo(() => readDiceDials().dieScale, []);
+  const dimensions = useMemo(
+    () => localWorldDieDimensions(dieScale),
+    [dieScale]
+  );
   const source = useMemo(() => runtimeSource(snapshot), [snapshot]);
   const target = useMemo(
     () =>
@@ -399,7 +430,11 @@ export function LocalWorldDieLayer({
   return (
     <>
       <TrayPlaneProjectionBridge
-        origin={[0, DUNGEON_SURFACE_Y + 0.75, 0]}
+        // Must agree with `resetPosition`'s own height inside DieBody below
+        // (same `dimensions.restHeightAboveSurface`) — otherwise the plane
+        // the player drags/throws on drifts from where the die actually
+        // sits once `?dieScale=` moves it.
+        origin={[0, DUNGEON_SURFACE_Y + dimensions.restHeightAboveSurface, 0]}
         xAxis={[1, 0, 0]}
         yAxis={[0, 0, 1]}
         width={200}
@@ -423,6 +458,8 @@ export function LocalWorldDieLayer({
             source={source}
             target={target}
             scene={scene}
+            dieScale={dieScale}
+            dimensions={dimensions}
             onBodyReady={() => setBodyReady(true)}
             onMeshReady={() => setMeshReady(true)}
             onTerminal={onTerminal}

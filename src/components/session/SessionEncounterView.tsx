@@ -62,6 +62,10 @@ import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
 import {
+  localWorldDieDimensions,
+  readDiceDials,
+} from './local-world-die/diceDials';
+import {
   createLocalWorldDieAttemptSnapshot,
   type LocalWorldDieAttemptSnapshot,
 } from './local-world-die/localWorldDieAttemptSnapshot';
@@ -727,6 +731,13 @@ function SessionEncounterScope({
       sessionId,
     ]
   );
+  // `?dieScale=` (diceDials.ts) — read once, same convention as
+  // LocalWorldDieLayer.tsx's own dieScale/dimensions; the no-drag "Roll"
+  // button below needs the same held-height default the drag gesture uses.
+  const localWorldDieDimensionsForNeutralRoll = useMemo(
+    () => localWorldDieDimensions(readDiceDials().dieScale),
+    []
+  );
   const runLocalWorldDieNeutralRoll = useCallback(() => {
     const origin = lastGoodPositionRef.current;
     if (!origin) return;
@@ -735,12 +746,19 @@ function SessionEncounterScope({
       ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
       : undefined;
     handleLocalWorldDieRelease(
-      { position: [world.x, world.z], height: 1.25 },
+      {
+        position: [world.x, world.z],
+        height: localWorldDieDimensionsForNeutralRoll.holdHeightDefault,
+      },
       createNeutralVisualThrowProfile(
         Number((authoritySeq ?? 0n) & 0xffff_ffffn)
       )
     );
-  }, [handleLocalWorldDieRelease, localWorldDieRequest]);
+  }, [
+    handleLocalWorldDieRelease,
+    localWorldDieRequest,
+    localWorldDieDimensionsForNeutralRoll,
+  ]);
   const handleLocalWorldDieRoll = useCallback(() => {
     if (!localWorldDieReady) {
       setLocalWorldDiePendingRoll(true);

@@ -1,4 +1,8 @@
 import type { Scene3D } from '@/components/session/atlasToScene3D';
+import {
+  localWorldDieDimensions,
+  readDiceDials,
+} from '@/components/session/local-world-die/diceDials';
 import type { LocalWorldDieHeldState } from '@/components/session/local-world-die/localWorldDieCommand';
 import { isLocalWorldDieFloorPoint } from '@/components/session/local-world-die/localWorldDieFloor';
 import type { TrayPlaneProjection } from '@/components/ui/dice/trayPlaneProjection';
@@ -38,6 +42,11 @@ function suppress(event: { preventDefault(): void; stopPropagation(): void }) {
 export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
   const integrationRef = useRef(props);
   integrationRef.current = props;
+  // `?dieScale=` (diceDials.ts) — read once, same convention as
+  // LocalWorldDieLayer.tsx's own dieScale/dimensions.
+  const dimensionsRef = useRef(
+    localWorldDieDimensions(readDiceDials().dieScale)
+  );
   const activePointer = useRef<number | undefined>(undefined);
   const captureOwner = useRef<HTMLButtonElement | undefined>(undefined);
   const heldRef = useRef<LocalWorldDieHeldState | undefined>(undefined);
@@ -114,12 +123,13 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
 
       const previous = heldRef.current;
       const lifting = Boolean(previous && (event.buttons & 2) !== 0);
+      const dimensions = dimensionsRef.current;
       let next: LocalWorldDieHeldState | undefined;
       if (previous && lifting) {
         const height = Math.min(
-          3,
+          dimensions.holdHeightMax,
           Math.max(
-            0.35,
+            dimensions.holdHeightMin,
             previous.height - (event.clientY - lastClientY.current) * 0.01
           )
         );
@@ -132,7 +142,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
         ) {
           next = {
             position: [point[0], point[1]],
-            height: previous?.height ?? 1.25,
+            height: previous?.height ?? dimensions.holdHeightDefault,
           };
         }
       }
