@@ -6,6 +6,7 @@ import {
   BASE_DIE_HULL_RADIUS,
   BASE_DIE_REST_HEIGHT_ABOVE_SURFACE,
   DEFAULT_DIE_SCALE,
+  DEFAULT_ROLL_FLASH,
   localWorldDieDimensions,
   parseDiceDials,
 } from './diceDials';
@@ -28,8 +29,9 @@ describe('parseDiceDials', () => {
     expect(parseDiceDials('?dieScale=').dieScale).toBe(DEFAULT_DIE_SCALE);
   });
 
-  it('defaults rollFlash to off', () => {
-    expect(parseDiceDials('').rollFlash).toBe('off');
+  it('defaults rollFlash to both — Kirk\'s second live session keeper ("that feels much better")', () => {
+    expect(parseDiceDials('').rollFlash).toBe(DEFAULT_ROLL_FLASH);
+    expect(DEFAULT_ROLL_FLASH).toBe('both');
   });
 
   it('accepts each of the four rollFlash values', () => {
@@ -39,8 +41,10 @@ describe('parseDiceDials', () => {
     expect(parseDiceDials('?rollFlash=off').rollFlash).toBe('off');
   });
 
-  it('falls back to off for an unrecognized rollFlash value', () => {
-    expect(parseDiceDials('?rollFlash=bogus').rollFlash).toBe('off');
+  it('falls back to the default for an unrecognized rollFlash value', () => {
+    expect(parseDiceDials('?rollFlash=bogus').rollFlash).toBe(
+      DEFAULT_ROLL_FLASH
+    );
   });
 });
 

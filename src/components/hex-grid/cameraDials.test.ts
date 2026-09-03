@@ -167,10 +167,19 @@ describe('parseCameraDials', () => {
     expect(parseCameraDials('?orbitPivot=bogus').orbitPivot).toBe('auto');
   });
 
-  it('derives dragRotate from rotateSpeed — one rotation speed, two inputs (#906 round 3)', () => {
-    // Default rotateSpeed (70°/s) yields the original shipped drag rate
-    // (0.4°/px) exactly, by construction of DRAG_SECONDS_PER_PIXEL.
+  it('derives dragRotate from rotateSpeed at the current default — one rotation speed, two inputs (#906 round 3)', () => {
+    // Computed from the constants, not a hardcoded literal — #906 round 4
+    // changed DEFAULT_ROTATE_SPEED_DEG_PER_SEC (70 -> 25) without touching
+    // DRAG_SECONDS_PER_PIXEL, so the default drag rate moved too (this is
+    // no longer the historical 0.4°/px anchor — see the next test for that).
     const dials = parseCameraDials('');
+    expect(dials.dragRotate).toBeCloseTo(
+      rad(DEFAULT_ROTATE_SPEED_DEG_PER_SEC * DRAG_SECONDS_PER_PIXEL)
+    );
+  });
+
+  it('at the ORIGINAL round-3 rotateSpeed (70°/s), drag is still exactly the historical 0.4°/px anchor', () => {
+    const dials = parseCameraDials('?rotateSpeed=70');
     expect(dials.dragRotate).toBeCloseTo(rad(DEFAULT_DRAG_ROTATE_DEG_PER_PX));
   });
 
@@ -184,10 +193,16 @@ describe('parseCameraDials', () => {
 
   it('a stray ?dragRotate= is ignored — there is no independent drag dial any more', () => {
     const dials = parseCameraDials('?dragRotate=1.2');
-    expect(dials.dragRotate).toBeCloseTo(rad(DEFAULT_DRAG_ROTATE_DEG_PER_PX));
+    expect(dials.dragRotate).toBeCloseTo(
+      rad(DEFAULT_ROTATE_SPEED_DEG_PER_SEC * DRAG_SECONDS_PER_PIXEL)
+    );
   });
 
-  it('DRAG_SECONDS_PER_PIXEL matches the cited 0.4/70 derivation', () => {
+  it('DRAG_SECONDS_PER_PIXEL is frozen at the round-3 0.4/70 derivation, independent of the current rotateSpeed default', () => {
+    // #906 round 4: this is now a literal, not a live division by
+    // DEFAULT_ROTATE_SPEED_DEG_PER_SEC — see the constant's own doc
+    // comment for why re-deriving it would have silently picked a
+    // different, unasked-for mouse feel.
     expect(DRAG_SECONDS_PER_PIXEL).toBeCloseTo(1 / 175);
   });
 

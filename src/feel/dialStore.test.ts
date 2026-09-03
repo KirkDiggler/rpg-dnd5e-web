@@ -1,5 +1,6 @@
 import {
   cameraDialsFrom,
+  DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
   parseCameraDials,
 } from '@/components/hex-grid/cameraDials';
 import {
@@ -120,15 +121,20 @@ describe('setDial / resetDial / resetAll', () => {
   it('resetDial restores just that one dial and un-persists it, leaving others alone', async () => {
     const store = await freshStore();
     store.setDial('rotateSpeed', 200);
-    store.setDial('panSpeed', 40);
+    // 55 is deliberately NOT panSpeed's default (40, #906 round 4) — this
+    // test proves an explicitly-set, non-default sibling survives a
+    // reset, which a value that happened to equal the default couldn't.
+    store.setDial('panSpeed', 55);
 
     store.resetDial('rotateSpeed');
 
-    expect(store.getDialValues().rotateSpeed).toBe(70);
-    expect(store.getDialValues().panSpeed).toBe(40);
+    expect(store.getDialValues().rotateSpeed).toBe(
+      DEFAULT_ROTATE_SPEED_DEG_PER_SEC
+    );
+    expect(store.getDialValues().panSpeed).toBe(55);
     const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(persisted.rotateSpeed).toBeUndefined();
-    expect(persisted.panSpeed).toBe(40);
+    expect(persisted.panSpeed).toBe(55);
   });
 
   it('resetAll clears every dial to default and removes storage entirely (not an all-defaults blob)', async () => {

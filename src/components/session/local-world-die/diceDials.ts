@@ -50,19 +50,24 @@ import { numberDial } from '@/utils/queryDial';
 export const DEFAULT_DIE_SCALE = 2;
 
 /**
- * `off` (default): no roll flash. `die`: the natural d20 flashes at the
- * die's rest position (RollFlashDie.tsx). `toast`: the arithmetic flashes
- * in the damage-toast area (RollFlashToasts.tsx). `both`: both. See
+ * `off`: no roll flash. `die`: the natural d20 flashes at the die's rest
+ * position (RollFlashDie.tsx). `toast`: the arithmetic flashes in the
+ * damage-toast area (RollFlashToasts.tsx). `both` (default): both. See
  * combat-experience/rollFlash.ts's own doc comment for the full design.
  */
 export type RollFlashDial = 'off' | 'die' | 'toast' | 'both';
+
+/** Kirk's second live session verdict (#906 round 4), keeper URL included
+ * `rollFlash=both` with "that feels much better." Promoted from the
+ * original shipped default (`off`). */
+export const DEFAULT_ROLL_FLASH: RollFlashDial = 'both';
 
 export interface DiceDials {
   /** Multiplier scaling the die's physical dimensions and visual size
    * together (`?dieScale=`). Default 2 — Kirk's own keeper verdict, see
    * `DEFAULT_DIE_SCALE`. */
   dieScale: number;
-  /** `?rollFlash=` — off by default. See `RollFlashDial` above. */
+  /** `?rollFlash=` — see `RollFlashDial` above and `DEFAULT_ROLL_FLASH`. */
   rollFlash: RollFlashDial;
 }
 
@@ -77,7 +82,7 @@ function parseRollFlash(params: URLSearchParams): RollFlashDial {
   const raw = params.get('rollFlash');
   return (ROLL_FLASH_VALUES as readonly string[]).includes(raw ?? '')
     ? (raw as RollFlashDial)
-    : 'off';
+    : DEFAULT_ROLL_FLASH;
 }
 
 /** Pure parser over a query string. */
@@ -120,7 +125,7 @@ export function diceDialsFrom(values: DialValues): DiceDials {
     typeof rollFlashRaw === 'string' ? rollFlashRaw : ''
   )
     ? (rollFlashRaw as RollFlashDial)
-    : 'off';
+    : DEFAULT_ROLL_FLASH;
   return { dieScale, rollFlash };
 }
 
@@ -144,7 +149,7 @@ export const DICE_DIAL_SPECS: readonly DialSpec[] = [
     label: 'Roll flash',
     group: 'dice',
     kind: 'enum',
-    default: 'off',
+    default: DEFAULT_ROLL_FLASH,
     options: ROLL_FLASH_VALUES,
   },
 ];

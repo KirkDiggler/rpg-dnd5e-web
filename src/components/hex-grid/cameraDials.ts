@@ -110,29 +110,31 @@ export const DEFAULT_ZOOM_START = 80;
 /**
  * Q/E rotation speed, degrees per second — until #906 this was 0.02–0.03
  * RADIANS PER RENDERED FRAME with no delta scaling (69–103°/s at 60Hz, double
- * that at 120Hz — see useCameraControls.ts's own useFrame). 70°/s is
+ * that at 120Hz — see useCameraControls.ts's own useFrame). 70°/s was
  * HexGrid.tsx's own pre-#906 call-site value (0.02 rad/frame @ 60Hz ≈
- * 68.75°/s) rounded to a clean number and promoted to
- * useCameraControls' own default, so both routes agree without either
- * overriding it — the session route previously omitted the override and
- * silently ran the hook's OWN default (0.03 rad/frame, a different speed).
+ * 68.75°/s) rounded to a clean number; Kirk's second live session keeper
+ * URL (#906 round 4) carried `rotateSpeed=25` with "that feels much
+ * better", promoting 25 to the shipped default in its place.
  */
-export const DEFAULT_ROTATE_SPEED_DEG_PER_SEC = 70;
+export const DEFAULT_ROTATE_SPEED_DEG_PER_SEC = 25;
 
 /**
  * WASD pan speed, world units per second — HexGrid.tsx's own pre-#906
- * call-site value (0.3 units/frame) at 60Hz. Same promotion as
- * `DEFAULT_ROTATE_SPEED_DEG_PER_SEC` above.
+ * call-site value (0.3 units/frame @ 60Hz) gave an original default of 18;
+ * Kirk's second live session keeper URL (#906 round 4) carried
+ * `panSpeed=40`, promoting 40 to the shipped default in its place.
  */
-export const DEFAULT_PAN_SPEED_PER_SEC = 18;
+export const DEFAULT_PAN_SPEED_PER_SEC = 40;
 
 /**
- * Middle-drag rotation speed, degrees per pixel. Kirk's own dial table for
- * this slice: "~0.4". #906 round 3 retired this as an INDEPENDENT default —
- * see `DRAG_SECONDS_PER_PIXEL` below for what replaced it — but the literal
- * stays as `useCameraControls.ts`'s own internal fallback for a caller that
- * doesn't thread `cameraDials.dragRotate` through at all (neither shipped
- * call site omits it).
+ * Middle-drag rotation speed, degrees per pixel, AT THE ORIGINAL 70°/s
+ * rotate-speed default — Kirk's own dial table for this slice: "~0.4".
+ * #906 round 3 retired this as an INDEPENDENT default — see
+ * `DRAG_SECONDS_PER_PIXEL` below for what replaced it — but the literal
+ * stays as `useCameraControls.ts`'s own internal fallback for a caller
+ * that doesn't thread `cameraDials.dragRotate` through at all (neither
+ * shipped call site omits it), and as the frozen numerator
+ * `DRAG_SECONDS_PER_PIXEL` derives from below.
  */
 export const DEFAULT_DRAG_ROTATE_DEG_PER_PX = 0.4;
 
@@ -145,14 +147,18 @@ export const DEFAULT_DRAG_ROTATE_DEG_PER_PX = 0.4;
  *
  * One ratio expresses the whole coupling: dragging N pixels rotates the
  * SAME angle as holding Q for `N * DRAG_SECONDS_PER_PIXEL` seconds. Chosen
- * so today's shipped defaults are preserved exactly —
- * `DEFAULT_DRAG_ROTATE_DEG_PER_PX / DEFAULT_ROTATE_SPEED_DEG_PER_SEC` =
- * 0.4/70 ≈ 1/175 s per pixel, i.e. a 175px drag ~= one second of held Q.
- * Halving `rotateSpeed` (a slower Q/E feel) now halves drag speed too,
- * rather than leaving a fast mouse gesture next to a slow keyboard one.
+ * at #906 round 3 so THAT round's shipped defaults were preserved exactly —
+ * `DEFAULT_DRAG_ROTATE_DEG_PER_PX / 70` = 0.4/70 = 1/175 s per pixel, i.e. a
+ * 175px drag ~= one second of held Q. This ratio is now a FROZEN literal,
+ * not a live division by `DEFAULT_ROTATE_SPEED_DEG_PER_SEC` — round 4
+ * changed that default (70 -> 25) without Kirk asking for a different mouse
+ * feel, so the coupling stays anchored to the ratio he already approved
+ * rather than silently re-deriving (0.4/25 would be a different, unasked-for
+ * ratio). At the round 4 default, drag now works out to 25/175 ≈ 0.143°/px
+ * — still a straight `rotateSpeed * DRAG_SECONDS_PER_PIXEL`, so a future
+ * `rotateSpeed` dial change still scales drag proportionally from here.
  */
-export const DRAG_SECONDS_PER_PIXEL =
-  DEFAULT_DRAG_ROTATE_DEG_PER_PX / DEFAULT_ROTATE_SPEED_DEG_PER_SEC;
+export const DRAG_SECONDS_PER_PIXEL = 1 / 175;
 
 export interface CameraDials {
   /** Perspective projection instead of the default orthographic. */
