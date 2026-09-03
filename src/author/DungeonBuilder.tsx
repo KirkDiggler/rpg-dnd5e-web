@@ -46,7 +46,7 @@ import {
   eraseCell,
   isMonsterRef,
   paintCell,
-  paintRect,
+  paintRoom,
   parseDungeon,
   placeAt,
   removePlacement,
@@ -719,11 +719,7 @@ export function DungeonBuilder({
               errorTargets={errorTargets}
               concealedRegionIds={concealment.regionIds ?? EMPTY_REGION_IDS}
               onPaint={handlePaint}
-              onPaintRoom={(a, b) =>
-                applyDoc((d) =>
-                  activeRegionId ? paintRect(d, activeRegionId, a, b) : d
-                )
-              }
+              onPaintRoom={(a, b) => applyDoc((d) => paintRoom(d, a, b))}
               onErase={handleErase}
               onEdgeClick={handleEdgeClick}
               onWallDraw={handleWallDraw}

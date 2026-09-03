@@ -1095,6 +1095,33 @@ export function rectCells(o: Orientation, a: Axial, b: Axial): Axial[] {
   return cells;
 }
 
+/** Carve the rectangle `a`..`b` out as A ROOM OF ITS OWN — the room tool's
+ * commit (rpg-dnd5e-web#902).
+ *
+ * A room is a REGION, not a patch of floor. Kirk brushed 66 cells, switched to
+ * the room tool, dragged inside them and nothing happened: every cell was
+ * already the active region's, so painting them into it was a genuine no-op.
+ * Correct, and useless — what he was drawing was a second room.
+ *
+ * So the tool mints a region and takes the rectangle's cells from whoever held
+ * them, which is what makes the room appear (its own colour, its own lighting)
+ * and what puts an authorable boundary between it and its neighbour. The one
+ * exception is an EMPTY region: a drag adopts one rather than stranding it,
+ * because a region with no cells is a refusal ("the region has no cells, and
+ * a region is its cells") — so the first room on a fresh dungeon becomes
+ * region-1 instead of leaving it behind as an error.
+ *
+ * Walls are NOT authored here. Between two rooms a wall is a real authored
+ * fact and the author's to place; around a lone room the envelope is implied
+ * and a wall there is refused outright. */
+export function paintRoom(doc: DungeonDoc, a: Axial, b: Axial): DungeonDoc {
+  const active = doc.regions.find((r) => r.cells.length === 0);
+  if (active) return paintRect(doc, active.id, a, b);
+  const minted = addRegion(doc);
+  const id = minted.regions[minted.regions.length - 1].id;
+  return paintRect(minted, id, a, b);
+}
+
 /** Paint the whole rectangle `a`..`b` into `regionId` — the room tool's
  * commit (rpg-dnd5e-web#902).
  *
