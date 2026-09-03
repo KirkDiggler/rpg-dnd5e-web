@@ -488,10 +488,10 @@ const activated = () =>
     value: create(ActivatedSchema, {
       actor: 'char-1',
       ability: create(AbilityRefSchema, {
-        ref: 'dnd5e:features:second-wind',
+        ref: 'dnd5e:features:second_wind',
         name: 'Second Wind',
       }),
-      target: 'char-1',
+      target: '',
     }),
   });
 
@@ -508,7 +508,7 @@ const activationResult = () =>
           requested: 7,
           roll: 6,
           modifier: 1,
-          sourceRef: 'dnd5e:features:second-wind',
+          sourceRef: 'dnd5e:features:second_wind',
           sourceName: 'Second Wind',
           hpBefore: 8,
           hpAfter: 10,

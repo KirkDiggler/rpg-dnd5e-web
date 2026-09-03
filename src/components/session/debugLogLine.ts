@@ -78,6 +78,12 @@ function displayName(names: Map<string, string>, id: string): string {
   return names.get(id) ?? id;
 }
 
+/** JSON string quoting keeps provider-authored text lossless and on one framed
+ * Debug line while preserving the existing `"ordinary"` representation. */
+function quoteDebugString(value: string): string {
+  return JSON.stringify(value);
+}
+
 function positionText(position: { x: number; y: number } | undefined): string {
   return position ? `(${position.x},${position.y})` : '(?,?)';
 }
@@ -210,7 +216,7 @@ export function formatDebugLine(
         ids: b.target ? [b.actor, b.target] : [b.actor],
         text:
           `${prefix} activated actor=${name(b.actor)} ` +
-          `ability.ref=${b.ability?.ref ?? '?'} ability.name=${b.ability ? `"${b.ability.name}"` : '?'}${target}`,
+          `ability.ref=${b.ability?.ref ?? '?'} ability.name=${b.ability ? quoteDebugString(b.ability.name) : '?'}${target}`,
       };
     }
     case 'activationResult': {
@@ -227,7 +233,7 @@ export function formatDebugLine(
               `amount=${result.amount} requested=${result.requested} ` +
               `roll=${result.roll} modifier=${result.modifier} ` +
               `hp.before=${result.hpBefore} hp.after=${result.hpAfter} ` +
-              `source.ref=${result.sourceRef} source.name="${result.sourceName}"`,
+              `source.ref=${result.sourceRef} source.name=${quoteDebugString(result.sourceName)}`,
           };
         }
         case 'conditionApplied': {
@@ -237,7 +243,7 @@ export function formatDebugLine(
             ids: [b.actor, result.target],
             text:
               `${actor} result=condition_applied target=${name(result.target)} ` +
-              `condition.ref=${result.ref} condition.name="${result.name}"`,
+              `condition.ref=${result.ref} condition.name=${quoteDebugString(result.name)}`,
           };
         }
         case 'conditionRemoved': {
@@ -247,8 +253,8 @@ export function formatDebugLine(
             ids: [b.actor, result.target],
             text:
               `${actor} result=condition_removed target=${name(result.target)} ` +
-              `condition.ref=${result.ref} condition.name="${result.name}" ` +
-              `reason="${result.reason}"`,
+              `condition.ref=${result.ref} condition.name=${quoteDebugString(result.name)} ` +
+              `reason=${quoteDebugString(result.reason)}`,
           };
         }
         case 'capacityGranted': {
@@ -258,7 +264,7 @@ export function formatDebugLine(
             ids: [b.actor, result.member],
             text:
               `${actor} result=capacity_granted member=${name(result.member)} ` +
-              `description="${result.description}"`,
+              `description=${quoteDebugString(result.description)}`,
           };
         }
         case undefined:

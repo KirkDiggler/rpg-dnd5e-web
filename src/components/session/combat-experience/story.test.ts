@@ -49,10 +49,10 @@ function activated(seq = 24n) {
       value: create(ActivatedSchema, {
         actor: 'aldric',
         ability: create(AbilityRefSchema, {
-          ref: 'dnd5e:features:second-wind',
+          ref: 'dnd5e:features:second_wind',
           name: 'Second Wind',
         }),
-        target: 'aldric',
+        target: '',
       }),
     },
   });
@@ -85,7 +85,7 @@ function healingResult(
             requested,
             roll,
             modifier,
-            sourceRef: 'dnd5e:features:second-wind',
+            sourceRef: 'dnd5e:features:second_wind',
             sourceName: 'Second Wind',
             hpBefore,
             hpAfter,
@@ -176,6 +176,8 @@ describe('typed combat Story', () => {
       'Aldric uses Second Wind',
       'Aldric recovers 2 HP',
     ]);
+    expect(story[0]?.detail).toBe('Story sequence 24.');
+    expect(story[0]?.detail).not.toContain('target');
     expect(story[1]?.detail).toBe(
       'Second Wind rolled 6 + 1 = 7; 2 applied (8 → 10 HP).'
     );
