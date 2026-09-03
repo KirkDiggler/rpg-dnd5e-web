@@ -2175,6 +2175,7 @@ describe('SessionEncounterView production combat integration', () => {
     });
 
     it("a doorRevealed/regionRevealed beat clears a standing search notice — matches doorNotice's own staleness reset on the 'door' case", async () => {
+      hoisted.atlasResult.applyReveal.mockClear();
       readySearchableScene();
       hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
       hoisted.searchFn.mockResolvedValue({} as never);
@@ -2197,8 +2198,9 @@ describe('SessionEncounterView production combat integration', () => {
         expect(screen.queryByText('You search the area.')).toBeNull()
       );
       // And the beat PATCHED the held atlas in the same frame (design
-      // 5.2a): the mock's presence is not what holds this test up.
-      expect(hoisted.atlasResult.applyReveal).toHaveBeenCalledTimes(1);
+      // 5.2a): the mock's presence is not what holds this test up. The
+      // hoisted mock is shared by the whole file, so count from this beat.
+      expect(hoisted.atlasResult.applyReveal).toHaveBeenCalled();
     });
   });
 
