@@ -25,16 +25,25 @@ import {
   doorEdgeOwners,
   floorOwners,
   isMonsterRef,
+  rectCells,
   removeWalls,
   type DungeonDoc,
   type ErrorTarget,
 } from '../dungeonYaml';
-import { axialKey, edgeKey, type Axial, type Edge } from '../hexOffset';
+import {
+  axialKey,
+  axialNeighbors,
+  edgeKey,
+  type Axial,
+  type Edge,
+} from '../hexOffset';
 import {
   BOSS_COLOR,
   CONCEALED_STROKE,
   DOOR_LOCKED_STROKE,
   DOOR_STROKE,
+  ENVELOPE_DASH,
+  ENVELOPE_STROKE,
   ERROR_STROKE,
   HOVER_STROKE,
   litColor,
@@ -99,6 +108,11 @@ export interface CreationBoardProps {
    * checkbox. */
   concealedRegionIds: ReadonlySet<string>;
   onPaint: (cell: Axial) => void;
+  /** The room tool's commit (rpg-dnd5e-web#902): the two corners of a
+   * dragged rectangle. The owner paints the whole block into the active
+   * region, so the floor is square by construction rather than by a steady
+   * hand. */
+  onPaintRect: (a: Axial, b: Axial) => void;
   onErase: (cell: Axial) => void;
   onEdgeClick: (edge: Edge) => void;
   /** The wall drag's commit (#804): the RAW taut chain of the released
@@ -168,6 +182,7 @@ export function CreationBoard({
   errorTargets,
   concealedRegionIds,
   onPaint,
+  onPaintRect,
   onErase,
   onEdgeClick,
   onWallDraw,
@@ -182,6 +197,16 @@ export function CreationBoard({
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverEdge, setHoverEdge] = useState<Edge | null>(null);
   const [hoverCell, setHoverCell] = useState<Axial | null>(null);
+  /** The rectangle drag's first corner, held while the pointer is down. */
+  const [rectFrom, setRoomFrom] = useState<Axial | null>(null);
+
+  /** The cells a released rectangle drag would paint — the preview IS the commit,
+   * so this is the same `rectCells` the owner's `paintRect` uses. */
+  const rectPreview = useMemo(() => {
+    if ((tool !== 'room' && tool !== 'region-rect') || !rectFrom || !hoverCell)
+      return null;
+    return new Set(rectCells(o, rectFrom, hoverCell).map(axialKey));
+  }, [tool, rectFrom, hoverCell, o]);
   const painting = useRef<'paint' | 'erase' | null>(null);
 
   const owners = useMemo(() => floorOwners(doc), [doc]);
@@ -428,6 +453,10 @@ export function CreationBoard({
 
   const handleCellDown = (cell: Axial, e: PointerEvent<SVGPolygonElement>) => {
     e.preventDefault();
+    if (tool === 'room' || tool === 'region-rect') {
+      setRoomFrom(cell);
+      return;
+    }
     if (tool === 'region' || tool === 'erase') {
       const mode =
         tool === 'erase' || e.shiftKey || e.button === 2 ? 'erase' : 'paint';
@@ -595,6 +624,14 @@ export function CreationBoard({
     painting.current = null;
   };
 
+  /** Commit the dragged rectangle. A press with no travel is a one-cell
+   * rectangle, which is the honest reading of the gesture rather than a no-op. */
+  const endRect = () => {
+    if (!rectFrom) return;
+    onPaintRect(rectFrom, hoverCell ?? rectFrom);
+    setRoomFrom(null);
+  };
+
   // Release commits (or falls back to the single-edge click); releasing
   // with B back on A after moving, or Escape, or leaving the canvas,
   // cancels.
@@ -649,6 +686,23 @@ export function CreationBoard({
     width: number;
     dash?: string;
   }[] = [];
+  // The floor's outer edge FIRST, so authored walls and doors draw over it.
+  // Dashed, because it is NOT a wall: a wall is something the author put there
+  // on purpose, and an unwalled boundary is its own authored choice — a region
+  // may have a cliff edge. This line only says "the floor stops here".
+  for (const cell of floor) {
+    for (const n of axialNeighbors(cell)) {
+      if (owners.has(axialKey(n))) continue;
+      const edge: Edge = [cell, n];
+      edgeLines.push({
+        key: `env:${edgeKey(edge)}`,
+        edge,
+        stroke: ENVELOPE_STROKE,
+        width: 2.5,
+        dash: ENVELOPE_DASH,
+      });
+    }
+  }
   for (const { edge } of compiledWalls(displayDoc)) {
     const isError = errorEdges.has(edgeKey(edge));
     if (straightened && !isError) continue;
@@ -705,6 +759,7 @@ export function CreationBoard({
           }}
           onPointerUp={() => {
             endPaint();
+            endRect();
             finishGesture();
           }}
           onPointerCancel={() => {
@@ -713,6 +768,10 @@ export function CreationBoard({
             // it — otherwise a later unrelated pointer-up would commit
             // the stale chain (Copilot review, PR #808).
             endPaint();
+            // A canceled pointer drops the rectangle without painting it, for the
+            // reason the wall gesture drops its chain: a later unrelated
+            // pointer-up must not commit a stale drag.
+            setRoomFrom(null);
             setGesture(null);
             setHoverEdge(null);
             setHoverCell(null);
@@ -741,6 +800,7 @@ export function CreationBoard({
               const isError = errorCells.has(key);
               const isConcealed = !!ownerId && concealedRegionIds.has(ownerId);
               const isHover = hoverCell && axialKey(hoverCell) === key;
+              const inRect = rectPreview?.has(key) ?? false;
               return (
                 <polygon
                   key={key}
@@ -761,7 +821,15 @@ export function CreationBoard({
                             : VOID_STROKE
                   }
                   strokeWidth={
-                    isError ? 2.5 : isSelectedRegion ? 1.5 : isConcealed ? 2 : 1
+                    isError
+                      ? 2.5
+                      : inRect
+                        ? 2
+                        : isSelectedRegion
+                          ? 1.5
+                          : isConcealed
+                            ? 2
+                            : 1
                   }
                   strokeDasharray={
                     isConcealed && !isError && !isSelectedRegion
@@ -770,7 +838,11 @@ export function CreationBoard({
                   }
                   strokeOpacity={region ? (isActive ? 1 : 0.6) : 1}
                   opacity={
-                    isHover && (tool === 'region' || tool === 'erase') ? 0.8 : 1
+                    inRect
+                      ? 0.85
+                      : isHover && (tool === 'region' || tool === 'erase')
+                        ? 0.8
+                        : 1
                   }
                   onPointerDown={(e) => handleCellDown(cell, e)}
                   onPointerMove={(e) => handleCellMove(cell, e)}
@@ -1086,6 +1158,8 @@ function cursorFor(tool: BoardTool): string {
   switch (tool) {
     case 'region':
     case 'erase':
+    case 'room':
+    case 'region-rect':
       return 'crosshair';
     case 'wall':
     case 'door':

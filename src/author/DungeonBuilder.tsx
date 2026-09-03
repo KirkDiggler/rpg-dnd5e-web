@@ -46,6 +46,7 @@ import {
   eraseCell,
   isMonsterRef,
   paintCell,
+  paintRect,
   parseDungeon,
   placeAt,
   removePlacement,
@@ -68,6 +69,13 @@ import { Inspector } from './Inspector';
 import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
 import { DungeonPreview3D } from './preview3d/DungeonPreview3D';
+import {
+  nextRailWidth,
+  readInspectorFolded,
+  readRailWidth,
+  writeInspectorFolded,
+  writeRailWidth,
+} from './railLayout';
 import type { BoardTool, PaletteItem, Selection } from './types';
 import { YamlPane } from './YamlPane';
 
@@ -359,6 +367,24 @@ export function DungeonBuilder({
     }
   };
 
+  // Typed YAML (rpg-dnd5e-web#899). Goes through `applyDoc`, not
+  // `replaceDoc`: replacing resets the selection and the active region, which
+  // on every keystroke would yank the canvas out from under the typist. A
+  // keystroke is an EDIT to the document open in front of them, exactly like
+  // dragging a wall, so it takes the same path — including the concealment
+  // ratchet, so hand-written YAML self-heals the way the canvas does.
+  const handleEditYaml = useCallback(
+    (text: string): string | null => {
+      try {
+        applyDoc(parseDungeon(text));
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : 'could not read that YAML';
+      }
+    },
+    [applyDoc]
+  );
+
   const handleLoadText = (text: string) => {
     try {
       replaceDoc(parseDungeon(text));
@@ -499,8 +525,72 @@ export function DungeonBuilder({
     playing ||
     !doc.key;
 
+  // How this author likes to look at the builder (railLayout.ts): a rail
+  // width, and whether the inspector is folded away above the YAML. Neither
+  // touches the document.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [railWidth, setRailWidth] = useState<number | null>(readRailWidth);
+  const [inspectorFolded, setInspectorFolded] =
+    useState<boolean>(readInspectorFolded);
+  const dragRef = useRef<{ x: number; width: number } | null>(null);
+
+  const beginRailDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rail = e.currentTarget.parentElement;
+    if (!rail) return;
+    dragRef.current = {
+      x: e.clientX,
+      width: rail.getBoundingClientRect().width,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const moveRailDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const root = rootRef.current;
+    if (!drag || !root) return;
+    setRailWidth(
+      nextRailWidth(
+        drag.width,
+        e.clientX - drag.x,
+        root.getBoundingClientRect().width
+      )
+    );
+  };
+  const endRailDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    // RELEASE THE CAPTURE EXPLICITLY. Without this the grip keeps every
+    // subsequent pointer event, so the canvas goes dead after one resize —
+    // the room tool stopped previewing and the brush stopped painting, and
+    // nothing about it looked like the rail's fault.
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    writeRailWidth(railWidth);
+  };
+  // Double-click hands the rail back to the CSS default, so a drag is never
+  // a one-way door.
+  const resetRail = () => {
+    setRailWidth(null);
+    writeRailWidth(null);
+  };
+  const toggleInspector = () => {
+    setInspectorFolded((folded) => {
+      writeInspectorFolded(!folded);
+      return !folded;
+    });
+  };
+
   return (
-    <div className="dg-root" data-testid="dungeon-builder">
+    <div
+      className="dg-root"
+      data-testid="dungeon-builder"
+      ref={rootRef}
+      style={
+        railWidth === null
+          ? undefined
+          : { gridTemplateColumns: `220px minmax(0, 1fr) ${railWidth}px` }
+      }
+    >
       <div className="dg-topbar">
         {allowNewCanvas && (
           <span className="relative">
@@ -629,6 +719,13 @@ export function DungeonBuilder({
               errorTargets={errorTargets}
               concealedRegionIds={concealment.regionIds ?? EMPTY_REGION_IDS}
               onPaint={handlePaint}
+              onPaintRect={(a, b) => {
+                if (!activeRegionId) {
+                  showToast('Pick a region first');
+                  return;
+                }
+                applyDoc((d) => paintRect(d, activeRegionId, a, b));
+              }}
               onErase={handleErase}
               onEdgeClick={handleEdgeClick}
               onWallDraw={handleWallDraw}
@@ -650,50 +747,75 @@ export function DungeonBuilder({
       </div>
 
       <div className="dg-right">
+        <div
+          className="dg-grip"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the inspector rail"
+          title="Drag to resize · double-click to reset"
+          onPointerDown={beginRailDrag}
+          onPointerMove={moveRailDrag}
+          onPointerUp={endRailDrag}
+          onPointerCancel={endRailDrag}
+          onDoubleClick={resetRail}
+        />
         <div className="dg-col">
-          <Inspector
-            doc={doc}
-            selection={selection}
-            concealment={concealment}
-            onDungeon={(patch) => applyDoc((d) => updateDungeon(d, patch))}
-            onRegion={(id, patch) => {
-              applyDoc((d) => updateRegion(d, id, patch));
-              if (patch.id !== undefined) {
-                setSelection({ kind: 'region', id: patch.id });
-                if (activeRegionId === id) setActiveRegionId(patch.id);
+          <button
+            type="button"
+            className="dg-fold"
+            onClick={toggleInspector}
+            aria-expanded={!inspectorFolded}
+          >
+            <span aria-hidden="true">
+              {inspectorFolded ? '\u25b8' : '\u25be'}
+            </span>
+            Inspector
+          </button>
+          {!inspectorFolded && (
+            <Inspector
+              doc={doc}
+              selection={selection}
+              concealment={concealment}
+              onDungeon={(patch) => applyDoc((d) => updateDungeon(d, patch))}
+              onRegion={(id, patch) => {
+                applyDoc((d) => updateRegion(d, id, patch));
+                if (patch.id !== undefined) {
+                  setSelection({ kind: 'region', id: patch.id });
+                  if (activeRegionId === id) setActiveRegionId(patch.id);
+                }
+              }}
+              onRemoveRegion={(id) => {
+                applyDoc((d) => removeRegion(d, id));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onDoor={(id, patch) => {
+                applyDoc((d) => updateDoor(d, id, patch));
+                if (patch.id !== undefined)
+                  setSelection({ kind: 'door', id: patch.id });
+              }}
+              onRemoveWall={(edges) => {
+                applyDoc((d) => removeWalls(d, edges));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onSetWallHeight={(edges, height) => {
+                applyDoc((d) => setWallHeights(d, edges, height));
+              }}
+              onRemoveDoor={(id) => {
+                applyDoc((d) => ({
+                  ...d,
+                  doors: d.doors.filter((x) => x.id !== id),
+                }));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onPlacement={(index, patch) =>
+                applyDoc((d) => updatePlacement(d, index, patch))
               }
-            }}
-            onRemoveRegion={(id) => {
-              applyDoc((d) => removeRegion(d, id));
-              setSelection({ kind: 'dungeon' });
-            }}
-            onDoor={(id, patch) => {
-              applyDoc((d) => updateDoor(d, id, patch));
-              if (patch.id !== undefined)
-                setSelection({ kind: 'door', id: patch.id });
-            }}
-            onRemoveWall={(edges) => {
-              applyDoc((d) => removeWalls(d, edges));
-              setSelection({ kind: 'dungeon' });
-            }}
-            onSetWallHeight={(edges, height) => {
-              applyDoc((d) => setWallHeights(d, edges, height));
-            }}
-            onRemoveDoor={(id) => {
-              applyDoc((d) => ({
-                ...d,
-                doors: d.doors.filter((x) => x.id !== id),
-              }));
-              setSelection({ kind: 'dungeon' });
-            }}
-            onPlacement={(index, patch) =>
-              applyDoc((d) => updatePlacement(d, index, patch))
-            }
-            onRemovePlacement={(index) => {
-              applyDoc((d) => removePlacement(d, index));
-              setSelection({ kind: 'dungeon' });
-            }}
-          />
+              onRemovePlacement={(index) => {
+                applyDoc((d) => removePlacement(d, index));
+                setSelection({ kind: 'dungeon' });
+              }}
+            />
+          )}
         </div>
         <div className="dg-col">
           <YamlPane
@@ -704,6 +826,7 @@ export function DungeonBuilder({
             statusLine={statusLine}
             allowFileIO={allowYamlFileIO}
             onLoad={handleLoadText}
+            onEdit={allowYamlFileIO ? handleEditYaml : undefined}
           />
         </div>
       </div>

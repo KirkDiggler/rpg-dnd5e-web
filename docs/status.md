@@ -53,12 +53,18 @@ let it rot.
   Run-ended presentation closes equipment immediately, places an inert/hidden
   game surface beneath the focused `aria-modal` action, and layers the modal
   above every panel. A transient private refresh error keeps the last confirmed
-  CharacterData and cannot freeze newer door/path state. Attack outcomes never
-  display bonus equations, target `hpAfter`, or peer exact HP. The old session
-  CombatPanel/useCombatPanel/combatPanel, DeclarationRow/TurnHud
-  bridge, direct-floor attack, and separate DebugCombatLog are deleted.
-  Provider baseline: proto v0.1.147 (`1e5c208`), toolkit dnd5e v0.100.0 /
-  session v0.30.0 / resolution v0.13.0, merged API dev `f1aa9d2` (PR #845).
+  CharacterData and cannot freeze newer door/path state. Typed
+  Activated/ActivationResult events render one ordered Story entry per event:
+  provider names drive abilities and conditions, healing reports the applied HP
+  with provider roll inputs, and condition removal/capacity retain typed prose.
+  Raw Debug preserves every activation/result field. Results refresh
+  CharacterData/Afford/View; Activated adds no owner snapshot beyond the route's
+  unconditional Turn/Afford funnel. Attack outcomes never display bonus
+  equations, target `hpAfter`, or peer exact HP. The old session
+  CombatPanel/useCombatPanel/combatPanel, DeclarationRow/TurnHud bridge,
+  direct-floor attack, and separate DebugCombatLog are deleted. Provider
+  baseline: proto v0.1.153 (`f87c098`), toolkit dnd5e v0.100.0 / session
+  v0.30.0 / resolution v0.13.0, merged API dev `f1aa9d2` (PR #845).
   Automated web gates are recorded in the Task 14 report; licensed Synty assets
   and authenticated two-browser live API verification remain environment gates.
 

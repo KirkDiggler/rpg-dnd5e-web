@@ -874,6 +874,7 @@ function SessionEncounterScope({
             : ['view'];
         case 'struck':
         case 'missed':
+        case 'activationResult':
           return ['characterData', 'afford', 'view'];
         case 'downed':
           return ['characterData', 'afford', 'turn', 'view'];
@@ -903,6 +904,7 @@ function SessionEncounterScope({
           return ['doors', 'atlas'];
         case 'regionRevealed':
           return ['atlas'];
+        case 'activated':
         case 'exited':
         case undefined:
           return event.kind === EventKind.ENDED

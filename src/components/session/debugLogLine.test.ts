@@ -188,6 +188,326 @@ describe('formatDebugLine', () => {
     expect(line.text).not.toContain('crit=');
   });
 
+  it('activated — actor, provider ability identity, and target are complete', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATED,
+      body: {
+        case: 'activated',
+        value: {
+          actor: 'char-1',
+          ability: {
+            ref: 'dnd5e:features:second_wind',
+            name: 'Second Wind',
+          },
+          target: '',
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activated actor=Toolkit Sandbox Fighter ' +
+        'ability.ref=dnd5e:features:second_wind ability.name="Second Wind" ' +
+        'target='
+    );
+  });
+
+  it('activated with ability unset pins the existing unknown ability fallback', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATED,
+      body: {
+        case: 'activated',
+        value: {
+          actor: 'char-1',
+          target: '',
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activated actor=Toolkit Sandbox Fighter ' +
+        'ability.ref=? ability.name=? target='
+    );
+  });
+
+  it('JSON-quotes every provider-authored activation/result string without breaking Debug line framing', () => {
+    const activation = formatDebugLine(
+      baseEvent({
+        kind: EventKind.ACTIVATED,
+        body: {
+          case: 'activated',
+          value: {
+            actor: 'char-1',
+            ability: {
+              ref: 'dnd5e:features:second_wind',
+              name: 'Second "Wind"\nline\\tail',
+            },
+            target: '',
+          },
+        },
+      }),
+      names
+    );
+    const healing = formatDebugLine(
+      baseEvent({
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: {
+            actor: 'char-1',
+            result: {
+              case: 'healingApplied',
+              value: {
+                target: 'char-1',
+                amount: 2,
+                requested: 7,
+                roll: 6,
+                modifier: 1,
+                sourceRef: 'dnd5e:features:second_wind',
+                sourceName: 'Second "Wind"\nline\\tail',
+                hpBefore: 8,
+                hpAfter: 10,
+              },
+            },
+          },
+        },
+      }),
+      names
+    );
+    const conditionApplied = formatDebugLine(
+      baseEvent({
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: {
+            actor: 'char-1',
+            result: {
+              case: 'conditionApplied',
+              value: {
+                target: 'char-1',
+                ref: 'dnd5e:conditions:raging',
+                name: 'Raging "Now"\nline\\tail',
+              },
+            },
+          },
+        },
+      }),
+      names
+    );
+    const conditionRemoved = formatDebugLine(
+      baseEvent({
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: {
+            actor: 'char-1',
+            result: {
+              case: 'conditionRemoved',
+              value: {
+                target: 'skeleton-1',
+                ref: 'dnd5e:conditions:raging',
+                name: 'Raging "Ends"\nline\\tail',
+                reason: 'timer "done"\nturn\\end',
+              },
+            },
+          },
+        },
+      }),
+      names
+    );
+    const capacity = formatDebugLine(
+      baseEvent({
+        kind: EventKind.ACTIVATION_RESULT,
+        body: {
+          case: 'activationResult',
+          value: {
+            actor: 'char-1',
+            result: {
+              case: 'capacityGranted',
+              value: {
+                member: 'char-1',
+                description: '30ft "movement"\nline\\tail',
+              },
+            },
+          },
+        },
+      }),
+      names
+    );
+
+    expect(activation.text).toBe(
+      String.raw`seq=7 clock=42 activated actor=Toolkit Sandbox Fighter ability.ref=dnd5e:features:second_wind ability.name="Second \"Wind\"\nline\\tail" target=`
+    );
+    expect(healing.text).toBe(
+      String.raw`seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=healing_applied target=Toolkit Sandbox Fighter amount=2 requested=7 roll=6 modifier=1 hp.before=8 hp.after=10 source.ref=dnd5e:features:second_wind source.name="Second \"Wind\"\nline\\tail"`
+    );
+    expect(conditionApplied.text).toBe(
+      String.raw`seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=condition_applied target=Toolkit Sandbox Fighter condition.ref=dnd5e:conditions:raging condition.name="Raging \"Now\"\nline\\tail"`
+    );
+    expect(conditionRemoved.text).toBe(
+      String.raw`seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=condition_removed target=Skeleton condition.ref=dnd5e:conditions:raging condition.name="Raging \"Ends\"\nline\\tail" reason="timer \"done\"\nturn\\end"`
+    );
+    expect(capacity.text).toBe(
+      String.raw`seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=capacity_granted member=Toolkit Sandbox Fighter description="30ft \"movement\"\nline\\tail"`
+    );
+    for (const line of [
+      activation,
+      healing,
+      conditionApplied,
+      conditionRemoved,
+      capacity,
+    ]) {
+      expect(line.text).not.toContain('\n');
+    }
+  });
+
+  it('activation result with result oneof unset pins the existing none fallback', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: {
+          actor: 'char-1',
+          result: { case: undefined },
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=none'
+    );
+  });
+
+  it('activation healing result — every raw applied/requested/roll/HP/source field is complete', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: {
+          actor: 'char-1',
+          result: {
+            case: 'healingApplied',
+            value: {
+              target: 'char-1',
+              amount: 2,
+              requested: 7,
+              roll: 6,
+              modifier: 1,
+              sourceRef: 'dnd5e:features:second_wind',
+              sourceName: 'Second Wind',
+              hpBefore: 8,
+              hpAfter: 10,
+            },
+          },
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1', 'char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter ' +
+        'result=healing_applied target=Toolkit Sandbox Fighter amount=2 requested=7 ' +
+        'roll=6 modifier=1 hp.before=8 hp.after=10 ' +
+        'source.ref=dnd5e:features:second_wind source.name="Second Wind"'
+    );
+  });
+
+  it('activation condition-applied result — canonical condition ref and provider name stay raw', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: {
+          actor: 'char-1',
+          result: {
+            case: 'conditionApplied',
+            value: {
+              target: 'char-1',
+              ref: 'dnd5e:conditions:raging',
+              name: 'Raging',
+            },
+          },
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1', 'char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter ' +
+        'result=condition_applied target=Toolkit Sandbox Fighter ' +
+        'condition.ref=dnd5e:conditions:raging condition.name="Raging"'
+    );
+  });
+
+  it('activation condition-removed result — canonical identity and provider reason stay raw', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: {
+          actor: 'char-1',
+          result: {
+            case: 'conditionRemoved',
+            value: {
+              target: 'skeleton-1',
+              ref: 'dnd5e:conditions:raging',
+              name: 'Raging',
+              reason: 'expired',
+            },
+          },
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1', 'skeleton-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter ' +
+        'result=condition_removed target=Skeleton ' +
+        'condition.ref=dnd5e:conditions:raging condition.name="Raging" reason="expired"'
+    );
+  });
+
+  it('activation capacity result — member and provider description stay raw', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: {
+          actor: 'char-1',
+          result: {
+            case: 'capacityGranted',
+            value: {
+              member: 'char-1',
+              description: '30ft movement',
+            },
+          },
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1', 'char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter ' +
+        'result=capacity_granted member=Toolkit Sandbox Fighter description="30ft movement"'
+    );
+  });
+
   it('downed — member only, per the wire (no hit points on this beat)', () => {
     const event = baseEvent({
       kind: EventKind.DOWNED,
