@@ -608,3 +608,47 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
     );
   });
 });
+
+describe('DungeonBuilder — the preview survives a server that has not learned `scenery` yet', () => {
+  it('lists the strict decoder refusal, keeps drawing the board, and never blanks', async () => {
+    // Until the toolkit slice lands and rpg-api is pinned, `PutDungeon
+    // validate_only` REFUSES a document carrying `scenery` — an unknown
+    // key, reported against the document rather than any cell. The field
+    // is real, so the builder sends it and shows the refusal; it must not
+    // fall over on a path it cannot draw.
+    let doc = emptyDungeon();
+    for (const c of [0, 1]) doc = paintCell(doc, 'region-1', p(c, 0));
+    doc = paintScenery(doc, p(2, 0));
+    const client = fakeClient([
+      { path: 'document', message: 'unknown key "scenery"' },
+    ]);
+
+    render(
+      <DungeonBuilder
+        authoringClient={client}
+        initialYaml={emitDungeon(doc)}
+        persistDraft={false}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error-list').textContent).toContain(
+        'unknown key "scenery"'
+      )
+    );
+    // The board still draws the document, scenery included — the refusal
+    // is about the server's vocabulary, not about the file being undrawable.
+    const strip = document.querySelector(`[data-cell="${axialKey(p(2, 0))}"]`);
+    expect(strip?.getAttribute('data-scenery')).toBe('true');
+    // The field is NOT stripped before sending: it is real, and hiding it
+    // would hide the very refusal the pin is waiting to clear.
+    expect(client.putDungeon).toHaveBeenLastCalledWith(
+      expect.objectContaining({ yaml: expect.stringContaining('scenery:') })
+    );
+    // Save stays disabled while the server refuses, as with any error.
+    expect(
+      (screen.getByRole('button', { name: /^Save$/ }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+  });
+});
