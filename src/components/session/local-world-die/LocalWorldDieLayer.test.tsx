@@ -1,5 +1,5 @@
 import type { Scene3D } from '@/components/session/atlasToScene3D';
-import { act, render } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import {
   forwardRef,
   useEffect,
@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LocalWorldDieCommand } from './localWorldDieCommand';
 import {
+  DIE_FLASH_TOTAL_MS,
   LOCAL_WORLD_DIE_RESULT_HOLD_MS,
   LocalWorldDieLayer,
   type LocalWorldDieLayerProps,
@@ -88,6 +89,15 @@ vi.mock('@/components/ui/dice/RuntimeDiceMesh', () => ({
 
 vi.mock('@/components/ui/dice/TrayPlaneProjectionBridge', () => ({
   TrayPlaneProjectionBridge: () => null,
+}));
+
+// RollFlashDie's <Html> needs a real R3F/@react-three/fiber context
+// (useThree) that this file's own useFrame/useAfterPhysicsStep-only mock
+// deliberately doesn't provide (see its own `vi.mock('@react-three/fiber'...)`
+// above). Rendering just the children is enough to assert on the flash's
+// presence/absence and content by testid without needing that context.
+vi.mock('@react-three/drei', () => ({
+  Html: ({ children }: PropsWithChildren) => <>{children}</>,
 }));
 
 const releasedCommand: LocalWorldDieCommand = Object.freeze({
@@ -204,5 +214,76 @@ describe('LocalWorldDieLayer', () => {
     act(() => vi.advanceTimersByTime(LOCAL_WORLD_DIE_RESULT_HOLD_MS));
 
     expect(onTerminal).not.toHaveBeenCalled();
+  });
+
+  describe('rollFlashEnabled — round 3 fix', () => {
+    // The bug this whole describe block exists to pin: the flash USED to be
+    // gated on a view-level `localWorldDieSettled` that only flipped true at
+    // the END of the hold, by which point the layer was already tearing
+    // down — the flash never rendered. It has to be up DURING the
+    // correction spin, not just after.
+    it('shows nothing while still tumbling', () => {
+      const props = { ...layerProps(vi.fn()), rollFlashEnabled: true };
+      render(<LocalWorldDieLayer {...props} />);
+      expect(screen.queryByTestId('roll-flash-die')).toBeNull();
+    });
+
+    it('shows the natural roll the instant physics settles — DURING the correction spin, not after it', () => {
+      const props = { ...layerProps(vi.fn()), rollFlashEnabled: true };
+      render(<LocalWorldDieLayer {...props} />);
+
+      // physicsStep reaches the planned terminal: beginAssist runs. The
+      // correction spin (the `useFrame` slerp) has NOT run yet at this point.
+      act(() => mocks.afterPhysicsSteps.at(-1)?.());
+
+      expect(screen.getByTestId('roll-flash-die').textContent).toBe('17');
+    });
+
+    it('stays up through the correction spin and the settle hold, then clears', () => {
+      const props = { ...layerProps(vi.fn()), rollFlashEnabled: true };
+      render(<LocalWorldDieLayer {...props} />);
+      act(() => mocks.afterPhysicsSteps.at(-1)?.());
+      expect(screen.getByTestId('roll-flash-die')).toBeTruthy();
+
+      // Drive the correction spin (0.32s) to completion. This is a manual
+      // `delta` passed straight to the mocked useFrame callback — it does
+      // NOT advance the fake timer clock, so the flash's own real-time
+      // window (DIE_FLASH_TOTAL_MS, started at beginAssist above) is
+      // unaffected by it.
+      act(() => mocks.frames.at(-1)?.({}, 0.32));
+      expect(screen.getByTestId('roll-flash-die')).toBeTruthy();
+
+      // Still up partway through the FULL total window (spin + hold).
+      act(() => vi.advanceTimersByTime(DIE_FLASH_TOTAL_MS / 2));
+      expect(screen.getByTestId('roll-flash-die')).toBeTruthy();
+
+      // Cleared once the full correction-plus-hold window has elapsed.
+      act(() => vi.advanceTimersByTime(DIE_FLASH_TOTAL_MS / 2 + 1));
+      expect(screen.queryByTestId('roll-flash-die')).toBeNull();
+    });
+
+    it('never shows anything when the dial is off', () => {
+      const props = { ...layerProps(vi.fn()), rollFlashEnabled: false };
+      render(<LocalWorldDieLayer {...props} />);
+      act(() => mocks.afterPhysicsSteps.at(-1)?.());
+      act(() => mocks.frames.at(-1)?.({}, 0.32));
+      act(() => vi.advanceTimersByTime(LOCAL_WORLD_DIE_RESULT_HOLD_MS));
+      expect(screen.queryByTestId('roll-flash-die')).toBeNull();
+    });
+
+    it('a new command (reroll) clears a flash left over from the previous throw', () => {
+      const props = { ...layerProps(vi.fn()), rollFlashEnabled: true };
+      const view = render(<LocalWorldDieLayer {...props} />);
+      act(() => mocks.afterPhysicsSteps.at(-1)?.());
+      expect(screen.getByTestId('roll-flash-die')).toBeTruthy();
+
+      view.rerender(
+        <LocalWorldDieLayer
+          {...layerProps(vi.fn(), resetCommand)}
+          rollFlashEnabled
+        />
+      );
+      expect(screen.queryByTestId('roll-flash-die')).toBeNull();
+    });
   });
 });

@@ -1,5 +1,4 @@
 import type { Scene3D } from '@/components/session/atlasToScene3D';
-import type { RollFlashOutcome } from '@/components/session/combat-experience/rollFlash';
 import type { DiceMotionPose } from '@/components/ui/dice/diceMotionSolver';
 import {
   getDiceRuntimePresetSnapshot,
@@ -53,12 +52,25 @@ export interface LocalWorldDieLayerProps {
   readonly projectionRef: MutableRefObject<TrayPlaneProjection | undefined>;
   readonly onReadyChange: (ready: boolean) => void;
   readonly onTerminal: (kind: 'settled' | 'off-table' | 'failure') => void;
-  /** The roll flash to show when/if THIS throw settles (`?rollFlash=die`/
-   * `both`, #906) — rendered internally, anchored at the die's own actual
-   * rest position (tracked locally; never bubbled out, so a caller does not
-   * need to reach into physics internals to use this). `undefined` renders
-   * nothing. See RollFlashDie.tsx and combat-experience/rollFlash.ts. */
-  readonly rollFlash?: RollFlashOutcome;
+  /**
+   * Whether die-mode roll flash is on (`?rollFlash=die`/`both`, #906) — the
+   * only thing a caller needs to say. The layer triggers and renders the
+   * flash itself, from the moment the die is physically at rest, using
+   * `authoritativeFace` above (already the server's natural d20) — no
+   * outcome object to plumb through, and no external settle gate to get the
+   * timing right. See this file's own `DIE_FLASH_TOTAL_MS` doc comment and
+   * RollFlashDie.tsx. Default false.
+   *
+   * SPECTATOR NOTE: a `command.kind === 'witness'` replay reaches
+   * `beginAssist` through the exact same `useAfterPhysicsStep`/`useFrame`
+   * checks as an actor's own throw (`launched.current && !assist.current`
+   * neither knows nor cares which kind of command set `launched` true) — so
+   * a witness playback of this SAME `LocalWorldDieLayer` instance flashes
+   * too, whenever a caller passes `rollFlashEnabled` for BOTH branches (see
+   * SessionEncounterView.tsx, which renders the one instance for either
+   * `localWorldDiePhysical` or `localWorldDieWitnessActive`).
+   */
+  readonly rollFlashEnabled?: boolean;
 }
 
 const PRESET_ID = 'dice.original.carved.d20';
@@ -85,6 +97,35 @@ const TREATMENT = Object.freeze({
 });
 const identityPose = () => STATIC_POSE;
 export const LOCAL_WORLD_DIE_RESULT_HOLD_MS = 750;
+
+/** The kinematic correction-spin duration, seconds — extracted from the
+ * `current.progress` divisor below (`useFrame`'s `delta / 0.32`) so the
+ * roll-flash window (`DIE_FLASH_TOTAL_MS`) can agree with it exactly rather
+ * than re-stating the same number a second place. */
+const DIE_ASSIST_DURATION_S = 0.32;
+
+/**
+ * Round 3 fix, Kirk's design adopted exactly: "we spin to correct the die
+ * and we could cover that with a simple animation showing the number
+ * rolled; while that is over it we flip the die like we do." The flash
+ * spans the WHOLE correction-spin-plus-hold window — starting the instant
+ * `beginAssist` runs (die physically at rest, correction about to begin) —
+ * so it is never on screen while the physics face still visibly disagrees
+ * with the server's answer. It fades only in the last
+ * `DIE_FLASH_FADE_MS` of that window.
+ *
+ * This REPLACES the previous view-level design, which gated the flash on
+ * `localWorldDieSettled` — a boolean SessionEncounterView.tsx's own
+ * `handleLocalWorldDieTerminal` only sets at the END of the hold, by which
+ * point the layer is already unmounting. The flash never actually
+ * rendered. Triggering it here, at the moment physics settles rather than
+ * the moment presentation tears down, is what fixes that.
+ */
+export const DIE_FLASH_TOTAL_MS =
+  DIE_ASSIST_DURATION_S * 1000 + LOCAL_WORLD_DIE_RESULT_HOLD_MS;
+
+/** How long, at the end of `DIE_FLASH_TOTAL_MS`, the flash fades out. */
+export const DIE_FLASH_FADE_MS = 300;
 
 function runtimeSource(snapshot: DiceRuntimePresetSnapshot) {
   if (
@@ -124,10 +165,11 @@ function DieBody({
   scene,
   dieScale,
   dimensions,
+  authoritativeFace,
+  rollFlashEnabled,
   onBodyReady,
   onMeshReady,
   onTerminal,
-  onSettledAt,
 }: {
   readonly command: LocalWorldDieCommand;
   readonly source: NonNullable<ReturnType<typeof runtimeSource>>;
@@ -139,10 +181,13 @@ function DieBody({
    * diceDials.ts's own doc comment). */
   readonly dieScale: number;
   readonly dimensions: LocalWorldDieDimensions;
+  /** The server's natural d20 — shown by the roll flash directly, no
+   * outcome object needed (see `LocalWorldDieLayerProps.rollFlashEnabled`). */
+  readonly authoritativeFace: number;
+  readonly rollFlashEnabled: boolean;
   readonly onBodyReady: () => void;
   readonly onMeshReady: () => void;
   readonly onTerminal: (kind: 'settled' | 'off-table' | 'failure') => void;
-  readonly onSettledAt?: (position: readonly [number, number, number]) => void;
 }) {
   const bodyRef = useRef<RapierRigidBody>(null);
   const { rapier } = useRapier();
@@ -161,6 +206,16 @@ function DieBody({
     | undefined
   >(undefined);
   const [visible, setVisible] = useState(false);
+  // The roll flash's own rest position, captured once at `beginAssist` and
+  // cleared DIE_FLASH_TOTAL_MS later (or immediately, on the next command) —
+  // see DIE_FLASH_TOTAL_MS's own doc comment for why this moment, not
+  // `onTerminal('settled')`.
+  const [rollFlashPosition, setRollFlashPosition] = useState<
+    readonly [number, number, number] | undefined
+  >(undefined);
+  const rollFlashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  );
   // [x, y, z] rest position — `?dieScale=` (diceDials.ts) scales its height
   // above the surface together with the hull/mesh/shadow, so a bigger die
   // still sits ON the dungeon surface rather than floating or clipping into
@@ -192,6 +247,10 @@ function DieBody({
         clearTimeout(settledTimer.current);
         settledTimer.current = undefined;
       }
+      if (rollFlashTimer.current !== undefined) {
+        clearTimeout(rollFlashTimer.current);
+        rollFlashTimer.current = undefined;
+      }
     },
     []
   );
@@ -208,7 +267,21 @@ function DieBody({
       target: new Quaternion(...target),
       progress: 0,
     };
-  }, [rapier.RigidBodyType.KinematicPositionBased, target]);
+    // The die is physically at rest RIGHT NOW (only its rotation is about to
+    // be kinematically corrected — see the `useFrame` block below); this is
+    // the moment DIE_FLASH_TOTAL_MS's own doc comment names as the trigger.
+    if (rollFlashEnabled) {
+      const rest = body.translation();
+      setRollFlashPosition([rest.x, rest.y, rest.z]);
+      if (rollFlashTimer.current !== undefined) {
+        clearTimeout(rollFlashTimer.current);
+      }
+      rollFlashTimer.current = setTimeout(() => {
+        rollFlashTimer.current = undefined;
+        setRollFlashPosition(undefined);
+      }, DIE_FLASH_TOTAL_MS);
+    }
+  }, [rapier.RigidBodyType.KinematicPositionBased, target, rollFlashEnabled]);
 
   useEffect(() => {
     const body = bodyRef.current;
@@ -220,6 +293,13 @@ function DieBody({
       clearTimeout(settledTimer.current);
       settledTimer.current = undefined;
     }
+    // A new command supersedes any flash left over from a PREVIOUS throw —
+    // without this, a fast reroll could show the old throw's number.
+    if (rollFlashTimer.current !== undefined) {
+      clearTimeout(rollFlashTimer.current);
+      rollFlashTimer.current = undefined;
+    }
+    setRollFlashPosition(undefined);
     if (command.kind === 'reset') {
       launched.current = false;
       setVisible(false);
@@ -318,7 +398,10 @@ function DieBody({
     const current = assist.current;
     const body = bodyRef.current;
     if (!current || !body) return;
-    current.progress = Math.min(1, current.progress + delta / 0.32);
+    current.progress = Math.min(
+      1,
+      current.progress + delta / DIE_ASSIST_DURATION_S
+    );
     const eased = 1 - Math.pow(1 - current.progress, 3);
     body.setNextKinematicRotation(
       current.from.clone().slerp(current.target, eased)
@@ -327,12 +410,6 @@ function DieBody({
       assist.current = undefined;
       launched.current = false;
       body.setBodyType(rapier.RigidBodyType.Fixed, true);
-      // The body's translation never changes during the assist phase (only
-      // rotation is kinematically interpolated — see beginAssist above), so
-      // it's already the final rest position here, stable for the caller to
-      // anchor a flash on.
-      const rest = body.translation();
-      onSettledAt?.([rest.x, rest.y, rest.z]);
       settledTimer.current = setTimeout(() => {
         settledTimer.current = undefined;
         onTerminal('settled');
@@ -341,33 +418,41 @@ function DieBody({
   });
 
   return (
-    <group visible={visible}>
-      <RigidBody
-        ref={bodyRef}
-        type="kinematicPosition"
-        colliders={false}
-        position={resetPosition}
-        restitution={0.48}
-        friction={0.72}
-        linearDamping={0.22}
-        angularDamping={0.16}
-        ccd
-        canSleep
-      >
-        <ConvexHullCollider args={[hull]} />
-        <RuntimeDiceMesh
-          source={source}
-          treatment={TREATMENT}
-          initialPose={STATIC_POSE}
-          getPose={identityPose}
-          onReady={onMeshReady}
-          onFailure={() => onTerminal('failure')}
-          selectedGroupName="local-world-die-d20"
-          shadowName="local-world-die-shadow"
-          sizeScale={dieScale}
-        />
-      </RigidBody>
-    </group>
+    <>
+      <group visible={visible}>
+        <RigidBody
+          ref={bodyRef}
+          type="kinematicPosition"
+          colliders={false}
+          position={resetPosition}
+          restitution={0.48}
+          friction={0.72}
+          linearDamping={0.22}
+          angularDamping={0.16}
+          ccd
+          canSleep
+        >
+          <ConvexHullCollider args={[hull]} />
+          <RuntimeDiceMesh
+            source={source}
+            treatment={TREATMENT}
+            initialPose={STATIC_POSE}
+            getPose={identityPose}
+            onReady={onMeshReady}
+            onFailure={() => onTerminal('failure')}
+            selectedGroupName="local-world-die-d20"
+            shadowName="local-world-die-shadow"
+            sizeScale={dieScale}
+          />
+        </RigidBody>
+      </group>
+      <RollFlashDie
+        position={rollFlashPosition}
+        naturalRoll={authoritativeFace}
+        totalMs={DIE_FLASH_TOTAL_MS}
+        fadeMs={DIE_FLASH_FADE_MS}
+      />
+    </>
   );
 }
 
@@ -379,7 +464,7 @@ export function LocalWorldDieLayer({
   projectionRef,
   onReadyChange,
   onTerminal,
-  rollFlash,
+  rollFlashEnabled = false,
 }: LocalWorldDieLayerProps) {
   const [snapshot, setSnapshot] = useState(() =>
     getDiceRuntimePresetSnapshot(PRESET_ID)
@@ -388,13 +473,6 @@ export function LocalWorldDieLayer({
   const [worldReady, setWorldReady] = useState(false);
   const [bodyReady, setBodyReady] = useState(false);
   const [meshReady, setMeshReady] = useState(false);
-  // The die's own actual rest position — tracked locally, never bubbled
-  // externally, so `rollFlash` above can be anchored on it without the
-  // caller reaching into physics internals. See DieBody's own
-  // `onSettledAt`.
-  const [restPosition, setRestPosition] = useState<
-    readonly [number, number, number] | undefined
-  >(undefined);
   const runtimeFailureReported = useRef(false);
   // `?dieScale=` (diceDials.ts) — read once, like cameraDials.ts's own
   // `readCameraDials()` call sites.
@@ -484,14 +562,14 @@ export function LocalWorldDieLayer({
             scene={scene}
             dieScale={dieScale}
             dimensions={dimensions}
+            authoritativeFace={authoritativeFace}
+            rollFlashEnabled={rollFlashEnabled}
             onBodyReady={() => setBodyReady(true)}
             onMeshReady={() => setMeshReady(true)}
             onTerminal={onTerminal}
-            onSettledAt={setRestPosition}
           />
         </Physics>
       )}
-      <RollFlashDie flash={rollFlash} position={restPosition} />
     </>
   );
 }

@@ -59,7 +59,6 @@ import {
 import { CombatExperience } from './combat-experience/CombatExperience';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
-import { useRollFlash } from './combat-experience/useRollFlash';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
 import {
@@ -741,19 +740,20 @@ function SessionEncounterScope({
     () => localWorldDieDimensions(diceDials.dieScale),
     [diceDials.dieScale]
   );
-  // The die-anchored flash (`?rollFlash=die`/`both`) — active only for the
-  // roller, whose own physical die actually settles somewhere (a spectator's
-  // witness playback is a separate, unrelated LocalWorldDieLayer instance;
-  // see rollFlash.ts's own doc comment on why this differs from the toast's
-  // trigger). `combat.result` gated on `localWorldDieSettled` reproduces, for
-  // the roller, exactly what CombatExperience.tsx's own `settledResult` gate
-  // already computes internally (see useDiceSettleGate.ts).
-  const localWorldDieFlashes = useRollFlash(
-    localWorldDieSettled ? combat.result : undefined,
-    diceDials.rollFlash === 'die' || diceDials.rollFlash === 'both'
-  );
-  const localWorldDieFlash =
-    localWorldDieFlashes[localWorldDieFlashes.length - 1];
+  // The die-anchored flash (`?rollFlash=die`/`both`) — round 3 fix: this
+  // USED to be gated on `localWorldDieSettled` + `combat.result`, but
+  // `localWorldDieSettled` only flips true at the END of the 750ms hold
+  // (`handleLocalWorldDieTerminal`), by which point the layer is already
+  // being torn down — the flash never actually rendered. LocalWorldDieLayer
+  // now triggers and renders its own flash internally, from the moment the
+  // die is physically at rest (see its own doc comment), using
+  // `authoritativeFace` it already has — so this view only needs to pass
+  // whether die-mode is on at all. Passed to the SAME LocalWorldDieLayer
+  // instance used for both the roller's own throw AND a spectator's witness
+  // playback (see `localWorldDieLayer` below), so a witnessed throw flashes
+  // too.
+  const dieRollFlashEnabled =
+    diceDials.rollFlash === 'die' || diceDials.rollFlash === 'both';
   const runLocalWorldDieNeutralRoll = useCallback(() => {
     const origin = lastGoodPositionRef.current;
     if (!origin) return;
@@ -1128,7 +1128,7 @@ function SessionEncounterScope({
         projectionRef={localWorldDieProjectionRef}
         onReadyChange={setLocalWorldDieReady}
         onTerminal={handleLocalWorldDieTerminal}
-        rollFlash={localWorldDieFlash}
+        rollFlashEnabled={dieRollFlashEnabled}
       />
     ) : null;
 
