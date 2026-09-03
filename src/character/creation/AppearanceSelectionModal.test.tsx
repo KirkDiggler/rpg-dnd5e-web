@@ -143,7 +143,7 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
   });
 
   it.each([
-    ['elf', 'fighter'],
+    ['dragonborn', 'fighter'],
     ['dwarf', 'wizard'],
     [undefined, 'fighter'],
     ['dwarf', undefined],
@@ -155,6 +155,31 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
         screen.queryByRole('heading', { name: 'Customize Dwarf Hair' })
       ).toBeNull();
       expect(screen.queryByTestId('webgl-preview')).toBeNull();
+    }
+  );
+
+  it.each([
+    ['human', 'Human'],
+    ['elf', 'Elf'],
+    ['dwarf', 'Dwarf'],
+    ['half-elf', 'Half-Elf'],
+    ['tiefling', 'Tiefling'],
+    ['halfling', 'Halfling'],
+    ['gnome', 'Gnome'],
+    ['half-orc', 'Half-Orc'],
+  ] as const)(
+    'offers the exact %s profile picker and active body',
+    (raceRefId, label) => {
+      renderModal({ raceRefId, classRefId: 'fighter' });
+
+      expect(
+        screen.getByRole('heading', { name: `Customize ${label} Hair` })
+      ).not.toBeNull();
+      expect(
+        screen.getByTestId('class-character-model').getAttribute('data-url')
+      ).toBe(
+        `/models/synty/characters/customization/${raceRefId}-v1/bodies/${raceRefId}-fighter-body.glb`
+      );
     }
   );
 

@@ -1,4 +1,7 @@
-import { resolveDwarfCustomizationModel } from '@/character/customization/dwarfCustomization';
+import {
+  characterCustomizationRaceLabel,
+  resolveCharacterCustomizationModel,
+} from '@/character/customization/characterCustomization';
 import { summarizeHair } from '@/character/customization/hairSummary';
 import type { Step } from '@/components/ProgressTracker';
 import { ProgressTracker } from '@/components/ProgressTracker';
@@ -194,16 +197,19 @@ export function InteractiveCharacterSheet({
   const selectedClassRef = isClassInfo(draft.classInfo)
     ? draft.classInfo.name
     : undefined;
-  const canCustomizeDwarfHair = Boolean(
-    resolveDwarfCustomizationModel(draft.raceInfo?.name, selectedClassRef)
+  const canCustomizeHair = Boolean(
+    resolveCharacterCustomizationModel(draft.raceInfo?.name, selectedClassRef)
+  );
+  const customizationRaceLabel = characterCustomizationRaceLabel(
+    draft.raceInfo?.name
   );
   const hairSummary = draft.draft?.appearance
-    ? summarizeHair(draft.draft.appearance.hair)
+    ? summarizeHair(draft.draft.appearance.hair, draft.raceInfo?.name)
     : undefined;
 
   useEffect(() => {
-    if (!canCustomizeDwarfHair) setIsAppearanceModalOpen(false);
-  }, [canCustomizeDwarfHair]);
+    if (!canCustomizeHair) setIsAppearanceModalOpen(false);
+  }, [canCustomizeHair]);
 
   // Convert draft choices to modal format
   const structuredClassChoices = useMemo(() => {
@@ -1475,13 +1481,13 @@ export function InteractiveCharacterSheet({
                 )}
               </div>
 
-              {/* Production Dwarf hair customization is offered only when the
-                  generated player-model resolver confirms the exact race/class. */}
-              {canCustomizeDwarfHair && (
+              {/* Production hair customization is offered only when the generated
+                  profile/model resolver confirms the exact race/class. */}
+              {canCustomizeHair && customizationRaceLabel && (
                 <div className="space-y-4">
                   <motion.button
                     type="button"
-                    aria-label="Customize Dwarf hair"
+                    aria-label={`Customize ${customizationRaceLabel} hair`}
                     whileHover={{ scale: 1.02 }}
                     disabled={!draft.draftId || draft.loading || draft.saving}
                     className="w-full cursor-pointer rounded-lg border-2 border-dashed p-4 transition-all hover:border-solid focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1504,7 +1510,7 @@ export function InteractiveCharacterSheet({
                           className="text-lg font-bold"
                           style={{ color: 'var(--text-primary)' }}
                         >
-                          Dwarf Hair
+                          {customizationRaceLabel} Hair
                         </h3>
                         <p
                           className="text-xs"
@@ -1845,7 +1851,7 @@ export function InteractiveCharacterSheet({
       />
 
       {/* Appearance Selection Modal */}
-      {canCustomizeDwarfHair && (
+      {canCustomizeHair && (
         <AppearanceSelectionModal
           isOpen={isAppearanceModalOpen}
           raceRefId={draft.raceInfo?.name}

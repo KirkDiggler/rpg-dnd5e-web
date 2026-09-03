@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '../src/generated/characterCustomizationCatalog';
 
 const receiptUrl = new URL(
   '../docs/evidence/856-modular-elf-classes/receipt.json',
@@ -10,14 +11,6 @@ const readmeUrl = new URL(
   '../docs/evidence/856-modular-elf-classes/README.md',
   import.meta.url
 );
-const resolverSource = readFileSync(
-  new URL(
-    '../src/components/hex-grid/classCharacterModels.ts',
-    import.meta.url
-  ),
-  'utf8'
-);
-
 function loadReceipt(): Record<string, unknown> {
   expect(existsSync(receiptUrl)).toBe(true);
   if (!existsSync(receiptUrl)) return {};
@@ -60,12 +53,18 @@ describe('Phase B modular Elf publication', () => {
     });
   });
 
-  it('keeps all exact Elf entries on the one modular rig family', () => {
-    for (const classRef of ['barbarian', 'fighter', 'monk', 'rogue']) {
-      expect(resolverSource).toContain(`'elf:${classRef}'`);
-      expect(resolverSource).toContain(
-        `model: 'race-class/elf-${classRef}.glb'`
-      );
+  it('keeps all exact Elf fallbacks under the generated modular profile', () => {
+    const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles.elf;
+    for (const classRef of ['barbarian', 'fighter', 'monk', 'rogue'] as const) {
+      const historical = (
+        loadReceipt().combinations as Record<
+          string,
+          { modelUrl: string; sha256: string }
+        >
+      )[`elf:${classRef}`];
+      expect(profile.bodies[classRef].fallbackUrl).toBe(historical.modelUrl);
+      expect(profile.bodies[classRef].fallbackSha256).toBe(historical.sha256);
+      expect(profile.rigFamily).toBe('modular-fantasy-hero-v1');
     }
     expect(loadReceipt().socketProfile).toBe(
       'modular-fantasy-hero-main-hand-v1'

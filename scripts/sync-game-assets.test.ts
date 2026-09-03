@@ -121,7 +121,7 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
     webRoot,
     'src',
     'generated',
-    'dwarfCustomizationCatalog.ts'
+    'characterCustomizationCatalog.ts'
   );
 
   return {
@@ -144,8 +144,13 @@ async function runSync(assetsRoot: string, webRoot: string, generator: string) {
       ...gitEnvironment,
       RPG_GAME_ASSETS_PATH: assetsRoot,
       RPG_WEB_ROOT: webRoot,
-      RPG_DWARF_CATALOG_GENERATOR: generator,
-      RPG_DWARF_CATALOG_RUNNER: join(repoRoot, 'node_modules', '.bin', 'tsx'),
+      RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR: generator,
+      RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER: join(
+        repoRoot,
+        'node_modules',
+        '.bin',
+        'tsx'
+      ),
       ASSETS_SYNC_SKIP_UPDATE: '1',
     },
   });

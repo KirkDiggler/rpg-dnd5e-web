@@ -1,4 +1,8 @@
-import { resolveDwarfCustomizationModel } from '@/character/customization/dwarfCustomization';
+import {
+  characterCustomizationRaceLabel,
+  getCharacterCustomizationProfile,
+  resolveCharacterCustomizationModel,
+} from '@/character/customization/characterCustomization';
 import {
   Dialog,
   DialogContent,
@@ -11,8 +15,8 @@ import { HairCustomizationSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5
 import type { Appearance } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { AppearanceSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useRef, useState } from 'react';
-import { DwarfCustomizationControls } from './components/DwarfCustomizationControls';
-import { DwarfCustomizationPreview } from './components/DwarfCustomizationPreview';
+import { CharacterCustomizationControls } from './components/CharacterCustomizationControls';
+import { CharacterCustomizationPreview } from './components/CharacterCustomizationPreview';
 
 export interface AppearanceSelectionModalProps {
   isOpen: boolean;
@@ -52,8 +56,10 @@ export function AppearanceSelectionModal({
   const [saveError, setSaveError] = useState<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const model = resolveDwarfCustomizationModel(raceRefId, classRefId);
-  const open = isOpen && model !== undefined;
+  const model = resolveCharacterCustomizationModel(raceRefId, classRefId);
+  const profile = getCharacterCustomizationProfile(raceRefId);
+  const raceLabel = characterCustomizationRaceLabel(raceRefId);
+  const open = isOpen && model !== undefined && profile !== undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -86,7 +92,7 @@ export function AppearanceSelectionModal({
         if (!nextOpen) close();
       }}
     >
-      {model && (
+      {model && profile && (
         <DialogContent
           className="flex max-h-[96dvh] w-[calc(100%-1rem)] max-w-6xl flex-col overflow-hidden rounded-xl border-2 border-[var(--border-primary)] bg-[var(--bg-primary)] p-0 text-[var(--text-primary)] shadow-2xl sm:max-h-[92dvh] sm:w-[calc(100%-2rem)]"
           style={{ translate: '-50% -50%' }}
@@ -116,7 +122,7 @@ export function AppearanceSelectionModal({
                 className="font-serif text-xl font-bold sm:text-2xl"
                 style={{ color: 'var(--text-primary)' }}
               >
-                Customize Dwarf Hair
+                Customize {raceLabel} Hair
               </DialogTitle>
               <DialogDescription className="text-xs text-[var(--text-muted)] sm:text-sm">
                 Choose scalp hair, facial hair, color, and finish.
@@ -136,7 +142,8 @@ export function AppearanceSelectionModal({
 
           <div className="grid min-h-0 flex-1 grid-rows-[minmax(10rem,30vh)_minmax(0,1fr)] overflow-hidden lg:grid-cols-[minmax(22rem,1fr)_minmax(20rem,0.8fr)] lg:grid-rows-1">
             <div className="order-2 overflow-y-auto p-4 sm:p-6 lg:order-1">
-              <DwarfCustomizationControls
+              <CharacterCustomizationControls
+                profile={profile}
                 hair={appearance.hair}
                 onChange={(hair) =>
                   setAppearance(create(AppearanceSchema, { hair }))
@@ -144,7 +151,7 @@ export function AppearanceSelectionModal({
               />
             </div>
             <div className="order-1 min-h-40 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)] lg:order-2 lg:border-b-0 lg:border-l">
-              <DwarfCustomizationPreview
+              <CharacterCustomizationPreview
                 raceRefId={raceRefId}
                 classRefId={classRefId}
                 appearance={appearance}

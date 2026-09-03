@@ -17,9 +17,13 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DnDAppearance } from './DnDAppearance';
 
-function supportedCharacter(characterClass: Class, appearance?: Appearance) {
+function supportedCharacter(
+  characterClass: Class,
+  appearance?: Appearance,
+  race: Race = Race.DWARF
+) {
   return create(CharacterSchema, {
-    race: Race.DWARF,
+    race,
     class: characterClass,
     appearance,
   });
@@ -42,7 +46,7 @@ describe('DnDAppearance', () => {
   );
 
   it.each([
-    [Race.HUMAN, Class.FIGHTER],
+    [Race.DRAGONBORN, Class.FIGHTER],
     [Race.DWARF, Class.WIZARD],
   ])(
     'renders an unsupported state instead of Dwarf defaults for race %s class %s',
@@ -63,6 +67,29 @@ describe('DnDAppearance', () => {
       ).not.toBeNull();
       expect(screen.queryByText(/Hair 04/)).toBeNull();
       expect(screen.queryByText(/#5A3825/)).toBeNull();
+    }
+  );
+
+  it.each([
+    [Race.HUMAN, 'Hair 16'],
+    [Race.ELF, 'Hair 01'],
+    [Race.HALFLING, 'Hair 16'],
+    [Race.GNOME, 'Hair 16'],
+    [Race.HALF_ELF, 'Hair 16'],
+    [Race.HALF_ORC, 'Hair 08'],
+    [Race.TIEFLING, 'Hair 03'],
+  ])(
+    'renders profile defaults for finalized non-Dwarf race %s',
+    (race, scalpLabel) => {
+      render(
+        <DnDAppearance
+          character={supportedCharacter(Class.FIGHTER, undefined, race)}
+        />
+      );
+
+      expect(screen.getByText(`Scalp: Default (${scalpLabel})`)).not.toBeNull();
+      expect(screen.getByText('Facial: Default (None)')).not.toBeNull();
+      expect(screen.queryByRole('button')).toBeNull();
     }
   );
 

@@ -1,11 +1,12 @@
 import type { HairSlotSelection } from '@/character/customization/hairCustomization';
-import {
-  DWARF_CUSTOMIZATION_CATALOG,
-  type DwarfStyleOption,
-} from '@/generated/dwarfCustomizationCatalog';
+import type {
+  CharacterCustomizationProfile,
+  CharacterCustomizationStyleOption,
+} from '@/generated/characterCustomizationCatalog';
 import { useState } from 'react';
 
 export interface HairStyleGridProps {
+  profile: CharacterCustomizationProfile;
   slot: 'scalp' | 'facialHair';
   selection: HairSlotSelection;
   onChange: (selection: HairSlotSelection) => void;
@@ -27,7 +28,7 @@ function StyleOptionButton({
   selected,
   onSelect,
 }: {
-  option: DwarfStyleOption;
+  option: CharacterCustomizationStyleOption;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -93,14 +94,13 @@ function GeneratedChoiceButton({
 }
 
 export function HairStyleGrid({
+  profile,
   slot,
   selection,
   onChange,
 }: HairStyleGridProps) {
   const slotCatalog =
-    slot === 'scalp'
-      ? DWARF_CUSTOMIZATION_CATALOG.slots.scalp
-      : DWARF_CUSTOMIZATION_CATALOG.slots.facialHair;
+    slot === 'scalp' ? profile.slots.scalp : profile.slots.facialHair;
   const label = slot === 'scalp' ? 'Scalp hair' : 'Facial hair';
   const defaultSelection = { kind: 'default' } as const;
   const noneSelection = { kind: 'none' } as const;

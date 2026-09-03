@@ -1,3 +1,4 @@
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
 import { describe, expect, it } from 'vitest';
 import type { PlayerCharacterModelResolution } from './classCharacterModels';
 import * as classCharacterModels from './classCharacterModels';
@@ -87,10 +88,17 @@ describe('resolvePlayerCharacterModel', () => {
   it.each(['barbarian', 'fighter', 'monk', 'rogue'])(
     'resolves the exact standing Elf %s race-class model',
     (classRefId) => {
+      const body =
+        CHARACTER_CUSTOMIZATION_CATALOG.profiles.elf.bodies[
+          classRefId as 'barbarian' | 'fighter' | 'monk' | 'rogue'
+        ];
       const expected = asResolution({
-        url: `/models/synty/characters/race-class/elf-${classRefId}.glb`,
+        url: body.url,
         rigFamily: 'modular-fantasy-hero-v1',
         source: 'race-class',
+        customizationProfileRef: 'modular-fantasy-hero-v1:elf',
+        fallbackUrl: body.fallbackUrl,
+        fallbackSha256: body.fallbackSha256,
       });
 
       expect(
@@ -146,10 +154,26 @@ describe('resolvePlayerCharacterModel', () => {
     'resolves every exact standing %s starter-class model',
     (raceRefId) => {
       for (const classRefId of ['barbarian', 'fighter', 'monk', 'rogue']) {
+        const profile =
+          CHARACTER_CUSTOMIZATION_CATALOG.profiles[
+            raceRefId as
+              | 'half-elf'
+              | 'tiefling'
+              | 'halfling'
+              | 'gnome'
+              | 'half-orc'
+          ];
+        const body =
+          profile.bodies[
+            classRefId as 'barbarian' | 'fighter' | 'monk' | 'rogue'
+          ];
         const expected = asResolution({
-          url: `/models/synty/characters/race-class/${raceRefId}-${classRefId}.glb`,
+          url: body.url,
           rigFamily: 'modular-fantasy-hero-v1',
           source: 'race-class',
+          customizationProfileRef: profile.profileRef,
+          fallbackUrl: body.fallbackUrl,
+          fallbackSha256: body.fallbackSha256,
         });
 
         expect(
@@ -164,6 +188,7 @@ describe('resolvePlayerCharacterModel', () => {
   );
 
   it.each([
+    'human',
     'elf',
     'dwarf',
     'half-elf',
@@ -187,11 +212,16 @@ describe('resolvePlayerCharacterModel', () => {
     ).toEqual(expected);
   });
 
-  it('falls back to the class model for unpromoted known race-class combinations', () => {
+  it('resolves the exact Human customization body and generated complete fallback', () => {
+    const body =
+      CHARACTER_CUSTOMIZATION_CATALOG.profiles.human.bodies.barbarian;
     const expected = asResolution({
-      url: '/models/synty/characters/barbarian.glb',
-      rigFamily: 'townfolk-v1',
-      source: 'class',
+      url: body.url,
+      rigFamily: 'modular-fantasy-hero-v1',
+      source: 'race-class',
+      customizationProfileRef: 'modular-fantasy-hero-v1:human',
+      fallbackUrl: body.fallbackUrl,
+      fallbackSha256: body.fallbackSha256,
     });
 
     expect(

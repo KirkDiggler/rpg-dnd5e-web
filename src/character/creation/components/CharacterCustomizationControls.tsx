@@ -4,6 +4,7 @@ import {
   rgb24ToHex,
   type HairSlotSelection,
 } from '@/character/customization/hairCustomization';
+import type { CharacterCustomizationProfile } from '@/generated/characterCustomizationCatalog';
 import { create } from '@bufbuild/protobuf';
 import { EmptySchema } from '@bufbuild/protobuf/wkt';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
@@ -13,7 +14,8 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import { HairStyleGrid } from './HairStyleGrid';
 
-interface DwarfCustomizationControlsProps {
+interface CharacterCustomizationControlsProps {
+  profile: CharacterCustomizationProfile;
   hair?: HairCustomization;
   onChange: (hair: HairCustomization | undefined) => void;
 }
@@ -82,10 +84,11 @@ function optionalHair(
   return create(HairCustomizationSchema, fields);
 }
 
-export function DwarfCustomizationControls({
+export function CharacterCustomizationControls({
+  profile,
   hair,
   onChange,
-}: DwarfCustomizationControlsProps) {
+}: CharacterCustomizationControlsProps) {
   const update = (
     patch: Partial<
       Pick<
@@ -110,11 +113,13 @@ export function DwarfCustomizationControls({
   return (
     <div className="space-y-6">
       <HairStyleGrid
+        profile={profile}
         slot="scalp"
         selection={slotSelection(hair?.scalp)}
         onChange={(selection) => update({ scalp: styleSelection(selection) })}
       />
       <HairStyleGrid
+        profile={profile}
         slot="facialHair"
         selection={slotSelection(hair?.facialHair)}
         onChange={(selection) =>
@@ -128,13 +133,13 @@ export function DwarfCustomizationControls({
         </legend>
         <div className="grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
           <label
-            htmlFor="dwarf-hair-color"
+            htmlFor="character-hair-color"
             className="text-sm text-[var(--text-primary)]"
           >
             Hair color
           </label>
           <input
-            id="dwarf-hair-color"
+            id="character-hair-color"
             type="color"
             value={displayedColor}
             onChange={(event) =>
@@ -158,13 +163,13 @@ export function DwarfCustomizationControls({
 
         <div className="grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
           <label
-            htmlFor="dwarf-hair-roughness"
+            htmlFor="character-hair-roughness"
             className="text-sm text-[var(--text-primary)]"
           >
             Hair roughness
           </label>
           <input
-            id="dwarf-hair-roughness"
+            id="character-hair-roughness"
             type="range"
             min="0"
             max="1"
@@ -176,7 +181,7 @@ export function DwarfCustomizationControls({
           />
           <div className="flex items-center justify-between gap-2 sm:justify-end">
             <output
-              htmlFor="dwarf-hair-roughness"
+              htmlFor="character-hair-roughness"
               className="w-10 text-right text-xs tabular-nums text-[var(--text-primary)]"
             >
               {displayedRoughness.toFixed(2)}
