@@ -1,0 +1,117 @@
+{
+  "authorities": {
+    "provider": {
+      "aggregateManifestSha256": "2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac",
+      "merge": "0c837a801d97c98e50a336fb07e3b50d08d54df1"
+    },
+    "web": {
+      "base": "822ce167a6a7d3f19030fc4432bf53be7f75950f",
+      "generatedCatalogSha256": "6f56f8fb80575601a12fc5f9ff528c1ae9f1f12154cdfb9ed162c757dfdc10af",
+      "implementationHead": "598b746ee35813670411ea3c39d8310751268ba8"
+    }
+  },
+  "creation": {
+    "applicationFailures": 0,
+    "classRef": "fighter",
+    "colorSrgb": "#64A5CE",
+    "facialHairStyleRef": "modular-fantasy-hero:facial-hair:18",
+    "raceRef": "human",
+    "responseAuthoritativeApply": true,
+    "roughness": 0.55,
+    "route": "creation -> picker -> Apply -> draft summary -> finalization",
+    "scalpStyleRef": "modular-fantasy-hero:hair:38"
+  },
+  "humanVerdict": {
+    "quote": "it really does",
+    "reviewer": "Kirk"
+  },
+  "schemaVersion": 1,
+  "screenshots": [
+    {
+      "byteSize": 175045,
+      "dimensions": [
+        1600,
+        1000
+      ],
+      "path": "human-picker-selected.png",
+      "sha256": "fa4b2afa3b9bd04a8f79b3f4718a556d5c64422236bb8abb5f8ca3e63ce176a3"
+    },
+    {
+      "byteSize": 109103,
+      "dimensions": [
+        1600,
+        1000
+      ],
+      "path": "human-apply-summary.png",
+      "sha256": "66f3c56d5c5ecf7a9c301a9b5aa425e6d30807d41411dd0c5a46f34c367c7436"
+    },
+    {
+      "byteSize": 843830,
+      "dimensions": [
+        1600,
+        1000
+      ],
+      "path": "session-human-elf-gnome-tiefling.png",
+      "sha256": "f3dafd1e43234a048ef3078be527083c4a87e479468c602c06b5de560bb1bab4"
+    },
+    {
+      "byteSize": 844576,
+      "dimensions": [
+        1600,
+        1000
+      ],
+      "path": "session-dwarf-halfelf-halfling-halforc.png",
+      "sha256": "50f6cd6f3cbf244844056fbb9fefb81eb62e760589fcff96fdfb5e7a0b378932"
+    }
+  ],
+  "sessions": [
+    {
+      "accessoryUrls": [
+        "/models/synty/characters/customization/human-v1/scalp/hair-38.glb",
+        "/models/synty/characters/customization/human-v1/facial-hair/facial-hair-18.glb",
+        "/models/synty/characters/customization/elf-v1/scalp/hair-01.glb",
+        "/models/synty/characters/customization/gnome-v1/scalp/hair-16.glb",
+        "/models/synty/characters/customization/tiefling-v1/scalp/hair-03.glb"
+      ],
+      "applicationFailures": 0,
+      "bodyUrls": [
+        "/models/synty/characters/customization/human-v1/bodies/human-fighter-body.glb",
+        "/models/synty/characters/customization/elf-v1/bodies/elf-fighter-body.glb",
+        "/models/synty/characters/customization/gnome-v1/bodies/gnome-fighter-body.glb",
+        "/models/synty/characters/customization/tiefling-v1/bodies/tiefling-fighter-body.glb"
+      ],
+      "httpFailures": 0,
+      "label": "session-a",
+      "races": [
+        "human",
+        "elf",
+        "gnome",
+        "tiefling"
+      ]
+    },
+    {
+      "accessoryUrls": [
+        "/models/synty/characters/customization/dwarf-v1/scalp/hair-04.glb",
+        "/models/synty/characters/customization/dwarf-v1/facial-hair/facial-hair-02.glb",
+        "/models/synty/characters/customization/half-elf-v1/scalp/hair-27.glb",
+        "/models/synty/characters/customization/halfling-v1/scalp/hair-16.glb",
+        "/models/synty/characters/customization/half-orc-v1/scalp/hair-08.glb"
+      ],
+      "applicationFailures": 0,
+      "bodyUrls": [
+        "/models/synty/characters/customization/dwarf-v1/bodies/dwarf-fighter-body.glb",
+        "/models/synty/characters/customization/half-elf-v1/bodies/half-elf-fighter-body.glb",
+        "/models/synty/characters/customization/halfling-v1/bodies/halfling-fighter-body.glb",
+        "/models/synty/characters/customization/half-orc-v1/bodies/half-orc-fighter-body.glb"
+      ],
+      "httpFailures": 0,
+      "label": "session-b",
+      "races": [
+        "dwarf",
+        "half-elf",
+        "halfling",
+        "half-orc"
+      ]
+    }
+  ]
+}
