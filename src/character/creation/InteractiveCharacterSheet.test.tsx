@@ -158,35 +158,45 @@ function draftState(
   };
 }
 
-describe('InteractiveCharacterSheet Dwarf appearance entry', () => {
+describe('InteractiveCharacterSheet profile-driven appearance entry', () => {
   const dwarf = create(RaceInfoSchema, {
     name: 'Dwarf',
     raceId: Race.DWARF,
   });
 
-  it('offers an accessible hair picker after a supported Dwarf class is selected', () => {
-    render(
-      <CharacterDraftContext.Provider
-        value={draftState(vi.fn(), {
-          raceInfo: dwarf,
-          classInfo: create(ClassInfoSchema, {
-            name: 'Rogue',
-            classId: Class.ROGUE,
-          }),
-          classChoices: [],
-        })}
-      >
-        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
-      </CharacterDraftContext.Provider>
-    );
+  it.each([
+    [dwarf, 'Dwarf'],
+    [create(RaceInfoSchema, { name: 'Human', raceId: Race.HUMAN }), 'Human'],
+    [
+      create(RaceInfoSchema, { name: 'Half-Orc', raceId: Race.HALF_ORC }),
+      'Half-Orc',
+    ],
+  ])(
+    'offers the accessible %s hair picker after a supported class is selected',
+    (raceInfo, label) => {
+      render(
+        <CharacterDraftContext.Provider
+          value={draftState(vi.fn(), {
+            raceInfo,
+            classInfo: create(ClassInfoSchema, {
+              name: 'Rogue',
+              classId: Class.ROGUE,
+            }),
+            classChoices: [],
+          })}
+        >
+          <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+        </CharacterDraftContext.Provider>
+      );
 
-    expect(
-      screen.getByRole('button', { name: 'Customize Dwarf hair' })
-    ).not.toBeNull();
-  });
+      expect(
+        screen.getByRole('button', { name: `Customize ${label} hair` })
+      ).not.toBeNull();
+    }
+  );
 
   it.each([
-    [create(RaceInfoSchema, { name: 'Human', raceId: Race.HUMAN }), 'Fighter'],
+    [create(RaceInfoSchema, { name: 'Dragonborn' }), 'Fighter'],
     [dwarf, 'Wizard'],
   ])(
     'does not offer the picker for an unsupported race/class pair',
@@ -204,7 +214,7 @@ describe('InteractiveCharacterSheet Dwarf appearance entry', () => {
       );
 
       expect(
-        screen.queryByRole('button', { name: 'Customize Dwarf hair' })
+        screen.queryByRole('button', { name: /Customize .* hair/ })
       ).toBeNull();
       expect(screen.queryByText('Customize Appearance')).toBeNull();
     }

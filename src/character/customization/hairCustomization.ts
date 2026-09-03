@@ -1,5 +1,9 @@
 import type { SkinnedAccessoryPresentation } from '@/components/hex-grid/SkinnedAccessoryAttachment';
-import { DWARF_CUSTOMIZATION_CATALOG } from '@/generated/dwarfCustomizationCatalog';
+import {
+  CHARACTER_CUSTOMIZATION_CATALOG,
+  type CharacterCustomizationProfile,
+  type CustomizationRaceRef,
+} from '@/generated/characterCustomizationCatalog';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 
 export type HairSlotSelection =
@@ -28,7 +32,7 @@ export type HairResolutionDiagnostic =
     };
 
 export interface ResolvedHairPresentation {
-  readonly profileRef: string;
+  readonly profileRef: string | undefined;
   readonly accessories: readonly SkinnedAccessoryPresentation[];
   readonly diagnostics: readonly HairResolutionDiagnostic[];
 }
@@ -44,44 +48,42 @@ export interface ResolveHairPresentationInput {
   readonly customization?: HairCustomizationContainer;
 }
 
-interface ResolvableStyle {
-  readonly styleRef: string;
-  readonly url: string;
-}
-
-const STARTER_CLASSES = new Set(
-  Object.keys(DWARF_CUSTOMIZATION_CATALOG.bodies)
-);
-const SCALP_BY_REF: ReadonlyMap<string, ResolvableStyle> = new Map(
-  DWARF_CUSTOMIZATION_CATALOG.slots.scalp.options.map((option) => [
-    option.styleRef,
-    option,
-  ])
-);
-const FACIAL_HAIR_BY_REF: ReadonlyMap<string, ResolvableStyle> = new Map(
-  DWARF_CUSTOMIZATION_CATALOG.slots.facialHair.options.map((option) => [
-    option.styleRef,
-    option,
-  ])
-);
-
 function normalizeRef(value: string | undefined): string | undefined {
-  const normalized = value?.trim().toLowerCase();
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-');
   return normalized || undefined;
 }
+
+function profileForRace(
+  raceRefId: string | undefined
+): CharacterCustomizationProfile | undefined {
+  if (
+    !raceRefId ||
+    !Object.hasOwn(CHARACTER_CUSTOMIZATION_CATALOG.profiles, raceRefId)
+  ) {
+    return undefined;
+  }
+  return CHARACTER_CUSTOMIZATION_CATALOG.profiles[
+    raceRefId as CustomizationRaceRef
+  ];
+}
+
+const SHARED_SURFACE = CHARACTER_CUSTOMIZATION_CATALOG.profiles.human.surface;
 
 export function resolveHairColorSrgb(value: number | undefined): number {
   return value === undefined ||
     (Number.isInteger(value) && value >= 0 && value <= 0xffffff)
-    ? (value ?? DWARF_CUSTOMIZATION_CATALOG.defaults.colorSrgb)
-    : DWARF_CUSTOMIZATION_CATALOG.defaults.colorSrgb;
+    ? (value ?? SHARED_SURFACE.defaultColorSrgb)
+    : SHARED_SURFACE.defaultColorSrgb;
 }
 
 export function resolveHairRoughness(value: number | undefined): number {
   return value === undefined ||
     (Number.isFinite(value) && value >= 0 && value <= 1)
-    ? (value ?? DWARF_CUSTOMIZATION_CATALOG.defaults.roughness)
-    : DWARF_CUSTOMIZATION_CATALOG.defaults.roughness;
+    ? (value ?? SHARED_SURFACE.defaultRoughness)
+    : SHARED_SURFACE.defaultRoughness;
 }
 
 export function rgb24ToHex(value: number): `#${string}` {
@@ -103,6 +105,7 @@ function normalizeSelection(
 }
 
 function resolveSlot(
+  profile: CharacterCustomizationProfile,
   slot: SkinnedAccessoryPresentation['slot'],
   selection: HairSlotSelection | undefined,
   treatment: SkinnedAccessoryPresentation['treatment'],
@@ -118,14 +121,19 @@ function resolveSlot(
     return undefined;
   }
 
-  const defaultStyleRef =
-    slot === 'scalp'
-      ? DWARF_CUSTOMIZATION_CATALOG.slots.scalp.defaultStyleRef
-      : DWARF_CUSTOMIZATION_CATALOG.slots.facialHair.defaultStyleRef;
-  const requestedStyleRef =
-    selection.kind === 'default' ? defaultStyleRef : selection.styleRef;
-  const options = slot === 'scalp' ? SCALP_BY_REF : FACIAL_HAIR_BY_REF;
-  const option = options.get(requestedStyleRef);
+  const catalog =
+    slot === 'scalp' ? profile.slots.scalp : profile.slots.facialHair;
+  const defaultSelection = catalog.defaultSelection;
+  let requestedStyleRef: string;
+  if (selection.kind === 'default') {
+    if (defaultSelection.kind === 'none') return undefined;
+    requestedStyleRef = defaultSelection.styleRef;
+  } else {
+    requestedStyleRef = selection.styleRef;
+  }
+  const option = catalog.options.find(
+    (candidate) => candidate.styleRef === requestedStyleRef
+  );
   if (!option) {
     diagnostics.push({
       code: 'unknown-style-ref',
@@ -149,17 +157,18 @@ export function resolveHairPresentation({
 }: ResolveHairPresentationInput): ResolvedHairPresentation {
   const diagnostics: HairResolutionDiagnostic[] = [];
   const normalizedRace = normalizeRef(raceRefId);
-  if (normalizedRace !== DWARF_CUSTOMIZATION_CATALOG.raceRef) {
+  const profile = profileForRace(normalizedRace);
+  if (!profile) {
     return {
-      profileRef: DWARF_CUSTOMIZATION_CATALOG.profileRef,
+      profileRef: undefined,
       accessories: [],
       diagnostics: [{ code: 'unsupported-race', requestedRef: normalizedRace }],
     };
   }
   const normalizedClass = normalizeRef(classRefId);
-  if (!normalizedClass || !STARTER_CLASSES.has(normalizedClass)) {
+  if (!normalizedClass || !Object.hasOwn(profile.bodies, normalizedClass)) {
     return {
-      profileRef: DWARF_CUSTOMIZATION_CATALOG.profileRef,
+      profileRef: profile.profileRef,
       accessories: [],
       diagnostics: [
         { code: 'unsupported-class', requestedRef: normalizedClass },
@@ -189,16 +198,18 @@ export function resolveHairPresentation({
   const treatment = {
     baseColorSrgb: rgb24ToHex(colorSrgb),
     roughness,
-    metalness: DWARF_CUSTOMIZATION_CATALOG.defaults.metalness,
+    metalness: profile.defaults.metalness,
   } as const;
   const accessories = [
     resolveSlot(
+      profile,
       'scalp',
       normalizeSelection(hair?.scalp),
       treatment,
       diagnostics
     ),
     resolveSlot(
+      profile,
       'facial-hair',
       normalizeSelection(hair?.facialHair),
       treatment,
@@ -209,7 +220,7 @@ export function resolveHairPresentation({
   );
 
   return {
-    profileRef: DWARF_CUSTOMIZATION_CATALOG.profileRef,
+    profileRef: profile.profileRef,
     accessories,
     diagnostics,
   };

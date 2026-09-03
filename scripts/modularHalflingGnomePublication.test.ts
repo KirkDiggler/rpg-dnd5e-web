@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { CustomizationRaceRef } from '../src/generated/characterCustomizationCatalog';
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '../src/generated/characterCustomizationCatalog';
 
 const evidenceRoot = new URL(
   '../docs/evidence/869-halfling-gnome-classes/',
@@ -8,14 +10,6 @@ const evidenceRoot = new URL(
 );
 const receiptUrl = new URL('receipt.json', evidenceRoot);
 const readmeUrl = new URL('README.md', evidenceRoot);
-const resolverSource = readFileSync(
-  new URL(
-    '../src/components/hex-grid/classCharacterModels.ts',
-    import.meta.url
-  ),
-  'utf8'
-);
-
 const expectedCombinations = {
   'dwarf:barbarian': {
     modelUrl: '/models/synty/characters/race-class/dwarf-barbarian.glb',
@@ -128,13 +122,17 @@ describe('modular Halfling, Gnome, and refreshed Dwarf publication', () => {
     });
   });
 
-  it('keeps the eight new resolver entries on the shared modular rig family', () => {
+  it('keeps the eight historical short-race outputs as exact profile fallbacks', () => {
     for (const [key, facts] of Object.entries(expectedCombinations)) {
       if (key.startsWith('dwarf:')) continue;
-      expect(resolverSource).toContain(`'${key}'`);
-      expect(resolverSource).toContain(
-        `model: '${facts.modelUrl.replace('/models/synty/characters/', '')}'`
-      );
+      const [raceRef, classRef] = key.split(':') as [
+        CustomizationRaceRef,
+        'barbarian' | 'fighter' | 'monk' | 'rogue',
+      ];
+      const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles[raceRef];
+      expect(profile.bodies[classRef].fallbackUrl).toBe(facts.modelUrl);
+      expect(profile.bodies[classRef].fallbackSha256).toBe(facts.sha256);
+      expect(profile.rigFamily).toBe('modular-fantasy-hero-v1');
     }
   });
 
