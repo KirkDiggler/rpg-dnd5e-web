@@ -21,7 +21,9 @@ import { ConceptsView } from './concepts/ConceptsView';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
 import { ThumbHarness } from './dev/ThumbHarness';
-import { DiscordDebugPanel, useDiscord } from './discord';
+import { useDiscord } from './discord';
+import { FeelDialsDrawer } from './feel/FeelDialsDrawer';
+import { FEEL_LAB_LAYER_Z } from './feel/layer';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
 
 const LazyToolkitContributorSandbox =
@@ -89,10 +91,14 @@ function AppContent() {
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
-  const showGlobalDevTools = shouldRenderGlobalDevTools(
-    import.meta.env.MODE,
-    currentView
-  );
+  // #906 batch 2: shouldRenderGlobalDevTools is dev-mode-and-not-concepts
+  // only, so it is always false in a production build. The Discord dev
+  // deployment still runs a production build, so it opts back in with
+  // VITE_FEEL_LAB=1 — this is the only way to ship the feel dials drawer
+  // there without also shipping the rest of dev tooling.
+  const showGlobalDevTools =
+    shouldRenderGlobalDevTools(import.meta.env.MODE, currentView) ||
+    import.meta.env.VITE_FEEL_LAB === '1';
   // Dev override: ?playerId=alice|bob lets two tabs run as different players
   // without Discord (slice 2 playtest infrastructure)
   const devPlayerIdOverride = isDevelopment
@@ -148,6 +154,24 @@ function AppContent() {
     }
   }, [myActiveLobby.data, resumedLobbyCharacter.loading, resumeIdentityError]);
 
+  // #906 batch 2: backtick toggles the feel dials drawer, mirroring the
+  // wrench button, so it's reachable without hunting for the button —
+  // ignored while typing in a field so it never eats a literal backtick.
+  useEffect(() => {
+    if (!showGlobalDevTools) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '`') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
+        return;
+      }
+      setShowDebugPanel((current) => !current);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showGlobalDevTools]);
+
   const handleCreateCharacter = async () => {
     try {
       // Reset any existing draft
@@ -196,10 +220,6 @@ function AppContent() {
     setResumeEncounterId(null);
     setResumeLobbyId(null);
     setCurrentView('home');
-  };
-
-  const handleOpenConcepts = () => {
-    setCurrentView('concepts');
   };
 
   const handleOpenAuthor = () => {
@@ -410,16 +430,20 @@ function AppContent() {
           />
         )}
 
-        {/* Dev tools buttons */}
+        {/* Dev tools buttons. #906 round 4: this row paints behind a live
+            session route for the same reason the drawer once did —
+            SessionEncounterView portals its whole view into document.body
+            at zIndex: 100 — so it shares FEEL_LAB_LAYER_Z with the drawer
+            rather than its own z-50 (see src/feel/layer.ts). It's also
+            lifted from bottom-4 to bottom-48 (192px) to clear the combat
+            dock, which is 174px tall and spans the full width at the
+            bottom of the screen — at bottom-4 the buttons sat inside that
+            band and the End Turn button intercepted every click. */}
         {showGlobalDevTools && (
-          <div className="fixed bottom-4 right-4 z-50 flex gap-2">
-            <button
-              onClick={handleOpenConcepts}
-              className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
-              title="Open Concepts Lab"
-            >
-              🧪
-            </button>
+          <div
+            style={{ zIndex: FEEL_LAB_LAYER_Z }}
+            className="fixed bottom-48 right-4 flex gap-2"
+          >
             <button
               onClick={() => setShowDebugPanel(!showDebugPanel)}
               className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
@@ -430,17 +454,16 @@ function AppContent() {
           </div>
         )}
 
-        {/* Preserve the requested debug state while keeping all global dev
-            surfaces out of Concepts Lab. */}
-        {showGlobalDevTools && showDebugPanel && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="mt-8"
-          >
-            <DiscordDebugPanel />
-          </motion.div>
+        {/* #906 batch 2: the dev overlay is now this slide-out drawer —
+            "Feel dials" first, the former DiscordDebugPanel content second.
+            It's `position: fixed` internally, so it never affects layout
+            here; open/close is animated by the drawer itself via its own
+            transform, not by mounting/unmounting. */}
+        {showGlobalDevTools && (
+          <FeelDialsDrawer
+            open={showDebugPanel}
+            onClose={() => setShowDebugPanel(false)}
+          />
         )}
       </motion.div>
     </div>

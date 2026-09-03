@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { FEEL_LAB_LAYER_Z } from './feel/layer';
 
 const hoisted = vi.hoisted(() => ({
   activeLobby: {
@@ -170,29 +171,28 @@ describe('App running-encounter resume', () => {
 });
 
 describe('App global development tools', () => {
-  it('hides the controls and open Discord panel in Concepts, then restores them on Back', () => {
+  it('shows only the wrench — #906 round 5: Kirk, "we do not need the concepts lab in there"', () => {
     vi.stubEnv('MODE', 'development');
     render(<App />);
 
     expect(screen.getByText('Home View')).toBeTruthy();
-    const openConcepts = screen.getByTitle('Open Concepts Lab');
     expect(screen.getByTitle('Show Debug Panel')).toBeTruthy();
-
-    fireEvent.click(screen.getByTitle('Show Debug Panel'));
-    expect(screen.getByTitle('Hide Debug Panel')).toBeTruthy();
-    expect(screen.getByText('Discord Debug Panel')).toBeTruthy();
-
-    fireEvent.click(openConcepts);
-    expect(screen.getByRole('heading', { name: 'Concepts Lab' })).toBeTruthy();
     expect(screen.queryByTitle('Open Concepts Lab')).toBeNull();
-    expect(screen.queryByTitle('Hide Debug Panel')).toBeNull();
+    expect(screen.queryByText('🧪')).toBeNull();
+  });
+
+  it('hides the wrench in Concepts (reachable only via the ?concept= deep link now, not a button), then restores it on Back', () => {
+    vi.stubEnv('MODE', 'development');
+    window.history.pushState({}, '', '/?concept=some-concept');
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Concepts Lab' })).toBeTruthy();
+    expect(screen.queryByTitle('Show Debug Panel')).toBeNull();
     expect(screen.queryByText('Discord Debug Panel')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByText('Home View')).toBeTruthy();
-    expect(screen.getByTitle('Open Concepts Lab')).toBeTruthy();
-    expect(screen.getByTitle('Hide Debug Panel')).toBeTruthy();
-    expect(screen.getByText('Discord Debug Panel')).toBeTruthy();
+    expect(screen.getByTitle('Show Debug Panel')).toBeTruthy();
   });
 
   it('does not render global development tools in production', () => {
@@ -200,8 +200,29 @@ describe('App global development tools', () => {
     render(<App />);
 
     expect(screen.getByText('Home View')).toBeTruthy();
-    expect(screen.queryByTitle('Open Concepts Lab')).toBeNull();
     expect(screen.queryByTitle('Show Debug Panel')).toBeNull();
     expect(screen.queryByText('Discord Debug Panel')).toBeNull();
+  });
+
+  it('shares FEEL_LAB_LAYER_Z with the drawer, not its own z-index — #906 round 4: the button row painted behind a live session for the same reason the drawer once did', () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+
+    const wrench = screen.getByTitle('Show Debug Panel');
+    const row = wrench.parentElement as HTMLElement;
+    expect(row.style.zIndex).toBe(String(FEEL_LAB_LAYER_Z));
+  });
+
+  it('sits above the combat dock (174px tall) rather than inside its band', () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+
+    const wrench = screen.getByTitle('Show Debug Panel');
+    const row = wrench.parentElement as HTMLElement;
+    // bottom-48 = 12rem = 192px, clearing the dock's 174px with room to
+    // spare; the old bottom-4 (16px) sat well inside it.
+    const classes = row.className.split(/\s+/);
+    expect(classes).toContain('bottom-48');
+    expect(classes).not.toContain('bottom-4');
   });
 });

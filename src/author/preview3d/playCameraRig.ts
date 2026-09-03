@@ -24,10 +24,22 @@ export const POLAR_ANGLE = Math.PI / 3.5;
  * prop). */
 export const INITIAL_AZIMUTH = Math.PI / 4;
 export const INITIAL_DISTANCE = 20;
-/** `HexGrid.tsx`'s own call-site values, passed to `useCameraControls`. */
+/** `HexGrid.tsx`'s own PRE-#906 call-site value, RADIANS PER RENDERED
+ * FRAME (0.02 rad/frame ≈ 68.75°/s at 60Hz). #906 replaced this with a
+ * time-based `rotateSpeed` dial (cameraDials.ts's own
+ * `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, 70°/s — the same speed, just no
+ * longer tied to framerate) shared by both HexGrid.tsx and
+ * SessionCanvas.tsx, so this citation is now a snapshot of the pre-#906
+ * per-frame value rather than the real hook's current default. Left
+ * as-is (no refactor) since `PlayCamera.tsx`'s own per-frame usage of
+ * this constant would need to change WITH it to stay meaningful. */
 export const ROTATE_SPEED = 0.02;
-export const MIN_ZOOM = 30;
-export const MAX_ZOOM = 150;
+/** `cameraDials.ts`'s own `DEFAULT_ZOOM_MIN`/`DEFAULT_ZOOM_MAX` — #906
+ * corrected from a stale 30/150 (HexGrid.tsx's own literal call-site
+ * values before the zoom-band ladder existed) to the real current
+ * 35/140. */
+export const MIN_ZOOM = 35;
+export const MAX_ZOOM = 140;
 /** `HexGrid.tsx`'s own `<Canvas orthographic camera={{...}}>` values —
  * "Lower isometric angle similar to Stolen Realm" per that file's own
  * comment. */
@@ -136,8 +148,16 @@ export function clampZoomStep(
 }
 
 /**
- * Right-click-drag rotate step — `useCameraControls.ts`'s own
- * `handleMouseMove` while `isRightDown`: `azimuth -= deltaX * 0.01`.
+ * STALE CITATION — kept for `PlayCamera.tsx`'s own author-preview walkthrough
+ * (no refactor here), but this no longer describes the real game's camera.
+ * Right-click drag ROTATED azimuth (`azimuth -= deltaX * 0.01`) only before
+ * Kirk moved it to panning ("use Q and E to rotate and rt click could move
+ * the board" — useCameraControls.ts's own header doc comment); right-drag
+ * now pans the board, and #906 added a THIRD, still-different rotate
+ * gesture — middle-drag, `?dragRotate=` in cameraDials.ts, default 0.4
+ * degrees/pixel rather than this function's 0.01 radians/pixel. This
+ * function's own math (0.01 rad/px, right-button-shaped) is preserved
+ * as-is for the preview's existing behavior.
  */
 export function dragRotateStep(
   currentAzimuth: number,

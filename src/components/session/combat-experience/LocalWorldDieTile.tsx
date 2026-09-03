@@ -1,4 +1,5 @@
 import type { Scene3D } from '@/components/session/atlasToScene3D';
+import { localWorldDieDimensions } from '@/components/session/local-world-die/diceDials';
 import type { LocalWorldDieHeldState } from '@/components/session/local-world-die/localWorldDieCommand';
 import { isLocalWorldDieFloorPoint } from '@/components/session/local-world-die/localWorldDieFloor';
 import type { TrayPlaneProjection } from '@/components/ui/dice/trayPlaneProjection';
@@ -6,6 +7,7 @@ import {
   createVisualThrowProfile,
   type VisualThrowProfileV1,
 } from '@/components/ui/dice/visualThrowProfile';
+import { useDiceDials } from '@/feel/useFeelDials';
 import {
   useCallback,
   useEffect,
@@ -38,6 +40,14 @@ function suppress(event: { preventDefault(): void; stopPropagation(): void }) {
 export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
   const integrationRef = useRef(props);
   integrationRef.current = props;
+  // `?dieScale=` (diceDials.ts) — LIVE (#906 batch 2): the drag gesture's
+  // held-height default/min/max clamp update on the very next render, same
+  // as `integrationRef` above. The physics BODY's own geometry
+  // (LocalWorldDieLayer.tsx's DieBody) still only mounts while a throw is
+  // in flight, so it follows the "next throw" cadence regardless.
+  const diceDials = useDiceDials();
+  const dimensionsRef = useRef(localWorldDieDimensions(diceDials.dieScale));
+  dimensionsRef.current = localWorldDieDimensions(diceDials.dieScale);
   const activePointer = useRef<number | undefined>(undefined);
   const captureOwner = useRef<HTMLButtonElement | undefined>(undefined);
   const heldRef = useRef<LocalWorldDieHeldState | undefined>(undefined);
@@ -114,12 +124,13 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
 
       const previous = heldRef.current;
       const lifting = Boolean(previous && (event.buttons & 2) !== 0);
+      const dimensions = dimensionsRef.current;
       let next: LocalWorldDieHeldState | undefined;
       if (previous && lifting) {
         const height = Math.min(
-          3,
+          dimensions.holdHeightMax,
           Math.max(
-            0.35,
+            dimensions.holdHeightMin,
             previous.height - (event.clientY - lastClientY.current) * 0.01
           )
         );
@@ -132,7 +143,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
         ) {
           next = {
             position: [point[0], point[1]],
-            height: previous?.height ?? 1.25,
+            height: previous?.height ?? dimensions.holdHeightDefault,
           };
         }
       }

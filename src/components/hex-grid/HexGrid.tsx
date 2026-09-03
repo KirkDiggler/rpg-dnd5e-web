@@ -23,6 +23,7 @@ import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 // comment on a prior naive-derivation hazard) — importing the single
 // existing measurement is the only way to GUARANTEE agreement with it.
 import { facingToRotationY } from '@/components/hex-grid/authorGridHelpers';
+import { useCameraDials } from '@/feel/useFeelDials';
 import {
   doorHexKinds,
   doorHexPositions,
@@ -51,7 +52,6 @@ import { Canvas } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
-import { readCameraDials } from './cameraDials';
 import { FrontierGroundHint } from './FrontierGroundHint';
 import { HexEntity } from './HexEntity';
 import {
@@ -610,12 +610,12 @@ function Scene({
     [walls, onDoorClick, rememberedWallHexKeys]
   );
 
-  // Grid center: bbox center of all revealed floor tiles. Used only as the
-  // camera's one-time starting position below — see stableTarget.
-  const gridCenter = useMemo(() => {
-    if (floorTiles.size === 0) {
-      return new THREE.Vector3(0, 0, 0);
-    }
+  // Revealed-floor bbox: center + extent of all revealed floor tiles.
+  // `gridCenter` (below) is the camera's one-time starting position — see
+  // stableTarget. The full bounds also feed `Home`'s on-demand fit (#906,
+  // cameraFit.ts) via useCameraControls' `revealedBounds` option.
+  const revealedBounds = useMemo(() => {
+    if (floorTiles.size === 0) return null;
     let minX = Infinity,
       maxX = -Infinity;
     let minZ = Infinity,
@@ -630,8 +630,24 @@ function Scene({
       minZ = Math.min(minZ, worldPos.z);
       maxZ = Math.max(maxZ, worldPos.z);
     }
-    return new THREE.Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+    // Tile centers alone understate the revealed footprint — each tile's
+    // own visual extent reaches roughly HEX_SIZE beyond its center, so pad
+    // one hex radius on every side.
+    return {
+      centerX: (minX + maxX) / 2,
+      centerZ: (minZ + maxZ) / 2,
+      width: maxX - minX + HEX_SIZE * 2,
+      height: maxZ - minZ + HEX_SIZE * 2,
+    };
   }, [floorTiles]);
+
+  const gridCenter = useMemo(
+    () =>
+      revealedBounds
+        ? new THREE.Vector3(revealedBounds.centerX, 0, revealedBounds.centerZ)
+        : new THREE.Vector3(0, 0, 0),
+    [revealedBounds]
+  );
 
   // Stable base target for useCameraControls' panning, seeded once from
   // the first non-empty gridCenter and frozen after that.
@@ -678,17 +694,30 @@ function Scene({
     return new THREE.Vector3(worldPos.x, 0, worldPos.z);
   }, [myPosX, myPosY, myPosZ]);
 
-  // Camera-feel dials (`?camera=persp`, `?pitchCurve=1`, ...) — read once,
-  // all-off by default, so with no query params this call is exactly the
-  // fixed-angle orthographic rig it has always been. See cameraDials.ts.
-  const cameraDials = useMemo(() => readCameraDials(), []);
+  // Camera-feel dials (`?camera=persp`, `?pitchCurve=1`, ...) — all-off by
+  // default, so with no query params this is exactly the fixed-angle
+  // orthographic rig it has always been. LIVE (#906 batch 2): the drawer's
+  // registered dials (rotateSpeed, panSpeed, orbitPivot, the zoom/pitch
+  // ladder) apply on the very next render, no remount — useCameraControls
+  // reads them as plain props closed over fresh each frame. `perspective`/
+  // `fovDeg`/`minDistance`/`maxDistance` stay URL-only (see
+  // CAMERA_DIAL_SPECS's own doc comment), so those three cannot change
+  // without a page reload regardless. See cameraDials.ts.
+  const cameraDials = useCameraDials();
 
   // Custom camera controls: WASD pan, Q/E rotate, scroll zoom
   useCameraControls({
     target: stableTarget,
+    // Kept as this route's own literal override — the pitch curve (default
+    // ON) drives polar angle per zoom band and only falls back to this fixed
+    // value under `?pitchCurve=0`. Unrelated to the #906 rotate/pan dials
+    // below, which both routes now share via cameraDials instead of
+    // diverging per-route literals.
     polarAngle: Math.PI / 3.5, // ~51 degrees from vertical - slightly lower tactical angle
-    panSpeed: 0.3,
-    rotateSpeed: 0.02,
+    panSpeed: cameraDials.panSpeed,
+    rotateSpeed: cameraDials.rotateSpeed,
+    orbitPivot: cameraDials.orbitPivot,
+    dragRotate: cameraDials.dragRotate,
     minZoom: cameraDials.zoomMin,
     maxZoom: cameraDials.zoomMax,
     focusTarget,
@@ -696,6 +725,7 @@ function Scene({
     perspective: cameraDials.perspective,
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
+    revealedBounds,
   });
 
   // Build entity map for interaction hook (excludes dead entities so they
@@ -1154,10 +1184,14 @@ export function HexGrid(props: HexGridProps) {
 
   // Camera-feel dials again out here: Scene reads them for the CONTROLS, but
   // the projection itself is a `<Canvas>` prop and Scene lives inside it.
-  // Both call the same read-once parser rather than sharing state, so there
-  // is nothing to keep in sync. Default (no query params) is unchanged:
-  // orthographic, zoom 80.
-  const canvasDials = useMemo(() => readCameraDials(), []);
+  // Both now read the SAME live store (#906 batch 2), so there is nothing to
+  // keep in sync. Default (no query params) is unchanged: orthographic,
+  // zoom 80. NOT fully live here, though: `zoomStart`/`fovDeg` only apply as
+  // the Canvas's INITIAL camera config, and the `key` below only changes
+  // with `perspective` (URL-only, so it never changes live) — a drawer edit
+  // to zoomStart updates this value but does not itself force the Canvas to
+  // re-mount and pick it up; it takes effect at the next natural remount.
+  const canvasDials = useCameraDials();
 
   // Handle WebGL context loss/restore for GPU protection
   const handleCanvasCreated = useCallback(

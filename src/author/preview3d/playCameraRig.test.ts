@@ -28,10 +28,17 @@ describe('camera-rig constants match the real game (HexGrid.tsx / useCameraContr
     expect(INITIAL_AZIMUTH).toBeCloseTo(Math.PI / 4);
     expect(INITIAL_DISTANCE).toBe(20);
   });
-  it("rotateSpeed/minZoom/maxZoom match HexGrid.tsx's own call-site values", () => {
+  it('rotateSpeed is a preserved pre-#906 per-frame snapshot; minZoom/maxZoom match cameraDials.ts', () => {
+    // ROTATE_SPEED: HexGrid.tsx's own literal call-site value before #906
+    // replaced it with a shared, time-based `rotateSpeed` dial — kept as-is
+    // here since PlayCamera.tsx's per-frame usage would need to change WITH
+    // it (see playCameraRig.ts's own doc comment on ROTATE_SPEED).
     expect(ROTATE_SPEED).toBe(0.02);
-    expect(MIN_ZOOM).toBe(30);
-    expect(MAX_ZOOM).toBe(150);
+    // MIN_ZOOM/MAX_ZOOM: cameraDials.ts's own DEFAULT_ZOOM_MIN/MAX, not a
+    // HexGrid.tsx call-site literal any more — #906 corrected these from a
+    // stale 30/150.
+    expect(MIN_ZOOM).toBe(35);
+    expect(MAX_ZOOM).toBe(140);
   });
   it("orthographic projection matches HexGrid.tsx's own <Canvas> props", () => {
     expect(ORTHO_ZOOM).toBe(80);
@@ -147,20 +154,25 @@ describe('clampZoomStep', () => {
   it('negative deltaY (scroll up/toward) zooms in (increases zoom)', () => {
     expect(clampZoomStep(80, -50)).toBeGreaterThan(80);
   });
-  it("clamps to minZoom/maxZoom — the real game's own 30..150 range", () => {
-    expect(clampZoomStep(35, 1000)).toBe(MIN_ZOOM);
-    expect(clampZoomStep(145, -1000)).toBe(MAX_ZOOM);
+  it('clamps to minZoom/maxZoom — cameraDials.ts DEFAULT_ZOOM_MIN/MAX', () => {
+    expect(clampZoomStep(MIN_ZOOM, 1000)).toBe(MIN_ZOOM);
+    expect(clampZoomStep(MAX_ZOOM, -1000)).toBe(MAX_ZOOM);
   });
 });
 
 describe('dragRotateStep', () => {
+  // STALE, preserved for PlayCamera.tsx's own preview walkthrough — this no
+  // longer describes the real game's right-drag (which now pans, per
+  // useCameraControls.ts's own header doc comment) or its middle-drag
+  // rotate (#906, cameraDials.ts's own `dragRotate`, a different
+  // sensitivity). See dragRotateStep's own doc comment in playCameraRig.ts.
   it('a positive clientX delta (dragging right) rotates azimuth negative', () => {
     expect(dragRotateStep(1, 50)).toBeLessThan(1);
   });
   it('a negative clientX delta (dragging left) rotates azimuth positive', () => {
     expect(dragRotateStep(1, -50)).toBeGreaterThan(1);
   });
-  it("matches the real hook's own 0.01 sensitivity exactly", () => {
+  it('matches this preserved 0.01 sensitivity exactly', () => {
     expect(dragRotateStep(0, 100)).toBeCloseTo(-1);
   });
 });

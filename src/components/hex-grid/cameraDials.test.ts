@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_DRAG_ROTATE_DEG_PER_PX,
   DEFAULT_MAX_DISTANCE,
   DEFAULT_MIN_DISTANCE,
+  DEFAULT_PAN_SPEED_PER_SEC,
   DEFAULT_PERSP_FOV_DEG,
   DEFAULT_PITCH_FAR_DEG,
   DEFAULT_PITCH_NEAR_DEG,
+  DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
   DEFAULT_ZOOM_MAX,
   DEFAULT_ZOOM_MIN,
+  DRAG_SECONDS_PER_PIXEL,
   bandFollowsFocus,
   parseCameraDials,
+  perspectiveOverrides,
 } from './cameraDials';
 
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -137,6 +142,70 @@ describe('parseCameraDials', () => {
     }
   });
 
+  it('resolves rotateSpeed/panSpeed to the shared, time-based #906 defaults', () => {
+    // Both routes used to diverge here (HexGrid.tsx overrode with 0.02
+    // rad/frame + 0.3 units/frame; SessionCanvas silently ran the hook's own
+    // 0.03/0.5 rad-or-unit-per-FRAME defaults). #906 promotes ONE shared
+    // per-second default and both call sites now read it from here.
+    const dials = parseCameraDials('');
+    expect(dials.rotateSpeed).toBeCloseTo(
+      rad(DEFAULT_ROTATE_SPEED_DEG_PER_SEC)
+    );
+    expect(dials.panSpeed).toBe(DEFAULT_PAN_SPEED_PER_SEC);
+  });
+
+  it('carries rotateSpeed/panSpeed URL overrides, authored in deg/s and units/s', () => {
+    const dials = parseCameraDials('?rotateSpeed=120&panSpeed=40');
+    expect(dials.rotateSpeed).toBeCloseTo(rad(120));
+    expect(dials.panSpeed).toBe(40);
+  });
+
+  it('defaults orbitPivot to auto and only accepts the literals "me"/"view"', () => {
+    expect(parseCameraDials('').orbitPivot).toBe('auto');
+    expect(parseCameraDials('?orbitPivot=me').orbitPivot).toBe('me');
+    expect(parseCameraDials('?orbitPivot=view').orbitPivot).toBe('view');
+    expect(parseCameraDials('?orbitPivot=bogus').orbitPivot).toBe('auto');
+  });
+
+  it('derives dragRotate from rotateSpeed at the current default — one rotation speed, two inputs (#906 round 3)', () => {
+    // Computed from the constants, not a hardcoded literal — #906 round 4
+    // changed DEFAULT_ROTATE_SPEED_DEG_PER_SEC (70 -> 25) without touching
+    // DRAG_SECONDS_PER_PIXEL, so the default drag rate moved too (this is
+    // no longer the historical 0.4°/px anchor — see the next test for that).
+    const dials = parseCameraDials('');
+    expect(dials.dragRotate).toBeCloseTo(
+      rad(DEFAULT_ROTATE_SPEED_DEG_PER_SEC * DRAG_SECONDS_PER_PIXEL)
+    );
+  });
+
+  it('at the ORIGINAL round-3 rotateSpeed (70°/s), drag is still exactly the historical 0.4°/px anchor', () => {
+    const dials = parseCameraDials('?rotateSpeed=70');
+    expect(dials.dragRotate).toBeCloseTo(rad(DEFAULT_DRAG_ROTATE_DEG_PER_PX));
+  });
+
+  it('halving rotateSpeed halves drag speed — Q/E and middle mouse stay coupled', () => {
+    const full = parseCameraDials('');
+    const halved = parseCameraDials(
+      `?rotateSpeed=${DEFAULT_ROTATE_SPEED_DEG_PER_SEC / 2}`
+    );
+    expect(halved.dragRotate).toBeCloseTo(full.dragRotate / 2);
+  });
+
+  it('a stray ?dragRotate= is ignored — there is no independent drag dial any more', () => {
+    const dials = parseCameraDials('?dragRotate=1.2');
+    expect(dials.dragRotate).toBeCloseTo(
+      rad(DEFAULT_ROTATE_SPEED_DEG_PER_SEC * DRAG_SECONDS_PER_PIXEL)
+    );
+  });
+
+  it('DRAG_SECONDS_PER_PIXEL is frozen at the round-3 0.4/70 derivation, independent of the current rotateSpeed default', () => {
+    // #906 round 4: this is now a literal, not a live division by
+    // DEFAULT_ROTATE_SPEED_DEG_PER_SEC — see the constant's own doc
+    // comment for why re-deriving it would have silently picked a
+    // different, unasked-for mouse feel.
+    expect(DRAG_SECONDS_PER_PIXEL).toBeCloseTo(1 / 175);
+  });
+
   it('ignores non-numeric and empty values instead of poisoning the camera with NaN', () => {
     const dials = parseCameraDials('?pitchFar=&fov=abc&zoomMax=');
     // A blank angle falls back to the shipped default rather than to NaN —
@@ -205,5 +274,34 @@ describe('bandFollowsFocus', () => {
   it('follows in perspective, which has no authored bands of its own', () => {
     expect(bandFollowsFocus({ follow: false }, true)).toBe(true);
     expect(bandFollowsFocus(null, true)).toBe(true);
+  });
+});
+
+describe('perspectiveOverrides', () => {
+  // #906 batch 2 regression this pins down: useCameraDials() (the live,
+  // store-driven hook) layers this on top of cameraDialsFrom, since
+  // `camera=persp` is deliberately not a registered dial and cameraDialsFrom
+  // alone can never see it — a SessionCanvas render test caught the gap
+  // when this file's own call site first switched to the hook.
+  it('defaults off with the shipped perspective fallbacks', () => {
+    const result = perspectiveOverrides('');
+    expect(result.perspective).toBe(false);
+    expect(result.fovDeg).toBe(DEFAULT_PERSP_FOV_DEG);
+    expect(result.minDistance).toBe(DEFAULT_MIN_DISTANCE);
+    expect(result.maxDistance).toBe(DEFAULT_MAX_DISTANCE);
+  });
+
+  it('turns on only for the literal ?camera=persp', () => {
+    expect(perspectiveOverrides('?camera=persp').perspective).toBe(true);
+    expect(perspectiveOverrides('?camera=ortho').perspective).toBe(false);
+  });
+
+  it('carries fov/minDist/maxDist overrides', () => {
+    const result = perspectiveOverrides(
+      '?camera=persp&fov=40&minDist=2&maxDist=50'
+    );
+    expect(result.fovDeg).toBe(40);
+    expect(result.minDistance).toBe(2);
+    expect(result.maxDistance).toBe(50);
   });
 });

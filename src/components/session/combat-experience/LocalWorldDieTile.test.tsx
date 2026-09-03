@@ -1,8 +1,20 @@
 import type { Scene3D } from '@/components/session/atlasToScene3D';
+import {
+  DEFAULT_DIE_SCALE,
+  localWorldDieDimensions,
+} from '@/components/session/local-world-die/diceDials';
 import type { TrayPlaneProjection } from '@/components/ui/dice/trayPlaneProjection';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
+
+// Not hardcoded — LocalWorldDieTile reads `?dieScale=` (diceDials.ts) and
+// scales the held/lift heights by it (#906), so the expected heights below
+// are computed from the SAME default the component itself resolves, rather
+// than pinning a literal that drifts every time the default dial is tuned
+// (round 3: 1 -> 2).
+const DEFAULT_HOLD_HEIGHT =
+  localWorldDieDimensions(DEFAULT_DIE_SCALE).holdHeightDefault;
 
 function scene(): Scene3D {
   return {
@@ -107,7 +119,7 @@ describe('LocalWorldDieTile pickup checkpoint', () => {
 
     expect(onHeldChange).toHaveBeenLastCalledWith({
       position: [0, 0],
-      height: 1.25,
+      height: DEFAULT_HOLD_HEIGHT,
     });
     expect(parentMove).not.toHaveBeenCalled();
     expect(pickup.className).toContain('localWorldDieCaptureHidden');
@@ -200,9 +212,12 @@ describe('LocalWorldDieTile pickup checkpoint', () => {
       clientY: 80,
     });
 
+    // The lift delta itself (pointer pixels * 0.01) is NOT scaled by
+    // dieScale — only the held-height default/min/max clamp are (see
+    // diceDials.ts's own doc comment on what scales together).
     expect(onHeldChange).toHaveBeenLastCalledWith({
       position: [0, 0],
-      height: 1.45,
+      height: DEFAULT_HOLD_HEIGHT + 0.2,
     });
   });
 });
