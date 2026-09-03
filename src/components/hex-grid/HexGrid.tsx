@@ -12,7 +12,7 @@
  * - Turn order overlay
  */
 
-import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
 // facingToRotationY is the Kirk-approved reference mapping for a wire
 // `facing` index (rpg-dnd5e-web unit/game-fidelity Bug B) — the builder's
 // 3D preview (author/preview3d/DungeonPreview3D.tsx) already renders

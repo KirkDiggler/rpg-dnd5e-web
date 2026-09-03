@@ -6,9 +6,9 @@
  */
 import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import {
+  floorKeys,
   isMonsterRef,
-  wallHeightByEdge,
-  wallKeys,
+  wallLattice,
   type ApproachDoc,
   type CheckDoc,
   type ConcealmentDerivation,
@@ -16,8 +16,10 @@ import {
   type DungeonDoc,
   type PlacementDoc,
   type PlacementOffset,
+  type WallDoc,
 } from './dungeonYaml';
-import { edgeKey, type Edge } from './hexOffset';
+import { sealedBy } from './hexGeometry';
+import { axialKey } from './hexOffset';
 import { RegionPanel } from './RegionPanel';
 import { APPROACH_ABILITIES, TARGETINGS, type Selection } from './types';
 
@@ -51,11 +53,13 @@ export interface InspectorProps {
     patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>
   ) => void;
   onRemovePlacement: (index: number) => void;
-  /** Delete every edge of the selected wall run (#804). */
-  onRemoveWall: (edges: Edge[]) => void;
-  /** Stamp a height on every edge of the selected wall run — chain-level
-   * intent, `undefined` = back to standard (rpg-project#273). */
-  onSetWallHeight: (edges: Edge[], height: number | undefined) => void;
+  /** Delete the selected wall. */
+  onRemoveWall: (index: number) => void;
+  /** Stamp a height on the selected wall. A wall is one line and one
+   * height by construction, so nothing splits any more. */
+  onSetWallHeight: (index: number, height: number | undefined) => void;
+  /** Name the selected wall. */
+  onSetWallName: (index: number, name: string) => void;
 }
 
 export function Inspector(props: InspectorProps) {
@@ -90,19 +94,19 @@ export function Inspector(props: InspectorProps) {
     );
   }
   if (selection.kind === 'wall') {
-    // The selection is the doc edges resolved at click time; edges the
-    // document no longer holds (erased, re-derived) drop out here, and
-    // an emptied selection falls back to the dungeon panel.
-    const present = wallKeys(doc);
-    const edges = selection.edges.filter((e) => present.has(edgeKey(e)));
-    if (edges.length === 0) return <DungeonPanel {...props} />;
-    const heightByKey = wallHeightByEdge(doc);
+    // A wall is an entry in the file, so the selection is its index. A
+    // deleted wall's index falls back to the dungeon panel rather than
+    // showing the wall that slid into its place.
+    const wall = doc.walls[selection.index];
+    if (!wall) return <DungeonPanel {...props} />;
     return (
       <WallPanel
-        edges={edges}
-        height={heightByKey.get(edgeKey(edges[0]))}
-        onHeight={(h) => props.onSetWallHeight(edges, h)}
-        onRemove={() => props.onRemoveWall(edges)}
+        index={selection.index}
+        wall={wall}
+        sealed={sealedByWall(doc, selection.index)}
+        onHeight={(h) => props.onSetWallHeight(selection.index, h)}
+        onName={(n) => props.onSetWallName(selection.index, n)}
+        onRemove={() => props.onRemoveWall(selection.index)}
       />
     );
   }
@@ -173,29 +177,62 @@ function DungeonPanel({ doc, onDungeon }: InspectorProps) {
   );
 }
 
+/** The cells this one wall seals, for the panel's cost line. */
+function sealedByWall(doc: DungeonDoc, index: number): number {
+  const wall = doc.walls[index];
+  if (!wall) return 0;
+  const floor = floorKeys(doc);
+  const { a, b } = wallLattice(doc.orientation, wall);
+  return sealedBy(doc.orientation, a, b).filter((c) => floor.has(axialKey(c)))
+    .length;
+}
+
 function WallPanel({
-  edges,
-  height,
+  index,
+  wall,
+  sealed,
   onHeight,
+  onName,
   onRemove,
 }: {
-  edges: Edge[];
-  /** The selection's authored height (its first edge's — the stepper
-   * stamps every edge, so a stepper-authored chain is uniform), or
-   * `undefined` for standard. */
-  height?: number;
+  index: number;
+  wall: WallDoc;
+  /** How many floor cells this wall seals on its own — its COST, in the
+   * same words the picker used before the author committed. */
+  sealed: number;
   onHeight: (height: number | undefined) => void;
+  onName: (name: string) => void;
   onRemove: () => void;
 }) {
   const clamp = (v: number) => Math.min(3, Math.max(1, v));
+  const spell = (p: WallDoc['start']) =>
+    `[${p.offset[0]}, ${p.offset[1]}] of ${p.cell.q},${p.cell.r}`;
   return (
     <div className="flex flex-col gap-3" data-testid="wall-panel">
-      <h3 className="dg-h">
-        Wall — {edges.length} edge{edges.length === 1 ? '' : 's'}
-      </h3>
-      <div className="text-xs opacity-70">
-        One straight run: the doc edges behind the line you clicked. There is no
-        wall id in the file — this selection IS the edges.
+      <h3 className="dg-h">{wall.name || `Wall ${index + 1}`}</h3>
+      <div className="text-xs opacity-70" data-testid="wall-cost">
+        {sealed === 0
+          ? 'Thin — it shaves the cells it passes and seals none of them.'
+          : `Thick — it runs through ${sealed} cell${
+              sealed === 1 ? "'s" : "s'"
+            } centre${sealed === 1 ? '' : 's'}, so ${
+              sealed === 1 ? 'that cell is' : 'those cells are'
+            } floor nobody stands on.`}
+      </div>
+      <div className="dg-label">
+        name
+        <input
+          className="dg-input"
+          data-testid="wall-name"
+          aria-label="wall name"
+          value={wall.name ?? ''}
+          placeholder="north wall"
+          onChange={(e) => onName(e.target.value)}
+        />
+        <div className="text-xs opacity-70">
+          For you and for the errors about it — &quot;north wall&quot; beats
+          &quot;walls[7]&quot;.
+        </div>
       </div>
       <div className="dg-label">
         height
@@ -208,7 +245,7 @@ function WallPanel({
             min={1}
             max={3}
             step={0.5}
-            value={height ?? 1}
+            value={wall.height ?? 1}
             onChange={(e) => {
               const v = clamp(Number(e.target.value) || 1);
               onHeight(v === 1 ? undefined : v);
@@ -224,10 +261,12 @@ function WallPanel({
           </button>
         </div>
         <div className="text-xs opacity-70">
-          × standard wall height, 1–3. Raise-only, every edge of this wall takes
-          it; visual only — a wall blocks (and cannot be seen past) the same at
-          any height.
+          × standard wall height, 1–3. Raise-only; visual only — a wall blocks
+          (and cannot be seen past) the same at any height.
         </div>
+      </div>
+      <div className="text-xs opacity-50" data-testid="wall-ends">
+        {spell(wall.start)} → {spell(wall.end)}
       </div>
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
         delete wall
@@ -362,9 +401,9 @@ function DoorPanel({
           onChange={(e) => onChange({ id: e.target.value })}
         />
       </label>
-      <div className="text-xs opacity-70">
-        {door.edges.length} edge{door.edges.length === 1 ? '' : 's'} — click
-        more edges with the Door tool to widen it
+      <div className="text-xs opacity-70" data-testid="door-crossing">
+        One crossing — the side this position is the midpoint of. A wider
+        doorway is a second door beside it.
       </div>
       <label className="dg-label">
         state

@@ -21,16 +21,23 @@ import {
 } from 'react';
 import type { Point } from '../../concepts/session-tomb/atlas';
 import {
-  compiledWalls,
-  doorEdgeOwners,
   floorOwners,
   isMonsterRef,
   rectCells,
-  removeWalls,
   sceneryKeys,
   type DungeonDoc,
   type ErrorTarget,
 } from '../dungeonYaml';
+import {
+  cellPositions,
+  latticeKey,
+  latticeOf,
+  positionCrossing,
+  positionKey,
+  positionPoint,
+  samePosition,
+  type PositionRef,
+} from '../hexGeometry';
 import {
   axialKey,
   axialNeighbors,
@@ -55,41 +62,41 @@ import {
   SCENERY_HATCH,
   SCENERY_HATCH_ID,
   SCENERY_STROKE,
+  SEALED_HATCH,
+  SEALED_HATCH_ID,
   START_COLOR,
+  THICK_RAY_STROKE,
+  THIN_RAY_STROKE,
   VOID_FILL,
   VOID_STROKE,
   WALL_STROKE,
 } from '../markerStyle';
 import { thumbForRef } from '../paletteData';
 import type { BoardTool, Selection } from '../types';
-import { boardWallScene } from './boardWallRuns';
+import {
+  boundaryWalls,
+  doorTargetsOf,
+  wallRaysFrom,
+  type BoundaryWall,
+  type DoorTarget,
+  type PickerEnd,
+  type PickerRay,
+} from '../wallPicker';
+import { boardWallScene, type BoardDoor } from './boardWallRuns';
 import {
   cellCenter,
   cellsInBounds,
   cornersPath,
   edgeSegment,
   growBounds,
-  nearestEdge,
   neededBounds,
   viewRectFor,
   type GridBounds,
 } from './canvasGeometry';
-import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
 import {
-  applyDoorDraw,
-  applyReshape,
-  applyWallDraw,
-  applyWallErase,
-  chainEndpoints,
-  deriveDoorAdd,
-  deriveWallAdd,
-  deriveWallErase,
-  GESTURE_TUNING,
-  nearestRunIndex,
-  runVertices,
-  snapGesturePoint,
-  tautPath,
-  type RunVertex,
+  distanceToSegment,
+  nearestWallIndex,
+  WALL_HIT_RADIUS,
 } from './wallGesture';
 
 export const BOARD_HEX_SIZE = 24;
@@ -119,23 +126,20 @@ export interface CreationBoardProps {
    * hand. */
   onPaintRect: (a: Axial, b: Axial) => void;
   onErase: (cell: Axial) => void;
-  onEdgeClick: (edge: Edge) => void;
-  /** The wall drag's commit (#804): the RAW taut chain of the released
-   * drag — the owner applies the same `applyWallDraw` the preview used,
-   * so the preview IS the commit. */
-  onWallDraw: (chain: Edge[]) => void;
-  /** Shift/right-drag erase along the same derived path (ruling 3). */
-  onWallErase: (chain: Edge[]) => void;
-  /** Rulings 2 + 4: an endpoint or shared-corner drag replaces each
-   * incident run's old edges with its chain re-derived from that run's
-   * own fixed far endpoint. Raw chains; the owner applies the same
-   * `applyReshape` the preview used. */
-  onWallReshape: (oldChains: Edge[][], newChains: Edge[][]) => void;
-  /** A door drag's chain becomes ONE door's edges[] (design §Doors
-   * compose); a door click stays today's per-edge toggle. */
-  onDoorDraw: (chain: Edge[]) => void;
+  /** The picker's commit (design §2.6): the two positions the author
+   * picked. Nothing derived travels — the owner writes the line. */
+  onWallCommit: (start: PositionRef, end: PositionRef) => void;
+  /** Shift-click on a wall removes it. */
+  onWallDelete: (index: number) => void;
+  /** The door tool's click (design §2.8): a position a wall passes
+   * through. Toggling, so clicking a door's own position removes it. */
+  onDoorToggle: (at: PositionRef) => void;
   onCellClick: (cell: Axial) => void;
   onSelect: (selection: Selection) => void;
+  /** The cells the SERVER's compile says nobody can stand on — hatched.
+   * Empty until the first compile answers; the picker's own preview is
+   * what tells the author the cost before they commit. */
+  sealedCells?: ReadonlySet<string>;
 }
 
 /** Pointer → SVG user space, via the SVG's own CTM. jsdom has neither
@@ -149,35 +153,19 @@ function svgPoint(svg: SVGSVGElement, e: PointerEvent): Point {
   return { x: p.x, y: p.y };
 }
 
-/** One in-flight wall drag (#804). `pressEdge` carries the click
- * fallback: a press that never moves off its snapped corner stays
- * today's single-edge toggle, released on pointer up. */
-interface DrawGesture {
-  kind: 'draw' | 'erase';
-  /** The door tool inherits the same drag (design §Doors compose): one
-   * drag's chain becomes ONE door's edges[]. Erase stays wall-only. */
-  tool: 'wall' | 'door';
-  a: CornerRef;
-  b: CornerRef;
-  moved: boolean;
-  pressEdge: Edge;
+/** The wall picker's state (design §2.6). Three steps, no drag:
+ * click a hex to see its seven positions, click one to become the
+ * START, then click one of the offered ENDS. Escape or a click on
+ * nothing goes back a step. */
+interface WallPick {
+  /** The hex whose seven positions are showing, before a start is
+   * picked. */
+  cell: Axial | null;
+  /** The picked start. While set, the twelve rays are drawn from it. */
+  start: PositionRef | null;
 }
 
-/** An endpoint or shared-corner grab (rulings 2 + 4): every incident
- * chain re-derives from its own fixed far endpoint to wherever B goes.
- * The endpoint grab is the one-incident-chain case. */
-interface ReshapeGesture {
-  kind: 'reshape';
-  chains: { far: CornerRef; old: Edge[] }[];
-  origin: CornerRef;
-  b: CornerRef;
-  moved: boolean;
-  /** Indices of the grabbed runs — their own vertices are excluded
-   * from the magnetism targets so the drag doesn't stick to itself. */
-  draggedRuns: number[];
-}
-
-type DragOrReshape = DrawGesture | ReshapeGesture;
+const NO_PICK: WallPick = { cell: null, start: null };
 
 export function CreationBoard({
   doc,
@@ -189,13 +177,12 @@ export function CreationBoard({
   onPaint,
   onPaintRect,
   onErase,
-  onEdgeClick,
-  onWallDraw,
-  onWallErase,
-  onWallReshape,
-  onDoorDraw,
+  onWallCommit,
+  onWallDelete,
+  onDoorToggle,
   onCellClick,
   onSelect,
+  sealedCells,
 }: CreationBoardProps) {
   const o = doc.orientation;
   const size = BOARD_HEX_SIZE;
@@ -290,138 +277,86 @@ export function CreationBoard({
     () => new Map(doc.regions.map((r) => [r.id, r] as const)),
     [doc.regions]
   );
-  const doorOwners = useMemo(() => doorEdgeOwners(doc), [doc]);
-  // The straightened picture (#800): existing walls and doors drawn as
-  // the SAME runs the 3D preview and game will render, via the shared
-  // geometry module — null on a flat-top document, where the board
-  // keeps its literal edge drawing (3D refuses flat-top by name, #763,
-  // so the literal edges ARE the honest picture there). Derived from
-  // the document directly, not the debounced server compile, so the
-  // wall the author just clicked straightens immediately.
+  // The document's walls and doors as lines — no fitting, no tolerance:
+  // a wall IS the line between its two authored positions, and the board
+  // places those positions with the same `hexGeometry` the picker offers
+  // them from and the compiler embeds them in.
   const wallScene = useMemo(() => boardWallScene(doc, size), [doc, size]);
-  const [gesture, setGesture] = useState<DragOrReshape | null>(null);
-  const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
-  // The magnetism targets and (later) drag handles: the lattice
-  // vertices at the ends of the COMMITTED doc's rendered chains —
-  // never the mid-gesture candidate's, or the endpoint would chase its
-  // own preview.
-  const vertices = useMemo(
-    () => (wallScene ? runVertices(wallScene.runs, size, o) : []),
-    [wallScene, size, o]
+
+  const [pick, setPick] = useState<WallPick>(NO_PICK);
+  const [hoverEnd, setHoverEnd] = useState<PickerEnd | null>(null);
+
+  /** The twelve rays from the picked start, each trimmed to the ends
+   * that make a legal wall (design §2.6). Recomputed only when the start
+   * or the floor changes — a hover costs nothing. */
+  const rays: PickerRay[] = useMemo(
+    () => (pick.start ? wallRaysFrom(doc, pick.start) : []),
+    [doc, pick.start]
   );
-  // THE PREVIEW IS THE COMMIT: the candidate document is the same
-  // mutator composition the release applies (wallGesture's apply*),
-  // and its runs come from the same shared geometry module. On
-  // flat-top docs boardWallScene stays null and the literal edge
-  // drawing below previews the candidate doc instead — the honest
-  // picture there (#763).
-  const chains = useMemo(() => {
-    if (!gesture) return [];
-    if (gesture.kind === 'reshape') {
-      return gesture.chains.map((c) => tautPath(c.far, gesture.b, size, o));
+  /** The two walls "wall this boundary" offers, when the picked start is
+   * a room's own boundary midpoint (design §2.9). */
+  const boundaryOffer = useMemo((): {
+    thin: BoundaryWall;
+    thick: BoundaryWall;
+  } | null => {
+    if (!pick.start) return null;
+    const crossing = crossingOf(doc, pick.start);
+    if (!crossing) return null;
+    for (const cell of crossing) {
+      const regionId = owners.get(axialKey(cell));
+      if (!regionId) continue;
+      const offer = boundaryWalls(doc, crossing, regionId);
+      if (offer) return offer;
     }
-    return [tautPath(gesture.a, gesture.b, size, o)];
-  }, [gesture, size, o]);
-  const previewDoc = useMemo(() => {
-    if (!gesture || !gesture.moved) return null;
-    if (gesture.kind === 'reshape') {
-      return applyReshape(
-        doc,
-        gesture.chains.map((c) => c.old),
-        chains
-      );
-    }
-    if (gesture.kind === 'erase') return applyWallErase(doc, chains[0]);
-    return gesture.tool === 'door'
-      ? applyDoorDraw(doc, chains[0])
-      : applyWallDraw(doc, chains[0]);
-  }, [gesture, doc, chains]);
-  const previewScene = useMemo(
-    () => (previewDoc ? boardWallScene(previewDoc, size) : null),
-    [previewDoc, size]
+    return null;
+  }, [doc, pick.start, owners]);
+
+  /** The cells the hovered end would seal — grey, before the author
+   * commits (Kirk: "maybe in the design we can visualize where we can
+   * go"). */
+  const previewSealed = useMemo(
+    () => new Set((hoverEnd?.sealed ?? []).map(axialKey)),
+    [hoverEnd]
   );
-  // The faint literal trace of the candidate edges (draw), or of the
-  // edges about to be removed (erase).
-  const traceEdges = useMemo(() => {
-    if (!gesture || !gesture.moved) return [];
-    if (gesture.kind === 'reshape') {
-      const base = removeWalls(
-        doc,
-        gesture.chains.flatMap((c) => c.old)
-      );
-      // Two re-derived chains can share an edge near the dragged
-      // vertex; dedup so the trace draws (and keys) each edge once.
-      const seen = new Set<string>();
-      return chains
-        .flatMap((c) => deriveWallAdd(base, c))
-        .filter((edge) => {
-          const key = edgeKey(edge);
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-    }
-    if (gesture.kind === 'erase') return deriveWallErase(doc, chains[0]);
-    return gesture.tool === 'door'
-      ? deriveDoorAdd(doc, chains[0])
-      : deriveWallAdd(doc, chains[0]);
-  }, [gesture, doc, chains]);
-  const displayDoc = previewDoc ?? doc;
-  const scene = previewDoc ? previewScene : wallScene;
-  // Manipulation rides SELECTION (Kirk's walk ruling, 2026-08-25 —
-  // Strava-route-builder grammar): selecting a wall shows its handles
-  // immediately and they drag right there with the Select tool; the
-  // wall tool stays pure draw/erase, so pressing near a chain end
-  // CONTINUES the wall instead of grabbing it (the old hover-grab made
-  // continuation impossible within the pickup radius).
-  const selectedRunIndices = useMemo(() => {
-    if (!wallScene || selection?.kind !== 'wall') return new Set<number>();
-    const keys = new Set(selection.edges.map(edgeKey));
-    const indices = new Set<number>();
-    wallScene.runs.forEach((r, i) => {
-      if (r.edges.some((edge) => keys.has(edgeKey(edge)))) indices.add(i);
-    });
-    return indices;
-  }, [wallScene, selection]);
-  const handleVertices = useMemo(
-    () =>
-      selectedRunIndices.size === 0
-        ? []
-        : vertices.filter((v) => v.runs.some((i) => selectedRunIndices.has(i))),
-    [vertices, selectedRunIndices]
-  );
-  // The selected wall's handle nearest `p`, within the pickup radius —
-  // used for the hover affordance AND hit-tested directly on pointer
-  // down (Copilot review, PR #808: gating the press on hover state
-  // misses direct-touch input, which presses without a hover pass).
-  const handleAt = useCallback(
-    (p: Point): RunVertex | null => {
-      let best: RunVertex | null = null;
-      let bestDist = GESTURE_TUNING.cornerSnapRadius * size;
-      for (const v of handleVertices) {
-        const d = Math.hypot(v.point.x - p.x, v.point.y - p.y);
-        if (d <= bestDist) {
-          best = v;
-          bestDist = d;
-        }
-      }
-      return best;
-    },
-    [handleVertices, size]
-  );
-  const hoverVertex = useMemo(
-    () =>
-      tool !== 'select' || gesture || !hoverPoint ? null : handleAt(hoverPoint),
-    [tool, gesture, hoverPoint, handleAt]
-  );
+
   useEffect(() => {
-    if (!gesture) return;
+    if (!pick.cell && !pick.start) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setGesture(null);
+      // Escape steps BACK, not out: from the rays to the seven
+      // positions, then to nothing. A streamer who mis-picks a start
+      // should not lose the hex as well.
+      if (e.key !== 'Escape') return;
+      setHoverEnd(null);
+      setPick((p) => (p.start ? { cell: p.start.cell, start: null } : NO_PICK));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [gesture]);
+  }, [pick]);
+
+  // The wall tool stops picking the moment the tool changes, so a
+  // half-made wall never survives into another tool's clicks.
+  useEffect(() => {
+    setPick(NO_PICK);
+    setHoverEnd(null);
+  }, [tool]);
+
+  const commitWall = useCallback(
+    (start: PositionRef, end: PositionRef) => {
+      onWallCommit(start, end);
+      setPick(NO_PICK);
+      setHoverEnd(null);
+    },
+    [onWallCommit]
+  );
+
+  /** The positions a door may stand on: every position each wall passes
+   * through that is the midpoint of a side (a centre opens no crossing).
+   * Shown as the door tool's targets. */
+  const doorTargets = useMemo(
+    () => (tool === 'door' ? doorTargetsOf(doc) : []),
+    [tool, doc]
+  );
+
   const doorById = useMemo(
     () => new Map(doc.doors.map((d) => [d.id, d] as const)),
     [doc.doors]
@@ -440,20 +375,17 @@ export function CreationBoard({
     }
     return s;
   }, [errorTargets, doc.start, regionById]);
-  const errorEdges = useMemo(() => {
-    const s = new Set<string>();
+  /** Wall indices and door ids the compiler faulted — a wall is one
+   * line, so an error names the whole wall rather than a crossing. */
+  const errorWalls = useMemo(() => {
+    const walls = new Set<number>();
+    const doors = new Set<string>();
     for (const t of errorTargets) {
-      if (t.kind === 'edge') s.add(edgeKey(t.edge));
-      if (t.kind === 'door') {
-        for (const e of doc.doors.find((d) => d.id === t.doorId)?.edges ?? []) {
-          s.add(edgeKey(e));
-        }
-      }
+      if (t.kind === 'wall') walls.add(t.index);
+      if (t.kind === 'door') doors.add(t.doorId);
     }
-    return s;
-  }, [errorTargets, doc.doors]);
-
-  const edgeTool = tool === 'wall' || tool === 'door';
+    return { walls, doors };
+  }, [errorTargets]);
 
   const applyBrush = useCallback(
     (cell: Axial, mode: 'paint' | 'erase') => {
@@ -476,97 +408,62 @@ export function CreationBoard({
       applyBrush(cell, mode);
       return;
     }
-    if (edgeTool) {
-      if (!svgRef.current || !floorSet.has(axialKey(cell))) return;
+    if (tool === 'wall') {
+      if (!svgRef.current) return;
       const p = svgPoint(svgRef.current, e);
-      const pressEdge = nearestEdge(cell, p, size, o);
-      if (tool === 'wall') {
-        const erase = e.shiftKey || e.button === 2;
-        // Press anchors A (wall-vertex magnetism first, then the
-        // corner lattice); release decides click vs drag. Shift or
-        // right button erases along the derived path (ruling 3).
-        // Pressing at an existing chain's rendered end magnetizes A
-        // onto its vertex — that is how a wall is CONTINUED.
-        const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
-        setGesture({
-          kind: erase ? 'erase' : 'draw',
-          tool: 'wall',
-          a,
-          b: a,
-          moved: false,
-          pressEdge,
-        });
-        setHoverEdge(null);
-        return;
-      }
+      // Shift or right button removes the wall under the pointer — the
+      // eraser, now that there is one thing to erase rather than a
+      // stretch of crossings.
       if (e.shiftKey || e.button === 2) {
-        onEdgeClick(pressEdge);
+        const hit = nearestWallIndex(wallScene.walls, p, size);
+        if (hit !== null) onWallDelete(wallScene.walls[hit].index);
         return;
       }
-      const a = snapGesturePoint(p, size, o, { wallVertices: vertices });
-      setGesture({
-        kind: 'draw',
-        tool: 'door',
-        a,
-        b: a,
-        moved: false,
-        pressEdge,
-      });
-      setHoverEdge(null);
+      // Step 1 → step 2: a click on a hex shows its seven positions;
+      // clicking the hex again puts them away.
+      if (!pick.start) {
+        setPick((prev) =>
+          prev.cell && axialKey(prev.cell) === axialKey(cell)
+            ? NO_PICK
+            : { cell, start: null }
+        );
+        return;
+      }
+      // With a start picked, a click that misses every offered end goes
+      // back to the seven positions of the hex under it — never a
+      // silent no-op.
+      setPick({ cell, start: null });
+      setHoverEnd(null);
+      return;
+    }
+    if (tool === 'door') {
+      if (!svgRef.current) return;
+      const p = svgPoint(svgRef.current, e);
+      const target = nearestDoorTarget(doorTargets, p, doc, size);
+      if (target) onDoorToggle(target.position);
       return;
     }
     if (tool === 'select') {
-      // A handle on the selected wall grabs its incident chains
-      // (rulings 2 + 4, riding selection): each re-derives from its own
-      // far endpoint — the chain's OTHER odd-degree lattice vertex.
-      // Hit-tested against the press point itself, not hover state.
-      const grabbed =
-        wallScene && svgRef.current
-          ? handleAt(svgPoint(svgRef.current, e))
-          : null;
-      if (grabbed && wallScene) {
-        const chainsToDrag = grabbed.runs.flatMap((runIndex) => {
-          const edges = wallScene.runs[runIndex]?.edges ?? [];
-          const far = chainEndpoints(edges, size, o).find(
-            (r) => !sameCorner(r, grabbed.ref, size, o)
-          );
-          return far ? [{ far, old: [...edges] }] : [];
-        });
-        if (chainsToDrag.length > 0) {
-          setGesture({
-            kind: 'reshape',
-            chains: chainsToDrag,
-            origin: grabbed.ref,
-            b: grabbed.ref,
-            moved: false,
-            draggedRuns: grabbed.runs,
-          });
-          setHoverEdge(null);
-          return;
-        }
-      }
       const key = axialKey(cell);
       const placementIndex = doc.place.findIndex((p) => axialKey(p.at) === key);
       if (placementIndex !== -1) {
         onSelect({ kind: 'placement', index: placementIndex });
         return;
       }
-      if (hoverEdge && doorOwners.has(edgeKey(hoverEdge))) {
-        onSelect({ kind: 'door', id: doorOwners.get(edgeKey(hoverEdge))! });
-        return;
-      }
-      // A rendered run selects the doc edges behind it, resolved at
-      // click time from the derived scene — no wall id exists and none
-      // is added (#804). Flat-top docs draw literal edges, not runs, so
-      // there is nothing to hit here by construction.
-      if (wallScene && svgRef.current) {
-        const hit = nearestRunIndex(
-          wallScene.runs,
-          svgPoint(svgRef.current, e),
-          size
-        );
+      if (svgRef.current) {
+        const p = svgPoint(svgRef.current, e);
+        const door = nearestDoorAt(wallScene.doors, p, size);
+        if (door) {
+          onSelect({ kind: 'door', id: door.doorId });
+          return;
+        }
+        // A wall selects BY INDEX now. The file has a wall in it, so
+        // there is a thing to name — the old selection carried the set
+        // of doc edges behind a fitted run because no such thing
+        // existed (rpg-dnd5e-web#804).
+        const hit = nearestWallIndex(wallScene.walls, p, size);
         if (hit !== null) {
-          onSelect({ kind: 'wall', edges: wallScene.runs[hit].edges });
+          onSelect({ kind: 'wall', index: wallScene.walls[hit].index });
           return;
         }
       }
@@ -586,53 +483,17 @@ export function CreationBoard({
     ) {
       applyBrush(cell, painting.current);
     }
-    if (gesture && svgRef.current) {
-      // Every move re-snaps B: wall vertices first, then the corner
-      // lattice, with angle magnetism toward the seam families unless
-      // Alt is held (ruling 1). The preview re-derives from the doc on
-      // every change of B — O(chain) + the shared module's O(walls).
-      // A reshape drag skips angle magnetism (several chains would each
-      // want their own origin) and never magnetizes to the vertices of
-      // the runs being dragged — B would stick to its own old position.
-      const p = svgPoint(svgRef.current, e);
-      const anchor = gesture.kind === 'reshape' ? gesture.origin : gesture.a;
-      const b = snapGesturePoint(p, size, o, {
-        origin:
-          gesture.kind === 'reshape'
-            ? undefined
-            : cornerPoint(gesture.a, size, o),
-        alt: e.altKey,
-        wallVertices:
-          gesture.kind === 'reshape'
-            ? vertices.filter(
-                (v) => !v.runs.some((i) => gesture.draggedRuns.includes(i))
-              )
-            : vertices,
-      });
-      const moved = gesture.moved || !sameCorner(b, anchor, size, o);
-      if (moved !== gesture.moved || !sameCorner(b, gesture.b, size, o)) {
-        setGesture({ ...gesture, b, moved });
-      }
+    if (tool === 'door' && svgRef.current) {
+      const target = nearestDoorTarget(
+        doorTargets,
+        svgPoint(svgRef.current, e),
+        doc,
+        size
+      );
+      setHoverEdge(target ? crossingOf(doc, target.position) : null);
       return;
     }
-    if (tool === 'select' && svgRef.current) {
-      setHoverPoint(svgPoint(svgRef.current, e));
-    }
-    if ((edgeTool || tool === 'select') && svgRef.current) {
-      if (!floorSet.has(axialKey(cell))) {
-        setHoverEdge(null);
-        return;
-      }
-      const edge = nearestEdge(cell, svgPoint(svgRef.current, e), size, o);
-      setHoverEdge(
-        floorSet.has(axialKey(edge[1])) &&
-          (edgeTool || doorOwners.has(edgeKey(edge)))
-          ? edge
-          : null
-      );
-    } else {
-      setHoverEdge(null);
-    }
+    setHoverEdge(null);
   };
 
   const endPaint = () => {
@@ -647,53 +508,17 @@ export function CreationBoard({
     setRoomFrom(null);
   };
 
-  // Release commits (or falls back to the single-edge click); releasing
-  // with B back on A after moving, or Escape, or leaving the canvas,
-  // cancels.
-  const finishGesture = () => {
-    if (!gesture) return;
-    setGesture(null);
-    if (gesture.kind === 'reshape') {
-      // Released in place = no-op; released elsewhere replaces every
-      // grabbed chain with its re-derived one.
-      if (!gesture.moved || sameCorner(gesture.origin, gesture.b, size, o)) {
-        return;
-      }
-      onWallReshape(
-        gesture.chains.map((c) => c.old),
-        chains
-      );
-      return;
-    }
-    if (!gesture.moved) {
-      onEdgeClick(gesture.pressEdge);
-      return;
-    }
-    if (sameCorner(gesture.a, gesture.b, size, o)) return;
-    if (gesture.kind === 'erase') onWallErase(chains[0]);
-    else if (gesture.tool === 'door') onDoorDraw(chains[0]);
-    else onWallDraw(chains[0]);
-  };
-
   const selectedRegion = selection?.kind === 'region' ? selection.id : null;
   const selectedDoor = selection?.kind === 'door' ? selection.id : null;
-  // A selected wall is a set of doc edges; a run reads as selected when
-  // any of its source edges is in the set (the runs re-derive on every
-  // doc change, so membership is resolved at render time).
-  const selectedWallKeys = useMemo(
-    () =>
-      selection?.kind === 'wall' ? new Set(selection.edges.map(edgeKey)) : null,
-    [selection]
-  );
+  const selectedWall = selection?.kind === 'wall' ? selection.index : null;
   const selectedPlacement =
     selection?.kind === 'placement' ? selection.index : null;
 
-  // Literal hex-edge lines. With the straightened picture on (pointy),
-  // walls and doors render as runs instead, and only ERROR edges stay
-  // literal, drawn on top of the runs — an error is edge-scoped truth
-  // about what the author clicked, not about the fitted line (#800).
-  // On a flat-top document everything stays literal, as before.
-  const straightened = scene !== null;
+  // Literal hex-edge lines are the FLOOR'S OUTER EDGE and nothing else.
+  // Walls and doors are drawn as the lines they are, below; the dashed
+  // envelope is not a wall — a wall is something the author put there on
+  // purpose, and an unwalled boundary is its own authored choice. This
+  // line only says "the floor stops here".
   const edgeLines: {
     key: string;
     edge: Edge;
@@ -701,10 +526,6 @@ export function CreationBoard({
     width: number;
     dash?: string;
   }[] = [];
-  // The floor's outer edge FIRST, so authored walls and doors draw over it.
-  // Dashed, because it is NOT a wall: a wall is something the author put there
-  // on purpose, and an unwalled boundary is its own authored choice — a region
-  // may have a cliff edge. This line only says "the floor stops here".
   for (const cell of floor) {
     for (const n of axialNeighbors(cell)) {
       if (floorSet.has(axialKey(n))) continue;
@@ -715,34 +536,6 @@ export function CreationBoard({
         stroke: ENVELOPE_STROKE,
         width: 2.5,
         dash: ENVELOPE_DASH,
-      });
-    }
-  }
-  for (const { edge } of compiledWalls(displayDoc)) {
-    const isError = errorEdges.has(edgeKey(edge));
-    if (straightened && !isError) continue;
-    edgeLines.push({
-      key: `w:${edgeKey(edge)}`,
-      edge,
-      stroke: isError ? ERROR_STROKE : WALL_STROKE,
-      width: 4,
-    });
-  }
-  for (const d of displayDoc.doors) {
-    for (const e of d.edges) {
-      const k = edgeKey(e);
-      const isError = errorEdges.has(k);
-      if (straightened && !isError) continue;
-      edgeLines.push({
-        key: `d:${k}`,
-        edge: e,
-        stroke: isError
-          ? ERROR_STROKE
-          : d.locked
-            ? DOOR_LOCKED_STROKE
-            : DOOR_STROKE,
-        width: d.id === selectedDoor ? 6 : 4,
-        dash: d.closed || d.locked ? undefined : '4 3',
       });
     }
   }
@@ -765,39 +558,27 @@ export function CreationBoard({
           style={{
             background: VOID_FILL,
             touchAction: 'none',
-            cursor:
-              gesture?.kind === 'reshape'
-                ? 'grabbing'
-                : hoverVertex
-                  ? 'grab'
-                  : cursorFor(tool),
+            cursor: cursorFor(tool),
           }}
           onPointerUp={() => {
             endPaint();
             endRect();
-            finishGesture();
           }}
           onPointerCancel={() => {
-            // A browser-canceled pointer (touch interruption, capture
-            // loss) must drop the in-flight gesture WITHOUT committing
-            // it — otherwise a later unrelated pointer-up would commit
-            // the stale chain (Copilot review, PR #808).
+            // A canceled pointer drops the rectangle without painting
+            // it: a later unrelated pointer-up must not commit a stale
+            // drag. The wall PICK survives — it is a decision the author
+            // made with a click, not a drag in flight, and losing it to
+            // a stray touch would be the worse surprise.
             endPaint();
-            // A canceled pointer drops the rectangle without painting it, for the
-            // reason the wall gesture drops its chain: a later unrelated
-            // pointer-up must not commit a stale drag.
             setRoomFrom(null);
-            setGesture(null);
             setHoverEdge(null);
             setHoverCell(null);
-            setHoverPoint(null);
           }}
           onPointerLeave={() => {
             endPaint();
-            setGesture(null);
             setHoverEdge(null);
             setHoverCell(null);
-            setHoverPoint(null);
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
@@ -822,6 +603,26 @@ export function CreationBoard({
                 strokeWidth="2"
               />
             </pattern>
+            {/* A SEALED cell keeps its room — it is that room's floor
+                that nobody stands on (design §4.3) — so its hatch draws
+                OVER the region colour rather than replacing it, which is
+                what tells the two apart from scenery at a glance. */}
+            <pattern
+              id={SEALED_HATCH_ID}
+              width="7"
+              height="7"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(-45)"
+            >
+              <line
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="7"
+                stroke={SEALED_HATCH}
+                strokeWidth="2.5"
+              />
+            </pattern>
           </defs>
           <g data-layer="cells">
             {grid.map((cell) => {
@@ -843,59 +644,78 @@ export function CreationBoard({
               const isConcealed = !!ownerId && concealedRegionIds.has(ownerId);
               const isHover = hoverCell && axialKey(hoverCell) === key;
               const inRect = rectPreview?.has(key) ?? false;
+              // Sealed = the compile's answer, hatched. Previewed =
+              // what the hovered end WOULD seal, greyed before the
+              // author commits (design §2.6).
+              const isSealed = sealedCells?.has(key) ?? false;
+              const isPreviewSealed = previewSealed.has(key);
               return (
-                <polygon
-                  key={key}
-                  data-cell={key}
-                  data-region={ownerId ?? ''}
-                  data-scenery={isSceneryCell || undefined}
-                  data-concealed={isConcealed || undefined}
-                  points={cornersPath(cell, size, o)}
-                  fill={fill}
-                  stroke={
-                    isError
-                      ? ERROR_STROKE
-                      : isSelectedRegion
-                        ? HOVER_STROKE
-                        : isConcealed
-                          ? CONCEALED_STROKE
-                          : region
-                            ? regionColor(index)
-                            : isSceneryCell
-                              ? SCENERY_STROKE
-                              : VOID_STROKE
-                  }
-                  strokeWidth={
-                    isError
-                      ? 2.5
-                      : inRect
-                        ? 2
+                <g key={key}>
+                  <polygon
+                    data-cell={key}
+                    data-region={ownerId ?? ''}
+                    data-scenery={isSceneryCell || undefined}
+                    data-concealed={isConcealed || undefined}
+                    points={cornersPath(cell, size, o)}
+                    fill={fill}
+                    stroke={
+                      isError
+                        ? ERROR_STROKE
                         : isSelectedRegion
-                          ? 1.5
+                          ? HOVER_STROKE
                           : isConcealed
-                            ? 2
-                            : 1
-                  }
-                  strokeDasharray={
-                    isConcealed && !isError && !isSelectedRegion
-                      ? '3 2'
-                      : undefined
-                  }
-                  strokeOpacity={region ? (isActive ? 1 : 0.6) : 1}
-                  opacity={
-                    inRect
-                      ? 0.85
-                      : isHover &&
-                          (tool === 'region' ||
-                            tool === 'scenery' ||
-                            tool === 'erase')
-                        ? 0.8
-                        : 1
-                  }
-                  onPointerDown={(e) => handleCellDown(cell, e)}
-                  onPointerMove={(e) => handleCellMove(cell, e)}
-                  onPointerEnter={(e) => handleCellMove(cell, e)}
-                />
+                            ? CONCEALED_STROKE
+                            : region
+                              ? regionColor(index)
+                              : isSceneryCell
+                                ? SCENERY_STROKE
+                                : VOID_STROKE
+                    }
+                    strokeWidth={
+                      isError
+                        ? 2.5
+                        : inRect
+                          ? 2
+                          : isSelectedRegion
+                            ? 1.5
+                            : isConcealed
+                              ? 2
+                              : 1
+                    }
+                    strokeDasharray={
+                      isConcealed && !isError && !isSelectedRegion
+                        ? '3 2'
+                        : undefined
+                    }
+                    strokeOpacity={region ? (isActive ? 1 : 0.6) : 1}
+                    opacity={
+                      inRect
+                        ? 0.85
+                        : isHover &&
+                            (tool === 'region' ||
+                              tool === 'scenery' ||
+                              tool === 'erase')
+                          ? 0.8
+                          : 1
+                    }
+                    onPointerDown={(e) => handleCellDown(cell, e)}
+                    onPointerMove={(e) => handleCellMove(cell, e)}
+                    onPointerEnter={(e) => handleCellMove(cell, e)}
+                  />
+                  {(isSealed || isPreviewSealed) && (
+                    <polygon
+                      data-sealed={isSealed || undefined}
+                      data-sealed-preview={isPreviewSealed || undefined}
+                      points={cornersPath(cell, size, o)}
+                      fill={
+                        isSealed ? `url(#${SEALED_HATCH_ID})` : SEALED_HATCH
+                      }
+                      fillOpacity={isSealed ? 1 : 0.35}
+                      stroke="none"
+                      pointerEvents="none"
+                    />
+                  )}
+                </g>
               );
             })}
           </g>
@@ -1003,49 +823,60 @@ export function CreationBoard({
                 but sits IN the run's gap, exactly where 3D will put it;
                 hit-testing stays edge-based (this layer takes no
                 pointer events). */}
-            {scene?.runs.map((r) => {
-              const isSelected =
-                !!selectedWallKeys &&
-                r.edges.some((edge) => selectedWallKeys.has(edgeKey(edge)));
+            {wallScene.walls.map((w) => {
+              const isSelected = w.index === selectedWall;
+              const isError = errorWalls.walls.has(w.index);
               return (
-                <g key={`run:${r.key}`}>
+                <g key={`wall:${w.index}`}>
                   <line
-                    data-run={r.key}
+                    data-wall={w.index}
                     data-selected={isSelected || undefined}
-                    stroke={isSelected ? HOVER_STROKE : WALL_STROKE}
-                    strokeWidth={isSelected ? 6 : 4}
-                    x1={r.a.x}
-                    y1={r.a.y}
-                    x2={r.b.x}
-                    y2={r.b.y}
+                    stroke={
+                      isError
+                        ? ERROR_STROKE
+                        : isSelected
+                          ? HOVER_STROKE
+                          : WALL_STROKE
+                    }
+                    strokeWidth={isSelected || isError ? 6 : 4}
+                    x1={w.a.x}
+                    y1={w.a.y}
+                    x2={w.b.x}
+                    y2={w.b.y}
                   />
-                  {r.height > 0 && (
+                  {w.height !== undefined && w.height > 1 && (
                     <text
-                      data-run-height={r.key}
-                      x={(r.a.x + r.b.x) / 2}
-                      y={(r.a.y + r.b.y) / 2 - 6}
+                      data-wall-height={w.index}
+                      x={(w.a.x + w.b.x) / 2}
+                      y={(w.a.y + w.b.y) / 2 - 6}
                       textAnchor="middle"
                       fontSize={11}
                       fill={WALL_STROKE}
                       stroke="none"
                     >
-                      ×{r.height}
+                      ×{w.height}
                     </text>
                   )}
                 </g>
               );
             })}
-            {scene?.doors.map((d) => {
+            {wallScene.doors.map((d) => {
               const doorDoc = doorById.get(d.doorId);
               return (
                 <line
-                  key={`dr:${edgeKey(d.edge)}`}
-                  data-door-run={edgeKey(d.edge)}
+                  key={`dr:${d.doorId}`}
+                  data-door-run={d.doorId}
                   x1={d.a.x}
                   y1={d.a.y}
                   x2={d.b.x}
                   y2={d.b.y}
-                  stroke={doorDoc?.locked ? DOOR_LOCKED_STROKE : DOOR_STROKE}
+                  stroke={
+                    errorWalls.doors.has(d.doorId)
+                      ? ERROR_STROKE
+                      : doorDoc?.locked
+                        ? DOOR_LOCKED_STROKE
+                        : DOOR_STROKE
+                  }
                   strokeWidth={d.doorId === selectedDoor ? 6 : 4}
                   strokeDasharray={
                     doorDoc?.closed || doorDoc?.locked ? undefined : '4 3'
@@ -1088,76 +919,204 @@ export function CreationBoard({
                 );
               })()}
           </g>
-          {tool === 'select' && !gesture && (
-            <g data-layer="handles" pointerEvents="none">
-              {/* The selected wall's endpoints and shared corners are
-                  drag handles, visible the moment it is selected
-                  (Kirk's walk ruling: manipulation rides selection,
-                  the Strava-route-builder grammar). Drawn at the
-                  RENDERED endpoints — the points the author sees. */}
-              {handleVertices.map((v) => {
-                const hot =
-                  hoverVertex !== null &&
-                  sameCorner(v.ref, hoverVertex.ref, size, o);
+          {tool === 'door' && (
+            <g data-layer="door-targets" pointerEvents="none">
+              {/* Every position a door may stand on: the side midpoints
+                  the walls pass through (design §2.8). A centre is
+                  offered nowhere — it is the midpoint of no side. */}
+              {doorTargets.map((t) => {
+                const p = positionPoint(o, t.position, size);
                 return (
                   <circle
-                    key={`vx:${v.point.x.toFixed(2)},${v.point.y.toFixed(2)}`}
-                    data-run-vertex={v.runs.length}
-                    cx={v.point.x}
-                    cy={v.point.y}
-                    r={size * (hot ? 0.22 : 0.12)}
-                    fill={hot ? HOVER_STROKE : WALL_STROKE}
-                    fillOpacity={hot ? 0.9 : 0.5}
-                    stroke={hot ? HOVER_STROKE : 'none'}
+                    key={`dt:${latticeKey(t.lattice)}`}
+                    data-door-target={latticeKey(t.lattice)}
+                    data-taken={t.taken || undefined}
+                    cx={p.x}
+                    cy={p.y}
+                    r={size * (t.taken ? 0.16 : 0.11)}
+                    fill={t.taken ? DOOR_STROKE : 'none'}
+                    stroke={DOOR_STROKE}
+                    strokeWidth={2}
+                    fillOpacity={0.8}
+                    strokeOpacity={t.taken ? 1 : 0.55}
                   />
                 );
               })}
             </g>
           )}
-          {gesture && gesture.moved && (
-            <g data-layer="gesture" pointerEvents="none">
-              {/* The faint literal trace of the candidate edges — the
-                  chain the drag derived (skipped pairs shown absent),
-                  or the walls the erase will remove. The straightened
-                  result is already live above via the candidate doc. */}
-              {traceEdges.map((edge) => {
-                const seg = edgeSegment(edge, size, o);
-                if (!seg) return null;
-                return (
-                  <line
-                    key={`trace:${edgeKey(edge)}`}
-                    data-gesture-trace={edgeKey(edge)}
-                    x1={seg.a.x}
-                    y1={seg.a.y}
-                    x2={seg.b.x}
-                    y2={seg.b.y}
-                    stroke={
-                      gesture.kind === 'erase' ? ERROR_STROKE : HOVER_STROKE
-                    }
-                    strokeWidth={3}
-                    strokeOpacity={0.4}
-                    strokeDasharray="3 3"
-                  />
-                );
-              })}
-              {(gesture.kind === 'reshape'
-                ? [gesture.b, ...gesture.chains.map((c) => c.far)]
-                : [gesture.a, gesture.b]
-              ).map((end, i) => {
-                const p = cornerPoint(end, size, o);
-                return (
-                  <circle
-                    key={`end:${i}`}
-                    data-gesture-end={i}
-                    cx={p.x}
-                    cy={p.y}
-                    r={size * 0.18}
-                    fill="none"
-                    stroke={HOVER_STROKE}
-                    strokeWidth={2}
-                  />
-                );
-              })}
+          {tool === 'wall' && (
+            <g data-layer="picker" pointerEvents="none">
+              {/* STEP 1 — the seven positions of the clicked hex. A wall
+                  starts on one of them and nowhere else (design §1.6):
+                  no freehand, no angle snap, nothing to miss. */}
+              {!pick.start &&
+                pick.cell &&
+                cellPositions(o, pick.cell).map((position) => {
+                  const p = positionPoint(o, position, size);
+                  return (
+                    <circle
+                      key={`seat:${positionKey(o, position)}`}
+                      data-position={positionKey(o, position)}
+                      cx={p.x}
+                      cy={p.y}
+                      r={size * 0.16}
+                      fill={WALL_STROKE}
+                      fillOpacity={0.35}
+                      stroke={HOVER_STROKE}
+                      strokeWidth={2}
+                      pointerEvents="all"
+                      style={{ cursor: 'pointer' }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        setPick({ cell: null, start: position });
+                      }}
+                    />
+                  );
+                })}
+              {/* STEP 2 — the twelve rays, each trimmed to the ends that
+                  make a legal wall, each coloured by what it costs.
+                  THIN seals nothing; THICK seals the cells it runs
+                  through the centre of, and those cells grey out under
+                  the hovered end before anything is committed. */}
+              {pick.start &&
+                rays.map((ray) => {
+                  const from = positionPoint(o, pick.start!, size);
+                  const last = ray.ends[ray.ends.length - 1];
+                  const to = positionPoint(o, last.position, size);
+                  return (
+                    <line
+                      key={`ray:${ray.degrees}`}
+                      data-ray={ray.degrees}
+                      data-thick={ray.thick || undefined}
+                      x1={from.x}
+                      y1={from.y}
+                      x2={to.x}
+                      y2={to.y}
+                      stroke={ray.thick ? THICK_RAY_STROKE : THIN_RAY_STROKE}
+                      strokeWidth={ray.thick ? 3 : 2}
+                      strokeOpacity={0.5}
+                      strokeDasharray={ray.thick ? undefined : '5 4'}
+                    />
+                  );
+                })}
+              {pick.start &&
+                rays.flatMap((ray) =>
+                  ray.ends.map((end) => {
+                    const p = positionPoint(o, end.position, size);
+                    const hot =
+                      hoverEnd !== null &&
+                      samePosition(o, hoverEnd.position, end.position);
+                    return (
+                      <circle
+                        key={`end:${latticeKey(end.lattice)}`}
+                        data-ray-end={latticeKey(end.lattice)}
+                        data-thick={ray.thick || undefined}
+                        data-joins={end.joins || undefined}
+                        cx={p.x}
+                        cy={p.y}
+                        r={size * (hot ? 0.2 : end.joins ? 0.15 : 0.1)}
+                        fill={
+                          end.joins
+                            ? HOVER_STROKE
+                            : ray.thick
+                              ? THICK_RAY_STROKE
+                              : THIN_RAY_STROKE
+                        }
+                        fillOpacity={hot ? 1 : 0.75}
+                        stroke={hot ? HOVER_STROKE : 'none'}
+                        strokeWidth={2}
+                        pointerEvents="all"
+                        style={{ cursor: 'pointer' }}
+                        onPointerEnter={() => setHoverEnd(end)}
+                        onPointerLeave={() =>
+                          setHoverEnd((cur) => (cur === end ? null : cur))
+                        }
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          commitWall(pick.start!, end.position);
+                        }}
+                      />
+                    );
+                  })
+                )}
+              {/* The wall the hovered end would make, drawn solid, and
+                  the cost in words beside it. */}
+              {pick.start &&
+                hoverEnd &&
+                (() => {
+                  const from = positionPoint(o, pick.start, size);
+                  const to = positionPoint(o, hoverEnd.position, size);
+                  const cost =
+                    hoverEnd.sealed.length === 0
+                      ? 'thin — seals nothing'
+                      : `thick — seals ${hoverEnd.sealed.length} cell${
+                          hoverEnd.sealed.length === 1 ? '' : 's'
+                        }`;
+                  return (
+                    <g data-picker-preview={cost}>
+                      <line
+                        x1={from.x}
+                        y1={from.y}
+                        x2={to.x}
+                        y2={to.y}
+                        stroke={HOVER_STROKE}
+                        strokeWidth={5}
+                        strokeOpacity={0.85}
+                      />
+                      <text
+                        x={(from.x + to.x) / 2}
+                        y={(from.y + to.y) / 2 - 8}
+                        textAnchor="middle"
+                        fontSize={11}
+                        fill={HOVER_STROKE}
+                      >
+                        {hoverEnd.joins ? `${cost} · closes a corner` : cost}
+                      </text>
+                    </g>
+                  );
+                })()}
+              {/* §2.9 — one gesture for the common case: a straight wall
+                  along a room's boundary, thin by default with the thick
+                  line one click away. */}
+              {pick.start &&
+                boundaryOffer &&
+                (['thin', 'thick'] as const).map((kind, i) => {
+                  const offer = boundaryOffer[kind];
+                  const anchor = positionPoint(o, pick.start!, size);
+                  return (
+                    <g key={`boundary:${kind}`}>
+                      <rect
+                        data-boundary-offer={kind}
+                        x={anchor.x + size * 0.6}
+                        y={anchor.y - size * 0.9 + i * size * 0.7}
+                        width={size * 5.4}
+                        height={size * 0.6}
+                        rx={size * 0.15}
+                        fill={
+                          kind === 'thick' ? THICK_RAY_STROKE : THIN_RAY_STROKE
+                        }
+                        fillOpacity={0.85}
+                        pointerEvents="all"
+                        style={{ cursor: 'pointer' }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          commitWall(offer.start, offer.end);
+                        }}
+                      />
+                      <text
+                        x={anchor.x + size * 0.8}
+                        y={anchor.y - size * 0.45 + i * size * 0.7}
+                        fontSize={11}
+                        fill="#101418"
+                        pointerEvents="none"
+                      >
+                        {kind === 'thin'
+                          ? 'wall this boundary · seals nothing'
+                          : `wall this boundary · thick · seals ${offer.sealed.length}`}
+                      </text>
+                    </g>
+                  );
+                })}
             </g>
           )}
         </svg>
@@ -1200,6 +1159,50 @@ function Start({
       </text>
     </g>
   );
+}
+
+/** The crossing a position stands across, or null for a centre. */
+function crossingOf(doc: DungeonDoc, at: PositionRef): Edge | null {
+  return positionCrossing(doc.orientation, latticeOf(doc.orientation, at));
+}
+
+/** The door target nearest the pointer, within a hex's own inradius so
+ * a click near the wall finds the midpoint the author meant. */
+function nearestDoorTarget(
+  targets: readonly DoorTarget[],
+  point: Point,
+  doc: DungeonDoc,
+  size: number
+): DoorTarget | null {
+  let best: DoorTarget | null = null;
+  let bestDist = size * 0.5;
+  for (const t of targets) {
+    const p = positionPoint(doc.orientation, t.position, size);
+    const d = Math.hypot(p.x - point.x, p.y - point.y);
+    if (d <= bestDist) {
+      best = t;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+/** The drawn door gap nearest the pointer, for the select tool. */
+function nearestDoorAt(
+  doors: readonly BoardDoor[],
+  point: Point,
+  size: number
+): BoardDoor | null {
+  let best: BoardDoor | null = null;
+  let bestDist = WALL_HIT_RADIUS * size;
+  for (const d of doors) {
+    const dist = distanceToSegment(point, d.a, d.b);
+    if (dist <= bestDist) {
+      best = d;
+      bestDist = dist;
+    }
+  }
+  return best;
 }
 
 function cursorFor(tool: BoardTool): string {

@@ -30,7 +30,7 @@
  * `SyntyHexWall.tsx` always has.
  */
 
-import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
 import { WALL_HEIGHT } from '@/rendering/calibrationConstants';
 import type { DungeonShellWallProfile } from '@/rendering/dungeonShellManifest';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';

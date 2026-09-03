@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addDoor,
   addRegion,
-  addWalls,
+  addWall,
   applyDerivedConcealment,
-  compiledWalls,
   deriveConcealment,
   detectConcealmentLeaks,
-  edgeIsOfferable,
+  doorCrossing,
   emitDungeon,
   emptyDungeon,
   eraseCell,
@@ -26,25 +24,78 @@ import {
   sceneryBlockedBy,
   setStart,
   setWallHeights,
-  toggleDoorEdge,
-  toggleWall,
+  setWallName,
+  toggleDoorAt,
   updateDoor,
   updatePlacement,
   updateRegion,
-  wallEdges,
+  wallCrossingKeys,
+  wallsThrough,
   type DungeonDoc,
+  type PositionRef,
 } from './dungeonYaml';
-import { referenceTombDoc } from './fixtures/referenceTomb';
+import { referenceTombDoc, seamEdges } from './fixtures/referenceTomb';
+import { latticeOf, latticeWalk, positionAt } from './hexGeometry';
 import {
   axialKey,
   edgeKey,
   fromOffset,
   toOffset,
   type Axial,
-  type Edge,
 } from './hexOffset';
 
 const p = (col: number, row: number): Axial => fromOffset('pointy', [col, row]);
+
+/** The lattice point of the side two adjacent cells share. */
+function midLattice(c1: Axial, c2: Axial): { u: number; v: number } {
+  const a = latticeOf('pointy', { cell: c1, offset: [0, 0] });
+  const b = latticeOf('pointy', { cell: c2, offset: [0, 0] });
+  const walk = latticeWalk(a, b)!;
+  return walk[Math.floor(walk.length / 2)];
+}
+
+/** The canonical position on the shared side of two adjacent cells —
+ * where a door standing between them belongs. */
+function sharedSide(c1: Axial, c2: Axial): PositionRef {
+  return positionAt('pointy', midLattice(c1, c2))!;
+}
+
+/** A SHORT thin wall that blocks EXACTLY the crossing between two
+ * adjacent cells — the line-form way of saying "wall this side" for
+ * tests that only care that some wall blocks the crossing, not the exact
+ * line drawn.
+ *
+ * Deliberately NOT centre-to-centre: `wallCrossings`' intersection test
+ * counts a touching endpoint, so a wall ending exactly AT a cell's
+ * centre registers as blocking every crossing incident to that centre,
+ * not only the one along the wall's own line. Both new endpoints here
+ * are one diagonal lattice step off the shared side's own midpoint —
+ * always a valid side position for a same-row adjacent pair — which
+ * keeps the wall thin (touches no centre) and its blocked-crossing set
+ * to exactly the one side. */
+function wallBetween(
+  doc: DungeonDoc,
+  c1: Axial,
+  c2: Axial,
+  height?: number
+): DungeonDoc {
+  const m = midLattice(c1, c2);
+  const start = positionAt('pointy', { u: m.u - 1, v: m.v - 1 })!;
+  const end = positionAt('pointy', { u: m.u + 1, v: m.v + 1 })!;
+  return addWall(doc, start, end, height);
+}
+
+/** Draws the centre-to-centre wall between two adjacent cells AND a door
+ * on its shared side — the line-form equivalent of the old pair-form
+ * "add a door on this edge", now that a door always stands IN a wall. */
+function wallDoorAt(
+  doc: DungeonDoc,
+  c1: Axial,
+  c2: Axial
+): { doc: DungeonDoc; at: PositionRef } {
+  const at = sharedSide(c1, c2);
+  return { doc: toggleDoorAt(wallBetween(doc, c1, c2), at), at };
+}
 
 describe('emitDungeon / parseDungeon', () => {
   it('round-trips the reference tomb byte-for-byte', () => {
@@ -221,162 +272,282 @@ describe('emitDungeon / parseDungeon', () => {
     expect(emitDungeon(reparsed)).toBe(text);
   });
 
-  it('round-trips both wall forms byte-for-byte: bare pair = standard, object = authored height (rpg-project#273)', () => {
-    let doc = emptyDungeon();
-    for (const [c, r] of [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ]) {
-      doc = paintCell(doc, 'region-1', p(c, r));
+  it('the reference tomb has no facing/offset anywhere in its placements — the additive fields change nothing absent', () => {
+    for (const placement of referenceTombDoc().place) {
+      expect(placement.facing).toBeUndefined();
+      expect(placement.offset).toBeUndefined();
     }
-    doc = toggleWall(doc, [p(0, 0), p(1, 0)]);
-    doc = toggleWall(doc, [p(0, 1), p(1, 1)]);
-    doc = setWallHeights(doc, [[p(0, 1), p(1, 1)]], 2);
-    const text = emitDungeon(doc);
-    expect(text).toContain('walls:\n  - [[0,0],[1,0]]\n');
-    expect(text).toContain('  - { between: [[0,1],[1,1]], height: 2 }');
-    const reparsed = parseDungeon(text);
-    expect(reparsed.walls.map((w) => w.height)).toEqual([undefined, 2]);
-    expect(emitDungeon(reparsed)).toBe(text);
+    const text = emitDungeon(referenceTombDoc());
+    // `offset:` legitimately appears in the tomb's walls/doors now (a
+    // position IS a cell + offset) — scope the "nothing additive" claim
+    // to the `place:` block, which is what it is actually about.
+    expect(text).not.toMatch(/facing:/);
+    expect(text.slice(text.indexOf('place:'))).not.toMatch(/offset:/);
   });
 
-  it('a drawn stroke is ONE entry: the run round-trips byte-for-byte with its height written once (rpg-project#355)', () => {
-    let doc = emptyDungeon();
-    for (const [c, r] of [
-      [0, 0],
-      [1, 0],
-      [2, 0],
-      [0, 1],
-      [1, 1],
-      [2, 1],
-    ]) {
-      doc = paintCell(doc, 'region-1', p(c, r));
-    }
-    const chain: Edge[] = [
-      [p(0, 0), p(0, 1)],
-      [p(1, 0), p(1, 1)],
-      [p(2, 0), p(2, 1)],
-    ];
-    doc = addWalls(doc, chain, 2);
+  // -------------------------------------------------------------------------
+  // Walls and doors as LINES (rpg-project#360 slice 2). The pair form — a
+  // wall as the crossings it blocks — is deleted, not deprecated: see
+  // `dungeonYaml.ts`'s `WallDoc` doc comment for why it could not say what
+  // the author drew.
+  // -------------------------------------------------------------------------
 
-    // The stroke the author drew survives as ONE wall, not three edges —
-    // this is the whole point: a dungeon reads as the walls somebody drew.
-    expect(doc.walls).toHaveLength(1);
-    expect(doc.walls[0].edges).toHaveLength(3);
-
-    const text = emitDungeon(doc);
-    expect(text).toContain('  - height: 2\n    edges:\n');
-    const wallsBlock = text.slice(
-      text.indexOf('walls:'),
-      text.indexOf('doors:')
-    );
-    expect(wallsBlock.match(/^ {6}- \[\[/gm)).toHaveLength(3);
-    // The height is written ONCE for the run, not repeated per edge.
-    expect(wallsBlock.match(/height: 2/g)).toHaveLength(1);
-
-    const reparsed = parseDungeon(text);
-    expect(reparsed.walls).toHaveLength(1);
-    expect(reparsed.walls[0].edges).toHaveLength(3);
-    expect(reparsed.walls[0].height).toBe(2);
-    expect(emitDungeon(reparsed)).toBe(text);
-  });
-
-  it("a run's name round-trips and is carried unread", () => {
-    let doc = emptyDungeon();
-    for (const [c, r] of [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ]) {
-      doc = paintCell(doc, 'region-1', p(c, r));
-    }
-    doc = addWalls(doc, [
-      [p(0, 0), p(0, 1)],
-      [p(1, 0), p(1, 1)],
-    ]);
-    doc = { ...doc, walls: [{ ...doc.walls[0], name: 'north wall' }] };
-
-    const text = emitDungeon(doc);
-    expect(text).toContain('  - name: north wall\n    edges:\n');
-    const reparsed = parseDungeon(text);
-    expect(reparsed.walls[0].name).toBe('north wall');
-    expect(emitDungeon(reparsed)).toBe(text);
-  });
-
-  it('grouping has NO mechanical consequence: the same edges grouped differently reach the atlas identically (rpg-project#355)', () => {
-    let base = emptyDungeon();
-    for (const [c, r] of [
-      [0, 0],
-      [1, 0],
-      [2, 0],
-      [0, 1],
-      [1, 1],
-      [2, 1],
-    ]) {
-      base = paintCell(base, 'region-1', p(c, r));
-    }
-    const chain: Edge[] = [
-      [p(0, 0), p(0, 1)],
-      [p(1, 0), p(1, 1)],
-      [p(2, 0), p(2, 1)],
-    ];
-
-    // One stroke of three edges...
-    const grouped = addWalls(base, chain);
-    // ...and the same three edges drawn one at a time.
-    let loose = base;
-    for (const e of chain) loose = addWalls(loose, [e]);
-
-    expect(grouped.walls).toHaveLength(1);
-    expect(loose.walls).toHaveLength(3);
-
-    const keysOf = (d: DungeonDoc) =>
-      compiledWalls(d)
-        .map((w) => `${edgeKey(w.edge)}@${w.height ?? 'std'}`)
-        .sort();
-    expect(keysOf(grouped)).toEqual(keysOf(loose));
-    // A flat document still emits the bare pairs it always did, so nothing
-    // already on disk churns just because runs became expressible.
-    expect(emitDungeon(loose)).toContain('walls:\n  - [[');
-  });
-
-  it('refuses a wall object with an unknown key, a missing edge, or a non-number height', () => {
-    const head =
-      'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nwalls:\n';
-    expect(() =>
-      parseDungeon(head + '  - { between: [[0,0],[1,0]], hieght: 2 }\n')
-    ).toThrow(/walls\[0\]: unknown key "hieght"/);
-    expect(() => parseDungeon(head + '  - { height: 2 }\n')).toThrow(
-      /walls\[0\]: a wall object must name its edge in `between` or its run in `edges`/
-    );
-    expect(() =>
-      parseDungeon(
-        head + '  - { between: [[0,0],[1,0]], edges: [[[0,0],[1,0]]] }\n'
-      )
-    ).toThrow(/never both/);
-    expect(() => parseDungeon(head + '  - { edges: [] }\n')).toThrow(
-      /walls\[0\]\.edges: a wall run with no edges stands nowhere/
-    );
-    expect(() =>
-      parseDungeon(head + '  - { between: [[0,0],[1,0]], height: tall }\n')
-    ).toThrow(/walls\[0\]\.height: expected a number/);
-  });
-
-  describe('concealed doors and regions (rpg-project#350/#351)', () => {
-    function twoCellDoc(): DungeonDoc {
+  describe('walls as lines', () => {
+    it('round-trips a wall byte-for-byte, with and without a name and a height', () => {
       let doc = emptyDungeon();
       doc = paintCell(doc, 'region-1', p(0, 0));
       doc = paintCell(doc, 'region-1', p(1, 0));
-      return doc;
+      doc = addWall(
+        doc,
+        { cell: p(0, 0), offset: [0, 0] },
+        { cell: p(1, 0), offset: [0, 0] }
+      );
+      const bare = emitDungeon(doc);
+      expect(emitDungeon(parseDungeon(bare))).toBe(bare);
+      // Scope to the walls: block — a region's own `name:` field is
+      // unrelated to whether the WALL carries one.
+      const bareWalls = bare.slice(
+        bare.indexOf('walls:'),
+        bare.indexOf('doors:')
+      );
+      expect(bareWalls).not.toMatch(/name:|height:/);
+
+      doc = setWallName(doc, 0, 'north wall');
+      doc = setWallHeights(doc, [0], 2.5);
+      const named = emitDungeon(doc);
+      expect(emitDungeon(parseDungeon(named))).toBe(named);
+      const namedWalls = named.slice(
+        named.indexOf('walls:'),
+        named.indexOf('doors:')
+      );
+      expect(namedWalls).toContain('name: north wall');
+      expect(namedWalls).toContain('height: 2.5');
+    });
+
+    it('emits the line form as start:/end:, one per line (design §3.2)', () => {
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
+      doc = paintCell(doc, 'region-1', p(1, 0));
+      doc = addWall(
+        doc,
+        { cell: p(0, 0), offset: [0, 0] },
+        { cell: p(1, 0), offset: [0, 0] }
+      );
+      const text = emitDungeon(doc);
+      expect(text).toContain(
+        '  - start: { cell: [0,0], offset: [0, 0] }\n    end: { cell: [1,0], offset: [0, 0] }\n'
+      );
+    });
+
+    it('refuses an offset outside the seven, naming the offset by value', () => {
+      const head =
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nwalls:\n';
+      expect(() =>
+        parseDungeon(
+          `${head}  - start: { cell: [0,0], offset: [0.1, 0.2] }\n    end: { cell: [1,0], offset: [0,0] }\n`
+        )
+      ).toThrow(/\[0\.1,0\.2\] is not one of the seven/);
+    });
+
+    it('A9: the pair form is refused at the header, naming the form (message text pinned)', () => {
+      const head =
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\n';
+      const message =
+        'walls[0]: this file is written in the PAIR FORM — a wall as the ' +
+        'crossings it blocks. That form is deleted. A wall is now a line: ' +
+        '`start` and `end`, each `{ cell: [col,row], offset: [x,y] }`, and a ' +
+        'door is `at:` one position on it. Rewrite the walls and doors in the ' +
+        'line form; there is no converter, and nothing else in the file moves.';
+      expect(() => parseDungeon(`${head}walls:\n  - [[0,0],[1,0]]\n`)).toThrow(
+        message
+      );
+      expect(() =>
+        parseDungeon(`${head}walls:\n  - { between: [[0,0],[1,0]] }\n`)
+      ).toThrow(/PAIR FORM/);
+      expect(() =>
+        parseDungeon(
+          `${head}walls: []\ndoors:\n  - { id: d1, edges: [[[0,0],[1,0]]] }\n`
+        )
+      ).toThrow(/PAIR FORM/);
+    });
+
+    it('refuses a wall object with an unknown key or a non-number height', () => {
+      const head =
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\nwalls:\n';
+      expect(() =>
+        parseDungeon(
+          `${head}  - start: { cell: [0,0], offset: [0,0] }\n    end: { cell: [1,0], offset: [0,0] }\n    hieght: 2\n`
+        )
+      ).toThrow(/walls\[0\]: unknown key "hieght"/);
+      expect(() =>
+        parseDungeon(
+          `${head}  - start: { cell: [0,0], offset: [0,0] }\n    end: { cell: [1,0], offset: [0,0] }\n    height: tall\n`
+        )
+      ).toThrow(/walls\[0\]\.height: expected a number/);
+    });
+
+    it('addWall is idempotent and undirected — the same line either way round is not added twice', () => {
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
+      doc = paintCell(doc, 'region-1', p(1, 0));
+      const start: PositionRef = { cell: p(0, 0), offset: [0, 0] };
+      const end: PositionRef = { cell: p(1, 0), offset: [0, 0] };
+      doc = addWall(doc, start, end);
+      expect(doc.walls).toHaveLength(1);
+      expect(addWall(doc, start, end)).toBe(doc);
+      expect(addWall(doc, end, start)).toBe(doc);
+    });
+
+    it('addWall refuses a direction off the twelve', () => {
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
+      doc = paintCell(doc, 'region-1', p(2, 1));
+      const start: PositionRef = { cell: p(0, 0), offset: [0, 0] };
+      const end: PositionRef = { cell: p(2, 1), offset: [0, 0] };
+      expect(addWall(doc, start, end)).toBe(doc);
+    });
+
+    it('addWall refuses a wall whose footprint holds no floor', () => {
+      const doc = emptyDungeon();
+      const start: PositionRef = { cell: p(5, 5), offset: [0, 0] };
+      const end: PositionRef = { cell: p(6, 5), offset: [0, 0] };
+      expect(addWall(doc, start, end)).toBe(doc);
+    });
+
+    it('A12: a corner — two walls sharing an end write IDENTICAL PositionRefs, however the shared point was named', () => {
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
+      doc = paintCell(doc, 'region-1', p(1, 0));
+
+      // The side between (0,0) and (1,0) has two spellings — one from
+      // each cell that shares it — and they name the SAME lattice point
+      // (hexGeometry.ts's own header comment).
+      const fromCell0: PositionRef = { cell: p(0, 0), offset: [0.5, 0] };
+      const fromCell1: PositionRef = { cell: p(1, 0), offset: [-0.5, 0] };
+      const lattice = latticeOf('pointy', fromCell0);
+      expect(latticeOf('pointy', fromCell1)).toEqual(lattice);
+
+      // Whichever cell it is named from, `positionAt` returns ONE
+      // canonical spelling — what the picker hands `addWall`, and what
+      // keeps a join byte-identical regardless of which side it was
+      // drawn from.
+      const canonical = positionAt('pointy', lattice)!;
+      expect(canonical).toEqual(fromCell0);
+      expect(positionAt('pointy', latticeOf('pointy', fromCell1))).toEqual(
+        canonical
+      );
+
+      doc = addWall(doc, { cell: p(0, 0), offset: [0, 0] }, canonical);
+      doc = addWall(doc, canonical, { cell: p(1, 0), offset: [0, 0] });
+
+      expect(doc.walls[0].end).toEqual(doc.walls[1].start);
+      expect(doc.walls[0].end).toEqual(canonical);
+
+      const text = emitDungeon(doc);
+      const shared = '{ cell: [0,0], offset: [0.5, 0] }';
+      expect(text.split(shared).length - 1).toBe(2);
+      expect(text).not.toContain('offset: [-0.5, 0]');
+    });
+
+    it('addWall refuses in place, setWallHeights stamps by index and clears to undefined, and a redrawn wall starts fresh', () => {
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
+      doc = paintCell(doc, 'region-1', p(1, 0));
+      doc = addWall(
+        doc,
+        { cell: p(0, 0), offset: [0, 0] },
+        { cell: p(1, 0), offset: [0, 0] }
+      );
+      doc = setWallHeights(doc, [0], 2.5);
+      expect(doc.walls[0].height).toBe(2.5);
+      doc = setWallHeights(doc, [0], undefined);
+      expect(doc.walls[0].height).toBeUndefined();
+      expect(setWallHeights(doc, [0], undefined)).toBe(doc);
+
+      doc = removeWalls(doc, [0]);
+      expect(doc.walls).toHaveLength(0);
+      doc = addWall(
+        doc,
+        { cell: p(0, 0), offset: [0, 0] },
+        { cell: p(1, 0), offset: [0, 0] }
+      );
+      expect(doc.walls[0].height).toBeUndefined();
+    });
+
+    describe('toggleDoorAt', () => {
+      it('refuses a position no wall passes through', () => {
+        let doc = emptyDungeon();
+        doc = paintCell(doc, 'region-1', p(0, 0));
+        doc = paintCell(doc, 'region-1', p(1, 0));
+        const mid = sharedSide(p(0, 0), p(1, 0));
+        expect(wallsThrough(doc, mid)).toHaveLength(0);
+        expect(toggleDoorAt(doc, mid)).toBe(doc);
+      });
+
+      it('refuses a centre — the midpoint of no side — even where a wall runs through it', () => {
+        let doc = emptyDungeon();
+        doc = paintCell(doc, 'region-1', p(0, 0));
+        doc = paintCell(doc, 'region-1', p(1, 0));
+        doc = paintCell(doc, 'region-1', p(2, 0));
+        // A thick wall through centre(0,0)-centre(1,0)-centre(2,0).
+        doc = wallBetween(doc, p(0, 0), p(2, 0));
+        const centre: PositionRef = { cell: p(1, 0), offset: [0, 0] };
+        expect(wallsThrough(doc, centre).length).toBeGreaterThan(0);
+        expect(toggleDoorAt(doc, centre)).toBe(doc);
+      });
+
+      it('toggling an existing door’s position removes it', () => {
+        let doc = emptyDungeon();
+        doc = paintCell(doc, 'region-1', p(0, 0));
+        doc = paintCell(doc, 'region-1', p(1, 0));
+        const { doc: withDoor, at } = wallDoorAt(doc, p(0, 0), p(1, 0));
+        expect(withDoor.doors).toHaveLength(1);
+        expect(toggleDoorAt(withDoor, at).doors).toHaveLength(0);
+      });
+    });
+
+    it('a door stands IN a wall: its own crossing still shows in wallCrossingKeys (the compiler, not this set, hands it back to the door)', () => {
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
+      doc = paintCell(doc, 'region-1', p(1, 0));
+      const crossingKey = edgeKey([p(0, 0), p(1, 0)]);
+      doc = wallBetween(doc, p(0, 0), p(1, 0));
+      expect(wallCrossingKeys(doc).has(crossingKey)).toBe(true);
+
+      const { doc: withDoor } = wallDoorAt(doc, p(0, 0), p(1, 0));
+      expect(wallCrossingKeys(withDoor).has(crossingKey)).toBe(true);
+      expect(doorCrossing(withDoor, withDoor.doors[0]!)).toEqual([
+        p(0, 0),
+        p(1, 0),
+      ]);
+    });
+
+    it('REGRESSION NET: wallCrossingKeys on the reference tomb equals seamEdges for both seams — the line blocks exactly what the pair form used to list', () => {
+      const doc = referenceTombDoc();
+      const [entrance, hall, tomb] = doc.regions;
+      const expected = [
+        ...seamEdges(entrance, hall),
+        ...seamEdges(hall, tomb),
+      ].map(edgeKey);
+      expect([...wallCrossingKeys(doc)].sort()).toEqual([...expected].sort());
+    });
+  });
+
+  describe('concealed doors and regions (rpg-project#350/#351)', () => {
+    /** Two floor cells, a wall between them, and a door on the shared
+     * side — the line-form base every door-state test below builds on
+     * now that a door always stands in a wall. */
+    function doorDoc(): { doc: DungeonDoc; doorId: string } {
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
+      doc = paintCell(doc, 'region-1', p(1, 0));
+      const { doc: withDoor } = wallDoorAt(doc, p(0, 0), p(1, 0));
+      return { doc: withDoor, doorId: withDoor.doors[0]!.id };
     }
 
     it("a door's concealed find check round-trips byte-for-byte and COMPOSES with an open doorway underneath", () => {
-      let doc = twoCellDoc();
-      doc = addDoor(doc, [[p(0, 0), p(1, 0)]]);
-      doc = updateDoor(doc, doc.doors[0]!.id, {
+      const { doc: base, doorId } = doorDoc();
+      const doc = updateDoor(base, doorId, {
         concealed: [
           { ability: 'perception', dc: 15 },
           {
@@ -402,9 +573,8 @@ describe('emitDungeon / parseDungeon', () => {
     });
 
     it('a concealed door composes with locked and with closed underneath — concealment never displaces the state', () => {
-      let locked = twoCellDoc();
-      locked = addDoor(locked, [[p(0, 0), p(1, 0)]]);
-      locked = updateDoor(locked, locked.doors[0]!.id, {
+      const lockedBase = doorDoc();
+      const locked = updateDoor(lockedBase.doc, lockedBase.doorId, {
         locked: [{ ability: 'dex', dc: 12 }],
         concealed: [{ ability: 'perception', dc: 15 }],
       });
@@ -415,9 +585,8 @@ describe('emitDungeon / parseDungeon', () => {
       );
       expect(emitDungeon(parseDungeon(lockedText))).toBe(lockedText);
 
-      let closed = twoCellDoc();
-      closed = addDoor(closed, [[p(0, 0), p(1, 0)]]);
-      closed = updateDoor(closed, closed.doors[0]!.id, {
+      const closedBase = doorDoc();
+      const closed = updateDoor(closedBase.doc, closedBase.doorId, {
         closed: true,
         concealed: [{ ability: 'perception', dc: 15 }],
       });
@@ -430,21 +599,19 @@ describe('emitDungeon / parseDungeon', () => {
     });
 
     it('toggling concealed off removes the key entirely rather than leaving an authored-but-falsy field', () => {
-      let doc = twoCellDoc();
-      doc = addDoor(doc, [[p(0, 0), p(1, 0)]]);
-      doc = updateDoor(doc, doc.doors[0]!.id, {
+      const { doc: base, doorId } = doorDoc();
+      let doc = updateDoor(base, doorId, {
         concealed: [{ ability: 'perception', dc: 15 }],
       });
       expect(doc.doors[0]).toHaveProperty('concealed');
-      doc = updateDoor(doc, doc.doors[0]!.id, { concealed: undefined });
+      doc = updateDoor(doc, doorId, { concealed: undefined });
       expect(doc.doors[0]).not.toHaveProperty('concealed');
       expect(emitDungeon(doc)).not.toContain('concealed');
     });
 
     it('an authored-but-empty check list round-trips unchanged — this loader only refuses what it cannot represent', () => {
-      let doc = twoCellDoc();
-      doc = addDoor(doc, [[p(0, 0), p(1, 0)]]);
-      doc = updateDoor(doc, doc.doors[0]!.id, { concealed: [] });
+      const { doc: base, doorId } = doorDoc();
+      const doc = updateDoor(base, doorId, { concealed: [] });
       const text = emitDungeon(doc);
       expect(text).toContain('    concealed: []');
       const reparsed = parseDungeon(text);
@@ -453,7 +620,8 @@ describe('emitDungeon / parseDungeon', () => {
     });
 
     it("a region's concealed marker round-trips byte-for-byte and is declared, never inferred from a door", () => {
-      let doc = twoCellDoc();
+      let doc = emptyDungeon();
+      doc = paintCell(doc, 'region-1', p(0, 0));
       doc = updateRegion(doc, 'region-1', { concealed: true });
       const text = emitDungeon(doc);
       expect(text).toContain('    concealed: true');
@@ -481,14 +649,14 @@ describe('emitDungeon / parseDungeon', () => {
       ).toThrow(/regions\[0\]\.concealed: expected a boolean/);
       expect(() =>
         parseDungeon(
-          `${head}regions: []\ndoors:\n  - id: d1\n    edges: []\n    concealed: { ability: perception, dc: 15 }\n`
+          `${head}regions: []\ndoors:\n  - id: d1\n    at: { cell: [0,0], offset: [0.5,0] }\n    concealed: { ability: perception, dc: 15 }\n`
         )
       ).toThrow(/doors\[0\]\.concealed: expected a list/);
     });
 
     it('refuses an approach row missing its ability, or with a non-integer dc', () => {
       const head =
-        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\ndoors:\n  - id: d1\n    edges: []\n';
+        'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\ndoors:\n  - id: d1\n    at: { cell: [0,0], offset: [0.5,0] }\n';
       expect(() =>
         parseDungeon(`${head}    concealed: [{ dc: 15 }]\n`)
       ).toThrow(/doors\[0\]\.concealed\[0\]\.ability: required/);
@@ -499,27 +667,20 @@ describe('emitDungeon / parseDungeon', () => {
       ).toThrow(/doors\[0\]\.concealed\[0\]\.dc: expected an integer/);
     });
   });
-
-  it('the reference tomb has no facing/offset anywhere — the additive fields change nothing absent', () => {
-    for (const placement of referenceTombDoc().place) {
-      expect(placement.facing).toBeUndefined();
-      expect(placement.offset).toBeUndefined();
-    }
-    expect(emitDungeon(referenceTombDoc())).not.toMatch(/facing:|offset:/);
-  });
 });
 
 describe('deriveConcealment / detectConcealmentLeaks / applyDerivedConcealment (rpg-dnd5e-web#893)', () => {
   /** region-1: [0,0],[1,0], start [0,0] — region-2: [2,0], reachable only
-   * through a door on the [1,0]-[2,0] edge, concealed by the caller. */
+   * through a (walled) door on the [1,0]-[2,0] side, concealed by the
+   * caller. */
   function alcoveDoc(): DungeonDoc {
     let doc = emptyDungeon();
     doc = addRegion(doc);
     doc = paintCell(doc, 'region-1', p(0, 0));
     doc = paintCell(doc, 'region-1', p(1, 0));
     doc = paintCell(doc, 'region-2', p(2, 0));
-    doc = addDoor(doc, [[p(1, 0), p(2, 0)]]);
-    doc = updateDoor(doc, doc.doors[0]!.id, {
+    const { doc: withDoor } = wallDoorAt(doc, p(1, 0), p(2, 0));
+    doc = updateDoor(withDoor, withDoor.doors[0]!.id, {
       concealed: [{ ability: 'perception', dc: 15 }],
     });
     doc = setStart(doc, p(0, 0));
@@ -634,113 +795,40 @@ describe('mutators', () => {
     expect(floorOwners(doc).get('1,2')).toBe('b');
   });
 
-  it('the wall tool on a non-adjacent pair is a no-op', () => {
-    let doc = emptyDungeon();
-    doc = paintCell(doc, 'region-1', p(0, 0));
-    doc = paintCell(doc, 'region-1', p(2, 0));
-    doc = paintCell(doc, 'region-1', p(1, 0));
-    const before = doc;
-    expect(toggleWall(doc, [p(0, 0), p(2, 0)])).toBe(before);
-    expect(toggleWall(doc, [p(0, 0), p(1, 0)]).walls).toHaveLength(1);
-  });
-
-  it('the wall tool refuses an edge off the floor', () => {
-    let doc = emptyDungeon();
-    doc = paintCell(doc, 'region-1', p(0, 0));
-    expect(toggleWall(doc, [p(0, 0), p(1, 0)])).toBe(doc);
-  });
-
-  it('a door stands in a wall, and deleting the door gives the wall back', () => {
-    let doc = emptyDungeon();
-    doc = paintCell(doc, 'region-1', p(0, 0));
-    doc = paintCell(doc, 'region-1', p(1, 0));
-    doc = toggleWall(doc, [p(0, 0), p(1, 0)]);
-    doc = toggleDoorEdge(doc, [p(0, 0), p(1, 0)]);
-
-    // rpg-project#355 reverses "an edge is a wall OR a door". The run KEEPS
-    // the crossing and the door sits in it — which is what lets one drawn
-    // wall stay one entry instead of coming apart at every doorway.
-    expect(wallEdges(doc)).toHaveLength(1);
-    expect(doc.doors).toEqual([{ id: 'door-1', edges: [[p(0, 0), p(1, 0)]] }]);
-    // ...and the wall still does not reach the atlas while the door holds
-    // that crossing: the client mirrors the server's own subtraction.
-    expect(compiledWalls(doc)).toHaveLength(0);
-
-    // The wall tool may draw on a door's edge, since a wall may run through
-    // one. Drawing over the wall already there is idempotent, so this is a
-    // removal, and now nothing is left underneath the door.
-    expect(wallEdges(toggleWall(doc, [p(0, 0), p(1, 0)]))).toHaveLength(0);
-
-    // Deleting the door gives the wall back rather than leaving a hole
-    // nobody authored — the behaviour the old exclusive rule got wrong.
-    const reopened = toggleDoorEdge(doc, [p(1, 0), p(0, 0)]);
-    expect(reopened.doors).toHaveLength(0);
-    expect(compiledWalls(reopened)).toHaveLength(1);
-  });
-
-  it('setWallHeights stamps every named edge, clears back to standard with undefined, and dies with an erased wall', () => {
-    let doc = emptyDungeon();
-    for (const [c, r] of [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ]) {
-      doc = paintCell(doc, 'region-1', p(c, r));
-    }
-    const e1: Edge = [p(0, 0), p(1, 0)];
-    const e2: Edge = [p(0, 1), p(1, 1)];
-    doc = addWalls(doc, [e1, e2]);
-    doc = setWallHeights(doc, [e1, e2], 2.5);
-    expect(doc.walls.map((w) => w.height)).toEqual([2.5]);
-    // Clearing is the same chain-level stamp.
-    doc = setWallHeights(doc, [e1], undefined);
-    expect(doc.walls.map((w) => w.height)).toEqual([undefined, 2.5]);
-    // A no-op returns the same doc (referential, like every mutator).
-    expect(setWallHeights(doc, [e1], undefined)).toBe(doc);
-    // Erasing the raised wall erases its height WITH it: a redraw gets
-    // standard, never a resurrected stale height.
-    doc = removeWalls(doc, [e2]);
-    doc = addWalls(doc, [e2]);
-    const redrawn = doc.walls.find((w) =>
-      w.edges.some((x) => edgeKey(x) === edgeKey(e2))
+  it('erasing a cell drops a wall whose footprint it empties, and a door whose crossing it touched', () => {
+    // A thin spoke wall wholly inside cell (0,0): erasing that cell empties
+    // its ENTIRE footprint, so the wall goes with it.
+    let spokeDoc = emptyDungeon();
+    spokeDoc = paintCell(spokeDoc, 'region-1', p(0, 0));
+    spokeDoc = addWall(
+      spokeDoc,
+      { cell: p(0, 0), offset: [0, 0] },
+      { cell: p(0, 0), offset: [0.5, 0] }
     );
-    expect(redrawn?.height).toBeUndefined();
-  });
+    expect(spokeDoc.walls).toHaveLength(1);
+    expect(eraseCell(spokeDoc, p(0, 0)).walls).toHaveLength(0);
 
-  it('addWalls with a height writes it on every new edge — the current stroke carries it (rpg-project#273)', () => {
+    // A wall spanning two cells with a door on the shared side: erasing
+    // the OTHER cell leaves the wall standing (its footprint still
+    // touches floor at (0,0)) but drops the door, whose crossing touches
+    // the erased cell.
     let doc = emptyDungeon();
-    for (const [c, r] of [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ]) {
-      doc = paintCell(doc, 'region-1', p(c, r));
-    }
-    doc = addWalls(
-      doc,
-      [
-        [p(0, 0), p(1, 0)],
-        [p(0, 1), p(1, 1)],
-      ],
-      3
-    );
-    // One stroke is ONE run (rpg-project#355), so the height it carries is
-    // written once for the whole wall rather than repeated per edge — the
-    // entire point of grouping, seen from the model side.
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    doc = paintCell(doc, 'region-1', p(1, 0));
+    const { doc: withDoor } = wallDoorAt(doc, p(0, 0), p(1, 0));
+    doc = withDoor;
     expect(doc.walls).toHaveLength(1);
-    expect(doc.walls[0].edges).toHaveLength(2);
-    expect(doc.walls.map((w) => w.height)).toEqual([3]);
+    expect(doc.doors).toHaveLength(1);
+
+    const erased = eraseCell(doc, p(1, 0));
+    expect(erased.walls).toHaveLength(1);
+    expect(erased.doors).toHaveLength(0);
   });
 
-  it('erasing a cell takes its walls, door edges, start and placement with it', () => {
+  it('erasing a cell also drops the start and a placement standing on it', () => {
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(0, 0));
     doc = paintCell(doc, 'region-1', p(1, 0));
-    doc = paintCell(doc, 'region-1', p(2, 0));
-    doc = toggleWall(doc, [p(0, 0), p(1, 0)]);
-    doc = toggleDoorEdge(doc, [p(1, 0), p(2, 0)]);
     doc = setStart(doc, p(1, 0));
     doc = placeAt(doc, {
       ref: 'dnd5e:props:pillar',
@@ -748,11 +836,9 @@ describe('mutators', () => {
       blocksLos: true,
     });
     doc = eraseCell(doc, p(1, 0));
-    expect(doc.walls).toHaveLength(0);
-    expect(doc.doors).toHaveLength(0);
     expect(doc.start).toBeNull();
     expect(doc.place).toHaveLength(0);
-    expect(floorOwners(doc).size).toBe(2);
+    expect(floorOwners(doc).size).toBe(1);
   });
 
   it('placeAt writes blocks_* explicitly for props and never for monsters', () => {
@@ -923,10 +1009,6 @@ describe('resolveErrorPath', () => {
       index: 3,
       cell: p(23, 5),
     });
-    expect(resolveErrorPath(doc, 'doors[1].edges[0]')).toEqual({
-      kind: 'edge',
-      edge: [p(15, 3), p(16, 3)],
-    });
     expect(resolveErrorPath(doc, 'doors[1].locked[0].dc')).toEqual({
       kind: 'door',
       doorId: 'hall-tomb',
@@ -935,54 +1017,19 @@ describe('resolveErrorPath', () => {
       kind: 'region',
       regionId: 'tomb',
     });
-    const text = emitDungeon(doc);
-    const wallLines = text.split('\n').filter((l) => l.startsWith('  - [['));
-    const walls3 = resolveErrorPath(doc, 'walls[3]');
-    expect(walls3.kind).toBe('edge');
-    if (walls3.kind === 'edge') {
-      const [a, b] = walls3.edge;
-      const pa = toOffset('pointy', a);
-      const pb = toOffset('pointy', b);
-      expect(wallLines[3]).toBe(
-        `  - [[${pa[0]},${pa[1]}],[${pb[0]},${pb[1]}]]`
-      );
-    }
     expect(resolveErrorPath(doc, 'key')).toEqual({ kind: 'document' });
     expect(resolveErrorPath(doc, 'walls[999]')).toEqual({ kind: 'document' });
   });
 
-  it('a defect inside a run draws on THAT crossing, not on the whole wall (rpg-project#355)', () => {
-    let doc = emptyDungeon();
-    for (const [c, r] of [
-      [0, 0],
-      [1, 0],
-      [2, 0],
-      [0, 1],
-      [1, 1],
-      [2, 1],
-    ]) {
-      doc = paintCell(doc, 'region-1', p(c, r));
-    }
-    doc = addWalls(doc, [
-      [p(0, 0), p(0, 1)],
-      [p(1, 0), p(1, 1)],
-      [p(2, 0), p(2, 1)],
-    ]);
-
-    // The server addresses an edge inside a run as walls[i].edges[j], and
-    // the builder has to draw the refusal on that one crossing.
-    expect(resolveErrorPath(doc, 'walls[0].edges[2]')).toEqual({
-      kind: 'edge',
-      edge: [p(2, 0), p(2, 1)],
+  it('a wall defect names the WALL whichever of its fields faulted: walls[0].start.offset and walls[0].height both resolve to index 0', () => {
+    const doc = referenceTombDoc();
+    expect(resolveErrorPath(doc, 'walls[0].start.offset')).toEqual({
+      kind: 'wall',
+      index: 0,
     });
-    // A defect on the RUN itself names no single crossing, so it draws
-    // where the wall visibly starts.
     expect(resolveErrorPath(doc, 'walls[0].height')).toEqual({
-      kind: 'edge',
-      edge: [p(0, 0), p(0, 1)],
-    });
-    expect(resolveErrorPath(doc, 'walls[0].edges[9]')).toEqual({
-      kind: 'document',
+      kind: 'wall',
+      index: 0,
     });
   });
 });
@@ -1102,35 +1149,30 @@ describe('scenery (rpg-project#360 slice 1)', () => {
     ).toBe(true);
   });
 
-  it('erase returns a scenery cell to void and cascades what stood on it (design §2.2)', () => {
+  it('erase returns a scenery cell to void and cascades a placement that stood on it (design §2.2)', () => {
     let doc = stripDoc();
-    doc = toggleWall(doc, [p(2, 0), p(3, 0)]);
     doc = placeAt(doc, {
       ref: 'dnd5e:props:pillar',
       at: p(3, 0),
       blocksMovement: true,
     });
-    expect(wallEdges(doc)).toHaveLength(1);
     expect(doc.place).toHaveLength(1);
 
     doc = eraseCell(doc, p(3, 0));
     expect(isScenery(doc, p(3, 0))).toBe(false);
     expect(isFloor(doc, p(3, 0))).toBe(false);
-    expect(wallEdges(doc)).toHaveLength(0);
     expect(doc.place).toHaveLength(0);
   });
 
   it('a wall or a door may stand on scenery (design §2.3)', () => {
-    const doc = stripDoc();
+    let doc = stripDoc();
     // room | scenery
-    expect(wallEdges(toggleWall(doc, [p(2, 0), p(3, 0)]))).toHaveLength(1);
+    doc = wallBetween(doc, p(2, 0), p(3, 0));
+    expect(doc.walls).toHaveLength(1);
     // scenery | scenery
-    expect(wallEdges(toggleWall(doc, [p(3, 0), p(4, 0)]))).toHaveLength(1);
-    expect(edgeIsOfferable(doc, [p(3, 0), p(4, 0)])).toBe(true);
-    // ...and still nothing off the floor.
-    expect(edgeIsOfferable(doc, [p(4, 0), p(5, 0)])).toBe(false);
-
-    const withDoor = addDoor(doc, [[p(3, 0), p(4, 0)]]);
+    doc = wallBetween(doc, p(3, 0), p(4, 0));
+    expect(doc.walls).toHaveLength(2);
+    const { doc: withDoor } = wallDoorAt(doc, p(3, 0), p(4, 0));
     expect(withDoor.doors).toHaveLength(1);
   });
 
@@ -1217,7 +1259,7 @@ describe('the concealment mirror floods through scenery (design C4)', () => {
   });
 
   it('A3: add the wall between the visible room and the strip — SEPARATED', () => {
-    const doc = toggleWall(a3Scene(), [p(1, 0), p(2, 0)]);
+    const doc = wallBetween(a3Scene(), p(1, 0), p(2, 0));
     expect(ways(doc).joined('visible', 'secret')).toBe(false);
     expect(ways(doc).openly('visible', 'secret')).toBe(false);
     // Separated is NOT concealed: the module derives from what is
@@ -1226,13 +1268,14 @@ describe('the concealment mirror floods through scenery (design C4)', () => {
   });
 
   it('a wall standing INSIDE the strip separates them — a wall is not a way', () => {
-    const doc = toggleWall(a3Scene(), [p(2, 0), p(3, 0)]);
+    const doc = wallBetween(a3Scene(), p(2, 0), p(3, 0));
     expect(ways(doc).joined('visible', 'secret')).toBe(false);
   });
 
   it('a concealed door on the VISIBLE room’s edge, strip behind it — joined, but not openly', () => {
-    let doc = addDoor(a3Scene(), [[p(1, 0), p(2, 0)]]);
-    doc = updateDoor(doc, doc.doors[0].id, {
+    const base = a3Scene();
+    const { doc: withDoor } = wallDoorAt(base, p(1, 0), p(2, 0));
+    const doc = updateDoor(withDoor, withDoor.doors[0]!.id, {
       concealed: [{ ability: 'perception', dc: 15 }],
     });
     expect(ways(doc).joined('visible', 'secret')).toBe(true);
@@ -1245,8 +1288,9 @@ describe('the concealment mirror floods through scenery (design C4)', () => {
     // out of the origin region": from the visible side the first crossing
     // is bare, from the secret side it is the door. The flood gives one
     // answer either way.
-    let doc = addDoor(a3Scene(), [[p(3, 0), p(4, 0)]]);
-    doc = updateDoor(doc, doc.doors[0].id, {
+    const base = a3Scene();
+    const { doc: withDoor } = wallDoorAt(base, p(3, 0), p(4, 0));
+    const doc = updateDoor(withDoor, withDoor.doors[0]!.id, {
       concealed: [{ ability: 'perception', dc: 15 }],
     });
     expect(ways(doc).joined('visible', 'secret')).toBe(true);
@@ -1256,38 +1300,35 @@ describe('the concealment mirror floods through scenery (design C4)', () => {
   });
 
   it('an ORDINARY door anywhere on the way leaves them joined openly', () => {
-    const onTheWay: Edge[] = [
+    const onTheWay: [Axial, Axial][] = [
       [p(1, 0), p(2, 0)], // where the strip meets the visible room
       [p(3, 0), p(4, 0)], // where it meets the secret one
     ];
-    for (const edge of onTheWay) {
-      const doc = addDoor(a3Scene(), [edge]);
+    for (const [c1, c2] of onTheWay) {
+      const { doc } = wallDoorAt(a3Scene(), c1, c2);
       expect(doc.doors).toHaveLength(1);
       expect(ways(doc).openly('visible', 'secret')).toBe(true);
       expect(conceal(doc).has('secret')).toBe(false);
     }
   });
 
-  it('a door STANDING IN a wall is a door, not a wall (rpg-project#355)', () => {
-    // A run keeps the crossing its door sits in and the compiler hands
-    // that edge back to the door, so the graph has to ask about the door
-    // FIRST. Asking about the wall first made every door drawn inside a
-    // run invisible to this derivation — a room behind one read as
-    // unreachable rather than as reachable-through-a-secret.
+  it('a door STANDING IN a wall is a door, not a wall (rpg-project#360 slice 2)', () => {
+    // The compiled crossing set subtracts a door's own crossing before
+    // classifying it, so the graph has to ask about the door FIRST. A
+    // wall physically drawn under a door does not make that crossing a
+    // wall to this derivation — a room behind one reads as
+    // reachable-through-a-secret, not unreachable.
     let doc = a3Scene();
     doc = { ...doc, scenery: [] };
     doc = paintCell(doc, 'visible', p(2, 0));
     doc = paintCell(doc, 'secret', p(3, 0));
-    const seam: Edge = [p(2, 0), p(3, 0)];
-    doc = addWalls(doc, [seam]);
-    doc = addDoor(doc, [seam]);
+    const { doc: withDoor, at } = wallDoorAt(doc, p(2, 0), p(3, 0));
+    doc = withDoor;
 
-    // The wall is still authored; the compiler subtracts it at the door.
-    expect(wallEdges(doc).map(edgeKey)).toContain(edgeKey(seam));
-    expect(compiledWalls(doc)).toHaveLength(0);
+    expect(wallsThrough(doc, at).length).toBeGreaterThan(0);
     expect(regionWays(doc).openly('visible', 'secret')).toBe(true);
 
-    doc = updateDoor(doc, doc.doors[0].id, {
+    doc = updateDoor(doc, doc.doors[0]!.id, {
       concealed: [{ ability: 'perception', dc: 15 }],
     });
     expect(regionWays(doc).joined('visible', 'secret')).toBe(true);

@@ -1,7 +1,29 @@
-import type { CornerRef } from '../creation/hexCorner';
-import { tautPath } from '../creation/wallGesture';
-import type { DungeonDoc } from '../dungeonYaml';
-import { edgeKey, fromOffset, type Edge } from '../hexOffset';
+/**
+ * A showcase for prop rendering: two galleries either side of a long
+ * wall, a raised branch, a corner turn and a locked gate.
+ *
+ * Its walls are FOUR LINES sharing two positions (rpg-project#360 slice
+ * 2). They used to be four taut paths flattened into ~40 loose crossings
+ * — the fixture that made the case for the line form, since what it was
+ * really trying to say was "a long wall, a branch off it, and a turn".
+ * The junction is one position two walls both end at, which is the whole
+ * of a corner (F5), and every line here is thin, so nothing is sealed.
+ */
+import type { DungeonDoc, PositionRef } from '../dungeonYaml';
+import { positionAt, type Lattice } from '../hexGeometry';
+import { fromOffset } from '../hexOffset';
+
+const seat = (l: Lattice): PositionRef => {
+  const p = positionAt('pointy', l);
+  if (!p) throw new Error(`cryptPropShowcase: ${l.u},${l.v} is no position`);
+  return p;
+};
+
+/** The long wall runs down the row midpoint line `v = 9` — between rows
+ * 4 and 5 — so it shaves its neighbours and seals nothing. The junction
+ * and the east end are the two positions more than one wall ends at. */
+const JUNCTION: Lattice = { u: 43, v: 9 };
+const EAST_END: Lattice = { u: 59, v: 9 };
 
 export function cryptPropShowcaseDoc(): DungeonDoc {
   const p = (col: number, row: number) => fromOffset('pointy', [col, row]);
@@ -11,32 +33,6 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
         p(start + index, row)
       )
     ).flat();
-  const corner = (col: number, row: number, index: number): CornerRef => ({
-    cell: p(col, row),
-    corner: index,
-  });
-  const junction = corner(10, 5, 0);
-  const longLeft = tautPath(corner(2, 5, 0), junction, 1, 'pointy');
-  const longRight = tautPath(junction, corner(18, 5, 0), 1, 'pointy');
-  const raisedBranch = tautPath(junction, corner(10, 2, 3), 1, 'pointy');
-  const cornerTurn = tautPath(corner(18, 5, 0), corner(18, 9, 3), 1, 'pointy');
-  const doorEdge = longLeft[Math.floor(longLeft.length / 2)]!;
-  const doorKey = edgeKey(doorEdge);
-  const uniqueEdges = new Map<string, Edge>();
-  for (const edge of [
-    ...longLeft,
-    ...longRight,
-    ...raisedBranch,
-    ...cornerTurn,
-  ]) {
-    if (edgeKey(edge) !== doorKey) uniqueEdges.set(edgeKey(edge), edge);
-  }
-  const walls = [...uniqueEdges.values()].map((edge) => ({
-    edges: [edge],
-    ...(raisedBranch.some((candidate) => edgeKey(candidate) === edgeKey(edge))
-      ? { height: 2 }
-      : {}),
-  }));
 
   return {
     version: 2,
@@ -62,11 +58,23 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
     ],
     scenery: [],
     start: p(1, 3),
-    walls,
+    walls: [
+      { start: seat({ u: 27, v: 9 }), end: seat(JUNCTION), name: 'west wall' },
+      { start: seat(JUNCTION), end: seat(EAST_END), name: 'east wall' },
+      // The branch is the one raised wall — a quarter line straight up
+      // from the junction, sharing that position exactly.
+      {
+        start: seat(JUNCTION),
+        end: seat({ u: 43, v: 3 }),
+        name: 'raised branch',
+        height: 2,
+      },
+      { start: seat(EAST_END), end: seat({ u: 59, v: 17 }), name: 'the turn' },
+    ],
     doors: [
       {
         id: 'crypt-sealed-gate',
-        edges: [doorEdge],
+        at: seat({ u: 35, v: 9 }),
         locked: [{ ability: 'dex', dc: 15 }],
       },
     ],

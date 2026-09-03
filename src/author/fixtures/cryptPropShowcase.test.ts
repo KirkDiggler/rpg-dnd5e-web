@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { hexEdgeBetween } from '../../components/hex-grid/hexMath';
-import { boundariesToWallRuns } from '../../components/session/atlasWallRuns';
-import { vertexKey } from '../../hooks/authoredWallRuns';
+import { HEX_SIZE } from '../../components/hex-grid/hexMath';
+import { segmentsToWallRuns } from '../../components/session/atlasWallRuns';
 import { sandboxDocForSearch } from '../DungeonBuilderSandbox';
-import { compiledWalls, emitDungeon, parseDungeon } from '../dungeonYaml';
+import { emitDungeon, parseDungeon } from '../dungeonYaml';
+import { latticeKey, latticeOf, type PositionRef } from '../hexGeometry';
 import { fromOffset } from '../hexOffset';
 import { cryptPropShowcaseDoc } from './cryptPropShowcase';
 import { fixtureAtlasOf } from './fixtureAtlas';
@@ -32,41 +32,41 @@ describe('cryptPropShowcaseDoc', () => {
     expect(actual).toEqual(expected);
   });
 
-  it('forces a long run, distinct corners, a genuine T-junction, and both wall heights', () => {
+  it('four walls share a T-junction and a plain corner, and span both heights (rpg-project#360 slice 2)', () => {
     const doc = cryptPropShowcaseDoc();
-    const atlas = fixtureAtlasOf(doc);
-    const scene = boundariesToWallRuns(atlas, 1);
-    const endpointDegree = new Map<string, number>();
-    for (const wall of compiledWalls(doc)) {
-      const { a, b } = hexEdgeBetween(
-        {
-          x: wall.edge[0].q,
-          y: -wall.edge[0].q - wall.edge[0].r,
-          z: wall.edge[0].r,
-        },
-        {
-          x: wall.edge[1].q,
-          y: -wall.edge[1].q - wall.edge[1].r,
-          z: wall.edge[1].r,
-        },
-        1
-      );
-      for (const endpoint of [a, b]) {
-        const key = vertexKey(endpoint);
-        endpointDegree.set(key, (endpointDegree.get(key) ?? 0) + 1);
+    expect(doc.walls).toHaveLength(4);
+
+    // The junction is one position THREE walls end at (west wall's end,
+    // east wall's start, the raised branch's start) — a genuine
+    // T-junction, not a chain fitted from crossings. The east end is a
+    // position only TWO walls share — a plain corner.
+    const posKey = (p: PositionRef) =>
+      latticeKey(latticeOf(doc.orientation, p));
+    const degree = new Map<string, number>();
+    for (const wall of doc.walls) {
+      for (const end of [wall.start, wall.end]) {
+        const key = posKey(end);
+        degree.set(key, (degree.get(key) ?? 0) + 1);
       }
     }
+    const junctionKey = latticeKey({ u: 43, v: 9 });
+    const eastEndKey = latticeKey({ u: 59, v: 9 });
+    expect(degree.get(junctionKey)).toBe(3);
+    expect(degree.get(eastEndKey)).toBe(2);
 
-    expect(Math.max(...endpointDegree.values())).toBeGreaterThanOrEqual(3);
-    expect(
-      [...endpointDegree.values()].filter((degree) => degree === 2).length
-    ).toBeGreaterThanOrEqual(2);
-    expect(scene.wallRuns.some((run) => run.key.split(';').length >= 6)).toBe(
-      true
-    );
     expect(doc.walls.some((wall) => wall.height === undefined)).toBe(true);
     expect(doc.walls.some((wall) => wall.height === 2)).toBe(true);
+  });
+
+  it('renders the locked gate splitting the west wall into two runs, the other three walls whole', () => {
+    const doc = cryptPropShowcaseDoc();
+    const atlas = fixtureAtlasOf(doc);
+    const scene = segmentsToWallRuns(atlas, HEX_SIZE);
+
     expect(scene.doorGaps).toHaveLength(1);
+    // 4 authored walls; the door sits inside the west wall's span alone,
+    // splitting it into 2 runs — 5 runs in all.
+    expect(scene.wallRuns).toHaveLength(5);
   });
 
   it('contains the locked doorway whose leaf must remain closed', () => {

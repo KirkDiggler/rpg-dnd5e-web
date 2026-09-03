@@ -1,22 +1,19 @@
-import {
-  HEX_SIZE,
-  hexEdgeBetween,
-  type WorldPos,
-} from '@/components/hex-grid/hexMath';
-import { vertexKey, type AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import { HEX_SIZE, type WorldPos } from '@/components/hex-grid/hexMath';
+import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
 import type { DungeonShellWallProfile } from '@/rendering/dungeonShellManifest';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { create } from '@bufbuild/protobuf';
+import { GetAtlasResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AtlasWalls } from './AtlasWalls';
 import {
-  boundariesToWallRuns,
-  type DoorGapPiece,
-  type WallRunScene,
-} from './atlasWallRuns';
-import { positionToCube } from './positionBridge';
+  SHELL_DOOR_FRAME_FOREGROUND_MARGIN,
+  shellLocalOffsetToWorld,
+} from '../hex-grid/dungeonShellWallHelpers';
+import { AtlasWalls } from './AtlasWalls';
+import { segmentsToWallRuns, type DoorGapPiece } from './atlasWallRuns';
 
 const loadedUrls: string[] = [];
 const rejectedUrls = new Set<string>();
@@ -273,278 +270,55 @@ function expectBox(
   expect(box.max.z).toBeCloseTo(max[2], 6);
 }
 
-type FixtureCell = readonly [q: number, r: number];
-type FixtureCellPair = readonly [from: FixtureCell, to: FixtureCell];
-
-/** Every source edge has a stable authored identity and a literal cell pair.
- * The three `t*` edges are the only edges incident at their common hex
- * vertex. Each named door has one independently named source edge on each
- * side, in a disconnected straight chain, so no output-order search can
- * substitute a different run. */
-const AUTHORED_BOUNDARY_PAIRS = {
-  tNorthWest: [
-    [-1, 0],
-    [-1, 1],
+/**
+ * A single straight segment carrying two doors — enough to exercise
+ * `segmentsToWallRuns` producing three runs and two gaps (rpg-project#360
+ * slice 2's own straight-line contract, atlasWallRuns.test.ts's own
+ * "two doors on one segment" pin), and then to check THIS file's actual
+ * job: that `AtlasWalls`/`WallRunMesh` render that trusted converter
+ * output faithfully — frame/leaf per door, and each flanking run's own
+ * tile overlapping its gap boundary by exactly WallRunMesh's calibrated
+ * margin, not a doubled or missing one.
+ *
+ * There is no T-junction/corner fixture here any more: that concept
+ * belonged to the deleted chain-fitting engine's corner-closure solver
+ * (`cornerJoint`, `CORNER_OVERLAP_MARGIN`), which no longer exists — two
+ * segments an author drew sharing an endpoint simply share it, by
+ * construction, with nothing left to solve or pin.
+ */
+const TWO_DOOR_SEGMENT_ATLAS = create(GetAtlasResponseSchema, {
+  segments: [{ from: { q: -8, r: 0 }, to: { q: 8, r: 0 }, height: 0 }],
+  doorways: [
+    { connection: 'firstDoor', from: { x: -3, y: 0 }, to: { x: -2, y: 0 } },
+    { connection: 'secondDoor', from: { x: 2, y: 0 }, to: { x: 3, y: 0 } },
   ],
-  tNorthEast: [
-    [-1, 1],
-    [0, 0],
-  ],
-  tSouth: [
-    [-1, 0],
-    [0, 0],
-  ],
-  firstDoorBefore: [
-    [-6, 1],
-    [-6, 2],
-  ],
-  firstDoorAfter: [
-    [-5, 0],
-    [-5, 1],
-  ],
-  secondDoorBefore: [
-    [2, 1],
-    [2, 2],
-  ],
-  secondDoorAfter: [
-    [3, 0],
-    [3, 1],
-  ],
-} as const satisfies Record<string, FixtureCellPair>;
-
-type AuthoredBoundaryId = keyof typeof AUTHORED_BOUNDARY_PAIRS;
-
-const AUTHORED_DOOR_PAIRS = {
-  firstDoor: [
-    [-6, 1],
-    [-5, 1],
-  ],
-  secondDoor: [
-    [2, 1],
-    [3, 1],
-  ],
-} as const satisfies Record<string, FixtureCellPair>;
-
-type AuthoredDoorId = keyof typeof AUTHORED_DOOR_PAIRS;
-
-function atlasPosition([q, r]: FixtureCell) {
-  return { x: q, y: r };
-}
-
-/** Derives the converter's documented run token directly from one named
- * fixture edge. It never reads a returned wall run or door gap. */
-function expectedRunKey(source: AuthoredBoundaryId): string {
-  const pair = AUTHORED_BOUNDARY_PAIRS[source];
-  const { a, b } = hexEdgeBetween(
-    positionToCube(atlasPosition(pair[0]) as never),
-    positionToCube(atlasPosition(pair[1]) as never),
-    HEX_SIZE
-  );
-  return `${vertexKey(a)}|${vertexKey(b)}`;
-}
-
-function authoredTruthAtlasFixture() {
-  const allPairs = [
-    ...Object.values(AUTHORED_BOUNDARY_PAIRS),
-    ...Object.values(AUTHORED_DOOR_PAIRS),
-  ];
-  const cells = new Map<string, ReturnType<typeof atlasPosition>>();
-  for (const pair of allPairs) {
-    for (const cell of pair) cells.set(cell.join(','), atlasPosition(cell));
-  }
-  return {
-    cells: [...cells.values()],
-    boundaries: Object.values(AUTHORED_BOUNDARY_PAIRS).map((pair) => ({
-      from: atlasPosition(pair[0]),
-      to: atlasPosition(pair[1]),
-      blocksMovement: true,
-      blocksLineOfSight: true,
-    })),
-    doorways: Object.entries(AUTHORED_DOOR_PAIRS).map(([connection, pair]) => ({
-      connection,
-      from: atlasPosition(pair[0]),
-      to: atlasPosition(pair[1]),
-    })),
-  } as never;
-}
-
-interface ExpectedRunFact {
-  source: AuthoredBoundaryId;
-  start: WorldPos;
-  end: WorldPos;
-}
-
-/** Independent hex-geometry oracle (HEX_SIZE=1): cube center
- * `(q,r) -> (sqrt(3)*(q+r/2), 3r/2)`. The three T source edges share the
- * literal corner `(-sqrt(3)/2, 1/2)`; applying the authored 0.16 corner
- * overlap along their exact edge directions gives the three literal run
- * endpoints below. The door chains are q-translations of the same known
- * straight line with unit direction `(1/2, -sqrt(3)/2)`. Projecting each
- * source edge's far vertex onto that line gives z=2.625/0.375, while the
- * authored 1.0 frame width gives gap boundaries at center +/- 0.5*dir.
- * These decimals were evaluated from those formulas offline and remain
- * literals here; no converter result contributes to an expectation. */
-const EXPECTED_RUNS = {
-  tNorthWest: {
-    source: 'tNorthWest',
-    start: { x: -1.7320508075688772, z: 1 },
-    end: { x: -0.7274613391789286, z: 0.42 },
-  },
-  tNorthEast: {
-    source: 'tNorthEast',
-    start: { x: -1.004589468389949, z: 0.42 },
-    end: { x: 0, z: 1 },
-  },
-  tSouth: {
-    source: 'tSouth',
-    start: { x: -0.8660254037844386, z: 0.66 },
-    end: { x: -0.8660254037844386, z: -0.5 },
-  },
-  firstDoorBefore: {
-    source: 'firstDoorBefore',
-    start: { x: -9.309773090682715, z: 2.625 },
-    end: { x: -8.910254037844386, z: 1.9330127018922192 },
-  },
-  firstDoorAfter: {
-    source: 'firstDoorAfter',
-    start: { x: -8.410254037844386, z: 1.0669872981077808 },
-    end: { x: -8.010734985006057, z: 0.375 },
-  },
-  secondDoorBefore: {
-    source: 'secondDoorBefore',
-    start: { x: 4.546633369868303, z: 2.625 },
-    end: { x: 4.946152422706632, z: 1.9330127018922192 },
-  },
-  secondDoorAfter: {
-    source: 'secondDoorAfter',
-    start: { x: 5.446152422706632, z: 1.0669872981077808 },
-    end: { x: 5.845671475544961, z: 0.375 },
-  },
-} as const satisfies Record<AuthoredBoundaryId, ExpectedRunFact>;
-
-interface ExpectedDoorFact {
-  connection: AuthoredDoorId;
-  center: WorldPos;
-  start: WorldPos;
-  end: WorldPos;
-  rotationY: number;
-  framePosition: WorldPos;
-  beforeSource: AuthoredBoundaryId;
-  beforeSide: 'start' | 'end';
-  afterSource: AuthoredBoundaryId;
-  afterSide: 'start' | 'end';
-}
-
-const EXPECTED_DOORS = {
-  firstDoor: {
-    connection: 'firstDoor',
-    center: { x: -8.660254037844386, z: 1.5 },
-    start: { x: -8.910254037844386, z: 1.9330127018922192 },
-    end: { x: -8.410254037844386, z: 1.0669872981077808 },
-    rotationY: 1.0471975511965976,
-    framePosition: { x: -8.651593783806542, z: 1.505 },
-    beforeSource: 'firstDoorBefore',
-    beforeSide: 'end',
-    afterSource: 'firstDoorAfter',
-    afterSide: 'start',
-  },
-  secondDoor: {
-    connection: 'secondDoor',
-    center: { x: 5.196152422706632, z: 1.5 },
-    start: { x: 4.946152422706632, z: 1.9330127018922192 },
-    end: { x: 5.446152422706632, z: 1.0669872981077808 },
-    rotationY: 1.0471975511965976,
-    framePosition: { x: 5.204812676744476, z: 1.505 },
-    beforeSource: 'secondDoorBefore',
-    beforeSide: 'end',
-    afterSource: 'secondDoorAfter',
-    afterSide: 'start',
-  },
-} as const satisfies Record<AuthoredDoorId, ExpectedDoorFact>;
-
-const EXPECTED_T_JOINT = { x: -0.8660254037844386, z: 0.5 } as const;
-const T_SOURCES = ['tNorthWest', 'tNorthEast', 'tSouth'] as const;
-
-function expectPoint(actual: WorldPos, expected: WorldPos) {
-  expect(actual.x).toBeCloseTo(expected.x, 9);
-  expect(actual.z).toBeCloseTo(expected.z, 9);
-}
-
-function runBySource(
-  runs: readonly AuthoredWallRun[],
-  source: AuthoredBoundaryId
-): AuthoredWallRun {
-  const key = expectedRunKey(source);
-  const matches = runs.filter((run) => run.key === key);
-  expect(matches, `one run for authored edge ${source} (${key})`).toHaveLength(
-    1
-  );
-  return matches[0]!;
-}
+});
 
 function doorByConnection(
   gaps: readonly DoorGapPiece[],
-  connection: AuthoredDoorId
+  connection: string
 ): DoorGapPiece {
   const matches = gaps.filter((gap) => gap.connection === connection);
   expect(matches, `one door gap for ${connection}`).toHaveLength(1);
   return matches[0]!;
 }
 
-function expectRunFact(run: AuthoredWallRun, expected: ExpectedRunFact) {
-  expect(run.key).toBe(expectedRunKey(expected.source));
-  expectPoint(run.start, expected.start);
-  expectPoint(run.end, expected.end);
-}
-
-function expectDoorFact(gap: DoorGapPiece, expected: ExpectedDoorFact) {
-  expect(gap.connection).toBe(expected.connection);
-  expect(gap.key).toBe(expected.connection);
-  expectPoint(gap.position, expected.center);
-  expectPoint(gap.leafPosition, expected.start);
-  expectPoint(
-    {
-      x: 2 * gap.position.x - gap.leafPosition.x,
-      z: 2 * gap.position.z - gap.leafPosition.z,
-    },
-    expected.end
-  );
-  expect(gap.rotationY).toBeCloseTo(expected.rotationY, 9);
-}
-
-function pointToSegmentDistance(point: WorldPos, run: AuthoredWallRun) {
-  const dx = run.end.x - run.start.x;
-  const dz = run.end.z - run.start.z;
-  const lengthSquared = dx * dx + dz * dz;
-  const t = Math.max(
-    0,
-    Math.min(
-      1,
-      ((point.x - run.start.x) * dx + (point.z - run.start.z) * dz) /
-        lengthSquared
-    )
-  );
-  return Math.hypot(
-    point.x - (run.start.x + t * dx),
-    point.z - (run.start.z + t * dz)
-  );
-}
-
-function expectAuthoredFixtureTruth(scene: WallRunScene) {
-  for (const expected of Object.values(EXPECTED_RUNS)) {
-    expectRunFact(runBySource(scene.wallRuns, expected.source), expected);
+/** The run whose own end sits at `point`, within float noise — used to
+ * find the run flanking a known gap boundary without depending on the
+ * converter's own key format. */
+function runTouching(
+  runs: readonly AuthoredWallRun[],
+  point: WorldPos
+): { run: AuthoredWallRun; side: 'start' | 'end' } {
+  for (const run of runs) {
+    if (Math.hypot(run.start.x - point.x, run.start.z - point.z) < 1e-9) {
+      return { run, side: 'start' };
+    }
+    if (Math.hypot(run.end.x - point.x, run.end.z - point.z) < 1e-9) {
+      return { run, side: 'end' };
+    }
   }
-  const tRuns = T_SOURCES.map((source) => runBySource(scene.wallRuns, source));
-  expect(new Set(tRuns.map((run) => run.key)).size).toBe(3);
-  for (const run of tRuns) {
-    expect(pointToSegmentDistance(EXPECTED_T_JOINT, run)).toBeLessThan(1e-9);
-  }
-  for (const expected of Object.values(EXPECTED_DOORS)) {
-    expectDoorFact(
-      doorByConnection(scene.doorGaps, expected.connection),
-      expected
-    );
-  }
+  throw new Error(`no run touches ${JSON.stringify(point)}`);
 }
 
 function runBodyGroups(groups: readonly THREE.Group[], run: AuthoredWallRun) {
@@ -785,13 +559,12 @@ describe('AtlasWalls profile assembly', () => {
     expectBox(leaf, [-0.370001, 0.2, -0.075], [0.370001, 4.300001, 0.075]);
   });
 
-  it('renders exact authored T and door runs without mutating canonical converter output or doubling endpoint overlap', async () => {
-    const atlas = authoredTruthAtlasFixture();
-    const atlasBefore = JSON.parse(JSON.stringify(atlas));
-    const scene = boundariesToWallRuns(atlas, HEX_SIZE);
-    expectAuthoredFixtureTruth(scene);
-    const wallRunsBefore = JSON.parse(JSON.stringify(scene.wallRuns));
-    const doorGapsBefore = JSON.parse(JSON.stringify(scene.doorGaps));
+  it('renders exact segment-derived runs and door frames without mutating canonical converter output, and each flanking tile overlaps its own gap by exactly WallRunMesh’s calibrated margin', async () => {
+    const scene = segmentsToWallRuns(TWO_DOOR_SEGMENT_ATLAS, HEX_SIZE);
+    expect(scene.wallRuns).toHaveLength(3);
+    expect(scene.doorGaps).toHaveLength(2);
+    const wallRunsBefore = structuredClone(scene.wallRuns);
+    const doorGapsBefore = structuredClone(scene.doorGaps);
 
     const renderer = await ReactThreeTestRenderer.create(
       <AtlasWalls
@@ -807,101 +580,89 @@ describe('AtlasWalls profile assembly', () => {
       />
     );
 
-    expect(atlas).toEqual(atlasBefore);
+    // AtlasWalls neither mutates the converter's output nor recomputes it.
     expect(scene.wallRuns).toEqual(wallRunsBefore);
     expect(scene.doorGaps).toEqual(doorGapsBefore);
-    // Re-check literals after render, including every T arm plus both
-    // second-door flanks; snapshots alone must not be their oracle.
-    expectAuthoredFixtureTruth(scene);
 
     const groups = primitiveGroups(renderer);
     const frames = groups.filter(
       (group) => meshName(group) === 'surround-left'
     );
     expect(frames).toHaveLength(2);
+    // LOCKED renders a shut leaf; OPEN does not (rpg-project#268).
     expect(
       groups.filter((group) => meshName(group) === 'door-leaf')
     ).toHaveLength(1);
 
-    for (const expectedDoor of Object.values(EXPECTED_DOORS)) {
-      // Door selection is by authored connection, never output order.
-      expectDoorFact(
-        doorByConnection(scene.doorGaps, expectedDoor.connection),
-        expectedDoor
+    for (const connection of ['firstDoor', 'secondDoor'] as const) {
+      const gap = doorByConnection(scene.doorGaps, connection);
+
+      // The frame sits at the gap's own position, nudged forward by the
+      // shell's own foreground margin — the same formula AtlasWalls.tsx
+      // itself applies, used here as an independent oracle rather than
+      // a hardcoded literal (that formula, not this test, owns its own
+      // coverage).
+      const frameOffset = shellLocalOffsetToWorld(
+        { x: 0, z: SHELL_DOOR_FRAME_FOREGROUND_MARGIN },
+        gap.rotationY
       );
+      const expectedFramePosition = {
+        x: gap.position.x + frameOffset.x,
+        z: gap.position.z + frameOffset.z,
+      };
       const matchingFrames = frames.filter(
         (frame) =>
-          Math.abs(frame.position.x - expectedDoor.framePosition.x) < 1e-9 &&
-          Math.abs(frame.position.z - expectedDoor.framePosition.z) < 1e-9 &&
-          Math.abs(frame.rotation.y - expectedDoor.rotationY) < 1e-9
+          Math.abs(frame.position.x - expectedFramePosition.x) < 1e-9 &&
+          Math.abs(frame.position.z - expectedFramePosition.z) < 1e-9 &&
+          Math.abs(frame.rotation.y - gap.rotationY) < 1e-9
       );
       expect(
         matchingFrames,
-        `one literal rendered frame for ${expectedDoor.connection}`
+        `one rendered frame for ${connection}`
       ).toHaveLength(1);
       expect(matchingFrames[0]!.position.y).toBeCloseTo(0.2, 9);
 
-      const flanks = [
-        {
-          source: expectedDoor.beforeSource,
-          side: expectedDoor.beforeSide,
-          boundary: expectedDoor.start,
-        },
-        {
-          source: expectedDoor.afterSource,
-          side: expectedDoor.afterSide,
-          boundary: expectedDoor.end,
-        },
-      ] as const;
-      for (const flank of flanks) {
-        // Run selection is the exact independently-derived source token,
-        // and `side` names which authored endpoint meets this door.
-        const run = runBySource(scene.wallRuns, flank.source);
-        expectRunFact(run, EXPECTED_RUNS[flank.source]);
+      // The gap's two boundary points — the near one is `leafPosition`
+      // itself (this module's documented convention), the far one its
+      // mirror through the centre. atlasWallRuns.test.ts already pins
+      // that a flanking run's own end sits EXACTLY on each boundary
+      // (no float slack); `runTouching` finds that run from the
+      // boundary point alone, independent of run order or key format.
+      const near = gap.leafPosition;
+      const far = {
+        x: 2 * gap.position.x - near.x,
+        z: 2 * gap.position.z - near.z,
+      };
+      for (const boundary of [near, far]) {
+        const { run, side } = runTouching(scene.wallRuns, boundary);
         const bodyGroups = runBodyGroups(groups, run);
         expect(bodyGroups.length).toBeGreaterThan(0);
         const dx = run.end.x - run.start.x;
         const dz = run.end.z - run.start.z;
         const length = Math.hypot(dx, dz);
-        const boundaryProjection =
-          ((flank.boundary.x - run.start.x) * dx +
-            (flank.boundary.z - run.start.z) * dz) /
-          length;
+        // The boundary is exactly run.start (projection 0) or run.end
+        // (projection `length`), by construction of `runTouching`.
+        const boundaryProjection = side === 'start' ? 0 : length;
         const tileExtents = bodyGroups.map((group) =>
           projectedBodyExtent([group], run)
         );
         const crossingTiles = tileExtents.filter((extent) =>
-          flank.side === 'start'
+          side === 'start'
             ? extent.min < boundaryProjection - 1e-6
             : extent.max > boundaryProjection + 1e-6
         );
         expect(
           crossingTiles,
-          `one terminal tile crosses ${expectedDoor.connection} ${flank.source}`
+          `one terminal tile crosses ${connection} on its ${side}`
         ).toHaveLength(1);
         const overlap =
-          flank.side === 'start'
+          side === 'start'
             ? boundaryProjection - crossingTiles[0]!.min
             : crossingTiles[0]!.max - boundaryProjection;
         expect(overlap).toBeCloseTo(0.08, 6);
         expect(overlap).toBeLessThan(0.080001);
       }
     }
-  });
-
-  it('rejects wrong branch selection and wrong authored gap output', () => {
-    const scene = boundariesToWallRuns(authoredTruthAtlasFixture(), HEX_SIZE);
-    const wrongBranch = runBySource(scene.wallRuns, 'firstDoorBefore');
-    expect(() =>
-      expectRunFact(wrongBranch, EXPECTED_RUNS.tNorthWest)
-    ).toThrow();
-
-    const firstDoor = doorByConnection(scene.doorGaps, 'firstDoor');
-    const wrongGap: DoorGapPiece = {
-      ...firstDoor,
-      position: { x: -8.410254037844386, z: 1.5 },
-    };
-    expect(() => expectDoorFact(wrongGap, EXPECTED_DOORS.firstDoor)).toThrow();
   });
 
   it('uses profile body/base/cap and the accepted surround/leaf files while keeping the click id', async () => {

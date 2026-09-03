@@ -110,4 +110,6 @@ These are justified. They are UI concerns not representable in proto. They shoul
 
 ## Proto version discipline
 
+**Current pin:** `github:KirkDiggler/rpg-api-protos#a7c30e4` (the `generated` branch). It carries `GetAtlasResponse.segments` (`repeated AtlasSegment`, a wall as the straight line its author drew, in fractional axial) and `GetAtlasResponse.sealed` (`repeated Position`, the cells in this recipient's atlas nobody can stand on) — rpg-project#360 slice 2. `AtlasProp.offsetX/offsetY` changed UNIT in the same wave, from circumradii to bounding-box fractions; the field did not move, only its meaning, so a stale reader is silently wrong rather than broken. Consumers pin the generated branch's commit, not a tag.
+
 `@kirkdiggler/rpg-api-protos` is installed from GitHub. Version bumps require regenerating the lock file: `rm -rf node_modules package-lock.json && npm install`. The `CLAUDE.md` documents this. Failure to regenerate can cause CI to use stale proto code despite `package.json` being updated.

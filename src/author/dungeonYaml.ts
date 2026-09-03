@@ -22,18 +22,34 @@
 
 import { parse as parseYamlText } from 'yaml';
 import {
+  isPositionOffset,
+  latticeKey,
+  latticeOf,
+  latticeWalk,
+  positionCrossing,
+  positionKey,
+  sealedBy,
+  wallCrossings,
+  wallDirection,
+  wallFootprint,
+  type Lattice,
+  type Offset,
+  type PositionRef,
+} from './hexGeometry';
+import {
   axialKey,
   axialNeighbors,
   compareAxial,
   edgeKey,
   fromOffset,
-  normalizeEdge,
   toOffset,
   type Axial,
   type Edge,
   type OffsetPair,
   type Orientation,
 } from './hexOffset';
+
+export type { PositionRef } from './hexGeometry';
 
 export type VoidKind = 'opaque' | 'transparent';
 
@@ -73,7 +89,11 @@ export type CheckDoc = ApproachDoc[];
 
 export interface DoorDoc {
   id: string;
-  edges: Edge[];
+  /** The position the door stands on — a side midpoint of some wall
+   * (design §3.4, F10/F11). The door IS that side's crossing: one door,
+   * one crossing, and a wider doorway is two doors. `edges` is retired
+   * with the pair form. */
+  at: PositionRef;
   /** Omitted = open doorway; `closed` = shut, not locked; `locked` wins. */
   closed?: boolean;
   /** NIL, NOT LEN 0, IS "NOT LOCKED" (dungeonspec.DoorSpec.Locked's law):
@@ -125,117 +145,90 @@ export interface PlacementDoc {
   boss?: boolean;
 }
 
-/** One authored wall entry: a RUN — the edges of one drawn stroke, in the
- * order they were drawn, with the height they share (rpg-project#355).
+/** One authored wall: a STRAIGHT LINE between two positions, and the
+ * file holds nothing else (rpg-project#360 slice 2, design §1.5, §3.2).
  *
- * The run is STORED rather than derived because it cannot be derived.
- * Measured on a real dungeon: all 134 of its degree-2 corners turn 60°, so
- * on a hex grid a room corner and a zigzag step are the same angle and no
- * local rule separates them. The only thing that can is `authoredWallRuns`'
- * non-local `CHAIN_TOLERANCE`, which exists to tile wall meshes — and a
- * rendering constant must never decide how files on disk are grouped.
+ * The pair form — a wall as the list of hex-to-hex crossings it blocks —
+ * is DELETED, not deprecated. It could not say what the author drew: on
+ * a hex grid every degree-2 corner turns 60°, so a room corner and a
+ * zigzag step were the same angle and the client had to guess the line
+ * back out of the crossings with a tolerance. A wall now IS its line,
+ * and the crossings it blocks, the cells it passes through and the cells
+ * it seals are all derived from these two points — by the compiler for
+ * the record, by `hexGeometry.ts` for the picker's preview.
  *
- * A GROUP HAS NO MECHANICAL CONSEQUENCE. The server flattens it, the same
- * edges grouped differently compile identically, and `computeAuthoredWallRuns`
- * still derives its own runs from flattened edges without ever seeing one.
- * That inertness is what keeps rpg-project#273's order-invariance intact
- * while its "runs are DERIVED" ruling narrows to the renderer's run.
- *
- * In the file a run of one still writes as the bare pair (or `{ between,
- * height }`), so a flat dungeon re-emits byte-identically and nothing on
- * disk has to migrate. */
+ * `start` and `end` are two of the seven positions (§3.3). A CORNER is
+ * two walls carrying the same position at an end (F5) — the designer
+ * writes a join by copying the position, and neither this module nor the
+ * compiler has a corner concept. */
 export interface WallDoc {
-  /** The crossings this run passes through, in author order. NEVER empty —
-   * a run of nothing stands nowhere, and the emitter drops one rather than
-   * write it. Contiguity is deliberately NOT a rule (rpg-project#355): a
-   * group the author finds useful can never be wrong, so erasing an edge
-   * out of the middle leaves a run with a hole rather than a refusal. */
-  edges: Edge[];
-  /** The run's display name, for the human reading the file and the errors
-   * about it — "north wall" beats `walls[7]` for the streamers who author
-   * these. Carried, never interpreted. */
+  start: PositionRef;
+  end: PositionRef;
+  /** The wall's display name, for the human reading the file and the
+   * errors about it — "north wall" beats `walls[7]` for the streamers
+   * who author these. Carried, never interpreted. */
   name?: string;
   /** Raise-only MULTIPLIER of the standard rendered wall height, in
-   * `[1, 3]` (rpg-project#273's ruling: walls raise, they never
-   * lower). Omitted means standard — exactly what writing `1` means.
-   * Bounds are the server's call, surfaced as a `walls[i].height`
-   * `FieldError` like any other field; this module only checks the
-   * SHAPE (a finite number). It applies to EVERY edge of the run, which
-   * is why stamping a height on part of one SPLITS it. VISUAL ONLY: a wall
-   * blocks movement and sight identically — and cannot be seen past — at
-   * every height. */
+   * `[1, 3]` (rpg-project#273's ruling: walls raise, they never lower).
+   * Omitted means standard — exactly what writing `1` means. Bounds are
+   * the server's call, surfaced as a `walls[i].height` `FieldError` like
+   * any other field; this module only checks the SHAPE (a finite
+   * number). VISUAL ONLY: a wall blocks movement and sight identically —
+   * and cannot be seen past — at every height. */
   height?: number;
 }
 
-/** Every wall edge in the doc, flattened — for the readers that care about
- * crossings rather than about how the author grouped them. */
-export function wallEdges(doc: DungeonDoc): Edge[] {
-  return doc.walls.flatMap((w) => w.edges);
-}
+/** A wall's two ends on the lattice — the form every derivation takes
+ * them in. */
+export const wallLattice = (
+  o: Orientation,
+  wall: WallDoc
+): { a: Lattice; b: Lattice } => ({
+  a: latticeOf(o, wall.start),
+  b: latticeOf(o, wall.end),
+});
 
-/** Every wall edge that reaches the ATLAS, carrying the height of the run it
- * came from — the client's mirror of the server's `wallsOf`: runs flattened,
- * and the crossings a door stands in SUBTRACTED (rpg-project#355).
- *
- * Anything building a preview atlas out of a doc must use this rather than
- * `wallEdges`, or it draws a wall straight across a doorway: a run is now
- * allowed to keep the edge its door sits in, and the compiler is what hands
- * that edge back to the door. */
-export function compiledWalls(
-  doc: DungeonDoc
-): { edge: Edge; height?: number }[] {
-  const doors = doorEdgeOwners(doc);
-  const out: { edge: Edge; height?: number }[] = [];
-  for (const run of doc.walls) {
-    for (const edge of run.edges) {
-      if (doors.has(edgeKey(edge))) continue;
-      out.push(
-        run.height === undefined ? { edge } : { edge, height: run.height }
-      );
+/** Every crossing the document's walls block, derived (C7) — the
+ * client's mirror of what the compiler computes, and the ONLY way the
+ * builder learns which hex-to-hex steps a wall stops now that the file
+ * no longer lists them. A door's own crossing is NOT subtracted here: a
+ * door stands IN a wall, and the compiler is what hands the crossing
+ * back to the door (rpg-project#355, unchanged by the line form). */
+export function wallCrossingKeys(doc: DungeonDoc): Set<string> {
+  // FLOOR TO FLOOR ONLY, matching C2: a wall's ends stick out past the
+  // room it caps, and the crossings out there run into void, which is
+  // impassable already. Reporting them would put a wall where the
+  // compiler puts nothing.
+  const floor = floorKeys(doc);
+  const keys = new Set<string>();
+  for (const wall of doc.walls) {
+    const { a, b } = wallLattice(doc.orientation, wall);
+    for (const edge of wallCrossings(doc.orientation, a, b)) {
+      if (!floor.has(axialKey(edge[0])) || !floor.has(axialKey(edge[1]))) {
+        continue;
+      }
+      keys.add(edgeKey(edge));
     }
   }
-  return out;
+  return keys;
 }
 
-/** Each wall edge mapped to the height of the run holding it — the readers
- * that ask "what height is this crossing drawn at" want the RUN's answer,
- * since height belongs to the run and every edge in one shares it. An edge
- * with no authored height maps to `undefined`, exactly as before. */
-export function wallHeightByEdge(
-  doc: DungeonDoc
-): Map<string, number | undefined> {
-  const out = new Map<string, number | undefined>();
-  for (const run of doc.walls) {
-    for (const edge of run.edges) out.set(edgeKey(edge), run.height);
+/** Every cell one wall on its own seals — the cells its line halves
+ * (design §4.3). What walls seal in COMBINATION is the compiler's answer
+ * and arrives as `sealed` off the wire; this is the closed-form preview
+ * the picker shows before the author commits. Floor only: a wall through
+ * void seals nothing, there being nothing there to stand on. */
+export function sealedKeys(doc: DungeonDoc): Set<string> {
+  const floor = floorKeys(doc);
+  const keys = new Set<string>();
+  for (const wall of doc.walls) {
+    const { a, b } = wallLattice(doc.orientation, wall);
+    for (const cell of sealedBy(doc.orientation, a, b)) {
+      const key = axialKey(cell);
+      if (floor.has(key)) keys.add(key);
+    }
   }
-  return out;
-}
-
-/** A run carrying exactly `edges`, with `from`'s attributes — the one place
- * a rebuilt run is minted, so `height`/`name` are never half-copied. */
-function runLike(from: WallDoc, edges: Edge[]): WallDoc {
-  const next: WallDoc = { edges };
-  if (from.height !== undefined) next.height = from.height;
-  if (from.name !== undefined) next.name = from.name;
-  return next;
-}
-
-/** Rebuild `walls` by rewriting each run's edge list, dropping runs left
- * with nothing. Returns the SAME array identity when no run changed, so
- * every caller's "did anything happen?" check stays a reference compare. */
-function mapWallEdges(
-  walls: WallDoc[],
-  f: (edges: Edge[], run: WallDoc) => Edge[]
-): WallDoc[] {
-  let changed = false;
-  const out: WallDoc[] = [];
-  for (const run of walls) {
-    const edges = f(run.edges, run);
-    if (edges.length !== run.edges.length) changed = true;
-    if (edges.length > 0)
-      out.push(edges === run.edges ? run : runLike(run, edges));
-  }
-  return changed ? out : walls;
+  return keys;
 }
 
 export interface DungeonDoc {
@@ -340,14 +333,71 @@ function offsetPair(v: unknown, path: string): PlacementOffset {
     : [v[0] as number, v[1] as number, v[2] as number];
 }
 
-function edge(v: unknown, path: string, o: Orientation): Edge {
-  if (!Array.isArray(v) || v.length !== 2) {
-    throw new DungeonParseError(`${path}: expected [[col,row],[col,row]]`);
+/** One `{ cell: [col,row], offset: [x,y] }` position (design §3.2/§3.3).
+ * The offset MUST be one of the seven (F8) — an offset outside the set
+ * is not a position this builder can place, name or draw, so it is
+ * refused here by value rather than carried to the server as a
+ * pretend one. */
+function position(v: unknown, path: string, o: Orientation): PositionRef {
+  if (!isRecord(v)) {
+    throw new DungeonParseError(
+      `${path}: expected { cell: [col,row], offset: [x,y] }`
+    );
   }
-  return [
-    fromOffset(o, pair(v[0], `${path}[0]`)),
-    fromOffset(o, pair(v[1], `${path}[1]`)),
-  ];
+  expectKeys(v, ['cell', 'offset'], path);
+  const cell = fromOffset(o, pair(v.cell, `${path}.cell`));
+  const raw = v.offset;
+  if (
+    !Array.isArray(raw) ||
+    raw.length !== 2 ||
+    !raw.every((c) => Number.isFinite(c))
+  ) {
+    throw new DungeonParseError(`${path}.offset: expected [x,y]`);
+  }
+  const offset: Offset = [raw[0] as number, raw[1] as number];
+  if (!isPositionOffset(o, offset)) {
+    throw new DungeonParseError(
+      `${path}.offset: [${offset[0]},${offset[1]}] is not one of the seven ` +
+        `positions of a ${o}-top hex — a wall end and a door stand on a side ` +
+        `midpoint or the centre, nowhere else (${POSITION_HELP[o]})`
+    );
+  }
+  return { cell, offset };
+}
+
+/** The seven, spelled for a refusal a streamer can act on. */
+const POSITION_HELP: Record<Orientation, string> = {
+  pointy:
+    '[0,0], [0.5,0], [-0.5,0], [0.25,-0.375], [-0.25,-0.375], ' +
+    '[0.25,0.375], [-0.25,0.375]',
+  flat:
+    '[0,0], [0,0.5], [0,-0.5], [0.375,0.25], [0.375,-0.25], ' +
+    '[-0.375,0.25], [-0.375,-0.25]',
+};
+
+/** The pair form, refused at the header (F4). A `walls[]` entry written
+ * as a bare `[[col,row],[col,row]]` or carrying `between`/`edges`, or a
+ * `doors[]` entry carrying `edges`, is version 2's DELETED wall form —
+ * not a field this loader failed to learn. Refused before anything else
+ * is read, so the author gets the one sentence that explains the whole
+ * file rather than a per-entry shape complaint. */
+function refusePairForm(raw: Raw): void {
+  const pairShaped = (w: unknown): boolean =>
+    Array.isArray(w) ||
+    (isRecord(w) && (w.between !== undefined || w.edges !== undefined));
+  const walls = Array.isArray(raw.walls) ? raw.walls : [];
+  const doors = Array.isArray(raw.doors) ? raw.doors : [];
+  const badWall = walls.findIndex(pairShaped);
+  const badDoor = doors.findIndex((d) => isRecord(d) && d.edges !== undefined);
+  if (badWall === -1 && badDoor === -1) return;
+  const where = badWall !== -1 ? `walls[${badWall}]` : `doors[${badDoor}]`;
+  throw new DungeonParseError(
+    `${where}: this file is written in the PAIR FORM — a wall as the ` +
+      'crossings it blocks. That form is deleted. A wall is now a line: ' +
+      '`start` and `end`, each `{ cell: [col,row], offset: [x,y] }`, and a ' +
+      'door is `at:` one position on it. Rewrite the walls and doors in the ' +
+      'line form; there is no converter, and nothing else in the file moves.'
+  );
 }
 
 function list(v: unknown, path: string): unknown[] {
@@ -419,6 +469,7 @@ export function parseDungeon(text: string): DungeonDoc {
       `version: this builder writes dungeonspec version 2; got ${JSON.stringify(raw.version)} (version 1 is deleted, not supported)`
     );
   }
+  refusePairForm(raw);
   const orientation = str(raw, 'orientation', 'document');
   if (orientation !== 'pointy' && orientation !== 'flat') {
     throw new DungeonParseError('orientation: expected pointy | flat');
@@ -490,65 +541,38 @@ export function parseDungeon(text: string): DungeonDoc {
 
   const walls = list(raw.walls, 'walls').map((w, i): WallDoc => {
     const path = `walls[${i}]`;
-    if (Array.isArray(w)) return { edges: [edge(w, path, orientation)] };
-    if (isRecord(w)) {
-      expectKeys(w, ['between', 'edges', 'height', 'name'], path);
-      // `between` and `edges` are the same fact at two scales, so a file
-      // saying both means two things at once — refused rather than resolved
-      // by precedence, matching the server's own refusal.
-      const hasBetween = w.between !== undefined && w.between !== null;
-      const hasEdges = w.edges !== undefined && w.edges !== null;
-      if (hasBetween && hasEdges) {
-        throw new DungeonParseError(
-          `${path}: a wall says \`between\` for one edge or \`edges\` for a run, never both`
-        );
-      }
-      let edges: Edge[];
-      if (hasBetween) {
-        edges = [edge(w.between, `${path}.between`, orientation)];
-      } else if (hasEdges) {
-        edges = list(w.edges, `${path}.edges`).map((e, j) =>
-          edge(e, `${path}.edges[${j}]`, orientation)
-        );
-        if (edges.length === 0) {
-          throw new DungeonParseError(
-            `${path}.edges: a wall run with no edges stands nowhere`
-          );
-        }
-      } else {
-        throw new DungeonParseError(
-          `${path}: a wall object must name its edge in \`between\` or its run in \`edges\``
-        );
-      }
-      const wall: WallDoc = { edges };
-      if (w.name !== undefined && w.name !== null) {
-        if (typeof w.name !== 'string') {
-          throw new DungeonParseError(`${path}.name: expected a string`);
-        }
-        wall.name = w.name;
-      }
-      if (w.height !== undefined && w.height !== null) {
-        if (!Number.isFinite(w.height)) {
-          throw new DungeonParseError(`${path}.height: expected a number`);
-        }
-        wall.height = w.height as number;
-      }
-      return wall;
+    if (!isRecord(w)) {
+      throw new DungeonParseError(
+        `${path}: expected { start, end, height?, name? }`
+      );
     }
-    throw new DungeonParseError(
-      `${path}: expected [[col,row],[col,row]], { between, height } or { edges, height, name }`
-    );
+    expectKeys(w, ['start', 'end', 'height', 'name'], path);
+    const wall: WallDoc = {
+      start: position(w.start, `${path}.start`, orientation),
+      end: position(w.end, `${path}.end`, orientation),
+    };
+    if (w.name !== undefined && w.name !== null) {
+      if (typeof w.name !== 'string') {
+        throw new DungeonParseError(`${path}.name: expected a string`);
+      }
+      wall.name = w.name;
+    }
+    if (w.height !== undefined && w.height !== null) {
+      if (!Number.isFinite(w.height)) {
+        throw new DungeonParseError(`${path}.height: expected a number`);
+      }
+      wall.height = w.height as number;
+    }
+    return wall;
   });
 
   const doors = list(raw.doors, 'doors').map((d, i): DoorDoc => {
     const path = `doors[${i}]`;
     if (!isRecord(d)) throw new DungeonParseError(`${path}: expected a map`);
-    expectKeys(d, ['id', 'edges', 'closed', 'locked', 'concealed'], path);
+    expectKeys(d, ['id', 'at', 'closed', 'locked', 'concealed'], path);
     const door: DoorDoc = {
       id: str(d, 'id', path),
-      edges: list(d.edges, `${path}.edges`).map((e, j) =>
-        edge(e, `${path}.edges[${j}]`, orientation)
-      ),
+      at: position(d.at, `${path}.at`, orientation),
     };
     if (d.closed !== undefined && d.closed !== null) {
       if (typeof d.closed !== 'boolean') {
@@ -668,7 +692,7 @@ export interface EmittedLayout {
    * the cell the emitter put there. */
   scenery: Axial[][];
   walls: WallDoc[];
-  doors: { door: DoorDoc; edges: Edge[] }[];
+  doors: DoorDoc[];
 }
 
 /** Cells sorted by row then column and grouped one ROW per entry — the
@@ -696,37 +720,40 @@ export function emittedLayout(doc: DungeonDoc): EmittedLayout {
       rows: cellRows(o, region.cells),
     })),
     scenery: cellRows(o, doc.scenery),
-    walls: sortedWalls(doc.walls),
-    doors: doc.doors.map((door) => ({ door, edges: sortedEdges(door.edges) })),
+    walls: sortedWalls(o, doc.walls),
+    doors: doc.doors,
   };
 }
 
-function fmtEdge(o: Orientation, e: Edge): string {
-  const [a, b] = normalizeEdge(e);
-  return `[${fmtPair(toOffset(o, a))},${fmtPair(toOffset(o, b))}]`;
+/** A number as the file writes it — plain decimal, never exponential
+ * and never a trailing `.0`, so `0.25` and `-0.375` read back as the
+ * same dyadic values the position set is made of. */
+const fmtNum = (n: number): string => String(n);
+
+function fmtPosition(o: Orientation, p: PositionRef): string {
+  return `{ cell: ${fmtPair(toOffset(o, p.cell))}, offset: [${fmtNum(
+    p.offset[0]
+  )}, ${fmtNum(p.offset[1])}] }`;
 }
 
-function sortedEdges(edges: Edge[]): Edge[] {
-  return edges.map(normalizeEdge).sort((x, y) => {
-    return compareAxial(x[0], y[0]) || compareAxial(x[1], y[1]);
+/** Walls in a stable order: by their start position, then their end —
+ * so `walls[i]` in the emitted file and in a compiler error path name
+ * the same wall, and re-emitting a parsed file is byte-identical.
+ * Compared on the LATTICE, not on the `{cell, offset}` spelling, so two
+ * walls that meet at a corner sort by where they actually are. */
+function sortedWalls(o: Orientation, walls: WallDoc[]): WallDoc[] {
+  const rank = (p: PositionRef): [number, number] => {
+    const l = latticeOf(o, p);
+    return [l.v, l.u];
+  };
+  return [...walls].sort((x, y) => {
+    const [xv, xu] = rank(x.start);
+    const [yv, yu] = rank(y.start);
+    if (xv !== yv || xu !== yu) return xv - yv || xu - yu;
+    const [xev, xeu] = rank(x.end);
+    const [yev, yeu] = rank(y.end);
+    return xev - yev || xeu - yeu;
   });
-}
-
-/** `sortedEdges` for wall RUNS: each run's edges keep the order the author
- * drew them — that order is the intent the run exists to record — and the
- * runs themselves sort by their first edge, so `walls[i]` in the emitted
- * file and in a compiler error path name the same entry.
- *
- * A document of one-edge runs sorts exactly as the flat list always did, so
- * a dungeon nobody has regrouped re-emits byte-identically. */
-function sortedWalls(walls: WallDoc[]): WallDoc[] {
-  return walls
-    .map((w) => runLike(w, w.edges.map(normalizeEdge)))
-    .sort((x, y) => {
-      const [xa, xb] = x.edges[0];
-      const [ya, yb] = y.edges[0];
-      return compareAxial(xa, ya) || compareAxial(xb, yb);
-    });
 }
 
 export function emitDungeon(doc: DungeonDoc): string {
@@ -787,26 +814,12 @@ export function emitDungeon(doc: DungeonDoc): string {
   } else {
     out.push('walls:');
     for (const w of layout.walls) {
-      // A run of one with nothing else to say stays the bare pair — the
-      // common form, and what keeps an unregrouped dungeon byte-identical.
-      if (w.edges.length === 1 && w.name === undefined) {
-        out.push(
-          w.height === undefined
-            ? `  - ${fmtEdge(o, w.edges[0])}`
-            : `  - { between: ${fmtEdge(o, w.edges[0])}, height: ${w.height} }`
-        );
-        continue;
-      }
-      // A real run: its name and height first, then one edge per line so a
-      // diff reads as the edges that moved rather than as a reflowed blob.
-      const head: string[] = [];
-      if (w.name !== undefined) head.push(`name: ${scalar(w.name)}`);
-      if (w.height !== undefined) head.push(`height: ${w.height}`);
-      head.push('edges:');
-      head.forEach((line, i) => out.push((i === 0 ? '  - ' : '    ') + line));
-      for (const e of w.edges) {
-        out.push(`      - ${fmtEdge(o, e)}`);
-      }
+      // One line per end, `start` above `end`, so a wall that moves
+      // diffs as the end that moved (design §3.2's own shape).
+      out.push(`  - start: ${fmtPosition(o, w.start)}`);
+      out.push(`    end: ${fmtPosition(o, w.end)}`);
+      if (w.name !== undefined) out.push(`    name: ${scalar(w.name)}`);
+      if (w.height !== undefined) out.push(`    height: ${w.height}`);
     }
   }
 
@@ -814,9 +827,9 @@ export function emitDungeon(doc: DungeonDoc): string {
     out.push('doors: []');
   } else {
     out.push('doors:');
-    for (const { door: d, edges } of layout.doors) {
+    for (const d of layout.doors) {
       out.push(`  - id: ${scalar(d.id)}`);
-      out.push(`    edges: [${edges.map((e) => fmtEdge(o, e)).join(',')}]`);
+      out.push(`    at: ${fmtPosition(o, d.at)}`);
       if (d.locked !== undefined) {
         out.push(`    locked: [${d.locked.map(fmtApproach).join(', ')}]`);
       } else if (d.closed) {
@@ -899,17 +912,40 @@ export const isFloor = (doc: DungeonDoc, cell: Axial): boolean =>
 export const isStandable = (doc: DungeonDoc, cell: Axial): boolean =>
   floorOwners(doc).has(axialKey(cell));
 
-export function wallKeys(doc: DungeonDoc): Set<string> {
-  return new Set(wallEdges(doc).map(edgeKey));
-}
-
-/** Edge key → door id, for every door edge. */
+/** Crossing key → door id, for every door. A door IS one crossing
+ * (F11): the one across the side its position is the midpoint of. A
+ * door parked on a centre — a position that is the midpoint of no side —
+ * opens nothing and is listed nowhere here; the server refuses it by
+ * name. */
 export function doorEdgeOwners(doc: DungeonDoc): Map<string, string> {
   const owners = new Map<string, string>();
   for (const door of doc.doors) {
-    for (const e of door.edges) owners.set(edgeKey(e), door.id);
+    const edge = positionCrossing(
+      doc.orientation,
+      latticeOf(doc.orientation, door.at)
+    );
+    if (edge) owners.set(edgeKey(edge), door.id);
   }
   return owners;
+}
+
+/** The crossing a door opens, or null for one standing on a centre. */
+export const doorCrossing = (doc: DungeonDoc, door: DoorDoc): Edge | null =>
+  positionCrossing(doc.orientation, latticeOf(doc.orientation, door.at));
+
+/** Whether a wall passes through a position — F10's test, and what the
+ * door tool offers on. Exact: the position is on the wall's own lattice
+ * walk, not near it. */
+export function wallsThrough(doc: DungeonDoc, at: PositionRef): number[] {
+  const o = doc.orientation;
+  const target = positionKey(o, at);
+  const out: number[] = [];
+  doc.walls.forEach((wall, i) => {
+    const { a, b } = wallLattice(o, wall);
+    const walk = latticeWalk(a, b);
+    if (walk?.some((l) => latticeKey(l) === target)) out.push(i);
+  });
+  return out;
 }
 
 export function placementAt(
@@ -979,8 +1015,16 @@ type CrossingKind = 'wall' | 'plain' | 'concealed';
 function buildRegionGraph(doc: DungeonDoc): RegionGraph {
   const owners = floorOwners(doc);
   const scenery = sceneryKeys(doc);
-  const walls = new Set(compiledWalls(doc).map(({ edge }) => edgeKey(edge)));
+  // The crossings the walls block, DERIVED (C7) — the file no longer
+  // lists them. A door's own crossing is subtracted, exactly as the
+  // compiler subtracts it: a door stands IN a wall, and the wall hands
+  // that one crossing back (rpg-project#355, unchanged by the line
+  // form). That one substitution is what makes a door drawn inside a
+  // wall a door here rather than a wall.
   const doorEdges = doorEdgeOwners(doc);
+  const walls = new Set(
+    [...wallCrossingKeys(doc)].filter((k) => !doorEdges.has(k))
+  );
   const doorById = new Map(doc.doors.map((d) => [d.id, d] as const));
   const open: Map<string, Set<string>> = new Map();
   const full: Map<string, Set<string>> = new Map();
@@ -1061,7 +1105,8 @@ function buildRegionGraph(doc: DungeonDoc): RegionGraph {
   for (const door of doc.doors) {
     if (door.concealed === undefined) continue;
     const pairs: [string, string][] = [];
-    for (const [near, far] of door.edges) {
+    const crossing = doorCrossing(doc, door);
+    for (const [near, far] of crossing ? [crossing] : []) {
       for (const a of regionsTouching(near)) {
         for (const b of regionsTouching(far)) {
           if (a === b) continue;
@@ -1419,177 +1464,131 @@ export function eraseCell(doc: DungeonDoc, cell: Axial): DungeonDoc {
         ? region
         : { ...region, cells: without };
     }),
-    walls: mapWallEdges(doc.walls, (edges) => edges.filter((e) => !touches(e))),
-    doors: doc.doors
-      .map((d) => ({ ...d, edges: d.edges.filter((e) => !touches(e)) }))
-      .filter((d) => d.edges.length > 0),
+    // A wall goes with the cell only when the cell is one of its OWN
+    // footprint (design §2.2's cascade): a line whose footprint the
+    // erase empties stands nowhere, and one that merely passed nearby
+    // is left alone. A door goes when its crossing touched the cell.
+    walls: doc.walls.filter((w) => {
+      const { a, b } = wallLattice(doc.orientation, w);
+      const footprint = wallFootprint(doc.orientation, a, b);
+      return footprint.some(
+        (c) => axialKey(c) !== key && floorKeys(doc).has(axialKey(c))
+      );
+    }),
+    doors: doc.doors.filter((d) => {
+      const crossing = doorCrossing(doc, d);
+      return crossing !== null && !touches(crossing);
+    }),
     start: doc.start && axialKey(doc.start) === key ? null : doc.start,
     place: doc.place.filter((p) => axialKey(p.at) !== key),
   };
 }
 
-/** Toggle a wall on an edge. Both endpoints must be floor and adjacent;
- * an edge that is part of a door is left alone (the server refuses an
- * edge in both lists — the tool simply does not offer it). Returns the
- * same doc for a no-op. */
-export function toggleWall(doc: DungeonDoc, e: Edge): DungeonDoc {
-  const key = edgeKey(e);
-  // A door's crossing is NOT off limits (rpg-project#355): a wall may run
-  // through it, and the server hands the edge back to the door at compile.
-  if (!edgeIsOfferable(doc, e)) return doc;
-  const exists = wallKeys(doc).has(key);
-  return {
-    ...doc,
-    walls: exists
-      ? mapWallEdges(doc.walls, (edges) =>
-          edges.filter((x) => edgeKey(x) !== key)
-        )
-      : [...doc.walls, { edges: [normalizeEdge(e)] }],
-  };
-}
-
-/** An edge the wall/door tools may act on: two adjacent floor cells —
- * ROOM OR SCENERY (design §2.3, "walls and doors may stand on any
- * floor"), which is the whole point of a strip behind a wall. */
-export function edgeIsOfferable(doc: DungeonDoc, edge: Edge): boolean {
-  return edgeOfferableWith(floorKeys(doc), edge);
-}
-
-/** `edgeIsOfferable` against a PRECOMPUTED owner map — the batch
- * mutators below run per pointer move on the live preview, so they
- * build `floorOwners` once per call instead of once per edge (Copilot
- * review, PR #808: the per-edge rebuild made a long drag scan the
- * whole floor per candidate, O(chain × floor) instead of O(chain)). */
-function edgeOfferableWith(floor: ReadonlySet<string>, [a, b]: Edge): boolean {
-  return (
-    floor.has(axialKey(a)) &&
-    floor.has(axialKey(b)) &&
-    Math.abs(a.q - b.q) <= 1 &&
-    Math.abs(a.r - b.r) <= 1 &&
-    Math.abs(a.q + a.r - b.q - b.r) <= 1 &&
-    !(a.q === b.q && a.r === b.r)
-  );
-}
-
-/** Add the gesture's chain as ONE RUN (rpg-dnd5e-web#804, #900). The drag
- * already knows the wall the author drew; this is where that stops being
- * thrown away — the surviving edges become a single `walls[]` entry in the
- * order they were drawn, which is what makes a dungeon read as the eight
- * walls its author drew rather than as 153 loose edges.
+/** Add one wall: the line between two picked positions (design §2.6).
  *
- * Drawing over an existing wall is IDEMPOTENT (the design's dedup rule): an
- * edge already present in ANY run is skipped, never removed or duplicated.
+ * IDEMPOTENT AND UNDIRECTED: a line already in `walls[]` — either way
+ * round, since a wall has no direction — is not added twice. The two
+ * ends are stored exactly as picked, which is how a corner is written:
+ * picking a position another wall already ends at copies that position,
+ * and the two entries then carry the same `{cell, offset}` (F5).
  *
- * A DOOR'S EDGE IS NO LONGER SKIPPED (rpg-project#355). The old rule — an
- * edge is a wall OR a door — is what broke one drawn wall into several
- * entries; now the run keeps the crossing, the door sits in it, and the
- * server subtracts it at compile. Returns the same doc when nothing
- * survives the filter. */
-export function addWalls(
+ * REFUSED IN PLACE, returning the same doc, when the line is not one of
+ * the twelve directions (F13) or when its footprint holds no floor at
+ * all (C2 — a wall standing in nothing). The picker only ever offers
+ * legal ends, so these are the guards for a caller that did not go
+ * through it, not the author's normal path. */
+export function addWall(
   doc: DungeonDoc,
-  edges: Edge[],
+  start: PositionRef,
+  end: PositionRef,
   height?: number
 ): DungeonDoc {
+  const o = doc.orientation;
+  const a = latticeOf(o, start);
+  const b = latticeOf(o, end);
+  if (wallDirection(a, b) === null) return doc;
   const floor = floorKeys(doc);
-  const present = wallKeys(doc);
-  const run: Edge[] = [];
-  for (const e of edges) {
-    const key = edgeKey(e);
-    if (!edgeOfferableWith(floor, e) || present.has(key)) continue;
-    present.add(key);
-    run.push(normalizeEdge(e));
-  }
-  if (run.length === 0) return doc;
-  const wall: WallDoc = { edges: run };
+  if (!wallFootprint(o, a, b).some((c) => floor.has(axialKey(c)))) return doc;
+  const key = wallKey(o, { start, end });
+  if (doc.walls.some((w) => wallKey(o, w) === key)) return doc;
+  const wall: WallDoc = { start, end };
   if (height !== undefined) wall.height = height;
   return { ...doc, walls: [...doc.walls, wall] };
 }
 
-/** Stamp `height` on every wall whose edge is in `edges` — the height
- * stepper's commit (rpg-project#273). Chain-level intent: the caller
- * passes the SELECTION's edges and every one of them takes the value,
- * exactly as the door affordance treats a selection. `undefined`
- * clears back to standard. Returns the same doc for a no-op. */
+/** A wall's identity: its two ends on the lattice, unordered — a wall
+ * drawn from either end is the same wall. */
+export function wallKey(o: Orientation, wall: WallDoc): string {
+  const a = latticeKey(latticeOf(o, wall.start));
+  const b = latticeKey(latticeOf(o, wall.end));
+  return a <= b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/** Remove walls by index — the wall selection's Delete. */
+export function removeWalls(doc: DungeonDoc, indexes: number[]): DungeonDoc {
+  const drop = new Set(indexes);
+  if (drop.size === 0) return doc;
+  const walls = doc.walls.filter((_, i) => !drop.has(i));
+  return walls.length === doc.walls.length ? doc : { ...doc, walls };
+}
+
+/** Stamp `height` on the selected walls — the height stepper's commit
+ * (rpg-project#273). `undefined` clears back to standard. Height belongs
+ * to the WALL now, so nothing splits: a wall is one line and one height
+ * by construction, which is what the run's chain-level stamp was
+ * approximating. */
 export function setWallHeights(
   doc: DungeonDoc,
-  edges: Edge[],
+  indexes: number[],
   height: number | undefined
 ): DungeonDoc {
-  const keys = new Set(edges.map(edgeKey));
+  const chosen = new Set(indexes);
   let changed = false;
-  const walls: WallDoc[] = [];
-  for (const run of doc.walls) {
-    const touched = run.edges.some((e) => keys.has(edgeKey(e)));
-    if (!touched || run.height === height) {
-      walls.push(run);
-      continue;
-    }
+  const walls = doc.walls.map((wall, i) => {
+    if (!chosen.has(i) || wall.height === height) return wall;
     changed = true;
-    // Height belongs to the RUN, so stamping part of one splits it into the
-    // stamped stretch and what is left either side — the stored form of the
-    // chain-break rpg-project#273 already gave the renderer's derived runs.
-    let seg: Edge[] = [];
-    let segSelected = keys.has(edgeKey(run.edges[0]));
-    const flush = () => {
-      if (seg.length === 0) return;
-      if (segSelected) {
-        const next: WallDoc = { edges: seg };
-        if (height !== undefined) next.height = height;
-        if (run.name !== undefined) next.name = run.name;
-        walls.push(next);
-      } else {
-        walls.push(runLike(run, seg));
-      }
-      seg = [];
-    };
-    for (const e of run.edges) {
-      const selected = keys.has(edgeKey(e));
-      if (selected !== segSelected) {
-        flush();
-        segSelected = selected;
-      }
-      seg.push(e);
-    }
-    flush();
-  }
+    const next: WallDoc = { start: wall.start, end: wall.end };
+    if (wall.name !== undefined) next.name = wall.name;
+    if (height !== undefined) next.height = height;
+    return next;
+  });
   return changed ? { ...doc, walls } : doc;
 }
 
-/** Remove every edge of `edges` from `walls[]` — the erase drag's commit
- * and the wall selection's Delete (rpg-dnd5e-web#804). Door edges are
- * untouchable by construction: they are never IN `walls[]` (an edge is a
- * wall OR a door), so filtering `walls` alone is the whole rule. */
-export function removeWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
-  const keys = new Set(edges.map(edgeKey));
-  const walls = mapWallEdges(doc.walls, (edges) =>
-    edges.filter((e) => !keys.has(edgeKey(e)))
-  );
-  return walls === doc.walls ? doc : { ...doc, walls };
+/** Name a wall — "north wall" beats `walls[7]` for the streamer reading
+ * the file and the errors about it. An empty name clears the field. */
+export function setWallName(
+  doc: DungeonDoc,
+  index: number,
+  name: string
+): DungeonDoc {
+  const wall = doc.walls[index];
+  if (!wall) return doc;
+  const next: WallDoc = { start: wall.start, end: wall.end };
+  if (name.trim() !== '') next.name = name;
+  if (wall.height !== undefined) next.height = wall.height;
+  return { ...doc, walls: doc.walls.map((w, i) => (i === index ? next : w)) };
 }
 
-/** One door from one drag's chain (rpg-dnd5e-web#804, design: "a door
- * drag's chain becomes ONE door's `edges[]`"). Offerable edges only;
- * edges already belonging to any door are skipped rather than stolen;
- * walls on the surviving edges are replaced, same as `toggleDoorEdge`'s
- * wall-or-door rule. Returns the same doc when no edge survives. */
-export function addDoor(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
-  const floor = floorKeys(doc);
-  const doorKeys = doorEdgeOwners(doc);
-  const seen = new Set<string>();
-  const clean: Edge[] = [];
-  for (const e of edges) {
-    const key = edgeKey(e);
-    if (!edgeOfferableWith(floor, e) || doorKeys.has(key) || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    clean.push(normalizeEdge(e));
+/** Door tool: a click on a position a wall passes through (design §2.8).
+ * Clicking a position that already carries a door removes it; otherwise
+ * a new door stands there.
+ *
+ * REFUSED IN PLACE when no wall passes through the position (F10) or
+ * when the position is a centre, which is the midpoint of no side and so
+ * opens no crossing. A door in a wall that seals both its cells IS legal
+ * (F11a — nobody passes it, sight does; the designer labels it), so
+ * nothing about standability is checked here. */
+export function toggleDoorAt(doc: DungeonDoc, at: PositionRef): DungeonDoc {
+  const o = doc.orientation;
+  const key = positionKey(o, at);
+  const existing = doc.doors.findIndex((d) => positionKey(o, d.at) === key);
+  if (existing !== -1) {
+    return { ...doc, doors: doc.doors.filter((_, i) => i !== existing) };
   }
-  if (clean.length === 0) return doc;
-  return {
-    ...doc,
-    doors: [...doc.doors, { id: nextDoorId(doc), edges: clean }],
-  };
+  if (positionCrossing(o, latticeOf(o, at)) === null) return doc;
+  if (wallsThrough(doc, at).length === 0) return doc;
+  return { ...doc, doors: [...doc.doors, { id: nextDoorId(doc), at }] };
 }
 
 function nextDoorId(doc: DungeonDoc): string {
@@ -1597,48 +1596,6 @@ function nextDoorId(doc: DungeonDoc): string {
   let n = doc.doors.length + 1;
   while (taken.has(`door-${n}`)) n += 1;
   return `door-${n}`;
-}
-
-/** Door tool: clicking an edge that is already a door edge removes it
- * from its door (deleting the door when empty); otherwise it joins
- * `doorId` (or a new door). A wall on that edge is replaced — an edge is
- * a wall OR a door, never both. */
-export function toggleDoorEdge(
-  doc: DungeonDoc,
-  e: Edge,
-  doorId?: string
-): DungeonDoc {
-  if (!edgeIsOfferable(doc, e)) return doc;
-  const key = edgeKey(e);
-  const owner = doorEdgeOwners(doc).get(key);
-  if (owner !== undefined) {
-    return {
-      ...doc,
-      doors: doc.doors
-        .map((d) =>
-          d.id === owner
-            ? { ...d, edges: d.edges.filter((x) => edgeKey(x) !== key) }
-            : d
-        )
-        .filter((d) => d.edges.length > 0),
-    };
-  }
-  // The wall under a new door STAYS (rpg-project#355): the run keeps the
-  // crossing, the server subtracts it at compile, and deleting the door
-  // later restores the wall instead of leaving a hole nobody authored.
-  const target = doorId && doc.doors.find((d) => d.id === doorId);
-  if (target) {
-    return {
-      ...doc,
-      doors: doc.doors.map((d) =>
-        d.id === target.id ? { ...d, edges: [...d.edges, normalizeEdge(e)] } : d
-      ),
-    };
-  }
-  return {
-    ...doc,
-    doors: [...doc.doors, { id: nextDoorId(doc), edges: [normalizeEdge(e)] }],
-  };
 }
 
 export function updateDoor(
@@ -1830,7 +1787,7 @@ export function updateDungeon(
  * (`key`, `version`, an unparseable path) — it is listed, not drawn. */
 export type ErrorTarget =
   | { kind: 'cell'; cell: Axial }
-  | { kind: 'edge'; edge: Edge }
+  | { kind: 'wall'; index: number }
   | { kind: 'placement'; index: number; cell: Axial }
   | { kind: 'region'; regionId: string }
   | { kind: 'door'; doorId: string }
@@ -1862,27 +1819,19 @@ export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
       ? { kind: 'region', regionId: region.id }
       : { kind: 'document' };
   }
-  m = /^walls\[(\d+)\]\.edges\[(\d+)\]/.exec(path);
-  if (m) {
-    const edge = layout.walls[+m[1]]?.edges[+m[2]];
-    return edge ? { kind: 'edge', edge } : { kind: 'document' };
-  }
+  // A wall's defect names the WALL, whichever field of it the compiler
+  // faulted (`walls[3].start.offset`, `walls[3].height`) — a wall is one
+  // line, so there is no smaller thing on the canvas to point at. The
+  // path resolves to the wall's index in the EMITTED order, which is the
+  // order the compiler read.
   m = /^walls\[(\d+)\]/.exec(path);
   if (m) {
-    // A defect on the RUN itself (a bad height, say) names no single
-    // crossing, so it draws on the run's first edge — where the wall
-    // visibly starts. A defect on one edge took the branch above.
-    const edge = layout.walls[+m[1]]?.edges[0];
-    return edge ? { kind: 'edge', edge } : { kind: 'document' };
-  }
-  m = /^doors\[(\d+)\]\.edges\[(\d+)\]/.exec(path);
-  if (m) {
-    const edge = layout.doors[+m[1]]?.edges[+m[2]];
-    return edge ? { kind: 'edge', edge } : { kind: 'document' };
+    const index = doc.walls.indexOf(layout.walls[+m[1]]);
+    return index === -1 ? { kind: 'document' } : { kind: 'wall', index };
   }
   m = /^doors\[(\d+)\]/.exec(path);
   if (m) {
-    const door = layout.doors[+m[1]]?.door;
+    const door = layout.doors[+m[1]];
     return door ? { kind: 'door', doorId: door.id } : { kind: 'document' };
   }
   m = /^place\[(\d+)\]/.exec(path);

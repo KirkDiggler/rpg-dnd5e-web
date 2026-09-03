@@ -16,7 +16,6 @@ import type { AuthoringClient } from './authoringRpc';
 import { staleAtlasNotice } from './authoringRpc';
 import { DungeonBuilder } from './DungeonBuilder';
 import {
-  addDoor,
   addRegion,
   emitDungeon,
   emptyDungeon,
@@ -28,6 +27,12 @@ import {
 } from './dungeonYaml';
 import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
 import { referenceTombDoc } from './fixtures/referenceTomb';
+import {
+  cellPositions,
+  latticeOf,
+  positionCrossing,
+  type PositionRef,
+} from './hexGeometry';
 import { axialKey, fromOffset, type Axial } from './hexOffset';
 
 const p = (c: number, r: number): Axial => fromOffset('pointy', [c, r]);
@@ -294,15 +299,40 @@ describe("DungeonBuilder — the right rail is the author's to control", () => {
 });
 
 describe('DungeonBuilder — concealment links to the door (rpg-dnd5e-web#893)', () => {
+  /** The side midpoint between two adjacent cells — a wall's line is two
+   * positions now, not a hex-to-hex crossing, so a door needs the
+   * position that side's midpoint is (rpg-project#360 slice 2). */
+  function sideBetween(a: Axial, b: Axial): PositionRef {
+    for (const pos of cellPositions('pointy', a)) {
+      const crossing = positionCrossing('pointy', latticeOf('pointy', pos));
+      if (!crossing) continue;
+      const [x, y] = crossing;
+      if (
+        (axialKey(x) === axialKey(a) && axialKey(y) === axialKey(b)) ||
+        (axialKey(x) === axialKey(b) && axialKey(y) === axialKey(a))
+      ) {
+        return pos;
+      }
+    }
+    throw new Error('sideBetween: cells are not adjacent');
+  }
+
   /** The rpg-dnd5e-web#890 shape: a door drawn concealed, its region left
-   * unticked — one authored fact stated once, the other never caught up. */
+   * unticked — one authored fact stated once, the other never caught up.
+   * Built directly rather than through `toggleDoorAt` — that mutator
+   * refuses a door with no wall under it (F10), a guard rail this test
+   * has no use for; it only needs a door on the crossing, which is all a
+   * door concealed with no matching wall on the wire is anyway. */
   function buggyYaml(): string {
     let doc = emptyDungeon();
     doc = addRegion(doc); // region-2
     doc = paintCell(doc, 'region-1', p(0, 0));
     doc = paintCell(doc, 'region-1', p(1, 0));
     doc = paintCell(doc, 'region-2', p(2, 0));
-    doc = addDoor(doc, [[p(1, 0), p(2, 0)]]);
+    doc = {
+      ...doc,
+      doors: [{ id: 'door-1', at: sideBetween(p(1, 0), p(2, 0)) }],
+    };
     doc = updateDoor(doc, doc.doors[0]!.id, {
       concealed: [{ ability: 'perception', dc: 15 }],
     });
