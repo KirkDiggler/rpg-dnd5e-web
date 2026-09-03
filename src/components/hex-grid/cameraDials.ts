@@ -127,9 +127,31 @@ export const DEFAULT_PAN_SPEED_PER_SEC = 18;
 
 /**
  * Middle-drag rotation speed, degrees per pixel. Kirk's own dial table for
- * this slice: "~0.4".
+ * this slice: "~0.4". #906 round 3 retired this as an INDEPENDENT default —
+ * see `DRAG_SECONDS_PER_PIXEL` below for what replaced it — but the literal
+ * stays as `useCameraControls.ts`'s own internal fallback for a caller that
+ * doesn't thread `cameraDials.dragRotate` through at all (neither shipped
+ * call site omits it).
  */
 export const DEFAULT_DRAG_ROTATE_DEG_PER_PX = 0.4;
+
+/**
+ * Middle-drag speed COUPLES to Q/E's own `rotateSpeed` rather than being an
+ * independent dial — Kirk, second live session: "Q/E and middle mouse
+ * should have similar rotation speeds, maybe not literal, but slower speed
+ * should require more mouse movement. Users who find middle mouse will only
+ * use Q/E when they do not have a mouse."
+ *
+ * One ratio expresses the whole coupling: dragging N pixels rotates the
+ * SAME angle as holding Q for `N * DRAG_SECONDS_PER_PIXEL` seconds. Chosen
+ * so today's shipped defaults are preserved exactly —
+ * `DEFAULT_DRAG_ROTATE_DEG_PER_PX / DEFAULT_ROTATE_SPEED_DEG_PER_SEC` =
+ * 0.4/70 ≈ 1/175 s per pixel, i.e. a 175px drag ~= one second of held Q.
+ * Halving `rotateSpeed` (a slower Q/E feel) now halves drag speed too,
+ * rather than leaving a fast mouse gesture next to a slow keyboard one.
+ */
+export const DRAG_SECONDS_PER_PIXEL =
+  DEFAULT_DRAG_ROTATE_DEG_PER_PX / DEFAULT_ROTATE_SPEED_DEG_PER_SEC;
 
 export interface CameraDials {
   /** Perspective projection instead of the default orthographic. */
@@ -162,9 +184,11 @@ export interface CameraDials {
    */
   orbitPivot: 'auto' | 'view' | 'me';
   /**
-   * Middle-drag rotation, RADIANS per pixel — converted here from the
-   * `dragRotate` URL dial (authored in degrees per pixel, same convention as
-   * `rotateSpeed` above).
+   * Middle-drag rotation, RADIANS per pixel — DERIVED from `rotateSpeed`
+   * above via `DRAG_SECONDS_PER_PIXEL`, not its own independent URL dial
+   * (#906 round 3: "Q/E and middle mouse should have similar rotation
+   * speeds"). There is no `?dragRotate=` query key any more; a stray one in
+   * a bookmarked URL is simply ignored.
    */
   dragRotate: number;
   /**
@@ -304,8 +328,10 @@ export function parseCameraDials(search: string): CameraDials {
   const rawOrbitPivot = params.get('orbitPivot');
   const orbitPivot =
     rawOrbitPivot === 'me' || rawOrbitPivot === 'view' ? rawOrbitPivot : 'auto';
-  const dragRotateDegPerPx =
-    num(params, 'dragRotate') ?? DEFAULT_DRAG_ROTATE_DEG_PER_PX;
+  // No independent `?dragRotate=` any more — derived from rotateSpeed alone
+  // (DRAG_SECONDS_PER_PIXEL's own doc comment has the full reasoning). A
+  // stray `?dragRotate=` in a bookmarked URL is simply ignored.
+  const dragRotateDegPerPx = rotateSpeedDegPerSec * DRAG_SECONDS_PER_PIXEL;
 
   return {
     perspective,

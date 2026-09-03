@@ -7,9 +7,9 @@
  * - Right-click drag to pan ("grab the board"). This used to rotate; Kirk
  *   moved it to panning so rotation lives on Q/E alone and the mouse does
  *   the thing a mouse on a map is expected to do.
- * - Middle-click drag to rotate azimuth only (`?dragRotate=`,
- *   cameraDials.ts — #906). Horizontal only, no tilt — same "no free-look"
- *   rule as everything else here.
+ * - Middle-click drag to rotate azimuth only (speed coupled to `rotateSpeed`
+ *   via `DRAG_SECONDS_PER_PIXEL`, cameraDials.ts — #906). Horizontal only,
+ *   no tilt — same "no free-look" rule as everything else here.
  * - F brings the target to the local player's mini without changing the
  *   zoom band (#906).
  * - Home fits the revealed board on demand — never automatically (#906,
@@ -105,9 +105,10 @@ interface CameraControlsOptions {
    * mode. See orbitPivot.ts for the rotation math itself.
    */
   orbitPivot?: 'auto' | 'view' | 'me';
-  /** Middle-drag rotation speed, RADIANS per pixel (`?dragRotate=`,
-   * cameraDials.ts, authored there in degrees per pixel). Horizontal only —
-   * no free tilt. */
+  /** Middle-drag rotation speed, RADIANS per pixel — cameraDials.ts derives
+   * this from `rotateSpeed` (no independent `?dragRotate=` dial, #906 round
+   * 3: "Q/E and middle mouse should have similar rotation speeds"; see
+   * `DRAG_SECONDS_PER_PIXEL`). Horizontal only — no free tilt. */
   dragRotate?: number;
   /**
    * Banded zoom/pitch (`?pitchCurve=1`, see cameraDials.ts). Each orthographic
@@ -206,10 +207,10 @@ export function useCameraControls({
     lastY: 0,
   });
 
-  // Middle-button drag: azimuth rotation only, no tilt (`?dragRotate=`,
-  // cameraDials.ts — the module header doc comment's own "no free-look"
-  // rule). Deliberately its own ref, independent of `mouse` above — right-
-  // drag pan and middle-drag rotate are unrelated gestures.
+  // Middle-button drag: azimuth rotation only, no tilt (speed coupled to
+  // `rotateSpeed`, cameraDials.ts — the module header doc comment's own "no
+  // free-look" rule). Deliberately its own ref, independent of `mouse`
+  // above — right-drag pan and middle-drag rotate are unrelated gestures.
   const middleDrag = useRef({
     active: false,
     lastX: 0,

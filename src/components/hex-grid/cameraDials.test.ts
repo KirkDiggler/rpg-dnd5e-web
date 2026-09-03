@@ -10,6 +10,7 @@ import {
   DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
   DEFAULT_ZOOM_MAX,
   DEFAULT_ZOOM_MIN,
+  DRAG_SECONDS_PER_PIXEL,
   bandFollowsFocus,
   parseCameraDials,
 } from './cameraDials';
@@ -165,11 +166,28 @@ describe('parseCameraDials', () => {
     expect(parseCameraDials('?orbitPivot=bogus').orbitPivot).toBe('auto');
   });
 
-  it('resolves dragRotate to the shared default, authored in degrees per pixel', () => {
+  it('derives dragRotate from rotateSpeed — one rotation speed, two inputs (#906 round 3)', () => {
+    // Default rotateSpeed (70°/s) yields the original shipped drag rate
+    // (0.4°/px) exactly, by construction of DRAG_SECONDS_PER_PIXEL.
     const dials = parseCameraDials('');
     expect(dials.dragRotate).toBeCloseTo(rad(DEFAULT_DRAG_ROTATE_DEG_PER_PX));
-    const overridden = parseCameraDials('?dragRotate=1.2');
-    expect(overridden.dragRotate).toBeCloseTo(rad(1.2));
+  });
+
+  it('halving rotateSpeed halves drag speed — Q/E and middle mouse stay coupled', () => {
+    const full = parseCameraDials('');
+    const halved = parseCameraDials(
+      `?rotateSpeed=${DEFAULT_ROTATE_SPEED_DEG_PER_SEC / 2}`
+    );
+    expect(halved.dragRotate).toBeCloseTo(full.dragRotate / 2);
+  });
+
+  it('a stray ?dragRotate= is ignored — there is no independent drag dial any more', () => {
+    const dials = parseCameraDials('?dragRotate=1.2');
+    expect(dials.dragRotate).toBeCloseTo(rad(DEFAULT_DRAG_ROTATE_DEG_PER_PX));
+  });
+
+  it('DRAG_SECONDS_PER_PIXEL matches the cited 0.4/70 derivation', () => {
+    expect(DRAG_SECONDS_PER_PIXEL).toBeCloseTo(1 / 175);
   });
 
   it('ignores non-numeric and empty values instead of poisoning the camera with NaN', () => {
