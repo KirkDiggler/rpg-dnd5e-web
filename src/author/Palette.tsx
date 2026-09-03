@@ -52,11 +52,15 @@ const TOOLS: { id: BoardTool; label: string; hint: string }[] = [
     hint: 'paint floor no room owns — walls and props stand on it, nobody walks on it (shift-drag erases)',
   },
   { id: 'erase', label: 'Erase', hint: 'return cells to void' },
-  { id: 'wall', label: 'Wall', hint: 'click an edge between two floor cells' },
+  {
+    id: 'wall',
+    label: 'Wall',
+    hint: 'click a hex to see where a wall can start, then pick a start and an end — green lines cost nothing, orange ones seal the cells they run through (shift-click a wall to delete it)',
+  },
   {
     id: 'door',
     label: 'Door',
-    hint: 'click edges to make a doorway; inspector sets the lock',
+    hint: 'click one of the marked points on a wall; the inspector sets the lock',
   },
   { id: 'start', label: 'Start', hint: "the party's entry cell" },
 ];

@@ -64,6 +64,7 @@ import {
   SCENERY_STROKE,
   SEALED_HATCH,
   SEALED_HATCH_ID,
+  SEALED_PREVIEW_FILL,
   START_COLOR,
   THICK_RAY_STROKE,
   THIN_RAY_STROKE,
@@ -708,9 +709,11 @@ export function CreationBoard({
                       data-sealed-preview={isPreviewSealed || undefined}
                       points={cornersPath(cell, size, o)}
                       fill={
-                        isSealed ? `url(#${SEALED_HATCH_ID})` : SEALED_HATCH
+                        isSealed
+                          ? `url(#${SEALED_HATCH_ID})`
+                          : SEALED_PREVIEW_FILL
                       }
-                      fillOpacity={isSealed ? 1 : 0.35}
+                      fillOpacity={isSealed ? 1 : 0.62}
                       stroke="none"
                       pointerEvents="none"
                     />

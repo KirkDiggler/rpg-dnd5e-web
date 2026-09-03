@@ -44,6 +44,12 @@ export const THICK_RAY_STROKE = '#f0a24a';
  * floor with no owner, a sealed cell keeps the room it belongs to. */
 export const SEALED_HATCH = '#f0a24a';
 export const SEALED_HATCH_ID = 'dg-sealed-hatch';
+
+/** What a candidate wall WOULD seal, greyed at pick time (design §2.6's
+ * own word). Grey and not the committed hatch's orange, so "this is the
+ * cost of the wall you are hovering" never reads as "this cell is
+ * already sealed". */
+export const SEALED_PREVIEW_FILL = '#8b8f96';
 /** The floor's outer edge. NOT a wall — a wall is something the author put
  * there on purpose (Kirk: "walls are intentional"), and an unwalled boundary
  * is a real authored choice: a region is allowed a cliff edge. Drawn dimmer
