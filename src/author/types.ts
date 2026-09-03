@@ -8,6 +8,10 @@ export type BoardTool =
   | 'region'
   | 'region-rect'
   | 'room'
+  /** Floor belonging to no room (rpg-project#360 §2.1) — the brush beside
+   * the room brush. Paints the cells a wall may stand on and a prop may
+   * sit on, and nobody may stand on. */
+  | 'scenery'
   | 'erase'
   | 'wall'
   | 'door'

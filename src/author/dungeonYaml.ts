@@ -245,6 +245,23 @@ export interface DungeonDoc {
   orientation: Orientation;
   void: VoidKind;
   regions: RegionDoc[];
+  /** Floor nobody stands on — the cells belonging to no region at all
+   * (rpg-project#360 slice 1, design §1.4/§3.1).
+   *
+   * A cell carries two facts, an OWNER and whether it is STANDABLE, and
+   * scenery is the second without the first: floor for a wall to stand on
+   * and a prop to sit on, never floor for feet. A cell is in exactly one
+   * of a region, `scenery`, or void — the brush enforces that here
+   * (`paintScenery`/`paintCell`) so the file can never carry the overlap
+   * F1 refuses.
+   *
+   * ALWAYS PRESENT IN THE MODEL, WRITTEN ONLY WHEN IT HAS CELLS. The
+   * field is optional in the file ("omitted = none", §3.1), which is what
+   * keeps a dungeon that uses no scenery emitting the same bytes it
+   * always did — and keeps it compiling on a server whose decoder does
+   * not know the key yet. An empty list here is that absence, not a
+   * different state. */
+  scenery: Axial[];
   start: Axial | null;
   walls: WallDoc[];
   doors: DoorDoc[];
@@ -389,6 +406,7 @@ export function parseDungeon(text: string): DungeonDoc {
       'orientation',
       'void',
       'regions',
+      'scenery',
       'start',
       'walls',
       'doors',
@@ -455,6 +473,15 @@ export function parseDungeon(text: string): DungeonDoc {
     }
     return region;
   });
+
+  // Same row encoding as `regions[].cells` — rows of `[col,row]` — so the
+  // author reads one shape for floor whoever owns it. Absent is empty.
+  const scenery: Axial[] = [];
+  for (const [ri, row] of list(raw.scenery, 'scenery').entries()) {
+    for (const [ci, c] of list(row, `scenery[${ri}]`).entries()) {
+      scenery.push(fromOffset(orientation, pair(c, `scenery[${ri}][${ci}]`)));
+    }
+  }
 
   const start =
     raw.start === undefined || raw.start === null
@@ -590,6 +617,7 @@ export function parseDungeon(text: string): DungeonDoc {
     orientation,
     void: voidKind,
     regions,
+    scenery,
     start,
     walls,
     doors,
@@ -635,26 +663,39 @@ function compareOffset(a: OffsetPair, b: OffsetPair): number {
  */
 export interface EmittedLayout {
   regions: { region: RegionDoc; rows: Axial[][] }[];
+  /** `scenery`'s rows, in the emitted order — the same row-per-line shape
+   * a region's cells take, so `scenery[i][j]` in a compiler path names
+   * the cell the emitter put there. */
+  scenery: Axial[][];
   walls: WallDoc[];
   doors: { door: DoorDoc; edges: Edge[] }[];
 }
 
+/** Cells sorted by row then column and grouped one ROW per entry — the
+ * file's cell shape, shared by a region's `cells` and by `scenery` so
+ * both read and diff the same way. */
+function cellRows(o: Orientation, cells: Axial[]): Axial[][] {
+  const sorted = [...cells].sort((a, b) =>
+    compareOffset(toOffset(o, a), toOffset(o, b))
+  );
+  const rows: Axial[][] = [];
+  for (const cell of sorted) {
+    const last = rows[rows.length - 1];
+    if (last && toOffset(o, last[0])[1] === toOffset(o, cell)[1]) {
+      last.push(cell);
+    } else rows.push([cell]);
+  }
+  return rows;
+}
+
 export function emittedLayout(doc: DungeonDoc): EmittedLayout {
   const o = doc.orientation;
-  const byOffset = (a: Axial, b: Axial) =>
-    compareOffset(toOffset(o, a), toOffset(o, b));
   return {
-    regions: doc.regions.map((region) => {
-      const sorted = [...region.cells].sort(byOffset);
-      const rows: Axial[][] = [];
-      for (const cell of sorted) {
-        const last = rows[rows.length - 1];
-        if (last && toOffset(o, last[0])[1] === toOffset(o, cell)[1]) {
-          last.push(cell);
-        } else rows.push([cell]);
-      }
-      return { region, rows };
-    }),
+    regions: doc.regions.map((region) => ({
+      region,
+      rows: cellRows(o, region.cells),
+    })),
+    scenery: cellRows(o, doc.scenery),
     walls: sortedWalls(doc.walls),
     doors: doc.doors.map((door) => ({ door, edges: sortedEdges(door.edges) })),
   };
@@ -720,6 +761,19 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (region.concealed) {
         out.push('    concealed: true');
       }
+    }
+  }
+
+  // Written ONLY when it has cells (design §3.1: "optional; omitted =
+  // none"). A dungeon with no scenery emits exactly the bytes it always
+  // did — which is what keeps every existing file byte-identical and
+  // keeps it compiling on a server that has not learned the key yet.
+  if (layout.scenery.length > 0) {
+    out.push('scenery:');
+    for (const row of layout.scenery) {
+      out.push(
+        `      - [${row.map((c) => fmtPair(toOffset(o, c))).join(',')}]`
+      );
     }
   }
 
@@ -818,7 +872,31 @@ export function floorOwners(doc: DungeonDoc): Map<string, string> {
   return owners;
 }
 
+/** The scenery cells as keys — floor with no owner. */
+export function sceneryKeys(doc: DungeonDoc): Set<string> {
+  return new Set(doc.scenery.map(axialKey));
+}
+
+export const isScenery = (doc: DungeonDoc, cell: Axial): boolean =>
+  sceneryKeys(doc).has(axialKey(cell));
+
+/** Every FLOOR cell — owned or scenery (design §1.1: "Floor is any cell
+ * with an owner or a scenery mark"). What a wall may stand on, what a
+ * door may cross, what a prop may sit on. */
+export function floorKeys(doc: DungeonDoc): Set<string> {
+  const keys = sceneryKeys(doc);
+  for (const key of floorOwners(doc).keys()) keys.add(key);
+  return keys;
+}
+
 export const isFloor = (doc: DungeonDoc, cell: Axial): boolean =>
+  floorKeys(doc).has(axialKey(cell));
+
+/** Whether FEET may be here. Owned floor only: scenery is floor nobody
+ * stands on (design §1.3), so the start and every monster need this and
+ * a prop needs only `isFloor`. Slice 1's whole difference between the
+ * two predicates; slice 2 subtracts the cells walls seal as well. */
+export const isStandable = (doc: DungeonDoc, cell: Axial): boolean =>
   floorOwners(doc).has(axialKey(cell));
 
 export function wallKeys(doc: DungeonDoc): Set<string> {
@@ -847,12 +925,27 @@ export function placementAt(
 // Concealment derivation (rpg-dnd5e-web#893) — "concealment links to the
 // door": a region's hidden status is DERIVED from which doors are marked
 // concealed, rather than declared a second time by hand for every room
-// behind one. This walks the SAME region-for-region "ways" the toolkit's
-// own coherence check does (dungeonspec/validate.go's `concealment()`) —
-// every non-wall crossing between two DIFFERENT regions, one way per door,
-// deduped — so a document this module derives satisfies that check without
-// repeating it (this module still "only refuses what it cannot represent",
-// per the header comment; the server stays the validator of record).
+// behind one. This walks the SAME "ways" the toolkit's own coherence check
+// does (dungeonspec/validate.go's `concealment()`), so a document this
+// module derives satisfies that check without repeating it (this module
+// still "only refuses what it cannot represent", per the header comment;
+// the server stays the validator of record).
+//
+// A WAY IS A FLOOD, NOT A CROSSING (rpg-project#360 slice 1, design C4).
+// It used to be one step between two regions' cells, because that was the
+// only way space could join. Scenery adds floor that belongs to no room,
+// so a way is now "a wall-free path from a cell of A to a cell of B whose
+// INTERIOR cells are all scenery" — never through a third region's cells,
+// which is what keeps the flood from tunnelling one room into the next.
+//
+// TWO REGIONS ARE JOINED IN `open` IFF SOME WAY BETWEEN THEM HAS NO
+// CONCEALED DOOR ON ANY CROSSING — not "iff the first crossing out is
+// clear". The toolkit builder found that first-crossing depends on which
+// end you start from: visible room, bare crossing, scenery, then the
+// secret room's own concealed door reads as open from the visible side
+// and closed from the secret side. The flood crosses bare crossings and
+// ordinary doors, passes through scenery, and stops at walls and
+// concealed doors, so both ends agree.
 // ---------------------------------------------------------------------------
 
 /** The region graph `deriveConcealment` walks. `open` carries every way
@@ -880,43 +973,131 @@ function addRegionEdge(
   graph.get(b)!.add(a);
 }
 
+/** What one crossing does to a way through it. */
+type CrossingKind = 'wall' | 'plain' | 'concealed';
+
 function buildRegionGraph(doc: DungeonDoc): RegionGraph {
   const owners = floorOwners(doc);
-  const walls = wallKeys(doc);
+  const scenery = sceneryKeys(doc);
+  const walls = new Set(compiledWalls(doc).map(({ edge }) => edgeKey(edge)));
   const doorEdges = doorEdgeOwners(doc);
   const doorById = new Map(doc.doors.map((d) => [d.id, d] as const));
   const open: Map<string, Set<string>> = new Map();
   const full: Map<string, Set<string>> = new Map();
   const concealedDoorCrossings = new Map<string, [string, string][]>();
-  const seenCrossing = new Set<string>();
 
-  for (const region of doc.regions) {
-    for (const cell of region.cells) {
-      for (const n of axialNeighbors(cell)) {
-        const there = owners.get(axialKey(n));
-        if (!there || there === region.id) continue;
-        const ek = edgeKey([cell, n]);
-        if (seenCrossing.has(ek)) continue;
-        seenCrossing.add(ek);
-        if (walls.has(ek)) continue; // a wall is not a way in
+  const kindOf = (ek: string): CrossingKind => {
+    // `walls` is the COMPILED set, so the crossing a door stands in has
+    // already been subtracted from it (rpg-project#355 — a run keeps that
+    // crossing and the compiler hands the edge back to the door), exactly
+    // as the server subtracts it. That one substitution is what makes a
+    // door drawn inside a wall run a door here rather than a wall; asking
+    // about the door first as well would only hide which fact carries it.
+    if (walls.has(ek)) return 'wall';
+    const doorId = doorEdges.get(ek);
+    const door = doorId ? doorById.get(doorId) : undefined;
+    return door && door.concealed !== undefined ? 'concealed' : 'plain';
+  };
 
-        const [a, b] =
-          region.id <= there ? [region.id, there] : [there, region.id];
-        const doorId = doorEdges.get(ek);
-        const door = doorId ? doorById.get(doorId) : undefined;
-        if (door && door.concealed !== undefined) {
-          addRegionEdge(full, a, b);
-          const list = concealedDoorCrossings.get(door.id) ?? [];
-          if (!list.some(([x, y]) => x === a && y === b)) list.push([a, b]);
-          concealedDoorCrossings.set(door.id, list);
-          continue; // a concealed door's own crossing never joins `open`
+  /** Every region a way from `seeds` leads to.
+   *
+   * The flood leaves the seeds, walks SCENERY ONLY, and stops the moment
+   * it lands on any region's cell — that cell is where the way ends, so a
+   * third room is a destination and never a corridor (design C4). Walls
+   * always stop it; a concealed door stops it unless `allowConcealed`,
+   * which is the whole difference between the `open` graph and the
+   * `full` one. `originId` is the region the seeds belong to, so a way
+   * back into its own cells is not reported as joining anything. */
+  const waysFrom = (
+    seeds: readonly Axial[],
+    originId: string | null,
+    allowConcealed: boolean
+  ): Set<string> => {
+    const reached = new Set<string>();
+    const seen = new Set(seeds.map(axialKey));
+    const queue = [...seeds];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const n of axialNeighbors(cur)) {
+        const kind = kindOf(edgeKey([cur, n]));
+        if (kind === 'wall') continue;
+        if (kind === 'concealed' && !allowConcealed) continue;
+        const nk = axialKey(n);
+        const there = owners.get(nk);
+        if (there !== undefined) {
+          if (there !== originId) reached.add(there);
+          continue;
         }
-        addRegionEdge(open, a, b);
-        addRegionEdge(full, a, b);
+        if (!scenery.has(nk) || seen.has(nk)) continue;
+        seen.add(nk);
+        queue.push(n);
       }
     }
+    return reached;
+  };
+
+  for (const region of doc.regions) {
+    for (const there of waysFrom(region.cells, region.id, false)) {
+      addRegionEdge(open, region.id, there);
+    }
+    // Every open way is a way, and the permissive flood explores a
+    // superset of the strict one's crossings, so `full` needs only this.
+    for (const there of waysFrom(region.cells, region.id, true)) {
+      addRegionEdge(full, region.id, there);
+    }
   }
+
+  /** The regions one side of a concealed door's crossing opens onto,
+   * without passing another concealed door — the door's own side of the
+   * pair it joins. An owned cell IS its region; a scenery cell floods
+   * until it finds one. */
+  const regionsTouching = (cell: Axial): Set<string> => {
+    const owner = owners.get(axialKey(cell));
+    if (owner !== undefined) return new Set([owner]);
+    if (!scenery.has(axialKey(cell))) return new Set();
+    return waysFrom([cell], null, false);
+  };
+
+  for (const door of doc.doors) {
+    if (door.concealed === undefined) continue;
+    const pairs: [string, string][] = [];
+    for (const [near, far] of door.edges) {
+      for (const a of regionsTouching(near)) {
+        for (const b of regionsTouching(far)) {
+          if (a === b) continue;
+          const [x, y] = a <= b ? [a, b] : [b, a];
+          if (!pairs.some(([px, py]) => px === x && py === y)) {
+            pairs.push([x, y]);
+          }
+        }
+      }
+    }
+    if (pairs.length > 0) concealedDoorCrossings.set(door.id, pairs);
+  }
+
   return { open, full, concealedDoorCrossings };
+}
+
+/** The region graph as two questions, for the tests that must agree with
+ * the toolkit's own walk (design C4, acceptance A3). The derivation below
+ * rests entirely on these two facts, and "separated" and "joined only
+ * through a secret" are different answers that `deriveConcealment` alone
+ * cannot tell apart — both leave a region unmarked. */
+export interface RegionWays {
+  /** Some way joins these two regions. Crossings may include concealed
+   * doors; walls always stop a way. */
+  joined(a: string, b: string): boolean;
+  /** Some way joins them with NO concealed door on ANY of its crossings —
+   * what a party can walk without finding anything first. */
+  openly(a: string, b: string): boolean;
+}
+
+export function regionWays(doc: DungeonDoc): RegionWays {
+  const { open, full } = buildRegionGraph(doc);
+  return {
+    joined: (a, b) => full.get(a)?.has(b) ?? false,
+    openly: (a, b) => open.get(a)?.has(b) ?? false,
+  };
 }
 
 function startRegionId(doc: DungeonDoc): string | null {
@@ -1067,6 +1248,7 @@ export function emptyDungeon(
         cells: [],
       },
     ],
+    scenery: [],
     start: null,
     walls: [],
     doors: [],
@@ -1118,10 +1300,18 @@ export function paintRect(
   const wanted = rectCells(doc.orientation, a, b);
   const keys = new Set(wanted.map(axialKey));
   const owners = floorOwners(doc);
-  // Nothing to do when every cell is already this region's.
-  if (wanted.every((c) => owners.get(axialKey(c)) === regionId)) return doc;
+  const scenery = doc.scenery.filter((c) => !keys.has(axialKey(c)));
+  // Nothing to do when every cell is already this region's AND none of
+  // them is scenery — a rectangle over a scenery strip claims it.
+  if (
+    scenery.length === doc.scenery.length &&
+    wanted.every((c) => owners.get(axialKey(c)) === regionId)
+  ) {
+    return doc;
+  }
   return {
     ...doc,
+    scenery,
     regions: doc.regions.map((region) => {
       const without = region.cells.filter((c) => !keys.has(axialKey(c)));
       if (region.id === regionId) {
@@ -1144,14 +1334,67 @@ export function paintCell(
 ): DungeonDoc {
   const key = axialKey(cell);
   const current = floorOwners(doc).get(key);
-  if (current === regionId) return doc;
+  // ONE STATE PER CELL (design §2.2): a room painted over scenery moves
+  // the cell in, so the two lists can never both claim it.
+  const scenery = doc.scenery.filter((c) => axialKey(c) !== key);
+  if (current === regionId && scenery.length === doc.scenery.length) return doc;
   return {
     ...doc,
+    scenery,
     regions: doc.regions.map((region) => {
       const without = region.cells.filter((c) => axialKey(c) !== key);
       if (region.id === regionId) {
         return { ...region, cells: [...without, cell].sort(compareAxial) };
       }
+      return without.length === region.cells.length
+        ? region
+        : { ...region, cells: without };
+    }),
+  };
+}
+
+/** What stands on `cell` and could not stand on scenery — the start, or
+ * a monster. `null` when the cell is free to become scenery.
+ *
+ * Named, not boolean, because the caller's job is to say WHICH thing is
+ * in the way (design §2.5: errors point at the thing). Props are never
+ * in the way: they sit on scenery quite legally, which is most of why
+ * the brush exists. */
+export type SceneryBlocker = 'start' | 'monster';
+
+export function sceneryBlockedBy(
+  doc: DungeonDoc,
+  cell: Axial
+): SceneryBlocker | null {
+  const key = axialKey(cell);
+  if (doc.start && axialKey(doc.start) === key) return 'start';
+  const standing = doc.place.find(
+    (pl) => axialKey(pl.at) === key && isMonsterRef(pl.ref)
+  );
+  return standing ? 'monster' : null;
+}
+
+/** Paint `cell` as SCENERY — floor belonging to no room (design §2.1).
+ *
+ * The mirror of `paintCell`: one state per cell, so a room cell painted
+ * scenery moves OUT of its region rather than joining a second list.
+ *
+ * REFUSED IN PLACE when the start or a monster stands there. The design
+ * cascades placements under ERASE and only under erase (§2.2, which names
+ * erase as the thing that takes walls, doors and placements with it);
+ * the monster-meets-scenery collision it rules on is a REFUSAL with a
+ * reason (§2.4). This is that same collision from the other side, so it
+ * gets the same answer rather than silently deleting something the
+ * author placed — there is no undo in this builder. */
+export function paintScenery(doc: DungeonDoc, cell: Axial): DungeonDoc {
+  const key = axialKey(cell);
+  if (sceneryKeys(doc).has(key)) return doc;
+  if (sceneryBlockedBy(doc, cell) !== null) return doc;
+  return {
+    ...doc,
+    scenery: [...doc.scenery, cell].sort(compareAxial),
+    regions: doc.regions.map((region) => {
+      const without = region.cells.filter((c) => axialKey(c) !== key);
       return without.length === region.cells.length
         ? region
         : { ...region, cells: without };
@@ -1165,10 +1408,11 @@ export function paintCell(
  * canvas never shows one. */
 export function eraseCell(doc: DungeonDoc, cell: Axial): DungeonDoc {
   const key = axialKey(cell);
-  if (!floorOwners(doc).has(key)) return doc;
+  if (!floorKeys(doc).has(key)) return doc;
   const touches = (e: Edge) => axialKey(e[0]) === key || axialKey(e[1]) === key;
   return {
     ...doc,
+    scenery: doc.scenery.filter((c) => axialKey(c) !== key),
     regions: doc.regions.map((region) => {
       const without = region.cells.filter((c) => axialKey(c) !== key);
       return without.length === region.cells.length
@@ -1204,9 +1448,11 @@ export function toggleWall(doc: DungeonDoc, e: Edge): DungeonDoc {
   };
 }
 
-/** An edge the wall/door tools may act on: two adjacent floor cells. */
+/** An edge the wall/door tools may act on: two adjacent floor cells —
+ * ROOM OR SCENERY (design §2.3, "walls and doors may stand on any
+ * floor"), which is the whole point of a strip behind a wall. */
 export function edgeIsOfferable(doc: DungeonDoc, edge: Edge): boolean {
-  return edgeOfferableWith(floorOwners(doc), edge);
+  return edgeOfferableWith(floorKeys(doc), edge);
 }
 
 /** `edgeIsOfferable` against a PRECOMPUTED owner map — the batch
@@ -1214,10 +1460,10 @@ export function edgeIsOfferable(doc: DungeonDoc, edge: Edge): boolean {
  * build `floorOwners` once per call instead of once per edge (Copilot
  * review, PR #808: the per-edge rebuild made a long drag scan the
  * whole floor per candidate, O(chain × floor) instead of O(chain)). */
-function edgeOfferableWith(owners: Map<string, string>, [a, b]: Edge): boolean {
+function edgeOfferableWith(floor: ReadonlySet<string>, [a, b]: Edge): boolean {
   return (
-    owners.has(axialKey(a)) &&
-    owners.has(axialKey(b)) &&
+    floor.has(axialKey(a)) &&
+    floor.has(axialKey(b)) &&
     Math.abs(a.q - b.q) <= 1 &&
     Math.abs(a.r - b.r) <= 1 &&
     Math.abs(a.q + a.r - b.q - b.r) <= 1 &&
@@ -1244,12 +1490,12 @@ export function addWalls(
   edges: Edge[],
   height?: number
 ): DungeonDoc {
-  const owners = floorOwners(doc);
+  const floor = floorKeys(doc);
   const present = wallKeys(doc);
   const run: Edge[] = [];
   for (const e of edges) {
     const key = edgeKey(e);
-    if (!edgeOfferableWith(owners, e) || present.has(key)) continue;
+    if (!edgeOfferableWith(floor, e) || present.has(key)) continue;
     present.add(key);
     run.push(normalizeEdge(e));
   }
@@ -1327,13 +1573,13 @@ export function removeWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
  * walls on the surviving edges are replaced, same as `toggleDoorEdge`'s
  * wall-or-door rule. Returns the same doc when no edge survives. */
 export function addDoor(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
-  const owners = floorOwners(doc);
+  const floor = floorKeys(doc);
   const doorKeys = doorEdgeOwners(doc);
   const seen = new Set<string>();
   const clean: Edge[] = [];
   for (const e of edges) {
     const key = edgeKey(e);
-    if (!edgeOfferableWith(owners, e) || doorKeys.has(key) || seen.has(key)) {
+    if (!edgeOfferableWith(floor, e) || doorKeys.has(key) || seen.has(key)) {
       continue;
     }
     seen.add(key);
@@ -1413,8 +1659,11 @@ export function updateDoor(
   };
 }
 
+/** The party's entry cell. STANDABLE floor only (design §2.4/F2): the
+ * start on scenery is a file the server refuses, and refusing it here in
+ * place — the same doc back — is what lets the caller say why. */
 export function setStart(doc: DungeonDoc, cell: Axial | null): DungeonDoc {
-  if (cell && !isFloor(doc, cell)) return doc;
+  if (cell && !isStandable(doc, cell)) return doc;
   return { ...doc, start: cell };
 }
 
@@ -1426,7 +1675,14 @@ export function setStart(doc: DungeonDoc, cell: Axial | null): DungeonDoc {
  * would strand a caller that prefills a facing/offset at drop time),
  * REFUSED on monsters same as `blocks_*`. */
 export function placeAt(doc: DungeonDoc, placement: PlacementDoc): DungeonDoc {
-  if (!isFloor(doc, placement.at)) return doc;
+  // A PROP DROPS ON SCENERY, A MONSTER DOES NOT (design §2.4, F2): props
+  // want floor, feet want standable floor. Refused in place — the same
+  // doc back — so the caller shows the reason rather than the drop just
+  // not happening.
+  const room = isMonsterRef(placement.ref)
+    ? isStandable(doc, placement.at)
+    : isFloor(doc, placement.at);
+  if (!room) return doc;
   const key = axialKey(placement.at);
   const clean: PlacementDoc = { ref: placement.ref, at: placement.at };
   if (isMonsterRef(placement.ref)) {
@@ -1590,6 +1846,15 @@ export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
     const cell = layout.regions[+m[1]]?.rows[+m[2]]?.[+m[3]];
     return cell ? { kind: 'cell', cell } : { kind: 'document' };
   }
+  // Scenery rows are addressed exactly like a region's cells — the whole
+  // reason both use the same encoding — so a refusal naming a scenery
+  // cell (design §2.5, and the C4 walk's own message) lands on the cell.
+  m = /^scenery\[(\d+)\]\[(\d+)\]/.exec(path);
+  if (m) {
+    const cell = layout.scenery[+m[1]]?.[+m[2]];
+    return cell ? { kind: 'cell', cell } : { kind: 'document' };
+  }
+
   m = /^regions\[(\d+)\]/.exec(path);
   if (m) {
     const region = layout.regions[+m[1]]?.region;

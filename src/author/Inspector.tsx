@@ -164,9 +164,10 @@ function DungeonPanel({ doc, onDungeon }: InspectorProps) {
         </select>
       </label>
       <div className="text-xs opacity-70">
-        {doc.regions.reduce((n, r) => n + r.cells.length, 0)} floor cells ·{' '}
-        {doc.walls.length} walls · {doc.doors.length} doors · {doc.place.length}{' '}
-        placed
+        {doc.regions.reduce((n, r) => n + r.cells.length, 0) +
+          doc.scenery.length}{' '}
+        floor cells · {doc.walls.length} walls · {doc.doors.length} doors ·{' '}
+        {doc.place.length} placed
       </div>
     </div>
   );

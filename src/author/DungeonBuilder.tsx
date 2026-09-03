@@ -45,14 +45,17 @@ import {
   emptyDungeon,
   eraseCell,
   isMonsterRef,
+  isScenery,
   paintCell,
   paintRect,
+  paintScenery,
   parseDungeon,
   placeAt,
   removePlacement,
   removeRegion,
   removeWalls,
   resolveErrorTargets,
+  sceneryBlockedBy,
   setStart,
   setWallHeights,
   toggleDoorEdge,
@@ -417,7 +420,29 @@ export function DungeonBuilder({
     }
   };
 
+  /** "Nobody can stand here" — the one reason scenery refuses a drop
+   * (design §2.4). Named once so the start and the monster paths say the
+   * same words about the same fact. */
+  const NOBODY_STANDS = 'nobody can stand here — that cell is scenery';
+
   const handlePaint = (cell: Axial) => {
+    // The board's brush; WHICH brush is the owner's business (the same
+    // split `handleCellClick` already makes for start vs place).
+    if (tool === 'scenery') {
+      // Refused in place, naming what is in the way — the brush never
+      // deletes something the author placed, and this builder has no undo.
+      const blocker = sceneryBlockedBy(doc, cell);
+      if (blocker !== null) {
+        showToast(
+          blocker === 'start'
+            ? 'the party starts here — move the start before painting scenery'
+            : 'a monster stands here — move it before painting scenery'
+        );
+        return;
+      }
+      applyDoc((d) => paintScenery(d, cell));
+      return;
+    }
     if (activeRegionId) applyDoc((d) => paintCell(d, activeRegionId, cell));
   };
   const handleErase = (cell: Axial) => applyDoc((d) => eraseCell(d, cell));
@@ -483,8 +508,21 @@ export function DungeonBuilder({
     }
   };
   const handleCellClick = (cell: Axial) => {
-    if (tool === 'start') applyDoc((d) => setStart(d, cell));
+    if (tool === 'start') {
+      // REFUSED IN PLACE WITH THE REASON (design §2.4): the mutator hands
+      // back the same document, and the author is told why rather than
+      // watching a click do nothing.
+      if (isScenery(doc, cell)) {
+        showToast(NOBODY_STANDS);
+        return;
+      }
+      applyDoc((d) => setStart(d, cell));
+    }
     if (tool === 'place' && armed) {
+      if (isMonsterRef(armed.ref) && isScenery(doc, cell)) {
+        showToast(NOBODY_STANDS);
+        return;
+      }
       const defaults = isMonsterRef(armed.ref)
         ? {}
         : (PROP_DEFAULTS.get(armed.ref) ?? {

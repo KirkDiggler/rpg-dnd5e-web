@@ -61,7 +61,7 @@ import {
   addDoor,
   addWalls,
   doorEdgeOwners,
-  floorOwners,
+  floorKeys,
   removeWalls,
   wallHeightByEdge,
   wallKeys,
@@ -179,7 +179,9 @@ export function tautPath(
 
 /**
  * The derivation rules on a raw chain, for DRAWING walls: a pair that
- * is not two floor cells is skipped (the envelope is implied, never
+ * is not two floor cells is skipped — floor being ROOM OR SCENERY
+ * (rpg-project#360 §2.3: a wall may stand on any floor), the envelope
+ * implied and never
  * authored — design §2); an edge already in `walls[]` is deduplicated
  * silently (drawing over a wall is idempotent); an edge belonging to a
  * door is skipped and the chain breaks there (runs already break at
@@ -187,7 +189,7 @@ export function tautPath(
  * never authors).
  */
 export function deriveWallAdd(doc: DungeonDoc, chain: Edge[]): Edge[] {
-  const floor = floorOwners(doc);
+  const floor = floorKeys(doc);
   const doors = doorEdgeOwners(doc);
   const walls = wallKeys(doc);
   const seen = new Set<string>();
@@ -229,7 +231,7 @@ export function deriveWallErase(doc: DungeonDoc, chain: Edge[]): Edge[] {
  * Walls on the chain are NOT filtered here — `addDoor` replaces them
  * (an edge is a wall OR a door, `toggleDoorEdge`'s own rule). */
 export function deriveDoorAdd(doc: DungeonDoc, chain: Edge[]): Edge[] {
-  const floor = floorOwners(doc);
+  const floor = floorKeys(doc);
   const doors = doorEdgeOwners(doc);
   const seen = new Set<string>();
   const out: Edge[] = [];

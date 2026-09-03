@@ -60,6 +60,7 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
         cells: regionCells(10, 19),
       },
     ],
+    scenery: [],
     start: p(1, 3),
     walls,
     doors: [

@@ -7,16 +7,23 @@ import {
   compiledWalls,
   deriveConcealment,
   detectConcealmentLeaks,
+  edgeIsOfferable,
   emitDungeon,
   emptyDungeon,
   eraseCell,
   floorOwners,
+  isFloor,
+  isScenery,
+  isStandable,
   paintCell,
   paintRect,
+  paintScenery,
   parseDungeon,
   placeAt,
+  regionWays,
   removeWalls,
   resolveErrorPath,
+  sceneryBlockedBy,
   setStart,
   setWallHeights,
   toggleDoorEdge,
@@ -977,5 +984,338 @@ describe('resolveErrorPath', () => {
     expect(resolveErrorPath(doc, 'walls[0].edges[9]')).toEqual({
       kind: 'document',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenery — floor nobody stands on (rpg-project#360 slice 1, design §2.1-2.5,
+// §3.1). A cell is in exactly one of: a region, `scenery`, void.
+// ---------------------------------------------------------------------------
+
+describe('scenery (rpg-project#360 slice 1)', () => {
+  /** A room and a two-cell scenery strip beside it. */
+  function stripDoc(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ]) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    doc = paintScenery(doc, p(3, 0));
+    doc = paintScenery(doc, p(4, 0));
+    return doc;
+  }
+
+  it('emits `scenery` after regions and before start, one row per line, and round-trips', () => {
+    let doc = stripDoc();
+    doc = setStart(doc, p(1, 0));
+    doc = paintScenery(doc, p(3, 1));
+    const text = emitDungeon(doc);
+
+    expect(text).toContain(
+      'scenery:\n      - [[3,0],[4,0]]\n      - [[3,1]]\n'
+    );
+    const lines = text.split('\n');
+    const iRegions = lines.findIndex((l) => l === 'regions:');
+    const iScenery = lines.findIndex((l) => l === 'scenery:');
+    const iStart = lines.findIndex((l) => l.startsWith('start:'));
+    expect(iRegions).toBeGreaterThanOrEqual(0);
+    expect(iScenery).toBeGreaterThan(iRegions);
+    expect(iStart).toBeGreaterThan(iScenery);
+
+    // The parse/emit contract the whole module rests on.
+    expect(emitDungeon(parseDungeon(text))).toBe(text);
+    expect(parseDungeon(text).scenery.map(axialKey).sort()).toEqual(
+      [p(3, 0), p(4, 0), p(3, 1)].map(axialKey).sort()
+    );
+  });
+
+  it('writes NO `scenery` key when there is none, so a document without it is byte-identical', () => {
+    // The server's decoder refuses a key it does not know yet; more to the
+    // point, "optional; omitted = none" (design §3.1) is what keeps every
+    // existing file re-emitting exactly as it was.
+    const text = emitDungeon(referenceTombDoc());
+    expect(text).not.toContain('scenery');
+    expect(emitDungeon(parseDungeon(text))).toBe(text);
+  });
+
+  it('one state per cell: scenery over a room cell moves it out, a room over scenery moves it in (design §2.2)', () => {
+    let doc = stripDoc();
+    expect(floorOwners(doc).get(axialKey(p(2, 0)))).toBe('region-1');
+
+    doc = paintScenery(doc, p(2, 0));
+    expect(floorOwners(doc).has(axialKey(p(2, 0)))).toBe(false);
+    expect(isScenery(doc, p(2, 0))).toBe(true);
+    // Floor either way — a wall may stand on it, a prop may sit on it.
+    expect(isFloor(doc, p(2, 0))).toBe(true);
+    expect(isStandable(doc, p(2, 0))).toBe(false);
+
+    doc = paintCell(doc, 'region-1', p(2, 0));
+    expect(isScenery(doc, p(2, 0))).toBe(false);
+    expect(floorOwners(doc).get(axialKey(p(2, 0)))).toBe('region-1');
+    expect(isStandable(doc, p(2, 0))).toBe(true);
+
+    // The rect brush takes cells off the scenery list the same way.
+    doc = paintScenery(doc, p(1, 0));
+    doc = paintRect(doc, 'region-1', p(0, 0), p(2, 0));
+    expect(doc.scenery.map(axialKey)).toEqual([
+      axialKey(p(3, 0)),
+      axialKey(p(4, 0)),
+    ]);
+  });
+
+  it('painting scenery twice is a no-op and returns the same doc', () => {
+    const doc = stripDoc();
+    expect(paintScenery(doc, p(3, 0))).toBe(doc);
+  });
+
+  it('refuses to paint scenery under the start or a monster, and never deletes them', () => {
+    let doc = stripDoc();
+    doc = setStart(doc, p(0, 0));
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(1, 0) });
+
+    // The design cascades placements under ERASE and only under erase
+    // (§2.2); the monster-meets-scenery collision it rules on is a
+    // refusal with a reason (§2.4). Same collision, same answer.
+    expect(paintScenery(doc, p(0, 0))).toBe(doc);
+    expect(sceneryBlockedBy(doc, p(0, 0))).toBe('start');
+    expect(paintScenery(doc, p(1, 0))).toBe(doc);
+    expect(sceneryBlockedBy(doc, p(1, 0))).toBe('monster');
+
+    // Both are still standing where the author put them.
+    expect(doc.start).toEqual(p(0, 0));
+    expect(doc.place).toHaveLength(1);
+
+    // A PROP is never in the way — sitting on scenery is what props do.
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(2, 0),
+      blocksMovement: true,
+    });
+    expect(sceneryBlockedBy(doc, p(2, 0))).toBeNull();
+    const painted = paintScenery(doc, p(2, 0));
+    expect(isScenery(painted, p(2, 0))).toBe(true);
+    expect(
+      painted.place.some((pl) => axialKey(pl.at) === axialKey(p(2, 0)))
+    ).toBe(true);
+  });
+
+  it('erase returns a scenery cell to void and cascades what stood on it (design §2.2)', () => {
+    let doc = stripDoc();
+    doc = toggleWall(doc, [p(2, 0), p(3, 0)]);
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(3, 0),
+      blocksMovement: true,
+    });
+    expect(wallEdges(doc)).toHaveLength(1);
+    expect(doc.place).toHaveLength(1);
+
+    doc = eraseCell(doc, p(3, 0));
+    expect(isScenery(doc, p(3, 0))).toBe(false);
+    expect(isFloor(doc, p(3, 0))).toBe(false);
+    expect(wallEdges(doc)).toHaveLength(0);
+    expect(doc.place).toHaveLength(0);
+  });
+
+  it('a wall or a door may stand on scenery (design §2.3)', () => {
+    const doc = stripDoc();
+    // room | scenery
+    expect(wallEdges(toggleWall(doc, [p(2, 0), p(3, 0)]))).toHaveLength(1);
+    // scenery | scenery
+    expect(wallEdges(toggleWall(doc, [p(3, 0), p(4, 0)]))).toHaveLength(1);
+    expect(edgeIsOfferable(doc, [p(3, 0), p(4, 0)])).toBe(true);
+    // ...and still nothing off the floor.
+    expect(edgeIsOfferable(doc, [p(4, 0), p(5, 0)])).toBe(false);
+
+    const withDoor = addDoor(doc, [[p(3, 0), p(4, 0)]]);
+    expect(withDoor.doors).toHaveLength(1);
+  });
+
+  it('a prop drops on scenery; a monster and the start do not (design §2.4, F2)', () => {
+    const doc = stripDoc();
+
+    const prop = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(3, 0),
+      blocksMovement: true,
+    });
+    expect(prop.place).toHaveLength(1);
+
+    // Refused IN PLACE: the same doc back, so the caller can say why.
+    expect(placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(3, 0) })).toBe(
+      doc
+    );
+    expect(setStart(doc, p(3, 0))).toBe(doc);
+
+    // Both still land on a room cell.
+    expect(
+      placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(1, 0) }).place
+    ).toHaveLength(1);
+    expect(setStart(doc, p(1, 0)).start).toEqual(p(1, 0));
+  });
+
+  it('resolveErrorPath names the scenery cell the compiler refused (design §2.5)', () => {
+    let doc = stripDoc();
+    doc = paintScenery(doc, p(3, 1));
+    // Rows are [[3,0],[4,0]] then [[3,1]] — the order the emitter wrote.
+    expect(resolveErrorPath(doc, 'scenery[0][1]')).toEqual({
+      kind: 'cell',
+      cell: p(4, 0),
+    });
+    expect(resolveErrorPath(doc, 'scenery[1][0]')).toEqual({
+      kind: 'cell',
+      cell: p(3, 1),
+    });
+    expect(resolveErrorPath(doc, 'scenery[9][0]')).toEqual({
+      kind: 'document',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The client concealment MIRROR, extended to flood through scenery
+// (rpg-project#360 slice 1, design C4). Plan §1.3 was silent on this
+// mirror; it is extended so an existing derivation stays true once scenery
+// exists. The rule is the server's: two regions are joined iff SOME way
+// between them has no concealed door on ANY crossing.
+//
+// The scenes pair one-for-one with the toolkit's acceptance A3.
+// ---------------------------------------------------------------------------
+
+describe('the concealment mirror floods through scenery (design C4)', () => {
+  /** A3's shape: a visible room, a scenery strip, a hidden room, in a row.
+   * `visible` cols 0-1, strip cols 2-3, `secret` cols 4-5, start in
+   * `visible`. Nothing walled and no door, unless a test adds one. */
+  function a3Scene(): DungeonDoc {
+    let doc = emptyDungeon();
+    doc = updateRegion(doc, 'region-1', { id: 'visible', name: 'Visible' });
+    doc = addRegion(doc);
+    doc = updateRegion(doc, doc.regions[1].id, {
+      id: 'secret',
+      name: 'Secret',
+    });
+    for (const c of [0, 1]) doc = paintCell(doc, 'visible', p(c, 0));
+    for (const c of [4, 5]) doc = paintCell(doc, 'secret', p(c, 0));
+    for (const c of [2, 3]) doc = paintScenery(doc, p(c, 0));
+    return setStart(doc, p(0, 0));
+  }
+
+  const ways = (doc: DungeonDoc) => regionWays(doc);
+  const conceal = (doc: DungeonDoc) => deriveConcealment(doc).regionIds!;
+
+  it('A3: visible room · scenery · hidden room · no wall — the rooms are JOINED', () => {
+    const doc = a3Scene();
+    // The strip is a way in, so the far room is not a secret and the
+    // ratchet must not mark it one. Before this change the mirror saw two
+    // rooms with no crossing between them at all.
+    expect(ways(doc).openly('visible', 'secret')).toBe(true);
+    expect(ways(doc).joined('visible', 'secret')).toBe(true);
+    expect(conceal(doc).has('secret')).toBe(false);
+  });
+
+  it('A3: add the wall between the visible room and the strip — SEPARATED', () => {
+    const doc = toggleWall(a3Scene(), [p(1, 0), p(2, 0)]);
+    expect(ways(doc).joined('visible', 'secret')).toBe(false);
+    expect(ways(doc).openly('visible', 'secret')).toBe(false);
+    // Separated is NOT concealed: the module derives from what is
+    // authored and never invents a secret for a room nothing reaches.
+    expect(conceal(doc).has('secret')).toBe(false);
+  });
+
+  it('a wall standing INSIDE the strip separates them — a wall is not a way', () => {
+    const doc = toggleWall(a3Scene(), [p(2, 0), p(3, 0)]);
+    expect(ways(doc).joined('visible', 'secret')).toBe(false);
+  });
+
+  it('a concealed door on the VISIBLE room’s edge, strip behind it — joined, but not openly', () => {
+    let doc = addDoor(a3Scene(), [[p(1, 0), p(2, 0)]]);
+    doc = updateDoor(doc, doc.doors[0].id, {
+      concealed: [{ ability: 'perception', dc: 15 }],
+    });
+    expect(ways(doc).joined('visible', 'secret')).toBe(true);
+    expect(ways(doc).openly('visible', 'secret')).toBe(false);
+    expect(conceal(doc).has('secret')).toBe(true);
+  });
+
+  it('a concealed door on the SECRET room’s edge, strip in front of it — the same answer from the far end', () => {
+    // This is the scene that killed "classification by the first crossing
+    // out of the origin region": from the visible side the first crossing
+    // is bare, from the secret side it is the door. The flood gives one
+    // answer either way.
+    let doc = addDoor(a3Scene(), [[p(3, 0), p(4, 0)]]);
+    doc = updateDoor(doc, doc.doors[0].id, {
+      concealed: [{ ability: 'perception', dc: 15 }],
+    });
+    expect(ways(doc).joined('visible', 'secret')).toBe(true);
+    expect(ways(doc).openly('visible', 'secret')).toBe(false);
+    expect(ways(doc).openly('secret', 'visible')).toBe(false);
+    expect(conceal(doc).has('secret')).toBe(true);
+  });
+
+  it('an ORDINARY door anywhere on the way leaves them joined openly', () => {
+    const onTheWay: Edge[] = [
+      [p(1, 0), p(2, 0)], // where the strip meets the visible room
+      [p(3, 0), p(4, 0)], // where it meets the secret one
+    ];
+    for (const edge of onTheWay) {
+      const doc = addDoor(a3Scene(), [edge]);
+      expect(doc.doors).toHaveLength(1);
+      expect(ways(doc).openly('visible', 'secret')).toBe(true);
+      expect(conceal(doc).has('secret')).toBe(false);
+    }
+  });
+
+  it('a door STANDING IN a wall is a door, not a wall (rpg-project#355)', () => {
+    // A run keeps the crossing its door sits in and the compiler hands
+    // that edge back to the door, so the graph has to ask about the door
+    // FIRST. Asking about the wall first made every door drawn inside a
+    // run invisible to this derivation — a room behind one read as
+    // unreachable rather than as reachable-through-a-secret.
+    let doc = a3Scene();
+    doc = { ...doc, scenery: [] };
+    doc = paintCell(doc, 'visible', p(2, 0));
+    doc = paintCell(doc, 'secret', p(3, 0));
+    const seam: Edge = [p(2, 0), p(3, 0)];
+    doc = addWalls(doc, [seam]);
+    doc = addDoor(doc, [seam]);
+
+    // The wall is still authored; the compiler subtracts it at the door.
+    expect(wallEdges(doc).map(edgeKey)).toContain(edgeKey(seam));
+    expect(compiledWalls(doc)).toHaveLength(0);
+    expect(regionWays(doc).openly('visible', 'secret')).toBe(true);
+
+    doc = updateDoor(doc, doc.doors[0].id, {
+      concealed: [{ ability: 'perception', dc: 15 }],
+    });
+    expect(regionWays(doc).joined('visible', 'secret')).toBe(true);
+    expect(regionWays(doc).openly('visible', 'secret')).toBe(false);
+    expect(deriveConcealment(doc).regionIds!.has('secret')).toBe(true);
+  });
+
+  it('never tunnels through a THIRD room: a way ends at the first region cell it meets', () => {
+    // visible · scenery · middle · scenery · secret. The flood from
+    // `visible` stops on `middle`, so `visible` and `secret` are joined
+    // only through what `middle` itself opens onto — not by one long way.
+    let doc = emptyDungeon();
+    doc = updateRegion(doc, 'region-1', { id: 'visible', name: 'Visible' });
+    doc = addRegion(doc);
+    doc = updateRegion(doc, doc.regions[1].id, { id: 'middle', name: 'Mid' });
+    doc = addRegion(doc);
+    doc = updateRegion(doc, doc.regions[2].id, { id: 'far', name: 'Far' });
+    doc = paintCell(doc, 'visible', p(0, 0));
+    doc = paintCell(doc, 'middle', p(2, 0));
+    doc = paintCell(doc, 'far', p(4, 0));
+    doc = paintScenery(doc, p(1, 0));
+    doc = paintScenery(doc, p(3, 0));
+    doc = setStart(doc, p(0, 0));
+
+    const w = ways(doc);
+    expect(w.openly('visible', 'middle')).toBe(true);
+    expect(w.openly('middle', 'far')).toBe(true);
+    // No direct way: `middle` is a destination, never a corridor.
+    expect(w.joined('visible', 'far')).toBe(false);
   });
 });

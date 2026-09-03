@@ -21,6 +21,8 @@ import {
   emitDungeon,
   emptyDungeon,
   paintCell,
+  paintScenery,
+  placeAt,
   setStart,
   updateDoor,
 } from './dungeonYaml';
@@ -477,5 +479,229 @@ describe('staleAtlasNotice — the 3D tab names a lagging atlas (#804 walk findi
         message: 'boom',
       })
     ).toMatch(/unreachable: boom/);
+  });
+});
+
+describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () => {
+  /** A room of three cells with a two-cell scenery strip beside it. */
+  function stripYaml(): string {
+    let doc = emptyDungeon();
+    for (const c of [0, 1, 2]) doc = paintCell(doc, 'region-1', p(c, 1));
+    doc = paintScenery(doc, p(3, 1));
+    doc = paintScenery(doc, p(4, 1));
+    doc = setStart(doc, p(0, 1));
+    return emitDungeon(doc);
+  }
+
+  const cell = (c: number, r: number) =>
+    document.querySelector(`[data-cell="${axialKey(p(c, r))}"]`)!;
+
+  function mountBuilder(yaml: string) {
+    return render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={yaml}
+        persistDraft={false}
+      />
+    );
+  }
+
+  it('paints scenery from the palette and writes it to the file', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain('scenery:')
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scenery' }));
+    fireEvent.pointerDown(cell(5, 1), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'scenery:\n      - [[3,1],[4,1],[5,1]]'
+      )
+    );
+    expect(cell(5, 1).getAttribute('data-scenery')).toBe('true');
+  });
+
+  it('moves a cell between the room and the strip rather than letting both claim it', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(cell(2, 1).getAttribute('data-region')).toBe('region-1')
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scenery' }));
+    fireEvent.pointerDown(cell(2, 1), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(cell(2, 1).getAttribute('data-scenery')).toBe('true')
+    );
+    expect(cell(2, 1).getAttribute('data-region')).toBe('');
+
+    // Painting the room back over it takes it out of the strip again.
+    fireEvent.click(screen.getByRole('button', { name: 'Region brush' }));
+    fireEvent.pointerDown(cell(2, 1), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(cell(2, 1).getAttribute('data-region')).toBe('region-1')
+    );
+    expect(cell(2, 1).getAttribute('data-scenery')).toBeNull();
+  });
+
+  it('refuses the start on scenery IN PLACE, with the reason (design §2.4)', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'start: [0, 1]'
+      )
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    // The board acts on pointer DOWN — the same press the brush uses.
+    fireEvent.pointerDown(cell(3, 1), { button: 0 });
+
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'nobody can stand here'
+      )
+    );
+    // The start did not move — refused in place, not silently relocated.
+    expect(screen.getByTestId('yaml-text').textContent).toContain(
+      'start: [0, 1]'
+    );
+
+    // ...and it still moves onto a room cell.
+    fireEvent.pointerDown(cell(1, 1), { button: 0 });
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'start: [1, 1]'
+      )
+    );
+  });
+
+  it('refuses a monster on scenery and accepts a prop there (F2)', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain('scenery:')
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sk' }));
+    fireEvent.pointerDown(cell(3, 1), { button: 0 });
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'nobody can stand here'
+      )
+    );
+    expect(screen.getByTestId('yaml-text').textContent).toContain('place: []');
+
+    // A prop on the very same cell is fine — that is what the strip is for.
+    const prop = document.querySelector(
+      '[title^="dnd5e:props:"]'
+    ) as HTMLElement;
+    expect(prop).not.toBeNull();
+    fireEvent.click(prop);
+    fireEvent.pointerDown(cell(3, 1), { button: 0 });
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain('at: [3,1]')
+    );
+    expect(screen.getByTestId('yaml-text').textContent).toContain(
+      'dnd5e:props:'
+    );
+  });
+});
+
+describe('DungeonBuilder — the preview survives a server that has not learned `scenery` yet', () => {
+  it('lists the strict decoder refusal, keeps drawing the board, and never blanks', async () => {
+    // Until the toolkit slice lands and rpg-api is pinned, `PutDungeon
+    // validate_only` REFUSES a document carrying `scenery` — an unknown
+    // key, reported against the document rather than any cell. The field
+    // is real, so the builder sends it and shows the refusal; it must not
+    // fall over on a path it cannot draw.
+    let doc = emptyDungeon();
+    for (const c of [0, 1]) doc = paintCell(doc, 'region-1', p(c, 0));
+    doc = paintScenery(doc, p(2, 0));
+    const client = fakeClient([
+      { path: 'document', message: 'unknown key "scenery"' },
+    ]);
+
+    render(
+      <DungeonBuilder
+        authoringClient={client}
+        initialYaml={emitDungeon(doc)}
+        persistDraft={false}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error-list').textContent).toContain(
+        'unknown key "scenery"'
+      )
+    );
+    // The board still draws the document, scenery included — the refusal
+    // is about the server's vocabulary, not about the file being undrawable.
+    const strip = document.querySelector(`[data-cell="${axialKey(p(2, 0))}"]`);
+    expect(strip?.getAttribute('data-scenery')).toBe('true');
+    // The field is NOT stripped before sending: it is real, and hiding it
+    // would hide the very refusal the pin is waiting to clear.
+    expect(client.putDungeon).toHaveBeenLastCalledWith(
+      expect.objectContaining({ yaml: expect.stringContaining('scenery:') })
+    );
+    // Save stays disabled while the server refuses, as with any error.
+    expect(
+      (screen.getByRole('button', { name: /^Save$/ }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+  });
+});
+
+describe('DungeonBuilder — the scenery brush refuses rather than deletes', () => {
+  it('names what is standing in the way and leaves it standing', async () => {
+    let doc = emptyDungeon();
+    for (const c of [0, 1, 2]) doc = paintCell(doc, 'region-1', p(c, 0));
+    doc = setStart(doc, p(0, 0));
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(1, 0) });
+
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(doc)}
+        persistDraft={false}
+      />
+    );
+    const cell = (c: number, r: number) =>
+      document.querySelector(`[data-cell="${axialKey(p(c, r))}"]`)!;
+    await waitFor(() => expect(cell(0, 0)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scenery' }));
+
+    fireEvent.pointerDown(cell(0, 0), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'the party starts here'
+      )
+    );
+    expect(cell(0, 0).getAttribute('data-scenery')).toBeNull();
+
+    fireEvent.pointerDown(cell(1, 0), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'a monster stands here'
+      )
+    );
+    expect(cell(1, 0).getAttribute('data-scenery')).toBeNull();
+
+    // Nothing was deleted: the file still carries both.
+    const yaml = screen.getByTestId('yaml-text').textContent ?? '';
+    expect(yaml).toContain('start: [0, 0]');
+    expect(yaml).toContain('dnd5e:monsters:skeleton');
+
+    // The free cell beside them still paints.
+    fireEvent.pointerDown(cell(2, 0), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(cell(2, 0).getAttribute('data-scenery')).toBe('true')
+    );
   });
 });
