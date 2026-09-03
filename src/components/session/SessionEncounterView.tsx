@@ -50,6 +50,7 @@ import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
+import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
 import { buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
@@ -173,6 +174,7 @@ function SessionEncounterScope({
     loading: atlasLoading,
     error: atlasError,
     refetch: refetchAtlas,
+    applyReveal: applyAtlasReveal,
   } = useSessionAtlas(sessionId, member);
   const {
     position: wherePosition,
@@ -932,6 +934,21 @@ function SessionEncounterScope({
       ]);
       acceptStreamEvent(event, metadata);
 
+      // A REVEAL PATCHES THE HELD ATLAS IN THE SAME FRAME (design §5.2
+      // as amended): the room, its walls and its sealed cells appear now,
+      // not a round trip later. `applyReveal.ts` holds the merge rule —
+      // segments append, sealed replaces within the revealed region's
+      // cells — and the refetch scheduled above still lands afterwards
+      // with the server's own answer, so the patch buys the frame and
+      // the server keeps the truth.
+      if (event.body.case === 'regionRevealed') {
+        const beat = event.body.value;
+        applyAtlasReveal((current) => applyRegionRevealed(current, beat));
+      }
+      if (event.body.case === 'doorRevealed') {
+        const beat = event.body.value;
+        applyAtlasReveal((current) => applyDoorRevealed(current, beat));
+      }
       if (event.body.case === 'door') setDoorNotice(null);
       // The same law: a DOOR_REVEALED/REGION_REVEALED beat is search's own
       // "the world moved on" signal, mirroring the 'door' case above.
@@ -950,6 +967,7 @@ function SessionEncounterScope({
     },
     [
       acceptStreamEvent,
+      applyAtlasReveal,
       invalidateAuthority,
       refreshKeysForEvent,
       scheduleRefresh,
