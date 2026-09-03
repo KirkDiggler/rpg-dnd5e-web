@@ -62,7 +62,6 @@ import {
   updatePlacement,
   updateRegion,
   wallEdges,
-  wallRoom,
   type DungeonDoc,
 } from './dungeonYaml';
 import { edgeKey, type Axial, type Edge, type Orientation } from './hexOffset';
@@ -720,22 +719,7 @@ export function DungeonBuilder({
               errorTargets={errorTargets}
               concealedRegionIds={concealment.regionIds ?? EMPTY_REGION_IDS}
               onPaint={handlePaint}
-              onPaintRoom={(a, b) => {
-                if (tool === 'room') {
-                  applyDoc((d) => {
-                    const next = wallRoom(d, a, b);
-                    if (next === d) {
-                      // Never fail silently: a room over void, or over a
-                      // boundary already walled, authors nothing — and an
-                      // author watching nothing happen has no way to know why.
-                      showToast(
-                        'No walls to add there — a room needs floor on both sides of its edges'
-                      );
-                    }
-                    return next;
-                  });
-                  return;
-                }
+              onPaintRect={(a, b) => {
                 if (!activeRegionId) {
                   showToast('Pick a region first');
                   return;

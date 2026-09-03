@@ -1095,88 +1095,20 @@ export function rectCells(o: Orientation, a: Axial, b: Axial): Axial[] {
   return cells;
 }
 
-/** Wall the rectangle `a`..`b` — the ROOM tool (rpg-dnd5e-web#902).
- *
- * A room is a rectangle of WALLS drawn on floor, not a region. Kirk's model,
- * after I built the wrong thing twice: *"region can be like it was + the
- * square setter. I then want to draw n rooms inside."* One region holds many
- * rooms; a room is the wall around one of them.
- *
- * Only floor-to-floor crossings are walled. A crossing into void is refused
- * outright ("the envelope is implied, never written") and needs no wall — the
- * runtime already seals it — so a room drawn at the floor's edge is walled
- * only where there is something on the other side.
- *
- * An edge already carrying a wall is skipped, which is what makes **one wall
- * between two rooms** rather than two: draw a room beside another and the
- * shared boundary is already walled, so nothing is added there. Door edges are
- * left alone too — the tool does not wall up a doorway somebody placed.
- *
- * The perimeter is emitted as FOUR runs, one per side, not one run around the
- * whole room. A single run wrapping a closed loop is chained and straightened
- * as one path by the renderer, which fits a wonky quadrilateral through it —
- * Kirk, looking at exactly that: "if that room drawer made 4 edges all inline
- * maybe we can salvage this." Per side, each fits its own line.
- *
- * Delete a single edge with the wall tool to open a doorway between two
- * rooms. */
-export function wallRoom(doc: DungeonDoc, a: Axial, b: Axial): DungeonDoc {
-  const cells = rectCells(doc.orientation, a, b);
-  const inRoom = new Set(cells.map(axialKey));
-  const owners = floorOwners(doc);
-  const taken = wallKeys(doc);
-  const doors = doorEdgeOwners(doc);
-  const seen = new Set<string>();
-  const edges: { edge: Edge; side: (typeof SIDES)[number] }[] = [];
-  const o = doc.orientation;
-  const offsets = cells.map((c) => toOffset(o, c));
-  const c0 = Math.min(...offsets.map((x) => x[0]));
-  const r0 = Math.min(...offsets.map((x) => x[1]));
-  const r1 = Math.max(...offsets.map((x) => x[1]));
-  for (const cell of cells) {
-    if (!owners.has(axialKey(cell))) continue;
-    for (const n of axialNeighbors(cell)) {
-      const nk = axialKey(n);
-      if (inRoom.has(nk) || !owners.has(nk)) continue;
-      const edge = normalizeEdge([cell, n]);
-      const key = edgeKey(edge);
-      if (seen.has(key) || taken.has(key) || doors.has(key)) continue;
-      seen.add(key);
-      // Which side the neighbour lies past. Row first, so a diagonal
-      // neighbour off a corner counts as north/south rather than splitting
-      // the corner between two runs.
-      const [nc, nr] = toOffset(o, n);
-      const side =
-        nr < r0 ? 'north' : nr > r1 ? 'south' : nc < c0 ? 'west' : 'east';
-      edges.push({ edge, side });
-    }
-  }
-  if (edges.length === 0) return doc;
-  const n =
-    new Set(
-      doc.walls
-        .map((w) => /^room (\d+)/.exec(w.name ?? '')?.[1])
-        .filter(Boolean)
-    ).size + 1;
-  const added = SIDES.map((side) => ({
-    name: `room ${n} ${side}`,
-    edges: edges.filter((e) => e.side === side).map((e) => e.edge),
-  })).filter((run) => run.edges.length > 0);
-  return { ...doc, walls: [...doc.walls, ...added] };
-}
-
-/** The four sides a room's boundary edge can belong to, in the order they are
- * written — so a room reads top-down in the file the way it is drawn. */
-const SIDES = ['north', 'east', 'south', 'west'] as const;
-
-/** Paint the whole rectangle `a`..`b` into `regionId` — the room tool's
+/** Paint the whole rectangle `a`..`b` into `regionId` — the region-rect
  * commit (rpg-dnd5e-web#902).
  *
- * A room drawn this way is square BY CONSTRUCTION, which is the point: no
- * gesture tuning makes a freehand drag reliably rectangular, and the author
- * wanted a room rather than eighty-four brush strokes. Cells already owned by
- * another region change hands, exactly as the brush does — the tool paints,
- * it does not negotiate. */
+ * The floor as a box instead of eighty-four brush strokes. The rectangle is
+ * taken in OFFSET space because that is the shape the canvas draws; the same
+ * corners in axial give a rhombus. Cells already owned by another region
+ * change hands, exactly as the brush does — the tool paints, it does not
+ * negotiate.
+ *
+ * NOTE this paints FLOOR only. Walls are not authored from a rectangle: a
+ * rectangle of hex edges is a staircase, and drawing it as a square is a
+ * rendering problem the edge-slice model cannot solve. Kirk's ruling for the
+ * real fix (rpg-dnd5e-web#905): a wall is a line that cuts hexes wherever it
+ * likes, and a hex with more than 80% of itself left is one you can stand on. */
 export function paintRect(
   doc: DungeonDoc,
   regionId: string,

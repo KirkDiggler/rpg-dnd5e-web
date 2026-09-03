@@ -109,9 +109,9 @@ export interface CreationBoardProps {
   onPaint: (cell: Axial) => void;
   /** The room tool's commit (rpg-dnd5e-web#902): the two corners of a
    * dragged rectangle. The owner paints the whole block into the active
-   * region, so the room is square by construction rather than by a steady
+   * region, so the floor is square by construction rather than by a steady
    * hand. */
-  onPaintRoom: (a: Axial, b: Axial) => void;
+  onPaintRect: (a: Axial, b: Axial) => void;
   onErase: (cell: Axial) => void;
   onEdgeClick: (edge: Edge) => void;
   /** The wall drag's commit (#804): the RAW taut chain of the released
@@ -181,7 +181,7 @@ export function CreationBoard({
   errorTargets,
   concealedRegionIds,
   onPaint,
-  onPaintRoom,
+  onPaintRect,
   onErase,
   onEdgeClick,
   onWallDraw,
@@ -196,16 +196,16 @@ export function CreationBoard({
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverEdge, setHoverEdge] = useState<Edge | null>(null);
   const [hoverCell, setHoverCell] = useState<Axial | null>(null);
-  /** The room drag's first corner, held while the pointer is down. */
-  const [roomFrom, setRoomFrom] = useState<Axial | null>(null);
+  /** The rectangle drag's first corner, held while the pointer is down. */
+  const [rectFrom, setRoomFrom] = useState<Axial | null>(null);
 
-  /** The cells a released room drag would paint — the preview IS the commit,
+  /** The cells a released rectangle drag would paint — the preview IS the commit,
    * so this is the same `rectCells` the owner's `paintRect` uses. */
-  const roomPreview = useMemo(() => {
-    if ((tool !== 'room' && tool !== 'region-rect') || !roomFrom || !hoverCell)
+  const rectPreview = useMemo(() => {
+    if ((tool !== 'room' && tool !== 'region-rect') || !rectFrom || !hoverCell)
       return null;
-    return new Set(rectCells(o, roomFrom, hoverCell).map(axialKey));
-  }, [tool, roomFrom, hoverCell, o]);
+    return new Set(rectCells(o, rectFrom, hoverCell).map(axialKey));
+  }, [tool, rectFrom, hoverCell, o]);
   const painting = useRef<'paint' | 'erase' | null>(null);
 
   const owners = useMemo(() => floorOwners(doc), [doc]);
@@ -624,10 +624,10 @@ export function CreationBoard({
   };
 
   /** Commit the dragged rectangle. A press with no travel is a one-cell
-   * room, which is the honest reading of the gesture rather than a no-op. */
-  const endRoom = () => {
-    if (!roomFrom) return;
-    onPaintRoom(roomFrom, hoverCell ?? roomFrom);
+   * rectangle, which is the honest reading of the gesture rather than a no-op. */
+  const endRect = () => {
+    if (!rectFrom) return;
+    onPaintRect(rectFrom, hoverCell ?? rectFrom);
     setRoomFrom(null);
   };
 
@@ -757,7 +757,7 @@ export function CreationBoard({
           }}
           onPointerUp={() => {
             endPaint();
-            endRoom();
+            endRect();
             finishGesture();
           }}
           onPointerCancel={() => {
@@ -766,7 +766,7 @@ export function CreationBoard({
             // it — otherwise a later unrelated pointer-up would commit
             // the stale chain (Copilot review, PR #808).
             endPaint();
-            // A canceled pointer drops the room without painting it, for the
+            // A canceled pointer drops the rectangle without painting it, for the
             // reason the wall gesture drops its chain: a later unrelated
             // pointer-up must not commit a stale drag.
             setRoomFrom(null);
@@ -798,7 +798,7 @@ export function CreationBoard({
               const isError = errorCells.has(key);
               const isConcealed = !!ownerId && concealedRegionIds.has(ownerId);
               const isHover = hoverCell && axialKey(hoverCell) === key;
-              const inRoom = roomPreview?.has(key) ?? false;
+              const inRect = rectPreview?.has(key) ?? false;
               return (
                 <polygon
                   key={key}
@@ -821,7 +821,7 @@ export function CreationBoard({
                   strokeWidth={
                     isError
                       ? 2.5
-                      : inRoom
+                      : inRect
                         ? 2
                         : isSelectedRegion
                           ? 1.5
@@ -836,7 +836,7 @@ export function CreationBoard({
                   }
                   strokeOpacity={region ? (isActive ? 1 : 0.6) : 1}
                   opacity={
-                    inRoom
+                    inRect
                       ? 0.85
                       : isHover && (tool === 'region' || tool === 'erase')
                         ? 0.8

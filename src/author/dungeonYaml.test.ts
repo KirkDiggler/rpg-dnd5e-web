@@ -25,7 +25,6 @@ import {
   updatePlacement,
   updateRegion,
   wallEdges,
-  wallRoom,
   type DungeonDoc,
 } from './dungeonYaml';
 import { referenceTombDoc } from './fixtures/referenceTomb';
@@ -834,46 +833,7 @@ describe('mutators', () => {
   });
 });
 
-describe('the room tool (rpg-dnd5e-web#902)', () => {
-  it('a room is a rectangle of WALLS on floor, and two rooms share ONE wall', () => {
-    // Kirk's model: one region, many rooms inside it.
-    let doc = emptyDungeon();
-    doc = paintRect(doc, 'region-1', p(0, 0), p(7, 4));
-
-    doc = wallRoom(doc, p(1, 1), p(3, 3));
-    // One run PER SIDE, so the renderer straightens each side on its own
-    // instead of fitting one path around a closed loop.
-    expect(doc.walls.length).toBeGreaterThan(1);
-    expect(doc.walls.every((w) => /^room 1 /.test(w.name ?? ''))).toBe(true);
-    expect(wallEdges(doc).length).toBeGreaterThan(0);
-
-    // A room drawn flush beside it must NOT double the shared boundary.
-    const runsAfterFirst = doc.walls.length;
-    doc = wallRoom(doc, p(4, 1), p(6, 3));
-    expect(doc.walls.length).toBeGreaterThan(runsAfterFirst);
-    expect(doc.walls.some((w) => /^room 2 /.test(w.name ?? ''))).toBe(true);
-    const keys = wallEdges(doc).map(edgeKey);
-    expect(new Set(keys).size).toBe(keys.length); // no edge walled twice
-  });
-
-  it('walls nothing where the floor ends, because the envelope is implied', () => {
-    // A room whose rectangle IS the whole floor has no floor beyond it, so
-    // there is nothing legal to wall — a wall into void is refused outright.
-    let doc = emptyDungeon();
-    doc = paintRect(doc, 'region-1', p(0, 0), p(2, 2));
-    expect(wallRoom(doc, p(0, 0), p(2, 2))).toBe(doc);
-  });
-
-  it('leaves a doorway alone rather than walling it up', () => {
-    let doc = emptyDungeon();
-    doc = paintRect(doc, 'region-1', p(0, 0), p(5, 3));
-    const doorway: Edge = [p(1, 1), p(0, 1)];
-    doc = toggleDoorEdge(doc, doorway);
-    expect(doc.doors).toHaveLength(1);
-    doc = wallRoom(doc, p(1, 1), p(3, 2));
-    expect(wallEdges(doc).map(edgeKey)).not.toContain(edgeKey(doorway));
-  });
-
+describe('the region-rect tool (rpg-dnd5e-web#902)', () => {
   it('paints the offset rectangle two corners span — square by construction', () => {
     let doc = emptyDungeon();
     doc = paintRect(doc, 'region-1', p(2, 1), p(5, 3));

@@ -12,7 +12,6 @@ import {
   placeAt,
   toggleWall,
   wallEdges,
-  wallRoom,
   type DungeonDoc,
 } from '../dungeonYaml';
 import {
@@ -51,7 +50,7 @@ function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
       activeRegionId="region-1"
       errorTargets={[]}
       concealedRegionIds={EMPTY_REGION_IDS}
-      onPaintRoom={() => {}}
+      onPaintRect={() => {}}
       onPaint={(c) => calls.paint.push(axialKey(c))}
       onErase={(c) => calls.erase.push(axialKey(c))}
       onEdgeClick={(e) => calls.edges.push(e)}
@@ -205,7 +204,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         activeRegionId="region-1"
         errorTargets={[]}
         concealedRegionIds={EMPTY_REGION_IDS}
-        onPaintRoom={() => {}}
+        onPaintRect={() => {}}
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
@@ -252,7 +251,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         activeRegionId="region-1"
         errorTargets={[]}
         concealedRegionIds={EMPTY_REGION_IDS}
-        onPaintRoom={() => {}}
+        onPaintRect={() => {}}
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
@@ -533,59 +532,12 @@ describe('gesture plumbing — press, drag, release (#804)', () => {
  * join), so a future preview/commit path that bypassed the magnetism
  * would fail here, not on a walk.
  */
-describe('one wall at a time (rpg-dnd5e-web#902)', () => {
-  it('a click with the wall tool reports ONE edge, not the run under it', () => {
-    // Kirk's flow: draw two rooms, then "select a wall and delete it and only
-    // it" to open a doorway. A press that does not travel is a single-edge
-    // toggle; a run-wide erase would need a drag.
-    let doc = emptyDungeon();
-    for (let c = 0; c <= 3; c += 1) {
-      for (let r = 0; r <= 2; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
-    }
-    doc = wallRoom(doc, p(1, 0), p(2, 2));
-    expect(doc.walls[0].edges.length).toBeGreaterThan(1);
-
-    const onEdgeClick = vi.fn();
-    const onWallErase = vi.fn();
-    const { container } = mount(doc, {
-      tool: 'wall',
-      onEdgeClick,
-      onWallErase,
-    });
-    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
-    fireEvent.pointerUp(container.querySelector('svg')!);
-
-    expect(onEdgeClick).toHaveBeenCalledTimes(1);
-    expect(onWallErase).not.toHaveBeenCalled();
-    // One edge came back, not a chain.
-    expect(onEdgeClick.mock.calls[0][0]).toHaveLength(2);
-  });
-
-  it('toggling an edge of a room run removes that edge and leaves the rest', () => {
-    let doc = emptyDungeon();
-    for (let c = 0; c <= 3; c += 1) {
-      for (let r = 0; r <= 2; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
-    }
-    doc = wallRoom(doc, p(1, 0), p(2, 2));
-    // The room is several runs now (one per side), so ask the whole wall.
-    const all = wallEdges(doc);
-    const before = all.length;
-    expect(before).toBeGreaterThan(1);
-
-    const opened = toggleWall(doc, all[0]);
-    expect(wallEdges(opened)).toHaveLength(before - 1);
-    // The rest of the room's wall is untouched — this is a doorway, not a
-    // demolition.
-    expect(wallEdges(opened).map(edgeKey)).toEqual(all.slice(1).map(edgeKey));
-  });
-});
-
 describe('the implied envelope is drawn (rpg-dnd5e-web#902)', () => {
   it('outlines the floor so a freshly dragged room reads as a room', () => {
     // One cell: six crossings into void, so six envelope segments.
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(2, 2));
-    const { container, unmount } = mount(doc, { tool: 'room' });
+    const { container, unmount } = mount(doc, { tool: 'region-rect' });
     const envelope = () =>
       [...container.querySelectorAll('[data-edge^="env:"]')].length;
     expect(envelope()).toBe(6);
@@ -596,7 +548,7 @@ describe('the implied envelope is drawn (rpg-dnd5e-web#902)', () => {
     let pair = emptyDungeon();
     pair = paintCell(pair, 'region-1', p(2, 2));
     pair = paintCell(pair, 'region-1', p(3, 2));
-    const { container: c2 } = mount(pair, { tool: 'room' });
+    const { container: c2 } = mount(pair, { tool: 'region-rect' });
     expect([...c2.querySelectorAll('[data-edge^="env:"]')]).toHaveLength(10);
   });
 
@@ -614,15 +566,15 @@ describe('the implied envelope is drawn (rpg-dnd5e-web#902)', () => {
   });
 });
 
-describe('the room tool paints a rectangle (rpg-dnd5e-web#902)', () => {
+describe('the region-rect tool paints a rectangle (rpg-dnd5e-web#902)', () => {
   it('commits the two dragged corners, and previews exactly what it will paint', () => {
     let doc = emptyDungeon();
     // A patch of floor so the board has an extent to render.
     for (let c = 0; c <= 6; c += 1) {
       for (let r = 0; r <= 4; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
     }
-    const onPaintRoom = vi.fn();
-    const { container } = mount(doc, { tool: 'room', onPaintRoom });
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
 
     fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
     fireEvent.pointerEnter(cellEl(container, 3, 3));
@@ -635,8 +587,8 @@ describe('the room tool paints a rectangle (rpg-dnd5e-web#902)', () => {
     expect(previewed).toHaveLength(9);
 
     fireEvent.pointerUp(container.querySelector('svg')!);
-    expect(onPaintRoom).toHaveBeenCalledTimes(1);
-    const [from, to] = onPaintRoom.mock.calls[0];
+    expect(onPaintRect).toHaveBeenCalledTimes(1);
+    const [from, to] = onPaintRect.mock.calls[0];
     expect(toOffset('pointy', from)).toEqual([1, 1]);
     expect(toOffset('pointy', to)).toEqual([3, 3]);
   });
@@ -644,23 +596,23 @@ describe('the room tool paints a rectangle (rpg-dnd5e-web#902)', () => {
   it('a press with no travel is a one-cell room, not a no-op', () => {
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(1, 1));
-    const onPaintRoom = vi.fn();
-    const { container } = mount(doc, { tool: 'room', onPaintRoom });
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
     fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
     fireEvent.pointerUp(container.querySelector('svg')!);
-    expect(onPaintRoom).toHaveBeenCalledTimes(1);
+    expect(onPaintRect).toHaveBeenCalledTimes(1);
   });
 
   it('a canceled pointer drops the room without painting it', () => {
     let doc = emptyDungeon();
     for (let c = 0; c <= 3; c += 1) doc = paintCell(doc, 'region-1', p(c, 1));
-    const onPaintRoom = vi.fn();
-    const { container } = mount(doc, { tool: 'room', onPaintRoom });
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
     fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
     fireEvent.pointerEnter(cellEl(container, 3, 1));
     fireEvent.pointerCancel(container.querySelector('svg')!);
     fireEvent.pointerUp(container.querySelector('svg')!);
-    expect(onPaintRoom).not.toHaveBeenCalled();
+    expect(onPaintRect).not.toHaveBeenCalled();
   });
 });
 
