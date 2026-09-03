@@ -14,7 +14,14 @@ import {
   wallEdges,
   type DungeonDoc,
 } from '../dungeonYaml';
-import { axialKey, edgeKey, fromOffset, type Edge } from '../hexOffset';
+import {
+  axialKey,
+  edgeKey,
+  fromOffset,
+  toOffset,
+  type Edge,
+} from '../hexOffset';
+import { ENVELOPE_DASH, ENVELOPE_STROKE, WALL_STROKE } from '../markerStyle';
 import { boardWallScene } from './boardWallRuns';
 import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
 import {
@@ -43,6 +50,7 @@ function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
       activeRegionId="region-1"
       errorTargets={[]}
       concealedRegionIds={EMPTY_REGION_IDS}
+      onPaintRect={() => {}}
       onPaint={(c) => calls.paint.push(axialKey(c))}
       onErase={(c) => calls.erase.push(axialKey(c))}
       onEdgeClick={(e) => calls.edges.push(e)}
@@ -196,6 +204,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         activeRegionId="region-1"
         errorTargets={[]}
         concealedRegionIds={EMPTY_REGION_IDS}
+        onPaintRect={() => {}}
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
@@ -242,6 +251,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         activeRegionId="region-1"
         errorTargets={[]}
         concealedRegionIds={EMPTY_REGION_IDS}
+        onPaintRect={() => {}}
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
@@ -522,6 +532,94 @@ describe('gesture plumbing — press, drag, release (#804)', () => {
  * join), so a future preview/commit path that bypassed the magnetism
  * would fail here, not on a walk.
  */
+describe('the implied envelope is drawn (rpg-dnd5e-web#902)', () => {
+  it('outlines the floor so a freshly dragged room reads as a room', () => {
+    // One cell: six crossings into void, so six envelope segments.
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(2, 2));
+    const { container, unmount } = mount(doc, { tool: 'region-rect' });
+    const envelope = () =>
+      [...container.querySelectorAll('[data-edge^="env:"]')].length;
+    expect(envelope()).toBe(6);
+    unmount();
+
+    // Two neighbours share an edge, so that crossing is NOT envelope:
+    // 12 sides minus the 2 half-edges they share = 10.
+    let pair = emptyDungeon();
+    pair = paintCell(pair, 'region-1', p(2, 2));
+    pair = paintCell(pair, 'region-1', p(3, 2));
+    const { container: c2 } = mount(pair, { tool: 'region-rect' });
+    expect([...c2.querySelectorAll('[data-edge^="env:"]')]).toHaveLength(10);
+  });
+
+  it('is drawn dimmer than an authored wall, because it is implied not written', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(2, 2));
+    const { container } = mount(doc, { tool: 'select' });
+    const env = container.querySelector('[data-edge^="env:"]')!;
+    expect(env).toBeTruthy();
+    // The envelope is a fact about the floor's edge, not a line in the file,
+    // so it must not be mistakable for an authored wall.
+    expect(env.getAttribute('stroke')).toBe(ENVELOPE_STROKE);
+    expect(env.getAttribute('stroke')).not.toBe(WALL_STROKE);
+    expect(Number(env.getAttribute('stroke-width'))).toBeLessThan(4);
+    // DASHED, so it never reads as a wall. Kirk: "walls are intentional" — an
+    // unwalled boundary is its own authored choice, and a region is allowed a
+    // cliff edge. This line only says the floor stops here.
+    expect(env.getAttribute('stroke-dasharray')).toBe(ENVELOPE_DASH);
+  });
+});
+
+describe('the region-rect tool paints a rectangle (rpg-dnd5e-web#902)', () => {
+  it('commits the two dragged corners, and previews exactly what it will paint', () => {
+    let doc = emptyDungeon();
+    // A patch of floor so the board has an extent to render.
+    for (let c = 0; c <= 6; c += 1) {
+      for (let r = 0; r <= 4; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
+
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerEnter(cellEl(container, 3, 3));
+
+    // The preview IS the commit: every cell of the 3x3 block is marked, and
+    // nothing outside it is.
+    const previewed = [...container.querySelectorAll('[data-cell]')].filter(
+      (el) => el.getAttribute('opacity') === '0.85'
+    );
+    expect(previewed).toHaveLength(9);
+
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRect).toHaveBeenCalledTimes(1);
+    const [from, to] = onPaintRect.mock.calls[0];
+    expect(toOffset('pointy', from)).toEqual([1, 1]);
+    expect(toOffset('pointy', to)).toEqual([3, 3]);
+  });
+
+  it('a press with no travel is a one-cell room, not a no-op', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRect).toHaveBeenCalledTimes(1);
+  });
+
+  it('a canceled pointer drops the room without painting it', () => {
+    let doc = emptyDungeon();
+    for (let c = 0; c <= 3; c += 1) doc = paintCell(doc, 'region-1', p(c, 1));
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerEnter(cellEl(container, 3, 1));
+    fireEvent.pointerCancel(container.querySelector('svg')!);
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRect).not.toHaveBeenCalled();
+  });
+});
+
 describe('corner capture through the real pointer path (#804 walk round 2)', () => {
   const S = BOARD_HEX_SIZE;
   const ref = (c: number, r: number, corner: number): CornerRef => ({
