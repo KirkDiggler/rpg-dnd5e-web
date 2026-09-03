@@ -23,6 +23,7 @@ import type { Point } from '../../concepts/session-tomb/atlas';
 import {
   floorOwners,
   isMonsterRef,
+  nameFromFloor,
   rectCells,
   sceneryKeys,
   type DungeonDoc,
@@ -954,7 +955,10 @@ export function CreationBoard({
                   no freehand, no angle snap, nothing to miss. */}
               {!pick.start &&
                 pick.cell &&
-                cellPositions(o, pick.cell).map((position) => {
+                cellPositions(o, pick.cell).map((raw) => {
+                  // Named from a floor cell where the point has one, so
+                  // the file never carries a cell nobody painted.
+                  const position = nameFromFloor(doc, latticeOf(o, raw)) ?? raw;
                   const p = positionPoint(o, position, size);
                   return (
                     <circle

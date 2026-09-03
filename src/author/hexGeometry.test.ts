@@ -165,6 +165,37 @@ describe('the twelve directions', () => {
   });
 });
 
+/** A line's identity: its direction, either way round. */
+const lineKey = (d: Direction): string =>
+  d.du > 0 || (d.du === 0 && d.dv > 0)
+    ? `${d.du},${d.dv}`
+    : `${-d.du},${-d.dv}`;
+
+const sameLine = (a: Direction, b: Direction): boolean =>
+  lineKey(a) === lineKey(b);
+
+/** The primitive lattice step from `a` to `b`. */
+function primitive(a: Lattice, b: Lattice): Direction {
+  const du = b.u - a.u;
+  const dv = b.v - a.v;
+  const g = (x: number, y: number): number => (y === 0 ? x : g(y, x % y));
+  const n = g(Math.abs(du), Math.abs(dv));
+  return { du: du / n, dv: dv / n };
+}
+
+/** Whether two directions are square to each other IN THE PLANE — the
+ * lattice is not orthonormal, so this compares real vectors. */
+function perpendicular(o: Orientation, a: Direction, b: Direction): boolean {
+  const vec = (d: Direction) => {
+    const along = (Math.sqrt(3) * d.du) / 4;
+    const across = 0.75 * d.dv;
+    return o === 'pointy' ? [along, across] : [across, along];
+  };
+  const [ax, ay] = vec(a);
+  const [bx, by] = vec(b);
+  return Math.abs(ax * bx + ay * by) < 1e-9;
+}
+
 describe('thin and thick — what a line costs', () => {
   const o: Orientation = 'pointy';
   const linesFrom = (l: Lattice): { thin: number; thick: number } => {
@@ -197,6 +228,52 @@ describe('thin and thick — what a line costs', () => {
           thick: 2,
         }
       );
+    }
+  });
+
+  it('names WHICH two lines are thick at every one of the six midpoints', () => {
+    // The invariant, not the angles (ruled 2026-09-03). At a side
+    // midpoint the two thick lines are exactly:
+    //   1. the line through the two CENTRES the side separates, and
+    //   2. the line along the SIDE itself.
+    // Both pass through a cell centre by construction — 1 through both
+    // of them, 2 through the centre of the cell one step along it — and
+    // the other four lines through the point pass through none. Stating
+    // it this way holds at all six midpoints under either orientation,
+    // where a list of screen angles holds at one.
+    for (const o of ['pointy', 'flat'] as const) {
+      for (const cell of [
+        { q: 0, r: 0 },
+        { q: 3, r: -2 },
+        { q: -1, r: 4 },
+      ]) {
+        for (const offset of POSITIONS[o].slice(1)) {
+          const l = latticeOf(o, { cell, offset });
+          const [a, b] = positionCells(o, l);
+
+          // 1. through the two centres.
+          const centreA = latticeOf(o, { cell: a, offset: [0, 0] });
+          const centreB = latticeOf(o, { cell: b, offset: [0, 0] });
+          const throughCentres = primitive(centreB, centreA);
+
+          // 2. along the side. The side's own direction is square to
+          // the centre-to-centre step, which on this lattice is the
+          // direction whose dot product with it is zero.
+          const alongSide = DIRECTIONS.find(
+            (d) =>
+              perpendicular(o, d, throughCentres) &&
+              !sameLine(d, throughCentres)
+          )!;
+
+          const thick = new Set<string>();
+          for (const d of DIRECTIONS) {
+            if (lineIsThick(l, d)) thick.add(lineKey(d));
+          }
+          expect(thick.size).toBe(2);
+          expect(thick.has(lineKey(throughCentres))).toBe(true);
+          expect(thick.has(lineKey(alongSide))).toBe(true);
+        }
+      }
     }
   });
 

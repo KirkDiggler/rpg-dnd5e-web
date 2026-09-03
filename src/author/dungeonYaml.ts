@@ -28,6 +28,7 @@ import {
   latticeWalk,
   positionCrossing,
   positionKey,
+  positionSpellings,
   sealedBy,
   wallCrossings,
   wallFootprint,
@@ -390,12 +391,15 @@ function refusePairForm(raw: Raw): void {
   const badDoor = doors.findIndex((d) => isRecord(d) && d.edges !== undefined);
   if (badWall === -1 && badDoor === -1) return;
   const where = badWall !== -1 ? `walls[${badWall}]` : `doors[${badDoor}]`;
+  // THE COMPILER'S OWN SENTENCE, word for word (dungeonspec's constant),
+  // prefixed with the field path the way it prefixes one. A refusal a
+  // streamer meets twice — once here on load, once from the server —
+  // must read the same both times, or the two look like two different
+  // problems.
   throw new DungeonParseError(
-    `${where}: this file is written in the PAIR FORM — a wall as the ` +
-      'crossings it blocks. That form is deleted. A wall is now a line: ' +
-      '`start` and `end`, each `{ cell: [col,row], offset: [x,y] }`, and a ' +
-      'door is `at:` one position on it. Rewrite the walls and doors in the ' +
-      'line form; there is no converter, and nothing else in the file moves.'
+    `${where}: \`edges\` is the deleted pair form: a wall is now a line, ` +
+      '`start` and `end`, each a cell and one of the seven offsets, and a ' +
+      'door is `at` one position on it.'
   );
 }
 
@@ -931,6 +935,32 @@ export function doorEdgeOwners(doc: DungeonDoc): Map<string, string> {
 /** The crossing a door opens, or null for one standing on a centre. */
 export const doorCrossing = (doc: DungeonDoc, door: DoorDoc): Edge | null =>
   positionCrossing(doc.orientation, latticeOf(doc.orientation, door.at));
+
+/**
+ * The `{cell, offset}` spelling this document should WRITE for a lattice
+ * point: the one whose cell is floor.
+ *
+ * A side midpoint has two spellings, one per cell sharing the side, and
+ * they are the same point — but only one of them may name a cell that is
+ * on the map. A wall capping a room's north edge ends half a hex above
+ * row 0, and the orientation-only canonical spelling can name row −1: a
+ * cell nobody painted, that no error can highlight and no reader can
+ * find. Naming it from the floor cell instead keeps every coordinate in
+ * the file inside the dungeon.
+ *
+ * When both cells are floor there is nothing to choose between them and
+ * the canonical spelling stands; when neither is, the point is off the
+ * map either way and the canonical spelling stands too. Only the
+ * asymmetric case moves, which is the case that matters.
+ */
+export function nameFromFloor(doc: DungeonDoc, l: Lattice): PositionRef | null {
+  const o = doc.orientation;
+  const floor = floorKeys(doc);
+  const spellings = positionSpellings(o, l);
+  return (
+    spellings.find((p) => floor.has(axialKey(p.cell))) ?? spellings[0] ?? null
+  );
+}
 
 /** Whether a wall passes through a position — F10's test, and what the
  * door tool offers on. Exact: the position is on the wall's own lattice

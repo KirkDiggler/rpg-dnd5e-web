@@ -1,59 +1,53 @@
 /**
- * The reference tomb as a version-2 document, built in code — the
- * builder's own fixture for tests and for the fixtures-mode sandbox
- * (`ConceptsView`). The canonical file is the toolkit's
- * `dungeonspec/testdata/reference-tomb.yaml` served by
- * `GetDungeon("reference-tomb")`; this one reproduces the design §2
- * shape (three regions 6/10/12 columns wide over 8 rows = the v1 embed's
- * 224 cells, both seams walled, one door each, the design's four
- * placements) so the round-trip and preview tests have a real-sized map
- * to chew on without a server.
+ * The reference tomb — THE TOOLKIT'S OWN FILE, parsed.
  *
- * # Two walls, not thirty
+ * `reference-tomb.yaml` beside this module is a verbatim copy of
+ * `rulebooks/dnd5e/encounter/dungeonspec/testdata/reference-tomb.yaml` on
+ * the toolkit's wall-geometry branch: the file the compiler compiles and
+ * `GetDungeon("reference-tomb")` serves. It is not a conversion, not a
+ * reconstruction, and not this module's idea of what the tomb should be
+ * — the builder's fixture and the server's fixture are one text, so a
+ * disagreement about what the tomb IS cannot hide between them.
  *
- * In the pair form each seam was a list of the fifteen crossings it
- * blocked, and the client had to guess the line back out of them. In the
- * line form (rpg-project#360 slice 2) a seam IS one wall: a thin quarter
- * line down the boundary, from one slanted midpoint to another. Both
- * seams sit between two columns whose straight crossings zigzag between
- * `u = 22` and `u = 24`, so the single line that cuts every one of them
- * runs down `u = 23` — a quarter width east of the straight midpoints,
- * which is exactly why the seam's DOOR moves.
+ * That matters twice over here. The file's positions are named from
+ * FLOOR cells (`start: {cell: [5,7], offset: [0.25, 0.375]}`, not the
+ * row-8 cell the same point could also be named from), and its doors sit
+ * at the nearest position on the line to where the pair form had them.
+ * Both are things a conversion gets subtly wrong and a copy cannot.
  *
- * **The door moves one row** (design A6, amended in the build). No thin
- * line passes through a flat-side midpoint (F16), so the door that sat
- * on the straight crossing between cells `[5,3]` and `[6,3]` cannot
- * stand on this wall. It moves to the slanted midpoint of the same
- * cell — one row up, still between entrance and hall, still one
- * crossing. The thick alternative would have kept the door where it was
- * and sealed four entrance cells: the larger content change, so the door
- * moves instead.
+ * # Two walls, and a door that moved one row
+ *
+ * Each seam is ONE wall: a thin quarter line down the boundary, from one
+ * slanted midpoint to another. Under the pair form it was fifteen
+ * crossings and the client fitted the line back out of them.
+ *
+ * Under the pair form both doors opened a straight west-east crossing,
+ * whose side midpoint lies half a width from the column's centres — a
+ * quarter line does not pass through it, and no thin line does (design
+ * F16). So each door moved one row onto the slanted midpoint the wall
+ * actually crosses, which opens a crossing between the same two rooms
+ * one hex over. The toolkit's file says this in its own comment; this
+ * one repeats it because the door's position is the thing a reader will
+ * question.
  */
-import type { DungeonDoc, PositionRef, RegionDoc } from '../dungeonYaml';
+import type { RegionDoc } from '../dungeonYaml';
+import { parseDungeon, type DungeonDoc } from '../dungeonYaml';
 import { latticeOf, positionAt, type Lattice } from '../hexGeometry';
 import {
   axialKey,
   axialNeighbors,
   fromOffset,
   normalizeEdge,
-  type Axial,
   type Edge,
 } from '../hexOffset';
+import referenceTombYaml from './reference-tomb.yaml?raw';
 
-function block(
-  id: string,
-  name: string,
-  intensity: number,
-  cols: [number, number],
-  rows: [number, number]
-): RegionDoc {
-  const cells: Axial[] = [];
-  for (let row = rows[0]; row <= rows[1]; row += 1) {
-    for (let col = cols[0]; col <= cols[1]; col += 1) {
-      cells.push(fromOffset('pointy', [col, row]));
-    }
-  }
-  return { id, name, archetype: 'crypt', lighting: { intensity }, cells };
+/** The file's own bytes, for the test that pins the round trip against
+ * the text the server reads rather than against this module's output. */
+export const REFERENCE_TOMB_YAML: string = referenceTombYaml;
+
+export function referenceTombDoc(): DungeonDoc {
+  return parseDungeon(REFERENCE_TOMB_YAML);
 }
 
 /** Every crossing joining a cell of `a` to an adjacent cell of `b` — the
@@ -71,97 +65,31 @@ export function seamEdges(a: RegionDoc, b: RegionDoc): Edge[] {
   return edges;
 }
 
-/** A position by its lattice address — how this fixture names the two
- * seam lines and the doors on them. */
-export function tombPosition(l: Lattice): PositionRef {
+/** A position by its lattice address, in the orientation-only canonical
+ * spelling — for tests that name a point rather than read one. */
+export function tombPosition(l: Lattice) {
   const p = positionAt('pointy', l);
   if (!p) throw new Error(`referenceTomb: ${l.u},${l.v} is not a position`);
   return p;
 }
 
-/** The lattice address of a cell's own centre — for tests that want to
- * name a seam line relative to the columns it runs between. */
+/** The lattice address of a cell's own centre. */
 export const tombCentre = (col: number, row: number): Lattice =>
   latticeOf('pointy', {
     cell: fromOffset('pointy', [col, row]),
     offset: [0, 0],
   });
 
-/** Where each seam's quarter line runs, and where its door stands. */
-export const TOMB_SEAMS = {
-  entranceHall: { u: 23, doorV: 5 },
-  hallTomb: { u: 63, doorV: 5 },
-} as const;
-
-/** The wall's ends span every row: row 0's cells reach up to v = 0 and
- * row 7's down to v = 14, so -1 and 15 put the line through all eight. */
-const SEAM_TOP = -1;
-const SEAM_BOTTOM = 15;
-
-export function referenceTombDoc(): DungeonDoc {
-  const entrance = block('entrance', 'Entrance', 0.6, [0, 5], [0, 7]);
-  const hall = block('hall', 'Hall', 0.4, [6, 15], [0, 7]);
-  const tomb = block('tomb', 'Tomb', 0.15, [16, 27], [0, 7]);
-  const p = (col: number, row: number) => fromOffset('pointy', [col, row]);
-  const seam = (u: number) => ({
-    start: tombPosition({ u, v: SEAM_TOP }),
-    end: tombPosition({ u, v: SEAM_BOTTOM }),
-  });
-
-  return {
-    version: 2,
-    key: 'reference-tomb',
-    name: 'The Reference Tomb',
-    orientation: 'pointy',
-    void: 'opaque',
-    regions: [entrance, hall, tomb],
-    scenery: [],
-    start: p(1, 3),
-    walls: [
-      { ...seam(TOMB_SEAMS.entranceHall.u), name: 'entrance seam' },
-      { ...seam(TOMB_SEAMS.hallTomb.u), name: 'tomb seam' },
-    ],
-    doors: [
-      {
-        id: 'entrance-hall',
-        at: tombPosition({
-          u: TOMB_SEAMS.entranceHall.u,
-          v: TOMB_SEAMS.entranceHall.doorV,
-        }),
-      },
-      {
-        id: 'hall-tomb',
-        at: tombPosition({
-          u: TOMB_SEAMS.hallTomb.u,
-          v: TOMB_SEAMS.hallTomb.doorV,
-        }),
-        locked: [{ ability: 'dex', dc: 12 }],
-      },
-    ],
-    place: [
-      {
-        ref: 'dnd5e:props:brazier',
-        at: p(1, 1),
-        blocksMovement: true,
-        blocksLos: false,
-      },
-      {
-        ref: 'dnd5e:props:pillar',
-        at: p(8, 2),
-        blocksMovement: true,
-        blocksLos: true,
-      },
-      {
-        ref: 'dnd5e:monsters:skeleton',
-        at: p(11, 3),
-        targeting: 'lowest-health',
-      },
-      {
-        ref: 'dnd5e:monsters:skeleton-captain',
-        at: p(23, 5),
-        targeting: 'closest',
-        boss: true,
-      },
-    ],
-  };
+/** Where each seam's quarter line runs, and where its door stands — read
+ * off the file rather than restated, so this cannot drift from it. */
+export function tombSeams(doc: DungeonDoc = referenceTombDoc()) {
+  return doc.walls.map((wall, index) => ({
+    index,
+    name: wall.name,
+    start: latticeOf('pointy', wall.start),
+    end: latticeOf('pointy', wall.end),
+    door: doc.doors[index]
+      ? latticeOf('pointy', doc.doors[index].at)
+      : undefined,
+  }));
 }

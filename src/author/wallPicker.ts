@@ -27,7 +27,12 @@
  * board tells the truth about the whole document.
  */
 
-import { floorKeys, sealedKeys, type DungeonDoc } from './dungeonYaml';
+import {
+  floorKeys,
+  nameFromFloor,
+  sealedKeys,
+  type DungeonDoc,
+} from './dungeonYaml';
 import {
   cellAtPoint,
   directionDegrees,
@@ -37,7 +42,6 @@ import {
   latticePoint,
   latticeWalk,
   lineIsThick,
-  positionAt,
   positionCells,
   positionCrossing,
   positionKey,
@@ -143,7 +147,11 @@ export function wallRaysFrom(
         break;
       }
       previous = lattice;
-      const position = positionAt(o, lattice);
+      // NAMED FROM A FLOOR CELL when the point has one (ruled
+      // 2026-09-03): the picker writes these into the file, and a wall
+      // capping a room's north edge would otherwise name a cell one row
+      // off the map.
+      const position = nameFromFloor(doc, lattice);
       if (!position) continue;
       ends.push({
         position,
@@ -272,8 +280,8 @@ export function boundaryWalls(
   const back: Direction = { du: -direction.du, dv: -direction.dv };
   const head = walk(direction);
   const tail = walk(back);
-  const thinStart = positionAt(o, tail);
-  const thinEnd = positionAt(o, head);
+  const thinStart = nameFromFloor(doc, tail);
+  const thinEnd = nameFromFloor(doc, head);
   if (!thinStart || !thinEnd) return null;
 
   // The thick alternative: the same direction through the OUTSIDE cell's
@@ -291,8 +299,8 @@ export function boundaryWalls(
   });
   const thickTail = shift(steps(tail));
   const thickHead = shift(steps(head));
-  const thickStart = positionAt(o, thickTail);
-  const thickEnd = positionAt(o, thickHead);
+  const thickStart = nameFromFloor(doc, thickTail);
+  const thickEnd = nameFromFloor(doc, thickHead);
   if (!thickStart || !thickEnd || !latticeWalk(thickTail, thickHead)) {
     return null;
   }
@@ -351,7 +359,7 @@ export function doorTargetsOf(doc: DungeonDoc): DoorTarget[] {
       const key = latticeKey(lattice);
       if (seen.has(key)) continue;
       if (positionCrossing(o, lattice) === null) continue;
-      const position = positionAt(o, lattice);
+      const position = nameFromFloor(doc, lattice);
       if (!position) continue;
       seen.add(key);
       out.push({ position, lattice, wallIndex, taken: taken.has(key) });

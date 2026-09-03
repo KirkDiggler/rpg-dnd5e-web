@@ -357,23 +357,24 @@ describe('emitDungeon / parseDungeon', () => {
     it('A9: the pair form is refused at the header, naming the form (message text pinned)', () => {
       const head =
         'version: 2\nkey: x\nname: x\norientation: pointy\nvoid: opaque\nregions: []\n';
+      // THE COMPILER'S OWN SENTENCE, pinned word for word. A streamer
+      // meets this refusal twice — here on load and again from the
+      // server — and two wordings would read as two problems.
       const message =
-        'walls[0]: this file is written in the PAIR FORM — a wall as the ' +
-        'crossings it blocks. That form is deleted. A wall is now a line: ' +
-        '`start` and `end`, each `{ cell: [col,row], offset: [x,y] }`, and a ' +
-        'door is `at:` one position on it. Rewrite the walls and doors in the ' +
-        'line form; there is no converter, and nothing else in the file moves.';
+        'walls[0]: `edges` is the deleted pair form: a wall is now a ' +
+        'line, `start` and `end`, each a cell and one of the seven ' +
+        'offsets, and a door is `at` one position on it.';
       expect(() => parseDungeon(`${head}walls:\n  - [[0,0],[1,0]]\n`)).toThrow(
         message
       );
       expect(() =>
         parseDungeon(`${head}walls:\n  - { between: [[0,0],[1,0]] }\n`)
-      ).toThrow(/PAIR FORM/);
+      ).toThrow(/deleted pair form/);
       expect(() =>
         parseDungeon(
           `${head}walls: []\ndoors:\n  - { id: d1, edges: [[[0,0],[1,0]]] }\n`
         )
-      ).toThrow(/PAIR FORM/);
+      ).toThrow(/deleted pair form/);
     });
 
     it('refuses a wall object with an unknown key or a non-number height', () => {
@@ -1019,10 +1020,13 @@ describe('resolveErrorPath', () => {
       cell: p(9, 0),
     });
     expect(resolveErrorPath(doc, 'start')).toEqual({ kind: 'start' });
-    expect(resolveErrorPath(doc, 'place[3].boss')).toEqual({
+    // The boss, wherever the toolkit's own file puts it in `place`.
+    const bossIndex = doc.place.findIndex((x) => x.boss);
+    expect(bossIndex).toBeGreaterThanOrEqual(0);
+    expect(resolveErrorPath(doc, `place[${bossIndex}].boss`)).toEqual({
       kind: 'placement',
-      index: 3,
-      cell: p(23, 5),
+      index: bossIndex,
+      cell: doc.place[bossIndex].at,
     });
     expect(resolveErrorPath(doc, 'doors[1].locked[0].dc')).toEqual({
       kind: 'door',
