@@ -35,7 +35,12 @@ import {
   type PositionRef,
 } from './dungeonYaml';
 import { referenceTombDoc, seamEdges } from './fixtures/referenceTomb';
-import { latticeOf, latticeWalk, positionAt } from './hexGeometry';
+import {
+  latticeOf,
+  latticeWalk,
+  positionAt,
+  wallDirection,
+} from './hexGeometry';
 import {
   axialKey,
   edgeKey,
@@ -398,12 +403,22 @@ describe('emitDungeon / parseDungeon', () => {
       expect(addWall(doc, end, start)).toBe(doc);
     });
 
-    it('addWall refuses a direction off the twelve', () => {
+    it('addWall refuses a direction off the twelve, even over solid floor', () => {
+      // Floor everywhere, so nothing but the direction can be the
+      // reason: an off-twelve pair has no lattice walk, hence no
+      // footprint, hence nothing to stand on (F13 and C2 are the same
+      // condition here — `addWall`'s own comment).
       let doc = emptyDungeon();
-      doc = paintCell(doc, 'region-1', p(0, 0));
-      doc = paintCell(doc, 'region-1', p(2, 1));
+      for (let row = 0; row <= 3; row += 1) {
+        for (let col = 0; col <= 3; col += 1) {
+          doc = paintCell(doc, 'region-1', p(col, row));
+        }
+      }
       const start: PositionRef = { cell: p(0, 0), offset: [0, 0] };
       const end: PositionRef = { cell: p(2, 1), offset: [0, 0] };
+      expect(
+        wallDirection(latticeOf('pointy', start), latticeOf('pointy', end))
+      ).toBeNull();
       expect(addWall(doc, start, end)).toBe(doc);
     });
 

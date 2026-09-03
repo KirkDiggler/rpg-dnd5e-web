@@ -10,6 +10,7 @@ import {
   latticeKey,
   latticeKind,
   latticeOf,
+  latticeWalk,
   positionAt,
   POSITIONS,
   type Lattice,
@@ -190,6 +191,29 @@ describe('doors are positions on walls (design §2.8)', () => {
 
   it('offers nothing on a document with no walls', () => {
     expect(doorTargetsOf(block(4, 4))).toEqual([]);
+  });
+
+  it('skips the CENTRES a thick wall passes through — a centre opens no crossing', () => {
+    // A thick line down a row runs through cell centres AND the
+    // flat-side midpoints between them. Only the midpoints are offered:
+    // a centre is the midpoint of no side, so a door there would open
+    // nothing (F11).
+    let doc = block(9, 3);
+    const row = (col: number) => fromOffset('pointy', [col, 1]);
+    doc = addWall(doc, seat(row(1), [0, 0]), seat(row(7), [0, 0]));
+    const walk = latticeWalk(
+      latticeOf('pointy', doc.walls[0].start),
+      latticeOf('pointy', doc.walls[0].end)
+    )!;
+    const centres = walk.filter((l) => latticeKind(l) === 'centre');
+    expect(centres.length).toBeGreaterThan(0);
+    const offered = new Set(
+      doorTargetsOf(doc).map((t) => latticeKey(t.lattice))
+    );
+    for (const c of centres) expect(offered.has(latticeKey(c))).toBe(false);
+    for (const l of walk.filter((x) => latticeKind(x) === 'side')) {
+      expect(offered.has(latticeKey(l))).toBe(true);
+    }
   });
 
   it('calls a door between two sealed cells a window rather than refusing it (F11a)', () => {

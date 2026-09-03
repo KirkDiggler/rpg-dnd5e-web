@@ -30,7 +30,6 @@ import {
   positionKey,
   sealedBy,
   wallCrossings,
-  wallDirection,
   wallFootprint,
   type Lattice,
   type Offset,
@@ -1495,8 +1494,8 @@ export function eraseCell(doc: DungeonDoc, cell: Axial): DungeonDoc {
  * REFUSED IN PLACE, returning the same doc, when the line is not one of
  * the twelve directions (F13) or when its footprint holds no floor at
  * all (C2 — a wall standing in nothing). The picker only ever offers
- * legal ends, so these are the guards for a caller that did not go
- * through it, not the author's normal path. */
+ * legal ends, so this is the guard for a caller that did not go through
+ * it, not the author's normal path. */
 export function addWall(
   doc: DungeonDoc,
   start: PositionRef,
@@ -1506,8 +1505,13 @@ export function addWall(
   const o = doc.orientation;
   const a = latticeOf(o, start);
   const b = latticeOf(o, end);
-  if (wallDirection(a, b) === null) return doc;
   const floor = floorKeys(doc);
+  // ONE guard for two rules, because for a pair off the twelve they are
+  // the same condition: a wall that is not on one of the directions has
+  // no lattice walk, so it has no footprint either, and a second
+  // `wallDirection` check beside this one could never be the reason
+  // anything was refused. F13 (a direction off the twelve) and C2 (a
+  // wall standing in nothing) both land here.
   if (!wallFootprint(o, a, b).some((c) => floor.has(axialKey(c)))) return doc;
   const key = wallKey(o, { start, end });
   if (doc.walls.some((w) => wallKey(o, w) === key)) return doc;

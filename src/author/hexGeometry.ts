@@ -142,12 +142,20 @@ function axes(
 }
 
 /**
- * A position's lattice address. `(ob * 8) / 3` and not `ob * (8/3)`:
- * 8/3 is not representable, and the product with 0.375 comes back
- * 0.9999999999999999 — an integer lattice decided by float noise is
- * exactly the defect this lattice exists to rule out. Multiplying by 8
- * first is exact (0.375 is dyadic) and the division by 3 is then exact
- * too.
+ * A position's lattice address, which MUST be a pair of integers — the
+ * whole set compares exactly only if it is, and `latticeKind` answers
+ * null for anything else, so a fractional result would quietly make
+ * every position "not a position".
+ *
+ * `(ob * 8) / 3` is written in that order so the integrality is visible
+ * rather than rested on: `0.375 * 8` is exactly 3 because 0.375 is
+ * dyadic, and 3/3 is 1. (`ob * (8/3)` also lands on 1 for all three
+ * legal values, checked — 8/3 is not representable, but scaling its
+ * mantissa by the dyadic 0.375 rounds back to exactly 1. That is a
+ * coincidence of these three values, not a rule, and the order above
+ * does not depend on it.) `hexGeometry.test.ts` pins integrality for
+ * every position of every orientation rather than trusting this
+ * comment.
  */
 export function latticeOf(o: Orientation, p: PositionRef): Lattice {
   const { a, b, oa, ob } = axes(o, p.cell, p.offset);

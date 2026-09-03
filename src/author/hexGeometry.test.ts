@@ -79,6 +79,25 @@ describe('the lattice places positions where the board already draws them', () =
 });
 
 describe('the seven positions are a closed set with one identity each', () => {
+  it('lands every position on INTEGER lattice coordinates', () => {
+    // The set compares exactly only if this holds, and `latticeKind`
+    // answers null for a fractional pair — so a rounding slip in
+    // `latticeOf` would silently make every position "not a position"
+    // rather than fail loudly.
+    for (const o of ['pointy', 'flat'] as const) {
+      for (let q = -7; q <= 7; q += 1) {
+        for (let r = -7; r <= 7; r += 1) {
+          for (const p of cellPositions(o, { q, r })) {
+            const l = latticeOf(o, p);
+            expect(Number.isInteger(l.u)).toBe(true);
+            expect(Number.isInteger(l.v)).toBe(true);
+            expect(latticeKind(l)).not.toBeNull();
+          }
+        }
+      }
+    }
+  });
+
   it('classifies a cell as one centre and six side midpoints', () => {
     for (const o of ['pointy', 'flat'] as const) {
       const kinds = cellPositions(o, { q: 4, r: -2 }).map((p) =>
