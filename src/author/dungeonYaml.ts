@@ -925,12 +925,27 @@ export function placementAt(
 // Concealment derivation (rpg-dnd5e-web#893) — "concealment links to the
 // door": a region's hidden status is DERIVED from which doors are marked
 // concealed, rather than declared a second time by hand for every room
-// behind one. This walks the SAME region-for-region "ways" the toolkit's
-// own coherence check does (dungeonspec/validate.go's `concealment()`) —
-// every non-wall crossing between two DIFFERENT regions, one way per door,
-// deduped — so a document this module derives satisfies that check without
-// repeating it (this module still "only refuses what it cannot represent",
-// per the header comment; the server stays the validator of record).
+// behind one. This walks the SAME "ways" the toolkit's own coherence check
+// does (dungeonspec/validate.go's `concealment()`), so a document this
+// module derives satisfies that check without repeating it (this module
+// still "only refuses what it cannot represent", per the header comment;
+// the server stays the validator of record).
+//
+// A WAY IS A FLOOD, NOT A CROSSING (rpg-project#360 slice 1, design C4).
+// It used to be one step between two regions' cells, because that was the
+// only way space could join. Scenery adds floor that belongs to no room,
+// so a way is now "a wall-free path from a cell of A to a cell of B whose
+// INTERIOR cells are all scenery" — never through a third region's cells,
+// which is what keeps the flood from tunnelling one room into the next.
+//
+// TWO REGIONS ARE JOINED IN `open` IFF SOME WAY BETWEEN THEM HAS NO
+// CONCEALED DOOR ON ANY CROSSING — not "iff the first crossing out is
+// clear". The toolkit builder found that first-crossing depends on which
+// end you start from: visible room, bare crossing, scenery, then the
+// secret room's own concealed door reads as open from the visible side
+// and closed from the secret side. The flood crosses bare crossings and
+// ordinary doors, passes through scenery, and stops at walls and
+// concealed doors, so both ends agree.
 // ---------------------------------------------------------------------------
 
 /** The region graph `deriveConcealment` walks. `open` carries every way
@@ -958,43 +973,131 @@ function addRegionEdge(
   graph.get(b)!.add(a);
 }
 
+/** What one crossing does to a way through it. */
+type CrossingKind = 'wall' | 'plain' | 'concealed';
+
 function buildRegionGraph(doc: DungeonDoc): RegionGraph {
   const owners = floorOwners(doc);
-  const walls = wallKeys(doc);
+  const scenery = sceneryKeys(doc);
+  const walls = new Set(compiledWalls(doc).map(({ edge }) => edgeKey(edge)));
   const doorEdges = doorEdgeOwners(doc);
   const doorById = new Map(doc.doors.map((d) => [d.id, d] as const));
   const open: Map<string, Set<string>> = new Map();
   const full: Map<string, Set<string>> = new Map();
   const concealedDoorCrossings = new Map<string, [string, string][]>();
-  const seenCrossing = new Set<string>();
 
-  for (const region of doc.regions) {
-    for (const cell of region.cells) {
-      for (const n of axialNeighbors(cell)) {
-        const there = owners.get(axialKey(n));
-        if (!there || there === region.id) continue;
-        const ek = edgeKey([cell, n]);
-        if (seenCrossing.has(ek)) continue;
-        seenCrossing.add(ek);
-        if (walls.has(ek)) continue; // a wall is not a way in
+  const kindOf = (ek: string): CrossingKind => {
+    // `walls` is the COMPILED set, so the crossing a door stands in has
+    // already been subtracted from it (rpg-project#355 — a run keeps that
+    // crossing and the compiler hands the edge back to the door), exactly
+    // as the server subtracts it. That one substitution is what makes a
+    // door drawn inside a wall run a door here rather than a wall; asking
+    // about the door first as well would only hide which fact carries it.
+    if (walls.has(ek)) return 'wall';
+    const doorId = doorEdges.get(ek);
+    const door = doorId ? doorById.get(doorId) : undefined;
+    return door && door.concealed !== undefined ? 'concealed' : 'plain';
+  };
 
-        const [a, b] =
-          region.id <= there ? [region.id, there] : [there, region.id];
-        const doorId = doorEdges.get(ek);
-        const door = doorId ? doorById.get(doorId) : undefined;
-        if (door && door.concealed !== undefined) {
-          addRegionEdge(full, a, b);
-          const list = concealedDoorCrossings.get(door.id) ?? [];
-          if (!list.some(([x, y]) => x === a && y === b)) list.push([a, b]);
-          concealedDoorCrossings.set(door.id, list);
-          continue; // a concealed door's own crossing never joins `open`
+  /** Every region a way from `seeds` leads to.
+   *
+   * The flood leaves the seeds, walks SCENERY ONLY, and stops the moment
+   * it lands on any region's cell — that cell is where the way ends, so a
+   * third room is a destination and never a corridor (design C4). Walls
+   * always stop it; a concealed door stops it unless `allowConcealed`,
+   * which is the whole difference between the `open` graph and the
+   * `full` one. `originId` is the region the seeds belong to, so a way
+   * back into its own cells is not reported as joining anything. */
+  const waysFrom = (
+    seeds: readonly Axial[],
+    originId: string | null,
+    allowConcealed: boolean
+  ): Set<string> => {
+    const reached = new Set<string>();
+    const seen = new Set(seeds.map(axialKey));
+    const queue = [...seeds];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const n of axialNeighbors(cur)) {
+        const kind = kindOf(edgeKey([cur, n]));
+        if (kind === 'wall') continue;
+        if (kind === 'concealed' && !allowConcealed) continue;
+        const nk = axialKey(n);
+        const there = owners.get(nk);
+        if (there !== undefined) {
+          if (there !== originId) reached.add(there);
+          continue;
         }
-        addRegionEdge(open, a, b);
-        addRegionEdge(full, a, b);
+        if (!scenery.has(nk) || seen.has(nk)) continue;
+        seen.add(nk);
+        queue.push(n);
       }
     }
+    return reached;
+  };
+
+  for (const region of doc.regions) {
+    for (const there of waysFrom(region.cells, region.id, false)) {
+      addRegionEdge(open, region.id, there);
+    }
+    // Every open way is a way, and the permissive flood explores a
+    // superset of the strict one's crossings, so `full` needs only this.
+    for (const there of waysFrom(region.cells, region.id, true)) {
+      addRegionEdge(full, region.id, there);
+    }
   }
+
+  /** The regions one side of a concealed door's crossing opens onto,
+   * without passing another concealed door — the door's own side of the
+   * pair it joins. An owned cell IS its region; a scenery cell floods
+   * until it finds one. */
+  const regionsTouching = (cell: Axial): Set<string> => {
+    const owner = owners.get(axialKey(cell));
+    if (owner !== undefined) return new Set([owner]);
+    if (!scenery.has(axialKey(cell))) return new Set();
+    return waysFrom([cell], null, false);
+  };
+
+  for (const door of doc.doors) {
+    if (door.concealed === undefined) continue;
+    const pairs: [string, string][] = [];
+    for (const [near, far] of door.edges) {
+      for (const a of regionsTouching(near)) {
+        for (const b of regionsTouching(far)) {
+          if (a === b) continue;
+          const [x, y] = a <= b ? [a, b] : [b, a];
+          if (!pairs.some(([px, py]) => px === x && py === y)) {
+            pairs.push([x, y]);
+          }
+        }
+      }
+    }
+    if (pairs.length > 0) concealedDoorCrossings.set(door.id, pairs);
+  }
+
   return { open, full, concealedDoorCrossings };
+}
+
+/** The region graph as two questions, for the tests that must agree with
+ * the toolkit's own walk (design C4, acceptance A3). The derivation below
+ * rests entirely on these two facts, and "separated" and "joined only
+ * through a secret" are different answers that `deriveConcealment` alone
+ * cannot tell apart — both leave a region unmarked. */
+export interface RegionWays {
+  /** Some way joins these two regions. Crossings may include concealed
+   * doors; walls always stop a way. */
+  joined(a: string, b: string): boolean;
+  /** Some way joins them with NO concealed door on ANY of its crossings —
+   * what a party can walk without finding anything first. */
+  openly(a: string, b: string): boolean;
+}
+
+export function regionWays(doc: DungeonDoc): RegionWays {
+  const { open, full } = buildRegionGraph(doc);
+  return {
+    joined: (a, b) => full.get(a)?.has(b) ?? false,
+    openly: (a, b) => open.get(a)?.has(b) ?? false,
+  };
 }
 
 function startRegionId(doc: DungeonDoc): string | null {
