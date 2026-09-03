@@ -7,12 +7,17 @@ import {
   compiledWalls,
   deriveConcealment,
   detectConcealmentLeaks,
+  edgeIsOfferable,
   emitDungeon,
   emptyDungeon,
   eraseCell,
   floorOwners,
+  isFloor,
+  isScenery,
+  isStandable,
   paintCell,
   paintRect,
+  paintScenery,
   parseDungeon,
   placeAt,
   removeWalls,
@@ -975,6 +980,163 @@ describe('resolveErrorPath', () => {
       edge: [p(0, 0), p(0, 1)],
     });
     expect(resolveErrorPath(doc, 'walls[0].edges[9]')).toEqual({
+      kind: 'document',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenery — floor nobody stands on (rpg-project#360 slice 1, design §2.1-2.5,
+// §3.1). A cell is in exactly one of: a region, `scenery`, void.
+// ---------------------------------------------------------------------------
+
+describe('scenery (rpg-project#360 slice 1)', () => {
+  /** A room and a two-cell scenery strip beside it. */
+  function stripDoc(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (const [c, r] of [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ]) {
+      doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    doc = paintScenery(doc, p(3, 0));
+    doc = paintScenery(doc, p(4, 0));
+    return doc;
+  }
+
+  it('emits `scenery` after regions and before start, one row per line, and round-trips', () => {
+    let doc = stripDoc();
+    doc = setStart(doc, p(1, 0));
+    doc = paintScenery(doc, p(3, 1));
+    const text = emitDungeon(doc);
+
+    expect(text).toContain(
+      'scenery:\n      - [[3,0],[4,0]]\n      - [[3,1]]\n'
+    );
+    const lines = text.split('\n');
+    const iRegions = lines.findIndex((l) => l === 'regions:');
+    const iScenery = lines.findIndex((l) => l === 'scenery:');
+    const iStart = lines.findIndex((l) => l.startsWith('start:'));
+    expect(iRegions).toBeGreaterThanOrEqual(0);
+    expect(iScenery).toBeGreaterThan(iRegions);
+    expect(iStart).toBeGreaterThan(iScenery);
+
+    // The parse/emit contract the whole module rests on.
+    expect(emitDungeon(parseDungeon(text))).toBe(text);
+    expect(parseDungeon(text).scenery.map(axialKey).sort()).toEqual(
+      [p(3, 0), p(4, 0), p(3, 1)].map(axialKey).sort()
+    );
+  });
+
+  it('writes NO `scenery` key when there is none, so a document without it is byte-identical', () => {
+    // The server's decoder refuses a key it does not know yet; more to the
+    // point, "optional; omitted = none" (design §3.1) is what keeps every
+    // existing file re-emitting exactly as it was.
+    const text = emitDungeon(referenceTombDoc());
+    expect(text).not.toContain('scenery');
+    expect(emitDungeon(parseDungeon(text))).toBe(text);
+  });
+
+  it('one state per cell: scenery over a room cell moves it out, a room over scenery moves it in (design §2.2)', () => {
+    let doc = stripDoc();
+    expect(floorOwners(doc).get(axialKey(p(2, 0)))).toBe('region-1');
+
+    doc = paintScenery(doc, p(2, 0));
+    expect(floorOwners(doc).has(axialKey(p(2, 0)))).toBe(false);
+    expect(isScenery(doc, p(2, 0))).toBe(true);
+    // Floor either way — a wall may stand on it, a prop may sit on it.
+    expect(isFloor(doc, p(2, 0))).toBe(true);
+    expect(isStandable(doc, p(2, 0))).toBe(false);
+
+    doc = paintCell(doc, 'region-1', p(2, 0));
+    expect(isScenery(doc, p(2, 0))).toBe(false);
+    expect(floorOwners(doc).get(axialKey(p(2, 0)))).toBe('region-1');
+    expect(isStandable(doc, p(2, 0))).toBe(true);
+
+    // The rect brush takes cells off the scenery list the same way.
+    doc = paintScenery(doc, p(1, 0));
+    doc = paintRect(doc, 'region-1', p(0, 0), p(2, 0));
+    expect(doc.scenery.map(axialKey)).toEqual([
+      axialKey(p(3, 0)),
+      axialKey(p(4, 0)),
+    ]);
+  });
+
+  it('painting scenery twice is a no-op and returns the same doc', () => {
+    const doc = stripDoc();
+    expect(paintScenery(doc, p(3, 0))).toBe(doc);
+  });
+
+  it('erase returns a scenery cell to void and cascades what stood on it (design §2.2)', () => {
+    let doc = stripDoc();
+    doc = toggleWall(doc, [p(2, 0), p(3, 0)]);
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(3, 0),
+      blocksMovement: true,
+    });
+    expect(wallEdges(doc)).toHaveLength(1);
+    expect(doc.place).toHaveLength(1);
+
+    doc = eraseCell(doc, p(3, 0));
+    expect(isScenery(doc, p(3, 0))).toBe(false);
+    expect(isFloor(doc, p(3, 0))).toBe(false);
+    expect(wallEdges(doc)).toHaveLength(0);
+    expect(doc.place).toHaveLength(0);
+  });
+
+  it('a wall or a door may stand on scenery (design §2.3)', () => {
+    const doc = stripDoc();
+    // room | scenery
+    expect(wallEdges(toggleWall(doc, [p(2, 0), p(3, 0)]))).toHaveLength(1);
+    // scenery | scenery
+    expect(wallEdges(toggleWall(doc, [p(3, 0), p(4, 0)]))).toHaveLength(1);
+    expect(edgeIsOfferable(doc, [p(3, 0), p(4, 0)])).toBe(true);
+    // ...and still nothing off the floor.
+    expect(edgeIsOfferable(doc, [p(4, 0), p(5, 0)])).toBe(false);
+
+    const withDoor = addDoor(doc, [[p(3, 0), p(4, 0)]]);
+    expect(withDoor.doors).toHaveLength(1);
+  });
+
+  it('a prop drops on scenery; a monster and the start do not (design §2.4, F2)', () => {
+    const doc = stripDoc();
+
+    const prop = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(3, 0),
+      blocksMovement: true,
+    });
+    expect(prop.place).toHaveLength(1);
+
+    // Refused IN PLACE: the same doc back, so the caller can say why.
+    expect(placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(3, 0) })).toBe(
+      doc
+    );
+    expect(setStart(doc, p(3, 0))).toBe(doc);
+
+    // Both still land on a room cell.
+    expect(
+      placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(1, 0) }).place
+    ).toHaveLength(1);
+    expect(setStart(doc, p(1, 0)).start).toEqual(p(1, 0));
+  });
+
+  it('resolveErrorPath names the scenery cell the compiler refused (design §2.5)', () => {
+    let doc = stripDoc();
+    doc = paintScenery(doc, p(3, 1));
+    // Rows are [[3,0],[4,0]] then [[3,1]] — the order the emitter wrote.
+    expect(resolveErrorPath(doc, 'scenery[0][1]')).toEqual({
+      kind: 'cell',
+      cell: p(4, 0),
+    });
+    expect(resolveErrorPath(doc, 'scenery[1][0]')).toEqual({
+      kind: 'cell',
+      cell: p(3, 1),
+    });
+    expect(resolveErrorPath(doc, 'scenery[9][0]')).toEqual({
       kind: 'document',
     });
   });

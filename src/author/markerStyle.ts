@@ -53,3 +53,15 @@ export const PROP_COLOR = '#b8922a';
  * stroke on the board (door orange, error red, wall cream, hover white)
  * so a newly-hidden room reads as its own kind of fact, not an error. */
 export const CONCEALED_STROKE = '#a855f7';
+
+/** Scenery — floor no room owns (rpg-project#360 §2.1). It reads as FLOOR
+ * (a wall stands on it, a prop sits on it) and never as a room, so it gets
+ * a stone grey of its own rather than a ninth region swatch, hatched so
+ * "nobody stands here" is visible at a glance without a legend. Distinct
+ * from void's near-black, which is the absence of floor entirely. */
+export const SCENERY_FILL = '#343a44';
+export const SCENERY_HATCH = 'rgba(226, 232, 240, 0.30)';
+export const SCENERY_STROKE = 'rgba(226, 232, 240, 0.45)';
+/** The `<pattern>` the board defines once and every scenery cell fills
+ * with. Exported so the board and its tests name the same thing. */
+export const SCENERY_HATCH_ID = 'dg-scenery-hatch';

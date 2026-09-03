@@ -9,6 +9,7 @@ import {
   emptyDungeon,
   eraseCell,
   paintCell,
+  paintScenery,
   placeAt,
   toggleWall,
   wallEdges,
@@ -16,12 +17,21 @@ import {
 } from '../dungeonYaml';
 import {
   axialKey,
+  axialNeighbors,
   edgeKey,
   fromOffset,
   toOffset,
   type Edge,
 } from '../hexOffset';
-import { ENVELOPE_DASH, ENVELOPE_STROKE, WALL_STROKE } from '../markerStyle';
+import {
+  ENVELOPE_DASH,
+  ENVELOPE_STROKE,
+  SCENERY_FILL,
+  SCENERY_HATCH_ID,
+  SCENERY_STROKE,
+  VOID_FILL,
+  WALL_STROKE,
+} from '../markerStyle';
 import { boardWallScene } from './boardWallRuns';
 import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
 import {
@@ -755,5 +765,91 @@ describe('corner capture through the real pointer path (#804 walk round 2)', () 
     // Near-collinear + shared vertex: the shared module fuses the two
     // chains into ONE straight run — continuation leaves no seam.
     expect(boardWallScene(addWalls(doc1, chain2), S)!.runs).toHaveLength(1);
+  });
+});
+
+describe('the scenery brush on the board (rpg-project#360 §2.1)', () => {
+  /** A room and a scenery strip beside it, the shape the yardstick uses. */
+  function stripDoc(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (const c of [0, 1, 2]) doc = paintCell(doc, 'region-1', p(c, 1));
+    doc = paintScenery(doc, p(3, 1));
+    doc = paintScenery(doc, p(4, 1));
+    return doc;
+  }
+
+  it('drags like the region brush and erases with shift', () => {
+    const { container, calls } = mount(stripDoc(), { tool: 'scenery' });
+    fireEvent.pointerDown(cellEl(container, 3, 2), { button: 0 });
+    fireEvent.pointerEnter(cellEl(container, 4, 2));
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(calls.paint).toEqual([axialKey(p(3, 2)), axialKey(p(4, 2))]);
+
+    fireEvent.pointerDown(cellEl(container, 3, 1), {
+      button: 0,
+      shiftKey: true,
+    });
+    expect(calls.erase).toEqual([axialKey(p(3, 1))]);
+  });
+
+  it('draws scenery as hatched FLOOR, not as void and not as a region', () => {
+    const { container } = mount(stripDoc(), { tool: 'scenery' });
+    const strip = cellEl(container, 3, 1);
+    expect(strip.getAttribute('data-scenery')).toBe('true');
+    expect(strip.getAttribute('data-region')).toBe('');
+    expect(strip.getAttribute('fill')).toBe(`url(#${SCENERY_HATCH_ID})`);
+    expect(strip.getAttribute('stroke')).toBe(SCENERY_STROKE);
+    // The pattern it points at is actually defined, and carries the hatch.
+    const pattern = container.querySelector(`#${SCENERY_HATCH_ID}`)!;
+    expect(pattern).not.toBeNull();
+    expect(pattern.querySelector('rect')!.getAttribute('fill')).toBe(
+      SCENERY_FILL
+    );
+
+    // A room cell keeps its region fill; a void cell stays void.
+    expect(cellEl(container, 1, 1).getAttribute('data-scenery')).toBeNull();
+    expect(cellEl(container, 1, 1).getAttribute('fill')).not.toBe(
+      `url(#${SCENERY_HATCH_ID})`
+    );
+    expect(cellEl(container, 1, 0).getAttribute('data-scenery')).toBeNull();
+    expect(cellEl(container, 1, 0).getAttribute('fill')).toBe(VOID_FILL);
+  });
+
+  it('puts scenery inside the floor envelope instead of drawing a cliff at the room edge', () => {
+    const { container } = mount(stripDoc());
+    const envelope = new Set(
+      [...container.querySelectorAll('line[data-edge^="env:"]')].map((l) =>
+        l.getAttribute('data-edge')
+      )
+    );
+    expect(envelope.size).toBeGreaterThan(0);
+
+    // The floor's outer edge runs around the strip too, so the crossing
+    // from the last room cell into the first scenery cell is NOT one: both
+    // sides are floor. Scenery that drew its own cliff would say the floor
+    // stopped where it plainly continues.
+    expect(envelope.has(`env:${edgeKey([p(2, 1), p(3, 1)])}`)).toBe(false);
+    // ...and the far side of the strip IS one: there the floor really stops.
+    expect(envelope.has(`env:${edgeKey([p(4, 1), p(5, 1)])}`)).toBe(true);
+  });
+
+  it('lets the wall tool press on a scenery cell (§2.3)', () => {
+    const doc = stripDoc();
+    const { container, calls } = mount(doc, { tool: 'wall' });
+    fireEvent.pointerDown(cellEl(container, 3, 1), { button: 0 });
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    // A wall may stand on any floor, so the press must reach the edge
+    // tool: an UNOWNED cell used to return before `nearestEdge` ever ran,
+    // which made a strip of scenery unwallable.
+    expect(calls.edges).toHaveLength(1);
+    const [a, b] = calls.edges[0];
+    expect(axialKey(a)).toBe(axialKey(p(3, 1)));
+    // jsdom has no layout, so `svgPoint` falls back to the origin and only
+    // which of the six edges is picked is undefined — that it IS one of
+    // the six is not.
+    expect(axialNeighbors(p(3, 1)).map(axialKey)).toContain(axialKey(b));
+    expect(new Set(doc.scenery.map(axialKey)).has(axialKey(p(3, 1)))).toBe(
+      true
+    );
   });
 });

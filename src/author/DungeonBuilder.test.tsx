@@ -21,6 +21,7 @@ import {
   emitDungeon,
   emptyDungeon,
   paintCell,
+  paintScenery,
   setStart,
   updateDoor,
 } from './dungeonYaml';
@@ -477,5 +478,133 @@ describe('staleAtlasNotice — the 3D tab names a lagging atlas (#804 walk findi
         message: 'boom',
       })
     ).toMatch(/unreachable: boom/);
+  });
+});
+
+describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () => {
+  /** A room of three cells with a two-cell scenery strip beside it. */
+  function stripYaml(): string {
+    let doc = emptyDungeon();
+    for (const c of [0, 1, 2]) doc = paintCell(doc, 'region-1', p(c, 1));
+    doc = paintScenery(doc, p(3, 1));
+    doc = paintScenery(doc, p(4, 1));
+    doc = setStart(doc, p(0, 1));
+    return emitDungeon(doc);
+  }
+
+  const cell = (c: number, r: number) =>
+    document.querySelector(`[data-cell="${axialKey(p(c, r))}"]`)!;
+
+  function mountBuilder(yaml: string) {
+    return render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={yaml}
+        persistDraft={false}
+      />
+    );
+  }
+
+  it('paints scenery from the palette and writes it to the file', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain('scenery:')
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scenery' }));
+    fireEvent.pointerDown(cell(5, 1), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'scenery:\n      - [[3,1],[4,1],[5,1]]'
+      )
+    );
+    expect(cell(5, 1).getAttribute('data-scenery')).toBe('true');
+  });
+
+  it('moves a cell between the room and the strip rather than letting both claim it', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(cell(2, 1).getAttribute('data-region')).toBe('region-1')
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scenery' }));
+    fireEvent.pointerDown(cell(2, 1), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(cell(2, 1).getAttribute('data-scenery')).toBe('true')
+    );
+    expect(cell(2, 1).getAttribute('data-region')).toBe('');
+
+    // Painting the room back over it takes it out of the strip again.
+    fireEvent.click(screen.getByRole('button', { name: 'Region brush' }));
+    fireEvent.pointerDown(cell(2, 1), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(cell(2, 1).getAttribute('data-region')).toBe('region-1')
+    );
+    expect(cell(2, 1).getAttribute('data-scenery')).toBeNull();
+  });
+
+  it('refuses the start on scenery IN PLACE, with the reason (design §2.4)', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'start: [0, 1]'
+      )
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    // The board acts on pointer DOWN — the same press the brush uses.
+    fireEvent.pointerDown(cell(3, 1), { button: 0 });
+
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'nobody can stand here'
+      )
+    );
+    // The start did not move — refused in place, not silently relocated.
+    expect(screen.getByTestId('yaml-text').textContent).toContain(
+      'start: [0, 1]'
+    );
+
+    // ...and it still moves onto a room cell.
+    fireEvent.pointerDown(cell(1, 1), { button: 0 });
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'start: [1, 1]'
+      )
+    );
+  });
+
+  it('refuses a monster on scenery and accepts a prop there (F2)', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain('scenery:')
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sk' }));
+    fireEvent.pointerDown(cell(3, 1), { button: 0 });
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'nobody can stand here'
+      )
+    );
+    expect(screen.getByTestId('yaml-text').textContent).toContain('place: []');
+
+    // A prop on the very same cell is fine — that is what the strip is for.
+    const prop = document.querySelector(
+      '[title^="dnd5e:props:"]'
+    ) as HTMLElement;
+    expect(prop).not.toBeNull();
+    fireEvent.click(prop);
+    fireEvent.pointerDown(cell(3, 1), { button: 0 });
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain('at: [3,1]')
+    );
+    expect(screen.getByTestId('yaml-text').textContent).toContain(
+      'dnd5e:props:'
+    );
   });
 });

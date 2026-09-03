@@ -27,6 +27,7 @@ import {
   isMonsterRef,
   rectCells,
   removeWalls,
+  sceneryKeys,
   type DungeonDoc,
   type ErrorTarget,
 } from '../dungeonYaml';
@@ -50,6 +51,10 @@ import {
   MONSTER_COLOR,
   PROP_COLOR,
   regionColor,
+  SCENERY_FILL,
+  SCENERY_HATCH,
+  SCENERY_HATCH_ID,
+  SCENERY_STROKE,
   START_COLOR,
   VOID_FILL,
   VOID_STROKE,
@@ -210,10 +215,17 @@ export function CreationBoard({
   const painting = useRef<'paint' | 'erase' | null>(null);
 
   const owners = useMemo(() => floorOwners(doc), [doc]);
+  /** The cells with no owner but a scenery mark — floor all the same
+   * (rpg-project#360 §1.1), so they extend the paintable grid, wear the
+   * envelope, and offer their edges to the wall and door tools. */
+  const scenery = useMemo(() => sceneryKeys(doc), [doc]);
   const floor = useMemo(
-    () => doc.regions.flatMap((r) => r.cells),
-    [doc.regions]
+    () => [...doc.regions.flatMap((r) => r.cells), ...doc.scenery],
+    [doc.regions, doc.scenery]
   );
+  /** `isFloor` as a membership test, built once per document rather than
+   * per edge — the same reason `edgeOfferableWith` takes a prebuilt set. */
+  const floorSet = useMemo(() => new Set(floor.map(axialKey)), [floor]);
   // The paintable extent only grows (see `growBounds`); it resets when the
   // document's orientation changes, which only `New`/`Open` can do.
   const boundsRef = useRef<{ o: string; bounds: GridBounds | null }>({
@@ -457,7 +469,7 @@ export function CreationBoard({
       setRoomFrom(cell);
       return;
     }
-    if (tool === 'region' || tool === 'erase') {
+    if (tool === 'region' || tool === 'scenery' || tool === 'erase') {
       const mode =
         tool === 'erase' || e.shiftKey || e.button === 2 ? 'erase' : 'paint';
       painting.current = mode;
@@ -465,7 +477,7 @@ export function CreationBoard({
       return;
     }
     if (edgeTool) {
-      if (!svgRef.current || !owners.has(axialKey(cell))) return;
+      if (!svgRef.current || !floorSet.has(axialKey(cell))) return;
       const p = svgPoint(svgRef.current, e);
       const pressEdge = nearestEdge(cell, p, size, o);
       if (tool === 'wall') {
@@ -568,7 +580,10 @@ export function CreationBoard({
 
   const handleCellMove = (cell: Axial, e: PointerEvent<SVGPolygonElement>) => {
     setHoverCell(cell);
-    if (painting.current && (tool === 'region' || tool === 'erase')) {
+    if (
+      painting.current &&
+      (tool === 'region' || tool === 'scenery' || tool === 'erase')
+    ) {
       applyBrush(cell, painting.current);
     }
     if (gesture && svgRef.current) {
@@ -604,13 +619,13 @@ export function CreationBoard({
       setHoverPoint(svgPoint(svgRef.current, e));
     }
     if ((edgeTool || tool === 'select') && svgRef.current) {
-      if (!owners.has(axialKey(cell))) {
+      if (!floorSet.has(axialKey(cell))) {
         setHoverEdge(null);
         return;
       }
       const edge = nearestEdge(cell, svgPoint(svgRef.current, e), size, o);
       setHoverEdge(
-        owners.has(axialKey(edge[1])) &&
+        floorSet.has(axialKey(edge[1])) &&
           (edgeTool || doorOwners.has(edgeKey(edge)))
           ? edge
           : null
@@ -692,7 +707,7 @@ export function CreationBoard({
   // may have a cliff edge. This line only says "the floor stops here".
   for (const cell of floor) {
     for (const n of axialNeighbors(cell)) {
-      if (owners.has(axialKey(n))) continue;
+      if (floorSet.has(axialKey(n))) continue;
       const edge: Edge = [cell, n];
       edgeLines.push({
         key: `env:${edgeKey(edge)}`,
@@ -786,15 +801,42 @@ export function CreationBoard({
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
+          <defs>
+            {/* The scenery hatch, defined once. The pattern paints its own
+                floor colour under the strokes, so one `fill` on the cell
+                says both "this is floor" and "nobody stands here". */}
+            <pattern
+              id={SCENERY_HATCH_ID}
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <rect width="6" height="6" fill={SCENERY_FILL} />
+              <line
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="6"
+                stroke={SCENERY_HATCH}
+                strokeWidth="2"
+              />
+            </pattern>
+          </defs>
           <g data-layer="cells">
             {grid.map((cell) => {
               const key = axialKey(cell);
               const ownerId = owners.get(key);
               const region = ownerId ? regionById.get(ownerId) : undefined;
               const index = ownerId ? (regionIndex.get(ownerId) ?? 0) : 0;
+              // A cell is owned, scenery, or void — never two of them
+              // (§2.2), which the brush guarantees in the document.
+              const isSceneryCell = !ownerId && scenery.has(key);
               const fill = region
                 ? litColor(regionColor(index), region.lighting.intensity)
-                : VOID_FILL;
+                : isSceneryCell
+                  ? `url(#${SCENERY_HATCH_ID})`
+                  : VOID_FILL;
               const isSelectedRegion = !!ownerId && ownerId === selectedRegion;
               const isActive = !!ownerId && ownerId === activeRegionId;
               const isError = errorCells.has(key);
@@ -806,6 +848,7 @@ export function CreationBoard({
                   key={key}
                   data-cell={key}
                   data-region={ownerId ?? ''}
+                  data-scenery={isSceneryCell || undefined}
                   data-concealed={isConcealed || undefined}
                   points={cornersPath(cell, size, o)}
                   fill={fill}
@@ -818,7 +861,9 @@ export function CreationBoard({
                           ? CONCEALED_STROKE
                           : region
                             ? regionColor(index)
-                            : VOID_STROKE
+                            : isSceneryCell
+                              ? SCENERY_STROKE
+                              : VOID_STROKE
                   }
                   strokeWidth={
                     isError
@@ -840,7 +885,10 @@ export function CreationBoard({
                   opacity={
                     inRect
                       ? 0.85
-                      : isHover && (tool === 'region' || tool === 'erase')
+                      : isHover &&
+                          (tool === 'region' ||
+                            tool === 'scenery' ||
+                            tool === 'erase')
                         ? 0.8
                         : 1
                   }
@@ -1157,6 +1205,7 @@ function Start({
 function cursorFor(tool: BoardTool): string {
   switch (tool) {
     case 'region':
+    case 'scenery':
     case 'erase':
     case 'room':
     case 'region-rect':

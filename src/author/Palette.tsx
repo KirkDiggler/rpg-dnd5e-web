@@ -46,6 +46,11 @@ const TOOLS: { id: BoardTool; label: string; hint: string }[] = [
     label: 'Room',
     hint: 'drag a rectangle of WALLS on the floor — shares a single wall with a room beside it',
   },
+  {
+    id: 'scenery',
+    label: 'Scenery',
+    hint: 'paint floor no room owns — walls and props stand on it, nobody walks on it (shift-drag erases)',
+  },
   { id: 'erase', label: 'Erase', hint: 'return cells to void' },
   { id: 'wall', label: 'Wall', hint: 'click an edge between two floor cells' },
   {

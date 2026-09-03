@@ -68,6 +68,7 @@ export function referenceTombDoc(): DungeonDoc {
     orientation: 'pointy',
     void: 'opaque',
     regions: [entrance, hall, tomb],
+    scenery: [],
     start: p(1, 3),
     walls,
     doors: [
