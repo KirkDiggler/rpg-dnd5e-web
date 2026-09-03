@@ -1,7 +1,6 @@
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import * as THREE from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AuthoredWallRun } from '../../hooks/authoredWallRuns';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import {
@@ -9,6 +8,7 @@ import {
   getDungeonShellCatalogSnapshot,
   preloadDungeonShellCatalog,
 } from '../../rendering/dungeonShellProvider';
+import type { AuthoredWallRun } from '../session/atlasWallRuns';
 import { DungeonShell } from './DungeonShell';
 import type { Scene3D } from './atlasToScene3D';
 

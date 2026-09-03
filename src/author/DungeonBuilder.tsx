@@ -27,16 +27,11 @@ import {
   type AuthoringClient,
 } from './authoringRpc';
 import { CreationBoard } from './creation/CreationBoard';
-import {
-  applyDoorDraw,
-  applyReshape,
-  applyWallDraw,
-  applyWallErase,
-} from './creation/wallGesture';
 import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
   addRegion,
+  addWall,
   applyDerivedConcealment,
   deriveConcealment,
   detectConcealmentLeaks,
@@ -58,16 +53,16 @@ import {
   sceneryBlockedBy,
   setStart,
   setWallHeights,
-  toggleDoorEdge,
-  toggleWall,
+  setWallName,
+  toggleDoorAt,
   updateDoor,
   updateDungeon,
   updatePlacement,
   updateRegion,
-  wallEdges,
   type DungeonDoc,
+  type PositionRef,
 } from './dungeonYaml';
-import { edgeKey, type Axial, type Edge, type Orientation } from './hexOffset';
+import { type Axial, type Orientation } from './hexOffset';
 import { Inspector } from './Inspector';
 import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
@@ -223,6 +218,16 @@ export function DungeonBuilder({
     client: authoringClient,
     fixtureAtlas,
   });
+  /** The cells the SERVER says nobody can stand on — scenery and the
+   * cells walls seal. Region membership no longer implies standable
+   * (design §5.2's `sealed`), so the board is TOLD rather than left to
+   * derive it: what one wall seals is closed-form, what two seal
+   * between them is the compiler's alone. Empty until the first compile
+   * answers. */
+  const sealedCells = useMemo(
+    () => new Set((preview.atlas?.sealed ?? []).map((p) => `${p.x},${p.y}`)),
+    [preview.atlas]
+  );
   const fixtures = fixtureCompile !== undefined;
   const saver = useSaveDungeon(authoringClient);
   const [listNonce, setListNonce] = useState(0);
@@ -446,43 +451,28 @@ export function DungeonBuilder({
     if (activeRegionId) applyDoc((d) => paintCell(d, activeRegionId, cell));
   };
   const handleErase = (cell: Axial) => applyDoc((d) => eraseCell(d, cell));
-  // The wall drag commits its RAW taut chain; applying the same
-  // mutator composition the board's live preview used (wallGesture's
-  // apply*) is what makes the preview the commit (#804).
-  const handleWallDraw = (chain: Edge[]) => {
-    applyDoc((d) => applyWallDraw(d, chain));
-  };
-  const handleWallErase = (chain: Edge[]) => {
-    applyDoc((d) => applyWallErase(d, chain));
-  };
-  // Manipulation rides selection (Kirk's walk ruling): keep the wall
-  // selected through a reshape by re-selecting the edges the re-derived
-  // chains produced, so its handles stay up for the next grab.
-  const handleWallReshape = (oldChains: Edge[][], newChains: Edge[][]) => {
+  /** The picker's commit (design §2.6): the two positions the author
+   * picked become one `walls[]` entry, and the new wall is selected so
+   * its name and height are one click away. */
+  const handleWallCommit = (start: PositionRef, end: PositionRef) => {
     applyDoc((d) => {
-      const next = applyReshape(d, oldChains, newChains);
-      if (next !== d) {
-        const untouched = new Set(
-          wallEdges(
-            removeWalls(
-              d,
-              oldChains.flatMap((c) => c)
-            )
-          ).map(edgeKey)
-        );
-        setSelection({
-          kind: 'wall',
-          edges: wallEdges(next).filter((e) => !untouched.has(edgeKey(e))),
-        });
-      }
+      const next = addWall(d, start, end);
+      if (next !== d)
+        setSelection({ kind: 'wall', index: next.walls.length - 1 });
       return next;
     });
   };
-  // One drag, ONE door — and select it, same as the click path does.
-  const handleDoorDraw = (chain: Edge[]) => {
+  const handleWallDelete = (index: number) => {
+    applyDoc((d) => removeWalls(d, [index]));
+    setSelection({ kind: 'dungeon' });
+  };
+  /** A door is a position on a wall (design §2.8). Toggling, and the
+   * new door is selected so its lock and concealment are to hand. */
+  const handleDoorToggle = (at: PositionRef) => {
     applyDoc((d) => {
-      const next = applyDoorDraw(d, chain);
-      if (next !== d && next.doors.length > 0) {
+      const before = d.doors.length;
+      const next = toggleDoorAt(d, at);
+      if (next !== d && next.doors.length > before) {
         setSelection({
           kind: 'door',
           id: next.doors[next.doors.length - 1].id,
@@ -490,22 +480,6 @@ export function DungeonBuilder({
       }
       return next;
     });
-  };
-  const handleEdgeClick = (edge: Edge) => {
-    if (tool === 'wall') applyDoc((d) => toggleWall(d, edge));
-    if (tool === 'door') {
-      const doorId = selection.kind === 'door' ? selection.id : undefined;
-      applyDoc((d) => {
-        const next = toggleDoorEdge(d, edge, doorId);
-        if (next !== d && next.doors.length > 0 && !doorId) {
-          setSelection({
-            kind: 'door',
-            id: next.doors[next.doors.length - 1].id,
-          });
-        }
-        return next;
-      });
-    }
   };
   const handleCellClick = (cell: Axial) => {
     if (tool === 'start') {
@@ -765,11 +739,10 @@ export function DungeonBuilder({
                 applyDoc((d) => paintRect(d, activeRegionId, a, b));
               }}
               onErase={handleErase}
-              onEdgeClick={handleEdgeClick}
-              onWallDraw={handleWallDraw}
-              onWallErase={handleWallErase}
-              onWallReshape={handleWallReshape}
-              onDoorDraw={handleDoorDraw}
+              onWallCommit={handleWallCommit}
+              onWallDelete={handleWallDelete}
+              onDoorToggle={handleDoorToggle}
+              sealedCells={sealedCells}
               onCellClick={handleCellClick}
               onSelect={setSelection}
             />
@@ -831,12 +804,15 @@ export function DungeonBuilder({
                 if (patch.id !== undefined)
                   setSelection({ kind: 'door', id: patch.id });
               }}
-              onRemoveWall={(edges) => {
-                applyDoc((d) => removeWalls(d, edges));
+              onRemoveWall={(index) => {
+                applyDoc((d) => removeWalls(d, [index]));
                 setSelection({ kind: 'dungeon' });
               }}
-              onSetWallHeight={(edges, height) => {
-                applyDoc((d) => setWallHeights(d, edges, height));
+              onSetWallHeight={(index, height) => {
+                applyDoc((d) => setWallHeights(d, [index], height));
+              }}
+              onSetWallName={(index, name) => {
+                applyDoc((d) => setWallName(d, index, name));
               }}
               onRemoveDoor={(id) => {
                 applyDoc((d) => ({

@@ -37,15 +37,20 @@
  * # Walls live in atlasWallRuns.ts, not here
  *
  * The floor tiles this file builds are per-hex (`SyntyHexFloor` renders
- * one tile per cell either way). Walls are not: Kirk's ruling on PR #762's
- * live review was that the game's walls should stay STRAIGHT modular runs
- * (the presentation `WallRunMesh`/`wallRuns.ts` already established for
- * the old route), not a piece per declared boundary edge. `buildScene3D`
- * composes that separate module's output (`boundariesToWallRuns`) with
- * this file's own floor tiles into one `Scene3D` — see atlasWallRuns.ts's
- * own module doc comment for the wall geometry itself, including why the
- * atlas's declared boundaries and cell mask remain the sole AUTHORITY
- * even though the PRESENTATION is now straight runs.
+ * one tile per cell either way). Walls are not: a wall is the line its
+ * author drew, and the wire carries it as an `AtlasSegment`.
+ * `buildScene3D` composes that separate module's output
+ * (`segmentsToWallRuns`) with this file's own floor tiles into one
+ * `Scene3D`. `boundaries` and `doorways` stay the mechanical truth and
+ * are not read here; `segments` is what gets drawn.
+ *
+ * # Sealed cells are floor
+ *
+ * A cell a wall seals keeps its region and stays in `cells`, so it tiles
+ * as floor like any other — it is floor nobody stands on, and refusing a
+ * step onto it is the engine's job, not the renderer's. The same is true
+ * of the footing cells a presented wall puts in the recipient's atlas
+ * (design C18): they arrive in `cells` and tile.
  */
 
 import {
@@ -54,9 +59,9 @@ import {
   type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
-import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import { cellBoundingBox } from '../../author/hexGeometry';
 import {
   layoutFromWire,
   type HexLayout,
@@ -67,7 +72,11 @@ import {
   type DungeonLightingRegionInput,
   type DungeonLightingSourceInput,
 } from '../../rendering/dungeonLighting';
-import { boundariesToWallRuns, type DoorGapPiece } from './atlasWallRuns';
+import {
+  segmentsToWallRuns,
+  type AuthoredWallRun,
+  type DoorGapPiece,
+} from './atlasWallRuns';
 import { positionToCube, worldPositionOf } from './positionBridge';
 
 export { positionToCube, worldPositionOf };
@@ -93,10 +102,24 @@ export interface SceneProp3D {
 }
 
 /**
- * A prop's actual render position: its cell center plus its authored
- * `offset`, each component scaled by `hexSize` (design: "offset * HEX_SIZE
- * applied in the shared scene path") — including the world-Y the third
- * component raises it to (rpg-project#272: floor + offset.z · hexSize).
+ * A prop's actual render position: its cell centre plus its authored
+ * `offset`.
+ *
+ * # The planar offset is BOUNDING-BOX FRACTIONS
+ *
+ * `x` is measured in cell WIDTHS and `y` in cell HEIGHTS — design §1.11's
+ * one offset unit, shared with a wall position and a door position, so
+ * the whole file speaks one language about where inside a cell something
+ * sits. It used to be circumradii, which meant `[0.5, 0]` put a prop
+ * halfway to a VERTEX — inside the hex, nowhere in particular. In
+ * bounding-box fractions the same `[0.5, 0]` puts it exactly on the side
+ * midpoint: `0.5 × √3·hexSize` is the inradius. The content that would
+ * have needed converting is being recreated in the same wave.
+ *
+ * `z` is unchanged: it is the height above the floor, not a planar
+ * nudge, and keeps its own cell-size unit and its own [0,3] range
+ * (rpg-project#272).
+ *
  * ONE place, so `DungeonPreview3D`'s prop path and the game route's
  * (`SessionCanvas`) can never disagree — the same symmetric-bug
  * discipline `hexOffset.ts` names.
@@ -106,10 +129,11 @@ export function propWorldPosition(
   hexSize: number
 ): WorldPos & { y: number } {
   const center = cubeToWorld(prop.position, hexSize);
+  const { width, height } = cellBoundingBox('pointy', hexSize);
   return {
-    x: center.x + prop.offset.x * hexSize,
+    x: center.x + prop.offset.x * width,
     y: prop.offset.z * hexSize,
-    z: center.z + prop.offset.y * hexSize,
+    z: center.z + prop.offset.y * height,
   };
 }
 
@@ -182,7 +206,7 @@ export function resolveSceneLayout(
 export function buildScene3D(
   atlas: Pick<
     GetAtlasResponse,
-    'cells' | 'props' | 'boundaries' | 'doorways' | 'regions'
+    'cells' | 'props' | 'segments' | 'doorways' | 'regions'
   >,
   hexSize: number,
   layout: HexLayout
@@ -257,7 +281,7 @@ export function buildScene3D(
     lightingRegions,
     lightingSources
   );
-  const { wallRuns, doorGaps } = boundariesToWallRuns(atlas, hexSize);
+  const { wallRuns, doorGaps } = segmentsToWallRuns(atlas, hexSize);
 
   return { floorTiles, props, archetypes, lighting, wallRuns, doorGaps };
 }

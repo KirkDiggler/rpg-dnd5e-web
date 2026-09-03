@@ -29,6 +29,27 @@ export function litColor(hex: string, intensity: number): string {
 export const VOID_FILL = '#0b0d11';
 export const VOID_STROKE = '#22262e';
 export const WALL_STROKE = '#f4f1ea';
+
+/** The wall picker's two cost colours (rpg-project#360 §2.6). Green for
+ * a THIN line, which shaves its neighbours and seals nothing; orange for
+ * a THICK one, which runs through cell centres and seals every cell it
+ * halves. The same two colours the design's own `wall-geometry-lines.svg`
+ * uses, so the picture in the design and the picture on the board agree
+ * without anyone having to translate. */
+export const THIN_RAY_STROKE = '#5fd48a';
+export const THICK_RAY_STROKE = '#f0a24a';
+
+/** A cell nobody can stand on, hatched over its region colour — the
+ * sealed mark (design §4.3). Distinct from SCENERY_HATCH: scenery is
+ * floor with no owner, a sealed cell keeps the room it belongs to. */
+export const SEALED_HATCH = '#f0a24a';
+export const SEALED_HATCH_ID = 'dg-sealed-hatch';
+
+/** What a candidate wall WOULD seal, greyed at pick time (design §2.6's
+ * own word). Grey and not the committed hatch's orange, so "this is the
+ * cost of the wall you are hovering" never reads as "this cell is
+ * already sealed". */
+export const SEALED_PREVIEW_FILL = '#8b8f96';
 /** The floor's outer edge. NOT a wall — a wall is something the author put
  * there on purpose (Kirk: "walls are intentional"), and an unwalled boundary
  * is a real authored choice: a region is allowed a cliff edge. Drawn dimmer

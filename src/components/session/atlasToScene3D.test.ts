@@ -18,6 +18,7 @@ import { coordToKey } from '@/components/hex-grid/hexMath';
 import { resolveDungeonLighting } from '@/rendering/dungeonLighting';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { describe, expect, it } from 'vitest';
+import { cellBoundingBox } from '../../author/hexGeometry';
 import { hexCenter } from '../../concepts/session-tomb/atlas';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
 import {
@@ -100,7 +101,7 @@ describe('buildScene3D', () => {
         {
           cells: [],
           props: [],
-          boundaries: [],
+          segments: [],
           doorways: [],
           regions: [],
         } as never,
@@ -132,7 +133,7 @@ describe('buildScene3D', () => {
             blocksLineOfSight: true,
           },
         ],
-        boundaries: [],
+        segments: [],
         doorways: [],
         regions: [
           {
@@ -160,10 +161,13 @@ describe('buildScene3D', () => {
     ]);
     expect(scene.lighting.sources).toHaveLength(1);
     expect(scene.lighting.sources[0]?.ref).toBe('dnd5e:props:brazier');
+    // The planar offset is bounding-box fractions, not raw hexSize —
+    // see propWorldPosition's own tests below for the acceptance pin.
+    const { width, height } = cellBoundingBox('pointy', 1);
     expect(scene.lighting.sources[0]?.position).toEqual([
-      0.25,
+      0.25 * width,
       0.4 + DUNGEON_SURFACE_Y + 0.9,
-      -0.15,
+      -0.15 * height,
     ]);
     expect(scene.lighting.sources[0]?.position[1]).not.toBe(
       0.4 + DUNGEON_SURFACE_Y + 0.9 + 0.4
@@ -183,7 +187,7 @@ describe('buildScene3D', () => {
             offsetZ: 0,
           },
         ],
-        boundaries: [],
+        segments: [],
         doorways: [],
         regions: [
           {
@@ -216,7 +220,7 @@ describe('buildScene3D', () => {
       {
         cells: [],
         props: [],
-        boundaries: [],
+        segments: [],
         doorways: [],
         regions: [
           { id: 'second', archetype: 'crypt' },
@@ -236,7 +240,7 @@ describe('buildScene3D', () => {
       {
         cells: [],
         props: [],
-        boundaries: [],
+        segments: [],
         doorways: [],
         regions: [
           { id: 'first', archetype: ' crypt ' },
@@ -255,7 +259,7 @@ describe('buildScene3D', () => {
       {
         cells: [pos(0, 0), pos(1, 0)],
         props: [],
-        boundaries: [],
+        segments: [],
         doorways: [],
         regions: [],
       } as never,
@@ -274,7 +278,7 @@ describe('buildScene3D', () => {
     const scene = buildScene3D(
       {
         cells: [pos(3, -2), pos(0, 1)],
-        boundaries: [],
+        segments: [],
         doorways: [],
         regions: [],
         props: [
@@ -328,7 +332,7 @@ describe('buildScene3D', () => {
     const scene = buildScene3D(
       {
         cells: [pos(1, 0)],
-        boundaries: [],
+        segments: [],
         doorways: [],
         regions: [],
         props: [
@@ -357,46 +361,26 @@ describe('buildScene3D', () => {
 
   /**
    * Not a re-test of the wall-run geometry itself (atlasWallRuns.test.ts
-   * owns that) — just confirms buildScene3D actually calls through to it
-   * and returns what it returns, so the two modules can't silently drift
-   * apart (e.g. a future edit renaming a field in one without the other).
-   * Not an exact run count: this tiny 4-cell fixture's real hex-corner
-   * outline is a small irregular diamond, not a rectangle (a corner cell
-   * only has 2 of its 6 neighbors as other floor cells), so the real
-   * outline-tracing chain (rpg-dnd5e-web#787) legitimately produces more
-   * than the old bounding-rectangle envelope's fixed 4 — that fixed count
-   * was exactly the "envelope follows the bounding box, not the real
-   * outline" bug #787 fixed, so asserting it here would re-pin the bug.
+   * owns that) — just confirms buildScene3D actually calls through to
+   * `segmentsToWallRuns` with both `segments` AND `doorways`, and returns
+   * what it returns, so the two modules can't silently drift apart (e.g.
+   * a future edit renaming a field in one without the other).
    */
-  it('wires atlasWallRuns.boundariesToWallRuns straight through', () => {
+  it('wires atlasWallRuns.segmentsToWallRuns straight through', () => {
     const cells = [pos(0, 0), pos(0, 1), pos(1, 0), pos(1, 1)];
-    const boundaries = [
-      {
-        from: pos(0, 0),
-        to: pos(1, 0),
-        blocksMovement: true,
-        blocksLineOfSight: true,
-      },
-      {
-        from: pos(1, 0),
-        to: pos(0, 1),
-        blocksMovement: true,
-        blocksLineOfSight: true,
-      },
-      {
-        from: pos(0, 1),
-        to: pos(1, 1),
-        blocksMovement: true,
-        blocksLineOfSight: true,
-      },
-    ];
+    const segments = [{ from: { q: 0, r: 0 }, to: { q: 3, r: 0 }, height: 0 }];
+    const doorways = [{ connection: 'door-1', from: pos(1, 0), to: pos(1, 1) }];
     const scene = buildScene3D(
-      { cells, props: [], boundaries, doorways: [], regions: [] } as never,
+      { cells, props: [], segments, doorways, regions: [] } as never,
       1,
       'pointy'
     );
     expect(scene.wallRuns.length).toBeGreaterThan(0);
-    expect(scene.doorGaps).toHaveLength(0);
+    // A doorway whose crossing lies on no segment still draws its own
+    // gap (atlasWallRuns.ts's documented "a door with no wall" fallback)
+    // — proving buildScene3D passes `doorways` through as well as
+    // `segments`, not just one of the two.
+    expect(scene.doorGaps).toHaveLength(1);
   });
 });
 
@@ -409,16 +393,49 @@ describe('propWorldPosition', () => {
     expect(world).toEqual({ ...worldPositionOf(pos(2, -1), 1), y: 0 });
   });
 
-  it('adds offset * hexSize to the cell center, exactly, on both axes', () => {
+  /**
+   * The planar offset is BOUNDING-BOX FRACTIONS, not raw hexSize
+   * (propWorldPosition's own doc comment, design §1.11): x in cell
+   * WIDTHS (√3·hexSize for pointy-top), y in cell HEIGHTS (2·hexSize).
+   */
+  it('adds offset * the cell bounding box to the cell center, exactly, on both axes', () => {
     const hexSize = 1.75;
     const cell = positionToCube(pos(-3, 5));
     const center = worldPositionOf(pos(-3, 5), hexSize);
+    const { width, height } = cellBoundingBox('pointy', hexSize);
     const world = propWorldPosition(
       { position: cell, offset: { x: 0.2, y: -0.4, z: 0 } },
       hexSize
     );
-    expect(world.x).toBeCloseTo(center.x + 0.2 * hexSize, 12);
-    expect(world.z).toBeCloseTo(center.z + -0.4 * hexSize, 12);
+    expect(world.x).toBeCloseTo(center.x + 0.2 * width, 12);
+    expect(world.z).toBeCloseTo(center.z + -0.4 * height, 12);
+  });
+
+  /**
+   * ACCEPTANCE: a prop at offset [0.5, 0] sits on the SIDE of its hex,
+   * not inside it. Under the OLD circumradius unit, `[0.5, 0]` put a
+   * prop at 0.5·hexSize east of centre — halfway to a VERTEX, a point
+   * with no meaning on the hex's own boundary, still inside the hex's
+   * interior. In bounding-box fractions the same `[0.5, 0]` lands
+   * exactly `√3/2 · hexSize` east of centre: the pointy-top hex's own
+   * flat-to-flat inradius, i.e. the midpoint of its east side.
+   */
+  it('a prop at offset [0.5, 0] sits on the SIDE of its hex, not inside it', () => {
+    const hexSize = 2;
+    const cell = positionToCube(pos(0, 0));
+    const center = worldPositionOf(pos(0, 0), hexSize);
+    const world = propWorldPosition(
+      { position: cell, offset: { x: 0.5, y: 0, z: 0 } },
+      hexSize
+    );
+    const inradius = (Math.sqrt(3) / 2) * hexSize;
+    expect(world.x).toBeCloseTo(center.x + inradius, 12);
+    expect(world.z).toBeCloseTo(center.z, 12);
+    // The old, wrong answer: 0.5 * hexSize (a vertex-ward point strictly
+    // inside the hex, not its side) — named explicitly so a regression
+    // back to the circumradius unit shows up as a wrong number, not just
+    // a missing one.
+    expect(world.x).not.toBeCloseTo(center.x + 0.5 * hexSize, 6);
   });
 
   it('raises world-Y by offset.z * hexSize, exactly — floor + offset_z · HEX_SIZE (rpg-project#272)', () => {

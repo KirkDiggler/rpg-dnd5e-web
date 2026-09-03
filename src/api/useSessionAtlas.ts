@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { sessionClient } from './client';
 
 export interface UseSessionAtlasResult {
+  /** Patch the held atlas in place — see `applyReveal` below. */
+  applyReveal: (patch: (current: GetAtlasResponse) => GetAtlasResponse) => void;
   atlas: GetAtlasResponse | null;
   loading: boolean;
   error: Error | null;
@@ -66,5 +68,24 @@ export function useSessionAtlas(
     void fetchAtlas();
   }, [fetchAtlas]);
 
-  return { atlas, loading, error, refetch: fetchAtlas };
+  /**
+   * Patch the held atlas with a reveal beat, so the room appears in the
+   * same frame the beat arrives rather than a round trip later.
+   *
+   * The refetch still runs — `SessionEncounterView` asks for 'atlas' on
+   * both reveal beats — and it OVERWRITES this patch with the server's
+   * own answer. That is deliberate: the patch is the same merge
+   * `GetAtlas` would serve (`applyReveal.ts` holds the rule and the
+   * toolkit pins it), so the two agree; and where they ever did not, the
+   * server wins within one round trip instead of the client keeping a
+   * wrong picture. The patch buys the frame, not the truth.
+   */
+  const applyReveal = useCallback(
+    (patch: (current: GetAtlasResponse) => GetAtlasResponse) => {
+      setAtlas((current) => (current ? patch(current) : current));
+    },
+    []
+  );
+
+  return { atlas, loading, error, refetch: fetchAtlas, applyReveal };
 }

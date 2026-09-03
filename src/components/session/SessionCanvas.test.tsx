@@ -5,7 +5,7 @@
  * Canvas-content component directly through the test renderer's own root
  * rather than nesting a second `<Canvas>` inside it.
  */
-import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
 import { __resetDungeonShellProviderForTests } from '@/rendering/dungeonShellProvider';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { create } from '@bufbuild/protobuf';
@@ -33,6 +33,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { cellBoundingBox } from '../../author/hexGeometry';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import { facingToYaw } from '../hex-grid/facingYaw';
@@ -946,11 +947,17 @@ describe('SessionScene', () => {
     );
     expect(propMesh).toBeDefined();
 
+    // The planar offset is BOUNDING-BOX FRACTIONS (atlasToScene3D.ts's
+    // propWorldPosition doc comment) — x in cell widths (sqrt(3)*hexSize
+    // for pointy-top), y in cell heights (2*hexSize) — not raw hexSize,
+    // which used to put an offset partway to a hex VERTEX instead of the
+    // side it names.
+    const { width, height } = cellBoundingBox('pointy', 1);
     const cellCenter = cubeToWorld(position, 1);
     const propAnchor = propMesh?.parent?.parent as THREE.Group | undefined;
-    expect(propAnchor?.position.x).toBeCloseTo(cellCenter.x + 0.2, 9);
+    expect(propAnchor?.position.x).toBeCloseTo(cellCenter.x + 0.2 * width, 9);
     expect(propAnchor?.position.y).toBeCloseTo(DUNGEON_SURFACE_Y + 0.6, 9);
-    expect(propAnchor?.position.z).toBeCloseTo(cellCenter.z - 0.3, 9);
+    expect(propAnchor?.position.z).toBeCloseTo(cellCenter.z - 0.3 * height, 9);
     expect(propAnchor?.rotation.y).toBeCloseTo(facingToYaw('ne'), 9);
   });
 

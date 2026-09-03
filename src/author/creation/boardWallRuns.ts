@@ -1,243 +1,162 @@
 /**
- * boardWallRuns — the 2D canvas's picture of EXISTING walls and doors as
- * the SAME straight runs the 3D preview and game route render
- * (rpg-dnd5e-web#800). Kirk's walk: "in the previous dungeon builder we
- * drew the straight walls and it was clear how they would show in 3D;
- * with the follow-the-hexes it seems we need to do some guessing." The
- * 2D board drew each authored wall as its literal hex-edge zigzag while
- * 3D straightened the same file into runs — so the author authored
- * blind. This module makes the board draw what 3D will draw.
+ * boardWallRuns — the 2D canvas's picture of the document's walls and
+ * doors.
  *
- * # One geometry source, two projections — NEVER re-derived
+ * # There is nothing left to fit
  *
- * The run geometry comes from `atlasWallRuns.boundariesToWallRuns`, the
- * exact module `buildScene3D` composes for the 3D preview and the game
- * route (axis-true by authored-pair declaration, corner closure, door
- * gaps — see its own module doc for every ruling it encodes). This file
- * contains ZERO run math: it maps the authored document into the
- * atlas-shaped input that module already takes, calls it at the game's
- * own `HEX_SIZE`, and projects the world-space result into SVG user
- * space. The symmetric-bug rule (rpg-toolkit#1150, rpg-dnd5e-web#1141):
- * mirrored math drifts and round-trips can't see it; a shared module
- * cannot disagree with itself.
+ * This module used to map the document into an atlas-shaped input, hand
+ * it to the 3D route's chain-fitting engine, and project the result into
+ * SVG space — an elaborate way to make the board draw the same GUESS the
+ * 3D preview drew, because a wall on disk was a list of crossings and
+ * neither view could know which line the author meant. Kirk's walk:
+ * *"with the follow-the-hexes it seems we need to do some guessing."*
  *
- * # Why the input is built locally, not read off the server compile
+ * A wall is a line now (rpg-project#360 slice 2). The board draws it by
+ * placing its two authored positions and joining them. So does the 3D
+ * preview, from the same two numbers by way of the server's segment.
+ * There is no fitting, no tolerance, no corner closure and no projection
+ * identity to pin, because there is only one geometry: `hexGeometry.ts`
+ * places a position, and the board's `size` and the game's `HEX_SIZE`
+ * are the same formula at two scales.
  *
- * `usePutDungeonPreview` debounces 400ms and then round-trips
- * `PutDungeon{validate_only}` — fine for the 3D tab, too slow for a
- * board that must repaint the wall the author JUST clicked.
- * `docAtlasFacts` is a pure MAPPING (cells = the regions' union,
- * boundaries = `doc.walls`, doorways = the doors' edges — the same
- * plain facts `fixtureAtlasOf` mirrors and the server's compile
- * projects), so the board's runs are current on every click and
- * bit-identical to what the 3D preview derives for the same document
- * (pinned by `boardWallRuns.test.ts`'s reference-tomb golden).
+ * # Flat-top draws too
  *
- * # The projection is a pure scale, proven not assumed
- *
- * `canvasGeometry.ts` places the board's pointy-top cells with
- * `hexCenter` — the SAME standard axial formulas `cubeToWorld` uses
- * (x = size·√3·(q + r/2); y/z = size·3/2·r), just in SVG user space
- * (y-down) at `BOARD_HEX_SIZE` instead of world space at `HEX_SIZE`.
- * So world → SVG is exactly: scale both components by
- * `boardHexSize / worldHexSize`, world z becomes SVG y. That identity
- * is pinned by a pixel-formula test (exact numbers for known inputs,
- * not a round-trip — the repo's symmetric-bug lesson, twice learned),
- * not trusted from this comment.
- *
- * # Pointy-top only, mirroring 3D by name
- *
- * `hexMath.ts` places pointy-top only (rpg-dnd5e-web#763) and
- * `buildScene3D` throws on flat-top rather than draw the rotated
- * picture. A flat-top document therefore keeps the board's literal
- * hex-edge drawing — that IS the honest picture while 3D cannot render
- * it at all; straightening it here would invent geometry no other view
- * has. `boardWallScene` returns null and the board falls back.
+ * The old module returned null for a flat-top document, because the
+ * engine it borrowed placed pointy-top only. The position lattice places
+ * both, so a flat-top document's walls now draw on the board — the 3D
+ * preview still refuses it by name (rpg-dnd5e-web#763), which is a
+ * renderer limit, not a geometry one.
  */
-import {
-  cubeToWorld,
-  HEX_SIZE,
-  hexEdgeBetween,
-  type WorldPos,
-} from '@/components/hex-grid/hexMath';
-import { boundariesToWallRuns } from '@/components/session/atlasWallRuns';
-import { positionToCube } from '@/components/session/positionBridge';
-import { vertexKey } from '@/hooks/authoredWallRuns';
-import { create } from '@bufbuild/protobuf';
-import {
-  GetAtlasResponseSchema,
-  type GetAtlasResponse,
-} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type { Point } from '../../concepts/session-tomb/atlas';
-import { compiledWalls, type DungeonDoc } from '../dungeonYaml';
-import { compareAxial, type Axial, type Edge } from '../hexOffset';
+import { doorCrossing, type DungeonDoc } from '../dungeonYaml';
+import {
+  latticeOf,
+  latticeWalk,
+  positionKey,
+  positionPoint,
+  wallFootprint,
+  type PlanePoint,
+} from '../hexGeometry';
+import { axialKey, type Axial, type Edge } from '../hexOffset';
 
-// cubeToWorld is re-exported so the test can pin the projection identity
-// against the exact function the shared module places with.
-export { cubeToWorld, HEX_SIZE };
-
-/**
- * World (x, z) → SVG user space (x, y): ONE exported projection, used
- * for every run endpoint and door gap the board draws, so the board and
- * the 3D scene can never disagree about where a shared point lands.
- * For pointy-top the board's `hexCenter` and 3D's `cubeToWorld` are the
- * same axial formulas at different sizes, so this is a pure scale with
- * world z mapped to SVG y (both "down"): no rotation, no offset — see
- * this module's header doc, and the pixel-formula test that pins it.
- */
-export function worldToBoard(
-  world: WorldPos,
-  worldHexSize: number,
-  boardHexSize: number
-): Point {
-  const scale = boardHexSize / worldHexSize;
-  return { x: world.x * scale, y: world.z * scale };
-}
-
-/** One straight wall run in SVG user space, keyed by the shared
- * module's own stable run key — and carrying the document edges it was
- * derived from (rpg-dnd5e-web#804), so a rendered run can answer "which
- * doc edges am I" for hit-testing, selection, and the gesture's
- * endpoint handles. Presentation metadata threaded ADDITIVELY on the
- * board side only: the shared 3D module's geometry is untouched; the
- * mapping rides the run's own `key`, which is the ';'-join of one token
- * per constituent edge (`vertexKey(a)|vertexKey(b)` from
- * `hexEdgeBetween` — see `edgeFitDataByToken`'s doc comment in
- * atlasWallRuns.ts for why that token is bit-identical when recomputed
- * here from the same cell pair). */
-export interface BoardWallRun {
-  key: string;
+/** One wall as the board draws it: the line between its two authored
+ * positions, carrying the index of the `walls[]` entry behind it so a
+ * click can select, name, raise or delete that wall. */
+export interface BoardWall {
+  index: number;
   a: Point;
   b: Point;
-  edges: Edge[];
-  /** The run's authored height multiplier, from the shared engine —
-   * 0 = standard. The 2D board stays schematic about it (a label, not
-   * scaled geometry — the design's own "Not now" line). */
-  height: number;
+  /** The authored height multiplier; `undefined` = standard. The 2D
+   * board stays schematic about it — a label, not scaled geometry. */
+  height?: number;
+  name?: string;
+  /** The cells this wall seals on its own — hatched, so the cost the
+   * picker previewed stays visible after the commit. */
+  sealed: Axial[];
 }
 
-/** One door, drawn IN its run's gap (aligned to the straightened run,
- * not the raw hex edge), still carrying its document identity so the
- * board can style it (locked/closed/selected) and overlay errors on
- * the authored edge it toggles. */
-export interface BoardDoorRun {
+/** One door, drawn as a gap on the wall it stands in. */
+export interface BoardDoor {
   doorId: string;
-  edge: Edge;
+  /** The position it stands on — the gap's centre. */
+  at: Point;
+  /** The gap's two ends along the wall. */
   a: Point;
   b: Point;
+  /** The crossing it opens, for the inspector and for error overlays. */
+  crossing: Edge | null;
 }
 
 export interface BoardWallScene {
-  runs: BoardWallRun[];
-  doors: BoardDoorRun[];
+  walls: BoardWall[];
+  doors: BoardDoor[];
 }
 
-const pos = (a: Axial) => ({ x: a.q, y: a.r });
+/** The door gap's length as a fraction of the hex's own side — design
+ * C15's "one side's length in all", half either side of the position. */
+const GAP_SIDES = 1;
+
+const asPoint = (p: PlanePoint): Point => ({ x: p.x, y: p.y });
 
 /**
- * The atlas-shaped plain facts `boundariesToWallRuns` consumes, mapped
- * straight from the document — mapping ONLY, zero geometry: cells are
- * the regions' union (the compiled atlas's own definition), boundaries
- * are the declared walls, doorways are the doors' edges. The same
- * shapes `fixtureAtlasOf` mirrors for the sandbox and the server's
- * compile projects for real, positions as wire axial (x = q, y = r).
- * Also returns the doorways' document identities, index-aligned with
- * the doorways array (and therefore with `boundariesToWallRuns`'s
- * `doorGaps`, which processes every doorway once, in order).
+ * The document's walls and doors in SVG user space at `size`.
+ *
+ * A wall whose ends are not on one of the twelve directions is dropped
+ * rather than drawn crooked: the picker cannot author one, and a
+ * hand-edited file that carries one gets the compiler's refusal, which
+ * is where that news belongs.
  */
-export function docAtlasFacts(doc: DungeonDoc): {
-  facts: Pick<GetAtlasResponse, 'cells' | 'boundaries' | 'doorways'>;
-  doorSources: { doorId: string; edge: Edge }[];
-  /** Run-key token (one per non-door edge, exactly as the chaining
-   * engine builds them into each run's `key`) → the document edge it
-   * came from — how `boardWallScene` threads each run's source edges
-   * through (#804). */
-  wallSourcesByToken: Map<string, Edge>;
-} {
-  const doorSources = doc.doors.flatMap((d) =>
-    d.edges.map((edge) => ({ doorId: d.id, edge }))
-  );
-  const wallSourcesByToken = new Map<string, Edge>();
-  for (const { edge } of compiledWalls(doc)) {
-    const { a, b } = hexEdgeBetween(
-      positionToCube({ x: edge[0].q, y: edge[0].r } as never),
-      positionToCube({ x: edge[1].q, y: edge[1].r } as never),
-      HEX_SIZE
+export function boardWallScene(doc: DungeonDoc, size: number): BoardWallScene {
+  const o = doc.orientation;
+  const walls: BoardWall[] = [];
+  doc.walls.forEach((wall, index) => {
+    const a = latticeOf(o, wall.start);
+    const b = latticeOf(o, wall.end);
+    if (!latticeWalk(a, b)) return;
+    const floor = new Set(
+      [...doc.regions.flatMap((r) => r.cells), ...doc.scenery].map(axialKey)
     );
-    wallSourcesByToken.set(`${vertexKey(a)}|${vertexKey(b)}`, edge);
-  }
-  const facts = create(GetAtlasResponseSchema, {
-    cells: doc.regions
-      .flatMap((r) => r.cells)
-      .sort(compareAxial)
-      .map(pos),
-    boundaries: compiledWalls(doc).map(({ edge: [a, b], height }) => ({
-      from: pos(a),
-      to: pos(b),
-      blocksMovement: true,
-      blocksLineOfSight: true,
-      // The authored multiplier, or 0 = not authored = standard — the
-      // SAME wire contract the server's atlas carries, so the shared
-      // engine sees one dialect from both producers (rpg-project#273).
-      height: height ?? 0,
-    })),
-    doorways: doorSources.map(({ doorId, edge: [a, b] }) => ({
-      connection: `${doc.key}/${doorId}`,
-      from: pos(a),
-      to: pos(b),
-    })),
-  });
-  return { facts, doorSources, wallSourcesByToken };
-}
-
-/**
- * The straightened wall/door picture for the board, or null for a
- * flat-top document (the board keeps its literal edge drawing — see
- * this module's header doc). Runs are computed at the game's own
- * `HEX_SIZE` — the calibrated door-frame width and corner-overlap
- * margin inside the shared module are world-unit constants sized for
- * it — then projected, so gaps and overlaps land at exactly the
- * proportions 3D will show.
- */
-export function boardWallScene(
-  doc: DungeonDoc,
-  boardHexSize: number
-): BoardWallScene | null {
-  if (doc.orientation !== 'pointy') return null;
-  const { facts, doorSources, wallSourcesByToken } = docAtlasFacts(doc);
-  const { wallRuns, doorGaps } = boundariesToWallRuns(facts, HEX_SIZE);
-  const project = (w: WorldPos) => worldToBoard(w, HEX_SIZE, boardHexSize);
-  const runs: BoardWallRun[] = wallRuns.map((r) => ({
-    key: r.key,
-    a: project(r.start),
-    b: project(r.end),
-    height: r.height,
-    // Every token in a run's key is one constituent non-door edge; a
-    // missing lookup is never expected (every boundary fed to the
-    // engine came from doc.walls above) and is dropped rather than
-    // invented.
-    edges: r.key
-      .split(';')
-      .map((token) => wallSourcesByToken.get(token))
-      .filter((e): e is Edge => e !== undefined),
-  }));
-  const doors: BoardDoorRun[] = [];
-  doorGaps.forEach((gap, i) => {
-    const source = doorSources[i];
-    if (!source) return; // never expected: doorGaps is one per doorway, in order
-    // The gap runs leafPosition → its mirror across the gap's center
-    // (DoorGapPiece carries the center and ONE end; the other end is
-    // the reflection, by the gap's own construction).
-    const far: WorldPos = {
-      x: 2 * gap.position.x - gap.leafPosition.x,
-      z: 2 * gap.position.z - gap.leafPosition.z,
-    };
-    doors.push({
-      doorId: source.doorId,
-      edge: source.edge,
-      a: project(gap.leafPosition),
-      b: project(far),
+    walls.push({
+      index,
+      a: asPoint(positionPoint(o, wall.start, size)),
+      b: asPoint(positionPoint(o, wall.end, size)),
+      height: wall.height,
+      name: wall.name,
+      sealed: wallFootprint(o, a, b).filter(
+        (c) => floor.has(axialKey(c)) && isCentreOn(doc, a, b, c)
+      ),
     });
   });
-  return { runs, doors };
+
+  const doors: BoardDoor[] = doc.doors.map((door) => {
+    const at = positionPoint(o, door.at, size);
+    const host = doc.walls.find((wall) => {
+      const walk = latticeWalk(
+        latticeOf(o, wall.start),
+        latticeOf(o, wall.end)
+      );
+      return walk?.some((l) => `${l.u},${l.v}` === positionKey(o, door.at));
+    });
+    // The gap runs along the wall it stands in; a door on no wall (a file
+    // the compiler refuses, F10) draws its gap square to the crossing it
+    // opens so the author can see and move it.
+    const line = host
+      ? {
+          a: positionPoint(o, host.start, size),
+          b: positionPoint(o, host.end, size),
+        }
+      : null;
+    const dir = line ? unit(line.a, line.b) : { x: 1, y: 0 };
+    const half = (GAP_SIDES * size) / 2;
+    return {
+      doorId: door.id,
+      at: asPoint(at),
+      a: { x: at.x - dir.x * half, y: at.y - dir.y * half },
+      b: { x: at.x + dir.x * half, y: at.y + dir.y * half },
+      crossing: doorCrossing(doc, door),
+    };
+  });
+
+  return { walls, doors };
+}
+
+function unit(a: PlanePoint, b: PlanePoint): PlanePoint {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  return len === 0 ? { x: 1, y: 0 } : { x: dx / len, y: dy / len };
+}
+
+/** Whether the wall runs through this cell's own centre — the one thing
+ * that seals it (design §4.3). */
+function isCentreOn(
+  doc: DungeonDoc,
+  a: { u: number; v: number },
+  b: { u: number; v: number },
+  cell: Axial
+): boolean {
+  const o = doc.orientation;
+  const centre = latticeOf(o, { cell, offset: [0, 0] });
+  const walk = latticeWalk(a, b);
+  return !!walk?.some((l) => l.u === centre.u && l.v === centre.v);
 }
