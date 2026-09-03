@@ -1,4 +1,5 @@
 import type { Scene3D } from '@/components/session/atlasToScene3D';
+import type { RollFlashOutcome } from '@/components/session/combat-experience/rollFlash';
 import type { DiceMotionPose } from '@/components/ui/dice/diceMotionSolver';
 import {
   getDiceRuntimePresetSnapshot,
@@ -42,6 +43,7 @@ import {
 } from './localWorldDieCommand';
 import { isLocalWorldDieFloorPoint } from './localWorldDieFloor';
 import { localWorldDieLaunch } from './localWorldDieMotion';
+import { RollFlashDie } from './RollFlashDie';
 
 export interface LocalWorldDieLayerProps {
   readonly command: LocalWorldDieCommand;
@@ -51,6 +53,12 @@ export interface LocalWorldDieLayerProps {
   readonly projectionRef: MutableRefObject<TrayPlaneProjection | undefined>;
   readonly onReadyChange: (ready: boolean) => void;
   readonly onTerminal: (kind: 'settled' | 'off-table' | 'failure') => void;
+  /** The roll flash to show when/if THIS throw settles (`?rollFlash=die`/
+   * `both`, #906) — rendered internally, anchored at the die's own actual
+   * rest position (tracked locally; never bubbled out, so a caller does not
+   * need to reach into physics internals to use this). `undefined` renders
+   * nothing. See RollFlashDie.tsx and combat-experience/rollFlash.ts. */
+  readonly rollFlash?: RollFlashOutcome;
 }
 
 const PRESET_ID = 'dice.original.carved.d20';
@@ -119,6 +127,7 @@ function DieBody({
   onBodyReady,
   onMeshReady,
   onTerminal,
+  onSettledAt,
 }: {
   readonly command: LocalWorldDieCommand;
   readonly source: NonNullable<ReturnType<typeof runtimeSource>>;
@@ -133,6 +142,7 @@ function DieBody({
   readonly onBodyReady: () => void;
   readonly onMeshReady: () => void;
   readonly onTerminal: (kind: 'settled' | 'off-table' | 'failure') => void;
+  readonly onSettledAt?: (position: readonly [number, number, number]) => void;
 }) {
   const bodyRef = useRef<RapierRigidBody>(null);
   const { rapier } = useRapier();
@@ -317,6 +327,12 @@ function DieBody({
       assist.current = undefined;
       launched.current = false;
       body.setBodyType(rapier.RigidBodyType.Fixed, true);
+      // The body's translation never changes during the assist phase (only
+      // rotation is kinematically interpolated — see beginAssist above), so
+      // it's already the final rest position here, stable for the caller to
+      // anchor a flash on.
+      const rest = body.translation();
+      onSettledAt?.([rest.x, rest.y, rest.z]);
       settledTimer.current = setTimeout(() => {
         settledTimer.current = undefined;
         onTerminal('settled');
@@ -363,6 +379,7 @@ export function LocalWorldDieLayer({
   projectionRef,
   onReadyChange,
   onTerminal,
+  rollFlash,
 }: LocalWorldDieLayerProps) {
   const [snapshot, setSnapshot] = useState(() =>
     getDiceRuntimePresetSnapshot(PRESET_ID)
@@ -371,6 +388,13 @@ export function LocalWorldDieLayer({
   const [worldReady, setWorldReady] = useState(false);
   const [bodyReady, setBodyReady] = useState(false);
   const [meshReady, setMeshReady] = useState(false);
+  // The die's own actual rest position — tracked locally, never bubbled
+  // externally, so `rollFlash` above can be anchored on it without the
+  // caller reaching into physics internals. See DieBody's own
+  // `onSettledAt`.
+  const [restPosition, setRestPosition] = useState<
+    readonly [number, number, number] | undefined
+  >(undefined);
   const runtimeFailureReported = useRef(false);
   // `?dieScale=` (diceDials.ts) — read once, like cameraDials.ts's own
   // `readCameraDials()` call sites.
@@ -463,9 +487,11 @@ export function LocalWorldDieLayer({
             onBodyReady={() => setBodyReady(true)}
             onMeshReady={() => setMeshReady(true)}
             onTerminal={onTerminal}
+            onSettledAt={setRestPosition}
           />
         </Physics>
       )}
+      <RollFlashDie flash={rollFlash} position={restPosition} />
     </>
   );
 }

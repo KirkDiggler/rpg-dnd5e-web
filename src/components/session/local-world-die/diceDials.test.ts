@@ -27,6 +27,21 @@ describe('parseDiceDials', () => {
     expect(parseDiceDials('?dieScale=abc').dieScale).toBe(DEFAULT_DIE_SCALE);
     expect(parseDiceDials('?dieScale=').dieScale).toBe(DEFAULT_DIE_SCALE);
   });
+
+  it('defaults rollFlash to off', () => {
+    expect(parseDiceDials('').rollFlash).toBe('off');
+  });
+
+  it('accepts each of the four rollFlash values', () => {
+    expect(parseDiceDials('?rollFlash=die').rollFlash).toBe('die');
+    expect(parseDiceDials('?rollFlash=toast').rollFlash).toBe('toast');
+    expect(parseDiceDials('?rollFlash=both').rollFlash).toBe('both');
+    expect(parseDiceDials('?rollFlash=off').rollFlash).toBe('off');
+  });
+
+  it('falls back to off for an unrecognized rollFlash value', () => {
+    expect(parseDiceDials('?rollFlash=bogus').rollFlash).toBe('off');
+  });
 });
 
 describe('localWorldDieDimensions', () => {

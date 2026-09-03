@@ -45,11 +45,35 @@ import { numberDial } from '@/utils/queryDial';
 
 export const DEFAULT_DIE_SCALE = 1;
 
+/**
+ * `off` (default): no roll flash. `die`: the natural d20 flashes at the
+ * die's rest position (RollFlashDie.tsx). `toast`: the arithmetic flashes
+ * in the damage-toast area (RollFlashToasts.tsx). `both`: both. See
+ * combat-experience/rollFlash.ts's own doc comment for the full design.
+ */
+export type RollFlashDial = 'off' | 'die' | 'toast' | 'both';
+
 export interface DiceDials {
   /** Multiplier scaling the die's physical dimensions and visual size
    * together (`?dieScale=`). The default (1) is today's shipped die,
    * unchanged. */
   dieScale: number;
+  /** `?rollFlash=` — off by default. See `RollFlashDial` above. */
+  rollFlash: RollFlashDial;
+}
+
+const ROLL_FLASH_VALUES: readonly RollFlashDial[] = [
+  'off',
+  'die',
+  'toast',
+  'both',
+];
+
+function parseRollFlash(params: URLSearchParams): RollFlashDial {
+  const raw = params.get('rollFlash');
+  return (ROLL_FLASH_VALUES as readonly string[]).includes(raw ?? '')
+    ? (raw as RollFlashDial)
+    : 'off';
 }
 
 /** Pure parser over a query string. */
@@ -59,7 +83,10 @@ export function parseDiceDials(search: string): DiceDials {
   // A zero or negative scale would collapse the die (and, worse, the
   // physics hull) to nothing or invert it — floor it well above zero rather
   // than let a typo produce an invisible or degenerate die.
-  return { dieScale: requested > 0 ? requested : DEFAULT_DIE_SCALE };
+  return {
+    dieScale: requested > 0 ? requested : DEFAULT_DIE_SCALE,
+    rollFlash: parseRollFlash(params),
+  };
 }
 
 /** Read the dials once from the live URL. */

@@ -59,6 +59,7 @@ import {
 import { CombatExperience } from './combat-experience/CombatExperience';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
+import { useRollFlash } from './combat-experience/useRollFlash';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
 import {
@@ -731,13 +732,28 @@ function SessionEncounterScope({
       sessionId,
     ]
   );
-  // `?dieScale=` (diceDials.ts) — read once, same convention as
-  // LocalWorldDieLayer.tsx's own dieScale/dimensions; the no-drag "Roll"
-  // button below needs the same held-height default the drag gesture uses.
+  // `?dieScale=`/`?rollFlash=` (diceDials.ts) — read once, same convention
+  // as LocalWorldDieLayer.tsx's own dieScale/dimensions.
+  const diceDials = useMemo(() => readDiceDials(), []);
+  // The no-drag "Roll" button below needs the same held-height default the
+  // drag gesture uses.
   const localWorldDieDimensionsForNeutralRoll = useMemo(
-    () => localWorldDieDimensions(readDiceDials().dieScale),
-    []
+    () => localWorldDieDimensions(diceDials.dieScale),
+    [diceDials.dieScale]
   );
+  // The die-anchored flash (`?rollFlash=die`/`both`) — active only for the
+  // roller, whose own physical die actually settles somewhere (a spectator's
+  // witness playback is a separate, unrelated LocalWorldDieLayer instance;
+  // see rollFlash.ts's own doc comment on why this differs from the toast's
+  // trigger). `combat.result` gated on `localWorldDieSettled` reproduces, for
+  // the roller, exactly what CombatExperience.tsx's own `settledResult` gate
+  // already computes internally (see useDiceSettleGate.ts).
+  const localWorldDieFlashes = useRollFlash(
+    localWorldDieSettled ? combat.result : undefined,
+    diceDials.rollFlash === 'die' || diceDials.rollFlash === 'both'
+  );
+  const localWorldDieFlash =
+    localWorldDieFlashes[localWorldDieFlashes.length - 1];
   const runLocalWorldDieNeutralRoll = useCallback(() => {
     const origin = lastGoodPositionRef.current;
     if (!origin) return;
@@ -1112,6 +1128,7 @@ function SessionEncounterScope({
         projectionRef={localWorldDieProjectionRef}
         onReadyChange={setLocalWorldDieReady}
         onTerminal={handleLocalWorldDieTerminal}
+        rollFlash={localWorldDieFlash}
       />
     ) : null;
 

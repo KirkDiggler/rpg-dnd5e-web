@@ -1,13 +1,16 @@
+import { readDiceDials } from '@/components/session/local-world-die/diceDials';
 import {
   ClockKind,
   Standing,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { useMemo } from 'react';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
 import { DamageToasts } from './DamageToasts';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
+import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
 import { StoryLog } from './StoryLog';
 import { holdStoryUntilSettled } from './storyReveal';
@@ -15,6 +18,7 @@ import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
 import { useDamageToasts } from './useDamageToasts';
 import { useDiceSettleGate } from './useDiceSettleGate';
+import { useRollFlash } from './useRollFlash';
 
 function portraitOf(name: string): string {
   return name
@@ -143,6 +147,16 @@ export function CombatExperience({
     diePresented,
   });
   const damageToasts = useDamageToasts(settledResult);
+  // `?rollFlash=` (diceDials.ts) — read once, same convention as
+  // cameraDials.ts's own call sites. `settledResult` is the SAME signal
+  // useDamageToasts uses — see rollFlash.ts's own doc comment for why that
+  // already produces "at settle" for the roller and "at result arrival" for
+  // a spectator, with no extra logic needed here.
+  const rollFlashDial = useMemo(() => readDiceDials().rollFlash, []);
+  const rollFlashes = useRollFlash(
+    settledResult,
+    rollFlashDial === 'toast' || rollFlashDial === 'both'
+  );
   // The log narrates the same beat the toast announces, so it waits on the
   // same signal. Withholding the toast alone would have left the strike, its
   // damage, and the downed line that follows still spoiling the roll from the
@@ -257,6 +271,7 @@ export function CombatExperience({
         )}
 
         <DamageToasts toasts={damageToasts} />
+        <RollFlashToasts flashes={rollFlashes} />
 
         <StoryLog
           story={revealedStory}
