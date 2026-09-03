@@ -104,6 +104,8 @@ export interface CombatPresentationRecord {
   readonly responseAccepted: boolean;
   readonly eventAccepted: boolean;
   readonly event?: Event;
+  /** Exact typed attack-body identity, including every nested roll fact. */
+  readonly eventFacts?: string;
   readonly eventSource?: 'live' | 'catchup';
   readonly request?: DicePresentationRequestedEvent;
   readonly release?: DicePresentationReleasedEvent;
@@ -252,6 +254,16 @@ function sameAttack(
     first.name === later.name &&
     first.damageType === later.damageType
   );
+}
+
+function attackEventFacts(event: Event): string | undefined {
+  if (event.body.case !== 'struck' && event.body.case !== 'missed') {
+    return undefined;
+  }
+  // Generated message properties include optional-presence distinctions:
+  // undefined is omitted while present zero is serialized as 0. This identity
+  // is comparison-only; Story and Debug still read the typed snapshot.
+  return JSON.stringify(event.body.value);
 }
 
 function sameAuthority(
@@ -538,6 +550,7 @@ function initialRecord(
       responseAccepted: options.responseAccepted,
       eventAccepted: options.event !== undefined,
       event: options.event,
+      eventFacts: options.event ? attackEventFacts(options.event) : undefined,
       eventSource: options.source,
       request,
       release,
@@ -709,7 +722,15 @@ function acceptAttackEvent(
       `conflicting authority for ${key}; event rejected`
     );
   }
+  const eventFacts = attackEventFacts(event);
   if (current.eventAccepted) {
+    if (current.eventFacts !== eventFacts) {
+      return markConflicted(
+        state,
+        key,
+        `conflicting typed attack facts for ${key}`
+      );
+    }
     return settleCatchupDuplicate(state, index, fact.metadata.source);
   }
 
@@ -723,6 +744,7 @@ function acceptAttackEvent(
     ...current,
     eventAccepted: true,
     event,
+    eventFacts,
     eventSource: fact.metadata.source,
     release,
     settlement,
@@ -867,6 +889,9 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
             sourceName: activation.result.value.sourceName,
             hpBefore: activation.result.value.hpBefore,
             hpAfter: activation.result.value.hpAfter,
+            // Preserve graph presence and every nested field. JSON identity
+            // distinguishes absent optionals from present-zero values.
+            calculation: activation.result.value.calculation ?? null,
           });
         case 'conditionApplied':
           return Object.freeze({

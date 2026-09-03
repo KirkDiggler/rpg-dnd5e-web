@@ -63,6 +63,10 @@ import {
   DissolveKind,
   DoorState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  formatDebugDamageComponents,
+  formatDebugRollCalculation,
+} from './combat-experience/rollTrace';
 
 /** One rendered debug-log entry. `text` is the full line, ready to
  * display and select-all-copy verbatim; `ids` are the raw member ids
@@ -98,21 +102,6 @@ function attackText(
   return `attack.ref=${attack.ref} attack.name="${attack.name}" type=${typeName}`;
 }
 
-function damageComponentText(component: DamageComponent): string {
-  const fields = [`source=${component.source}`];
-  if (component.sourceRef) fields.push(`ref=${component.sourceRef}`);
-  if (component.dice) fields.push(`dice=${component.dice}`);
-  fields.push(`final_rolls=[${(component.finalRolls ?? []).join(',')}]`);
-  fields.push(`flat=${component.flatBonus}`);
-  fields.push(
-    `type=${DamageType[component.damageType] ?? String(component.damageType)}`
-  );
-  if (component.multiplier !== undefined) {
-    fields.push(`multiplier=${component.multiplier}`);
-  }
-  return `{${fields.join(' ')}}`;
-}
-
 function attackModifierSourceText(
   source: AttackModifierSource,
   names: Map<string, string>
@@ -136,9 +125,7 @@ function strikeDetailText(
   const disadvantage = disadvantageSources ?? [];
   const segments: string[] = [];
   if (components.length > 0) {
-    segments.push(
-      `components=[${components.map(damageComponentText).join(', ')}]`
-    );
+    segments.push(`components=${formatDebugDamageComponents(components)}`);
   }
   if (advantage.length > 0) {
     segments.push(
@@ -233,7 +220,8 @@ export function formatDebugLine(
               `amount=${result.amount} requested=${result.requested} ` +
               `roll=${result.roll} modifier=${result.modifier} ` +
               `hp.before=${result.hpBefore} hp.after=${result.hpAfter} ` +
-              `source.ref=${result.sourceRef} source.name=${quoteDebugString(result.sourceName)}`,
+              `source.ref=${result.sourceRef} source.name=${quoteDebugString(result.sourceName)} ` +
+              `calculation=${formatDebugRollCalculation(result.calculation)}`,
           };
         }
         case 'conditionApplied': {
