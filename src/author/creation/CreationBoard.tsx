@@ -42,6 +42,7 @@ import {
   CONCEALED_STROKE,
   DOOR_LOCKED_STROKE,
   DOOR_STROKE,
+  ENVELOPE_DASH,
   ENVELOPE_STROKE,
   ERROR_STROKE,
   HOVER_STROKE,
@@ -685,10 +686,10 @@ export function CreationBoard({
     width: number;
     dash?: string;
   }[] = [];
-  // The implied envelope FIRST, so authored walls and doors draw over it.
-  // Every crossing from floor into void is impassable by the runtime's own
-  // rule; showing it is what makes a freshly dragged room look like a room
-  // instead of a patch of floor.
+  // The floor's outer edge FIRST, so authored walls and doors draw over it.
+  // Dashed, because it is NOT a wall: a wall is something the author put there
+  // on purpose, and an unwalled boundary is its own authored choice — a region
+  // may have a cliff edge. This line only says "the floor stops here".
   for (const cell of floor) {
     for (const n of axialNeighbors(cell)) {
       if (owners.has(axialKey(n))) continue;
@@ -698,6 +699,7 @@ export function CreationBoard({
         edge,
         stroke: ENVELOPE_STROKE,
         width: 2.5,
+        dash: ENVELOPE_DASH,
       });
     }
   }

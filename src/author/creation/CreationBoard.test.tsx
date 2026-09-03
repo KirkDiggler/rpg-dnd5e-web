@@ -21,7 +21,7 @@ import {
   toOffset,
   type Edge,
 } from '../hexOffset';
-import { ENVELOPE_STROKE, WALL_STROKE } from '../markerStyle';
+import { ENVELOPE_DASH, ENVELOPE_STROKE, WALL_STROKE } from '../markerStyle';
 import { boardWallScene } from './boardWallRuns';
 import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
 import {
@@ -563,6 +563,10 @@ describe('the implied envelope is drawn (rpg-dnd5e-web#902)', () => {
     expect(env.getAttribute('stroke')).toBe(ENVELOPE_STROKE);
     expect(env.getAttribute('stroke')).not.toBe(WALL_STROKE);
     expect(Number(env.getAttribute('stroke-width'))).toBeLessThan(4);
+    // DASHED, so it never reads as a wall. Kirk: "walls are intentional" — an
+    // unwalled boundary is its own authored choice, and a region is allowed a
+    // cliff edge. This line only says the floor stops here.
+    expect(env.getAttribute('stroke-dasharray')).toBe(ENVELOPE_DASH);
   });
 });
 

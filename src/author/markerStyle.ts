@@ -29,14 +29,17 @@ export function litColor(hex: string, intensity: number): string {
 export const VOID_FILL = '#0b0d11';
 export const VOID_STROKE = '#22262e';
 export const WALL_STROKE = '#f4f1ea';
-/** The floor/void envelope. The runtime implies it — a crossing from floor
- * into void is one nobody can make, and authoring a wall there is refused
- * ("the envelope is implied, never written") — so it is drawn DIMMER than an
- * authored wall: it is a fact about the floor's edge, not a thing in the file.
- * Drawn at all because a room that is sealed but shows no boundary does not
- * read as a room (rpg-dnd5e-web#902, Kirk: "i click room and drag across but
- * am left without a room"). */
+/** The floor's outer edge. NOT a wall — a wall is something the author put
+ * there on purpose (Kirk: "walls are intentional"), and an unwalled boundary
+ * is a real authored choice: a region is allowed a cliff edge. Drawn dimmer
+ * AND dashed so it can never be mistaken for a wall; it says "the floor stops
+ * here", which is the only thing it knows.
+ *
+ * Drawn at all because a region with no boundary at all reads as an unfinished
+ * patch of floor rather than a place (rpg-dnd5e-web#902). */
 export const ENVELOPE_STROKE = 'rgba(244, 241, 234, 0.34)';
+/** The dash that keeps the floor's edge from reading as a wall. */
+export const ENVELOPE_DASH = '2 4';
 export const DOOR_STROKE = '#d97706';
 export const DOOR_LOCKED_STROKE = '#dc2626';
 export const START_COLOR = '#22c55e';
