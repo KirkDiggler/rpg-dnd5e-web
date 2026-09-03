@@ -2196,6 +2196,9 @@ describe('SessionEncounterView production combat integration', () => {
       await waitFor(() =>
         expect(screen.queryByText('You search the area.')).toBeNull()
       );
+      // And the beat PATCHED the held atlas in the same frame (design
+      // 5.2a): the mock's presence is not what holds this test up.
+      expect(hoisted.atlasResult.applyReveal).toHaveBeenCalledTimes(1);
     });
   });
 
