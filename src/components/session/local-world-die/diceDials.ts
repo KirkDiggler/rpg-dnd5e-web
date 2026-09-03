@@ -42,6 +42,7 @@
  * throw gesture already produces the same release velocity and arc at any
  * `dieScale` with no change needed here. See localWorldDieMotion.test.ts.
  */
+import type { DialSpec, DialValues } from '@/feel/dialTypes';
 import { numberDial } from '@/utils/queryDial';
 
 /** Kirk's first live session verdict, 2026-09-03: "dieScale of 2 feels
@@ -92,11 +93,61 @@ export function parseDiceDials(search: string): DiceDials {
   };
 }
 
-/** Read the dials once from the live URL. */
+/** Read the dials once from the live URL — unchanged, URL-only (#906 batch
+ * 2 added the drawer/localStorage-aware `useDiceDials()` hook alongside this
+ * rather than repointing it, to avoid a `diceDials.ts` <->
+ * `feel/dialStore.ts` import cycle — see `feel/useFeelDials.ts`'s own doc
+ * comment). Kept for direct/non-React callers and its own test coverage. */
 export function readDiceDials(): DiceDials {
   if (typeof window === 'undefined') return parseDiceDials('');
   return parseDiceDials(window.location.search);
 }
+
+/**
+ * The drawer/store-driven counterpart to `parseDiceDials` (#906 batch 2,
+ * `feel/dialStore.ts`) — resolves from a flat, already-defaulted
+ * `DialValues` map (every registered dial's CURRENT value — see
+ * `DICE_DIAL_SPECS` below) instead of a raw query string.
+ */
+export function diceDialsFrom(values: DialValues): DiceDials {
+  const requested = values.dieScale;
+  const dieScale =
+    typeof requested === 'number' && Number.isFinite(requested) && requested > 0
+      ? requested
+      : DEFAULT_DIE_SCALE;
+  const rollFlashRaw = values.rollFlash;
+  const rollFlash = (ROLL_FLASH_VALUES as readonly string[]).includes(
+    typeof rollFlashRaw === 'string' ? rollFlashRaw : ''
+  )
+    ? (rollFlashRaw as RollFlashDial)
+    : 'off';
+  return { dieScale, rollFlash };
+}
+
+/** Every dice dial a player would tune, registered for the feel dials
+ * drawer (#906 batch 2, `feel/dials.ts` aggregates this with
+ * `CAMERA_DIAL_SPECS`). */
+export const DICE_DIAL_SPECS: readonly DialSpec[] = [
+  {
+    key: 'dieScale',
+    label: 'Die scale',
+    group: 'dice',
+    kind: 'number',
+    default: DEFAULT_DIE_SCALE,
+    min: 0.25,
+    max: 4,
+    step: 0.25,
+    unit: '×',
+  },
+  {
+    key: 'rollFlash',
+    label: 'Roll flash',
+    group: 'dice',
+    kind: 'enum',
+    default: 'off',
+    options: ROLL_FLASH_VALUES,
+  },
+];
 
 /** `LocalWorldDieLayer.tsx`'s own physics hull radius at `dieScale=1`. */
 export const BASE_DIE_HULL_RADIUS = 0.275;

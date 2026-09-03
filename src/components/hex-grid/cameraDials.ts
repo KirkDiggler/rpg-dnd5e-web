@@ -34,6 +34,7 @@
  * the close end affordable at all.
  */
 
+import type { DialSpec, DialValues } from '@/feel/dialTypes';
 import { numberDial } from '@/utils/queryDial';
 
 /** Degrees → radians. Dials are authored in degrees; the camera wants radians. */
@@ -278,71 +279,50 @@ export function bandFollowsFocus(
  * `?dieScale=` the same way, without a second copy drifting from this one. */
 const num = numberDial;
 
-/**
- * Pure parser over a query string — the whole point of splitting this out of
- * HexGrid is that the dial resolution is testable without a Canvas.
- *
- * The pitch curve is ON with no query params at all. It shipped behind
- * `?pitchCurve=1` while it was being judged live; Kirk's verdict walking it
- * ("ok. i like this angle a lot") is what promoted it, so the flag inverted
- * rather than lingering as a permanently-off experiment nobody would see.
- * `?pitchCurve=0` is the escape hatch back to the old fixed angle.
- *
- * `?camera=persp` is deliberately NOT promoted with it — orthographic vs
- * perspective is a separate, still-open call, and it stays opt-in until it
- * gets the same live judgment the curve just had.
- */
-export function parseCameraDials(search: string): CameraDials {
-  const params = new URLSearchParams(search);
+/** Every already-resolved (defaulted) input `buildCameraDials` needs — the
+ * ONE place the band/curve math lives, shared by the URL-only
+ * `parseCameraDials` and the drawer-store-driven `cameraDialsFrom` (#906
+ * batch 2), which resolve these fields from two different sources. */
+interface ResolvedCameraFields {
+  perspective: boolean;
+  rotateSpeedDegPerSec: number;
+  panSpeedPerSec: number;
+  orbitPivot: 'auto' | 'view' | 'me';
+  pitchFarDeg: number;
+  pitchNearDeg: number;
+  curveOn: boolean;
+  fovDeg: number;
+  minDistance: number;
+  maxDistance: number;
+  zoomMin: number;
+  zoomMax: number;
+  zoomStart: number;
+}
 
-  const perspective = params.get('camera') === 'persp';
-
-  const pitchFarDeg = num(params, 'pitchFar');
-  const pitchNearDeg = num(params, 'pitchNear');
-  // Only an explicit `0` turns the curve off. An endpoint override still
-  // implies ON, so `?pitchFar=20` alone tunes one end without also having to
-  // remember to re-enable the thing you are tuning — and it beats `=0`, so a
-  // stale `?pitchCurve=0` in a bookmarked URL cannot silently swallow a
-  // deliberate angle you just typed.
-  const curveOn =
-    params.get('pitchCurve') !== '0' ||
-    pitchFarDeg !== null ||
-    pitchNearDeg !== null;
-
-  const polarFar = deg(pitchFarDeg ?? DEFAULT_PITCH_FAR_DEG);
-  const polarNear = deg(pitchNearDeg ?? DEFAULT_PITCH_NEAR_DEG);
-  const requestedZoomMin = num(params, 'zoomMin') ?? DEFAULT_ZOOM_MIN;
-  const requestedZoomMax = num(params, 'zoomMax') ?? DEFAULT_ZOOM_MAX;
-  const requestedZoomStart = num(params, 'zoomStart') ?? DEFAULT_ZOOM_START;
-  const zoomMin = Math.min(requestedZoomMin, requestedZoomMax);
-  const zoomMax = Math.max(requestedZoomMin, requestedZoomMax);
-  const zoomStart = Math.max(zoomMin, Math.min(zoomMax, requestedZoomStart));
+function buildCameraDials(fields: ResolvedCameraFields): CameraDials {
+  const polarFar = deg(fields.pitchFarDeg);
+  const polarNear = deg(fields.pitchNearDeg);
+  const zoomMin = Math.min(fields.zoomMin, fields.zoomMax);
+  const zoomMax = Math.max(fields.zoomMin, fields.zoomMax);
+  const zoomStart = Math.max(zoomMin, Math.min(zoomMax, fields.zoomStart));
   const tabletopProgress =
     (DEFAULT_TABLETOP_ZOOM - DEFAULT_ZOOM_MIN) /
     (DEFAULT_ZOOM_START - DEFAULT_ZOOM_MIN);
   const tabletopZoom = zoomMin + (zoomStart - zoomMin) * tabletopProgress;
   const shoulderZoom = zoomStart + (zoomMax - zoomStart) / 2;
-
-  const rotateSpeedDegPerSec =
-    num(params, 'rotateSpeed') ?? DEFAULT_ROTATE_SPEED_DEG_PER_SEC;
-  const rawOrbitPivot = params.get('orbitPivot');
-  const orbitPivot =
-    rawOrbitPivot === 'me' || rawOrbitPivot === 'view' ? rawOrbitPivot : 'auto';
-  // No independent `?dragRotate=` any more — derived from rotateSpeed alone
-  // (DRAG_SECONDS_PER_PIXEL's own doc comment has the full reasoning). A
-  // stray `?dragRotate=` in a bookmarked URL is simply ignored.
-  const dragRotateDegPerPx = rotateSpeedDegPerSec * DRAG_SECONDS_PER_PIXEL;
+  const dragRotateDegPerPx =
+    fields.rotateSpeedDegPerSec * DRAG_SECONDS_PER_PIXEL;
 
   return {
-    perspective,
-    rotateSpeed: deg(rotateSpeedDegPerSec),
-    panSpeed: num(params, 'panSpeed') ?? DEFAULT_PAN_SPEED_PER_SEC,
-    orbitPivot,
+    perspective: fields.perspective,
+    rotateSpeed: deg(fields.rotateSpeedDegPerSec),
+    panSpeed: fields.panSpeedPerSec,
+    orbitPivot: fields.orbitPivot,
     dragRotate: deg(dragRotateDegPerPx),
-    fovDeg: num(params, 'fov') ?? DEFAULT_PERSP_FOV_DEG,
-    minDistance: num(params, 'minDist') ?? DEFAULT_MIN_DISTANCE,
-    maxDistance: num(params, 'maxDist') ?? DEFAULT_MAX_DISTANCE,
-    curve: curveOn
+    fovDeg: fields.fovDeg,
+    minDistance: fields.minDistance,
+    maxDistance: fields.maxDistance,
+    curve: fields.curveOn
       ? {
           polarFar,
           polarNear,
@@ -387,8 +367,222 @@ export function parseCameraDials(search: string): CameraDials {
   };
 }
 
-/** Read the dials once from the live URL. */
+/**
+ * Pure parser over a query string — the whole point of splitting this out of
+ * HexGrid is that the dial resolution is testable without a Canvas.
+ *
+ * The pitch curve is ON with no query params at all. It shipped behind
+ * `?pitchCurve=1` while it was being judged live; Kirk's verdict walking it
+ * ("ok. i like this angle a lot") is what promoted it, so the flag inverted
+ * rather than lingering as a permanently-off experiment nobody would see.
+ * `?pitchCurve=0` is the escape hatch back to the old fixed angle.
+ *
+ * `?camera=persp` is deliberately NOT promoted with it — orthographic vs
+ * perspective is a separate, still-open call, and it stays opt-in until it
+ * gets the same live judgment the curve just had.
+ */
+export function parseCameraDials(search: string): CameraDials {
+  const params = new URLSearchParams(search);
+
+  const pitchFarDeg = num(params, 'pitchFar');
+  const pitchNearDeg = num(params, 'pitchNear');
+  // Only an explicit `0` turns the curve off. An endpoint override still
+  // implies ON, so `?pitchFar=20` alone tunes one end without also having to
+  // remember to re-enable the thing you are tuning — and it beats `=0`, so a
+  // stale `?pitchCurve=0` in a bookmarked URL cannot silently swallow a
+  // deliberate angle you just typed.
+  const curveOn =
+    params.get('pitchCurve') !== '0' ||
+    pitchFarDeg !== null ||
+    pitchNearDeg !== null;
+  const rawOrbitPivot = params.get('orbitPivot');
+
+  return buildCameraDials({
+    perspective: params.get('camera') === 'persp',
+    rotateSpeedDegPerSec:
+      num(params, 'rotateSpeed') ?? DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
+    panSpeedPerSec: num(params, 'panSpeed') ?? DEFAULT_PAN_SPEED_PER_SEC,
+    orbitPivot:
+      rawOrbitPivot === 'me' || rawOrbitPivot === 'view'
+        ? rawOrbitPivot
+        : 'auto',
+    pitchFarDeg: pitchFarDeg ?? DEFAULT_PITCH_FAR_DEG,
+    pitchNearDeg: pitchNearDeg ?? DEFAULT_PITCH_NEAR_DEG,
+    curveOn,
+    fovDeg: num(params, 'fov') ?? DEFAULT_PERSP_FOV_DEG,
+    minDistance: num(params, 'minDist') ?? DEFAULT_MIN_DISTANCE,
+    maxDistance: num(params, 'maxDist') ?? DEFAULT_MAX_DISTANCE,
+    zoomMin: num(params, 'zoomMin') ?? DEFAULT_ZOOM_MIN,
+    zoomMax: num(params, 'zoomMax') ?? DEFAULT_ZOOM_MAX,
+    zoomStart: num(params, 'zoomStart') ?? DEFAULT_ZOOM_START,
+  });
+}
+
+/** Read the dials once from the live URL — unchanged, URL-only (#906 batch
+ * 2 added the drawer/localStorage-aware `useCameraDials()` hook alongside
+ * this rather than repointing it, to avoid a `cameraDials.ts` <->
+ * `feel/dialStore.ts` import cycle — see `feel/useFeelDials.ts`'s own doc
+ * comment). Kept for direct/non-React callers and its own test coverage. */
 export function readCameraDials(): CameraDials {
   if (typeof window === 'undefined') return parseCameraDials('');
   return parseCameraDials(window.location.search);
 }
+
+/**
+ * The drawer/store-driven counterpart to `parseCameraDials` (#906 batch 2,
+ * `feel/dialStore.ts`) — same `buildCameraDials` core, but resolving fields
+ * from a flat, already-defaulted `DialValues` map (every registered dial's
+ * CURRENT value — see `CAMERA_DIAL_SPECS` below) instead of a raw query
+ * string. `camera=persp`/`fov`/`minDist`/`maxDist` are not registered dials
+ * (the projection escape hatch stays URL-only, per its own doc comment
+ * above), so this always resolves perspective off with their shipped
+ * defaults.
+ *
+ * `curveOn` here is `parseCameraDials`' own "an explicit endpoint beats a
+ * stale pitchCurve=0" rule, reformulated for a store where "was this key
+ * present in THIS particular URL" isn't a meaningful question any more:
+ * `pitchFar`/`pitchNear` differing from THEIR OWN registered defaults
+ * stands in for "explicitly set" (via the drawer OR a URL override,
+ * either persists into the store as a non-default value the same way).
+ * The two formulations agree in every realistic case and differ only in
+ * one narrow one: typing exactly the default value into an endpoint while
+ * curve is off enables the curve under the old rule but not this one.
+ */
+export function cameraDialsFrom(values: DialValues): CameraDials {
+  const asNumber = (value: unknown, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+  const rotateSpeedDegPerSec = asNumber(
+    values.rotateSpeed,
+    DEFAULT_ROTATE_SPEED_DEG_PER_SEC
+  );
+  const pitchFarDeg = asNumber(values.pitchFar, DEFAULT_PITCH_FAR_DEG);
+  const pitchNearDeg = asNumber(values.pitchNear, DEFAULT_PITCH_NEAR_DEG);
+  const orbitPivotRaw = values.orbitPivot;
+  const curveOn =
+    values.pitchCurve !== 'off' ||
+    pitchFarDeg !== DEFAULT_PITCH_FAR_DEG ||
+    pitchNearDeg !== DEFAULT_PITCH_NEAR_DEG;
+
+  return buildCameraDials({
+    perspective: false,
+    rotateSpeedDegPerSec,
+    panSpeedPerSec: asNumber(values.panSpeed, DEFAULT_PAN_SPEED_PER_SEC),
+    orbitPivot:
+      orbitPivotRaw === 'me' || orbitPivotRaw === 'view'
+        ? orbitPivotRaw
+        : 'auto',
+    pitchFarDeg,
+    pitchNearDeg,
+    curveOn,
+    fovDeg: DEFAULT_PERSP_FOV_DEG,
+    minDistance: DEFAULT_MIN_DISTANCE,
+    maxDistance: DEFAULT_MAX_DISTANCE,
+    zoomMin: asNumber(values.zoomMin, DEFAULT_ZOOM_MIN),
+    zoomMax: asNumber(values.zoomMax, DEFAULT_ZOOM_MAX),
+    zoomStart: asNumber(values.zoomStart, DEFAULT_ZOOM_START),
+  });
+}
+
+/**
+ * Every camera dial a player would tune, registered for the feel dials
+ * drawer (#906 batch 2, `feel/dials.ts` aggregates this with
+ * `DICE_DIAL_SPECS`). `camera=persp` stays URL-only per this module's own
+ * doc comment — not registered here.
+ *
+ * Ranges/steps are this drawer's own UI judgment call, not enforced
+ * anywhere else (`cameraDialsFrom`/the underlying hook still clamp to
+ * whatever a caller passes) — Kirk can retune any of them live.
+ */
+export const CAMERA_DIAL_SPECS: readonly DialSpec[] = [
+  {
+    key: 'rotateSpeed',
+    label: 'Rotate speed',
+    group: 'camera',
+    kind: 'number',
+    default: DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
+    min: 10,
+    max: 300,
+    step: 5,
+    unit: '°/s',
+  },
+  {
+    key: 'panSpeed',
+    label: 'Pan speed',
+    group: 'camera',
+    kind: 'number',
+    default: DEFAULT_PAN_SPEED_PER_SEC,
+    min: 2,
+    max: 100,
+    step: 1,
+    unit: 'u/s',
+  },
+  {
+    key: 'orbitPivot',
+    label: 'Orbit pivot',
+    group: 'camera',
+    kind: 'enum',
+    default: 'auto',
+    options: ['auto', 'view', 'me'],
+  },
+  {
+    key: 'pitchFar',
+    label: 'Pitch (far / overview)',
+    group: 'camera',
+    kind: 'number',
+    default: DEFAULT_PITCH_FAR_DEG,
+    min: 0,
+    max: 89,
+    step: 1,
+    unit: '°',
+  },
+  {
+    key: 'pitchNear',
+    label: 'Pitch (near / detail)',
+    group: 'camera',
+    kind: 'number',
+    default: DEFAULT_PITCH_NEAR_DEG,
+    min: 0,
+    max: 89,
+    step: 1,
+    unit: '°',
+  },
+  {
+    key: 'pitchCurve',
+    label: 'Pitch curve',
+    group: 'camera',
+    kind: 'enum',
+    default: 'on',
+    options: ['on', 'off'],
+  },
+  {
+    key: 'zoomMin',
+    label: 'Zoom (min / overview)',
+    group: 'camera',
+    kind: 'number',
+    default: DEFAULT_ZOOM_MIN,
+    min: 10,
+    max: 100,
+    step: 1,
+  },
+  {
+    key: 'zoomMax',
+    label: 'Zoom (max / detail)',
+    group: 'camera',
+    kind: 'number',
+    default: DEFAULT_ZOOM_MAX,
+    min: 50,
+    max: 400,
+    step: 5,
+  },
+  {
+    key: 'zoomStart',
+    label: 'Zoom (start / tactical)',
+    group: 'camera',
+    kind: 'number',
+    default: DEFAULT_ZOOM_START,
+    min: 10,
+    max: 400,
+    step: 5,
+  },
+];
