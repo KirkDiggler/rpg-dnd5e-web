@@ -223,6 +223,40 @@
   padding: 8px;
   white-space: pre;
 }
+/* The pane as an EDITOR (rpg-dnd5e-web#899). A textarea rather than a
+   contenteditable so the caret, undo stack and selection are the browser's
+   own — an author hand-editing YAML expects ctrl-Z to work. `resize: none`
+   because the rail's drag grip is how this pane is resized; two competing
+   resize affordances on one box is worse than one. */
+.dg-yaml--edit {
+  display: block;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: none;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 2;
+}
+.dg-yaml--edit:focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+/* A parse failure while typing is NOT the compiler's red error list: it says
+   "not valid YAML yet", which is the ordinary state of a half-typed line. It
+   reads as a hint so the pane does not flash alarm on every keystroke. */
+.dg-yaml-parse {
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid #b45309;
+  border-radius: 6px;
+  background: var(--bg-primary);
+  font-size: 11px;
+  color: var(--text-primary);
+  opacity: 0.9;
+}
 .dg-errors {
   max-height: 140px;
   overflow: auto;

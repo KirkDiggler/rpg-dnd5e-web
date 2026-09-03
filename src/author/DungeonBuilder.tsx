@@ -46,6 +46,7 @@ import {
   eraseCell,
   isMonsterRef,
   paintCell,
+  paintRect,
   parseDungeon,
   placeAt,
   removePlacement,
@@ -365,6 +366,24 @@ export function DungeonBuilder({
       );
     }
   };
+
+  // Typed YAML (rpg-dnd5e-web#899). Goes through `applyDoc`, not
+  // `replaceDoc`: replacing resets the selection and the active region, which
+  // on every keystroke would yank the canvas out from under the typist. A
+  // keystroke is an EDIT to the document open in front of them, exactly like
+  // dragging a wall, so it takes the same path — including the concealment
+  // ratchet, so hand-written YAML self-heals the way the canvas does.
+  const handleEditYaml = useCallback(
+    (text: string): string | null => {
+      try {
+        applyDoc(parseDungeon(text));
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : 'could not read that YAML';
+      }
+    },
+    [applyDoc]
+  );
 
   const handleLoadText = (text: string) => {
     try {
@@ -693,6 +712,11 @@ export function DungeonBuilder({
               errorTargets={errorTargets}
               concealedRegionIds={concealment.regionIds ?? EMPTY_REGION_IDS}
               onPaint={handlePaint}
+              onPaintRoom={(a, b) =>
+                applyDoc((d) =>
+                  activeRegionId ? paintRect(d, activeRegionId, a, b) : d
+                )
+              }
               onErase={handleErase}
               onEdgeClick={handleEdgeClick}
               onWallDraw={handleWallDraw}
@@ -793,6 +817,7 @@ export function DungeonBuilder({
             statusLine={statusLine}
             allowFileIO={allowYamlFileIO}
             onLoad={handleLoadText}
+            onEdit={allowYamlFileIO ? handleEditYaml : undefined}
           />
         </div>
       </div>

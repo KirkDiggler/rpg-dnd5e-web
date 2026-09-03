@@ -14,7 +14,13 @@ import {
   wallEdges,
   type DungeonDoc,
 } from '../dungeonYaml';
-import { axialKey, edgeKey, fromOffset, type Edge } from '../hexOffset';
+import {
+  axialKey,
+  edgeKey,
+  fromOffset,
+  toOffset,
+  type Edge,
+} from '../hexOffset';
 import { boardWallScene } from './boardWallRuns';
 import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
 import {
@@ -43,6 +49,7 @@ function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
       activeRegionId="region-1"
       errorTargets={[]}
       concealedRegionIds={EMPTY_REGION_IDS}
+      onPaintRoom={() => {}}
       onPaint={(c) => calls.paint.push(axialKey(c))}
       onErase={(c) => calls.erase.push(axialKey(c))}
       onEdgeClick={(e) => calls.edges.push(e)}
@@ -196,6 +203,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         activeRegionId="region-1"
         errorTargets={[]}
         concealedRegionIds={EMPTY_REGION_IDS}
+        onPaintRoom={() => {}}
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
@@ -242,6 +250,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         activeRegionId="region-1"
         errorTargets={[]}
         concealedRegionIds={EMPTY_REGION_IDS}
+        onPaintRoom={() => {}}
         onPaint={() => {}}
         onErase={() => {}}
         onEdgeClick={() => {}}
@@ -522,6 +531,56 @@ describe('gesture plumbing — press, drag, release (#804)', () => {
  * join), so a future preview/commit path that bypassed the magnetism
  * would fail here, not on a walk.
  */
+describe('the room tool paints a rectangle (rpg-dnd5e-web#902)', () => {
+  it('commits the two dragged corners, and previews exactly what it will paint', () => {
+    let doc = emptyDungeon();
+    // A patch of floor so the board has an extent to render.
+    for (let c = 0; c <= 6; c += 1) {
+      for (let r = 0; r <= 4; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    const onPaintRoom = vi.fn();
+    const { container } = mount(doc, { tool: 'room', onPaintRoom });
+
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerEnter(cellEl(container, 3, 3));
+
+    // The preview IS the commit: every cell of the 3x3 block is marked, and
+    // nothing outside it is.
+    const previewed = [...container.querySelectorAll('[data-cell]')].filter(
+      (el) => el.getAttribute('opacity') === '0.85'
+    );
+    expect(previewed).toHaveLength(9);
+
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRoom).toHaveBeenCalledTimes(1);
+    const [from, to] = onPaintRoom.mock.calls[0];
+    expect(toOffset('pointy', from)).toEqual([1, 1]);
+    expect(toOffset('pointy', to)).toEqual([3, 3]);
+  });
+
+  it('a press with no travel is a one-cell room, not a no-op', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    const onPaintRoom = vi.fn();
+    const { container } = mount(doc, { tool: 'room', onPaintRoom });
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRoom).toHaveBeenCalledTimes(1);
+  });
+
+  it('a canceled pointer drops the room without painting it', () => {
+    let doc = emptyDungeon();
+    for (let c = 0; c <= 3; c += 1) doc = paintCell(doc, 'region-1', p(c, 1));
+    const onPaintRoom = vi.fn();
+    const { container } = mount(doc, { tool: 'room', onPaintRoom });
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerEnter(cellEl(container, 3, 1));
+    fireEvent.pointerCancel(container.querySelector('svg')!);
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRoom).not.toHaveBeenCalled();
+  });
+});
+
 describe('corner capture through the real pointer path (#804 walk round 2)', () => {
   const S = BOARD_HEX_SIZE;
   const ref = (c: number, r: number, corner: number): CornerRef => ({

@@ -12,6 +12,7 @@ import {
   eraseCell,
   floorOwners,
   paintCell,
+  paintRect,
   parseDungeon,
   placeAt,
   removeWalls,
@@ -28,6 +29,7 @@ import {
 } from './dungeonYaml';
 import { referenceTombDoc } from './fixtures/referenceTomb';
 import {
+  axialKey,
   edgeKey,
   fromOffset,
   toOffset,
@@ -828,6 +830,75 @@ describe('mutators', () => {
     doc = updatePlacement(doc, 0, { facing: undefined, offset: undefined });
     expect(doc.place[0]).not.toHaveProperty('facing');
     expect(doc.place[0]).not.toHaveProperty('offset');
+  });
+});
+
+describe('the room tool (rpg-dnd5e-web#902)', () => {
+  it('paints the offset rectangle two corners span — square by construction', () => {
+    let doc = emptyDungeon();
+    doc = paintRect(doc, 'region-1', p(2, 1), p(5, 3));
+
+    // 4 columns x 3 rows, whatever order the corners were dragged in.
+    expect(doc.regions[0].cells).toHaveLength(12);
+    const offsets = doc.regions[0].cells
+      .map((c) => toOffset('pointy', c))
+      .map(([col, row]) => `${col},${row}`)
+      .sort();
+    expect(offsets).toEqual(
+      [
+        [2, 1],
+        [3, 1],
+        [4, 1],
+        [5, 1],
+        [2, 2],
+        [3, 2],
+        [4, 2],
+        [5, 2],
+        [2, 3],
+        [3, 3],
+        [4, 3],
+        [5, 3],
+      ]
+        .map(([col, row]) => `${col},${row}`)
+        .sort()
+    );
+
+    // Dragged from the opposite corner it is the same room — a rectangle has
+    // no preferred direction, and neither should the gesture.
+    const other = paintRect(emptyDungeon(), 'region-1', p(5, 3), p(2, 1));
+    expect(emitDungeon(other)).toBe(emitDungeon(doc));
+  });
+
+  it('is a rectangle in OFFSET space, which is the shape the canvas draws', () => {
+    // The same corners read as a rhombus in axial. Pinning the offset
+    // reading because "square room" is a claim about what the author SEES.
+    const doc = paintRect(emptyDungeon(), 'region-1', p(0, 0), p(1, 1));
+    const rows = new Map<number, number[]>();
+    for (const c of doc.regions[0].cells) {
+      const [col, row] = toOffset('pointy', c);
+      rows.set(row, [...(rows.get(row) ?? []), col]);
+    }
+    // Every row spans the same columns — that is what makes it a rectangle.
+    expect([...rows.values()].map((cols) => cols.sort())).toEqual([
+      [0, 1],
+      [0, 1],
+    ]);
+  });
+
+  it('takes cells from whatever region held them, and is a no-op when it owns them all', () => {
+    let doc = emptyDungeon();
+    doc = addRegion(doc, 'region-2');
+    doc = paintRect(doc, 'region-1', p(0, 0), p(2, 0));
+    doc = paintRect(doc, 'region-2', p(1, 0), p(3, 0));
+
+    const owners = floorOwners(doc);
+    expect(owners.get(axialKey(p(0, 0)))).toBe('region-1');
+    expect(owners.get(axialKey(p(1, 0)))).toBe('region-2');
+    expect(owners.get(axialKey(p(3, 0)))).toBe('region-2');
+
+    // Repainting a block the region already owns changes nothing, referen-
+    // tially — every other mutator here keeps that promise too.
+    expect(paintRect(doc, 'region-2', p(1, 0), p(3, 0))).toBe(doc);
   });
 });
 
