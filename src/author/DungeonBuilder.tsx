@@ -55,6 +55,7 @@ import {
   removeRegion,
   removeWalls,
   resolveErrorTargets,
+  sceneryBlockedBy,
   setStart,
   setWallHeights,
   toggleDoorEdge,
@@ -428,6 +429,17 @@ export function DungeonBuilder({
     // The board's brush; WHICH brush is the owner's business (the same
     // split `handleCellClick` already makes for start vs place).
     if (tool === 'scenery') {
+      // Refused in place, naming what is in the way — the brush never
+      // deletes something the author placed, and this builder has no undo.
+      const blocker = sceneryBlockedBy(doc, cell);
+      if (blocker !== null) {
+        showToast(
+          blocker === 'start'
+            ? 'the party starts here — move the start before painting scenery'
+            : 'a monster stands here — move it before painting scenery'
+        );
+        return;
+      }
       applyDoc((d) => paintScenery(d, cell));
       return;
     }

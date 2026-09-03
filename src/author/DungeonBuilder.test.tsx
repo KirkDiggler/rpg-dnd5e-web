@@ -22,6 +22,7 @@ import {
   emptyDungeon,
   paintCell,
   paintScenery,
+  placeAt,
   setStart,
   updateDoor,
 } from './dungeonYaml';
@@ -650,5 +651,57 @@ describe('DungeonBuilder — the preview survives a server that has not learned 
       (screen.getByRole('button', { name: /^Save$/ }) as HTMLButtonElement)
         .disabled
     ).toBe(true);
+  });
+});
+
+describe('DungeonBuilder — the scenery brush refuses rather than deletes', () => {
+  it('names what is standing in the way and leaves it standing', async () => {
+    let doc = emptyDungeon();
+    for (const c of [0, 1, 2]) doc = paintCell(doc, 'region-1', p(c, 0));
+    doc = setStart(doc, p(0, 0));
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(1, 0) });
+
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(doc)}
+        persistDraft={false}
+      />
+    );
+    const cell = (c: number, r: number) =>
+      document.querySelector(`[data-cell="${axialKey(p(c, r))}"]`)!;
+    await waitFor(() => expect(cell(0, 0)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scenery' }));
+
+    fireEvent.pointerDown(cell(0, 0), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'the party starts here'
+      )
+    );
+    expect(cell(0, 0).getAttribute('data-scenery')).toBeNull();
+
+    fireEvent.pointerDown(cell(1, 0), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'a monster stands here'
+      )
+    );
+    expect(cell(1, 0).getAttribute('data-scenery')).toBeNull();
+
+    // Nothing was deleted: the file still carries both.
+    const yaml = screen.getByTestId('yaml-text').textContent ?? '';
+    expect(yaml).toContain('start: [0, 0]');
+    expect(yaml).toContain('dnd5e:monsters:skeleton');
+
+    // The free cell beside them still paints.
+    fireEvent.pointerDown(cell(2, 0), { button: 0 });
+    fireEvent.pointerUp(document.querySelector('svg')!);
+    await waitFor(() =>
+      expect(cell(2, 0).getAttribute('data-scenery')).toBe('true')
+    );
   });
 });

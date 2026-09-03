@@ -1250,20 +1250,43 @@ export function paintCell(
   };
 }
 
+/** What stands on `cell` and could not stand on scenery — the start, or
+ * a monster. `null` when the cell is free to become scenery.
+ *
+ * Named, not boolean, because the caller's job is to say WHICH thing is
+ * in the way (design §2.5: errors point at the thing). Props are never
+ * in the way: they sit on scenery quite legally, which is most of why
+ * the brush exists. */
+export type SceneryBlocker = 'start' | 'monster';
+
+export function sceneryBlockedBy(
+  doc: DungeonDoc,
+  cell: Axial
+): SceneryBlocker | null {
+  const key = axialKey(cell);
+  if (doc.start && axialKey(doc.start) === key) return 'start';
+  const standing = doc.place.find(
+    (pl) => axialKey(pl.at) === key && isMonsterRef(pl.ref)
+  );
+  return standing ? 'monster' : null;
+}
+
 /** Paint `cell` as SCENERY — floor belonging to no room (design §2.1).
  *
  * The mirror of `paintCell`: one state per cell, so a room cell painted
- * scenery moves OUT of its region rather than joining a second list. The
- * start standing there goes with it, exactly as an erase would take it:
- * scenery is floor nobody stands on, and leaving the party's entry on a
- * cell they cannot occupy authors a file the server refuses (F2).
+ * scenery moves OUT of its region rather than joining a second list.
  *
- * A monster on the cell goes the same way and for the same reason. A
- * PROP stays: props sit on scenery quite legally, which is most of why
- * the brush exists. */
+ * REFUSED IN PLACE when the start or a monster stands there. The design
+ * cascades placements under ERASE and only under erase (§2.2, which names
+ * erase as the thing that takes walls, doors and placements with it);
+ * the monster-meets-scenery collision it rules on is a REFUSAL with a
+ * reason (§2.4). This is that same collision from the other side, so it
+ * gets the same answer rather than silently deleting something the
+ * author placed — there is no undo in this builder. */
 export function paintScenery(doc: DungeonDoc, cell: Axial): DungeonDoc {
   const key = axialKey(cell);
   if (sceneryKeys(doc).has(key)) return doc;
+  if (sceneryBlockedBy(doc, cell) !== null) return doc;
   return {
     ...doc,
     scenery: [...doc.scenery, cell].sort(compareAxial),
@@ -1273,10 +1296,6 @@ export function paintScenery(doc: DungeonDoc, cell: Axial): DungeonDoc {
         ? region
         : { ...region, cells: without };
     }),
-    start: doc.start && axialKey(doc.start) === key ? null : doc.start,
-    place: doc.place.filter(
-      (pl) => axialKey(pl.at) !== key || !isMonsterRef(pl.ref)
-    ),
   };
 }
 

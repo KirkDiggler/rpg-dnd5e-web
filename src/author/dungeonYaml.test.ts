@@ -22,6 +22,7 @@ import {
   placeAt,
   removeWalls,
   resolveErrorPath,
+  sceneryBlockedBy,
   setStart,
   setWallHeights,
   toggleDoorEdge,
@@ -1067,6 +1068,37 @@ describe('scenery (rpg-project#360 slice 1)', () => {
   it('painting scenery twice is a no-op and returns the same doc', () => {
     const doc = stripDoc();
     expect(paintScenery(doc, p(3, 0))).toBe(doc);
+  });
+
+  it('refuses to paint scenery under the start or a monster, and never deletes them', () => {
+    let doc = stripDoc();
+    doc = setStart(doc, p(0, 0));
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(1, 0) });
+
+    // The design cascades placements under ERASE and only under erase
+    // (§2.2); the monster-meets-scenery collision it rules on is a
+    // refusal with a reason (§2.4). Same collision, same answer.
+    expect(paintScenery(doc, p(0, 0))).toBe(doc);
+    expect(sceneryBlockedBy(doc, p(0, 0))).toBe('start');
+    expect(paintScenery(doc, p(1, 0))).toBe(doc);
+    expect(sceneryBlockedBy(doc, p(1, 0))).toBe('monster');
+
+    // Both are still standing where the author put them.
+    expect(doc.start).toEqual(p(0, 0));
+    expect(doc.place).toHaveLength(1);
+
+    // A PROP is never in the way — sitting on scenery is what props do.
+    doc = placeAt(doc, {
+      ref: 'dnd5e:props:pillar',
+      at: p(2, 0),
+      blocksMovement: true,
+    });
+    expect(sceneryBlockedBy(doc, p(2, 0))).toBeNull();
+    const painted = paintScenery(doc, p(2, 0));
+    expect(isScenery(painted, p(2, 0))).toBe(true);
+    expect(
+      painted.place.some((pl) => axialKey(pl.at) === axialKey(p(2, 0)))
+    ).toBe(true);
   });
 
   it('erase returns a scenery cell to void and cascades what stood on it (design §2.2)', () => {
