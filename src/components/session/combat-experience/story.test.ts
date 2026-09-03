@@ -5,10 +5,16 @@ import {
   CapacityGrantedSchema,
   ConditionAppliedSchema,
   ConditionRemovedSchema,
+  DamageComponentSchema,
+  DiceRerollSchema,
+  DiceTraceSchema,
   DownedSchema,
   EventKind,
   EventSchema,
   HealingAppliedSchema,
+  RollCalculationSchema,
+  RollComponentSchema,
+  RollSourceSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   AbilityRefSchema,
@@ -55,6 +61,36 @@ function activated(seq = 24n) {
         target: '',
       }),
     },
+  });
+}
+
+function rollSource(ref: string, name: string, label = '') {
+  return create(RollSourceSchema, { ref, name, label });
+}
+
+function secondWindCalculation() {
+  return create(RollCalculationSchema, {
+    components: [
+      create(RollComponentSchema, {
+        source: rollSource('provider:feature:wind', 'Second Wind'),
+        dice: create(DiceTraceSchema, {
+          notation: '1d10',
+          dieSize: 10,
+          originalRolls: [6],
+          finalRolls: [6],
+          subtotal: 6,
+        }),
+      }),
+      create(RollComponentSchema, {
+        source: rollSource(
+          'provider:class:fighter',
+          'Fighter',
+          'Fighter level'
+        ),
+        modifier: 1,
+      }),
+    ],
+    total: 7,
   });
 }
 
@@ -145,6 +181,111 @@ describe('typed combat Story', () => {
     expect(outcome).not.toHaveProperty('hpAfter');
   });
 
+  it('renders exact provider-authored GWF damage while preserving attack d20 presentation', () => {
+    const facts = createAttackAuthorityFixture({
+      roll: 15,
+      total: 20,
+      damage: 12,
+      attackName: 'Greatsword',
+      damageType: DamageType.SLASHING,
+    });
+    if (facts.event.body.case !== 'struck') throw new Error('expected strike');
+    facts.event.body.value.damageComponents = [
+      create(DamageComponentSchema, {
+        source: 'weapon',
+        damageType: DamageType.SLASHING,
+        roll: create(RollComponentSchema, {
+          source: rollSource('provider:weapon:greatsword', 'Greatsword'),
+          dice: create(DiceTraceSchema, {
+            notation: '2d6',
+            dieSize: 6,
+            originalRolls: [1, 5],
+            rerolls: [
+              create(DiceRerollSchema, {
+                dieIndex: 0,
+                before: 1,
+                after: 4,
+                source: rollSource(
+                  'provider:condition:gwf',
+                  'Great Weapon Fighting'
+                ),
+              }),
+            ],
+            finalRolls: [4, 5],
+            subtotal: 9,
+          }),
+        }),
+      }),
+      create(DamageComponentSchema, {
+        source: 'ability',
+        damageType: DamageType.SLASHING,
+        roll: create(RollComponentSchema, {
+          source: rollSource('provider:ability:strength', 'Strength'),
+          modifier: 3,
+        }),
+      }),
+    ];
+
+    const [entry] = buildCombatStory([visible(facts.event)], context);
+
+    expect(entry?.detail).toBe(
+      'd20 15 · total 20 against AC 13 · Hit · ' +
+        'Greatsword rolled 2d6 [1 → 4, 5] + 3 Strength = 12 slashing damage'
+    );
+  });
+
+  it('keeps legacy damage on its aggregate fallback without fabricating a trace', () => {
+    const facts = createAttackAuthorityFixture({ damage: 12 });
+    if (facts.event.body.case !== 'struck') throw new Error('expected strike');
+    facts.event.body.value.damageComponents = [
+      create(DamageComponentSchema, {
+        source: 'weapon',
+        sourceRef: 'legacy:greatsword',
+        dice: '2d6',
+        finalRolls: [4, 5],
+        flatBonus: 3,
+        damageType: DamageType.SLASHING,
+      }),
+    ];
+
+    const [entry] = buildCombatStory([visible(facts.event)], context);
+
+    expect(entry?.detail).toBe(
+      'd20 12 · total 17 against AC 13 · Hit · 12 slashing damage'
+    );
+    expect(entry?.detail).not.toContain('2d6');
+  });
+
+  it('falls back to aggregate damage instead of equating a partial traced expression to the full total', () => {
+    const facts = createAttackAuthorityFixture({ damage: 12 });
+    if (facts.event.body.case !== 'struck') throw new Error('expected strike');
+    facts.event.body.value.damageComponents = [
+      create(DamageComponentSchema, {
+        source: 'ability',
+        damageType: DamageType.SLASHING,
+        roll: create(RollComponentSchema, {
+          source: rollSource('provider:ability:strength', 'Strength'),
+          modifier: 3,
+        }),
+      }),
+      create(DamageComponentSchema, {
+        source: 'weapon',
+        sourceRef: 'legacy:greatsword',
+        dice: '2d6',
+        finalRolls: [4, 5],
+        flatBonus: 0,
+        damageType: DamageType.SLASHING,
+      }),
+    ];
+
+    const [entry] = buildCombatStory([visible(facts.event)], context);
+
+    expect(entry?.detail).toBe(
+      'd20 12 · total 17 against AC 13 · Hit · 12 slashing damage'
+    );
+    expect(entry?.detail).not.toContain('3 Strength = 12');
+  });
+
   it('renders a Missed event without inventing zero damage', () => {
     const facts = createAttackAuthorityFixture({
       hit: false,
@@ -182,6 +323,42 @@ describe('typed combat Story', () => {
       'Second Wind rolled 6 + 1 = 7; 2 applied (8 → 10 HP).'
     );
     expect(JSON.stringify(story)).not.toMatch(/Parsed Ref|999/);
+  });
+
+  it('renders the exact Second Wind calculation and authoritative clamp facts', () => {
+    const healing = healingResult(0, 7);
+    if (
+      healing.body.case !== 'activationResult' ||
+      healing.body.value.result.case !== 'healingApplied'
+    ) {
+      throw new Error('expected healing result');
+    }
+    healing.body.value.result.value.calculation = secondWindCalculation();
+
+    const [entry] = buildCombatStory([visible(healing)], context);
+
+    expect(entry?.detail).toBe(
+      'Second Wind rolled 1d10 [6] + 1 Fighter level = 7; ' +
+        '2 applied (8 → 10 HP).'
+    );
+  });
+
+  it('keeps the traced calculation when authoritative clamping applies zero healing', () => {
+    const healing = healingResult(0, 7, 25n, 0, 0, 10, 10);
+    if (
+      healing.body.case !== 'activationResult' ||
+      healing.body.value.result.case !== 'healingApplied'
+    ) {
+      throw new Error('expected healing result');
+    }
+    healing.body.value.result.value.calculation = secondWindCalculation();
+
+    const [entry] = buildCombatStory([visible(healing)], context);
+
+    expect(entry?.detail).toBe(
+      'Second Wind rolled 1d10 [6] + 1 Fighter level = 7; ' +
+        '0 applied (10 → 10 HP).'
+    );
   });
 
   it('resolves a valid targeted Activated member ID in the detail', () => {

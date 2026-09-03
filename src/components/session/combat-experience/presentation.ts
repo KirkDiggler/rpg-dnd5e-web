@@ -104,6 +104,8 @@ export interface CombatPresentationRecord {
   readonly responseAccepted: boolean;
   readonly eventAccepted: boolean;
   readonly event?: Event;
+  /** Exact typed attack-body identity, including every nested roll fact. */
+  readonly eventFacts?: string;
   readonly eventSource?: 'live' | 'catchup';
   readonly request?: DicePresentationRequestedEvent;
   readonly release?: DicePresentationReleasedEvent;
@@ -250,8 +252,89 @@ function sameAttack(
   return (
     first.ref === later.ref &&
     first.name === later.name &&
-    first.damageType === later.damageType
+    Object.is(first.damageType, later.damageType)
   );
+}
+
+function canonicalTypedIdentity(
+  value: unknown,
+  ancestors = new WeakSet<object>()
+): string {
+  if (value === undefined) return 'u';
+  if (value === null) return 'n';
+
+  switch (typeof value) {
+    case 'boolean':
+      return value ? 'b1' : 'b0';
+    case 'string':
+      return `s${value.length}:${value}`;
+    case 'number': {
+      const token = Number.isNaN(value)
+        ? 'NaN'
+        : value === Infinity
+          ? '+Infinity'
+          : value === -Infinity
+            ? '-Infinity'
+            : Object.is(value, -0)
+              ? '-0'
+              : String(value);
+      return `d${token.length}:${token}`;
+    }
+    case 'bigint': {
+      const token = String(value);
+      return `i${token.length}:${token}`;
+    }
+    case 'object': {
+      if (ancestors.has(value)) {
+        throw new TypeError('cyclic values cannot form presentation identity');
+      }
+      ancestors.add(value);
+      let identity: string;
+      if (Array.isArray(value)) {
+        const items = Array.from({ length: value.length }, (_, index) =>
+          Object.hasOwn(value, index)
+            ? canonicalTypedIdentity(value[index], ancestors)
+            : 'h'
+        );
+        identity = `a${value.length}:[${items.join('')}]`;
+      } else if (ArrayBuffer.isView(value)) {
+        const name = value.constructor.name;
+        const bytes = new Uint8Array(
+          value.buffer,
+          value.byteOffset,
+          value.byteLength
+        );
+        identity = `v${name.length}:${name}:${bytes.length}:${Array.from(bytes)
+          .map((byte) => byte.toString(16).padStart(2, '0'))
+          .join('')}`;
+      } else {
+        const record = value as Record<string, unknown>;
+        const keys = Object.keys(record).sort();
+        identity = `o${keys.length}:{${keys
+          .map(
+            (key) =>
+              canonicalTypedIdentity(key, ancestors) +
+              canonicalTypedIdentity(record[key], ancestors)
+          )
+          .join('')}}`;
+      }
+      ancestors.delete(value);
+      return identity;
+    }
+    case 'function':
+    case 'symbol':
+      throw new TypeError(
+        `${typeof value} values cannot form presentation identity`
+      );
+  }
+  throw new TypeError('unsupported value cannot form presentation identity');
+}
+
+function attackEventFacts(event: Event): string | undefined {
+  if (event.body.case !== 'struck' && event.body.case !== 'missed') {
+    return undefined;
+  }
+  return canonicalTypedIdentity(event.body.value);
 }
 
 function sameAuthority(
@@ -263,12 +346,12 @@ function sameAuthority(
     first.seq === later.seq &&
     first.attacker === later.attacker &&
     first.target === later.target &&
-    first.roll === later.roll &&
-    first.total === later.total &&
-    first.against === later.against &&
+    Object.is(first.roll, later.roll) &&
+    Object.is(first.total, later.total) &&
+    Object.is(first.against, later.against) &&
     first.hit === later.hit &&
     first.critical === later.critical &&
-    first.damage === later.damage &&
+    Object.is(first.damage, later.damage) &&
     sameAttack(first.attack, later.attack)
   );
 }
@@ -538,6 +621,7 @@ function initialRecord(
       responseAccepted: options.responseAccepted,
       eventAccepted: options.event !== undefined,
       event: options.event,
+      eventFacts: options.event ? attackEventFacts(options.event) : undefined,
       eventSource: options.source,
       request,
       release,
@@ -709,7 +793,15 @@ function acceptAttackEvent(
       `conflicting authority for ${key}; event rejected`
     );
   }
+  const eventFacts = attackEventFacts(event);
   if (current.eventAccepted) {
+    if (current.eventFacts !== eventFacts) {
+      return markConflicted(
+        state,
+        key,
+        `conflicting typed attack facts for ${key}`
+      );
+    }
     return settleCatchupDuplicate(state, index, fact.metadata.source);
   }
 
@@ -723,6 +815,7 @@ function acceptAttackEvent(
     ...current,
     eventAccepted: true,
     event,
+    eventFacts,
     eventSource: fact.metadata.source,
     release,
     settlement,
@@ -867,6 +960,9 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
             sourceName: activation.result.value.sourceName,
             hpBefore: activation.result.value.hpBefore,
             hpAfter: activation.result.value.hpAfter,
+            // Preserve graph presence and every nested field. JSON identity
+            // distinguishes absent optionals from present-zero values.
+            calculation: activation.result.value.calculation ?? null,
           });
         case 'conditionApplied':
           return Object.freeze({
@@ -922,7 +1018,7 @@ function acceptOtherEvent(
   relevantFacts: RelevantOtherEvent
 ): CombatPresentationState {
   const key = authorityKey(fact.event.session, fact.event.seq);
-  const factsIdentity = JSON.stringify(relevantFacts);
+  const factsIdentity = canonicalTypedIdentity(relevantFacts);
   const identity = identityAt(state, key);
   if (identity) {
     if (identity.category !== 'other') {
@@ -1001,7 +1097,8 @@ function acceptLocalRelease(
   }
   const current = state.presentations[index]!;
   if (current.release) {
-    return JSON.stringify(current.release) === JSON.stringify(parsed)
+    return canonicalTypedIdentity(current.release) ===
+      canonicalTypedIdentity(parsed)
       ? state
       : diagnose(state, `conflicting release for ${parsed.presentationId}`);
   }

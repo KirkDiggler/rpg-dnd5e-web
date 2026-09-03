@@ -11,12 +11,23 @@ import {
   CapacityGrantedSchema,
   ConditionAppliedSchema,
   ConditionRemovedSchema,
+  DamageComponentSchema,
+  DiceRerollSchema,
+  DiceTraceSchema,
   EventKind,
   EventSchema,
   HealingAppliedSchema,
+  RollCalculationSchema,
+  RollComponentSchema,
+  RollSourceSchema,
+  type DamageComponent,
+  type Event,
+  type RollCalculation,
+  type RollComponent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   AbilityRefSchema,
+  DamageType,
   MemberKind,
   ParticipantSchema,
   Standing,
@@ -122,6 +133,7 @@ interface HealingFixtureOverrides {
   sourceName: string;
   hpBefore: number;
   hpAfter: number;
+  calculation?: RollCalculation;
 }
 
 function healingResultEvent(
@@ -162,6 +174,7 @@ function healingResultEvent(
             sourceName: fixture.sourceName,
             hpBefore: fixture.hpBefore,
             hpAfter: fixture.hpAfter,
+            calculation: fixture.calculation,
           }),
         },
       }),
@@ -175,6 +188,242 @@ interface ConditionAppliedFixtureOverrides {
   ref: string;
   name: string;
 }
+
+function traceSource(ref: string, name: string, label = '') {
+  return create(RollSourceSchema, { ref, name, label });
+}
+
+function richRollComponent(): RollComponent {
+  return create(RollComponentSchema, {
+    source: traceSource(
+      'provider:source:one',
+      'Provider source',
+      'Provider label'
+    ),
+    dice: create(DiceTraceSchema, {
+      notation: '2d6',
+      dieSize: 6,
+      originalRolls: [1, 5],
+      rerolls: [
+        create(DiceRerollSchema, {
+          dieIndex: 0,
+          before: 1,
+          after: 4,
+          source: traceSource(
+            'provider:condition:reroll',
+            'Provider reroll',
+            'Reroll label'
+          ),
+        }),
+      ],
+      finalRolls: [4, 5],
+      keptIndices: [0, 1],
+      subtotal: 9,
+    }),
+    modifier: 0,
+  });
+}
+
+function richCalculation(): RollCalculation {
+  return create(RollCalculationSchema, {
+    components: [
+      richRollComponent(),
+      create(RollComponentSchema, {
+        source: traceSource(
+          'provider:source:modifier',
+          'Modifier source',
+          'Modifier label'
+        ),
+        modifier: 3,
+      }),
+    ],
+    total: 12,
+  });
+}
+
+function tracedHealingResultEvent(
+  mutate?: (calculation: RollCalculation) => void
+): Event {
+  const calculation = richCalculation();
+  mutate?.(calculation);
+  return healingResultEvent(2, 25n, {
+    requested: 12,
+    roll: 0,
+    modifier: 0,
+    calculation,
+  });
+}
+
+function tracedDamageComponents(): DamageComponent[] {
+  return [
+    create(DamageComponentSchema, {
+      source: 'weapon',
+      damageType: DamageType.SLASHING,
+      roll: richRollComponent(),
+    }),
+    create(DamageComponentSchema, {
+      source: 'monster_trait',
+      damageType: DamageType.SLASHING,
+      multiplier: 0,
+      roll: create(RollComponentSchema, {
+        source: traceSource(
+          'provider:source:multiplier',
+          'Multiplier source',
+          'Multiplier label'
+        ),
+      }),
+    }),
+  ];
+}
+
+function tracedDamageEvent(
+  mutate?: (components: DamageComponent[]) => void
+): Event {
+  const components = tracedDamageComponents();
+  mutate?.(components);
+  const facts = createAttackAuthorityFixture({
+    attacker: 'skeleton-guard',
+    target: 'aldric',
+    roll: 15,
+    total: 20,
+    damage: 12,
+  });
+  if (facts.event.body.case !== 'struck') throw new Error('expected strike');
+  facts.event.body.value.damageComponents = components;
+  return facts.event;
+}
+
+const ROLL_COMPONENT_MUTATIONS: readonly {
+  label: string;
+  mutate: (roll: RollComponent) => void;
+}[] = [
+  {
+    label: 'source presence',
+    mutate: (roll) => {
+      roll.source = undefined;
+    },
+  },
+  {
+    label: 'source ref',
+    mutate: (roll) => {
+      roll.source!.ref = 'provider:source:changed';
+    },
+  },
+  {
+    label: 'source name',
+    mutate: (roll) => {
+      roll.source!.name = 'Changed provider';
+    },
+  },
+  {
+    label: 'source label',
+    mutate: (roll) => {
+      roll.source!.label = 'Changed label';
+    },
+  },
+  {
+    label: 'dice presence',
+    mutate: (roll) => {
+      roll.dice = undefined;
+    },
+  },
+  {
+    label: 'dice notation',
+    mutate: (roll) => {
+      roll.dice!.notation = '3d6';
+    },
+  },
+  {
+    label: 'die size',
+    mutate: (roll) => {
+      roll.dice!.dieSize = 8;
+    },
+  },
+  {
+    label: 'original rolls',
+    mutate: (roll) => {
+      roll.dice!.originalRolls[0] = 2;
+    },
+  },
+  {
+    label: 'reroll count',
+    mutate: (roll) => {
+      roll.dice!.rerolls = [];
+    },
+  },
+  {
+    label: 'reroll die index',
+    mutate: (roll) => {
+      roll.dice!.rerolls[0]!.dieIndex = 1;
+    },
+  },
+  {
+    label: 'reroll before',
+    mutate: (roll) => {
+      roll.dice!.rerolls[0]!.before = 2;
+    },
+  },
+  {
+    label: 'reroll after',
+    mutate: (roll) => {
+      roll.dice!.rerolls[0]!.after = 3;
+    },
+  },
+  {
+    label: 'reroll source presence',
+    mutate: (roll) => {
+      roll.dice!.rerolls[0]!.source = undefined;
+    },
+  },
+  {
+    label: 'reroll source ref',
+    mutate: (roll) => {
+      roll.dice!.rerolls[0]!.source!.ref = 'provider:reroll:changed';
+    },
+  },
+  {
+    label: 'reroll source name',
+    mutate: (roll) => {
+      roll.dice!.rerolls[0]!.source!.name = 'Changed reroll';
+    },
+  },
+  {
+    label: 'reroll source label',
+    mutate: (roll) => {
+      roll.dice!.rerolls[0]!.source!.label = 'Changed reroll label';
+    },
+  },
+  {
+    label: 'final rolls',
+    mutate: (roll) => {
+      roll.dice!.finalRolls[0] = 3;
+    },
+  },
+  {
+    label: 'kept indices',
+    mutate: (roll) => {
+      roll.dice!.keptIndices = [1];
+    },
+  },
+  {
+    label: 'subtotal',
+    mutate: (roll) => {
+      roll.dice!.subtotal = 8;
+    },
+  },
+  {
+    label: 'modifier presence',
+    mutate: (roll) => {
+      roll.modifier = undefined;
+    },
+  },
+  {
+    label: 'present-zero modifier value',
+    mutate: (roll) => {
+      roll.modifier = 1;
+    },
+  },
+];
 
 function conditionAppliedResultEvent(
   overrides: Partial<ConditionAppliedFixtureOverrides> = {},
@@ -527,6 +776,59 @@ describe('useCombatPresentation', () => {
     expect(result.current.liveAnnouncement).toBeNull();
   });
 
+  it.each(['live', 'catchup'] as const)(
+    'renders the same traced healing Story from %s without creating 3D dice events',
+    (source) => {
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() =>
+        result.current.acceptStreamEvent(tracedHealingResultEvent(), { source })
+      );
+
+      expect(result.current.story[0]?.detail).toBe(
+        'Second Wind rolled 2d6 [1 → 4, 5] (kept indices [0, 1]) + 0 Provider label + 3 Modifier label = 12; ' +
+          '2 applied (8 → 10 HP).'
+      );
+      expect(result.current.diceEvents).toEqual([]);
+      expect(result.current.debug[0]).toContain('calculation={components=[');
+    }
+  );
+
+  it.each(['live', 'catchup'] as const)(
+    'renders the same traced damage Story from %s with only the preserved attack d20 presentation',
+    (source) => {
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() =>
+        result.current.acceptStreamEvent(tracedDamageEvent(), { source })
+      );
+
+      expect(result.current.story[0]?.detail).toContain(
+        '2d6 [1 → 4, 5] (kept indices [0, 1]) + 0 Provider label × 0 Multiplier label = 12 slashing damage'
+      );
+      expect(result.current.diceEvents).toHaveLength(2);
+      expect(
+        result.current.diceEvents.every(
+          (event) =>
+            event.type === 'dice-presentation-released' ||
+            event.die.kind === 'd20'
+        )
+      ).toBe(true);
+    }
+  );
+
   it('admits every generated ActivationResult body case through the shared presentation reducer', () => {
     const { result } = renderHook(() =>
       useCombatPresentation({
@@ -873,9 +1175,177 @@ describe('useCombatPresentation', () => {
     }
   );
 
+  it.each(
+    ROLL_COMPONENT_MUTATIONS.map(({ label, mutate }) => ({
+      label: `HealingApplied calculation ${label}`,
+      original: () => tracedHealingResultEvent(),
+      changed: () =>
+        tracedHealingResultEvent((calculation) =>
+          mutate(calculation.components[0]!)
+        ),
+    })).concat([
+      {
+        label: 'HealingApplied calculation total',
+        original: () => tracedHealingResultEvent(),
+        changed: () =>
+          tracedHealingResultEvent((calculation) => {
+            calculation.total = 13;
+          }),
+      },
+      {
+        label: 'HealingApplied calculation component count',
+        original: () => tracedHealingResultEvent(),
+        changed: () =>
+          tracedHealingResultEvent((calculation) => {
+            calculation.components.pop();
+          }),
+      },
+      {
+        label: 'HealingApplied calculation component order',
+        original: () => tracedHealingResultEvent(),
+        changed: () =>
+          tracedHealingResultEvent((calculation) => {
+            calculation.components.reverse();
+          }),
+      },
+      {
+        label: 'HealingApplied calculation presence',
+        original: () => tracedHealingResultEvent(),
+        changed: () =>
+          healingResultEvent(2, 25n, {
+            requested: 12,
+            roll: 0,
+            modifier: 0,
+            calculation: undefined,
+          }),
+      },
+    ])
+  )(
+    '$label mutation conflicts rather than deduplicating the healing identity',
+    ({ original, changed }) => {
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() =>
+        result.current.acceptStreamEvent(original(), { source: 'live' })
+      );
+      act(() =>
+        result.current.acceptStreamEvent(changed(), { source: 'catchup' })
+      );
+
+      expect(result.current.story).toEqual([]);
+      expect(result.current.state.identities).toMatchObject([
+        { category: 'other', conflicted: true },
+      ]);
+      expect(result.current.state.diagnostics.at(-1)).toContain(
+        'conflicting typed facts'
+      );
+    }
+  );
+
+  it.each(
+    ROLL_COMPONENT_MUTATIONS.map(({ label, mutate }) => ({
+      label: `DamageComponent roll ${label}`,
+      original: () => tracedDamageEvent(),
+      changed: () =>
+        tracedDamageEvent((components) => mutate(components[0]!.roll!)),
+    })).concat([
+      {
+        label: 'DamageComponent source category',
+        original: () => tracedDamageEvent(),
+        changed: () =>
+          tracedDamageEvent((components) => {
+            components[0]!.source = 'feature';
+          }),
+      },
+      {
+        label: 'DamageComponent damage type',
+        original: () => tracedDamageEvent(),
+        changed: () =>
+          tracedDamageEvent((components) => {
+            components[0]!.damageType = DamageType.FIRE;
+          }),
+      },
+      {
+        label: 'DamageComponent roll presence',
+        original: () => tracedDamageEvent(),
+        changed: () =>
+          tracedDamageEvent((components) => {
+            components[0]!.roll = undefined;
+          }),
+      },
+      {
+        label: 'DamageComponent multiplier presence',
+        original: () => tracedDamageEvent(),
+        changed: () =>
+          tracedDamageEvent((components) => {
+            components[1]!.multiplier = undefined;
+          }),
+      },
+      {
+        label: 'DamageComponent present-zero multiplier value',
+        original: () => tracedDamageEvent(),
+        changed: () =>
+          tracedDamageEvent((components) => {
+            components[1]!.multiplier = 0.5;
+          }),
+      },
+      {
+        label: 'DamageComponent count',
+        original: () => tracedDamageEvent(),
+        changed: () =>
+          tracedDamageEvent((components) => {
+            components.pop();
+          }),
+      },
+      {
+        label: 'DamageComponent order',
+        original: () => tracedDamageEvent(),
+        changed: () =>
+          tracedDamageEvent((components) => {
+            components.reverse();
+          }),
+      },
+    ])
+  )(
+    '$label mutation conflicts rather than deduplicating the attack identity',
+    ({ original, changed }) => {
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() =>
+        result.current.acceptStreamEvent(original(), { source: 'live' })
+      );
+      expect(result.current.story).toHaveLength(1);
+
+      act(() =>
+        result.current.acceptStreamEvent(changed(), { source: 'catchup' })
+      );
+
+      expect(result.current.story).toEqual([]);
+      expect(result.current.state.identities).toMatchObject([
+        { category: 'attack', conflicted: true },
+      ]);
+      expect(result.current.state.diagnostics.at(-1)).toContain(
+        'conflicting typed attack facts'
+      );
+    }
+  );
+
   it.each([
     { label: 'Activated', event: () => activatedEvent() },
     { label: 'HealingApplied', event: () => healingResultEvent() },
+    { label: 'traced HealingApplied', event: () => tracedHealingResultEvent() },
     { label: 'ConditionApplied', event: () => conditionAppliedResultEvent() },
     { label: 'ConditionRemoved', event: () => conditionRemovedResultEvent() },
     { label: 'CapacityGranted', event: () => capacityResultEvent() },
@@ -899,6 +1369,104 @@ describe('useCombatPresentation', () => {
       expect(result.current.state.otherStory).toHaveLength(1);
       expect(result.current.state.identities).toMatchObject([
         { category: 'other', conflicted: false },
+      ]);
+      expect(result.current.state.diagnostics).toEqual([]);
+    }
+  );
+
+  it('deduplicates an exact traced damage live/catch-up pair without conflict', () => {
+    const { result } = renderHook(() =>
+      useCombatPresentation({
+        session: 'crypt-run',
+        viewerMember: 'aldric',
+        ...publicRosterConfig(),
+      })
+    );
+
+    act(() =>
+      result.current.acceptStreamEvent(tracedDamageEvent(), { source: 'live' })
+    );
+    act(() =>
+      result.current.acceptStreamEvent(tracedDamageEvent(), {
+        source: 'catchup',
+      })
+    );
+
+    expect(result.current.story).toHaveLength(1);
+    expect(result.current.state.presentations).toHaveLength(1);
+    expect(result.current.state.identities).toMatchObject([
+      { category: 'attack', conflicted: false },
+    ]);
+    expect(result.current.state.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    { label: '0 from -0', first: 0, later: -0 },
+    { label: 'NaN from +Infinity', first: Number.NaN, later: Infinity },
+    { label: 'NaN from -Infinity', first: Number.NaN, later: -Infinity },
+    { label: '+Infinity from -Infinity', first: Infinity, later: -Infinity },
+  ])(
+    'distinguishes special numeric damage facts: $label',
+    ({ first, later }) => {
+      const original = tracedDamageEvent((components) => {
+        components[1]!.multiplier = first;
+      });
+      const changed = tracedDamageEvent((components) => {
+        components[1]!.multiplier = later;
+      });
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() => result.current.acceptStreamEvent(original, { source: 'live' }));
+      act(() =>
+        result.current.acceptStreamEvent(changed, { source: 'catchup' })
+      );
+
+      expect(result.current.story).toEqual([]);
+      expect(result.current.state.identities).toMatchObject([
+        { category: 'attack', conflicted: true },
+      ]);
+      expect(result.current.state.diagnostics.at(-1)).toContain(
+        'conflicting typed attack facts'
+      );
+    }
+  );
+
+  it.each([
+    { label: '-0', value: -0 },
+    { label: 'NaN', value: Number.NaN },
+    { label: '+Infinity', value: Infinity },
+    { label: '-Infinity', value: -Infinity },
+  ])(
+    'deduplicates identical special numeric damage facts: $label',
+    ({ value }) => {
+      const first = tracedDamageEvent((components) => {
+        components[1]!.multiplier = value;
+      });
+      const duplicate = tracedDamageEvent((components) => {
+        components[1]!.multiplier = value;
+      });
+      const { result } = renderHook(() =>
+        useCombatPresentation({
+          session: 'crypt-run',
+          viewerMember: 'aldric',
+          ...publicRosterConfig(),
+        })
+      );
+
+      act(() => result.current.acceptStreamEvent(first, { source: 'live' }));
+      act(() =>
+        result.current.acceptStreamEvent(duplicate, { source: 'catchup' })
+      );
+
+      expect(result.current.story).toHaveLength(1);
+      expect(result.current.state.identities).toMatchObject([
+        { category: 'attack', conflicted: false },
       ]);
       expect(result.current.state.diagnostics).toEqual([]);
     }

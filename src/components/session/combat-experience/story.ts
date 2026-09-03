@@ -7,6 +7,7 @@ import {
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { damageTypeWord } from '../combatBeat';
+import { formatDamageRolls, formatRollCalculation } from './rollTrace';
 import type {
   CombatExperienceAttackOutcome,
   CombatExperienceStoryExchange,
@@ -78,11 +79,9 @@ function buildActivationResultStory(
   switch (event.body.value.result.case) {
     case 'healingApplied': {
       const healing = event.body.value.result.value;
-      const arithmetic = healingArithmetic(
-        healing.roll,
-        healing.modifier,
-        healing.requested
-      );
+      const arithmetic = healing.calculation
+        ? formatRollCalculation(healing.calculation)
+        : healingArithmetic(healing.roll, healing.modifier, healing.requested);
       const source = healing.sourceName || 'Healing';
       return Object.freeze({
         ...base,
@@ -147,13 +146,17 @@ function buildAttackStory(
     const target = memberName(struck.target, context);
     const word = damageTypeWord(struck.attack?.damageType);
     const damage = word ? `${struck.damage} ${word}` : `${struck.damage}`;
+    const rollDetail = formatDamageRolls(struck.damageComponents);
+    const damageDetail = rollDetail
+      ? `${attackName(struck.attack)} rolled ${rollDetail} = ${damage} damage`
+      : `${damage} damage`;
     return Object.freeze({
       id: storyId(event),
       eyebrow: `${actor} · ${attackName(struck.attack)}`,
       headline: `${actor} strikes ${target}`,
       detail:
         `d20 ${struck.roll} · total ${struck.total} against AC ${struck.against} · ` +
-        `${struck.critical ? 'Critical hit' : 'Hit'} · ${damage} damage`,
+        `${struck.critical ? 'Critical hit' : 'Hit'} · ${damageDetail}`,
       tone: attackTone(struck.attacker, struck.target, true, context),
       attack: attackSnapshot(struck.attack),
     });
