@@ -214,6 +214,27 @@ describe('formatDebugLine', () => {
     );
   });
 
+  it('activated with ability unset pins the existing unknown ability fallback', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATED,
+      body: {
+        case: 'activated',
+        value: {
+          actor: 'char-1',
+          target: '',
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activated actor=Toolkit Sandbox Fighter ' +
+        'ability.ref=? ability.name=? target='
+    );
+  });
+
   it('JSON-quotes every provider-authored activation/result string without breaking Debug line framing', () => {
     const activation = formatDebugLine(
       baseEvent({
@@ -343,6 +364,26 @@ describe('formatDebugLine', () => {
     ]) {
       expect(line.text).not.toContain('\n');
     }
+  });
+
+  it('activation result with result oneof unset pins the existing none fallback', () => {
+    const event = baseEvent({
+      kind: EventKind.ACTIVATION_RESULT,
+      body: {
+        case: 'activationResult',
+        value: {
+          actor: 'char-1',
+          result: { case: undefined },
+        },
+      },
+    });
+
+    const line = formatDebugLine(event, names);
+
+    expect(line.ids).toEqual(['char-1']);
+    expect(line.text).toBe(
+      'seq=7 clock=42 activation_result actor=Toolkit Sandbox Fighter result=none'
+    );
   });
 
   it('activation healing result — every raw applied/requested/roll/HP/source field is complete', () => {

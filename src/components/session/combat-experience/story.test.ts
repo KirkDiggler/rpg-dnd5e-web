@@ -184,6 +184,32 @@ describe('typed combat Story', () => {
     expect(JSON.stringify(story)).not.toMatch(/Parsed Ref|999/);
   });
 
+  it('resolves a valid targeted Activated member ID in the detail', () => {
+    const event = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 25n,
+      at: 10n,
+      recipient: 'aldric',
+      kind: EventKind.ACTIVATED,
+      body: {
+        case: 'activated',
+        value: create(ActivatedSchema, {
+          actor: 'aldric',
+          ability: create(AbilityRefSchema, {
+            ref: 'dnd5e:actions:help',
+            name: 'Help',
+          }),
+          target: 'skeleton-guard',
+        }),
+      },
+    });
+
+    const [entry] = buildCombatStory([visible(event)], context);
+
+    expect(entry?.headline).toBe('Aldric uses Help');
+    expect(entry?.detail).toBe('Skeleton Guard is the target.');
+  });
+
   it.each([
     {
       label: 'negative',
