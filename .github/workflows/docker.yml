@@ -98,6 +98,7 @@ jobs:
             VITE_DISCORD_CLIENT_ID=${{ secrets.VITE_DISCORD_CLIENT_ID }}
             VITE_API_HOST=${{ secrets.VITE_API_HOST }}
             BUILD_ID=${{ github.sha }}
+            VITE_FEEL_LAB=1
 
       - name: Trigger deployment
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'

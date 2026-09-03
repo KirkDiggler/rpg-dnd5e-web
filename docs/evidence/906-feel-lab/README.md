@@ -30,6 +30,12 @@ introduced).
   rest of the Dice group, the Reset all / Copy as URL footer, and the
   Debug section (the former `DiscordDebugPanel` content) rendering
   second, below the dials, inside the same drawer.
+- `prod-flag-on.png` / `prod-flag-off.png` (#906 round 5 addendum) — a
+  real `npm run build` served via `npm run preview`, with and without
+  `VITE_FEEL_LAB=1`: the wrench is present on the landing page with the
+  flag, absent without it. This is the flag the deployed image now sets
+  (`Dockerfile`, `.github/workflows/docker.yml`), so the playtest
+  surface ships with the drawer on.
 
 ## A real bug found and fixed here
 
