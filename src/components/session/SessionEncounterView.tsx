@@ -16,6 +16,7 @@ import { useEquipItem } from '@/api/useEquipItem';
 import { useSessionAfford } from '@/api/useSessionAfford';
 import { useSessionAtlas } from '@/api/useSessionAtlas';
 import { useSessionDoors } from '@/api/useSessionDoors';
+import { useSessionInteract } from '@/api/useSessionInteract';
 import { useSessionRoster } from '@/api/useSessionRoster';
 import { useSessionSearch } from '@/api/useSessionSearch';
 import { useSessionTurn } from '@/api/useSessionTurn';
@@ -31,6 +32,7 @@ import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import type { WorldNPCDescriptor } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
   DoorState,
@@ -97,6 +99,7 @@ import {
   useSessionEventStream,
 } from './useSessionEventStream';
 import { useSessionWalk } from './useSessionWalk';
+import { VendorPopover } from './vendor/VendorPopover';
 
 export interface SessionEncounterViewProps {
   sessionId: string;
@@ -212,10 +215,16 @@ function SessionEncounterScope({
 
   const { equipItem, loading: equipping } = useEquipItem();
   const { unequipItem, loading: unequipping } = useUnequipItem();
+  const { interact } = useSessionInteract();
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  const [activeVendor, setActiveVendor] = useState<{
+    subject: string;
+    descriptor: WorldNPCDescriptor;
+  } | null>(null);
+  const [vendorNotice, setVendorNotice] = useState<string | null>(null);
   const encounterContentRef = useRef<HTMLDivElement>(null);
   const leaveRunButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -1031,6 +1040,33 @@ function SessionEncounterScope({
     [doors, member, scheduleRefresh, sessionId]
   );
 
+  // Vendor NPC interaction (rpg-api#903 Phase 1, SessionService.Interact).
+  // No client-side reach/adjacency check — same law every other session
+  // verb keeps; an out-of-range click surfaces the server's own refusal as
+  // `vendorNotice` rather than being pre-empted here.
+  const handleVendorInteract = useCallback(
+    (subject: string) => {
+      if (!member) return;
+      setVendorNotice(null);
+      void (async () => {
+        try {
+          const response = await interact({
+            session: sessionId,
+            actor: member,
+            target: subject,
+          });
+          if (response.descriptor) {
+            setEquipmentOpen(false);
+            setActiveVendor({ subject, descriptor: response.descriptor });
+          }
+        } catch (error) {
+          setVendorNotice(errorMessage(error));
+        }
+      })();
+    },
+    [interact, member, sessionId]
+  );
+
   // THE SECRECY LAW, ENFORCED HERE (rpg-project#350/#886): SearchResponse
   // carries no outcome, so this handler never reads `response` at all —
   // only whether the call itself resolved or threw. A find or a fruitless
@@ -1235,6 +1271,9 @@ function SessionEncounterScope({
                 roster={roster}
                 doors={doors}
                 onDoorClick={runEnded === null ? handleDoorClick : undefined}
+                onInteractClick={
+                  runEnded === null ? handleVendorInteract : undefined
+                }
                 myPosition={displayPosition ?? lastGoodPositionRef.current!}
                 movePath={movePath}
                 moveSeq={moveSeq}
@@ -1259,7 +1298,12 @@ function SessionEncounterScope({
             onLogModeChange={combat.onLogModeChange}
             onOpenEquipment={
               characterData
-                ? () => setEquipmentOpen((open) => !open)
+                ? () => {
+                    // Both popovers anchor to the exact same corner
+                    // (`.equip-popover`'s own CSS) — only one at a time.
+                    setActiveVendor(null);
+                    setEquipmentOpen((open) => !open);
+                  }
                 : undefined
             }
             equipmentOpen={characterData ? equipmentOpen : false}
@@ -1297,6 +1341,7 @@ function SessionEncounterScope({
             )}
             {doorNotice && <span>{doorNotice}</span>}
             {searchNotice && <span>{searchNotice}</span>}
+            {vendorNotice && <span>{vendorNotice}</span>}
           </div>
 
           <div
@@ -1334,6 +1379,14 @@ function SessionEncounterScope({
                 mainHandDamage={characterData.mainHandDamage}
                 onIntent={(intent) => void handleEquipIntent(intent)}
                 busy={equipping || unequipping}
+              />
+            )}
+            {runEnded === null && activeVendor && (
+              <VendorPopover
+                open
+                displayName={activeVendor.descriptor.displayName}
+                inventory={activeVendor.descriptor.inventory}
+                onClose={() => setActiveVendor(null)}
               />
             )}
           </div>

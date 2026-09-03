@@ -17,6 +17,7 @@ import {
   HealingAppliedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import { VendorStockMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AbilityRefSchema,
   AttackRefSchema,
@@ -94,6 +95,7 @@ const hoisted = vi.hoisted(() => ({
   openDoorFn: vi.fn(),
   unlockFn: vi.fn(),
   searchFn: vi.fn(),
+  interactFn: vi.fn(),
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
@@ -145,6 +147,7 @@ vi.mock('@/api/client', () => ({
     openDoor: hoisted.openDoorFn,
     unlock: hoisted.unlockFn,
     search: hoisted.searchFn,
+    interact: hoisted.interactFn,
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
@@ -2058,6 +2061,75 @@ describe('SessionEncounterView production combat integration', () => {
       })
     );
     await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
+  });
+
+  describe('vendor interaction (rpg-api#903 Phase 1)', () => {
+    it('clicking a world NPC calls Interact and opens the vendor popover with its stock', async () => {
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'longsword',
+              displayName: 'Longsword',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 1,
+            },
+            {
+              equipmentType: 'ammunition',
+              equipmentId: 'arrows',
+              displayName: 'Arrows',
+              stockMode: VendorStockMode.UNLIMITED,
+            },
+          ],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+
+      await waitFor(() =>
+        expect(hoisted.interactFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+        })
+      );
+
+      const popover = await waitFor(() => screen.getByTestId('vendor-popover'));
+      expect(popover.textContent).toContain('Demo Merchant');
+      expect(popover.textContent).toContain('Longsword');
+      expect(popover.textContent).toContain('1 left');
+      expect(popover.textContent).toContain('Arrows');
+      expect(popover.textContent).toContain('Always in stock');
+    });
+
+    it('surfaces the server refusal as a notice and never opens the popover on failure', async () => {
+      readyScene();
+      hoisted.interactFn.mockRejectedValue(new Error('target out of range'));
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText('target out of range')).toBeTruthy()
+      );
+      expect(screen.queryByTestId('vendor-popover')).toBeNull();
+    });
   });
 
   describe('concealed-door reveal wiring (rpg-project#886)', () => {

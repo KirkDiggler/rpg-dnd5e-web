@@ -2715,6 +2715,96 @@ describe('SessionScene', () => {
     });
   });
 
+  describe('click routing: world NPC interact (rpg-api#903 Phase 1)', () => {
+    function findGroundPlaneProps(renderer: {
+      scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+    }) {
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          (node as { instance: THREE.Mesh }).instance.geometry?.type ===
+          'PlaneGeometry'
+      ) as Array<{ fiber: { props: Record<string, unknown> } }>;
+      return nodes[0]!.fiber.props;
+    }
+
+    function clickAt(
+      props: Record<string, unknown>,
+      cube: { x: number; y: number; z: number }
+    ) {
+      const onClick = props.onClick as (event: {
+        point: THREE.Vector3;
+        stopPropagation: () => void;
+      }) => void;
+      const worldPos = cubeToWorld(cube, 1);
+      onClick({
+        point: new THREE.Vector3(worldPos.x, 0, worldPos.z),
+        stopPropagation: () => {},
+      });
+    }
+
+    const worldMember = [
+      {
+        subject: 'demo-merchant-1',
+        name: 'Demo Merchant',
+        monsterRefId: undefined,
+        kind: MemberKind.WORLD,
+        position: { x: 1, y: -1, z: 0 },
+        remembered: false,
+        standing: Standing.UP,
+      },
+    ];
+
+    it('clicking a WORLD-kind member fires onInteractClick, never onEntityClick or onHexClick — it is never an attack candidate', async () => {
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const onInteractClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={worldMember}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+          onInteractClick={onInteractClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+
+      expect(onInteractClick).toHaveBeenCalledWith('demo-merchant-1');
+      expect(onEntityClick).not.toHaveBeenCalled();
+      expect(onHexClick).not.toHaveBeenCalled();
+    });
+
+    it('a WORLD-kind member is never drawn as an attackable ring even if a caller mistakenly lists it in attackableTargets', async () => {
+      const onEntityClick = vi.fn();
+      const onInteractClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={worldMember}
+          attackableTargets={['demo-merchant-1']}
+          onEntityClick={onEntityClick}
+          onInteractClick={onInteractClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+
+      // handleTargetClick checks kind === WORLD before the attackableSet
+      // gate, so onInteractClick still wins even in this misconfigured case.
+      expect(onInteractClick).toHaveBeenCalledWith('demo-merchant-1');
+      expect(onEntityClick).not.toHaveBeenCalled();
+    });
+  });
+
   describe('onHoverEntity', () => {
     async function hoverAtPlane(
       renderer: {
