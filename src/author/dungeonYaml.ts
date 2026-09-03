@@ -1077,6 +1077,66 @@ export function emptyDungeon(
 /** Paint `cell` into `regionId`. A cell is floor in exactly ONE region:
  * painting it moves it out of whichever region held it before, so the
  * brush can never produce the overlap the server refuses. */
+/** The offset-space rectangle two cells span, as axial cells.
+ *
+ * A "square room" is a rectangle in OFFSET coordinates — the `[col,row]` the
+ * file is written in and the shape the canvas actually draws. Doing it in
+ * axial would give a rhombus, which is not the room anybody means when they
+ * drag a box. */
+export function rectCells(o: Orientation, a: Axial, b: Axial): Axial[] {
+  const [ac, ar] = toOffset(o, a);
+  const [bc, br] = toOffset(o, b);
+  const cells: Axial[] = [];
+  for (let r = Math.min(ar, br); r <= Math.max(ar, br); r += 1) {
+    for (let c = Math.min(ac, bc); c <= Math.max(ac, bc); c += 1) {
+      cells.push(fromOffset(o, [c, r]));
+    }
+  }
+  return cells;
+}
+
+/** Paint the whole rectangle `a`..`b` into `regionId` — the region-rect
+ * commit (rpg-dnd5e-web#902).
+ *
+ * The floor as a box instead of eighty-four brush strokes. The rectangle is
+ * taken in OFFSET space because that is the shape the canvas draws; the same
+ * corners in axial give a rhombus. Cells already owned by another region
+ * change hands, exactly as the brush does — the tool paints, it does not
+ * negotiate.
+ *
+ * NOTE this paints FLOOR only. Walls are not authored from a rectangle: a
+ * rectangle of hex edges is a staircase, and drawing it as a square is a
+ * rendering problem the edge-slice model cannot solve. Kirk's ruling for the
+ * real fix (rpg-dnd5e-web#905): a wall is a line that cuts hexes wherever it
+ * likes, and a hex with more than 80% of itself left is one you can stand on. */
+export function paintRect(
+  doc: DungeonDoc,
+  regionId: string,
+  a: Axial,
+  b: Axial
+): DungeonDoc {
+  const wanted = rectCells(doc.orientation, a, b);
+  const keys = new Set(wanted.map(axialKey));
+  const owners = floorOwners(doc);
+  // Nothing to do when every cell is already this region's.
+  if (wanted.every((c) => owners.get(axialKey(c)) === regionId)) return doc;
+  return {
+    ...doc,
+    regions: doc.regions.map((region) => {
+      const without = region.cells.filter((c) => !keys.has(axialKey(c)));
+      if (region.id === regionId) {
+        return {
+          ...region,
+          cells: [...without, ...wanted].sort(compareAxial),
+        };
+      }
+      return without.length === region.cells.length
+        ? region
+        : { ...region, cells: without };
+    }),
+  };
+}
+
 export function paintCell(
   doc: DungeonDoc,
   regionId: string,

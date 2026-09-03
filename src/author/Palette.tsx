@@ -36,6 +36,16 @@ const TOOLS: { id: BoardTool; label: string; hint: string }[] = [
     label: 'Region brush',
     hint: 'paint cells into the active region (shift-drag erases)',
   },
+  {
+    id: 'region-rect',
+    label: 'Region rect',
+    hint: 'drag a rectangle of cells into the active region',
+  },
+  {
+    id: 'room',
+    label: 'Room',
+    hint: 'drag a rectangle of WALLS on the floor — shares a single wall with a room beside it',
+  },
   { id: 'erase', label: 'Erase', hint: 'return cells to void' },
   { id: 'wall', label: 'Wall', hint: 'click an edge between two floor cells' },
   {

@@ -159,6 +159,138 @@ describe('DungeonBuilder', () => {
   });
 });
 
+describe('DungeonBuilder — the YAML pane authors, not just mirrors (#899)', () => {
+  const paneOf = () => screen.getByTestId('yaml-text') as HTMLTextAreaElement;
+
+  it('takes typed YAML into the document', async () => {
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const pane = paneOf();
+    // It really is an editor now, not a <pre>.
+    expect(pane.tagName).toBe('TEXTAREA');
+
+    const renamed = pane.value.replace(
+      'name: The Reference Tomb',
+      'name: The Typed Tomb'
+    );
+    expect(renamed).not.toBe(pane.value);
+    fireEvent.focus(pane);
+    fireEvent.change(pane, { target: { value: renamed } });
+
+    // The document took it — the inspector is showing the typed name.
+    await waitFor(() =>
+      expect(screen.queryByDisplayValue('The Typed Tomb')).not.toBeNull()
+    );
+    expect(screen.queryByTestId('yaml-parse-error')).toBeNull();
+  });
+
+  it('keeps unparsable text instead of discarding it, and says so', () => {
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const pane = paneOf();
+    fireEvent.focus(pane);
+    fireEvent.change(pane, { target: { value: 'version: 2\nkey: [unclosed' } });
+
+    expect(screen.getByTestId('yaml-parse-error')).toBeTruthy();
+    // A half-typed line is the ordinary state of typing; blurring onto the
+    // canvas must not throw the work away.
+    fireEvent.blur(pane);
+    expect(paneOf().value).toBe('version: 2\nkey: [unclosed');
+  });
+
+  it('does not rewrite the text under the caret while it has focus', async () => {
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const pane = paneOf();
+    fireEvent.focus(pane);
+    // Valid, but written in an order the emitter would re-sort. The document
+    // accepts it; the pane must still show what was typed, or the caret jumps
+    // and the author's formatting is rewritten mid-keystroke.
+    const typed = pane.value.replace(
+      'name: The Reference Tomb',
+      'name: Still Typing'
+    );
+    fireEvent.change(pane, { target: { value: typed } });
+    await waitFor(() =>
+      expect(screen.queryByDisplayValue('Still Typing')).not.toBeNull()
+    );
+    expect(paneOf().value).toBe(typed);
+
+    // On blur the canonical emit comes back.
+    fireEvent.blur(pane);
+    expect(paneOf().value).toContain('name: Still Typing');
+  });
+});
+
+describe("DungeonBuilder — the right rail is the author's to control", () => {
+  it('folds the inspector away and remembers it, leaving the YAML pane standing', async () => {
+    window.localStorage.clear();
+    const { unmount } = render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const fold = () => screen.getByRole('button', { name: /Inspector/i });
+    expect(fold().getAttribute('aria-expanded')).toBe('true');
+    // The inspector's own fields are on screen while it is open.
+    expect(screen.queryByDisplayValue('The Reference Tomb')).not.toBeNull();
+
+    fireEvent.click(fold());
+    expect(fold().getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByDisplayValue('The Reference Tomb')).toBeNull();
+    // Folding the inspector must not take the YAML with it — the whole point
+    // is to give the YAML the height the inspector was using.
+    expect(screen.getByTestId('yaml-pane')).toBeTruthy();
+
+    // It is a preference, so it survives a remount.
+    unmount();
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    expect(
+      screen
+        .getByRole('button', { name: /Inspector/i })
+        .getAttribute('aria-expanded')
+    ).toBe('false');
+    window.localStorage.clear();
+  });
+
+  it('offers a resize handle that reports itself to assistive tech', () => {
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const grip = screen.getByRole('separator', {
+      name: /Resize the inspector rail/i,
+    });
+    expect(grip.getAttribute('aria-orientation')).toBe('vertical');
+  });
+});
+
 describe('DungeonBuilder — concealment links to the door (rpg-dnd5e-web#893)', () => {
   /** The rpg-dnd5e-web#890 shape: a door drawn concealed, its region left
    * unticked — one authored fact stated once, the other never caught up. */
