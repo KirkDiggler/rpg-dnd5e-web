@@ -33,6 +33,8 @@ interface Receipt {
     web: {
       base: string;
       implementationHead: string;
+      evidenceHead: string;
+      ciCompatibilityHead: string;
       generatedCatalogSha256: string;
     };
   };
@@ -76,6 +78,8 @@ describe('all-race customization browser evidence', () => {
     expect(value.authorities.web).toEqual({
       base: '822ce167a6a7d3f19030fc4432bf53be7f75950f',
       implementationHead: '598b746ee35813670411ea3c39d8310751268ba8',
+      evidenceHead: '61e813cd4225911d201193956af5932ee057bd18',
+      ciCompatibilityHead: '721b60bdd6068b5a56e768f3c1dde73f7c3304c9',
       generatedCatalogSha256:
         '6f56f8fb80575601a12fc5f9ff528c1ae9f1f12154cdfb9ed162c757dfdc10af',
     });
