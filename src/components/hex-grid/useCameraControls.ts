@@ -30,6 +30,11 @@ import {
 } from './cameraDials';
 import { fitBandIndexForBbox } from './cameraFit';
 import { rotateAboutPivot } from './orbitPivot';
+import {
+  INITIAL_ORBIT_PIVOT_AUTO_STATE,
+  reduceOrbitPivotAutoState,
+  resolveOrbitPivot,
+} from './orbitPivotMode';
 
 /** `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, converted to this module's own
  * radian-based azimuth math. */
@@ -89,14 +94,17 @@ interface CameraControlsOptions {
    * the entity's live position, with no focus-lead applied). */
   focusTarget?: THREE.Vector3 | null;
   /**
-   * Where Q/E (and, later, middle-drag) rotation pivots (`?orbitPivot=`,
-   * cameraDials.ts). `view` (default) pivots on `target` itself — today's
-   * behavior, unchanged. `me` pivots on `focusTarget` instead, so the local
-   * player's mini holds its screen position and the board turns around it;
-   * falls back to `view` when `focusTarget` is unset (no mini to pivot on).
-   * See orbitPivot.ts.
+   * Where Q/E and middle-drag rotation pivots (`?orbitPivot=`,
+   * cameraDials.ts). `auto` (DEFAULT, #906 round 3): pivots on `focusTarget`
+   * (the mini) unless the player has manually panned since it last moved,
+   * in which case it pivots on `target` (the view center) — see
+   * orbitPivotMode.ts for the state machine, driven by the `pan`/
+   * `miniMoved`/`focusKey` events dispatched below. `me`/`view` are
+   * explicit, unconditional overrides of that state. Falls back to `view`
+   * whenever `focusTarget` is unset (no mini to pivot on), regardless of
+   * mode. See orbitPivot.ts for the rotation math itself.
    */
-  orbitPivot?: 'view' | 'me';
+  orbitPivot?: 'auto' | 'view' | 'me';
   /** Middle-drag rotation speed, RADIANS per pixel (`?dragRotate=`,
    * cameraDials.ts, authored there in degrees per pixel). Horizontal only —
    * no free tilt. */
@@ -149,7 +157,7 @@ export function useCameraControls({
   minZoom = 20,
   maxZoom = 200,
   focusTarget,
-  orbitPivot = 'view',
+  orbitPivot = 'auto',
   dragRotate = DEFAULT_DRAG_ROTATE_RAD_PER_PX,
   curve = null,
   perspective = false,
@@ -184,6 +192,10 @@ export function useCameraControls({
   // reinitialize anything when more floor is revealed mid-exploration.
   const revealedBoundsRef = useRef(revealedBounds);
   revealedBoundsRef.current = revealedBounds;
+
+  // `?orbitPivot=auto`'s own state machine (orbitPivotMode.ts) — only ever
+  // consulted for `auto`; `me`/`view` are unconditional and ignore it.
+  const orbitPivotAutoState = useRef(INITIAL_ORBIT_PIVOT_AUTO_STATE);
 
   // Track mouse state for right-click drag (pans the board — rotation is
   // Q/E only, per Kirk: "use Q and E to rotate and rt click could move the
@@ -280,6 +292,12 @@ export function useCameraControls({
     if (!focusTarget) return;
     if (lastFocus.current?.equals(focusTarget)) return;
     lastFocus.current = focusTarget.clone();
+    // The mini's own world position actually changed — `?orbitPivot=auto`'s
+    // own event, switching the pivot back to the mini after any manual pan.
+    orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+      orbitPivotAutoState.current,
+      'miniMoved'
+    );
     if (!bandFollowsFocus(currentOrthoBand(), perspective)) return;
     lerpTarget.current = focusTarget.clone();
   }, [focusTarget, currentOrthoBand, perspective]);
@@ -349,18 +367,27 @@ export function useCameraControls({
   /**
    * Apply one azimuth change of `deltaTheta` radians (positive = Q's
    * direction, negative = E's — see orbitPivot.ts's own doc comment on the
-   * shared sign convention). `orbitPivot: 'view'` (default) is exactly
-   * today's behavior: only azimuth changes, so `target` — the camera's own
-   * look-at point — never leaves screen center. `orbitPivot: 'me'` also
-   * carries `target` through the SAME rotation around `focusTarget` (the
-   * mini's raw position), so the mini's screen position stays fixed and the
-   * board turns around it instead. Does NOT touch `lerpTarget.current` —
-   * rotating is not "manually reframing away from the character" the way
-   * WASD/right-drag pan are, so it never cancels an active follow.
+   * shared sign convention). Resolves `orbitPivot` through
+   * orbitPivotMode.ts's `resolveOrbitPivot` first — for `auto` (default)
+   * that depends on `orbitPivotAutoState`, updated by the `pan`/
+   * `miniMoved`/`focusKey` events dispatched elsewhere in this hook; `me`/
+   * `view` ignore that state and always resolve to themselves. A resolved
+   * pivot of `view` is exactly today's original behavior: only azimuth
+   * changes, so `target` — the camera's own look-at point — never leaves
+   * screen center. A resolved pivot of `me` also carries `target` through
+   * the SAME rotation around `focusTarget` (the mini's raw position), so
+   * the mini's screen position stays fixed and the board turns around it
+   * instead. Does NOT touch `lerpTarget.current` — rotating is not
+   * "manually reframing away from the character" the way WASD/right-drag
+   * pan are, so it never cancels an active follow.
    */
   const applyAzimuthDelta = useCallback(
     (deltaTheta: number) => {
-      if (orbitPivot === 'me' && focusTarget) {
+      const resolvedPivot = resolveOrbitPivot(
+        orbitPivot,
+        orbitPivotAutoState.current
+      );
+      if (resolvedPivot === 'me' && focusTarget) {
         const rotated = rotateAboutPivot(target, focusTarget, deltaTheta);
         target.set(rotated.x, rotated.y, rotated.z);
       }
@@ -494,6 +521,12 @@ export function useCameraControls({
       // A manual pan owns the framing from here, exactly like WASD — without
       // this the auto-follow lerp yanks the board straight back to the player.
       lerpTarget.current = null;
+      // `?orbitPivot=auto`'s own event — a manual pan switches the pivot to
+      // the view center until the mini moves again or F is pressed.
+      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+        orbitPivotAutoState.current,
+        'pan'
+      );
 
       updateCamera();
       invalidate(); // Request re-render for on-demand frameloop
@@ -595,6 +628,12 @@ export function useCameraControls({
       oneShotKeys.current.focus = false;
       if (focusTarget) {
         lerpTarget.current = focusTarget.clone();
+        // `?orbitPivot=auto`'s own event — F switches the pivot back to the
+        // mini, same as the mini actually moving.
+        orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+          orbitPivotAutoState.current,
+          'focusKey'
+        );
         invalidate();
       }
     }
@@ -626,6 +665,12 @@ export function useCameraControls({
           // A deliberate reframe, exactly like WASD/right-drag pan — without
           // this the auto-follow lerp would yank the board straight back.
           lerpTarget.current = null;
+          // Also `?orbitPivot=auto`'s own `pan` event, same reasoning: Home
+          // recenters away from the mini just as deliberately as a manual pan.
+          orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+            orbitPivotAutoState.current,
+            'pan'
+          );
           updateCamera();
         }
       }
@@ -700,6 +745,16 @@ export function useCameraControls({
     if (d) {
       target.addScaledVector(right.current, panStep);
       changed = true;
+    }
+
+    // `?orbitPivot=auto`'s own `pan` event — any WASD pan switches the pivot
+    // to the view center until the mini moves again or F is pressed. Q/E
+    // rotation alone does not count as panning.
+    if (w || a || s || d) {
+      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+        orbitPivotAutoState.current,
+        'pan'
+      );
     }
 
     // Q/E rotation

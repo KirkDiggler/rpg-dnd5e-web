@@ -144,14 +144,23 @@ export interface CameraDials {
   /** WASD pan, world units per second. */
   panSpeed: number;
   /**
-   * Where Q/E and middle-drag rotation pivot (`?orbitPivot=`). `view`
-   * (default, today's behavior) pivots on the orbit target itself — the
-   * camera's own look-at point, which never leaves screen center by
-   * construction. `me` pivots on the local player's own mini instead, so
-   * the mini holds its screen position and the board turns around it
-   * (Kirk, 2026-09-03). See `orbitPivot.ts`.
+   * Where Q/E and middle-drag rotation pivot (`?orbitPivot=`).
+   *
+   * `auto` (DEFAULT as of Kirk's first live session, 2026-09-03): pivots on
+   * the mini UNLESS the player has manually panned (WASD or right-drag)
+   * since the mini last moved — a manual pan switches the pivot to the view
+   * center, and the mini moving again OR pressing `F` switches it back.
+   * Kirk: "after we move [pivot on me] is good, but if I pan ahead I would
+   * expect it to rotate the center of my screen." See `orbitPivotMode.ts`
+   * for the pure state machine.
+   *
+   * `view` pivots on the orbit target itself — the camera's own look-at
+   * point, which never leaves screen center by construction. `me` always
+   * pivots on the local player's own mini, so the mini holds its screen
+   * position and the board turns around it, regardless of panning. Both
+   * remain explicit escape hatches from `auto`.
    */
-  orbitPivot: 'view' | 'me';
+  orbitPivot: 'auto' | 'view' | 'me';
   /**
    * Middle-drag rotation, RADIANS per pixel — converted here from the
    * `dragRotate` URL dial (authored in degrees per pixel, same convention as
@@ -292,7 +301,9 @@ export function parseCameraDials(search: string): CameraDials {
 
   const rotateSpeedDegPerSec =
     num(params, 'rotateSpeed') ?? DEFAULT_ROTATE_SPEED_DEG_PER_SEC;
-  const orbitPivot = params.get('orbitPivot') === 'me' ? 'me' : 'view';
+  const rawOrbitPivot = params.get('orbitPivot');
+  const orbitPivot =
+    rawOrbitPivot === 'me' || rawOrbitPivot === 'view' ? rawOrbitPivot : 'auto';
   const dragRotateDegPerPx =
     num(params, 'dragRotate') ?? DEFAULT_DRAG_ROTATE_DEG_PER_PX;
 

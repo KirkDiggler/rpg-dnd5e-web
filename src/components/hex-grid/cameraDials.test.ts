@@ -158,10 +158,11 @@ describe('parseCameraDials', () => {
     expect(dials.panSpeed).toBe(40);
   });
 
-  it('defaults orbitPivot to view and only accepts the literal "me"', () => {
-    expect(parseCameraDials('').orbitPivot).toBe('view');
+  it('defaults orbitPivot to auto and only accepts the literals "me"/"view"', () => {
+    expect(parseCameraDials('').orbitPivot).toBe('auto');
     expect(parseCameraDials('?orbitPivot=me').orbitPivot).toBe('me');
-    expect(parseCameraDials('?orbitPivot=bogus').orbitPivot).toBe('view');
+    expect(parseCameraDials('?orbitPivot=view').orbitPivot).toBe('view');
+    expect(parseCameraDials('?orbitPivot=bogus').orbitPivot).toBe('auto');
   });
 
   it('resolves dragRotate to the shared default, authored in degrees per pixel', () => {
