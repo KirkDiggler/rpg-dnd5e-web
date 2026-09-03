@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   CHARACTER_CUSTOMIZATION_CATALOG,
@@ -147,6 +146,5 @@ describe('all-race customization browser evidence', () => {
     const serialized =
       readFileSync(receiptUrl, 'utf8') + readFileSync(readmeUrl, 'utf8');
     expect(serialized).not.toMatch(/\/home\/|\/tmp\/|localhost:|3018/);
-    expect(fileURLToPath(evidenceRoot)).not.toBe('');
   });
 });

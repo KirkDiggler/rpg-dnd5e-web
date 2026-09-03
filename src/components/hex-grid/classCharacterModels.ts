@@ -26,11 +26,6 @@ interface ClassCharacterModelEntry {
   downed: string;
 }
 
-interface RaceClassCharacterModelEntry {
-  model: string;
-  rigFamily: CharacterRigFamily;
-}
-
 /** Keyed by PublicMemberInfo.classRef (lowercase, e.g. "rogue") — matches
  * the server's public class ref convention verified live in
  * rpg-dnd5e-web#493/#497 (devseed's "rogue level 2", "barbarian level 1",
@@ -40,108 +35,6 @@ const CLASS_CHARACTER_MODELS: Record<string, ClassCharacterModelEntry> = {
   barbarian: { model: 'barbarian.glb', downed: 'barbarian-downed.glb' },
   monk: { model: 'monk.glb', downed: 'monk-downed.glb' },
   rogue: { model: 'rogue.glb', downed: 'rogue-downed.glb' },
-};
-
-const RACE_CLASS_CHARACTER_MODELS: Record<
-  string,
-  RaceClassCharacterModelEntry
-> = {
-  'elf:barbarian': {
-    model: 'race-class/elf-barbarian.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'elf:fighter': {
-    model: 'race-class/elf-fighter.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'elf:monk': {
-    model: 'race-class/elf-monk.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'elf:rogue': {
-    model: 'race-class/elf-rogue.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'half-elf:barbarian': {
-    model: 'race-class/half-elf-barbarian.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'half-elf:fighter': {
-    model: 'race-class/half-elf-fighter.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'half-elf:monk': {
-    model: 'race-class/half-elf-monk.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'half-elf:rogue': {
-    model: 'race-class/half-elf-rogue.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'half-orc:barbarian': {
-    model: 'race-class/half-orc-barbarian.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'half-orc:fighter': {
-    model: 'race-class/half-orc-fighter.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'half-orc:monk': {
-    model: 'race-class/half-orc-monk.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'half-orc:rogue': {
-    model: 'race-class/half-orc-rogue.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'halfling:barbarian': {
-    model: 'race-class/halfling-barbarian.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'halfling:fighter': {
-    model: 'race-class/halfling-fighter.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'halfling:monk': {
-    model: 'race-class/halfling-monk.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'halfling:rogue': {
-    model: 'race-class/halfling-rogue.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'gnome:barbarian': {
-    model: 'race-class/gnome-barbarian.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'gnome:fighter': {
-    model: 'race-class/gnome-fighter.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'gnome:monk': {
-    model: 'race-class/gnome-monk.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'gnome:rogue': {
-    model: 'race-class/gnome-rogue.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'tiefling:barbarian': {
-    model: 'race-class/tiefling-barbarian.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'tiefling:fighter': {
-    model: 'race-class/tiefling-fighter.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'tiefling:monk': {
-    model: 'race-class/tiefling-monk.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
-  'tiefling:rogue': {
-    model: 'race-class/tiefling-rogue.glb',
-    rigFamily: 'modular-fantasy-hero-v1',
-  },
 };
 
 function normalizeRefId(refId: string | undefined): string | undefined {
@@ -190,16 +83,7 @@ function resolveRaceClassCharacterModelResolution(
       fallbackSha256: body.fallbackSha256,
     };
   }
-  const entry =
-    RACE_CLASS_CHARACTER_MODELS[
-      `${normalizedRaceRefId}:${normalizedClassRefId}`
-    ];
-  if (!entry) return undefined;
-  return {
-    url: CLASS_CHARACTER_MODEL_BASE + entry.model,
-    rigFamily: entry.rigFamily,
-    source: 'race-class',
-  };
+  return undefined;
 }
 
 export interface PlayerCharacterModelResolution {
