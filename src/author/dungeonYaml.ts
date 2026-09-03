@@ -1095,31 +1095,49 @@ export function rectCells(o: Orientation, a: Axial, b: Axial): Axial[] {
   return cells;
 }
 
-/** Carve the rectangle `a`..`b` out as A ROOM OF ITS OWN — the room tool's
- * commit (rpg-dnd5e-web#902).
+/** Wall the rectangle `a`..`b` — the ROOM tool (rpg-dnd5e-web#902).
  *
- * A room is a REGION, not a patch of floor. Kirk brushed 66 cells, switched to
- * the room tool, dragged inside them and nothing happened: every cell was
- * already the active region's, so painting them into it was a genuine no-op.
- * Correct, and useless — what he was drawing was a second room.
+ * A room is a rectangle of WALLS drawn on floor, not a region. Kirk's model,
+ * after I built the wrong thing twice: *"region can be like it was + the
+ * square setter. I then want to draw n rooms inside."* One region holds many
+ * rooms; a room is the wall around one of them.
  *
- * So the tool mints a region and takes the rectangle's cells from whoever held
- * them, which is what makes the room appear (its own colour, its own lighting)
- * and what puts an authorable boundary between it and its neighbour. The one
- * exception is an EMPTY region: a drag adopts one rather than stranding it,
- * because a region with no cells is a refusal ("the region has no cells, and
- * a region is its cells") — so the first room on a fresh dungeon becomes
- * region-1 instead of leaving it behind as an error.
+ * Only floor-to-floor crossings are walled. A crossing into void is refused
+ * outright ("the envelope is implied, never written") and needs no wall — the
+ * runtime already seals it — so a room drawn at the floor's edge is walled
+ * only where there is something on the other side.
  *
- * Walls are NOT authored here. Between two rooms a wall is a real authored
- * fact and the author's to place; around a lone room the envelope is implied
- * and a wall there is refused outright. */
-export function paintRoom(doc: DungeonDoc, a: Axial, b: Axial): DungeonDoc {
-  const active = doc.regions.find((r) => r.cells.length === 0);
-  if (active) return paintRect(doc, active.id, a, b);
-  const minted = addRegion(doc);
-  const id = minted.regions[minted.regions.length - 1].id;
-  return paintRect(minted, id, a, b);
+ * An edge already carrying a wall is skipped, which is what makes **one wall
+ * between two rooms** rather than two: draw a room beside another and the
+ * shared boundary is already walled, so nothing is added there. Door edges are
+ * left alone too — the tool does not wall up a doorway somebody placed.
+ *
+ * The whole perimeter is ONE run, so the file reads as the room it is and a
+ * height set on it applies to the room. Delete a single edge with the wall
+ * tool to open a doorway between two rooms. */
+export function wallRoom(doc: DungeonDoc, a: Axial, b: Axial): DungeonDoc {
+  const cells = rectCells(doc.orientation, a, b);
+  const inRoom = new Set(cells.map(axialKey));
+  const owners = floorOwners(doc);
+  const taken = wallKeys(doc);
+  const doors = doorEdgeOwners(doc);
+  const seen = new Set<string>();
+  const edges: Edge[] = [];
+  for (const cell of cells) {
+    if (!owners.has(axialKey(cell))) continue;
+    for (const n of axialNeighbors(cell)) {
+      const nk = axialKey(n);
+      if (inRoom.has(nk) || !owners.has(nk)) continue;
+      const edge = normalizeEdge([cell, n]);
+      const key = edgeKey(edge);
+      if (seen.has(key) || taken.has(key) || doors.has(key)) continue;
+      seen.add(key);
+      edges.push(edge);
+    }
+  }
+  if (edges.length === 0) return doc;
+  const n = doc.walls.filter((w) => w.name?.startsWith('room ')).length + 1;
+  return { ...doc, walls: [...doc.walls, { name: `room ${n}`, edges }] };
 }
 
 /** Paint the whole rectangle `a`..`b` into `regionId` — the room tool's

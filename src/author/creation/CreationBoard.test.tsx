@@ -12,6 +12,7 @@ import {
   placeAt,
   toggleWall,
   wallEdges,
+  wallRoom,
   type DungeonDoc,
 } from '../dungeonYaml';
 import {
@@ -532,6 +533,51 @@ describe('gesture plumbing — press, drag, release (#804)', () => {
  * join), so a future preview/commit path that bypassed the magnetism
  * would fail here, not on a walk.
  */
+describe('one wall at a time (rpg-dnd5e-web#902)', () => {
+  it('a click with the wall tool reports ONE edge, not the run under it', () => {
+    // Kirk's flow: draw two rooms, then "select a wall and delete it and only
+    // it" to open a doorway. A press that does not travel is a single-edge
+    // toggle; a run-wide erase would need a drag.
+    let doc = emptyDungeon();
+    for (let c = 0; c <= 3; c += 1) {
+      for (let r = 0; r <= 2; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    doc = wallRoom(doc, p(1, 0), p(2, 2));
+    expect(doc.walls[0].edges.length).toBeGreaterThan(1);
+
+    const onEdgeClick = vi.fn();
+    const onWallErase = vi.fn();
+    const { container } = mount(doc, {
+      tool: 'wall',
+      onEdgeClick,
+      onWallErase,
+    });
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerUp(container.querySelector('svg')!);
+
+    expect(onEdgeClick).toHaveBeenCalledTimes(1);
+    expect(onWallErase).not.toHaveBeenCalled();
+    // One edge came back, not a chain.
+    expect(onEdgeClick.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it('toggling an edge of a room run removes that edge and leaves the rest', () => {
+    let doc = emptyDungeon();
+    for (let c = 0; c <= 3; c += 1) {
+      for (let r = 0; r <= 2; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
+    }
+    doc = wallRoom(doc, p(1, 0), p(2, 2));
+    const run = doc.walls[0].edges;
+    const before = run.length;
+
+    const opened = toggleWall(doc, run[0]);
+    expect(wallEdges(opened)).toHaveLength(before - 1);
+    // The rest of the room's wall is untouched — this is a doorway, not a
+    // demolition.
+    expect(wallEdges(opened).map(edgeKey)).toEqual(run.slice(1).map(edgeKey));
+  });
+});
+
 describe('the implied envelope is drawn (rpg-dnd5e-web#902)', () => {
   it('outlines the floor so a freshly dragged room reads as a room', () => {
     // One cell: six crossings into void, so six envelope segments.

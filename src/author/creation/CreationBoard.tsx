@@ -202,7 +202,8 @@ export function CreationBoard({
   /** The cells a released room drag would paint — the preview IS the commit,
    * so this is the same `rectCells` the owner's `paintRect` uses. */
   const roomPreview = useMemo(() => {
-    if (tool !== 'room' || !roomFrom || !hoverCell) return null;
+    if ((tool !== 'room' && tool !== 'region-rect') || !roomFrom || !hoverCell)
+      return null;
     return new Set(rectCells(o, roomFrom, hoverCell).map(axialKey));
   }, [tool, roomFrom, hoverCell, o]);
   const painting = useRef<'paint' | 'erase' | null>(null);
@@ -451,7 +452,7 @@ export function CreationBoard({
 
   const handleCellDown = (cell: Axial, e: PointerEvent<SVGPolygonElement>) => {
     e.preventDefault();
-    if (tool === 'room') {
+    if (tool === 'room' || tool === 'region-rect') {
       setRoomFrom(cell);
       return;
     }
@@ -1156,6 +1157,7 @@ function cursorFor(tool: BoardTool): string {
     case 'region':
     case 'erase':
     case 'room':
+    case 'region-rect':
       return 'crosshair';
     case 'wall':
     case 'door':

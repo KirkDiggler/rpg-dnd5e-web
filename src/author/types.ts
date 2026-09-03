@@ -6,6 +6,7 @@ import type { Edge } from './hexOffset';
 export type BoardTool =
   | 'select'
   | 'region'
+  | 'region-rect'
   | 'room'
   | 'erase'
   | 'wall'

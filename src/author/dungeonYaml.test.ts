@@ -13,7 +13,6 @@ import {
   floorOwners,
   paintCell,
   paintRect,
-  paintRoom,
   parseDungeon,
   placeAt,
   removeWalls,
@@ -26,6 +25,7 @@ import {
   updatePlacement,
   updateRegion,
   wallEdges,
+  wallRoom,
   type DungeonDoc,
 } from './dungeonYaml';
 import { referenceTombDoc } from './fixtures/referenceTomb';
@@ -835,31 +835,39 @@ describe('mutators', () => {
 });
 
 describe('the room tool (rpg-dnd5e-web#902)', () => {
-  it('a room is a REGION of its own, so dragging inside existing floor still makes a room', () => {
-    // Kirk's exact sequence: brush a blob, then drag a room inside it. The
-    // old behaviour painted into the active region, found every cell already
-    // owned, and did nothing at all.
+  it('a room is a rectangle of WALLS on floor, and two rooms share ONE wall', () => {
+    // Kirk's model: one region, many rooms inside it.
     let doc = emptyDungeon();
-    doc = paintRect(doc, 'region-1', p(0, 0), p(5, 3));
-    const blob = doc.regions[0].cells.length;
-    expect(blob).toBe(24);
+    doc = paintRect(doc, 'region-1', p(0, 0), p(7, 4));
 
-    doc = paintRoom(doc, p(1, 1), p(3, 2));
-    expect(doc.regions).toHaveLength(2);
-    // The new room took its cells FROM the blob — the floor total is unchanged
-    // because the rectangle lay entirely inside it.
-    expect(doc.regions[1].cells).toHaveLength(6);
-    expect(doc.regions[0].cells).toHaveLength(blob - 6);
-    expect(floorOwners(doc).get(axialKey(p(2, 1)))).toBe(doc.regions[1].id);
+    doc = wallRoom(doc, p(1, 1), p(3, 3));
+    expect(doc.walls).toHaveLength(1);
+    const first = wallEdges(doc).length;
+    expect(first).toBeGreaterThan(0);
+
+    // A room drawn flush beside it must NOT double the shared boundary.
+    doc = wallRoom(doc, p(4, 1), p(6, 3));
+    expect(doc.walls).toHaveLength(2);
+    const keys = wallEdges(doc).map(edgeKey);
+    expect(new Set(keys).size).toBe(keys.length); // no edge walled twice
   });
 
-  it('the first room adopts an empty region rather than stranding it', () => {
-    // A region with no cells is a refusal, so a fresh dungeon's region-1 must
-    // not be left behind when the first room is drawn.
-    const doc = paintRoom(emptyDungeon(), p(0, 0), p(2, 2));
-    expect(doc.regions).toHaveLength(1);
-    expect(doc.regions[0].id).toBe('region-1');
-    expect(doc.regions[0].cells).toHaveLength(9);
+  it('walls nothing where the floor ends, because the envelope is implied', () => {
+    // A room whose rectangle IS the whole floor has no floor beyond it, so
+    // there is nothing legal to wall — a wall into void is refused outright.
+    let doc = emptyDungeon();
+    doc = paintRect(doc, 'region-1', p(0, 0), p(2, 2));
+    expect(wallRoom(doc, p(0, 0), p(2, 2))).toBe(doc);
+  });
+
+  it('leaves a doorway alone rather than walling it up', () => {
+    let doc = emptyDungeon();
+    doc = paintRect(doc, 'region-1', p(0, 0), p(5, 3));
+    const doorway: Edge = [p(1, 1), p(0, 1)];
+    doc = toggleDoorEdge(doc, doorway);
+    expect(doc.doors).toHaveLength(1);
+    doc = wallRoom(doc, p(1, 1), p(3, 2));
+    expect(wallEdges(doc).map(edgeKey)).not.toContain(edgeKey(doorway));
   });
 
   it('paints the offset rectangle two corners span — square by construction', () => {
