@@ -2,11 +2,18 @@
  * Custom camera controls for HexGrid
  *
  * - WASD to pan
- * - Q/E to rotate (Y-axis only) — the ONLY way to rotate
+ * - Q/E to rotate (Y-axis only)
  * - Mouse wheel to zoom
  * - Right-click drag to pan ("grab the board"). This used to rotate; Kirk
  *   moved it to panning so rotation lives on Q/E alone and the mouse does
  *   the thing a mouse on a map is expected to do.
+ * - Middle-click drag to rotate azimuth only (speed coupled to `rotateSpeed`
+ *   via `DRAG_SECONDS_PER_PIXEL`, cameraDials.ts — #906). Horizontal only,
+ *   no tilt — same "no free-look" rule as everything else here.
+ * - F brings the target to the local player's mini without changing the
+ *   zoom band (#906).
+ * - Home fits the revealed board on demand — never automatically (#906,
+ *   rpg-dnd5e-web#457). See cameraFit.ts.
  * - Tilt is never under direct player control: it is either a fixed angle
  *   (the default, unchanged) or a function of zoom via the `curve` option
  *   (`?pitchCurve=1`, see cameraDials.ts). There is deliberately no free-look.
@@ -15,25 +22,94 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { bandFollowsFocus } from './cameraDials';
+import {
+  bandFollowsFocus,
+  DEFAULT_DRAG_ROTATE_DEG_PER_PX,
+  DEFAULT_PAN_SPEED_PER_SEC,
+  DEFAULT_ROTATE_SPEED_DEG_PER_SEC,
+} from './cameraDials';
+import { fitBandIndexForBbox } from './cameraFit';
+import { rotateAboutPivot } from './orbitPivot';
+import {
+  INITIAL_ORBIT_PIVOT_AUTO_STATE,
+  reduceOrbitPivotAutoState,
+  resolveOrbitPivot,
+} from './orbitPivotMode';
+
+/** `DEFAULT_ROTATE_SPEED_DEG_PER_SEC`, converted to this module's own
+ * radian-based azimuth math. */
+const DEFAULT_ROTATE_SPEED_RAD_PER_SEC =
+  (DEFAULT_ROTATE_SPEED_DEG_PER_SEC * Math.PI) / 180;
+
+/** `DEFAULT_DRAG_ROTATE_DEG_PER_PX`, converted to this module's own
+ * radian-based azimuth math. */
+const DEFAULT_DRAG_ROTATE_RAD_PER_PX =
+  (DEFAULT_DRAG_ROTATE_DEG_PER_PX * Math.PI) / 180;
 
 const WHEEL_BAND_STEP_INTERVAL_MS = 120;
+
+/**
+ * Cap, in seconds, on the frame delta used for USER-INPUT-DRIVEN motion
+ * (Q/E rotate, WASD pan). R3F reads the raw clock delta with no cap of its
+ * own (`state.clock.getDelta()` under the hood), and this canvas runs
+ * `frameloop="demand"`, so the FIRST frame after an idle gap or a
+ * backgrounded tab can arrive with a delta of several seconds. At the
+ * `rotateSpeed` default (70°/s) that is a multi-radian snap on a single
+ * frame — 0.1s caps it to at most 7°, an ordinary frame's worth of motion.
+ * The follow lerp is deliberately NOT capped by this — its own
+ * `1 - 0.001^delta` factor already saturates toward a full snap for a large
+ * delta, which is the CORRECT behavior there (catch up immediately) rather
+ * than something this needs to guard against.
+ */
+const MAX_INPUT_DELTA_S = 0.1;
+
+/** Current revealed-floor bounding box, world units, XZ-plane centre +
+ * extent — the `Home` key's own fit target (#906, cameraFit.ts). */
+export interface RevealedBounds {
+  readonly centerX: number;
+  readonly centerZ: number;
+  readonly width: number;
+  readonly height: number;
+}
 
 interface CameraControlsOptions {
   /** Target point to orbit around */
   target: THREE.Vector3;
   /** Fixed polar angle (tilt from vertical) in radians */
   polarAngle?: number;
-  /** Pan speed multiplier */
+  /** WASD pan speed, world units PER SECOND (`?panSpeed=`, cameraDials.ts).
+   * Multiplied by frame delta below — until #906 this was applied as a flat
+   * per-frame step with no delta scaling. */
   panSpeed?: number;
-  /** Rotation speed multiplier */
+  /** Q/E rotation speed, RADIANS per second (`?rotateSpeed=`, cameraDials.ts,
+   * authored there in degrees). Same delta-scaling note as `panSpeed`. */
   rotateSpeed?: number;
   /** Minimum zoom level */
   minZoom?: number;
   /** Maximum zoom level */
   maxZoom?: number;
-  /** When set, camera lerps target to this position. Cleared on manual pan. */
+  /** When set, camera lerps target to this position. Cleared on manual pan.
+   * Also doubles as the `orbitPivot: 'me'` pivot point below — the local
+   * player's own RAW world position (both call sites build it straight from
+   * the entity's live position, with no focus-lead applied). */
   focusTarget?: THREE.Vector3 | null;
+  /**
+   * Where Q/E and middle-drag rotation pivots (`?orbitPivot=`,
+   * cameraDials.ts). `auto` (DEFAULT, #906 round 3): pivots on `focusTarget`
+   * (the mini) unless the player has manually panned since it last moved,
+   * in which case it pivots on `target` (the view center) — see
+   * orbitPivotMode.ts for the state machine, driven by the `pan`/
+   * `miniMoved`/`focusKey` events dispatched below. `me`/`view` are
+   * explicit, unconditional overrides of that state. Falls back to `view`
+   * whenever `focusTarget` is unset (no mini to pivot on), regardless of
+   * mode. See orbitPivot.ts for the rotation math itself.
+   */
+  orbitPivot?: 'auto' | 'view' | 'me';
+  /** Middle-drag rotation speed, RADIANS per pixel — cameraDials.ts derives
+   * this from `rotateSpeed` (no independent `?dragRotate=` dial, #906 round
+   * 3: "Q/E and middle mouse should have similar rotation speeds"; see
+   * `DRAG_SECONDS_PER_PIXEL`). Horizontal only — no free tilt. */
+  dragRotate?: number;
   /**
    * Banded zoom/pitch (`?pitchCurve=1`, see cameraDials.ts). Each orthographic
    * wheel gesture selects one authored zoom/polar/focus band. The final detail
@@ -65,20 +141,30 @@ interface CameraControlsOptions {
   /** Perspective dolly range in world units (ignored when orthographic). */
   minDistance?: number;
   maxDistance?: number;
+  /** Current revealed-floor bounds — the `Home` key's fit target (#906).
+   * `null`/`undefined` (nothing revealed yet, or the caller doesn't track
+   * this) makes `Home` a no-op. Recomputed by the caller as more floor is
+   * revealed; only READ on an actual `Home` keypress, never acted on by
+   * itself — see rpg-dnd5e-web#457, the auto-reframing regression this
+   * guards against. */
+  revealedBounds?: RevealedBounds | null;
 }
 
 export function useCameraControls({
   target,
   polarAngle = Math.PI / 4, // 45 degrees from vertical by default
-  panSpeed = 0.5,
-  rotateSpeed = 0.03,
+  panSpeed = DEFAULT_PAN_SPEED_PER_SEC,
+  rotateSpeed = DEFAULT_ROTATE_SPEED_RAD_PER_SEC,
   minZoom = 20,
   maxZoom = 200,
   focusTarget,
+  orbitPivot = 'auto',
+  dragRotate = DEFAULT_DRAG_ROTATE_RAD_PER_PX,
   curve = null,
   perspective = false,
   minDistance = 5,
   maxDistance = 100,
+  revealedBounds,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
 
@@ -92,6 +178,26 @@ export function useCameraControls({
     e: false,
   });
 
+  // F/Home (#906): one-shot actions, not held state like WASD/QE above —
+  // set true on keydown, consumed (and cleared back to false) the next
+  // useFrame tick, so each physical press fires exactly once regardless of
+  // how long the key stays down. Handled in useFrame (not the keydown
+  // handler itself) so they always run with THIS render's fresh `curve`/
+  // `target`/`updateCamera`/`focusTarget` closures, matching how Q/E rotation
+  // and WASD pan already defer their real work to useFrame.
+  const oneShotKeys = useRef({ focus: false, fit: false });
+
+  // Latest `revealedBounds` prop, mirrored into a ref every render so the
+  // `Home` handling above (which only runs inside useFrame, not on every
+  // prop change) always reads the CURRENT bounds without needing to
+  // reinitialize anything when more floor is revealed mid-exploration.
+  const revealedBoundsRef = useRef(revealedBounds);
+  revealedBoundsRef.current = revealedBounds;
+
+  // `?orbitPivot=auto`'s own state machine (orbitPivotMode.ts) — only ever
+  // consulted for `auto`; `me`/`view` are unconditional and ignore it.
+  const orbitPivotAutoState = useRef(INITIAL_ORBIT_PIVOT_AUTO_STATE);
+
   // Track mouse state for right-click drag (pans the board — rotation is
   // Q/E only, per Kirk: "use Q and E to rotate and rt click could move the
   // board"). Y is tracked too now that the drag moves in both axes.
@@ -99,6 +205,15 @@ export function useCameraControls({
     isRightDown: false,
     lastX: 0,
     lastY: 0,
+  });
+
+  // Middle-button drag: azimuth rotation only, no tilt (speed coupled to
+  // `rotateSpeed`, cameraDials.ts — the module header doc comment's own "no
+  // free-look" rule). Deliberately its own ref, independent of `mouse`
+  // above — right-drag pan and middle-drag rotate are unrelated gestures.
+  const middleDrag = useRef({
+    active: false,
+    lastX: 0,
   });
 
   // Reusable vectors for camera movement (avoid allocations in useFrame)
@@ -178,6 +293,12 @@ export function useCameraControls({
     if (!focusTarget) return;
     if (lastFocus.current?.equals(focusTarget)) return;
     lastFocus.current = focusTarget.clone();
+    // The mini's own world position actually changed — `?orbitPivot=auto`'s
+    // own event, switching the pivot back to the mini after any manual pan.
+    orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+      orbitPivotAutoState.current,
+      'miniMoved'
+    );
     if (!bandFollowsFocus(currentOrthoBand(), perspective)) return;
     lerpTarget.current = focusTarget.clone();
   }, [focusTarget, currentOrthoBand, perspective]);
@@ -244,13 +365,51 @@ export function useCameraControls({
     camera.lookAt(focusX, target.y, focusZ);
   }, [target, currentPolar, camera, currentFocusLead]);
 
+  /**
+   * Apply one azimuth change of `deltaTheta` radians (positive = Q's
+   * direction, negative = E's — see orbitPivot.ts's own doc comment on the
+   * shared sign convention). Resolves `orbitPivot` through
+   * orbitPivotMode.ts's `resolveOrbitPivot` first — for `auto` (default)
+   * that depends on `orbitPivotAutoState`, updated by the `pan`/
+   * `miniMoved`/`focusKey` events dispatched elsewhere in this hook; `me`/
+   * `view` ignore that state and always resolve to themselves. A resolved
+   * pivot of `view` is exactly today's original behavior: only azimuth
+   * changes, so `target` — the camera's own look-at point — never leaves
+   * screen center. A resolved pivot of `me` also carries `target` through
+   * the SAME rotation around `focusTarget` (the mini's raw position), so
+   * the mini's screen position stays fixed and the board turns around it
+   * instead. Does NOT touch `lerpTarget.current` — rotating is not
+   * "manually reframing away from the character" the way WASD/right-drag
+   * pan are, so it never cancels an active follow.
+   */
+  const applyAzimuthDelta = useCallback(
+    (deltaTheta: number) => {
+      const resolvedPivot = resolveOrbitPivot(
+        orbitPivot,
+        orbitPivotAutoState.current
+      );
+      if (resolvedPivot === 'me' && focusTarget) {
+        const rotated = rotateAboutPivot(target, focusTarget, deltaTheta);
+        target.set(rotated.x, rotated.y, rotated.z);
+      }
+      azimuth.current += deltaTheta;
+    },
+    [orbitPivot, focusTarget, target]
+  );
+
   // Handle keyboard events
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       if (key in keys.current) {
         keys.current[key as keyof typeof keys.current] = true;
+        return;
       }
+      // F/Home are one-shot (#906) — ignore OS auto-repeat while held so a
+      // long press fires once, not on every repeat interval.
+      if (e.repeat) return;
+      if (key === 'f') oneShotKeys.current.focus = true;
+      else if (key === 'home') oneShotKeys.current.fit = true;
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -284,12 +443,42 @@ export function useCameraControls({
   useEffect(() => {
     const canvas = gl.domElement;
 
+    // Middle-button rotate. Tracked with WINDOW-level listeners (added only
+    // for the duration of the drag), unlike right-drag pan's canvas-scoped
+    // ones above/below — a fast horizontal swing easily carries the cursor
+    // off the canvas, and losing the drag there would read as broken rather
+    // than as an edge case.
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (!middleDrag.current.active) return;
+      const dx = e.clientX - middleDrag.current.lastX;
+      middleDrag.current.lastX = e.clientX;
+      // Vertical ignored — no free tilt (module header doc comment).
+      applyAzimuthDelta(dx * dragRotate);
+      updateCamera();
+      invalidate();
+    };
+    const endMiddleDrag = () => {
+      if (!middleDrag.current.active) return;
+      middleDrag.current.active = false;
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', endMiddleDrag);
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) {
         // Right click
         mouse.current.isRightDown = true;
         mouse.current.lastX = e.clientX;
         mouse.current.lastY = e.clientY;
+      } else if (e.button === 1) {
+        // Middle click — prevent the browser's autoscroll affordance, then
+        // rotate on drag instead. Right+left chord is NOT a camera gesture
+        // (Kirk: it already means "lift the die" on the die tile), so this
+        // is scoped to the middle button alone.
+        e.preventDefault();
+        middleDrag.current = { active: true, lastX: e.clientX };
+        window.addEventListener('mousemove', handleWindowMouseMove);
+        window.addEventListener('mouseup', endMiddleDrag);
       }
     };
 
@@ -333,6 +522,12 @@ export function useCameraControls({
       // A manual pan owns the framing from here, exactly like WASD — without
       // this the auto-follow lerp yanks the board straight back to the player.
       lerpTarget.current = null;
+      // `?orbitPivot=auto`'s own event — a manual pan switches the pivot to
+      // the view center until the mini moves again or F is pressed.
+      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+        orbitPivotAutoState.current,
+        'pan'
+      );
 
       updateCamera();
       invalidate(); // Request re-render for on-demand frameloop
@@ -397,6 +592,7 @@ export function useCameraControls({
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('contextmenu', handleContextMenu);
+      endMiddleDrag();
     };
     // target included so effect re-initializes if target reference changes
   }, [
@@ -413,10 +609,75 @@ export function useCameraControls({
     maxDistance,
     worldPerPixel,
     currentPolar,
+    currentOrthoBand,
+    applyAzimuthDelta,
+    dragRotate,
   ]);
 
   // Update each frame based on key state
   useFrame((_, delta) => {
+    // Capped delta for Q/E rotate and WASD pan only — see
+    // MAX_INPUT_DELTA_S's own doc comment. The lerp branch below
+    // deliberately keeps using the RAW `delta`.
+    const inputDelta = Math.min(delta, MAX_INPUT_DELTA_S);
+
+    // F (#906): bring the target to the local player's mini, band
+    // unchanged. Reuses the SAME lerp mechanism the auto-follow bands
+    // already drive (see `lerpTarget` above) — a manual request for exactly
+    // what those bands do automatically.
+    if (oneShotKeys.current.focus) {
+      oneShotKeys.current.focus = false;
+      if (focusTarget) {
+        lerpTarget.current = focusTarget.clone();
+        // `?orbitPivot=auto`'s own event — F switches the pivot back to the
+        // mini, same as the mini actually moving.
+        orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+          orbitPivotAutoState.current,
+          'focusKey'
+        );
+        invalidate();
+      }
+    }
+
+    // Home (#906): fit the revealed board ON THIS KEYPRESS ONLY — never
+    // automatic (rpg-dnd5e-web#457's own regression). No-op without both an
+    // orthographic band ladder and a revealed bbox to fit.
+    if (oneShotKeys.current.fit) {
+      oneShotKeys.current.fit = false;
+      const bounds = revealedBoundsRef.current;
+      if (
+        bounds &&
+        curve &&
+        curve.bands.length > 0 &&
+        camera instanceof THREE.OrthographicCamera
+      ) {
+        const widthPx = gl.domElement.clientWidth || 1;
+        const heightPx = gl.domElement.clientHeight || 1;
+        const fitIndex = fitBandIndexForBbox(
+          { width: bounds.width, height: bounds.height },
+          { widthPx, heightPx },
+          curve.bands
+        );
+        if (fitIndex >= 0) {
+          orthoBandIndex.current = fitIndex;
+          camera.zoom = curve.bands[fitIndex]!.zoom;
+          camera.updateProjectionMatrix();
+          target.set(bounds.centerX, target.y, bounds.centerZ);
+          // A deliberate reframe, exactly like WASD/right-drag pan — without
+          // this the auto-follow lerp would yank the board straight back.
+          lerpTarget.current = null;
+          // Also `?orbitPivot=auto`'s own `pan` event, same reasoning: Home
+          // recenters away from the mini just as deliberately as a manual pan.
+          orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+            orbitPivotAutoState.current,
+            'pan'
+          );
+          updateCamera();
+        }
+      }
+      invalidate();
+    }
+
     const { w, a, s, d, q, e } = keys.current;
 
     // If user is panning, cancel any active lerp
@@ -439,12 +700,12 @@ export function useCameraControls({
       }
       // Still process rotation during lerp
       if (q) {
-        azimuth.current += rotateSpeed;
+        applyAzimuthDelta(rotateSpeed * inputDelta);
         updateCamera();
         invalidate();
       }
       if (e) {
-        azimuth.current -= rotateSpeed;
+        applyAzimuthDelta(-rotateSpeed * inputDelta);
         updateCamera();
         invalidate();
       }
@@ -467,30 +728,43 @@ export function useCameraControls({
     );
     right.current.set(Math.sin(azimuth.current), 0, -Math.cos(azimuth.current));
 
+    const panStep = panSpeed * inputDelta;
+    const rotateStep = rotateSpeed * inputDelta;
+
     if (w) {
-      target.addScaledVector(forward.current, panSpeed);
+      target.addScaledVector(forward.current, panStep);
       changed = true;
     }
     if (s) {
-      target.addScaledVector(forward.current, -panSpeed);
+      target.addScaledVector(forward.current, -panStep);
       changed = true;
     }
     if (a) {
-      target.addScaledVector(right.current, -panSpeed);
+      target.addScaledVector(right.current, -panStep);
       changed = true;
     }
     if (d) {
-      target.addScaledVector(right.current, panSpeed);
+      target.addScaledVector(right.current, panStep);
       changed = true;
+    }
+
+    // `?orbitPivot=auto`'s own `pan` event — any WASD pan switches the pivot
+    // to the view center until the mini moves again or F is pressed. Q/E
+    // rotation alone does not count as panning.
+    if (w || a || s || d) {
+      orbitPivotAutoState.current = reduceOrbitPivotAutoState(
+        orbitPivotAutoState.current,
+        'pan'
+      );
     }
 
     // Q/E rotation
     if (q) {
-      azimuth.current += rotateSpeed;
+      applyAzimuthDelta(rotateStep);
       changed = true;
     }
     if (e) {
-      azimuth.current -= rotateSpeed;
+      applyAzimuthDelta(-rotateStep);
       changed = true;
     }
 

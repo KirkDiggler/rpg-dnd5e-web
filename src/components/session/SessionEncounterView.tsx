@@ -27,6 +27,7 @@ import {
   createNeutralVisualThrowProfile,
   type VisualThrowProfileV1,
 } from '@/components/ui/dice/visualThrowProfile';
+import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -61,6 +62,7 @@ import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
+import { localWorldDieDimensions } from './local-world-die/diceDials';
 import {
   createLocalWorldDieAttemptSnapshot,
   type LocalWorldDieAttemptSnapshot,
@@ -727,6 +729,31 @@ function SessionEncounterScope({
       sessionId,
     ]
   );
+  // `?dieScale=`/`?rollFlash=` (diceDials.ts) — LIVE (#906 batch 2). Note
+  // dieScale specifically: LocalWorldDieLayer.tsx only mounts while a throw
+  // is in flight, so in practice a drawer edit here takes effect the next
+  // time the die is thrown, not mid-throw.
+  const diceDials = useDiceDials();
+  // The no-drag "Roll" button below needs the same held-height default the
+  // drag gesture uses.
+  const localWorldDieDimensionsForNeutralRoll = useMemo(
+    () => localWorldDieDimensions(diceDials.dieScale),
+    [diceDials.dieScale]
+  );
+  // The die-anchored flash (`?rollFlash=die`/`both`) — round 3 fix: this
+  // USED to be gated on `localWorldDieSettled` + `combat.result`, but
+  // `localWorldDieSettled` only flips true at the END of the 750ms hold
+  // (`handleLocalWorldDieTerminal`), by which point the layer is already
+  // being torn down — the flash never actually rendered. LocalWorldDieLayer
+  // now triggers and renders its own flash internally, from the moment the
+  // die is physically at rest (see its own doc comment), using
+  // `authoritativeFace` it already has — so this view only needs to pass
+  // whether die-mode is on at all. Passed to the SAME LocalWorldDieLayer
+  // instance used for both the roller's own throw AND a spectator's witness
+  // playback (see `localWorldDieLayer` below), so a witnessed throw flashes
+  // too.
+  const dieRollFlashEnabled =
+    diceDials.rollFlash === 'die' || diceDials.rollFlash === 'both';
   const runLocalWorldDieNeutralRoll = useCallback(() => {
     const origin = lastGoodPositionRef.current;
     if (!origin) return;
@@ -735,12 +762,19 @@ function SessionEncounterScope({
       ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
       : undefined;
     handleLocalWorldDieRelease(
-      { position: [world.x, world.z], height: 1.25 },
+      {
+        position: [world.x, world.z],
+        height: localWorldDieDimensionsForNeutralRoll.holdHeightDefault,
+      },
       createNeutralVisualThrowProfile(
         Number((authoritySeq ?? 0n) & 0xffff_ffffn)
       )
     );
-  }, [handleLocalWorldDieRelease, localWorldDieRequest]);
+  }, [
+    handleLocalWorldDieRelease,
+    localWorldDieRequest,
+    localWorldDieDimensionsForNeutralRoll,
+  ]);
   const handleLocalWorldDieRoll = useCallback(() => {
     if (!localWorldDieReady) {
       setLocalWorldDiePendingRoll(true);
@@ -1096,6 +1130,7 @@ function SessionEncounterScope({
         projectionRef={localWorldDieProjectionRef}
         onReadyChange={setLocalWorldDieReady}
         onTerminal={handleLocalWorldDieTerminal}
+        rollFlashEnabled={dieRollFlashEnabled}
       />
     ) : null;
 
