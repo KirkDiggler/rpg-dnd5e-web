@@ -1,27 +1,38 @@
 /**
  * VendorPopover — the merchant screen for a MEMBER_KIND_WORLD vendor NPC
- * (rpg-api SessionService.Interact, rpg-api#903 Phase 1). Read-only for
- * this slice: name + stock list, no buy/sell/price/wallet — the wire
- * (`VendorStockEntry`) carries no price field yet.
+ * (rpg-api SessionService.Interact, rpg-api#903 Phase 1; Buy wired to
+ * SessionService.Trade, rpg-project#369/#370). No price/wallet UI yet —
+ * `VendorStockEntry` carries no price field on the wire yet.
  *
  * Deliberately reuses `EquipmentPopover`/`InventoryLight`'s exact
  * `.equip-popover`/`.equip-inventory`/`.equip-inv-row` classes (same
- * floating hud-skin panel, same row grid) rather than new CSS — this is
- * the same "compact list of items with an icon and a status label" shape,
- * just non-interactive rows (`.gear`'s cursor: default treatment) instead
- * of equip-intent buttons.
+ * floating hud-skin panel, same row grid) rather than new CSS.
+ *
+ * Fully prop-driven, no RPC calls in here — same separation
+ * `EquipmentPopover`'s `onIntent` callback already establishes. A row's
+ * "Buy" click only sets local `pendingEntry` (which row is asking to be
+ * confirmed); the actual Trade call is the caller's, fired from `onBuy`
+ * once the player confirms.
  */
 
 import type { VendorStockEntry } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useState } from 'react';
 import { getItemIconUrl } from '../../../utils/itemIcons';
-import { vendorStockLabel } from './vendorStock';
+import { vendorStockLabel, vendorStockPurchasable } from './vendorStock';
 
 export interface VendorPopoverProps {
   open: boolean;
   displayName: string;
   inventory: VendorStockEntry[];
   onClose: () => void;
+  /** Fires once the player confirms buying one row. The caller owns the
+   * actual Trade RPC and any refresh of `inventory` afterward. */
+  onBuy?: (entry: VendorStockEntry) => void;
+  /** A prior Buy's RPC is in flight — disables every row's Buy/Confirm
+   * so a second click can't race the first (mirrors EquipmentSlots'
+   * own `busy` convention). */
+  busy?: boolean;
 }
 
 export function VendorPopover({
@@ -29,8 +40,15 @@ export function VendorPopover({
   displayName,
   inventory,
   onClose,
+  onBuy,
+  busy,
 }: VendorPopoverProps) {
   const reduced = useReducedMotion();
+  // Which row is asking "Buy {name}?" right now — cleared on confirm,
+  // cancel, or whenever the popover closes. Only one row at a time.
+  const [pendingEntry, setPendingEntry] = useState<VendorStockEntry | null>(
+    null
+  );
 
   return (
     <AnimatePresence>
@@ -51,7 +69,10 @@ export function VendorPopover({
             <button
               type="button"
               className="verb-btn"
-              onClick={onClose}
+              onClick={() => {
+                setPendingEntry(null);
+                onClose();
+              }}
               aria-label="Close vendor"
             >
               Close
@@ -68,30 +89,85 @@ export function VendorPopover({
               )}
               {inventory.map((entry) => {
                 const iconUrl = getItemIconUrl({ id: entry.equipmentId }, '');
+                const isPending =
+                  pendingEntry?.equipmentId === entry.equipmentId;
+                const purchasable = vendorStockPurchasable(entry);
                 return (
-                  <div
-                    key={entry.equipmentId}
-                    className="equip-inv-row gear"
-                    data-testid={`vendor-stock-${entry.equipmentId}`}
-                  >
-                    {iconUrl && (
-                      <img
-                        className="equip-inv-icon"
-                        src={iconUrl}
-                        alt=""
-                        draggable={false}
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
+                  <div key={entry.equipmentId}>
+                    <div
+                      className="equip-inv-row gear"
+                      data-testid={`vendor-stock-${entry.equipmentId}`}
+                    >
+                      {iconUrl && (
+                        <img
+                          className="equip-inv-icon"
+                          src={iconUrl}
+                          alt=""
+                          draggable={false}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      )}
+                      <span className="equip-inv-name">
+                        {entry.displayName}
+                      </span>
+                      <span className="equip-inv-stat">
+                        {entry.equipmentType}
+                      </span>
+                      <span className="equip-inv-slot">
+                        {vendorStockLabel(entry)}
+                      </span>
+                    </div>
+                    {isPending ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.375rem 0.625rem 0.625rem',
                         }}
-                      />
+                        data-testid={`vendor-buy-confirm-${entry.equipmentId}`}
+                      >
+                        <span style={{ flex: 1 }}>
+                          Buy {entry.displayName}?
+                        </span>
+                        <button
+                          type="button"
+                          className="verb-btn"
+                          disabled={busy}
+                          aria-label={`Confirm buy ${entry.displayName}`}
+                          onClick={() => {
+                            onBuy?.(entry);
+                            setPendingEntry(null);
+                          }}
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          type="button"
+                          className="verb-btn"
+                          disabled={busy}
+                          aria-label="Cancel buy"
+                          onClick={() => setPendingEntry(null)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ padding: '0.375rem 0.625rem 0.625rem' }}>
+                        <button
+                          type="button"
+                          className="verb-btn"
+                          data-testid={`vendor-buy-${entry.equipmentId}`}
+                          disabled={!purchasable || busy}
+                          aria-label={`Buy ${entry.displayName}`}
+                          onClick={() => setPendingEntry(entry)}
+                        >
+                          Buy
+                        </button>
+                      </div>
                     )}
-                    <span className="equip-inv-name">{entry.displayName}</span>
-                    <span className="equip-inv-stat">
-                      {entry.equipmentType}
-                    </span>
-                    <span className="equip-inv-slot">
-                      {vendorStockLabel(entry)}
-                    </span>
                   </div>
                 );
               })}

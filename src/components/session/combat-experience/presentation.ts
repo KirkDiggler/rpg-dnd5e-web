@@ -864,7 +864,22 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     if (TYPED_EVENT_KINDS.has(event.kind)) return undefined;
     return Object.freeze({ kind: event.kind, bodyCase: 'none' });
   }
-  if (bodyCase === 'struck' || bodyCase === 'missed') return undefined;
+  // deathSaveRolled/looted/held/dropped are newer body cases (unrelated
+  // waves — rpg-api#911, rpg-toolkit#1275) this presentation layer
+  // doesn't render as an "other member" story beat yet. Excluded here
+  // the same way struck/missed already are: EXPECTED_OTHER_KIND has no
+  // entries for them, and indexing it with an unhandled case would be a
+  // type error, not a reason to invent presentation for a wave this
+  // file's own scope doesn't cover.
+  if (
+    bodyCase === 'struck' ||
+    bodyCase === 'missed' ||
+    bodyCase === 'deathSaveRolled' ||
+    bodyCase === 'looted' ||
+    bodyCase === 'held' ||
+    bodyCase === 'dropped'
+  )
+    return undefined;
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
 
   switch (bodyCase) {
