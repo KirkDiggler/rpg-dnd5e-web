@@ -1,3 +1,4 @@
+import type { OutfitPresentation } from '@/character/customization/outfitCustomization';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import type { ComponentProps } from 'react';
 import * as THREE from 'three';
@@ -66,6 +67,7 @@ const Task8ClassCharacterModel = ClassCharacterModel as unknown as (
 
 const gltf = vi.hoisted(() => ({
   scenes: new Map<string, THREE.Group>(),
+  textures: new Map<string, THREE.Texture>(),
   failed: new Set<string>(),
   requests: [] as string[],
 }));
@@ -142,6 +144,14 @@ vi.mock('@react-three/drei', () => ({
     return { scene, animations: [] };
   },
   useAnimations: () => ({ actions: {}, names: [] }),
+  useTexture: (url: string) => {
+    let texture = gltf.textures.get(url);
+    if (!texture) {
+      texture = new THREE.Texture();
+      gltf.textures.set(url, texture);
+    }
+    return texture;
+  },
 }));
 
 import { ClassCharacterModel } from './ClassCharacterModel';
@@ -182,6 +192,7 @@ beforeAll(() => {
 
 afterEach(() => {
   gltf.scenes.clear();
+  gltf.textures.clear();
   gltf.failed.clear();
   gltf.requests.length = 0;
 });
@@ -473,6 +484,84 @@ it('mounts main and off-hand assets independently on their exact bones', async (
   expect(right.children).toHaveLength(1);
   expect(left.children).toHaveLength(1);
   expect(offStatuses.at(-1)?.code).toBe('attached');
+});
+
+it('keeps the body, hair, and both hands visible when shader anchors are rejected', async () => {
+  const accessories: readonly SkinnedAccessoryPresentation[] = [
+    {
+      slot: 'scalp',
+      styleRef: 'concept:hair:valid',
+      url: compatibleAccessory,
+      treatment: {
+        baseColorSrgb: '#5A3825',
+        roughness: 0.72,
+        metalness: 0,
+      },
+    },
+  ];
+  const offHandPresentation: OffHandPresentation = {
+    ref: 'dnd5e:item:shield',
+    assetUrl: '/models/synty/off-hand/shield.glb',
+    assetKind: 'shield',
+    socket: {
+      bone: 'Hand_L',
+      boneUnitMeters: 0.01,
+      positionMeters: [0, 0, 0],
+      rotationQuaternion: [0, 0, 0, 1],
+      scale: 1,
+    },
+  };
+  const outfit: OutfitPresentation = {
+    classRef: 'fighter',
+    profileKey: 'fighter:fighter-16',
+    maskUrl: '/models/synty/outfit/fighter-16.png',
+    maskSha256: 'a'.repeat(64),
+    meshNames: ['fighter-body'],
+    primaryColor: '#123456',
+    secondaryColor: '#654321',
+    usePrimary: true,
+    useSecondary: true,
+  };
+  const renderer = await ReactThreeTestRenderer.create(
+    <Task8ClassCharacterModel
+      url={fighterUrl}
+      accessories={accessories}
+      mainHandPresentation={presentationFor(firstWeapon)}
+      offHandPresentation={offHandPresentation}
+      outfit={outfit}
+    />
+  );
+  const body = renderer.scene.findAll(
+    (node) =>
+      (node.instance as { name?: string } | undefined)?.name === 'fighter-body'
+  )[0]!.instance as THREE.SkinnedMesh;
+  const shader = {
+    fragmentShader: '#include <common>',
+    uniforms: {},
+  };
+
+  expect(() =>
+    (body.material as THREE.MeshStandardMaterial).onBeforeCompile(
+      shader as never,
+      {} as THREE.WebGLRenderer
+    )
+  ).not.toThrow();
+  expect(shader).toEqual({
+    fragmentShader: '#include <common>',
+    uniforms: {},
+  });
+  expect(
+    body.parent!.parent!.getObjectByName(`cached-mesh:${compatibleAccessory}`)
+  ).toBeDefined();
+  expect(handBone(renderer).children).toHaveLength(1);
+  expect(
+    renderer.scene.findAll(
+      (node) =>
+        node.instance instanceof THREE.Bone && node.instance.name === 'Hand_L'
+    )[0]!.instance.children
+  ).toHaveLength(1);
+
+  await renderer.unmount();
 });
 
 it('cleans both slots when the same exact ref and URL are equipped in both hands', async () => {

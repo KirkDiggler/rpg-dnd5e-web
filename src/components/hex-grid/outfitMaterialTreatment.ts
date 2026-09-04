@@ -69,15 +69,14 @@ export function prepareOutfitMaterial(
   };
   applyPresentation(uniforms, presentation);
   material.onBeforeCompile = (shader) => {
-    if (!shader.fragmentShader.includes(UNIFORM_DECLARATION_ANCHOR)) {
-      throw new Error(
-        'Class outfit shader requires the Three.js common chunk declaration anchor.'
-      );
-    }
-    if (!shader.fragmentShader.includes(MAP_FRAGMENT_ANCHOR)) {
-      throw new Error(
-        'Class outfit shader requires the Three.js map_fragment chunk anchor.'
-      );
+    if (
+      !shader.fragmentShader.includes(UNIFORM_DECLARATION_ANCHOR) ||
+      !shader.fragmentShader.includes(MAP_FRAGMENT_ANCHOR)
+    ) {
+      // Preserve the cloned provider material unchanged. Throwing here occurs
+      // after assignment during WebGL compilation, where a React slot boundary
+      // cannot reliably restore the original body and sibling presentation.
+      return;
     }
     Object.assign(shader.uniforms, uniforms);
     shader.fragmentShader = shader.fragmentShader

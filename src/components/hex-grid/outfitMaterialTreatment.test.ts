@@ -69,25 +69,41 @@ describe('outfit material treatment', () => {
     );
   });
 
-  it('fails closed when either required Three.js fragment anchor is absent', () => {
+  it('leaves the provider material shader untouched when a required anchor is absent', () => {
     const prepared = prepareOutfitMaterial(
       new THREE.MeshStandardMaterial(),
       new THREE.Texture(),
       fighterPresentation()
     );
+    const missingCommon = {
+      fragmentShader: '#include <map_fragment>',
+      uniforms: {},
+    };
+    const missingMap = {
+      fragmentShader: '#include <common>',
+      uniforms: {},
+    };
 
     expect(() =>
       prepared.material.onBeforeCompile(
-        { fragmentShader: '#include <map_fragment>', uniforms: {} } as never,
+        missingCommon as never,
         {} as THREE.WebGLRenderer
       )
-    ).toThrow(/common/);
+    ).not.toThrow();
     expect(() =>
       prepared.material.onBeforeCompile(
-        { fragmentShader: '#include <common>', uniforms: {} } as never,
+        missingMap as never,
         {} as THREE.WebGLRenderer
       )
-    ).toThrow(/map_fragment/);
+    ).not.toThrow();
+    expect(missingCommon).toEqual({
+      fragmentShader: '#include <map_fragment>',
+      uniforms: {},
+    });
+    expect(missingMap).toEqual({
+      fragmentShader: '#include <common>',
+      uniforms: {},
+    });
   });
 
   it('updates uniform values in place without replacing material, source map, or mask texture', () => {
