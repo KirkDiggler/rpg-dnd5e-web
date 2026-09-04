@@ -3992,10 +3992,11 @@ describe('the Leave button learns what the viewer carries (rpg-dnd5e-web#927)', 
 
 describe('the camera starts the way the dungeon says (rpg-project#374)', () => {
   it('aims it by the atlas’s authored start facing', () => {
-    // THE INTEGRATION POINT. `startCameraOffset` has its own unit test,
-    // but nothing proved the view ever hands it the atlas's word — and
-    // reading the facing from anywhere but `GetAtlasResponse.start` is
-    // the one thing the design forbids.
+    // THE INTEGRATION POINT. `startAzimuth` — the seed `SessionScene`
+    // hands `useCameraControls` as its `initialAzimuth` option — has its
+    // own mounted-hook test, but nothing proved the view ever hands the
+    // atlas's word DOWN to it, and reading the facing from anywhere but
+    // `GetAtlasResponse.start` is the one thing the design forbids.
     readyScene();
     hoisted.atlasResult.atlas = {
       ...pointyAtlas(),
