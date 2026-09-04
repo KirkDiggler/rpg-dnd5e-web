@@ -8,6 +8,7 @@ import {
 } from './dungeonDiceInteraction';
 
 const scene: Scene3D = {
+  exits: [],
   floorTiles: new Map([['0,0,0', { x: 0, y: 0, z: 0, roomId: '' }]]),
   wallRuns: [],
   doorGaps: [],

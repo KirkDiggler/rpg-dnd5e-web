@@ -43,6 +43,7 @@ function scene(reverse: boolean): Scene3D {
     },
   ];
   return {
+    exits: [],
     floorTiles: new Map(reverse ? [...floors].reverse() : floors),
     props: [],
     archetypes: [],

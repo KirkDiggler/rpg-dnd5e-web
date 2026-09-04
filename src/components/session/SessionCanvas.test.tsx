@@ -186,6 +186,19 @@ vi.mock('@react-three/drei', () => {
       names: [],
       mixer: new THREE.AnimationMixer(new THREE.Group()),
     }),
+    // The exit markers' label (`SessionExitMarkers.tsx`). Billboard is a
+    // plain group that re-aims itself each frame, so a group is a faithful
+    // stand-in for what this file asserts on — where the marker sits.
+    // `Text` renders nothing: troika cannot build an SDF in jsdom, and the
+    // glyphs are the screenshot's job, not this suite's.
+    Billboard: ({
+      children,
+      ...props
+    }: {
+      children?: React.ReactNode;
+      [key: string]: unknown;
+    }) => <group {...props}>{children}</group>,
+    Text: () => null,
   };
 });
 
@@ -273,6 +286,7 @@ function scene(): Scene3D {
     },
   ];
   return {
+    exits: [],
     floorTiles: floorTiles([0, 0, 0], [1, -1, 0], [1, 0, -1]),
     props: [],
     archetypes: [],
@@ -3004,5 +3018,40 @@ describe('SessionScene', () => {
       });
       expect(onHoverEntity).toHaveBeenLastCalledWith(null);
     });
+  });
+});
+
+describe('the ways out reach the map (rpg-dnd5e-web#927)', () => {
+  it('draws a marker for every exit the scene carries', async () => {
+    // THE INTEGRATION POINT. `SessionExitMarkers` has its own unit test,
+    // but nothing proved the scene ever hands it anything: deleting the
+    // element from `SessionScene`, or passing `scene.props` in place of
+    // `scene.exits`, left the whole suite green while the game map showed
+    // no way out at all — which is the entire bug this fixes.
+    const renderer = await renderSession({
+      ...scene(),
+      exits: [
+        { id: 'entrance', position: { x: 0, y: 0, z: 0 } },
+        { id: 'sally-port', position: { x: 1, y: -1, z: 0 } },
+      ],
+    });
+    expect(
+      renderer.scene.findByProps({ name: 'session-exit-markers' })
+    ).toBeTruthy();
+    expect(
+      renderer.scene.findByProps({ name: 'session-exit-entrance' })
+    ).toBeTruthy();
+    expect(
+      renderer.scene.findByProps({ name: 'session-exit-sally-port' })
+    ).toBeTruthy();
+    await renderer.unmount();
+  });
+
+  it('draws no marker layer for a dungeon that declares no way out', async () => {
+    const renderer = await renderSession();
+    expect(
+      renderer.scene.findAllByProps({ name: 'session-exit-markers' })
+    ).toHaveLength(0);
+    await renderer.unmount();
   });
 });

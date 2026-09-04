@@ -113,6 +113,7 @@ import {
 } from './useSessionEventStream';
 import { useSessionWalk } from './useSessionWalk';
 import { VendorPopover } from './vendor/VendorPopover';
+import { nextViewerHoldings } from './viewerHoldings';
 
 export interface SessionEncounterViewProps {
   sessionId: string;
@@ -260,6 +261,11 @@ function SessionEncounterScope({
    * ref dies with this scope, which remounts per session and member. A
    * prop picked up again simply overwrites its own entry. */
   const heldPropsRef = useRef(new Map<string, AtlasProp>());
+  /** What the local member is carrying, projected from the beats — the
+   * wire reports a member's holdings nowhere else (`viewerHoldings.ts`).
+   * Read only by the Leave button, to name what leaving from the wrong
+   * cell would drop. */
+  const [viewerHolding, setViewerHolding] = useState<readonly string[]>([]);
   const [activeVendor, setActiveVendor] = useState<{
     subject: string;
     descriptor: WorldNPCDescriptor;
@@ -1059,6 +1065,9 @@ function SessionEncounterScope({
       // not name a carrier — see `carrier`'s own comment.
       const carried = exitCarrier(event);
       if (carried) setCarrier(carried);
+      // The reducer answers the SAME array when nothing moved, so this is
+      // a no-op re-render for every beat that is not one of the three.
+      setViewerHolding((held) => nextViewerHoldings(held, event, member));
       if (event.body.case === 'door') setDoorNotice(null);
       // The same law: a DOOR_REVEALED/REGION_REVEALED beat is search's own
       // "the world moved on" signal, mirroring the 'door' case above.
@@ -1079,6 +1088,7 @@ function SessionEncounterScope({
       acceptStreamEvent,
       applyAtlasReveal,
       invalidateAuthority,
+      member,
       refreshKeysForEvent,
       scheduleRefresh,
     ]
@@ -1087,6 +1097,14 @@ function SessionEncounterScope({
   const handleStreamAgedOut = useCallback(() => {
     invalidateAuthority();
     scheduleRefresh(['characterData', 'turn', 'afford', 'view', 'where']);
+    // THE ONE PLACE THIS CLIENT KNOWS IT LOST BEATS, and holdings are
+    // projected from beats alone (`viewerHoldings.ts`) — nothing refetches
+    // them, because nothing on the wire reports them. A DROPPED inside the
+    // gap would leave the button warning forever about a heirloom the
+    // member is not carrying, which is the exact lie that module promises
+    // never to tell. Back to saying nothing: under-claiming is the right
+    // way round to be wrong here.
+    setViewerHolding((held) => (held.length === 0 ? held : []));
   }, [invalidateAuthority, scheduleRefresh]);
   const streamState = useSessionEventStream(
     sessionId,
@@ -1551,6 +1569,7 @@ function SessionEncounterScope({
             onLeave={runEnded === null ? handleLeave : undefined}
             leavePending={leaving}
             leaveExitId={standingOnExit?.id}
+            leaveHolding={viewerHolding}
             {...(combat.diceWitnessRole === 'roller'
               ? {
                   diceWitnessRole: 'roller' as const,
