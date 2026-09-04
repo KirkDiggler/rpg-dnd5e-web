@@ -885,29 +885,39 @@ function acceptResponse(
   });
 }
 
-function settleCatchupDuplicate(
+function settleCatchupPresentation(
   state: CombatPresentationState,
   index: number,
   source: 'live' | 'catchup'
 ): CombatPresentationState {
   const current = state.presentations[index]!;
+  const catchesUpAcceptedDeathSave =
+    current.authority.kind === 'death-save' && current.responseAccepted;
   if (
     source !== 'catchup' ||
     current.conflicted ||
     (current.settlement !== 'armed' && current.settlement !== 'unresolved') ||
-    state.pendingLocalKeys.includes(current.key)
+    (state.pendingLocalKeys.includes(current.key) &&
+      !catchesUpAcceptedDeathSave)
   ) {
     return state;
   }
   const release = current.request
     ? createNeutralRelease(current.request)
     : undefined;
-  return replacePresentation(state, index, {
-    ...current,
-    release,
-    settlement: 'auto',
-    locallyArmedResponse: false,
-  });
+  return replacePresentation(
+    state,
+    index,
+    {
+      ...current,
+      release,
+      settlement: 'auto',
+      locallyArmedResponse: false,
+    },
+    catchesUpAcceptedDeathSave
+      ? state.pendingLocalKeys.filter((key) => key !== current.key)
+      : state.pendingLocalKeys
+  );
 }
 
 function acceptAttackEvent(
@@ -954,7 +964,7 @@ function acceptAttackEvent(
         `conflicting typed attack facts for ${key}`
       );
     }
-    return settleCatchupDuplicate(state, index, fact.metadata.source);
+    return settleCatchupPresentation(state, index, fact.metadata.source);
   }
 
   const pending = state.pendingLocalKeys.includes(key);
@@ -963,7 +973,7 @@ function acceptAttackEvent(
     settlement === 'armed' || !current.request
       ? current.release
       : (current.release ?? createNeutralRelease(current.request));
-  return replacePresentation(state, index, {
+  const accepted = replacePresentation(state, index, {
     ...current,
     eventAccepted: true,
     event,
@@ -974,6 +984,12 @@ function acceptAttackEvent(
     locallyArmedResponse:
       current.responseAccepted && pending && settlement === 'armed',
   });
+  // A reconnect catch-up is already-spent provider history. Only the
+  // response-first Death Save needs this first-event path; Attack semantics
+  // and genuinely live Death Saves keep their existing settlement behavior.
+  return authority.kind === 'death-save' && current.responseAccepted
+    ? settleCatchupPresentation(accepted, index, fact.metadata.source)
+    : accepted;
 }
 
 type RelevantOtherEvent = Readonly<Record<string, unknown>>;
@@ -1768,6 +1784,9 @@ export function selectSettledDeathSave(
     current.conflicted ||
     current.authority.kind !== 'death-save' ||
     !current.responseAccepted ||
+    // Catch-up reports already-spent authority; revealing that projection
+    // must not replay its provider-authored continuation mutation.
+    current.eventSource === 'catchup' ||
     (current.settlement !== 'released' && current.settlement !== 'auto') ||
     !current.authority.deathSave
   ) {

@@ -19,6 +19,7 @@ import {
   selectBlocksManualEndTurn,
   selectConcealsDeathSaveTruth,
   selectCurrentPresentation,
+  selectSettledDeathSave,
   selectVisibleStory,
 } from './presentation';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
@@ -303,6 +304,79 @@ describe('shared Death Save d20 presentation', () => {
     expect(current.authority.authoritySeq).toBe(27n);
     expect(current.request?.authoritySeq).toBe(27n);
     expect(current.authority.seq).toBe(103n);
+  });
+
+  it('auto-settles a response-first local Death Save when reconnect delivers its matching event as catch-up', () => {
+    let state = reduceCombatPresentation(
+      configured(),
+      deathSaveResponseFact({
+        session: 'crypt-run',
+        member: 'fighter-1',
+        response,
+      })
+    );
+    const pendingKey = selectCurrentPresentation(state)!.key;
+    expect(state.pendingLocalKeys).toEqual([pendingKey]);
+    expect(selectConcealsDeathSaveTruth(state)).toBe(true);
+
+    state = reduceCombatPresentation(state, {
+      type: 'stream-event',
+      event,
+      metadata: { source: 'catchup', deliveredAt: 2 } as never,
+    });
+
+    expect(selectCurrentPresentation(state)).toMatchObject({
+      key: pendingKey,
+      eventAccepted: true,
+      eventSource: 'catchup',
+      settlement: 'auto',
+      locallyArmedResponse: false,
+    });
+    expect(state.pendingLocalKeys).toEqual([]);
+    expect(selectConcealsDeathSaveTruth(state)).toBe(false);
+    expect(selectVisibleStory(state)[0]?.headline).toBe(
+      'Death save! 2 successes — 7 to stabilize.'
+    );
+    expect(selectSettledDeathSave(state)).toBeUndefined();
+  });
+
+  it('fails closed when response-first catch-up carries mismatched Death Save authority', () => {
+    let state = reduceCombatPresentation(
+      configured(),
+      deathSaveResponseFact({
+        session: 'crypt-run',
+        member: 'fighter-1',
+        response,
+      })
+    );
+    if (event.body.case !== 'deathSaveRolled') {
+      throw new Error('expected Death Save event fixture');
+    }
+    const mismatch = create(EventSchema, {
+      ...event,
+      body: {
+        case: 'deathSaveRolled',
+        value: create(DeathSaveRolledSchema, {
+          ...event.body.value,
+          roll: 13,
+        }),
+      },
+    });
+
+    state = reduceCombatPresentation(state, {
+      type: 'stream-event',
+      event: mismatch,
+      metadata: { source: 'catchup', deliveredAt: 2 } as never,
+    });
+
+    expect(selectCurrentPresentation(state)).toMatchObject({
+      conflicted: true,
+      settlement: 'auto',
+    });
+    expect(state.pendingLocalKeys).toEqual([]);
+    expect(selectVisibleStory(state)).toEqual([]);
+    expect(selectSettledDeathSave(state)).toBeUndefined();
+    expect(state.diagnostics.at(-1)).toContain('conflicting authority');
   });
 
   it('converges event-before-release and release-before-event on one visible result', () => {
