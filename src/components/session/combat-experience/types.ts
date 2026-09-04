@@ -94,6 +94,8 @@ interface CombatExperienceBaseProps {
   onRetryPrivateStatus?: () => void;
   /** Turn + Afford both succeeded for their newest current generation. */
   authorityFresh: boolean;
+  /** Accepted local Death Save is awaiting an in-bounds settlement. */
+  endTurnBlocked?: boolean;
   presentationState: CombatExperiencePresentationState;
   phase: CombatExperiencePhase;
   showTurnNotice: boolean;

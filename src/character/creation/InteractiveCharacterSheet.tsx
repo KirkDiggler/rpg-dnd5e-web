@@ -3,6 +3,7 @@ import {
   resolveCharacterCustomizationModel,
 } from '@/character/customization/characterCustomization';
 import { summarizeHair } from '@/character/customization/hairSummary';
+import { outfitDefaultColors } from '@/character/customization/outfitCustomization';
 import type { Step } from '@/components/ProgressTracker';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import { useToast } from '@/components/ui';
@@ -206,6 +207,14 @@ export function InteractiveCharacterSheet({
   const hairSummary = draft.draft?.appearance
     ? summarizeHair(draft.draft.appearance.hair, draft.raceInfo?.name)
     : undefined;
+  const gearDefaults = outfitDefaultColors(selectedClassRef);
+  const rgb24 = (value: number | undefined, fallback: string | undefined) =>
+    value !== undefined &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 0xffffff
+      ? `#${value.toString(16).padStart(6, '0').toUpperCase()}`
+      : fallback;
 
   useEffect(() => {
     if (!canCustomizeHair) setIsAppearanceModalOpen(false);
@@ -1487,7 +1496,7 @@ export function InteractiveCharacterSheet({
                 <div className="space-y-4">
                   <motion.button
                     type="button"
-                    aria-label={`Customize ${customizationRaceLabel} hair`}
+                    aria-label={`Customize ${customizationRaceLabel} appearance`}
                     whileHover={{ scale: 1.02 }}
                     disabled={!draft.draftId || draft.loading || draft.saving}
                     className="w-full cursor-pointer rounded-lg border-2 border-dashed p-4 transition-all hover:border-solid focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1510,7 +1519,7 @@ export function InteractiveCharacterSheet({
                           className="text-lg font-bold"
                           style={{ color: 'var(--text-primary)' }}
                         >
-                          {customizationRaceLabel} Hair
+                          {customizationRaceLabel} Appearance
                         </h3>
                         <p
                           className="text-xs"
@@ -1518,7 +1527,7 @@ export function InteractiveCharacterSheet({
                         >
                           {draft.draft?.appearance
                             ? 'Click to change'
-                            : 'Choose styles and color'}
+                            : 'Choose hair styles and gear colors'}
                         </p>
                       </div>
                     </div>
@@ -1549,6 +1558,32 @@ export function InteractiveCharacterSheet({
                           {hairSummary.roughness.toFixed(2)}
                         </span>
                       </div>
+                      {gearDefaults && (
+                        <div className="flex items-center gap-2">
+                          {[
+                            rgb24(
+                              draft.draft?.appearance?.outfit?.primaryColorSrgb,
+                              gearDefaults.primaryColor
+                            ),
+                            rgb24(
+                              draft.draft?.appearance?.outfit
+                                ?.secondaryColorSrgb,
+                              gearDefaults.secondaryColor
+                            ),
+                          ].map((color, index) => (
+                            <span
+                              key={index}
+                              aria-label={`Gear ${index === 0 ? 'primary' : 'secondary'} ${color}`}
+                              className="h-5 w-5 rounded border"
+                              style={{
+                                backgroundColor: color,
+                                borderColor: 'var(--border-primary)',
+                              }}
+                            />
+                          ))}
+                          <span>Gear colors</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

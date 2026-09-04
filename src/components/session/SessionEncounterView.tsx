@@ -116,14 +116,6 @@ export interface SessionEncounterViewProps {
   onBack: () => void;
 }
 
-function authoritySeqFromPresentationId(
-  presentationId: string
-): bigint | undefined {
-  const segment = presentationId.split(':').at(-1);
-  if (!segment || !/^\d+$/.test(segment)) return undefined;
-  return BigInt(segment);
-}
-
 function endingHeadline(ending: string): string {
   switch (ending) {
     case 'boss-down':
@@ -549,7 +541,7 @@ function SessionEncounterScope({
     combat.diceWitnessRole === 'roller' &&
     combat.phase === 'awaiting-roll' &&
     !combat.diceSemanticFallback &&
-    localWorldDieRequest !== undefined;
+    localWorldDieRequest?.authoritySeq !== undefined;
   const snapshotScene = lastGoodSceneRef.current;
   const localWorldDieAttemptScopeKey =
     localWorldDieRequest && snapshotScene
@@ -598,20 +590,15 @@ function SessionEncounterScope({
     };
   }, [localWorldDieAttemptSnapshot]);
 
-  const witnessAuthoritySeq = localWorldDieRequest
-    ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
-    : undefined;
   const witnessExpectation = useMemo(
     () =>
       combat.diceWitnessRole === 'spectator' &&
       localWorldDieRequest?.roller.role === 'player' &&
       localWorldDieRequest.roller.entityId !== member &&
-      witnessAuthoritySeq !== undefined &&
       localWorldDieFingerprint
         ? {
             session: sessionId,
             presentationId: localWorldDieRequest.presentationId,
-            authoritySeq: witnessAuthoritySeq,
             roller: localWorldDieRequest.roller.entityId,
             attempt: localWorldDieAttempt,
             viewerMember: member,
@@ -625,7 +612,6 @@ function SessionEncounterScope({
       localWorldDieRequest,
       member,
       sessionId,
-      witnessAuthoritySeq,
     ]
   );
   witnessExpectationRef.current = witnessExpectation;
@@ -750,9 +736,7 @@ function SessionEncounterScope({
           )
             return;
           const request = localWorldDieRequest;
-          const authoritySeq = request
-            ? authoritySeqFromPresentationId(request.presentationId)
-            : undefined;
+          const authoritySeq = request?.authoritySeq;
           if (request && authoritySeq !== undefined) {
             try {
               await publishLocalWorldDie({
@@ -822,9 +806,7 @@ function SessionEncounterScope({
     const origin = lastGoodPositionRef.current;
     if (!origin) return;
     const world = cubeToWorld(origin, HEX_SIZE);
-    const authoritySeq = localWorldDieRequest
-      ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
-      : undefined;
+    const authoritySeq = localWorldDieRequest?.authoritySeq;
     handleLocalWorldDieRelease(
       {
         position: [world.x, world.z],
@@ -860,7 +842,7 @@ function SessionEncounterScope({
   const handleLocalWorldDieFailureReveal = useCallback(() => {
     const request = localWorldDieRequest;
     if (!request) return;
-    const authoritySeq = authoritySeqFromPresentationId(request.presentationId);
+    const authoritySeq = request.authoritySeq;
     const profile =
       localWorldDieProfile.current ??
       createNeutralVisualThrowProfile(
@@ -885,6 +867,9 @@ function SessionEncounterScope({
             presentationId: localWorldDieRequest?.presentationId,
             attempt: localWorldDieAttempt + 1,
           });
+        }
+        if (kind === 'settled' && localWorldDieRequest) {
+          combat.onWitnessDiceSettlement(localWorldDieRequest.presentationId);
         }
         setLocalWorldDieWitnessActive(false);
         setLocalWorldDieCommand({
@@ -939,6 +924,7 @@ function SessionEncounterScope({
         case 'struck':
         case 'missed':
         case 'activationResult':
+        case 'deathSaveRolled':
           return ['characterData', 'afford', 'view'];
         case 'downed':
           return ['characterData', 'afford', 'turn', 'view'];
@@ -983,7 +969,6 @@ function SessionEncounterScope({
         case 'looted':
         case 'activated':
         case 'exited':
-        case 'deathSaveRolled':
         case undefined:
           return event.kind === EventKind.ENDED
             ? ['characterData', 'afford', 'turn', 'view']
@@ -1321,7 +1306,9 @@ function SessionEncounterScope({
       ? ('unavailable' as const)
       : ('loading' as const);
   const localWorldDieControl =
-    combat.diceWitnessRole === 'roller' && combat.phase === 'awaiting-roll' ? (
+    combat.diceWitnessRole === 'roller' &&
+    combat.phase === 'awaiting-roll' &&
+    (combat.diceSemanticFallback || localWorldDiePhysical) ? (
       localWorldDiePresentationFailed ? (
         <LocalWorldDieTile
           mode="fallback"
@@ -1417,6 +1404,7 @@ function SessionEncounterScope({
             }
             onRetryPrivateStatus={() => void refetchCharacterData()}
             authorityFresh={authorityFresh}
+            endTurnBlocked={combat.endTurnBlocked}
             presentationState={combat.presentationState}
             phase={combat.phase}
             showTurnNotice={combat.showTurnNotice}
@@ -1440,7 +1428,7 @@ function SessionEncounterScope({
                 characterName={characterName}
                 classRefId={classRefId}
                 raceRefId={raceRefId}
-                localHair={ownerCharacter?.appearance?.hair}
+                localCustomization={ownerCharacter?.appearance}
                 localIsDowned={localIsDowned}
                 mainHandPresentation={mainHandResolution.presentation}
                 offHandPresentation={offHandResolution.presentation}

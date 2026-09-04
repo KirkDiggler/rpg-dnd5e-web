@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createDicePresentationRelease,
   dicePresentationReleaseKey,
+  isDicePresentationIdentifier,
   parseDicePresentationRelease,
 } from './dicePresentationRelease';
 import type { VisualThrowProfileV1 } from './visualThrowProfile';
@@ -31,6 +32,21 @@ function validRelease() {
 }
 
 describe('dice presentation release v2', () => {
+  it('accepts the provider unreserved vocabulary plus local Attack colons', () => {
+    expect(isDicePresentationIdentifier('presentation.death-save~v1')).toBe(
+      true
+    );
+    expect(isDicePresentationIdentifier('session:crypt-run:23')).toBe(true);
+  });
+
+  it.each([
+    'presentation/death-save',
+    'presentation\u0000death-save',
+    'p'.repeat(129),
+  ])('rejects unsafe presentation identifier %j', (presentationId) => {
+    expect(isDicePresentationIdentifier(presentationId)).toBe(false);
+  });
+
   it.each(['lightning', 'dice.original.carved.d20', 'newer-safe-preset'])(
     'creates the exact v2 release for safe preset identifier %s',
     (presetId) => {

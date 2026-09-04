@@ -45,15 +45,23 @@ function profileAssets() {
   });
 }
 
+function outfitAssets() {
+  return Object.values(CHARACTER_CUSTOMIZATION_CATALOG.outfits).map(
+    (outfit) => ({ url: outfit.maskUrl, sha256: outfit.maskSha256 })
+  );
+}
+
 describe('aggregate production character customization publication', () => {
   it('pins the exact merged provider and generated aggregate authority', () => {
     expect(CHARACTER_CUSTOMIZATION_PROVIDER).toEqual({
-      providerCommit: '0c837a801d97c98e50a336fb07e3b50d08d54df1',
+      providerCommit: '91ddbdfd88db1eccc465616671d7f1f427f5056e',
       aggregateManifestSha256:
         '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
+      outfitManifestSha256:
+        '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
     });
     expect(sha256(readFileSync(catalogUrl))).toBe(
-      '6f56f8fb80575601a12fc5f9ff528c1ae9f1f12154cdfb9ed162c757dfdc10af'
+      '6923cad04dd669138d34ace05205f909eb117b305f8b74e94b796559657f7940'
     );
     expect(CHARACTER_CUSTOMIZATION_CATALOG.profileOrder).toEqual([
       'human',
@@ -98,10 +106,10 @@ describe('aggregate production character customization publication', () => {
     });
   });
 
-  it('binds exactly 960 body/fallback/style/thumbnail references to zero or all ignored bytes', () => {
-    const assets = profileAssets();
-    expect(assets).toHaveLength(960);
-    expect(new Set(assets.map((asset) => asset.url))).toHaveLength(960);
+  it('binds exactly 964 body/style/mask references to zero or all ignored bytes', () => {
+    const assets = [...profileAssets(), ...outfitAssets()];
+    expect(assets).toHaveLength(964);
+    expect(new Set(assets.map((asset) => asset.url))).toHaveLength(964);
     const present = assets.filter((asset) => existsSync(publicFile(asset.url)));
     const missing = assets.filter(
       (asset) => !existsSync(publicFile(asset.url))
@@ -138,7 +146,7 @@ describe('aggregate production character customization publication', () => {
     expect(ignored).toHaveLength(assets.length);
   });
 
-  it('publishes exact style-or-none defaults and four classes for every profile', () => {
+  it('publishes exact style-or-none defaults and four class outfits', () => {
     for (const raceRef of CHARACTER_CUSTOMIZATION_CATALOG.profileOrder) {
       const profile = CHARACTER_CUSTOMIZATION_CATALOG.profiles[raceRef];
       expect(Object.keys(profile.bodies)).toEqual([
@@ -164,6 +172,15 @@ describe('aggregate production character customization publication', () => {
     ).toMatchObject({
       scalp: { kind: 'style', styleRef: 'modular-fantasy-hero:hair:16' },
       facialHair: { kind: 'none' },
+    });
+    expect(CHARACTER_CUSTOMIZATION_CATALOG.outfits.fighter).toMatchObject({
+      classRef: 'fighter',
+      outfit: '16',
+      maskUrl:
+        '/models/synty/characters/outfit-customization/v1/masks/fighter-16.png',
+      defaultPrimaryColorSrgb: 0x49667e,
+      defaultSecondaryColorSrgb: 0xd1a44c,
+      meshNames: expect.arrayContaining(['Chr_Torso_Male_16']),
     });
   });
 });

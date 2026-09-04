@@ -39,6 +39,37 @@ function labelOf(value?: string): string {
     .join(' ');
 }
 
+function DeathSaveProgress({ participant }: { participant: Participant }) {
+  const progress = participant.deathSaves;
+  if (!progress) return null;
+  return (
+    <span
+      className={styles.deathSaveProgress}
+      data-testid="death-save-progress"
+      aria-label={`${participant.name} death saves`}
+    >
+      <span className={styles.deathSavePips} aria-hidden="true">
+        {Array.from({ length: progress.successes }, (_, index) => (
+          <i key={`success:${index}`} data-testid="death-save-success-pip" />
+        ))}
+        {Array.from({ length: progress.failures }, (_, index) => (
+          <i
+            key={`failure:${index}`}
+            data-testid="death-save-failure-pip"
+            data-failure="true"
+          />
+        ))}
+      </span>
+      <span>
+        {progress.successes} successes · {progress.successesNeeded} to stabilize
+      </span>
+      <span>
+        {progress.failures} failures · {progress.failuresRemaining} remaining
+      </span>
+    </span>
+  );
+}
+
 function InitiativeEntry({
   participant,
   viewerMember,
@@ -59,6 +90,7 @@ function InitiativeEntry({
       <span className={styles.initiativeName}>
         {you ? 'You' : participant.name}
       </span>
+      <DeathSaveProgress participant={participant} />
     </div>
   );
 }
@@ -101,6 +133,7 @@ export function CombatExperience({
   privateStatusMessage,
   onRetryPrivateStatus,
   authorityFresh,
+  endTurnBlocked = false,
   presentationState,
   phase,
   showTurnNotice,
@@ -403,6 +436,7 @@ export function CombatExperience({
             participants={participants}
             declarations={declarations}
             authorityFresh={authorityFresh}
+            endTurnBlocked={endTurnBlocked}
             armedDeclarationId={
               presentationState.armedDeclarationId ?? undefined
             }

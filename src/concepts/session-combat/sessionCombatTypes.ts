@@ -25,6 +25,8 @@ export interface SessionCombatFixture {
   clock: ClockKind;
   streamState: 'live' | 'caught-up';
   resultVisible: boolean;
+  /** Explicit visual authority: accepted Death Save is awaiting settlement. */
+  endTurnBlocked: boolean;
   participants: readonly Participant[];
   declarations: readonly Declaration[];
   characterData: CharacterData;

@@ -6,6 +6,7 @@ import {
   type Shortfall,
   type TargetCandidate,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import type { CombatExperiencePresentationState } from './types';
 
 /** Safe copy for an offer rejected because the authoritative offer changed. */
@@ -80,6 +81,16 @@ export function selectCombatExperience(
   if (declarationMatches.length !== 1) return null;
   const declaration = declarationMatches[0]!;
   if (!declaration.id) return null;
+
+  // Death Save is selector-bearing but deliberately has no target mode. Its
+  // dedicated identity and fixed NONE shape must agree before this exact
+  // declaration can become executable; no HP/life/progress fallback exists.
+  if (
+    declaration.verb === Verb.DEATH_SAVE &&
+    !isDeathSaveExecutableShape(declaration, 'display')
+  ) {
+    return null;
+  }
 
   let candidate: TargetCandidate | null = null;
   if (

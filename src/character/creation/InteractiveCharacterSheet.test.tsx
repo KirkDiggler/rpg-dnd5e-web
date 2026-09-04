@@ -190,7 +190,7 @@ describe('InteractiveCharacterSheet profile-driven appearance entry', () => {
       );
 
       expect(
-        screen.getByRole('button', { name: `Customize ${label} hair` })
+        screen.getByRole('button', { name: `Customize ${label} appearance` })
       ).not.toBeNull();
     }
   );
@@ -214,7 +214,7 @@ describe('InteractiveCharacterSheet profile-driven appearance entry', () => {
       );
 
       expect(
-        screen.queryByRole('button', { name: /Customize .* hair/ })
+        screen.queryByRole('button', { name: /Customize .* appearance/ })
       ).toBeNull();
       expect(screen.queryByText('Customize Appearance')).toBeNull();
     }
