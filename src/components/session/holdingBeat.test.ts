@@ -4,8 +4,8 @@ import {
   EventKind,
   EventSchema,
   ExitedSchema,
+  HeldSchema,
   LootedSchema,
-  TakenSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { describe, expect, it } from 'vitest';
@@ -48,10 +48,10 @@ function looted(looter: string, body: string): SessionEvent {
     body: { case: 'looted', value: create(LootedSchema, { looter, body }) },
   });
 }
-function taken(taker: string, prop: string): SessionEvent {
+function held(holder: string, prop: string): SessionEvent {
   return create(EventSchema, {
-    kind: EventKind.TAKEN,
-    body: { case: 'taken', value: create(TakenSchema, { taker, prop }) },
+    kind: EventKind.HELD,
+    body: { case: 'held', value: create(HeldSchema, { holder, prop }) },
   });
 }
 function dropped(member: string, prop: string): SessionEvent {
@@ -88,7 +88,7 @@ describe('the beats read as the statements the design names', () => {
   });
 
   it('“Aldric holds the heirloom” — present tense, and never “took” (R10)', () => {
-    const sentence = formatHoldingBeat(taken('m1', 'heirloom'), NAMES);
+    const sentence = formatHoldingBeat(held('m1', 'heirloom'), NAMES);
     expect(sentence).toBe('Aldric holds the heirloom.');
     expect(sentence).not.toMatch(/took|take/i);
   });
@@ -120,7 +120,7 @@ describe('the beats read as the statements the design names', () => {
   it('never says “interacted”, whatever the beat', () => {
     for (const event of [
       looted('m1', 'cap'),
-      taken('m1', 'heirloom'),
+      held('m1', 'heirloom'),
       dropped('m1', 'heirloom'),
       exited('m1', { exit: 'entrance', holding: ['heirloom'] }),
     ]) {
@@ -201,6 +201,6 @@ describe('exitCarrier — who the ending overlay may name', () => {
   });
 
   it('is null for any other beat', () => {
-    expect(exitCarrier(taken('m1', 'heirloom'))).toBeNull();
+    expect(exitCarrier(held('m1', 'heirloom'))).toBeNull();
   });
 });

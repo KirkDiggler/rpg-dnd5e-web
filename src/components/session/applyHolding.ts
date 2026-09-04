@@ -25,7 +25,7 @@
  * the ref, because the id is the thing's name and the ref is not news to
  * anyone who watched it get picked up. But this client threw the prop
  * away when it applied the pick-up beat, so it no longer knows what to
- * draw. Hence `takenProp`: the caller keeps what it removed, keyed by id,
+ * draw. Hence `heldProp`: the caller keeps what it removed, keyed by id,
  * and hands it back on the drop. Without one the prop is still placed —
  * the cell is occupied, and the refetch fills the ref in a moment — but
  * it is placed honestly empty rather than as a guess.
@@ -34,7 +34,7 @@
 import { clone, create } from '@bufbuild/protobuf';
 import type {
   Dropped,
-  Taken,
+  Held,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   GetAtlasResponseSchema,
@@ -50,14 +50,14 @@ import {
  * gone, and nothing else moves.
  *
  * BY ID, NEVER BY REF. A dungeon may place two reliquaries; the id is what
- * says which one left the floor, and it is the only thing `Taken` carries
+ * says which one left the floor, and it is the only thing `Held` carries
  * about the prop. A beat naming an id this atlas does not hold — a prop
  * already removed, or one inside space this member has never seen —
  * removes nothing and is not an error: the refetch is the authority.
  */
-export function applyTaken(
+export function applyHeld(
   atlas: GetAtlasResponse,
-  event: Taken
+  event: Held
 ): GetAtlasResponse {
   if (!event.prop) return atlas;
   const next = clone(GetAtlasResponseSchema, atlas);
@@ -65,12 +65,12 @@ export function applyTaken(
   return next;
 }
 
-/** What `applyTaken` would remove — for the caller to keep, so a later
+/** What `applyHeld` would remove — for the caller to keep, so a later
  * drop can put the same thing back. Undefined when this atlas never held
  * it. */
-export function takenProp(
+export function heldProp(
   atlas: GetAtlasResponse,
-  event: Taken
+  event: Held
 ): AtlasProp | undefined {
   if (!event.prop) return undefined;
   return atlas.props.find((p) => p.id === event.prop);

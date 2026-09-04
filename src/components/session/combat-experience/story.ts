@@ -265,7 +265,7 @@ function buildOtherStory(
         detail: `Story sequence ${event.seq}.`,
         tone: 'neutral',
       });
-    case 'taken':
+    case 'held':
       return Object.freeze({
         ...base,
         eyebrow: 'Holding',

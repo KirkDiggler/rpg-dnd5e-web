@@ -22,22 +22,38 @@
  * subject is down and says no more. The same law as search: the answer
  * never leaks the question.
  *
- * # A holdable prop is not knowable from the wire
+ * # Hold is offered where the wire says holdable, and never guessed
  *
- * `AtlasProp` carries no `takeable`/`holdable` flag, on purpose — the
- * authored fact stays in the dungeon file and the refusal stays at the
- * rule half. So the offer here is every adjacent prop THE AUTHOR NAMED:
- * an id is the only thing the pick-up verb can target (`TakeRequest.target`
- * is a placement id), and it is required of a holdable prop by the
- * compiler ("a thing that can be picked up has to be nameable"). A pillar
- * the author happened to name refuses by name when tried, which is what
- * design §4.3 says a visible prop does. That is one wasted click, not a
- * leak: an unnamed prop was never targetable and a named one was already
- * public.
+ * `AtlasProp.holdable` is the author's own flag, carried verbatim, and its
+ * doc comment is explicit that a client offers Hold ONLY where it is true
+ * and never infers the verb from the presence of an id: ids exist for
+ * anything a scenario binds to, so guessing would put a Hold button on the
+ * altar as readily as on the reliquary. Two independent facts, asked
+ * separately.
+ *
+ * It is safe to ask because holding is structure on the truth grain — a
+ * holdable thing LOOKS holdable, and every member who can see the cell
+ * sees the same thing. Nothing is concealed by it, and a prop inside space
+ * this member cannot see is absent from the atlas entirely.
+ *
+ * Offering is still not permission: Hold refuses out of range, already
+ * held, or out of turn. This decides what a button is drawn on, never what
+ * the server allows.
+ *
+ * # Leave is offered everywhere
+ *
+ * `GetAtlasResponse.exits` says where the ways out ARE, and its own doc
+ * comment says what that is for: "FOR DRAWING THE WAY OUT, NOT FOR GATING
+ * IT." R9 requires a departure from the vault to be possible — that is the
+ * departure that drops the artifact where the carrier stood — so a client
+ * that only offered Leave on these cells would make R9 unreachable.
+ * `exitAt` therefore answers only "which way out am I standing on", for
+ * the button to say so.
  */
 
 import { hexDistance, type CubeCoord } from '@/components/hex-grid/hexMath';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { AtlasExit } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Standing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { positionToCube } from './positionBridge';
 import type { SightedMember } from './sightingEntities';
@@ -97,12 +113,43 @@ export function holdTargets(
 ): HoldTarget[] {
   if (!atlas || !at) return [];
   const targets: HoldTarget[] = [];
-  for (const prop of atlas.props) {
+  // `?? []`, for `atlasToScene3D`'s own documented reason: a server or a
+  // client-side schema older than the field hands back a message with it
+  // entirely ABSENT, not empty, and a bare read is then `undefined`. An
+  // atlas that says nothing about props offers nothing, which is the same
+  // answer an atlas with no props gives.
+  for (const prop of atlas.props ?? []) {
+    // BOTH FACTS, ASKED SEPARATELY. `holdable` is the author's answer to
+    // "can this be picked up"; the id is the only name the verb can send.
+    // A holdable prop always has one (the compiler refuses one without),
+    // so an id-less holdable prop is a producer defect — skipped rather
+    // than sent as an empty target.
+    if (!prop.holdable) continue;
     if (!prop.id || !prop.at) continue;
     if (hexDistance(positionToCube(prop.at), at) > ADJACENT) continue;
     targets.push({ id: prop.id, ref: prop.ref });
   }
   return targets;
+}
+
+/**
+ * The authored way out the member is standing on, if any — for the Leave
+ * button to name it. NEVER a gate: Leave is offered wherever they stand
+ * (see this module's header, and `AtlasExit`'s own doc comment).
+ */
+export function exitAt(
+  atlas: GetAtlasResponse | null,
+  at: CubeCoord | null
+): AtlasExit | undefined {
+  if (!atlas || !at) return undefined;
+  // `?? []` for `holdTargets`'s reason, and this one is not hypothetical:
+  // every dungeon authored before slice 2 declares no way out, and an
+  // atlas from a server older than the field carries none at all. Both
+  // mean the same thing — the member is standing on no authored exit —
+  // and neither is an error.
+  return (atlas.exits ?? []).find(
+    (exit) => exit.at && hexDistance(positionToCube(exit.at), at) === 0
+  );
 }
 
 /** A prop ref as a button label — its last segment, spaced. The author's

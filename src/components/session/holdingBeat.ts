@@ -12,20 +12,13 @@
  *
  * Three of them are past-tense statements — "looted", "dropped", "left" —
  * because that is what the record says happened. The fourth is present
- * tense on purpose: design R10 renamed the pick-up verb from *take* to
- * **hold**, precisely because *take* is the word reserved for a thing
+ * tense on purpose: design R10 named the pick-up verb **hold**, not
+ * *take*, precisely because *take* is the word reserved for a thing
  * landing in a character's inventory, and this one only ever writes a
  * run-scoped `holds:` fact. So the beat reads "Aldric holds the heirloom",
- * a state, and no line this module produces ever says "took".
- *
- * # The wire still says Take
- *
- * `EVENT_KIND_TAKEN` / `Taken{taker, prop}` is what the pinned protos
- * ship (rpg-api-protos#289, generated 46db48cd) — R10 landed after that
- * merge and renames the wire in a wave-0 follow-up. This module reads the
- * `taken` body and writes the *held* sentence, which is the whole point of
- * having one module: when the wire renames, one `case` label moves and
- * every surface keeps saying exactly what it says now.
+ * a state, and no line this module produces ever says "took". The wire
+ * agrees: `EVENT_KIND_HELD` carries `Held{holder, prop}`, and `Taken` is
+ * freed for the merchant lane.
  *
  * # Nothing here is a rule
  *
@@ -96,9 +89,9 @@ export function formatHoldingBeat(
       // held the way into the vault or nothing at all.
       return `${names.subject(l.looter)} looted ${names.object(l.body)}.`;
     }
-    case 'taken': {
-      const t = event.body.value;
-      return `${names.subject(t.taker)} holds ${describe(t.prop)}.`;
+    case 'held': {
+      const h = event.body.value;
+      return `${names.subject(h.holder)} holds ${describe(h.prop)}.`;
     }
     case 'dropped': {
       const d = event.body.value;

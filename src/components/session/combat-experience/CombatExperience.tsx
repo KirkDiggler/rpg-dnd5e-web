@@ -5,6 +5,7 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { propLabel } from '../holdingAffordances';
+import { authoredWords as exitWords } from '../holdingBeat';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
@@ -132,6 +133,7 @@ export function CombatExperience({
   holdPending = false,
   onLeave,
   leavePending = false,
+  leaveExitId,
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
@@ -458,12 +460,21 @@ export function CombatExperience({
               type="button"
               className={styles.equipmentButton}
               data-testid="session-combat-leave-button"
+              data-exit={leaveExitId || undefined}
               disabled={leavePending}
-              title="Leave the dungeon. At a way out, carrying what the run is about, that ends the run"
+              title={
+                leaveExitId
+                  ? `Leave through the ${exitWords(leaveExitId)}. Carrying what the run is about, that ends it`
+                  : 'Leave the dungeon. Away from a way out, whatever you carry stays where you stood'
+              }
               onClick={onLeave}
             >
               <span aria-hidden="true">🚪</span>
-              {leavePending ? 'Leaving…' : 'Leave'}
+              {leavePending
+                ? 'Leaving…'
+                : leaveExitId
+                  ? `Leave through the ${exitWords(leaveExitId)}`
+                  : 'Leave'}
             </button>
           )}
         </div>

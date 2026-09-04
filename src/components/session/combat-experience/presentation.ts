@@ -841,7 +841,7 @@ const EXPECTED_OTHER_KIND = {
   activated: EventKind.ACTIVATED,
   activationResult: EventKind.ACTIVATION_RESULT,
   looted: EventKind.LOOTED,
-  taken: EventKind.TAKEN,
+  held: EventKind.HELD,
   dropped: EventKind.DROPPED,
   // Another slice's beat (protos#287, death saves). Named here so this map
   // stays exhaustive over `Event.body.case` — the switch below returns
@@ -865,7 +865,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.ACTIVATED,
   EventKind.ACTIVATION_RESULT,
   EventKind.LOOTED,
-  EventKind.TAKEN,
+  EventKind.HELD,
   EventKind.DROPPED,
 ]);
 
@@ -942,11 +942,11 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         looter: event.body.value.looter,
         body: event.body.value.body,
       });
-    case 'taken':
+    case 'held':
       return Object.freeze({
         kind: event.kind,
         bodyCase,
-        taker: event.body.value.taker,
+        holder: event.body.value.holder,
         prop: event.body.value.prop,
       });
     case 'dropped':

@@ -631,13 +631,27 @@ describe('Loot, Hold and Leave on the action surface (rpg-project#368)', () => {
   });
 
   it('offers Leave wherever the viewer stands — the server decides what it means', () => {
-    // The client computes no exit rule: nothing on the session wire says
-    // where the ways out are, and the walk's own negative needs a carrier
-    // able to leave from the vault (design R9).
+    // `AtlasExit`'s own law: the exits list is for DRAWING the way out,
+    // never for gating it. R9 needs the carrier able to leave from the
+    // vault, which is where the artifact then lies.
     const onLeave = vi.fn();
     render(<CombatExperience {...propsFor(fresh, { onLeave })} />);
-    fireEvent.click(screen.getByTestId('session-combat-leave-button'));
+    const button = screen.getByTestId('session-combat-leave-button');
+    expect(button.textContent).toBe('🚪Leave');
+    expect(button.getAttribute('title')).toContain('stays where you stood');
+    fireEvent.click(button);
     expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it('names the way out when the viewer is standing on one', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, { onLeave: vi.fn(), leaveExitId: 'front-gate' })}
+      />
+    );
+    const button = screen.getByTestId('session-combat-leave-button');
+    expect(button.textContent).toBe('🚪Leave through the front gate');
+    expect(button.getAttribute('data-exit')).toBe('front-gate');
   });
 
   it('disables the buttons while their verb is in flight, without hiding them', () => {

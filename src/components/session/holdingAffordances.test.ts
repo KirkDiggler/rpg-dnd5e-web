@@ -8,7 +8,12 @@ import {
   Standing,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
-import { holdTargets, lootTargets, propLabel } from './holdingAffordances';
+import {
+  exitAt,
+  holdTargets,
+  lootTargets,
+  propLabel,
+} from './holdingAffordances';
 import { positionToCube } from './positionBridge';
 import type { SightedMember } from './sightingEntities';
 
@@ -95,16 +100,17 @@ function atlas(props: GetAtlasResponse['props']): GetAtlasResponse {
   return create(GetAtlasResponseSchema, { props });
 }
 
-describe('holdTargets — every NAMED prop in reach', () => {
+describe('holdTargets — where the wire says holdable, never guessed', () => {
   const viewer = at(0, 0);
 
-  it('offers a prop the author named, beside the viewer', () => {
+  it('offers a holdable prop beside the viewer', () => {
     const targets = holdTargets(
       atlas([
         {
           id: 'heirloom',
           ref: 'dnd5e:props:reliquary',
           at: { x: 1, y: 0 },
+          holdable: true,
         },
       ] as never),
       viewer
@@ -112,9 +118,27 @@ describe('holdTargets — every NAMED prop in reach', () => {
     expect(targets).toEqual([{ id: 'heirloom', ref: 'dnd5e:props:reliquary' }]);
   });
 
-  it('never offers a prop the author left unnamed', () => {
-    // There is no id to send, so there is no offer to make — the request
-    // names its target by `place[].id` and nothing else.
+  it('NEVER guesses the verb from an id', () => {
+    // `AtlasProp.holdable`'s own law: ids exist for anything a scenario
+    // binds to, so an altar bound as a scenario's landmark would sprout a
+    // Hold button if this inferred one from the name. Two facts, asked
+    // separately.
+    expect(
+      holdTargets(
+        atlas([
+          {
+            id: 'north-altar',
+            ref: 'dnd5e:props:altar',
+            at: { x: 1, y: 0 },
+            holdable: false,
+          },
+        ] as never),
+        viewer
+      )
+    ).toEqual([]);
+  });
+
+  it('false is the default and it is the truth — a prop nobody declared is scenery', () => {
     expect(
       holdTargets(
         atlas([{ ref: 'dnd5e:props:pillar', at: { x: 1, y: 0 } }] as never),
@@ -123,26 +147,26 @@ describe('holdTargets — every NAMED prop in reach', () => {
     ).toEqual([]);
   });
 
-  it('offers a NAMED pillar too — holdable is not on the wire', () => {
-    // `AtlasProp` carries no holdable flag; whether a thing can be picked
-    // up is the rule half's answer, refused by name. Filtering here would
-    // be this client inventing a rule it cannot know.
+  it('skips a holdable prop with no id — there is no name to send', () => {
+    // The compiler refuses a holdable prop without an id, so this is a
+    // producer defect; an empty target would be a request that cannot
+    // succeed.
     expect(
       holdTargets(
         atlas([
-          { id: 'north-pillar', ref: 'dnd5e:props:pillar', at: { x: 1, y: 0 } },
+          { ref: 'dnd5e:props:reliquary', at: { x: 1, y: 0 }, holdable: true },
         ] as never),
         viewer
       )
-    ).toHaveLength(1);
+    ).toEqual([]);
   });
 
   it('leaves out a prop more than one cell away, and one with no cell', () => {
     expect(
       holdTargets(
         atlas([
-          { id: 'far', ref: 'r', at: { x: 3, y: 0 } },
-          { id: 'nowhere', ref: 'r' },
+          { id: 'far', ref: 'r', at: { x: 3, y: 0 }, holdable: true },
+          { id: 'nowhere', ref: 'r', holdable: true },
         ] as never),
         viewer
       )
@@ -152,6 +176,40 @@ describe('holdTargets — every NAMED prop in reach', () => {
   it('offers nothing without an atlas or a position', () => {
     expect(holdTargets(null, viewer)).toEqual([]);
     expect(holdTargets(atlas([] as never), null)).toEqual([]);
+  });
+});
+
+describe('exitAt — which way out the member is standing on', () => {
+  const withExits = (exits: unknown[]) =>
+    create(GetAtlasResponseSchema, { exits } as never);
+
+  it('names the exit under the member’s feet', () => {
+    const withEntrance = withExits([{ id: 'entrance', at: { x: 1, y: 3 } }]);
+    expect(exitAt(withEntrance, at(1, 3))?.id).toBe('entrance');
+  });
+
+  it('is undefined one cell away — an exit is used from ITS cell', () => {
+    const withEntrance = withExits([{ id: 'entrance', at: { x: 1, y: 3 } }]);
+    expect(exitAt(withEntrance, at(1, 4))).toBeUndefined();
+  });
+
+  it('is undefined for a dungeon whose author declared no way out', () => {
+    // Every dungeon authored before slice 2. The client draws no marker and
+    // behaves exactly as it did before; nothing is defaulted in.
+    expect(exitAt(withExits([]), at(1, 3))).toBeUndefined();
+    expect(exitAt(null, at(1, 3))).toBeUndefined();
+  });
+
+  it('survives an atlas whose fields are ABSENT, not merely empty', () => {
+    // A server or a client-side schema older than these fields hands back
+    // a message with them missing entirely, and a bare `.find`/`for…of`
+    // throws on `undefined` — `atlasToScene3D` documents the same hazard
+    // for facing/offset. Both answer "nothing here", which is what an
+    // atlas that says nothing actually means.
+    const older = { props: undefined, exits: undefined } as never;
+    expect(() => exitAt(older, at(1, 3))).not.toThrow();
+    expect(exitAt(older, at(1, 3))).toBeUndefined();
+    expect(holdTargets(older, at(0, 0))).toEqual([]);
   });
 });
 

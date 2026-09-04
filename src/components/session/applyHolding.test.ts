@@ -1,14 +1,14 @@
 import { create } from '@bufbuild/protobuf';
 import {
   DroppedSchema,
-  TakenSchema,
+  HeldSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   GetAtlasResponseSchema,
   type GetAtlasResponse,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
-import { applyDropped, applyTaken, takenProp } from './applyHolding';
+import { applyDropped, applyHeld, heldProp } from './applyHolding';
 
 /** Two props on the floor: the artifact, named, and a pillar the author
  * never named — the second is what proves the patch works on IDS and not
@@ -42,12 +42,12 @@ function atlasWithHeirloom(): GetAtlasResponse {
 
 const propIds = (atlas: GetAtlasResponse) => atlas.props.map((p) => p.id);
 
-describe('applyTaken — the prop leaves the floor for everyone', () => {
+describe('applyHeld — the prop leaves the floor for everyone', () => {
   it('removes the prop with that placement id and nothing else', () => {
     const before = atlasWithHeirloom();
-    const after = applyTaken(
+    const after = applyHeld(
       before,
-      create(TakenSchema, { taker: 'aldric', prop: 'heirloom' })
+      create(HeldSchema, { holder: 'aldric', prop: 'heirloom' })
     );
     expect(propIds(after)).toEqual(['']);
     expect(after.props[0].ref).toBe('dnd5e:props:pillar');
@@ -58,43 +58,43 @@ describe('applyTaken — the prop leaves the floor for everyone', () => {
 
   it('leaves the caller’s atlas alone', () => {
     const before = atlasWithHeirloom();
-    applyTaken(before, create(TakenSchema, { prop: 'heirloom' }));
+    applyHeld(before, create(HeldSchema, { prop: 'heirloom' }));
     expect(propIds(before)).toEqual(['heirloom', '']);
   });
 
   it('removes nothing for an id this atlas never held', () => {
     const before = atlasWithHeirloom();
-    const after = applyTaken(before, create(TakenSchema, { prop: 'crown' }));
+    const after = applyHeld(before, create(HeldSchema, { prop: 'crown' }));
     expect(propIds(after)).toEqual(['heirloom', '']);
   });
 
   it('never removes an unnamed prop, whatever the beat says', () => {
     // An empty `prop` must not match the pillar's empty id — that would
     // clear a prop nobody picked up.
-    const after = applyTaken(atlasWithHeirloom(), create(TakenSchema, {}));
+    const after = applyHeld(atlasWithHeirloom(), create(HeldSchema, {}));
     expect(propIds(after)).toEqual(['heirloom', '']);
   });
 
   it('reports what it would remove, for the caller to remember', () => {
     const before = atlasWithHeirloom();
     expect(
-      takenProp(before, create(TakenSchema, { prop: 'heirloom' }))?.ref
+      heldProp(before, create(HeldSchema, { prop: 'heirloom' }))?.ref
     ).toBe('dnd5e:props:reliquary');
     expect(
-      takenProp(before, create(TakenSchema, { prop: 'crown' }))
+      heldProp(before, create(HeldSchema, { prop: 'crown' }))
     ).toBeUndefined();
-    expect(takenProp(before, create(TakenSchema, {}))).toBeUndefined();
+    expect(heldProp(before, create(HeldSchema, {}))).toBeUndefined();
   });
 });
 
 describe('applyDropped — it lands where the carrier stood (R9)', () => {
   it('puts the remembered prop back at the drop cell, whole', () => {
     const before = atlasWithHeirloom();
-    const remembered = takenProp(
+    const remembered = heldProp(
       before,
-      create(TakenSchema, { prop: 'heirloom' })
+      create(HeldSchema, { prop: 'heirloom' })
     );
-    const taken = applyTaken(before, create(TakenSchema, { prop: 'heirloom' }));
+    const taken = applyHeld(before, create(HeldSchema, { prop: 'heirloom' }));
     const after = applyDropped(
       taken,
       create(DroppedSchema, {

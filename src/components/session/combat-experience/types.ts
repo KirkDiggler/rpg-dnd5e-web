@@ -158,6 +158,13 @@ interface CombatExperienceBaseProps {
    */
   onLeave?: () => void;
   leavePending?: boolean;
+  /**
+   * The authored way out the viewer is STANDING ON, if any — the button
+   * says so. Never a gate: `AtlasExit`'s own doc comment is explicit that
+   * the exits list is "for drawing the way out, not for gating it", because
+   * R9 needs a departure from anywhere to be possible.
+   */
+  leaveExitId?: string;
   /** Explicit Concepts diagnostic surface; allowed independently of DEV. */
   diagnosticsEnabled?: boolean;
 }

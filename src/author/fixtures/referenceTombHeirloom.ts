@@ -3,12 +3,18 @@
  *
  * `reference-tomb-heirloom.yaml` beside this module is a VERBATIM COPY of
  * `rulebooks/dnd5e/encounter/dungeonspec/testdata/reference-tomb-heirloom.yaml`
- * on the toolkit's recover-the-artifact branch (commit 48c72498). Not a
- * conversion, not a reconstruction: the builder's fixture and the
- * compiler's fixture are one text, so a disagreement about what this
- * dungeon IS cannot hide between them. `referenceTomb.ts` beside this
- * file does the same for the plain tomb, which this slice leaves
- * untouched.
+ * on the toolkit's `encounter/recover-the-artifact` branch, commit
+ * 3fe79d25. Not a conversion, not a reconstruction: the builder's fixture
+ * and the compiler's fixture are one text, so a disagreement about what
+ * this dungeon IS cannot hide between them. `referenceTomb.ts` beside this
+ * file does the same for the plain tomb, which this slice leaves untouched.
+ *
+ * BOTH FILES ARE IN `.prettierignore`, and they have to be: the pre-commit
+ * hook formats `*.yaml`, and prettier respaces flow sequences
+ * (`[[0,0],[1,0]]` -> `[[0, 0], [1, 0]]`). It had already done exactly that
+ * to `reference-tomb.yaml`, silently, because the test asserting the copy
+ * only checked substrings prettier leaves alone. The tests beside these
+ * files now assert bytes prettier WOULD touch.
  *
  * What it adds to the plain tomb, and nothing else (rpg-project#368 §3.1):
  *
@@ -22,14 +28,12 @@
  *     because `start` is not implicitly a way out;
  *   - the SCENARIO binding: `recover-the-artifact`, artifact and exit.
  *
- * # The file key is `holdable:`, and the verb is Hold
+ * # The file key is `holdable:`, and so is the verb
  *
  * Design R10 named the verb **Hold** and the flag `holdable:`, and the
- * toolkit's dungeonspec parses that word. The pinned protos still ship
- * `Take` for the RPC and the beat — that half renames in a wave-0
- * follow-up. This copy carries the toolkit's current bytes, which is the
- * whole point of it being a copy; see `holdingBeat.ts` for the same split
- * on the game side.
+ * whole stack now says so: the toolkit's dungeonspec parses `holdable:`,
+ * and the pinned protos carry `Hold`/`Held`/`AtlasProp.holdable`. `Taken`
+ * is freed for the merchant lane.
  */
 import { parseDungeon, type DungeonDoc } from '../dungeonYaml';
 import referenceTombHeirloomYaml from './reference-tomb-heirloom.yaml?raw';

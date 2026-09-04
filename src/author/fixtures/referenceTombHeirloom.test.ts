@@ -7,25 +7,36 @@ import {
 } from './referenceTombHeirloom';
 
 describe('the heirloom tomb is the toolkit’s own file', () => {
-  // THE BYTES, PINNED. Not "it parses" and not "it has a vault" — the
-  // literal text, so a copy that drifts from the toolkit's testdata fails
-  // here rather than in a walk. The values below are read off the toolkit
-  // file at commit 48c72498; changing one means the toolkit changed and
-  // this copy has to be re-taken, which is exactly the conversation this
-  // test is meant to force.
-  it('carries the toolkit fixture’s own text, line for line', () => {
+  // THE BYTES, PINNED — and pinned on bytes PRETTIER WOULD CHANGE, which
+  // is the whole difficulty. The pre-commit hook formats `*.yaml`, and
+  // prettier respaces flow sequences and breaks flow maps across lines; it
+  // had already done that to `reference-tomb.yaml` without any test
+  // noticing, because the assertions there only named substrings prettier
+  // leaves alone. So `src/author/fixtures/*.yaml` is in `.prettierignore`
+  // and the first assertion below is a tightly-packed row that would not
+  // survive a formatting pass.
+  //
+  // Read off the toolkit file at commit 3fe79d25. Changing one of these
+  // means the toolkit changed and this copy has to be re-taken, which is
+  // exactly the conversation this test exists to force.
+  it('carries the toolkit fixture’s own text, byte for byte', () => {
+    expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
+      '      - [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]]\n'
+    );
     expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
       'key: reference-tomb-heirloom'
     );
     expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
-      '  - { id: entrance, at: [1, 3] }'
+      'exits:\n  - { id: entrance, at: [1, 3] }\n'
     );
     expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
       'scenarios:\n  recover-the-artifact:\n    artifact: heirloom\n    exit: entrance\n'
     );
-    expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain('knows: [vault] }');
     expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
-      'blocks_movement: false, blocks_los: false, holdable: true }'
+      '  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,\n      knows: [vault] }\n'
+    );
+    expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
+      '      blocks_movement: false, blocks_los: false, holdable: true }\n'
     );
   });
 

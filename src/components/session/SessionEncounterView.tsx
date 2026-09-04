@@ -56,7 +56,7 @@ import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
-import { applyDropped, applyTaken, takenProp } from './applyHolding';
+import { applyDropped, applyHeld, heldProp } from './applyHolding';
 import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
@@ -70,7 +70,7 @@ import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
-import { holdTargets, lootTargets } from './holdingAffordances';
+import { exitAt, holdTargets, lootTargets } from './holdingAffordances';
 import { authoredWords, exitCarrier, holdingPhrase } from './holdingBeat';
 import { localWorldDieDimensions } from './local-world-die/diceDials';
 import {
@@ -971,7 +971,7 @@ function SessionEncounterScope({
         // A PROP LEFT THE FLOOR, OR LANDED BACK ON IT. Both patch the
         // held atlas in the same frame below; this refetch is the server's
         // own answer landing behind it, exactly as the reveal beats do.
-        case 'taken':
+        case 'held':
         case 'dropped':
           return ['atlas'];
         // LOOT REFETCHES NOTHING, and that is design P3 in the refresh
@@ -1030,12 +1030,12 @@ function SessionEncounterScope({
       // The refetch scheduled above still lands afterwards with the
       // server's own answer, so the patch buys the frame and the server
       // keeps the truth (`applyHolding.ts`).
-      if (event.body.case === 'taken') {
+      if (event.body.case === 'held') {
         const beat = event.body.value;
         applyAtlasReveal((current) => {
-          const removed = takenProp(current, beat);
+          const removed = heldProp(current, beat);
           if (removed) heldPropsRef.current.set(beat.prop, removed);
-          return applyTaken(current, beat);
+          return applyHeld(current, beat);
         });
       }
       if (event.body.case === 'dropped') {
@@ -1201,6 +1201,13 @@ function SessionEncounterScope({
   );
   const propsToHold = useMemo(
     () => holdTargets(atlas, viewerCube),
+    [atlas, viewerCube]
+  );
+  // Which way out they are standing on, for the button to name — NOT a
+  // gate on offering Leave (`AtlasExit`'s own doc comment, and R9: the
+  // carrier has to be able to leave from the vault and drop it there).
+  const standingOnExit = useMemo(
+    () => exitAt(atlas, viewerCube),
     [atlas, viewerCube]
   );
 
@@ -1486,6 +1493,7 @@ function SessionEncounterScope({
             holdPending={holding}
             onLeave={runEnded === null ? handleLeave : undefined}
             leavePending={leaving}
+            leaveExitId={standingOnExit?.id}
             {...(combat.diceWitnessRole === 'roller'
               ? {
                   diceWitnessRole: 'roller' as const,

@@ -1,4 +1,4 @@
-import type { TakeResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { HoldResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { useCallback, useState } from 'react';
 import { sessionClient } from './client';
 
@@ -17,39 +17,33 @@ export interface HoldParams {
 }
 
 export interface UseSessionHoldResult {
-  hold: (params: HoldParams) => Promise<TakeResponse>;
+  hold: (params: HoldParams) => Promise<HoldResponse>;
   loading: boolean;
   error: Error | null;
 }
 
 /**
- * Thin wrapper around the seam's pick-up verb — `useSessionSearch`'s shape.
+ * Thin wrapper around `SessionService.Hold` — `useSessionSearch`'s shape.
  *
- * # Hold here, Take on the wire
+ * THE VERB IS HOLD, NOT TAKE (design R10). It writes a run-scoped `holds:`
+ * fact and nothing lands in a character's inventory; *take* is reserved
+ * for the act that does, and the wire keeps that name free for the
+ * merchant lane.
  *
- * Design R10 named this verb **Hold**: it writes a run-scoped `holds:`
- * fact and nothing lands in a character's inventory, and *take* is the
- * word reserved for the act that does (buying from a merchant; carrying
- * the artifact home). The pinned protos (rpg-api-protos#289, generated
- * 46db48cd) still call the RPC `Take` — R10 landed after that merge and
- * the wire renames in a wave-0 follow-up — so this file is the one place
- * the two words meet, and the rename is one line here plus one in
- * `holdingBeat.ts`.
- *
- * THE RESPONSE CARRIES NO WORLD CHANGE (`TakeResponse`'s own doc comment):
- * the prop leaving the map and the holder holding it arrive as the beat,
- * which reaches the caller too. Nothing here reads the answer.
+ * THE RESPONSE CARRIES NO WORLD CHANGE (`HoldResponse`'s own doc comment):
+ * the prop leaving the map and the holder holding it arrive as the HELD
+ * beat, which reaches the caller too. Nothing here reads the answer.
  */
 export function useSessionHold(): UseSessionHoldResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const hold = useCallback(
-    async (params: HoldParams): Promise<TakeResponse> => {
+    async (params: HoldParams): Promise<HoldResponse> => {
       setLoading(true);
       setError(null);
       try {
-        return await sessionClient.take(params);
+        return await sessionClient.hold(params);
       } catch (err) {
         const wrapped =
           err instanceof Error ? err : new Error('Hold RPC failed');

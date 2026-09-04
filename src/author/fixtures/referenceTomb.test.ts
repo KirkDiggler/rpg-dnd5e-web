@@ -20,6 +20,17 @@ describe('the reference tomb is the toolkit’s own file', () => {
     // toolkit's dungeonspec testdata. If the two ever diverge, the
     // builder and the server stop agreeing about what the tomb IS, and
     // no test either side would notice.
+    //
+    // THE ROW BELOW IS THE ONE THAT CATCHES IT. Every assertion here used
+    // to name a substring prettier leaves alone, so when the pre-commit
+    // hook's `*.yaml` formatter respaced this file's flow sequences —
+    // `[[0,0],[1,0]]` to `[[0, 0], [1, 0]]` — the copy stopped being
+    // verbatim and nothing failed (found while adding the heirloom copy,
+    // rpg-project#368). The file is in `.prettierignore` now, and this
+    // asserts a byte prettier would have changed.
+    expect(REFERENCE_TOMB_YAML).toContain(
+      '      - [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]]\n'
+    );
     expect(REFERENCE_TOMB_YAML).toContain('key: reference-tomb');
     const doc = referenceTombDoc();
     expect(doc.regions.map((r) => r.id)).toEqual(['entrance', 'hall', 'tomb']);
