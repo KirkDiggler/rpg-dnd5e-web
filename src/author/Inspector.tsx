@@ -70,8 +70,6 @@ export interface InspectorProps {
   onBindScenario: (scenarioId: string, key: string, value: string) => void;
   /** Aim the party's entry, or clear the aim. */
   onStartFacing: (facing: string | undefined) => void;
-  /** Take the start off the map entirely. */
-  onRemoveStart: () => void;
   /** Declare a new record and open its form. */
   onAddIntel: () => void;
   /** Rename one intel record. */
@@ -169,13 +167,7 @@ export function Inspector(props: InspectorProps) {
     // No start authored yet: nothing to aim, so the dungeon panel is the
     // honest answer rather than a form for a thing that does not exist.
     if (!doc.start) return <DungeonPanel {...props} />;
-    return (
-      <StartPanel
-        start={doc.start}
-        onFacing={props.onStartFacing}
-        onRemove={() => props.onRemoveStart()}
-      />
-    );
+    return <StartPanel start={doc.start} onFacing={props.onStartFacing} />;
   }
   if (selection.kind === 'exit') {
     const exit = doc.exits[selection.index];
@@ -296,11 +288,9 @@ function DungeonPanel(props: InspectorProps) {
 function StartPanel({
   start,
   onFacing,
-  onRemove,
 }: {
   start: StartDoc;
   onFacing: (facing: string | undefined) => void;
-  onRemove: () => void;
 }) {
   return (
     <div className="flex flex-col gap-3" data-testid="start-panel">
@@ -315,17 +305,13 @@ function StartPanel({
           ? 'No facing set — the camera starts the way it always has, and the file keeps its bare `start: [col, row]`.'
           : `The camera looks ${start.facing} on the first frame. Nothing else reads this: it never decides where the party may walk or what they can see.`}
       </div>
+      {/* NO REMOVE BUTTON. dungeonspec requires a start, so a dungeon
+          without one does not compile — an author moves the start with
+          the Start tool, and never takes it away. Offering a verb whose
+          only outcome is a file the server refuses is offering a trap. */}
       <div className="text-xs opacity-50" data-testid="start-at">
         at {start.at.q},{start.at.r}
       </div>
-      <button
-        type="button"
-        className="dg-mini dg-danger"
-        data-testid="start-remove"
-        onClick={onRemove}
-      >
-        remove start
-      </button>
     </div>
   );
 }

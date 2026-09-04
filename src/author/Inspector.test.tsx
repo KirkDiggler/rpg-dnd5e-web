@@ -101,7 +101,6 @@ function mountPlacement(
       scenarios={NO_SCENARIOS}
       errors={[]}
       onStartFacing={noop}
-      onRemoveStart={noop}
       onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
@@ -247,7 +246,6 @@ function mountWall(
       scenarios={NO_SCENARIOS}
       errors={[]}
       onStartFacing={noop}
-      onRemoveStart={noop}
       onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
@@ -402,7 +400,6 @@ function mountDoor(
       scenarios={NO_SCENARIOS}
       errors={[]}
       onStartFacing={noop}
-      onRemoveStart={noop}
       onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
@@ -568,7 +565,6 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         scenarios={NO_SCENARIOS}
         errors={[]}
         onStartFacing={noop}
-        onRemoveStart={noop}
         onAddIntel={noop}
         onIntel={noop}
         onIntelReveals={noop}
@@ -605,7 +601,6 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         scenarios={NO_SCENARIOS}
         errors={[]}
         onStartFacing={noop}
-        onRemoveStart={noop}
         onAddIntel={noop}
         onIntel={noop}
         onIntelReveals={noop}
@@ -662,7 +657,6 @@ function mountAt(
     onIntelHolders: (id: string, holders: readonly string[]) => void;
     onRemoveIntel: (id: string) => void;
     onStartFacing: (facing: string | undefined) => void;
-    onRemoveStart: () => void;
   }> = {}
 ) {
   return render(
@@ -686,7 +680,6 @@ function mountAt(
       scenarios={NO_SCENARIOS}
       errors={[]}
       onStartFacing={overrides.onStartFacing ?? noop}
-      onRemoveStart={overrides.onRemoveStart ?? noop}
       onAddIntel={noop}
       onIntel={overrides.onIntel ?? noop}
       onIntelReveals={overrides.onIntelReveals ?? noop}
@@ -1140,11 +1133,11 @@ describe('the Start panel — aiming the party’s entry (rpg-project#374)', () 
     expect(note).toContain('never decides where the party may walk');
   });
 
-  it('removes the start', () => {
-    const onRemoveStart = vi.fn();
-    mountAt(withStart(), { kind: 'start' }, { onRemoveStart });
-    fireEvent.click(screen.getByTestId('start-remove'));
-    expect(onRemoveStart).toHaveBeenCalled();
+  it('offers NO remove — dungeonspec requires a start', () => {
+    // An author moves the start with the Start tool; taking it away only
+    // produces a file the server refuses, so the verb is not offered.
+    mountAt(withStart(), { kind: 'start' });
+    expect(screen.queryByTestId('start-remove')).toBeNull();
   });
 
   it('falls back to the dungeon panel when no start is authored', () => {

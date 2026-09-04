@@ -471,18 +471,31 @@ export function CreationBoard({
           return;
         }
       }
-      // The start, and then a way out, are selected from their own cells —
-      // after the placements, doors and walls, because those are things
-      // standing ON floor and these two ARE floor cells. The start first:
-      // in the reference tomb it shares its cell with the entrance exit,
-      // and the party's entry is the thing an author reaches for there.
-      if (doc.start && axialKey(doc.start.at) === key) {
-        onSelect({ kind: 'start' });
-        return;
-      }
+      // The start and a way out are selected from their own cells — after
+      // the placements, doors and walls, because those are things standing
+      // ON floor and these two ARE floor cells.
+      //
+      // THEY SHARE A CELL IN THE REFERENCE TOMB, so one click cannot mean
+      // both. The start goes first, because the party's entry is what an
+      // author reaches for there — and a SECOND click on a cell already
+      // selected cycles to the next thing on it, so the exit under the
+      // start is reachable at all. Without the cycle the tomb's `entrance`
+      // exit could not be renamed or removed from the board: nothing else
+      // in the builder emits an exit selection.
+      const onStart = !!doc.start && axialKey(doc.start.at) === key;
       const exitIndex = doc.exits.findIndex((x) => axialKey(x.at) === key);
-      if (exitIndex !== -1) {
-        onSelect({ kind: 'exit', index: exitIndex });
+      if (onStart || exitIndex !== -1) {
+        const here: Selection[] = [];
+        if (onStart) here.push({ kind: 'start' });
+        if (exitIndex !== -1) here.push({ kind: 'exit', index: exitIndex });
+        const current = here.findIndex(
+          (candidate) =>
+            candidate.kind === selection.kind &&
+            (candidate.kind !== 'exit' ||
+              (selection.kind === 'exit' &&
+                candidate.index === selection.index))
+        );
+        onSelect(here[(current + 1) % here.length]);
         return;
       }
       const owner = owners.get(key);

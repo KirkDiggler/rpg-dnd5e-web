@@ -1879,6 +1879,20 @@ describe('the start’s facing (rpg-project#374 design, "The walks")', () => {
     expect(emitDungeon(doc)).toContain('start: [0, 0]');
   });
 
+  it('reads an EMPTY facing as no facing at all', () => {
+    // Zero values tell the truth: `facing: ""` is the author stating
+    // none, which is what the bare pair already says. Carrying it as a
+    // third state would let it re-emit as `facing: ""` and make the panel
+    // print "the camera looks  on the first frame".
+    const written = emitDungeon(withStart()).replace(
+      'start: [0, 0]',
+      'start: { at: [0, 0], facing: "" }'
+    );
+    const doc = parseDungeon(written);
+    expect(doc.start).toEqual({ at: p(0, 0) });
+    expect(roundTrips(doc)).toContain('start: [0, 0]');
+  });
+
   it('clears the facing back to the bare pair', () => {
     let doc = setStartFacing(withStart(), 'e');
     doc = setStartFacing(doc, undefined);

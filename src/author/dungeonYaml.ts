@@ -709,8 +709,15 @@ export function parseDungeon(text: string): DungeonDoc {
     } else if (isRecord(raw.start)) {
       expectKeys(raw.start, ['at', 'facing'], 'start');
       start = { at: fromOffset(orientation, pair(raw.start.at, 'start.at')) };
-      if (raw.start.facing !== undefined && raw.start.facing !== null) {
-        start.facing = str(raw.start, 'facing', 'start');
+      // EMPTY FACING IS NO FACING — the zero value telling the truth, not
+      // a third state. `AtlasStart.facing`'s own law says empty means the
+      // author stated none, and every reader downstream collapses it that
+      // way; carrying `facing: ''` in the model would let it re-emit as
+      // `facing: ""` and print "the camera looks  on the first frame".
+      const facing = raw.start.facing;
+      if (facing !== undefined && facing !== null) {
+        const word = str(raw.start, 'facing', 'start');
+        if (word !== '') start.facing = word;
       }
     } else {
       throw new DungeonParseError(

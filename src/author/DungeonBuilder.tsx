@@ -896,10 +896,6 @@ export function DungeonBuilder({
               onStartFacing={(facing) =>
                 applyDoc((d) => setStartFacing(d, facing))
               }
-              onRemoveStart={() => {
-                applyDoc((d) => setStart(d, null));
-                setSelection({ kind: 'dungeon' });
-              }}
               onAddIntel={() => {
                 applyDoc((d) => {
                   const next = addIntel(d);

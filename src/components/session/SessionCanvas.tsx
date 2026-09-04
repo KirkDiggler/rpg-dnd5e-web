@@ -46,6 +46,7 @@
 
 import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
 import { useCameraDials } from '@/feel/useFeelDials';
+import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type {
   DoorInfo,
@@ -75,7 +76,7 @@ import { DungeonEnvironment } from './DungeonEnvironment';
 import { MoveIndicator } from './MoveIndicator';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
-import { startCameraOffset } from './startCamera';
+import { startAzimuth } from './startAzimuth';
 import { useMoveIndicator } from './useMoveIndicator';
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
@@ -242,6 +243,7 @@ export function SessionScene({
   offHandPresentation,
   localIsDowned = false,
   myPosition,
+  startFacing,
   movePath,
   moveSeq,
   onHexClick,
@@ -327,6 +329,11 @@ export function SessionScene({
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
     revealedBounds,
+    // WHERE THE CAMERA STARTS, from the dungeon's own start facing
+    // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
+    // moment a player turns the camera it is theirs. Undefined for a
+    // dungeon that states none, which leaves the historical 45°.
+    initialAzimuth: startAzimuth(startFacing),
   });
 
   const attackableSet = useMemo(
@@ -642,13 +649,14 @@ export function SessionCanvas(props: SessionCanvasProps) {
       orthographic={!cameraDials.perspective}
       frameloop="demand"
       camera={{
-        // AIMED BY THE DUNGEON'S OWN START (rpg-project#374, "The walks").
-        // Mount-time only, like every other Canvas config here — which is
-        // exactly right for this one: the view mounts this component only
-        // once the atlas has landed, so "the first render" and "the first
-        // frame the player sees" are the same moment. With no authored
-        // facing this is `CAMERA_OFFSET` itself, unchanged.
-        position: startCameraOffset(props.startFacing),
+        // NOT WHERE THE AIMING HAPPENS. `useCameraControls`' mount effect
+        // computes the seat from its own azimuth and distance and calls
+        // `camera.position.set(...)`, so this prop is overwritten before
+        // the first frame — the start's facing seeds the hook instead
+        // (`startAzimuth.ts`). Left as the historical constant because it
+        // is still the position the camera holds for the instant before
+        // that effect runs.
+        position: CAMERA_OFFSET,
         near: 0.1,
         far: 1000,
         ...(cameraDials.perspective

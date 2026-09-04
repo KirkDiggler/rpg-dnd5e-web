@@ -148,6 +148,20 @@ interface CameraControlsOptions {
    * itself — see rpg-dnd5e-web#457, the auto-reframing regression this
    * guards against. */
   revealedBounds?: RevealedBounds | null;
+  /**
+   * Where the camera SITS on the first frame, as a bearing in radians
+   * measured from the target the way `updateCamera` measures it — the
+   * seat's azimuth, not the direction anything is looking.
+   *
+   * MOUNT-TIME SEED ONLY. It initialises `azimuth.current` and is never
+   * read again: the moment a player turns the camera, their azimuth is
+   * the truth and a prop that kept reasserting itself would fight them.
+   * Changing it after mount does nothing, deliberately.
+   *
+   * Undefined keeps the historical 45°, which is where this camera has
+   * always started (rpg-dnd5e-web#934 / rpg-project#374).
+   */
+  initialAzimuth?: number;
 }
 
 export function useCameraControls({
@@ -165,6 +179,7 @@ export function useCameraControls({
   minDistance = 5,
   maxDistance = 100,
   revealedBounds,
+  initialAzimuth,
 }: CameraControlsOptions) {
   const { camera, gl, invalidate } = useThree();
 
@@ -220,8 +235,13 @@ export function useCameraControls({
   const forward = useRef(new THREE.Vector3());
   const right = useRef(new THREE.Vector3());
 
-  // Current azimuthal angle (rotation around Y axis)
-  const azimuth = useRef(Math.PI / 4); // Start at 45 degrees
+  // Current azimuthal angle (rotation around Y axis). 45 degrees unless
+  // the caller seeds it — the dungeon's authored start facing does, so a
+  // party does not spawn looking at the back wall (rpg-project#374).
+  // Seeded ONCE, at mount: `useRef`'s argument is only read on the first
+  // render, which is precisely the "first frame, then the player owns it"
+  // rule `initialAzimuth` documents.
+  const azimuth = useRef(initialAzimuth ?? Math.PI / 4);
 
   // Current distance from target
   const distance = useRef(20);
