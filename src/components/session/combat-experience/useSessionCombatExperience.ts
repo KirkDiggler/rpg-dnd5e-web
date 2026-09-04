@@ -176,7 +176,7 @@ export function useSessionCombatExperience({
     useState<DeathSaveResponse>();
   const attackInFlightRef = useRef(false);
   const deathSaveInFlightRef = useRef(false);
-  const acceptedDeathSaveRef = useRef(false);
+  const attemptedDeathSaveDeclarationsRef = useRef(new Set<string>());
   const endTurnInFlightRef = useRef(false);
   const automaticEndTurnRef = useRef(false);
   const manualEndTurnBlockedRef = useRef(false);
@@ -365,7 +365,7 @@ export function useSessionCombatExperience({
           !current ||
           !isDeathSaveExecutableShape(current, 'execute') ||
           deathSaveInFlightRef.current ||
-          acceptedDeathSaveRef.current
+          attemptedDeathSaveDeclarationsRef.current.has(current.id)
         )
           return;
         setInteraction(EMPTY_INTERACTION);
@@ -379,7 +379,7 @@ export function useSessionCombatExperience({
               declarationId: current.id,
             });
             if (!mountedRef.current) return;
-            acceptedDeathSaveRef.current = true;
+            attemptedDeathSaveDeclarationsRef.current.add(current.id);
             setPendingDeathSaveResponse(response);
             presentation.acceptDeathSaveResponse(
               deathSaveResponseFact({ session, member, response })
@@ -391,7 +391,7 @@ export function useSessionCombatExperience({
             if (isStaleDeclarationRefusal(error)) {
               recoverStaleDeclaration(current.id, Verb.DEATH_SAVE);
             } else {
-              acceptedDeathSaveRef.current = true;
+              attemptedDeathSaveDeclarationsRef.current.add(current.id);
               const notice = `Death Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
               invalidateAuthority();
               setInteraction({

@@ -509,7 +509,7 @@ function SessionEncounterScope({
     combat.diceWitnessRole === 'roller' &&
     combat.phase === 'awaiting-roll' &&
     !combat.diceSemanticFallback &&
-    localWorldDieRequest !== undefined;
+    localWorldDieRequest?.authoritySeq !== undefined;
   const snapshotScene = lastGoodSceneRef.current;
   const localWorldDieAttemptScopeKey =
     localWorldDieRequest && snapshotScene
@@ -1156,7 +1156,9 @@ function SessionEncounterScope({
       ? ('unavailable' as const)
       : ('loading' as const);
   const localWorldDieControl =
-    combat.diceWitnessRole === 'roller' && combat.phase === 'awaiting-roll' ? (
+    combat.diceWitnessRole === 'roller' &&
+    combat.phase === 'awaiting-roll' &&
+    (combat.diceSemanticFallback || localWorldDiePhysical) ? (
       localWorldDiePresentationFailed ? (
         <LocalWorldDieTile
           mode="fallback"

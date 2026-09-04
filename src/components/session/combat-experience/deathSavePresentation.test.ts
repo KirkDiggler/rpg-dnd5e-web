@@ -16,6 +16,7 @@ import {
   deathSaveResponseFact,
   emptyPresentation,
   reduceCombatPresentation,
+  selectBlocksManualEndTurn,
   selectCurrentPresentation,
   selectVisibleStory,
 } from './presentation';
@@ -160,6 +161,7 @@ describe('shared Death Save d20 presentation', () => {
     let current = selectCurrentPresentation(state)!;
     expect(Object.hasOwn(current.authority, 'authoritySeq')).toBe(false);
     expect(Object.hasOwn(current.request!, 'authoritySeq')).toBe(false);
+    expect(selectBlocksManualEndTurn(state)).toBe(true);
 
     state = reduceCombatPresentation(
       state,

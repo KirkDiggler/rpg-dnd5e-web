@@ -1690,7 +1690,7 @@ export function selectBlocksManualEndTurn(
       !record.conflicted &&
       record.authority.kind === 'death-save' &&
       record.localPlayerOwned &&
-      record.responseAccepted &&
+      (record.responseAccepted || record.eventSource === 'live') &&
       (record.settlement === 'armed' || record.settlement === 'unresolved')
   );
 }

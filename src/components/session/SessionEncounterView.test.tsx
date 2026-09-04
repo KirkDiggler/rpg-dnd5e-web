@@ -1371,6 +1371,258 @@ describe('SessionEncounterView production combat integration', () => {
     }
   );
 
+  it('blocks only the consumed Death Save selector and accepts a newly offered next-turn selector in the same mount', async () => {
+    readyDyingTurn();
+    const nextTurn = deferredStream([turnEnded()]);
+    hoisted.streamEventsFn.mockReturnValue(nextTurn.stream);
+    hoisted.deathSaveFn
+      .mockResolvedValueOnce({
+        seq: 41n,
+        roll: 12,
+        outcome: DeathSaveOutcome.SUCCESS,
+        successesAdded: 1,
+        successes: 1,
+        failures: 0,
+        successesNeeded: 2,
+        failuresRemaining: 3,
+        continuation: DeathSaveContinuation.END_TURN,
+        presentationId: 'presentation_first-turn',
+      })
+      .mockReturnValueOnce(new Promise(() => {}));
+    renderView();
+
+    let button = await screen.findByRole('button', { name: /^death save/i });
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
+    );
+    button = screen.getByRole('button', { name: /^death save/i });
+    fireEvent.click(button);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 3,
+      order: ['char-1', 'skeleton-1'],
+      participants: [
+        participant('char-1', {
+          active: true,
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+        }),
+        participant('skeleton-1'),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [
+        deathSaveDeclaration('selector.death-save.next-turn'),
+        endTurnDeclaration(),
+      ],
+    });
+    nextTurn.release();
+    await waitFor(() => {
+      button = screen.getByRole('button', { name: /^death save/i });
+      expect(button.getAttribute('aria-describedby')).toContain(
+        'selector.death-save.next-turn'
+      );
+    });
+
+    fireEvent.click(button);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledTimes(2);
+    expect(hoisted.deathSaveFn).toHaveBeenLastCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'selector.death-save.next-turn',
+    });
+  });
+
+  it('blocks manual End Turn and physical release for a live event-first actor until the response supplies authority sequence', async () => {
+    readyDyingTurn();
+    const response = deferred<unknown>();
+    hoisted.deathSaveFn.mockReturnValue(response.promise);
+    let publishedPlan: DiceThrowPlan | undefined;
+    hoisted.publishDiceThrowFn.mockImplementation(async (input) => {
+      const draft = input.draft!;
+      publishedPlan = create(DiceThrowPlanSchema, {
+        schemaVersion: draft.schemaVersion,
+        session: input.session,
+        presentationId: draft.presentationId,
+        authoritySeq: draft.authoritySeq,
+        roller: input.member,
+        attempt: draft.attempt,
+        physicsSchema: draft.physicsSchema,
+        colliderFingerprint: draft.colliderFingerprint,
+        bodies: draft.bodies,
+        contacts: draft.contacts,
+        terminal: draft.terminal,
+      });
+      return { plan: publishedPlan };
+    });
+    const eventFirst = deferredStream([
+      event(
+        EventKind.DEATH_SAVE_ROLLED,
+        {
+          case: 'deathSaveRolled',
+          value: {
+            actor: 'char-1',
+            roll: 12,
+            outcome: DeathSaveOutcome.SUCCESS,
+            successesAdded: 1,
+            failuresAdded: 0,
+            successes: 2,
+            failures: 1,
+            successesNeeded: 1,
+            failuresRemaining: 2,
+            stabilized: false,
+            dead: false,
+            recovered: false,
+            hpRestored: 0,
+            continuation: DeathSaveContinuation.END_TURN,
+            presentationId: 'presentation_event-first-actor',
+          },
+        } as SessionEvent['body'],
+        103n
+      ),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(eventFirst.stream);
+    const actorView = renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    eventFirst.release();
+    await waitFor(() =>
+      expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
+    );
+    const endTurn = screen.getByRole('button', { name: /end turn/i });
+    expect((endTurn as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
+    expect(hoisted.publishDiceThrowFn).not.toHaveBeenCalled();
+
+    await act(async () => {
+      response.resolve({
+        seq: 27n,
+        roll: 12,
+        outcome: DeathSaveOutcome.SUCCESS,
+        successesAdded: 1,
+        failuresAdded: 0,
+        successes: 2,
+        failures: 1,
+        successesNeeded: 1,
+        failuresRemaining: 2,
+        stabilized: false,
+        dead: false,
+        recovered: false,
+        hpRestored: 0,
+        continuation: DeathSaveContinuation.END_TURN,
+        presentationId: 'presentation_event-first-actor',
+      });
+      await response.promise;
+    });
+    expect(await screen.findByText('Preparing shared d20')).toBeTruthy();
+    expect((endTurn as HTMLButtonElement).disabled).toBe(true);
+    let layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onReadyChange(true);
+      }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(hoisted.publishDiceThrowFn).toHaveBeenCalledOnce()
+    );
+    expect(hoisted.publishDiceThrowFn.mock.calls[0]?.[0]).toMatchObject({
+      session: 'enc-1',
+      member: 'char-1',
+      draft: {
+        presentationId: 'presentation_event-first-actor',
+        authoritySeq: 27n,
+        attempt: 1,
+      },
+    });
+    await waitFor(() => expect(publishedPlan).toBeDefined());
+    actorView.unmount();
+
+    readyScene();
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'human',
+          monsterRef: '',
+        },
+        {
+          id: 'char-2',
+          kind: MemberKind.PLAYER,
+          name: 'Lyra',
+          classRef: 'wizard',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+      ],
+    });
+    const witnessEvent = deferredStream([
+      event(
+        EventKind.DEATH_SAVE_ROLLED,
+        {
+          case: 'deathSaveRolled',
+          value: {
+            actor: 'char-1',
+            roll: 12,
+            outcome: DeathSaveOutcome.SUCCESS,
+            successesAdded: 1,
+            failuresAdded: 0,
+            successes: 2,
+            failures: 1,
+            successesNeeded: 1,
+            failuresRemaining: 2,
+            stabilized: false,
+            dead: false,
+            recovered: false,
+            hpRestored: 0,
+            continuation: DeathSaveContinuation.END_TURN,
+            presentationId: 'presentation_event-first-actor',
+          },
+        } as SessionEvent['body'],
+        501n
+      ),
+    ]);
+    const witnessPlans = deferredDiceStream();
+    hoisted.streamEventsFn.mockReturnValue(witnessEvent.stream);
+    hoisted.streamDiceThrowsFn.mockReturnValue(witnessPlans.stream);
+    renderView({ characterId: 'char-2', playerId: 'player-2' });
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+
+    await act(async () => witnessPlans.publish(publishedPlan!));
+    witnessEvent.release();
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({
+        kind: 'witness',
+        plan: {
+          presentationId: 'presentation_event-first-actor',
+          authoritySeq: 27n,
+          roller: 'char-1',
+        },
+      })
+    );
+    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    expect(
+      isValidElement<LocalWorldDieLayerProps>(layer) &&
+        layer.props.authoritativeFace
+    ).toBe(12);
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onTerminal('settled');
+      }
+    });
+    await screen.findByText('Death save! 2 successes — 1 to stabilize.');
+  });
+
   it('renders no Death Save control when the exact declaration is absent even with Dying progress and zero HP', async () => {
     readyDyingTurn();
     hoisted.affordFn.mockResolvedValue({
@@ -1479,7 +1731,7 @@ describe('SessionEncounterView production combat integration', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: /^death save/i })
     );
-    await screen.findByText('Preparing die');
+    await screen.findByText('Preparing shared d20');
     await waitFor(() =>
       expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
     );
@@ -1598,7 +1850,7 @@ describe('SessionEncounterView production combat integration', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: /^death save/i })
     );
-    await screen.findByText('Preparing die');
+    await screen.findByText('Preparing shared d20');
     first.unmount();
 
     readyScene();
@@ -1761,7 +2013,7 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
     });
 
-    await waitFor(() => screen.getByText('Preparing die'));
+    await waitFor(() => screen.getByText('Preparing shared d20'));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
     localStrike.release();
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
@@ -1850,7 +2102,7 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
     });
 
-    await screen.findByText('Preparing die');
+    await screen.findByText('Preparing shared d20');
     const preparingLayer = hoisted.lastCanvasProps.current?.presentationLayer;
     expect(
       isValidElement<LocalWorldDieLayerProps>(preparingLayer) &&
@@ -1874,14 +2126,14 @@ describe('SessionEncounterView production combat integration', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
-    expect(screen.queryByText('Shared dice presentation')).toBeNull();
+    expect(screen.queryByText('Shared d20 presentation')).toBeNull();
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(preparingLayer)) {
         preparingLayer.props.onReadyChange(true);
       }
     });
 
-    await screen.findByText('Shared dice presentation');
+    await screen.findByText('Shared d20 presentation');
     await waitFor(() =>
       expect(hoisted.publishDiceThrowFn).toHaveBeenCalledTimes(1)
     );
@@ -1958,7 +2210,7 @@ describe('SessionEncounterView production combat integration', () => {
     act(() => {
       hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
     });
-    await screen.findByText('Preparing die');
+    await screen.findByText('Preparing shared d20');
     const layer = hoisted.lastCanvasProps.current?.presentationLayer;
     act(() => {
       if (isValidElement<LocalWorldDieLayerProps>(layer)) {
