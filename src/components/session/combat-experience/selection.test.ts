@@ -1,5 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import {
+  DeathSaveRefSchema,
   DeclarationSchema,
   ShortfallReason,
   ShortfallSchema,
@@ -137,6 +138,23 @@ describe('selectCombatExperience', () => {
         state('v1.end', 'goblin-1')
       )?.candidate
     ).toBeNull();
+  });
+
+  it('recognizes the exact selector-bearing no-target Death Save declaration without arming a candidate', () => {
+    const deathSave = declaration('selector.death-save', {
+      verb: Verb.DEATH_SAVE,
+      slot: Slot.NONE,
+      targetKind: TargetKind.NONE,
+      candidates: [],
+      deathSave: create(DeathSaveRefSchema, { name: 'Death Save' }),
+    });
+
+    expect(
+      selectCombatExperience(
+        [deathSave],
+        state('selector.death-save', 'must-not-become-a-target')
+      )
+    ).toEqual({ declaration: deathSave, candidate: null, whyText: null });
   });
 
   it('returns null when the selected opaque id is no longer offered', () => {

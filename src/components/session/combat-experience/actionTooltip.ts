@@ -71,7 +71,9 @@ export function buildActionTooltip(declaration: Declaration): ActionTooltip {
       ? declaration.attack?.name || 'Attack'
       : declaration.verb === Verb.ACTIVATE
         ? declaration.ability?.name || 'Ability'
-        : 'Move';
+        : declaration.verb === Verb.DEATH_SAVE
+          ? declaration.deathSave?.name || 'Death Save'
+          : 'Move';
 
   const lines: ActionTooltipLine[] = [];
 

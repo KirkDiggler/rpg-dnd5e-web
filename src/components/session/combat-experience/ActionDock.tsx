@@ -45,12 +45,16 @@ function declarationLabel(declaration: Declaration): string {
     // refs to names would go stale the first time one was renamed.
     return declaration.ability?.name || 'Ability';
   }
+  if (declaration.verb === Verb.DEATH_SAVE) {
+    return declaration.deathSave?.name || 'Death Save';
+  }
   return 'Move';
 }
 
 function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.ATTACK) return '⚔';
   if (declaration.verb === Verb.ACTIVATE) return '✦';
+  if (declaration.verb === Verb.DEATH_SAVE) return '✚';
   return '➜';
 }
 
@@ -258,7 +262,8 @@ export function ActionDock({
     (declaration) =>
       declaration.verb === Verb.ATTACK ||
       declaration.verb === Verb.MOVE ||
-      declaration.verb === Verb.ACTIVATE
+      declaration.verb === Verb.ACTIVATE ||
+      declaration.verb === Verb.DEATH_SAVE
   );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
 

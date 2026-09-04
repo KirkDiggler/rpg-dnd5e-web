@@ -877,6 +877,7 @@ function SessionEncounterScope({
         case 'struck':
         case 'missed':
         case 'activationResult':
+        case 'deathSaveRolled':
           return ['characterData', 'afford', 'view'];
         case 'downed':
           return ['characterData', 'afford', 'turn', 'view'];

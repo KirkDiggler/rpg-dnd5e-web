@@ -840,6 +840,7 @@ const EXPECTED_OTHER_KIND = {
   regionRevealed: EventKind.REGION_REVEALED,
   activated: EventKind.ACTIVATED,
   activationResult: EventKind.ACTIVATION_RESULT,
+  deathSaveRolled: EventKind.DEATH_SAVE_ROLLED,
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -856,6 +857,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.MISSED,
   EventKind.ACTIVATED,
   EventKind.ACTIVATION_RESULT,
+  EventKind.DEATH_SAVE_ROLLED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -941,6 +943,12 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
             })
           : null,
         target: event.body.value.target,
+      });
+    case 'deathSaveRolled':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        value: event.body.value,
       });
     case 'activationResult': {
       const activation = event.body.value;

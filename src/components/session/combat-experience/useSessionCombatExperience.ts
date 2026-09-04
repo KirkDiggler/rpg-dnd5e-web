@@ -1,5 +1,6 @@
 import { useSessionActivate } from '@/api/useSessionActivate';
 import { useSessionAttack } from '@/api/useSessionAttack';
+import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
 import type { SessionRefreshKey } from '@/components/session/useCoalescedSessionRefreshes';
 import type {
@@ -7,6 +8,7 @@ import type {
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
 import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
   TargetKind,
@@ -70,6 +72,8 @@ export interface UseSessionCombatExperienceResult {
   story: readonly CombatExperienceStoryExchange[];
   debug: readonly string[];
   result?: CombatExperienceAttackOutcome;
+  /** Accepted provider result retained for the release/continuation layer. */
+  pendingDeathSaveResponse?: DeathSaveResponse;
   /** Targets whose attack roll has not been revealed on screen yet. The map
    * holds their downed reveal until it has — see `downedReveal.ts`. */
   unresolvedAttackTargets: ReadonlySet<string>;
@@ -163,7 +167,10 @@ export function useSessionCombatExperience({
   const [targeting, setTargeting] = useState(false);
   const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
   const [showTurnNotice, setShowTurnNotice] = useState(false);
+  const [pendingDeathSaveResponse, setPendingDeathSaveResponse] =
+    useState<DeathSaveResponse>();
   const attackInFlightRef = useRef(false);
+  const deathSaveInFlightRef = useRef(false);
   const endTurnInFlightRef = useRef(false);
   const activateInFlightRef = useRef(false);
   const mountedRef = useRef(true);
@@ -203,6 +210,7 @@ export function useSessionCombatExperience({
     result: presentation.result,
   });
   const { attack } = useSessionAttack();
+  const { deathSave } = useSessionDeathSave();
   const { activate } = useSessionActivate();
   const { endTurn } = useSessionEndTurn();
 
@@ -336,6 +344,48 @@ export function useSessionCombatExperience({
         return;
       }
 
+      if (candidate.verb === Verb.DEATH_SAVE) {
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.DEATH_SAVE,
+          TargetKind.NONE
+        );
+        if (!current || deathSaveInFlightRef.current) return;
+        setInteraction(EMPTY_INTERACTION);
+        setTargeting(false);
+        deathSaveInFlightRef.current = true;
+        void (async () => {
+          try {
+            const response = await deathSave({
+              session,
+              member,
+              declarationId: current.id,
+            });
+            if (!mountedRef.current) return;
+            setPendingDeathSaveResponse(response);
+            invalidateAuthority();
+            scheduleRefresh(['characterData', 'turn', 'afford']);
+          } catch (error) {
+            if (!mountedRef.current) return;
+            if (isStaleDeclarationRefusal(error)) {
+              recoverStaleDeclaration(current.id, Verb.DEATH_SAVE);
+            } else {
+              const notice = `Death Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              invalidateAuthority();
+              setInteraction({
+                ...EMPTY_INTERACTION,
+                changedOptionNotice: notice,
+              });
+              scheduleRefresh(['characterData', 'turn', 'afford']);
+            }
+          } finally {
+            deathSaveInFlightRef.current = false;
+          }
+        })();
+        return;
+      }
+
       if (candidate.verb === Verb.MOVE) {
         const current = uniqueCurrentDeclaration(
           declarationsRef.current,
@@ -376,7 +426,14 @@ export function useSessionCombatExperience({
         runActivateRef.current(candidate);
       }
     },
-    [member]
+    [
+      deathSave,
+      invalidateAuthority,
+      member,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
   );
 
   const onTargetClick = useCallback(
@@ -677,6 +734,7 @@ export function useSessionCombatExperience({
       story: pacing.story,
       debug: presentation.debug,
       result: pacing.result,
+      pendingDeathSaveResponse,
       unresolvedAttackTargets: presentation.unresolvedAttackTargets,
       diceEvents: presentation.diceEvents,
       diceSemanticFallback: presentation.semanticFallback,
@@ -703,6 +761,7 @@ export function useSessionCombatExperience({
       pacing.notice,
       pacing.result,
       pacing.story,
+      pendingDeathSaveResponse,
       phase,
       presentation.debug,
       presentation.diceEvents,

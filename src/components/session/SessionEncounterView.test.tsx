@@ -22,10 +22,15 @@ import {
   AttackRefSchema,
   ClockKind,
   DamageType,
+  DeathSaveContinuation,
+  DeathSaveOutcome,
+  DeathSaveProgressSchema,
+  DeathSaveRefSchema,
   DeclarationSchema,
   DoorState,
   GridKind,
   HexLayout,
+  LifeState,
   MemberKind,
   ShortfallReason,
   ShortfallSchema,
@@ -97,6 +102,7 @@ const hoisted = vi.hoisted(() => ({
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
+  deathSaveFn: vi.fn(),
   endTurnFn: vi.fn(),
   getCharacterDataFn: vi.fn(),
   equipItemFn: vi.fn(),
@@ -148,6 +154,7 @@ vi.mock('@/api/client', () => ({
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
+    deathSave: hoisted.deathSaveFn,
     endTurn: hoisted.endTurnFn,
   },
   characterV2Client: {
@@ -255,6 +262,42 @@ function endTurnDeclaration(id = 'v1.end'): Declaration {
     available: true,
     targetKind: TargetKind.NONE,
     candidates: [],
+  });
+}
+
+function deathSaveDeclaration(id = 'selector.death-save'): Declaration {
+  return create(DeclarationSchema, {
+    id,
+    verb: Verb.DEATH_SAVE,
+    slot: Slot.NONE,
+    available: true,
+    targetKind: TargetKind.NONE,
+    candidates: [],
+    deathSave: create(DeathSaveRefSchema, { name: 'Death Save' }),
+  });
+}
+
+function readyDyingTurn() {
+  readyTurn([deathSaveDeclaration(), endTurnDeclaration()]);
+  hoisted.turnFn.mockResolvedValue({
+    clock: ClockKind.TURN,
+    active: 'char-1',
+    round: 2,
+    order: ['char-1', 'skeleton-1'],
+    participants: [
+      participant('char-1', {
+        active: true,
+        standing: Standing.DOWNED,
+        lifeState: LifeState.DYING,
+        deathSaves: create(DeathSaveProgressSchema, {
+          successes: 1,
+          failures: 2,
+          successesNeeded: 2,
+          failuresRemaining: 1,
+        }),
+      }),
+      participant('skeleton-1'),
+    ],
   });
 }
 
@@ -411,6 +454,7 @@ beforeEach(() => {
     hoisted.affordFn,
     hoisted.turnFn,
     hoisted.attackFn,
+    hoisted.deathSaveFn,
     hoisted.endTurnFn,
     hoisted.getCharacterDataFn,
     hoisted.equipItemFn,
@@ -1260,6 +1304,113 @@ describe('SessionEncounterView production combat integration', () => {
       target: 'skeleton-1',
       declarationId: 'v1.attack.longsword',
     });
+  });
+
+  it('dispatches one exact no-target Death Save command and fences a duplicate click in flight', async () => {
+    readyDyingTurn();
+    const pending = deferred<unknown>();
+    hoisted.deathSaveFn.mockReturnValue(pending.promise);
+    renderView();
+
+    const button = await screen.findByRole('button', { name: /^death save/i });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+    expect(hoisted.deathSaveFn).toHaveBeenCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'selector.death-save',
+    });
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    expect(screen.queryByRole('list', { name: /targets/i })).toBeNull();
+  });
+
+  it('renders no Death Save control when the exact declaration is absent even with Dying progress and zero HP', async () => {
+    readyDyingTurn();
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [endTurnDeclaration()],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        hitPoints: { current: 0, max: 28, temp: 0 },
+        lifeState: LifeState.DYING,
+        deathSaves: create(DeathSaveProgressSchema, {
+          successes: 2,
+          failures: 2,
+          successesNeeded: 1,
+          failuresRemaining: 1,
+        }),
+      }),
+    });
+    renderView();
+
+    await screen.findByRole('button', { name: /end turn/i });
+    expect(screen.queryByRole('button', { name: /death save/i })).toBeNull();
+    expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
+  });
+
+  it('invalidates command authority after a Death Save response and retains its provider continuation for dice release', async () => {
+    readyDyingTurn();
+    const response = deferred<unknown>();
+    hoisted.deathSaveFn.mockReturnValue(response.promise);
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    const turnRefresh = deferred<unknown>();
+    const affordRefresh = deferred<unknown>();
+    hoisted.turnFn.mockReturnValue(turnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(affordRefresh.promise);
+    await act(async () => {
+      response.resolve({
+        seq: 27n,
+        roll: 12,
+        outcome: DeathSaveOutcome.SUCCESS,
+        successesAdded: 1,
+        failuresAdded: 0,
+        successes: 2,
+        failures: 2,
+        successesNeeded: 1,
+        failuresRemaining: 1,
+        stabilized: false,
+        dead: false,
+        recovered: false,
+        hpRestored: 0,
+        continuation: DeathSaveContinuation.END_TURN,
+        presentationId: 'presentation_opaque-token',
+      });
+      await response.promise;
+    });
+
+    await screen.findByText(/actions may be out of date/i);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: /^death save/i,
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+  });
+
+  it('never retries an ambiguous Death Save failure and reconciles authority instead', async () => {
+    readyDyingTurn();
+    hoisted.deathSaveFn.mockRejectedValue(
+      new Error('transport status unknown')
+    );
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+
+    await screen.findByText(/death save failed: transport status unknown/i);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
   });
 
   it('keeps panel-first actions live through the development StrictMode setup/cleanup probe', async () => {
