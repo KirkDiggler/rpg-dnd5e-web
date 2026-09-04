@@ -71,6 +71,18 @@ export interface AtlasPathIndex {
   /** Cells a prop occupies with `blocksMovement: true` — nothing may enter
    * one, even from an otherwise-open edge. */
   blockedCells: ReadonlySet<string>;
+  /** Cells a live, currently-sighted OTHER member occupies right now
+   * (rpg-api#903 follow-up: the vendor NPC is the first entity that sits
+   * permanently in open floor, which is what made this gap visible — but
+   * the fix is entity-kind-agnostic, the same as a monster or another
+   * player standing in the way). Blocks entry the same as a
+   * movement-blocking prop. LIVE, not construction truth, like
+   * `shutDoorEdges` above — kept as its own set for the same reason that
+   * one is: reopening a door is a doors-map change, not an atlas change,
+   * and a member moving is a sightings change, not an atlas change
+   * either. Empty for every caller that doesn't track members (tests,
+   * callers predating this). */
+  occupiedCells: ReadonlySet<string>;
 }
 
 export function buildAtlasPathIndex(
@@ -80,7 +92,14 @@ export function buildAtlasPathIndex(
    * stays crossable. Provided, a doorway passes only when its door is
    * KNOWN OPEN: a missing entry refuses, matching the shut leaf
    * `AtlasWalls` draws for the same unknown. */
-  doors?: ReadonlyMap<string, DoorInfo>
+  doors?: ReadonlyMap<string, DoorInfo>,
+  /** Cells a live, currently-sighted OTHER member occupies right now —
+   * never the caller's own position, the same way `otherMembers` already
+   * excludes self. Omitted keeps every cell enterable, the
+   * pre-occupancy behavior. A `remembered` sighting (a held memory, not
+   * confirmed still there) must never appear here — the caller filters
+   * that out before building this set. */
+  occupiedCells?: ReadonlySet<string>
 ): AtlasPathIndex {
   const floor = new Set(
     atlas.cells.map((cell) => coordToKey(positionToCube(cell)))
@@ -130,15 +149,23 @@ export function buildAtlasPathIndex(
     }
   }
 
-  return { floor, blockedEdges, doorwayEdges, shutDoorEdges, blockedCells };
+  return {
+    floor,
+    blockedEdges,
+    doorwayEdges,
+    shutDoorEdges,
+    blockedCells,
+    occupiedCells: occupiedCells ?? new Set(),
+  };
 }
 
 /** Whether a member may step directly from `a` to `b` — both must be
- * declared floor, the destination must have no movement-blocking prop,
- * and the edge itself must not be a boundary-only separator (a doorway
- * pair always passes; an undeclared pair between two floor cells in the
- * same open chamber always passes too — the atlas has no "this is open
- * floor" flag, absence of a blocking boundary IS that flag). */
+ * declared floor, the destination must have no movement-blocking prop AND
+ * no live member currently standing on it, and the edge itself must not
+ * be a boundary-only separator (a doorway pair always passes; an
+ * undeclared pair between two floor cells in the same open chamber always
+ * passes too — the atlas has no "this is open floor" flag, absence of a
+ * blocking boundary IS that flag). */
 export function edgePassable(
   index: AtlasPathIndex,
   a: CubeCoord,
@@ -147,7 +174,7 @@ export function edgePassable(
   const ka = coordToKey(a);
   const kb = coordToKey(b);
   if (!index.floor.has(ka) || !index.floor.has(kb)) return false;
-  if (index.blockedCells.has(kb)) return false;
+  if (index.blockedCells.has(kb) || index.occupiedCells.has(kb)) return false;
   const key = pairKey(a, b);
   if (index.doorwayEdges.has(key)) return !index.shutDoorEdges.has(key);
   return !index.blockedEdges.has(key);

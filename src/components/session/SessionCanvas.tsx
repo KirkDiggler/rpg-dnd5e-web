@@ -182,6 +182,12 @@ export interface SessionCanvasProps {
   /** Fires with the clicked door's id — the open/unlock affordance lives
    * in the caller, which knows who acts and what the door's state is. */
   onDoorClick?: (door: string) => void;
+  /** Fires when a click lands on a MEMBER_KIND_WORLD member's cell (a
+   * placed world NPC, e.g. a vendor) — routed separately from
+   * `onEntityClick`, which is gated on `attackableTargets` and a world NPC
+   * is never an attack candidate. The Interact RPC and range/adjacency are
+   * entirely the caller's concern; this component only owns the click. */
+  onInteractClick?: (subject: string) => void;
   /** Subject ids the caller currently offers as in-reach, AFFORDABLE
    * Attack candidates (rpg-project#249) — see this component's own doc
    * comment on why this is narrower than every in-reach candidate.
@@ -236,6 +242,7 @@ export function SessionScene({
   roster,
   doors,
   onDoorClick,
+  onInteractClick,
   attackableTargets,
   pathIndex = null,
   turnLocked = false,
@@ -317,17 +324,31 @@ export function SessionScene({
     [attackableTargets]
   );
 
+  const membersBySubject = useMemo(
+    () => new Map((otherMembers ?? []).map((m) => [m.subject, m])),
+    [otherMembers]
+  );
+
   // The ONE place a target click is resolved — both the ground plane's
   // own fallback (a click that lands on an entity's cell without going
   // through the entity's own mesh, e.g. a remembered/inert entity with no
   // handlers of its own) and each live entity's `HexEntity.onClick` call
   // this directly. See this module's own doc comment on why the entity
   // mesh needs its own wired handler at all.
+  //
+  // A MEMBER_KIND_WORLD subject (a placed world NPC) routes to
+  // `onInteractClick` unconditionally — it is never an attack candidate, so
+  // it would never appear in `attackableSet` and a click on it would
+  // otherwise be silently swallowed by the gate below.
   const handleTargetClick = useCallback(
     (subject: string) => {
+      if (membersBySubject.get(subject)?.kind === MemberKind.WORLD) {
+        onInteractClick?.(subject);
+        return;
+      }
       if (attackableSet.has(subject)) onEntityClick?.(subject);
     },
-    [attackableSet, onEntityClick]
+    [membersBySubject, attackableSet, onEntityClick, onInteractClick]
   );
 
   // Click-to-walk: the raycast/hover/validity machinery is the SAME
@@ -540,7 +561,13 @@ export function SessionScene({
           entityId={member.subject}
           name={member.name}
           position={member.position}
-          type={member.kind === MemberKind.PLAYER ? 'player' : 'monster'}
+          type={
+            member.kind === MemberKind.PLAYER
+              ? 'player'
+              : member.kind === MemberKind.WORLD
+                ? 'npc'
+                : 'monster'
+          }
           hexSize={hexSize}
           classRefId={
             member.kind === MemberKind.PLAYER
@@ -567,7 +594,7 @@ export function SessionScene({
             isSightedDowned(member.standing)
           }
           isDead={
-            member.kind !== MemberKind.PLAYER &&
+            member.kind === MemberKind.MONSTER &&
             isSightedDowned(member.standing)
           }
           onClick={handleTargetClick}
