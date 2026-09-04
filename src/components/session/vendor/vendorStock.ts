@@ -18,3 +18,13 @@ export function vendorStockLabel(entry: VendorStockEntry): string {
   }
   return 'Always in stock';
 }
+
+/** Whether a row can still be bought — false only for a LIMITED row
+ * that's run out. An UNLIMITED (or unspecified/unmapped) row is always
+ * purchasable, the same least-presumptuous reading `vendorStockLabel`
+ * already gives an unrecognized mode. */
+export function vendorStockPurchasable(entry: VendorStockEntry): boolean {
+  return (
+    entry.stockMode !== VendorStockMode.LIMITED || (entry.quantity ?? 0) > 0
+  );
+}

@@ -101,6 +101,7 @@ const hoisted = vi.hoisted(() => ({
   unlockFn: vi.fn(),
   searchFn: vi.fn(),
   interactFn: vi.fn(),
+  tradeFn: vi.fn(),
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
@@ -154,6 +155,7 @@ vi.mock('@/api/client', () => ({
     unlock: hoisted.unlockFn,
     search: hoisted.searchFn,
     interact: hoisted.interactFn,
+    trade: hoisted.tradeFn,
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
@@ -3088,6 +3090,149 @@ describe('SessionEncounterView production combat integration', () => {
         expect(screen.getByText('too far away')).toBeTruthy()
       );
       expect(screen.queryByTestId('vendor-popover')).toBeNull();
+    });
+  });
+
+  describe('vendor Buy — Trade RPC (rpg-project#369/#370)', () => {
+    beforeEach(() => {
+      hoisted.tradeFn.mockReset();
+    });
+
+    async function openVendorWithStock() {
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'longsword',
+              displayName: 'Longsword',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 1,
+            },
+          ],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+    }
+
+    it('clicking Buy then Confirm calls Trade with an empty give and the row read off as receive, and refreshes the popover from the response', async () => {
+      await openVendorWithStock();
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'longsword',
+              displayName: 'Longsword',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 0,
+            },
+          ],
+        },
+        seq: 2n,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Longsword' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          give: { items: [] },
+          receive: {
+            items: [
+              {
+                equipmentType: 'weapon',
+                equipmentId: 'longsword',
+                quantity: 1,
+              },
+            ],
+          },
+        })
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.getByTestId('vendor-stock-longsword').textContent
+        ).toContain('0 left')
+      );
+      expect(screen.getByText('Bought Longsword.')).toBeTruthy();
+    });
+
+    it('a Trade failure surfaces a notice and leaves the existing vendor descriptor in place', async () => {
+      await openVendorWithStock();
+      hoisted.tradeFn.mockRejectedValue(new Error('longsword: out of stock'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Longsword' })
+      );
+
+      await waitFor(() =>
+        expect(screen.getByText('longsword: out of stock')).toBeTruthy()
+      );
+      // Still showing the pre-failure stock, not blanked or stale-cleared.
+      expect(
+        screen.getByTestId('vendor-stock-longsword').textContent
+      ).toContain('1 left');
+    });
+
+    it('Cancel never calls Trade', async () => {
+      await openVendorWithStock();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel buy' }));
+
+      expect(hoisted.tradeFn).not.toHaveBeenCalled();
+    });
+
+    it("a successful Buy refetches the local player's own CharacterData — TradeResponse carries only the vendor's descriptor, nothing to replaceCharacterData from, and free-roam purchases have no turnEnded event to piggyback a refresh on", async () => {
+      await openVendorWithStock();
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: '',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 2n,
+      });
+      const callsBeforeBuy = hoisted.getCharacterDataFn.mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Longsword' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
+          callsBeforeBuy
+        )
+      );
     });
   });
 
