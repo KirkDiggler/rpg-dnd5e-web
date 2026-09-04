@@ -46,14 +46,14 @@ import { createPortal } from 'react-dom';
 import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent } from '../game/equipment/equipmentTypes';
-import { cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
+import { coordToKey, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
-import { buildAtlasPathIndex } from './atlasPath';
+import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
   buildScene3D,
@@ -270,11 +270,6 @@ function SessionEncounterScope({
         : null,
     [atlas, layoutOutcome]
   );
-  const pathIndex = useMemo(
-    () => (atlas ? buildAtlasPathIndex(atlas, doors) : null),
-    [atlas, doors]
-  );
-
   // Once owner-private CharacterData has been confirmed it remains valid
   // presentation input while a background refresh is loading or reports a
   // transient status error. Neither condition may freeze newer public door /
@@ -285,11 +280,10 @@ function SessionEncounterScope({
   const lastGoodPositionRef = useRef<ReturnType<typeof positionToCube> | null>(
     null
   );
-  const lastGoodPathIndexRef = useRef<typeof pathIndex>(null);
+  const lastGoodPathIndexRef = useRef<AtlasPathIndex | null>(null);
   if (canDrawSceneNow) {
     lastGoodSceneRef.current = scene;
     lastGoodPositionRef.current = positionToCube(wherePosition);
-    lastGoodPathIndexRef.current = pathIndex;
   }
   const canDrawScene =
     lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
@@ -354,6 +348,33 @@ function SessionEncounterScope({
     () => sightingsToEntities(sightings, member),
     [member, sightings]
   );
+
+  // The path PREVIEW must route around exactly what the server's own Move
+  // already refuses to enter — a live other member's cell, world NPC,
+  // monster, or player alike (the vendor is only what made the gap
+  // visible: it is the first entity that sits permanently in open floor).
+  // A `remembered` sighting is filtered out here, not left for
+  // `buildAtlasPathIndex` to guess: it is a held memory, not confirmed
+  // still there, and must never block a route the way a live one does —
+  // the same distinction `SightedMember.remembered`'s own doc comment
+  // already draws for rendering.
+  const occupiedCellKeys = useMemo(
+    () =>
+      new Set(
+        otherMembers
+          .filter((m) => !m.remembered)
+          .map((m) => coordToKey(m.position))
+      ),
+    [otherMembers]
+  );
+  const pathIndex = useMemo(
+    () => (atlas ? buildAtlasPathIndex(atlas, doors, occupiedCellKeys) : null),
+    [atlas, doors, occupiedCellKeys]
+  );
+  if (canDrawSceneNow) {
+    lastGoodPathIndexRef.current = pathIndex;
+  }
+
   const publicMemberNames = useMemo(
     () => new Map([...roster].map(([id, entry]) => [id, entry.name])),
     [roster]

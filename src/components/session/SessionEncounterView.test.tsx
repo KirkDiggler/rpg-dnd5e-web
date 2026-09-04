@@ -2036,6 +2036,54 @@ describe('SessionEncounterView production combat integration', () => {
     ).toBe(DoorState.OPEN);
   });
 
+  it('a live other member occupies its cell in pathIndex — the path preview must route around it, same as a wall (PR #920 follow-up)', async () => {
+    readyScene();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'demo-merchant-1',
+          name: 'Demo Merchant',
+          kind: MemberKind.WORLD,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: ['sight'],
+        },
+      ],
+    });
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.size
+      ).toBe(1)
+    );
+    expect(
+      hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.has('1,-1,0')
+    ).toBe(true);
+  });
+
+  it('a remembered (stale-memory) sighting never blocks the path — it is not confirmed still there', async () => {
+    readyScene();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'demo-merchant-1',
+          name: 'Demo Merchant',
+          kind: MemberKind.WORLD,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: [],
+        },
+      ],
+    });
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalled());
+    expect(hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.size).toBe(
+      0
+    );
+  });
+
   it('preserves door actions and refreshes live door state', async () => {
     readyScene();
     hoisted.getDoorsFn.mockResolvedValue({
