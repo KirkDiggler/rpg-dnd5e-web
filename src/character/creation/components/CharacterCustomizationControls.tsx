@@ -4,20 +4,35 @@ import {
   rgb24ToHex,
   type HairSlotSelection,
 } from '@/character/customization/hairCustomization';
+import { outfitDefaultColors } from '@/character/customization/outfitCustomization';
 import type { CharacterCustomizationProfile } from '@/generated/characterCustomizationCatalog';
 import { create } from '@bufbuild/protobuf';
 import { EmptySchema } from '@bufbuild/protobuf/wkt';
-import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import type {
+  HairCustomization,
+  OutfitCustomization,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import {
   HairCustomizationSchema,
+  OutfitCustomizationSchema,
   StyleSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import type { Appearance } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { AppearanceSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
+import { useState } from 'react';
+import {
+  AppearanceAccordionSection,
+  type AppearanceSection,
+} from './AppearanceAccordionSection';
 import { HairStyleGrid } from './HairStyleGrid';
+import { OutfitColorControls } from './OutfitColorControls';
+import { SharedHairMaterialControls } from './SharedHairMaterialControls';
 
 interface CharacterCustomizationControlsProps {
-  profile: CharacterCustomizationProfile;
-  hair?: HairCustomization;
-  onChange: (hair: HairCustomization | undefined) => void;
+  readonly profile: CharacterCustomizationProfile;
+  readonly classRefId?: string;
+  readonly appearance: Appearance;
+  readonly onChange: (appearance: Appearance) => void;
 }
 
 function slotSelection(value: HairCustomization['scalp']): HairSlotSelection {
@@ -48,6 +63,24 @@ function editableRoughness(value: number | undefined): number | undefined {
   return value !== undefined && resolveHairRoughness(value) === value
     ? value
     : undefined;
+}
+
+function editableOutfit(value: OutfitCustomization | undefined) {
+  const primary = value?.primaryColorSrgb;
+  const secondary = value?.secondaryColorSrgb;
+  if (
+    (primary === undefined ||
+      (Number.isInteger(primary) && primary >= 0 && primary <= 0xffffff)) &&
+    (secondary === undefined ||
+      (Number.isInteger(secondary) && secondary >= 0 && secondary <= 0xffffff))
+  ) {
+    if (primary === undefined && secondary === undefined) return undefined;
+    return create(OutfitCustomizationSchema, {
+      primaryColorSrgb: primary,
+      secondaryColorSrgb: secondary,
+    });
+  }
+  return undefined;
 }
 
 function styleSelection(selection: HairSlotSelection) {
@@ -84,12 +117,15 @@ function optionalHair(
   return create(HairCustomizationSchema, fields);
 }
 
+/** One complete Appearance editor; every patch preserves the sibling container. */
 export function CharacterCustomizationControls({
   profile,
-  hair,
+  classRefId,
+  appearance,
   onChange,
 }: CharacterCustomizationControlsProps) {
-  const update = (
+  const [openSection, setOpenSection] = useState<AppearanceSection>('hair');
+  const updateHair = (
     patch: Partial<
       Pick<
         HairCustomization,
@@ -97,105 +133,105 @@ export function CharacterCustomizationControls({
       >
     >
   ) => {
+    const hair = appearance.hair;
     onChange(
-      optionalHair({
-        scalp: editableSelection(hair?.scalp),
-        facialHair: editableSelection(hair?.facialHair),
-        colorSrgb: editableColor(hair?.colorSrgb),
-        roughness: editableRoughness(hair?.roughness),
-        ...patch,
+      create(AppearanceSchema, {
+        hair: optionalHair({
+          scalp: editableSelection(hair?.scalp),
+          facialHair: editableSelection(hair?.facialHair),
+          colorSrgb: editableColor(hair?.colorSrgb),
+          roughness: editableRoughness(hair?.roughness),
+          ...patch,
+        }),
+        outfit: editableOutfit(appearance.outfit),
       })
     );
   };
-  const displayedColor = rgb24ToHex(resolveHairColorSrgb(hair?.colorSrgb));
-  const displayedRoughness = resolveHairRoughness(hair?.roughness);
+  const updateOutfit = (outfit: OutfitCustomization | undefined) => {
+    onChange(
+      create(AppearanceSchema, {
+        hair: optionalHair({
+          scalp: editableSelection(appearance.hair?.scalp),
+          facialHair: editableSelection(appearance.hair?.facialHair),
+          colorSrgb: editableColor(appearance.hair?.colorSrgb),
+          roughness: editableRoughness(appearance.hair?.roughness),
+        }),
+        outfit: editableOutfit(outfit),
+      })
+    );
+  };
+  const hairSummary = rgb24ToHex(
+    resolveHairColorSrgb(appearance.hair?.colorSrgb)
+  );
+  const defaults = outfitDefaultColors(classRefId);
+  const gearSummary =
+    appearance.outfit?.primaryColorSrgb === undefined
+      ? (defaults?.primaryColor ?? 'Unavailable')
+      : `#${appearance.outfit.primaryColorSrgb.toString(16).padStart(6, '0').toUpperCase()}`;
 
   return (
-    <div className="space-y-6">
-      <HairStyleGrid
-        profile={profile}
-        slot="scalp"
-        selection={slotSelection(hair?.scalp)}
-        onChange={(selection) => update({ scalp: styleSelection(selection) })}
-      />
-      <HairStyleGrid
-        profile={profile}
-        slot="facialHair"
-        selection={slotSelection(hair?.facialHair)}
-        onChange={(selection) =>
-          update({ facialHair: styleSelection(selection) })
-        }
-      />
-
-      <fieldset className="space-y-4 rounded-lg border border-[var(--border-primary)] p-3">
-        <legend className="px-1 text-sm font-semibold text-[var(--text-primary)]">
-          Hair material
-        </legend>
-        <div className="grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-          <label
-            htmlFor="character-hair-color"
-            className="text-sm text-[var(--text-primary)]"
-          >
-            Hair color
-          </label>
-          <input
-            id="character-hair-color"
-            type="color"
-            value={displayedColor}
-            onChange={(event) =>
-              update({
-                colorSrgb: Number.parseInt(
-                  event.currentTarget.value.slice(1),
-                  16
-                ),
-              })
-            }
-            className="h-10 w-full cursor-pointer rounded border border-[var(--border-primary)] bg-transparent"
-          />
-          <button
-            type="button"
-            onClick={() => update({ colorSrgb: undefined })}
-            className="rounded border border-[var(--border-primary)] px-2 py-1 text-xs text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2"
-          >
-            Use default color
-          </button>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-          <label
-            htmlFor="character-hair-roughness"
-            className="text-sm text-[var(--text-primary)]"
-          >
-            Hair roughness
-          </label>
-          <input
-            id="character-hair-roughness"
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={displayedRoughness}
-            onChange={(event) =>
-              update({ roughness: Number(event.currentTarget.value) })
+    <div className="space-y-3">
+      <AppearanceAccordionSection
+        section="hair"
+        title="Hair"
+        openSection={openSection}
+        onOpenSection={setOpenSection}
+        summary={hairSummary}
+      >
+        <div className="space-y-6">
+          <HairStyleGrid
+            profile={profile}
+            slot="scalp"
+            selection={slotSelection(appearance.hair?.scalp)}
+            onChange={(selection) =>
+              updateHair({ scalp: styleSelection(selection) })
             }
           />
-          <div className="flex items-center justify-between gap-2 sm:justify-end">
-            <output
-              htmlFor="character-hair-roughness"
-              className="w-10 text-right text-xs tabular-nums text-[var(--text-primary)]"
-            >
-              {displayedRoughness.toFixed(2)}
-            </output>
-            <button
-              type="button"
-              onClick={() => update({ roughness: undefined })}
-              className="rounded border border-[var(--border-primary)] px-2 py-1 text-xs text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2"
-            >
-              Use default roughness
-            </button>
-          </div>
+          <SharedHairMaterialControls
+            idPrefix="appearance-hair"
+            label="Hair"
+            hair={appearance.hair}
+            onChange={updateHair}
+          />
         </div>
-      </fieldset>
+      </AppearanceAccordionSection>
+      <AppearanceAccordionSection
+        section="facialHair"
+        title="Facial Hair"
+        openSection={openSection}
+        onOpenSection={setOpenSection}
+        summary={hairSummary}
+      >
+        <div className="space-y-6">
+          <HairStyleGrid
+            profile={profile}
+            slot="facialHair"
+            selection={slotSelection(appearance.hair?.facialHair)}
+            onChange={(selection) =>
+              updateHair({ facialHair: styleSelection(selection) })
+            }
+          />
+          <SharedHairMaterialControls
+            idPrefix="appearance-facial-hair"
+            label="Facial hair"
+            hair={appearance.hair}
+            onChange={updateHair}
+          />
+        </div>
+      </AppearanceAccordionSection>
+      <AppearanceAccordionSection
+        section="gear"
+        title="Gear Colors"
+        openSection={openSection}
+        onOpenSection={setOpenSection}
+        summary={gearSummary}
+      >
+        <OutfitColorControls
+          classRefId={classRefId}
+          outfit={appearance.outfit}
+          onChange={updateOutfit}
+        />
+      </AppearanceAccordionSection>
     </div>
   );
 }

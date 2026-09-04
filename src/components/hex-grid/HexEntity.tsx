@@ -6,6 +6,10 @@
  */
 
 import { resolveHairPresentation } from '@/character/customization/hairCustomization';
+import {
+  resolveOutfitPresentation,
+  type CharacterCustomizationContainer,
+} from '@/character/customization/outfitCustomization';
 import type {
   FacialHairStyle,
   HairStyle,
@@ -113,9 +117,11 @@ export interface HexEntityProps {
    * player models; blank/missing falls back to honest class or neutral
    * placeholder. */
   raceRefId?: string;
-  /** Provider-neutral hair intent. Owner Appearance.hair and peer public
-   * roster Customization.hair both enter this one typed boundary. Only a
-   * standing supported Dwarf body consumes it. */
+  /** Complete owner Appearance / peer public Customization projection.
+   * Only a standing active player body consumes hair and outfit treatments. */
+  customization?: CharacterCustomizationContainer;
+  /** @deprecated Compatibility seam for old callers; new owner/peer paths use
+   * `customization` so sibling Hair and Outfit cannot be separated. */
   hairCustomization?: HairCustomization;
   /** Exact owner-authoritative visual projection for this player's main hand.
    * Undefined means unarmed; only class GLBs consume it. */
@@ -348,6 +354,7 @@ export function HexEntity({
   knowledgeState,
   classRefId,
   raceRefId,
+  customization,
   hairCustomization,
   mainHandPresentation,
   offHandPresentation,
@@ -552,13 +559,26 @@ export function HexEntity({
       effectiveModelUrl === classModelUrl &&
       playerModelResolution?.customizationProfileRef !== undefined &&
       !isDowned;
+    const completeCustomization =
+      customization ??
+      (hairCustomization ? { hair: hairCustomization } : undefined);
     const hairPresentation = isPrimaryCustomizationBody
       ? resolveHairPresentation({
           raceRefId,
           classRefId,
-          customization: { hair: hairCustomization },
+          customization: completeCustomization,
         })
       : undefined;
+    const outfitResolution = isPrimaryCustomizationBody
+      ? resolveOutfitPresentation({
+          classRefId,
+          customization: completeCustomization,
+        })
+      : undefined;
+    const outfitPresentation =
+      outfitResolution && !('presentation' in outfitResolution)
+        ? outfitResolution
+        : undefined;
     // Same per-type selection the two resolver calls above already made
     // (isDowned for player, isDead for monster) — exposed as its own value
     // so ClassCharacterModel knows whether a zero-clip mount is expected
@@ -691,6 +711,7 @@ export function HexEntity({
                   }
                   offHandSocketOverride={offHandSocketOverride}
                   accessories={hairPresentation?.accessories}
+                  outfit={outfitPresentation}
                 />
               </ErrorBoundary>
             ) : (

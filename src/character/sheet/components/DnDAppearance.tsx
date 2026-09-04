@@ -1,5 +1,6 @@
 import { resolveCharacterCustomizationModel } from '@/character/customization/characterCustomization';
 import { summarizeHair } from '@/character/customization/hairSummary';
+import { outfitDefaultColors } from '@/character/customization/outfitCustomization';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import {
   Class,
@@ -21,6 +22,23 @@ export function DnDAppearance({ character }: DnDAppearanceProps) {
     : undefined;
   const summary = customizationModel
     ? summarizeHair(character.appearance?.hair, raceRefId)
+    : undefined;
+  const outfitDefaults = customizationModel
+    ? outfitDefaultColors(Class[character.class])
+    : undefined;
+  const outfit = character.appearance?.outfit;
+  const rgb24 = (value: number | undefined, fallback: string) =>
+    value !== undefined &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 0xffffff
+      ? `#${value.toString(16).padStart(6, '0').toUpperCase()}`
+      : fallback;
+  const primaryGear = outfitDefaults
+    ? rgb24(outfit?.primaryColorSrgb, outfitDefaults.primaryColor)
+    : undefined;
+  const secondaryGear = outfitDefaults
+    ? rgb24(outfit?.secondaryColorSrgb, outfitDefaults.secondaryColor)
     : undefined;
 
   if (!customizationModel || !summary) {
@@ -99,6 +117,54 @@ export function DnDAppearance({ character }: DnDAppearanceProps) {
             {summary.roughness.toFixed(2)}
           </dd>
         </div>
+        {primaryGear && (
+          <div>
+            <dt className="sr-only">Gear primary color</dt>
+            <dd
+              className="flex items-center gap-2"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              <span
+                aria-hidden="true"
+                className="h-6 w-6 rounded border"
+                style={{
+                  backgroundColor: primaryGear,
+                  borderColor: 'var(--border-primary)',
+                }}
+              />
+              <span>
+                {outfit?.primaryColorSrgb === undefined
+                  ? 'Default gear primary'
+                  : 'Gear primary'}{' '}
+                · {primaryGear}
+              </span>
+            </dd>
+          </div>
+        )}
+        {secondaryGear && (
+          <div>
+            <dt className="sr-only">Gear secondary color</dt>
+            <dd
+              className="flex items-center gap-2"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              <span
+                aria-hidden="true"
+                className="h-6 w-6 rounded border"
+                style={{
+                  backgroundColor: secondaryGear,
+                  borderColor: 'var(--border-primary)',
+                }}
+              />
+              <span>
+                {outfit?.secondaryColorSrgb === undefined
+                  ? 'Default gear secondary'
+                  : 'Gear secondary'}{' '}
+                · {secondaryGear}
+              </span>
+            </dd>
+          </div>
+        )}
       </dl>
 
       <p
