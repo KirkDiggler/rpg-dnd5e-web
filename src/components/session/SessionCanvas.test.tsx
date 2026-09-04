@@ -1710,7 +1710,7 @@ describe('SessionScene', () => {
         )[0]!.instance as THREE.Mesh;
         const material = mesh.material as THREE.MeshStandardMaterial;
         const shader = {
-          fragmentShader: '#include <map_fragment>',
+          fragmentShader: '#include <common>\n#include <map_fragment>',
           uniforms: {},
         };
         material.onBeforeCompile(shader as never, {} as THREE.WebGLRenderer);
