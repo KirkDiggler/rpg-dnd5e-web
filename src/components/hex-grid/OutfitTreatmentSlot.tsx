@@ -24,6 +24,7 @@ export function OutfitTreatmentSlot({
     mask.minFilter = THREE.NearestFilter;
     mask.magFilter = THREE.NearestFilter;
     mask.colorSpace = THREE.NoColorSpace;
+    mask.flipY = false;
     mask.needsUpdate = true;
     onMaskReady(mask);
     return () => onMaskDetached?.(mask);

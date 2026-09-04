@@ -196,7 +196,7 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
     ).toBe('0');
   });
 
-  it('keeps a fixed viewport-height shell while the choices pane owns scrolling across accordion sections', () => {
+  it('keeps a 42.5rem shell clamped to the viewport while the choices pane owns scrolling across accordion sections', () => {
     renderModal();
     const dialog = screen.getByRole('dialog');
     const choicesPane = dialog.querySelector('div.order-2');
@@ -204,20 +204,24 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
 
     expect(choicesPane).not.toBeNull();
     expect(center).not.toBeNull();
-    expect(dialog.classList.contains('h-[96dvh]')).toBe(true);
-    expect(dialog.classList.contains('sm:h-[92dvh]')).toBe(true);
-    expect(dialog.classList.contains('max-h-[96dvh]')).toBe(false);
-    expect(dialog.classList.contains('sm:max-h-[92dvh]')).toBe(false);
+    expect(dialog.classList.contains('h-[42.5rem]')).toBe(true);
+    expect(dialog.classList.contains('max-h-[96dvh]')).toBe(true);
+    expect(dialog.classList.contains('sm:max-h-[92dvh]')).toBe(true);
+    expect(dialog.classList.contains('h-[96dvh]')).toBe(false);
+    expect(dialog.classList.contains('sm:h-[92dvh]')).toBe(false);
     expect(choicesPane?.classList.contains('overflow-y-auto')).toBe(true);
+    expect(dialog.querySelectorAll('.overflow-y-auto')).toHaveLength(1);
     expect(center?.classList.contains('flex-1')).toBe(true);
     expect(center?.classList.contains('min-h-0')).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: /^Gear Colors/ }));
 
     expect(screen.getByLabelText('Gear primary color')).not.toBeNull();
-    expect(dialog.classList.contains('h-[96dvh]')).toBe(true);
-    expect(dialog.classList.contains('sm:h-[92dvh]')).toBe(true);
+    expect(dialog.classList.contains('h-[42.5rem]')).toBe(true);
+    expect(dialog.classList.contains('max-h-[96dvh]')).toBe(true);
+    expect(dialog.classList.contains('sm:max-h-[92dvh]')).toBe(true);
     expect(choicesPane?.classList.contains('overflow-y-auto')).toBe(true);
+    expect(dialog.querySelectorAll('.overflow-y-auto')).toHaveLength(1);
   });
 
   it('updates treatment in place without an accessory load, while a style change produces a load witness', async () => {

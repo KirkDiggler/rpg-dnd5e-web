@@ -28,7 +28,7 @@ const presentation = {
 
 afterEach(() => vi.restoreAllMocks());
 
-it('loads a shared nearest/no-color-space mask without taking texture disposal ownership', async () => {
+it('loads a shared unflipped nearest/no-color-space mask without taking texture disposal ownership', async () => {
   const onMaskReady = vi.fn();
   const texture = mocked.texture as THREE.Texture;
   const dispose = vi.spyOn(texture, 'dispose');
@@ -43,6 +43,10 @@ it('loads a shared nearest/no-color-space mask without taking texture disposal o
   expect(texture.minFilter).toBe(THREE.NearestFilter);
   expect(texture.magFilter).toBe(THREE.NearestFilter);
   expect(texture.colorSpace).toBe(THREE.NoColorSpace);
+  expect(onMaskReady).toHaveBeenCalledWith(
+    expect.objectContaining({ flipY: false })
+  );
+  expect(texture.flipY).toBe(false);
 
   unmount();
   expect(dispose).not.toHaveBeenCalled();

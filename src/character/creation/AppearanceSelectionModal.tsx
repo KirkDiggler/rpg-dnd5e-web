@@ -105,7 +105,7 @@ export function AppearanceSelectionModal({
     >
       {model && profile && (
         <DialogContent
-          className="flex h-[96dvh] w-[calc(100%-1rem)] max-w-6xl flex-col overflow-hidden rounded-xl border-2 border-[var(--border-primary)] bg-[var(--bg-primary)] p-0 text-[var(--text-primary)] shadow-2xl sm:h-[92dvh] sm:w-[calc(100%-2rem)]"
+          className="flex h-[42.5rem] max-h-[96dvh] w-[calc(100%-1rem)] max-w-6xl flex-col overflow-hidden rounded-xl border-2 border-[var(--border-primary)] bg-[var(--bg-primary)] p-0 text-[var(--text-primary)] shadow-2xl sm:max-h-[92dvh] sm:w-[calc(100%-2rem)]"
           style={{ translate: '-50% -50%' }}
           onOpenAutoFocus={(event) => {
             const active = document.activeElement;
