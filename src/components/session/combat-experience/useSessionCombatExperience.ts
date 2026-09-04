@@ -176,7 +176,7 @@ export function useSessionCombatExperience({
     useState<DeathSaveResponse>();
   const attackInFlightRef = useRef(false);
   const deathSaveInFlightRef = useRef(false);
-  const attemptedDeathSaveDeclarationsRef = useRef(new Set<string>());
+  const attemptedDeathSaveDeclarationIdRef = useRef<string | null>(null);
   const endTurnInFlightRef = useRef(false);
   const automaticEndTurnRef = useRef(false);
   const manualEndTurnBlockedRef = useRef(false);
@@ -266,6 +266,27 @@ export function useSessionCombatExperience({
         refreshedWhy(declarations, recovery)
       ),
     });
+  }, [authorityFresh, declarations]);
+
+  // A selector is only fenced for the authoritative generation in which it
+  // was attempted. Stale/loading snapshots retain the fence because their
+  // last-good declarations cannot prove that generation advanced. A fresh
+  // snapshot that no longer carries the executable offer provides that proof,
+  // allowing a later generation to reuse even the same opaque selector.
+  useEffect(() => {
+    const attemptedId = attemptedDeathSaveDeclarationIdRef.current;
+    if (
+      !authorityFresh ||
+      attemptedId === null ||
+      declarations.some(
+        (declaration) =>
+          declaration.id === attemptedId &&
+          isDeathSaveExecutableShape(declaration, 'execute')
+      )
+    ) {
+      return;
+    }
+    attemptedDeathSaveDeclarationIdRef.current = null;
   }, [authorityFresh, declarations]);
 
   const { armedIsCurrent, presentationState } = useMemo(() => {
@@ -365,7 +386,7 @@ export function useSessionCombatExperience({
           !current ||
           !isDeathSaveExecutableShape(current, 'execute') ||
           deathSaveInFlightRef.current ||
-          attemptedDeathSaveDeclarationsRef.current.has(current.id)
+          attemptedDeathSaveDeclarationIdRef.current === current.id
         )
           return;
         setInteraction(EMPTY_INTERACTION);
@@ -379,7 +400,7 @@ export function useSessionCombatExperience({
               declarationId: current.id,
             });
             if (!mountedRef.current) return;
-            attemptedDeathSaveDeclarationsRef.current.add(current.id);
+            attemptedDeathSaveDeclarationIdRef.current = current.id;
             setPendingDeathSaveResponse(response);
             presentation.acceptDeathSaveResponse(
               deathSaveResponseFact({ session, member, response })
@@ -391,7 +412,7 @@ export function useSessionCombatExperience({
             if (isStaleDeclarationRefusal(error)) {
               recoverStaleDeclaration(current.id, Verb.DEATH_SAVE);
             } else {
-              attemptedDeathSaveDeclarationsRef.current.add(current.id);
+              attemptedDeathSaveDeclarationIdRef.current = current.id;
               const notice = `Death Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
               invalidateAuthority();
               setInteraction({

@@ -359,6 +359,23 @@ function deferredStream(events: SessionEvent[]) {
   };
 }
 
+function steppedEventStream(stepCount: number) {
+  const gates = Array.from({ length: stepCount }, () =>
+    deferred<SessionEvent>()
+  );
+  let publishIndex = 0;
+  return {
+    stream: {
+      [Symbol.asyncIterator]: async function* () {
+        for (const gate of gates) yield await gate.promise;
+      },
+    },
+    publish: (next: SessionEvent) => {
+      gates[publishIndex++]?.resolve(next);
+    },
+  };
+}
+
 let nextSeq = 1n;
 function event(
   kind: EventKind,
@@ -526,10 +543,10 @@ const struck = () =>
     },
   } as SessionEvent['body']);
 
-const turnEnded = () =>
+const turnEnded = (member = 'skeleton-1', next = 'char-1') =>
   event(EventKind.TURN_ENDED, {
     case: 'turnEnded',
-    value: { member: 'skeleton-1', next: 'char-1' },
+    value: { member, next },
   } as SessionEvent['body']);
 
 const activated = () =>
@@ -1370,12 +1387,24 @@ describe('SessionEncounterView production combat integration', () => {
     }
   );
 
-  it('blocks only the consumed Death Save selector and accepts a newly offered next-turn selector in the same mount', async () => {
+  it('re-arms the same Death Save selector only after fresh authority observes it absent', async () => {
     readyDyingTurn();
-    const nextTurn = deferredStream([turnEnded()]);
-    hoisted.streamEventsFn.mockReturnValue(nextTurn.stream);
+    const progression = steppedEventStream(2);
+    const response = deferred<unknown>();
+    const sameOfferTurnRefresh = deferred<unknown>();
+    const sameOfferAffordRefresh = deferred<unknown>();
+    hoisted.streamEventsFn.mockReturnValue(progression.stream);
     hoisted.deathSaveFn
-      .mockResolvedValueOnce({
+      .mockReturnValueOnce(response.promise)
+      .mockReturnValueOnce(new Promise(() => {}));
+    renderView();
+
+    let button = await screen.findByRole('button', { name: /^death save/i });
+    fireEvent.click(button);
+    hoisted.turnFn.mockReturnValue(sameOfferTurnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(sameOfferAffordRefresh.promise);
+    await act(async () => {
+      response.resolve({
         seq: 41n,
         roll: 12,
         outcome: DeathSaveOutcome.SUCCESS,
@@ -1386,18 +1415,65 @@ describe('SessionEncounterView production combat integration', () => {
         failuresRemaining: 3,
         continuation: DeathSaveContinuation.END_TURN,
         presentationId: 'presentation_first-turn',
-      })
-      .mockReturnValueOnce(new Promise(() => {}));
-    renderView();
+      });
+      await response.promise;
+    });
 
-    let button = await screen.findByRole('button', { name: /^death save/i });
-    fireEvent.click(button);
+    await screen.findByText(/actions may be out of date/i);
+    button = screen.getByRole('button', { name: /^death save/i });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      sameOfferTurnRefresh.resolve({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 2,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', {
+            active: true,
+            standing: Standing.DOWNED,
+            lifeState: LifeState.DYING,
+          }),
+          participant('skeleton-1'),
+        ],
+      });
+      sameOfferAffordRefresh.resolve({
+        clock: ClockKind.TURN,
+        declarations: [deathSaveDeclaration(), endTurnDeclaration()],
+      });
+      await Promise.all([
+        sameOfferTurnRefresh.promise,
+        sameOfferAffordRefresh.promise,
+      ]);
+    });
     await waitFor(() =>
       expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
     );
     button = screen.getByRole('button', { name: /^death save/i });
     fireEvent.click(button);
     expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'skeleton-1',
+      round: 2,
+      order: ['char-1', 'skeleton-1'],
+      participants: [
+        participant('char-1', {
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+        }),
+        participant('skeleton-1', { active: true }),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [],
+    });
+    progression.publish(turnEnded('char-1', 'skeleton-1'));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^death save/i })).toBeNull()
+    );
 
     hoisted.turnFn.mockResolvedValue({
       clock: ClockKind.TURN,
@@ -1415,25 +1491,17 @@ describe('SessionEncounterView production combat integration', () => {
     });
     hoisted.affordFn.mockResolvedValue({
       clock: ClockKind.TURN,
-      declarations: [
-        deathSaveDeclaration('selector.death-save.next-turn'),
-        endTurnDeclaration(),
-      ],
+      declarations: [deathSaveDeclaration(), endTurnDeclaration()],
     });
-    nextTurn.release();
-    await waitFor(() => {
-      button = screen.getByRole('button', { name: /^death save/i });
-      expect(button.getAttribute('aria-describedby')).toContain(
-        'selector.death-save.next-turn'
-      );
-    });
+    progression.publish(turnEnded());
+    button = await screen.findByRole('button', { name: /^death save/i });
 
     fireEvent.click(button);
     expect(hoisted.deathSaveFn).toHaveBeenCalledTimes(2);
     expect(hoisted.deathSaveFn).toHaveBeenLastCalledWith({
       session: 'enc-1',
       member: 'char-1',
-      declarationId: 'selector.death-save.next-turn',
+      declarationId: 'selector.death-save',
     });
   });
 
@@ -1707,6 +1775,11 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
     await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+
+    const sameOffer = screen.getByRole('button', { name: /^death save/i });
+    expect((sameOffer as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(sameOffer);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
   });
 
   it('retries an off-table Death Save presentation with the same result and token, then ends the turn exactly once after settlement', async () => {
