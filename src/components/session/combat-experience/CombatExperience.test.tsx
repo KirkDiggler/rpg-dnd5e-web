@@ -105,7 +105,8 @@ describe('CombatExperience shared production shell', () => {
     );
 
     expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
-    expect(screen.getByText('Attack die ready')).toBeTruthy();
+    expect(screen.getByText('Shared d20 ready')).toBeTruthy();
+    expect(screen.getByLabelText('Shared d20')).toBeTruthy();
     expect(screen.queryByTestId('session-combat-dice-drawer')).toBeNull();
     expect(screen.queryByTestId('real-dice-presentation')).toBeNull();
   });

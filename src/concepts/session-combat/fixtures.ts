@@ -280,6 +280,7 @@ const freshTurn: SessionCombatFixture = {
   clock: ClockKind.TURN,
   streamState: 'live',
   resultVisible: false,
+  endTurnBlocked: false,
   participants: participants('aldric'),
   declarations: declarations(true, true, 25),
   characterData,
@@ -393,6 +394,7 @@ const deathSaveTurn: SessionCombatFixture = {
   ],
   characterData: dyingCharacterData,
   resultVisible: false,
+  endTurnBlocked: true,
   debug: [
     ...freshTurn.debug,
     'afford clock=TURN declarations=2 verb=DEATH_SAVE life_state=DYING',

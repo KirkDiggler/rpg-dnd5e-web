@@ -256,6 +256,7 @@ export function SessionCombatConcept() {
         characterData={fixture.characterData}
         privateStatus="ready"
         authorityFresh
+        endTurnBlocked={fixture.endTurnBlocked}
         presentationState={presentationState}
         phase={fixture.id === 'death-save' ? 'awaiting-roll' : phase}
         showTurnNotice={showTurnNotice}

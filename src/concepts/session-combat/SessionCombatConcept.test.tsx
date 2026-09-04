@@ -211,8 +211,13 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(screen.getByText('1 failures · 2 remaining')).toBeTruthy();
     expect(screen.getAllByTestId('death-save-success-pip')).toHaveLength(2);
     expect(screen.getAllByTestId('death-save-failure-pip')).toHaveLength(1);
-    expect(screen.getByText('Attack die ready')).toBeTruthy();
+    expect(screen.getByText('Shared d20 ready')).toBeTruthy();
+    expect(screen.getByLabelText('Shared d20')).toBeTruthy();
     expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: /end turn/i }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
     expect(screen.queryByRole('list', { name: /targets/i })).toBeNull();
   });
 

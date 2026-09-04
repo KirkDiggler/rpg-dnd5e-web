@@ -113,6 +113,7 @@ describe('session combat generated-shape review fixtures', () => {
         failuresRemaining: 2,
       },
     });
+    expect(dying.endTurnBlocked).toBe(true);
     expect(declaration).toMatchObject({
       id: 'offer:aldric:death-save',
       available: true,
