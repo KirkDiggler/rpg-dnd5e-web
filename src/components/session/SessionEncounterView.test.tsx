@@ -3759,3 +3759,88 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.endTurnFn).not.toHaveBeenCalled();
   });
 });
+
+describe('the Leave button learns what the viewer carries (rpg-dnd5e-web#927)', () => {
+  it('names the drop once a HELD beat says this member is carrying', async () => {
+    // THE OTHER INTEGRATION POINT. `viewerHoldings.ts` has its own unit
+    // test and `CombatExperience` has its own; nothing proved the view
+    // ever connects them. Deleting the `setViewerHolding` line left the
+    // whole suite green while the button silently stopped warning — which
+    // is the walk finding this PR exists to fix.
+    const held = deferredStream([
+      event(EventKind.HELD, {
+        case: 'held',
+        value: { holder: 'char-1', prop: 'heirloom' },
+      } as SessionEvent['body']),
+    ]);
+    readyScene();
+    hoisted.streamEventsFn.mockReturnValue(held.stream);
+    renderView();
+
+    const leave = await screen.findByTestId('session-combat-leave-button');
+    // Before the beat: nothing known to be carried, so no cost claimed.
+    expect(leave.textContent).toBe('🚪Leave');
+
+    held.release();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('session-combat-leave-button').textContent
+      ).toBe('🚪Leave (drops the heirloom)')
+    );
+  });
+
+  it('goes quiet again when the member drops it', async () => {
+    const beats = deferredStream([
+      event(EventKind.HELD, {
+        case: 'held',
+        value: { holder: 'char-1', prop: 'heirloom' },
+      } as SessionEvent['body']),
+      event(EventKind.DROPPED, {
+        case: 'dropped',
+        value: { member: 'char-1', prop: 'heirloom', at: { x: 0, y: 0 } },
+      } as SessionEvent['body']),
+    ]);
+    readyScene();
+    hoisted.streamEventsFn.mockReturnValue(beats.stream);
+    renderView();
+    await screen.findByTestId('session-combat-leave-button');
+
+    beats.release();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('session-combat-leave-button').textContent
+      ).toBe('🚪Leave')
+    );
+  });
+
+  it('says nothing about a holding that belongs to somebody else', async () => {
+    // Somebody else's pickup first, then the viewer's own. The second
+    // beat is what proves the first was DELIVERED and ignored rather than
+    // merely slow — a label that named the crown would be this client
+    // warning about a holding it does not have.
+    const beats = deferredStream([
+      event(EventKind.HELD, {
+        case: 'held',
+        value: { holder: 'skeleton-1', prop: 'crown' },
+      } as SessionEvent['body']),
+      event(EventKind.HELD, {
+        case: 'held',
+        value: { holder: 'char-1', prop: 'heirloom' },
+      } as SessionEvent['body']),
+    ]);
+    readyScene();
+    hoisted.streamEventsFn.mockReturnValue(beats.stream);
+    renderView();
+    await screen.findByTestId('session-combat-leave-button');
+
+    beats.release();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('session-combat-leave-button').textContent
+      ).toBe('🚪Leave (drops the heirloom)')
+    );
+    expect(
+      screen.getByTestId('session-combat-leave-button').textContent
+    ).not.toContain('crown');
+  });
+});

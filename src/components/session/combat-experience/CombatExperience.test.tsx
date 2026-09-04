@@ -667,8 +667,13 @@ describe('Loot, Hold and Leave on the action surface (rpg-project#368)', () => {
     );
   });
 
-  it('names the way out rather than the drop when standing on one', () => {
-    // On an exit there is no drop: the holding goes out with them.
+  it('on a way out, states what is carried and CLAIMS NOTHING about its safety', () => {
+    // The client cannot know which exit the SCENARIO BOUND —
+    // `GetAtlasResponse.exits` is every authored way out, structure
+    // rather than scenario — so leaving through this one may still drop
+    // the artifact. Saying only "Leave through the sally port" would read
+    // as reassurance this client has no standing to give, and would be
+    // Kirk's walk again with the button covering for it.
     render(
       <CombatExperience
         {...propsFor(fresh, {
@@ -678,9 +683,11 @@ describe('Loot, Hold and Leave on the action surface (rpg-project#368)', () => {
         })}
       />
     );
-    expect(screen.getByTestId('session-combat-leave-button').textContent).toBe(
-      '🚪Leave through the entrance'
-    );
+    const label = screen.getByTestId('session-combat-leave-button').textContent;
+    expect(label).toBe('🚪Leave through the entrance with the heirloom');
+    // The two facts, and neither promise.
+    expect(label).not.toMatch(/safe|keeps|wins/i);
+    expect(label).not.toMatch(/drops/i);
   });
 
   it('names the way out when the viewer is standing on one', () => {

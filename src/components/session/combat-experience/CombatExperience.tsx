@@ -520,19 +520,39 @@ export function CombatExperience({
 }
 
 /**
- * What the Leave button says, and it says the COST before the click.
+ * What the Leave button says.
  *
- * On an authored way out it names the way out. Away from one, carrying
- * something, it names what leaving would drop — that is design R9's price,
- * and the walk that asked for this line is a carrier who paid it without
- * being told. Carrying nothing there is no price, so the button says
+ * # It never claims a departure is free
+ *
+ * Away from every authored way out, the drop is CERTAIN — no exit at all
+ * is the scenario's bound exit — so the button names what it costs. That
+ * is design R9's price, and the walk that asked for this line is a carrier
+ * who paid it without being told.
+ *
+ * ON an authored way out it says what is true and no more: which way out,
+ * and what is being carried through it. IT DOES NOT SAY THE HOLDING IS
+ * SAFE, because this client cannot know that. `GetAtlasResponse.exits` is
+ * every authored exit — structure, not scenario — and nothing on the wire
+ * says which one the scenario BOUND. A dungeon with two ways out, bound to
+ * one, would otherwise read "Leave through the sally port" with no warning
+ * and drop the artifact anyway: Kirk's walk again, with the button now
+ * actively reassuring him. A label that omits a cost is survivable; one
+ * that implies its absence is not.
+ *
+ * Carrying nothing, there is no cost either way and the button says
  * nothing about one.
  */
 function leaveLabel(
   exitId: string | undefined,
   holding: readonly string[]
 ): string {
-  if (exitId) return `Leave through the ${exitWords(exitId)}`;
-  if (holding.length === 0) return 'Leave';
-  return `Leave (drops ${holdingWords(holding)})`;
+  // The PHRASE, not the count: an id that renders to nothing (`-`) would
+  // otherwise produce "Leave (drops )". `holdingPhrase` documents exactly
+  // this distinction for exactly this kind of caller.
+  const carried = holdingWords(holding);
+  if (exitId) {
+    const through = `Leave through the ${exitWords(exitId)}`;
+    return carried ? `${through} with ${carried}` : through;
+  }
+  return carried ? `Leave (drops ${carried})` : 'Leave';
 }

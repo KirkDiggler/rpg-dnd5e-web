@@ -48,8 +48,12 @@ import type { SceneExit3D } from './atlasToScene3D';
 export const SESSION_EXIT_COLOR = '#38bdf8';
 
 /** Bright enough to find at a glance across a dark tomb, faint enough
- * that the floor art still reads through it. */
-const EXIT_FILL_OPACITY = 0.42;
+ * that the floor art still reads through it — the value that ACTUALLY
+ * RENDERS. `PathPreview` brightens the last cell of a path by 1.5x to mark
+ * a destination, and a one-cell path is all destination, so what is passed
+ * in is two thirds of what is drawn. Written as the division rather than
+ * as `0.28` so tuning this reads as tuning the rendered value. */
+const EXIT_FILL_OPACITY = 0.42 / 1.5;
 
 /** Clear of `SyntyHexFloor`'s own FLOOR_Y (0.2), of the fill below it, and
  * of a CHARACTER STANDING ON THE CELL — which is the ordinary case, since
@@ -83,20 +87,26 @@ export function SessionExitMarkers({
             color={SESSION_EXIT_COLOR}
             opacity={EXIT_FILL_OPACITY}
           />
-          {/* THE LABEL SUSPENDS AND THE CELL MUST NOT. drei's `Text`
-              loads a font, so without this boundary a font that has not
-              arrived yet takes the whole marker layer down with it — and
-              a way out that is invisible while the font loads is the
-              exact failure this component exists to prevent. The marked
-              cell is the load-bearing half; the id is the refinement. */}
-          <Suspense fallback={null}>
-            <Billboard
-              position={[
-                worldOf(exit, hexSize).x,
-                LABEL_HEIGHT,
-                worldOf(exit, hexSize).z,
-              ]}
-            >
+          {/* THE TEXT SUSPENDS AND NOTHING ELSE MUST. drei's `Text` loads
+              a font unconditionally, and R3F's own Canvas wraps the whole
+              scene in a boundary — so without a local one, a font still
+              in flight takes the entire map down, not merely the id. A
+              way out invisible while a font loads is the exact failure
+              this component exists to prevent.
+
+              The boundary is AROUND THE TEXT ALONE, not around the
+              Billboard: the billboard is a plain group, it never
+              suspends, and keeping it outside is what lets a test assert
+              where the label sits without rasterizing a glyph. */}
+          <Billboard
+            position={[
+              worldOf(exit, hexSize).x,
+              LABEL_HEIGHT,
+              worldOf(exit, hexSize).z,
+            ]}
+            name={`session-exit-label-${exit.id}`}
+          >
+            <Suspense fallback={null}>
               <Text
                 fontSize={LABEL_FONT_SIZE}
                 color={SESSION_EXIT_COLOR}
@@ -107,8 +117,8 @@ export function SessionExitMarkers({
               >
                 {exit.id}
               </Text>
-            </Billboard>
-          </Suspense>
+            </Suspense>
+          </Billboard>
         </group>
       ))}
     </group>

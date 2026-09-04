@@ -1081,6 +1081,14 @@ function SessionEncounterScope({
   const handleStreamAgedOut = useCallback(() => {
     invalidateAuthority();
     scheduleRefresh(['characterData', 'turn', 'afford', 'view', 'where']);
+    // THE ONE PLACE THIS CLIENT KNOWS IT LOST BEATS, and holdings are
+    // projected from beats alone (`viewerHoldings.ts`) — nothing refetches
+    // them, because nothing on the wire reports them. A DROPPED inside the
+    // gap would leave the button warning forever about a heirloom the
+    // member is not carrying, which is the exact lie that module promises
+    // never to tell. Back to saying nothing: under-claiming is the right
+    // way round to be wrong here.
+    setViewerHolding((held) => (held.length === 0 ? held : []));
   }, [invalidateAuthority, scheduleRefresh]);
   const streamState = useSessionEventStream(
     sessionId,

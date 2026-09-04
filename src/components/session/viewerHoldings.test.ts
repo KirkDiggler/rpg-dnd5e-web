@@ -78,7 +78,11 @@ describe('nextViewerHoldings — what the local member is carrying', () => {
       body: { case: 'downed', value: { member: ME } },
     });
     expect(nextViewerHoldings(mine, other, ME)).toBe(mine);
-    expect(nextViewerHoldings([], exited(ME), ME)).toEqual([]);
+    // IDENTITY, not equality: `toEqual` here would pass with the
+    // already-empty guard deleted, and the caller uses this return value
+    // as a `useState` updater.
+    const empty: readonly string[] = [];
+    expect(nextViewerHoldings(empty, exited(ME), ME)).toBe(empty);
   });
 
   it('carries two things when the member picked up two', () => {

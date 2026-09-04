@@ -15,6 +15,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { describe, expect, it } from 'vitest';
+import { cubeToWorld } from '../hex-grid/hexMath';
 import { sceneExits } from './atlasToScene3D';
 import { SessionExitMarkers } from './SessionExitMarkers';
 
@@ -51,6 +52,32 @@ describe('sceneExits — the atlas becomes scene facts', () => {
     expect(sceneExits(atlas).map((e) => e.id)).toEqual(['entrance']);
   });
 
+  it('skips an exit the author never named', () => {
+    // Two unnamed exits would collide on one React key and reconcile one
+    // of them away, and the label would render empty.
+    const atlas = create(GetAtlasResponseSchema, {
+      exits: [
+        { id: '', at: { x: 0, y: 0 } },
+        { id: 'entrance', at: { x: 1, y: 3 } },
+      ],
+    });
+    expect(sceneExits(atlas).map((e) => e.id)).toEqual(['entrance']);
+  });
+
+  it('skips an exit standing on floor this member has not seen', () => {
+    // `exits` is the same for every member; `cells` is what THIS one
+    // knows. An exit in a room they have not opened would otherwise float
+    // a cyan hex and a label over void.
+    const atlas = atlasWithTwoExits();
+    const onlyTheEntrance = new Set(['1,-4,3']);
+    expect(sceneExits(atlas, onlyTheEntrance).map((e) => e.id)).toEqual([
+      'entrance',
+    ]);
+    // With no floor set given at all, nothing is filtered — the caller
+    // that has one passes it.
+    expect(sceneExits(atlas)).toHaveLength(2);
+  });
+
   it('is empty for a dungeon that declares no way out', () => {
     // Every dungeon authored before slice 2, and any atlas from a server
     // older than the field: the route draws what it always drew.
@@ -61,12 +88,13 @@ describe('sceneExits — the atlas becomes scene facts', () => {
 });
 
 describe('SessionExitMarkers — one marked cell per way out', () => {
-  it('draws a named group for each exit, and the id as its label', async () => {
+  it('draws a marked cell for each exit', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <SessionExitMarkers exits={sceneExits(atlasWithTwoExits())} hexSize={1} />
     );
-    const root = renderer.scene.findByProps({ name: 'session-exit-markers' });
-    expect(root).toBeTruthy();
+    expect(
+      renderer.scene.findByProps({ name: 'session-exit-markers' })
+    ).toBeTruthy();
     // BOTH of them. A layer that drew only the first would still look
     // right on the reference tomb, which authors exactly one.
     expect(
@@ -75,6 +103,32 @@ describe('SessionExitMarkers — one marked cell per way out', () => {
     expect(
       renderer.scene.findByProps({ name: 'session-exit-sally-port' })
     ).toBeTruthy();
+    await renderer.unmount();
+  });
+
+  it('puts each label OVER ITS OWN CELL, and above head height', async () => {
+    // The glyphs cannot be rasterized in jsdom, so the id itself is the
+    // screenshot's job. Where the label SITS is not: a `.z`/`.x` slip in
+    // the position (the two `worldOf` calls sit one line apart) would put
+    // every label on a diagonal away from its cell, and a wrong
+    // LABEL_HEIGHT would bury it in the floor or in the token standing on
+    // it — which is the bug the first live screenshot actually found.
+    const exits = sceneExits(atlasWithTwoExits());
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionExitMarkers exits={exits} hexSize={1} />
+    );
+    for (const exit of exits) {
+      const label = renderer.scene.findByProps({
+        name: `session-exit-label-${exit.id}`,
+      });
+      const world = cubeToWorld(exit.position, 1);
+      const [x, y, z] = label.props.position as [number, number, number];
+      expect(x).toBeCloseTo(world.x);
+      expect(z).toBeCloseTo(world.z);
+      // Clear of the floor AND of a character standing on the cell — the
+      // reference tomb starts the party on its own exit.
+      expect(y).toBeGreaterThan(1);
+    }
     await renderer.unmount();
   });
 

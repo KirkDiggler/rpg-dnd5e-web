@@ -229,21 +229,35 @@ export function resolveSceneLayout(
  * tested without a WebGL canvas — the same split every other pure selector
  * on this route keeps.
  *
- * An exit with no cell is DROPPED rather than drawn at the origin: a
- * marker in the wrong place is worse than no marker, which is the whole
- * lesson of the walk that asked for this.
+ * Three ways an entry is skipped, all of them "a marker in the wrong place
+ * is worse than no marker" — the whole lesson of the walk that asked for
+ * this layer:
+ *
+ *   - NO CELL: there is nowhere to draw it, and the origin is a lie.
+ *   - NO ID: there is nothing to label it, and two unnamed exits would
+ *     collide on the same React key and reconcile one of them away.
+ *     `holdTargets` skips an id-less holdable prop for the same reason —
+ *     it is a producer defect, and the compiler refuses the file.
+ *   - NO FLOOR THIS MEMBER KNOWS: `exits` is the same for every member,
+ *     but `cells` is what this one has seen. An exit in a room they have
+ *     not opened would otherwise float a cyan hex and a label over void.
+ *     Not a secrecy question — the proto says an exit is not concealable —
+ *     purely "do not draw a marker where there is nothing to mark".
  *
  * `atlas.exits ?? []` for `atlasToScene3D`'s standing reason: a server or
  * a client-side schema older than the field hands back a message with it
  * absent, not empty, and a bare read is `undefined`.
  */
 export function sceneExits(
-  atlas: Partial<Pick<GetAtlasResponse, 'exits'>>
+  atlas: Partial<Pick<GetAtlasResponse, 'exits'>>,
+  knownFloor?: ReadonlySet<string>
 ): SceneExit3D[] {
   const exits: SceneExit3D[] = [];
   for (const exit of atlas.exits ?? []) {
-    if (!exit.at) continue;
-    exits.push({ id: exit.id, position: positionToCube(exit.at) });
+    if (!exit.at || !exit.id) continue;
+    const position = positionToCube(exit.at);
+    if (knownFloor && !knownFloor.has(coordToKey(position))) continue;
+    exits.push({ id: exit.id, position });
   }
   return exits;
 }
@@ -336,6 +350,9 @@ export function buildScene3D(
     lighting,
     wallRuns,
     doorGaps,
-    exits: sceneExits(atlas),
+    // The floor this member knows is what was just built above, so an
+    // exit in a room they have not opened is skipped rather than floated
+    // over void.
+    exits: sceneExits(atlas, new Set(floorTiles.keys())),
   };
 }
