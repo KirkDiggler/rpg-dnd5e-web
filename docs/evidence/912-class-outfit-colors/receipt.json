@@ -31,6 +31,13 @@
       "note": "Real Chrome creation modal after opening Gear Colors; blue primary and red secondary are visible on the Fighter 16 body."
     },
     {
+      "path": "creation-four-class-mask-proof.png",
+      "sha256": "81594a231d2a45347f775f01b109479d4b4c912cc6ad0b4d384befb0e5b88bec",
+      "width": 1072,
+      "height": 1234,
+      "note": "Real Chrome normal creation-route previews for the fixed Barbarian 01, Fighter 16, Monk 08, and Rogue 10 outfits using high-contrast primary and secondary witnesses."
+    },
+    {
       "path": "session-blue-red.png",
       "sha256": "ea25fb3582b9cc9db2cf6a843ebd9d10b27c9a09529736cfdde343cade3baf30",
       "width": 1440,
@@ -100,6 +107,15 @@
   "pixelEvidence": {
     "creationBluePixels": 45232,
     "creationRedPixels": 16191,
+    "fourClassHighContrastProbe": {
+      "primaryHex": "#FF00FF",
+      "secondaryHex": "#00FF00",
+      "barbarian01": { "primaryPixels": 9815, "secondaryPixels": 3057 },
+      "fighter16": { "primaryPixels": 7769, "secondaryPixels": 1299 },
+      "monk08": { "primaryPixels": 16137, "secondaryPixels": 3028 },
+      "rogue10": { "primaryPixels": 9110, "secondaryPixels": 2494 },
+      "shaderErrors": 0
+    },
     "liveUpdateProbe": {
       "primaryHex": "#FF00FF",
       "secondaryHex": "#00FF00",
