@@ -16,6 +16,7 @@ import { DamageToasts } from './DamageToasts';
 import { LocalWorldDieTile } from './LocalWorldDieTile';
 import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
+import type { StandingAction } from './standingActions';
 import { StoryLog } from './StoryLog';
 import { holdStoryUntilSettled } from './storyReveal';
 import { TargetSurface } from './TargetSurface';
@@ -215,6 +216,67 @@ export function CombatExperience({
     (participant) => participant.active
   );
   const isViewerTurn = activeParticipant?.member === viewerMember;
+
+  /**
+   * Search, Loot, Hold and Leave, as dock actions (Kirk's second walk:
+   * "these should be buttons like the other actions I can take").
+   *
+   * Built here rather than in the dock because this component is what
+   * holds the offers — which bodies are down beside you, which props you
+   * can reach — and the dock's job is to draw what it is handed. The
+   * ORDER is fixed and not sorted by anything: a list that reordered
+   * itself as the party moved would move the button out from under a
+   * finger mid-fight.
+   */
+  const standingActions: StandingAction[] = [];
+  if (onSearch) {
+    standingActions.push({
+      key: 'session-combat-search-button',
+      label: searchPending ? 'Searching…' : 'Search',
+      icon: '🔍',
+      title: "Search the room you're standing in",
+      pending: searchPending,
+      onSelect: onSearch,
+    });
+  }
+  if (onLoot) {
+    // ONE PER DOWNED BODY, all of them, in the order given (design P3):
+    // a body with nothing to give offers exactly what the captain does.
+    for (const target of lootTargets) {
+      standingActions.push({
+        key: `session-combat-loot-${target.subject}`,
+        label: lootPending ? 'Looting…' : `Loot ${target.name}`,
+        icon: '🖐',
+        title: `Loot ${target.name}`,
+        pending: lootPending,
+        onSelect: () => onLoot(target.subject),
+      });
+    }
+  }
+  if (onHold) {
+    for (const target of holdTargets) {
+      standingActions.push({
+        key: `session-combat-hold-${target.id}`,
+        label: holdPending ? 'Holding…' : `Hold the ${propLabel(target)}`,
+        icon: '✋',
+        title: `Pick up the ${propLabel(target)}`,
+        pending: holdPending,
+        onSelect: () => onHold(target.id),
+      });
+    }
+  }
+  if (onLeave) {
+    standingActions.push({
+      key: 'session-combat-leave-button',
+      label: leavePending ? 'Leaving…' : leaveLabel(leaveExitId, leaveHolding),
+      icon: '🚪',
+      title: leaveExitId
+        ? `Leave through the ${exitWords(leaveExitId)}. Carrying what the run is about, that ends it`
+        : 'Leave the dungeon. Away from a way out, whatever you carry stays where you stood',
+      pending: leavePending,
+      onSelect: onLeave,
+    });
+  }
   const selection = authorityFresh
     ? selectCombatExperience(declarations, presentationState)
     : null;
@@ -446,73 +508,8 @@ export function CombatExperience({
             }
             onSelectDeclaration={onSelectDeclaration}
             onEndTurn={onEndTurn}
+            standingActions={standingActions}
           />
-          {onSearch && (
-            <button
-              type="button"
-              className={styles.equipmentButton}
-              data-testid="session-combat-search-button"
-              disabled={searchPending}
-              title="Search the room you're standing in"
-              onClick={onSearch}
-            >
-              <span aria-hidden="true">🔍</span>
-              {searchPending ? 'Searching…' : 'Search'}
-            </button>
-          )}
-          {/* ONE BUTTON PER DOWNED BODY, all of them, in the order given.
-              A body with nothing to give answers exactly as the captain
-              does (design P3), so there is nothing here to sort by. */}
-          {onLoot &&
-            lootTargets.map((target) => (
-              <button
-                key={target.subject}
-                type="button"
-                className={styles.equipmentButton}
-                data-testid={`session-combat-loot-${target.subject}`}
-                disabled={lootPending}
-                title={`Loot ${target.name}`}
-                onClick={() => onLoot(target.subject)}
-              >
-                <span aria-hidden="true">🖐</span>
-                {lootPending ? 'Looting…' : `Loot ${target.name}`}
-              </button>
-            ))}
-          {onHold &&
-            holdTargets.map((target) => (
-              <button
-                key={target.id}
-                type="button"
-                className={styles.equipmentButton}
-                data-testid={`session-combat-hold-${target.id}`}
-                disabled={holdPending}
-                title={`Pick up the ${propLabel(target)}`}
-                onClick={() => onHold(target.id)}
-              >
-                <span aria-hidden="true">✋</span>
-                {holdPending ? 'Holding…' : `Hold the ${propLabel(target)}`}
-              </button>
-            ))}
-          {onLeave && (
-            <button
-              type="button"
-              className={styles.equipmentButton}
-              data-testid="session-combat-leave-button"
-              data-exit={leaveExitId || undefined}
-              disabled={leavePending}
-              title={
-                leaveExitId
-                  ? `Leave through the ${exitWords(leaveExitId)}. Carrying what the run is about, that ends it`
-                  : 'Leave the dungeon. Away from a way out, whatever you carry stays where you stood'
-              }
-              onClick={onLeave}
-            >
-              <span aria-hidden="true">🚪</span>
-              {leavePending
-                ? 'Leaving…'
-                : leaveLabel(leaveExitId, leaveHolding)}
-            </button>
-          )}
         </div>
       </div>
     </div>
