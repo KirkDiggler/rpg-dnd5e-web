@@ -575,7 +575,11 @@ describe('ways out on the board (rpg-project#368 §3.1)', () => {
 
   it('draws each way out with its own id, distinct from the start', () => {
     let doc = withFloor();
-    doc = { ...doc, start: p(0, 0), exits: [{ id: 'entrance', at: p(0, 0) }] };
+    doc = {
+      ...doc,
+      start: { at: p(0, 0) },
+      exits: [{ id: 'entrance', at: p(0, 0) }],
+    };
     const { container } = mount(doc);
     // Both marks stand on the same cell — the tomb's entrance IS its exit
     // — and both are drawn, because `start` is not implicitly a way out.

@@ -46,7 +46,6 @@
 
 import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
 import { useCameraDials } from '@/feel/useFeelDials';
-import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type {
   DoorInfo,
@@ -76,6 +75,7 @@ import { DungeonEnvironment } from './DungeonEnvironment';
 import { MoveIndicator } from './MoveIndicator';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
+import { startCameraOffset } from './startCamera';
 import { useMoveIndicator } from './useMoveIndicator';
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
@@ -135,6 +135,11 @@ export interface SessionCanvasProps {
    * Never applied to peers. */
   offHandPresentation?: OffHandPresentation;
   myPosition: CubeCoord;
+  /** The dungeon's authored starting facing (`GetAtlasResponse.start`),
+   * or absent when the author stated none — in which case the camera sits
+   * exactly where it always has. Presentation only: it aims the first
+   * frame and gates nothing. */
+  startFacing?: string;
   /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
    * (`MoveResponse.steps`, already bridged to cube coords) — passed
    * straight through to `HexEntity.movePath`. `undefined` when no walk
@@ -637,7 +642,13 @@ export function SessionCanvas(props: SessionCanvasProps) {
       orthographic={!cameraDials.perspective}
       frameloop="demand"
       camera={{
-        position: CAMERA_OFFSET,
+        // AIMED BY THE DUNGEON'S OWN START (rpg-project#374, "The walks").
+        // Mount-time only, like every other Canvas config here — which is
+        // exactly right for this one: the view mounts this component only
+        // once the atlas has landed, so "the first render" and "the first
+        // frame the player sees" are the same moment. With no authored
+        // facing this is `CAMERA_OFFSET` itself, unchanged.
+        position: startCameraOffset(props.startFacing),
         near: 0.1,
         far: 1000,
         ...(cameraDials.perspective

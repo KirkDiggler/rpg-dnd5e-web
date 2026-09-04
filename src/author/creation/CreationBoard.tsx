@@ -370,7 +370,7 @@ export function CreationBoard({
     const s = new Set<string>();
     for (const t of errorTargets) {
       if (t.kind === 'cell' || t.kind === 'placement') s.add(axialKey(t.cell));
-      if (t.kind === 'start' && doc.start) s.add(axialKey(doc.start));
+      if (t.kind === 'start' && doc.start) s.add(axialKey(doc.start.at));
       if (t.kind === 'region') {
         for (const c of regionById.get(t.regionId)?.cells ?? []) {
           s.add(axialKey(c));
@@ -471,9 +471,15 @@ export function CreationBoard({
           return;
         }
       }
-      // A way out is selected from its own cell — after the placements,
-      // doors and walls, because those are things standing ON floor and an
-      // exit IS a floor cell.
+      // The start, and then a way out, are selected from their own cells —
+      // after the placements, doors and walls, because those are things
+      // standing ON floor and these two ARE floor cells. The start first:
+      // in the reference tomb it shares its cell with the entrance exit,
+      // and the party's entry is the thing an author reaches for there.
+      if (doc.start && axialKey(doc.start.at) === key) {
+        onSelect({ kind: 'start' });
+        return;
+      }
       const exitIndex = doc.exits.findIndex((x) => axialKey(x.at) === key);
       if (exitIndex !== -1) {
         onSelect({ kind: 'exit', index: exitIndex });
@@ -736,7 +742,8 @@ export function CreationBoard({
           <g data-layer="start" pointerEvents="none">
             {doc.start && (
               <Start
-                cell={doc.start}
+                cell={doc.start.at}
+                facing={doc.start.facing}
                 size={size}
                 o={o}
                 error={errorTargets.some((t) => t.kind === 'start')}
@@ -1160,18 +1167,35 @@ export function CreationBoard({
 
 function Start({
   cell,
+  facing,
   size,
   o,
   error,
 }: {
   cell: Axial;
+  /** The authored starting facing, if the author stated one — drawn as
+   * the same tick a placement's facing gets, from the same table, so one
+   * arrow means one thing everywhere on this board. */
+  facing?: string;
   size: number;
   o: DungeonDoc['orientation'];
   error: boolean;
 }) {
   const c = cellCenter(cell, size, o);
+  const deg = facing !== undefined ? facingAngleDeg(facing) : undefined;
   return (
-    <g data-start={axialKey(cell)}>
+    <g data-start={axialKey(cell)} data-start-facing={facing || undefined}>
+      {deg !== undefined && (
+        <line
+          data-start-facing-tick=""
+          x1={c.x + Math.cos((deg * Math.PI) / 180) * size * 0.5}
+          y1={c.y + Math.sin((deg * Math.PI) / 180) * size * 0.5}
+          x2={c.x + Math.cos((deg * Math.PI) / 180) * size * 0.95}
+          y2={c.y + Math.sin((deg * Math.PI) / 180) * size * 0.95}
+          stroke={error ? ERROR_STROKE : START_COLOR}
+          strokeWidth={3}
+        />
+      )}
       <circle
         cx={c.x}
         cy={c.y}

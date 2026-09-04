@@ -195,7 +195,7 @@ export function DungeonPreview3D({
         />
         {doc.start && (
           <PathPreview
-            path={[axialToCube(doc.start)]}
+            path={[axialToCube(doc.start.at)]}
             hexSize={HEX_SIZE}
             color={START_COLOR}
             opacity={0.5}

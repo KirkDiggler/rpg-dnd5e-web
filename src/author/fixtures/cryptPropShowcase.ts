@@ -57,7 +57,7 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
       },
     ],
     scenery: [],
-    start: p(1, 3),
+    start: { at: p(1, 3) },
     walls: [
       { start: seat({ u: 27, v: 9 }), end: seat(JUNCTION), name: 'west wall' },
       { start: seat(JUNCTION), end: seat(EAST_END), name: 'east wall' },

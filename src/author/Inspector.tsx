@@ -24,6 +24,7 @@ import {
   type IntelDoc,
   type PlacementDoc,
   type PlacementOffset,
+  type StartDoc,
   type WallDoc,
 } from './dungeonYaml';
 import { sealedBy } from './hexGeometry';
@@ -67,6 +68,10 @@ export interface InspectorProps {
   onRemoveExit: (index: number) => void;
   /** Bind one blank on one scenario's form; an empty value unbinds it. */
   onBindScenario: (scenarioId: string, key: string, value: string) => void;
+  /** Aim the party's entry, or clear the aim. */
+  onStartFacing: (facing: string | undefined) => void;
+  /** Take the start off the map entirely. */
+  onRemoveStart: () => void;
   /** Declare a new record and open its form. */
   onAddIntel: () => void;
   /** Rename one intel record. */
@@ -160,6 +165,18 @@ export function Inspector(props: InspectorProps) {
   // DUNGEON panel with that record's form open IN PLACE inside the Intel
   // section, rather than replacing the panel — so the list and the form
   // the author is editing stay on screen together.
+  if (selection.kind === 'start') {
+    // No start authored yet: nothing to aim, so the dungeon panel is the
+    // honest answer rather than a form for a thing that does not exist.
+    if (!doc.start) return <DungeonPanel {...props} />;
+    return (
+      <StartPanel
+        start={doc.start}
+        onFacing={props.onStartFacing}
+        onRemove={() => props.onRemoveStart()}
+      />
+    );
+  }
   if (selection.kind === 'exit') {
     const exit = doc.exits[selection.index];
     if (!exit) return <DungeonPanel {...props} />;
@@ -257,6 +274,58 @@ function DungeonPanel(props: InspectorProps) {
         errors={props.errors}
         onBind={props.onBindScenario}
       />
+    </div>
+  );
+}
+
+/**
+ * The party's entry point, and which way they are looking when they get
+ * there (rpg-project#374 design, "The walks" — Kirk: "we always start
+ * looking the wrong way and have to spin around").
+ *
+ * THE SAME COMPASS THE PROPS USE. One eight-name vocabulary, one control,
+ * one table from name to angle: an author who has aimed a statue has
+ * already learned this. Leaving it unset is a real answer and the common
+ * one — the file then keeps the bare `start: [c, r]` it has always had,
+ * and the game aims the camera exactly as it does today.
+ *
+ * FACING IS PRESENTATION. It aims the first frame and decides nothing
+ * about where the party may walk or what they can see; `AtlasStart.facing`
+ * says so on the wire in as many words.
+ */
+function StartPanel({
+  start,
+  onFacing,
+  onRemove,
+}: {
+  start: StartDoc;
+  onFacing: (facing: string | undefined) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3" data-testid="start-panel">
+      <h3 className="dg-h">Start</h3>
+      <div className="text-xs opacity-70">
+        Where the party comes in. One per dungeon — placing another moves this
+        one.
+      </div>
+      <FacingControl facing={start.facing} onChange={onFacing} />
+      <div className="text-xs opacity-70" data-testid="start-facing-note">
+        {start.facing === undefined
+          ? 'No facing set — the camera starts the way it always has, and the file keeps its bare `start: [col, row]`.'
+          : `The camera looks ${start.facing} on the first frame. Nothing else reads this: it never decides where the party may walk or what they can see.`}
+      </div>
+      <div className="text-xs opacity-50" data-testid="start-at">
+        at {start.at.q},{start.at.r}
+      </div>
+      <button
+        type="button"
+        className="dg-mini dg-danger"
+        data-testid="start-remove"
+        onClick={onRemove}
+      >
+        remove start
+      </button>
     </div>
   );
 }

@@ -3989,3 +3989,46 @@ describe('the Leave button learns what the viewer carries (rpg-dnd5e-web#927)', 
     ).not.toContain('crown');
   });
 });
+
+describe('the camera starts the way the dungeon says (rpg-project#374)', () => {
+  it('aims it by the atlas’s authored start facing', () => {
+    // THE INTEGRATION POINT. `startCameraOffset` has its own unit test,
+    // but nothing proved the view ever hands it the atlas's word — and
+    // reading the facing from anywhere but `GetAtlasResponse.start` is
+    // the one thing the design forbids.
+    readyScene();
+    hoisted.atlasResult.atlas = {
+      ...pointyAtlas(),
+      start: { at: { x: 0, y: 0 }, facing: 'e' },
+    } as typeof hoisted.atlasResult.atlas;
+    renderView();
+    return waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.startFacing).toBe('e')
+    );
+  });
+
+  it('hands it nothing when the author stated no facing', () => {
+    // Empty is the zero value telling the truth, and the canvas seats the
+    // camera exactly where it always has.
+    readyScene();
+    hoisted.atlasResult.atlas = {
+      ...pointyAtlas(),
+      start: { at: { x: 0, y: 0 }, facing: '' },
+    } as typeof hoisted.atlasResult.atlas;
+    renderView();
+    return waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.startFacing).toBeUndefined()
+    );
+  });
+
+  it('hands it nothing for a dungeon with no start at all', () => {
+    // The wire OMITS `start` when nobody authored one, rather than sending
+    // a zero-valued one — so this is the ordinary case for every dungeon
+    // written before the field existed.
+    readyScene();
+    renderView();
+    return waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.startFacing).toBeUndefined()
+    );
+  });
+});
