@@ -22,7 +22,10 @@ import {
   createSessionCombatDiceRequest,
   createSessionCombatNeutralRelease,
 } from './diceFixture';
-import { SESSION_COMBAT_FIXTURES } from './fixtures';
+import {
+  SESSION_COMBAT_FIXTURES,
+  SESSION_COMBAT_STANDING_ACTIONS,
+} from './fixtures';
 import { SessionCombatMap } from './SessionCombatMap';
 
 const EMPTY_PRESENTATION_STATE: CombatExperiencePresentationState = {
@@ -281,6 +284,7 @@ export function SessionCombatConcept() {
         onTargetClick={chooseTarget}
         onEndTurn={armDeclaration}
         onLogModeChange={setLogMode}
+        {...SESSION_COMBAT_STANDING_ACTIONS}
         diceWitnessRole="roller"
         onDiceReleaseRequest={handleDiceRelease}
         onDiceSemanticReleaseRequest={() => setPhase('settled')}

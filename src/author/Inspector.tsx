@@ -10,6 +10,7 @@ import { useState } from 'react';
 import type { ScenariosState } from './authoringRpc';
 import {
   floorKeys,
+  intelHolders,
   isMonsterRef,
   placementIds,
   suggestPlacementId,
@@ -20,6 +21,7 @@ import {
   type DoorDoc,
   type DungeonDoc,
   type ExitDoc,
+  type IntelDoc,
   type PlacementDoc,
   type PlacementOffset,
   type WallDoc,
@@ -65,6 +67,17 @@ export interface InspectorProps {
   onRemoveExit: (index: number) => void;
   /** Bind one blank on one scenario's form; an empty value unbinds it. */
   onBindScenario: (scenarioId: string, key: string, value: string) => void;
+  /** Declare a new record and open its form. */
+  onAddIntel: () => void;
+  /** Rename one intel record. */
+  onIntel: (id: string, patch: Partial<Pick<IntelDoc, 'id'>>) => void;
+  /** Point one record at one thing; an empty value clears that target. */
+  onIntelReveals: (id: string, key: string, value: string) => void;
+  /** Set exactly which monsters hold this record. */
+  onIntelHolders: (id: string, holders: readonly string[]) => void;
+  onRemoveIntel: (id: string) => void;
+  /** Select something else — the monster panel links back to a record. */
+  onSelect: (selection: Selection) => void;
   /** What `ListScenarios` answered — the forms this dungeon may fill in. */
   scenarios: ScenariosState;
   /** The compiler's current refusals, whole. The scenario form picks out
@@ -138,9 +151,15 @@ export function Inspector(props: InspectorProps) {
         placement={placement}
         onChange={(p) => props.onPlacement(selection.index, p)}
         onRemove={() => props.onRemovePlacement(selection.index)}
+        onSelectIntel={(id) => props.onSelect({ kind: 'intel', id })}
       />
     );
   }
+  // A RECORD IS A DUNGEON-LEVEL FACT (R7, from Kirk's walk: "so little
+  // weird the intel is next to the assets"). Selecting one shows the
+  // DUNGEON panel with that record's form open IN PLACE inside the Intel
+  // section, rather than replacing the panel — so the list and the form
+  // the author is editing stay on screen together.
   if (selection.kind === 'exit') {
     const exit = doc.exits[selection.index];
     if (!exit) return <DungeonPanel {...props} />;
@@ -212,6 +231,23 @@ function DungeonPanel(props: InspectorProps) {
         {doc.place.length} placed · {doc.exits.length} way
         {doc.exits.length === 1 ? '' : 's'} out
       </div>
+      {/* INTEL, beside Scenarios (R7). Both are dungeon-level
+          declarations — a record belongs to the dungeon the way a
+          scenario binding does, not to whichever thing happens to carry
+          it — so both live on the panel the inspector shows when nothing
+          in particular is selected. */}
+      <IntelSection
+        doc={doc}
+        selectedId={
+          props.selection.kind === 'intel' ? props.selection.id : null
+        }
+        onAdd={props.onAddIntel}
+        onSelect={(id) => props.onSelect({ kind: 'intel', id })}
+        onRename={(id, next) => props.onIntel(id, { id: next })}
+        onReveals={props.onIntelReveals}
+        onHolders={props.onIntelHolders}
+        onRemove={props.onRemoveIntel}
+      />
       {/* The scenario form lives on the DUNGEON, because that is whose
           fact a binding is — a dungeon is bound to a scenario, not a room
           or a monster. */}
@@ -601,12 +637,14 @@ function PlacementPanel({
   placement,
   onChange,
   onRemove,
+  onSelectIntel,
 }: {
   doc: DungeonDoc;
   index: number;
   placement: PlacementDoc;
   onChange: (patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>) => void;
   onRemove: () => void;
+  onSelectIntel: (id: string) => void;
 }) {
   const monster = isMonsterRef(placement.ref);
   return (
@@ -622,13 +660,15 @@ function PlacementPanel({
         placement={placement}
         onChange={(id) => onChange({ id })}
       />
+      {/* WHAT IT CARRIES, monster or prop alike (R6) — above the fields
+          that differ, because it is the one thing both kinds answer. */}
+      <HoldsReadout
+        doc={doc}
+        placement={placement}
+        onSelectIntel={onSelectIntel}
+      />
       {monster ? (
         <>
-          <KnowsControl
-            doc={doc}
-            knows={placement.knows}
-            onChange={(knows) => onChange({ knows })}
-          />
           <label className="dg-label">
             targeting
             <select
@@ -787,64 +827,325 @@ function IdControl({
 }
 
 /**
- * Which doors this monster knows about (rpg-project#368 P1) — a multi-pick
- * over the doors THIS dungeon declares, by id.
+ * The dungeon's intel: the record list, the verb that makes one, and the
+ * selected record's form OPEN IN PLACE beneath it (R7).
  *
- * Offered on monsters and not on props, which is the server's own rule
- * ("a prop is not a monster and holds nothing to know") expressed as an
- * absent control rather than a refusal after the fact. Knowing an ordinary
- * door is inert rather than wrong, so every door is listed — the concealed
- * ones are the interesting ones and the panel says which, but it refuses
- * nothing.
+ * It sits beside Scenarios rather than in the palette because that is what
+ * a record is — a declaration the dungeon carries, like a scenario
+ * binding — and not a thing you pick up and place, which is what
+ * everything in the palette is. Kirk, walking it: "so little weird the
+ * intel is next to the assets."
  */
-function KnowsControl({
+function IntelSection({
   doc,
-  knows,
-  onChange,
+  selectedId,
+  onAdd,
+  onSelect,
+  onRename,
+  onReveals,
+  onHolders,
+  onRemove,
 }: {
   doc: DungeonDoc;
-  knows: string[] | undefined;
-  onChange: (knows: string[]) => void;
+  selectedId: string | null;
+  onAdd: () => void;
+  onSelect: (id: string) => void;
+  onRename: (id: string, next: string) => void;
+  onReveals: (id: string, key: string, value: string) => void;
+  onHolders: (id: string, holders: readonly string[]) => void;
+  onRemove: (id: string) => void;
 }) {
-  const picked = new Set(knows ?? []);
+  const selected = doc.intel.find((r) => r.id === selectedId);
   return (
-    <div className="dg-label" data-testid="knows-control">
-      knows
-      {doc.doors.length === 0 ? (
+    <div className="flex flex-col gap-2" data-testid="intel-section">
+      <div className="flex items-center justify-between">
+        <h3 className="dg-h">Intel</h3>
+        <button
+          type="button"
+          className="dg-mini"
+          data-testid="new-intel"
+          onClick={onAdd}
+        >
+          + new intel
+        </button>
+      </div>
+      {doc.intel.length === 0 ? (
         <div className="text-xs opacity-70">
-          this dungeon has no doors yet — a monster knows a door by its id
+          none — a record says what a party learns, and a monster or a prop
+          carries it
         </div>
       ) : (
         <div className="flex flex-col gap-1">
-          {doc.doors.map((door) => (
-            <label className="dg-check" key={door.id}>
-              <input
-                type="checkbox"
-                data-testid={`knows-${door.id}`}
-                checked={picked.has(door.id)}
-                onChange={(e) => {
-                  const next = new Set(picked);
-                  if (e.target.checked) next.add(door.id);
-                  else next.delete(door.id);
-                  // Emitted in the DOCUMENT's door order, not click order,
-                  // so the file does not record the sequence somebody
-                  // happened to tick the boxes in.
-                  onChange(
-                    doc.doors.filter((d) => next.has(d.id)).map((d) => d.id)
-                  );
-                }}
-              />
-              {door.id}
-              {door.concealed && (
-                <span className="opacity-60"> · concealed</span>
-              )}
-            </label>
+          {doc.intel.map((record) => (
+            <button
+              key={record.id}
+              type="button"
+              aria-pressed={record.id === selectedId}
+              data-testid={`intel-${record.id}`}
+              className={`dg-tool flex items-center gap-2 ${
+                record.id === selectedId ? 'dg-tool--on' : ''
+              }`}
+              onClick={() => onSelect(record.id)}
+            >
+              <span className="truncate">{record.id}</span>
+              <span className="ml-auto opacity-60">
+                {record.reveals.door ? `→ ${record.reveals.door}` : '—'}
+              </span>
+            </button>
           ))}
         </div>
       )}
+      {selected && (
+        <IntelPanel
+          key={selected.id}
+          doc={doc}
+          record={selected}
+          onRename={(next) => onRename(selected.id, next)}
+          onReveals={(key, value) => onReveals(selected.id, key, value)}
+          onHolders={(holders) => onHolders(selected.id, holders)}
+          onRemove={() => onRemove(selected.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * ONE INTEL RECORD — the form that gives a piece of intel a target and a
+ * holder (rpg-project#372 R2, §5).
+ *
+ * This is the whole tool this cut exists to build: a DM declares what a
+ * piece of knowledge reveals, and says who is carrying it. Nothing here is
+ * scenario machinery — a record is a general builder capability like a
+ * concealed door, and the scenario form never learns the word (design R3).
+ *
+ * **Reveals** is the entity_ref picker filtered by kind, as everywhere
+ * else in this builder; `door` is the only kind the engine reads in this
+ * cut, and the next one arrives with its own use case rather than ahead of
+ * it (R4/R5).
+ *
+ * **Held by** is where assignment happens, and it is deliberately HERE and
+ * not on the monster: the author's sentence is "the captain has the vault
+ * map", said from the vault map. The monster panel mirrors it read-only.
+ */
+function IntelPanel({
+  doc,
+  record,
+  onRename,
+  onReveals,
+  onHolders,
+  onRemove,
+}: {
+  doc: DungeonDoc;
+  record: IntelDoc;
+  onRename: (id: string) => void;
+  onReveals: (key: string, value: string) => void;
+  onHolders: (holders: readonly string[]) => void;
+  onRemove: () => void;
+}) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const taken = new Set(
+    doc.intel.filter((r) => r.id !== record.id).map((r) => r.id)
+  );
+  const shown = typed ?? record.id;
+  const blank = typed !== null && typed.trim() === '';
+  const clash = typed !== null && taken.has(typed);
+  const holders = intelHolders(doc, record.id);
+  // MONSTERS AND PROPS ALIKE (R6, from Kirk's walk: intel a party can
+  // reach without killing the hardest thing in the dungeon first). Named
+  // only — `holds` points at a placement by its id, so a thing with no
+  // name cannot be given one.
+  const carriers = doc.place.filter((p) => !!p.id);
+  const door = record.reveals.door ?? '';
+  return (
+    // NO HEADING OF ITS OWN: the form opens in place under the section
+    // that already says Intel (R7), and a second "INTEL" above it reads
+    // as a second thing rather than as the record you just picked.
+    <div
+      className="flex flex-col gap-3 dg-intel-form"
+      data-testid="intel-panel"
+    >
+      <label className="dg-label">
+        id
+        <input
+          className="dg-input"
+          data-testid="intel-id"
+          aria-label="intel id"
+          value={shown}
+          onChange={(e) => {
+            const next = e.target.value;
+            setTyped(next);
+            if (next.trim() !== '' && !taken.has(next)) {
+              onRename(next);
+              setTyped(null);
+            }
+          }}
+        />
+        {blank ? (
+          <div className="text-xs" data-testid="intel-id-refusal">
+            a record needs a name — it is what a monster&apos;s `holds` points
+            at. Use &quot;remove record&quot; to delete it
+          </div>
+        ) : clash ? (
+          <div className="text-xs" data-testid="intel-id-refusal">
+            another record is already called &quot;{typed}&quot; — two cannot
+            share a name, because a monster holds one of them
+          </div>
+        ) : (
+          <div className="text-xs opacity-70">
+            The author&apos;s name for this piece of knowledge.
+          </div>
+        )}
+      </label>
+
+      <label className="dg-label">
+        reveals a door
+        {doc.doors.length === 0 ? (
+          <div className="text-xs opacity-70" data-testid="intel-no-doors">
+            this dungeon has no doors yet — a record reveals one by its id
+          </div>
+        ) : (
+          <select
+            className="dg-input"
+            data-testid="intel-reveals-door"
+            aria-label="reveals a door"
+            value={door}
+            onChange={(e) => onReveals('door', e.target.value)}
+          >
+            <option value="">(nothing yet)</option>
+            {/* A door the file no longer has stays selectable rather than
+                silently reading as "(nothing yet)": the author sees what
+                the file says and the compiler names the problem. */}
+            {door !== '' && !doc.doors.some((d) => d.id === door) && (
+              <option value={door}>{door}</option>
+            )}
+            {doc.doors.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.id}
+                {d.concealed ? ' · concealed' : ''}
+              </option>
+            ))}
+          </select>
+        )}
+        <div className="text-xs opacity-70">
+          What a party learns from this. A concealed door is the one worth
+          knowing; an ordinary one is legal and does nothing.
+        </div>
+      </label>
+
+      <div className="dg-label" data-testid="intel-held-by">
+        held by
+        {carriers.length === 0 ? (
+          <div className="text-xs opacity-70">
+            nothing in this dungeon has an id yet — select a monster or a prop
+            and name it
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {carriers.map((carrier) => {
+              const id = carrier.id as string;
+              const has = holders.includes(id);
+              return (
+                <label className="dg-check" key={id}>
+                  <input
+                    type="checkbox"
+                    data-testid={`intel-holder-${id}`}
+                    checked={has}
+                    onChange={(e) =>
+                      onHolders(
+                        e.target.checked
+                          ? [...holders, id]
+                          : holders.filter((h) => h !== id)
+                      )
+                    }
+                  />
+                  {id}
+                  {/* The KIND, said out loud: a scroll and a captain are
+                      reached in very different ways, and the author is
+                      choosing between them here. */}
+                  <span className="opacity-60">
+                    {' '}
+                    · {isMonsterRef(carrier.ref) ? 'monster' : 'prop'} ·{' '}
+                    {carrier.ref.split(':').pop()}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+        <div className="text-xs opacity-70">
+          Loot the monster or pick up the prop and this reveals. Several may
+          carry it — intel copies, it never moves.
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="dg-mini dg-danger"
+        data-testid="intel-remove"
+        onClick={onRemove}
+      >
+        remove record
+      </button>
+    </div>
+  );
+}
+
+/**
+ * What this monster is carrying, READ ONLY (rpg-project#372 §5).
+ *
+ * "Selecting a monster shows what it holds, read-only, with a link back
+ * to the record — the monster is not where you edit intel." Assignment is
+ * the record's own form (design R2): the author says who holds the vault
+ * map, from the vault map. This is the mirror of that fact, so the answer
+ * has one place it is written and one place it is read.
+ *
+ * Shown on PROPS TOO (R6): a scroll on a table carries intel exactly as a
+ * captain does, and reading it off the thing works the same either way.
+ */
+function HoldsReadout({
+  doc,
+  placement,
+  onSelectIntel,
+}: {
+  doc: DungeonDoc;
+  placement: PlacementDoc;
+  onSelectIntel: (id: string) => void;
+}) {
+  const holds = placement.holds ?? [];
+  return (
+    <div className="dg-label" data-testid="holds-readout">
+      holds
+      {holds.length === 0 ? (
+        <div className="text-xs opacity-70">
+          nothing — give it intel from the record&apos;s own form, under Intel
+          on the dungeon panel
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {holds.map((id) => {
+            // A record the file no longer declares: the compiler refuses
+            // it by name, and the panel says so rather than rendering a
+            // link to nothing.
+            const known = doc.intel.some((record) => record.id === id);
+            return (
+              <button
+                key={id}
+                type="button"
+                className="dg-mini text-left"
+                data-testid={`holds-${id}`}
+                disabled={!known}
+                onClick={() => onSelectIntel(id)}
+              >
+                {id}
+                {known ? ' →' : ' · no such record'}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="text-xs opacity-70">
-        What this monster can be looted for. A concealed door it knows is the
-        way in a party can take off its body.
+        What a party learns from this. Edited on the record.
       </div>
     </div>
   );

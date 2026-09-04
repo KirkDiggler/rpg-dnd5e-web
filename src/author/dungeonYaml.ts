@@ -151,14 +151,25 @@ export interface PlacementDoc {
    * both lines; the builder refuses one inline before it is typed into
    * the file. Omitted means the author named none, which is most props. */
   id?: string;
-  /** Monsters only, REFUSED on props (server rule, rpg-project#368 §3.3):
-   * the door ids this monster knows about. Knowing an ordinary door is
-   * inert, not an error — a monster who knows a CONCEALED door is the one
-   * a party can loot the way in off. Carried verbatim; this module never
-   * checks that a listed door exists (the server refuses by name). NIL,
-   * NOT LEN 0, is "knows nothing": an authored-but-empty list round-trips
-   * unchanged rather than being silently read as absent. */
-  knows?: string[];
+  /** The INTEL RECORD ids this placement carries from spawn
+   * (rpg-project#372 §2). Legal on MONSTERS AND PROPS alike (R6, from
+   * Kirk's walk: "tech could get intel by holding something too … not the
+   * hardest monster to kill in the game") — a scroll on a table is intel
+   * a party can reach without winning a fight first.
+   *
+   * This replaced `knows`, which named a door directly. Knowledge is
+   * spelled ONCE now, as a record — the monster holds the record and the
+   * record says what it reveals — so a record that later reveals a region
+   * or a treasure's location needs no second spelling here (design R1:
+   * "if we don't have a use case for it then it goes"). `knows` is refused
+   * by name at parse.
+   *
+   * Carried verbatim; this module never checks that a listed record
+   * exists, and the same record may be held by several monsters (intel
+   * COPIES on loot, it does not move). NIL, NOT LEN 0, is "holds
+   * nothing": an authored-but-empty list round-trips unchanged rather
+   * than being silently read as absent. */
+  holds?: string[];
   /** Props only, REFUSED on monsters. Whether a member can pick this prop
    * up off the floor (rpg-project#368 §5). Defaulting to false — a thing
    * nobody declared stays scenery — so it is written ONLY when true, which
@@ -184,6 +195,26 @@ export interface PlacementDoc {
 export interface ExitDoc {
   id: string;
   at: Axial;
+}
+
+/** One authored piece of intel: an id, and what learning it reveals
+ * (rpg-project#372 §2).
+ *
+ * A DECLARATION, LIKE A DOOR. It sits in the dungeon file, a monster is
+ * given it through `place[].holds`, and Loot applies its `reveals` to the
+ * looter. Nothing about it is scenario machinery: a DM sets up intel for
+ * whatever their story needs, and a scenario binds only the nouns its own
+ * quest has (design R3, R5).
+ *
+ * `reveals` is CARRIED OPAQUELY, a map this module never interprets —
+ * `{ door: <door id> }` is the only key the engine reads in this cut, and
+ * the set grows one key per use case (a region, a treasure's location, a
+ * lock's approach). Modelling it as a map rather than a `door` field is
+ * what lets a file written against a newer rulebook round-trip here
+ * unchanged, exactly as `scenarios` bindings do. */
+export interface IntelDoc {
+  id: string;
+  reveals: Record<string, string>;
 }
 
 /** One scenario's bindings: the form's field keys mapped to the ids the
@@ -313,6 +344,11 @@ export interface DungeonDoc {
    * a dungeon that authors none emits exactly the bytes it always did and
    * keeps compiling on a server whose decoder has not learned the key. */
   exits: ExitDoc[];
+  /** The intel records this dungeon declares (`IntelDoc`). ALWAYS PRESENT
+   * IN THE MODEL, WRITTEN ONLY WHEN IT HAS ENTRIES — `exits`'s convention,
+   * and for its reason: a dungeon that declares none emits exactly the
+   * bytes it always did. */
+  intel: IntelDoc[];
   /** Scenario id -> that scenario's bindings. A dungeon may bind several;
    * the run ends when any bound ending fires. Written only when non-empty,
    * for `exits`'s reason. Emitted with both levels of keys SORTED, so the
@@ -435,6 +471,31 @@ const POSITION_HELP: Record<Orientation, string> = {
     '[-0.375,0.25], [-0.375,-0.25]',
 };
 
+/** THE DELETED `knows:` FIELD, refused by name (rpg-project#372 R1).
+ *
+ * A monster no longer knows a door; it HOLDS AN INTEL RECORD, and the
+ * record says what it reveals. One spelling of knowledge, so the next
+ * thing intel can reveal — a region, a treasure, how a lock opens —
+ * arrives on the record and not as a second field here.
+ *
+ * Refused before anything else is read, and in the COMPILER'S OWN WORDS,
+ * because a refusal a streamer meets twice — once here on load, once from
+ * the server — must read the same both times or the two look like two
+ * different problems. Same treatment `refusePairForm` gives the deleted
+ * wall form.
+ */
+function refuseKnows(raw: Raw): void {
+  const place = Array.isArray(raw.place) ? raw.place : [];
+  const bad = place.findIndex((p) => isRecord(p) && p.knows !== undefined);
+  if (bad === -1) return;
+  throw new DungeonParseError(`place[${bad}].knows: ${KNOWS_IS_GONE}`);
+}
+
+/** The compiler's sentence for the deleted field, word for word. */
+export const KNOWS_IS_GONE =
+  '`knows` is gone: declare an `intel:` record with what it reveals, and ' +
+  'give the monster `holds: [<record id>]`.';
+
 /** The pair form, refused at the header (F4). A `walls[]` entry written
  * as a bare `[[col,row],[col,row]]` or carrying `between`/`edges`, or a
  * `doors[]` entry carrying `edges`, is version 2's DELETED wall form —
@@ -526,6 +587,7 @@ export function parseDungeon(text: string): DungeonDoc {
       'place',
       'exits',
       'scenarios',
+      'intel',
     ],
     'document'
   );
@@ -535,6 +597,7 @@ export function parseDungeon(text: string): DungeonDoc {
     );
   }
   refusePairForm(raw);
+  refuseKnows(raw);
   const orientation = str(raw, 'orientation', 'document');
   if (orientation !== 'pointy' && orientation !== 'flat') {
     throw new DungeonParseError('orientation: expected pointy | flat');
@@ -669,7 +732,7 @@ export function parseDungeon(text: string): DungeonDoc {
         'targeting',
         'boss',
         'id',
-        'knows',
+        'holds',
         'holdable',
       ],
       path
@@ -702,14 +765,14 @@ export function parseDungeon(text: string): DungeonDoc {
     if (p.id !== undefined && p.id !== null) {
       placement.id = str(p, 'id', path);
     }
-    // NIL, NOT LEN 0, IS "KNOWS NOTHING" (`PlacementDoc.knows`'s law, the
+    // NIL, NOT LEN 0, IS "HOLDS NOTHING" (`PlacementDoc.holds`'s law, the
     // same one `DoorDoc.locked` keeps): an authored empty list is carried
     // through rather than silently read as absent, so what the author
     // wrote is what the server judges.
-    if (p.knows !== undefined && p.knows !== null) {
-      placement.knows = list(p.knows, `${path}.knows`).map((d, j) => {
+    if (p.holds !== undefined && p.holds !== null) {
+      placement.holds = list(p.holds, `${path}.holds`).map((d, j) => {
         if (typeof d !== 'string') {
-          throw new DungeonParseError(`${path}.knows[${j}]: expected a string`);
+          throw new DungeonParseError(`${path}.holds[${j}]: expected a string`);
         }
         return d;
       });
@@ -734,6 +797,32 @@ export function parseDungeon(text: string): DungeonDoc {
       id: str(e, 'id', path),
       at: fromOffset(orientation, pair(e.at, `${path}.at`)),
     };
+  });
+
+  // The intel records this dungeon declares. `reveals` is read as a map of
+  // strings and nothing here knows what a key means — `door` is the only
+  // one the engine reads today, and the set grows one key per use case.
+  const intel = list(raw.intel, 'intel').map((r, i): IntelDoc => {
+    const path = `intel[${i}]`;
+    if (!isRecord(r)) {
+      throw new DungeonParseError(`${path}: expected { id, reveals }`);
+    }
+    expectKeys(r, ['id', 'reveals'], path);
+    const reveals: Record<string, string> = {};
+    if (r.reveals !== undefined && r.reveals !== null) {
+      if (!isRecord(r.reveals)) {
+        throw new DungeonParseError(`${path}.reveals: expected a map`);
+      }
+      for (const [key, value] of Object.entries(r.reveals)) {
+        if (typeof value !== 'string') {
+          throw new DungeonParseError(
+            `${path}.reveals.${key}: expected a string`
+          );
+        }
+        reveals[key] = value;
+      }
+    }
+    return { id: str(r, 'id', path), reveals };
   });
 
   // CARRIED OPAQUELY. Every binding value is read as a string and nothing
@@ -779,6 +868,7 @@ export function parseDungeon(text: string): DungeonDoc {
     place,
     exits,
     scenarios,
+    intel,
   };
 }
 
@@ -1002,11 +1092,35 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (p.targeting !== undefined) {
         fields.push(`targeting: ${scalar(p.targeting)}`);
       }
-      if (p.knows !== undefined) {
-        fields.push(`knows: [${p.knows.map(scalar).join(', ')}]`);
+      if (p.holds !== undefined) {
+        fields.push(`holds: [${p.holds.map(scalar).join(', ')}]`);
       }
       if (p.boss) fields.push('boss: true');
       out.push(`  - { ${fields.join(', ')} }`);
+    }
+  }
+
+  // Written ONLY when there are any, so a dungeon that declares no intel
+  // emits exactly the bytes it always did. Records in DOCUMENT order —
+  // the author's own order, the way `doors` and `exits` keep theirs — and
+  // each record's `reveals` keys SORTED, so the bytes do not depend on
+  // which target the author happened to pick first.
+  if (doc.intel.length > 0) {
+    out.push('intel:');
+    for (const record of doc.intel) {
+      out.push(`  - id: ${scalar(record.id)}`);
+      const keys = Object.keys(record.reveals).sort();
+      if (keys.length === 0) {
+        // A record that reveals nothing yet — the state a brand new one
+        // is in before its target is picked. `{}` says that in one token.
+        out.push('    reveals: {}');
+      } else {
+        out.push(
+          `    reveals: { ${keys
+            .map((key) => `${scalar(key)}: ${scalar(record.reveals[key])}`)
+            .join(', ')} }`
+        );
+      }
     }
   }
 
@@ -1507,6 +1621,7 @@ export function emptyDungeon(
     place: [],
     exits: [],
     scenarios: {},
+    intel: [],
   };
 }
 
@@ -1898,6 +2013,113 @@ export function setScenarioBinding(
   return { ...doc, scenarios };
 }
 
+/** Declare a new intel record, with a suggested id and nothing revealed
+ * yet — the author picks its target and its holders from the panel
+ * (design R2: "the form should assign the Intel to something"). */
+export function addIntel(doc: DungeonDoc): DungeonDoc {
+  return {
+    ...doc,
+    intel: [...doc.intel, { id: nextIntelId(doc), reveals: {} }],
+  };
+}
+
+function nextIntelId(doc: DungeonDoc): string {
+  const taken = new Set(doc.intel.map((r) => r.id));
+  let n = doc.intel.length + 1;
+  while (taken.has(`intel-${n}`)) n += 1;
+  return `intel-${n}`;
+}
+
+export function updateIntel(
+  doc: DungeonDoc,
+  id: string,
+  patch: Partial<IntelDoc>
+): DungeonDoc {
+  return {
+    ...doc,
+    intel: doc.intel.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+  };
+}
+
+/** Point one record at one thing. An EMPTY value clears that target, and a
+ * record revealing nothing is a legal in-progress state the file can hold
+ * — the compiler is what refuses to compile it, in its own words. */
+export function setIntelReveals(
+  doc: DungeonDoc,
+  id: string,
+  key: string,
+  value: string
+): DungeonDoc {
+  return {
+    ...doc,
+    intel: doc.intel.map((record) => {
+      if (record.id !== id) return record;
+      const reveals = { ...record.reveals };
+      if (value === '') delete reveals[key];
+      else reveals[key] = value;
+      return { ...record, reveals };
+    }),
+  };
+}
+
+/** Remove a record, and take it out of every monster holding it — a
+ * `holds:` naming a record the file does not declare is refused by the
+ * compiler, and deleting the record is not a way to author that. */
+export function removeIntel(doc: DungeonDoc, id: string): DungeonDoc {
+  return {
+    ...doc,
+    intel: doc.intel.filter((r) => r.id !== id),
+    place: doc.place.map((p) => {
+      if (!p.holds?.includes(id)) return p;
+      const holds = p.holds.filter((held) => held !== id);
+      const next: PlacementDoc = { ...p, holds };
+      if (holds.length === 0) delete next.holds;
+      return next;
+    }),
+  };
+}
+
+/**
+ * Assign one record to exactly this set of monsters, by placement id.
+ *
+ * THE ASSIGNMENT IS EDITED FROM THE RECORD, not from the thing holding it
+ * (design R2/§5): the author says "who holds the vault map", and the
+ * placement's own panel shows what it holds read-only. So this writes
+ * across every placement at once rather than patching one.
+ *
+ * MONSTERS AND PROPS ALIKE (R6). A placement may hold several records and
+ * a record may be held by several placements — intel COPIES, it does not
+ * move.
+ */
+export function setIntelHolders(
+  doc: DungeonDoc,
+  recordId: string,
+  holderIds: readonly string[]
+): DungeonDoc {
+  const holders = new Set(holderIds);
+  return {
+    ...doc,
+    place: doc.place.map((p) => {
+      const has = p.holds?.includes(recordId) ?? false;
+      const wants = !!p.id && holders.has(p.id);
+      if (has === wants) return p;
+      const holds = wants
+        ? [...(p.holds ?? []), recordId]
+        : (p.holds ?? []).filter((held) => held !== recordId);
+      const next: PlacementDoc = { ...p, holds };
+      if (holds.length === 0) delete next.holds;
+      return next;
+    }),
+  };
+}
+
+/** Which monsters hold this record, by placement id, in document order. */
+export function intelHolders(doc: DungeonDoc, recordId: string): string[] {
+  return doc.place
+    .filter((p) => !!p.id && p.holds?.includes(recordId))
+    .map((p) => p.id as string);
+}
+
 /** Every placement id the file declares, in document order, with the index
  * that declared it — what the id field checks a rename against and what the
  * scenario form's `entity_ref` pickers list. A DUPLICATE KEEPS THE FIRST
@@ -1992,15 +2214,13 @@ export function updatePlacement(
         // enforced on this write path for `facing`/`offset`'s reason: the
         // panel is not the only thing that can send a patch.
         delete next.holdable;
-      } else {
-        delete next.knows;
       }
-      // NIL, NOT LEN 0 (`PlacementDoc.knows`): an empty list is a state
-      // this module can represent, so a caller that means "knows nothing"
-      // clears the field rather than writing `knows: []`. The panel's
+      // NIL, NOT LEN 0 (`PlacementDoc.holds`): an empty list is a state
+      // this module can represent, so a caller that means "holds nothing"
+      // clears the field rather than writing `holds: []`. The panel's
       // last-box-unticked path takes exactly this.
-      if (next.knows !== undefined && next.knows.length === 0) {
-        delete next.knows;
+      if (next.holds !== undefined && next.holds.length === 0) {
+        delete next.holds;
       }
       return next;
     }),

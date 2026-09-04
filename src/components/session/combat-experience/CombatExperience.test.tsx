@@ -2,11 +2,13 @@ import { SESSION_COMBAT_FIXTURES } from '@/concepts/session-combat/fixtures';
 import {
   ClockKind,
   Verb,
+  type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { CombatExperience } from './CombatExperience';
+import { standingActionsBlocked } from './standingActions';
 import type {
   CombatExperiencePresentationState,
   CombatExperienceProps,
@@ -696,9 +698,13 @@ describe('Loot, Hold and Leave on the action surface (rpg-project#368)', () => {
         {...propsFor(fresh, { onLeave: vi.fn(), leaveExitId: 'front-gate' })}
       />
     );
-    const button = screen.getByTestId('session-combat-leave-button');
-    expect(button.textContent).toBe('🚪Leave through the front gate');
-    expect(button.getAttribute('data-exit')).toBe('front-gate');
+    // The LABEL is the claim — it is what the player reads. The old
+    // `data-exit` attribute went with the skinny button; the dock draws
+    // every action the same way, and a bespoke attribute on one of them
+    // would be a testing convenience nothing else uses.
+    expect(screen.getByTestId('session-combat-leave-button').textContent).toBe(
+      '🚪Leave through the front gate'
+    );
   });
 
   it('disables the buttons while their verb is in flight, without hiding them', () => {
@@ -730,5 +736,77 @@ describe('Loot, Hold and Leave on the action surface (rpg-project#368)', () => {
     expect(screen.queryAllByTestId(/session-combat-loot-/)).toHaveLength(0);
     expect(screen.queryAllByTestId(/session-combat-hold-/)).toHaveLength(0);
     expect(screen.queryByTestId('session-combat-leave-button')).toBeNull();
+  });
+});
+
+describe('the standing verbs live in the action bar (Kirk’s second walk)', () => {
+  const withVerbs = (overrides: Partial<CombatExperienceProps> = {}) =>
+    propsFor(fresh, {
+      onSearch: vi.fn(),
+      onLeave: vi.fn(),
+      holdTargets: [{ id: 'obelisk', ref: 'dnd5e:props:obelisk' }],
+      onHold: vi.fn(),
+      ...overrides,
+    });
+
+  it('draws them in the dock, not as a skinny row beside it', () => {
+    // "these should be buttons like the other actions I can take" — same
+    // component, same style, same group as the server's declarations.
+    render(<CombatExperience {...withVerbs()} />);
+    const group = screen.getByTestId('standing-actions');
+    expect(
+      group.contains(screen.getByTestId('session-combat-search-button'))
+    ).toBe(true);
+    expect(
+      group.contains(screen.getByTestId('session-combat-hold-obelisk'))
+    ).toBe(true);
+    expect(
+      group.contains(screen.getByTestId('session-combat-leave-button'))
+    ).toBe(true);
+  });
+});
+
+describe('standingActionsBlocked — free on your turn, refused off it', () => {
+  const you = 'char-1';
+  const yours = [
+    { member: you, active: true },
+    { member: 'skeleton-1', active: false },
+  ] as unknown as Participant[];
+  const theirs = [
+    { member: you, active: false },
+    { member: 'skeleton-1', active: true, name: 'Skeleton' },
+  ] as unknown as Participant[];
+
+  it('is free out of combat — there is no turn economy on the world clock', () => {
+    expect(standingActionsBlocked(ClockKind.WORLD, you, [], true)).toBeNull();
+  });
+
+  it('is free in a fight ON YOUR TURN (design §4.4)', () => {
+    // THE WALK FINDING. Every one of Kirk's four runs was inside a fight
+    // from round 1, so a dock that only offered these out of combat
+    // offered them never — and the obelisk he had authored intel onto was
+    // never picked up.
+    expect(standingActionsBlocked(ClockKind.TURN, you, yours, true)).toBeNull();
+  });
+
+  it('says "Not your turn" off-turn, rather than sending a call that comes back refused', () => {
+    expect(standingActionsBlocked(ClockKind.TURN, you, theirs, true)).toBe(
+      'Not your turn'
+    );
+  });
+
+  it('says so while authority is stale, on either clock', () => {
+    expect(standingActionsBlocked(ClockKind.WORLD, you, [], false)).toBe(
+      'Actions may be out of date'
+    );
+    expect(standingActionsBlocked(ClockKind.TURN, you, yours, false)).toBe(
+      'Actions may be out of date'
+    );
+  });
+
+  it('says so before the clock is even known', () => {
+    expect(standingActionsBlocked(ClockKind.UNSPECIFIED, you, [], true)).toBe(
+      'Waiting for authority'
+    );
   });
 });

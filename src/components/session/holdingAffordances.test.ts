@@ -161,6 +161,25 @@ describe('holdTargets — where the wire says holdable, never guessed', () => {
     ).toEqual([]);
   });
 
+  it('offers a prop the member is STANDING ON (Kirk’s second walk)', () => {
+    // He was standing on the obelisk at (11,6) — a `blocks_movement:
+    // false` prop can be stood on, and the thing under your feet is the
+    // most obviously reachable thing there is. Distance 0, not 1.
+    expect(
+      holdTargets(
+        atlas([
+          {
+            id: 'obelisk',
+            ref: 'dnd5e:props:obelisk',
+            at: { x: 0, y: 0 },
+            holdable: true,
+          },
+        ] as never),
+        viewer
+      )
+    ).toEqual([{ id: 'obelisk', ref: 'dnd5e:props:obelisk' }]);
+  });
+
   it('leaves out a prop more than one cell away, and one with no cell', () => {
     expect(
       holdTargets(

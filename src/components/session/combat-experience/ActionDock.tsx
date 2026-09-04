@@ -13,6 +13,11 @@ import {
 } from './actionTooltip';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import {
+  NOT_YOUR_TURN,
+  standingActionsBlocked,
+  type StandingAction,
+} from './standingActions';
 
 function CostBadge({ slot }: { slot: Slot }) {
   const label = slotLabel(slot);
@@ -187,6 +192,67 @@ export interface ActionDockProps {
   armedDeclarationId?: string;
   onSelectDeclaration: (declaration: Declaration) => void;
   onEndTurn: (declaration: Declaration) => void;
+  /** Search, Loot, Hold, Leave — drawn in every clock state, because they
+   * are offered in every clock state. What gates them is the TURN, not the
+   * dock: see `standingActionsBlocked`. */
+  standingActions?: readonly StandingAction[];
+}
+
+/**
+ * Why the standing verbs are not clickable right now, or null when they
+ * are.
+ *
+ * FREE ON YOUR TURN, REFUSED OFF IT (design §4.4). Out of combat there is
+ * no turn economy and they are simply free. In a fight the engine refuses
+ * them off-turn, and the button says so rather than sending a call that
+ * comes back refused — whose turn it is is public (`Turn.active`, the same
+ * fact the dock already reads to decide whose commands to draw), so this
+ * is presentation of a known fact and not a rule invented here. The server
+ * stays the authority either way: on-turn the button is enabled and the
+ * seam still refuses out of range, already held, or closed.
+ */
+/** The standing verbs, drawn like the declarations beside them. */
+function StandingActionGroup({
+  actions,
+  blocked,
+}: {
+  actions: readonly StandingAction[];
+  blocked: string | null;
+}) {
+  return (
+    <div className={styles.actionGroup} data-testid="standing-actions">
+      <span className={styles.groupLabel}>Explore</span>
+      {actions.map((action) => (
+        <span className={styles.actionOfferSlot} key={action.key}>
+          <button
+            type="button"
+            className={styles.actionOffer}
+            data-testid={action.key}
+            disabled={blocked !== null || action.pending === true}
+            title={blocked ?? action.title}
+            onClick={action.onSelect}
+          >
+            <span className={styles.actionIcon} aria-hidden="true">
+              {action.icon}
+            </span>
+            <span className={styles.actionLabel}>{action.label}</span>
+          </button>
+          {/* ONLY WHAT IS THIS BUTTON'S OWN. "Not your turn" is a fact
+              about these verbs that nothing else on screen states, so it
+              is announced here and names its action. Stale authority and
+              "waiting" are already said once by the row above, and
+              repeating them per button would read the same sentence five
+              times — noise for a screen reader, and an ambiguous query
+              for anything looking for that text. */}
+          {blocked === NOT_YOUR_TURN && (
+            <span className={styles.semanticOnly}>
+              {action.label} unavailable: {blocked}
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 // exactlyOne is CORRECT ONLY FOR END TURN, and would be a bug anywhere else
@@ -213,30 +279,52 @@ export function ActionDock({
   armedDeclarationId,
   onSelectDeclaration,
   onEndTurn,
+  standingActions = [],
 }: ActionDockProps) {
+  // THE STANDING VERBS ARE DRAWN IN EVERY CLOCK STATE, which is the whole
+  // of Kirk's second walk finding: every one of his four runs was inside a
+  // fight from round 1, so a dock that only drew them out of combat drew
+  // them never. They are disabled off-turn with the reason, rather than
+  // hidden — a verb you cannot see is one you cannot learn exists.
+  const blocked = standingActionsBlocked(
+    clock,
+    viewerMember,
+    participants,
+    authorityFresh
+  );
+  const standing = standingActions.length > 0 && (
+    <StandingActionGroup actions={standingActions} blocked={blocked} />
+  );
+
   if (clock === ClockKind.WORLD) {
     return (
-      <div className={styles.passiveActionRow}>
-        <span>Exploration</span>
-        <strong>
-          {authorityFresh
-            ? 'Click the floor to move'
-            : 'Actions may be out of date'}
-        </strong>
-        <small>
-          {authorityFresh
-            ? 'No turn economy on the world clock.'
-            : 'Waiting for current Turn and Afford authority.'}
-        </small>
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow}>
+          <span>Exploration</span>
+          <strong>
+            {authorityFresh
+              ? 'Click the floor to move'
+              : 'Actions may be out of date'}
+          </strong>
+          <small>
+            {authorityFresh
+              ? 'No turn economy on the world clock.'
+              : 'Waiting for current Turn and Afford authority.'}
+          </small>
+        </div>
+        {standing}
       </div>
     );
   }
   if (clock !== ClockKind.TURN) {
     return (
-      <div className={styles.passiveActionRow}>
-        <span>Synchronizing</span>
-        <strong>Actions are not ready</strong>
-        <small>Waiting for coherent Turn and Afford authority.</small>
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow}>
+          <span>Synchronizing</span>
+          <strong>Actions are not ready</strong>
+          <small>Waiting for coherent Turn and Afford authority.</small>
+        </div>
+        {standing}
       </div>
     );
   }
@@ -246,12 +334,15 @@ export function ActionDock({
   );
   if (!activeParticipant || activeParticipant.member !== viewerMember) {
     return (
-      <div className={styles.passiveActionRow}>
-        <span>Watching</span>
-        <strong>
-          {activeParticipant?.name ?? 'Another participant'}’s turn
-        </strong>
-        <small>Your commands return when the initiative reaches you.</small>
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow}>
+          <span>Watching</span>
+          <strong>
+            {activeParticipant?.name ?? 'Another participant'}’s turn
+          </strong>
+          <small>Your commands return when the initiative reaches you.</small>
+        </div>
+        {standing}
       </div>
     );
   }
@@ -288,6 +379,7 @@ export function ActionDock({
           ))}
         </div>
       </div>
+      {standing}
       {!authorityFresh && (
         <div className={styles.authorityStale} role="status">
           Actions may be out of date
