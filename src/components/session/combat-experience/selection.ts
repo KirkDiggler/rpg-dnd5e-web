@@ -6,6 +6,7 @@ import {
   type Shortfall,
   type TargetCandidate,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import type { CombatExperiencePresentationState } from './types';
 
 /** Safe copy for an offer rejected because the authoritative offer changed. */
@@ -86,9 +87,7 @@ export function selectCombatExperience(
   // declaration can become executable; no HP/life/progress fallback exists.
   if (
     declaration.verb === Verb.DEATH_SAVE &&
-    (declaration.targetKind !== TargetKind.NONE ||
-      declaration.deathSave === undefined ||
-      declaration.candidates.length !== 0)
+    !isDeathSaveExecutableShape(declaration, 'display')
   ) {
     return null;
   }

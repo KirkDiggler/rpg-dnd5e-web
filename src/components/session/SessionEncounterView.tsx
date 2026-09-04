@@ -1191,6 +1191,7 @@ function SessionEncounterScope({
             }
             onRetryPrivateStatus={() => void refetchCharacterData()}
             authorityFresh={authorityFresh}
+            endTurnBlocked={combat.endTurnBlocked}
             presentationState={combat.presentationState}
             phase={combat.phase}
             showTurnNotice={combat.showTurnNotice}

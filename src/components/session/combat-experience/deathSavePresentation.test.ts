@@ -132,11 +132,14 @@ describe('shared Death Save d20 presentation', () => {
       event,
       metadata,
     });
-    expect(selectCurrentPresentation(state)).toMatchObject({
+    const witnessRecord = selectCurrentPresentation(state)!;
+    expect(witnessRecord).toMatchObject({
       presentationId: 'presentation_opaque-token',
       settlement: 'armed',
       authority: { seq: 103n },
     });
+    expect(Object.hasOwn(witnessRecord.authority, 'authoritySeq')).toBe(false);
+    expect(Object.hasOwn(witnessRecord.request!, 'authoritySeq')).toBe(false);
     expect(selectVisibleStory(state)).toEqual([]);
 
     state = reduceCombatPresentation(state, {
@@ -146,6 +149,101 @@ describe('shared Death Save d20 presentation', () => {
     expect(selectVisibleStory(state)[0]?.headline).toBe(
       'Death save! 2 successes — 7 to stabilize.'
     );
+  });
+
+  it('upgrades event-first local authority from the actor response without parsing or borrowing the event sequence', () => {
+    let state = reduceCombatPresentation(configured(), {
+      type: 'stream-event',
+      event,
+      metadata,
+    });
+    let current = selectCurrentPresentation(state)!;
+    expect(Object.hasOwn(current.authority, 'authoritySeq')).toBe(false);
+    expect(Object.hasOwn(current.request!, 'authoritySeq')).toBe(false);
+
+    state = reduceCombatPresentation(
+      state,
+      deathSaveResponseFact({
+        session: 'crypt-run',
+        member: 'fighter-1',
+        response,
+      })
+    );
+    current = selectCurrentPresentation(state)!;
+    expect(current.authority.authoritySeq).toBe(27n);
+    expect(current.request?.authoritySeq).toBe(27n);
+    expect(current.authority.seq).toBe(103n);
+  });
+
+  it('converges event-before-release and release-before-event on one visible result', () => {
+    const responseState = reduceCombatPresentation(
+      configured(),
+      deathSaveResponseFact({
+        session: 'crypt-run',
+        member: 'fighter-1',
+        response,
+      })
+    );
+    const release = localWorldDieReleaseEvent(
+      selectCurrentPresentation(responseState)!.request!,
+      createNeutralVisualThrowProfile(27)
+    );
+    const eventBeforeRelease = reduceCombatPresentation(
+      reduceCombatPresentation(responseState, {
+        type: 'stream-event',
+        event,
+        metadata,
+      }),
+      { type: 'local-release', event: release }
+    );
+    const releaseBeforeEvent = reduceCombatPresentation(
+      reduceCombatPresentation(responseState, {
+        type: 'local-release',
+        event: release,
+      }),
+      { type: 'stream-event', event, metadata }
+    );
+
+    expect(selectVisibleStory(eventBeforeRelease)).toEqual(
+      selectVisibleStory(releaseBeforeEvent)
+    );
+    expect(selectCurrentPresentation(eventBeforeRelease)?.settlement).toBe(
+      'released'
+    );
+    expect(selectCurrentPresentation(releaseBeforeEvent)?.settlement).toBe(
+      'released'
+    );
+  });
+
+  it('diagnoses a conflicting Death Save release without replacing the accepted release', () => {
+    let state = reduceCombatPresentation(
+      configured(),
+      deathSaveResponseFact({
+        session: 'crypt-run',
+        member: 'fighter-1',
+        response,
+      })
+    );
+    const request = selectCurrentPresentation(state)!.request!;
+    state = reduceCombatPresentation(state, {
+      type: 'local-release',
+      event: localWorldDieReleaseEvent(
+        request,
+        createNeutralVisualThrowProfile(27)
+      ),
+    });
+    const accepted = selectCurrentPresentation(state)!.release;
+
+    const conflict = reduceCombatPresentation(state, {
+      type: 'local-release',
+      event: localWorldDieReleaseEvent(
+        request,
+        createNeutralVisualThrowProfile(99)
+      ),
+    });
+
+    expect(selectCurrentPresentation(conflict)?.release).toBe(accepted);
+    expect(conflict.diagnostics.at(-1)).toContain('conflicting release');
   });
 
   it('reveals nothing until an in-bounds release and retains the same result/token for presentation retry', () => {

@@ -9,6 +9,7 @@ import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
   emptyPresentation,
   reduceCombatPresentation,
+  selectBlocksManualEndTurn,
   selectCurrentDiceEvents,
   selectCurrentPresentation,
   selectLiveAnnouncement,
@@ -42,6 +43,7 @@ export interface UseCombatPresentationResult {
   readonly story: readonly CombatExperienceStoryExchange[];
   readonly result?: CombatExperienceAttackOutcome;
   readonly settledDeathSave?: SettledDeathSave;
+  readonly blocksManualEndTurn: boolean;
   readonly liveAnnouncement: string | null;
   /** Targets whose attack roll has not been revealed yet — the map holds
    * their downed reveal until it has (`downedReveal.ts`). */
@@ -205,6 +207,10 @@ export function useCombatPresentation(
     () => selectSettledDeathSave(state),
     [state]
   );
+  const blocksManualEndTurn = useMemo(
+    () => selectBlocksManualEndTurn(state),
+    [state]
+  );
   const unresolvedAttackTargets = useMemo(
     () => selectUnresolvedAttackTargets(state),
     [state]
@@ -237,6 +243,7 @@ export function useCombatPresentation(
     story,
     result,
     settledDeathSave,
+    blocksManualEndTurn,
     liveAnnouncement,
     unresolvedAttackTargets,
     debug: state.debug,

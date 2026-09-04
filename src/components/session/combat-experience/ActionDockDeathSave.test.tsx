@@ -86,6 +86,32 @@ describe('ActionDock Death Save declaration', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      'missing DeathSaveRef',
+      () => {
+        const malformed = declaration();
+        malformed.deathSave = undefined;
+        return malformed;
+      },
+    ],
+    [
+      'nonempty candidates',
+      () => {
+        const malformed = declaration();
+        malformed.candidates = [{ member: 'nobody', available: true }] as never;
+        return malformed;
+      },
+    ],
+  ] as const)('never offers or dispatches %s', (_label, makeDeclaration) => {
+    const onSelect = renderDock([makeDeclaration()]);
+    const malformedButton = screen.queryByRole('button', {
+      name: /death save/i,
+    });
+    if (malformedButton) fireEvent.click(malformedButton);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it('returns the exact no-target declaration through the one generic dock callback', () => {
     const offer = declaration();
     const onSelect = renderDock([offer]);

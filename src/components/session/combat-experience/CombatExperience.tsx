@@ -131,6 +131,7 @@ export function CombatExperience({
   privateStatusMessage,
   onRetryPrivateStatus,
   authorityFresh,
+  endTurnBlocked = false,
   presentationState,
   phase,
   showTurnNotice,
@@ -424,6 +425,7 @@ export function CombatExperience({
             participants={participants}
             declarations={declarations}
             authorityFresh={authorityFresh}
+            endTurnBlocked={endTurnBlocked}
             armedDeclarationId={
               presentationState.armedDeclarationId ?? undefined
             }

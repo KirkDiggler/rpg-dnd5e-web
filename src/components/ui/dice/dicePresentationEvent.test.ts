@@ -91,6 +91,23 @@ describe('parseDicePresentationEvent', () => {
     }
   );
 
+  it('classifies authority-bearing requests as requests and preserves the separate numeric coordinate through projection', () => {
+    const inbound = requested({ authoritySeq: 91n });
+
+    const parsed = parseDicePresentationEvent(inbound);
+    const projection = projectDicePresentationEvents([inbound]);
+
+    expect(parsed).toMatchObject({
+      type: 'dice-presentation-requested',
+      presentationId: 'attack:7',
+      authoritySeq: 91n,
+      die: { authoritativeResult: 10 },
+    });
+    expect(projection.request).toEqual(parsed);
+    expect(projection.release).toBeUndefined();
+    expect(projection.acceptedEvents).toEqual([parsed]);
+  });
+
   it.each(['lightning', 'dice.original.carved.d20', 'newer-safe-preset'])(
     'accepts syntactically safe preset %s without authorizing an asset URL',
     (presetId) => {

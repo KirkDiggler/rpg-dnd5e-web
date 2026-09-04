@@ -102,18 +102,18 @@ function snapshotEvent(
       return undefined;
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record);
-    const expected = sameKeys(keys, REQUEST_KEYS_WITH_AUTHORITY)
+    const requestKeys = sameKeys(keys, REQUEST_KEYS_WITH_AUTHORITY)
       ? REQUEST_KEYS_WITH_AUTHORITY
       : sameKeys(keys, REQUEST_KEYS)
         ? REQUEST_KEYS
-        : sameKeys(keys, RELEASE_KEYS)
-          ? RELEASE_KEYS
-          : undefined;
+        : undefined;
+    const expected =
+      requestKeys ?? (sameKeys(keys, RELEASE_KEYS) ? RELEASE_KEYS : undefined);
     if (!expected) return undefined;
     const snapshot: Record<string, unknown> = {};
     for (const key of expected) snapshot[key] = record[key];
     return {
-      kind: expected === REQUEST_KEYS ? 'requested' : 'released',
+      kind: requestKeys ? 'requested' : 'released',
       value: snapshot,
     };
   } catch {

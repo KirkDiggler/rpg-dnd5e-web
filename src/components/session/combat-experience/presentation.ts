@@ -62,7 +62,7 @@ interface AuthoritySnapshot {
   readonly session: string;
   /** Recipient-local ordering only; never parsed from presentationId. */
   readonly seq: bigint;
-  readonly authoritySeq: bigint;
+  readonly authoritySeq?: bigint;
   readonly presentationId: string;
   readonly roller: string;
   /** Attack compatibility alias. Death Saves use roller directly. */
@@ -355,7 +355,6 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
       kind: 'death-save' as const,
       session: event.session,
       seq: event.seq,
-      authoritySeq: event.seq,
       presentationId: result.presentationId,
       roller: result.actor,
       attacker: result.actor,
@@ -546,7 +545,9 @@ function createRequest(
     type: 'dice-presentation-requested',
     eventId: eventId('request', presentationId),
     presentationId,
-    authoritySeq: authority.authoritySeq,
+    ...(authority.authoritySeq !== undefined
+      ? { authoritySeq: authority.authoritySeq }
+      : {}),
     roller: Object.freeze({ entityId: authority.roller, role }),
     die: Object.freeze({
       kind: 'd20',
@@ -864,8 +865,18 @@ function acceptResponse(
     );
   }
   if (current.responseAccepted) return state;
+  const upgradedAuthority =
+    authority.kind === 'death-save'
+      ? Object.freeze({
+          ...current.authority,
+          authoritySeq: authority.authoritySeq,
+        })
+      : current.authority;
+  const upgradedRequest = createRequest(state, upgradedAuthority);
   return replacePresentation(state, index, {
     ...current,
+    authority: upgradedAuthority,
+    request: upgradedRequest,
     responseAccepted: true,
     locallyArmedResponse:
       !current.conflicted &&
@@ -1668,6 +1679,19 @@ export function selectCurrentDiceEvents(
     [current.request, current.release].filter(
       (event): event is DicePresentationEvent => event !== undefined
     )
+  );
+}
+
+export function selectBlocksManualEndTurn(
+  state: CombatPresentationState
+): boolean {
+  return state.presentations.some(
+    (record) =>
+      !record.conflicted &&
+      record.authority.kind === 'death-save' &&
+      record.localPlayerOwned &&
+      record.responseAccepted &&
+      (record.settlement === 'armed' || record.settlement === 'unresolved')
   );
 }
 

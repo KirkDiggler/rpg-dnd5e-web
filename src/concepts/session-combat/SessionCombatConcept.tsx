@@ -59,8 +59,18 @@ export function SessionCombatConcept() {
     if (!next) return;
     setFixtureId(next.id);
     setPresentationState(EMPTY_PRESENTATION_STATE);
-    setDiceEvents([]);
-    setPhase('fresh');
+    if (next.id === 'death-save') {
+      setDiceEvents(
+        createSessionCombatDiceRequest(
+          'presentation_death-save-review',
+          next.attackOutcome.d20
+        )
+      );
+      setPhase('awaiting-roll');
+    } else {
+      setDiceEvents([]);
+      setPhase('fresh');
+    }
     setShowTurnNotice(next.id === 'fresh-turn');
     setLogMode('story');
   };
@@ -82,6 +92,16 @@ export function SessionCombatConcept() {
     setShowTurnNotice(false);
     setDiceEvents([]);
     setPresentationState(nextState);
+    if (declaration.verb === Verb.DEATH_SAVE) {
+      setDiceEvents(
+        createSessionCombatDiceRequest(
+          'presentation_death-save-review',
+          fixture.attackOutcome.d20
+        )
+      );
+      setPhase('awaiting-roll');
+      return;
+    }
     setPhase(
       declaration.verb === Verb.ATTACK &&
         declaration.targetKind === TargetKind.MEMBER
@@ -237,7 +257,7 @@ export function SessionCombatConcept() {
         privateStatus="ready"
         authorityFresh
         presentationState={presentationState}
-        phase={phase}
+        phase={fixture.id === 'death-save' ? 'awaiting-roll' : phase}
         showTurnNotice={showTurnNotice}
         logMode={logMode}
         streamState={fixture.streamState}

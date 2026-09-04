@@ -12,6 +12,7 @@ import {
   type ActionTooltip,
 } from './actionTooltip';
 import styles from './CombatExperience.module.css';
+import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 
 function CostBadge({ slot }: { slot: Slot }) {
   const label = slotLabel(slot);
@@ -182,6 +183,7 @@ export interface ActionDockProps {
   participants: readonly Participant[];
   declarations: readonly Declaration[];
   authorityFresh: boolean;
+  endTurnBlocked?: boolean;
   armedDeclarationId?: string;
   onSelectDeclaration: (declaration: Declaration) => void;
   onEndTurn: (declaration: Declaration) => void;
@@ -207,6 +209,7 @@ export function ActionDock({
   participants,
   declarations,
   authorityFresh,
+  endTurnBlocked = false,
   armedDeclarationId,
   onSelectDeclaration,
   onEndTurn,
@@ -263,7 +266,8 @@ export function ActionDock({
       declaration.verb === Verb.ATTACK ||
       declaration.verb === Verb.MOVE ||
       declaration.verb === Verb.ACTIVATE ||
-      declaration.verb === Verb.DEATH_SAVE
+      (declaration.verb === Verb.DEATH_SAVE &&
+        isDeathSaveExecutableShape(declaration, 'display'))
   );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
 
@@ -293,22 +297,30 @@ export function ActionDock({
         <button
           type="button"
           className={styles.endTurn}
-          disabled={!authorityFresh || !endTurn.available}
+          disabled={!authorityFresh || endTurnBlocked || !endTurn.available}
           title={
             !authorityFresh
               ? 'Actions may be out of date'
-              : endTurn.available
-                ? 'End turn'
-                : endTurn.why?.text || 'Unavailable'
+              : endTurnBlocked
+                ? 'Finish the Death Save roll before ending turn'
+                : endTurn.available
+                  ? 'End turn'
+                  : endTurn.why?.text || 'Unavailable'
           }
           onClick={() => onEndTurn(endTurn)}
         >
           End turn
           <span aria-hidden="true">→</span>
-          {!endTurn.available && (
+          {endTurnBlocked ? (
             <span className={styles.semanticOnly}>
-              Unavailable: {endTurn.why?.text || 'Unavailable'}
+              Unavailable: finish the Death Save roll first
             </span>
+          ) : (
+            !endTurn.available && (
+              <span className={styles.semanticOnly}>
+                Unavailable: {endTurn.why?.text || 'Unavailable'}
+              </span>
+            )
           )}
         </button>
       )}

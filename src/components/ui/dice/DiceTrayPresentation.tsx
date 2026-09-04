@@ -115,8 +115,32 @@ function allocateRendererGeneration() {
   return generation;
 }
 
+const AUTHORITY_BIGINT_MARKER = '$diceAuthorityBigInt';
+
 function eventIdentity(event: DicePresentationEvent) {
-  return JSON.stringify(event);
+  return JSON.stringify(event, (_key, value: unknown) =>
+    typeof value === 'bigint'
+      ? { [AUTHORITY_BIGINT_MARKER]: value.toString() }
+      : value
+  );
+}
+
+function parseEventIdentity(identity: string): unknown {
+  return JSON.parse(identity, (_key, value: unknown) => {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.keys(value).length === 1 &&
+      typeof (value as Record<string, unknown>)[AUTHORITY_BIGINT_MARKER] ===
+        'string'
+    ) {
+      return BigInt(
+        (value as Record<string, string>)[AUTHORITY_BIGINT_MARKER]!
+      );
+    }
+    return value;
+  });
 }
 
 function deliveryValues(identity: string): readonly string[] | undefined {
@@ -149,7 +173,7 @@ function deliveryEvents(identity: string) {
   const events: DicePresentationEvent[] = [];
   for (const value of values) {
     try {
-      const event = parseDicePresentationEvent(JSON.parse(value));
+      const event = parseDicePresentationEvent(parseEventIdentity(value));
       if (event) events.push(event);
     } catch {
       // Internal identities still fail closed if corrupted.

@@ -19,6 +19,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
+import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
   isStaleDeclarationRefusal,
   selectCombatExperience,
@@ -84,6 +85,7 @@ export interface UseSessionCombatExperienceResult {
   diceWitnessRole: 'roller' | 'spectator';
   diceRollerName: string;
   pacingNotice: string | null;
+  endTurnBlocked: boolean;
   onSelectDeclaration: (declaration: Declaration) => void;
   onTargetClick: (target: string) => void;
   onEndTurn: (declaration: Declaration) => void;
@@ -174,7 +176,10 @@ export function useSessionCombatExperience({
     useState<DeathSaveResponse>();
   const attackInFlightRef = useRef(false);
   const deathSaveInFlightRef = useRef(false);
+  const acceptedDeathSaveRef = useRef(false);
   const endTurnInFlightRef = useRef(false);
+  const automaticEndTurnRef = useRef(false);
+  const manualEndTurnBlockedRef = useRef(false);
   const activateInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
@@ -205,6 +210,7 @@ export function useSessionCombatExperience({
     memberNames: presentationMemberNames,
     memberRoles: presentationMemberRoles,
   });
+  manualEndTurnBlockedRef.current = presentation.blocksManualEndTurn;
   const pacing = useCombatStoryPacing({
     member,
     participants,
@@ -348,13 +354,20 @@ export function useSessionCombatExperience({
       }
 
       if (candidate.verb === Verb.DEATH_SAVE) {
+        if (!isDeathSaveExecutableShape(candidate, 'execute')) return;
         const current = uniqueCurrentDeclaration(
           declarationsRef.current,
           candidate,
           Verb.DEATH_SAVE,
           TargetKind.NONE
         );
-        if (!current || deathSaveInFlightRef.current) return;
+        if (
+          !current ||
+          !isDeathSaveExecutableShape(current, 'execute') ||
+          deathSaveInFlightRef.current ||
+          acceptedDeathSaveRef.current
+        )
+          return;
         setInteraction(EMPTY_INTERACTION);
         setTargeting(false);
         deathSaveInFlightRef.current = true;
@@ -366,6 +379,7 @@ export function useSessionCombatExperience({
               declarationId: current.id,
             });
             if (!mountedRef.current) return;
+            acceptedDeathSaveRef.current = true;
             setPendingDeathSaveResponse(response);
             presentation.acceptDeathSaveResponse(
               deathSaveResponseFact({ session, member, response })
@@ -377,6 +391,7 @@ export function useSessionCombatExperience({
             if (isStaleDeclarationRefusal(error)) {
               recoverStaleDeclaration(current.id, Verb.DEATH_SAVE);
             } else {
+              acceptedDeathSaveRef.current = true;
               const notice = `Death Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
               invalidateAuthority();
               setInteraction({
@@ -662,6 +677,7 @@ export function useSessionCombatExperience({
       if (
         !mountedRef.current ||
         endTurnInFlightRef.current ||
+        (manualEndTurnBlockedRef.current && !automaticEndTurnRef.current) ||
         !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
@@ -746,7 +762,9 @@ export function useSessionCombatExperience({
         return;
       }
       continuedDeathSavesRef.current.add(settled.presentationId);
+      automaticEndTurnRef.current = true;
       onEndTurn(endTurnDeclaration);
+      automaticEndTurnRef.current = false;
       return;
     }
 
@@ -793,6 +811,7 @@ export function useSessionCombatExperience({
       diceWitnessRole: presentation.diceWitnessRole,
       diceRollerName: presentation.diceRollerName,
       pacingNotice: pacing.notice,
+      endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,
       onTargetClick,
       onEndTurn,
@@ -816,6 +835,7 @@ export function useSessionCombatExperience({
       pacing.story,
       pendingDeathSaveResponse,
       phase,
+      presentation.blocksManualEndTurn,
       presentation.debug,
       presentation.diceEvents,
       presentation.diceRollerName,

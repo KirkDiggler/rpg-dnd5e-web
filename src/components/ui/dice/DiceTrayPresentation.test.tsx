@@ -280,6 +280,13 @@ function matchingTelemetry(
 }
 
 describe('DiceTrayPresentation', () => {
+  it('keeps an authority-bearing Attack request on the request projection path', () => {
+    renderPresentation([requested('attack:authority', { authoritySeq: 44n })]);
+
+    expect(screen.getByTestId('attack-die-3d-mock')).toBeTruthy();
+    expect(attackDieProps.at(-1)).toMatchObject({ result: 10 });
+  });
+
   it('reports the actual event-array and provider objects observed inside each presentation boundary', async () => {
     const rollerEvents = Object.freeze([originalRequested('attack:boundary')]);
     const spectatorEvents = Object.freeze([...rollerEvents]);
