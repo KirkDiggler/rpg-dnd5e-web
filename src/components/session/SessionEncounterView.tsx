@@ -1278,7 +1278,7 @@ function SessionEncounterScope({
                 characterName={characterName}
                 classRefId={classRefId}
                 raceRefId={raceRefId}
-                localHair={ownerCharacter?.appearance?.hair}
+                localCustomization={ownerCharacter?.appearance}
                 localIsDowned={localIsDowned}
                 mainHandPresentation={mainHandResolution.presentation}
                 offHandPresentation={offHandResolution.presentation}

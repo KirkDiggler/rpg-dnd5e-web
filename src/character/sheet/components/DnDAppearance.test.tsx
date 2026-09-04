@@ -41,6 +41,10 @@ describe('DnDAppearance', () => {
       ).not.toBeNull();
       expect(screen.getByText('Default hair color · #5A3825')).not.toBeNull();
       expect(screen.getByText('Default roughness · 0.72')).not.toBeNull();
+      expect(screen.getByText('Default gear primary · #49667E')).not.toBeNull();
+      expect(
+        screen.getByText('Default gear secondary · #D1A44C')
+      ).not.toBeNull();
       expect(screen.queryByRole('button')).toBeNull();
     }
   );
@@ -131,6 +135,8 @@ describe('DnDAppearance', () => {
     expect(screen.getByText('Facial: None')).not.toBeNull();
     expect(screen.getByText('Hair color · #000000')).not.toBeNull();
     expect(screen.getByText('Roughness · 0.00')).not.toBeNull();
+    expect(screen.getByText('Default gear primary · #49667E')).not.toBeNull();
+    expect(screen.getByText('Default gear secondary · #D1A44C')).not.toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
 });

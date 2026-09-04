@@ -41,7 +41,10 @@ function exactProviderAuthority() {
       providerJson(aggregate.profiles[raceRef].manifest),
     ])
   );
-  return { aggregate, manifests };
+  const outfits = providerJson(
+    'harness/models/synty/characters/outfit-customization/v1/manifest.json'
+  );
+  return { aggregate, manifests, outfits };
 }
 
 describe('aggregate character customization catalog module', () => {
@@ -55,13 +58,14 @@ describeProvider('aggregate character customization catalog generator', () => {
     return import('./generateCharacterCustomizationCatalog');
   }
 
-  it('normalizes exact schema-v2 Dwarf and seven schema-v3 profiles in provider order', async () => {
+  it('normalizes exact profiles and class outfit masks in provider order', async () => {
     const { projectCharacterCustomizationAuthority } = await generator();
-    const { aggregate, manifests } = exactProviderAuthority();
+    const { aggregate, manifests, outfits } = exactProviderAuthority();
 
     const catalog = projectCharacterCustomizationAuthority(
       aggregate,
-      manifests
+      manifests,
+      outfits
     );
 
     expect(catalog.profileOrder).toEqual([
@@ -104,11 +108,39 @@ describeProvider('aggregate character customization catalog generator', () => {
       expect(profile.slots.scalp.options).toHaveLength(38);
       expect(profile.slots.facialHair.options).toHaveLength(18);
     }
+    expect(catalog.outfits.fighter).toEqual({
+      classRef: 'fighter',
+      outfit: '16',
+      maskUrl:
+        '/models/synty/characters/outfit-customization/v1/masks/fighter-16.png',
+      maskSha256:
+        '64573ee074597ffd53f34a7d4e1f81537793298ac6fe08cfa14169b2b86b589c',
+      defaultPrimaryColorSrgb: 0x49667e,
+      defaultSecondaryColorSrgb: 0xd1a44c,
+      meshNames: [
+        'Chr_Torso_Male_16',
+        'Chr_Hips_Male_16',
+        'Chr_ArmUpperLeft_Male_16',
+        'Chr_ArmUpperRight_Male_16',
+        'Chr_ArmLowerLeft_Male_16',
+        'Chr_ArmLowerRight_Male_16',
+        'Chr_HandLeft_Male_16',
+        'Chr_HandRight_Male_16',
+        'Chr_LegLeft_Male_16',
+        'Chr_LegRight_Male_16',
+      ],
+    });
+    expect(Object.keys(catalog.outfits)).toEqual([
+      'barbarian',
+      'fighter',
+      'monk',
+      'rogue',
+    ]);
   });
 
   it('rejects an ambiguous none default and an incomplete aggregate before rendering source', async () => {
     const { projectCharacterCustomizationAuthority } = await generator();
-    const { aggregate, manifests } = exactProviderAuthority();
+    const { aggregate, manifests, outfits } = exactProviderAuthority();
     const invalidManifests = structuredClone(manifests);
     const human = invalidManifests.human as MutableProfileManifest;
     human.slots['facial-hair'].defaultSelection = {
@@ -116,13 +148,17 @@ describeProvider('aggregate character customization catalog generator', () => {
       styleRef: '',
     };
     expect(() =>
-      projectCharacterCustomizationAuthority(aggregate, invalidManifests)
+      projectCharacterCustomizationAuthority(
+        aggregate,
+        invalidManifests,
+        outfits
+      )
     ).toThrow(/defaultSelection|styleRef/);
 
     const incomplete = structuredClone(aggregate) as MutableAggregateManifest;
     delete incomplete.profiles.gnome;
     expect(() =>
-      projectCharacterCustomizationAuthority(incomplete, manifests)
+      projectCharacterCustomizationAuthority(incomplete, manifests, outfits)
     ).toThrow(/profiles|gnome/);
   });
 
@@ -143,14 +179,16 @@ describeProvider('aggregate character customization catalog generator', () => {
     });
 
     expect(firstReceipt).toEqual({
-      providerCommit: '0c837a801d97c98e50a336fb07e3b50d08d54df1',
+      providerCommit: '91ddbdfd88db1eccc465616671d7f1f427f5056e',
       aggregateManifestSha256:
         '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
+      outfitManifestSha256:
+        '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
       profileCount: 8,
       bodyCount: 32,
       accessoryCount: 448,
       thumbnailCount: 448,
-      sourceAssetCount: 969,
+      sourceAssetCount: 974,
     });
     expect(secondReceipt).toEqual(firstReceipt);
     expect(readFileSync(second)).toEqual(readFileSync(first));
