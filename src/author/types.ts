@@ -34,7 +34,12 @@ export type Selection =
   /** An entry in `exits[]`, by index — the same treatment a wall gets, and
    * for the same reason: the file holds a list and the index is what a
    * compiler path names. */
-  | { kind: 'exit'; index: number };
+  | { kind: 'exit'; index: number }
+  /** One intel record, by its id — the form where a piece of intel is
+   * given a target and a holder (rpg-project#372 §5). Declared on the
+   * dungeon, not on any one thing in it, which is why it is selected by
+   * name rather than by index into something. */
+  | { kind: 'intel'; id: string };
 
 /** The catalog item armed on the `place` tool. */
 export interface PaletteItem {

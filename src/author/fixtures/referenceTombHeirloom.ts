@@ -3,8 +3,17 @@
  *
  * `reference-tomb-heirloom.yaml` beside this module is a VERBATIM COPY of
  * `rulebooks/dnd5e/encounter/dungeonspec/testdata/reference-tomb-heirloom.yaml`
- * on the toolkit's `encounter/recover-the-artifact` branch, commit
- * 3fe79d25. Not a conversion, not a reconstruction: the builder's fixture
+ * from the toolkit at **`rulebooks/dnd5e/encounter/v0.58.0`** (ca46c580,
+ * the squash merge of the intel-record work) — verified byte-identical
+ * to it, which is the citation that will still resolve after the branch
+ * is deleted. The same bytes appear on `encounter/intel-record` at
+ * 8fb11951 and at c687853f before it, where they were authored; a squash
+ * means neither commit is an ancestor of the tag, so this is a claim
+ * about CONTENT and not about history —
+ * re-authored there so the captain's knowledge is an INTEL RECORD it
+ * holds rather than a `knows:` list (rpg-project#372 R1), and grown a
+ * SECOND record on a holdable scroll in the hall (R6) so the tool can be
+ * walked without killing the hardest monster in the dungeon first. Not a conversion, not a reconstruction: the builder's fixture
  * and the compiler's fixture are one text, so a disagreement about what
  * this dungeon IS cannot hide between them. `referenceTomb.ts` beside this
  * file does the same for the plain tomb, which this slice leaves untouched.
@@ -21,9 +30,14 @@
  *   - a VAULT — a concealed region behind the tomb, reachable only through
  *     a concealed door in the tomb's east wall;
  *   - the HEIRLOOM — a prop with an id that can be picked up, in the vault;
+ *   - the VAULT MAP and the HALL NOTES — two `intel:` records, both
+ *     declaring `reveals: { door: vault }`. Two records may reveal one
+ *     door: knowledge is not scarce, and the second is what makes the
+ *     door reachable by picking a scroll up instead of by winning a
+ *     fight;
  *   - the CAPTAIN — the same skeleton captain, now carrying
- *     `knows: [vault]` and NO boss flag, because this dungeon ends because
- *     a scenario says so rather than because a monster wears a flag;
+ *     `holds: [vault-map]` and NO boss flag, because this dungeon ends
+ *     because a scenario says so rather than because a monster wears a flag;
  *   - an EXIT named `entrance`, on the cell the party starts on — authored,
  *     because `start` is not implicitly a way out;
  *   - the SCENARIO binding: `recover-the-artifact`, artifact and exit.

@@ -431,3 +431,28 @@ export const SESSION_COMBAT_FIXTURES: readonly SessionCombatFixture[] =
     reconnected,
     deathSaveTurn,
   ]);
+
+/**
+ * The seam's standing verbs, as the Lab shows them: Search, Loot, Hold and
+ * Leave in the action bar beside the server's declarations.
+ *
+ * Here because Kirk's second walk found them unreachable in practice —
+ * every run was inside a fight from round 1, and the old skinny row beside
+ * the dock read as chrome. Reviewing that surface should not require
+ * getting into a real fight next to a real prop, so the Lab holds one of
+ * each: a body to loot, a prop to pick up, a room to search, a way out.
+ *
+ * Presentation only. The handlers do nothing — the Lab never calls the
+ * seam — and the offers are what a client WOULD have computed from an
+ * atlas and a view, not anything this file decides is legal. The server
+ * refuses or allows; this just draws the buttons.
+ */
+export const SESSION_COMBAT_STANDING_ACTIONS = {
+  onSearch: () => {},
+  lootTargets: [{ subject: 'skeleton-1', name: 'Skeleton' }],
+  onLoot: () => {},
+  holdTargets: [{ id: 'obelisk', ref: 'dnd5e:props:obelisk' }],
+  onHold: () => {},
+  onLeave: () => {},
+  leaveHolding: [] as readonly string[],
+} as const;
