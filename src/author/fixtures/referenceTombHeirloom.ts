@@ -3,11 +3,13 @@
  *
  * `reference-tomb-heirloom.yaml` beside this module is a VERBATIM COPY of
  * `rulebooks/dnd5e/encounter/dungeonspec/testdata/reference-tomb-heirloom.yaml`
- * on the toolkit's `encounter/intel-record` branch, commit 8fb11951 —
- * byte-identical there to c687853f, which is where these bytes were
- * authored; 8fb11951 is an engine fix ("a prop's intel records survive a
- * save") that does not touch the file. Cited at the branch head so a
- * re-take reaches for the newest commit and finds the same text —
+ * from the toolkit at **`rulebooks/dnd5e/encounter/v0.58.0`** (ca46c580,
+ * the squash merge of the intel-record work) — verified byte-identical
+ * to it, which is the citation that will still resolve after the branch
+ * is deleted. The same bytes appear on `encounter/intel-record` at
+ * 8fb11951 and at c687853f before it, where they were authored; a squash
+ * means neither commit is an ancestor of the tag, so this is a claim
+ * about CONTENT and not about history —
  * re-authored there so the captain's knowledge is an INTEL RECORD it
  * holds rather than a `knows:` list (rpg-project#372 R1), and grown a
  * SECOND record on a holdable scroll in the hall (R6) so the tool can be
