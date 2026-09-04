@@ -5,6 +5,7 @@ import {
 import { resolveHairPresentation } from '@/character/customization/hairCustomization';
 import { resolveOutfitPresentation } from '@/character/customization/outfitCustomization';
 import { ClassCharacterModel } from '@/components/hex-grid/ClassCharacterModel';
+import { SYNTY_GLB_FORWARD_OFFSET } from '@/components/hex-grid/facing';
 import type { SkinnedAccessoryStatus } from '@/components/hex-grid/SkinnedAccessoryAttachment';
 import type { Appearance } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { OrbitControls } from '@react-three/drei';
@@ -58,7 +59,7 @@ export function CharacterCustomizationPreview({
       <Suspense fallback={null}>
         <ClassCharacterModel
           url={model.url}
-          facingRotation={Math.PI}
+          facingRotation={SYNTY_GLB_FORWARD_OFFSET}
           accessories={accessories}
           outfit={outfit}
           onAccessoryStatus={onAccessoryStatus}

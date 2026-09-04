@@ -29,7 +29,10 @@ describe('outfit material treatment', () => {
     const mask = new THREE.Texture();
     const source = new THREE.MeshStandardMaterial({ map, color: 0xeeeeee });
     const prepared = prepareOutfitMaterial(source, mask, fighterPresentation());
-    const shader = { fragmentShader: '#include <map_fragment>', uniforms: {} };
+    const shader = {
+      fragmentShader: '#include <common>\n#include <map_fragment>',
+      uniforms: {},
+    };
 
     prepared.material.onBeforeCompile(
       shader as never,
@@ -42,12 +45,49 @@ describe('outfit material treatment', () => {
     expect(prepared.uniforms.outfitMask.value).toBe(mask);
     expect(prepared.uniforms.usePrimary.value).toBe(1);
     expect(prepared.uniforms.useSecondary.value).toBe(1);
-    expect(shader.fragmentShader).toContain('texture2D(outfitMask, vMapUv)');
+    const declarations = [
+      'uniform sampler2D outfitMask;',
+      'uniform float usePrimary;',
+      'uniform float useSecondary;',
+      'uniform vec3 primaryColor;',
+      'uniform vec3 secondaryColor;',
+    ];
+    declarations.forEach((declaration) => {
+      expect(shader.fragmentShader).toContain(declaration);
+      expect(
+        shader.fragmentShader.match(new RegExp(declaration, 'g'))
+      ).toHaveLength(1);
+      expect(shader.fragmentShader.indexOf(declaration)).toBeLessThan(
+        shader.fragmentShader.indexOf('texture2D(outfitMask, vMapUv)')
+      );
+    });
     expect(shader.fragmentShader).toContain('outfitMaskSample.r');
     expect(shader.fragmentShader).toContain('outfitMaskSample.g');
+    expect(shader.uniforms).toMatchObject(prepared.uniforms);
     expect(prepared.material.customProgramCacheKey()).toBe(
       'class-outfit-colors-v1'
     );
+  });
+
+  it('fails closed when either required Three.js fragment anchor is absent', () => {
+    const prepared = prepareOutfitMaterial(
+      new THREE.MeshStandardMaterial(),
+      new THREE.Texture(),
+      fighterPresentation()
+    );
+
+    expect(() =>
+      prepared.material.onBeforeCompile(
+        { fragmentShader: '#include <map_fragment>', uniforms: {} } as never,
+        {} as THREE.WebGLRenderer
+      )
+    ).toThrow(/common/);
+    expect(() =>
+      prepared.material.onBeforeCompile(
+        { fragmentShader: '#include <common>', uniforms: {} } as never,
+        {} as THREE.WebGLRenderer
+      )
+    ).toThrow(/map_fragment/);
   });
 
   it('updates uniform values in place without replacing material, source map, or mask texture', () => {

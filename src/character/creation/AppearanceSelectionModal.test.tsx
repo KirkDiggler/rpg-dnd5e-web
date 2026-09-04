@@ -34,9 +34,11 @@ vi.mock('@/components/hex-grid/MediumHumanoid', () => ({
 vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
   ClassCharacterModel: ({
     url,
+    facingRotation,
     accessories,
   }: {
     url: string;
+    facingRotation?: number;
     accessories?: readonly {
       slot: string;
       styleRef: string;
@@ -65,6 +67,7 @@ vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
       <div
         data-testid="class-character-model"
         data-url={url}
+        data-facing-rotation={facingRotation}
         data-accessories={JSON.stringify(accessories)}
       />
     );
@@ -182,6 +185,16 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
       );
     }
   );
+
+  it('uses the measured zero Synty forward offset for the preview', () => {
+    renderModal();
+
+    expect(
+      screen
+        .getByTestId('class-character-model')
+        .getAttribute('data-facing-rotation')
+    ).toBe('0');
+  });
 
   it('updates treatment in place without an accessory load, while a style change produces a load witness', async () => {
     renderModal();

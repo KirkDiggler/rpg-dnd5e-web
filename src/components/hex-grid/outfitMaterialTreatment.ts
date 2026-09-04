@@ -1,7 +1,13 @@
 import type { OutfitPresentation } from '@/character/customization/outfitCustomization';
 import * as THREE from 'three';
 
+const UNIFORM_DECLARATION_ANCHOR = '#include <common>';
 const MAP_FRAGMENT_ANCHOR = '#include <map_fragment>';
+const OUTFIT_UNIFORMS = `uniform sampler2D outfitMask;
+uniform float usePrimary;
+uniform float useSecondary;
+uniform vec3 primaryColor;
+uniform vec3 secondaryColor;`;
 const OUTFIT_FRAGMENT = `#ifdef USE_MAP
   vec4 sampledDiffuseColor = texture2D(map, vMapUv);
   #ifdef DECODE_VIDEO_TEXTURE
@@ -63,16 +69,23 @@ export function prepareOutfitMaterial(
   };
   applyPresentation(uniforms, presentation);
   material.onBeforeCompile = (shader) => {
+    if (!shader.fragmentShader.includes(UNIFORM_DECLARATION_ANCHOR)) {
+      throw new Error(
+        'Class outfit shader requires the Three.js common chunk declaration anchor.'
+      );
+    }
     if (!shader.fragmentShader.includes(MAP_FRAGMENT_ANCHOR)) {
       throw new Error(
         'Class outfit shader requires the Three.js map_fragment chunk anchor.'
       );
     }
     Object.assign(shader.uniforms, uniforms);
-    shader.fragmentShader = shader.fragmentShader.replace(
-      MAP_FRAGMENT_ANCHOR,
-      OUTFIT_FRAGMENT
-    );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        UNIFORM_DECLARATION_ANCHOR,
+        `${UNIFORM_DECLARATION_ANCHOR}\n${OUTFIT_UNIFORMS}`
+      )
+      .replace(MAP_FRAGMENT_ANCHOR, OUTFIT_FRAGMENT);
   };
   material.customProgramCacheKey = () => 'class-outfit-colors-v1';
   material.needsUpdate = true;
