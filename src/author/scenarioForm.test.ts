@@ -83,6 +83,23 @@ describe('bindOptions — the picker lists this dungeon’s own ids', () => {
     expect(bindOptions(dungeon(), entityRef('door'))).toEqual([]);
   });
 
+  it('never offers a blank id as an option', () => {
+    // A hand-edited file can carry `exits: [{id: "", …}]`. An option whose
+    // value is the empty string is indistinguishable from "(not set)", so
+    // the author would appear to have bound something and have bound
+    // nothing.
+    const doc = dungeon();
+    const blank = {
+      ...doc,
+      exits: [...doc.exits, { id: '', at: p(3, 0) }],
+      doors: [{ id: '', at: doc.doors[0]?.at ?? ({} as never) }],
+    };
+    expect(bindOptions(blank, entityRef('exit'))?.map((o) => o.id)).toEqual([
+      'exit-1',
+    ]);
+    expect(bindOptions(blank, entityRef('door'))).toEqual([]);
+  });
+
   it('answers null for a kind this build has never heard of', () => {
     // `kind` is an open string on purpose. Refusing here would make this
     // client the thing that decides what a rulebook may bind; the panel

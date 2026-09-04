@@ -242,7 +242,17 @@ function SessionEncounterScope({
    * kept so a later DROPPED beat can put the same thing back — `Dropped`
    * carries the id and the cell, never the ref (`applyHolding.ts`). A
    * plain ref, not state: nothing renders from it, it only feeds the next
-   * patch. */
+   * patch.
+   *
+   * NOT CLEARED ON THE DROP, deliberately. A beat delivered twice is the
+   * case that decides it: `applyDropped` is idempotent on the id, so a
+   * redelivered DROPPED with the memory already discarded would REPLACE
+   * the drawn prop with a bare id-and-cell entry and the reliquary would
+   * vanish into an empty ref. Keeping it costs one entry per holdable
+   * placement in one dungeon — the map is keyed by `place[].id`, so it is
+   * bounded by the file, not by the length of the session — and the whole
+   * ref dies with this scope, which remounts per session and member. A
+   * prop picked up again simply overwrites its own entry. */
   const heldPropsRef = useRef(new Map<string, AtlasProp>());
   const [activeVendor, setActiveVendor] = useState<{
     subject: string;

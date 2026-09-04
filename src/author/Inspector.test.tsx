@@ -775,6 +775,24 @@ describe('the way-out panel', () => {
     );
   });
 
+  it('refuses a blank name in place, and points at the remove button', () => {
+    // An exit's id is what a scenario binds to and what `Exited.exit`
+    // reports, so an empty one is a way out no form can point at. The
+    // document keeps the name that still works while the box is empty.
+    const onExit = vi.fn();
+    mountAt(withExits(), { kind: 'exit', index: 0 }, { onExit });
+    fireEvent.change(screen.getByTestId('exit-id'), { target: { value: '' } });
+    expect(onExit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('exit-id-refusal').textContent).toContain(
+      'remove way out'
+    );
+    // And typing a real name from there commits normally.
+    fireEvent.change(screen.getByTestId('exit-id'), {
+      target: { value: 'side-door' },
+    });
+    expect(onExit).toHaveBeenCalledWith(0, { id: 'side-door' });
+  });
+
   it('removes one', () => {
     const onRemoveExit = vi.fn();
     mountAt(withExits(), { kind: 'exit', index: 1 }, { onRemoveExit });

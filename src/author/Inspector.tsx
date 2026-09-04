@@ -243,6 +243,15 @@ function ExitPanel({
   const [typed, setTyped] = useState<string | null>(null);
   const shown = typed ?? exit.id;
   const clash = typed !== null && takenIds.has(typed);
+  // A BLANK ID IS ALSO REFUSED IN PLACE, for the same reason a duplicate
+  // is: an exit's id is what a scenario binds to and what `Exited.exit`
+  // reports, so a nameless one is a way out no form can point at — and
+  // the compiler refuses it by name ("the exit has no id"). Held as typed
+  // text rather than written, exactly like a clash, so clearing the box
+  // to retype never leaves the document holding an empty name. Removing
+  // an exit is the `remove way out` button's job, not a side effect of
+  // emptying this field.
+  const blank = typed !== null && typed.trim() === '';
   return (
     <div className="flex flex-col gap-3" data-testid="exit-panel">
       <h3 className="dg-h">Way out</h3>
@@ -256,13 +265,18 @@ function ExitPanel({
           onChange={(e) => {
             const next = e.target.value;
             setTyped(next);
-            if (!takenIds.has(next)) {
+            if (next.trim() !== '' && !takenIds.has(next)) {
               onChange({ id: next });
               setTyped(null);
             }
           }}
         />
-        {clash ? (
+        {blank ? (
+          <div className="text-xs" data-testid="exit-id-refusal">
+            a way out needs a name — it is what the scenario form points at. Use
+            &quot;remove way out&quot; to take it off the map
+          </div>
+        ) : clash ? (
           <div className="text-xs" data-testid="exit-id-refusal">
             another way out is already called &quot;{typed}&quot; — two exits
             cannot share a name, because a scenario binds to one of them

@@ -70,10 +70,21 @@ export function bindOptions(
           id: p.id as string,
           label: `${p.id} — ${refWord(p.ref)}`,
         }));
+    // A BLANK ID IS NOT AN OPTION. The panel refuses one, but a
+    // hand-edited file can carry it, and an option whose value is the
+    // empty string is indistinguishable from "(not set)" in the picker —
+    // the author would appear to have bound something and have bound
+    // nothing. The prop and monster branches above already require a
+    // truthy id for the same reason; the compiler refuses the file either
+    // way, by name.
     case 'exit':
-      return doc.exits.map((e) => ({ id: e.id, label: e.id }));
+      return doc.exits
+        .filter((e) => e.id !== '')
+        .map((e) => ({ id: e.id, label: e.id }));
     case 'door':
-      return doc.doors.map((d) => ({ id: d.id, label: d.id }));
+      return doc.doors
+        .filter((d) => d.id !== '')
+        .map((d) => ({ id: d.id, label: d.id }));
     default:
       return null;
   }
