@@ -661,7 +661,7 @@ describe('SessionEncounterView production combat integration', () => {
     screen.getByText('24/28');
   });
 
-  it('passes owner Appearance.hair to SessionCanvas while peers remain roster-only with no private sheet fetch', async () => {
+  it('passes complete owner Appearance to SessionCanvas while peers remain roster-only with no private sheet fetch', async () => {
     readyScene();
     const hair = create(HairCustomizationSchema, {
       scalp: create(StyleSelectionSchema, {
@@ -708,10 +708,9 @@ describe('SessionEncounterView production combat integration', () => {
 
     await waitFor(() => screen.getByTestId('session-canvas'));
     await waitFor(() => {
-      const props = hoisted.lastCanvasProps.current as
-        | (SessionCanvasProps & { localHair?: HairCustomization })
-        | null;
-      expect(props?.localHair).toEqual(hair);
+      const props = hoisted.lastCanvasProps
+        .current as SessionCanvasProps | null;
+      expect(props?.localCustomization?.hair).toEqual(hair);
       expect(props?.roster?.get('char-peer')?.customization?.hair).toEqual(
         hair
       );

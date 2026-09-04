@@ -11,6 +11,7 @@ import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { create } from '@bufbuild/protobuf';
 import {
   HairCustomizationSchema,
+  OutfitCustomizationSchema,
   StyleSelectionSchema,
   type HairCustomization,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
@@ -55,6 +56,7 @@ const gltfMockState = vi.hoisted(() => ({
   failedUrls: new Set<string>(),
   pendingUrls: new Set<string>(),
   requests: [] as string[],
+  textureRequests: [] as string[],
   pending: new Promise<never>(() => undefined),
 }));
 
@@ -77,6 +79,7 @@ afterEach(() => {
   gltfMockState.failedUrls.clear();
   gltfMockState.pendingUrls.clear();
   gltfMockState.requests.length = 0;
+  gltfMockState.textureRequests.length = 0;
   window.history.replaceState({}, '', '/');
   vi.unstubAllGlobals();
 });
@@ -102,7 +105,19 @@ vi.mock('@react-three/drei', () => {
       new THREE.BoxGeometry(),
       new THREE.MeshStandardMaterial({ color: 0xffffff })
     );
-    mesh.name = `${name}:skinned`;
+    const classRef = name.match(
+      /-(barbarian|fighter|monk|rogue)-body\.glb/
+    )?.[1];
+    const outfitByClass = {
+      barbarian: '01',
+      fighter: '16',
+      monk: '08',
+      rogue: '10',
+    } as const;
+    mesh.name =
+      !accessory && classRef
+        ? `Chr_Torso_Male_${outfitByClass[classRef as keyof typeof outfitByClass]}`
+        : `${name}:skinned`;
     mesh.bind(
       new THREE.Skeleton(
         bones,
@@ -162,7 +177,10 @@ vi.mock('@react-three/drei', () => {
       if (gltfMockState.pendingUrls.has(url)) throw gltfMockState.pending;
       return { scene: make(url), animations: [] };
     },
-    useTexture: () => new THREE.Texture(),
+    useTexture: (url: string) => {
+      gltfMockState.textureRequests.push(url);
+      return new THREE.Texture();
+    },
     useAnimations: () => ({
       actions: {},
       names: [],
@@ -1644,6 +1662,72 @@ describe('SessionScene', () => {
         expect.arrayContaining([
           { color: '8a4b32', roughness: expect.closeTo(0.2) },
           { color: 'd6b26e', roughness: expect.closeTo(0.55) },
+        ])
+      );
+    });
+
+    it('routes owner Appearance and peer Customization outfit values to isolated class mask uniforms', async () => {
+      const ownerOutfit = create(OutfitCustomizationSchema, {
+        primaryColorSrgb: 0,
+        secondaryColorSrgb: 0x123456,
+      });
+      const peerOutfit = create(OutfitCustomizationSchema, {
+        primaryColorSrgb: 0xabcdef,
+        secondaryColorSrgb: 0x654321,
+      });
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Owner"
+          classRefId="fighter"
+          raceRefId="dwarf"
+          localCustomization={{ outfit: ownerOutfit }}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[sightedPlayer]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'rogue',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                  customization: { outfit: peerOutfit },
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+      const uniformFor = (meshName: string) => {
+        const mesh = renderer.scene.findAll(
+          (node) => (node.instance as THREE.Mesh).name === meshName
+        )[0]!.instance as THREE.Mesh;
+        const material = mesh.material as THREE.MeshStandardMaterial;
+        const shader = {
+          fragmentShader: '#include <map_fragment>',
+          uniforms: {},
+        };
+        material.onBeforeCompile(shader as never, {} as THREE.WebGLRenderer);
+        return shader.uniforms as Record<string, { value: THREE.Color }>;
+      };
+      const owner = uniformFor('Chr_Torso_Male_16');
+      const peer = uniformFor('Chr_Torso_Male_10');
+
+      expect(owner.primaryColor.value.getHex()).toBe(0);
+      expect(owner.secondaryColor.value.getHex()).toBe(0x123456);
+      expect(peer.primaryColor.value.getHex()).toBe(0xabcdef);
+      expect(peer.secondaryColor.value.getHex()).toBe(0x654321);
+      expect(owner.primaryColor).not.toBe(peer.primaryColor);
+      expect(gltfMockState.textureRequests).toEqual(
+        expect.arrayContaining([
+          '/models/synty/characters/outfit-customization/v1/masks/fighter-16.png',
+          '/models/synty/characters/outfit-customization/v1/masks/rogue-10.png',
         ])
       );
     });

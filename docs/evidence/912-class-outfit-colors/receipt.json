@@ -1,0 +1,12 @@
+{
+  "issue": 912,
+  "status": "pending-real-game-evidence",
+  "requiredObservations": [
+    "owner-peer-customization-match",
+    "movement-visible",
+    "main-hand-witness",
+    "off-hand-witness",
+    "material-identity-stable"
+  ],
+  "note": "No real-game run, screenshots, HTTP observations, UUIDs, or human verdict have been recorded yet."
+}

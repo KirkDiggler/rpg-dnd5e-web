@@ -152,7 +152,7 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
     (raceRefId, classRefId) => {
       renderModal({ raceRefId, classRefId });
       expect(
-        screen.queryByRole('heading', { name: 'Customize Dwarf Hair' })
+        screen.queryByRole('heading', { name: 'Customize Dwarf Appearance' })
       ).toBeNull();
       expect(screen.queryByTestId('webgl-preview')).toBeNull();
     }
@@ -173,7 +173,7 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
       renderModal({ raceRefId, classRefId: 'fighter' });
 
       expect(
-        screen.getByRole('heading', { name: `Customize ${label} Hair` })
+        screen.getByRole('heading', { name: `Customize ${label} Appearance` })
       ).not.toBeNull();
       expect(
         screen.getByTestId('class-character-model').getAttribute('data-url')
@@ -387,7 +387,9 @@ describe('AppearanceSelectionModal persistence interactions', () => {
         .getByRole('group', { name: 'Scalp hair' })
         .querySelectorAll('button')[1]!
     );
+    fireEvent.click(screen.getByRole('button', { name: /^Facial Hair/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Facial Hair 18' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Hair(?:#|$)/ }));
     fireEvent.change(screen.getByLabelText('Hair color'), {
       target: { value: '#000000' },
     });
@@ -421,11 +423,13 @@ describe('AppearanceSelectionModal persistence interactions', () => {
         .getByRole('group', { name: 'Scalp hair' })
         .querySelectorAll('button')[0]!
     );
+    fireEvent.click(screen.getByRole('button', { name: /^Facial Hair/ }));
     fireEvent.click(
       screen
         .getByRole('group', { name: 'Facial hair' })
         .querySelectorAll('button')[0]!
     );
+    fireEvent.click(screen.getByRole('button', { name: /^Hair(?:#|$)/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Use default color' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Use default roughness' })

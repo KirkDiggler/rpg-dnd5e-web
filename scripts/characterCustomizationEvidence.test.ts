@@ -2,10 +2,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import {
-  CHARACTER_CUSTOMIZATION_CATALOG,
-  CHARACTER_CUSTOMIZATION_PROVIDER,
-} from '../src/generated/characterCustomizationCatalog';
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '../src/generated/characterCustomizationCatalog';
 
 const evidenceRoot = new URL(
   '../docs/evidence/897-all-race-hair/',
@@ -69,10 +66,12 @@ describe('all-race customization browser evidence', () => {
   it('binds exact provider, integration base, generated catalog, and final verdict', () => {
     const value = receipt();
     expect(value.schemaVersion).toBe(1);
+    // This is the closed #897 hair-only browser run. It remains historical
+    // evidence rather than a claim about a later provider/catalog revision.
     expect(value.authorities.provider).toEqual({
-      merge: CHARACTER_CUSTOMIZATION_PROVIDER.providerCommit,
+      merge: '0c837a801d97c98e50a336fb07e3b50d08d54df1',
       aggregateManifestSha256:
-        CHARACTER_CUSTOMIZATION_PROVIDER.aggregateManifestSha256,
+        '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
     });
     expect(value.authorities.web).toEqual({
       base: '822ce167a6a7d3f19030fc4432bf53be7f75950f',

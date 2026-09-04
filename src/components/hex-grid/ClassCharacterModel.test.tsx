@@ -345,7 +345,7 @@ it('applies body-equivalent entity overlays to accessories and restores their pe
   await renderer.update(
     <ClassCharacterModel url={fighterUrl} accessories={accessories} isGhost />
   );
-  expect(body.material).not.toBe(bodyMaterial);
+  expect(body.material).toBe(bodyMaterial);
   expect((body.material as THREE.Material).opacity).toBe(0.35);
   expect(hair.material).toBe(hairMaterial);
   expect(hairMaterial.opacity).toBe(0.35);

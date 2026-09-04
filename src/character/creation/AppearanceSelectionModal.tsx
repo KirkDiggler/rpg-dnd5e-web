@@ -10,8 +10,14 @@ import {
   DialogTitle,
 } from '@/components/ui/Dialog';
 import { create } from '@bufbuild/protobuf';
-import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
-import { HairCustomizationSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import type {
+  HairCustomization,
+  OutfitCustomization,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import {
+  HairCustomizationSchema,
+  OutfitCustomizationSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type { Appearance } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { AppearanceSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { useEffect, useRef, useState } from 'react';
@@ -31,9 +37,14 @@ function copyHair(hair: HairCustomization | undefined) {
   return hair ? create(HairCustomizationSchema, hair) : undefined;
 }
 
+function copyOutfit(outfit: OutfitCustomization | undefined) {
+  return outfit ? create(OutfitCustomizationSchema, outfit) : undefined;
+}
+
 function editableAppearance(currentAppearance: Appearance | undefined) {
   return create(AppearanceSchema, {
     hair: copyHair(currentAppearance?.hair),
+    outfit: copyOutfit(currentAppearance?.outfit),
   });
 }
 
@@ -122,10 +133,10 @@ export function AppearanceSelectionModal({
                 className="font-serif text-xl font-bold sm:text-2xl"
                 style={{ color: 'var(--text-primary)' }}
               >
-                Customize {raceLabel} Hair
+                Customize {raceLabel} Appearance
               </DialogTitle>
               <DialogDescription className="text-xs text-[var(--text-muted)] sm:text-sm">
-                Choose scalp hair, facial hair, color, and finish.
+                Choose hair, facial hair, and class gear colors.
               </DialogDescription>
             </div>
             <button
@@ -144,10 +155,9 @@ export function AppearanceSelectionModal({
             <div className="order-2 overflow-y-auto p-4 sm:p-6 lg:order-1">
               <CharacterCustomizationControls
                 profile={profile}
-                hair={appearance.hair}
-                onChange={(hair) =>
-                  setAppearance(create(AppearanceSchema, { hair }))
-                }
+                classRefId={classRefId}
+                appearance={appearance}
+                onChange={setAppearance}
               />
             </div>
             <div className="order-1 min-h-40 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)] lg:order-2 lg:border-b-0 lg:border-l">

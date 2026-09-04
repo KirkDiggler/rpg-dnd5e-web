@@ -1,6 +1,6 @@
 /**
  * GENERATED FILE — DO NOT EDIT.
- * Provider commit: 0c837a801d97c98e50a336fb07e3b50d08d54df1
+ * Provider commit: 91ddbdfd88db1eccc465616671d7f1f427f5056e
  * Aggregate manifest SHA-256: 2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac
  */
 
@@ -100,6 +100,15 @@ export interface CharacterCustomizationProfile {
     readonly metalness: number;
   };
 }
+export interface OutfitTreatment {
+  readonly classRef: CustomizationStarterClass;
+  readonly outfit: '01' | '16' | '08' | '10';
+  readonly maskUrl: string;
+  readonly maskSha256: string;
+  readonly defaultPrimaryColorSrgb: number;
+  readonly defaultSecondaryColorSrgb: number;
+  readonly meshNames: readonly string[];
+}
 export interface CharacterCustomizationCatalog {
   readonly schemaVersion: 1;
   readonly workflowVersion: 'character-customization-profiles-v1';
@@ -107,12 +116,17 @@ export interface CharacterCustomizationCatalog {
   readonly profiles: Readonly<
     Record<CustomizationRaceRef, CharacterCustomizationProfile>
   >;
+  readonly outfits: Readonly<
+    Record<CustomizationStarterClass, OutfitTreatment>
+  >;
 }
 
 export const CHARACTER_CUSTOMIZATION_PROVIDER = Object.freeze({
-  providerCommit: '0c837a801d97c98e50a336fb07e3b50d08d54df1',
+  providerCommit: '91ddbdfd88db1eccc465616671d7f1f427f5056e',
   aggregateManifestSha256:
     '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
+  outfitManifestSha256:
+    '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
 } as const);
 
 export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
@@ -9584,6 +9598,96 @@ export const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze({
         roughness: 0.72,
         metalness: 0,
       },
+    },
+  },
+  outfits: {
+    barbarian: {
+      classRef: 'barbarian',
+      outfit: '01',
+      maskUrl:
+        '/models/synty/characters/outfit-customization/v1/masks/barbarian-01.png',
+      maskSha256:
+        'fde645aec1ae6470c806515d1a2c254497edace9174906af58e1d8ff28415316',
+      defaultPrimaryColorSrgb: 4810366,
+      defaultSecondaryColorSrgb: 13739084,
+      meshNames: [
+        'Chr_Torso_Male_01',
+        'Chr_Hips_Male_01',
+        'Chr_ArmUpperLeft_Male_01',
+        'Chr_ArmUpperRight_Male_01',
+        'Chr_ArmLowerLeft_Male_01',
+        'Chr_ArmLowerRight_Male_01',
+        'Chr_HandLeft_Male_01',
+        'Chr_HandRight_Male_01',
+        'Chr_LegLeft_Male_01',
+        'Chr_LegRight_Male_01',
+      ],
+    },
+    fighter: {
+      classRef: 'fighter',
+      outfit: '16',
+      maskUrl:
+        '/models/synty/characters/outfit-customization/v1/masks/fighter-16.png',
+      maskSha256:
+        '64573ee074597ffd53f34a7d4e1f81537793298ac6fe08cfa14169b2b86b589c',
+      defaultPrimaryColorSrgb: 4810366,
+      defaultSecondaryColorSrgb: 13739084,
+      meshNames: [
+        'Chr_Torso_Male_16',
+        'Chr_Hips_Male_16',
+        'Chr_ArmUpperLeft_Male_16',
+        'Chr_ArmUpperRight_Male_16',
+        'Chr_ArmLowerLeft_Male_16',
+        'Chr_ArmLowerRight_Male_16',
+        'Chr_HandLeft_Male_16',
+        'Chr_HandRight_Male_16',
+        'Chr_LegLeft_Male_16',
+        'Chr_LegRight_Male_16',
+      ],
+    },
+    monk: {
+      classRef: 'monk',
+      outfit: '08',
+      maskUrl:
+        '/models/synty/characters/outfit-customization/v1/masks/monk-08.png',
+      maskSha256:
+        '45c2ef4b128e9b144ff245cd5b302f4017ce0b2f5b42828bfeb5d610fb9492ef',
+      defaultPrimaryColorSrgb: 4810366,
+      defaultSecondaryColorSrgb: 13739084,
+      meshNames: [
+        'Chr_Torso_Male_08',
+        'Chr_Hips_Male_08',
+        'Chr_ArmUpperLeft_Male_08',
+        'Chr_ArmUpperRight_Male_08',
+        'Chr_ArmLowerLeft_Male_08',
+        'Chr_ArmLowerRight_Male_08',
+        'Chr_HandLeft_Male_08',
+        'Chr_HandRight_Male_08',
+        'Chr_LegLeft_Male_08',
+        'Chr_LegRight_Male_08',
+      ],
+    },
+    rogue: {
+      classRef: 'rogue',
+      outfit: '10',
+      maskUrl:
+        '/models/synty/characters/outfit-customization/v1/masks/rogue-10.png',
+      maskSha256:
+        '45c2ef4b128e9b144ff245cd5b302f4017ce0b2f5b42828bfeb5d610fb9492ef',
+      defaultPrimaryColorSrgb: 4810366,
+      defaultSecondaryColorSrgb: 13739084,
+      meshNames: [
+        'Chr_Torso_Male_10',
+        'Chr_Hips_Male_10',
+        'Chr_ArmUpperLeft_Male_10',
+        'Chr_ArmUpperRight_Male_10',
+        'Chr_ArmLowerLeft_Male_10',
+        'Chr_ArmLowerRight_Male_10',
+        'Chr_HandLeft_Male_10',
+        'Chr_HandRight_Male_10',
+        'Chr_LegLeft_Male_10',
+        'Chr_LegRight_Male_10',
+      ],
     },
   },
 } as const satisfies CharacterCustomizationCatalog);

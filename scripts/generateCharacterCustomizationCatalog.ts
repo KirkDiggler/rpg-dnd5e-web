@@ -18,6 +18,10 @@ const PROVIDER_SYNTY_ROOT = 'harness/models/synty/';
 const PROVIDER_CUSTOMIZATION_ROOT =
   'harness/models/synty/characters/customization';
 const AGGREGATE_MANIFEST = `${PROVIDER_CUSTOMIZATION_ROOT}/manifest.json`;
+const OUTFIT_MANIFEST =
+  'harness/models/synty/characters/outfit-customization/v1/manifest.json';
+const AGGREGATE_MANIFEST_SHA256 =
+  '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac';
 const WEB_SYNTY_ROOT = '/models/synty/';
 const PROFILE_ORDER = [
   'human',
@@ -132,12 +136,25 @@ export interface CharacterCustomizationProfile {
   };
 }
 
+export interface OutfitTreatment {
+  readonly classRef: CustomizationStarterClass;
+  readonly outfit: '01' | '16' | '08' | '10';
+  readonly maskUrl: string;
+  readonly maskSha256: string;
+  readonly defaultPrimaryColorSrgb: number;
+  readonly defaultSecondaryColorSrgb: number;
+  readonly meshNames: readonly string[];
+}
+
 export interface CharacterCustomizationCatalog {
   readonly schemaVersion: 1;
   readonly workflowVersion: 'character-customization-profiles-v1';
   readonly profileOrder: readonly CustomizationRaceRef[];
   readonly profiles: Readonly<
     Record<CustomizationRaceRef, CharacterCustomizationProfile>
+  >;
+  readonly outfits: Readonly<
+    Record<CustomizationStarterClass, OutfitTreatment>
   >;
 }
 
@@ -174,11 +191,12 @@ interface GenerateInput {
 export interface GeneratedCharacterCustomizationReceipt {
   readonly providerCommit: string;
   readonly aggregateManifestSha256: string;
+  readonly outfitManifestSha256: string;
   readonly profileCount: 8;
   readonly bodyCount: 32;
   readonly accessoryCount: 448;
   readonly thumbnailCount: 448;
-  readonly sourceAssetCount: 969;
+  readonly sourceAssetCount: 974;
 }
 
 function fail(message: string): never {
@@ -828,12 +846,191 @@ function parseAggregate(value: unknown): ParsedAggregate {
   return { document: aggregate, entries };
 }
 
+function projectOutfitManifest(
+  value: unknown,
+  authority: {
+    readonly aggregateManifestSha256: string;
+    readonly profiles: readonly CharacterCustomizationProfile[];
+  }
+): {
+  readonly treatments: Record<CustomizationStarterClass, OutfitTreatment>;
+  readonly sourceAssets: readonly SourceAsset[];
+} {
+  const manifest = exactObject(
+    value,
+    [
+      'atlas',
+      'channelEncoding',
+      'classOrder',
+      'inventory',
+      'outfits',
+      'profileAuthority',
+      'schemaVersion',
+      'workflowVersion',
+    ],
+    'outfit manifest'
+  );
+  if (manifest.schemaVersion !== 1)
+    fail('outfit manifest schemaVersion must be 1');
+  exactString(
+    manifest.workflowVersion,
+    'class-outfit-colors-v1',
+    'outfit manifest workflowVersion'
+  );
+  exactStringArray(
+    manifest.classOrder,
+    CLASSES.map(([classRef]) => classRef),
+    'outfit manifest classOrder'
+  );
+  const inventory = exactObject(
+    manifest.inventory,
+    ['maskCount', 'runtimeFileCount'],
+    'outfit manifest inventory'
+  );
+  exactNumber(inventory.maskCount, 4, 'outfit manifest inventory.maskCount');
+  exactNumber(
+    inventory.runtimeFileCount,
+    5,
+    'outfit manifest inventory.runtimeFileCount'
+  );
+  const channelEncoding = exactObject(
+    manifest.channelEncoding,
+    ['overlapAllowed', 'preserve', 'primary', 'secondary'],
+    'outfit manifest channelEncoding'
+  );
+  if (
+    channelEncoding.overlapAllowed !== false ||
+    channelEncoding.preserve !== 'black' ||
+    channelEncoding.primary !== 'red' ||
+    channelEncoding.secondary !== 'green'
+  ) {
+    fail(
+      'outfit manifest channelEncoding differs from red/green mask authority'
+    );
+  }
+  const profileAuthority = exactObject(
+    manifest.profileAuthority,
+    ['manifest', 'sha256'],
+    'outfit manifest profileAuthority'
+  );
+  exactString(
+    profileAuthority.manifest,
+    'characters/customization/manifest.json',
+    'outfit manifest profileAuthority.manifest'
+  );
+  exactString(
+    profileAuthority.sha256,
+    authority.aggregateManifestSha256,
+    'outfit manifest profileAuthority.sha256'
+  );
+  const atlas = exactObject(
+    manifest.atlas,
+    ['dimensions', 'id', 'sha256'],
+    'outfit manifest atlas'
+  );
+  const dimensions = numberArray(
+    atlas.dimensions,
+    2,
+    'outfit manifest atlas.dimensions'
+  );
+  const atlasProjection = {
+    id: nonempty(atlas.id, 'outfit manifest atlas.id'),
+    sha256: digest(atlas.sha256, 'outfit manifest atlas.sha256'),
+    dimensions: dimensions as [number, number],
+  };
+  const sharedHumanAtlas = authority.profiles.find(
+    (profile) => profile.raceRef === 'human'
+  )?.atlas;
+  if (
+    !sharedHumanAtlas ||
+    atlasProjection.dimensions[0] !== 1024 ||
+    atlasProjection.dimensions[1] !== 1024 ||
+    sharedHumanAtlas.id !== atlasProjection.id ||
+    sharedHumanAtlas.sha256 !== atlasProjection.sha256 ||
+    sharedHumanAtlas.dimensions[0] !== atlasProjection.dimensions[0] ||
+    sharedHumanAtlas.dimensions[1] !== atlasProjection.dimensions[1]
+  ) {
+    fail('outfit manifest atlas must match the shared human outfit atlas');
+  }
+  const source = exactObject(
+    manifest.outfits,
+    CLASSES.map(([classRef]) => classRef),
+    'outfit manifest outfits'
+  );
+  const treatments = {} as Record<CustomizationStarterClass, OutfitTreatment>;
+  const sourceAssets: SourceAsset[] = [];
+  for (const [classRef, outfit] of CLASSES) {
+    const label = `outfit manifest outfits.${classRef}`;
+    const entry = exactObject(
+      source[classRef],
+      [
+        'classRef',
+        'defaultPrimarySrgb',
+        'defaultSecondarySrgb',
+        'mask',
+        'maskSha256',
+        'meshNames',
+        'outfit',
+      ],
+      label
+    );
+    exactString(entry.classRef, classRef, `${label}.classRef`);
+    exactString(entry.outfit, outfit, `${label}.outfit`);
+    const validateColor = (candidate: unknown, name: string) => {
+      const color = finite(candidate, name);
+      if (!Number.isInteger(color) || color < 0 || color > 0xffffff) {
+        fail(`${name} must be an RGB24 integer`);
+      }
+      return color;
+    };
+    const mask = portablePath(entry.mask, `${label}.mask`);
+    const expectedMask = `characters/outfit-customization/v1/masks/${classRef}-${outfit}.png`;
+    if (mask !== expectedMask) fail(`${label}.mask must be ${expectedMask}`);
+    if (!Array.isArray(entry.meshNames) || entry.meshNames.length === 0) {
+      fail(`${label}.meshNames must be non-empty`);
+    }
+    const meshNames = entry.meshNames.map((name, index) => {
+      const mesh = nonempty(name, `${label}.meshNames[${index}]`);
+      if (mesh.includes('/') || mesh.includes('\\')) {
+        fail(`${label}.meshNames[${index}] must be a mesh name`);
+      }
+      return mesh;
+    });
+    if (new Set(meshNames).size !== meshNames.length) {
+      fail(`${label}.meshNames must not contain duplicates`);
+    }
+    const maskSha256 = digest(entry.maskSha256, `${label}.maskSha256`);
+    treatments[classRef] = {
+      classRef,
+      outfit: outfit as OutfitTreatment['outfit'],
+      maskUrl: `${WEB_SYNTY_ROOT}${mask}`,
+      maskSha256,
+      defaultPrimaryColorSrgb: validateColor(
+        entry.defaultPrimarySrgb,
+        `${label}.defaultPrimarySrgb`
+      ),
+      defaultSecondaryColorSrgb: validateColor(
+        entry.defaultSecondarySrgb,
+        `${label}.defaultSecondarySrgb`
+      ),
+      meshNames,
+    };
+    sourceAssets.push({
+      providerRelativePath: `${PROVIDER_SYNTY_ROOT}${mask}`,
+      sha256: maskSha256,
+    });
+  }
+  return { treatments, sourceAssets };
+}
+
 function projectInternal(
   aggregateValue: unknown,
-  manifests: Readonly<Record<string, unknown>>
+  manifests: Readonly<Record<string, unknown>>,
+  outfitManifest: unknown
 ): {
   readonly catalog: CharacterCustomizationCatalog;
   readonly profiles: readonly ParsedProfile[];
+  readonly outfitAssets: readonly SourceAsset[];
 } {
   const aggregate = parseAggregate(aggregateValue);
   exactObject(manifests, PROFILE_ORDER, 'profile manifests');
@@ -850,6 +1047,10 @@ function projectInternal(
       fail(`${raceRef} profileRef differs from aggregate`);
     }
   }
+  const outfits = projectOutfitManifest(outfitManifest, {
+    aggregateManifestSha256: AGGREGATE_MANIFEST_SHA256,
+    profiles: parsed.map((value) => value.profile),
+  });
   return {
     catalog: {
       schemaVersion: 1,
@@ -858,16 +1059,19 @@ function projectInternal(
       profiles: Object.fromEntries(
         parsed.map((value) => [value.profile.raceRef, value.profile])
       ) as Record<CustomizationRaceRef, CharacterCustomizationProfile>,
+      outfits: outfits.treatments,
     },
     profiles: parsed,
+    outfitAssets: outfits.sourceAssets,
   };
 }
 
 export function projectCharacterCustomizationAuthority(
   aggregate: unknown,
-  manifests: Readonly<Record<string, unknown>>
+  manifests: Readonly<Record<string, unknown>>,
+  outfitManifest: unknown
 ): CharacterCustomizationCatalog {
-  return projectInternal(aggregate, manifests).catalog;
+  return projectInternal(aggregate, manifests, outfitManifest).catalog;
 }
 
 const GENERATED_TYPES = `export type CustomizationRaceRef = 'human' | 'elf' | 'dwarf' | 'half-elf' | 'tiefling' | 'halfling' | 'gnome' | 'half-orc';
@@ -902,10 +1106,17 @@ export interface CharacterCustomizationProfile {
   readonly surface: { readonly mode: 'uniform-pbr-v1'; readonly defaultColorSrgb: number; readonly defaultRoughness: number; readonly defaultMetalness: number };
   readonly defaults: { readonly scalp: CustomizationDefaultSelection; readonly facialHair: CustomizationDefaultSelection; readonly colorSrgb: number; readonly roughness: number; readonly metalness: number };
 }
+export interface OutfitTreatment {
+  readonly classRef: CustomizationStarterClass; readonly outfit: '01' | '16' | '08' | '10';
+  readonly maskUrl: string; readonly maskSha256: string;
+  readonly defaultPrimaryColorSrgb: number; readonly defaultSecondaryColorSrgb: number;
+  readonly meshNames: readonly string[];
+}
 export interface CharacterCustomizationCatalog {
   readonly schemaVersion: 1; readonly workflowVersion: 'character-customization-profiles-v1';
   readonly profileOrder: readonly CustomizationRaceRef[];
   readonly profiles: Readonly<Record<CustomizationRaceRef, CharacterCustomizationProfile>>;
+  readonly outfits: Readonly<Record<CustomizationStarterClass, OutfitTreatment>>;
 }`;
 
 export function renderCharacterCustomizationCatalogModule(
@@ -913,12 +1124,14 @@ export function renderCharacterCustomizationCatalogModule(
   authority: {
     readonly providerCommit: string;
     readonly aggregateManifestSha256: string;
+    readonly outfitManifestSha256: string;
   }
 ): string {
   if (!/^[0-9a-f]{40}$/.test(authority.providerCommit)) {
     fail('provider commit must be an exact commit id');
   }
   digest(authority.aggregateManifestSha256, 'aggregate manifest sha256');
+  digest(authority.outfitManifestSha256, 'outfit manifest sha256');
   const source = `/**\n * GENERATED FILE — DO NOT EDIT.\n * Provider commit: ${authority.providerCommit}\n * Aggregate manifest SHA-256: ${authority.aggregateManifestSha256}\n */\n\n${GENERATED_TYPES}\n\nexport const CHARACTER_CUSTOMIZATION_PROVIDER = Object.freeze(${JSON.stringify(authority, null, 2)} as const);\n\nexport const CHARACTER_CUSTOMIZATION_CATALOG = Object.freeze(${JSON.stringify(catalog, null, 2)} as const satisfies CharacterCustomizationCatalog);\n`;
   return execFileSync(
     process.execPath,
@@ -985,6 +1198,17 @@ export function generateCharacterCustomizationCatalog({
     fail(`aggregate manifest is invalid JSON: ${error}`);
   }
   const aggregate = parseAggregate(aggregateValue);
+  if (hashBytes(aggregateBytes) !== AGGREGATE_MANIFEST_SHA256) {
+    fail('aggregate manifest hash differs from approved authority');
+  }
+  const outfitBytes = readSource(root, OUTFIT_MANIFEST, 'outfit manifest');
+  let outfitValue: unknown;
+  try {
+    outfitValue = JSON.parse(outfitBytes.toString('utf8'));
+  } catch (error) {
+    fail(`outfit manifest is invalid JSON: ${error}`);
+  }
+  const outfitManifestSha256 = hashBytes(outfitBytes);
   const manifests: Record<string, unknown> = {};
   const manifestAssets: SourceAsset[] = [];
   for (const raceRef of PROFILE_ORDER) {
@@ -1003,14 +1227,19 @@ export function generateCharacterCustomizationCatalog({
       sha256: entry.manifestSha256,
     });
   }
-  const projected = projectInternal(aggregateValue, manifests);
+  const projected = projectInternal(aggregateValue, manifests, outfitValue);
   const sourceAssets: SourceAsset[] = [
     {
       providerRelativePath: AGGREGATE_MANIFEST,
       sha256: hashBytes(aggregateBytes),
     },
+    {
+      providerRelativePath: OUTFIT_MANIFEST,
+      sha256: outfitManifestSha256,
+    },
     ...manifestAssets,
     ...projected.profiles.flatMap((profile) => profile.sourceAssets),
+    ...projected.outfitAssets,
   ];
   const unique = new Map<string, string>();
   for (const asset of sourceAssets) {
@@ -1027,15 +1256,16 @@ export function generateCharacterCustomizationCatalog({
       fail(`source asset hash differs: ${asset.providerRelativePath}`);
     }
   }
-  if (sourceAssets.length !== 969) {
+  if (sourceAssets.length !== 974) {
     fail(
-      `source authority must contain exactly 969 files, found ${sourceAssets.length}`
+      `source authority must contain exactly 974 files, found ${sourceAssets.length}`
     );
   }
   const aggregateManifestSha256 = hashBytes(aggregateBytes);
   const source = renderCharacterCustomizationCatalogModule(projected.catalog, {
     providerCommit,
     aggregateManifestSha256,
+    outfitManifestSha256,
   });
   const output = resolve(outputPath);
   mkdirSync(dirname(output), { recursive: true });
@@ -1057,11 +1287,12 @@ export function generateCharacterCustomizationCatalog({
   return {
     providerCommit,
     aggregateManifestSha256,
+    outfitManifestSha256,
     profileCount: 8,
     bodyCount: 32,
     accessoryCount: 448,
     thumbnailCount: 448,
-    sourceAssetCount: 969,
+    sourceAssetCount: 974,
   };
 }
 
