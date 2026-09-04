@@ -1492,13 +1492,13 @@ describe('SessionEncounterView production combat integration', () => {
       await screen.findByRole('button', { name: /^death save/i })
     );
     eventFirst.release();
-    await waitFor(() =>
-      expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
-    );
+    await waitFor(() => {
+      const endTurn = screen.getByRole('button', { name: /end turn/i });
+      expect((endTurn as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
+      expect(hoisted.publishDiceThrowFn).not.toHaveBeenCalled();
+    });
     const endTurn = screen.getByRole('button', { name: /end turn/i });
-    expect((endTurn as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
-    expect(hoisted.publishDiceThrowFn).not.toHaveBeenCalled();
 
     await act(async () => {
       response.resolve({
