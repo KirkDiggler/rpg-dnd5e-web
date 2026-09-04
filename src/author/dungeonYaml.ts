@@ -143,7 +143,56 @@ export interface PlacementDoc {
   /** Monsters only; opaque to the builder. */
   targeting?: string;
   boss?: boolean;
+  /** THE AUTHOR'S NAME for this placement — the third id the dialect
+   * carries, after a region's and a door's (rpg-project#368 P2). Optional
+   * and unique within the dungeon; required only by whatever BINDS to it
+   * (a scenario binding, and the pick-up verb, which names its target by
+   * this id and nothing else). Refused on collision by the server, naming
+   * both lines; the builder refuses one inline before it is typed into
+   * the file. Omitted means the author named none, which is most props. */
+  id?: string;
+  /** Monsters only, REFUSED on props (server rule, rpg-project#368 §3.3):
+   * the door ids this monster knows about. Knowing an ordinary door is
+   * inert, not an error — a monster who knows a CONCEALED door is the one
+   * a party can loot the way in off. Carried verbatim; this module never
+   * checks that a listed door exists (the server refuses by name). NIL,
+   * NOT LEN 0, is "knows nothing": an authored-but-empty list round-trips
+   * unchanged rather than being silently read as absent. */
+  knows?: string[];
+  /** Props only, REFUSED on monsters. Whether a member can pick this prop
+   * up off the floor (rpg-project#368 §5). Defaulting to false — a thing
+   * nobody declared stays scenery — so it is written ONLY when true, which
+   * keeps every dungeon that uses none emitting the bytes it always did.
+   *
+   * THE WORD IS HOLD, NOT TAKE (design R10): this flag makes a run-scoped
+   * `holds:` fact possible, and *take* is reserved for the act that lands
+   * a thing in a character's inventory. The file key is `holdable:`, which
+   * is what dungeonspec parses. The pinned protos still call the RPC
+   * `Take` — that half renames in a wave-0 follow-up and is confined to
+   * `useSessionHold.ts` and `holdingBeat.ts` on the game side. */
+  holdable?: boolean;
 }
+
+/** One authored way out of the dungeon: an id and a floor cell — the
+ * shape `start` already has (rpg-project#368 §3.1).
+ *
+ * STRUCTURE, NOT SCENARIO. A dungeon has ways out whatever the party is
+ * there for, so exits sit beside `start` rather than inside a scenario's
+ * bindings. `start` is NOT implicitly one of these: nothing is defaulted,
+ * and a dungeon whose entrance is also its exit authors that in one line.
+ */
+export interface ExitDoc {
+  id: string;
+  at: Axial;
+}
+
+/** One scenario's bindings: the form's field keys mapped to the ids the
+ * author picked. CARRIED OPAQUELY — the builder learns the keys from
+ * `ListScenarios` and never interprets one, exactly as dungeonspec
+ * carries them and the scenario package's own `New(cfg)` validates them
+ * (ruled 2026-09-01). A key this client has never heard of round-trips
+ * unchanged rather than being dropped. */
+export type ScenarioBindings = Record<string, string>;
 
 /** One authored wall: a STRAIGHT LINE between two positions, and the
  * file holds nothing else (rpg-project#360 slice 2, design §1.5, §3.2).
@@ -259,6 +308,17 @@ export interface DungeonDoc {
   walls: WallDoc[];
   doors: DoorDoc[];
   place: PlacementDoc[];
+  /** The ways out (`ExitDoc`). ALWAYS PRESENT IN THE MODEL, WRITTEN ONLY
+   * WHEN IT HAS ENTRIES — `scenery`'s own convention, and for its reason:
+   * a dungeon that authors none emits exactly the bytes it always did and
+   * keeps compiling on a server whose decoder has not learned the key. */
+  exits: ExitDoc[];
+  /** Scenario id -> that scenario's bindings. A dungeon may bind several;
+   * the run ends when any bound ending fires. Written only when non-empty,
+   * for `exits`'s reason. Emitted with both levels of keys SORTED, so the
+   * bytes do not depend on the order an author happened to fill the form
+   * in — the same determinism `cells` and `walls` already have. */
+  scenarios: Record<string, ScenarioBindings>;
 }
 
 export const MONSTER_REF_PREFIX = 'dnd5e:monsters:';
@@ -464,6 +524,8 @@ export function parseDungeon(text: string): DungeonDoc {
       'walls',
       'doors',
       'place',
+      'exits',
+      'scenarios',
     ],
     'document'
   );
@@ -606,6 +668,9 @@ export function parseDungeon(text: string): DungeonDoc {
         'offset',
         'targeting',
         'boss',
+        'id',
+        'knows',
+        'holdable',
       ],
       path
     );
@@ -634,8 +699,71 @@ export function parseDungeon(text: string): DungeonDoc {
     if (p.targeting !== undefined && p.targeting !== null) {
       placement.targeting = str(p, 'targeting', path);
     }
+    if (p.id !== undefined && p.id !== null) {
+      placement.id = str(p, 'id', path);
+    }
+    // NIL, NOT LEN 0, IS "KNOWS NOTHING" (`PlacementDoc.knows`'s law, the
+    // same one `DoorDoc.locked` keeps): an authored empty list is carried
+    // through rather than silently read as absent, so what the author
+    // wrote is what the server judges.
+    if (p.knows !== undefined && p.knows !== null) {
+      placement.knows = list(p.knows, `${path}.knows`).map((d, j) => {
+        if (typeof d !== 'string') {
+          throw new DungeonParseError(`${path}.knows[${j}]: expected a string`);
+        }
+        return d;
+      });
+    }
+    if (p.holdable !== undefined && p.holdable !== null) {
+      if (typeof p.holdable !== 'boolean') {
+        throw new DungeonParseError(`${path}.holdable: expected a boolean`);
+      }
+      if (p.holdable) placement.holdable = true;
+    }
     return placement;
   });
+
+  // The ways out. `at` is a plain `[col,row]`, exactly like `start`.
+  const exits = list(raw.exits, 'exits').map((e, i): ExitDoc => {
+    const path = `exits[${i}]`;
+    if (!isRecord(e)) {
+      throw new DungeonParseError(`${path}: expected { id, at: [col,row] }`);
+    }
+    expectKeys(e, ['id', 'at'], path);
+    return {
+      id: str(e, 'id', path),
+      at: fromOffset(orientation, pair(e.at, `${path}.at`)),
+    };
+  });
+
+  // CARRIED OPAQUELY. Every binding value is read as a string and nothing
+  // here knows what a key means — that is the scenario package's question,
+  // asked through `New(cfg)` on the server (ruled 2026-09-01). A key this
+  // build has never heard of survives the round trip untouched.
+  const scenarios: Record<string, ScenarioBindings> = {};
+  if (raw.scenarios !== undefined && raw.scenarios !== null) {
+    if (!isRecord(raw.scenarios)) {
+      throw new DungeonParseError('scenarios: expected a map');
+    }
+    for (const [id, bindings] of Object.entries(raw.scenarios)) {
+      const path = `scenarios.${id}`;
+      if (bindings === undefined || bindings === null) {
+        scenarios[id] = {};
+        continue;
+      }
+      if (!isRecord(bindings)) {
+        throw new DungeonParseError(`${path}: expected a map`);
+      }
+      const out: ScenarioBindings = {};
+      for (const [key, value] of Object.entries(bindings)) {
+        if (typeof value !== 'string') {
+          throw new DungeonParseError(`${path}.${key}: expected a string`);
+        }
+        out[key] = value;
+      }
+      scenarios[id] = out;
+    }
+  }
 
   return {
     version: 2,
@@ -649,6 +777,8 @@ export function parseDungeon(text: string): DungeonDoc {
     walls,
     doors,
     place,
+    exits,
+    scenarios,
   };
 }
 
@@ -696,6 +826,10 @@ export interface EmittedLayout {
   scenery: Axial[][];
   walls: WallDoc[];
   doors: DoorDoc[];
+  /** The exits in the emitted order, which is the DOCUMENT order — the
+   * same treatment `doors` gets, so `exits[i]` in a compiler path names
+   * the entry the emitter put there. */
+  exits: ExitDoc[];
 }
 
 /** Cells sorted by row then column and grouped one ROW per entry — the
@@ -725,6 +859,7 @@ export function emittedLayout(doc: DungeonDoc): EmittedLayout {
     scenery: cellRows(o, doc.scenery),
     walls: sortedWalls(o, doc.walls),
     doors: doc.doors,
+    exits: doc.exits,
   };
 }
 
@@ -849,7 +984,11 @@ export function emitDungeon(doc: DungeonDoc): string {
   } else {
     out.push('place:');
     for (const p of doc.place) {
-      const fields = [`ref: ${JSON.stringify(p.ref)}`];
+      // `id` LEADS the entry, the way a door's and a region's do — it is
+      // the author's name for this line, and the thing a refusal about it
+      // will quote.
+      const fields = p.id !== undefined ? [`id: ${scalar(p.id)}`] : [];
+      fields.push(`ref: ${JSON.stringify(p.ref)}`);
       fields.push(`at: ${fmtPair(toOffset(o, p.at))}`);
       if (p.blocksMovement !== undefined) {
         fields.push(`blocks_movement: ${p.blocksMovement}`);
@@ -859,11 +998,50 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (p.offset !== undefined) {
         fields.push(`offset: [${p.offset.join(', ')}]`);
       }
+      if (p.holdable) fields.push('holdable: true');
       if (p.targeting !== undefined) {
         fields.push(`targeting: ${scalar(p.targeting)}`);
       }
+      if (p.knows !== undefined) {
+        fields.push(`knows: [${p.knows.map(scalar).join(', ')}]`);
+      }
       if (p.boss) fields.push('boss: true');
       out.push(`  - { ${fields.join(', ')} }`);
+    }
+  }
+
+  // Written ONLY when there are any (`DungeonDoc.exits`'s own law), so a
+  // dungeon that authors no way out emits the bytes it always did. `at` is
+  // spelled exactly like `start` above — one authored cell, one shape.
+  if (doc.exits.length > 0) {
+    out.push('exits:');
+    for (const e of layout.exits) {
+      const [c, r] = toOffset(o, e.at);
+      out.push(`  - { id: ${scalar(e.id)}, at: [${c}, ${r}] }`);
+    }
+  }
+
+  // BOTH LEVELS SORTED. A map has no order of its own, and the author
+  // filled the form in whatever order they clicked; sorting is what makes
+  // the bytes a function of the document rather than of the session. It is
+  // also the order the compiler enumerates these in, so its refusal list
+  // and this file read down in step.
+  const scenarioIds = Object.keys(doc.scenarios).sort();
+  if (scenarioIds.length > 0) {
+    out.push('scenarios:');
+    for (const id of scenarioIds) {
+      out.push(`  ${scalar(id)}:`);
+      const bindings = doc.scenarios[id];
+      const keys = Object.keys(bindings).sort();
+      if (keys.length === 0) {
+        // A scenario bound with nothing filled in yet. `{}` says that in
+        // one token; a key with no value would be a different document.
+        out[out.length - 1] = `  ${scalar(id)}: {}`;
+        continue;
+      }
+      for (const key of keys) {
+        out.push(`    ${scalar(key)}: ${scalar(bindings[key])}`);
+      }
     }
   }
 
@@ -1327,6 +1505,8 @@ export function emptyDungeon(
     walls: [],
     doors: [],
     place: [],
+    exits: [],
+    scenarios: {},
   };
 }
 
@@ -1658,6 +1838,95 @@ export function setStart(doc: DungeonDoc, cell: Axial | null): DungeonDoc {
   return { ...doc, start: cell };
 }
 
+/** Put a way out on a cell, or take the one already there away — the
+ * `start` tool's gesture with a list behind it (design §3.1).
+ *
+ * STANDABLE FLOOR ONLY, the same refusal-in-place `setStart` makes and for
+ * the same reason: the compiler refuses an exit on scenery in `start`'s own
+ * words, and handing the same document back is what lets the caller say
+ * why instead of the click appearing to do nothing. */
+export function toggleExitAt(doc: DungeonDoc, cell: Axial): DungeonDoc {
+  const key = axialKey(cell);
+  const existing = doc.exits.findIndex((e) => axialKey(e.at) === key);
+  if (existing !== -1) {
+    return { ...doc, exits: doc.exits.filter((_, i) => i !== existing) };
+  }
+  if (!isStandable(doc, cell)) return doc;
+  return { ...doc, exits: [...doc.exits, { id: nextExitId(doc), at: cell }] };
+}
+
+function nextExitId(doc: DungeonDoc): string {
+  const taken = new Set(doc.exits.map((e) => e.id));
+  let n = doc.exits.length + 1;
+  while (taken.has(`exit-${n}`)) n += 1;
+  return `exit-${n}`;
+}
+
+export function updateExit(
+  doc: DungeonDoc,
+  index: number,
+  patch: Partial<Pick<ExitDoc, 'id'>>
+): DungeonDoc {
+  return {
+    ...doc,
+    exits: doc.exits.map((e, i) => (i === index ? { ...e, ...patch } : e)),
+  };
+}
+
+export function removeExit(doc: DungeonDoc, index: number): DungeonDoc {
+  return { ...doc, exits: doc.exits.filter((_, i) => i !== index) };
+}
+
+/** Bind one field of one scenario. An EMPTY value UNBINDS the field, and a
+ * scenario left with no fields bound is dropped entirely — "nothing is
+ * defaulted" the other way round: a form the author cleared must leave no
+ * trace in the file, or the compiler goes on validating a binding nobody
+ * meant to make. */
+export function setScenarioBinding(
+  doc: DungeonDoc,
+  scenarioId: string,
+  key: string,
+  value: string
+): DungeonDoc {
+  const current = doc.scenarios[scenarioId] ?? {};
+  const next: ScenarioBindings = { ...current };
+  if (value === '') delete next[key];
+  else next[key] = value;
+  const scenarios = { ...doc.scenarios };
+  if (Object.keys(next).length === 0) delete scenarios[scenarioId];
+  else scenarios[scenarioId] = next;
+  return { ...doc, scenarios };
+}
+
+/** Every placement id the file declares, in document order, with the index
+ * that declared it — what the id field checks a rename against and what the
+ * scenario form's `entity_ref` pickers list. A DUPLICATE KEEPS THE FIRST
+ * (the same rule `floorOwners` follows); the builder refuses the second
+ * before it is typed, and the compiler refuses it by name if a hand-written
+ * file carries one anyway. */
+export function placementIds(doc: DungeonDoc): Map<string, number> {
+  const ids = new Map<string, number>();
+  doc.place.forEach((p, i) => {
+    if (p.id && !ids.has(p.id)) ids.set(p.id, i);
+  });
+  return ids;
+}
+
+/** A slug the author is OFFERED for a placement's id, from its ref's last
+ * segment — `dnd5e:props:reliquary` suggests `reliquary`. Suffixed only
+ * when that name is already taken, so the first reliquary is `reliquary`
+ * and the second is `reliquary-2`. Never applied on its own: the panel
+ * shows it and the author accepts or renames it (design: "the panel
+ * suggests a slug from the ref, the author may rename"). */
+export function suggestPlacementId(doc: DungeonDoc, ref: string): string {
+  const base = (ref.split(':').pop() ?? 'thing').toLowerCase();
+  const taken = placementIds(doc);
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
 /** Drop a placement on a floor cell; one placement per cell — a drop
  * on an occupied cell replaces it. `blocks_*` are written explicitly for
  * props (prefilled by the caller from the catalog) and never for
@@ -1709,6 +1978,8 @@ export function updatePlacement(
       if (next.targeting === '') delete next.targeting;
       if (next.facing === undefined) delete next.facing;
       if (next.offset === undefined) delete next.offset;
+      if (next.id === '' || next.id === undefined) delete next.id;
+      if (next.holdable !== true) delete next.holdable;
       // Same REFUSED-on-monsters rule placeAt enforces at creation
       // (Copilot review, PR #795): updatePlacement is the OTHER way a
       // facing/offset patch reaches a placement, so it needs the same
@@ -1716,6 +1987,20 @@ export function updatePlacement(
       if (isMonsterRef(next.ref)) {
         delete next.facing;
         delete next.offset;
+        // A PROP HOLDS NOTHING AND A MONSTER IS NOT PICKED UP — the two
+        // halves of the server's own rule (dungeonspec `validate.go`),
+        // enforced on this write path for `facing`/`offset`'s reason: the
+        // panel is not the only thing that can send a patch.
+        delete next.holdable;
+      } else {
+        delete next.knows;
+      }
+      // NIL, NOT LEN 0 (`PlacementDoc.knows`): an empty list is a state
+      // this module can represent, so a caller that means "knows nothing"
+      // clears the field rather than writing `knows: []`. The panel's
+      // last-box-unticked path takes exactly this.
+      if (next.knows !== undefined && next.knows.length === 0) {
+        delete next.knows;
       }
       return next;
     }),
@@ -1826,6 +2111,11 @@ export type ErrorTarget =
   | { kind: 'region'; regionId: string }
   | { kind: 'door'; doorId: string }
   | { kind: 'start' }
+  | { kind: 'exit'; index: number }
+  /** A refusal the compiler addressed to one blank on one scenario's form
+   * (`scenarios.<id>.<key>`) — the form renders it under that blank, in the
+   * words the rulebook wrote. */
+  | { kind: 'scenario'; scenarioId: string; key: string }
   | { kind: 'document' };
 
 export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
@@ -1874,6 +2164,29 @@ export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
     return placement
       ? { kind: 'placement', index: +m[1], cell: placement.at }
       : { kind: 'document' };
+  }
+  m = /^exits\[(\d+)\]/.exec(path);
+  if (m) {
+    const index = doc.exits.indexOf(layout.exits[+m[1]]);
+    return index === -1 ? { kind: 'document' } : { kind: 'exit', index };
+  }
+  // `scenarios.<id>.<key>` — the compiler's own spelling (dungeonspec
+  // `validate.go`). A scenario id may carry hyphens and dots, so the key
+  // is taken as everything after the LAST dot rather than by splitting on
+  // the first: `scenarios.recover-the-artifact.artifact` names the key
+  // `artifact`, not `the-artifact`.
+  m = /^scenarios\.(.+)$/.exec(path);
+  if (m) {
+    const rest = m[1];
+    const dot = rest.lastIndexOf('.');
+    if (dot > 0) {
+      const scenarioId = rest.slice(0, dot);
+      const key = rest.slice(dot + 1);
+      if (doc.scenarios[scenarioId]) {
+        return { kind: 'scenario', scenarioId, key };
+      }
+    }
+    return { kind: 'document' };
   }
   return { kind: 'document' };
 }

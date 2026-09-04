@@ -22,6 +22,7 @@ import {
   defaultAuthoringClient,
   errorMessageOf,
   staleAtlasNotice,
+  useListScenarios,
   usePutDungeonPreview,
   useSaveDungeon,
   type AuthoringClient,
@@ -46,17 +47,21 @@ import {
   paintScenery,
   parseDungeon,
   placeAt,
+  removeExit,
   removePlacement,
   removeRegion,
   removeWalls,
   resolveErrorTargets,
   sceneryBlockedBy,
+  setScenarioBinding,
   setStart,
   setWallHeights,
   setWallName,
   toggleDoorAt,
+  toggleExitAt,
   updateDoor,
   updateDungeon,
+  updateExit,
   updatePlacement,
   updateRegion,
   type DungeonDoc,
@@ -230,6 +235,10 @@ export function DungeonBuilder({
   );
   const fixtures = fixtureCompile !== undefined;
   const saver = useSaveDungeon(authoringClient);
+  // The forms this dungeon may be bound to, asked once per client. There
+  // is no fallback descriptor: an empty answer renders "no scenarios
+  // offered" (`useListScenarios`'s own doc comment).
+  const scenarios = useListScenarios(authoringClient);
   const [listNonce, setListNonce] = useState(0);
 
   useEffect(() => {
@@ -482,6 +491,23 @@ export function DungeonBuilder({
     });
   };
   const handleCellClick = (cell: Axial) => {
+    if (tool === 'exit') {
+      // Refused in place with the reason, exactly as `start` is — the
+      // compiler refuses an exit on scenery in `start`'s own words, and a
+      // click that silently did nothing would be the worse answer.
+      if (isScenery(doc, cell)) {
+        showToast(NOBODY_STANDS);
+        return;
+      }
+      applyDoc((d) => {
+        const next = toggleExitAt(d, cell);
+        if (next !== d && next.exits.length > d.exits.length) {
+          setSelection({ kind: 'exit', index: next.exits.length - 1 });
+        }
+        return next;
+      });
+      return;
+    }
     if (tool === 'start') {
       // REFUSED IN PLACE WITH THE REASON (design §2.4): the mutator hands
       // back the same document, and the author is told why rather than
@@ -828,6 +854,18 @@ export function DungeonBuilder({
                 applyDoc((d) => removePlacement(d, index));
                 setSelection({ kind: 'dungeon' });
               }}
+              onExit={(index, patch) =>
+                applyDoc((d) => updateExit(d, index, patch))
+              }
+              onRemoveExit={(index) => {
+                applyDoc((d) => removeExit(d, index));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onBindScenario={(scenarioId, key, value) =>
+                applyDoc((d) => setScenarioBinding(d, scenarioId, key, value))
+              }
+              scenarios={scenarios}
+              errors={errors}
             />
           )}
         </div>

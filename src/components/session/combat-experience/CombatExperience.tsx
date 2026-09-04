@@ -4,6 +4,7 @@ import {
   Standing,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { propLabel } from '../holdingAffordances';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
@@ -123,6 +124,14 @@ export function CombatExperience({
   equipmentOpen,
   onSearch,
   searchPending = false,
+  lootTargets = [],
+  onLoot,
+  lootPending = false,
+  holdTargets = [],
+  onHold,
+  holdPending = false,
+  onLeave,
+  leavePending = false,
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
@@ -409,6 +418,52 @@ export function CombatExperience({
             >
               <span aria-hidden="true">🔍</span>
               {searchPending ? 'Searching…' : 'Search'}
+            </button>
+          )}
+          {/* ONE BUTTON PER DOWNED BODY, all of them, in the order given.
+              A body with nothing to give answers exactly as the captain
+              does (design P3), so there is nothing here to sort by. */}
+          {onLoot &&
+            lootTargets.map((target) => (
+              <button
+                key={target.subject}
+                type="button"
+                className={styles.equipmentButton}
+                data-testid={`session-combat-loot-${target.subject}`}
+                disabled={lootPending}
+                title={`Loot ${target.name}`}
+                onClick={() => onLoot(target.subject)}
+              >
+                <span aria-hidden="true">🖐</span>
+                {lootPending ? 'Looting…' : `Loot ${target.name}`}
+              </button>
+            ))}
+          {onHold &&
+            holdTargets.map((target) => (
+              <button
+                key={target.id}
+                type="button"
+                className={styles.equipmentButton}
+                data-testid={`session-combat-hold-${target.id}`}
+                disabled={holdPending}
+                title={`Pick up the ${propLabel(target)}`}
+                onClick={() => onHold(target.id)}
+              >
+                <span aria-hidden="true">✋</span>
+                {holdPending ? 'Holding…' : `Hold the ${propLabel(target)}`}
+              </button>
+            ))}
+          {onLeave && (
+            <button
+              type="button"
+              className={styles.equipmentButton}
+              data-testid="session-combat-leave-button"
+              disabled={leavePending}
+              title="Leave the dungeon. At a way out, carrying what the run is about, that ends the run"
+              onClick={onLeave}
+            >
+              <span aria-hidden="true">🚪</span>
+              {leavePending ? 'Leaving…' : 'Leave'}
             </button>
           )}
         </div>

@@ -31,6 +31,7 @@ import {
   DoorState,
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { formatHoldingBeat } from './holdingBeat';
 import { resolveName, resolveNameLower } from './participantNames';
 
 const DAMAGE_TYPE_WORD: Partial<Record<DamageType, string>> = {
@@ -73,6 +74,16 @@ export function formatBeat(
   member: string,
   names: Map<string, string>
 ): string | null {
+  // Loot, hold, drop and leave read as ONE set of sentences wherever they
+  // are narrated (`holdingBeat.ts`), so this line and the Story log cannot
+  // drift into two different accounts of the same beat. It answers `null`
+  // for everything else and the switch below carries on.
+  const holding = formatHoldingBeat(event, {
+    subject: (id) => resolveName(names, id, member),
+    object: (id) => resolveNameLower(names, id, member),
+  });
+  if (holding !== null) return holding;
+
   switch (event.body?.case) {
     case 'struck': {
       const s = event.body.value;

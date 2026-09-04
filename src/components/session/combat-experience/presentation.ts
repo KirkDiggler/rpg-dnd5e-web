@@ -840,6 +840,14 @@ const EXPECTED_OTHER_KIND = {
   regionRevealed: EventKind.REGION_REVEALED,
   activated: EventKind.ACTIVATED,
   activationResult: EventKind.ACTIVATION_RESULT,
+  looted: EventKind.LOOTED,
+  taken: EventKind.TAKEN,
+  dropped: EventKind.DROPPED,
+  // Another slice's beat (protos#287, death saves). Named here so this map
+  // stays exhaustive over `Event.body.case` — the switch below returns
+  // undefined for it, which is how a beat this presentation layer does not
+  // narrate is already handled (see DOOR_REVEALED).
+  deathSaveRolled: EventKind.DEATH_SAVE_ROLLED,
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -856,6 +864,9 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.MISSED,
   EventKind.ACTIVATED,
   EventKind.ACTIVATION_RESULT,
+  EventKind.LOOTED,
+  EventKind.TAKEN,
+  EventKind.DROPPED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -906,11 +917,50 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
           : null,
       });
     case 'joined':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+      });
+    // A DEPARTURE NOW CARRIES WHAT LEFT WITH IT (rpg-project#368 §6): the
+    // exit id it went through and the prop ids carried out. Both belong in
+    // the typed identity, or two departures that differ only in what the
+    // member was holding would hash the same and the second would be
+    // recorded as a conflict.
     case 'exited':
       return Object.freeze({
         kind: event.kind,
         bodyCase,
         member: event.body.value.member,
+        exit: event.body.value.exit,
+        holding: Object.freeze([...event.body.value.holding]),
+      });
+    case 'looted':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        looter: event.body.value.looter,
+        body: event.body.value.body,
+      });
+    case 'taken':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        taker: event.body.value.taker,
+        prop: event.body.value.prop,
+      });
+    case 'dropped':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        member: event.body.value.member,
+        prop: event.body.value.prop,
+        at: event.body.value.at
+          ? Object.freeze({
+              x: event.body.value.at.x,
+              y: event.body.value.at.y,
+            })
+          : null,
       });
     case 'ended':
       return Object.freeze({
@@ -1008,6 +1058,7 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     // state correctly, just without an otherStory entry of its own.
     case 'doorRevealed':
     case 'regionRevealed':
+    case 'deathSaveRolled':
       return undefined;
   }
 }

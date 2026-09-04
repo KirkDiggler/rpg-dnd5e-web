@@ -5,15 +5,21 @@
  * read-only mirror.
  */
 import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
+import type { FieldError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
+import { useState } from 'react';
+import type { ScenariosState } from './authoringRpc';
 import {
   floorKeys,
   isMonsterRef,
+  placementIds,
+  suggestPlacementId,
   wallLattice,
   type ApproachDoc,
   type CheckDoc,
   type ConcealmentDerivation,
   type DoorDoc,
   type DungeonDoc,
+  type ExitDoc,
   type PlacementDoc,
   type PlacementOffset,
   type WallDoc,
@@ -21,6 +27,7 @@ import {
 import { sealedBy } from './hexGeometry';
 import { axialKey } from './hexOffset';
 import { RegionPanel } from './RegionPanel';
+import { ScenarioPanel } from './ScenarioPanel';
 import { APPROACH_ABILITIES, TARGETINGS, type Selection } from './types';
 
 export interface InspectorProps {
@@ -53,6 +60,16 @@ export interface InspectorProps {
     patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>
   ) => void;
   onRemovePlacement: (index: number) => void;
+  /** Rename one way out. */
+  onExit: (index: number, patch: Partial<Pick<ExitDoc, 'id'>>) => void;
+  onRemoveExit: (index: number) => void;
+  /** Bind one blank on one scenario's form; an empty value unbinds it. */
+  onBindScenario: (scenarioId: string, key: string, value: string) => void;
+  /** What `ListScenarios` answered — the forms this dungeon may fill in. */
+  scenarios: ScenariosState;
+  /** The compiler's current refusals, whole. The scenario form picks out
+   * the ones addressed to its own blanks. */
+  errors: readonly FieldError[];
   /** Delete the selected wall. */
   onRemoveWall: (index: number) => void;
   /** Stamp a height on the selected wall. A wall is one line and one
@@ -115,16 +132,37 @@ export function Inspector(props: InspectorProps) {
     if (!placement) return <DungeonPanel {...props} />;
     return (
       <PlacementPanel
+        key={selection.index}
+        doc={doc}
+        index={selection.index}
         placement={placement}
         onChange={(p) => props.onPlacement(selection.index, p)}
         onRemove={() => props.onRemovePlacement(selection.index)}
       />
     );
   }
+  if (selection.kind === 'exit') {
+    const exit = doc.exits[selection.index];
+    if (!exit) return <DungeonPanel {...props} />;
+    return (
+      <ExitPanel
+        key={selection.index}
+        exit={exit}
+        takenIds={
+          new Set(
+            doc.exits.filter((_, i) => i !== selection.index).map((e) => e.id)
+          )
+        }
+        onChange={(p) => props.onExit(selection.index, p)}
+        onRemove={() => props.onRemoveExit(selection.index)}
+      />
+    );
+  }
   return <DungeonPanel {...props} />;
 }
 
-function DungeonPanel({ doc, onDungeon }: InspectorProps) {
+function DungeonPanel(props: InspectorProps) {
+  const { doc, onDungeon } = props;
   return (
     <div className="flex flex-col gap-3" data-testid="dungeon-panel">
       <h3 className="dg-h">Dungeon</h3>
@@ -171,8 +209,76 @@ function DungeonPanel({ doc, onDungeon }: InspectorProps) {
         {doc.regions.reduce((n, r) => n + r.cells.length, 0) +
           doc.scenery.length}{' '}
         floor cells · {doc.walls.length} walls · {doc.doors.length} doors ·{' '}
-        {doc.place.length} placed
+        {doc.place.length} placed · {doc.exits.length} way
+        {doc.exits.length === 1 ? '' : 's'} out
       </div>
+      {/* The scenario form lives on the DUNGEON, because that is whose
+          fact a binding is — a dungeon is bound to a scenario, not a room
+          or a monster. */}
+      <ScenarioPanel
+        doc={doc}
+        state={props.scenarios}
+        errors={props.errors}
+        onBind={props.onBindScenario}
+      />
+    </div>
+  );
+}
+
+/** A way out: its name, and the cell it stands on. The id is what a
+ * scenario's form binds to, so renaming one here is renaming the thing the
+ * form points at — a duplicate is refused in place, naming the exit that
+ * already has it, rather than being written and bounced by the compiler. */
+function ExitPanel({
+  exit,
+  takenIds,
+  onChange,
+  onRemove,
+}: {
+  exit: ExitDoc;
+  takenIds: ReadonlySet<string>;
+  onChange: (patch: Partial<Pick<ExitDoc, 'id'>>) => void;
+  onRemove: () => void;
+}) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const shown = typed ?? exit.id;
+  const clash = typed !== null && takenIds.has(typed);
+  return (
+    <div className="flex flex-col gap-3" data-testid="exit-panel">
+      <h3 className="dg-h">Way out</h3>
+      <label className="dg-label">
+        id
+        <input
+          className="dg-input"
+          data-testid="exit-id"
+          aria-label="exit id"
+          value={shown}
+          onChange={(e) => {
+            const next = e.target.value;
+            setTyped(next);
+            if (!takenIds.has(next)) {
+              onChange({ id: next });
+              setTyped(null);
+            }
+          }}
+        />
+        {clash ? (
+          <div className="text-xs" data-testid="exit-id-refusal">
+            another way out is already called &quot;{typed}&quot; — two exits
+            cannot share a name, because a scenario binds to one of them
+          </div>
+        ) : (
+          <div className="text-xs opacity-70">
+            What the scenario form calls this way out.
+          </div>
+        )}
+      </label>
+      <div className="text-xs opacity-50" data-testid="exit-at">
+        at {exit.at.q},{exit.at.r}
+      </div>
+      <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
+        remove way out
+      </button>
     </div>
   );
 }
@@ -476,10 +582,14 @@ function DoorPanel({
 }
 
 function PlacementPanel({
+  doc,
+  index,
   placement,
   onChange,
   onRemove,
 }: {
+  doc: DungeonDoc;
+  index: number;
   placement: PlacementDoc;
   onChange: (patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>) => void;
   onRemove: () => void;
@@ -492,8 +602,19 @@ function PlacementPanel({
         ref
         <div className="dg-input opacity-80 break-all">{placement.ref}</div>
       </div>
+      <IdControl
+        doc={doc}
+        index={index}
+        placement={placement}
+        onChange={(id) => onChange({ id })}
+      />
       {monster ? (
         <>
+          <KnowsControl
+            doc={doc}
+            knows={placement.knows}
+            onChange={(knows) => onChange({ knows })}
+          />
           <label className="dg-label">
             targeting
             <select
@@ -539,6 +660,21 @@ function PlacementPanel({
           <div className="text-xs opacity-70">
             Prefilled from the catalog; always written explicitly.
           </div>
+          <label className="dg-check">
+            <input
+              type="checkbox"
+              data-testid="placement-holdable"
+              checked={!!placement.holdable}
+              disabled={!placement.id}
+              onChange={(e) => onChange({ holdable: e.target.checked })}
+            />
+            holdable
+          </label>
+          <div className="text-xs opacity-70" data-testid="holdable-note">
+            {placement.id
+              ? 'A player standing beside it can pick it up, and a scenario can be about carrying it out.'
+              : 'Give this prop an id first — a thing that can be picked up has to be nameable, because the scenario form and the beat both name it.'}
+          </div>
           <FacingControl
             facing={placement.facing}
             onChange={(facing) => onChange({ facing })}
@@ -552,6 +688,150 @@ function PlacementPanel({
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
         remove
       </button>
+    </div>
+  );
+}
+
+/**
+ * The author's name for this placement (rpg-project#368 P2) — offered as a
+ * slug from the ref, renamed freely, and REFUSED IN PLACE on a collision.
+ *
+ * The refusal is here rather than left to the compiler because an id is
+ * what the scenario form and the pick-up verb point at: two placements
+ * sharing one means the form is pointing at something ambiguous, and the
+ * author should hear that while typing rather than after saving. The typed
+ * text is held locally while it clashes, so what they see is what they
+ * typed and the document keeps the name that still works.
+ */
+function IdControl({
+  doc,
+  index,
+  placement,
+  onChange,
+}: {
+  doc: DungeonDoc;
+  index: number;
+  placement: PlacementDoc;
+  onChange: (id: string) => void;
+}) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const taken = placementIds(doc);
+  const clashIndex = typed ? taken.get(typed) : undefined;
+  const clash =
+    typed !== undefined &&
+    typed !== null &&
+    typed !== '' &&
+    clashIndex !== undefined &&
+    clashIndex !== index;
+  const suggestion = suggestPlacementId(doc, placement.ref);
+  return (
+    <label className="dg-label">
+      id
+      <div className="flex gap-2 items-end">
+        <input
+          className="dg-input flex-1"
+          data-testid="placement-id"
+          aria-label="placement id"
+          placeholder={suggestion}
+          value={typed ?? placement.id ?? ''}
+          onChange={(e) => {
+            const next = e.target.value;
+            setTyped(next);
+            const owner = next ? taken.get(next) : undefined;
+            if (owner === undefined || owner === index) {
+              onChange(next);
+              setTyped(null);
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="dg-mini"
+          data-testid="placement-id-suggest"
+          onClick={() => {
+            setTyped(null);
+            onChange(suggestion);
+          }}
+        >
+          call it {suggestion}
+        </button>
+      </div>
+      {clash ? (
+        <div className="text-xs" data-testid="placement-id-refusal">
+          &quot;{typed}&quot; is already the name of{' '}
+          {doc.place[clashIndex as number]?.ref} — two placements cannot share
+          one, because a scenario binds to exactly one of them
+        </div>
+      ) : (
+        <div className="text-xs opacity-70">
+          Optional. Needed by whatever points at this: a scenario&apos;s form,
+          or picking it up.
+        </div>
+      )}
+    </label>
+  );
+}
+
+/**
+ * Which doors this monster knows about (rpg-project#368 P1) — a multi-pick
+ * over the doors THIS dungeon declares, by id.
+ *
+ * Offered on monsters and not on props, which is the server's own rule
+ * ("a prop is not a monster and holds nothing to know") expressed as an
+ * absent control rather than a refusal after the fact. Knowing an ordinary
+ * door is inert rather than wrong, so every door is listed — the concealed
+ * ones are the interesting ones and the panel says which, but it refuses
+ * nothing.
+ */
+function KnowsControl({
+  doc,
+  knows,
+  onChange,
+}: {
+  doc: DungeonDoc;
+  knows: string[] | undefined;
+  onChange: (knows: string[]) => void;
+}) {
+  const picked = new Set(knows ?? []);
+  return (
+    <div className="dg-label" data-testid="knows-control">
+      knows
+      {doc.doors.length === 0 ? (
+        <div className="text-xs opacity-70">
+          this dungeon has no doors yet — a monster knows a door by its id
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {doc.doors.map((door) => (
+            <label className="dg-check" key={door.id}>
+              <input
+                type="checkbox"
+                data-testid={`knows-${door.id}`}
+                checked={picked.has(door.id)}
+                onChange={(e) => {
+                  const next = new Set(picked);
+                  if (e.target.checked) next.add(door.id);
+                  else next.delete(door.id);
+                  // Emitted in the DOCUMENT's door order, not click order,
+                  // so the file does not record the sequence somebody
+                  // happened to tick the boxes in.
+                  onChange(
+                    doc.doors.filter((d) => next.has(d.id)).map((d) => d.id)
+                  );
+                }}
+              />
+              {door.id}
+              {door.concealed && (
+                <span className="opacity-60"> · concealed</span>
+              )}
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="text-xs opacity-70">
+        What this monster can be looted for. A concealed door it knows is the
+        way in a party can take off its body.
+      </div>
     </div>
   );
 }

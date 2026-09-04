@@ -555,3 +555,55 @@ describe('the scenery brush on the board (rpg-project#360 §2.1)', () => {
     expect(container.querySelectorAll('[data-position]')).toHaveLength(7);
   });
 });
+
+describe('ways out on the board (rpg-project#368 §3.1)', () => {
+  function withFloor(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (const c of [0, 1]) doc = paintCell(doc, 'region-1', p(c, 0));
+    return doc;
+  }
+
+  it('hands a click on the exit tool to the caller, like the start tool does', () => {
+    const clicks: string[] = [];
+    const { container } = mount(withFloor(), {
+      tool: 'exit',
+      onCellClick: (c) => clicks.push(axialKey(c)),
+    });
+    fireEvent.pointerDown(cellEl(container, 1, 0), { button: 0 });
+    expect(clicks).toEqual([axialKey(p(1, 0))]);
+  });
+
+  it('draws each way out with its own id, distinct from the start', () => {
+    let doc = withFloor();
+    doc = { ...doc, start: p(0, 0), exits: [{ id: 'entrance', at: p(0, 0) }] };
+    const { container } = mount(doc);
+    // Both marks stand on the same cell — the tomb's entrance IS its exit
+    // — and both are drawn, because `start` is not implicitly a way out.
+    expect(container.querySelector('[data-start]')).toBeTruthy();
+    const exit = container.querySelector('[data-exit="entrance"]');
+    expect(exit).toBeTruthy();
+    expect(exit?.textContent).toBe('entrance');
+  });
+
+  it('selects the way out under the pointer with the select tool', () => {
+    let doc = withFloor();
+    doc = { ...doc, exits: [{ id: 'entrance', at: p(1, 0) }] };
+    const selected: unknown[] = [];
+    const { container } = mount(doc, {
+      tool: 'select',
+      onSelect: (s) => selected.push(s),
+    });
+    fireEvent.pointerDown(cellEl(container, 1, 0), { button: 0 });
+    expect(selected).toEqual([{ kind: 'exit', index: 0 }]);
+  });
+
+  it('marks the way out the compiler refused', () => {
+    let doc = withFloor();
+    doc = { ...doc, exits: [{ id: 'entrance', at: p(1, 0) }] };
+    const { container } = mount(doc, {
+      errorTargets: [{ kind: 'exit', index: 0 }],
+    });
+    const exit = container.querySelector('[data-exit="entrance"] rect');
+    expect(exit?.getAttribute('stroke')).toBe('#ff3b30');
+  });
+});

@@ -14,6 +14,10 @@ export type BoardTool =
   | 'wall'
   | 'door'
   | 'start'
+  /** A way out (rpg-project#368 §3.1) — placed like `start`, but there may
+   * be several and each carries an id. Nothing is defaulted: the cell the
+   * party starts on is an exit only if the author says so. */
+  | 'exit'
   | 'place';
 
 /** What the inspector is looking at. A wall selection is an INDEX into
@@ -26,7 +30,11 @@ export type Selection =
   | { kind: 'region'; id: string }
   | { kind: 'door'; id: string }
   | { kind: 'wall'; index: number }
-  | { kind: 'placement'; index: number };
+  | { kind: 'placement'; index: number }
+  /** An entry in `exits[]`, by index — the same treatment a wall gets, and
+   * for the same reason: the file holds a list and the index is what a
+   * compiler path names. */
+  | { kind: 'exit'; index: number };
 
 /** The catalog item armed on the `place` tool. */
 export interface PaletteItem {
