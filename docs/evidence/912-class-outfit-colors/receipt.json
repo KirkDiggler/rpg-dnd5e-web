@@ -1,12 +1,122 @@
 {
   "issue": 912,
-  "status": "pending-real-game-evidence",
-  "requiredObservations": [
-    "owner-peer-customization-match",
-    "movement-visible",
-    "main-hand-witness",
-    "off-hand-witness",
-    "material-identity-stable"
+  "status": "captured",
+  "capturedAt": "2026-09-04T12:03:14+09:00",
+  "route": "normal game",
+  "environment": {
+    "web": "http://localhost:3018",
+    "api": "http://localhost:8086",
+    "playerId": "local--outfit-colors",
+    "characterId": "char_4f446df4-5c52-4d27-8974-a4ae4a15403d",
+    "characterName": "Hopkins",
+    "race": "half-orc",
+    "class": "fighter",
+    "sessionId": "5b6f0db9-31de-4d88-bfd3-094fc6845181"
+  },
+  "sourceHeads": {
+    "webVerifiedHead": "fa7c2ee49dbd18d6b2a8107c3f8051aad9994569",
+    "api": "11039830e45cffc9ecfb11aafbd961f6d80e79e9",
+    "assetProvider": "91ddbdfd88db1eccc465616671d7f1f427f5056e",
+    "protoGenerated": "883dd221a6cdf724df8d5d993d897e0c8a3358ab",
+    "dndToolkit": "d1392998a5b4d244ea36adf80aae6f3dc3c53abf",
+    "sessionToolkit": "a207423649dc95d5e71160602da6e0b307345a8e"
+  },
+  "providerManifestSha256": "12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2",
+  "screenshots": [
+    {
+      "path": "creation-gear-blue-red.png",
+      "sha256": "cfa0777f71ff65b79b63e7765f8b09b2b7e1fbfd67da6c4e5db403c678b17c94",
+      "width": 1152,
+      "height": 680,
+      "note": "Real Chrome creation modal after opening Gear Colors; blue primary and red secondary are visible on the Fighter 16 body."
+    },
+    {
+      "path": "session-blue-red.png",
+      "sha256": "ea25fb3582b9cc9db2cf6a843ebd9d10b27c9a09529736cfdde343cade3baf30",
+      "width": 1440,
+      "height": 1000,
+      "note": "Real Chrome normal-game session with finalized Hopkins rendered in the persisted blue/red outfit."
+    }
   ],
-  "note": "No real-game run, screenshots, HTTP observations, UUIDs, or human verdict have been recorded yet."
+  "appearance": {
+    "hairColorSrgb": 4270458,
+    "hairColorHex": "#41297A",
+    "primaryColorSrgb": 1743103,
+    "primaryColorHex": "#1A98FF",
+    "secondaryColorSrgb": 13783377,
+    "secondaryColorHex": "#D25151"
+  },
+  "modal": {
+    "widthPx": 1152,
+    "heightPx": 680,
+    "gearChoicesOverflowPx": 0,
+    "scrollOwner": "choices pane"
+  },
+  "rpc": {
+    "updateAppearance": {
+      "draftId": "draft_outfit_modal_review",
+      "status": "success",
+      "durationMs": 95,
+      "persistedPrimaryColorSrgb": 1743103,
+      "persistedSecondaryColorSrgb": 13783377,
+      "note": "Applied through the normal UI in an isolated ephemeral review draft; Hopkins and the active encounter were not modified."
+    }
+  },
+  "observations": [
+    {
+      "kind": "owner-peer-customization-match",
+      "source": "live GetCharacter and SessionService.GetRoster RPCs",
+      "result": "exact",
+      "ownerOutfit": {
+        "primaryColorSrgb": 1743103,
+        "secondaryColorSrgb": 13783377
+      },
+      "rosterOutfit": {
+        "primaryColorSrgb": 1743103,
+        "secondaryColorSrgb": 13783377
+      }
+    },
+    {
+      "kind": "movement-visible",
+      "source": "session-blue-red.png and live encounter story",
+      "positions": ["0,4", "1,4", "2,4", "3,4", "4,3", "4,4"]
+    },
+    {
+      "kind": "main-hand-witness",
+      "source": "final CI renderer regression",
+      "test": "ClassCharacterModel mounts main and off-hand assets independently on their exact bones"
+    },
+    {
+      "kind": "off-hand-witness",
+      "source": "final CI renderer regression",
+      "test": "SessionScene mounts exact off-hand presentation independently on the local class character"
+    },
+    {
+      "kind": "material-identity-stable",
+      "source": "final CI outfit material regression",
+      "test": "outfit material treatment updates uniforms without replacing mask or color identities"
+    }
+  ],
+  "pixelEvidence": {
+    "creationBluePixels": 45232,
+    "creationRedPixels": 16191,
+    "liveUpdateProbe": {
+      "primaryHex": "#FF00FF",
+      "secondaryHex": "#00FF00",
+      "magentaPixels": 7775,
+      "greenPixels": 1282,
+      "shaderErrors": 0
+    }
+  },
+  "verification": {
+    "command": "RPG_REQUIRE_SYNCED_CUSTOMIZATION_ASSETS=1 npm run ci-check",
+    "result": "passed",
+    "testsPassed": 4939,
+    "testsSkipped": 4,
+    "httpOrApplicationFailures": 0,
+    "shaderOrProgramErrors": 0,
+    "note": "Development StrictMode canceled obsolete streams during the separate session capture; those expected AbortError/ERR_ABORTED cancellations are not HTTP, application, shader, or program failures."
+  },
+  "failures": 0,
+  "humanVerdict": "confirmed, it works and looks great"
 }
