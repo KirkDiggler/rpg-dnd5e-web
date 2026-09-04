@@ -76,6 +76,7 @@ import { DungeonEnvironment } from './DungeonEnvironment';
 import { MoveIndicator } from './MoveIndicator';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
+import { startAzimuth } from './startAzimuth';
 import { useMoveIndicator } from './useMoveIndicator';
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
@@ -135,6 +136,11 @@ export interface SessionCanvasProps {
    * Never applied to peers. */
   offHandPresentation?: OffHandPresentation;
   myPosition: CubeCoord;
+  /** The dungeon's authored starting facing (`GetAtlasResponse.start`),
+   * or absent when the author stated none — in which case the camera sits
+   * exactly where it always has. Presentation only: it aims the first
+   * frame and gates nothing. */
+  startFacing?: string;
   /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
    * (`MoveResponse.steps`, already bridged to cube coords) — passed
    * straight through to `HexEntity.movePath`. `undefined` when no walk
@@ -237,6 +243,7 @@ export function SessionScene({
   offHandPresentation,
   localIsDowned = false,
   myPosition,
+  startFacing,
   movePath,
   moveSeq,
   onHexClick,
@@ -322,6 +329,11 @@ export function SessionScene({
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
     revealedBounds,
+    // WHERE THE CAMERA STARTS, from the dungeon's own start facing
+    // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
+    // moment a player turns the camera it is theirs. Undefined for a
+    // dungeon that states none, which leaves the historical 45°.
+    initialAzimuth: startAzimuth(startFacing),
   });
 
   const attackableSet = useMemo(
@@ -637,6 +649,13 @@ export function SessionCanvas(props: SessionCanvasProps) {
       orthographic={!cameraDials.perspective}
       frameloop="demand"
       camera={{
+        // NOT WHERE THE AIMING HAPPENS. `useCameraControls`' mount effect
+        // computes the seat from its own azimuth and distance and calls
+        // `camera.position.set(...)`, so this prop is overwritten before
+        // the first frame — the start's facing seeds the hook instead
+        // (`startAzimuth.ts`). Left as the historical constant because it
+        // is still the position the camera holds for the instant before
+        // that effect runs.
         position: CAMERA_OFFSET,
         near: 0.1,
         far: 1000,

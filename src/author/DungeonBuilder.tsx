@@ -59,6 +59,7 @@ import {
   setIntelReveals,
   setScenarioBinding,
   setStart,
+  setStartFacing,
   setWallHeights,
   setWallName,
   toggleDoorAt,
@@ -521,7 +522,13 @@ export function DungeonBuilder({
         showToast(NOBODY_STANDS);
         return;
       }
-      applyDoc((d) => setStart(d, cell));
+      applyDoc((d) => {
+        const next = setStart(d, cell);
+        // Selected on placement, so the facing compass is one click away
+        // rather than something to go looking for.
+        if (next !== d) setSelection({ kind: 'start' });
+        return next;
+      });
     }
     if (tool === 'place' && armed) {
       if (isMonsterRef(armed.ref) && isScenery(doc, cell)) {
@@ -886,6 +893,9 @@ export function DungeonBuilder({
                 setSelection({ kind: 'dungeon' });
               }}
               onSelect={setSelection}
+              onStartFacing={(facing) =>
+                applyDoc((d) => setStartFacing(d, facing))
+              }
               onAddIntel={() => {
                 applyDoc((d) => {
                   const next = addIntel(d);

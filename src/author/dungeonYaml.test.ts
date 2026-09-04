@@ -31,6 +31,7 @@ import {
   setIntelReveals,
   setScenarioBinding,
   setStart,
+  setStartFacing,
   setWallHeights,
   setWallName,
   suggestPlacementId,
@@ -168,14 +169,19 @@ describe('emitDungeon / parseDungeon', () => {
   });
 
   it('the file is offset under the declared orientation: the same axial cell writes differently under flat', () => {
-    const pointy = { ...emptyDungeon('pointy'), start: { q: -1, r: 3 } };
+    const pointy = {
+      ...emptyDungeon('pointy'),
+      start: { at: { q: -1, r: 3 } },
+    };
     const flat: DungeonDoc = {
       ...emptyDungeon('flat'),
-      start: { q: -1, r: 3 },
+      start: { at: { q: -1, r: 3 } },
     };
     expect(emitDungeon(pointy)).toContain('start: [0, 3]'); // odd-r
     expect(emitDungeon(flat)).toContain('start: [-1, 2]'); // odd-q
-    expect(parseDungeon(emitDungeon(flat)).start).toEqual({ q: -1, r: 3 });
+    expect(parseDungeon(emitDungeon(flat)).start).toEqual({
+      at: { q: -1, r: 3 },
+    });
   });
 
   it('quotes names that YAML would otherwise misread', () => {
@@ -1162,7 +1168,7 @@ describe('scenery (rpg-project#360 slice 1)', () => {
     expect(sceneryBlockedBy(doc, p(1, 0))).toBe('monster');
 
     // Both are still standing where the author put them.
-    expect(doc.start).toEqual(p(0, 0));
+    expect(doc.start?.at).toEqual(p(0, 0));
     expect(doc.place).toHaveLength(1);
 
     // A PROP is never in the way — sitting on scenery is what props do.
@@ -1226,7 +1232,7 @@ describe('scenery (rpg-project#360 slice 1)', () => {
     expect(
       placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(1, 0) }).place
     ).toHaveLength(1);
-    expect(setStart(doc, p(1, 0)).start).toEqual(p(1, 0));
+    expect(setStart(doc, p(1, 0)).start).toEqual({ at: p(1, 0) });
   });
 
   it('resolveErrorPath names the scenery cell the compiler refused (design §2.5)', () => {
@@ -1829,5 +1835,103 @@ describe('resolveErrorPath — the new fields', () => {
       index: 1,
       cell: p(1, 0),
     });
+  });
+});
+
+describe('the start’s facing (rpg-project#374 design, "The walks")', () => {
+  const withStart = () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(0, 0));
+    return setStart(doc, p(0, 0));
+  };
+
+  it('emits the BARE PAIR when the author stated no facing', () => {
+    // Every dungeon written before facing existed keeps the bytes it has
+    // always had — which is what the toolkit's own fixtures are.
+    const bytes = roundTrips(withStart());
+    expect(bytes).toContain('start: [0, 0]');
+    expect(bytes).not.toContain('facing');
+  });
+
+  it('emits the map when the author aimed it, and round-trips', () => {
+    const doc = setStartFacing(withStart(), 'e');
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('start: { at: [0, 0], facing: e }');
+    expect(parseDungeon(bytes).start).toEqual({ at: p(0, 0), facing: 'e' });
+  });
+
+  it('parses the bare pair as a start with no facing stated', () => {
+    const doc = parseDungeon(emitDungeon(withStart()));
+    expect(doc.start).toEqual({ at: p(0, 0) });
+    expect(doc.start?.facing).toBeUndefined();
+  });
+
+  it('parses the map spelling with no facing, and re-emits it as the bare pair', () => {
+    // THE ONE ACCEPTED LOSS, ruled: the same document, different bytes.
+    // Carrying the spelling through the model to avoid it would be state
+    // that goes stale for no reader's benefit.
+    const written = emitDungeon(withStart()).replace(
+      'start: [0, 0]',
+      'start: { at: [0, 0] }'
+    );
+    const doc = parseDungeon(written);
+    expect(doc.start).toEqual({ at: p(0, 0) });
+    expect(emitDungeon(doc)).toContain('start: [0, 0]');
+  });
+
+  it('reads an EMPTY facing as no facing at all', () => {
+    // Zero values tell the truth: `facing: ""` is the author stating
+    // none, which is what the bare pair already says. Carrying it as a
+    // third state would let it re-emit as `facing: ""` and make the panel
+    // print "the camera looks  on the first frame".
+    const written = emitDungeon(withStart()).replace(
+      'start: [0, 0]',
+      'start: { at: [0, 0], facing: "" }'
+    );
+    const doc = parseDungeon(written);
+    expect(doc.start).toEqual({ at: p(0, 0) });
+    expect(roundTrips(doc)).toContain('start: [0, 0]');
+  });
+
+  it('clears the facing back to the bare pair', () => {
+    let doc = setStartFacing(withStart(), 'e');
+    doc = setStartFacing(doc, undefined);
+    expect(doc.start).toEqual({ at: p(0, 0) });
+    expect(roundTrips(doc)).toContain('start: [0, 0]');
+  });
+
+  it('keeps the facing when the start MOVES', () => {
+    // The author picked which way the party looks; dragging the entry one
+    // cell over is not them changing their mind about that.
+    let doc = paintCell(withStart(), 'region-1', p(1, 0));
+    doc = setStartFacing(doc, 'ne');
+    doc = setStart(doc, p(1, 0));
+    expect(doc.start).toEqual({ at: p(1, 0), facing: 'ne' });
+  });
+
+  it('aims nothing when there is no start to aim', () => {
+    const bare = emptyDungeon();
+    expect(setStartFacing(bare, 'e').start).toBeNull();
+  });
+
+  it('carries a facing word this build has never heard of', () => {
+    // The eight names are the server's call, surfaced as a `start.facing`
+    // FieldError like `place[].facing` already is — this module only
+    // carries the word.
+    const written = emitDungeon(withStart()).replace(
+      'start: [0, 0]',
+      'start: { at: [0, 0], facing: widdershins }'
+    );
+    const doc = parseDungeon(written);
+    expect(doc.start?.facing).toBe('widdershins');
+    expect(roundTrips(doc)).toContain('facing: widdershins');
+  });
+
+  it('refuses a start that is neither spelling', () => {
+    const written = emitDungeon(withStart()).replace(
+      'start: [0, 0]',
+      'start: yonder'
+    );
+    expect(() => parseDungeon(written)).toThrow(/expected \[col,row\]/);
   });
 });

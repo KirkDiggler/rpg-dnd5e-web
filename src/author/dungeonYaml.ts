@@ -184,6 +184,38 @@ export interface PlacementDoc {
   holdable?: boolean;
 }
 
+/**
+ * The party's entry point: a floor cell, and optionally which way they are
+ * looking when they arrive (rpg-project#374 design, "The walks" — Kirk:
+ * "we always start looking the wrong way and have to spin around").
+ *
+ * TWO SPELLINGS PARSE, ONE IS EMITTED. `start: [c, r]` is the bare pair
+ * every dungeon written before this used, and it stays legal: it means a
+ * start whose facing the author did not state. `start: { at: [c, r],
+ * facing: e }` states one. This module emits the BARE PAIR whenever there
+ * is no facing and the map whenever there is, so a file that states no
+ * facing keeps the bytes it has always had — which is what the toolkit's
+ * own fixtures are, and what their byte-pins check.
+ *
+ * The one consequence, accepted deliberately: a hand-written
+ * `start: { at: [c, r] }` with no facing re-emits as `start: [c, r]`. The
+ * same document, different bytes. Carrying the spelling through the model
+ * to avoid that would be state that goes stale for no reader's benefit.
+ *
+ * FACING IS PRESENTATION, NOT A RULE (`AtlasStart.facing`'s own doc
+ * comment): it aims the camera on the first frame and decides nothing
+ * about where a member may walk or what they can see. Omitted means the
+ * author stated none, which is the zero value telling the truth.
+ */
+export interface StartDoc {
+  at: Axial;
+  /** One of the eight true-compass names, or absent. Carried verbatim —
+   * this module never checks that the word is one of the eight; that is
+   * the server's call, surfaced as a `start.facing` `FieldError` the way
+   * `place[].facing` already is. */
+  facing?: string;
+}
+
 /** One authored way out of the dungeon: an id and a floor cell — the
  * shape `start` already has (rpg-project#368 §3.1).
  *
@@ -335,7 +367,12 @@ export interface DungeonDoc {
    * not know the key yet. An empty list here is that absence, not a
    * different state. */
   scenery: Axial[];
-  start: Axial | null;
+  /** Where the party comes in, and which way they are looking when they
+   * get there (`StartDoc`). NULL WHEN NOBODY AUTHORED ONE — the start is a
+   * pointer end to end (rpg-project#374 design, "The walks"): a
+   * zero-valued start would claim the party arrives at the origin looking
+   * nowhere, so its absence is spelled as absence and the wire omits it. */
+  start: StartDoc | null;
   walls: WallDoc[];
   doors: DoorDoc[];
   place: PlacementDoc[];
@@ -662,10 +699,32 @@ export function parseDungeon(text: string): DungeonDoc {
     }
   }
 
-  const start =
-    raw.start === undefined || raw.start === null
-      ? null
-      : fromOffset(orientation, pair(raw.start, 'start'));
+  // BOTH SPELLINGS PARSE (`StartDoc`): the bare pair every older dungeon
+  // uses, and the map that states a facing. Neither is preferred here —
+  // the emitter picks one, and it picks by whether there is a facing.
+  let start: StartDoc | null = null;
+  if (raw.start !== undefined && raw.start !== null) {
+    if (Array.isArray(raw.start)) {
+      start = { at: fromOffset(orientation, pair(raw.start, 'start')) };
+    } else if (isRecord(raw.start)) {
+      expectKeys(raw.start, ['at', 'facing'], 'start');
+      start = { at: fromOffset(orientation, pair(raw.start.at, 'start.at')) };
+      // EMPTY FACING IS NO FACING — the zero value telling the truth, not
+      // a third state. `AtlasStart.facing`'s own law says empty means the
+      // author stated none, and every reader downstream collapses it that
+      // way; carrying `facing: ''` in the model would let it re-emit as
+      // `facing: ""` and print "the camera looks  on the first frame".
+      const facing = raw.start.facing;
+      if (facing !== undefined && facing !== null) {
+        const word = str(raw.start, 'facing', 'start');
+        if (word !== '') start.facing = word;
+      }
+    } else {
+      throw new DungeonParseError(
+        'start: expected [col,row] or { at: [col,row], facing? }'
+      );
+    }
+  }
 
   const walls = list(raw.walls, 'walls').map((w, i): WallDoc => {
     const path = `walls[${i}]`;
@@ -1033,8 +1092,15 @@ export function emitDungeon(doc: DungeonDoc): string {
   }
 
   if (doc.start) {
-    const [c, r] = toOffset(o, doc.start);
-    out.push(`start: [${c}, ${r}]`);
+    const [c, r] = toOffset(o, doc.start.at);
+    // THE BARE PAIR WHEN THERE IS NO FACING. Every dungeon written before
+    // facing existed keeps the bytes it has always had, which is what the
+    // toolkit fixtures are and what their byte-pins check.
+    out.push(
+      doc.start.facing === undefined
+        ? `start: [${c}, ${r}]`
+        : `start: { at: [${c}, ${r}], facing: ${scalar(doc.start.facing)} }`
+    );
   }
 
   if (doc.walls.length === 0) {
@@ -1468,7 +1534,7 @@ export function regionWays(doc: DungeonDoc): RegionWays {
 
 function startRegionId(doc: DungeonDoc): string | null {
   if (!doc.start) return null;
-  return floorOwners(doc).get(axialKey(doc.start)) ?? null;
+  return floorOwners(doc).get(axialKey(doc.start.at)) ?? null;
 }
 
 interface RegionBfs {
@@ -1736,7 +1802,7 @@ export function sceneryBlockedBy(
   cell: Axial
 ): SceneryBlocker | null {
   const key = axialKey(cell);
-  if (doc.start && axialKey(doc.start) === key) return 'start';
+  if (doc.start && axialKey(doc.start.at) === key) return 'start';
   const standing = doc.place.find(
     (pl) => axialKey(pl.at) === key && isMonsterRef(pl.ref)
   );
@@ -1803,7 +1869,7 @@ export function eraseCell(doc: DungeonDoc, cell: Axial): DungeonDoc {
       const crossing = doorCrossing(doc, d);
       return crossing !== null && !touches(crossing);
     }),
-    start: doc.start && axialKey(doc.start) === key ? null : doc.start,
+    start: doc.start && axialKey(doc.start.at) === key ? null : doc.start,
     place: doc.place.filter((p) => axialKey(p.at) !== key),
   };
 }
@@ -1950,7 +2016,26 @@ export function updateDoor(
  * place — the same doc back — is what lets the caller say why. */
 export function setStart(doc: DungeonDoc, cell: Axial | null): DungeonDoc {
   if (cell && !isStandable(doc, cell)) return doc;
-  return { ...doc, start: cell };
+  // MOVING THE START KEEPS ITS FACING. The author picked which way the
+  // party looks; dragging the entry one cell over is not them changing
+  // their mind about that.
+  if (!cell) return { ...doc, start: null };
+  return {
+    ...doc,
+    start: { ...(doc.start ?? {}), at: cell },
+  };
+}
+
+/** Aim the start, or clear the aim. An empty name removes `facing`, which
+ * is how the file says "the author stated none" — the bare pair. */
+export function setStartFacing(
+  doc: DungeonDoc,
+  facing: string | undefined
+): DungeonDoc {
+  if (!doc.start) return doc;
+  const next: StartDoc = { at: doc.start.at };
+  if (facing) next.facing = facing;
+  return { ...doc, start: next };
 }
 
 /** Put a way out on a cell, or take the one already there away — the

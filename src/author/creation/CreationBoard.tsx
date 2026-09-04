@@ -370,7 +370,7 @@ export function CreationBoard({
     const s = new Set<string>();
     for (const t of errorTargets) {
       if (t.kind === 'cell' || t.kind === 'placement') s.add(axialKey(t.cell));
-      if (t.kind === 'start' && doc.start) s.add(axialKey(doc.start));
+      if (t.kind === 'start' && doc.start) s.add(axialKey(doc.start.at));
       if (t.kind === 'region') {
         for (const c of regionById.get(t.regionId)?.cells ?? []) {
           s.add(axialKey(c));
@@ -471,12 +471,31 @@ export function CreationBoard({
           return;
         }
       }
-      // A way out is selected from its own cell — after the placements,
-      // doors and walls, because those are things standing ON floor and an
-      // exit IS a floor cell.
+      // The start and a way out are selected from their own cells — after
+      // the placements, doors and walls, because those are things standing
+      // ON floor and these two ARE floor cells.
+      //
+      // THEY SHARE A CELL IN THE REFERENCE TOMB, so one click cannot mean
+      // both. The start goes first, because the party's entry is what an
+      // author reaches for there — and a SECOND click on a cell already
+      // selected cycles to the next thing on it, so the exit under the
+      // start is reachable at all. Without the cycle the tomb's `entrance`
+      // exit could not be renamed or removed from the board: nothing else
+      // in the builder emits an exit selection.
+      const onStart = !!doc.start && axialKey(doc.start.at) === key;
       const exitIndex = doc.exits.findIndex((x) => axialKey(x.at) === key);
-      if (exitIndex !== -1) {
-        onSelect({ kind: 'exit', index: exitIndex });
+      if (onStart || exitIndex !== -1) {
+        const here: Selection[] = [];
+        if (onStart) here.push({ kind: 'start' });
+        if (exitIndex !== -1) here.push({ kind: 'exit', index: exitIndex });
+        const current = here.findIndex(
+          (candidate) =>
+            candidate.kind === selection.kind &&
+            (candidate.kind !== 'exit' ||
+              (selection.kind === 'exit' &&
+                candidate.index === selection.index))
+        );
+        onSelect(here[(current + 1) % here.length]);
         return;
       }
       const owner = owners.get(key);
@@ -736,7 +755,8 @@ export function CreationBoard({
           <g data-layer="start" pointerEvents="none">
             {doc.start && (
               <Start
-                cell={doc.start}
+                cell={doc.start.at}
+                facing={doc.start.facing}
                 size={size}
                 o={o}
                 error={errorTargets.some((t) => t.kind === 'start')}
@@ -1160,18 +1180,35 @@ export function CreationBoard({
 
 function Start({
   cell,
+  facing,
   size,
   o,
   error,
 }: {
   cell: Axial;
+  /** The authored starting facing, if the author stated one — drawn as
+   * the same tick a placement's facing gets, from the same table, so one
+   * arrow means one thing everywhere on this board. */
+  facing?: string;
   size: number;
   o: DungeonDoc['orientation'];
   error: boolean;
 }) {
   const c = cellCenter(cell, size, o);
+  const deg = facing !== undefined ? facingAngleDeg(facing) : undefined;
   return (
-    <g data-start={axialKey(cell)}>
+    <g data-start={axialKey(cell)} data-start-facing={facing || undefined}>
+      {deg !== undefined && (
+        <line
+          data-start-facing-tick=""
+          x1={c.x + Math.cos((deg * Math.PI) / 180) * size * 0.5}
+          y1={c.y + Math.sin((deg * Math.PI) / 180) * size * 0.5}
+          x2={c.x + Math.cos((deg * Math.PI) / 180) * size * 0.95}
+          y2={c.y + Math.sin((deg * Math.PI) / 180) * size * 0.95}
+          stroke={error ? ERROR_STROKE : START_COLOR}
+          strokeWidth={3}
+        />
+      )}
       <circle
         cx={c.x}
         cy={c.y}

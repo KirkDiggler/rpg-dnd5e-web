@@ -1498,6 +1498,15 @@ function SessionEncounterScope({
             pacingNotice={combat.pacingNotice}
             renderMap={({ attackableTargets, onTargetClick }) => (
               <SessionCanvas
+                // The dungeon's own starting facing, read from the ATLAS
+                // and nowhere else (rpg-project#374: rpg-api reads it from
+                // the atlas mirror only, and there is no second source
+                // here either). Absent when the author stated none, and
+                // absent entirely for a dungeon with no start — the wire
+                // omits `start` in that case, because a zero-valued one
+                // would claim the party arrives at the origin looking
+                // nowhere.
+                startFacing={atlas?.start?.facing || undefined}
                 scene={lastGoodSceneRef.current!}
                 hexSize={HEX_SIZE}
                 characterId={member}

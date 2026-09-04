@@ -39,7 +39,11 @@ export type Selection =
    * given a target and a holder (rpg-project#372 §5). Declared on the
    * dungeon, not on any one thing in it, which is why it is selected by
    * name rather than by index into something. */
-  | { kind: 'intel'; id: string };
+  | { kind: 'intel'; id: string }
+  /** The party's entry point. One per dungeon, so it is selected by being
+   * the start rather than by an id or an index (rpg-project#374 design,
+   * "The walks"). */
+  | { kind: 'start' };
 
 /** The catalog item armed on the `place` tool. */
 export interface PaletteItem {
