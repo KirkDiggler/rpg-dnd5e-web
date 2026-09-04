@@ -17,6 +17,7 @@ import {
   emptyPresentation,
   reduceCombatPresentation,
   selectBlocksManualEndTurn,
+  selectConcealsDeathSaveTruth,
   selectCurrentPresentation,
   selectVisibleStory,
 } from './presentation';
@@ -252,7 +253,7 @@ describe('shared Death Save d20 presentation', () => {
     expect(eventFirst.presentations[0]?.conflicted).toBe(false);
   });
 
-  it('keeps witness narration hidden until that shared throw settles in bounds', () => {
+  it('keeps witness narration and refreshed current-state truth hidden until that shared throw settles in bounds', () => {
     let state = reduceCombatPresentation(configured('wizard-1'), {
       type: 'stream-event',
       event,
@@ -267,11 +268,13 @@ describe('shared Death Save d20 presentation', () => {
     expect(Object.hasOwn(witnessRecord.authority, 'authoritySeq')).toBe(false);
     expect(Object.hasOwn(witnessRecord.request!, 'authoritySeq')).toBe(false);
     expect(selectVisibleStory(state)).toEqual([]);
+    expect(selectConcealsDeathSaveTruth(state)).toBe(true);
 
     state = reduceCombatPresentation(state, {
       type: 'witness-settlement',
       presentationId: 'presentation_opaque-token',
     });
+    expect(selectConcealsDeathSaveTruth(state)).toBe(false);
     expect(selectVisibleStory(state)[0]?.headline).toBe(
       'Death save! 2 successes — 7 to stabilize.'
     );
@@ -390,6 +393,7 @@ describe('shared Death Save d20 presentation', () => {
     const request = selectCurrentPresentation(state)!.request!;
 
     expect(selectVisibleStory(state)).toEqual([]);
+    expect(selectConcealsDeathSaveTruth(state)).toBe(true);
     expect(selectCurrentPresentation(state)?.settlement).toBe('armed');
     expect(selectCurrentPresentation(state)?.request).toBe(request);
 
@@ -400,6 +404,7 @@ describe('shared Death Save d20 presentation', () => {
         createNeutralVisualThrowProfile(27)
       ),
     });
+    expect(selectConcealsDeathSaveTruth(state)).toBe(false);
     expect(selectVisibleStory(state)[0]).toMatchObject({
       headline: 'Death save! 2 successes — 7 to stabilize.',
     });
@@ -409,5 +414,25 @@ describe('shared Death Save d20 presentation', () => {
       event: state.presentations[0]!.release!,
     });
     expect(duplicate).toBe(state);
+  });
+
+  it('keeps catch-up Death Saves current and never applies concealment to Attack', () => {
+    const historical = reduceCombatPresentation(configured('wizard-1'), {
+      type: 'stream-event',
+      event,
+      metadata: { source: 'catchup', deliveredAt: 1 } as never,
+    });
+    const attack = createAttackAuthorityFixture({
+      session: 'crypt-run',
+      attacker: 'fighter-1',
+    });
+    const liveAttack = reduceCombatPresentation(configured(), {
+      type: 'stream-event',
+      event: attack.event,
+      metadata,
+    });
+
+    expect(selectConcealsDeathSaveTruth(historical)).toBe(false);
+    expect(selectConcealsDeathSaveTruth(liveAttack)).toBe(false);
   });
 });

@@ -1728,6 +1728,19 @@ export function selectCurrentDiceEvents(
   );
 }
 
+export function selectConcealsDeathSaveTruth(
+  state: CombatPresentationState
+): boolean {
+  const current = selectCurrentPresentation(state);
+  return (
+    current !== undefined &&
+    !current.conflicted &&
+    current.authority.kind === 'death-save' &&
+    (current.responseAccepted || current.eventSource === 'live') &&
+    (current.settlement === 'armed' || current.settlement === 'unresolved')
+  );
+}
+
 export function selectBlocksManualEndTurn(
   state: CombatPresentationState
 ): boolean {

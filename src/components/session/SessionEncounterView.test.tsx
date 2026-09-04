@@ -1856,6 +1856,81 @@ describe('SessionEncounterView production combat integration', () => {
     });
   });
 
+  it('keeps refreshed natural-20 HP/life/progress hidden until semantic settlement, then releases the latest snapshots', async () => {
+    readyDyingTurn();
+    hoisted.getCharacterDataFn.mockResolvedValueOnce({
+      character: privateCharacterData({
+        hitPoints: { current: 0, max: 28, temp: 0 },
+        lifeState: LifeState.DYING,
+        deathSaves: create(DeathSaveProgressSchema, {
+          successes: 1,
+          failures: 2,
+          successesNeeded: 2,
+          failuresRemaining: 1,
+        }),
+      }),
+    });
+    hoisted.deathSaveFn.mockResolvedValue({
+      seq: 29n,
+      roll: 20,
+      outcome: DeathSaveOutcome.RECOVERED,
+      successes: 0,
+      failures: 0,
+      successesNeeded: 3,
+      failuresRemaining: 3,
+      recovered: true,
+      hpRestored: 1,
+      continuation: DeathSaveContinuation.KEEP_TURN,
+      presentationId: '',
+    });
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 2,
+      order: ['char-1', 'skeleton-1'],
+      participants: [
+        participant('char-1', {
+          active: true,
+          standing: Standing.UP,
+          lifeState: LifeState.CONSCIOUS,
+        }),
+        participant('skeleton-1'),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [endTurnDeclaration()],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        hitPoints: { current: 1, max: 28, temp: 0 },
+        lifeState: LifeState.CONSCIOUS,
+      }),
+    });
+
+    const reveal = await screen.findByRole('button', {
+      name: 'Reveal result',
+    });
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+    expect(screen.getByText('0/28')).toBeTruthy();
+    expect(screen.getByText('1 successes · 2 to stabilize')).toBeTruthy();
+    expect(hoisted.lastCanvasProps.current?.localIsDowned).toBe(true);
+
+    fireEvent.click(reveal);
+
+    await waitFor(() => expect(screen.getByText('1/28')).toBeTruthy());
+    expect(screen.queryByTestId('death-save-progress')).toBeNull();
+    expect(hoisted.lastCanvasProps.current?.localIsDowned).toBe(false);
+  });
+
   it('preserves a failed automatic End Turn error, reconciles, and cannot reroll the accepted save', async () => {
     readyDyingTurn();
     hoisted.deathSaveFn.mockResolvedValue({
@@ -2485,6 +2560,30 @@ describe('SessionEncounterView production combat integration', () => {
         },
       ],
     });
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-2',
+      round: 2,
+      order: ['char-2', 'char-1'],
+      participants: [
+        participant('char-2', {
+          active: true,
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+          deathSaves: create(DeathSaveProgressSchema, {
+            successes: 1,
+            failures: 1,
+            successesNeeded: 2,
+            failuresRemaining: 2,
+          }),
+        }),
+        participant('char-1'),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [],
+    });
     const deathSaveEvent = deferredStream([
       event(
         EventKind.DEATH_SAVE_ROLLED,
@@ -2516,6 +2615,7 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.streamDiceThrowsFn.mockReturnValue(livePlans.stream);
     renderView();
 
+    await screen.findByText('1 successes · 2 to stabilize');
     await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
     const scene = hoisted.lastCanvasProps.current!.scene;
     const fingerprint = await fingerprintLocalWorldDieColliders(
@@ -2562,8 +2662,31 @@ describe('SessionEncounterView production combat integration', () => {
 
     await act(async () => livePlans.publish(accepted));
     expect(currentLocalWorldDieCommand()?.kind).not.toBe('witness');
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-2',
+      round: 2,
+      order: ['char-2', 'char-1'],
+      participants: [
+        participant('char-2', {
+          active: true,
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+          deathSaves: create(DeathSaveProgressSchema, {
+            successes: 2,
+            failures: 1,
+            successesNeeded: 1,
+            failuresRemaining: 2,
+          }),
+        }),
+        participant('char-1'),
+      ],
+    });
     deathSaveEvent.release();
     expect(screen.queryByText(/Death save!/i)).toBeNull();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('1 successes · 2 to stabilize')).toBeTruthy();
+    expect(screen.queryByText('2 successes · 1 to stabilize')).toBeNull();
     await waitFor(() =>
       expect(currentLocalWorldDieCommand()).toMatchObject({
         kind: 'witness',
@@ -2585,6 +2708,7 @@ describe('SessionEncounterView production combat integration', () => {
       }
     });
     await screen.findByText('Death save! 2 successes — 1 to stabilize.');
+    expect(screen.getByText('2 successes · 1 to stabilize')).toBeTruthy();
     expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
   });
 
