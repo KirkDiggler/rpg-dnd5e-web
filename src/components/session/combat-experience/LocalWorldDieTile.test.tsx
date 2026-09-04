@@ -52,13 +52,16 @@ describe('LocalWorldDieTile pickup checkpoint', () => {
   it('does not expose a dead pickup target before the world body is ready', () => {
     render(<LocalWorldDieTile mode="ready" pickupReady={false} />);
 
-    expect(screen.getByText('Preparing die')).toBeTruthy();
+    expect(screen.getByText('Preparing shared d20')).toBeTruthy();
+    expect(screen.getByLabelText('Shared d20')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Pick up d20' })).toBeNull();
   });
 
   it('offers one shared throw path without experimental playback controls', () => {
     render(<LocalWorldDieTile mode="ready" pickupReady />);
 
+    expect(screen.getByText('Shared d20 ready')).toBeTruthy();
+    expect(screen.getByLabelText('Shared d20')).toBeTruthy();
     expect(screen.queryByRole('group', { name: /playback mode/i })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Direct' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Planned' })).toBeNull();
@@ -68,8 +71,18 @@ describe('LocalWorldDieTile pickup checkpoint', () => {
   it('describes an in-progress throw as shared presentation', () => {
     render(<LocalWorldDieTile mode="status" />);
 
-    expect(screen.getByText('Shared dice presentation')).toBeTruthy();
+    expect(screen.getByText('Shared d20 presentation')).toBeTruthy();
+    expect(screen.getByLabelText('Shared d20')).toBeTruthy();
     expect(screen.queryByText(/no witness playback/i)).toBeNull();
+  });
+
+  it('keeps fallback copy and labeling shared rather than Attack-specific', () => {
+    render(<LocalWorldDieTile mode="fallback" />);
+
+    expect(
+      screen.getByText('Shared d20 presentation unavailable')
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Shared d20')).toBeTruthy();
   });
 
   it('keeps an accessible neutral Roll action available before pickup is ready', () => {

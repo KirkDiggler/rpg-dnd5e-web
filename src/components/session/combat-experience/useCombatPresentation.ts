@@ -9,9 +9,11 @@ import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
   emptyPresentation,
   reduceCombatPresentation,
+  selectBlocksManualEndTurn,
   selectCurrentDiceEvents,
   selectCurrentPresentation,
   selectLiveAnnouncement,
+  selectSettledDeathSave,
   selectUnresolvedAttackTargets,
   selectVisibleResult,
   selectVisibleStory,
@@ -19,6 +21,8 @@ import {
   type CombatPresentationConfigFact,
   type CombatPresentationFact,
   type CombatPresentationState,
+  type DeathSaveResponseFact,
+  type SettledDeathSave,
 } from './presentation';
 import type {
   CombatExperienceAttackOutcome,
@@ -38,6 +42,8 @@ export interface UseCombatPresentationResult {
   readonly state: CombatPresentationState;
   readonly story: readonly CombatExperienceStoryExchange[];
   readonly result?: CombatExperienceAttackOutcome;
+  readonly settledDeathSave?: SettledDeathSave;
+  readonly blocksManualEndTurn: boolean;
   readonly liveAnnouncement: string | null;
   /** Targets whose attack roll has not been revealed yet — the map holds
    * their downed reveal until it has (`downedReveal.ts`). */
@@ -49,12 +55,14 @@ export interface UseCombatPresentationResult {
   readonly diceRollerName: string;
   readonly phase: CombatExperiencePhase;
   readonly acceptAttackResponse: (fact: AttackResponseFact) => void;
+  readonly acceptDeathSaveResponse: (fact: DeathSaveResponseFact) => void;
   readonly acceptStreamEvent: (
     event: Event,
     metadata: SessionEventDeliveryMetadata
   ) => void;
   readonly onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
   readonly onSemanticReleaseRequest: () => void;
+  readonly onWitnessDiceSettlement: (presentationId: string) => void;
 }
 
 function presentationConfig(
@@ -155,6 +163,10 @@ export function useCombatPresentation(
     (fact: AttackResponseFact) => dispatch(fact),
     [dispatch]
   );
+  const acceptDeathSaveResponse = useCallback(
+    (fact: DeathSaveResponseFact) => dispatch(fact),
+    [dispatch]
+  );
   const acceptStreamEvent = useCallback(
     (event: Event, metadata: SessionEventDeliveryMetadata) => {
       dispatch({ type: 'stream-event', event, metadata });
@@ -164,6 +176,12 @@ export function useCombatPresentation(
   const onDiceReleaseRequest = useCallback(
     (event: DicePresentationReleasedEvent) => {
       dispatch({ type: 'local-release', event });
+    },
+    [dispatch]
+  );
+  const onWitnessDiceSettlement = useCallback(
+    (presentationId: string) => {
+      dispatch({ type: 'witness-settlement', presentationId });
     },
     [dispatch]
   );
@@ -185,6 +203,14 @@ export function useCombatPresentation(
 
   const story = useMemo(() => selectVisibleStory(state), [state]);
   const result = useMemo(() => selectVisibleResult(state), [state]);
+  const settledDeathSave = useMemo(
+    () => selectSettledDeathSave(state),
+    [state]
+  );
+  const blocksManualEndTurn = useMemo(
+    () => selectBlocksManualEndTurn(state),
+    [state]
+  );
   const unresolvedAttackTargets = useMemo(
     () => selectUnresolvedAttackTargets(state),
     [state]
@@ -198,7 +224,7 @@ export function useCombatPresentation(
   const authoritativeRoller =
     current !== undefined &&
     !current.conflicted &&
-    current.authority.attacker === state.viewerMember &&
+    current.authority.roller === state.viewerMember &&
     current.localPlayerOwned &&
     current.settlement !== 'auto';
   const phase: CombatExperiencePhase =
@@ -216,6 +242,8 @@ export function useCombatPresentation(
     state,
     story,
     result,
+    settledDeathSave,
+    blocksManualEndTurn,
     liveAnnouncement,
     unresolvedAttackTargets,
     debug: state.debug,
@@ -223,18 +251,22 @@ export function useCombatPresentation(
     semanticFallback: current?.semanticFallback ?? false,
     diceWitnessRole: authoritativeRoller ? 'roller' : 'spectator',
     diceRollerName: current
-      ? (state.memberNames[current.authority.attacker] ??
-        current.authority.attacker)
+      ? (state.memberNames[current.authority.roller] ??
+        current.authority.roller)
       : 'Your character',
     phase,
     acceptAttackResponse,
+    acceptDeathSaveResponse,
     acceptStreamEvent,
     onDiceReleaseRequest,
     onSemanticReleaseRequest,
+    onWitnessDiceSettlement,
   };
 }
 
 /** Convenience adapter for an RPC callback that already has request context. */
+export { deathSaveResponseFact } from './presentation';
+
 export function attackResponseFact(input: {
   session: string;
   attacker: string;

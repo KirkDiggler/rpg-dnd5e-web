@@ -1721,3 +1721,29 @@ button.diceDrawerCue:focus-visible {
   border-top: 1px solid var(--sc-line);
   color: #e07a7a;
 }
+
+/* Provider-authored whole-party Death Save progress. Counts and remaining
+   values are rendered verbatim; these pips are not a client-side threshold. */
+.deathSaveProgress {
+  display: grid;
+  gap: 1px;
+  font-size: 0.58rem;
+  line-height: 1.15;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.deathSavePips {
+  display: flex;
+  gap: 3px;
+}
+
+.deathSavePips i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #65d49a;
+}
+
+.deathSavePips i[data-failure='true'] {
+  background: #f87171;
+}

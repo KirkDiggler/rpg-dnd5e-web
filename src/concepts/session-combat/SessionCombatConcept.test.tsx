@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../components/session/SessionCanvas', () => ({
@@ -194,6 +194,31 @@ describe('SessionCombatConcept shared-shell checkpoint', () => {
     expect(screen.getAllByText('Presentation only').length).toBeGreaterThan(0);
     expect(screen.getByText('declarations')).toBeTruthy();
     expect(screen.queryByText('Missing provider contract')).toBeNull();
+  });
+
+  it('renders the Dying Death Save review state through the production CombatExperience', () => {
+    render(<SessionCombatConcept />);
+    fireEvent.click(screen.getByRole('button', { name: 'Death Save turn' }));
+
+    const deathSave = within(
+      screen.getByTestId('session-combat-dock')
+    ).getByRole('button', { name: /^Death Save/ });
+    expect(
+      deathSave.querySelector('[data-cost="no-turn-slot"]')
+    ).not.toBeNull();
+    fireEvent.click(deathSave);
+    expect(screen.getByText('2 successes · 1 to stabilize')).toBeTruthy();
+    expect(screen.getByText('1 failures · 2 remaining')).toBeTruthy();
+    expect(screen.getAllByTestId('death-save-success-pip')).toHaveLength(2);
+    expect(screen.getAllByTestId('death-save-failure-pip')).toHaveLength(1);
+    expect(screen.getByText('Shared d20 ready')).toBeTruthy();
+    expect(screen.getByLabelText('Shared d20')).toBeTruthy();
+    expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: /end turn/i }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(screen.queryByRole('list', { name: /targets/i })).toBeNull();
   });
 
   it('renders spent declarations with Move remaining and End Turn independent', () => {

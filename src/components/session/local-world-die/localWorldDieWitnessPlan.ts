@@ -23,7 +23,6 @@ export interface LocalWorldDieWitnessPlan {
 export interface LocalWorldDieWitnessExpectation {
   readonly session: string;
   readonly presentationId: string;
-  readonly authoritySeq: bigint;
   readonly roller: string;
   readonly attempt: number;
   readonly viewerMember: string;
@@ -98,7 +97,6 @@ export function admitLocalWorldDieWitnessPlan(
     plan.schemaVersion !== 1 ||
     plan.session !== expected.session ||
     plan.presentationId !== expected.presentationId ||
-    plan.authoritySeq !== expected.authoritySeq ||
     plan.roller !== expected.roller ||
     plan.attempt !== expected.attempt ||
     plan.physicsSchema !== DicePhysicsSchema.RAPIER_DUNGEON_D20_V1 ||

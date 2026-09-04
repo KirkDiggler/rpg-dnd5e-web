@@ -15,8 +15,15 @@ import {
   EventSchema,
   type Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import type { AttackResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
-import type { AttackRef } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type {
+  AttackResponse,
+  DeathSaveResponse,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type {
+  AttackRef,
+  DeathSaveContinuation,
+  DeathSaveOutcome,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { formatDebugLine } from '../debugLogLine';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
 import {
@@ -33,10 +40,32 @@ export const COMBAT_D20_PRESET_ID = 'dice.original.carved.d20';
 
 type RollerRole = 'player' | 'monster';
 type AttackSnapshot = Readonly<Pick<AttackRef, 'ref' | 'name' | 'damageType'>>;
+export type DiceInteractionKind = 'attack' | 'death-save';
+
+interface DeathSaveSnapshot {
+  readonly outcome: DeathSaveOutcome;
+  readonly successesAdded: number;
+  readonly failuresAdded: number;
+  readonly successes: number;
+  readonly failures: number;
+  readonly successesNeeded: number;
+  readonly failuresRemaining: number;
+  readonly stabilized: boolean;
+  readonly dead: boolean;
+  readonly recovered: boolean;
+  readonly hpRestored: number;
+  readonly continuation: DeathSaveContinuation;
+}
 
 interface AuthoritySnapshot {
+  readonly kind: DiceInteractionKind;
   readonly session: string;
+  /** Recipient-local ordering only; never parsed from presentationId. */
   readonly seq: bigint;
+  readonly authoritySeq?: bigint;
+  readonly presentationId: string;
+  readonly roller: string;
+  /** Attack compatibility alias. Death Saves use roller directly. */
   readonly attacker: string;
   readonly target: string;
   readonly roll: number;
@@ -46,6 +75,7 @@ interface AuthoritySnapshot {
   readonly critical: boolean;
   readonly damage: number;
   readonly attack?: AttackSnapshot;
+  readonly deathSave?: DeathSaveSnapshot;
 }
 
 export interface CombatPresentationConfigFact {
@@ -62,6 +92,13 @@ export interface AttackResponseFact {
   readonly attacker: string;
   readonly target: string;
   readonly response: AttackResponse;
+}
+
+export interface DeathSaveResponseFact {
+  readonly type: 'death-save-response';
+  readonly session: string;
+  readonly member: string;
+  readonly response: DeathSaveResponse;
 }
 
 export interface CombatStreamFact {
@@ -81,16 +118,23 @@ export interface SemanticDiceReleaseFact {
   readonly presentationKey: string;
 }
 
+export interface WitnessDiceSettlementFact {
+  readonly type: 'witness-settlement';
+  readonly presentationId: string;
+}
+
 export type CombatPresentationFact =
   | CombatPresentationConfigFact
   | AttackResponseFact
+  | DeathSaveResponseFact
   | CombatStreamFact
   | LocalDiceReleaseFact
-  | SemanticDiceReleaseFact;
+  | SemanticDiceReleaseFact
+  | WitnessDiceSettlementFact;
 
 export interface CombatPresentationIdentity {
   readonly key: string;
-  readonly category: 'attack' | 'other';
+  readonly category: 'attack' | 'death-save' | 'other';
   readonly conflicted: boolean;
   readonly order: number;
 }
@@ -176,7 +220,13 @@ export function emptyPresentation(
   });
 }
 
-function authorityKey(session: string, seq: bigint): string {
+function authorityKey(authority: AuthoritySnapshot): string {
+  return authority.kind === 'death-save'
+    ? `death-save:${authority.presentationId.length}:${authority.presentationId}`
+    : `${authority.session.length}:${authority.session}:${authority.seq}`;
+}
+
+function storyAuthorityKey(session: string, seq: bigint): string {
   return `${session.length}:${session}:${seq}`;
 }
 
@@ -193,9 +243,14 @@ function attackSnapshot(
 
 function authorityFromResponse(fact: AttackResponseFact): AuthoritySnapshot {
   const response = fact.response;
+  const presentationId = combatPresentationId(fact.session, response.seq) ?? '';
   return freezeRecord({
+    kind: 'attack' as const,
     session: fact.session,
     seq: response.seq,
+    authoritySeq: response.seq,
+    presentationId,
+    roller: fact.attacker,
     attacker: fact.attacker,
     target: fact.target,
     roll: response.roll,
@@ -208,12 +263,57 @@ function authorityFromResponse(fact: AttackResponseFact): AuthoritySnapshot {
   });
 }
 
+function deathSaveSnapshot(value: DeathSaveSnapshot): DeathSaveSnapshot {
+  return freezeRecord({
+    outcome: value.outcome,
+    successesAdded: value.successesAdded,
+    failuresAdded: value.failuresAdded,
+    successes: value.successes,
+    failures: value.failures,
+    successesNeeded: value.successesNeeded,
+    failuresRemaining: value.failuresRemaining,
+    stabilized: value.stabilized,
+    dead: value.dead,
+    recovered: value.recovered,
+    hpRestored: value.hpRestored,
+    continuation: value.continuation,
+  });
+}
+
+function authorityFromDeathSaveResponse(
+  fact: DeathSaveResponseFact
+): AuthoritySnapshot {
+  const response = fact.response;
+  return freezeRecord({
+    kind: 'death-save' as const,
+    session: fact.session,
+    seq: response.seq,
+    authoritySeq: response.seq,
+    presentationId: response.presentationId,
+    roller: fact.member,
+    attacker: fact.member,
+    target: '',
+    roll: response.roll,
+    total: 0,
+    against: 0,
+    hit: false,
+    critical: false,
+    damage: 0,
+    deathSave: deathSaveSnapshot(response),
+  });
+}
+
 function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   if (event.body.case === 'struck' && event.kind === EventKind.STRUCK) {
     const struck = event.body.value;
+    const presentationId = combatPresentationId(event.session, event.seq) ?? '';
     return freezeRecord({
+      kind: 'attack' as const,
       session: event.session,
       seq: event.seq,
+      authoritySeq: event.seq,
+      presentationId,
+      roller: struck.attacker,
       attacker: struck.attacker,
       target: struck.target,
       roll: struck.roll,
@@ -227,9 +327,14 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   }
   if (event.body.case === 'missed' && event.kind === EventKind.MISSED) {
     const missed = event.body.value;
+    const presentationId = combatPresentationId(event.session, event.seq) ?? '';
     return freezeRecord({
+      kind: 'attack' as const,
       session: event.session,
       seq: event.seq,
+      authoritySeq: event.seq,
+      presentationId,
+      roller: missed.attacker,
       attacker: missed.attacker,
       target: missed.target,
       roll: missed.roll,
@@ -239,6 +344,28 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
       critical: false,
       damage: 0,
       attack: attackSnapshot(missed.attack),
+    });
+  }
+  if (
+    event.body.case === 'deathSaveRolled' &&
+    event.kind === EventKind.DEATH_SAVE_ROLLED
+  ) {
+    const result = event.body.value;
+    return freezeRecord({
+      kind: 'death-save' as const,
+      session: event.session,
+      seq: event.seq,
+      presentationId: result.presentationId,
+      roller: result.actor,
+      attacker: result.actor,
+      target: '',
+      roll: result.roll,
+      total: 0,
+      against: 0,
+      hit: false,
+      critical: false,
+      damage: 0,
+      deathSave: deathSaveSnapshot(result),
     });
   }
   return undefined;
@@ -331,7 +458,11 @@ function canonicalTypedIdentity(
 }
 
 function attackEventFacts(event: Event): string | undefined {
-  if (event.body.case !== 'struck' && event.body.case !== 'missed') {
+  if (
+    event.body.case !== 'struck' &&
+    event.body.case !== 'missed' &&
+    event.body.case !== 'deathSaveRolled'
+  ) {
     return undefined;
   }
   return canonicalTypedIdentity(event.body.value);
@@ -342,8 +473,11 @@ function sameAuthority(
   later: AuthoritySnapshot
 ): boolean {
   return (
+    first.kind === later.kind &&
     first.session === later.session &&
-    first.seq === later.seq &&
+    (first.kind === 'death-save' || first.seq === later.seq) &&
+    first.presentationId === later.presentationId &&
+    first.roller === later.roller &&
     first.attacker === later.attacker &&
     first.target === later.target &&
     Object.is(first.roll, later.roll) &&
@@ -352,7 +486,9 @@ function sameAuthority(
     first.hit === later.hit &&
     first.critical === later.critical &&
     Object.is(first.damage, later.damage) &&
-    sameAttack(first.attack, later.attack)
+    sameAttack(first.attack, later.attack) &&
+    canonicalTypedIdentity(first.deathSave) ===
+      canonicalTypedIdentity(later.deathSave)
   );
 }
 
@@ -392,12 +528,12 @@ function createRequest(
   state: Pick<CombatPresentationState, 'rollerRoles'>,
   authority: AuthoritySnapshot
 ): DicePresentationRequestedEvent | undefined {
-  const presentationId = combatPresentationId(authority.session, authority.seq);
-  const role = state.rollerRoles[authority.attacker];
+  const presentationId = authority.presentationId;
+  const role = state.rollerRoles[authority.roller];
   if (
-    !presentationId ||
+    !isDicePresentationIdentifier(presentationId) ||
     !role ||
-    !isDicePresentationIdentifier(authority.attacker) ||
+    !isDicePresentationIdentifier(authority.roller) ||
     !Number.isInteger(authority.roll) ||
     authority.roll < 1 ||
     authority.roll > 20
@@ -409,7 +545,10 @@ function createRequest(
     type: 'dice-presentation-requested',
     eventId: eventId('request', presentationId),
     presentationId,
-    roller: Object.freeze({ entityId: authority.attacker, role }),
+    ...(authority.authoritySeq !== undefined
+      ? { authoritySeq: authority.authoritySeq }
+      : {}),
+    roller: Object.freeze({ entityId: authority.roller, role }),
     die: Object.freeze({
       kind: 'd20',
       presetId: COMBAT_D20_PRESET_ID,
@@ -604,7 +743,7 @@ function initialRecord(
     ? ('auto' as const)
     : !roleKnown
       ? ('unresolved' as const)
-      : pending
+      : pending || authority.kind === 'death-save'
         ? ('armed' as const)
         : ('auto' as const);
   const release =
@@ -613,8 +752,8 @@ function initialRecord(
       : undefined;
   return {
     record: Object.freeze({
-      key: authorityKey(authority.session, authority.seq),
-      presentationId: combatPresentationId(authority.session, authority.seq),
+      key: authorityKey(authority),
+      presentationId: authority.presentationId,
       session: authority.session,
       seq: authority.seq,
       authority,
@@ -646,12 +785,12 @@ function addAttackRecord(
     source?: 'live' | 'catchup';
   }
 ): CombatPresentationState {
-  const key = authorityKey(authority.session, authority.seq);
+  const key = authorityKey(authority);
   const { record, pending } = initialRecord(state, authority, options);
   const presentations = Object.freeze([...state.presentations, record]);
   return Object.freeze({
     ...state,
-    identities: addIdentity(state, key, 'attack'),
+    identities: addIdentity(state, key, authority.kind),
     presentations,
     pendingLocalKeys: pending
       ? Object.freeze([...state.pendingLocalKeys, key])
@@ -683,30 +822,33 @@ function inSession(state: CombatPresentationState, session: string): boolean {
 
 function acceptResponse(
   state: CombatPresentationState,
-  fact: AttackResponseFact
+  fact: AttackResponseFact | DeathSaveResponseFact
 ): CombatPresentationState {
   if (!inSession(state, fact.session)) {
     return diagnose(state, `response outside session ${state.session} ignored`);
   }
   let authority: AuthoritySnapshot;
   try {
-    authority = authorityFromResponse(fact);
+    authority =
+      fact.type === 'attack-response'
+        ? authorityFromResponse(fact)
+        : authorityFromDeathSaveResponse(fact);
   } catch (error) {
     return diagnose(
       state,
-      `rejected attack response: ${error instanceof Error ? error.message : String(error)}`
+      `rejected dice response: ${error instanceof Error ? error.message : String(error)}`
     );
   }
-  const key = authorityKey(authority.session, authority.seq);
+  const key = authorityKey(authority);
   const identity = identityAt(state, key);
   if (!identity) {
     return addAttackRecord(state, authority, { responseAccepted: true });
   }
-  if (identity.category !== 'attack') {
+  if (identity.category !== authority.kind) {
     return markConflicted(
       state,
       key,
-      `attack response conflicts with typed Story for ${key}`
+      `dice response conflicts with typed Story for ${key}`
     );
   }
 
@@ -723,8 +865,18 @@ function acceptResponse(
     );
   }
   if (current.responseAccepted) return state;
+  const upgradedAuthority =
+    authority.kind === 'death-save'
+      ? Object.freeze({
+          ...current.authority,
+          authoritySeq: authority.authoritySeq,
+        })
+      : current.authority;
+  const upgradedRequest = createRequest(state, upgradedAuthority);
   return replacePresentation(state, index, {
     ...current,
+    authority: upgradedAuthority,
+    request: upgradedRequest,
     responseAccepted: true,
     locallyArmedResponse:
       !current.conflicted &&
@@ -763,7 +915,7 @@ function acceptAttackEvent(
   fact: CombatStreamFact,
   authority: AuthoritySnapshot
 ): CombatPresentationState {
-  const key = authorityKey(authority.session, authority.seq);
+  const key = authorityKey(authority);
   const identity = identityAt(state, key);
   const event = snapshotEvent(fact.event);
   if (!identity) {
@@ -773,11 +925,11 @@ function acceptAttackEvent(
       source: fact.metadata.source,
     });
   }
-  if (identity.category !== 'attack') {
+  if (identity.category !== authority.kind) {
     return markConflicted(
       state,
       key,
-      `attack event conflicts with typed Story for ${key}`
+      `dice event conflicts with typed Story for ${key}`
     );
   }
 
@@ -840,6 +992,7 @@ const EXPECTED_OTHER_KIND = {
   regionRevealed: EventKind.REGION_REVEALED,
   activated: EventKind.ACTIVATED,
   activationResult: EventKind.ACTIVATION_RESULT,
+  deathSaveRolled: EventKind.DEATH_SAVE_ROLLED,
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -856,6 +1009,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.MISSED,
   EventKind.ACTIVATED,
   EventKind.ACTIVATION_RESULT,
+  EventKind.DEATH_SAVE_ROLLED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -942,6 +1096,12 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
           : null,
         target: event.body.value.target,
       });
+    case 'deathSaveRolled':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        value: event.body.value,
+      });
     case 'activationResult': {
       const activation = event.body.value;
       switch (activation.result.case) {
@@ -1017,7 +1177,7 @@ function acceptOtherEvent(
   fact: CombatStreamFact,
   relevantFacts: RelevantOtherEvent
 ): CombatPresentationState {
-  const key = authorityKey(fact.event.session, fact.event.seq);
+  const key = storyAuthorityKey(fact.event.session, fact.event.seq);
   const factsIdentity = canonicalTypedIdentity(relevantFacts);
   const identity = identityAt(state, key);
   if (identity) {
@@ -1161,6 +1321,35 @@ function acceptSemanticRelease(
   );
 }
 
+function acceptWitnessSettlement(
+  state: CombatPresentationState,
+  fact: WitnessDiceSettlementFact
+): CombatPresentationState {
+  const index = state.presentations.findIndex(
+    (record) =>
+      record.presentationId === fact.presentationId &&
+      record.authority.kind === 'death-save'
+  );
+  const current = state.presentations[index];
+  if (
+    !current ||
+    current.conflicted ||
+    current.localPlayerOwned ||
+    current.settlement !== 'armed' ||
+    !current.request
+  ) {
+    return diagnose(
+      state,
+      `ineligible witness settlement for ${fact.presentationId}`
+    );
+  }
+  return replacePresentation(state, index, {
+    ...current,
+    release: createNeutralRelease(current.request),
+    settlement: 'released',
+  });
+}
+
 function sameStringRecord(
   first: Readonly<Record<string, string>>,
   later: Readonly<Record<string, string>>
@@ -1253,6 +1442,17 @@ function configurePresentation(
           locallyArmedResponse: record.responseAccepted,
         });
       }
+      if (record.authority.kind === 'death-save') {
+        return Object.freeze({
+          ...record,
+          request,
+          release: undefined,
+          settlement: 'armed' as const,
+          semanticFallback: request === undefined,
+          localPlayerOwned: false,
+          locallyArmedResponse: false,
+        });
+      }
       return Object.freeze({
         ...record,
         request,
@@ -1301,6 +1501,7 @@ export function reduceCombatPresentation(
     case 'configure':
       return configurePresentation(state, fact);
     case 'attack-response':
+    case 'death-save-response':
       return acceptResponse(state, fact);
     case 'stream-event':
       return acceptStreamEvent(state, fact);
@@ -1308,6 +1509,8 @@ export function reduceCombatPresentation(
       return acceptLocalRelease(state, fact);
     case 'semantic-release':
       return acceptSemanticRelease(state, fact);
+    case 'witness-settlement':
+      return acceptWitnessSettlement(state, fact);
   }
 }
 
@@ -1399,7 +1602,7 @@ export function selectUnresolvedAttackTargets(
 ): ReadonlySet<string> {
   const targets = new Set<string>();
   for (const record of state.presentations) {
-    if (record.conflicted) continue;
+    if (record.conflicted || record.authority.kind !== 'attack') continue;
     if (isVisible(record)) continue;
     targets.add(record.authority.target);
   }
@@ -1478,4 +1681,50 @@ export function selectCurrentDiceEvents(
       (event): event is DicePresentationEvent => event !== undefined
     )
   );
+}
+
+export function selectBlocksManualEndTurn(
+  state: CombatPresentationState
+): boolean {
+  return state.presentations.some(
+    (record) =>
+      !record.conflicted &&
+      record.authority.kind === 'death-save' &&
+      record.localPlayerOwned &&
+      (record.responseAccepted || record.eventSource === 'live') &&
+      (record.settlement === 'armed' || record.settlement === 'unresolved')
+  );
+}
+
+export interface SettledDeathSave {
+  readonly presentationId: string;
+  readonly continuation: DeathSaveContinuation;
+}
+
+export function selectSettledDeathSave(
+  state: CombatPresentationState
+): SettledDeathSave | undefined {
+  const current = selectCurrentPresentation(state);
+  if (
+    !current ||
+    current.conflicted ||
+    current.authority.kind !== 'death-save' ||
+    !current.responseAccepted ||
+    (current.settlement !== 'released' && current.settlement !== 'auto') ||
+    !current.authority.deathSave
+  ) {
+    return undefined;
+  }
+  return Object.freeze({
+    presentationId: current.authority.presentationId,
+    continuation: current.authority.deathSave.continuation,
+  });
+}
+
+export function deathSaveResponseFact(input: {
+  session: string;
+  member: string;
+  response: DeathSaveResponse;
+}): DeathSaveResponseFact {
+  return Object.freeze({ type: 'death-save-response', ...input });
 }
