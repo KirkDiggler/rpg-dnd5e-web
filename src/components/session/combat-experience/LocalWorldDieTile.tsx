@@ -230,14 +230,14 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       <aside
         data-testid="local-world-die-tile"
         className={styles.localWorldDieTile}
-        aria-label="Attack die"
+        aria-label="Shared d20"
         role="status"
       >
         <span className={styles.localWorldDieToken} aria-hidden="true">
           20
         </span>
         <div>
-          <strong>Shared dice presentation</strong>
+          <strong>Shared d20 presentation</strong>
           <small>Throwing in the dungeon</small>
         </div>
       </aside>
@@ -249,13 +249,13 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       <aside
         data-testid="local-world-die-tile"
         className={styles.localWorldDieTile}
-        aria-label="Attack die"
+        aria-label="Shared d20"
       >
         <span className={styles.localWorldDieToken} aria-hidden="true">
           20
         </span>
         <div>
-          <strong>Dice presentation unavailable</strong>
+          <strong>Shared d20 presentation unavailable</strong>
           <small>Reveal the authoritative result</small>
         </div>
         <button type="button" onClick={props.onRevealResult}>
@@ -269,7 +269,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
     <aside
       data-testid="local-world-die-tile"
       className={styles.localWorldDieTile}
-      aria-label="Attack die"
+      aria-label="Shared d20"
     >
       {props.pickupReady ? (
         <button
@@ -296,7 +296,7 @@ export function LocalWorldDieTile(props: LocalWorldDieTileProps) {
       )}
       <div>
         <strong>
-          {props.pickupReady ? 'Attack die ready' : 'Preparing die'}
+          {props.pickupReady ? 'Shared d20 ready' : 'Preparing shared d20'}
         </strong>
         <small>
           {handedOff

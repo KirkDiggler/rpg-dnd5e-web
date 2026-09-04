@@ -21,7 +21,7 @@ export interface ToolkitSandboxClients {
 export interface SandboxUnaryClients {
   readonly authoring: Pick<
     Client<typeof AuthoringService>,
-    'putDungeon' | 'getDungeon'
+    'putDungeon' | 'getDungeon' | 'listScenarios'
   >;
   readonly character: Pick<Client<typeof CharacterService>, 'listCharacters'>;
   readonly lobby: Pick<
@@ -81,6 +81,7 @@ export const toolkitSandboxClients: ToolkitSandboxClients = Object.freeze({
     authoring: Object.freeze({
       putDungeon: fighterAuthoringClient.putDungeon,
       getDungeon: fighterAuthoringClient.getDungeon,
+      listScenarios: fighterAuthoringClient.listScenarios,
     }),
     character: Object.freeze({
       listCharacters: fighterCharacterClient.listCharacters,
@@ -96,6 +97,7 @@ export const toolkitSandboxClients: ToolkitSandboxClients = Object.freeze({
     authoring: Object.freeze({
       putDungeon: barbarianAuthoringClient.putDungeon,
       getDungeon: barbarianAuthoringClient.getDungeon,
+      listScenarios: barbarianAuthoringClient.listScenarios,
     }),
     character: Object.freeze({
       listCharacters: barbarianCharacterClient.listCharacters,

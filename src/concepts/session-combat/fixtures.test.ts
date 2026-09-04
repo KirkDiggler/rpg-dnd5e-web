@@ -1,6 +1,9 @@
 import {
   ClockKind,
+  LifeState,
   ShortfallReason,
+  Slot,
+  TargetKind,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +17,7 @@ describe('session combat generated-shape review fixtures', () => {
       'spectating',
       'free-roam',
       'reconnected',
+      'death-save',
     ]);
   });
 
@@ -76,7 +80,8 @@ describe('session combat generated-shape review fixtures', () => {
           (declaration) =>
             declaration.verb === Verb.ATTACK ||
             declaration.verb === Verb.MOVE ||
-            declaration.verb === Verb.END_TURN
+            declaration.verb === Verb.END_TURN ||
+            declaration.verb === Verb.DEATH_SAVE
         ),
         fixture.id
       ).toBe(true);
@@ -85,6 +90,38 @@ describe('session combat generated-shape review fixtures', () => {
         /Healing Potion|Blessed|\bDodge\b|\bDash\b|\bSpells?\b|\bMagic\b/i
       );
     }
+  });
+
+  it('carries a narrow provider-authored Dying/Death Save visual review state', () => {
+    const dying = SESSION_COMBAT_FIXTURES.find(
+      (fixture) => fixture.id === 'death-save'
+    )!;
+    const actor = dying.participants.find(
+      (participant) => participant.member === dying.viewerMember
+    );
+    const declaration = dying.declarations.find(
+      (candidate) => candidate.verb === Verb.DEATH_SAVE
+    );
+
+    expect(actor).toMatchObject({
+      active: true,
+      lifeState: LifeState.DYING,
+      deathSaves: {
+        successes: 2,
+        failures: 1,
+        successesNeeded: 1,
+        failuresRemaining: 2,
+      },
+    });
+    expect(dying.endTurnBlocked).toBe(true);
+    expect(declaration).toMatchObject({
+      id: 'offer:aldric:death-save',
+      available: true,
+      slot: Slot.NONE,
+      targetKind: TargetKind.NONE,
+      candidates: [],
+      deathSave: { name: 'Death Save' },
+    });
   });
 
   it('keeps spent refusal and Move remaining on generated declarations', () => {

@@ -105,7 +105,8 @@ describe('CombatExperience shared production shell', () => {
     );
 
     expect(screen.getByTestId('local-world-die-tile')).toBeTruthy();
-    expect(screen.getByText('Attack die ready')).toBeTruthy();
+    expect(screen.getByText('Shared d20 ready')).toBeTruthy();
+    expect(screen.getByLabelText('Shared d20')).toBeTruthy();
     expect(screen.queryByTestId('session-combat-dice-drawer')).toBeNull();
     expect(screen.queryByTestId('real-dice-presentation')).toBeNull();
   });
@@ -551,5 +552,137 @@ describe('damage toasts', () => {
     expect(log.textContent).not.toContain('8 slashing');
     // ...and no toast either, for the same reason.
     expect(screen.queryByTestId('damage-toasts')).toBeNull();
+  });
+});
+
+describe('Loot, Hold and Leave on the action surface (rpg-project#368)', () => {
+  it('draws ONE Loot button per downed body, in the order given', () => {
+    // Design P3: every downed body is lootable and the panel neither
+    // reorders nor annotates them. A button that named only the captain
+    // would say which corpse carries intel.
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          lootTargets: [
+            { subject: 'skeleton-1', name: 'Skeleton' },
+            { subject: 'captain-1', name: 'Skeleton Captain' },
+          ],
+          onLoot: vi.fn(),
+        })}
+      />
+    );
+    const buttons = screen.getAllByTestId(/session-combat-loot-/);
+    expect(buttons.map((b) => b.getAttribute('data-testid'))).toEqual([
+      'session-combat-loot-skeleton-1',
+      'session-combat-loot-captain-1',
+    ]);
+    // Same shape for both: nothing distinguishes the captain's button.
+    expect(buttons[0].textContent).toBe('🖐Loot Skeleton');
+    expect(buttons[1].textContent).toBe('🖐Loot Skeleton Captain');
+  });
+
+  it('sends the subject the view named, and nothing it computed', () => {
+    const onLoot = vi.fn();
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          lootTargets: [{ subject: 'captain-1', name: 'Skeleton Captain' }],
+          onLoot,
+        })}
+      />
+    );
+    fireEvent.click(screen.getByTestId('session-combat-loot-captain-1'));
+    expect(onLoot).toHaveBeenCalledWith('captain-1');
+  });
+
+  it('draws no Loot button when nothing is down beside the viewer', () => {
+    render(<CombatExperience {...propsFor(fresh, { onLoot: vi.fn() })} />);
+    expect(screen.queryAllByTestId(/session-combat-loot-/)).toHaveLength(0);
+  });
+
+  it('names the prop by its ref and sends its placement id', () => {
+    const onHold = vi.fn();
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          holdTargets: [{ id: 'heirloom', ref: 'dnd5e:props:reliquary' }],
+          onHold,
+        })}
+      />
+    );
+    const button = screen.getByTestId('session-combat-hold-heirloom');
+    // The button says what the thing IS; the request says which one.
+    expect(button.textContent).toContain('Hold the reliquary');
+    fireEvent.click(button);
+    expect(onHold).toHaveBeenCalledWith('heirloom');
+  });
+
+  it('never says “take”, in the label or the tooltip (design R10)', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          holdTargets: [{ id: 'heirloom', ref: 'dnd5e:props:reliquary' }],
+          onHold: vi.fn(),
+        })}
+      />
+    );
+    const button = screen.getByTestId('session-combat-hold-heirloom');
+    expect(button.textContent).not.toMatch(/take/i);
+    expect(button.getAttribute('title')).not.toMatch(/take/i);
+  });
+
+  it('offers Leave wherever the viewer stands — the server decides what it means', () => {
+    // `AtlasExit`'s own law: the exits list is for DRAWING the way out,
+    // never for gating it. R9 needs the carrier able to leave from the
+    // vault, which is where the artifact then lies.
+    const onLeave = vi.fn();
+    render(<CombatExperience {...propsFor(fresh, { onLeave })} />);
+    const button = screen.getByTestId('session-combat-leave-button');
+    expect(button.textContent).toBe('🚪Leave');
+    expect(button.getAttribute('title')).toContain('stays where you stood');
+    fireEvent.click(button);
+    expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it('names the way out when the viewer is standing on one', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, { onLeave: vi.fn(), leaveExitId: 'front-gate' })}
+      />
+    );
+    const button = screen.getByTestId('session-combat-leave-button');
+    expect(button.textContent).toBe('🚪Leave through the front gate');
+    expect(button.getAttribute('data-exit')).toBe('front-gate');
+  });
+
+  it('disables the buttons while their verb is in flight, without hiding them', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          lootTargets: [{ subject: 'captain-1', name: 'Skeleton Captain' }],
+          onLoot: vi.fn(),
+          lootPending: true,
+          holdTargets: [{ id: 'heirloom', ref: 'dnd5e:props:reliquary' }],
+          onHold: vi.fn(),
+          holdPending: true,
+          onLeave: vi.fn(),
+          leavePending: true,
+        })}
+      />
+    );
+    for (const id of [
+      'session-combat-loot-captain-1',
+      'session-combat-hold-heirloom',
+      'session-combat-leave-button',
+    ]) {
+      expect((screen.getByTestId(id) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
+  it('offers none of the three when the view hands it no handler', () => {
+    render(<CombatExperience {...propsFor(fresh)} />);
+    expect(screen.queryAllByTestId(/session-combat-loot-/)).toHaveLength(0);
+    expect(screen.queryAllByTestId(/session-combat-hold-/)).toHaveLength(0);
+    expect(screen.queryByTestId('session-combat-leave-button')).toBeNull();
   });
 });

@@ -8,3 +8,15 @@
 # src/concepts/dungeon-builder/ to src/author/ (rpg-project#194 graduation).
 src/author/specimens/*.yaml
 src/author/specimens/*.json
+
+# The toolkit's own dungeonspec testdata, copied byte-for-byte
+# (rpg-project#368 §3.1 and its predecessor). These files are not this
+# repo's to format: they are the exact text the compiler compiles and
+# `GetDungeon` serves, and the builder's fixture and the server's fixture
+# have to be ONE text or a disagreement about what a dungeon IS can hide
+# between them. Prettier's YAML formatter respaces flow sequences
+# (`[[0,0],[1,0]]` -> `[[0, 0], [1, 0]]`) and breaks flow maps across
+# lines, which is exactly the silent divergence the copy exists to prevent
+# — and it had already done it to reference-tomb.yaml before anyone
+# noticed, because no test asserted a byte prettier would touch.
+src/author/fixtures/*.yaml

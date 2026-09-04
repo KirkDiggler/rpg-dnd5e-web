@@ -94,6 +94,8 @@ interface CombatExperienceBaseProps {
   onRetryPrivateStatus?: () => void;
   /** Turn + Afford both succeeded for their newest current generation. */
   authorityFresh: boolean;
+  /** Accepted local Death Save is awaiting an in-bounds settlement. */
+  endTurnBlocked?: boolean;
   presentationState: CombatExperiencePresentationState;
   phase: CombatExperiencePhase;
   showTurnNotice: boolean;
@@ -129,6 +131,42 @@ interface CombatExperienceBaseProps {
   onSearch?: () => void;
   /** A search RPC is in flight; disables the button without hiding it. */
   searchPending?: boolean;
+  /**
+   * EVERY downed body within reach, in the order the view reported them
+   * (rpg-project#368 P3). One button each, and the panel neither reorders
+   * nor annotates them: an affordance that singled one out would say which
+   * corpse is worth looting, which is the secret the whole slice keeps.
+   * Empty means nothing is down beside the viewer, never "nothing worth
+   * taking".
+   */
+  lootTargets?: readonly { subject: string; name: string }[];
+  onLoot?: (subject: string) => void;
+  /** A loot RPC is in flight; disables the buttons without hiding them. */
+  lootPending?: boolean;
+  /**
+   * Every NAMED prop within reach — the only props the pick-up verb can
+   * target, since it names its target by the author's placement id. Whether
+   * one can actually be picked up is the seam's answer, refused by name.
+   */
+  holdTargets?: readonly { id: string; ref: string }[];
+  onHold?: (id: string) => void;
+  holdPending?: boolean;
+  /**
+   * Declare the departure (design R6/R7). Offered wherever the viewer
+   * stands, because WHAT A DEPARTURE MEANS is the server's call: at a
+   * scenario's bound exit while carrying its artifact it ends the run; from
+   * anywhere else it drops what is carried and the run goes on. The client
+   * says leave and reads the answer off the beats.
+   */
+  onLeave?: () => void;
+  leavePending?: boolean;
+  /**
+   * The authored way out the viewer is STANDING ON, if any — the button
+   * says so. Never a gate: `AtlasExit`'s own doc comment is explicit that
+   * the exits list is "for drawing the way out, not for gating it", because
+   * R9 needs a departure from anywhere to be possible.
+   */
+  leaveExitId?: string;
   /** Explicit Concepts diagnostic surface; allowed independently of DEV. */
   diagnosticsEnabled?: boolean;
 }

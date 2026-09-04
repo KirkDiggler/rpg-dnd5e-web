@@ -44,6 +44,7 @@
  * falling back to the ground plane's own hit otherwise.
  */
 
+import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
 import { useCameraDials } from '@/feel/useFeelDials';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
@@ -118,8 +119,10 @@ export interface SessionCanvasProps {
   classRefId: string | undefined;
   /** Public roster race ref; private CharacterData does not choose models. */
   raceRefId?: string;
-  /** Owner-private GetCharacterData Appearance.hair. Peer hair never enters
-   * through this prop; it remains on each public roster row. */
+  /** Owner Appearance and peer PublicMemberInfo.customization share this
+   * complete structural container. The legacy hair prop remains test-only
+   * compatibility for older callers. */
+  localCustomization?: CharacterCustomizationContainer;
   localHair?: HairCustomization;
   /** Public turn-participant standing for the local player; never derived from
    * owner-private HP state. */
@@ -227,6 +230,7 @@ export function SessionScene({
   characterName,
   classRefId,
   raceRefId,
+  localCustomization,
   localHair,
   mainHandPresentation,
   offHandPresentation,
@@ -530,7 +534,9 @@ export function SessionScene({
         hexSize={hexSize}
         classRefId={classRefId}
         raceRefId={raceRefId}
-        hairCustomization={localHair}
+        customization={
+          localCustomization ?? (localHair ? { hair: localHair } : undefined)
+        }
         isDowned={localIsDowned}
         mainHandPresentation={mainHandPresentation}
         offHandPresentation={offHandPresentation}
@@ -579,9 +585,9 @@ export function SessionScene({
               ? roster?.get(member.subject)?.raceRef || undefined
               : undefined
           }
-          hairCustomization={
+          customization={
             member.kind === MemberKind.PLAYER
-              ? roster?.get(member.subject)?.customization?.hair
+              ? roster?.get(member.subject)?.customization
               : undefined
           }
           monsterRefId={

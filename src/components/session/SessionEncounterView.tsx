@@ -16,7 +16,10 @@ import { useEquipItem } from '@/api/useEquipItem';
 import { useSessionAfford } from '@/api/useSessionAfford';
 import { useSessionAtlas } from '@/api/useSessionAtlas';
 import { useSessionDoors } from '@/api/useSessionDoors';
+import { useSessionHold } from '@/api/useSessionHold';
 import { useSessionInteract } from '@/api/useSessionInteract';
+import { useSessionLeave } from '@/api/useSessionLeave';
+import { useSessionLoot } from '@/api/useSessionLoot';
 import { useSessionRoster } from '@/api/useSessionRoster';
 import { useSessionSearch } from '@/api/useSessionSearch';
 import { useSessionTrade } from '@/api/useSessionTrade';
@@ -37,6 +40,7 @@ import type {
   VendorStockEntry,
   WorldNPCDescriptor,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { AtlasProp } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   ClockKind,
   DoorState,
@@ -56,6 +60,7 @@ import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
+import { applyDropped, applyHeld, heldProp } from './applyHolding';
 import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
@@ -69,6 +74,8 @@ import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
+import { exitAt, holdTargets, lootTargets } from './holdingAffordances';
+import { authoredWords, exitCarrier, holdingPhrase } from './holdingBeat';
 import { localWorldDieDimensions } from './local-world-die/diceDials';
 import {
   createLocalWorldDieAttemptSnapshot,
@@ -91,6 +98,7 @@ import type {
   LocalWorldDieWitnessPlan,
 } from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
+import { resolveName } from './participantNames';
 import { SEARCH_NOTICE } from './searchNotice';
 import { SessionCanvas } from './SessionCanvas';
 import { sightingsToEntities } from './sightingEntities';
@@ -110,14 +118,6 @@ export interface SessionEncounterViewProps {
   characterId?: string;
   playerId: string;
   onBack: () => void;
-}
-
-function authoritySeqFromPresentationId(
-  presentationId: string
-): bigint | undefined {
-  const segment = presentationId.split(':').at(-1);
-  if (!segment || !/^\d+$/.test(segment)) return undefined;
-  return BigInt(segment);
 }
 
 function endingHeadline(ending: string): string {
@@ -193,6 +193,9 @@ function SessionEncounterScope({
   const { roster, refetch: refetchRoster } = useSessionRoster(sessionId);
   const { doors, refetch: refetchDoors } = useSessionDoors(sessionId, member);
   const { search, loading: searching } = useSessionSearch();
+  const { loot, loading: looting } = useSessionLoot();
+  const { hold, loading: holding } = useSessionHold();
+  const { leave, loading: leaving } = useSessionLeave();
   const {
     clock: affordClock,
     declarations: affordDeclarations,
@@ -225,6 +228,37 @@ function SessionEncounterScope({
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  /** The one line the loot/hold/leave verbs answer with — a refusal in the
+   * server's own words, or nothing. Never an outcome: what a loot found
+   * arrives as its own beat (design P3), and what a departure meant
+   * arrives on EXITED and ENDED. */
+  const [holdingNotice, setHoldingNotice] = useState<string | null>(null);
+  /** WHO WALKED OUT WITH IT. `Ended` names an ending key and nothing else,
+   * so the overlay's carrier is remembered from the departure that
+   * preceded it — a member who left THROUGH AN AUTHORED EXIT while holding
+   * something (`holdingBeat.ts`'s `exitCarrier`). Null until one does, and
+   * the overlay simply does not claim a carrier while it is. */
+  const [carrier, setCarrier] = useState<{
+    member: string;
+    exit: string;
+    holding: readonly string[];
+  } | null>(null);
+  /** What this client removed from its atlas when a prop was picked up,
+   * kept so a later DROPPED beat can put the same thing back — `Dropped`
+   * carries the id and the cell, never the ref (`applyHolding.ts`). A
+   * plain ref, not state: nothing renders from it, it only feeds the next
+   * patch.
+   *
+   * NOT CLEARED ON THE DROP, deliberately. A beat delivered twice is the
+   * case that decides it: `applyDropped` is idempotent on the id, so a
+   * redelivered DROPPED with the memory already discarded would REPLACE
+   * the drawn prop with a bare id-and-cell entry and the reliquary would
+   * vanish into an empty ref. Keeping it costs one entry per holdable
+   * placement in one dungeon — the map is keyed by `place[].id`, so it is
+   * bounded by the file, not by the length of the session — and the whole
+   * ref dies with this scope, which remounts per session and member. A
+   * prop picked up again simply overwrites its own entry. */
+  const heldPropsRef = useRef(new Map<string, AtlasProp>());
   const [activeVendor, setActiveVendor] = useState<{
     subject: string;
     descriptor: WorldNPCDescriptor;
@@ -522,7 +556,7 @@ function SessionEncounterScope({
     combat.diceWitnessRole === 'roller' &&
     combat.phase === 'awaiting-roll' &&
     !combat.diceSemanticFallback &&
-    localWorldDieRequest !== undefined;
+    localWorldDieRequest?.authoritySeq !== undefined;
   const snapshotScene = lastGoodSceneRef.current;
   const localWorldDieAttemptScopeKey =
     localWorldDieRequest && snapshotScene
@@ -571,20 +605,15 @@ function SessionEncounterScope({
     };
   }, [localWorldDieAttemptSnapshot]);
 
-  const witnessAuthoritySeq = localWorldDieRequest
-    ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
-    : undefined;
   const witnessExpectation = useMemo(
     () =>
       combat.diceWitnessRole === 'spectator' &&
       localWorldDieRequest?.roller.role === 'player' &&
       localWorldDieRequest.roller.entityId !== member &&
-      witnessAuthoritySeq !== undefined &&
       localWorldDieFingerprint
         ? {
             session: sessionId,
             presentationId: localWorldDieRequest.presentationId,
-            authoritySeq: witnessAuthoritySeq,
             roller: localWorldDieRequest.roller.entityId,
             attempt: localWorldDieAttempt,
             viewerMember: member,
@@ -598,7 +627,6 @@ function SessionEncounterScope({
       localWorldDieRequest,
       member,
       sessionId,
-      witnessAuthoritySeq,
     ]
   );
   witnessExpectationRef.current = witnessExpectation;
@@ -723,9 +751,7 @@ function SessionEncounterScope({
           )
             return;
           const request = localWorldDieRequest;
-          const authoritySeq = request
-            ? authoritySeqFromPresentationId(request.presentationId)
-            : undefined;
+          const authoritySeq = request?.authoritySeq;
           if (request && authoritySeq !== undefined) {
             try {
               await publishLocalWorldDie({
@@ -795,9 +821,7 @@ function SessionEncounterScope({
     const origin = lastGoodPositionRef.current;
     if (!origin) return;
     const world = cubeToWorld(origin, HEX_SIZE);
-    const authoritySeq = localWorldDieRequest
-      ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
-      : undefined;
+    const authoritySeq = localWorldDieRequest?.authoritySeq;
     handleLocalWorldDieRelease(
       {
         position: [world.x, world.z],
@@ -833,7 +857,7 @@ function SessionEncounterScope({
   const handleLocalWorldDieFailureReveal = useCallback(() => {
     const request = localWorldDieRequest;
     if (!request) return;
-    const authoritySeq = authoritySeqFromPresentationId(request.presentationId);
+    const authoritySeq = request.authoritySeq;
     const profile =
       localWorldDieProfile.current ??
       createNeutralVisualThrowProfile(
@@ -858,6 +882,9 @@ function SessionEncounterScope({
             presentationId: localWorldDieRequest?.presentationId,
             attempt: localWorldDieAttempt + 1,
           });
+        }
+        if (kind === 'settled' && localWorldDieRequest) {
+          combat.onWitnessDiceSettlement(localWorldDieRequest.presentationId);
         }
         setLocalWorldDieWitnessActive(false);
         setLocalWorldDieCommand({
@@ -912,6 +939,7 @@ function SessionEncounterScope({
         case 'struck':
         case 'missed':
         case 'activationResult':
+        case 'deathSaveRolled':
           return ['characterData', 'afford', 'view'];
         case 'downed':
           return ['characterData', 'afford', 'turn', 'view'];
@@ -941,26 +969,25 @@ function SessionEncounterScope({
           return ['doors', 'atlas'];
         case 'regionRevealed':
           return ['atlas'];
+        // A PROP LEFT THE FLOOR, OR LANDED BACK ON IT. Both patch the
+        // held atlas in the same frame below; this refetch is the server's
+        // own answer landing behind it, exactly as the reveal beats do.
+        case 'held':
+        case 'dropped':
+          return ['atlas'];
+        // LOOT REFETCHES NOTHING, and that is design P3 in the refresh
+        // table: a body with nothing to give must be indistinguishable
+        // from the captain, so this beat cannot trigger work that only a
+        // fruitful loot would need. What the looter gained arrives as
+        // their own DOOR_REVEALED beat, which refetches on its own line
+        // above — the same bytes a successful search produces.
+        case 'looted':
         case 'activated':
         case 'exited':
         case undefined:
           return event.kind === EventKind.ENDED
             ? ['characterData', 'afford', 'turn', 'view']
             : [];
-        // Newer event kinds (unrelated waves — rpg-api#911's Death Save,
-        // rpg-toolkit#1275's Loot/Hold/Drop) this session route doesn't
-        // build UI for yet. Grouped with the nearest existing case by
-        // cache-invalidation shape rather than left unhandled: a death
-        // save is a downed-character state change (same refresh as
-        // 'downed'); loot/hold/drop change what a character carries
-        // (same refresh as 'struck'/'missed' — character data changed,
-        // turn state didn't).
-        case 'deathSaveRolled':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'looted':
-        case 'held':
-        case 'dropped':
-          return ['characterData', 'afford', 'view'];
       }
     },
     [member]
@@ -998,6 +1025,29 @@ function SessionEncounterScope({
         const beat = event.body.value;
         applyAtlasReveal((current) => applyDoorRevealed(current, beat));
       }
+      // THE SAME FRAME, THE OTHER DIRECTION. A reveal adds what a member
+      // may see; these two take a thing off the floor and put it back.
+      // The refetch scheduled above still lands afterwards with the
+      // server's own answer, so the patch buys the frame and the server
+      // keeps the truth (`applyHolding.ts`).
+      if (event.body.case === 'held') {
+        const beat = event.body.value;
+        applyAtlasReveal((current) => {
+          const removed = heldProp(current, beat);
+          if (removed) heldPropsRef.current.set(beat.prop, removed);
+          return applyHeld(current, beat);
+        });
+      }
+      if (event.body.case === 'dropped') {
+        const beat = event.body.value;
+        applyAtlasReveal((current) =>
+          applyDropped(current, beat, heldPropsRef.current.get(beat.prop))
+        );
+      }
+      // Remembered BEFORE the ending arrives, because the ending beat does
+      // not name a carrier — see `carrier`'s own comment.
+      const carried = exitCarrier(event);
+      if (carried) setCarrier(carried);
       if (event.body.case === 'door') setDoorNotice(null);
       // The same law: a DOOR_REVEALED/REGION_REVEALED beat is search's own
       // "the world moved on" signal, mirroring the 'door' case above.
@@ -1177,6 +1227,88 @@ function SessionEncounterScope({
     })();
   }, [member, region, search, sessionId]);
 
+  // WHERE THE VIEWER STANDS, as a cube coordinate — the one input both
+  // offers below need. Null until GetWhere has answered, which is what
+  // makes both lists empty rather than wrong.
+  const viewerCube = useMemo(
+    () => (wherePosition ? positionToCube(wherePosition) : null),
+    [wherePosition]
+  );
+  // EVERY downed body beside the viewer, and every NAMED prop beside them.
+  // `holdingAffordances.ts` holds the reasoning; the only thing computed
+  // is adjacency, and P3's law — no filter that would say which body is
+  // worth looting — lives there with its own comment.
+  const bodiesToLoot = useMemo(
+    () => lootTargets(otherMembers, viewerCube),
+    [otherMembers, viewerCube]
+  );
+  const propsToHold = useMemo(
+    () => holdTargets(atlas, viewerCube),
+    [atlas, viewerCube]
+  );
+  // Which way out they are standing on, for the button to name — NOT a
+  // gate on offering Leave (`AtlasExit`'s own doc comment, and R9: the
+  // carrier has to be able to leave from the vault and drop it there).
+  const standingOnExit = useMemo(
+    () => exitAt(atlas, viewerCube),
+    [atlas, viewerCube]
+  );
+
+  // THE SAME SECRECY LAW `handleSearch` KEEPS (design P3): the response
+  // carries nothing about what moved, so this handler never reads it. A
+  // fruitful loot and an empty body land on the identical silent success;
+  // only a genuine RPC failure says anything, and it says the server's own
+  // refusal. What the looter gained arrives later as their own
+  // DOOR_REVEALED beat, never through this call.
+  const handleLoot = useCallback(
+    (target: string) => {
+      if (!member) return;
+      setHoldingNotice(null);
+      void (async () => {
+        try {
+          await loot({ session: sessionId, member, target });
+        } catch (error) {
+          setHoldingNotice(errorMessage(error));
+        }
+      })();
+    },
+    [loot, member, sessionId]
+  );
+
+  // No client-side check that the prop IS holdable — the wire does not say
+  // and the rule half refuses by name (`holdingAffordances.ts`). The prop
+  // leaving the map arrives as the beat, which patches the atlas above.
+  const handleHold = useCallback(
+    (target: string) => {
+      if (!member) return;
+      setHoldingNotice(null);
+      void (async () => {
+        try {
+          await hold({ session: sessionId, member, target });
+        } catch (error) {
+          setHoldingNotice(errorMessage(error));
+        }
+      })();
+    },
+    [hold, member, sessionId]
+  );
+
+  // The client just says leave (design R6/R7). It reads NOTHING out of the
+  // answer: whether that ended the run, dropped what was carried, or
+  // simply removed one member is the server's call, and it arrives on the
+  // EXITED and ENDED beats like every other world fact.
+  const handleLeave = useCallback(() => {
+    if (!member) return;
+    setHoldingNotice(null);
+    void (async () => {
+      try {
+        await leave({ session: sessionId, member });
+      } catch (error) {
+        setHoldingNotice(errorMessage(error));
+      }
+    })();
+  }, [leave, member, sessionId]);
+
   const handleEquipIntent = useCallback(
     async (intent: EquipIntent) => {
       if (!member) return;
@@ -1232,7 +1364,9 @@ function SessionEncounterScope({
       ? ('unavailable' as const)
       : ('loading' as const);
   const localWorldDieControl =
-    combat.diceWitnessRole === 'roller' && combat.phase === 'awaiting-roll' ? (
+    combat.diceWitnessRole === 'roller' &&
+    combat.phase === 'awaiting-roll' &&
+    (combat.diceSemanticFallback || localWorldDiePhysical) ? (
       localWorldDiePresentationFailed ? (
         <LocalWorldDieTile
           mode="fallback"
@@ -1328,6 +1462,7 @@ function SessionEncounterScope({
             }
             onRetryPrivateStatus={() => void refetchCharacterData()}
             authorityFresh={authorityFresh}
+            endTurnBlocked={combat.endTurnBlocked}
             presentationState={combat.presentationState}
             phase={combat.phase}
             showTurnNotice={combat.showTurnNotice}
@@ -1351,7 +1486,7 @@ function SessionEncounterScope({
                 characterName={characterName}
                 classRefId={classRefId}
                 raceRefId={raceRefId}
-                localHair={ownerCharacter?.appearance?.hair}
+                localCustomization={ownerCharacter?.appearance}
                 localIsDowned={localIsDowned}
                 mainHandPresentation={mainHandResolution.presentation}
                 offHandPresentation={offHandResolution.presentation}
@@ -1396,6 +1531,15 @@ function SessionEncounterScope({
             equipmentOpen={characterData ? equipmentOpen : false}
             onSearch={runEnded === null && region ? handleSearch : undefined}
             searchPending={searching}
+            lootTargets={bodiesToLoot}
+            onLoot={runEnded === null ? handleLoot : undefined}
+            lootPending={looting}
+            holdTargets={propsToHold}
+            onHold={runEnded === null ? handleHold : undefined}
+            holdPending={holding}
+            onLeave={runEnded === null ? handleLeave : undefined}
+            leavePending={leaving}
+            leaveExitId={standingOnExit?.id}
             {...(combat.diceWitnessRole === 'roller'
               ? {
                   diceWitnessRole: 'roller' as const,
@@ -1428,6 +1572,7 @@ function SessionEncounterScope({
             )}
             {doorNotice && <span>{doorNotice}</span>}
             {searchNotice && <span>{searchNotice}</span>}
+            {holdingNotice && <span>{holdingNotice}</span>}
             {vendorNotice && <span>{vendorNotice}</span>}
           </div>
 
@@ -1506,7 +1651,19 @@ function SessionEncounterScope({
               }}
             >
               <h2 id="run-ended-headline">{endingHeadline(runEnded)}</h2>
-              <p>The encounter is over — the outcome is recorded.</p>
+              {/* Names the carrier when one walked out through an authored
+                  exit holding something, and says nothing about one
+                  otherwise — a run that ended for any other reason had no
+                  carrier, and the overlay must not invent one. */}
+              {carrier ? (
+                <p data-testid="run-ended-carrier">
+                  {`${resolveName(publicMemberNames, carrier.member, member)} carried ${holdingPhrase(
+                    carrier.holding
+                  )} out through the ${authoredWords(carrier.exit)}.`}
+                </p>
+              ) : (
+                <p>The encounter is over — the outcome is recorded.</p>
+              )}
               <Button ref={leaveRunButtonRef} size="sm" onClick={onBack}>
                 Leave
               </Button>

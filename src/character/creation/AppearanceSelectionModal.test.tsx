@@ -34,9 +34,11 @@ vi.mock('@/components/hex-grid/MediumHumanoid', () => ({
 vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
   ClassCharacterModel: ({
     url,
+    facingRotation,
     accessories,
   }: {
     url: string;
+    facingRotation?: number;
     accessories?: readonly {
       slot: string;
       styleRef: string;
@@ -65,6 +67,7 @@ vi.mock('@/components/hex-grid/ClassCharacterModel', () => ({
       <div
         data-testid="class-character-model"
         data-url={url}
+        data-facing-rotation={facingRotation}
         data-accessories={JSON.stringify(accessories)}
       />
     );
@@ -152,7 +155,7 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
     (raceRefId, classRefId) => {
       renderModal({ raceRefId, classRefId });
       expect(
-        screen.queryByRole('heading', { name: 'Customize Dwarf Hair' })
+        screen.queryByRole('heading', { name: 'Customize Dwarf Appearance' })
       ).toBeNull();
       expect(screen.queryByTestId('webgl-preview')).toBeNull();
     }
@@ -173,7 +176,7 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
       renderModal({ raceRefId, classRefId: 'fighter' });
 
       expect(
-        screen.getByRole('heading', { name: `Customize ${label} Hair` })
+        screen.getByRole('heading', { name: `Customize ${label} Appearance` })
       ).not.toBeNull();
       expect(
         screen.getByTestId('class-character-model').getAttribute('data-url')
@@ -182,6 +185,44 @@ describe('AppearanceSelectionModal production Dwarf preview', () => {
       );
     }
   );
+
+  it('uses the measured zero Synty forward offset for the preview', () => {
+    renderModal();
+
+    expect(
+      screen
+        .getByTestId('class-character-model')
+        .getAttribute('data-facing-rotation')
+    ).toBe('0');
+  });
+
+  it('keeps a 42.5rem shell clamped to the viewport while the choices pane owns scrolling across accordion sections', () => {
+    renderModal();
+    const dialog = screen.getByRole('dialog');
+    const choicesPane = dialog.querySelector('div.order-2');
+    const center = dialog.querySelector('div.grid');
+
+    expect(choicesPane).not.toBeNull();
+    expect(center).not.toBeNull();
+    expect(dialog.classList.contains('h-[42.5rem]')).toBe(true);
+    expect(dialog.classList.contains('max-h-[96dvh]')).toBe(true);
+    expect(dialog.classList.contains('sm:max-h-[92dvh]')).toBe(true);
+    expect(dialog.classList.contains('h-[96dvh]')).toBe(false);
+    expect(dialog.classList.contains('sm:h-[92dvh]')).toBe(false);
+    expect(choicesPane?.classList.contains('overflow-y-auto')).toBe(true);
+    expect(dialog.querySelectorAll('.overflow-y-auto')).toHaveLength(1);
+    expect(center?.classList.contains('flex-1')).toBe(true);
+    expect(center?.classList.contains('min-h-0')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Gear Colors/ }));
+
+    expect(screen.getByLabelText('Gear primary color')).not.toBeNull();
+    expect(dialog.classList.contains('h-[42.5rem]')).toBe(true);
+    expect(dialog.classList.contains('max-h-[96dvh]')).toBe(true);
+    expect(dialog.classList.contains('sm:max-h-[92dvh]')).toBe(true);
+    expect(choicesPane?.classList.contains('overflow-y-auto')).toBe(true);
+    expect(dialog.querySelectorAll('.overflow-y-auto')).toHaveLength(1);
+  });
 
   it('updates treatment in place without an accessory load, while a style change produces a load witness', async () => {
     renderModal();
@@ -387,7 +428,9 @@ describe('AppearanceSelectionModal persistence interactions', () => {
         .getByRole('group', { name: 'Scalp hair' })
         .querySelectorAll('button')[1]!
     );
+    fireEvent.click(screen.getByRole('button', { name: /^Facial Hair/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Facial Hair 18' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Hair(?:#|$)/ }));
     fireEvent.change(screen.getByLabelText('Hair color'), {
       target: { value: '#000000' },
     });
@@ -421,11 +464,13 @@ describe('AppearanceSelectionModal persistence interactions', () => {
         .getByRole('group', { name: 'Scalp hair' })
         .querySelectorAll('button')[0]!
     );
+    fireEvent.click(screen.getByRole('button', { name: /^Facial Hair/ }));
     fireEvent.click(
       screen
         .getByRole('group', { name: 'Facial hair' })
         .querySelectorAll('button')[0]!
     );
+    fireEvent.click(screen.getByRole('button', { name: /^Hair(?:#|$)/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Use default color' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Use default roughness' })

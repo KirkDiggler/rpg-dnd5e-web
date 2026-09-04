@@ -104,5 +104,10 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
         offset: [0, 0],
       },
     ],
+    // A prop showcase authors no way out and binds no scenario — both
+    // fields are written only when they have entries, so this fixture
+    // emits exactly the bytes it always did.
+    exits: [],
+    scenarios: {},
   };
 }

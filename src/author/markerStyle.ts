@@ -64,6 +64,12 @@ export const ENVELOPE_DASH = '2 4';
 export const DOOR_STROKE = '#d97706';
 export const DOOR_LOCKED_STROKE = '#dc2626';
 export const START_COLOR = '#22c55e';
+/** A way out (rpg-project#368 §3.1). Blue, deliberately NOT the start's
+ * green: the entrance and the exit are usually the same cell in the tomb
+ * this slice ships, and two marks the same colour on one hex would read as
+ * one mark. `start` is not implicitly an exit and the board must show
+ * that. */
+export const EXIT_COLOR = '#38bdf8';
 export const ERROR_STROKE = '#ff3b30';
 export const HOVER_STROKE = '#ffffff';
 export const MONSTER_COLOR = '#a02020';
