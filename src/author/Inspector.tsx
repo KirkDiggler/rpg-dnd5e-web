@@ -67,6 +67,8 @@ export interface InspectorProps {
   onRemoveExit: (index: number) => void;
   /** Bind one blank on one scenario's form; an empty value unbinds it. */
   onBindScenario: (scenarioId: string, key: string, value: string) => void;
+  /** Declare a new record and open its form. */
+  onAddIntel: () => void;
   /** Rename one intel record. */
   onIntel: (id: string, patch: Partial<Pick<IntelDoc, 'id'>>) => void;
   /** Point one record at one thing; an empty value clears that target. */
@@ -153,21 +155,11 @@ export function Inspector(props: InspectorProps) {
       />
     );
   }
-  if (selection.kind === 'intel') {
-    const record = doc.intel.find((r) => r.id === selection.id);
-    if (!record) return <DungeonPanel {...props} />;
-    return (
-      <IntelPanel
-        key={record.id}
-        doc={doc}
-        record={record}
-        onRename={(id) => props.onIntel(record.id, { id })}
-        onReveals={(key, value) => props.onIntelReveals(record.id, key, value)}
-        onHolders={(holders) => props.onIntelHolders(record.id, holders)}
-        onRemove={() => props.onRemoveIntel(record.id)}
-      />
-    );
-  }
+  // A RECORD IS A DUNGEON-LEVEL FACT (R7, from Kirk's walk: "so little
+  // weird the intel is next to the assets"). Selecting one shows the
+  // DUNGEON panel with that record's form open IN PLACE inside the Intel
+  // section, rather than replacing the panel — so the list and the form
+  // the author is editing stay on screen together.
   if (selection.kind === 'exit') {
     const exit = doc.exits[selection.index];
     if (!exit) return <DungeonPanel {...props} />;
@@ -239,6 +231,23 @@ function DungeonPanel(props: InspectorProps) {
         {doc.place.length} placed · {doc.exits.length} way
         {doc.exits.length === 1 ? '' : 's'} out
       </div>
+      {/* INTEL, beside Scenarios (R7). Both are dungeon-level
+          declarations — a record belongs to the dungeon the way a
+          scenario binding does, not to whichever thing happens to carry
+          it — so both live on the panel the inspector shows when nothing
+          in particular is selected. */}
+      <IntelSection
+        doc={doc}
+        selectedId={
+          props.selection.kind === 'intel' ? props.selection.id : null
+        }
+        onAdd={props.onAddIntel}
+        onSelect={(id) => props.onSelect({ kind: 'intel', id })}
+        onRename={(id, next) => props.onIntel(id, { id: next })}
+        onReveals={props.onIntelReveals}
+        onHolders={props.onIntelHolders}
+        onRemove={props.onRemoveIntel}
+      />
       {/* The scenario form lives on the DUNGEON, because that is whose
           fact a binding is — a dungeon is bound to a scenario, not a room
           or a monster. */}
@@ -651,13 +660,15 @@ function PlacementPanel({
         placement={placement}
         onChange={(id) => onChange({ id })}
       />
+      {/* WHAT IT CARRIES, monster or prop alike (R6) — above the fields
+          that differ, because it is the one thing both kinds answer. */}
+      <HoldsReadout
+        doc={doc}
+        placement={placement}
+        onSelectIntel={onSelectIntel}
+      />
       {monster ? (
         <>
-          <HoldsReadout
-            doc={doc}
-            placement={placement}
-            onSelectIntel={onSelectIntel}
-          />
           <label className="dg-label">
             targeting
             <select
@@ -816,6 +827,90 @@ function IdControl({
 }
 
 /**
+ * The dungeon's intel: the record list, the verb that makes one, and the
+ * selected record's form OPEN IN PLACE beneath it (R7).
+ *
+ * It sits beside Scenarios rather than in the palette because that is what
+ * a record is — a declaration the dungeon carries, like a scenario
+ * binding — and not a thing you pick up and place, which is what
+ * everything in the palette is. Kirk, walking it: "so little weird the
+ * intel is next to the assets."
+ */
+function IntelSection({
+  doc,
+  selectedId,
+  onAdd,
+  onSelect,
+  onRename,
+  onReveals,
+  onHolders,
+  onRemove,
+}: {
+  doc: DungeonDoc;
+  selectedId: string | null;
+  onAdd: () => void;
+  onSelect: (id: string) => void;
+  onRename: (id: string, next: string) => void;
+  onReveals: (id: string, key: string, value: string) => void;
+  onHolders: (id: string, holders: readonly string[]) => void;
+  onRemove: (id: string) => void;
+}) {
+  const selected = doc.intel.find((r) => r.id === selectedId);
+  return (
+    <div className="flex flex-col gap-2" data-testid="intel-section">
+      <div className="flex items-center justify-between">
+        <h3 className="dg-h">Intel</h3>
+        <button
+          type="button"
+          className="dg-mini"
+          data-testid="new-intel"
+          onClick={onAdd}
+        >
+          + new intel
+        </button>
+      </div>
+      {doc.intel.length === 0 ? (
+        <div className="text-xs opacity-70">
+          none — a record says what a party learns, and a monster or a prop
+          carries it
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {doc.intel.map((record) => (
+            <button
+              key={record.id}
+              type="button"
+              aria-pressed={record.id === selectedId}
+              data-testid={`intel-${record.id}`}
+              className={`dg-tool flex items-center gap-2 ${
+                record.id === selectedId ? 'dg-tool--on' : ''
+              }`}
+              onClick={() => onSelect(record.id)}
+            >
+              <span className="truncate">{record.id}</span>
+              <span className="ml-auto opacity-60">
+                {record.reveals.door ? `→ ${record.reveals.door}` : '—'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {selected && (
+        <IntelPanel
+          key={selected.id}
+          doc={doc}
+          record={selected}
+          onRename={(next) => onRename(selected.id, next)}
+          onReveals={(key, value) => onReveals(selected.id, key, value)}
+          onHolders={(holders) => onHolders(selected.id, holders)}
+          onRemove={() => onRemove(selected.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * ONE INTEL RECORD — the form that gives a piece of intel a target and a
  * holder (rpg-project#372 R2, §5).
  *
@@ -856,11 +951,20 @@ function IntelPanel({
   const blank = typed !== null && typed.trim() === '';
   const clash = typed !== null && taken.has(typed);
   const holders = intelHolders(doc, record.id);
-  const monsters = doc.place.filter((p) => isMonsterRef(p.ref) && !!p.id);
+  // MONSTERS AND PROPS ALIKE (R6, from Kirk's walk: intel a party can
+  // reach without killing the hardest thing in the dungeon first). Named
+  // only — `holds` points at a placement by its id, so a thing with no
+  // name cannot be given one.
+  const carriers = doc.place.filter((p) => !!p.id);
   const door = record.reveals.door ?? '';
   return (
-    <div className="flex flex-col gap-3" data-testid="intel-panel">
-      <h3 className="dg-h">Intel</h3>
+    // NO HEADING OF ITS OWN: the form opens in place under the section
+    // that already says Intel (R7), and a second "INTEL" above it reads
+    // as a second thing rather than as the record you just picked.
+    <div
+      className="flex flex-col gap-3 dg-intel-form"
+      data-testid="intel-panel"
+    >
       <label className="dg-label">
         id
         <input
@@ -931,14 +1035,15 @@ function IntelPanel({
 
       <div className="dg-label" data-testid="intel-held-by">
         held by
-        {monsters.length === 0 ? (
+        {carriers.length === 0 ? (
           <div className="text-xs opacity-70">
-            no monster in this dungeon has an id yet — select one and name it
+            nothing in this dungeon has an id yet — select a monster or a prop
+            and name it
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            {monsters.map((monster) => {
-              const id = monster.id as string;
+            {carriers.map((carrier) => {
+              const id = carrier.id as string;
               const has = holders.includes(id);
               return (
                 <label className="dg-check" key={id}>
@@ -955,9 +1060,13 @@ function IntelPanel({
                     }
                   />
                   {id}
+                  {/* The KIND, said out loud: a scroll and a captain are
+                      reached in very different ways, and the author is
+                      choosing between them here. */}
                   <span className="opacity-60">
                     {' '}
-                    · {monster.ref.split(':').pop()}
+                    · {isMonsterRef(carrier.ref) ? 'monster' : 'prop'} ·{' '}
+                    {carrier.ref.split(':').pop()}
                   </span>
                 </label>
               );
@@ -965,8 +1074,8 @@ function IntelPanel({
           </div>
         )}
         <div className="text-xs opacity-70">
-          Loot one of them and this reveals. Several may carry it — intel
-          copies, it never moves.
+          Loot the monster or pick up the prop and this reveals. Several may
+          carry it — intel copies, it never moves.
         </div>
       </div>
 
@@ -991,9 +1100,8 @@ function IntelPanel({
  * map, from the vault map. This is the mirror of that fact, so the answer
  * has one place it is written and one place it is read.
  *
- * Monsters only. A prop holds nothing, which is the server's rule and is
- * expressed here as an absent control rather than as a refusal after the
- * fact.
+ * Shown on PROPS TOO (R6): a scroll on a table carries intel exactly as a
+ * captain does, and reading it off the thing works the same either way.
  */
 function HoldsReadout({
   doc,
@@ -1010,8 +1118,8 @@ function HoldsReadout({
       holds
       {holds.length === 0 ? (
         <div className="text-xs opacity-70">
-          nothing — give this monster intel from the record&apos;s own panel,
-          under Intel on the left
+          nothing — give it intel from the record&apos;s own form, under Intel
+          on the dungeon panel
         </div>
       ) : (
         <div className="flex flex-col gap-1">
@@ -1037,7 +1145,7 @@ function HoldsReadout({
         </div>
       )}
       <div className="text-xs opacity-70">
-        What a party learns by looting this monster. Edited on the record.
+        What a party learns from this. Edited on the record.
       </div>
     </div>
   );

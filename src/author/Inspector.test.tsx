@@ -98,6 +98,7 @@ function mountPlacement(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
       onIntelHolders={noop}
@@ -241,6 +242,7 @@ function mountWall(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
       onIntelHolders={noop}
@@ -393,6 +395,7 @@ function mountDoor(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
       onIntelHolders={noop}
@@ -556,6 +559,7 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onBindScenario={noop}
         scenarios={NO_SCENARIOS}
         errors={[]}
+        onAddIntel={noop}
         onIntel={noop}
         onIntelReveals={noop}
         onIntelHolders={noop}
@@ -590,6 +594,7 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onBindScenario={noop}
         scenarios={NO_SCENARIOS}
         errors={[]}
+        onAddIntel={noop}
         onIntel={noop}
         onIntelReveals={noop}
         onIntelHolders={noop}
@@ -666,6 +671,7 @@ function mountAt(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onAddIntel={noop}
       onIntel={overrides.onIntel ?? noop}
       onIntelReveals={overrides.onIntelReveals ?? noop}
       onIntelHolders={overrides.onIntelHolders ?? noop}
@@ -764,9 +770,19 @@ describe('the monster shows what it holds, READ ONLY (rpg-project#372 §5)', () 
     expect(link.textContent).toContain('no such record');
   });
 
-  it('is NOT offered on a prop — a prop holds nothing', () => {
-    mountAt(heirloomDoc(), { kind: 'placement', index: 0 });
-    expect(screen.queryByTestId('holds-readout')).toBeNull();
+  it('is offered on a PROP too, and reads the same way (R6)', () => {
+    // Kirk, walking: "tech could get intel by holding something too … not
+    // the hardest monster to kill in the game." A scroll on a table is
+    // intel a party can reach without winning a fight first.
+    let doc = heirloomDoc();
+    doc = updatePlacement(doc, 0, { id: 'hall-scroll' });
+    doc = { ...doc, intel: [{ id: 'vault-map', reveals: { door: 'vault' } }] };
+    doc = setIntelHolders(doc, 'vault-map', ['hall-scroll']);
+    mountAt(doc, { kind: 'placement', index: 0 });
+    const readout = screen.getByTestId('holds-readout');
+    expect(screen.getByTestId('holds-vault-map')).toBeTruthy();
+    // Still read-only on a prop: assignment lives on the record.
+    expect(readout.querySelectorAll('input')).toHaveLength(0);
   });
 
   it('has no `knows` control anywhere — the field is gone (R1)', () => {
@@ -982,13 +998,35 @@ describe('the intel panel — the form that assigns intel (rpg-project#372 §5)'
     expect(onIntelHolders).toHaveBeenLastCalledWith('intel-1', []);
   });
 
-  it('says what to do when no monster has an id yet', () => {
+  it('says what to do when nothing in the dungeon has an id yet', () => {
     let doc = heirloomDoc();
     doc = addIntel(doc);
     mountAt(doc, { kind: 'intel', id: 'intel-1' });
     expect(screen.getByTestId('intel-held-by').textContent).toContain(
-      'no monster in this dungeon has an id yet'
+      'nothing in this dungeon has an id yet'
     );
+  });
+
+  it('offers PROPS as holders beside monsters, and says which is which (R6)', () => {
+    let doc = withIntel();
+    doc = updatePlacement(doc, 0, { id: 'hall-scroll' });
+    mountAt(doc, { kind: 'intel', id: 'intel-1' });
+    const heldBy = screen.getByTestId('intel-held-by');
+    expect(screen.getByTestId('intel-holder-captain')).toBeTruthy();
+    expect(screen.getByTestId('intel-holder-hall-scroll')).toBeTruthy();
+    // A scroll and a captain are reached in very different ways, and the
+    // author is choosing between them here — so each row says its kind.
+    expect(heldBy.textContent).toContain('monster');
+    expect(heldBy.textContent).toContain('prop');
+  });
+
+  it('assigns a record to a prop', () => {
+    const onIntelHolders = vi.fn();
+    let doc = withIntel();
+    doc = updatePlacement(doc, 0, { id: 'hall-scroll' });
+    mountAt(doc, { kind: 'intel', id: 'intel-1' }, { onIntelHolders });
+    fireEvent.click(screen.getByTestId('intel-holder-hall-scroll'));
+    expect(onIntelHolders).toHaveBeenLastCalledWith('intel-1', ['hall-scroll']);
   });
 
   it('says what to do when the dungeon has no doors', () => {
@@ -1008,5 +1046,41 @@ describe('the intel panel — the form that assigns intel (rpg-project#372 §5)'
     mountAt(withIntel(), { kind: 'intel', id: 'intel-1' }, { onRemoveIntel });
     fireEvent.click(screen.getByTestId('intel-remove'));
     expect(onRemoveIntel).toHaveBeenCalledWith('intel-1');
+  });
+});
+
+describe('intel is a dungeon-level section, not a palette item (R7)', () => {
+  it('lists the records on the dungeon panel, beside Scenarios', () => {
+    let doc = heirloomDoc();
+    doc = { ...doc, intel: [{ id: 'vault-map', reveals: { door: 'vault' } }] };
+    mountAt(doc, { kind: 'dungeon' });
+    // Kirk, walking: "so little weird the intel is next to the assets."
+    // A record is a declaration the dungeon carries, like a scenario
+    // binding — not a thing you pick up and place.
+    const section = screen.getByTestId('intel-section');
+    expect(section).toBeTruthy();
+    expect(screen.getByTestId('new-intel')).toBeTruthy();
+    expect(screen.getByTestId('intel-vault-map')).toBeTruthy();
+    // Its form is NOT open until a record is picked.
+    expect(screen.queryByTestId('intel-panel')).toBeNull();
+  });
+
+  it('opens the record’s form IN PLACE, with the list still on screen', () => {
+    let doc = heirloomDoc();
+    doc = { ...doc, intel: [{ id: 'vault-map', reveals: { door: 'vault' } }] };
+    mountAt(doc, { kind: 'intel', id: 'vault-map' });
+    // Both together: the list the author is choosing from and the form
+    // they are filling in.
+    expect(screen.getByTestId('intel-vault-map')).toBeTruthy();
+    expect(screen.getByTestId('intel-panel')).toBeTruthy();
+    // And it is still the dungeon panel underneath, not a replacement.
+    expect(screen.getByTestId('dungeon-panel')).toBeTruthy();
+  });
+
+  it('says so plainly when the dungeon declares none', () => {
+    mountAt(heirloomDoc(), { kind: 'dungeon' });
+    expect(screen.getByTestId('intel-section').textContent).toContain(
+      'a monster or a prop carries it'
+    );
   });
 });

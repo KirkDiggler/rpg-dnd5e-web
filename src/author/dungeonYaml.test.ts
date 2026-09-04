@@ -1478,12 +1478,12 @@ describe('holds — intel record ids, monsters only (rpg-project#372 §2)', () =
     expect(bytes).toContain('holds: [vault-map, the-password]');
   });
 
-  it('is refused on a prop, on the write path as well as the panel', () => {
-    // `updatePlacement` is not the only way a patch reaches a placement,
-    // so the props-hold-nothing rule lives on the mutator, not in the UI.
+  it('is legal on a PROP as well as a monster (R6)', () => {
+    // Kirk, walking: intel a party can reach without killing the hardest
+    // thing in the dungeon first.
     const doc = updatePlacement(twoPlacements(), 0, { holds: ['vault-map'] });
-    expect(doc.place[0].holds).toBeUndefined();
-    expect(emitDungeon(doc)).not.toContain('holds:');
+    expect(doc.place[0].holds).toEqual(['vault-map']);
+    expect(roundTrips(doc)).toContain('holds: [vault-map]');
   });
 
   it('clears the field rather than writing an empty list', () => {
@@ -1616,12 +1616,21 @@ describe('assigning a record to monsters (rpg-project#372 R2)', () => {
     expect(emitDungeon(doc)).not.toContain('holds:');
   });
 
-  it('never writes `holds` on a prop, whatever it is asked', () => {
+  it('writes `holds` on a prop as readily as on a monster (R6)', () => {
     let doc = named();
     doc = updatePlacement(doc, 0, { id: 'heirloom' });
     doc = setIntelHolders(doc, 'intel-1', ['heirloom', 'captain']);
-    expect(doc.place[0].holds).toBeUndefined();
+    expect(doc.place[0].holds).toEqual(['intel-1']);
     expect(doc.place[1].holds).toEqual(['intel-1']);
+    // The same record on two things: intel copies, it does not move.
+    expect(intelHolders(doc, 'intel-1')).toEqual(['heirloom', 'captain']);
+  });
+
+  it('never assigns to a placement the author never named', () => {
+    // `holds` points at a placement by its id, so a thing with no name
+    // cannot be given a record — there would be nothing to write.
+    const doc = setIntelHolders(named(), 'intel-1', ['']);
+    expect(doc.place.every((p) => p.holds === undefined)).toBe(true);
   });
 
   it('leaves a monster’s OTHER records alone', () => {

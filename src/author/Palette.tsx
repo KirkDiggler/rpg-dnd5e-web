@@ -23,12 +23,6 @@ export interface PaletteProps {
   onAddRegion: () => void;
   armed: PaletteItem | null;
   onArm: (item: PaletteItem) => void;
-  /** The intel records this dungeon declares, and the two verbs over the
-   * list. The record's own form is the inspector's (rpg-project#372 §5);
-   * this is the list beside Regions that gets you to it. */
-  selectedIntelId: string | null;
-  onAddIntel: () => void;
-  onSelectIntel: (id: string) => void;
 }
 
 const TOOLS: { id: BoardTool; label: string; hint: string }[] = [
@@ -85,9 +79,6 @@ export function Palette({
   onAddRegion,
   armed,
   onArm,
-  selectedIntelId,
-  onAddIntel,
-  onSelectIntel,
 }: PaletteProps) {
   return (
     <div className="flex flex-col gap-4 text-sm" data-testid="palette">
@@ -139,49 +130,6 @@ export function Palette({
             </button>
           ))}
         </div>
-      </section>
-
-      {/* INTEL, beside Regions (design §5). A record is declared on the
-          dungeon, like a region is — so it lives in the same column, and
-          the form that gives it a target and a holder opens on the right
-          when you pick one. */}
-      <section>
-        <div className="flex items-center justify-between">
-          <h3 className="dg-h">Intel</h3>
-          <button
-            type="button"
-            className="dg-mini"
-            data-testid="new-intel"
-            onClick={onAddIntel}
-          >
-            + new intel
-          </button>
-        </div>
-        {doc.intel.length === 0 ? (
-          <div className="text-xs opacity-70">
-            none — a record says what a party learns, and a monster carries it
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1">
-            {doc.intel.map((record) => (
-              <button
-                key={record.id}
-                type="button"
-                aria-pressed={record.id === selectedIntelId}
-                data-testid={`intel-${record.id}`}
-                className={`dg-tool flex items-center gap-2 ${
-                  record.id === selectedIntelId ? 'dg-tool--on' : ''
-                }`}
-                onClick={() => onSelectIntel(record.id)}
-              >
-                <span className="truncate">{record.id}</span>
-                <span className="ml-auto opacity-60">
-                  {record.reveals.door ? `→ ${record.reveals.door}` : '—'}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
       </section>
 
       <section>

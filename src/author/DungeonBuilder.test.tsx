@@ -777,10 +777,10 @@ describe('the intel record, end to end through the builder (rpg-project#372)', (
     // The list beside Regions gets the record, and the inspector opens on
     // it — the two halves design §5 asks for. The suggested id numbers
     // around the one the file already has.
-    expect(screen.getByTestId('intel-intel-2')).toBeTruthy();
+    expect(screen.getByTestId('intel-intel-3')).toBeTruthy();
     expect(screen.getByTestId('intel-panel')).toBeTruthy();
     expect((screen.getByTestId('intel-id') as HTMLInputElement).value).toBe(
-      'intel-2'
+      'intel-3'
     );
   });
 
@@ -810,6 +810,7 @@ describe('the intel record, end to end through the builder (rpg-project#372)', (
     const doc = parseDungeon(yaml);
     expect(doc.intel).toEqual([
       { id: 'vault-map', reveals: { door: 'vault' } },
+      { id: 'hall-notes', reveals: { door: 'vault' } },
       { id: 'the-password', reveals: { door: 'hall-tomb' } },
     ]);
     expect(intelHolders(doc, 'the-password')).toEqual(['captain']);

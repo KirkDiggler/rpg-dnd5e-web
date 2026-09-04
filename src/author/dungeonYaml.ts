@@ -151,8 +151,11 @@ export interface PlacementDoc {
    * both lines; the builder refuses one inline before it is typed into
    * the file. Omitted means the author named none, which is most props. */
   id?: string;
-  /** Monsters only, REFUSED on props (server rule): the INTEL RECORD ids
-   * this monster carries from spawn (rpg-project#372 §2).
+  /** The INTEL RECORD ids this placement carries from spawn
+   * (rpg-project#372 §2). Legal on MONSTERS AND PROPS alike (R6, from
+   * Kirk's walk: "tech could get intel by holding something too … not the
+   * hardest monster to kill in the game") — a scroll on a table is intel
+   * a party can reach without winning a fight first.
    *
    * This replaced `knows`, which named a door directly. Knowledge is
    * spelled ONCE now, as a record — the monster holds the record and the
@@ -2079,13 +2082,14 @@ export function removeIntel(doc: DungeonDoc, id: string): DungeonDoc {
 /**
  * Assign one record to exactly this set of monsters, by placement id.
  *
- * THE ASSIGNMENT IS EDITED FROM THE RECORD, not from the monster (design
- * R2/§5): the author says "who holds the vault map", and the monster panel
- * shows what it holds read-only. So this writes across every placement at
- * once rather than patching one.
+ * THE ASSIGNMENT IS EDITED FROM THE RECORD, not from the thing holding it
+ * (design R2/§5): the author says "who holds the vault map", and the
+ * placement's own panel shows what it holds read-only. So this writes
+ * across every placement at once rather than patching one.
  *
- * A monster may hold several records and a record may be held by several
- * monsters — intel COPIES on loot, it does not move.
+ * MONSTERS AND PROPS ALIKE (R6). A placement may hold several records and
+ * a record may be held by several placements — intel COPIES, it does not
+ * move.
  */
 export function setIntelHolders(
   doc: DungeonDoc,
@@ -2096,7 +2100,6 @@ export function setIntelHolders(
   return {
     ...doc,
     place: doc.place.map((p) => {
-      if (!isMonsterRef(p.ref)) return p;
       const has = p.holds?.includes(recordId) ?? false;
       const wants = !!p.id && holders.has(p.id);
       if (has === wants) return p;
@@ -2211,8 +2214,6 @@ export function updatePlacement(
         // enforced on this write path for `facing`/`offset`'s reason: the
         // panel is not the only thing that can send a patch.
         delete next.holdable;
-      } else {
-        delete next.holds;
       }
       // NIL, NOT LEN 0 (`PlacementDoc.holds`): an empty list is a state
       // this module can represent, so a caller that means "holds nothing"

@@ -729,18 +729,6 @@ export function DungeonBuilder({
           }}
           armed={armed}
           onArm={setArmed}
-          selectedIntelId={selection.kind === 'intel' ? selection.id : null}
-          onAddIntel={() => {
-            applyDoc((d) => {
-              const next = addIntel(d);
-              setSelection({
-                kind: 'intel',
-                id: next.intel[next.intel.length - 1].id,
-              });
-              return next;
-            });
-          }}
-          onSelectIntel={(id) => setSelection({ kind: 'intel', id })}
         />
       </div>
 
@@ -898,6 +886,16 @@ export function DungeonBuilder({
                 setSelection({ kind: 'dungeon' });
               }}
               onSelect={setSelection}
+              onAddIntel={() => {
+                applyDoc((d) => {
+                  const next = addIntel(d);
+                  setSelection({
+                    kind: 'intel',
+                    id: next.intel[next.intel.length - 1].id,
+                  });
+                  return next;
+                });
+              }}
               scenarios={scenarios}
               errors={errors}
             />

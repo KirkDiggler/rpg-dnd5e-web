@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emitDungeon, parseDungeon } from '../dungeonYaml';
+import { emitDungeon, intelHolders, parseDungeon } from '../dungeonYaml';
 import { referenceTombDoc } from './referenceTomb';
 import {
   REFERENCE_TOMB_HEIRLOOM_YAML,
@@ -16,7 +16,7 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
   // and the first assertion below is a tightly-packed row that would not
   // survive a formatting pass.
   //
-  // Read off the toolkit file at commit 7c7c54c2. Changing one of these
+  // Read off the toolkit file at commit c687853f. Changing one of these
   // means the toolkit changed and this copy has to be re-taken, which is
   // exactly the conversation this test exists to force.
   it('carries the toolkit fixture’s own text, byte for byte', () => {
@@ -39,6 +39,9 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
       'intel:\n  - id: vault-map\n    reveals: { door: vault }\n'
     );
     expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
+      '  - id: hall-notes\n    reveals: { door: vault }\n'
+    );
+    expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
       '      blocks_movement: false, blocks_los: false, holdable: true }\n'
     );
   });
@@ -56,9 +59,17 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
     // carried by a second guard or reveal something that is not a door,
     // and none of it touches this line.
     expect(captain?.holds).toEqual(['vault-map']);
+    // TWO RECORDS, ONE DOOR (R6). The second is on a holdable scroll in
+    // the hall, so the vault can be opened by picking something up rather
+    // than by winning the dungeon's hardest fight — which is what makes
+    // the tool walkable at all.
     expect(doc.intel).toEqual([
       { id: 'vault-map', reveals: { door: 'vault' } },
+      { id: 'hall-notes', reveals: { door: 'vault' } },
     ]);
+    const scroll = doc.place.find((p) => p.holds?.includes('hall-notes'));
+    expect(scroll?.holdable).toBe(true);
+    expect(intelHolders(doc, 'hall-notes')).toEqual([scroll?.id]);
     // NO BOSS FLAG. This dungeon ends because a scenario says so (design
     // R8) — a boss flag here would end the run when the captain fell,
     // before anybody could loot the way in, and the whole path-2 win
