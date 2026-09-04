@@ -28,6 +28,7 @@ import {
   sceneryKeys,
   type DungeonDoc,
   type ErrorTarget,
+  type ExitDoc,
 } from '../dungeonYaml';
 import {
   cellPositions,
@@ -54,6 +55,7 @@ import {
   ENVELOPE_DASH,
   ENVELOPE_STROKE,
   ERROR_STROKE,
+  EXIT_COLOR,
   HOVER_STROKE,
   litColor,
   MONSTER_COLOR,
@@ -469,6 +471,14 @@ export function CreationBoard({
           return;
         }
       }
+      // A way out is selected from its own cell — after the placements,
+      // doors and walls, because those are things standing ON floor and an
+      // exit IS a floor cell.
+      const exitIndex = doc.exits.findIndex((x) => axialKey(x.at) === key);
+      if (exitIndex !== -1) {
+        onSelect({ kind: 'exit', index: exitIndex });
+        return;
+      }
       const owner = owners.get(key);
       if (owner) onSelect({ kind: 'region', id: owner });
       else onSelect({ kind: 'dungeon' });
@@ -732,6 +742,22 @@ export function CreationBoard({
                 error={errorTargets.some((t) => t.kind === 'start')}
               />
             )}
+          </g>
+          <g data-layer="exits" pointerEvents="none">
+            {doc.exits.map((exit, index) => (
+              <Exit
+                key={`${exit.id}:${axialKey(exit.at)}`}
+                exit={exit}
+                size={size}
+                o={o}
+                selected={
+                  selection.kind === 'exit' && selection.index === index
+                }
+                error={errorTargets.some(
+                  (t) => t.kind === 'exit' && t.index === index
+                )}
+              />
+            ))}
           </g>
           <g data-layer="placements" pointerEvents="none">
             {doc.place.map((p, i) => {
@@ -1163,6 +1189,54 @@ function Start({
         fill={error ? ERROR_STROKE : START_COLOR}
       >
         S
+      </text>
+    </g>
+  );
+}
+
+/** A way out, drawn where the party may leave (rpg-project#368 §3.1).
+ *
+ * A SQUARE, not the start's circle, and its own blue — the entrance and
+ * the exit are the same cell in the tomb this slice ships, so two marks
+ * have to sit on one hex and still read as two. The id is written beside
+ * it because an exit is a NAMED thing a scenario binds to, and a mark you
+ * cannot name is a mark you cannot pick in the form. */
+function Exit({
+  exit,
+  size,
+  o,
+  selected,
+  error,
+}: {
+  exit: ExitDoc;
+  size: number;
+  o: DungeonDoc['orientation'];
+  selected: boolean;
+  error: boolean;
+}) {
+  const c = cellCenter(exit.at, size, o);
+  const half = size * 0.42;
+  const stroke = error ? ERROR_STROKE : selected ? HOVER_STROKE : EXIT_COLOR;
+  return (
+    <g data-exit={exit.id}>
+      <rect
+        x={c.x - half}
+        y={c.y - half}
+        width={half * 2}
+        height={half * 2}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={selected || error ? 4 : 3}
+      />
+      <text
+        x={c.x}
+        y={c.y + size * 0.18}
+        textAnchor="middle"
+        fontSize={size * 0.45}
+        fontWeight={700}
+        fill={stroke}
+      >
+        {exit.id}
       </text>
     </g>
   );

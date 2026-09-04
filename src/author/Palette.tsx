@@ -63,6 +63,11 @@ const TOOLS: { id: BoardTool; label: string; hint: string }[] = [
     hint: 'click one of the marked points on a wall; the inspector sets the lock',
   },
   { id: 'start', label: 'Start', hint: "the party's entry cell" },
+  {
+    id: 'exit',
+    label: 'Exit',
+    hint: 'a way out — click a floor cell to add one, click it again to remove it. The start is NOT one unless you say so',
+  },
 ];
 
 export function Palette({

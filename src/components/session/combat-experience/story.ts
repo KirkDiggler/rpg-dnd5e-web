@@ -8,6 +8,7 @@ import {
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { damageTypeWord } from '../combatBeat';
+import { formatHoldingBeat } from '../holdingBeat';
 import { formatDamageRolls, formatRollCalculation } from './rollTrace';
 import type {
   CombatExperienceAttackOutcome,
@@ -247,7 +248,37 @@ function buildOtherStory(
       return Object.freeze({
         ...base,
         eyebrow: 'Party',
-        headline: `${memberName(event.body.value.member, context)} leaves`,
+        // The departure's own statement — through which authored exit, and
+        // carrying what (rpg-project#368 §6). `holdingBeat.ts` owns the
+        // sentence; the beat line reads the identical one.
+        headline: holdingHeadline(event, context),
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'neutral',
+      });
+    // Loot names looter and body and NOTHING of what moved (design P3) —
+    // the log entry for a body with nothing to give is byte-identical to
+    // the one for the captain, which is the secret this slice keeps.
+    case 'looted':
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Loot',
+        headline: holdingHeadline(event, context),
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'neutral',
+      });
+    case 'held':
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Holding',
+        headline: holdingHeadline(event, context),
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'success',
+      });
+    case 'dropped':
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Holding',
+        headline: holdingHeadline(event, context),
         detail: `Story sequence ${event.seq}.`,
         tone: 'neutral',
       });
@@ -352,6 +383,18 @@ function buildOtherStory(
     case undefined:
       return undefined;
   }
+}
+
+/** One of `holdingBeat.ts`'s sentences, with the roster name in both
+ * positions — the Story log is written about the party, not to the viewer,
+ * so nobody is "You" here (the beat line is where that distinction lives).
+ * A headline never ends in a period, so the sentence's own one comes off. */
+function holdingHeadline(event: Event, context: CombatStoryContext): string {
+  const sentence = formatHoldingBeat(event, {
+    subject: (id) => memberName(id, context),
+    object: (id) => memberName(id, context),
+  });
+  return sentence ? sentence.replace(/\.$/, '') : '';
 }
 
 /**

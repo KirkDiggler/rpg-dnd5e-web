@@ -19,17 +19,19 @@ import { authoringClient } from '@/api/client';
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError, type Client } from '@connectrpc/connect';
 import {
+  ListScenariosRequestSchema,
   PutDungeonRequestSchema,
   type AuthoringService,
   type FieldError,
   type PutDungeonResponse,
+  type ScenarioDescriptor,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type AuthoringClient = Pick<
   Client<typeof AuthoringService>,
-  'putDungeon' | 'getDungeon'
+  'putDungeon' | 'getDungeon' | 'listScenarios'
 >;
 
 export const defaultAuthoringClient: AuthoringClient = authoringClient;
@@ -235,4 +237,77 @@ export function useSaveDungeon(
   );
 
   return { ...state, save };
+}
+
+export interface ScenariosState {
+  scenarios: readonly ScenarioDescriptor[];
+  loading: boolean;
+  /** The transport failure's message. NOT a reason to show anything but
+   * the failure: there is no fallback descriptor and never will be. */
+  error: string | null;
+}
+
+/**
+ * `ListScenarios` — every scenario the server's rulebook offers, and the
+ * form each one needs filled in (rpg-project#368 §3.2).
+ *
+ * # There is no fallback descriptor, deliberately
+ *
+ * A client-side copy of "the recover-the-artifact form has an artifact and
+ * an exit" is how a fitter survives its own deletion: the panel would keep
+ * rendering a form for a scenario the rulebook no longer serves, and the
+ * author would fill it in and get a refusal from a package that has never
+ * heard of it. So an empty answer renders "no scenarios offered" and a
+ * failed call renders the failure. Both are true statements about what the
+ * server said; neither invents a scenario.
+ *
+ * # And no scenario knowledge either
+ *
+ * The descriptor IS the form: key, label, widget type, which family of
+ * authored thing an `entity_ref` picker lists, and the guidance sentence
+ * the rulebook's own constructor would refuse with. Nothing in this file
+ * or the panel below it knows what an artifact is. A scenario this build
+ * has never heard of renders, and that is the test.
+ *
+ * Ungated: reading content mutates nothing (GetDungeon's precedent), so
+ * this answers with authoring switched off, exactly as `ListDungeons`
+ * does for the Open picker.
+ */
+export function useListScenarios(
+  client: AuthoringClient = defaultAuthoringClient
+): ScenariosState {
+  const [state, setState] = useState<ScenariosState>({
+    scenarios: [],
+    loading: true,
+    error: null,
+  });
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const response = await client.listScenarios(
+          create(ListScenariosRequestSchema, {})
+        );
+        if (!live) return;
+        setState({
+          scenarios: response.scenarios,
+          loading: false,
+          error: null,
+        });
+      } catch (err) {
+        if (!live) return;
+        setState({
+          scenarios: [],
+          loading: false,
+          error: errorMessageOf(err),
+        });
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [client]);
+
+  return state;
 }

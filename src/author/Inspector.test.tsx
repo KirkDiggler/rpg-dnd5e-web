@@ -6,6 +6,9 @@ import {
   paintCell,
   paintScenery,
   placeAt,
+  toggleExitAt,
+  updateExit,
+  updatePlacement,
   type DungeonDoc,
 } from './dungeonYaml';
 import {
@@ -59,6 +62,8 @@ function propDoc(
 
 function noop() {}
 
+const NO_SCENARIOS = { scenarios: [], loading: false, error: null } as const;
+
 const EMPTY_CONCEALMENT: ConcealmentDerivation = {
   regionIds: new Set(),
   doorByRegion: new Map(),
@@ -85,6 +90,11 @@ function mountPlacement(
       onRemoveWall={noop}
       onSetWallHeight={noop}
       onSetWallName={noop}
+      onExit={noop}
+      onRemoveExit={noop}
+      onBindScenario={noop}
+      scenarios={NO_SCENARIOS}
+      errors={[]}
     />
   );
 }
@@ -218,6 +228,11 @@ function mountWall(
       onRemoveWall={overrides.onRemoveWall ?? noop}
       onSetWallHeight={overrides.onSetWallHeight ?? noop}
       onSetWallName={overrides.onSetWallName ?? noop}
+      onExit={noop}
+      onRemoveExit={noop}
+      onBindScenario={noop}
+      scenarios={NO_SCENARIOS}
+      errors={[]}
     />
   );
 }
@@ -360,6 +375,11 @@ function mountDoor(
       onRemoveWall={noop}
       onSetWallHeight={noop}
       onSetWallName={noop}
+      onExit={noop}
+      onRemoveExit={noop}
+      onBindScenario={noop}
+      scenarios={NO_SCENARIOS}
+      errors={[]}
     />
   );
 }
@@ -513,6 +533,11 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onRemoveWall={noop}
         onSetWallHeight={noop}
         onSetWallName={noop}
+        onExit={noop}
+        onRemoveExit={noop}
+        onBindScenario={noop}
+        scenarios={NO_SCENARIOS}
+        errors={[]}
       />
     );
     expect(screen.getByText(/floor cells/).textContent).toContain(
@@ -537,10 +562,251 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onRemoveWall={noop}
         onSetWallHeight={noop}
         onSetWallName={noop}
+        onExit={noop}
+        onRemoveExit={noop}
+        onBindScenario={noop}
+        scenarios={NO_SCENARIOS}
+        errors={[]}
       />
     );
     expect(screen.getByText(/floor cells/).textContent).toContain(
       '5 floor cells'
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ids, knows, holdable and ways out (rpg-project#368 §3.1)
+// ---------------------------------------------------------------------------
+
+/** One room with a prop and a monster on it, and a door between two of its
+ * cells — everything the three new controls need something to point at. */
+function heirloomDoc(): DungeonDoc {
+  let doc = emptyDungeon();
+  doc = {
+    ...doc,
+    regions: [{ ...doc.regions[0], cells: [p(0, 0), p(1, 0), p(2, 0)] }],
+  };
+  doc = placeAt(doc, {
+    ref: 'dnd5e:props:reliquary',
+    at: p(0, 0),
+    blocksMovement: false,
+    blocksLos: false,
+  });
+  doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton-captain', at: p(1, 0) });
+  doc = {
+    ...doc,
+    doors: [
+      { id: 'vault', at: sideBetween(p(0, 0), p(1, 0)), concealed: [] },
+      { id: 'front', at: sideBetween(p(1, 0), p(2, 0)) },
+    ],
+  };
+  return doc;
+}
+
+function mountAt(
+  doc: DungeonDoc,
+  selection: Parameters<typeof Inspector>[0]['selection'],
+  overrides: Partial<{
+    onPlacement: (index: number, patch: Record<string, unknown>) => void;
+    onExit: (index: number, patch: Record<string, unknown>) => void;
+    onRemoveExit: (index: number) => void;
+  }> = {}
+) {
+  return render(
+    <Inspector
+      doc={doc}
+      concealment={EMPTY_CONCEALMENT}
+      selection={selection}
+      onDungeon={noop}
+      onRegion={noop}
+      onRemoveRegion={noop}
+      onDoor={noop}
+      onRemoveDoor={noop}
+      onPlacement={overrides.onPlacement ?? noop}
+      onRemovePlacement={noop}
+      onRemoveWall={noop}
+      onSetWallHeight={noop}
+      onSetWallName={noop}
+      onExit={overrides.onExit ?? noop}
+      onRemoveExit={overrides.onRemoveExit ?? noop}
+      onBindScenario={noop}
+      scenarios={NO_SCENARIOS}
+      errors={[]}
+    />
+  );
+}
+
+describe('the placement id — offered, renamed, and refused on a collision', () => {
+  it('offers a slug from the ref and writes it on one click', () => {
+    const onPlacement = vi.fn();
+    mountAt(heirloomDoc(), { kind: 'placement', index: 0 }, { onPlacement });
+    const suggest = screen.getByTestId('placement-id-suggest');
+    expect(suggest.textContent).toBe('call it reliquary');
+    fireEvent.click(suggest);
+    expect(onPlacement).toHaveBeenCalledWith(0, { id: 'reliquary' });
+  });
+
+  it('lets the author rename it to anything not already taken', () => {
+    const onPlacement = vi.fn();
+    mountAt(heirloomDoc(), { kind: 'placement', index: 0 }, { onPlacement });
+    fireEvent.change(screen.getByTestId('placement-id'), {
+      target: { value: 'heirloom' },
+    });
+    expect(onPlacement).toHaveBeenCalledWith(0, { id: 'heirloom' });
+  });
+
+  it('refuses a duplicate in place, naming what already has it', () => {
+    let doc = heirloomDoc();
+    doc = updatePlacement(doc, 1, { id: 'captain' });
+    const onPlacement = vi.fn();
+    mountAt(doc, { kind: 'placement', index: 0 }, { onPlacement });
+    fireEvent.change(screen.getByTestId('placement-id'), {
+      target: { value: 'captain' },
+    });
+    // Not written — the document keeps the name that still works — and the
+    // author is told which line already owns it.
+    expect(onPlacement).not.toHaveBeenCalled();
+    expect(screen.getByTestId('placement-id-refusal').textContent).toContain(
+      'dnd5e:monsters:skeleton-captain'
+    );
+  });
+
+  it('is offered on a monster too, not just a prop', () => {
+    mountAt(heirloomDoc(), { kind: 'placement', index: 1 });
+    expect(screen.getByTestId('placement-id-suggest').textContent).toBe(
+      'call it skeleton-captain'
+    );
+  });
+});
+
+describe('knows — a multi-pick over this dungeon’s doors, monsters only', () => {
+  it('lists every door by id and marks the concealed ones', () => {
+    mountAt(heirloomDoc(), { kind: 'placement', index: 1 });
+    expect(screen.getByTestId('knows-vault')).toBeTruthy();
+    expect(screen.getByTestId('knows-front')).toBeTruthy();
+    // The concealed one is marked beside its own box — that is the door
+    // worth knowing, and the panel says which without refusing the others.
+    expect(
+      screen.getByTestId('knows-vault').parentElement?.textContent
+    ).toContain('concealed');
+    expect(
+      screen.getByTestId('knows-front').parentElement?.textContent
+    ).not.toContain('concealed');
+  });
+
+  it('writes the picked door ids in the document’s own door order', () => {
+    const onPlacement = vi.fn();
+    mountAt(heirloomDoc(), { kind: 'placement', index: 1 }, { onPlacement });
+    fireEvent.click(screen.getByTestId('knows-front'));
+    expect(onPlacement).toHaveBeenLastCalledWith(1, { knows: ['front'] });
+  });
+
+  it('unticking the last box clears the field rather than writing an empty list', () => {
+    let doc = heirloomDoc();
+    doc = updatePlacement(doc, 1, { knows: ['vault'] });
+    const onPlacement = vi.fn();
+    mountAt(doc, { kind: 'placement', index: 1 }, { onPlacement });
+    fireEvent.click(screen.getByTestId('knows-vault'));
+    expect(onPlacement).toHaveBeenLastCalledWith(1, { knows: [] });
+  });
+
+  it('is NOT offered on a prop — a prop holds nothing to know', () => {
+    mountAt(heirloomDoc(), { kind: 'placement', index: 0 });
+    expect(screen.queryByTestId('knows-control')).toBeNull();
+  });
+});
+
+describe('holdable — a prop toggle that requires an id and says so', () => {
+  it('is disabled until the prop has an id, and names what is missing', () => {
+    mountAt(heirloomDoc(), { kind: 'placement', index: 0 });
+    const toggle = screen.getByTestId('placement-holdable') as HTMLInputElement;
+    expect(toggle.disabled).toBe(true);
+    expect(screen.getByTestId('holdable-note').textContent).toContain(
+      'has to be nameable'
+    );
+  });
+
+  it('works once the prop is named, and says what it means', () => {
+    const doc = updatePlacement(heirloomDoc(), 0, { id: 'heirloom' });
+    const onPlacement = vi.fn();
+    mountAt(doc, { kind: 'placement', index: 0 }, { onPlacement });
+    const toggle = screen.getByTestId('placement-holdable') as HTMLInputElement;
+    expect(toggle.disabled).toBe(false);
+    fireEvent.click(toggle);
+    expect(onPlacement).toHaveBeenCalledWith(0, { holdable: true });
+    expect(screen.getByTestId('holdable-note').textContent).toContain(
+      'pick it up'
+    );
+  });
+
+  it('is NOT offered on a monster', () => {
+    mountAt(heirloomDoc(), { kind: 'placement', index: 1 });
+    expect(screen.queryByTestId('placement-holdable')).toBeNull();
+  });
+});
+
+describe('the way-out panel', () => {
+  function withExits(): DungeonDoc {
+    let doc = toggleExitAt(heirloomDoc(), p(0, 0));
+    doc = updateExit(doc, 0, { id: 'entrance' });
+    doc = toggleExitAt(doc, p(2, 0));
+    return doc;
+  }
+
+  it('renames a way out', () => {
+    const onExit = vi.fn();
+    mountAt(withExits(), { kind: 'exit', index: 0 }, { onExit });
+    fireEvent.change(screen.getByTestId('exit-id'), {
+      target: { value: 'front-gate' },
+    });
+    expect(onExit).toHaveBeenCalledWith(0, { id: 'front-gate' });
+  });
+
+  it('refuses a name another way out already has', () => {
+    const onExit = vi.fn();
+    mountAt(withExits(), { kind: 'exit', index: 1 }, { onExit });
+    fireEvent.change(screen.getByTestId('exit-id'), {
+      target: { value: 'entrance' },
+    });
+    expect(onExit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('exit-id-refusal').textContent).toContain(
+      'entrance'
+    );
+  });
+
+  it('refuses a blank name in place, and points at the remove button', () => {
+    // An exit's id is what a scenario binds to and what `Exited.exit`
+    // reports, so an empty one is a way out no form can point at. The
+    // document keeps the name that still works while the box is empty.
+    const onExit = vi.fn();
+    mountAt(withExits(), { kind: 'exit', index: 0 }, { onExit });
+    fireEvent.change(screen.getByTestId('exit-id'), { target: { value: '' } });
+    expect(onExit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('exit-id-refusal').textContent).toContain(
+      'remove way out'
+    );
+    // And typing a real name from there commits normally.
+    fireEvent.change(screen.getByTestId('exit-id'), {
+      target: { value: 'side-door' },
+    });
+    expect(onExit).toHaveBeenCalledWith(0, { id: 'side-door' });
+  });
+
+  it('removes one', () => {
+    const onRemoveExit = vi.fn();
+    mountAt(withExits(), { kind: 'exit', index: 1 }, { onRemoveExit });
+    fireEvent.click(screen.getByText('remove way out'));
+    expect(onRemoveExit).toHaveBeenCalledWith(1);
+  });
+
+  it('falls back to the dungeon panel for an exit that is gone', () => {
+    mountAt(heirloomDoc(), { kind: 'exit', index: 3 });
+    expect(screen.getByTestId('dungeon-panel')).toBeTruthy();
+  });
+
+  it('counts the ways out on the dungeon panel', () => {
+    mountAt(withExits(), { kind: 'dungeon' });
+    expect(screen.getByText(/ways out/).textContent).toContain('2 ways out');
   });
 });

@@ -18,15 +18,20 @@ import {
   paintScenery,
   parseDungeon,
   placeAt,
+  placementIds,
   regionWays,
   removeWalls,
   resolveErrorPath,
   sceneryBlockedBy,
+  setScenarioBinding,
   setStart,
   setWallHeights,
   setWallName,
+  suggestPlacementId,
   toggleDoorAt,
+  toggleExitAt,
   updateDoor,
+  updateExit,
   updatePlacement,
   updateRegion,
   wallCrossingKeys,
@@ -1377,5 +1382,292 @@ describe('the concealment mirror floods through scenery (design C4)', () => {
     expect(w.openly('middle', 'far')).toBe(true);
     // No direct way: `middle` is a destination, never a corridor.
     expect(w.joined('visible', 'far')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ids, knows, holdable, exits and scenario bindings (rpg-project#368 §3.1)
+// ---------------------------------------------------------------------------
+
+/** A one-cell dungeon with one prop and one monster on it — the smallest
+ * document every new field below can be attached to. */
+function twoPlacements(): DungeonDoc {
+  let doc = emptyDungeon();
+  doc = paintCell(doc, 'region-1', p(0, 0));
+  doc = paintCell(doc, 'region-1', p(1, 0));
+  doc = placeAt(doc, {
+    ref: 'dnd5e:props:reliquary',
+    at: p(0, 0),
+    blocksMovement: false,
+    blocksLos: false,
+  });
+  doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton-captain', at: p(1, 0) });
+  return doc;
+}
+
+/** `emit -> parse -> emit` is byte-identical. The test every new field
+ * has to pass BOTH ways: carrying it, and not carrying it — a field
+ * written when it is absent changes the bytes of every file that never
+ * used it, which is the failure that breaks existing content. */
+function roundTrips(doc: DungeonDoc): string {
+  const once = emitDungeon(doc);
+  expect(emitDungeon(parseDungeon(once))).toBe(once);
+  return once;
+}
+
+describe('placement id (rpg-project#368 P2)', () => {
+  it('is omitted from the bytes when the author named none', () => {
+    const bytes = roundTrips(twoPlacements());
+    expect(bytes).not.toContain('- { id:');
+    expect(parseDungeon(bytes).place.every((x) => x.id === undefined)).toBe(
+      true
+    );
+  });
+
+  it('leads the entry and round-trips', () => {
+    const doc = updatePlacement(twoPlacements(), 0, { id: 'heirloom' });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('  - { id: heirloom, ref: "dnd5e:props:reliquary"');
+    expect(parseDungeon(bytes).place[0].id).toBe('heirloom');
+  });
+
+  it('is cleared by an empty string rather than written as one', () => {
+    let doc = updatePlacement(twoPlacements(), 0, { id: 'heirloom' });
+    doc = updatePlacement(doc, 0, { id: '' });
+    expect(doc.place[0].id).toBeUndefined();
+    expect(emitDungeon(doc)).not.toContain('- { id:');
+  });
+
+  it('suggests the ref’s last segment, and numbers a name already taken', () => {
+    const doc = twoPlacements();
+    expect(suggestPlacementId(doc, 'dnd5e:props:reliquary')).toBe('reliquary');
+    const named = updatePlacement(doc, 0, { id: 'reliquary' });
+    expect(suggestPlacementId(named, 'dnd5e:props:reliquary')).toBe(
+      'reliquary-2'
+    );
+  });
+
+  it('reports each id with the placement that declared it, first wins', () => {
+    let doc = updatePlacement(twoPlacements(), 0, { id: 'same' });
+    doc = updatePlacement(doc, 1, { id: 'same' });
+    // A hand-written file CAN carry a duplicate; the map names the first,
+    // which is what lets the panel say "already the name of <that one>".
+    expect(placementIds(doc).get('same')).toBe(0);
+  });
+});
+
+describe('knows — monsters only (rpg-project#368 P1)', () => {
+  it('writes the door ids and round-trips', () => {
+    const doc = updatePlacement(twoPlacements(), 1, { knows: ['vault'] });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('knows: [vault]');
+    expect(parseDungeon(bytes).place[1].knows).toEqual(['vault']);
+  });
+
+  it('is refused on a prop, on the write path as well as the panel', () => {
+    // `updatePlacement` is not the only way a patch reaches a placement,
+    // so the props-hold-nothing rule lives on the mutator, not in the UI.
+    const doc = updatePlacement(twoPlacements(), 0, { knows: ['vault'] });
+    expect(doc.place[0].knows).toBeUndefined();
+    expect(emitDungeon(doc)).not.toContain('knows:');
+  });
+
+  it('clears the field rather than writing an empty list', () => {
+    let doc = updatePlacement(twoPlacements(), 1, { knows: ['vault'] });
+    doc = updatePlacement(doc, 1, { knows: [] });
+    expect(doc.place[1].knows).toBeUndefined();
+    expect(emitDungeon(doc)).not.toContain('knows:');
+  });
+
+  it('still carries an authored empty list read off a file, unchanged', () => {
+    // NIL, NOT LEN 0. A file that says `knows: []` means a monster whose
+    // knowledge was authored as none — this module represents it rather
+    // than silently reading it as absent, so what the author wrote is what
+    // the server judges.
+    const bytes = emitDungeon(twoPlacements()).replace(
+      'ref: "dnd5e:monsters:skeleton-captain", at: [1,0]',
+      'ref: "dnd5e:monsters:skeleton-captain", at: [1,0], knows: []'
+    );
+    expect(parseDungeon(bytes).place[1].knows).toEqual([]);
+  });
+});
+
+describe('holdable — props only (rpg-project#368 §5)', () => {
+  it('is written only when true, and round-trips', () => {
+    const doc = updatePlacement(twoPlacements(), 0, { holdable: true });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('holdable: true');
+    expect(parseDungeon(bytes).place[0].holdable).toBe(true);
+  });
+
+  it('leaves no trace when false — a thing nobody declared stays scenery', () => {
+    let doc = updatePlacement(twoPlacements(), 0, { holdable: true });
+    doc = updatePlacement(doc, 0, { holdable: false });
+    expect(doc.place[0].holdable).toBeUndefined();
+    expect(roundTrips(doc)).not.toContain('holdable');
+  });
+
+  it('is refused on a monster on the write path', () => {
+    const doc = updatePlacement(twoPlacements(), 1, { holdable: true });
+    expect(doc.place[1].holdable).toBeUndefined();
+  });
+});
+
+describe('exits (rpg-project#368 §3.1)', () => {
+  it('is absent from the bytes when nothing is authored', () => {
+    expect(roundTrips(twoPlacements())).not.toContain('exits:');
+  });
+
+  it('writes start’s own shape and round-trips', () => {
+    const doc = toggleExitAt(twoPlacements(), p(0, 0));
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('exits:\n  - { id: exit-1, at: [0, 0] }');
+    expect(parseDungeon(bytes).exits).toEqual([{ id: 'exit-1', at: p(0, 0) }]);
+  });
+
+  it('toggles off on the same cell, and numbers around a name in use', () => {
+    let doc = toggleExitAt(twoPlacements(), p(0, 0));
+    doc = toggleExitAt(doc, p(0, 0));
+    expect(doc.exits).toEqual([]);
+    doc = toggleExitAt(twoPlacements(), p(0, 0));
+    doc = updateExit(doc, 0, { id: 'exit-2' });
+    doc = toggleExitAt(doc, p(1, 0));
+    expect(doc.exits.map((e) => e.id)).toEqual(['exit-2', 'exit-3']);
+  });
+
+  it('refuses a cell nobody can stand on, in place', () => {
+    // The compiler refuses an exit on scenery in `start`'s own words; the
+    // mutator hands the same document back so the caller can say why.
+    let doc = twoPlacements();
+    doc = paintScenery(doc, p(2, 0));
+    expect(toggleExitAt(doc, p(2, 0))).toBe(doc);
+    // And off the floor entirely.
+    expect(toggleExitAt(doc, p(9, 9))).toBe(doc);
+  });
+
+  it('start is NOT implicitly an exit', () => {
+    const doc = setStart(twoPlacements(), p(0, 0));
+    expect(doc.exits).toEqual([]);
+    expect(emitDungeon(doc)).not.toContain('exits:');
+  });
+});
+
+describe('scenario bindings (rpg-project#368 §3.2)', () => {
+  it('is absent from the bytes until something is bound', () => {
+    expect(roundTrips(twoPlacements())).not.toContain('scenarios:');
+  });
+
+  it('writes the map and round-trips', () => {
+    let doc = setScenarioBinding(
+      twoPlacements(),
+      'recover-the-artifact',
+      'artifact',
+      'heirloom'
+    );
+    doc = setScenarioBinding(doc, 'recover-the-artifact', 'exit', 'entrance');
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain(
+      'scenarios:\n  recover-the-artifact:\n    artifact: heirloom\n    exit: entrance\n'
+    );
+    expect(parseDungeon(bytes).scenarios).toEqual({
+      'recover-the-artifact': { artifact: 'heirloom', exit: 'entrance' },
+    });
+  });
+
+  it('sorts both levels, so the bytes do not record the filling-in order', () => {
+    let a = setScenarioBinding(twoPlacements(), 'zebra', 'b', '2');
+    a = setScenarioBinding(a, 'zebra', 'a', '1');
+    a = setScenarioBinding(a, 'aardvark', 'x', '9');
+    let b = setScenarioBinding(twoPlacements(), 'aardvark', 'x', '9');
+    b = setScenarioBinding(b, 'zebra', 'a', '1');
+    b = setScenarioBinding(b, 'zebra', 'b', '2');
+    expect(emitDungeon(a)).toBe(emitDungeon(b));
+  });
+
+  it('unbinds a field on an empty value, and drops the scenario with its last one', () => {
+    let doc = setScenarioBinding(
+      twoPlacements(),
+      'recover-the-artifact',
+      'artifact',
+      'heirloom'
+    );
+    doc = setScenarioBinding(doc, 'recover-the-artifact', 'exit', 'entrance');
+    doc = setScenarioBinding(doc, 'recover-the-artifact', 'exit', '');
+    expect(doc.scenarios).toEqual({
+      'recover-the-artifact': { artifact: 'heirloom' },
+    });
+    doc = setScenarioBinding(doc, 'recover-the-artifact', 'artifact', '');
+    expect(doc.scenarios).toEqual({});
+    expect(emitDungeon(doc)).not.toContain('scenarios:');
+  });
+
+  it('carries a key this build has never heard of, unchanged', () => {
+    // The bindings are OPAQUE: the builder learns the keys from
+    // ListScenarios and this module interprets none of them. A file
+    // written against a newer rulebook survives a round trip here.
+    const bytes = emitDungeon(twoPlacements()).replace(
+      /\n$/,
+      '\nscenarios:\n  something-new:\n    whatever: heirloom\n'
+    );
+    const doc = parseDungeon(bytes);
+    expect(doc.scenarios).toEqual({
+      'something-new': { whatever: 'heirloom' },
+    });
+    expect(emitDungeon(doc)).toContain('    whatever: heirloom');
+  });
+
+  it('reads a scenario bound with nothing filled in', () => {
+    const bytes = emitDungeon(twoPlacements()).replace(
+      /\n$/,
+      '\nscenarios:\n  recover-the-artifact: {}\n'
+    );
+    const doc = parseDungeon(bytes);
+    expect(doc.scenarios).toEqual({ 'recover-the-artifact': {} });
+    expect(roundTrips(doc)).toContain('  recover-the-artifact: {}');
+  });
+});
+
+describe('resolveErrorPath — the new fields', () => {
+  it('lands an exit refusal on the exit the emitter put there', () => {
+    let doc = toggleExitAt(twoPlacements(), p(0, 0));
+    doc = toggleExitAt(doc, p(1, 0));
+    expect(resolveErrorPath(doc, 'exits[1].id')).toEqual({
+      kind: 'exit',
+      index: 1,
+    });
+  });
+
+  it('lands a scenario refusal on the blank the compiler named', () => {
+    const doc = setScenarioBinding(
+      twoPlacements(),
+      'recover-the-artifact',
+      'artifact',
+      'nope'
+    );
+    // A scenario id carries hyphens, so the key is what follows the LAST
+    // dot — `the-artifact` would be the wrong answer and a silently
+    // unrendered refusal.
+    expect(
+      resolveErrorPath(doc, 'scenarios.recover-the-artifact.artifact')
+    ).toEqual({
+      kind: 'scenario',
+      scenarioId: 'recover-the-artifact',
+      key: 'artifact',
+    });
+  });
+
+  it('falls back to the document for a scenario this file does not bind', () => {
+    expect(
+      resolveErrorPath(twoPlacements(), 'scenarios.kill-the-captain.boss')
+    ).toEqual({ kind: 'document' });
+  });
+
+  it('lands a placement id refusal on the placement', () => {
+    const doc = updatePlacement(twoPlacements(), 1, { id: 'captain' });
+    expect(resolveErrorPath(doc, 'place[1].id')).toEqual({
+      kind: 'placement',
+      index: 1,
+      cell: p(1, 0),
+    });
   });
 });
