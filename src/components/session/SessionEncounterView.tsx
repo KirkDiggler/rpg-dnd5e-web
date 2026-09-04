@@ -105,14 +105,6 @@ export interface SessionEncounterViewProps {
   onBack: () => void;
 }
 
-function authoritySeqFromPresentationId(
-  presentationId: string
-): bigint | undefined {
-  const segment = presentationId.split(':').at(-1);
-  if (!segment || !/^\d+$/.test(segment)) return undefined;
-  return BigInt(segment);
-}
-
 function endingHeadline(ending: string): string {
   switch (ending) {
     case 'boss-down':
@@ -536,20 +528,15 @@ function SessionEncounterScope({
     };
   }, [localWorldDieAttemptSnapshot]);
 
-  const witnessAuthoritySeq = localWorldDieRequest
-    ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
-    : undefined;
   const witnessExpectation = useMemo(
     () =>
       combat.diceWitnessRole === 'spectator' &&
       localWorldDieRequest?.roller.role === 'player' &&
       localWorldDieRequest.roller.entityId !== member &&
-      witnessAuthoritySeq !== undefined &&
       localWorldDieFingerprint
         ? {
             session: sessionId,
             presentationId: localWorldDieRequest.presentationId,
-            authoritySeq: witnessAuthoritySeq,
             roller: localWorldDieRequest.roller.entityId,
             attempt: localWorldDieAttempt,
             viewerMember: member,
@@ -563,7 +550,6 @@ function SessionEncounterScope({
       localWorldDieRequest,
       member,
       sessionId,
-      witnessAuthoritySeq,
     ]
   );
   witnessExpectationRef.current = witnessExpectation;
@@ -688,9 +674,7 @@ function SessionEncounterScope({
           )
             return;
           const request = localWorldDieRequest;
-          const authoritySeq = request
-            ? authoritySeqFromPresentationId(request.presentationId)
-            : undefined;
+          const authoritySeq = request?.authoritySeq;
           if (request && authoritySeq !== undefined) {
             try {
               await publishLocalWorldDie({
@@ -760,9 +744,7 @@ function SessionEncounterScope({
     const origin = lastGoodPositionRef.current;
     if (!origin) return;
     const world = cubeToWorld(origin, HEX_SIZE);
-    const authoritySeq = localWorldDieRequest
-      ? authoritySeqFromPresentationId(localWorldDieRequest.presentationId)
-      : undefined;
+    const authoritySeq = localWorldDieRequest?.authoritySeq;
     handleLocalWorldDieRelease(
       {
         position: [world.x, world.z],
@@ -798,7 +780,7 @@ function SessionEncounterScope({
   const handleLocalWorldDieFailureReveal = useCallback(() => {
     const request = localWorldDieRequest;
     if (!request) return;
-    const authoritySeq = authoritySeqFromPresentationId(request.presentationId);
+    const authoritySeq = request.authoritySeq;
     const profile =
       localWorldDieProfile.current ??
       createNeutralVisualThrowProfile(
@@ -823,6 +805,9 @@ function SessionEncounterScope({
             presentationId: localWorldDieRequest?.presentationId,
             attempt: localWorldDieAttempt + 1,
           });
+        }
+        if (kind === 'settled' && localWorldDieRequest) {
+          combat.onWitnessDiceSettlement(localWorldDieRequest.presentationId);
         }
         setLocalWorldDieWitnessActive(false);
         setLocalWorldDieCommand({

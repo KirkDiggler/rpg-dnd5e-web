@@ -81,6 +81,18 @@ export function selectCombatExperience(
   const declaration = declarationMatches[0]!;
   if (!declaration.id) return null;
 
+  // Death Save is selector-bearing but deliberately has no target mode. Its
+  // dedicated identity and fixed NONE shape must agree before this exact
+  // declaration can become executable; no HP/life/progress fallback exists.
+  if (
+    declaration.verb === Verb.DEATH_SAVE &&
+    (declaration.targetKind !== TargetKind.NONE ||
+      declaration.deathSave === undefined ||
+      declaration.candidates.length !== 0)
+  ) {
+    return null;
+  }
+
   let candidate: TargetCandidate | null = null;
   if (
     declaration.targetKind === TargetKind.MEMBER &&

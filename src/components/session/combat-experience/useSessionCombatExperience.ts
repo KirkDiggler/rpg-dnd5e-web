@@ -11,6 +11,7 @@ import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session
 import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
+  DeathSaveContinuation,
   TargetKind,
   Verb,
   type Declaration,
@@ -32,6 +33,7 @@ import type {
 } from './types';
 import {
   attackResponseFact,
+  deathSaveResponseFact,
   useCombatPresentation,
 } from './useCombatPresentation';
 import { useCombatStoryPacing } from './useCombatStoryPacing';
@@ -88,6 +90,7 @@ export interface UseSessionCombatExperienceResult {
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
   onDiceSemanticReleaseRequest: () => void;
+  onWitnessDiceSettlement: (presentationId: string) => void;
   /** Synchronous event-sequence authority revocation. */
   invalidateAuthority: () => void;
   /** Unified FAILED_PRECONDITION selector recovery used by Move too. */
@@ -364,6 +367,9 @@ export function useSessionCombatExperience({
             });
             if (!mountedRef.current) return;
             setPendingDeathSaveResponse(response);
+            presentation.acceptDeathSaveResponse(
+              deathSaveResponseFact({ session, member, response })
+            );
             invalidateAuthority();
             scheduleRefresh(['characterData', 'turn', 'afford']);
           } catch (error) {
@@ -430,6 +436,7 @@ export function useSessionCombatExperience({
       deathSave,
       invalidateAuthority,
       member,
+      presentation,
       recoverStaleDeclaration,
       scheduleRefresh,
       session,
@@ -714,6 +721,51 @@ export function useSessionCombatExperience({
     ]
   );
 
+  const continuedDeathSavesRef = useRef(new Set<string>());
+  useEffect(() => {
+    const settled = presentation.settledDeathSave;
+    if (
+      !settled ||
+      continuedDeathSavesRef.current.has(settled.presentationId)
+    ) {
+      return;
+    }
+
+    if (settled.continuation === DeathSaveContinuation.END_TURN) {
+      if (!authorityFresh) return;
+      const candidates = declarations.filter(
+        (declaration) => declaration.verb === Verb.END_TURN
+      );
+      const endTurnDeclaration =
+        candidates.length === 1 ? candidates[0] : undefined;
+      if (
+        !endTurnDeclaration ||
+        !endTurnDeclaration.available ||
+        endTurnDeclaration.targetKind !== TargetKind.NONE
+      ) {
+        return;
+      }
+      continuedDeathSavesRef.current.add(settled.presentationId);
+      onEndTurn(endTurnDeclaration);
+      return;
+    }
+
+    continuedDeathSavesRef.current.add(settled.presentationId);
+    if (settled.continuation === DeathSaveContinuation.KEEP_TURN) {
+      scheduleRefresh(['characterData', 'turn', 'afford']);
+      return;
+    }
+    if (settled.continuation === DeathSaveContinuation.ALREADY_ADVANCED) {
+      scheduleRefresh(['characterData', 'turn', 'afford']);
+    }
+  }, [
+    authorityFresh,
+    declarations,
+    onEndTurn,
+    presentation.settledDeathSave,
+    scheduleRefresh,
+  ]);
+
   const acceptStreamEvent = useCallback(
     (event: Event, metadata: SessionEventDeliveryMetadata) => {
       if (!mountedRef.current) return;
@@ -747,6 +799,7 @@ export function useSessionCombatExperience({
       onLogModeChange: setLogMode,
       onDiceReleaseRequest: presentation.onDiceReleaseRequest,
       onDiceSemanticReleaseRequest: presentation.onSemanticReleaseRequest,
+      onWitnessDiceSettlement: presentation.onWitnessDiceSettlement,
       invalidateAuthority,
       recoverStaleDeclaration,
       acceptStreamEvent,
@@ -769,6 +822,7 @@ export function useSessionCombatExperience({
       presentation.diceWitnessRole,
       presentation.onDiceReleaseRequest,
       presentation.onSemanticReleaseRequest,
+      presentation.onWitnessDiceSettlement,
       presentation.semanticFallback,
       presentation.unresolvedAttackTargets,
       presentationState,

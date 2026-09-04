@@ -62,7 +62,6 @@ function acceptedPlan(overrides: Partial<DiceThrowPlan> = {}) {
 const expected = {
   session: 'session-1',
   presentationId: 'session:session-1:42',
-  authoritySeq: 42n,
   roller: 'fighter-1',
   attempt: 1,
   viewerMember: 'wizard-1',
@@ -102,7 +101,6 @@ describe('admitLocalWorldDieWitnessPlan', () => {
       expected,
       { presentationId: 'session:session-1:43' },
     ],
-    ['authority mismatch', expected, { authoritySeq: 43n }],
     ['roller mismatch', expected, { roller: 'rogue-1' }],
     ['attempt mismatch', expected, { attempt: 2 }],
     [
@@ -119,6 +117,15 @@ describe('admitLocalWorldDieWitnessPlan', () => {
     expect(
       admitLocalWorldDieWitnessPlan(acceptedPlan(overrides), context)
     ).toBeUndefined();
+  });
+
+  it('matches witnesses by opaque token without comparing recipient-local event sequence to actor authority sequence', () => {
+    expect(
+      admitLocalWorldDieWitnessPlan(
+        acceptedPlan({ authoritySeq: 987n }),
+        expected
+      )?.authoritySeq
+    ).toBe(987n);
   });
 
   it('rejects plans outside the playback subset supported by this checkpoint', () => {

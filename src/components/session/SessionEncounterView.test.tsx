@@ -1413,6 +1413,131 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
   });
 
+  it('retries an off-table Death Save presentation with the same result and token, then ends the turn exactly once after settlement', async () => {
+    readyDyingTurn();
+    hoisted.deathSaveFn.mockResolvedValue({
+      seq: 27n,
+      roll: 12,
+      outcome: DeathSaveOutcome.SUCCESS,
+      successesAdded: 1,
+      failuresAdded: 0,
+      successes: 2,
+      failures: 2,
+      successesNeeded: 1,
+      failuresRemaining: 1,
+      continuation: DeathSaveContinuation.END_TURN,
+      presentationId: 'presentation_opaque-token',
+    });
+    hoisted.endTurnFn.mockResolvedValue({ next: 'skeleton-1', seq: 28n });
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    await screen.findByText('Preparing die');
+    let layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onReadyChange(true);
+      }
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()?.kind).toBe('released')
+    );
+    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onTerminal('off-table');
+      }
+    });
+
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Death save!/i)).toBeNull();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()?.kind).toBe('released')
+    );
+    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onTerminal('settled');
+      }
+    });
+
+    await waitFor(() => expect(hoisted.endTurnFn).toHaveBeenCalledOnce());
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+    expect(hoisted.endTurnFn).toHaveBeenCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'v1.end',
+    });
+  });
+
+  it.each([
+    ['KEEP_TURN', DeathSaveContinuation.KEEP_TURN],
+    ['ALREADY_ADVANCED', DeathSaveContinuation.ALREADY_ADVANCED],
+  ])(
+    'settled %s sends no second mutation and refreshes CharacterData/Turn/Afford',
+    async (_label, continuation) => {
+      readyDyingTurn();
+      hoisted.deathSaveFn.mockResolvedValue({
+        seq: 31n,
+        roll: 20,
+        outcome: DeathSaveOutcome.RECOVERED,
+        successes: 0,
+        failures: 0,
+        successesNeeded: 3,
+        failuresRemaining: 3,
+        recovered: true,
+        hpRestored: 1,
+        continuation,
+        // Deliberately unsafe for decorative dice so the existing explicit
+        // semantic fallback can settle without involving another game RPC.
+        presentationId: '',
+      });
+      renderView();
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: /^death save/i })
+      );
+      const reveal = await screen.findByRole('button', {
+        name: 'Reveal result',
+      });
+      await waitFor(() =>
+        expect(hoisted.turnFn.mock.calls.length).toBeGreaterThan(1)
+      );
+      await waitFor(() =>
+        expect(hoisted.affordFn.mock.calls.length).toBeGreaterThan(1)
+      );
+      const before = {
+        character: hoisted.getCharacterDataFn.mock.calls.length,
+        turn: hoisted.turnFn.mock.calls.length,
+        afford: hoisted.affordFn.mock.calls.length,
+      };
+
+      fireEvent.click(reveal);
+
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
+          before.character
+        )
+      );
+      await waitFor(() =>
+        expect(hoisted.turnFn.mock.calls.length).toBeGreaterThan(before.turn)
+      );
+      await waitFor(() =>
+        expect(hoisted.affordFn.mock.calls.length).toBeGreaterThan(
+          before.afford
+        )
+      );
+      expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+      expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    }
+  );
+
   it('keeps panel-first actions live through the development StrictMode setup/cleanup probe', async () => {
     readyTurn();
     hoisted.attackFn.mockReturnValue(new Promise(() => {}));

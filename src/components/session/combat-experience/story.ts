@@ -3,6 +3,7 @@ import {
   type Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
+  DeathSaveOutcome,
   DoorState,
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -288,6 +289,62 @@ function buildOtherStory(
     }
     case 'activationResult':
       return buildActivationResultStory(event, context);
+    case 'deathSaveRolled': {
+      if (event.kind !== EventKind.DEATH_SAVE_ROLLED) return undefined;
+      const save = event.body.value;
+      const actor = memberName(save.actor, context);
+      const shared = {
+        ...base,
+        eyebrow: `${actor} · Death Save`,
+      };
+      switch (save.outcome) {
+        case DeathSaveOutcome.SUCCESS:
+          return Object.freeze({
+            ...shared,
+            headline: `Death save! ${save.successes} successes — ${save.successesNeeded} to stabilize.`,
+            detail: `${actor} holds on. ${save.failures} failures · ${save.failuresRemaining} remaining.`,
+            tone: 'success',
+          });
+        case DeathSaveOutcome.FAILURE:
+          return Object.freeze({
+            ...shared,
+            headline: `Failure. ${save.failures} down — ${save.failuresRemaining} remaining.`,
+            detail: `${save.successes} successes · ${save.successesNeeded} to stabilize.`,
+            tone: 'danger',
+          });
+        case DeathSaveOutcome.CRITICAL_FAILURE:
+          return Object.freeze({
+            ...shared,
+            headline: 'Natural 1. Two failures.',
+            detail: `${save.failures} down · ${save.failuresRemaining} remaining.`,
+            tone: 'danger',
+          });
+        case DeathSaveOutcome.RECOVERED:
+          return Object.freeze({
+            ...shared,
+            headline: `Natural 20! Back on your feet with ${save.hpRestored} HP.`,
+            detail: `${actor} is conscious.`,
+            tone: 'success',
+          });
+        case DeathSaveOutcome.STABILIZED:
+          return Object.freeze({
+            ...shared,
+            headline: `${save.successes} successes — stabilized.`,
+            detail: `${actor} is stable.`,
+            tone: 'success',
+          });
+        case DeathSaveOutcome.DEAD:
+          return Object.freeze({
+            ...shared,
+            headline: `${save.failures} failures — dead.`,
+            detail: `${actor} has died.`,
+            tone: 'danger',
+          });
+        case DeathSaveOutcome.UNSPECIFIED:
+          return undefined;
+      }
+      return undefined;
+    }
     case 'struck':
     case 'missed':
     case 'doorRevealed':

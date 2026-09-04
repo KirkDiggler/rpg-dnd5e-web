@@ -157,6 +157,27 @@ describe('selectCombatExperience', () => {
     ).toEqual({ declaration: deathSave, candidate: null, whyText: null });
   });
 
+  it('fails closed on a malformed Death Save identity or target shape', () => {
+    const missingIdentity = declaration('selector.missing', {
+      verb: Verb.DEATH_SAVE,
+      slot: Slot.NONE,
+      targetKind: TargetKind.NONE,
+    });
+    const targeted = declaration('selector.targeted', {
+      verb: Verb.DEATH_SAVE,
+      slot: Slot.NONE,
+      targetKind: TargetKind.MEMBER,
+      deathSave: create(DeathSaveRefSchema, { name: 'Death Save' }),
+    });
+
+    expect(
+      selectCombatExperience([missingIdentity], state('selector.missing'))
+    ).toBeNull();
+    expect(
+      selectCombatExperience([targeted], state('selector.targeted'))
+    ).toBeNull();
+  });
+
   it('returns null when the selected opaque id is no longer offered', () => {
     expect(
       selectCombatExperience([declaration('v1.current')], state('v1.stale'))
