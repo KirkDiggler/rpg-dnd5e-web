@@ -31,6 +31,7 @@ import { CreationBoard } from './creation/CreationBoard';
 import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
+  addIntel,
   addRegion,
   addWall,
   applyDerivedConcealment,
@@ -48,11 +49,14 @@ import {
   parseDungeon,
   placeAt,
   removeExit,
+  removeIntel,
   removePlacement,
   removeRegion,
   removeWalls,
   resolveErrorTargets,
   sceneryBlockedBy,
+  setIntelHolders,
+  setIntelReveals,
   setScenarioBinding,
   setStart,
   setWallHeights,
@@ -62,6 +66,7 @@ import {
   updateDoor,
   updateDungeon,
   updateExit,
+  updateIntel,
   updatePlacement,
   updateRegion,
   type DungeonDoc,
@@ -724,6 +729,18 @@ export function DungeonBuilder({
           }}
           armed={armed}
           onArm={setArmed}
+          selectedIntelId={selection.kind === 'intel' ? selection.id : null}
+          onAddIntel={() => {
+            applyDoc((d) => {
+              const next = addIntel(d);
+              setSelection({
+                kind: 'intel',
+                id: next.intel[next.intel.length - 1].id,
+              });
+              return next;
+            });
+          }}
+          onSelectIntel={(id) => setSelection({ kind: 'intel', id })}
         />
       </div>
 
@@ -864,6 +881,23 @@ export function DungeonBuilder({
               onBindScenario={(scenarioId, key, value) =>
                 applyDoc((d) => setScenarioBinding(d, scenarioId, key, value))
               }
+              onIntel={(id, patch) => {
+                applyDoc((d) => updateIntel(d, id, patch));
+                if (patch.id !== undefined) {
+                  setSelection({ kind: 'intel', id: patch.id });
+                }
+              }}
+              onIntelReveals={(id, key, value) =>
+                applyDoc((d) => setIntelReveals(d, id, key, value))
+              }
+              onIntelHolders={(id, holders) =>
+                applyDoc((d) => setIntelHolders(d, id, holders))
+              }
+              onRemoveIntel={(id) => {
+                applyDoc((d) => removeIntel(d, id));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onSelect={setSelection}
               scenarios={scenarios}
               errors={errors}
             />

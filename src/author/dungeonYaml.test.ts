@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addIntel,
   addRegion,
   addWall,
   applyDerivedConcealment,
@@ -10,9 +11,11 @@ import {
   emptyDungeon,
   eraseCell,
   floorOwners,
+  intelHolders,
   isFloor,
   isScenery,
   isStandable,
+  KNOWS_IS_GONE,
   paintCell,
   paintRect,
   paintScenery,
@@ -20,9 +23,12 @@ import {
   placeAt,
   placementIds,
   regionWays,
+  removeIntel,
   removeWalls,
   resolveErrorPath,
   sceneryBlockedBy,
+  setIntelHolders,
+  setIntelReveals,
   setScenarioBinding,
   setStart,
   setWallHeights,
@@ -1456,42 +1462,187 @@ describe('placement id (rpg-project#368 P2)', () => {
   });
 });
 
-describe('knows — monsters only (rpg-project#368 P1)', () => {
-  it('writes the door ids and round-trips', () => {
-    const doc = updatePlacement(twoPlacements(), 1, { knows: ['vault'] });
+describe('holds — intel record ids, monsters only (rpg-project#372 §2)', () => {
+  it('writes the record ids and round-trips', () => {
+    const doc = updatePlacement(twoPlacements(), 1, { holds: ['vault-map'] });
     const bytes = roundTrips(doc);
-    expect(bytes).toContain('knows: [vault]');
-    expect(parseDungeon(bytes).place[1].knows).toEqual(['vault']);
+    expect(bytes).toContain('holds: [vault-map]');
+    expect(parseDungeon(bytes).place[1].holds).toEqual(['vault-map']);
+  });
+
+  it('carries several records on one monster', () => {
+    const doc = updatePlacement(twoPlacements(), 1, {
+      holds: ['vault-map', 'the-password'],
+    });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('holds: [vault-map, the-password]');
   });
 
   it('is refused on a prop, on the write path as well as the panel', () => {
     // `updatePlacement` is not the only way a patch reaches a placement,
     // so the props-hold-nothing rule lives on the mutator, not in the UI.
-    const doc = updatePlacement(twoPlacements(), 0, { knows: ['vault'] });
-    expect(doc.place[0].knows).toBeUndefined();
-    expect(emitDungeon(doc)).not.toContain('knows:');
+    const doc = updatePlacement(twoPlacements(), 0, { holds: ['vault-map'] });
+    expect(doc.place[0].holds).toBeUndefined();
+    expect(emitDungeon(doc)).not.toContain('holds:');
   });
 
   it('clears the field rather than writing an empty list', () => {
-    let doc = updatePlacement(twoPlacements(), 1, { knows: ['vault'] });
-    doc = updatePlacement(doc, 1, { knows: [] });
-    expect(doc.place[1].knows).toBeUndefined();
-    expect(emitDungeon(doc)).not.toContain('knows:');
+    let doc = updatePlacement(twoPlacements(), 1, { holds: ['vault-map'] });
+    doc = updatePlacement(doc, 1, { holds: [] });
+    expect(doc.place[1].holds).toBeUndefined();
+    expect(emitDungeon(doc)).not.toContain('holds:');
   });
 
   it('still carries an authored empty list read off a file, unchanged', () => {
-    // NIL, NOT LEN 0. A file that says `knows: []` means a monster whose
-    // knowledge was authored as none — this module represents it rather
+    // NIL, NOT LEN 0. A file that says `holds: []` means a monster whose
+    // holdings were authored as none — this module represents it rather
     // than silently reading it as absent, so what the author wrote is what
     // the server judges.
     const bytes = emitDungeon(twoPlacements()).replace(
       'ref: "dnd5e:monsters:skeleton-captain", at: [1,0]',
-      'ref: "dnd5e:monsters:skeleton-captain", at: [1,0], knows: []'
+      'ref: "dnd5e:monsters:skeleton-captain", at: [1,0], holds: []'
     );
-    expect(parseDungeon(bytes).place[1].knows).toEqual([]);
+    expect(parseDungeon(bytes).place[1].holds).toEqual([]);
   });
 });
 
+describe('`knows:` is gone, and refused by name (rpg-project#372 R1)', () => {
+  const withKnows = () =>
+    emitDungeon(twoPlacements()).replace(
+      'ref: "dnd5e:monsters:skeleton-captain", at: [1,0]',
+      'ref: "dnd5e:monsters:skeleton-captain", at: [1,0], knows: [vault]'
+    );
+
+  it('refuses the deleted field in the compiler’s own words', () => {
+    // A refusal a streamer meets twice — once on load here, once from the
+    // server — must read the same both times, or the two look like two
+    // different problems.
+    expect(() => parseDungeon(withKnows())).toThrow(KNOWS_IS_GONE);
+  });
+
+  it('names the line it is on, and points at the replacement', () => {
+    expect(() => parseDungeon(withKnows())).toThrow(/place\[1\]\.knows/);
+    expect(() => parseDungeon(withKnows())).toThrow(/intel/);
+    expect(() => parseDungeon(withKnows())).toThrow(/holds/);
+  });
+
+  it('refuses BEFORE the unknown-key complaint, so the author gets the sentence that explains it', () => {
+    // Without the early refusal this file would fail with `unknown key
+    // "knows"`, which says the loader failed to learn a field rather than
+    // that the field was deleted.
+    expect(() => parseDungeon(withKnows())).not.toThrow(/unknown key/);
+  });
+
+  it('leaves a file that never mentioned it alone', () => {
+    expect(() => parseDungeon(emitDungeon(twoPlacements()))).not.toThrow();
+  });
+});
+
+describe('intel records (rpg-project#372 §2)', () => {
+  it('is absent from the bytes until a record is declared', () => {
+    expect(roundTrips(twoPlacements())).not.toContain('intel:');
+  });
+
+  it('writes a record and round-trips', () => {
+    let doc = addIntel(twoPlacements());
+    doc = setIntelReveals(doc, 'intel-1', 'door', 'vault');
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain(
+      'intel:\n  - id: intel-1\n    reveals: { door: vault }\n'
+    );
+    expect(parseDungeon(bytes).intel).toEqual([
+      { id: 'intel-1', reveals: { door: 'vault' } },
+    ]);
+  });
+
+  it('round-trips a record that reveals nothing yet', () => {
+    // The state a brand new record is in before its target is picked. The
+    // compiler refuses to compile it; the file can still hold it, so the
+    // author is not forced to finish in one go.
+    const doc = addIntel(twoPlacements());
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('    reveals: {}');
+    expect(parseDungeon(bytes).intel).toEqual([{ id: 'intel-1', reveals: {} }]);
+  });
+
+  it('carries a reveals key this build has never heard of', () => {
+    // `reveals` is opaque on purpose: the set of targets grows one key per
+    // use case, and a file written against a newer rulebook survives a
+    // round trip here rather than losing what it said.
+    const bytes = emitDungeon(twoPlacements()).replace(
+      /\n$/,
+      '\nintel:\n  - id: treasure\n    reveals: { region: vault, hoard: chest }\n'
+    );
+    const doc = parseDungeon(bytes);
+    expect(doc.intel[0].reveals).toEqual({ region: 'vault', hoard: 'chest' });
+    // Keys SORTED on the way out, so the bytes do not record which target
+    // the author happened to pick first.
+    expect(roundTrips(doc)).toContain(
+      'reveals: { hoard: chest, region: vault }'
+    );
+  });
+
+  it('numbers a suggested id around one already taken', () => {
+    let doc = addIntel(twoPlacements());
+    doc = addIntel(doc);
+    expect(doc.intel.map((r) => r.id)).toEqual(['intel-1', 'intel-2']);
+  });
+
+  it('clears a target on an empty value rather than writing an empty string', () => {
+    let doc = addIntel(twoPlacements());
+    doc = setIntelReveals(doc, 'intel-1', 'door', 'vault');
+    doc = setIntelReveals(doc, 'intel-1', 'door', '');
+    expect(doc.intel[0].reveals).toEqual({});
+  });
+});
+
+describe('assigning a record to monsters (rpg-project#372 R2)', () => {
+  const named = () => {
+    let doc = addIntel(twoPlacements());
+    doc = setIntelReveals(doc, 'intel-1', 'door', 'vault');
+    return updatePlacement(doc, 1, { id: 'captain' });
+  };
+
+  it('writes `holds` on the monster the record was given to', () => {
+    const doc = setIntelHolders(named(), 'intel-1', ['captain']);
+    expect(doc.place[1].holds).toEqual(['intel-1']);
+    expect(intelHolders(doc, 'intel-1')).toEqual(['captain']);
+  });
+
+  it('takes it back when the holder is unticked', () => {
+    let doc = setIntelHolders(named(), 'intel-1', ['captain']);
+    doc = setIntelHolders(doc, 'intel-1', []);
+    expect(doc.place[1].holds).toBeUndefined();
+    expect(emitDungeon(doc)).not.toContain('holds:');
+  });
+
+  it('never writes `holds` on a prop, whatever it is asked', () => {
+    let doc = named();
+    doc = updatePlacement(doc, 0, { id: 'heirloom' });
+    doc = setIntelHolders(doc, 'intel-1', ['heirloom', 'captain']);
+    expect(doc.place[0].holds).toBeUndefined();
+    expect(doc.place[1].holds).toEqual(['intel-1']);
+  });
+
+  it('leaves a monster’s OTHER records alone', () => {
+    let doc = addIntel(named());
+    doc = setIntelHolders(doc, 'intel-1', ['captain']);
+    doc = setIntelHolders(doc, 'intel-2', ['captain']);
+    expect(doc.place[1].holds).toEqual(['intel-1', 'intel-2']);
+    doc = setIntelHolders(doc, 'intel-1', []);
+    expect(doc.place[1].holds).toEqual(['intel-2']);
+  });
+
+  it('deleting a record takes it out of every monster holding it', () => {
+    // A `holds:` naming a record the file does not declare is refused by
+    // the compiler, and deleting is not a way to author that.
+    let doc = setIntelHolders(named(), 'intel-1', ['captain']);
+    doc = removeIntel(doc, 'intel-1');
+    expect(doc.intel).toEqual([]);
+    expect(doc.place[1].holds).toBeUndefined();
+    expect(roundTrips(doc)).not.toContain('holds:');
+  });
+});
 describe('holdable — props only (rpg-project#368 §5)', () => {
   it('is written only when true, and round-trips', () => {
     const doc = updatePlacement(twoPlacements(), 0, { holdable: true });

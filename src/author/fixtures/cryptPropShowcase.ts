@@ -109,5 +109,6 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
     // emits exactly the bytes it always did.
     exits: [],
     scenarios: {},
+    intel: [],
   };
 }

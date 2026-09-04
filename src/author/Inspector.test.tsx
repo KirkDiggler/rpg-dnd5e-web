@@ -2,10 +2,13 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConcealmentDerivation, WallDoc } from './dungeonYaml';
 import {
+  addIntel,
   emptyDungeon,
   paintCell,
   paintScenery,
   placeAt,
+  setIntelHolders,
+  setIntelReveals,
   toggleExitAt,
   updateExit,
   updatePlacement,
@@ -95,6 +98,11 @@ function mountPlacement(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onIntel={noop}
+      onIntelReveals={noop}
+      onIntelHolders={noop}
+      onRemoveIntel={noop}
+      onSelect={noop}
     />
   );
 }
@@ -233,6 +241,11 @@ function mountWall(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onIntel={noop}
+      onIntelReveals={noop}
+      onIntelHolders={noop}
+      onRemoveIntel={noop}
+      onSelect={noop}
     />
   );
 }
@@ -380,6 +393,11 @@ function mountDoor(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onIntel={noop}
+      onIntelReveals={noop}
+      onIntelHolders={noop}
+      onRemoveIntel={noop}
+      onSelect={noop}
     />
   );
 }
@@ -538,6 +556,11 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onBindScenario={noop}
         scenarios={NO_SCENARIOS}
         errors={[]}
+        onIntel={noop}
+        onIntelReveals={noop}
+        onIntelHolders={noop}
+        onRemoveIntel={noop}
+        onSelect={noop}
       />
     );
     expect(screen.getByText(/floor cells/).textContent).toContain(
@@ -567,6 +590,11 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onBindScenario={noop}
         scenarios={NO_SCENARIOS}
         errors={[]}
+        onIntel={noop}
+        onIntelReveals={noop}
+        onIntelHolders={noop}
+        onRemoveIntel={noop}
+        onSelect={noop}
       />
     );
     expect(screen.getByText(/floor cells/).textContent).toContain(
@@ -611,6 +639,11 @@ function mountAt(
     onPlacement: (index: number, patch: Record<string, unknown>) => void;
     onExit: (index: number, patch: Record<string, unknown>) => void;
     onRemoveExit: (index: number) => void;
+    onSelect: (selection: unknown) => void;
+    onIntel: (id: string, patch: Record<string, unknown>) => void;
+    onIntelReveals: (id: string, key: string, value: string) => void;
+    onIntelHolders: (id: string, holders: readonly string[]) => void;
+    onRemoveIntel: (id: string) => void;
   }> = {}
 ) {
   return render(
@@ -633,6 +666,11 @@ function mountAt(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onIntel={overrides.onIntel ?? noop}
+      onIntelReveals={overrides.onIntelReveals ?? noop}
+      onIntelHolders={overrides.onIntelHolders ?? noop}
+      onRemoveIntel={overrides.onRemoveIntel ?? noop}
+      onSelect={overrides.onSelect ?? noop}
     />
   );
 }
@@ -680,40 +718,61 @@ describe('the placement id — offered, renamed, and refused on a collision', ()
   });
 });
 
-describe('knows — a multi-pick over this dungeon’s doors, monsters only', () => {
-  it('lists every door by id and marks the concealed ones', () => {
-    mountAt(heirloomDoc(), { kind: 'placement', index: 1 });
-    expect(screen.getByTestId('knows-vault')).toBeTruthy();
-    expect(screen.getByTestId('knows-front')).toBeTruthy();
-    // The concealed one is marked beside its own box — that is the door
-    // worth knowing, and the panel says which without refusing the others.
-    expect(
-      screen.getByTestId('knows-vault').parentElement?.textContent
-    ).toContain('concealed');
-    expect(
-      screen.getByTestId('knows-front').parentElement?.textContent
-    ).not.toContain('concealed');
-  });
-
-  it('writes the picked door ids in the document’s own door order', () => {
-    const onPlacement = vi.fn();
-    mountAt(heirloomDoc(), { kind: 'placement', index: 1 }, { onPlacement });
-    fireEvent.click(screen.getByTestId('knows-front'));
-    expect(onPlacement).toHaveBeenLastCalledWith(1, { knows: ['front'] });
-  });
-
-  it('unticking the last box clears the field rather than writing an empty list', () => {
+describe('the monster shows what it holds, READ ONLY (rpg-project#372 §5)', () => {
+  function withRecord(): DungeonDoc {
     let doc = heirloomDoc();
-    doc = updatePlacement(doc, 1, { knows: ['vault'] });
-    const onPlacement = vi.fn();
-    mountAt(doc, { kind: 'placement', index: 1 }, { onPlacement });
-    fireEvent.click(screen.getByTestId('knows-vault'));
-    expect(onPlacement).toHaveBeenLastCalledWith(1, { knows: [] });
+    doc = { ...doc, intel: [{ id: 'vault-map', reveals: { door: 'vault' } }] };
+    return setIntelHolders(doc, 'vault-map', ['captain']);
+  }
+
+  it('lists the records this monster carries and links back to each', () => {
+    const onSelect = vi.fn();
+    let doc = withRecord();
+    doc = updatePlacement(doc, 1, { id: 'captain' });
+    doc = setIntelHolders(doc, 'vault-map', ['captain']);
+    mountAt(doc, { kind: 'placement', index: 1 }, { onSelect });
+    fireEvent.click(screen.getByTestId('holds-vault-map'));
+    // The monster is not where intel is edited — the link goes to the
+    // record's own form, which is where assignment lives (design R2).
+    expect(onSelect).toHaveBeenCalledWith({ kind: 'intel', id: 'vault-map' });
   });
 
-  it('is NOT offered on a prop — a prop holds nothing to know', () => {
+  it('offers NO WAY TO EDIT the holding from here', () => {
+    let doc = withRecord();
+    doc = updatePlacement(doc, 1, { id: 'captain' });
+    doc = setIntelHolders(doc, 'vault-map', ['captain']);
+    mountAt(doc, { kind: 'placement', index: 1 });
+    const readout = screen.getByTestId('holds-readout');
+    // No checkbox, no text box: the mirror of a fact, not a second place
+    // to write it.
+    expect(readout.querySelectorAll('input')).toHaveLength(0);
+  });
+
+  it('says so plainly when the monster carries nothing', () => {
+    mountAt(heirloomDoc(), { kind: 'placement', index: 1 });
+    expect(screen.getByTestId('holds-readout').textContent).toContain(
+      'nothing'
+    );
+  });
+
+  it('names a record the file no longer declares, and does not link to it', () => {
+    let doc = heirloomDoc();
+    doc = updatePlacement(doc, 1, { holds: ['ghost-record'] });
+    mountAt(doc, { kind: 'placement', index: 1 });
+    const link = screen.getByTestId('holds-ghost-record') as HTMLButtonElement;
+    expect(link.disabled).toBe(true);
+    expect(link.textContent).toContain('no such record');
+  });
+
+  it('is NOT offered on a prop — a prop holds nothing', () => {
     mountAt(heirloomDoc(), { kind: 'placement', index: 0 });
+    expect(screen.queryByTestId('holds-readout')).toBeNull();
+  });
+
+  it('has no `knows` control anywhere — the field is gone (R1)', () => {
+    mountAt(heirloomDoc(), { kind: 'placement', index: 1 });
     expect(screen.queryByTestId('knows-control')).toBeNull();
+    expect(screen.queryByTestId('knows-vault')).toBeNull();
   });
 });
 
@@ -808,5 +867,146 @@ describe('the way-out panel', () => {
   it('counts the ways out on the dungeon panel', () => {
     mountAt(withExits(), { kind: 'dungeon' });
     expect(screen.getByText(/ways out/).textContent).toContain('2 ways out');
+  });
+});
+
+describe('the intel panel — the form that assigns intel (rpg-project#372 §5)', () => {
+  /** A dungeon with two named monsters, three doors and one record. */
+  function withIntel(): DungeonDoc {
+    let doc = heirloomDoc();
+    doc = updatePlacement(doc, 1, { id: 'captain' });
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(2, 0) });
+    doc = updatePlacement(doc, 2, { id: 'guard' });
+    doc = addIntel(doc);
+    return setIntelReveals(doc, 'intel-1', 'door', 'vault');
+  }
+
+  it('renames a record, and refuses a name another one already has', () => {
+    const onIntel = vi.fn();
+    let doc = withIntel();
+    doc = addIntel(doc);
+    mountAt(doc, { kind: 'intel', id: 'intel-1' }, { onIntel });
+    fireEvent.change(screen.getByTestId('intel-id'), {
+      target: { value: 'vault-map' },
+    });
+    expect(onIntel).toHaveBeenCalledWith('intel-1', { id: 'vault-map' });
+
+    onIntel.mockClear();
+    fireEvent.change(screen.getByTestId('intel-id'), {
+      target: { value: 'intel-2' },
+    });
+    expect(onIntel).not.toHaveBeenCalled();
+    expect(screen.getByTestId('intel-id-refusal').textContent).toContain(
+      'intel-2'
+    );
+  });
+
+  it('refuses a blank name, and points at the remove button', () => {
+    // A record's id is what a monster's `holds` points at, so a nameless
+    // one is intel nothing can carry.
+    const onIntel = vi.fn();
+    mountAt(withIntel(), { kind: 'intel', id: 'intel-1' }, { onIntel });
+    fireEvent.change(screen.getByTestId('intel-id'), { target: { value: '' } });
+    expect(onIntel).not.toHaveBeenCalled();
+    expect(screen.getByTestId('intel-id-refusal').textContent).toContain(
+      'remove record'
+    );
+  });
+
+  it('reveals is the dungeon’s own doors, and marks the concealed one', () => {
+    mountAt(withIntel(), { kind: 'intel', id: 'intel-1' });
+    const select = screen.getByTestId(
+      'intel-reveals-door'
+    ) as HTMLSelectElement;
+    expect([...select.options].map((o) => o.value)).toEqual([
+      '',
+      'vault',
+      'front',
+    ]);
+    // The concealed door is the one worth knowing; the panel says which
+    // without refusing the others (an ordinary door is legal and inert).
+    expect(
+      [...select.options].find((o) => o.value === 'vault')?.textContent
+    ).toContain('concealed');
+    expect(select.value).toBe('vault');
+  });
+
+  it('binds and clears the door it reveals', () => {
+    const onIntelReveals = vi.fn();
+    mountAt(withIntel(), { kind: 'intel', id: 'intel-1' }, { onIntelReveals });
+    fireEvent.change(screen.getByTestId('intel-reveals-door'), {
+      target: { value: 'front' },
+    });
+    expect(onIntelReveals).toHaveBeenCalledWith('intel-1', 'door', 'front');
+    fireEvent.change(screen.getByTestId('intel-reveals-door'), {
+      target: { value: '' },
+    });
+    expect(onIntelReveals).toHaveBeenLastCalledWith('intel-1', 'door', '');
+  });
+
+  it('keeps showing a door the file no longer has', () => {
+    // The author deleted the door after binding. The file still says
+    // `vault`, so the form still says `vault` — reading "(nothing yet)"
+    // would hide what the file contains.
+    let doc = withIntel();
+    doc = { ...doc, doors: doc.doors.filter((d) => d.id !== 'vault') };
+    mountAt(doc, { kind: 'intel', id: 'intel-1' });
+    expect(
+      (screen.getByTestId('intel-reveals-door') as HTMLSelectElement).value
+    ).toBe('vault');
+  });
+
+  it('held by lists every NAMED monster, and no props', () => {
+    mountAt(withIntel(), { kind: 'intel', id: 'intel-1' });
+    expect(screen.getByTestId('intel-holder-captain')).toBeTruthy();
+    expect(screen.getByTestId('intel-holder-guard')).toBeTruthy();
+    // The reliquary is a prop with an id; a prop holds nothing.
+    expect(screen.queryByTestId('intel-holder-heirloom')).toBeNull();
+  });
+
+  it('assigns the record to a monster, and takes it back', () => {
+    const onIntelHolders = vi.fn();
+    const doc = setIntelHolders(withIntel(), 'intel-1', ['captain']);
+    mountAt(doc, { kind: 'intel', id: 'intel-1' }, { onIntelHolders });
+    // Already held by the captain…
+    expect(
+      (screen.getByTestId('intel-holder-captain') as HTMLInputElement).checked
+    ).toBe(true);
+    // …and a second monster may carry the same record: intel copies.
+    fireEvent.click(screen.getByTestId('intel-holder-guard'));
+    expect(onIntelHolders).toHaveBeenLastCalledWith('intel-1', [
+      'captain',
+      'guard',
+    ]);
+    fireEvent.click(screen.getByTestId('intel-holder-captain'));
+    expect(onIntelHolders).toHaveBeenLastCalledWith('intel-1', []);
+  });
+
+  it('says what to do when no monster has an id yet', () => {
+    let doc = heirloomDoc();
+    doc = addIntel(doc);
+    mountAt(doc, { kind: 'intel', id: 'intel-1' });
+    expect(screen.getByTestId('intel-held-by').textContent).toContain(
+      'no monster in this dungeon has an id yet'
+    );
+  });
+
+  it('says what to do when the dungeon has no doors', () => {
+    let doc = emptyDungeon();
+    doc = addIntel(doc);
+    mountAt(doc, { kind: 'intel', id: 'intel-1' });
+    expect(screen.getByTestId('intel-no-doors')).toBeTruthy();
+  });
+
+  it('falls back to the dungeon panel for a record that is gone', () => {
+    mountAt(withIntel(), { kind: 'intel', id: 'no-such-record' });
+    expect(screen.getByTestId('dungeon-panel')).toBeTruthy();
+  });
+
+  it('removes a record', () => {
+    const onRemoveIntel = vi.fn();
+    mountAt(withIntel(), { kind: 'intel', id: 'intel-1' }, { onRemoveIntel });
+    fireEvent.click(screen.getByTestId('intel-remove'));
+    expect(onRemoveIntel).toHaveBeenCalledWith('intel-1');
   });
 });

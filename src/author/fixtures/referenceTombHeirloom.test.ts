@@ -16,7 +16,7 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
   // and the first assertion below is a tightly-packed row that would not
   // survive a formatting pass.
   //
-  // Read off the toolkit file at commit 3fe79d25. Changing one of these
+  // Read off the toolkit file at commit 7c7c54c2. Changing one of these
   // means the toolkit changed and this copy has to be re-taken, which is
   // exactly the conversation this test exists to force.
   it('carries the toolkit fixture’s own text, byte for byte', () => {
@@ -33,7 +33,10 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
       'scenarios:\n  recover-the-artifact:\n    artifact: heirloom\n    exit: entrance\n'
     );
     expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
-      '  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,\n      knows: [vault] }\n'
+      '  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,\n      holds: [vault-map] }\n'
+    );
+    expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
+      'intel:\n  - id: vault-map\n    reveals: { door: vault }\n'
     );
     expect(REFERENCE_TOMB_HEIRLOOM_YAML).toContain(
       '      blocks_movement: false, blocks_los: false, holdable: true }\n'
@@ -47,7 +50,15 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
       'recover-the-artifact': { artifact: 'heirloom', exit: 'entrance' },
     });
     const captain = doc.place.find((p) => p.id === 'captain');
-    expect(captain?.knows).toEqual(['vault']);
+    // KNOWLEDGE IS A RECORD NOW (rpg-project#372 R1): the captain holds
+    // the vault map, and the map is what says which door it opens. That
+    // indirection is the whole tool — the same record could later be
+    // carried by a second guard or reveal something that is not a door,
+    // and none of it touches this line.
+    expect(captain?.holds).toEqual(['vault-map']);
+    expect(doc.intel).toEqual([
+      { id: 'vault-map', reveals: { door: 'vault' } },
+    ]);
     // NO BOSS FLAG. This dungeon ends because a scenario says so (design
     // R8) — a boss flag here would end the run when the captain fell,
     // before anybody could loot the way in, and the whole path-2 win
@@ -73,7 +84,8 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
     expect(plain.scenarios).toEqual({});
     expect(plain.place.every((p) => p.id === undefined)).toBe(true);
     expect(plain.place.every((p) => p.holdable === undefined)).toBe(true);
-    expect(plain.place.every((p) => p.knows === undefined)).toBe(true);
+    expect(plain.place.every((p) => p.holds === undefined)).toBe(true);
+    expect(plain.intel).toEqual([]);
     // And the bytes it emits are unchanged: every new field is written
     // only when it has a value, which is what keeps this true.
     const bytes = emitDungeon(plain);
@@ -84,6 +96,7 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
     // are written as block maps.
     expect(bytes).not.toContain('- { id:');
     expect(bytes).not.toContain('holdable:');
-    expect(bytes).not.toContain('knows:');
+    expect(bytes).not.toContain('holds:');
+    expect(bytes).not.toContain('intel:');
   });
 });

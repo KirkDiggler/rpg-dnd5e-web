@@ -19,14 +19,17 @@ import {
   addRegion,
   emitDungeon,
   emptyDungeon,
+  intelHolders,
   paintCell,
   paintScenery,
+  parseDungeon,
   placeAt,
   setStart,
   updateDoor,
 } from './dungeonYaml';
 import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
 import { referenceTombDoc } from './fixtures/referenceTomb';
+import { referenceTombHeirloomDoc } from './fixtures/referenceTombHeirloom';
 import {
   cellPositions,
   latticeOf,
@@ -732,6 +735,105 @@ describe('DungeonBuilder — the scenery brush refuses rather than deletes', () 
     fireEvent.pointerUp(document.querySelector('svg')!);
     await waitFor(() =>
       expect(cell(2, 0).getAttribute('data-scenery')).toBe('true')
+    );
+  });
+});
+
+describe('the intel record, end to end through the builder (rpg-project#372)', () => {
+  /** The heirloom tomb has a named captain and a concealed vault door —
+   * everything a record needs something to point at. */
+  const heirloomYaml = () => emitDungeon(referenceTombHeirloomDoc());
+
+  function renderBuilder() {
+    return render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={heirloomYaml()}
+        persistDraft={false}
+      />
+    );
+  }
+
+  it('lists the record the file already declares', () => {
+    // The heirloom tomb authors `vault-map` — the panel is where it is
+    // read and changed, not a second place it is described.
+    renderBuilder();
+    expect(screen.getByTestId('intel-vault-map')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('intel-vault-map'));
+    expect((screen.getByTestId('intel-id') as HTMLInputElement).value).toBe(
+      'vault-map'
+    );
+    expect(
+      (screen.getByTestId('intel-reveals-door') as HTMLSelectElement).value
+    ).toBe('vault');
+    expect(
+      (screen.getByTestId('intel-holder-captain') as HTMLInputElement).checked
+    ).toBe(true);
+  });
+
+  it('creates a record from the palette and opens its form', () => {
+    renderBuilder();
+    fireEvent.click(screen.getByTestId('new-intel'));
+    // The list beside Regions gets the record, and the inspector opens on
+    // it — the two halves design §5 asks for. The suggested id numbers
+    // around the one the file already has.
+    expect(screen.getByTestId('intel-intel-2')).toBeTruthy();
+    expect(screen.getByTestId('intel-panel')).toBeTruthy();
+    expect((screen.getByTestId('intel-id') as HTMLInputElement).value).toBe(
+      'intel-2'
+    );
+  });
+
+  it('writes intel: and holds: into the file the server will read', async () => {
+    // THE WHOLE TOOL, in one path: declare a record, point it at the
+    // concealed door, hand it to the captain, and read the bytes back out
+    // of the pane that gets sent.
+    renderBuilder();
+    fireEvent.click(screen.getByTestId('new-intel'));
+    fireEvent.change(screen.getByTestId('intel-id'), {
+      target: { value: 'the-password' },
+    });
+    fireEvent.change(screen.getByTestId('intel-reveals-door'), {
+      target: { value: 'hall-tomb' },
+    });
+    fireEvent.click(screen.getByTestId('intel-holder-captain'));
+
+    // The TEXTAREA, not the pane: the pane's textContent also carries the
+    // toolbar and the status line, which is not a document.
+    const yaml = (screen.getByTestId('yaml-text') as HTMLTextAreaElement).value;
+    expect(yaml).toContain('- id: the-password');
+    expect(yaml).toContain('reveals: { door: hall-tomb }');
+    // The captain now carries BOTH — intel copies, and a monster may hold
+    // more than one record.
+    expect(yaml).toContain('holds: [vault-map, the-password]');
+
+    const doc = parseDungeon(yaml);
+    expect(doc.intel).toEqual([
+      { id: 'vault-map', reveals: { door: 'vault' } },
+      { id: 'the-password', reveals: { door: 'hall-tomb' } },
+    ]);
+    expect(intelHolders(doc, 'the-password')).toEqual(['captain']);
+  });
+
+  it('shows the assignment on the monster, read only, and links back', async () => {
+    renderBuilder();
+    // Select the captain on the board: its panel mirrors the holding the
+    // file already declares, and offers no way to edit it.
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }));
+    fireEvent.pointerDown(
+      document.querySelector(
+        `[data-cell="${axialKey(fromOffset('pointy', [23, 5]))}"]`
+      )!,
+      { button: 0 }
+    );
+    const readout = screen.getByTestId('holds-readout');
+    expect(readout.querySelectorAll('input')).toHaveLength(0);
+    // The link goes back to the record's own form, which is where intel
+    // is edited (design R2).
+    fireEvent.click(screen.getByTestId('holds-vault-map'));
+    expect(screen.getByTestId('intel-panel')).toBeTruthy();
+    expect((screen.getByTestId('intel-id') as HTMLInputElement).value).toBe(
+      'vault-map'
     );
   });
 });
