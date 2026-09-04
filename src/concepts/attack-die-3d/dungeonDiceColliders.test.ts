@@ -7,6 +7,7 @@ import {
 } from './dungeonDiceColliders';
 
 const scene: Scene3D = {
+  exits: [],
   floorTiles: new Map([
     ['0,0,0', { x: 0, y: 0, z: 0, roomId: '' }],
     ['1,-1,0', { x: 1, y: -1, z: 0, roomId: '' }],

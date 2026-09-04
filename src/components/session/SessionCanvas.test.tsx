@@ -273,6 +273,7 @@ function scene(): Scene3D {
     },
   ];
   return {
+    exits: [],
     floorTiles: floorTiles([0, 0, 0], [1, -1, 0], [1, 0, -1]),
     props: [],
     archetypes: [],

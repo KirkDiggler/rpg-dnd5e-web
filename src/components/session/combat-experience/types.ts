@@ -167,6 +167,15 @@ interface CombatExperienceBaseProps {
    * R9 needs a departure from anywhere to be possible.
    */
   leaveExitId?: string;
+  /**
+   * What the viewer is carrying, as placement ids — so the button can name
+   * the COST of leaving from the wrong cell before the click, not after
+   * (Kirk's walk, 2026-09-04: he dropped the heirloom and found out
+   * afterwards). Empty means nothing to drop, and the button says nothing
+   * about dropping; a client that joined after the pickup also shows
+   * nothing, which under-claims rather than lying.
+   */
+  leaveHolding?: readonly string[];
   /** Explicit Concepts diagnostic surface; allowed independently of DEV. */
   diagnosticsEnabled?: boolean;
 }

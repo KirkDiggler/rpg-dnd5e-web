@@ -74,6 +74,7 @@ import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
 import { MoveIndicator } from './MoveIndicator';
+import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { useMoveIndicator } from './useMoveIndicator';
 
@@ -501,6 +502,11 @@ export function SessionScene({
         doors={doors}
         onDoorClick={onDoorClick}
       />
+      {/* THE WAYS OUT, MARKED FROM THE START (Kirk's walk, 2026-09-04:
+          he dropped the heirloom leaving from the wrong cell because the
+          map never said where the exit was). Drawing only — Leave stays
+          offered wherever the member stands. */}
+      <SessionExitMarkers exits={scene.exits} hexSize={hexSize} />
       {/* Invisible ground plane for hit detection — HexGrid.tsx's own
           convention, unchanged. */}
       <mesh

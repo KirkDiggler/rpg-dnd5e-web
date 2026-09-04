@@ -644,6 +644,45 @@ describe('Loot, Hold and Leave on the action surface (rpg-project#368)', () => {
     expect(onLeave).toHaveBeenCalledOnce();
   });
 
+  it('names what leaving would DROP, before the click', () => {
+    // The walk finding (Kirk, 2026-09-04): he left one cell short of the
+    // entrance and learned the price afterwards. Away from a way out and
+    // carrying something, the button says what it costs.
+    render(
+      <CombatExperience
+        {...propsFor(fresh, { onLeave: vi.fn(), leaveHolding: ['heirloom'] })}
+      />
+    );
+    expect(screen.getByTestId('session-combat-leave-button').textContent).toBe(
+      '🚪Leave (drops the heirloom)'
+    );
+  });
+
+  it('threatens no drop when the viewer is carrying nothing', () => {
+    // There is no price to warn about, and a button that claims one is a
+    // worse lie than one that stays quiet.
+    render(<CombatExperience {...propsFor(fresh, { onLeave: vi.fn() })} />);
+    expect(screen.getByTestId('session-combat-leave-button').textContent).toBe(
+      '🚪Leave'
+    );
+  });
+
+  it('names the way out rather than the drop when standing on one', () => {
+    // On an exit there is no drop: the holding goes out with them.
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          onLeave: vi.fn(),
+          leaveExitId: 'entrance',
+          leaveHolding: ['heirloom'],
+        })}
+      />
+    );
+    expect(screen.getByTestId('session-combat-leave-button').textContent).toBe(
+      '🚪Leave through the entrance'
+    );
+  });
+
   it('names the way out when the viewer is standing on one', () => {
     render(
       <CombatExperience
