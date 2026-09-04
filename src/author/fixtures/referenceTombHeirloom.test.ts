@@ -16,7 +16,7 @@ describe('the heirloom tomb is the toolkit’s own file', () => {
   // and the first assertion below is a tightly-packed row that would not
   // survive a formatting pass.
   //
-  // Read off the toolkit file at commit c687853f. Changing one of these
+  // Read off the toolkit file at `encounter/intel-record` 8fb11951. Changing one of these
   // means the toolkit changed and this copy has to be re-taken, which is
   // exactly the conversation this test exists to force.
   it('carries the toolkit fixture’s own text, byte for byte', () => {
