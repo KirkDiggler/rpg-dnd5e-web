@@ -5,7 +5,10 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { propLabel } from '../holdingAffordances';
-import { authoredWords as exitWords } from '../holdingBeat';
+import {
+  authoredWords as exitWords,
+  holdingPhrase as holdingWords,
+} from '../holdingBeat';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
@@ -167,6 +170,7 @@ export function CombatExperience({
   onLeave,
   leavePending = false,
   leaveExitId,
+  leaveHolding = [],
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
@@ -506,13 +510,29 @@ export function CombatExperience({
               <span aria-hidden="true">🚪</span>
               {leavePending
                 ? 'Leaving…'
-                : leaveExitId
-                  ? `Leave through the ${exitWords(leaveExitId)}`
-                  : 'Leave'}
+                : leaveLabel(leaveExitId, leaveHolding)}
             </button>
           )}
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * What the Leave button says, and it says the COST before the click.
+ *
+ * On an authored way out it names the way out. Away from one, carrying
+ * something, it names what leaving would drop — that is design R9's price,
+ * and the walk that asked for this line is a carrier who paid it without
+ * being told. Carrying nothing there is no price, so the button says
+ * nothing about one.
+ */
+function leaveLabel(
+  exitId: string | undefined,
+  holding: readonly string[]
+): string {
+  if (exitId) return `Leave through the ${exitWords(exitId)}`;
+  if (holding.length === 0) return 'Leave';
+  return `Leave (drops ${holdingWords(holding)})`;
 }

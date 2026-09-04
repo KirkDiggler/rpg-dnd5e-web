@@ -87,6 +87,7 @@ function scene(): Scene3D {
     },
   ];
   return {
+    exits: [],
     floorTiles,
     props: [],
     archetypes: ['crypt'],

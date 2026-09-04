@@ -137,9 +137,30 @@ export function propWorldPosition(
   };
 }
 
+/** One authored way out, ready to draw: the author's id and the cell it
+ * stands on (rpg-project#368 §3.1). */
+export interface SceneExit3D {
+  id: string;
+  position: CubeCoord;
+}
+
 export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
   props: SceneProp3D[];
+  /**
+   * The ways out, drawn from the start.
+   *
+   * KIRK'S WALK FOUND THIS MISSING (2026-09-04): he searched out the
+   * vault, held the heirloom, hit Leave on the wrong cell and dropped it.
+   * R9 worked exactly as designed — and the map had never told him where
+   * the way out was. An exit the party cannot see is a rule they can only
+   * learn by losing to it.
+   *
+   * Empty for every dungeon authored before slice 2, and for an atlas from
+   * a server older than the field: no marker, and the route behaves as it
+   * always did.
+   */
+  exits: SceneExit3D[];
   archetypes: readonly string[];
   lighting: DungeonLightingFacts;
   wallRuns: AuthoredWallRun[];
@@ -203,11 +224,36 @@ export function resolveSceneLayout(
  * only (rpg-dnd5e-web#763); asking for `flat` throws by name rather than
  * drawing the rotated picture ADR-0040 warns about.
  */
+/**
+ * The ways out, as scene facts. A tiny derivation, exported so it can be
+ * tested without a WebGL canvas — the same split every other pure selector
+ * on this route keeps.
+ *
+ * An exit with no cell is DROPPED rather than drawn at the origin: a
+ * marker in the wrong place is worse than no marker, which is the whole
+ * lesson of the walk that asked for this.
+ *
+ * `atlas.exits ?? []` for `atlasToScene3D`'s standing reason: a server or
+ * a client-side schema older than the field hands back a message with it
+ * absent, not empty, and a bare read is `undefined`.
+ */
+export function sceneExits(
+  atlas: Partial<Pick<GetAtlasResponse, 'exits'>>
+): SceneExit3D[] {
+  const exits: SceneExit3D[] = [];
+  for (const exit of atlas.exits ?? []) {
+    if (!exit.at) continue;
+    exits.push({ id: exit.id, position: positionToCube(exit.at) });
+  }
+  return exits;
+}
+
 export function buildScene3D(
   atlas: Pick<
     GetAtlasResponse,
     'cells' | 'props' | 'segments' | 'doorways' | 'regions'
-  >,
+  > &
+    Partial<Pick<GetAtlasResponse, 'exits'>>,
   hexSize: number,
   layout: HexLayout
 ): Scene3D {
@@ -283,5 +329,13 @@ export function buildScene3D(
   );
   const { wallRuns, doorGaps } = segmentsToWallRuns(atlas, hexSize);
 
-  return { floorTiles, props, archetypes, lighting, wallRuns, doorGaps };
+  return {
+    floorTiles,
+    props,
+    archetypes,
+    lighting,
+    wallRuns,
+    doorGaps,
+    exits: sceneExits(atlas),
+  };
 }
