@@ -14,7 +14,7 @@
     "sessionId": "5b6f0db9-31de-4d88-bfd3-094fc6845181"
   },
   "sourceHeads": {
-    "webCodeHead": "b12c331c5aa744eef986c96e89b1b440c6c6bac7",
+    "webCodeHead": "db8c5b8ad23ea8299b1488f5fe7f87197397a6a0",
     "api": "11039830e45cffc9ecfb11aafbd961f6d80e79e9",
     "assetProvider": "91ddbdfd88db1eccc465616671d7f1f427f5056e",
     "protoGenerated": "883dd221a6cdf724df8d5d993d897e0c8a3358ab",
@@ -127,7 +127,7 @@
   "verification": {
     "command": "RPG_REQUIRE_SYNCED_CUSTOMIZATION_ASSETS=1 npm run ci-check",
     "result": "passed",
-    "verifiedAt": "2026-09-04T12:11:27+09:00",
+    "verifiedAt": "2026-09-04T12:40:01+09:00",
     "httpOrApplicationFailures": 0,
     "shaderOrProgramErrors": 0,
     "note": "Development StrictMode canceled obsolete streams during the separate session capture; those expected AbortError/ERR_ABORTED cancellations are not HTTP, application, shader, or program failures."
