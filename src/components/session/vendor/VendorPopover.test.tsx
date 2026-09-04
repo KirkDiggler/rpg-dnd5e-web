@@ -91,4 +91,147 @@ describe('VendorPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close vendor' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  describe('Buy flow', () => {
+    it('shows a Buy button for every row', () => {
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          onBuy={vi.fn()}
+        />
+      );
+      expect(
+        screen.getByRole('button', { name: 'Buy Longsword' })
+      ).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Buy Longbow' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Buy Arrows' })).toBeTruthy();
+    });
+
+    it('clicking Buy shows an inline confirm instead of calling onBuy immediately', () => {
+      const onBuy = vi.fn();
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          onBuy={onBuy}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      expect(onBuy).not.toHaveBeenCalled();
+      expect(
+        screen.getByTestId('vendor-buy-confirm-longsword').textContent
+      ).toContain('Buy Longsword?');
+    });
+
+    it('Confirm calls onBuy with the exact row entry and clears the pending state', () => {
+      const onBuy = vi.fn();
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          onBuy={onBuy}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Longsword' })
+      );
+      expect(onBuy).toHaveBeenCalledOnce();
+      expect(onBuy).toHaveBeenCalledWith(INVENTORY[0]);
+      expect(screen.queryByTestId('vendor-buy-confirm-longsword')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Buy Longsword' })
+      ).toBeTruthy();
+    });
+
+    it('Cancel dismisses the confirm without calling onBuy', () => {
+      const onBuy = vi.fn();
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          onBuy={onBuy}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel buy' }));
+      expect(onBuy).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('vendor-buy-confirm-longsword')).toBeNull();
+    });
+
+    it('only one row is pending confirm at a time', () => {
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          onBuy={vi.fn()}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longbow' }));
+      expect(screen.queryByTestId('vendor-buy-confirm-longsword')).toBeNull();
+      expect(
+        screen.getByTestId('vendor-buy-confirm-longbow').textContent
+      ).toContain('Buy Longbow?');
+    });
+
+    it('disables Buy for a LIMITED row that has hit zero', () => {
+      const exhausted: VendorStockEntry[] = [
+        {
+          equipmentType: 'weapon',
+          equipmentId: 'longsword',
+          displayName: 'Longsword',
+          stockMode: VendorStockMode.LIMITED,
+          quantity: 0,
+        } as unknown as VendorStockEntry,
+      ];
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={exhausted}
+          onClose={vi.fn()}
+          onBuy={vi.fn()}
+        />
+      );
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Buy Longsword',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+    });
+
+    it('disables Buy/Confirm/Cancel while busy', () => {
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          onBuy={vi.fn()}
+          busy
+        />
+      );
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Buy Longsword',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+    });
+  });
 });
