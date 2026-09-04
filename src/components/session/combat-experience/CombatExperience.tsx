@@ -5,7 +5,10 @@ import {
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { propLabel } from '../holdingAffordances';
-import { authoredWords as exitWords } from '../holdingBeat';
+import {
+  authoredWords as exitWords,
+  holdingPhrase as holdingWords,
+} from '../holdingBeat';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
@@ -167,6 +170,7 @@ export function CombatExperience({
   onLeave,
   leavePending = false,
   leaveExitId,
+  leaveHolding = [],
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
@@ -506,13 +510,49 @@ export function CombatExperience({
               <span aria-hidden="true">🚪</span>
               {leavePending
                 ? 'Leaving…'
-                : leaveExitId
-                  ? `Leave through the ${exitWords(leaveExitId)}`
-                  : 'Leave'}
+                : leaveLabel(leaveExitId, leaveHolding)}
             </button>
           )}
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * What the Leave button says.
+ *
+ * # It never claims a departure is free
+ *
+ * Away from every authored way out, the drop is CERTAIN — no exit at all
+ * is the scenario's bound exit — so the button names what it costs. That
+ * is design R9's price, and the walk that asked for this line is a carrier
+ * who paid it without being told.
+ *
+ * ON an authored way out it says what is true and no more: which way out,
+ * and what is being carried through it. IT DOES NOT SAY THE HOLDING IS
+ * SAFE, because this client cannot know that. `GetAtlasResponse.exits` is
+ * every authored exit — structure, not scenario — and nothing on the wire
+ * says which one the scenario BOUND. A dungeon with two ways out, bound to
+ * one, would otherwise read "Leave through the sally port" with no warning
+ * and drop the artifact anyway: Kirk's walk again, with the button now
+ * actively reassuring him. A label that omits a cost is survivable; one
+ * that implies its absence is not.
+ *
+ * Carrying nothing, there is no cost either way and the button says
+ * nothing about one.
+ */
+function leaveLabel(
+  exitId: string | undefined,
+  holding: readonly string[]
+): string {
+  // The PHRASE, not the count: an id that renders to nothing (`-`) would
+  // otherwise produce "Leave (drops )". `holdingPhrase` documents exactly
+  // this distinction for exactly this kind of caller.
+  const carried = holdingWords(holding);
+  if (exitId) {
+    const through = `Leave through the ${exitWords(exitId)}`;
+    return carried ? `${through} with ${carried}` : through;
+  }
+  return carried ? `Leave (drops ${carried})` : 'Leave';
 }
