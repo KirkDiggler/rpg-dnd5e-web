@@ -57,7 +57,11 @@ export interface HexEntityProps {
   entityId: string;
   name: string;
   position: CubeCoord;
-  type: 'player' | 'monster' | 'obstacle';
+  /** 'npc' is a placed, non-combatant MEMBER_KIND_WORLD member (e.g. a
+   * vendor) — renders through the same MediumHumanoid placeholder branch
+   * as 'player' (neutral 'human' variant, unarmed), never the 'monster'
+   * path's goblin fallback or class/race/weapon resolution. */
+  type: 'player' | 'monster' | 'obstacle' | 'npc';
   hexSize: number;
   isSelected?: boolean;
   onClick?: (entityId: string) => void;
@@ -168,6 +172,10 @@ const COLORS = {
   obstacle: {
     default: '#805ad5', // purple
     selected: '#b794f4', // brighter purple
+  },
+  npc: {
+    default: '#d69e2e', // gold
+    selected: '#f6d55c', // brighter gold
   },
 };
 
@@ -477,8 +485,12 @@ export function HexEntity({
           },
         };
 
-  // Use character model for players and monsters
-  if (type === 'player' || type === 'monster') {
+  // Use character model for players, monsters, and world NPCs. 'npc' takes
+  // this branch purely to reach the shared MediumHumanoid placeholder below
+  // (neither resolvePlayerCharacterModel nor resolveMonsterModelUrl fire for
+  // it, since both remain gated on their own exact type check) — it never
+  // resolves a class or monster GLB of its own.
+  if (type === 'player' || type === 'monster' || type === 'npc') {
     const characterClass = character?.class;
     const characterRace = character?.race;
     const monsterType = monster?.monsterType;

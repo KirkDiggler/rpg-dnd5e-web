@@ -16,6 +16,7 @@ import { useEquipItem } from '@/api/useEquipItem';
 import { useSessionAfford } from '@/api/useSessionAfford';
 import { useSessionAtlas } from '@/api/useSessionAtlas';
 import { useSessionDoors } from '@/api/useSessionDoors';
+import { useSessionInteract } from '@/api/useSessionInteract';
 import { useSessionRoster } from '@/api/useSessionRoster';
 import { useSessionSearch } from '@/api/useSessionSearch';
 import { useSessionTurn } from '@/api/useSessionTurn';
@@ -31,6 +32,7 @@ import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import type { WorldNPCDescriptor } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
   DoorState,
@@ -44,14 +46,14 @@ import { createPortal } from 'react-dom';
 import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent } from '../game/equipment/equipmentTypes';
-import { cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
+import { coordToKey, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
 import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
-import { buildAtlasPathIndex } from './atlasPath';
+import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
   buildScene3D,
@@ -97,6 +99,7 @@ import {
   useSessionEventStream,
 } from './useSessionEventStream';
 import { useSessionWalk } from './useSessionWalk';
+import { VendorPopover } from './vendor/VendorPopover';
 
 export interface SessionEncounterViewProps {
   sessionId: string;
@@ -212,10 +215,16 @@ function SessionEncounterScope({
 
   const { equipItem, loading: equipping } = useEquipItem();
   const { unequipItem, loading: unequipping } = useUnequipItem();
+  const { interact } = useSessionInteract();
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  const [activeVendor, setActiveVendor] = useState<{
+    subject: string;
+    descriptor: WorldNPCDescriptor;
+  } | null>(null);
+  const [vendorNotice, setVendorNotice] = useState<string | null>(null);
   const encounterContentRef = useRef<HTMLDivElement>(null);
   const leaveRunButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -261,11 +270,6 @@ function SessionEncounterScope({
         : null,
     [atlas, layoutOutcome]
   );
-  const pathIndex = useMemo(
-    () => (atlas ? buildAtlasPathIndex(atlas, doors) : null),
-    [atlas, doors]
-  );
-
   // Once owner-private CharacterData has been confirmed it remains valid
   // presentation input while a background refresh is loading or reports a
   // transient status error. Neither condition may freeze newer public door /
@@ -276,11 +280,10 @@ function SessionEncounterScope({
   const lastGoodPositionRef = useRef<ReturnType<typeof positionToCube> | null>(
     null
   );
-  const lastGoodPathIndexRef = useRef<typeof pathIndex>(null);
+  const lastGoodPathIndexRef = useRef<AtlasPathIndex | null>(null);
   if (canDrawSceneNow) {
     lastGoodSceneRef.current = scene;
     lastGoodPositionRef.current = positionToCube(wherePosition);
-    lastGoodPathIndexRef.current = pathIndex;
   }
   const canDrawScene =
     lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
@@ -345,6 +348,33 @@ function SessionEncounterScope({
     () => sightingsToEntities(sightings, member),
     [member, sightings]
   );
+
+  // The path PREVIEW must route around exactly what the server's own Move
+  // already refuses to enter — a live other member's cell, world NPC,
+  // monster, or player alike (the vendor is only what made the gap
+  // visible: it is the first entity that sits permanently in open floor).
+  // A `remembered` sighting is filtered out here, not left for
+  // `buildAtlasPathIndex` to guess: it is a held memory, not confirmed
+  // still there, and must never block a route the way a live one does —
+  // the same distinction `SightedMember.remembered`'s own doc comment
+  // already draws for rendering.
+  const occupiedCellKeys = useMemo(
+    () =>
+      new Set(
+        otherMembers
+          .filter((m) => !m.remembered)
+          .map((m) => coordToKey(m.position))
+      ),
+    [otherMembers]
+  );
+  const pathIndex = useMemo(
+    () => (atlas ? buildAtlasPathIndex(atlas, doors, occupiedCellKeys) : null),
+    [atlas, doors, occupiedCellKeys]
+  );
+  if (canDrawSceneNow) {
+    lastGoodPathIndexRef.current = pathIndex;
+  }
+
   const publicMemberNames = useMemo(
     () => new Map([...roster].map(([id, entry]) => [id, entry.name])),
     [roster]
@@ -1031,6 +1061,37 @@ function SessionEncounterScope({
     [doors, member, scheduleRefresh, sessionId]
   );
 
+  // Vendor NPC interaction (rpg-api#903 Phase 1, SessionService.Interact).
+  // No client-side reach/adjacency check — same law every other session
+  // verb keeps; an out-of-range click surfaces the server's own refusal as
+  // `vendorNotice` rather than being pre-empted here.
+  const handleVendorInteract = useCallback(
+    (subject: string) => {
+      if (!member) return;
+      setVendorNotice(null);
+      // Clear any already-open vendor before firing — a failed or
+      // descriptor-less response for THIS click must never leave a
+      // PREVIOUS vendor's stale popover on screen (Copilot review, PR #920).
+      setActiveVendor(null);
+      void (async () => {
+        try {
+          const response = await interact({
+            session: sessionId,
+            actor: member,
+            target: subject,
+          });
+          if (response.descriptor) {
+            setEquipmentOpen(false);
+            setActiveVendor({ subject, descriptor: response.descriptor });
+          }
+        } catch (error) {
+          setVendorNotice(errorMessage(error));
+        }
+      })();
+    },
+    [interact, member, sessionId]
+  );
+
   // THE SECRECY LAW, ENFORCED HERE (rpg-project#350/#886): SearchResponse
   // carries no outcome, so this handler never reads `response` at all —
   // only whether the call itself resolved or threw. A find or a fruitless
@@ -1235,6 +1296,9 @@ function SessionEncounterScope({
                 roster={roster}
                 doors={doors}
                 onDoorClick={runEnded === null ? handleDoorClick : undefined}
+                onInteractClick={
+                  runEnded === null ? handleVendorInteract : undefined
+                }
                 myPosition={displayPosition ?? lastGoodPositionRef.current!}
                 movePath={movePath}
                 moveSeq={moveSeq}
@@ -1259,7 +1323,12 @@ function SessionEncounterScope({
             onLogModeChange={combat.onLogModeChange}
             onOpenEquipment={
               characterData
-                ? () => setEquipmentOpen((open) => !open)
+                ? () => {
+                    // Both popovers anchor to the exact same corner
+                    // (`.equip-popover`'s own CSS) — only one at a time.
+                    setActiveVendor(null);
+                    setEquipmentOpen((open) => !open);
+                  }
                 : undefined
             }
             equipmentOpen={characterData ? equipmentOpen : false}
@@ -1297,6 +1366,7 @@ function SessionEncounterScope({
             )}
             {doorNotice && <span>{doorNotice}</span>}
             {searchNotice && <span>{searchNotice}</span>}
+            {vendorNotice && <span>{vendorNotice}</span>}
           </div>
 
           <div
@@ -1334,6 +1404,14 @@ function SessionEncounterScope({
                 mainHandDamage={characterData.mainHandDamage}
                 onIntent={(intent) => void handleEquipIntent(intent)}
                 busy={equipping || unequipping}
+              />
+            )}
+            {runEnded === null && activeVendor && (
+              <VendorPopover
+                open
+                displayName={activeVendor.descriptor.displayName}
+                inventory={activeVendor.descriptor.inventory}
+                onClose={() => setActiveVendor(null)}
               />
             )}
           </div>

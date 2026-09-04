@@ -17,6 +17,7 @@ import {
   HealingAppliedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import { VendorStockMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   AbilityRefSchema,
   AttackRefSchema,
@@ -94,6 +95,7 @@ const hoisted = vi.hoisted(() => ({
   openDoorFn: vi.fn(),
   unlockFn: vi.fn(),
   searchFn: vi.fn(),
+  interactFn: vi.fn(),
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
@@ -145,6 +147,7 @@ vi.mock('@/api/client', () => ({
     openDoor: hoisted.openDoorFn,
     unlock: hoisted.unlockFn,
     search: hoisted.searchFn,
+    interact: hoisted.interactFn,
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
@@ -2033,6 +2036,54 @@ describe('SessionEncounterView production combat integration', () => {
     ).toBe(DoorState.OPEN);
   });
 
+  it('a live other member occupies its cell in pathIndex — the path preview must route around it, same as a wall (PR #920 follow-up)', async () => {
+    readyScene();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'demo-merchant-1',
+          name: 'Demo Merchant',
+          kind: MemberKind.WORLD,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: ['sight'],
+        },
+      ],
+    });
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.size
+      ).toBe(1)
+    );
+    expect(
+      hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.has('1,-1,0')
+    ).toBe(true);
+  });
+
+  it('a remembered (stale-memory) sighting never blocks the path — it is not confirmed still there', async () => {
+    readyScene();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'demo-merchant-1',
+          name: 'Demo Merchant',
+          kind: MemberKind.WORLD,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: [],
+        },
+      ],
+    });
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalled());
+    expect(hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.size).toBe(
+      0
+    );
+  });
+
   it('preserves door actions and refreshes live door state', async () => {
     readyScene();
     hoisted.getDoorsFn.mockResolvedValue({
@@ -2058,6 +2109,112 @@ describe('SessionEncounterView production combat integration', () => {
       })
     );
     await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
+  });
+
+  describe('vendor interaction (rpg-api#903 Phase 1)', () => {
+    it('clicking a world NPC calls Interact and opens the vendor popover with its stock', async () => {
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'longsword',
+              displayName: 'Longsword',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 1,
+            },
+            {
+              equipmentType: 'ammunition',
+              equipmentId: 'arrows',
+              displayName: 'Arrows',
+              stockMode: VendorStockMode.UNLIMITED,
+            },
+          ],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+
+      await waitFor(() =>
+        expect(hoisted.interactFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+        })
+      );
+
+      const popover = await waitFor(() => screen.getByTestId('vendor-popover'));
+      expect(popover.textContent).toContain('Demo Merchant');
+      expect(popover.textContent).toContain('Longsword');
+      expect(popover.textContent).toContain('1 left');
+      expect(popover.textContent).toContain('Arrows');
+      expect(popover.textContent).toContain('Always in stock');
+    });
+
+    it('surfaces the server refusal as a notice and never opens the popover on failure', async () => {
+      readyScene();
+      hoisted.interactFn.mockRejectedValue(new Error('target out of range'));
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText('target out of range')).toBeTruthy()
+      );
+      expect(screen.queryByTestId('vendor-popover')).toBeNull();
+    });
+
+    it('clicking a second world NPC while one popover is open never leaves the FIRST vendor stale on a failed second click (Copilot review, PR #920)', async () => {
+      readyScene();
+      hoisted.interactFn.mockResolvedValueOnce({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: '',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      expect(screen.getByTestId('vendor-popover').textContent).toContain(
+        'Demo Merchant'
+      );
+
+      // A second click, on a DIFFERENT world NPC, fails — the first
+      // vendor's popover must not linger showing stale inventory.
+      hoisted.interactFn.mockRejectedValueOnce(new Error('too far away'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('other-npc-1');
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText('too far away')).toBeTruthy()
+      );
+      expect(screen.queryByTestId('vendor-popover')).toBeNull();
+    });
   });
 
   describe('concealed-door reveal wiring (rpg-project#886)', () => {
