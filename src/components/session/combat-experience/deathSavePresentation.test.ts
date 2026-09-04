@@ -20,6 +20,7 @@ import {
   selectCurrentPresentation,
   selectVisibleStory,
 } from './presentation';
+import { createAttackAuthorityFixture } from './presentation.test-fixtures';
 
 const response = create(DeathSaveResponseSchema, {
   seq: 27n,
@@ -59,6 +60,16 @@ const event = create(EventSchema, {
     }),
   },
 });
+function deathSaveValue(presentationId: string) {
+  if (event.body.case !== 'deathSaveRolled') {
+    throw new Error('expected Death Save event fixture');
+  }
+  return create(DeathSaveRolledSchema, {
+    ...event.body.value,
+    presentationId,
+  });
+}
+
 const metadata = { source: 'live' as const, deliveredAt: 1 } as never;
 
 function configured(viewerMember = 'fighter-1') {
@@ -71,6 +82,120 @@ function configured(viewerMember = 'fighter-1') {
 }
 
 describe('shared Death Save d20 presentation', () => {
+  it('accepts provider dot/tilde presentation tokens for the physical request path', () => {
+    const dotted = create(DeathSaveResponseSchema, {
+      ...response,
+      presentationId: 'presentation.death-save~v1',
+    });
+    const state = reduceCombatPresentation(
+      configured(),
+      deathSaveResponseFact({
+        session: 'crypt-run',
+        member: 'fighter-1',
+        response: dotted,
+      })
+    );
+
+    expect(selectCurrentPresentation(state)?.request).toMatchObject({
+      presentationId: 'presentation.death-save~v1',
+      authoritySeq: 27n,
+    });
+    expect(selectCurrentPresentation(state)?.semanticFallback).toBe(false);
+  });
+
+  it.each([
+    'presentation/death-save',
+    'presentation\u0000death-save',
+    'p'.repeat(129),
+  ])(
+    'routes unsafe provider token %j to semantic fallback without early reveal',
+    (presentationId) => {
+      const unsafeResponse = create(DeathSaveResponseSchema, {
+        ...response,
+        presentationId,
+      });
+      const unsafeEvent = create(EventSchema, {
+        session: 'crypt-run',
+        seq: 109n,
+        kind: EventKind.DEATH_SAVE_ROLLED,
+        body: {
+          case: 'deathSaveRolled',
+          value: deathSaveValue(presentationId),
+        },
+      });
+      let state = reduceCombatPresentation(
+        reduceCombatPresentation(
+          configured(),
+          deathSaveResponseFact({
+            session: 'crypt-run',
+            member: 'fighter-1',
+            response: unsafeResponse,
+          })
+        ),
+        { type: 'stream-event', event: unsafeEvent, metadata }
+      );
+      const pending = selectCurrentPresentation(state)!;
+
+      expect(pending.request).toBeUndefined();
+      expect(pending.semanticFallback).toBe(true);
+      expect(selectVisibleStory(state)).toEqual([]);
+
+      state = reduceCombatPresentation(state, {
+        type: 'semantic-release',
+        presentationKey: pending.key,
+      });
+      expect(selectVisibleStory(state)[0]?.headline).toBe(
+        'Death save! 2 successes — 7 to stabilize.'
+      );
+    }
+  );
+
+  it('settles the intended Death Save witness when an Attack shares its visible token', () => {
+    const attack = createAttackAuthorityFixture({
+      session: 'crypt-run',
+      seq: 23n,
+      attacker: 'fighter-1',
+    });
+    const collidingToken = 'session:crypt-run:23';
+    const collidingDeathSave = create(EventSchema, {
+      session: 'crypt-run',
+      seq: 103n,
+      kind: EventKind.DEATH_SAVE_ROLLED,
+      body: {
+        case: 'deathSaveRolled',
+        value: deathSaveValue(collidingToken),
+      },
+    });
+    let state = reduceCombatPresentation(
+      reduceCombatPresentation(configured('wizard-1'), {
+        type: 'stream-event',
+        event: attack.event,
+        metadata,
+      }),
+      { type: 'stream-event', event: collidingDeathSave, metadata }
+    );
+    const attackBefore = state.presentations.find(
+      (record) => record.authority.kind === 'attack'
+    );
+
+    state = reduceCombatPresentation(state, {
+      type: 'witness-settlement',
+      presentationId: collidingToken,
+    });
+
+    expect(
+      state.presentations.find(
+        (record) => record.authority.kind === 'death-save'
+      )?.settlement
+    ).toBe('released');
+    expect(
+      state.presentations.find((record) => record.authority.kind === 'attack')
+    ).toBe(attackBefore);
+    expect(selectVisibleStory(state).at(-1)?.headline).toBe(
+      'Death save! 2 successes — 7 to stabilize.'
+    );
+  });
+
   it('keeps opaque presentation identity separate from actor recipient-local authority sequence', () => {
     const state = reduceCombatPresentation(
       configured(),

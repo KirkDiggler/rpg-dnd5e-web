@@ -531,7 +531,7 @@ function createRequest(
   const presentationId = authority.presentationId;
   const role = state.rollerRoles[authority.roller];
   if (
-    !presentationId ||
+    !isDicePresentationIdentifier(presentationId) ||
     !role ||
     !isDicePresentationIdentifier(authority.roller) ||
     !Number.isInteger(authority.roll) ||
@@ -1326,13 +1326,14 @@ function acceptWitnessSettlement(
   fact: WitnessDiceSettlementFact
 ): CombatPresentationState {
   const index = state.presentations.findIndex(
-    (record) => record.presentationId === fact.presentationId
+    (record) =>
+      record.presentationId === fact.presentationId &&
+      record.authority.kind === 'death-save'
   );
   const current = state.presentations[index];
   if (
     !current ||
     current.conflicted ||
-    current.authority.kind !== 'death-save' ||
     current.localPlayerOwned ||
     current.settlement !== 'armed' ||
     !current.request
