@@ -22,6 +22,7 @@ import { useSessionLeave } from '@/api/useSessionLeave';
 import { useSessionLoot } from '@/api/useSessionLoot';
 import { useSessionRoster } from '@/api/useSessionRoster';
 import { useSessionSearch } from '@/api/useSessionSearch';
+import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
 import { useSessionView } from '@/api/useSessionView';
 import { useSessionWhere } from '@/api/useSessionWhere';
@@ -35,7 +36,10 @@ import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
-import type { WorldNPCDescriptor } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type {
+  VendorStockEntry,
+  WorldNPCDescriptor,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type { AtlasProp } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   ClockKind,
@@ -220,6 +224,7 @@ function SessionEncounterScope({
   const { equipItem, loading: equipping } = useEquipItem();
   const { unequipItem, loading: unequipping } = useUnequipItem();
   const { interact } = useSessionInteract();
+  const { trade, loading: tradeLoading } = useSessionTrade();
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
@@ -1174,6 +1179,49 @@ function SessionEncounterScope({
     [interact, member, sessionId]
   );
 
+  // Vendor purchase (rpg-project#369/#370, SessionService.Trade). One
+  // item per click, quantity read off the row itself (LIMITED rows carry
+  // a real count; UNLIMITED rows default to 1 — see vendorStock.ts's own
+  // `quantity ?? 0` convention for the same reason). `give` is always
+  // empty this wave — one-directional acquisition only.
+  const handleVendorBuy = useCallback(
+    (entry: VendorStockEntry) => {
+      if (!member || !activeVendor) return;
+      setVendorNotice(null);
+      void (async () => {
+        try {
+          const response = await trade({
+            session: sessionId,
+            actor: member,
+            target: activeVendor.subject,
+            equipmentType: entry.equipmentType,
+            equipmentId: entry.equipmentId,
+            quantity: entry.quantity ?? 1,
+          });
+          if (response.descriptor) {
+            setActiveVendor({
+              subject: activeVendor.subject,
+              descriptor: response.descriptor,
+            });
+            setVendorNotice(`Bought ${entry.displayName}.`);
+            // Unlike EquipItem/UnequipItem, TradeResponse carries the
+            // VENDOR's descriptor, not the buyer's CharacterData — there
+            // is nothing here to replaceCharacterData from. Without this,
+            // the bought item wouldn't reach the equipment panel until
+            // some unrelated stream event (e.g. turnEnded) happened to
+            // include 'characterData' in its own refresh set — a real
+            // gap caught live: free-roam vendor purchases have no turn
+            // boundary to piggyback on at all.
+            void refetchCharacterData();
+          }
+        } catch (error) {
+          setVendorNotice(errorMessage(error));
+        }
+      })();
+    },
+    [activeVendor, member, refetchCharacterData, sessionId, trade]
+  );
+
   // THE SECRECY LAW, ENFORCED HERE (rpg-project#350/#886): SearchResponse
   // carries no outcome, so this handler never reads `response` at all —
   // only whether the call itself resolved or threw. A find or a fruitless
@@ -1590,6 +1638,8 @@ function SessionEncounterScope({
                 displayName={activeVendor.descriptor.displayName}
                 inventory={activeVendor.descriptor.inventory}
                 onClose={() => setActiveVendor(null)}
+                onBuy={(entry: VendorStockEntry) => handleVendorBuy(entry)}
+                busy={tradeLoading}
               />
             )}
           </div>
