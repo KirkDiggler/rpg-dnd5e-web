@@ -1127,11 +1127,16 @@ function SessionEncounterScope({
   // Vendor purchase (rpg-project#369/#370, SessionService.Trade). One
   // item per click, quantity read off the row itself (LIMITED rows carry
   // a real count; UNLIMITED rows default to 1 — see vendorStock.ts's own
-  // `quantity ?? 0` convention for the same reason). `give` is always
-  // empty this wave — one-directional acquisition only.
+  // `quantity ?? 0` convention for the same reason). `give.items` is
+  // always empty this wave — one-directional acquisition only — but
+  // `give.currency` carries the row's own server-computed price
+  // (rpg-toolkit#1534). `entry.price` is already required for the Buy
+  // button to be enabled (vendorStockPurchasable), so the extra guard
+  // below is defense in depth, not new UI.
   const handleVendorBuy = useCallback(
     (entry: VendorStockEntry) => {
-      if (!member || !activeVendor) return;
+      const price = entry.price;
+      if (!member || !activeVendor || !price) return;
       setVendorNotice(null);
       void (async () => {
         try {
@@ -1142,6 +1147,7 @@ function SessionEncounterScope({
             equipmentType: entry.equipmentType,
             equipmentId: entry.equipmentId,
             quantity: entry.quantity ?? 1,
+            price,
           });
           if (response.descriptor) {
             setActiveVendor({
@@ -1589,6 +1595,7 @@ function SessionEncounterScope({
                 mainHandDamage={characterData.mainHandDamage}
                 onIntent={(intent) => void handleEquipIntent(intent)}
                 busy={equipping || unequipping}
+                walletCopper={characterData.wallet?.copper}
               />
             )}
             {runEnded === null && activeVendor && (
@@ -1599,6 +1606,7 @@ function SessionEncounterScope({
                 onClose={() => setActiveVendor(null)}
                 onBuy={(entry: VendorStockEntry) => handleVendorBuy(entry)}
                 busy={tradeLoading}
+                walletCopper={characterData?.wallet?.copper}
               />
             )}
           </div>

@@ -203,6 +203,7 @@ function privateCharacterData(overrides: Record<string, unknown> = {}) {
     features: [],
     conditions: [],
     resources: [],
+    wallet: { copper: 4523 },
     ...overrides,
   };
 }
@@ -3004,12 +3005,14 @@ describe('SessionEncounterView production combat integration', () => {
               displayName: 'Longsword',
               stockMode: VendorStockMode.LIMITED,
               quantity: 1,
+              price: { copper: 1500 },
             },
             {
               equipmentType: 'ammunition',
               equipmentId: 'arrows',
               displayName: 'Arrows',
               stockMode: VendorStockMode.UNLIMITED,
+              price: { copper: 100 },
             },
           ],
         },
@@ -3035,8 +3038,15 @@ describe('SessionEncounterView production combat integration', () => {
       expect(popover.textContent).toContain('Demo Merchant');
       expect(popover.textContent).toContain('Longsword');
       expect(popover.textContent).toContain('1 left');
+      expect(popover.textContent).toContain('1 pp 5 gp');
       expect(popover.textContent).toContain('Arrows');
       expect(popover.textContent).toContain('Always in stock');
+      // The player's own wallet (privateCharacterData()'s default) reaches
+      // the vendor popover header, sourced from the same characterData
+      // this view already fetches — not a second RPC.
+      expect(screen.getByTestId('vendor-wallet').textContent).toContain(
+        '4 pp 5 gp 2 sp 3 cp'
+      );
     });
 
     it('surfaces the server refusal as a notice and never opens the popover on failure', async () => {
@@ -3114,6 +3124,7 @@ describe('SessionEncounterView production combat integration', () => {
               displayName: 'Longsword',
               stockMode: VendorStockMode.LIMITED,
               quantity: 1,
+              price: { copper: 1500 },
             },
           ],
         },
@@ -3143,6 +3154,7 @@ describe('SessionEncounterView production combat integration', () => {
               displayName: 'Longsword',
               stockMode: VendorStockMode.LIMITED,
               quantity: 0,
+              price: { copper: 1500 },
             },
           ],
         },
@@ -3160,7 +3172,7 @@ describe('SessionEncounterView production combat integration', () => {
           actor: 'char-1',
           target: 'demo-merchant-1',
           range: 0,
-          give: { items: [] },
+          give: { items: [], currency: { copper: 1500 } },
           receive: {
             items: [
               {

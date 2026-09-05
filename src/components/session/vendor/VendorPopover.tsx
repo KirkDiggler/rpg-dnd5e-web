@@ -1,8 +1,8 @@
 /**
  * VendorPopover — the merchant screen for a MEMBER_KIND_WORLD vendor NPC
  * (rpg-api SessionService.Interact, rpg-api#903 Phase 1; Buy wired to
- * SessionService.Trade, rpg-project#369/#370). No price/wallet UI yet —
- * `VendorStockEntry` carries no price field on the wire yet.
+ * SessionService.Trade, rpg-project#369/#370; price/wallet,
+ * rpg-toolkit#1534 wave 4).
  *
  * Deliberately reuses `EquipmentPopover`/`InventoryLight`'s exact
  * `.equip-popover`/`.equip-inventory`/`.equip-inv-row` classes (same
@@ -19,7 +19,12 @@ import type { VendorStockEntry } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 import { getItemIconUrl } from '../../../utils/itemIcons';
-import { vendorStockLabel, vendorStockPurchasable } from './vendorStock';
+import { formatMoney } from '../../../utils/money';
+import {
+  vendorStockLabel,
+  vendorStockPriceLabel,
+  vendorStockPurchasable,
+} from './vendorStock';
 
 export interface VendorPopoverProps {
   open: boolean;
@@ -33,6 +38,12 @@ export interface VendorPopoverProps {
    * so a second click can't race the first (mirrors EquipmentSlots'
    * own `busy` convention). */
   busy?: boolean;
+  /** The player's own wallet, in copper (`CharacterData.wallet.copper`).
+   * Undefined while characterData hasn't loaded yet — renders no wallet
+   * line rather than claiming "0 cp". Informational only: Buy stays
+   * enabled even if this is short of a row's price, since affordability
+   * is the server's call (`ErrInsufficientFunds`), not this popover's. */
+  walletCopper?: number;
 }
 
 export function VendorPopover({
@@ -42,6 +53,7 @@ export function VendorPopover({
   onClose,
   onBuy,
   busy,
+  walletCopper,
 }: VendorPopoverProps) {
   const reduced = useReducedMotion();
   // Which row is asking "Buy {name}?" right now — cleared on confirm,
@@ -66,6 +78,11 @@ export function VendorPopover({
         >
           <div className="equip-popover-header">
             {displayName}
+            {walletCopper !== undefined && (
+              <span className="equip-popover-stats" data-testid="vendor-wallet">
+                You have: {formatMoney(walletCopper)}
+              </span>
+            )}
             <button
               type="button"
               className="verb-btn"
@@ -113,7 +130,7 @@ export function VendorPopover({
                         {entry.displayName}
                       </span>
                       <span className="equip-inv-stat">
-                        {entry.equipmentType}
+                        {entry.equipmentType} · {vendorStockPriceLabel(entry)}
                       </span>
                       <span className="equip-inv-slot">
                         {vendorStockLabel(entry)}
@@ -130,7 +147,8 @@ export function VendorPopover({
                         data-testid={`vendor-buy-confirm-${entry.equipmentId}`}
                       >
                         <span style={{ flex: 1 }}>
-                          Buy {entry.displayName}?
+                          Buy {entry.displayName} for{' '}
+                          {vendorStockPriceLabel(entry)}?
                         </span>
                         <button
                           type="button"
