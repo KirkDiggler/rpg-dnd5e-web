@@ -24,7 +24,7 @@ import { referenceTombHeirloomDoc } from './referenceTombHeirloom';
  * where the letter and the exit and the start are — and nothing about the
  * file's own geometry.
  */
-describe('the raider camp is design §1’s file, step A', () => {
+describe('the raider camp is design §1’s file, step B', () => {
   it('carries the design’s own lines, on bytes prettier would change', () => {
     // A tightly-packed row — prettier would respace it, which is why the
     // fixtures are in `.prettierignore` and why this line is asserted.
@@ -44,14 +44,12 @@ describe('the raider camp is design §1’s file, step A', () => {
     expect(REFERENCE_RAIDER_CAMP_YAML).toContain(
       'scenarios:\n  hold-out: { convince: raiders }\n'
     );
-    // STEP A: no arrivals, and no reinforcement placements (the header
-    // may SAY the word; no `place[]` entry is one).
-    expect(REFERENCE_RAIDER_CAMP_YAML).not.toContain('arrives:');
-    expect(
-      referenceRaiderCampDoc().place.some((p) =>
-        (p.id ?? '').startsWith('reinforcement')
-      )
-    ).toBe(false);
+    // STEP B: the letter arrives at round 6, and three reinforcements
+    // wait on the chief's fall.
+    expect(REFERENCE_RAIDER_CAMP_YAML).toContain('arrives: { round: 6 }');
+    expect(REFERENCE_RAIDER_CAMP_YAML).toContain(
+      'faction: raiders, arrives: { down: chief }'
+    );
   });
 
   it('parses every field the slice adds', () => {
@@ -74,7 +72,21 @@ describe('the raider camp is design §1’s file, step A', () => {
     expect(scout?.faction).toBe('raiders');
     expect(letter?.holdable).toBe(true);
     expect(intelHolders(doc, 'wisemans-letter')).toEqual(['letter']);
-    expect(doc.place.every((p) => p.arrives === undefined)).toBe(true);
+    expect(letter?.arrives).toEqual({ round: 6 });
+    const reinforcements = doc.place.filter((p) =>
+      (p.id ?? '').startsWith('reinforcement')
+    );
+    expect(reinforcements.map((p) => p.id)).toEqual([
+      'reinforcement-1',
+      'reinforcement-2',
+      'reinforcement-3',
+    ]);
+    for (const r of reinforcements) {
+      expect(r.ref).toBe('dnd5e:monsters:zombie');
+      expect(r.faction).toBe('raiders');
+      expect(r.arrives).toEqual({ down: 'chief' });
+    }
+    expect(doc.endings).toEqual([]);
     expect(doc.scenarios).toEqual({ 'hold-out': { convince: 'raiders' } });
   });
 

@@ -6,16 +6,16 @@
  * "The fixture"): the GATE the party arrives at, facing the YARD where the
  * scout stands, and the captain's HUT behind the camp's one wall. The
  * raiders are skeletons led by the skeleton captain — the monsters that
- * exist (Kirk, 2026-09-05). STEP A ONLY: no `arrives` lines and no
- * reinforcements, which are step B.
+ * exist (Kirk, 2026-09-05). Step B: the letter arrives at round 6, and
+ * three zombie reinforcements wait on the chief's fall.
  *
  * THE TOOLKIT'S OWN BYTES — the precedent (`referenceTombHeirloom.ts`) is
  * one text in three places: toolkit dungeonspec testdata, rpg-api
  * `content/`, and here, so a disagreement about what the dungeon IS cannot
  * hide between them. This copy is
  * `rulebooks/dnd5e/encounter/dungeonspec/testdata/reference-raider-camp.yaml`
- * on the toolkit's `encounter/hold-out` branch at 5e193205, sha256
- * e40de5eae5ed9d3f8d171fc9ae2a144d54aaf65eaf029890583299c5ab9511de — taken
+ * on the toolkit's `encounter/hold-out` branch at baea481d, sha256
+ * b75a5226cef81cd1cb2f16789197bacffc1e8e9538ee61f4575b8da8119e3a59 — taken
  * verbatim (`git show <commit>:<path>`), never re-typed. A tag replaces the
  * branch commit in this citation once the encounter PR merges. The file is
  * in `.prettierignore` with the other fixtures, for the reason recorded
