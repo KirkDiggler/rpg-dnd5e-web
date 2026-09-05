@@ -1,10 +1,17 @@
 import type { TradeResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { Money } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
   tradeFn: vi.fn<() => Promise<TradeResponse>>(),
 }));
+
+// Test-only stand-in for a real Money message — none of these tests care
+// about `$typeName`, only that `copper` reaches the request as sent.
+function money(copper: number): Money {
+  return { copper } as unknown as Money;
+}
 
 vi.mock('./client', () => ({
   sessionClient: {
@@ -44,6 +51,7 @@ describe('useSessionTrade', () => {
         equipmentType: 'weapon',
         equipmentId: 'longsword',
         quantity: 1,
+        price: money(1500),
       });
     });
 
@@ -53,7 +61,7 @@ describe('useSessionTrade', () => {
       actor: 'char-1',
       target: 'demo-merchant-1',
       range: 0,
-      give: { items: [] },
+      give: { items: [], currency: { copper: 1500 } },
       receive: {
         items: [
           { equipmentType: 'weapon', equipmentId: 'longsword', quantity: 1 },
@@ -75,6 +83,7 @@ describe('useSessionTrade', () => {
         equipmentType: 'ammunition',
         equipmentId: 'arrows',
         quantity: 20,
+        price: money(100),
       });
     });
 
@@ -83,7 +92,7 @@ describe('useSessionTrade', () => {
       actor: 'char-1',
       target: 'demo-merchant-1',
       range: 3,
-      give: { items: [] },
+      give: { items: [], currency: { copper: 100 } },
       receive: {
         items: [
           { equipmentType: 'ammunition', equipmentId: 'arrows', quantity: 20 },
@@ -109,6 +118,7 @@ describe('useSessionTrade', () => {
         equipmentType: 'weapon',
         equipmentId: 'longsword',
         quantity: 1,
+        price: money(1500),
       });
     });
 
@@ -134,6 +144,7 @@ describe('useSessionTrade', () => {
           equipmentType: 'weapon',
           equipmentId: 'longsword',
           quantity: 1,
+          price: money(1500),
         })
       ).rejects.toThrow('longsword: out of stock');
     });
@@ -158,6 +169,7 @@ describe('useSessionTrade', () => {
           equipmentType: 'weapon',
           equipmentId: 'longsword',
           quantity: 1,
+          price: money(1500),
         })
       ).rejects.toThrow('first fail');
     });
@@ -171,6 +183,7 @@ describe('useSessionTrade', () => {
         equipmentType: 'weapon',
         equipmentId: 'longsword',
         quantity: 1,
+        price: money(1500),
       });
     });
     expect(result.current.error).toBeNull();
