@@ -11,6 +11,10 @@ export interface AtlasPropModelProps {
   orientation: 'pointy';
 }
 
+function isExactPropRef(ref: string): boolean {
+  return ref.startsWith('dnd5e:props:') && ref.split(':').length >= 4;
+}
+
 export function AtlasPropModel({ prop, hexSize }: AtlasPropModelProps) {
   const world = propWorldPosition(prop, hexSize);
   const placeholder = (
@@ -20,7 +24,7 @@ export function AtlasPropModel({ prop, hexSize }: AtlasPropModelProps) {
     </mesh>
   );
   const variant = resolvePropVariant(prop.ref);
-  if (!variant) return placeholder;
+  if (!variant) return isExactPropRef(prop.ref) ? null : placeholder;
   return (
     <Suspense fallback={placeholder}>
       <ErrorBoundary fallback={placeholder}>

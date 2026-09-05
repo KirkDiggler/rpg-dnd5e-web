@@ -142,7 +142,7 @@ export function Palette({
               <button
                 key={p.ref}
                 type="button"
-                title={`${p.ref} (${p.role})`}
+                title={`${p.ref} · ${p.label} (${p.role})`}
                 aria-pressed={on}
                 className={`dg-chip ${on ? 'dg-chip--on' : ''}`}
                 style={{ borderColor: ROLE_COLOR[p.role] }}
