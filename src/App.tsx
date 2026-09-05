@@ -20,6 +20,7 @@ import { ErrorDisplay } from './components/ui/Feedback';
 import { ConceptsView } from './concepts/ConceptsView';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
+import { isPropCalibrationRoute } from './dev/prop-calibration/route';
 import { ThumbHarness } from './dev/ThumbHarness';
 import { useDiscord } from './discord';
 import { FeelDialsDrawer } from './feel/FeelDialsDrawer';
@@ -36,6 +37,18 @@ const LazyToolkitContributorSandbox =
         )
       )
     : null;
+
+// Keep the local calibration implementation out of production builds. Vitest
+// uses "test" mode, so retain the lazy module there while the route gate still
+// requires an explicit development mode at render time.
+const LazyPropCalibrationLab =
+  import.meta.env.MODE === 'production'
+    ? null
+    : lazy(() =>
+        import('./dev/prop-calibration/PropCalibrationLab').then(
+          ({ PropCalibrationLab }) => ({ default: PropCalibrationLab })
+        )
+      );
 
 /**
  * Dev-only deep link: `?concept=<id>` opens the Concepts Lab directly and must
@@ -63,6 +76,13 @@ function AppContent() {
     () =>
       import.meta.env.MODE === 'development' &&
       !!new URLSearchParams(window.location.search).get('thumbGlb')
+  );
+  const [showPropCalibration] = useState(() =>
+    isPropCalibrationRoute(
+      import.meta.env.MODE,
+      window.location.hostname,
+      window.location.search
+    )
   );
 
   const [currentView, setCurrentView] = useState<AppView>(
@@ -269,6 +289,14 @@ function AppContent() {
       setSelectedType(null);
     }
   };
+
+  if (showPropCalibration && LazyPropCalibrationLab) {
+    return (
+      <Suspense fallback={<div>Loading prop calibration…</div>}>
+        <LazyPropCalibrationLab />
+      </Suspense>
+    );
+  }
 
   if (attackDieDevRoute.kind !== 'normal') {
     return (
