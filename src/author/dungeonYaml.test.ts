@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addDisposition,
+  addEnding,
+  addFaction,
   addIntel,
   addRegion,
   addWall,
@@ -10,22 +13,29 @@ import {
   emitDungeon,
   emptyDungeon,
   eraseCell,
+  factionMembers,
   floorOwners,
   intelHolders,
   isFloor,
   isScenery,
   isStandable,
   KNOWS_IS_GONE,
+  namedMonsters,
   paintCell,
   paintRect,
   paintScenery,
   parseDungeon,
   placeAt,
   placementIds,
+  predicateForm,
   regionWays,
+  removeDisposition,
+  removeEnding,
+  removeFaction,
   removeIntel,
   removeWalls,
   resolveErrorPath,
+  revealedFacts,
   sceneryBlockedBy,
   setIntelHolders,
   setIntelReveals,
@@ -37,8 +47,12 @@ import {
   suggestPlacementId,
   toggleDoorAt,
   toggleExitAt,
+  updateDisposition,
   updateDoor,
+  updateEnding,
   updateExit,
+  updateFaction,
+  updateIntel,
   updatePlacement,
   updateRegion,
   wallCrossingKeys,
@@ -1594,6 +1608,16 @@ describe('intel records (rpg-project#372 §2)', () => {
     expect(doc.intel.map((r) => r.id)).toEqual(['intel-1', 'intel-2']);
   });
 
+  it('a rename follows through to every `holds` naming the record (ruled 2026-09-05)', () => {
+    let doc = addIntel(twoPlacements());
+    doc = updatePlacement(doc, 1, { id: 'captain' });
+    doc = setIntelHolders(doc, 'intel-1', ['captain']);
+    doc = updateIntel(doc, 'intel-1', { id: 'vault-map' });
+    expect(doc.intel.map((r) => r.id)).toEqual(['vault-map']);
+    expect(doc.place[1].holds).toEqual(['vault-map']);
+    expect(intelHolders(doc, 'vault-map')).toEqual(['captain']);
+  });
+
   it('clears a target on an empty value rather than writing an empty string', () => {
     let doc = addIntel(twoPlacements());
     doc = setIntelReveals(doc, 'intel-1', 'door', 'vault');
@@ -1933,5 +1957,417 @@ describe('the start’s facing (rpg-project#374 design, "The walks")', () => {
       'start: yonder'
     );
     expect(() => parseDungeon(written)).toThrow(/expected \[col,row\]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Factions, dispositions and the predicate grammar (rpg-project#375 §2)
+// ---------------------------------------------------------------------------
+
+/** `twoPlacements` with the captain named, in a declared faction. */
+function withFaction(): DungeonDoc {
+  let doc = updatePlacement(twoPlacements(), 1, {
+    id: 'captain',
+    faction: 'goblins',
+  });
+  doc = addFaction(doc);
+  return updateFaction(doc, 'faction-1', { id: 'goblins', mind: 'captain' });
+}
+
+describe('factions (rpg-project#375 §2)', () => {
+  it('is absent from the bytes until a faction is declared', () => {
+    const bytes = roundTrips(twoPlacements());
+    expect(bytes).not.toContain('factions:');
+    expect(bytes).not.toContain('faction:');
+    expect(parseDungeon(bytes).factions).toEqual([]);
+  });
+
+  it('writes the design’s own line and round-trips', () => {
+    const bytes = roundTrips(withFaction());
+    expect(bytes).toContain('factions:\n  - { id: goblins, mind: captain }\n');
+    expect(parseDungeon(bytes).factions).toEqual([
+      { id: 'goblins', mind: 'captain' },
+    ]);
+  });
+
+  it('writes a faction with no mind as its id alone', () => {
+    const doc = updateFaction(withFaction(), 'goblins', { mind: '' });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('factions:\n  - { id: goblins }\n');
+    expect(parseDungeon(bytes).factions).toEqual([{ id: 'goblins' }]);
+  });
+
+  it('writes `faction:` on the monster right after its cell, and only when chosen', () => {
+    const bytes = roundTrips(withFaction());
+    expect(bytes).toContain(
+      '  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [1,0], faction: goblins }\n'
+    );
+    expect(parseDungeon(bytes).place[1].faction).toBe('goblins');
+    // The prop beside it carries none.
+    expect(parseDungeon(bytes).place[0].faction).toBeUndefined();
+  });
+
+  it('an empty faction is `monsters`, spelled by absence (R4)', () => {
+    const doc = updatePlacement(withFaction(), 1, { faction: '' });
+    expect(doc.place[1].faction).toBeUndefined();
+    expect(emitDungeon(doc)).not.toContain('faction:');
+  });
+
+  it('a prop cannot be given a faction through the write path', () => {
+    const doc = updatePlacement(twoPlacements(), 0, { faction: 'goblins' });
+    expect(doc.place[0].faction).toBeUndefined();
+  });
+
+  it('a rename follows through to members and dispositions', () => {
+    let doc = addDisposition(withFaction());
+    doc = updateDisposition(doc, 0, {
+      until: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+    });
+    doc = updateFaction(doc, 'goblins', { id: 'greenskins' });
+    expect(doc.factions).toEqual([{ id: 'greenskins', mind: 'captain' }]);
+    expect(doc.place[1].faction).toBe('greenskins');
+    expect(doc.dispositions[0].between).toEqual(['greenskins', 'party']);
+    expect(doc.dispositions[0].until).toEqual({
+      stance: { between: ['greenskins', 'party'], is: 'neutral' },
+    });
+  });
+
+  it('removing a faction sends its members back to `monsters` and drops its dispositions', () => {
+    let doc = addDisposition(withFaction());
+    doc = removeFaction(doc, 'goblins');
+    expect(doc.factions).toEqual([]);
+    expect(doc.place[1].faction).toBeUndefined();
+    expect(doc.dispositions).toEqual([]);
+    expect(roundTrips(doc)).not.toContain('faction');
+  });
+
+  it('numbers a suggested id around one already taken', () => {
+    let doc = addFaction(twoPlacements());
+    doc = addFaction(doc);
+    expect(doc.factions.map((f) => f.id)).toEqual(['faction-1', 'faction-2']);
+  });
+
+  it('a mistaken `party` declaration owns nothing: removing or renaming it leaves the party’s dispositions alone', () => {
+    // Found by the evidence capture: the author typed `party`, saw the
+    // refusal, clicked remove — and the goblins-vs-party disposition went
+    // with it, because the cascade read the reserved word as a faction.
+    let doc = addDisposition(withFaction());
+    doc = addFaction(doc);
+    doc = updateFaction(doc, 'faction-2', { id: 'party' });
+    const removed = removeFaction(doc, 'party');
+    expect(removed.factions.map((f) => f.id)).toEqual(['goblins']);
+    expect(removed.dispositions).toEqual([
+      { between: ['goblins', 'party'], stance: 'hostile' },
+    ]);
+    const renamed = updateFaction(doc, 'party', { id: 'wolves' });
+    expect(renamed.factions.map((f) => f.id)).toEqual(['goblins', 'wolves']);
+    expect(renamed.dispositions[0].between).toEqual(['goblins', 'party']);
+  });
+
+  it('the `monsters` side’s members are the monsters with NO faction key', () => {
+    const doc = withFaction();
+    // The captain fights for goblins; a second, unauthored monster is on
+    // the reserved side, and so is a declared `monsters` faction's mind.
+    const grown = placeAt(paintCell(doc, 'region-1', p(2, 0)), {
+      ref: 'dnd5e:monsters:skeleton',
+      at: p(2, 0),
+    });
+    expect(factionMembers(grown, 'monsters').map((m) => m.index)).toEqual([
+      grown.place.length - 1,
+    ]);
+    expect(factionMembers(grown, 'goblins').map((m) => m.index)).toEqual([1]);
+  });
+
+  it('lists a faction’s members, monsters only', () => {
+    let doc = withFaction();
+    // A hand-written file can put a faction on a prop; it is not a member.
+    doc = {
+      ...doc,
+      place: [{ ...doc.place[0], faction: 'goblins' }, doc.place[1]],
+    };
+    expect(factionMembers(doc, 'goblins').map((m) => m.index)).toEqual([1]);
+  });
+
+  it('refuses an unknown key on a faction', () => {
+    const bytes = emitDungeon(twoPlacements()).replace(
+      /\n$/,
+      '\nfactions:\n  - { id: goblins, leader: captain }\n'
+    );
+    expect(() => parseDungeon(bytes)).toThrow(
+      /factions\[0\]: unknown key "leader"/
+    );
+  });
+});
+
+describe('dispositions (rpg-project#375 §2)', () => {
+  it('is absent from the bytes until one is declared', () => {
+    expect(roundTrips(withFaction())).not.toContain('dispositions:');
+  });
+
+  it('a new disposition is the first faction against the party, hostile', () => {
+    const doc = addDisposition(withFaction());
+    expect(doc.dispositions).toEqual([
+      { between: ['goblins', 'party'], stance: 'hostile' },
+    ]);
+    // With no faction there is nothing to declare one about: the same
+    // document back, so the panel can disable the verb and say why.
+    const none = twoPlacements();
+    expect(addDisposition(none)).toBe(none);
+  });
+
+  it('writes the design’s own line, `until` included, and round-trips', () => {
+    let doc = addDisposition(withFaction());
+    doc = updateDisposition(doc, 0, { until: { fact: 'saved-wiseman' } });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain(
+      'dispositions:\n  - { between: [goblins, party], stance: hostile, until: { fact: saved-wiseman } }\n'
+    );
+    expect(parseDungeon(bytes).dispositions).toEqual([
+      {
+        between: ['goblins', 'party'],
+        stance: 'hostile',
+        until: { fact: 'saved-wiseman' },
+      },
+    ]);
+  });
+
+  it('keeps the pair in the author’s order rather than sorting it', () => {
+    const bytes = emitDungeon(withFaction()).replace(
+      /\n$/,
+      '\ndispositions:\n  - { between: [party, goblins], stance: allied }\n'
+    );
+    const doc = parseDungeon(bytes);
+    expect(doc.dispositions[0].between).toEqual(['party', 'goblins']);
+    expect(roundTrips(doc)).toContain(
+      'between: [party, goblins], stance: allied }'
+    );
+  });
+
+  it('drops `until` when the stance stops being hostile', () => {
+    let doc = addDisposition(withFaction());
+    doc = updateDisposition(doc, 0, { until: { round: 3 } });
+    doc = updateDisposition(doc, 0, { stance: 'neutral' });
+    expect(doc.dispositions[0]).toEqual({
+      between: ['goblins', 'party'],
+      stance: 'neutral',
+    });
+  });
+
+  it('still LOADS a hand-written `until` on a neutral stance — the panel refuses it, not the parser', () => {
+    const bytes = emitDungeon(withFaction()).replace(
+      /\n$/,
+      '\ndispositions:\n  - { between: [goblins, party], stance: neutral, until: { round: 2 } }\n'
+    );
+    expect(parseDungeon(bytes).dispositions[0].until).toEqual({ round: 2 });
+  });
+
+  it('refuses a stance outside the three', () => {
+    const bytes = emitDungeon(withFaction()).replace(
+      /\n$/,
+      '\ndispositions:\n  - { between: [goblins, party], stance: furious }\n'
+    );
+    expect(() => parseDungeon(bytes)).toThrow(
+      /dispositions\[0\]\.stance: expected hostile \| neutral \| allied/
+    );
+  });
+
+  it('refuses a `between` that is not two names', () => {
+    const bytes = emitDungeon(withFaction()).replace(
+      /\n$/,
+      '\ndispositions:\n  - { between: [goblins], stance: hostile }\n'
+    );
+    expect(() => parseDungeon(bytes)).toThrow(
+      /dispositions\[0\]\.between: expected \[faction, faction\]/
+    );
+  });
+
+  it('removes one by index', () => {
+    let doc = addDisposition(withFaction());
+    doc = addDisposition(doc);
+    doc = removeDisposition(doc, 0);
+    expect(doc.dispositions).toHaveLength(1);
+  });
+});
+
+describe('the predicate grammar (rpg-project#375 §2) — one shape, four forms', () => {
+  const withUntil = (until: string): DungeonDoc =>
+    parseDungeon(
+      emitDungeon(withFaction()).replace(
+        /\n$/,
+        `\ndispositions:\n  - { between: [goblins, party], stance: hostile, until: ${until} }\n`
+      )
+    );
+
+  it('round', () => {
+    const doc = withUntil('{ round: 6 }');
+    expect(doc.dispositions[0].until).toEqual({ round: 6 });
+    expect(roundTrips(doc)).toContain('until: { round: 6 } }');
+  });
+
+  it('down', () => {
+    const doc = withUntil('{ down: captain }');
+    expect(doc.dispositions[0].until).toEqual({ down: 'captain' });
+    expect(roundTrips(doc)).toContain('until: { down: captain } }');
+  });
+
+  it('fact', () => {
+    const doc = withUntil('{ fact: saved-wiseman }');
+    expect(doc.dispositions[0].until).toEqual({ fact: 'saved-wiseman' });
+    expect(roundTrips(doc)).toContain('until: { fact: saved-wiseman } }');
+  });
+
+  it('stance', () => {
+    const doc = withUntil(
+      '{ stance: { between: [goblins, party], is: neutral } }'
+    );
+    expect(doc.dispositions[0].until).toEqual({
+      stance: { between: ['goblins', 'party'], is: 'neutral' },
+    });
+    expect(roundTrips(doc)).toContain(
+      'until: { stance: { between: [goblins, party], is: neutral } } }'
+    );
+    expect(predicateForm(doc.dispositions[0].until!)).toBe('stance');
+  });
+
+  it('refuses two keys in one predicate, and a form it has not learned', () => {
+    expect(() => withUntil('{ round: 6, down: captain }')).toThrow(
+      /dispositions\[0\]\.until: a predicate is exactly one of/
+    );
+    expect(() => withUntil('{ moon: full }')).toThrow(
+      /dispositions\[0\]\.until: a predicate is exactly one of/
+    );
+    expect(() => withUntil('{ round: soon }')).toThrow(
+      /dispositions\[0\]\.until\.round: expected an integer/
+    );
+    expect(() => withUntil('{ stance: [goblins, party] }')).toThrow(
+      /dispositions\[0\]\.until\.stance: expected \{ between/
+    );
+  });
+
+  it('a `round: 0` LOADS — counting from 1 is the panel’s refusal, not the parser’s', () => {
+    expect(withUntil('{ round: 0 }').dispositions[0].until).toEqual({
+      round: 0,
+    });
+  });
+
+  it('names each form by its one key', () => {
+    expect(predicateForm({ round: 1 })).toBe('round');
+    expect(predicateForm({ down: 'x' })).toBe('down');
+    expect(predicateForm({ fact: 'x' })).toBe('fact');
+  });
+});
+
+describe('`arrives` on a placement — parsed and emitted, authored in step B', () => {
+  it('round-trips on a monster and on a prop, last in the line', () => {
+    let doc = updatePlacement(withFaction(), 1, {
+      arrives: { down: 'captain' },
+    });
+    doc = updatePlacement(doc, 0, { arrives: { round: 6 } });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain('faction: goblins, arrives: { down: captain } }\n');
+    expect(bytes).toContain(
+      'blocks_movement: false, blocks_los: false, arrives: { round: 6 } }\n'
+    );
+    const back = parseDungeon(bytes);
+    expect(back.place[1].arrives).toEqual({ down: 'captain' });
+    expect(back.place[0].arrives).toEqual({ round: 6 });
+  });
+
+  it('is absent until authored, and cleared on undefined', () => {
+    expect(roundTrips(withFaction())).not.toContain('arrives:');
+    let doc = updatePlacement(withFaction(), 1, { arrives: { round: 2 } });
+    doc = updatePlacement(doc, 1, { arrives: undefined });
+    expect(doc.place[1].arrives).toBeUndefined();
+  });
+});
+
+describe('`reveals: { fact }` on an intel record (rpg-project#375 §2)', () => {
+  it('writes and round-trips the design’s own line', () => {
+    let doc = addIntel(twoPlacements());
+    doc = setIntelReveals(doc, 'intel-1', 'fact', 'saved-wiseman');
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain(
+      'intel:\n  - id: intel-1\n    reveals: { fact: saved-wiseman }\n'
+    );
+    expect(parseDungeon(bytes).intel).toEqual([
+      { id: 'intel-1', reveals: { fact: 'saved-wiseman' } },
+    ]);
+  });
+
+  it('lists the facts the dungeon’s records reveal, sorted and once each', () => {
+    let doc = addIntel(twoPlacements());
+    doc = setIntelReveals(doc, 'intel-1', 'fact', 'saved-wiseman');
+    doc = addIntel(doc);
+    doc = setIntelReveals(doc, 'intel-2', 'fact', 'chief-is-a-fraud');
+    doc = addIntel(doc);
+    doc = setIntelReveals(doc, 'intel-3', 'fact', 'saved-wiseman');
+    doc = addIntel(doc);
+    doc = setIntelReveals(doc, 'intel-4', 'door', 'vault');
+    expect(revealedFacts(doc)).toEqual(['chief-is-a-fraud', 'saved-wiseman']);
+  });
+
+  it('lists the named monsters a `{ down }` may wait for', () => {
+    expect(namedMonsters(withFaction()).map((m) => m.id)).toEqual(['captain']);
+    expect(namedMonsters(twoPlacements())).toEqual([]);
+  });
+});
+
+describe('endings (rpg-project#375 R10) — the predicate grammar’s third consumer', () => {
+  it('is absent from the bytes until one is declared', () => {
+    expect(roundTrips(withFaction())).not.toContain('endings:');
+  });
+
+  it('writes the compiler’s own line after exits and before scenarios, and round-trips', () => {
+    let doc = toggleExitAt(withFaction(), p(0, 0));
+    doc = setScenarioBinding(doc, 'hold-out', 'convince', 'goblins');
+    doc = addEnding(doc);
+    doc = updateEnding(doc, 0, {
+      id: 'turned',
+      when: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+    });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain(
+      'exits:\n  - { id: exit-1, at: [0, 0] }\nendings:\n  - { id: turned, when: { stance: { between: [goblins, party], is: neutral } } }\nscenarios:\n'
+    );
+    expect(parseDungeon(bytes).endings).toEqual([
+      {
+        id: 'turned',
+        when: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+      },
+    ]);
+  });
+
+  it('a new ending fires on the first named monster’s fall, or round 1 with nobody named', () => {
+    expect(addEnding(withFaction()).endings).toEqual([
+      { id: 'ending-1', when: { down: 'captain' } },
+    ]);
+    expect(addEnding(twoPlacements()).endings).toEqual([
+      { id: 'ending-1', when: { round: 1 } },
+    ]);
+    let doc = addEnding(withFaction());
+    doc = addEnding(doc);
+    expect(doc.endings.map((e) => e.id)).toEqual(['ending-1', 'ending-2']);
+    expect(removeEnding(doc, 0).endings.map((e) => e.id)).toEqual(['ending-2']);
+  });
+
+  it('refuses an ending that does not say when — nothing is defaulted', () => {
+    const bytes = emitDungeon(withFaction()).replace(
+      /\n$/,
+      '\nendings:\n  - { id: turned }\n'
+    );
+    expect(() => parseDungeon(bytes)).toThrow(
+      /endings\[0\]\.when: the ending does not say when it fires/
+    );
+  });
+
+  it('a faction rename follows through to an ending’s stance predicate', () => {
+    let doc = addEnding(withFaction());
+    doc = updateEnding(doc, 0, {
+      when: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+    });
+    doc = updateFaction(doc, 'goblins', { id: 'raiders' });
+    expect(doc.endings[0].when).toEqual({
+      stance: { between: ['raiders', 'party'], is: 'neutral' },
+    });
   });
 });

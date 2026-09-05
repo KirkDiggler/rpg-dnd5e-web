@@ -100,6 +100,13 @@ export interface HexEntityProps {
   facialHairStyle?: FacialHairStyle;
   /** Whether the entity is dead (show visual dead state, disable interaction) */
   isDead?: boolean;
+  /** The colour of the SIDE this member fights for, when the author
+   * declared one (rpg-project#375 §7, `factionColor.ts`). Overrides the
+   * kind's own colour for the ring and the placeholder; absent for a
+   * player, an unauthored monster or a world NPC, which keep the blue,
+   * red and gold they always had. Presentation only — it decides nothing
+   * about who may be attacked. */
+  factionColor?: string;
   /** Whether the entity is outside LoS (v1alpha2). Render at last-known position with ghost shader (semi-transparent, desaturated). */
   isGhost?: boolean;
   /**
@@ -351,6 +358,7 @@ export function HexEntity({
   hairColor,
   facialHairStyle,
   isDead = false,
+  factionColor,
   isGhost = false,
   knowledgeState,
   classRefId,
@@ -455,8 +463,8 @@ export function HexEntity({
   const color = isDead
     ? '#666666'
     : selected
-      ? COLORS[type].selected
-      : COLORS[type].default;
+      ? (factionColor ?? COLORS[type].selected)
+      : (factionColor ?? COLORS[type].default);
 
   // Handle click events - dead and ghost entities are not interactive.
   // Ghosts represent last-known position outside LoS — clicking would let a

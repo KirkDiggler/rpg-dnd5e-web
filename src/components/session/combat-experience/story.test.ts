@@ -2,6 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import {
   ActivatedSchema,
   ActivationResultSchema,
+  ArrivedSchema,
   CapacityGrantedSchema,
   ConditionAppliedSchema,
   ConditionRemovedSchema,
@@ -11,14 +12,18 @@ import {
   DownedSchema,
   EventKind,
   EventSchema,
+  FightEndedSchema,
   HealingAppliedSchema,
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
+  StanceChangedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   AbilityRefSchema,
   DamageType,
+  DissolveKind,
+  PlacementKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
@@ -545,5 +550,86 @@ describe('typed combat Story', () => {
     const [entry] = buildCombatStory([visible(event)], context);
     expect(entry?.headline).toBe('Skeleton Guard is downed');
     expect(JSON.stringify(entry)).not.toContain('dragon explodes');
+  });
+});
+
+describe('the Story log on the hold-out beats (rpg-project#375 §5)', () => {
+  /** One live, visible fact from a real event, as the stream delivers it. */
+  function beat(
+    seq: bigint,
+    kind: EventKind,
+    body: CombatStoryFact['event']['body']
+  ): CombatStoryFact {
+    return visible(
+      create(EventSchema, { session: 'camp-run', seq, kind, body })
+    );
+  }
+
+  it('a stance change is one entry: the pair and the word, nothing of why', () => {
+    const [entry] = buildCombatStory(
+      [
+        beat(7n, EventKind.STANCE_CHANGED, {
+          case: 'stanceChanged',
+          value: create(StanceChangedSchema, {
+            between: ['goblins', 'party'],
+            stance: 'neutral',
+          }),
+        }),
+      ],
+      context
+    );
+    expect(entry.eyebrow).toBe('Stance');
+    expect(entry.headline).toBe(
+      'The goblins and the party are no longer hostile'
+    );
+    expect(entry.detail).toContain('Now neutral');
+    expect(entry.tone).toBe('success');
+  });
+
+  it('an arrival names the placement by the author’s own id', () => {
+    const [monster, prop] = buildCombatStory(
+      [
+        beat(8n, EventKind.ARRIVED, {
+          case: 'arrived',
+          value: create(ArrivedSchema, {
+            id: 'reinforcement-1',
+            kind: PlacementKind.MONSTER,
+            cell: { x: 1, y: 4 },
+          }),
+        }),
+        beat(9n, EventKind.ARRIVED, {
+          case: 'arrived',
+          value: create(ArrivedSchema, {
+            id: 'letter',
+            kind: PlacementKind.PROP,
+            cell: { x: 1, y: 3 },
+          }),
+        }),
+      ],
+      context
+    );
+    expect(monster.eyebrow).toBe('Arrival');
+    expect(monster.headline).toBe('The reinforcement 1 arrives at 1,4');
+    expect(prop.headline).toBe('The letter appears at 1,3');
+  });
+
+  it('a fight ended BY_STANCE says the sides stood down; BY_DEFEAT keeps the old line', () => {
+    const [byStance, byDefeat] = buildCombatStory(
+      [
+        beat(10n, EventKind.FIGHT_ENDED, {
+          case: 'fightEnded',
+          value: create(FightEndedSchema, { cause: DissolveKind.BY_STANCE }),
+        }),
+        beat(11n, EventKind.FIGHT_ENDED, {
+          case: 'fightEnded',
+          value: create(FightEndedSchema, { cause: DissolveKind.BY_DEFEAT }),
+        }),
+      ],
+      context
+    );
+    expect(byStance.headline).toBe(
+      'The fight dissolves — the sides are no longer hostile'
+    );
+    expect(byDefeat.headline).toBe('The fight is over');
   });
 });
