@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDisposition,
+  addEnding,
   addFaction,
   addIntel,
   addRegion,
@@ -29,6 +30,7 @@ import {
   predicateForm,
   regionWays,
   removeDisposition,
+  removeEnding,
   removeFaction,
   removeIntel,
   removeWalls,
@@ -47,6 +49,7 @@ import {
   toggleExitAt,
   updateDisposition,
   updateDoor,
+  updateEnding,
   updateExit,
   updateFaction,
   updateIntel,
@@ -2306,5 +2309,65 @@ describe('`reveals: { fact }` on an intel record (rpg-project#375 §2)', () => {
   it('lists the named monsters a `{ down }` may wait for', () => {
     expect(namedMonsters(withFaction()).map((m) => m.id)).toEqual(['captain']);
     expect(namedMonsters(twoPlacements())).toEqual([]);
+  });
+});
+
+describe('endings (rpg-project#375 R10) — the predicate grammar’s third consumer', () => {
+  it('is absent from the bytes until one is declared', () => {
+    expect(roundTrips(withFaction())).not.toContain('endings:');
+  });
+
+  it('writes the compiler’s own line after exits and before scenarios, and round-trips', () => {
+    let doc = toggleExitAt(withFaction(), p(0, 0));
+    doc = setScenarioBinding(doc, 'hold-out', 'convince', 'goblins');
+    doc = addEnding(doc);
+    doc = updateEnding(doc, 0, {
+      id: 'turned',
+      when: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+    });
+    const bytes = roundTrips(doc);
+    expect(bytes).toContain(
+      'exits:\n  - { id: exit-1, at: [0, 0] }\nendings:\n  - { id: turned, when: { stance: { between: [goblins, party], is: neutral } } }\nscenarios:\n'
+    );
+    expect(parseDungeon(bytes).endings).toEqual([
+      {
+        id: 'turned',
+        when: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+      },
+    ]);
+  });
+
+  it('a new ending fires on the first named monster’s fall, or round 1 with nobody named', () => {
+    expect(addEnding(withFaction()).endings).toEqual([
+      { id: 'ending-1', when: { down: 'captain' } },
+    ]);
+    expect(addEnding(twoPlacements()).endings).toEqual([
+      { id: 'ending-1', when: { round: 1 } },
+    ]);
+    let doc = addEnding(withFaction());
+    doc = addEnding(doc);
+    expect(doc.endings.map((e) => e.id)).toEqual(['ending-1', 'ending-2']);
+    expect(removeEnding(doc, 0).endings.map((e) => e.id)).toEqual(['ending-2']);
+  });
+
+  it('refuses an ending that does not say when — nothing is defaulted', () => {
+    const bytes = emitDungeon(withFaction()).replace(
+      /\n$/,
+      '\nendings:\n  - { id: turned }\n'
+    );
+    expect(() => parseDungeon(bytes)).toThrow(
+      /endings\[0\]\.when: the ending does not say when it fires/
+    );
+  });
+
+  it('a faction rename follows through to an ending’s stance predicate', () => {
+    let doc = addEnding(withFaction());
+    doc = updateEnding(doc, 0, {
+      when: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+    });
+    doc = updateFaction(doc, 'goblins', { id: 'raiders' });
+    expect(doc.endings[0].when).toEqual({
+      stance: { between: ['raiders', 'party'], is: 'neutral' },
+    });
   });
 });

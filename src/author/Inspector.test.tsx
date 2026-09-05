@@ -112,6 +112,9 @@ function mountPlacement(
       onAddDisposition={noop}
       onDisposition={noop}
       onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -263,6 +266,9 @@ function mountWall(
       onAddDisposition={noop}
       onDisposition={noop}
       onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -423,6 +429,9 @@ function mountDoor(
       onAddDisposition={noop}
       onDisposition={noop}
       onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -594,6 +603,9 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onAddDisposition={noop}
         onDisposition={noop}
         onRemoveDisposition={noop}
+        onAddEnding={noop}
+        onEnding={noop}
+        onRemoveEnding={noop}
         onSelect={noop}
       />
     );
@@ -636,6 +648,9 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onAddDisposition={noop}
         onDisposition={noop}
         onRemoveDisposition={noop}
+        onAddEnding={noop}
+        onEnding={noop}
+        onRemoveEnding={noop}
         onSelect={noop}
       />
     );
@@ -726,6 +741,9 @@ function mountAt(
       onAddDisposition={overrides.onAddDisposition ?? noop}
       onDisposition={overrides.onDisposition ?? noop}
       onRemoveDisposition={overrides.onRemoveDisposition ?? noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={overrides.onSelect ?? noop}
     />
   );

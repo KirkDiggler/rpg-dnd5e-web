@@ -15,19 +15,28 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ConcealmentDerivation } from './dungeonYaml';
 import {
   addDisposition,
+  addEnding,
   addFaction,
   addIntel,
   emptyDungeon,
   paintCell,
   placeAt,
+  PREDICATE_SHAPE,
   setIntelReveals,
+  setScenarioBinding,
   updateDisposition,
+  updateEnding,
   updateFaction,
   updatePlacement,
   type DungeonDoc,
   type PredicateDoc,
 } from './dungeonYaml';
-import { NAME_A_MIND, NO_RECORD_REVEALS_THIS } from './factionRules';
+import {
+  factionRefusals,
+  NAME_A_MIND,
+  NO_RECORD_REVEALS_THIS,
+  refusalsAt,
+} from './factionRules';
 import { fromOffset } from './hexOffset';
 import { Inspector } from './Inspector';
 import type { Selection } from './types';
@@ -68,6 +77,9 @@ function camp(): DungeonDoc {
 }
 
 type Handlers = Partial<{
+  onAddEnding: () => void;
+  onEnding: (index: number, patch: Record<string, unknown>) => void;
+  onRemoveEnding: (index: number) => void;
   onFaction: (id: string, patch: Record<string, unknown>) => void;
   onRemoveFaction: (id: string) => void;
   onAddDisposition: () => void;
@@ -115,6 +127,9 @@ function mountAt(
       onAddDisposition={h.onAddDisposition ?? noop}
       onDisposition={h.onDisposition ?? noop}
       onRemoveDisposition={h.onRemoveDisposition ?? noop}
+      onAddEnding={h.onAddEnding ?? noop}
+      onEnding={h.onEnding ?? noop}
+      onRemoveEnding={h.onRemoveEnding ?? noop}
       onSelect={noop}
     />
   );
@@ -213,7 +228,7 @@ describe('the Factions section (rpg-project#375 §7)', () => {
     mountAt(doc);
     expect(selectValue('faction-0-mind')).toBe('letter');
     expect(screen.getByTestId('faction-0-mind-refusal').textContent).toContain(
-      '"letter" is not in goblins'
+      'is a prop — a mind is a monster in the faction'
     );
   });
 
@@ -327,15 +342,19 @@ describe('the Dispositions section (rpg-project#375 §7)', () => {
     ).toContain('{ fact: saved-wiseman }');
     expect(
       screen.getByTestId('disposition-0-until-refusal').textContent
-    ).toContain('`until`');
+    ).toContain('only a hostile pair has something to stop doing');
   });
 
   it('renders the compiler’s refusals on the lines it addresses them to, beside the client’s, once each', () => {
     const doc = updateFaction(camp(), 'goblins', { mind: '' });
+    const composed = refusalsAt(
+      factionRefusals(doc),
+      'dispositions[0].until'
+    )[0];
     mountAt(doc, { kind: 'dungeon' }, {}, [
       create(FieldErrorSchema, {
         path: 'dispositions[0].until',
-        message: NAME_A_MIND,
+        message: composed,
       }),
       create(FieldErrorSchema, {
         path: 'dispositions[0].between[1]',
@@ -374,7 +393,7 @@ describe('the Dispositions section (rpg-project#375 §7)', () => {
     expect(selectValue('disposition-0-a')).toBe('wolves');
     expect(
       screen.getByTestId('disposition-0-between-refusal').textContent
-    ).toContain('no faction is called "wolves"');
+    ).toContain('"wolves" is not a faction in this dungeon');
   });
 
   it('removes one', () => {
@@ -406,7 +425,11 @@ describe('the predicate editor — one component, four forms (§7)', () => {
 
   it('round: a number counted from 1', () => {
     const onDisposition = vi.fn();
-    mountAt(withUntil({ round: 6 }), { kind: 'dungeon' }, { onDisposition });
+    const six = mountAt(
+      withUntil({ round: 6 }),
+      { kind: 'dungeon' },
+      { onDisposition }
+    );
     const box = screen.getByTestId(
       'disposition-0-until-round'
     ) as HTMLInputElement;
@@ -414,15 +437,22 @@ describe('the predicate editor — one component, four forms (§7)', () => {
     expect(box.min).toBe('1');
     fireEvent.change(box, { target: { value: '3' } });
     expect(onDisposition).toHaveBeenCalledWith(0, { until: { round: 3 } });
+    // A round on an until is not built yet (R11) — the compiler's one
+    // sentence — and the round itself is judged at its own sub-path.
+    six.unmount();
     mountAt(withUntil({ round: 0 }));
     expect(
-      screen.getAllByTestId('disposition-0-until-refusal')[0].textContent
-    ).toBe('a round is counted from 1');
+      screen
+        .getAllByTestId('disposition-0-until-refusal')
+        .map((n) => n.textContent)
+    ).toEqual([
+      'in this version a disposition turns only on a fact; `until` on a round, a fall, or another stance is not built yet',
+    ]);
   });
 
   it('down: a dropdown of the NAMED monsters', () => {
     const onDisposition = vi.fn();
-    mountAt(
+    const chief = mountAt(
       withUntil({ down: 'chief' }),
       { kind: 'dungeon' },
       { onDisposition }
@@ -436,10 +466,21 @@ describe('the predicate editor — one component, four forms (§7)', () => {
       target: { value: 'scout' },
     });
     expect(onDisposition).toHaveBeenCalledWith(0, { until: { down: 'scout' } });
+    chief.unmount();
     mountAt(withUntil({ down: 'nobody' }));
     expect(
       screen.getAllByTestId('disposition-0-until-refusal')[0].textContent
-    ).toContain('no placement is called "nobody"');
+    ).toContain('not built yet');
+  });
+
+  it('a form picked and not filled in is refused at the form’s own field', () => {
+    // The refusal lands at `dispositions[0].until.fact`, a SUB-PATH of the
+    // until — the same path set an `arrives` and an ending's `when` read,
+    // which is why the disposition renders it too.
+    mountAt(withUntil({ fact: '' }));
+    expect(
+      screen.getAllByTestId('disposition-0-until-refusal')[0].textContent
+    ).toBe(`this predicate's \`fact\` says nothing — ${PREDICATE_SHAPE}`);
   });
 
   it('fact: free text with the revealed facts as suggestions, and the cost note', () => {
@@ -550,18 +591,145 @@ describe('the placement inspector’s faction (§7)', () => {
     expect(selectValue('placement-faction')).toBe('wolves');
     expect(
       screen.getByTestId('placement-faction-refusal').textContent
-    ).toContain('no faction is called "wolves"');
+    ).toContain('no faction in this dungeon has that id');
+  });
+});
+
+describe('the arrives editor on the placement inspector (§7, step B)', () => {
+  it('is the shared predicate editor, on a monster and on a prop, defaulting to "(none)" = placed at launch', () => {
+    const onPlacement = vi.fn();
+    mountAt(camp(), { kind: 'placement', index: 2 }, { onPlacement });
+    expect(optionValues('placement-arrives-form')).toEqual([
+      '',
+      'round',
+      'down',
+      'fact',
+      'stance',
+    ]);
+    expect(selectValue('placement-arrives-form')).toBe('');
+    expect(screen.getByTestId('placement-arrives').textContent).toContain(
+      'placed at launch'
+    );
+    fireEvent.change(screen.getByTestId('placement-arrives-form'), {
+      target: { value: 'round' },
+    });
+    expect(onPlacement).toHaveBeenCalledWith(2, { arrives: { round: 1 } });
+    // The letter, a prop, gets the same editor.
+    mountAt(camp(), { kind: 'placement', index: 0 }, { onPlacement });
+    fireEvent.change(screen.getAllByTestId('placement-arrives-form')[1], {
+      target: { value: 'down' },
+    });
+    expect(onPlacement).toHaveBeenLastCalledWith(0, {
+      arrives: { down: 'chief' },
+    });
   });
 
-  it('shows an `arrives` the file carries, read-only, with its refusal', () => {
+  it('shows the authored predicate with the compiler’s refusals at its sub-paths, and the reserve note', () => {
     const doc = updatePlacement(camp(), 2, { arrives: { down: 'nobody' } });
     mountAt(doc, { kind: 'placement', index: 2 });
-    expect(screen.getByTestId('arrives-readout').textContent).toContain(
-      '{ down: nobody }'
+    expect(selectValue('placement-arrives-form')).toBe('down');
+    expect(selectValue('placement-arrives-down')).toBe('nobody');
+    expect(screen.getByTestId('placement-arrives-refusal').textContent).toBe(
+      '"nobody" is not a placement in this dungeon'
     );
-    expect(screen.getByTestId('arrives-refusal').textContent).toContain(
-      'no placement is called "nobody"'
+    expect(screen.getByTestId('arrives-note').textContent).toContain(
+      'In reserve until this holds'
     );
+  });
+
+  it('a placement cannot wait for its own fall', () => {
+    const doc = updatePlacement(camp(), 2, { arrives: { down: 'scout' } });
+    mountAt(doc, { kind: 'placement', index: 2 });
+    expect(
+      screen.getByTestId('placement-arrives-refusal').textContent
+    ).toContain('cannot wait for its own fall');
+  });
+
+  it('a reserved prop with no id is refused at its id', () => {
+    const doc = updatePlacement(camp(), 0, { id: '', arrives: { round: 6 } });
+    mountAt(doc, { kind: 'placement', index: 0 });
+    expect(screen.getByTestId('placement-id-refusal').textContent).toBe(
+      '"dnd5e:props:scroll" arrives on a predicate and has no id, and a thing that arrives has to be nameable'
+    );
+  });
+});
+
+describe('the Endings section beside Scenarios (R10, step B)', () => {
+  it('says so when there are none, and declares one on the first named monster’s fall', () => {
+    const onAddEnding = vi.fn();
+    mountAt(camp(), { kind: 'dungeon' }, { onAddEnding });
+    expect(screen.getByTestId('endings-section')).toBeTruthy();
+    expect(screen.getByTestId('endings-none')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('new-ending'));
+    expect(onAddEnding).toHaveBeenCalled();
+  });
+
+  it('renders each ending with its id and a REQUIRED when editor — no "(none)" on offer', () => {
+    const onEnding = vi.fn();
+    let doc = addEnding(camp());
+    doc = updateEnding(doc, 0, {
+      id: 'turned',
+      when: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+    });
+    mountAt(doc, { kind: 'dungeon' }, { onEnding });
+    expect((screen.getByTestId('ending-0-id') as HTMLInputElement).value).toBe(
+      'turned'
+    );
+    expect(optionValues('ending-0-when-form')).toEqual([
+      'round',
+      'down',
+      'fact',
+      'stance',
+    ]);
+    expect(selectValue('ending-0-when-form')).toBe('stance');
+    expect(selectValue('ending-0-when-stance-a')).toBe('goblins');
+    expect(selectValue('ending-0-when-stance-is')).toBe('neutral');
+    fireEvent.change(screen.getByTestId('ending-0-when-form'), {
+      target: { value: 'round' },
+    });
+    expect(onEnding).toHaveBeenCalledWith(0, { when: { round: 1 } });
+    fireEvent.change(screen.getByTestId('ending-0-id'), {
+      target: { value: 'held-out' },
+    });
+    expect(onEnding).toHaveBeenLastCalledWith(0, { id: 'held-out' });
+  });
+
+  it('refuses a duplicate id in place and renders the compiler’s refusal at the when', () => {
+    let doc = addEnding(camp());
+    doc = addEnding(doc);
+    mountAt(doc, { kind: 'dungeon' }, {}, [
+      create(FieldErrorSchema, {
+        path: 'endings[1].when',
+        message: 'an ending nobody can reach',
+      }),
+    ]);
+    fireEvent.change(screen.getByTestId('ending-1-id'), {
+      target: { value: 'ending-1' },
+    });
+    expect(screen.getByTestId('ending-1-id-refusal').textContent).toContain(
+      'already declared'
+    );
+    expect(screen.getByTestId('ending-1-when-refusal').textContent).toBe(
+      'an ending nobody can reach'
+    );
+  });
+
+  it('shows that the scenario’s `convince` is sugar for a stance ending', () => {
+    const doc = setScenarioBinding(camp(), 'hold-out', 'convince', 'goblins');
+    const bound = mountAt(doc);
+    expect(screen.getByTestId('ending-sugar-hold-out').textContent).toContain(
+      'hold-out ends when goblins × party is neutral'
+    );
+    bound.unmount();
+    mountAt(camp());
+    expect(screen.queryByTestId('ending-sugar-hold-out')).toBeNull();
+  });
+
+  it('removes one', () => {
+    const onRemoveEnding = vi.fn();
+    mountAt(addEnding(camp()), { kind: 'dungeon' }, { onRemoveEnding });
+    fireEvent.click(screen.getByTestId('ending-0-remove'));
+    expect(onRemoveEnding).toHaveBeenCalledWith(0);
   });
 });
 

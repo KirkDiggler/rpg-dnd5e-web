@@ -42,6 +42,9 @@ export interface PredicateEditorProps {
   noneMeans: string;
   /** The refusals addressed to this predicate, in order. */
   refusals: readonly string[];
+  /** An ending's `when` is REQUIRED: no "(none)" is offered, and the
+   * select never answers undefined. `until` and `arrives` are optional. */
+  required?: boolean;
 }
 
 /** The value a form starts with when the author picks it — the first
@@ -72,6 +75,7 @@ export function PredicateEditor({
   testId,
   noneMeans,
   refusals,
+  required = false,
 }: PredicateEditorProps) {
   const form = value === undefined ? '' : predicateForm(value);
   const note = value === undefined ? null : factNote(doc, value);
@@ -87,7 +91,7 @@ export function PredicateEditor({
           onChange(next === '' ? undefined : freshPredicate(doc, next));
         }}
       >
-        <option value="">(none)</option>
+        {!required && <option value="">(none)</option>}
         {PREDICATE_FORMS.map((f) => (
           <option key={f} value={f}>
             {FORM_LABEL[f]}

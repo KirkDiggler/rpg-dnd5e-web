@@ -23,7 +23,12 @@ import {
   type FactionDoc,
   type Stance,
 } from './dungeonYaml';
-import { messagesAt, type PathMessage, type Refusal } from './factionRules';
+import {
+  messagesAt,
+  predicatePaths,
+  type PathMessage,
+  type Refusal,
+} from './factionRules';
 import { FactionPicker, PredicateEditor } from './PredicateEditor';
 
 export interface FactionSectionsProps {
@@ -328,7 +333,15 @@ function DispositionRow({
     `${path}.between[1]`
   );
   const stanceRefusals = messagesAt(refusals, errors, `${path}.stance`);
-  const untilRefusals = messagesAt(refusals, errors, `${path}.until`);
+  // THE SAME PATH SET THE OTHER TWO CONSUMERS READ (`predicatePaths`):
+  // an `until` is the same editor as an `arrives` and an ending's `when`,
+  // so a refusal at the form's own sub-path — the compiler's
+  // `dispositions[0].until.down`, or a blank form — lands here too.
+  const untilRefusals = messagesAt(
+    refusals,
+    errors,
+    ...predicatePaths(`${path}.until`)
+  );
   return (
     <div className="flex flex-col gap-2 dg-intel-form" data-testid={testId}>
       <div className="flex gap-1 items-end">

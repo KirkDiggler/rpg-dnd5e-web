@@ -353,6 +353,21 @@ export interface DispositionDoc {
   until?: PredicateDoc;
 }
 
+/** One authored way the run ends: a name, and when (rpg-project#375 R10).
+ *
+ * THE PREDICATE GRAMMAR'S THIRD CONSUMER: `until` ends a hostility,
+ * `arrives` brings a placement in, and `when` ends the run — one spelling,
+ * one type. A scenario's own field is sugar for one of these:
+ * `scenarios: { hold-out: { convince: raiders } }` declares exactly the
+ * ending `{ id: hold-out, when: { stance: { between: [raiders, party], is:
+ * neutral } } }` would. The id is what the `ended` beat names — required
+ * and unique; `when` is required, nothing is defaulted. Written after
+ * `exits` and before `scenarios`, the compiler's own order. */
+export interface EndingDoc {
+  id: string;
+  when: PredicateDoc;
+}
+
 /** One scenario's bindings: the form's field keys mapped to the ids the
  * author picked. CARRIED OPAQUELY — the builder learns the keys from
  * `ListScenarios` and never interprets one, exactly as dungeonspec
@@ -501,6 +516,9 @@ export interface DungeonDoc {
    * declared faction hostile to `party` unless told otherwise, declared
    * factions neutral to each other (§2). */
   dispositions: DispositionDoc[];
+  /** The authored endings (`EndingDoc`), in DOCUMENT order. ALWAYS PRESENT
+   * IN THE MODEL, WRITTEN ONLY WHEN IT HAS ENTRIES, for `exits`'s reason. */
+  endings: EndingDoc[];
   /** Scenario id -> that scenario's bindings. A dungeon may bind several;
    * the run ends when any bound ending fires. Written only when non-empty,
    * for `exits`'s reason. Emitted with both levels of keys SORTED, so the
@@ -716,7 +734,7 @@ function checkList(v: unknown, path: string): CheckDoc {
 /** The predicate grammar, spelled for a refusal a streamer can act on. */
 export const PREDICATE_SHAPE =
   'a predicate is exactly one of { round: N }, { down: <placement id> }, ' +
-  '{ fact: <id> } or { stance: { between: [a, b], is: hostile | neutral | allied } }';
+  '{ fact: <id> }, or { stance: { between: [a, b], is: hostile|neutral|allied } }';
 
 /** `[faction, faction]` — two strings, carried verbatim. */
 function factionPair(v: unknown, path: string): [string, string] {
@@ -812,6 +830,7 @@ export function parseDungeon(text: string): DungeonDoc {
       'intel',
       'factions',
       'dispositions',
+      'endings',
     ],
     'document'
   );
@@ -1123,6 +1142,28 @@ export function parseDungeon(text: string): DungeonDoc {
     }
   );
 
+  // The authored endings: an id and a predicate. `when` is REQUIRED — an
+  // ending that does not say when it fires is not one this module can
+  // represent — and everything about whether it can fire is the compiler's.
+  const endings = list(raw.endings, 'endings').map((e, i): EndingDoc => {
+    const path = `endings[${i}]`;
+    if (!isRecord(e)) {
+      throw new DungeonParseError(
+        `${path}: expected { id, when: <predicate> }`
+      );
+    }
+    expectKeys(e, ['id', 'when'], path);
+    if (e.when === undefined || e.when === null) {
+      throw new DungeonParseError(
+        `${path}.when: the ending does not say when it fires — ${PREDICATE_SHAPE}`
+      );
+    }
+    return {
+      id: str(e, 'id', path, ''),
+      when: predicate(e.when, `${path}.when`),
+    };
+  });
+
   // CARRIED OPAQUELY. Every binding value is read as a string and nothing
   // here knows what a key means — that is the scenario package's question,
   // asked through `New(cfg)` on the server (ruled 2026-09-01). A key this
@@ -1169,6 +1210,7 @@ export function parseDungeon(text: string): DungeonDoc {
     intel,
     factions,
     dispositions,
+    endings,
   };
 }
 
@@ -1487,6 +1529,15 @@ export function emitDungeon(doc: DungeonDoc): string {
     for (const e of layout.exits) {
       const [c, r] = toOffset(o, e.at);
       out.push(`  - { id: ${scalar(e.id)}, at: [${c}, ${r}] }`);
+    }
+  }
+
+  // Written ONLY when there are any, after `exits` and before `scenarios`
+  // — the compiler's own order — one flow map per line in DOCUMENT order.
+  if (doc.endings.length > 0) {
+    out.push('endings:');
+    for (const e of doc.endings) {
+      out.push(`  - { id: ${scalar(e.id)}, when: ${predicateText(e.when)} }`);
     }
   }
 
@@ -1979,6 +2030,7 @@ export function emptyDungeon(
     intel: [],
     factions: [],
     dispositions: [],
+    endings: [],
   };
 }
 
@@ -2588,6 +2640,10 @@ export function updateFaction(
       }
       return next;
     }),
+    endings: doc.endings.map((e) => ({
+      ...e,
+      when: renamePredicateFaction(e.when, id, to),
+    })),
   };
 }
 
@@ -2671,6 +2727,44 @@ export function removeDisposition(doc: DungeonDoc, index: number): DungeonDoc {
     ...doc,
     dispositions: doc.dispositions.filter((_, i) => i !== index),
   };
+}
+
+/** Declare a new ending with a suggested id and a predicate the author
+ * can fire from the panel. `when` is REQUIRED, so one is chosen rather
+ * than left blank: the first named monster's fall, which is the ending
+ * every boss fight has; with no monster named, round 1 — an ending that
+ * fires at once, visibly, until the author says otherwise. */
+export function addEnding(doc: DungeonDoc): DungeonDoc {
+  const first = namedMonsters(doc)[0];
+  const when: PredicateDoc = first
+    ? { down: first.id as string }
+    : { round: 1 };
+  return {
+    ...doc,
+    endings: [...doc.endings, { id: nextEndingId(doc), when }],
+  };
+}
+
+function nextEndingId(doc: DungeonDoc): string {
+  const taken = new Set(doc.endings.map((e) => e.id));
+  let n = doc.endings.length + 1;
+  while (taken.has(`ending-${n}`)) n += 1;
+  return `ending-${n}`;
+}
+
+export function updateEnding(
+  doc: DungeonDoc,
+  index: number,
+  patch: Partial<EndingDoc>
+): DungeonDoc {
+  return {
+    ...doc,
+    endings: doc.endings.map((e, i) => (i === index ? { ...e, ...patch } : e)),
+  };
+}
+
+export function removeEnding(doc: DungeonDoc, index: number): DungeonDoc {
+  return { ...doc, endings: doc.endings.filter((_, i) => i !== index) };
 }
 
 /** The monsters placed in one faction, by index — what a `mind` dropdown

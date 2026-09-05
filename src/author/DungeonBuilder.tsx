@@ -32,6 +32,7 @@ import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
   addDisposition,
+  addEnding,
   addFaction,
   addIntel,
   addRegion,
@@ -51,6 +52,7 @@ import {
   parseDungeon,
   placeAt,
   removeDisposition,
+  removeEnding,
   removeExit,
   removeFaction,
   removeIntel,
@@ -71,6 +73,7 @@ import {
   updateDisposition,
   updateDoor,
   updateDungeon,
+  updateEnding,
   updateExit,
   updateFaction,
   updateIntel,
@@ -909,6 +912,13 @@ export function DungeonBuilder({
               }
               onRemoveDisposition={(index) =>
                 applyDoc((d) => removeDisposition(d, index))
+              }
+              onAddEnding={() => applyDoc((d) => addEnding(d))}
+              onEnding={(index, patch) =>
+                applyDoc((d) => updateEnding(d, index, patch))
+              }
+              onRemoveEnding={(index) =>
+                applyDoc((d) => removeEnding(d, index))
               }
               onSelect={setSelection}
               onStartFacing={(facing) =>

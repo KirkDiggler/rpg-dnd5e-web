@@ -14,7 +14,6 @@ import {
   isMonsterRef,
   MONSTERS,
   placementIds,
-  predicateText,
   revealedFacts,
   suggestPlacementId,
   wallLattice,
@@ -24,6 +23,7 @@ import {
   type DispositionDoc,
   type DoorDoc,
   type DungeonDoc,
+  type EndingDoc,
   type ExitDoc,
   type FactionDoc,
   type IntelDoc,
@@ -32,10 +32,12 @@ import {
   type StartDoc,
   type WallDoc,
 } from './dungeonYaml';
+import { EndingsSection } from './EndingsPanel';
 import { DispositionsSection, FactionsSection } from './FactionPanel';
-import { factionRefusals, messagesAt } from './factionRules';
+import { factionRefusals, messagesAt, predicatePaths } from './factionRules';
 import { sealedBy } from './hexGeometry';
 import { axialKey } from './hexOffset';
+import { PredicateEditor } from './PredicateEditor';
 import { RegionPanel } from './RegionPanel';
 import { ScenarioPanel } from './ScenarioPanel';
 import { APPROACH_ABILITIES, TARGETINGS, type Selection } from './types';
@@ -96,6 +98,11 @@ export interface InspectorProps {
   /** Patch one disposition by index: pair, stance, or `until`. */
   onDisposition: (index: number, patch: Partial<DispositionDoc>) => void;
   onRemoveDisposition: (index: number) => void;
+  /** Declare a new authored ending. */
+  onAddEnding: () => void;
+  /** Rename one ending or change when it fires. */
+  onEnding: (index: number, patch: Partial<EndingDoc>) => void;
+  onRemoveEnding: (index: number) => void;
   /** Select something else — the monster panel links back to a record. */
   onSelect: (selection: Selection) => void;
   /** What `ListScenarios` answered — the forms this dungeon may fill in. */
@@ -303,6 +310,16 @@ function DungeonPanel(props: InspectorProps) {
         onAddDisposition={props.onAddDisposition}
         onDisposition={props.onDisposition}
         onRemoveDisposition={props.onRemoveDisposition}
+      />
+      {/* ENDINGS, beside Scenarios (R10): the predicate grammar's third
+          consumer, and the thing a scenario's field is sugar for. */}
+      <EndingsSection
+        doc={doc}
+        refusals={refusals}
+        errors={props.errors}
+        onAddEnding={props.onAddEnding}
+        onEnding={props.onEnding}
+        onRemoveEnding={props.onRemoveEnding}
       />
       {/* The scenario form lives on the DUNGEON, because that is whose
           fact a binding is — a dungeon is bound to a scenario, not a room
@@ -763,6 +780,7 @@ function PlacementPanel({
         doc={doc}
         index={index}
         placement={placement}
+        messages={messagesAt(refusals, errors, `place[${index}].id`)}
         onChange={(id) => onChange({ id })}
       />
       {/* WHAT IT CARRIES, monster or prop alike (R6) — above the fields
@@ -851,33 +869,33 @@ function PlacementPanel({
           />
         </>
       )}
-      {placement.arrives !== undefined && (
-        // PARSED, NOT YET AUTHORED (`PlacementDoc.arrives`): the editor is
-        // step B of the hold-out slice. A file that carries one shows it,
-        // in the file's own words, with any refusal the client can know.
-        <div className="dg-label" data-testid="arrives-readout">
-          arrives
-          <div className="dg-input opacity-80">
-            {predicateText(placement.arrives)}
-          </div>
-          {messagesAt(refusals, errors, `place[${index}].arrives`).map(
-            (message, i) => (
-              <div
-                key={i}
-                className="text-xs"
-                data-testid="arrives-refusal"
-                style={{ color: 'var(--color-error, #f87171)' }}
-              >
-                {message}
-              </div>
-            )
+      {/* ARRIVES (rpg-project#375 §3.7, step B): the predicate that brings
+          this placement into the run. Monsters and props alike; until it
+          holds the placement is in RESERVE — no cell, no turn, unseen by
+          anyone — and on the first verb after, it lands on its cell. The
+          same editor `until` and an ending's `when` use. */}
+      <div className="dg-label">
+        arrives
+        <PredicateEditor
+          doc={doc}
+          value={placement.arrives}
+          testId="placement-arrives"
+          noneMeans="placed at launch — on the map from the first frame"
+          refusals={messagesAt(
+            refusals,
+            errors,
+            ...predicatePaths(`place[${index}].arrives`)
           )}
-          <div className="text-xs opacity-70">
-            In reserve until this holds. Authored in the next step; carried as
-            written for now.
+          onChange={(arrives) => onChange({ arrives })}
+        />
+        {placement.arrives !== undefined && (
+          <div className="text-xs opacity-70" data-testid="arrives-note">
+            In reserve until this holds: absent from the map, the roster and
+            every eye. Then it lands here, or on the nearest free floor of this
+            region if the cell is taken.
           </div>
-        </div>
-      )}
+        )}
+      </div>
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
         remove
       </button>
@@ -971,11 +989,15 @@ function IdControl({
   doc,
   index,
   placement,
+  messages,
   onChange,
 }: {
   doc: DungeonDoc;
   index: number;
   placement: PlacementDoc;
+  /** Refusals addressed to `place[i].id` other than a clash — a reserved
+   * prop with no name, or whatever the compiler says. */
+  messages: string[];
   onChange: (id: string) => void;
 }) {
   const [typed, setTyped] = useState<string | null>(null);
@@ -1026,10 +1048,21 @@ function IdControl({
           {doc.place[clashIndex as number]?.ref} — two placements cannot share
           one, because a scenario binds to exactly one of them
         </div>
+      ) : messages.length > 0 ? (
+        messages.map((message, i) => (
+          <div
+            key={i}
+            className="text-xs"
+            data-testid="placement-id-refusal"
+            style={{ color: 'var(--color-error, #f87171)' }}
+          >
+            {message}
+          </div>
+        ))
       ) : (
         <div className="text-xs opacity-70">
           Optional. Needed by whatever points at this: a scenario&apos;s form,
-          or picking it up.
+          picking it up, or arriving later.
         </div>
       )}
     </label>

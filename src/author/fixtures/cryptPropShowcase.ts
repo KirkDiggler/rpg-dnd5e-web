@@ -112,5 +112,6 @@ export function cryptPropShowcaseDoc(): DungeonDoc {
     intel: [],
     factions: [],
     dispositions: [],
+    endings: [],
   };
 }
