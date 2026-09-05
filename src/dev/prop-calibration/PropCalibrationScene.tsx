@@ -158,7 +158,7 @@ export function PropCalibrationScene(props: PropCalibrationSceneProps) {
     return <div role="alert">This imported row has no prepared local GLB.</div>;
   }
   return (
-    <Canvas shadows dpr={[1, 1.5]}>
+    <Canvas frameloop="demand" shadows dpr={[1, 1.5]}>
       <CalibrationWorld {...props} url={props.url} />
     </Canvas>
   );
