@@ -15,6 +15,7 @@ import { OffHandAttachmentConcept } from './off-hand-attachment/OffHandAttachmen
 import { SessionCombatConcept } from './session-combat/SessionCombatConcept';
 import { SessionTombConcept } from './session-tomb/SessionTombConcept';
 import { WeaponAttachmentConcept } from './weapon-attachment/WeaponAttachmentConcept';
+import { WorldBuildingConcept } from './world-building/WorldBuildingConcept';
 
 type ConceptPage =
   | 'attack-die-3d'
@@ -31,7 +32,8 @@ type ConceptPage =
   | 'weapon-attachment'
   | 'off-hand-attachment'
   | 'dungeon-builder'
-  | 'asset-anchor-lab';
+  | 'asset-anchor-lab'
+  | 'world-building';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'attack-die-3d', label: 'Attack Die 3D' },
@@ -49,6 +51,7 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'off-hand-attachment', label: 'Off-Hand Attachment' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
+  { id: 'world-building', label: 'World Building' },
 ];
 
 interface ConceptsViewProps {
@@ -151,6 +154,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
             per Kirk's ask ("a dev one that is hooked to fixture data"). */}
         {activePage === 'dungeon-builder' && <DungeonBuilderSandbox />}
         {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
+        {activePage === 'world-building' && <WorldBuildingConcept />}
       </motion.div>
     </div>
   );
