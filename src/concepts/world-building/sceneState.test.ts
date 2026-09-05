@@ -8,6 +8,7 @@ import {
   duplicateSelection,
   groupSelection,
   moveSelection,
+  previewSelectionTransform,
   redoHistory,
   rotateSelection,
   saveArrangement,
@@ -196,6 +197,88 @@ describe('world-building continuous scene math', () => {
     expect(
       supportFirst.items.find((item) => item.id === 'books')!.transform.z
     ).toBeCloseTo(-2);
+  });
+
+  it('previews gizmo motion from one immutable drag-start scene', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 1, y: 0, z: 2, rotationY: 0.1 },
+      'table'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candles',
+      { x: 1.5, y: 0.8, z: 2, rotationY: 0.2 },
+      'candle',
+      { supportId: 'table' }
+    );
+
+    const firstPreview = previewSelectionTransform(scene, ['table'], 'move', {
+      x: 0.25,
+      y: 0.3,
+      z: -0.5,
+      rotationY: 0,
+    });
+    const laterPreview = previewSelectionTransform(scene, ['table'], 'move', {
+      x: 0.4,
+      y: 0.1,
+      z: -0.2,
+      rotationY: 0,
+    });
+
+    expect(firstPreview.items[0]!.transform).toMatchObject({
+      x: 1.25,
+      y: 0.3,
+      z: 1.5,
+    });
+    expect(laterPreview.items[0]!.transform).toMatchObject({
+      x: 1.4,
+      y: 0.1,
+      z: 1.8,
+    });
+    expect(laterPreview.items[1]!.transform).toMatchObject({
+      x: 1.9,
+      y: 0.9,
+      z: 1.8,
+    });
+    expect(scene.items[0]!.transform).toEqual({
+      x: 1,
+      y: 0,
+      z: 2,
+      rotationY: 0.1,
+    });
+  });
+
+  it('previews only upright positive-Y gizmo rotation for a relationship closure', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 2, y: 0, z: -1, rotationY: 0 },
+      'table'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:books',
+      { x: 3, y: 1, z: -1, rotationY: 0 },
+      'books',
+      { supportId: 'table' }
+    );
+
+    const preview = previewSelectionTransform(scene, ['table'], 'rotate', {
+      x: 99,
+      y: 99,
+      z: 99,
+      rotationY: Math.PI / 2,
+    });
+
+    expect(preview.items[0]!.transform).toMatchObject({ x: 2, y: 0, z: -1 });
+    expect(preview.items[1]!.transform.x).toBeCloseTo(2);
+    expect(preview.items[1]!.transform.y).toBeCloseTo(1);
+    expect(preview.items[1]!.transform.z).toBeCloseTo(-2);
+    expect(preview.items[1]!.transform.rotationY).toBeCloseTo(Math.PI / 2);
   });
 
   it('groups only the exact selection without flattening members or absorbing unrelated content', () => {

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { WORLD_BUILDING_CATALOG } from './catalog';
+import {
+  WORLD_BUILDING_CATALOG,
+  WORLD_BUILDING_CATALOG_BY_REF,
+} from './catalog';
 import {
   addProp,
   createEmptyScene,
@@ -8,7 +11,6 @@ import {
   deleteSelection,
   duplicateSelection,
   groupSelection,
-  moveSelection,
   redoHistory,
   rotateSelection,
   saveArrangement,
@@ -34,10 +36,15 @@ import type {
   IdFactory,
   KeyValueStorage,
   SceneHistory,
-  WorldPoint,
   WorldScene,
 } from './types';
 import './worldBuilding.css';
+import {
+  writeWorldBuildingDragPayload,
+  type WorldBuildingDragPayload,
+} from './worldBuildingDrag';
+import type { WorldBuildingTool } from './WorldBuildingInteraction';
+import type { WorldBuildingDropTarget } from './worldBuildingPointer';
 import { WorldBuildingViewport } from './WorldBuildingViewport';
 
 interface WorldBuildingConceptProps {
@@ -45,10 +52,6 @@ interface WorldBuildingConceptProps {
   idFactory?: IdFactory;
   now?: () => string;
 }
-
-type PlacementTool =
-  | { kind: 'prop'; id: string }
-  | { kind: 'arrangement'; id: string };
 
 const browserStorage: KeyValueStorage = {
   getItem: (key) => window.localStorage.getItem(key),
@@ -88,7 +91,11 @@ export function WorldBuildingConcept({
   const [history, setHistory] = useState<SceneHistory>(initial.history);
   const [library, setLibrary] = useState<ArrangementLibrary>(initial.library);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [placement, setPlacement] = useState<PlacementTool | null>(null);
+  const [tool, setTool] = useState<WorldBuildingTool>('select');
+  const [activeDrag, setActiveDrag] = useState<WorldBuildingDragPayload | null>(
+    null
+  );
+  const [previewScene, setPreviewScene] = useState<WorldScene | null>(null);
   const [search, setSearch] = useState('');
   const [arrangementName, setArrangementName] = useState('New arrangement');
   const [portableJson, setPortableJson] = useState('');
@@ -130,6 +137,7 @@ export function WorldBuildingConcept({
       try {
         const valid = validateScene(next);
         setHistory((current) => updateHistory(current, valid));
+        setPreviewScene(null);
         setSelectedIds(selection);
         setNotice('');
       } catch (error) {
@@ -143,65 +151,71 @@ export function WorldBuildingConcept({
     [selectedIds]
   );
 
-  const activeArrangement =
-    placement?.kind === 'arrangement'
-      ? library.arrangements.find((entry) => entry.id === placement.id)
-      : undefined;
+  const dropIntoScene = useCallback(
+    (payload: WorldBuildingDragPayload, target: WorldBuildingDropTarget) => {
+      if (payload.kind === 'prop') {
+        if (!WORLD_BUILDING_CATALOG_BY_REF.has(payload.id)) {
+          setNotice(
+            'Drop rejected; that asset is not in the local prop catalog.'
+          );
+          return;
+        }
+        try {
+          const id = idFactory();
+          const transform =
+            target.kind === 'surface'
+              ? { ...target.point, rotationY: 0 }
+              : { ...target.point, y: 0, rotationY: 0 };
+          commit(
+            addProp(
+              scene,
+              payload.id,
+              transform,
+              id,
+              target.kind === 'surface'
+                ? { supportId: target.supportId }
+                : undefined
+            ),
+            [id]
+          );
+          setTool('move');
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
 
-  const placeGround = (point: WorldPoint) => {
-    if (!placement) return;
-    if (placement.kind === 'prop') {
+      if (target.kind !== 'ground') {
+        setNotice('Arrangements can be stamped on the ground only.');
+        return;
+      }
+      const arrangement = library.arrangements.find(
+        (entry) => entry.id === payload.id
+      );
+      if (!arrangement) {
+        setNotice('Drop rejected; that arrangement is not in this library.');
+        return;
+      }
       try {
-        const id = idFactory();
-        commit(
-          addProp(
-            scene,
-            placement.id,
-            { x: point.x, y: 0, z: point.z, rotationY: 0 },
-            id
-          ),
-          []
+        const stamped = stampArrangement(
+          scene,
+          arrangement,
+          target.point,
+          idFactory
         );
+        commit(stamped.scene, stamped.createdIds);
+        setTool('move');
       } catch (error) {
         setNotice(error instanceof Error ? error.message : String(error));
       }
-      return;
-    }
-    if (!activeArrangement) {
-      setNotice('That arrangement is no longer in the library.');
-      setPlacement(null);
-      return;
-    }
-    try {
-      const stamped = stampArrangement(
-        scene,
-        activeArrangement,
-        point,
-        idFactory
-      );
-      commit(stamped.scene, []);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    }
-  };
+    },
+    [commit, idFactory, library.arrangements, scene]
+  );
 
-  const placeSurface = (
-    point: { x: number; y: number; z: number },
-    supportId: string
-  ) => {
-    if (placement?.kind !== 'prop') return;
-    try {
-      const id = idFactory();
-      commit(
-        addProp(scene, placement.id, { ...point, rotationY: 0 }, id, {
-          supportId,
-        }),
-        []
-      );
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    }
-  };
+  const selectInScene = useCallback((ids: string[]) => {
+    setPreviewScene(null);
+    setSelectedIds(ids);
+  }, []);
 
   const applyToSelection = useCallback(
     (operation: (current: WorldScene) => WorldScene) => {
@@ -237,11 +251,13 @@ export function WorldBuildingConcept({
   }, [commit, scene, selectedIds]);
 
   const undo = useCallback(() => {
+    setPreviewScene(null);
     setHistory((current) => undoHistory(current));
     setSelectedIds([]);
     setNotice('');
   }, []);
   const redo = useCallback(() => {
+    setPreviewScene(null);
     setHistory((current) => redoHistory(current));
     setSelectedIds([]);
     setNotice('');
@@ -282,7 +298,8 @@ export function WorldBuildingConcept({
           rotateSelection(current, selectedIds, Math.PI / 12)
         );
       } else if (event.key === 'Escape') {
-        setPlacement(null);
+        setPreviewScene(null);
+        setActiveDrag(null);
       }
     };
     window.addEventListener('keydown', handleKey);
@@ -368,8 +385,10 @@ export function WorldBuildingConcept({
     }
     setHistory(createHistory(sceneResult.value));
     setLibrary(libraryResult.value);
+    setPreviewScene(null);
     setSelectedIds([]);
-    setPlacement(null);
+    setTool('select');
+    setActiveDrag(null);
     setNotice('');
     setSaveStatus('Reopened local scene and library');
   };
@@ -382,7 +401,11 @@ export function WorldBuildingConcept({
   ).length;
 
   return (
-    <section className="wb-shell" aria-label="World Building Concept">
+    <section
+      className="wb-shell"
+      aria-label="World Building Concept"
+      data-transform-preview={previewScene ? 'active' : 'idle'}
+    >
       <header className="wb-header">
         <div>
           <p className="wb-kicker">Durable Concepts Lab · web#935</p>
@@ -407,7 +430,8 @@ export function WorldBuildingConcept({
                 onClick={() => {
                   const blank = createEmptyScene(idFactory());
                   commit(blank, []);
-                  setPlacement(null);
+                  setTool('select');
+                  setActiveDrag(null);
                   setConfirmBlank(false);
                 }}
               >
@@ -440,72 +464,100 @@ export function WorldBuildingConcept({
             />
           </label>
           <p className="wb-help">
-            Choose an asset, then point at the ground or an upward-facing
-            tabletop. Placement is free and overlaps are allowed.
+            Drag an asset onto the ground or an upward-facing loaded tabletop.
+            Clicking a card never arms placement.
           </p>
           <div className="wb-palette-list">
-            {filteredCatalog.map((entry) => (
-              <button
-                key={entry.ref}
-                className={
-                  placement?.kind === 'prop' && placement.id === entry.ref
-                    ? 'wb-palette-entry wb-active'
-                    : 'wb-palette-entry'
-                }
-                aria-pressed={
-                  placement?.kind === 'prop' && placement.id === entry.ref
-                }
-                aria-label={`Place ${entry.label}`}
-                onClick={() => {
-                  setPlacement({ kind: 'prop', id: entry.ref });
-                  setSelectedIds([]);
-                }}
-              >
-                {entry.thumbnail ? (
-                  <img src={entry.thumbnail} alt="" />
-                ) : (
-                  <span className="wb-swatch">{entry.label.slice(0, 2)}</span>
-                )}
-                <span>
-                  <strong>{entry.label}</strong>
-                  <small>
-                    {entry.role}
-                    {entry.supportsDecoration ? ' · surface' : ''}
-                  </small>
-                </span>
-              </button>
-            ))}
+            {filteredCatalog.map((entry) => {
+              const payload: WorldBuildingDragPayload = {
+                kind: 'prop',
+                id: entry.ref,
+              };
+              return (
+                <article
+                  key={entry.ref}
+                  className="wb-palette-entry"
+                  draggable
+                  aria-label={`Drag ${entry.label} into scene`}
+                  onDragStart={(event) => {
+                    writeWorldBuildingDragPayload(event.dataTransfer, payload);
+                    setActiveDrag(payload);
+                  }}
+                  onDragEnd={() => setActiveDrag(null)}
+                >
+                  {entry.thumbnail ? (
+                    <img src={entry.thumbnail} alt="" draggable={false} />
+                  ) : (
+                    <span className="wb-swatch">{entry.label.slice(0, 2)}</span>
+                  )}
+                  <span>
+                    <strong>{entry.label}</strong>
+                    <small>
+                      Drag to add · {entry.role}
+                      {entry.supportsDecoration ? ' · surface' : ''}
+                    </small>
+                  </span>
+                </article>
+              );
+            })}
           </div>
         </aside>
 
         <main className="wb-stage">
+          <div className="wb-tool-strip">
+            <div
+              className="wb-tools"
+              role="toolbar"
+              aria-label="Manipulation tools"
+            >
+              {(['select', 'move', 'rotate'] as const).map((entry) => (
+                <button
+                  key={entry}
+                  className={tool === entry ? 'wb-tool wb-active' : 'wb-tool'}
+                  aria-pressed={tool === entry}
+                  onClick={() => {
+                    setPreviewScene(null);
+                    setTool(entry);
+                  }}
+                >
+                  {entry[0]!.toUpperCase() + entry.slice(1)}
+                </button>
+              ))}
+            </div>
+            <span data-testid="interaction-status">
+              {tool === 'select'
+                ? 'Left: select · Shift-left: add selection'
+                : tool === 'move'
+                  ? 'Drag arrows or planes · Esc/right-click: cancel'
+                  : 'Drag the Y ring · Esc/right-click: cancel'}
+            </span>
+          </div>
           <div className="wb-stage-bar">
-            <span data-testid="placement-status">
-              {placement?.kind === 'prop'
-                ? `Placing ${WORLD_BUILDING_CATALOG.find((entry) => entry.ref === placement.id)?.label ?? 'asset'} — click ground or tabletop`
-                : activeArrangement
-                  ? `Stamping ${activeArrangement.name} — click ground for independent copies`
-                  : 'Select: left drag · Orbit: right drag · Zoom: wheel'}
+            <span>
+              Drag palette assets into the scene · Middle: orbit · Shift-middle:
+              pan · Wheel: zoom
             </span>
             <span data-testid="asset-load-status">
               Real models loaded {loadedCount}/{scene.items.length}
               {failedCount > 0 ? ` · ${failedCount} failed` : ''}
             </span>
-            {placement && (
-              <button onClick={() => setPlacement(null)}>
-                Cancel placement
-              </button>
-            )}
           </div>
           <div className="wb-canvas-wrap">
             <WorldBuildingViewport
               scene={scene}
+              previewScene={previewScene}
               selectedIds={selectedIds}
-              placement={placement}
-              onSelect={setSelectedIds}
-              onPlaceGround={placeGround}
-              onPlaceSurface={placeSurface}
-              onMove={(ids, delta) => commit(moveSelection(scene, ids, delta))}
+              tool={tool}
+              activeDrag={activeDrag}
+              onSelect={selectInScene}
+              onDrop={dropIntoScene}
+              onDragFinished={() => setActiveDrag(null)}
+              onTransformPreview={setPreviewScene}
+              onTransformCommit={(next) => commit(next)}
+              onTransformReject={(message) => {
+                setPreviewScene(null);
+                setNotice(message);
+              }}
               onAssetState={(id, state) =>
                 setAssetStates((current) =>
                   current[id] === state ? current : { ...current, [id]: state }
@@ -527,34 +579,6 @@ export function WorldBuildingConcept({
               </button>
               <button disabled={history.future.length === 0} onClick={redo}>
                 Redo
-              </button>
-              <button
-                onClick={() =>
-                  applyToSelection((current) =>
-                    rotateSelection(current, selectedIds, -Math.PI / 12)
-                  )
-                }
-              >
-                Rotate left
-              </button>
-              <button
-                onClick={() =>
-                  applyToSelection((current) =>
-                    rotateSelection(current, selectedIds, Math.PI / 12)
-                  )
-                }
-              >
-                Rotate right
-              </button>
-              <button
-                aria-label="Nudge selection east"
-                onClick={() =>
-                  applyToSelection((current) =>
-                    moveSelection(current, selectedIds, { x: 0.1, y: 0, z: 0 })
-                  )
-                }
-              >
-                Nudge east
               </button>
               <button onClick={duplicate}>Duplicate</button>
               <button className="wb-danger" onClick={remove}>
@@ -612,10 +636,10 @@ export function WorldBuildingConcept({
                   aria-label={`Select ${group.label} ${group.id}`}
                   checked={selectedIds.includes(group.id)}
                   onChange={() =>
-                    setSelectedIds((current) =>
-                      current.includes(group.id)
-                        ? current.filter((id) => id !== group.id)
-                        : [...current, group.id]
+                    selectInScene(
+                      selectedIds.includes(group.id)
+                        ? selectedIds.filter((id) => id !== group.id)
+                        : [...selectedIds, group.id]
                     )
                   }
                 />
@@ -624,7 +648,7 @@ export function WorldBuildingConcept({
             ))}
             <div className="wb-tree">
               {scene.items.length === 0 && (
-                <p>Blank scene — choose an asset.</p>
+                <p>Blank scene — drag an asset onto the canvas.</p>
               )}
               {scene.items.map((item) => (
                 <label className="wb-tree-row" key={item.id}>
@@ -633,10 +657,10 @@ export function WorldBuildingConcept({
                     aria-label={`Select ${item.label} ${item.id}`}
                     checked={selectedIds.includes(item.id)}
                     onChange={() =>
-                      setSelectedIds((current) =>
-                        current.includes(item.id)
-                          ? current.filter((id) => id !== item.id)
-                          : [...current, item.id]
+                      selectInScene(
+                        selectedIds.includes(item.id)
+                          ? selectedIds.filter((id) => id !== item.id)
+                          : [...selectedIds, item.id]
                       )
                     }
                   />
@@ -666,21 +690,33 @@ export function WorldBuildingConcept({
               {library.arrangements.length === 0 && (
                 <p>No saved arrangements yet. Build the first one.</p>
               )}
-              {library.arrangements.map((arrangement) => (
-                <article key={arrangement.id}>
-                  <strong>{arrangement.name}</strong>
-                  <small>{arrangement.items.length} editable props</small>
-                  <button
-                    aria-label={`Stamp ${arrangement.name}`}
-                    onClick={() => {
-                      setPlacement({ kind: 'arrangement', id: arrangement.id });
-                      setSelectedIds([]);
+              {library.arrangements.map((arrangement) => {
+                const payload: WorldBuildingDragPayload = {
+                  kind: 'arrangement',
+                  id: arrangement.id,
+                };
+                return (
+                  <article
+                    key={arrangement.id}
+                    draggable
+                    aria-label={`Drag ${arrangement.name} arrangement onto ground`}
+                    onDragStart={(event) => {
+                      writeWorldBuildingDragPayload(
+                        event.dataTransfer,
+                        payload
+                      );
+                      setActiveDrag(payload);
                     }}
+                    onDragEnd={() => setActiveDrag(null)}
                   >
-                    Stamp independent copy
-                  </button>
-                </article>
-              ))}
+                    <strong>{arrangement.name}</strong>
+                    <small>
+                      {arrangement.items.length} editable props · drag to ground
+                      for an independent copy
+                    </small>
+                  </article>
+                );
+              })}
             </div>
           </section>
 

@@ -10,45 +10,52 @@ import {
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { OrbitControls } from '@react-three/drei';
-import { Canvas, type ThreeEvent } from '@react-three/fiber';
-import { Suspense, useMemo, useState } from 'react';
+import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import * as THREE from 'three';
+import type {
+  OrbitControls as OrbitControlsImpl,
+  TransformControls as TransformControlsImpl,
+} from 'three-stdlib';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import { selectionClosure } from './sceneState';
-import type { WorldPoint, WorldScene } from './types';
+import type { WorldScene } from './types';
+import type { WorldBuildingDragPayload } from './worldBuildingDrag';
+import {
+  WorldBuildingDropInteraction,
+  WorldBuildingTransformGizmo,
+  type WorldBuildingTool,
+} from './WorldBuildingInteraction';
+import {
+  resolveWorldSelectionId,
+  type WorldBuildingDropTarget,
+} from './worldBuildingPointer';
 
-interface PlacementTool {
-  kind: 'prop' | 'arrangement';
-  id: string;
-}
-
-interface WorldBuildingViewportProps {
+export interface WorldBuildingViewportProps {
+  /** Last committed scene. Transform previews never replace this value. */
   scene: WorldScene;
+  previewScene: WorldScene | null;
   selectedIds: readonly string[];
-  placement: PlacementTool | null;
+  tool: WorldBuildingTool;
+  activeDrag: WorldBuildingDragPayload | null;
   onSelect: (ids: string[]) => void;
-  onPlaceGround: (point: WorldPoint) => void;
-  onPlaceSurface: (
-    point: { x: number; y: number; z: number },
-    supportId: string
+  onDrop: (
+    payload: WorldBuildingDragPayload,
+    target: WorldBuildingDropTarget
   ) => void;
-  onMove: (
-    ids: readonly string[],
-    delta: { x: number; y: number; z: number }
-  ) => void;
+  onDragFinished: () => void;
+  onTransformPreview: (scene: WorldScene | null) => void;
+  onTransformCommit: (scene: WorldScene) => void;
+  onTransformReject: (message: string) => void;
   onAssetState: (id: string, state: 'loaded' | 'error') => void;
 }
-
-interface DragState {
-  ids: string[];
-  start: THREE.Vector3;
-  delta: THREE.Vector3;
-}
-
-const DRAG_PLANE = new THREE.Plane(
-  new THREE.Vector3(0, 1, 0),
-  -DUNGEON_SURFACE_Y
-);
 
 function makeHexLines(radius: number): THREE.BufferGeometry {
   const points: THREE.Vector3[] = [];
@@ -83,19 +90,6 @@ function makeGroundBoundary(radius: number): THREE.BufferGeometry {
   );
 }
 
-function rayFloorPoint(event: ThreeEvent<PointerEvent>): THREE.Vector3 | null {
-  return event.ray.intersectPlane(DRAG_PLANE, new THREE.Vector3());
-}
-
-function hasUpwardFace(event: ThreeEvent<PointerEvent>): boolean {
-  if (!event.face) return false;
-  const normal = event.face.normal.clone();
-  const normalMatrix = new THREE.Matrix3().getNormalMatrix(
-    event.object.matrixWorld
-  );
-  return normal.applyMatrix3(normalMatrix).normalize().y > 0.55;
-}
-
 function ModelFallback({ tone }: { tone: 'loading' | 'error' }) {
   return (
     <mesh position={[0, 0.3, 0]} name={`world-building-model-${tone}`}>
@@ -111,93 +105,43 @@ function ModelFallback({ tone }: { tone: 'loading' | 'error' }) {
 interface WorldPropVisualProps {
   item: WorldScene['items'][number];
   selected: boolean;
-  dragDelta: THREE.Vector3 | null;
-  placement: PlacementTool | null;
   onSelect: (ids: string[]) => void;
   selectedIds: readonly string[];
-  onDragStart: (drag: DragState) => void;
-  onDragChange: (delta: THREE.Vector3) => void;
-  onDragEnd: () => void;
-  onPlaceSurface: WorldBuildingViewportProps['onPlaceSurface'];
+  isGizmoPointer: () => boolean;
+  resolveSelectionId: (
+    intersections: readonly THREE.Intersection[]
+  ) => string | null;
   onAssetState: WorldBuildingViewportProps['onAssetState'];
 }
 
 export function WorldPropVisual({
   item,
   selected,
-  dragDelta,
-  placement,
   onSelect,
   selectedIds,
-  onDragStart,
-  onDragChange,
-  onDragEnd,
-  onPlaceSurface,
+  isGizmoPointer,
+  resolveSelectionId,
   onAssetState,
 }: WorldPropVisualProps) {
   const entry = WORLD_BUILDING_CATALOG_BY_REF.get(item.assetRef);
   const [bounds, setBounds] = useState<PropModelBounds | null>(null);
-  const delta = dragDelta ?? new THREE.Vector3();
   const position: [number, number, number] = [
-    item.transform.x + delta.x,
+    item.transform.x,
     item.transform.y,
-    item.transform.z + delta.z,
+    item.transform.z,
   ];
   if (!entry) return null;
 
-  const placeOnVisibleSurface = (event: ThreeEvent<PointerEvent>) => {
-    if (!placement || !entry.supportsDecoration) return;
-    // Placement rays intentionally land on the loaded PropModel meshes, not
-    // the generous selection box below. This keeps authored Y at the visible
-    // tabletop/upper surface even when the model has an irregular silhouette.
+  const select = (event: ThreeEvent<PointerEvent>) => {
+    if (event.button !== 0 || isGizmoPointer()) return;
     event.stopPropagation();
-    if (!hasUpwardFace(event)) return;
-    onPlaceSurface(
-      {
-        x: event.point.x,
-        y: Math.max(0, event.point.y - DUNGEON_SURFACE_Y),
-        z: event.point.z,
-      },
-      item.id
-    );
-  };
-
-  const startDrag = (event: ThreeEvent<PointerEvent>) => {
-    if (placement) return;
-    event.stopPropagation();
-    const additive = event.shiftKey || event.ctrlKey || event.metaKey;
-    const nextSelection = additive
-      ? selected
-        ? selectedIds.filter((id) => id !== item.id)
-        : [...selectedIds, item.id]
-      : selected
+    const selectionId = resolveSelectionId(event.intersections) ?? item.id;
+    const nextSelection = event.shiftKey
+      ? selectedIds.includes(selectionId)
         ? [...selectedIds]
-        : [item.id];
+        : [...selectedIds, selectionId]
+      : [selectionId];
     onSelect(nextSelection);
-    if (!nextSelection.includes(item.id)) return;
-    const start = rayFloorPoint(event);
-    if (!start) return;
-    const pointerTarget = event.target as Element | null;
-    pointerTarget?.setPointerCapture(event.pointerId);
-    onDragStart({ ids: nextSelection, start, delta: new THREE.Vector3() });
-  };
-
-  const changeDrag = (event: ThreeEvent<PointerEvent>) => {
-    const pointerTarget = event.target as Element | null;
-    if (placement || !pointerTarget?.hasPointerCapture(event.pointerId)) {
-      return;
-    }
-    const point = rayFloorPoint(event);
-    if (!point) return;
-    onDragChange(point);
-  };
-
-  const finishDrag = (event: ThreeEvent<PointerEvent>) => {
-    const pointerTarget = event.target as Element | null;
-    if (pointerTarget?.hasPointerCapture(event.pointerId)) {
-      pointerTarget.releasePointerCapture(event.pointerId);
-      onDragEnd();
-    }
   };
 
   return (
@@ -212,7 +156,11 @@ export function WorldPropVisual({
         >
           <group
             name={`world-building-loaded-surface-${item.id}`}
-            onPointerDown={placeOnVisibleSurface}
+            userData={
+              entry.supportsDecoration
+                ? { worldBuildingSupportId: item.id }
+                : undefined
+            }
           >
             <PropModel
               variant={entry.variant}
@@ -234,7 +182,7 @@ export function WorldPropVisual({
           </group>
         </ErrorBoundary>
       </Suspense>
-      {bounds && !placement && (
+      {bounds && (
         <mesh
           name={`world-building-interaction-${item.id}`}
           position={[
@@ -243,10 +191,8 @@ export function WorldPropVisual({
             position[2],
           ]}
           rotation={[0, item.transform.rotationY, 0]}
-          onPointerDown={startDrag}
-          onPointerMove={changeDrag}
-          onPointerUp={finishDrag}
-          onPointerCancel={finishDrag}
+          userData={{ worldBuildingInteractionId: item.id }}
+          onPointerDown={select}
         >
           <boxGeometry
             args={[
@@ -272,6 +218,7 @@ export function WorldPropVisual({
             position[2],
           ]}
           rotation={[0, item.transform.rotationY, 0]}
+          raycast={() => null}
         >
           <boxGeometry
             args={[
@@ -292,37 +239,62 @@ export function WorldPropVisual({
   );
 }
 
+function WorldBuildingCameraControls({ enabled }: { enabled: boolean }) {
+  const { camera, gl } = useThree();
+  const controlsRef = useRef<OrbitControlsImpl>(null);
+  const recordCamera = useCallback(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    gl.domElement.dataset.worldBuildingCamera = JSON.stringify({
+      position: camera.position.toArray(),
+      target: controls.target.toArray(),
+    });
+  }, [camera.position, gl.domElement]);
+  useEffect(recordCamera, [recordCamera]);
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      makeDefault
+      enabled={enabled}
+      target={[0, 0.6, 0]}
+      minDistance={4}
+      maxDistance={26}
+      maxPolarAngle={Math.PI / 2.05}
+      mouseButtons={{
+        LEFT: -1 as THREE.MOUSE,
+        MIDDLE: THREE.MOUSE.ROTATE,
+        RIGHT: -1 as THREE.MOUSE,
+      }}
+      enablePan
+      enableRotate
+      enableZoom
+      enableDamping
+      onChange={recordCamera}
+    />
+  );
+}
+
 function WorldSceneContents(props: WorldBuildingViewportProps) {
-  const { scene, selectedIds, placement, onSelect, onPlaceGround, onMove } =
+  const { scene, previewScene, selectedIds, tool, activeDrag, onSelect } =
     props;
+  const displayScene = previewScene ?? scene;
   const hexGeometry = useMemo(() => makeHexLines(6), []);
   const boundaryGeometry = useMemo(() => makeGroundBoundary(11.5), []);
-  const [drag, setDrag] = useState<DragState | null>(null);
-  const draggedIds = useMemo(
-    () => (drag ? selectionClosure(scene, drag.ids) : new Set<string>()),
-    [drag, scene]
+  const controlsRef = useRef<TransformControlsImpl>(null);
+  const [transforming, setTransforming] = useState(false);
+  const selectedClosure = useMemo(
+    () => selectionClosure(displayScene, selectedIds),
+    [displayScene, selectedIds]
   );
-
-  const startDrag = (next: DragState) => setDrag(next);
-  const changeDrag = (point: THREE.Vector3) =>
-    setDrag((current) =>
-      current
-        ? {
-            ...current,
-            delta: new THREE.Vector3(
-              point.x - current.start.x,
-              0,
-              point.z - current.start.z
-            ),
-          }
-        : current
-    );
-  const endDrag = () => {
-    if (drag && drag.delta.lengthSq() > 0.000001) {
-      onMove(drag.ids, { x: drag.delta.x, y: 0, z: drag.delta.z });
-    }
-    setDrag(null);
+  const isGizmoPointer = () => {
+    const controls = controlsRef.current as unknown as {
+      axis: string | null;
+      dragging: boolean;
+    } | null;
+    return !!controls?.axis || !!controls?.dragging;
   };
+  const resolveSelectionId = (intersections: readonly THREE.Intersection[]) =>
+    resolveWorldSelectionId(displayScene, intersections);
 
   return (
     <>
@@ -333,16 +305,14 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
       <hemisphereLight args={['#a5f3fc', '#172026', 0.55]} />
       <mesh
         name="world-building-finite-ground"
+        userData={{ worldBuildingGround: true }}
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, DUNGEON_SURFACE_Y - 0.012, 0]}
         receiveShadow
         onPointerDown={(event) => {
+          if (event.button !== 0 || isGizmoPointer()) return;
           event.stopPropagation();
-          if (placement) {
-            onPlaceGround({ x: event.point.x, z: event.point.z });
-          } else {
-            onSelect([]);
-          }
+          if (!event.shiftKey) onSelect([]);
         }}
       >
         <circleGeometry args={[11.5, 6]} />
@@ -362,35 +332,34 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
       <lineLoop geometry={boundaryGeometry} raycast={() => null}>
         <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
       </lineLoop>
-      {scene.items.map((item) => (
+      {displayScene.items.map((item) => (
         <WorldPropVisual
           key={item.id}
           item={item}
-          selected={selectedIds.includes(item.id)}
+          selected={selectedClosure.has(item.id)}
           selectedIds={selectedIds}
-          dragDelta={draggedIds.has(item.id) ? (drag?.delta ?? null) : null}
-          placement={placement}
           onSelect={onSelect}
-          onDragStart={startDrag}
-          onDragChange={(point) => changeDrag(point)}
-          onDragEnd={endDrag}
-          onPlaceSurface={props.onPlaceSurface}
+          isGizmoPointer={isGizmoPointer}
+          resolveSelectionId={resolveSelectionId}
           onAssetState={props.onAssetState}
         />
       ))}
-      <OrbitControls
-        makeDefault
-        enabled={!drag}
-        target={[0, 0.6, 0]}
-        minDistance={4}
-        maxDistance={26}
-        maxPolarAngle={Math.PI / 2.05}
-        mouseButtons={{
-          LEFT: -1 as THREE.MOUSE,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.ROTATE,
-        }}
-        enableDamping
+      <WorldBuildingCameraControls enabled={!transforming} />
+      <WorldBuildingTransformGizmo
+        controlsRef={controlsRef}
+        scene={scene}
+        selectedIds={selectedIds}
+        tool={tool}
+        onPreview={props.onTransformPreview}
+        onCommit={props.onTransformCommit}
+        onReject={props.onTransformReject}
+        onTransformingChange={setTransforming}
+      />
+      <WorldBuildingDropInteraction
+        activeDrag={activeDrag}
+        floorY={DUNGEON_SURFACE_Y}
+        onDrop={props.onDrop}
+        onDragFinished={props.onDragFinished}
       />
     </>
   );
@@ -403,7 +372,7 @@ export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
       dpr={[1, 1.6]}
       shadows
       data-testid="world-building-canvas"
-      aria-label="World building 3D canvas. Left drag moves selected objects; right drag orbits; wheel zooms."
+      aria-label="World building 3D canvas. Left click selects; Shift-left adds selection; middle drag orbits; Shift-middle drag pans; wheel zooms; right click cancels a transform."
     >
       <WorldSceneContents {...props} />
     </Canvas>

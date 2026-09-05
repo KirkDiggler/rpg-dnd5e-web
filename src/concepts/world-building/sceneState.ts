@@ -212,6 +212,25 @@ function selectionCenter(
   };
 }
 
+export function selectionPivot(
+  scene: WorldScene,
+  selectedIds: readonly string[]
+): WorldTransform | null {
+  const roots = topLevelSelectedIds(scene, selectedIds);
+  return roots.length > 0 ? selectionCenter(scene, roots) : null;
+}
+
+export function previewSelectionTransform(
+  scene: WorldScene,
+  selectedIds: readonly string[],
+  mode: 'move' | 'rotate',
+  change: Pick<WorldTransform, 'x' | 'y' | 'z' | 'rotationY'>
+): WorldScene {
+  return mode === 'move'
+    ? moveSelection(scene, selectedIds, change)
+    : rotateSelection(scene, selectedIds, change.rotationY);
+}
+
 export function groupSelection(
   scene: WorldScene,
   selectedIds: readonly string[],

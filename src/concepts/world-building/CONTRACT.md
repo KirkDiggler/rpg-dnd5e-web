@@ -23,15 +23,36 @@ The concept currently provides:
   overlaps, and more than one object in the same visual hex;
 - real catalog-backed props, rendered by the shared `PropModel` rather than a
   concept-only imitation;
-- direct surface placement: while placing a prop, pointer intersections are
-  taken from an upward-facing triangle of an eligible loaded support model.
-  The handler exists only inside the successfully loaded `PropModel` subtree;
-  loading/error fallbacks and selection geometry cannot author a support. The
-  authored Y is the actual mesh intersection and `supportId` is recorded
+- drag-to-add without a sticky placement mode: a private bounded HTML drag
+  payload carries only a catalog ref or current-library arrangement id. A
+  valid prop drop on the finite ground creates one selected prop and opens the
+  Move tool. Palette/canvas clicks never add or arm placement; malformed,
+  external, off-canvas, unknown-ref, and canceled drops leave scene/history
+  untouched;
+- direct surface drops: the drop ray seeks an upward-facing triangle beneath a
+  successfully loaded, catalog-eligible `PropModel` subtree. Loading/error
+  fallbacks, transparent selection hitboxes, selection wireframes, hex lines,
+  drop previews, and transform gizmos cannot author a support. The authored Y
+  is the exact real-mesh intersection and `supportId` is recorded
   automatically;
-- additive individual or group selection, pointer drag, 15-degree rotation,
-  10-cm nudge, group/ungroup, duplicate, delete, undo, redo, and keyboard
-  shortcuts;
+- always-visible Select / Move / Rotate tools. Left click selects only and
+  Shift-left extends selection (including a decoration overlapping its
+  selected support). Move uses Three/Drei `TransformControls` X/Y/Z axes and
+  plane handles; Rotate exposes only its Y ring, matching the upright-yaw
+  schema. There is no implicit whole-object left drag;
+- one transform transaction per handle drag: object transforms preview from an
+  immutable drag-start scene without history/local-storage writes, pointer
+  release validates and commits one snapshot, and Esc/right-click restores the
+  drag start. Invalid final transforms reject non-destructively. Pointercancel,
+  deferred lost-capture handling, unmount, tool changes, and selection changes
+  clear preview/control ownership rather than stranding the camera;
+- Blender-style camera ownership through Three/Drei `OrbitControls`: middle
+  drag orbits, Shift-middle drag pans, and the wheel zooms. Left/Shift-left is
+  reserved for selection/gizmos and right-click is reserved for cancellation;
+  camera gestures do not select or mutate scene data, and handle gestures do
+  not move the camera;
+- group/ungroup, duplicate, delete, undo, redo, and coherent keyboard
+  shortcuts (including plain `R`, while Ctrl/Cmd/Alt+R remains browser-owned);
 - relationship-aware transforms: moving or rotating a support/group carries
   its descendants, while selecting a descendant edits it independently. One
   rotation uses the union closure of the distinct top-level selected roots,
@@ -39,10 +60,12 @@ The concept currently provides:
   their common pivot, and matches Three.js positive-Y yaw;
 - named arrangements saved from a selection closure. Arrangement X/Z is local
   to the saved root pivot while Y stays floor-relative, so grouped tables and
-  decorations at unequal heights validate, reopen, and stamp without flattening
-  or negative local heights. Each stamp deep-copies the template, creates fresh
-  identities, remaps internal group/support links, and has no linked-template
-  or sibling propagation;
+  decorations at unequal heights validate, reopen, and drag-stamp on the ground
+  without flattening or negative local heights. Each drop creates one
+  independent stamp, deep-copies the template, creates fresh identities,
+  remaps internal group/support links, and has no linked-template or sibling
+  propagation. The UI truthfully says arrangements stamp on ground; it does not
+  imply arbitrary tabletop arrangement anchors;
 - versioned scene and arrangement-library JSON import/export and independent
   local-storage auto-save. Parse/write failures are visible and do not replace
   the valid in-memory scene/library or a prior good stored payload;
@@ -53,12 +76,14 @@ relationship retains internal links but deliberately drops references to an
 external group/support; for example, duplicating or saving a candle without its
 table creates a detached copy at the same floor-relative height.
 
-The real-browser forcing case built a torture table with candles and books,
-saved it as `Decorated table`, stamped it twice, edited one stamped candle,
-proved the sibling and library template unchanged, reloaded the whole page,
-continued editing, and moved/rotated the original supporting table. Both
-attached decorations followed. The same run exercised duplicate, delete,
-undo, and redo through the visible controls.
+The current real-browser forcing case dragged a torture table onto the ground
+and candles onto its loaded mesh, selected through actual canvas clicks,
+exercised real TransformControls axis/plane/ring pickers, canceled previews with
+Esc/right-click, rejected an invalid Y transform, and undid one committed drag
+with one Undo. It then moved a grouped table/support closure, drag-stamped its
+arrangement twice with fresh remapped identities, exercised Blender-style
+camera gestures, and reloaded exact scene/library data. The complete receipt is
+under the current evidence path in Verification evidence.
 
 ## Provisional local JSON
 
@@ -148,7 +173,7 @@ caller. The concept opts into `bounds-floor-center`, measured from the loaded
 mesh, to center the visible bounds and rest their base on the dungeon surface.
 The shared Synty scale, companion meshes (including the candle particle
 companion), material handling, and GLTF loading remain owned by `PropModel`.
-Selection bounds are measured from the primary variant; placement itself rays
+Selection bounds are measured from the primary variant; support drops ray
 against the real visible meshes.
 
 For browser verification only, the existing synced root `props` and `env`
@@ -169,101 +194,91 @@ root and local copies match:
 
 ## Verification evidence
 
-The reviewed implementation head had 34 focused and 5,314 full passing tests.
-Fix-stage TDD and final evidence expanded that coverage:
+TDD coverage for this interaction pass adds bounded HTML drag payload parsing,
+valid/no-op drop creation, visible tool state, transform preview/commit/cancel
+semantics, relationship-preserving proxy math, surface eligibility, overlapping
+support-child selection, and explicit pointer ownership. Verification on the
+candidate included:
 
 ```bash
 npm test -- --run \
   src/concepts/world-building/sceneState.test.ts \
   src/concepts/world-building/serialization.test.ts \
+  src/concepts/world-building/worldBuildingDrag.test.ts \
+  src/concepts/world-building/WorldBuildingInteraction.test.ts \
   src/concepts/world-building/WorldBuildingConcept.test.tsx \
   src/concepts/world-building/WorldBuildingViewport.test.tsx \
   src/components/hex-grid/PropModel.test.tsx
-# 5 files, 48 tests passed
+# 7 files, 66 tests passed
 
+npx prettier --check <15 scoped paths>
+npx eslint <11 scoped TypeScript paths>
 npm run typecheck
-npx prettier --check <9 fix-stage paths>
-npx eslint <8 fix-stage TypeScript paths>
 # passed
 
 npm run build
-# 3,546 modules transformed; passed (expected chunk-size warning)
+# 3,549 modules transformed; passed (expected chunk-size warning)
 
 npm test -- --run
-# 372 files passed, 1 skipped; 5,328 tests passed, 5 skipped
+# 374 files passed, 1 skipped; 5,346 tests passed, 5 skipped
 
 npm run ci-check
 # format, lint, typecheck, build guards, and full tests passed
 ```
 
-The first recovery full-suite attempt reported eight failures. Three exposed a
-candidate regression: the optional anchor had inserted a wrapper into the
-default `PropModel` hierarchy. Default `source-origin` now renders the exact
-prior hierarchy, with a focused regression assertion. The other five were
-caused by making the whole ignored Synty root a symlink, which Git publication
-tests correctly refuse to traverse. Replacing it with the ignored real local
-copy described above fixed the environment. The seven formerly failing files
-then passed 111/111 tests, followed by the full green run recorded above.
-
-The component tests mock only the WebGL viewport boundary. State and
-serialization tests separately prove continuous/overlapping positions,
-Three.js-handed relationship rotation (including overlapping multi-root
-closures), collision-safe identity remapping, X/Z-local/floor-relative-Y
-arrangements, the 80-entry snapshot-history cap, strict catalog-bound parsing,
-round trips, and non-destructive corrupt storage/import handling. Focused R3F
-viewport tests prove only the confirmed loaded `PropModel` subtree can author a
-support; loading/error fallbacks and generated selection overlays cannot.
-
-Real R3F/GLB evidence was run with Google Chrome through Playwright at
-`http://127.0.0.1:3018/?concept=world-building`. The reusable managed evidence
-script and complete JSON event/transform receipt are outside Git at:
+Real R3F/GLB evidence ran in a fresh isolated Google Chrome context at
+`http://127.0.0.1:3018/?concept=world-building`. The reusable script, complete
+JSON receipt, logs, and screenshots are outside Git at:
 
 ```text
 /home/kirk/.pi/agent/sessions/--home-kirk-game-dev--/subagent-artifacts/outputs/
-67420b71-520b-4297-b400-99dc441c62ad/world-building/evidence/
+86d92fc3-5b35-400f-924a-f3f4d12fd4bc/world-building/evidence/
 ```
 
-Notable measured browser facts:
+The gesture harness drives the actual HTML `DataTransfer` path and the installed
+Drei controls; it does not call editor callbacks or mock the models/editor.
+Notable measured facts from `browser-evidence.json`:
 
-- the support reported `Real models loaded 1/1` before surface authoring;
-  table/candles/books then reported `3/3`, and actual loaded-table triangles
-  authored candle Y `0.9685438682` and books Y `1.2338218388`, both with the
-  table's identity as `supportId`;
-- grouping those three unequal-height entities, saving, stamping twice, and
-  reloading preserved heights plus remapped group/support identities; editing
-  the first stamped candle left its sibling and library template byte-for-byte
-  unchanged;
-- table translation and `π/12` rotation matched an independent
-  `THREE.Vector3.applyAxisAngle` calculation. The before/after images visibly
-  show the real rotated table with both decorations still resting on it, while
-  the sibling stamp remained unchanged;
-- saving only the unequal-height candle/books dropped their external group and
-  support links, stamped both at unchanged heights, allowed an independent
-  edit, and reopened with 11 real models loaded and both arrangements intact;
-- left-drag camera evidence was pixel-identical before/after; right-drag
-  changed the rendered camera view, matching the visible instructions;
-- there were zero console errors, page errors, failed requests, non-200 model
-  responses, or GLTF loader errors. `ConceptsView` lives inside `App`, whose
-  unrelated lobby/race/class/background hooks still start without a local game
-  server; the evidence harness records those exact endpoints and answers them
-  with a valid empty gRPC-web frame so they cannot contaminate this concept's
-  network/error result. No World Building operation calls an API.
-
-Final repository-wide format/lint/build/test command results are recorded in the
-implementation checklist and delivery report after they run on the candidate
-head.
+- ordinary palette/library/canvas clicks, external text, malformed private
+  payloads, and an arbitrary URL left items/history untouched. A real palette
+  drag created one selected table; a second real drag hit its loaded triangles,
+  authored candle Y `1.0171206342919583`, and stored the table `supportId`;
+- actual canvas left-click selected the table and Shift-left selected its
+  overlapping candle without losing the table. Empty-ground left-click cleared
+  selection but did not author data;
+- actual TransformControls X-axis and XZ-plane drags continuously previewed with
+  zero storage writes. Esc and right-click restored the drag start; a forced
+  negative-Y release was rejected and restored. A valid X drag committed once,
+  moved the table and supported candle by the same `1.058167802010371`, left the
+  camera unchanged, and one Undo restored it;
+- the actual Rotate control exposed and dragged the Y ring, committing yaw
+  `1.2249010673966143` to the relationship closure; one Undo restored the prior
+  snapshot. No X/Z tilt or scale path is present;
+- a grouped table/candle moved through one common gizmo without double-moving
+  the child. Dragging the saved arrangement twice produced fresh group/prop
+  identities, remapped support ids, retained floor-relative heights `[0,
+1.0171206342919583]`, and left the template/sibling stamps independent;
+- real middle-drag changed camera position without changing target/data/
+  selection; real Shift-middle changed the target; wheel changed zoom. Right
+  drag produced no orbit (only `0.0009002` residual damping drift), and the
+  earlier handle drag left the exact camera receipt unchanged;
+- save/reload round-tripped 6 items, 3 groups, and 1 arrangement exactly, then
+  reopened in Select. All six real models loaded. There were zero console
+  errors, page errors, failed requests, non-200 model responses, or GLTF errors.
+  The harness returns valid empty gRPC-web responses only to unrelated App hooks
+  and records them separately; World Building makes no API request.
 
 ## Remaining limits
 
 - Persistence is browser-local only: no campaign wiring, backend promotion,
   collaboration, sharing, ACLs, or marketplace behavior.
-- Surface eligibility is a concept-local catalog hint and placement accepts
+- Surface eligibility is a concept-local catalog hint and surface drops accept
   upward-facing triangles only. There is no wall snapping, physics, collision
   avoidance, or semantic surface metadata from a provider.
 - Attachments are authored relations propagated by editor operations, not a
   runtime constraint solver. An author may intentionally edit an attached
   child away from its support while retaining the relation.
-- No scale/numeric gizmo, advanced precision controls, floor painting, wall
+- No scale, full tilt, numeric gizmo, advanced precision controls, floor painting, wall
   construction, behavior/quest wiring, or linked-prefab overrides exist.
 - The finite limits above are concept safety bounds, not proposed server limits.
 - The catalog can only reference locally synced `PROP_KEYS`; missing licensed

@@ -41,12 +41,13 @@ production that wiring is what gets replaced by a real subscription.
 
 `world-building/` is the web#935 durable local authoring concept at
 `?concept=world-building`. It renders catalog-backed scene props through the
-shared `PropModel` on a visible hex scale while preserving free continuous
-placement, support/group relationships, independent arrangement stamps, and
-versioned local scene/library JSON. It starts blank with an empty arrangement
-library and does not change the live dungeon authoring contract. Proven browser
-behavior, provisional data delta, asset receipts, and limits are recorded in
-`world-building/CONTRACT.md`.
+shared `PropModel` on a visible hex scale. Catalog props and saved arrangements
+are dragged into the scene; left click selects, and visible Move/Rotate gizmos
+edit support/group closures as one transaction. It preserves continuous world
+positions, independent arrangement stamps, and versioned local scene/library
+JSON. It starts blank with an empty arrangement library and does not change the
+live dungeon authoring contract. Proven browser behavior, provisional data
+delta, asset receipts, and limits are recorded in `world-building/CONTRACT.md`.
 
 ## Character customization evidence
 

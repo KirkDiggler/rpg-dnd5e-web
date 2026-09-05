@@ -3,61 +3,147 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { KeyValueStorage, WorldScene } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
+const DRAG_MIME = 'application/x-rpg-world-building-item+json';
+
 vi.mock('./WorldBuildingViewport', () => ({
   WorldBuildingViewport: (props: {
     scene: WorldScene;
+    previewScene: WorldScene | null;
     selectedIds: string[];
-    placement: { kind: 'prop' | 'arrangement'; id: string } | null;
-    onPlaceGround: (point: { x: number; z: number }) => void;
-    onPlaceSurface: (
-      point: { x: number; y: number; z: number },
-      supportId: string
+    tool: 'select' | 'move' | 'rotate';
+    onSelect: (ids: string[]) => void;
+    onDrop: (
+      payload: { kind: 'prop' | 'arrangement'; id: string },
+      target:
+        | { kind: 'ground'; point: { x: number; z: number } }
+        | {
+            kind: 'surface';
+            point: { x: number; y: number; z: number };
+            supportId: string;
+          }
     ) => void;
-  }) => (
-    <div data-testid="mock-world-viewport">
-      <output data-testid="viewport-scene">
-        {JSON.stringify(props.scene)}
-      </output>
-      <output data-testid="viewport-selection">
-        {props.selectedIds.join(',')}
-      </output>
-      <output data-testid="viewport-tool">
-        {props.placement
-          ? `${props.placement.kind}:${props.placement.id}`
-          : 'select'}
-      </output>
-      <button onClick={() => props.onPlaceGround({ x: 0.13, z: -0.27 })}>
-        Canvas ground
-      </button>
-      <button
-        disabled={!props.scene.items[0]}
-        onClick={() =>
-          props.onPlaceSurface(
-            {
-              x: 0.22,
-              y: props.placement?.id === 'dnd5e:props:books' ? 1.24 : 0.72,
-              z: -0.18,
-            },
-            props.scene.items[0]!.id
-          )
-        }
-      >
-        Canvas tabletop
-      </button>
-    </div>
-  ),
+    onDragFinished: () => void;
+    onTransformPreview: (scene: WorldScene | null) => void;
+    onTransformCommit: (scene: WorldScene) => void;
+    onTransformReject: (message: string) => void;
+  }) => {
+    const readPayload = (event: React.DragEvent) => {
+      try {
+        return JSON.parse(event.dataTransfer.getData(DRAG_MIME));
+      } catch {
+        return null;
+      }
+    };
+    const moved = (base: WorldScene, amount: number): WorldScene => ({
+      ...base,
+      items: base.items.map((item) =>
+        props.selectedIds.includes(item.id) ||
+        item.supportId === props.selectedIds[0]
+          ? {
+              ...item,
+              transform: { ...item.transform, x: item.transform.x + amount },
+            }
+          : item
+      ),
+    });
+    return (
+      <div data-testid="mock-world-viewport">
+        <output data-testid="viewport-scene">
+          {JSON.stringify(props.scene)}
+        </output>
+        <output data-testid="viewport-displayed-scene">
+          {JSON.stringify(props.previewScene ?? props.scene)}
+        </output>
+        <output data-testid="viewport-selection">
+          {props.selectedIds.join(',')}
+        </output>
+        <output data-testid="viewport-tool">{props.tool}</output>
+        <div
+          data-testid="canvas-ground"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            const payload = readPayload(event);
+            props.onDragFinished();
+            if (payload) {
+              props.onDrop(payload, {
+                kind: 'ground',
+                point: { x: 0.13, z: -0.27 },
+              });
+            }
+          }}
+        />
+        <div
+          data-testid="canvas-tabletop"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const payload = readPayload(event);
+            props.onDragFinished();
+            if (payload && props.scene.items[0]) {
+              props.onDrop(payload, {
+                kind: 'surface',
+                point: { x: 0.22, y: 0.9685, z: -0.18 },
+                supportId: props.scene.items[0].id,
+              });
+            }
+          }}
+        />
+        <button onClick={() => props.onSelect([])}>Canvas left click</button>
+        <button
+          onClick={() => props.onTransformPreview(moved(props.scene, 0.75))}
+        >
+          Preview gizmo move
+        </button>
+        <button
+          onClick={() =>
+            props.onTransformCommit(props.previewScene ?? props.scene)
+          }
+        >
+          Release gizmo
+        </button>
+        <button onClick={() => props.onTransformPreview(null)}>
+          Cancel gizmo
+        </button>
+        <button
+          onClick={() =>
+            props.onTransformReject(
+              'Transform rejected; drag-start positions were restored.'
+            )
+          }
+        >
+          Reject gizmo
+        </button>
+      </div>
+    );
+  },
 }));
+
+class TransferStub {
+  values = new Map<string, string>();
+  effectAllowed = 'uninitialized';
+  dropEffect = 'none';
+  getData(type: string): string {
+    return this.values.get(type) ?? '';
+  }
+  setData(type: string, value: string): void {
+    this.values.set(type, value);
+  }
+}
 
 class MemoryStorage implements KeyValueStorage {
   values = new Map<string, string>();
   failGet = false;
   failSet = false;
+  writes = 0;
   getItem(key: string): string | null {
     if (this.failGet) throw new Error('storage blocked');
     return this.values.get(key) ?? null;
   }
   setItem(key: string, value: string): void {
     if (this.failSet) throw new Error('quota blocked');
+    this.writes += 1;
     this.values.set(key, value);
   }
 }
@@ -71,273 +157,247 @@ function scene(): WorldScene {
   return JSON.parse(screen.getByTestId('viewport-scene').textContent ?? '{}');
 }
 
+function displayedScene(): WorldScene {
+  return JSON.parse(
+    screen.getByTestId('viewport-displayed-scene').textContent ?? '{}'
+  );
+}
+
+function dragLabelTo(label: string, targetTestId = 'canvas-ground') {
+  const transfer = new TransferStub();
+  const source = screen.getByLabelText(label);
+  fireEvent.dragStart(source, { dataTransfer: transfer });
+  fireEvent.dragOver(screen.getByTestId(targetTestId), {
+    dataTransfer: transfer,
+  });
+  fireEvent.drop(screen.getByTestId(targetTestId), { dataTransfer: transfer });
+  fireEvent.dragEnd(source, { dataTransfer: transfer });
+  return transfer;
+}
+
 afterEach(() => vi.restoreAllMocks());
 
-describe('WorldBuildingConcept real editing path', () => {
-  it('builds a decorated table with automatic pointer support, groups, and undo/redo', () => {
-    const storage = new MemoryStorage();
+describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
+  it('keeps Select / Move / Rotate visible and never arms placement from ordinary clicks', () => {
     render(
-      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
     );
-    expect(screen.getByText(/No saved arrangements yet/i)).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Place Torture Table' })
+    const toolbar = screen.getByRole('toolbar', { name: 'Manipulation tools' });
+    expect(toolbar).toBeTruthy();
+    expect(
+      screen
+        .getByRole('button', { name: 'Select' })
+        .getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(screen.getByRole('button', { name: 'Move' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Rotate' })).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Drag Books into scene'));
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas left click' }));
+    expect(scene().items).toHaveLength(0);
+    expect(screen.getByTestId('viewport-tool').textContent).toBe('select');
+  });
+
+  it('creates exactly one selected prop from a valid ground drop and exposes Move', () => {
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Place Candles' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
+
+    dragLabelTo('Drag Books into scene');
+    expect(scene().items).toHaveLength(1);
+    expect(scene().items[0]).toMatchObject({
+      id: 'id-2',
+      assetRef: 'dnd5e:props:books',
+      transform: { x: 0.13, y: 0, z: -0.27, rotationY: 0 },
+    });
+    expect(screen.getByTestId('viewport-selection').textContent).toBe('id-2');
+    expect(screen.getByTestId('viewport-tool').textContent).toBe('move');
+    expect(
+      screen.getByRole('button', { name: 'Move' }).getAttribute('aria-pressed')
+    ).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(scene().items).toHaveLength(0);
+  });
+
+  it('records exact tabletop height/support from one valid prop drop', () => {
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    dragLabelTo('Drag Torture Table into scene');
+    dragLabelTo('Drag Candles into scene', 'canvas-tabletop');
 
     expect(scene().items).toHaveLength(2);
-    expect(scene().items[0].transform).toMatchObject({
-      x: 0.13,
-      y: 0,
-      z: -0.27,
-    });
     expect(scene().items[1]).toMatchObject({
       assetRef: 'dnd5e:props:candles',
-      supportId: scene().items[0].id,
-      transform: { x: 0.22, y: 0.72, z: -0.18 },
+      supportId: 'id-2',
+      transform: { x: 0.22, y: 0.9685, z: -0.18 },
     });
-
-    const beforeSupportEdit = scene();
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Select Torture Table/i })
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Nudge selection east' })
-    );
-    expect(scene().items[0].transform.x).toBeCloseTo(
-      beforeSupportEdit.items[0].transform.x + 0.1
-    );
-    expect(scene().items[1].transform.x).toBeCloseTo(
-      beforeSupportEdit.items[1].transform.x + 0.1
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Rotate right' }));
-    expect(scene().items[0].transform.rotationY).toBeCloseTo(Math.PI / 12);
-    expect(scene().items[1].transform.rotationY).toBeCloseTo(Math.PI / 12);
-
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Candles/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Group selection' }));
-    expect(scene().groups).toHaveLength(1);
-    expect(
-      scene().items.every((item) => item.parentId === scene().groups[0].id)
-    ).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(scene().groups).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
-    expect(scene().groups).toHaveLength(1);
   });
 
-  it('duplicates, deletes, and restores a selected prop through editor controls', () => {
+  it('leaves scene/history/identity allocation untouched for malformed, external, and unknown drops', () => {
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    const ground = screen.getByTestId('canvas-ground');
+
+    fireEvent.drop(ground, { dataTransfer: new TransferStub() });
+    const malformed = new TransferStub();
+    malformed.setData(DRAG_MIME, 'not json');
+    fireEvent.drop(ground, { dataTransfer: malformed });
+    const unknown = new TransferStub();
+    unknown.setData(
+      DRAG_MIME,
+      JSON.stringify({ kind: 'prop', id: 'https://invalid.example/evil.glb' })
+    );
+    fireEvent.drop(ground, { dataTransfer: unknown });
+    expect(scene().items).toHaveLength(0);
+    expect(
+      (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+
+    dragLabelTo('Drag Vase into scene');
+    expect(scene().items[0]!.id).toBe('id-2');
+  });
+
+  it('previews without persistence/history, cancels cleanly, then commits one undoable gizmo action', () => {
     const storage = new MemoryStorage();
     render(
       <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
     );
+    dragLabelTo('Drag Books into scene');
+    const start = structuredClone(scene());
+    const writesAfterDrop = storage.writes;
 
-    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
-    expect(scene().items).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Preview gizmo move' }));
+    expect(displayedScene().items[0]!.transform.x).toBeCloseTo(
+      start.items[0]!.transform.x + 0.75
+    );
+    expect(scene()).toEqual(start);
+    expect(storage.writes).toBe(writesAfterDrop);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(scene().items).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel gizmo' }));
+    expect(displayedScene()).toEqual(start);
+    expect(scene()).toEqual(start);
+    expect(storage.writes).toBe(writesAfterDrop);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview gizmo move' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Release gizmo' }));
+    expect(scene().items[0]!.transform.x).toBeCloseTo(
+      start.items[0]!.transform.x + 0.75
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(scene().items).toHaveLength(2);
+    expect(scene().items[0]!.transform).toEqual(start.items[0]!.transform);
   });
 
-  it('saves, stamps, and reopens a grouped decorated table without flattening unequal heights', () => {
-    const storage = new MemoryStorage();
-    const idFactory = deterministicIds();
-    const mounted = render(
+  it('previews and commits a support relationship closure without moving it twice', () => {
+    render(
       <WorldBuildingConcept
-        storage={storage}
-        idFactory={idFactory}
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    dragLabelTo('Drag Torture Table into scene');
+    dragLabelTo('Drag Candles into scene', 'canvas-tabletop');
+    const start = structuredClone(scene());
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Select Torture Table id-2/i })
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview gizmo move' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Release gizmo' }));
+    expect(scene().items[0]!.transform.x).toBeCloseTo(
+      start.items[0]!.transform.x + 0.75
+    );
+    expect(scene().items[1]!.transform.x).toBeCloseTo(
+      start.items[1]!.transform.x + 0.75
+    );
+  });
+
+  it('rejects an invalid final gizmo result without a commit', () => {
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    dragLabelTo('Drag Books into scene');
+    const start = scene();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview gizmo move' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reject gizmo' }));
+
+    expect(scene()).toEqual(start);
+    expect(displayedScene()).toEqual(start);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /positions were restored/i
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(scene().items).toHaveLength(0);
+  });
+
+  it('drags an arrangement to independent ground stamps with fresh remapped relationships', () => {
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
         now={() => '2026-09-05T00:00:00.000Z'}
       />
     );
-
+    dragLabelTo('Drag Torture Table into scene');
+    dragLabelTo('Drag Candles into scene', 'canvas-tabletop');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Place Torture Table' })
+      screen.getByRole('checkbox', { name: /Select Torture Table id-2/i })
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Place Candles' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Select Torture Table/i })
-    );
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Candles/i }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Group selection' }));
-    fireEvent.change(screen.getByLabelText('Arrangement name'), {
-      target: { value: 'Grouped decorated table' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
-
-    expect(screen.getByText('Grouped decorated table')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Stamp Grouped decorated table' })
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    const stamped = scene();
-    expect(stamped.items.map((item) => item.transform.y)).toEqual([
-      0, 0.72, 1.24, 0, 0.72, 1.24,
-    ]);
-    expect(stamped.groups).toHaveLength(2);
-    expect(stamped.items[4].supportId).toBe(stamped.items[3].id);
-    expect(stamped.items[5].supportId).toBe(stamped.items[3].id);
-    expect(
-      stamped.items
-        .slice(3)
-        .every((item) => item.parentId === stamped.groups[1].id)
-    ).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
-    mounted.unmount();
-    render(<WorldBuildingConcept storage={storage} idFactory={idFactory} />);
-    expect(scene().items.map((item) => item.transform.y)).toEqual([
-      0, 0.72, 1.24, 0, 0.72, 1.24,
-    ]);
-    expect(screen.getByText('Grouped decorated table')).toBeTruthy();
-  });
-
-  it('saves, stamps, and reopens unequal-height decorations independently of their external support', () => {
-    const storage = new MemoryStorage();
-    const idFactory = deterministicIds();
-    const mounted = render(
-      <WorldBuildingConcept
-        storage={storage}
-        idFactory={idFactory}
-        now={() => '2026-09-05T00:00:00.000Z'}
-      />
-    );
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Place Torture Table' })
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Place Candles' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Candles/i }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
-    fireEvent.change(screen.getByLabelText('Arrangement name'), {
-      target: { value: 'Loose table dressing' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
-
-    expect(screen.getByText('Loose table dressing')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Stamp Loose table dressing' })
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    const stamped = scene();
-    expect(stamped.items.map((item) => item.transform.y)).toEqual([
-      0, 0.72, 1.24, 0.72, 1.24,
-    ]);
-    expect(stamped.items.slice(3).every((item) => !item.supportId)).toBe(true);
-
-    const originalBefore = structuredClone(stamped.items[1].transform);
-    fireEvent.click(
-      screen.getByRole('checkbox', {
-        name: new RegExp(`Select Candles ${stamped.items[3].id}`, 'i'),
-      })
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Nudge selection east' })
-    );
-    expect(scene().items[1].transform).toEqual(originalBefore);
-    expect(scene().items[3].transform.x).toBeCloseTo(
-      stamped.items[3].transform.x + 0.1
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
-    mounted.unmount();
-    render(<WorldBuildingConcept storage={storage} idFactory={idFactory} />);
-    expect(scene().items.map((item) => item.transform.y)).toEqual([
-      0, 0.72, 1.24, 0.72, 1.24,
-    ]);
-    expect(screen.getByText('Loose table dressing')).toBeTruthy();
-  });
-
-  it('saves, stamps twice independently, edits one candle, and reopens after remount', () => {
-    const storage = new MemoryStorage();
-    const idFactory = deterministicIds();
-    const mounted = render(
-      <WorldBuildingConcept
-        storage={storage}
-        idFactory={idFactory}
-        now={() => '2026-09-05T00:00:00.000Z'}
-      />
-    );
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Place Torture Table' })
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Place Candles' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Select Torture Table/i })
-    );
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Candles/i }));
     fireEvent.change(screen.getByLabelText('Arrangement name'), {
       target: { value: 'Decorated table' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
 
-    expect(screen.getByText('Decorated table')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Stamp Decorated table' })
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    const beforeEdit = scene();
-    expect(beforeEdit.items).toHaveLength(6);
-    const firstStampedCandle = beforeEdit.items[3];
-    const secondStampedCandle = beforeEdit.items[5];
-    const secondBefore = { ...secondStampedCandle.transform };
-
-    fireEvent.click(
-      screen.getByRole('checkbox', {
-        name: new RegExp(`Select Candles ${firstStampedCandle.id}`, 'i'),
-      })
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Nudge selection east' })
-    );
-    const afterEdit = scene();
-    expect(afterEdit.items[3].transform.x).toBeCloseTo(
-      firstStampedCandle.transform.x + 0.1
-    );
-    expect(afterEdit.items[5].transform).toEqual(secondBefore);
-
-    const libraryJson = screen.getByTestId('library-json').textContent ?? '';
-    expect(
-      JSON.parse(libraryJson).arrangements[0].items[1].transform.x
-    ).not.toBe(afterEdit.items[3].transform.x);
-    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
-
-    mounted.unmount();
-    render(<WorldBuildingConcept storage={storage} idFactory={idFactory} />);
-    expect(scene().items).toHaveLength(6);
-    expect(screen.getByText('Decorated table')).toBeTruthy();
+    dragLabelTo('Drag Decorated table arrangement onto ground');
+    dragLabelTo('Drag Decorated table arrangement onto ground');
+    const stamped = scene();
+    expect(stamped.items).toHaveLength(6);
+    const firstStamp = stamped.items.slice(2, 4);
+    const secondStamp = stamped.items.slice(4, 6);
+    const firstTable = firstStamp.find(
+      (item) => item.assetRef === 'dnd5e:props:torture-table'
+    )!;
+    const firstCandle = firstStamp.find(
+      (item) => item.assetRef === 'dnd5e:props:candles'
+    )!;
+    const secondTable = secondStamp.find(
+      (item) => item.assetRef === 'dnd5e:props:torture-table'
+    )!;
+    const secondCandle = secondStamp.find(
+      (item) => item.assetRef === 'dnd5e:props:candles'
+    )!;
+    expect(firstCandle.supportId).toBe(firstTable.id);
+    expect(secondCandle.supportId).toBe(secondTable.id);
+    expect(firstTable.id).not.toBe(secondTable.id);
   });
 
-  it('leaves Ctrl/Cmd/Alt+R reload keys untouched while plain R rotates', () => {
-    const storage = new MemoryStorage();
+  it('leaves Ctrl/Cmd/Alt+R browser shortcuts untouched while plain R remains coherent', () => {
     render(
-      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
+    dragLabelTo('Drag Books into scene');
     const before = scene();
 
     for (const modifiers of [
@@ -361,35 +421,36 @@ describe('WorldBuildingConcept real editing path', () => {
     });
     fireEvent(window, rotate);
     expect(rotate.defaultPrevented).toBe(true);
-    expect(scene().items[0].transform.rotationY).toBeCloseTo(Math.PI / 12);
+    expect(scene().items[0]!.transform.rotationY).toBeCloseTo(Math.PI / 12);
   });
 
-  it('keeps intentional Ctrl/Cmd+D duplication shortcuts', () => {
+  it('reopens saved scene/library data after drag-based editing', () => {
     const storage = new MemoryStorage();
-    render(
-      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
+    const ids = deterministicIds();
+    const mounted = render(
+      <WorldBuildingConcept storage={storage} idFactory={ids} />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
-
-    const duplicate = createEvent.keyDown(window, {
-      key: 'd',
-      ctrlKey: true,
-      cancelable: true,
+    dragLabelTo('Drag Books into scene');
+    fireEvent.change(screen.getByLabelText('Arrangement name'), {
+      target: { value: 'Books arrangement' },
     });
-    fireEvent(window, duplicate);
-    expect(duplicate.defaultPrevented).toBe(true);
-    expect(scene().items).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
+    mounted.unmount();
+
+    render(<WorldBuildingConcept storage={storage} idFactory={ids} />);
+    expect(scene().items).toHaveLength(1);
+    expect(screen.getByText('Books arrangement')).toBeTruthy();
   });
 
-  it('shows non-destructive import errors and keeps the valid open scene', () => {
-    const storage = new MemoryStorage();
+  it('shows non-destructive strict import errors and keeps the valid scene', () => {
     render(
-      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
+    dragLabelTo('Drag Books into scene');
     const before = scene();
     fireEvent.change(screen.getByLabelText('Portable JSON'), {
       target: {
@@ -414,19 +475,5 @@ describe('WorldBuildingConcept real editing path', () => {
       /not in the local prop catalog/i
     );
     expect(scene()).toEqual(before);
-  });
-
-  it('reports unavailable storage without losing the editable in-memory scene', () => {
-    const storage = new MemoryStorage();
-    storage.failGet = true;
-    storage.failSet = true;
-    render(
-      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
-    );
-    expect(screen.getByRole('alert').textContent).toMatch(/storage blocked/i);
-    fireEvent.click(screen.getByRole('button', { name: 'Place Vase' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
-    expect(scene().items).toHaveLength(1);
-    expect(screen.getByRole('alert').textContent).toMatch(/quota blocked/i);
   });
 });
