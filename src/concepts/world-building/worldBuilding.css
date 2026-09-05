@@ -1,0 +1,361 @@
+.wb-shell {
+  --wb-bg: #081112;
+  --wb-panel: #101b1c;
+  --wb-raised: #172526;
+  --wb-border: #33504d;
+  --wb-text: #d8ebe7;
+  --wb-muted: #93aaa6;
+  --wb-accent: #55e4d1;
+  display: flex;
+  min-height: 720px;
+  height: calc(100vh - 11.5rem);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--wb-border);
+  border-radius: 10px;
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 35%);
+}
+
+.wb-shell button,
+.wb-shell input,
+.wb-shell textarea {
+  border: 1px solid var(--wb-border);
+  border-radius: 5px;
+  background: var(--wb-raised);
+  color: var(--wb-text);
+}
+
+.wb-shell button {
+  padding: 0.4rem 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.wb-shell button:hover:not(:disabled),
+.wb-shell button:focus-visible {
+  border-color: var(--wb-accent);
+  outline: none;
+}
+
+.wb-shell button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.wb-header {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--wb-border);
+  background: linear-gradient(100deg, #0c1718, #122525);
+}
+
+.wb-header h2,
+.wb-header p {
+  margin: 0;
+}
+
+.wb-header h2 {
+  color: var(--wb-accent);
+  font:
+    700 1.35rem/1.25 Cinzel,
+    serif;
+}
+
+.wb-header p:not(.wb-kicker) {
+  color: var(--wb-muted);
+  font-size: 0.72rem;
+}
+
+.wb-kicker {
+  color: #f8d577;
+  font: 700 0.62rem/1.5 monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wb-save-cluster,
+.wb-confirm,
+.wb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.wb-save-cluster span:first-child {
+  color: var(--wb-muted);
+  font-size: 0.68rem;
+}
+
+.wb-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0.8rem;
+  border-bottom: 1px solid #b45309;
+  background: #4a260d;
+  color: #ffedd5;
+  font-size: 0.75rem;
+}
+
+.wb-alert button {
+  border: 0;
+  background: transparent;
+  font-size: 1rem;
+}
+
+.wb-workspace {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(170px, 0.78fr) minmax(420px, 2.8fr) minmax(
+      210px,
+      1fr
+    );
+}
+
+.wb-panel {
+  min-width: 0;
+  overflow: auto;
+  padding: 0.65rem;
+  background: var(--wb-panel);
+  scrollbar-color: #416561 transparent;
+  scrollbar-width: thin;
+}
+
+.wb-palette {
+  border-right: 1px solid var(--wb-border);
+}
+
+.wb-inspector {
+  border-left: 1px solid var(--wb-border);
+}
+
+.wb-panel h3 {
+  margin: 0 0 0.45rem;
+  color: #b6f4eb;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+}
+
+.wb-panel section + section,
+.wb-panel details {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #283c3a;
+}
+
+.wb-panel label > span {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+}
+
+.wb-panel input[type='search'],
+.wb-panel input:not([type]),
+.wb-panel textarea {
+  width: 100%;
+  padding: 0.42rem;
+  font-size: 0.72rem;
+}
+
+.wb-help,
+.wb-tree p,
+.wb-library p {
+  margin: 0.4rem 0;
+  color: var(--wb-muted);
+  font-size: 0.65rem;
+  line-height: 1.35;
+}
+
+.wb-palette-list {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.wb-palette-entry {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem !important;
+  text-align: left;
+}
+
+.wb-palette-entry.wb-active {
+  border-color: var(--wb-accent);
+  background: #17413d;
+  box-shadow: inset 3px 0 var(--wb-accent);
+}
+
+.wb-palette-entry img,
+.wb-swatch {
+  width: 44px;
+  height: 40px;
+  border-radius: 3px;
+  background: #091213;
+  object-fit: contain;
+}
+
+.wb-swatch {
+  display: grid;
+  place-items: center;
+  color: #f8d577;
+  font-weight: 700;
+}
+
+.wb-palette-entry strong,
+.wb-palette-entry small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-palette-entry strong {
+  font-size: 0.7rem;
+}
+
+.wb-palette-entry small {
+  margin-top: 0.15rem;
+  color: var(--wb-muted);
+  font-size: 0.58rem;
+}
+
+.wb-stage {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: #071113;
+}
+
+.wb-stage-bar {
+  display: flex;
+  min-height: 35px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.35rem 0.55rem;
+  border-bottom: 1px solid var(--wb-border);
+  color: #bad0cc;
+  font-size: 0.64rem;
+}
+
+.wb-stage-bar span:first-child {
+  flex: 1;
+  color: #f9d989;
+}
+
+.wb-canvas-wrap {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  touch-action: none;
+}
+
+.wb-tree {
+  max-height: 155px;
+  overflow: auto;
+}
+
+.wb-tree-row {
+  display: flex !important;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.24rem;
+  border-radius: 3px;
+  font-size: 0.67rem;
+}
+
+.wb-tree-row:hover {
+  background: #192b2b;
+}
+
+.wb-tree-row > span {
+  display: inline !important;
+  margin: 0 !important;
+  color: var(--wb-text) !important;
+  font-size: 0.67rem !important;
+}
+
+.wb-group-row {
+  color: #f9d989;
+  font-weight: 700;
+}
+
+.wb-danger {
+  border-color: #7f1d1d !important;
+  color: #fecaca !important;
+}
+
+.wb-library {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.wb-library article {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.4rem;
+  border: 1px solid #2b4441;
+  border-radius: 5px;
+  background: #0c1617;
+}
+
+.wb-library strong,
+.wb-library small {
+  display: block;
+}
+
+.wb-library strong {
+  font-size: 0.68rem;
+}
+
+.wb-library small {
+  color: var(--wb-muted);
+  font-size: 0.58rem;
+}
+
+.wb-inspector summary {
+  cursor: pointer;
+  color: #b6f4eb;
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.wb-inspector textarea {
+  min-height: 115px;
+  margin: 0.4rem 0;
+  resize: vertical;
+  font-family: monospace;
+}
+
+@media (max-width: 980px) {
+  .wb-shell {
+    height: auto;
+    min-height: 900px;
+  }
+
+  .wb-workspace {
+    grid-template-columns: 180px minmax(420px, 1fr);
+    grid-template-rows: minmax(520px, 65vh) auto;
+  }
+
+  .wb-inspector {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--wb-border);
+    border-left: 0;
+  }
+}
