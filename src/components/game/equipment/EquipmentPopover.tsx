@@ -26,6 +26,7 @@
  */
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { formatMoney } from '../../../utils/money';
 import { EquipmentSlots } from './EquipmentSlots';
 import type {
   EquipIntent,
@@ -49,6 +50,10 @@ export interface EquipmentPopoverProps {
   onIntent: (intent: EquipIntent) => void;
   /** A prior intent's RPC is in flight — see EquipmentSlots' doc comment. */
   busy?: boolean;
+  /** The character's own wallet, in copper (`CharacterData.wallet.copper`,
+   * rpg-toolkit#1534). Undefined renders no wallet line rather than
+   * claiming "0 cp". */
+  walletCopper?: number;
 }
 
 export function EquipmentPopover({
@@ -62,8 +67,11 @@ export function EquipmentPopover({
   mainHandDamage,
   onIntent,
   busy,
+  walletCopper,
 }: EquipmentPopoverProps) {
   const reduced = useReducedMotion();
+  const hasStatsBeforeWallet =
+    armorClass !== undefined || Boolean(mainHandDamage);
 
   return (
     <AnimatePresence>
@@ -91,6 +99,12 @@ export function EquipmentPopover({
                 </>
               )}
               {mainHandDamage}
+              {walletCopper !== undefined && (
+                <>
+                  {hasStatsBeforeWallet ? ' · ' : ''}
+                  {formatMoney(walletCopper)}
+                </>
+              )}
             </span>
           </div>
           <div className="equip-popover-body">

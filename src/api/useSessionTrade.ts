@@ -1,4 +1,5 @@
 import type { TradeResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type { Money } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useState } from 'react';
 import { sessionClient } from './client';
 
@@ -12,11 +13,17 @@ export interface TradeParams {
    * adjacent, matching the proto's own default. */
   range?: number;
   /** The one stock row being bought — `receive` carries exactly one
-   * TradeItem this wave; `give` is always empty (one-directional
-   * acquisition only, rpg-toolkit#1275 wave 1). */
+   * TradeItem this wave; `give` is item-empty (one-directional
+   * acquisition only, rpg-toolkit#1275 wave 1) but now carries the
+   * payment as `currency`. */
   equipmentType: string;
   equipmentId: string;
   quantity: number;
+  /** The exact price to offer, read straight off the row's own
+   * `VendorStockEntry.price` (rpg-toolkit#1534). Sent verbatim as
+   * `give.currency` — this hook does no affordability or correctness
+   * check of its own. */
+  price: Money;
 }
 
 export interface UseTradeResult {
@@ -32,11 +39,14 @@ export interface UseTradeResult {
  * failure, the returned promise rejects so the caller decides what to
  * show.
  *
- * ONE-DIRECTIONAL ONLY. `give` is always sent empty; a caller that needs
- * to give something back is a later wave (rpg-toolkit#1275). No
- * client-side price/affordability check happens here — there's no price
- * on the wire yet, and reach/legality are the server's call regardless,
- * the same law every other session verb keeps.
+ * ONE-DIRECTIONAL ONLY. `give.items` is always sent empty; a caller that
+ * needs to give items back is a later wave (rpg-toolkit#1275). `give`
+ * DOES carry `currency` now (rpg-toolkit#1534, wave 4): price is a
+ * security property, not a display convenience — the server always
+ * recomputes the real price and refuses (`ErrWrongPrice`) any mismatch,
+ * so this hook makes no attempt to validate `price` itself. Reach,
+ * legality, and affordability (`ErrInsufficientFunds`) all stay the
+ * server's call, the same law every other session verb keeps.
  */
 export function useSessionTrade(): UseTradeResult {
   const [loading, setLoading] = useState(false);
@@ -52,7 +62,7 @@ export function useSessionTrade(): UseTradeResult {
           actor: params.actor,
           target: params.target,
           range: params.range ?? 0,
-          give: { items: [] },
+          give: { items: [], currency: params.price },
           receive: {
             items: [
               {

@@ -97,4 +97,42 @@ describe('EquipmentPopover', () => {
       'Sir Aldric'
     );
   });
+
+  it('shows the wallet balance alongside AC and damage when provided', () => {
+    render(
+      <EquipmentPopover
+        open
+        characterName="Sir Aldric"
+        classLabel="Fighter"
+        slots={SLOTS}
+        equipped={EQUIPPED}
+        items={ITEMS}
+        armorClass={{ total: 18, note: '16 chain mail + 2 shield' }}
+        mainHandDamage="1d8 slashing"
+        onIntent={vi.fn()}
+        walletCopper={235}
+      />
+    );
+    const text = screen.getByTestId('equipment-popover').textContent ?? '';
+    expect(text).toContain('2 gp 3 sp 5 cp');
+  });
+
+  it('renders no wallet text when walletCopper is omitted', () => {
+    render(
+      <EquipmentPopover
+        open
+        characterName="Sir Aldric"
+        classLabel="Fighter"
+        slots={SLOTS}
+        equipped={EQUIPPED}
+        items={ITEMS}
+        armorClass={{ total: 18, note: '16 chain mail + 2 shield' }}
+        mainHandDamage="1d8 slashing"
+        onIntent={vi.fn()}
+      />
+    );
+    const text = screen.getByTestId('equipment-popover').textContent ?? '';
+    expect(text).not.toContain('gp');
+    expect(text).not.toContain('cp');
+  });
 });
