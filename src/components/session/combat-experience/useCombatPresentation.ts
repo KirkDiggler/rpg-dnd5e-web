@@ -10,6 +10,7 @@ import {
   emptyPresentation,
   reduceCombatPresentation,
   selectBlocksManualEndTurn,
+  selectConcealsDeathSaveTruth,
   selectCurrentDiceEvents,
   selectCurrentPresentation,
   selectLiveAnnouncement,
@@ -43,6 +44,10 @@ export interface UseCombatPresentationResult {
   readonly story: readonly CombatExperienceStoryExchange[];
   readonly result?: CombatExperienceAttackOutcome;
   readonly settledDeathSave?: SettledDeathSave;
+  /** A live Death Save's refreshed current-state result is not visible yet. */
+  readonly concealsDeathSaveTruth: boolean;
+  /** Exact identity scopes the last-visible snapshot to one presentation. */
+  readonly concealedDeathSavePresentationKey?: string;
   readonly blocksManualEndTurn: boolean;
   readonly liveAnnouncement: string | null;
   /** Targets whose attack roll has not been revealed yet — the map holds
@@ -211,6 +216,10 @@ export function useCombatPresentation(
     () => selectBlocksManualEndTurn(state),
     [state]
   );
+  const concealsDeathSaveTruth = useMemo(
+    () => selectConcealsDeathSaveTruth(state),
+    [state]
+  );
   const unresolvedAttackTargets = useMemo(
     () => selectUnresolvedAttackTargets(state),
     [state]
@@ -243,6 +252,10 @@ export function useCombatPresentation(
     story,
     result,
     settledDeathSave,
+    concealsDeathSaveTruth,
+    concealedDeathSavePresentationKey: concealsDeathSaveTruth
+      ? current?.key
+      : undefined,
     blocksManualEndTurn,
     liveAnnouncement,
     unresolvedAttackTargets,

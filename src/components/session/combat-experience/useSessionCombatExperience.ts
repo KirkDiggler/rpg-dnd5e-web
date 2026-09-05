@@ -77,6 +77,9 @@ export interface UseSessionCombatExperienceResult {
   result?: CombatExperienceAttackOutcome;
   /** Accepted provider result retained for the release/continuation layer. */
   pendingDeathSaveResponse?: DeathSaveResponse;
+  /** Explicit presentation authority for current-state Death Save concealment. */
+  concealsDeathSaveTruth: boolean;
+  concealedDeathSavePresentationKey?: string;
   /** Targets whose attack roll has not been revealed on screen yet. The map
    * holds their downed reveal until it has — see `downedReveal.ts`. */
   unresolvedAttackTargets: ReadonlySet<string>;
@@ -826,6 +829,9 @@ export function useSessionCombatExperience({
       debug: presentation.debug,
       result: pacing.result,
       pendingDeathSaveResponse,
+      concealsDeathSaveTruth: presentation.concealsDeathSaveTruth,
+      concealedDeathSavePresentationKey:
+        presentation.concealedDeathSavePresentationKey,
       unresolvedAttackTargets: presentation.unresolvedAttackTargets,
       diceEvents: presentation.diceEvents,
       diceSemanticFallback: presentation.semanticFallback,
@@ -857,6 +863,8 @@ export function useSessionCombatExperience({
       pendingDeathSaveResponse,
       phase,
       presentation.blocksManualEndTurn,
+      presentation.concealedDeathSavePresentationKey,
+      presentation.concealsDeathSaveTruth,
       presentation.debug,
       presentation.diceEvents,
       presentation.diceRollerName,
