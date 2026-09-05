@@ -7,6 +7,16 @@ Durable behavior record: `src/concepts/world-building/CONTRACT.md` (written and 
 
 Build a durable, development-only Concepts Lab surface at `?concept=world-building`. Keep its continuous-transform authoring document and local persistence explicitly provisional. Reuse the production prop catalog and `PropModel`; do not call the server or modify live author/game routes.
 
+## Recovery note (2026-09-05)
+
+The original implementation session was interrupted after its native worktree
+was removed. The exact captured 14-file patch was restored at base `02846a5b`
+into the persistent `concept/935-world-building` worktree before this checklist
+resumed. Therefore the pre-implementation clean-tree and baseline-test steps
+could not be rerun in sequence; the recovered patch provenance is the baseline.
+The removed dependency tree was not reused: recovery ran `npm ci` from this
+worktree's unchanged lockfile as explicitly directed.
+
 ## Checklist
 
 1. **Establish the baseline**
@@ -53,3 +63,19 @@ Build a durable, development-only Concepts Lab surface at `?concept=world-buildi
    - Update Concepts documentation.
    - Run focused tests, typecheck, format check, lint, build, then full `npm run ci-check`.
    - Commit scoped changes with normal hooks; leave no staged files and report exact worktree/branch/head plus browser server PID/log/URL.
+
+## Recovery completion record
+
+- [x] Recovered patch inspected against the approved issue and concept boundary.
+- [x] Dependencies installed from the unchanged candidate lockfile.
+- [x] Focused scene, serialization, component, and shared-renderer tests pass.
+- [x] Typecheck passes after recovery fixes.
+- [x] Placement rays use real support meshes; selection bounds are separate.
+- [x] Right-drag camera binding and direct left-drag object movement proved.
+- [x] Decorated-table, two independent stamps, isolated edit, reload/edit,
+      support movement/rotation, duplicate/delete, undo/redo proved in real
+      Chrome/R3F/GLBs with managed screenshots and structured evidence.
+- [x] Durable contract and Concepts documentation updated.
+- [ ] Scoped format/lint/build and full `npm run ci-check` pass on final head.
+- [ ] Final candidate committed with no staged files; live server receipt
+      recorded in delivery report.

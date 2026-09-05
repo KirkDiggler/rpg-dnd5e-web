@@ -369,11 +369,11 @@ export function WorldBuildingConcept({
     setSaveStatus('Reopened local scene and library');
   };
 
-  const loadedCount = Object.values(assetStates).filter(
-    (state) => state === 'loaded'
+  const loadedCount = scene.items.filter(
+    (item) => assetStates[item.id] === 'loaded'
   ).length;
-  const failedCount = Object.values(assetStates).filter(
-    (state) => state === 'error'
+  const failedCount = scene.items.filter(
+    (item) => assetStates[item.id] === 'error'
   ).length;
 
   return (
