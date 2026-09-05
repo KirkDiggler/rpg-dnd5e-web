@@ -108,6 +108,24 @@ describe('remembered entities are inert', () => {
     expect(handlerCount(renderer, 'onPointerOut')).toBe(0);
   });
 
+  it('gives a remembered bartender no pointer handlers', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        entityId="demo-merchant-1"
+        type="npc"
+        knowledgeState="remembered"
+        onClick={() => {}}
+        onPointerOver={() => {}}
+        onPointerOut={() => {}}
+      />
+    );
+    expect(handlerCount(renderer, 'onClick')).toBe(0);
+    expect(handlerCount(renderer, 'onPointerOver')).toBe(0);
+    expect(handlerCount(renderer, 'onPointerOut')).toBe(0);
+    await renderer.unmount();
+  });
+
   it('leaves an ordinary ghost its stop-propagating click', async () => {
     // Regression guard: remembered is a NEW state, not a rename of ghosting.
     const renderer = await ReactThreeTestRenderer.create(

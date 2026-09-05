@@ -31,6 +31,7 @@ import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { ClassCharacterModel } from './ClassCharacterModel';
 import { resolvePlayerCharacterModel } from './classCharacterModels';
+import { resolveDemoNpcModelUrl } from './demoNpcModels';
 import {
   DEFAULT_HEADING_BY_TYPE,
   MEDIUM_HUMANOID_FORWARD_OFFSET,
@@ -61,10 +62,10 @@ export interface HexEntityProps {
   entityId: string;
   name: string;
   position: CubeCoord;
-  /** 'npc' is a placed, non-combatant MEMBER_KIND_WORLD member (e.g. a
-   * vendor) — renders through the same MediumHumanoid placeholder branch
-   * as 'player' (neutral 'human' variant, unarmed), never the 'monster'
-   * path's goblin fallback or class/race/weapon resolution. */
+  /** 'npc' is a placed, non-combatant MEMBER_KIND_WORLD member. The exact
+   * reference-tomb demo member has a temporary bartender appearance; other
+   * NPCs keep the neutral, unarmed MediumHumanoid placeholder. NPCs never
+   * resolve through player class/race/equipment or monster identity. */
   type: 'player' | 'monster' | 'obstacle' | 'npc';
   hexSize: number;
   isSelected?: boolean;
@@ -492,11 +493,9 @@ export function HexEntity({
           },
         };
 
-  // Use character model for players, monsters, and world NPCs. 'npc' takes
-  // this branch purely to reach the shared MediumHumanoid placeholder below
-  // (neither resolvePlayerCharacterModel nor resolveMonsterModelUrl fire for
-  // it, since both remain gated on their own exact type check) — it never
-  // resolves a class or monster GLB of its own.
+  // Players, monsters and world NPCs share the animated renderer, but keep
+  // separate model-selection gates. Unknown NPCs retain the neutral
+  // placeholder; only the explicit tomb demo bridge opts into an NPC GLB.
   if (type === 'player' || type === 'monster' || type === 'npc') {
     const characterClass = character?.class;
     const characterRace = character?.race;
@@ -544,10 +543,13 @@ export function HexEntity({
       type === 'monster'
         ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead, entityId)
         : undefined;
-    // Mutually exclusive by `type` — never both defined for the same
-    // entity, so combining them into one resolved url + one sticky-failure
-    // slot (failedEntityModelUrl above) is safe.
-    const resolvedModelUrl = classModelUrl ?? monsterModelUrl;
+    // Explicit temporary proof, not NPC template/appearance inference. No
+    // downed asset exists for this non-combatant model; an unexpected dead
+    // NPC keeps the existing placeholder treatment instead.
+    const npcModelUrl =
+      type === 'npc' && !isDead ? resolveDemoNpcModelUrl(entityId) : undefined;
+    // Mutually exclusive by type; all retain the same load-error fallback.
+    const resolvedModelUrl = classModelUrl ?? monsterModelUrl ?? npcModelUrl;
     // Only generated profile truth can name an exact complete class fallback.
     // Monsters and unsupported profiles retain one-step MediumHumanoid degradation.
     const generatedClassFallbackUrl =
@@ -592,9 +594,9 @@ export function HexEntity({
     // for MEDIUM_HUMANOID_FORWARD_OFFSET once an entity renders a real
     // Synty GLB instead of the MediumHumanoid placeholder).
     const modelForwardOffset =
-      type === 'player'
-        ? SYNTY_GLB_FORWARD_OFFSET
-        : POLYGON_DUNGEON_FORWARD_OFFSET;
+      type === 'monster'
+        ? POLYGON_DUNGEON_FORWARD_OFFSET
+        : SYNTY_GLB_FORWARD_OFFSET;
     // Shared fallback element — used both as the "no class model" branch
     // and as the ErrorBoundary fallback when a mapped class model exists
     // but its GLB fails to load (missing/unsynced asset, bad file, etc.).

@@ -52,16 +52,16 @@ function outfitAssets() {
 }
 
 describe('aggregate production character customization publication', () => {
-  it('pins the exact merged provider and generated aggregate authority', () => {
+  it('pins the exact provider snapshot and generated aggregate authority', () => {
     expect(CHARACTER_CUSTOMIZATION_PROVIDER).toEqual({
-      providerCommit: '91ddbdfd88db1eccc465616671d7f1f427f5056e',
+      providerCommit: 'cc0ebb3918fe6c8c8ca48b8fc57f166290eca13a',
       aggregateManifestSha256:
         '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
       outfitManifestSha256:
         '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
     });
     expect(sha256(readFileSync(catalogUrl))).toBe(
-      '6923cad04dd669138d34ace05205f909eb117b305f8b74e94b796559657f7940'
+      '3bfbacc43e389ad58ec4d148617eac2678b67c61f3345b7a34ccc8185666dbc0'
     );
     expect(CHARACTER_CUSTOMIZATION_CATALOG.profileOrder).toEqual([
       'human',
