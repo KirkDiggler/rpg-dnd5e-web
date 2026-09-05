@@ -154,8 +154,8 @@ const PROP_DEFAULTS = new Map(
   PALETTE_PROPS.map((p) => [
     p.ref,
     {
-      blocksMovement: p.role !== 'decor',
-      blocksLos: p.role === 'obstacle',
+      blocksMovement: p.blocksMovement,
+      blocksLos: p.blocksLoS,
     },
   ])
 );

@@ -52,6 +52,20 @@ describe('resolvePropVariant', () => {
     expect(resolvePropVariant(undefined)).toBeUndefined();
   });
 
+  it('resolves a generated exact ref and its three-part family default', () => {
+    const exact = resolvePropVariant('dnd5e:props:plushie:skeleton-dog');
+    expect(exact).toMatchObject({
+      name: 'Skele Dog Plushie',
+      file: 'props/plushie--skeleton-dog.glb',
+      role: 'decor',
+      footprintHexes: 1,
+      blocksMovement: false,
+      blocksLoS: false,
+    });
+    expect(resolvePropVariant('dnd5e:props:plushie')).toEqual(exact);
+    expect(resolvePropVariant('dnd5e:props:plushie:unknown')).toBeUndefined();
+  });
+
   it('picks the first variant deterministically for a multi-variant key', () => {
     expect(resolvePropVariant('dnd5e:props:barrel')?.name).toBe(
       'SM_Prop_Barrel_01'

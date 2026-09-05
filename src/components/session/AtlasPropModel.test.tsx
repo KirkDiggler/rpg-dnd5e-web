@@ -53,7 +53,33 @@ describe('AtlasPropModel', () => {
     expect(outer?.rotation.y).toBeCloseTo(facingToYaw('ne'));
   });
 
-  it('renders the neutral placeholder for an unknown ref', async () => {
+  it('resolves the generated exact Plushie ref', async () => {
+    const renderer = await renderAtlasProp({
+      ref: 'dnd5e:props:plushie:skeleton-dog',
+      position: { x: 0, y: 0, z: 0 },
+      facing: '',
+      offset: { x: 0, y: 0, z: 0 },
+    });
+
+    expect(
+      meshes(renderer).find(
+        (mesh) => mesh.name === '/models/synty/props/plushie--skeleton-dog.glb'
+      )
+    ).toBeDefined();
+  });
+
+  it('renders nothing for an unsupported exact prop ref', async () => {
+    const renderer = await renderAtlasProp({
+      ref: 'dnd5e:props:plushie:unknown',
+      position: { x: 0, y: 0, z: 0 },
+      facing: '',
+      offset: { x: 0, y: 0, z: 0 },
+    });
+
+    expect(meshes(renderer)).toHaveLength(0);
+  });
+
+  it('renders the neutral placeholder for an unknown legacy ref', async () => {
     const renderer = await renderAtlasProp({
       ref: 'homebrew:props:unknown',
       position: { x: 0, y: 0, z: 0 },
