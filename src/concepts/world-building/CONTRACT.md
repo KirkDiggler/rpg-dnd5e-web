@@ -138,11 +138,13 @@ companion), material handling, and GLTF loading remain owned by `PropModel`.
 Selection bounds are measured from the primary variant; placement itself rays
 against the real visible meshes.
 
-For browser verification only, the ignored worktree path
-`public/models/synty` was linked to the existing synced root runtime assets and
-resolved to `/home/kirk/game-dev/rpg-dnd5e-web/public/models/synty`. The link and
-all licensed assets remain untracked. Browser responses for the table,
-candles, candle companion, and books were HTTP 200. Receipts:
+For browser verification only, the existing synced root `props` and `env`
+runtime directories were copied into the ignored, real (non-symlink) worktree
+path `public/models/synty`. This path resolves inside the recovery worktree,
+contains 110 prop GLBs, passes nested `git check-ignore`, and has zero tracked
+files. All licensed assets remain untracked. Browser responses for the table,
+candles, candle companion, and books were HTTP 200. Receipts from the synced
+root and local copies match:
 
 | File                                 | SHA-256                                                            |
 | ------------------------------------ | ------------------------------------------------------------------ |
@@ -157,6 +159,9 @@ candles, candle companion, and books were HTTP 200. Receipts:
 Focused automated evidence:
 
 ```bash
+npm ci
+# 449 packages installed from the unchanged lockfile
+
 npm test -- --run \
   src/concepts/world-building/sceneState.test.ts \
   src/concepts/world-building/serialization.test.ts \
@@ -166,7 +171,29 @@ npm test -- --run \
 
 npm run typecheck
 # passed
+
+npx prettier --check <17 candidate files/directories>
+npx eslint <candidate TypeScript files/directories>
+# passed
+
+npm run build
+# 3,546 modules transformed; passed (expected chunk-size warning)
+
+npm test -- --run
+# 371 files passed, 1 skipped; 5,314 tests passed, 5 skipped
+
+npm run ci-check
+# format, lint, typecheck, build guards, and full tests passed
 ```
+
+The first recovery full-suite attempt reported eight failures. Three exposed a
+candidate regression: the optional anchor had inserted a wrapper into the
+default `PropModel` hierarchy. Default `source-origin` now renders the exact
+prior hierarchy, with a focused regression assertion. The other five were
+caused by making the whole ignored Synty root a symlink, which Git publication
+tests correctly refuse to traverse. Replacing it with the ignored real local
+copy described above fixed the environment. The seven formerly failing files
+then passed 111/111 tests, followed by the full green run recorded above.
 
 The component tests mock only the WebGL viewport boundary. State and
 serialization tests separately prove continuous/overlapping positions,

@@ -76,6 +76,7 @@ worktree's unchanged lockfile as explicitly directed.
       support movement/rotation, duplicate/delete, undo/redo proved in real
       Chrome/R3F/GLBs with managed screenshots and structured evidence.
 - [x] Durable contract and Concepts documentation updated.
-- [ ] Scoped format/lint/build and full `npm run ci-check` pass on final head.
-- [ ] Final candidate committed with no staged files; live server receipt
-      recorded in delivery report.
+- [x] Scoped format/lint/build, full 5,319-test run, and `npm run ci-check`
+      pass; the final receipt is also rerun after the documentation commit.
+- [x] Final candidate uses normal commit hooks; no-staged-files and live-server
+      receipts are recorded in the delivery report.
