@@ -2420,25 +2420,52 @@ export function removeExit(doc: DungeonDoc, index: number): DungeonDoc {
   return { ...doc, exits: doc.exits.filter((_, i) => i !== index) };
 }
 
-/** Bind one field of one scenario. An EMPTY value UNBINDS the field, and a
- * scenario left with no fields bound is dropped entirely — "nothing is
- * defaulted" the other way round: a form the author cleared must leave no
- * trace in the file, or the compiler goes on validating a binding nobody
- * meant to make. */
+/** Bind this dungeon to a scenario with nothing filled in yet — what the
+ * author's choice on the Scenario tab writes (`scenarios: { hold-out: {} }`).
+ * The empty block is the whole point: it is what makes the scenario's blanks
+ * appear, and what makes the compiler start asking for them. Choosing one
+ * that is already bound changes nothing rather than wiping what is in it. */
+export function addScenario(doc: DungeonDoc, scenarioId: string): DungeonDoc {
+  if (doc.scenarios[scenarioId] !== undefined) return doc;
+  return { ...doc, scenarios: { ...doc.scenarios, [scenarioId]: {} } };
+}
+
+/** Unbind a scenario entirely, blanks and all — the Remove beside its form.
+ *
+ * This is the ONLY way a scenario leaves the file (rpg-dnd5e-web#945).
+ * Clearing the last blank used to do it as a side effect, which was right
+ * while filling a blank in was the only way to bind one; now that adding and
+ * removing are verbs the author presses, a form must not vanish out from
+ * under the hand that emptied it. */
+export function clearScenarioBinding(
+  doc: DungeonDoc,
+  scenarioId: string
+): DungeonDoc {
+  if (doc.scenarios[scenarioId] === undefined) return doc;
+  const scenarios = { ...doc.scenarios };
+  delete scenarios[scenarioId];
+  return { ...doc, scenarios };
+}
+
+/** Bind one field of one scenario. An EMPTY value UNBINDS the field and
+ * leaves the scenario bound with that blank empty — a state the compiler
+ * refuses out loud, by name, which is the answer an author wants over a
+ * form that quietly disappears. `clearScenarioBinding` is the way out. */
 export function setScenarioBinding(
   doc: DungeonDoc,
   scenarioId: string,
   key: string,
   value: string
 ): DungeonDoc {
-  const current = doc.scenarios[scenarioId] ?? {};
-  const next: ScenarioBindings = { ...current };
+  const current = doc.scenarios[scenarioId];
+  // Clearing a blank on a scenario this dungeon does not bind binds nothing:
+  // the empty value has to mean "no binding" here too, or an unbind would be
+  // how a scenario gets into the file.
+  if (current === undefined && value === '') return doc;
+  const next: ScenarioBindings = { ...(current ?? {}) };
   if (value === '') delete next[key];
   else next[key] = value;
-  const scenarios = { ...doc.scenarios };
-  if (Object.keys(next).length === 0) delete scenarios[scenarioId];
-  else scenarios[scenarioId] = next;
-  return { ...doc, scenarios };
+  return { ...doc, scenarios: { ...doc.scenarios, [scenarioId]: next } };
 }
 
 /** Declare a new intel record, with a suggested id and nothing revealed
