@@ -1,0 +1,108 @@
+# The goblin camp (rpg-project#375, design §1) — the fixture the hold-out
+# scenario is authored against. STEP A ONLY: the letter lies at the gate from
+# the start rather than arriving at round 6, and no third goblin placement
+# waits on the chief's fall; both arrivals are step B (design §10).
+#
+# A small camp on three regions:
+#   - the GATE: where the party comes in, facing the yard; the front gate is
+#     the way out, on the letter's cell;
+#   - the YARD: the open ground, where the scout stands watch;
+#   - the HUT: the chief's, behind the one wall the camp has, through an open
+#     doorway.
+#
+# What the file declares, and nothing else that the tomb does not:
+#   - a FACTION, `goblins`, whose MIND is the chief: the faction knows what its
+#     mind knows (R3);
+#   - a DISPOSITION: goblins and party are hostile UNTIL the fact
+#     `saved-wiseman` is known — by the mind (R5);
+#   - an INTEL record, the wiseman's letter, that reveals that fact;
+#   - the LETTER, a holdable scroll at the gate carrying the record;
+#   - the CHIEF and the SCOUT, both `faction: goblins`;
+#   - the SCENARIO binding: hold-out, convince goblins.
+#
+# Hold the letter, carry it into the hut, and the camp turns (A2). Carry it to
+# the scout instead and nothing happens (A3): the scout is not the mind.
+version: 2
+key: reference-goblin-camp
+name: The Goblin Camp
+orientation: pointy
+void: transparent
+
+regions:
+  - id: gate
+    name: The Gate
+    archetype: cave
+    lighting: { intensity: 0.8 }
+    cells:
+      - [[0,2],[1,2],[2,2]]
+      - [[0,3],[1,3],[2,3]]
+      - [[0,4],[1,4],[2,4]]
+  - id: yard
+    name: The Yard
+    archetype: cave
+    lighting: { intensity: 0.8 }
+    cells:
+      - [[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[9,0]]
+      - [[3,1],[4,1],[5,1],[6,1],[7,1],[8,1],[9,1]]
+      - [[3,2],[4,2],[5,2],[6,2],[7,2],[8,2],[9,2]]
+      - [[3,3],[4,3],[5,3],[6,3],[7,3],[8,3],[9,3]]
+      - [[3,4],[4,4],[5,4],[6,4],[7,4],[8,4],[9,4]]
+      - [[3,5],[4,5],[5,5],[6,5],[7,5],[8,5],[9,5]]
+  - id: hut
+    name: The Chief's Hut
+    archetype: cave
+    lighting: { intensity: 0.4 }
+    cells:
+      - [[10,2],[11,2],[12,2],[13,2]]
+      - [[10,3],[11,3],[12,3],[13,3]]
+      - [[10,4],[11,4],[12,4],[13,4]]
+      - [[10,5],[11,5],[12,5],[13,5]]
+
+# The party arrives at the gate looking into the yard (rpg-project#374).
+start: { at: [0, 3], facing: e }
+
+# The hut's wall: one line between the yard and the hut, the same quarter line
+# the tomb's seams are drawn with, with the doorway standing in it.
+walls:
+  - start: { cell: [9,5], offset: [0.25, 0.375] }
+    end:   { cell: [10,0], offset: [-0.25, -0.375] }
+    name: the hut wall
+
+# An open doorway into the hut. A door's state is encounter state; this one
+# is never shut.
+doors:
+  - id: hut-door
+    at: { cell: [10,4], offset: [-0.25, -0.375] }
+
+# Everything standing on the floor. The two goblins fight for `goblins`; the
+# letter is a prop a member can hold, and it carries the record.
+place:
+  - { id: chief, ref: "dnd5e:monsters:goblin-boss", at: [12,4], faction: goblins }
+  - { id: scout, ref: "dnd5e:monsters:goblin", at: [4,2], faction: goblins }
+  - { id: letter, ref: "dnd5e:props:scroll", at: [1,3],
+      blocks_movement: false, blocks_los: false, holdable: true, holds: [wisemans-letter] }
+
+# The sides. `party` is never declared — every dungeon has it. The chief is
+# the mind: a fact carried into the hut is a fact the camp knows.
+factions:
+  - { id: goblins, mind: chief }
+
+# How the sides stand. Hostile until the camp knows the party saved the
+# Wiseman; when that holds, neutral (R2).
+dispositions:
+  - { between: [goblins, party], stance: hostile, until: { fact: saved-wiseman } }
+
+# The knowledge. A record reveals a FACT this time, not a door: a plain word,
+# declared by naming it here, that the disposition above waits for.
+intel:
+  - id: wisemans-letter
+    reveals: { fact: saved-wiseman }
+
+# The way out, on the letter's cell.
+exits:
+  - { id: front-gate, at: [1, 3] }
+
+# The scenario this camp is authored for: turn the goblins.
+scenarios:
+  hold-out:
+    convince: goblins

@@ -31,6 +31,8 @@ import { CreationBoard } from './creation/CreationBoard';
 import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
+  addDisposition,
+  addFaction,
   addIntel,
   addRegion,
   addWall,
@@ -48,7 +50,9 @@ import {
   paintScenery,
   parseDungeon,
   placeAt,
+  removeDisposition,
   removeExit,
+  removeFaction,
   removeIntel,
   removePlacement,
   removeRegion,
@@ -64,9 +68,11 @@ import {
   setWallName,
   toggleDoorAt,
   toggleExitAt,
+  updateDisposition,
   updateDoor,
   updateDungeon,
   updateExit,
+  updateFaction,
   updateIntel,
   updatePlacement,
   updateRegion,
@@ -892,6 +898,18 @@ export function DungeonBuilder({
                 applyDoc((d) => removeIntel(d, id));
                 setSelection({ kind: 'dungeon' });
               }}
+              onAddFaction={() => applyDoc((d) => addFaction(d))}
+              onFaction={(id, patch) =>
+                applyDoc((d) => updateFaction(d, id, patch))
+              }
+              onRemoveFaction={(id) => applyDoc((d) => removeFaction(d, id))}
+              onAddDisposition={() => applyDoc((d) => addDisposition(d))}
+              onDisposition={(index, patch) =>
+                applyDoc((d) => updateDisposition(d, index, patch))
+              }
+              onRemoveDisposition={(index) =>
+                applyDoc((d) => removeDisposition(d, index))
+              }
               onSelect={setSelection}
               onStartFacing={(facing) =>
                 applyDoc((d) => setStartFacing(d, facing))

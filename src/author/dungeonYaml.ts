@@ -182,6 +182,24 @@ export interface PlacementDoc {
    * `Take` — that half renames in a wave-0 follow-up and is confined to
    * `useSessionHold.ts` and `holdingBeat.ts` on the game side. */
   holdable?: boolean;
+  /** Monsters only, REFUSED on props. The declared faction this monster
+   * fights for (rpg-project#375 §2). ABSENT MEANS `monsters` — the reserved
+   * side every unauthored monster is on, hostile to the party — so a
+   * dungeon that names no faction emits the bytes it always did and plays
+   * exactly as it always has (R4). Written only when the author chose one;
+   * the panel shows `monsters` for an absent value and writes nothing.
+   * Carried verbatim; that the faction is declared is `factionRules.ts`'s
+   * inline refusal and the compiler's, not this module's. */
+  faction?: string;
+  /** Monsters and props. The predicate that brings this placement into the
+   * run — until it holds the placement is in reserve: no cell, no turn,
+   * absent from every projection (rpg-project#375 §3.7). PARSED AND
+   * EMITTED HERE, NOT YET AUTHORED: the editor for it is step B of the
+   * hold-out slice (design §10); this module carries the field so a file
+   * written with it round-trips rather than being refused by a builder one
+   * step behind the compiler. `at` still MUST be floor — it is where the
+   * placement lands when the predicate holds. */
+  arrives?: PredicateDoc;
 }
 
 /**
@@ -247,6 +265,89 @@ export interface ExitDoc {
 export interface IntelDoc {
   id: string;
   reveals: Record<string, string>;
+}
+
+/** The three stances a disposition may declare (rpg-project#375 §2) — a
+ * closed set, in the compiler's own words. `hostile` is the only one an
+ * `until` is legal with: a predicate says when the hostility ENDS, and
+ * when it holds the stance becomes `neutral` (R2). */
+export const STANCES = ['hostile', 'neutral', 'allied'] as const;
+export type Stance = (typeof STANCES)[number];
+
+/** The players' side. NEVER DECLARED under `factions:` — it is the one
+ * faction every dungeon has without saying so, and a file that declares it
+ * is refused by name (§2). It IS nameable in a disposition's `between`. */
+export const PARTY = 'party';
+/** Where every monster that names no faction belongs (R4). Hostile to the
+ * party, exactly as every dungeon written before factions existed behaved.
+ * Absent from the file: a monster's `faction:` is written only when the
+ * author chose one. */
+export const MONSTERS = 'monsters';
+
+/**
+ * A PREDICATE — the one authorable grammar `until` (and, in step B,
+ * `arrives` and `endings[].when`) are written in (rpg-project#375 §2).
+ *
+ * EXACTLY ONE KEY, and the key says which form it is:
+ *
+ *   `{ round: N }`     any fight in the run has started round N (N ≥ 1)
+ *   `{ down: <id> }`   that placement is Down
+ *   `{ fact: <id> }`   the fact is known — by the faction's mind on
+ *                      `until`, by anyone on `arrives`
+ *   `{ stance: { between: [a, b], is: <stance> } }`
+ *                      the pair's stance folds to that value
+ *
+ * Each form compiles to an encounter `Trigger`; the set is sealed the way
+ * `Trigger` is and grows one form per use case. Two keys in one map is not
+ * a predicate this module can represent, so the parser refuses the shape;
+ * whether the thing a form names exists is the refusal logic's question
+ * (`factionRules.ts`), rendered inline at the field.
+ */
+export type PredicateDoc =
+  | { round: number }
+  | { down: string }
+  | { fact: string }
+  | { stance: { between: [string, string]; is: Stance } };
+
+export const PREDICATE_FORMS = ['round', 'down', 'fact', 'stance'] as const;
+export type PredicateForm = (typeof PREDICATE_FORMS)[number];
+
+/** Which form a predicate is — the one key it carries. */
+export function predicateForm(p: PredicateDoc): PredicateForm {
+  if ('round' in p) return 'round';
+  if ('down' in p) return 'down';
+  if ('fact' in p) return 'fact';
+  return 'stance';
+}
+
+/** One declared faction: who fights as one side (rpg-project#375 §2).
+ *
+ * `mind` is the hub knowledge spreads through — the faction knows what
+ * its mind knows (R3), so a fact carried into the mind's region is what
+ * flips an `until: { fact }`. It MUST name a monster placed in this
+ * faction. Optional: a faction of one has its member as mind; a faction
+ * of many with an `until: { fact }` and no mind is refused ("name a mind,
+ * or the faction cannot learn") — inline here, by name from the compiler.
+ * Carried verbatim; whether the id names a member is `factionRules.ts`'s
+ * question, not the parser's. */
+export interface FactionDoc {
+  id: string;
+  mind?: string;
+}
+
+/** One disposition: how two factions stand to each other, and the
+ * predicate that ends the hostility (rpg-project#375 §2).
+ *
+ * `between` is UNORDERED in meaning and kept IN THE AUTHOR'S ORDER in the
+ * bytes — a pair is a list the author wrote, not a map, so the emitter has
+ * nothing to sort and re-emits what was parsed. One disposition per pair;
+ * the second is refused inline and by the compiler. `until` is legal only
+ * with `stance: hostile` and, when it holds, the stance becomes `neutral`.
+ * Omitted means the stance never changes. */
+export interface DispositionDoc {
+  between: [string, string];
+  stance: Stance;
+  until?: PredicateDoc;
 }
 
 /** One scenario's bindings: the form's field keys mapped to the ids the
@@ -386,6 +487,17 @@ export interface DungeonDoc {
    * and for its reason: a dungeon that declares none emits exactly the
    * bytes it always did. */
   intel: IntelDoc[];
+  /** The factions this dungeon declares (`FactionDoc`). ALWAYS PRESENT IN
+   * THE MODEL, WRITTEN ONLY WHEN IT HAS ENTRIES — `intel`'s convention,
+   * for its reason: a dungeon that declares none emits exactly the bytes
+   * it always did, and its monsters stay `monsters`. */
+  factions: FactionDoc[];
+  /** The declared dispositions (`DispositionDoc`), in DOCUMENT order.
+   * Same presence rule. What is NOT declared is defaulted by the engine,
+   * never written here: `party` and `monsters` mutually hostile, a
+   * declared faction hostile to `party` unless told otherwise, declared
+   * factions neutral to each other (§2). */
+  dispositions: DispositionDoc[];
   /** Scenario id -> that scenario's bindings. A dungeon may bind several;
    * the run ends when any bound ending fires. Written only when non-empty,
    * for `exits`'s reason. Emitted with both levels of keys SORTED, so the
@@ -598,6 +710,76 @@ function checkList(v: unknown, path: string): CheckDoc {
   return v.map((a, i) => approach(a, `${path}[${i}]`));
 }
 
+/** The predicate grammar, spelled for a refusal a streamer can act on. */
+export const PREDICATE_SHAPE =
+  'a predicate is exactly one of { round: N }, { down: <placement id> }, ' +
+  '{ fact: <id> } or { stance: { between: [a, b], is: hostile | neutral | allied } }';
+
+/** `[faction, faction]` — two strings, carried verbatim. */
+function factionPair(v: unknown, path: string): [string, string] {
+  if (
+    !Array.isArray(v) ||
+    v.length !== 2 ||
+    !v.every((x) => typeof x === 'string')
+  ) {
+    throw new DungeonParseError(`${path}: expected [faction, faction]`);
+  }
+  return [v[0] as string, v[1] as string];
+}
+
+/** One of the three stances, refused by name otherwise — a closed set the
+ * panel's select has to be able to show. */
+function stanceWord(obj: Raw, key: string, path: string): Stance {
+  const word = str(obj, key, path);
+  if (!(STANCES as readonly string[]).includes(word)) {
+    throw new DungeonParseError(
+      `${path}.${key}: expected hostile | neutral | allied`
+    );
+  }
+  return word as Stance;
+}
+
+/** One predicate (`PredicateDoc`): a map with EXACTLY ONE of the four keys.
+ * Refused by SHAPE only — a `{ down }` naming nobody or a `{ round: 0 }`
+ * is a predicate this module can hold and the panel refuses inline; a map
+ * with two keys, or a key this grammar has not learned, is not a predicate
+ * at all. */
+function predicate(v: unknown, path: string): PredicateDoc {
+  if (!isRecord(v)) throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+  const keys = Object.keys(v);
+  if (keys.length !== 1) {
+    throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+  }
+  switch (keys[0]) {
+    case 'round':
+      if (!Number.isInteger(v.round)) {
+        throw new DungeonParseError(`${path}.round: expected an integer`);
+      }
+      return { round: v.round as number };
+    case 'down':
+      return { down: str(v, 'down', path) };
+    case 'fact':
+      return { fact: str(v, 'fact', path) };
+    case 'stance': {
+      const s = v.stance;
+      if (!isRecord(s)) {
+        throw new DungeonParseError(
+          `${path}.stance: expected { between: [a, b], is: hostile | neutral | allied }`
+        );
+      }
+      expectKeys(s, ['between', 'is'], `${path}.stance`);
+      return {
+        stance: {
+          between: factionPair(s.between, `${path}.stance.between`),
+          is: stanceWord(s, 'is', `${path}.stance`),
+        },
+      };
+    }
+    default:
+      throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+  }
+}
+
 export function parseDungeon(text: string): DungeonDoc {
   let raw: unknown;
   try {
@@ -625,6 +807,8 @@ export function parseDungeon(text: string): DungeonDoc {
       'exits',
       'scenarios',
       'intel',
+      'factions',
+      'dispositions',
     ],
     'document'
   );
@@ -793,6 +977,8 @@ export function parseDungeon(text: string): DungeonDoc {
         'id',
         'holds',
         'holdable',
+        'faction',
+        'arrives',
       ],
       path
     );
@@ -842,6 +1028,15 @@ export function parseDungeon(text: string): DungeonDoc {
       }
       if (p.holdable) placement.holdable = true;
     }
+    // Carried verbatim, monster or prop: the "monsters only" rule is the
+    // compiler's refusal to make and `factionRules.ts`'s to render, so a
+    // file that breaks it loads and shows the line rather than bouncing.
+    if (p.faction !== undefined && p.faction !== null) {
+      placement.faction = str(p, 'faction', path);
+    }
+    if (p.arrives !== undefined && p.arrives !== null) {
+      placement.arrives = predicate(p.arrives, `${path}.arrives`);
+    }
     return placement;
   });
 
@@ -883,6 +1078,47 @@ export function parseDungeon(text: string): DungeonDoc {
     }
     return { id: str(r, 'id', path), reveals };
   });
+
+  // The factions this dungeon declares. `mind` is read as a string and
+  // nothing here checks that it names a member — that is a refusal the
+  // panel renders inline (`factionRules.ts`) and the compiler makes by
+  // name, so a half-authored file still loads.
+  const factions = list(raw.factions, 'factions').map((f, i): FactionDoc => {
+    const path = `factions[${i}]`;
+    if (!isRecord(f)) {
+      throw new DungeonParseError(`${path}: expected { id, mind? }`);
+    }
+    expectKeys(f, ['id', 'mind'], path);
+    const faction: FactionDoc = { id: str(f, 'id', path) };
+    if (f.mind !== undefined && f.mind !== null) {
+      faction.mind = str(f, 'mind', path);
+    }
+    return faction;
+  });
+
+  // The dispositions, in the author's order. `stance` is a closed set this
+  // module has to interpret (the panel's select needs a value it knows), so
+  // an unknown word is refused here the way `orientation`'s is; `between`
+  // is two strings carried verbatim, and `until` is a predicate.
+  const dispositions = list(raw.dispositions, 'dispositions').map(
+    (d, i): DispositionDoc => {
+      const path = `dispositions[${i}]`;
+      if (!isRecord(d)) {
+        throw new DungeonParseError(
+          `${path}: expected { between: [a, b], stance, until? }`
+        );
+      }
+      expectKeys(d, ['between', 'stance', 'until'], path);
+      const disposition: DispositionDoc = {
+        between: factionPair(d.between, `${path}.between`),
+        stance: stanceWord(d, 'stance', path),
+      };
+      if (d.until !== undefined && d.until !== null) {
+        disposition.until = predicate(d.until, `${path}.until`);
+      }
+      return disposition;
+    }
+  );
 
   // CARRIED OPAQUELY. Every binding value is read as a string and nothing
   // here knows what a key means — that is the scenario package's question,
@@ -928,6 +1164,8 @@ export function parseDungeon(text: string): DungeonDoc {
     exits,
     scenarios,
     intel,
+    factions,
+    dispositions,
   };
 }
 
@@ -955,6 +1193,17 @@ function fmtApproach(a: ApproachDoc): string {
   if (a.tool !== undefined) fields.push(`tool: ${scalar(a.tool)}`);
   fields.push(`dc: ${a.dc}`);
   return `{ ${fields.join(', ')} }`;
+}
+
+/** One predicate as the file writes it — a one-key flow map, the key's
+ * spelling being the form (`PredicateDoc`). Exported for the panels that
+ * show a predicate read-only in the file's own words. */
+export function predicateText(p: PredicateDoc): string {
+  if ('round' in p) return `{ round: ${p.round} }`;
+  if ('down' in p) return `{ down: ${scalar(p.down)} }`;
+  if ('fact' in p) return `{ fact: ${scalar(p.fact)} }`;
+  const [a, b] = p.stance.between;
+  return `{ stance: { between: [${scalar(a)}, ${scalar(b)}], is: ${p.stance.is} } }`;
 }
 
 function compareOffset(a: OffsetPair, b: OffsetPair): number {
@@ -1146,6 +1395,11 @@ export function emitDungeon(doc: DungeonDoc): string {
       const fields = p.id !== undefined ? [`id: ${scalar(p.id)}`] : [];
       fields.push(`ref: ${JSON.stringify(p.ref)}`);
       fields.push(`at: ${fmtPair(toOffset(o, p.at))}`);
+      // The side, right after the cell — design §1's own order — and
+      // only when the author chose one: absent IS `monsters`.
+      if (p.faction !== undefined) {
+        fields.push(`faction: ${scalar(p.faction)}`);
+      }
       if (p.blocksMovement !== undefined) {
         fields.push(`blocks_movement: ${p.blocksMovement}`);
       }
@@ -1162,6 +1416,38 @@ export function emitDungeon(doc: DungeonDoc): string {
         fields.push(`holds: [${p.holds.map(scalar).join(', ')}]`);
       }
       if (p.boss) fields.push('boss: true');
+      if (p.arrives !== undefined) {
+        fields.push(`arrives: ${predicateText(p.arrives)}`);
+      }
+      out.push(`  - { ${fields.join(', ')} }`);
+    }
+  }
+
+  // Written ONLY when there are any (`DungeonDoc.factions`'s law), one
+  // flow map per line in DOCUMENT order — design §1's own shape. A
+  // dungeon that declares none emits the bytes it always did.
+  if (doc.factions.length > 0) {
+    out.push('factions:');
+    for (const f of doc.factions) {
+      const fields = [`id: ${scalar(f.id)}`];
+      if (f.mind !== undefined) fields.push(`mind: ${scalar(f.mind)}`);
+      out.push(`  - { ${fields.join(', ')} }`);
+    }
+  }
+
+  // The pair IN THE AUTHOR'S ORDER (`DispositionDoc.between`): a list the
+  // author wrote, so re-emitting a parsed file is byte-identical without
+  // this module deciding which of two unordered names comes first.
+  if (doc.dispositions.length > 0) {
+    out.push('dispositions:');
+    for (const d of doc.dispositions) {
+      const fields = [
+        `between: [${scalar(d.between[0])}, ${scalar(d.between[1])}]`,
+        `stance: ${d.stance}`,
+      ];
+      if (d.until !== undefined) {
+        fields.push(`until: ${predicateText(d.until)}`);
+      }
       out.push(`  - { ${fields.join(', ')} }`);
     }
   }
@@ -1688,6 +1974,8 @@ export function emptyDungeon(
     exits: [],
     scenarios: {},
     intel: [],
+    factions: [],
+    dispositions: [],
   };
 }
 
@@ -2205,6 +2493,206 @@ export function intelHolders(doc: DungeonDoc, recordId: string): string[] {
     .map((p) => p.id as string);
 }
 
+// ---------------------------------------------------------------------------
+// Factions and dispositions (rpg-project#375 §2, §7)
+// ---------------------------------------------------------------------------
+
+/** Declare a new faction with a suggested id and no mind yet — the author
+ * names it and picks its mind from the panel. */
+export function addFaction(doc: DungeonDoc): DungeonDoc {
+  return { ...doc, factions: [...doc.factions, { id: nextFactionId(doc) }] };
+}
+
+function nextFactionId(doc: DungeonDoc): string {
+  const taken = new Set(doc.factions.map((f) => f.id));
+  let n = doc.factions.length + 1;
+  while (taken.has(`faction-${n}`)) n += 1;
+  return `faction-${n}`;
+}
+
+/** One predicate with every mention of faction `from` renamed to `to` —
+ * only the `stance` form names a faction. */
+function renamePredicateFaction(
+  p: PredicateDoc,
+  from: string,
+  to: string
+): PredicateDoc {
+  if (!('stance' in p)) return p;
+  const follow = (name: string) => (name === from ? to : name);
+  const [a, b] = p.stance.between;
+  return { stance: { between: [follow(a), follow(b)], is: p.stance.is } };
+}
+
+/** Whether a predicate names faction `id` — the `stance` form is the only
+ * one that can. */
+function predicateNamesFaction(p: PredicateDoc, id: string): boolean {
+  return 'stance' in p && p.stance.between.includes(id);
+}
+
+/**
+ * Rename or re-mind one faction. A RENAME FOLLOWS THROUGH to every line
+ * that points at the old name — each member's `faction`, every
+ * disposition's `between`, every `stance` predicate — because a faction's
+ * id is what those lines are written in terms of, and a rename that left
+ * three refusals behind would be a trap the author did not set. The panel
+ * holds a blank or clashing name as typed text and never sends it here,
+ * exactly as the placement id control does.
+ */
+export function updateFaction(
+  doc: DungeonDoc,
+  id: string,
+  patch: Partial<FactionDoc>
+): DungeonDoc {
+  const factions = doc.factions.map((f) => {
+    if (f.id !== id) return f;
+    const next: FactionDoc = { ...f, ...patch };
+    if (next.mind === undefined || next.mind === '') delete next.mind;
+    return next;
+  });
+  const to = patch.id;
+  if (to === undefined || to === id) return { ...doc, factions };
+  // A DECLARED `party` IS A REFUSED STATE, NOT A FACTION (§2): the word
+  // in a `between` always means the players' side, so renaming the
+  // mistaken declaration away must not carry every disposition toward the
+  // party off with it. The same holds for removal below.
+  if (id === PARTY) return { ...doc, factions };
+  return {
+    ...doc,
+    factions,
+    place: doc.place.map((p) => (p.faction === id ? { ...p, faction: to } : p)),
+    dispositions: doc.dispositions.map((d) => {
+      const follow = (name: string) => (name === id ? to : name);
+      const next: DispositionDoc = {
+        ...d,
+        between: [follow(d.between[0]), follow(d.between[1])],
+      };
+      if (d.until !== undefined) {
+        next.until = renamePredicateFaction(d.until, id, to);
+      }
+      return next;
+    }),
+  };
+}
+
+/** Remove a faction, and every line that pointed at it: its members go
+ * back to `monsters` (the field is dropped, which is how `monsters` is
+ * spelled), a disposition naming it in `between` goes with it, and an
+ * `until` naming it in a `stance` predicate is dropped from its
+ * disposition. Deleting a faction is not a way to author a dangling
+ * reference the compiler refuses by name. */
+export function removeFaction(doc: DungeonDoc, id: string): DungeonDoc {
+  const factions = doc.factions.filter((f) => f.id !== id);
+  // See `updateFaction`: a mistaken `party` declaration owns nothing.
+  if (id === PARTY) return { ...doc, factions };
+  return {
+    ...doc,
+    factions,
+    place: doc.place.map((p) => {
+      if (p.faction !== id) return p;
+      const next: PlacementDoc = { ...p };
+      delete next.faction;
+      return next;
+    }),
+    dispositions: doc.dispositions
+      .filter((d) => !d.between.includes(id))
+      .map((d) => {
+        if (d.until === undefined || !predicateNamesFaction(d.until, id)) {
+          return d;
+        }
+        const next: DispositionDoc = { ...d };
+        delete next.until;
+        return next;
+      }),
+  };
+}
+
+/** Declare a new disposition: the FIRST DECLARED FACTION against the
+ * party, hostile, no `until` — the pair the hold-out is about, and the
+ * only stance a predicate is legal with. There is nothing to declare one
+ * about until a faction exists, so with none the document is returned
+ * unchanged and the panel disables the verb and says why. */
+export function addDisposition(doc: DungeonDoc): DungeonDoc {
+  const first = doc.factions[0];
+  if (!first) return doc;
+  return {
+    ...doc,
+    dispositions: [
+      ...doc.dispositions,
+      { between: [first.id, PARTY], stance: 'hostile' },
+    ],
+  };
+}
+
+/** Patch one disposition by index. A STANCE THAT IS NO LONGER HOSTILE
+ * DROPS ITS `until`: the predicate says when the hostility ends, so it has
+ * nothing to say about a neutral or allied pair, and the panel hides the
+ * editor the moment the stance changes — leaving the line in the file
+ * would author the "`until` on a non-hostile stance" refusal on the
+ * author's behalf. A hand-written file in that state still loads, and the
+ * panel names the refusal at the stance field until someone touches it. */
+export function updateDisposition(
+  doc: DungeonDoc,
+  index: number,
+  patch: Partial<DispositionDoc>
+): DungeonDoc {
+  return {
+    ...doc,
+    dispositions: doc.dispositions.map((d, i) => {
+      if (i !== index) return d;
+      const next: DispositionDoc = { ...d, ...patch };
+      if (next.until === undefined) delete next.until;
+      if (patch.stance !== undefined && next.stance !== 'hostile') {
+        delete next.until;
+      }
+      return next;
+    }),
+  };
+}
+
+export function removeDisposition(doc: DungeonDoc, index: number): DungeonDoc {
+  return {
+    ...doc,
+    dispositions: doc.dispositions.filter((_, i) => i !== index),
+  };
+}
+
+/** The monsters placed in one faction, by index — what a `mind` dropdown
+ * offers and what "a faction of many" counts (§2). A prop carrying a
+ * `faction` (a state the compiler refuses) is not a member. */
+export function factionMembers(
+  doc: DungeonDoc,
+  factionId: string
+): { index: number; placement: PlacementDoc }[] {
+  const out: { index: number; placement: PlacementDoc }[] = [];
+  doc.place.forEach((placement, index) => {
+    if (isMonsterRef(placement.ref) && placement.faction === factionId) {
+      out.push({ index, placement });
+    }
+  });
+  return out;
+}
+
+/** Every fact id some intel record reveals, sorted and deduplicated —
+ * what a `{ fact }` predicate's dropdown offers. A fact is declared by
+ * mention (§2: "fact ids are plain strings, declared by mention"), so this
+ * is the set of facts a party can actually learn in this dungeon; an
+ * `until` naming one outside it is legal and shown with its cost. */
+export function revealedFacts(doc: DungeonDoc): string[] {
+  const facts = new Set<string>();
+  for (const record of doc.intel) {
+    const fact = record.reveals.fact;
+    if (fact !== undefined && fact !== '') facts.add(fact);
+  }
+  return [...facts].sort();
+}
+
+/** Every NAMED monster, by id, in document order — what a `{ down }`
+ * predicate's dropdown offers. A monster with no id cannot be named by
+ * anything, which is the same rule `holds` and the scenario form keep. */
+export function namedMonsters(doc: DungeonDoc): PlacementDoc[] {
+  return doc.place.filter((p) => !!p.id && isMonsterRef(p.ref));
+}
+
 /** Every placement id the file declares, in document order, with the index
  * that declared it — what the id field checks a rename against and what the
  * scenario form's `entity_ref` pickers list. A DUPLICATE KEEPS THE FIRST
@@ -2287,6 +2775,13 @@ export function updatePlacement(
       if (next.offset === undefined) delete next.offset;
       if (next.id === '' || next.id === undefined) delete next.id;
       if (next.holdable !== true) delete next.holdable;
+      // AN EMPTY FACTION IS `monsters`, and `monsters` is spelled by
+      // absence (R4): the panel's "(monsters)" choice clears the field
+      // rather than writing the reserved name into the file.
+      if (next.faction === '' || next.faction === undefined) {
+        delete next.faction;
+      }
+      if (next.arrives === undefined) delete next.arrives;
       // Same REFUSED-on-monsters rule placeAt enforces at creation
       // (Copilot review, PR #795): updatePlacement is the OTHER way a
       // facing/offset patch reaches a placement, so it needs the same
@@ -2299,6 +2794,10 @@ export function updatePlacement(
         // enforced on this write path for `facing`/`offset`'s reason: the
         // panel is not the only thing that can send a patch.
         delete next.holdable;
+      } else {
+        // A PROP HAS NO SIDE — `faction` is monsters only (§2), and this
+        // is the write path that keeps a prop from being given one.
+        delete next.faction;
       }
       // NIL, NOT LEN 0 (`PlacementDoc.holds`): an empty list is a state
       // this module can represent, so a caller that means "holds nothing"

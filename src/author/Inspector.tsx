@@ -13,20 +13,26 @@ import {
   intelHolders,
   isMonsterRef,
   placementIds,
+  predicateText,
+  revealedFacts,
   suggestPlacementId,
   wallLattice,
   type ApproachDoc,
   type CheckDoc,
   type ConcealmentDerivation,
+  type DispositionDoc,
   type DoorDoc,
   type DungeonDoc,
   type ExitDoc,
+  type FactionDoc,
   type IntelDoc,
   type PlacementDoc,
   type PlacementOffset,
   type StartDoc,
   type WallDoc,
 } from './dungeonYaml';
+import { DispositionsSection, FactionsSection } from './FactionPanel';
+import { factionRefusals, refusalsAt } from './factionRules';
 import { sealedBy } from './hexGeometry';
 import { axialKey } from './hexOffset';
 import { RegionPanel } from './RegionPanel';
@@ -79,6 +85,16 @@ export interface InspectorProps {
   /** Set exactly which monsters hold this record. */
   onIntelHolders: (id: string, holders: readonly string[]) => void;
   onRemoveIntel: (id: string) => void;
+  /** Declare a new faction. */
+  onAddFaction: () => void;
+  /** Rename or re-mind one faction. */
+  onFaction: (id: string, patch: Partial<FactionDoc>) => void;
+  onRemoveFaction: (id: string) => void;
+  /** Declare a new disposition. */
+  onAddDisposition: () => void;
+  /** Patch one disposition by index: pair, stance, or `until`. */
+  onDisposition: (index: number, patch: Partial<DispositionDoc>) => void;
+  onRemoveDisposition: (index: number) => void;
   /** Select something else — the monster panel links back to a record. */
   onSelect: (selection: Selection) => void;
   /** What `ListScenarios` answered — the forms this dungeon may fill in. */
@@ -191,6 +207,9 @@ export function Inspector(props: InspectorProps) {
 
 function DungeonPanel(props: InspectorProps) {
   const { doc, onDungeon } = props;
+  // Every faction/disposition refusal the client can know, computed once
+  // and shared by the two sections below (rpg-project#375 §2).
+  const refusals = factionRefusals(doc);
   return (
     <div className="flex flex-col gap-3" data-testid="dungeon-panel">
       <h3 className="dg-h">Dungeon</h3>
@@ -256,6 +275,29 @@ function DungeonPanel(props: InspectorProps) {
         onReveals={props.onIntelReveals}
         onHolders={props.onIntelHolders}
         onRemove={props.onRemoveIntel}
+      />
+      {/* FACTIONS and DISPOSITIONS, beside Intel and Scenarios
+          (rpg-project#375 §7): who fights as one side, and how two sides
+          stand to each other — dungeon-level declarations, both. */}
+      <FactionsSection
+        doc={doc}
+        refusals={refusals}
+        onAddFaction={props.onAddFaction}
+        onFaction={props.onFaction}
+        onRemoveFaction={props.onRemoveFaction}
+        onAddDisposition={props.onAddDisposition}
+        onDisposition={props.onDisposition}
+        onRemoveDisposition={props.onRemoveDisposition}
+      />
+      <DispositionsSection
+        doc={doc}
+        refusals={refusals}
+        onAddFaction={props.onAddFaction}
+        onFaction={props.onFaction}
+        onRemoveFaction={props.onRemoveFaction}
+        onAddDisposition={props.onAddDisposition}
+        onDisposition={props.onDisposition}
+        onRemoveDisposition={props.onRemoveDisposition}
       />
       {/* The scenario form lives on the DUNGEON, because that is whose
           fact a binding is — a dungeon is bound to a scenario, not a room
@@ -702,6 +744,7 @@ function PlacementPanel({
   onSelectIntel: (id: string) => void;
 }) {
   const monster = isMonsterRef(placement.ref);
+  const refusals = factionRefusals(doc);
   return (
     <div className="flex flex-col gap-3" data-testid="placement-panel">
       <h3 className="dg-h">{monster ? 'Monster' : 'Prop'}</h3>
@@ -747,6 +790,13 @@ function PlacementPanel({
             />
             boss
           </label>
+          <FactionControl
+            doc={doc}
+            index={index}
+            placement={placement}
+            refusals={refusalsAt(refusals, `place[${index}].faction`)}
+            onChange={(faction) => onChange({ faction })}
+          />
         </>
       ) : (
         <>
@@ -794,10 +844,101 @@ function PlacementPanel({
           />
         </>
       )}
+      {placement.arrives !== undefined && (
+        // PARSED, NOT YET AUTHORED (`PlacementDoc.arrives`): the editor is
+        // step B of the hold-out slice. A file that carries one shows it,
+        // in the file's own words, with any refusal the client can know.
+        <div className="dg-label" data-testid="arrives-readout">
+          arrives
+          <div className="dg-input opacity-80">
+            {predicateText(placement.arrives)}
+          </div>
+          {refusalsAt(refusals, `place[${index}].arrives`).map((message, i) => (
+            <div
+              key={i}
+              className="text-xs"
+              data-testid="arrives-refusal"
+              style={{ color: 'var(--color-error, #f87171)' }}
+            >
+              {message}
+            </div>
+          ))}
+          <div className="text-xs opacity-70">
+            In reserve until this holds. Authored in the next step; carried as
+            written for now.
+          </div>
+        </div>
+      )}
       <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
         remove
       </button>
     </div>
+  );
+}
+
+/**
+ * Which side this monster fights for (rpg-project#375 §2): the declared
+ * factions, and `monsters` for the reserved side every unauthored monster
+ * is on. CHOOSING `monsters` WRITES NOTHING — absent is how that side is
+ * spelled (R4), so a dungeon that never chose a faction keeps the bytes it
+ * always had. A faction the file names that is no longer declared stays
+ * selectable, and the refusal under it says so.
+ */
+function FactionControl({
+  doc,
+  placement,
+  refusals,
+  onChange,
+}: {
+  doc: DungeonDoc;
+  index: number;
+  placement: PlacementDoc;
+  refusals: string[];
+  onChange: (faction: string) => void;
+}) {
+  const faction = placement.faction ?? '';
+  return (
+    <label className="dg-label">
+      faction
+      <select
+        className="dg-input"
+        data-testid="placement-faction"
+        aria-label="faction"
+        value={faction}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">monsters</option>
+        {faction !== '' && !doc.factions.some((f) => f.id === faction) && (
+          <option value={faction}>{faction}</option>
+        )}
+        {doc.factions.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.id}
+          </option>
+        ))}
+      </select>
+      {refusals.length > 0 ? (
+        refusals.map((message, i) => (
+          <div
+            key={i}
+            className="text-xs"
+            data-testid="placement-faction-refusal"
+            style={{ color: 'var(--color-error, #f87171)' }}
+          >
+            {message}
+          </div>
+        ))
+      ) : (
+        <div
+          className="text-xs opacity-70"
+          data-testid="placement-faction-note"
+        >
+          {faction === ''
+            ? '`monsters` is the side every unauthored monster is on — hostile to the party, and written nowhere in the file.'
+            : `Fights for ${faction}. Declared under Factions on the dungeon panel.`}
+        </div>
+      )}
+    </label>
   );
 }
 
@@ -944,7 +1085,11 @@ function IntelSection({
             >
               <span className="truncate">{record.id}</span>
               <span className="ml-auto opacity-60">
-                {record.reveals.door ? `→ ${record.reveals.door}` : '—'}
+                {record.reveals.door
+                  ? `→ ${record.reveals.door}`
+                  : record.reveals.fact
+                    ? `→ fact: ${record.reveals.fact}`
+                    : '—'}
               </span>
             </button>
           ))}
@@ -1012,6 +1157,26 @@ function IntelPanel({
   // name cannot be given one.
   const carriers = doc.place.filter((p) => !!p.id);
   const door = record.reveals.door ?? '';
+  const fact = record.reveals.fact ?? '';
+  // WHAT KIND OF THING IT REVEALS (rpg-project#375 §2: `{ door } | { fact }`,
+  // exactly one key). Derived from the key the record carries; while it
+  // carries none — a brand new record — the author's pick is held here so
+  // the right box is on screen before there is a value to write.
+  const [kindChoice, setKindChoice] = useState<'door' | 'fact'>('door');
+  const kind: 'door' | 'fact' =
+    'fact' in record.reveals && !('door' in record.reveals)
+      ? 'fact'
+      : 'door' in record.reveals
+        ? 'door'
+        : kindChoice;
+  const twoKeys = 'fact' in record.reveals && 'door' in record.reveals;
+  // The facts OTHER records reveal, offered as suggestions: a fact is
+  // declared by mention, and a second record revealing the same one is
+  // how it can be learned two ways.
+  const otherFacts = revealedFacts({
+    ...doc,
+    intel: doc.intel.filter((r) => r.id !== record.id),
+  });
   return (
     // NO HEADING OF ITS OWN: the form opens in place under the section
     // that already says Intel (R7), and a second "INTEL" above it reads
@@ -1054,39 +1219,92 @@ function IntelPanel({
       </label>
 
       <label className="dg-label">
-        reveals a door
-        {doc.doors.length === 0 ? (
-          <div className="text-xs opacity-70" data-testid="intel-no-doors">
-            this dungeon has no doors yet — a record reveals one by its id
-          </div>
-        ) : (
-          <select
-            className="dg-input"
-            data-testid="intel-reveals-door"
-            aria-label="reveals a door"
-            value={door}
-            onChange={(e) => onReveals('door', e.target.value)}
+        reveals
+        <select
+          className="dg-input"
+          data-testid="intel-reveals-kind"
+          aria-label="reveals kind"
+          value={kind}
+          onChange={(e) => {
+            const next = e.target.value as 'door' | 'fact';
+            setKindChoice(next);
+            // Exactly one key: switching kinds clears the other.
+            if (next === 'fact' && door !== '') onReveals('door', '');
+            if (next === 'door' && fact !== '') onReveals('fact', '');
+          }}
+        >
+          <option value="door">a door</option>
+          <option value="fact">a fact</option>
+        </select>
+        {twoKeys && (
+          <div
+            className="text-xs"
+            data-testid="intel-reveals-refusal"
+            style={{ color: 'var(--color-error, #f87171)' }}
           >
-            <option value="">(nothing yet)</option>
-            {/* A door the file no longer has stays selectable rather than
+            a record reveals exactly one thing — a door or a fact, not both
+          </div>
+        )}
+      </label>
+      {kind === 'fact' ? (
+        <label className="dg-label">
+          fact
+          <input
+            className="dg-input"
+            data-testid="intel-reveals-fact"
+            aria-label="reveals a fact"
+            list="intel-reveals-fact-suggestions"
+            placeholder={otherFacts[0] ?? 'saved-wiseman'}
+            value={fact}
+            onChange={(e) => onReveals('fact', e.target.value)}
+          />
+          <datalist id="intel-reveals-fact-suggestions">
+            {otherFacts.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
+          <div className="text-xs opacity-70" data-testid="intel-fact-note">
+            A plain word, declared by naming it here. A faction whose
+            disposition waits `until` this fact turns when its mind learns it —
+            carry the record into the mind&apos;s region.
+          </div>
+        </label>
+      ) : (
+        <label className="dg-label">
+          door
+          {doc.doors.length === 0 ? (
+            <div className="text-xs opacity-70" data-testid="intel-no-doors">
+              this dungeon has no doors yet — a record reveals one by its id
+            </div>
+          ) : (
+            <select
+              className="dg-input"
+              data-testid="intel-reveals-door"
+              aria-label="reveals a door"
+              value={door}
+              onChange={(e) => onReveals('door', e.target.value)}
+            >
+              <option value="">(nothing yet)</option>
+              {/* A door the file no longer has stays selectable rather than
                 silently reading as "(nothing yet)": the author sees what
                 the file says and the compiler names the problem. */}
-            {door !== '' && !doc.doors.some((d) => d.id === door) && (
-              <option value={door}>{door}</option>
-            )}
-            {doc.doors.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.id}
-                {d.concealed ? ' · concealed' : ''}
-              </option>
-            ))}
-          </select>
-        )}
-        <div className="text-xs opacity-70">
-          What a party learns from this. A concealed door is the one worth
-          knowing; an ordinary one is legal and does nothing.
-        </div>
-      </label>
+              {door !== '' && !doc.doors.some((d) => d.id === door) && (
+                <option value={door}>{door}</option>
+              )}
+              {doc.doors.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.id}
+                  {d.concealed ? ' · concealed' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="text-xs opacity-70">
+            What a party learns from this. A concealed door is the one worth
+            knowing; an ordinary one is legal and does nothing.
+          </div>
+        </label>
+      )}
 
       <div className="dg-label" data-testid="intel-held-by">
         held by
