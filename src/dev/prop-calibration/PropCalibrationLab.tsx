@@ -13,6 +13,7 @@ import {
   type CalibrationEntry,
   type PropCalibrationState,
 } from './model';
+import './PropCalibrationLab.css';
 import { PropCalibrationScene } from './PropCalibrationScene';
 
 const CATALOG_URL = '/models/synty/prop-calibration/catalog.json';
@@ -161,6 +162,7 @@ export function PropCalibrationLab() {
 
   return (
     <main
+      className="prop-calibration-lab"
       aria-label="Prop Calibration Lab"
       style={{
         height: '100vh',
@@ -220,6 +222,8 @@ export function PropCalibrationLab() {
       </section>
 
       <aside
+        className="prop-calibration-sheet"
+        data-testid="property-sheet"
         style={{
           overflowY: 'auto',
           borderLeft: '1px solid #31504c',

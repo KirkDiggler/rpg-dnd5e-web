@@ -58,6 +58,9 @@ describe('PropCalibrationLab', () => {
 
     expect(await screen.findByDisplayValue(source.sourcePath)).toBeTruthy();
     expect(screen.getByDisplayValue(source.glbSha256)).toBeTruthy();
+    expect(screen.getByTestId('property-sheet').className).toContain(
+      'prop-calibration-sheet'
+    );
     expect(
       (
         screen.getByRole('button', {

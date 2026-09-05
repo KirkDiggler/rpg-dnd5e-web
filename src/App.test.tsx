@@ -19,6 +19,7 @@ const hoisted = vi.hoisted(() => ({
     loading: false,
     error: null as Error | null,
   },
+  activeLobbyCalls: 0,
 }));
 
 vi.mock('./api/auth', () => ({
@@ -35,7 +36,10 @@ vi.mock('./api/useDevPlayerIdAuth', () => ({
 }));
 
 vi.mock('./api/useMyActiveLobby', () => ({
-  useMyActiveLobby: () => hoisted.activeLobby,
+  useMyActiveLobby: () => {
+    hoisted.activeLobbyCalls += 1;
+    return hoisted.activeLobby;
+  },
 }));
 
 vi.mock('./api/useLobbyCharacterId', () => ({
@@ -134,6 +138,7 @@ beforeEach(() => {
   hoisted.lobbyCharacter.characterId = undefined;
   hoisted.lobbyCharacter.loading = false;
   hoisted.lobbyCharacter.error = null;
+  hoisted.activeLobbyCalls = 0;
 });
 
 afterEach(() => {
@@ -183,6 +188,7 @@ describe('App prop calibration route', () => {
 
     expect(await screen.findByText('Prop Calibration Lab')).toBeTruthy();
     expect(screen.queryByText('Home View')).toBeNull();
+    expect(hoisted.activeLobbyCalls).toBe(0);
   });
 
   it('refuses the prop calibration query in production', () => {

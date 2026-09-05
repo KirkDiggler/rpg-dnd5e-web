@@ -77,14 +77,6 @@ function AppContent() {
       import.meta.env.MODE === 'development' &&
       !!new URLSearchParams(window.location.search).get('thumbGlb')
   );
-  const [showPropCalibration] = useState(() =>
-    isPropCalibrationRoute(
-      import.meta.env.MODE,
-      window.location.hostname,
-      window.location.search
-    )
-  );
-
   const [currentView, setCurrentView] = useState<AppView>(
     hasConceptDeepLink() ? 'concepts' : 'home'
   );
@@ -289,14 +281,6 @@ function AppContent() {
       setSelectedType(null);
     }
   };
-
-  if (showPropCalibration && LazyPropCalibrationLab) {
-    return (
-      <Suspense fallback={<div>Loading prop calibration…</div>}>
-        <LazyPropCalibrationLab />
-      </Suspense>
-    );
-  }
 
   if (attackDieDevRoute.kind !== 'normal') {
     return (
@@ -575,6 +559,21 @@ function HomeView({
 }
 
 function App() {
+  if (
+    isPropCalibrationRoute(
+      import.meta.env.MODE,
+      window.location.hostname,
+      window.location.search
+    ) &&
+    LazyPropCalibrationLab
+  ) {
+    return (
+      <Suspense fallback={<div>Loading prop calibration…</div>}>
+        <LazyPropCalibrationLab />
+      </Suspense>
+    );
+  }
+
   if (
     isToolkitContributorSandboxRoute(
       import.meta.env.MODE,
