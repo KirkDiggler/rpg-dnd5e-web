@@ -26,5 +26,7 @@ describe('prop calibration scene', () => {
     expect(source).toContain('SyntyHexFloor');
     expect(source).toContain('ClassCharacterModel');
     expect(source).toContain('frameloop="demand"');
+    expect(source).toContain('SceneErrorBoundary');
+    expect(source).toContain('ContextLossReporter');
   });
 });

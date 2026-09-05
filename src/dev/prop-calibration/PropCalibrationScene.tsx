@@ -6,14 +6,19 @@ import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { OrbitControls, OrthographicCamera, useGLTF } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
-import { Suspense, useEffect, useMemo } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
+import {
+  contextLossDiagnostic,
+  type ContextLossDiagnostic,
+} from './contextDiagnostic';
 import {
   centeredFloorOffset,
   type SimpleBounds,
   type Vec3,
 } from './previewTransform';
+import { SceneErrorBoundary } from './SceneErrorBoundary';
 
 const FLOOR_TILES = new Map<string, AbsoluteFloorTile>([
   ['0,0,0', { x: 0, y: 0, z: 0, roomId: 'prop-calibration' }],
@@ -144,6 +149,32 @@ function CalibrationWorld({
   );
 }
 
+function ContextLossReporter({
+  onLost,
+  onRestored,
+}: {
+  onLost: (diagnostic: ContextLossDiagnostic) => void;
+  onRestored: () => void;
+}) {
+  const gl = useThree((state) => state.gl);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const lost = (event: Event) => {
+      event.preventDefault();
+      const statusMessage =
+        event instanceof WebGLContextEvent ? event.statusMessage : '';
+      onLost(contextLossDiagnostic(statusMessage, gl.info));
+    };
+    canvas.addEventListener('webglcontextlost', lost);
+    canvas.addEventListener('webglcontextrestored', onRestored);
+    return () => {
+      canvas.removeEventListener('webglcontextlost', lost);
+      canvas.removeEventListener('webglcontextrestored', onRestored);
+    };
+  }, [gl, onLost, onRestored]);
+  return null;
+}
+
 export interface PropCalibrationSceneProps {
   url?: string;
   scale: number;
@@ -154,12 +185,43 @@ export interface PropCalibrationSceneProps {
 }
 
 export function PropCalibrationScene(props: PropCalibrationSceneProps) {
+  const [diagnostic, setDiagnostic] = useState<ContextLossDiagnostic>();
+  const handleLost = useCallback((value: ContextLossDiagnostic) => {
+    console.error('Prop Calibration Lab WebGL context lost', value);
+    setDiagnostic(value);
+  }, []);
+  const handleRestored = useCallback(() => setDiagnostic(undefined), []);
+
   if (!props.url) {
     return <div role="alert">This imported row has no prepared local GLB.</div>;
   }
   return (
-    <Canvas frameloop="demand" shadows dpr={[1, 1.5]}>
-      <CalibrationWorld {...props} url={props.url} />
-    </Canvas>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <SceneErrorBoundary>
+        <Canvas frameloop="demand" shadows dpr={[1, 1.5]}>
+          <ContextLossReporter
+            onLost={handleLost}
+            onRestored={handleRestored}
+          />
+          <CalibrationWorld {...props} url={props.url} />
+        </Canvas>
+      </SceneErrorBoundary>
+      {diagnostic && (
+        <pre
+          role="alert"
+          style={{
+            position: 'absolute',
+            inset: 12,
+            margin: 0,
+            padding: 12,
+            color: '#ffb1b1',
+            background: 'rgba(20, 4, 7, 0.94)',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {JSON.stringify(diagnostic, null, 2)}
+        </pre>
+      )}
+    </div>
   );
 }
