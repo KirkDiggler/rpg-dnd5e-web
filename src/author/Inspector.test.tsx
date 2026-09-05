@@ -106,6 +106,15 @@ function mountPlacement(
       onIntelReveals={noop}
       onIntelHolders={noop}
       onRemoveIntel={noop}
+      onAddFaction={noop}
+      onFaction={noop}
+      onRemoveFaction={noop}
+      onAddDisposition={noop}
+      onDisposition={noop}
+      onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -251,6 +260,15 @@ function mountWall(
       onIntelReveals={noop}
       onIntelHolders={noop}
       onRemoveIntel={noop}
+      onAddFaction={noop}
+      onFaction={noop}
+      onRemoveFaction={noop}
+      onAddDisposition={noop}
+      onDisposition={noop}
+      onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -405,6 +423,15 @@ function mountDoor(
       onIntelReveals={noop}
       onIntelHolders={noop}
       onRemoveIntel={noop}
+      onAddFaction={noop}
+      onFaction={noop}
+      onRemoveFaction={noop}
+      onAddDisposition={noop}
+      onDisposition={noop}
+      onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -570,6 +597,15 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onIntelReveals={noop}
         onIntelHolders={noop}
         onRemoveIntel={noop}
+        onAddFaction={noop}
+        onFaction={noop}
+        onRemoveFaction={noop}
+        onAddDisposition={noop}
+        onDisposition={noop}
+        onRemoveDisposition={noop}
+        onAddEnding={noop}
+        onEnding={noop}
+        onRemoveEnding={noop}
         onSelect={noop}
       />
     );
@@ -606,6 +642,15 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onIntelReveals={noop}
         onIntelHolders={noop}
         onRemoveIntel={noop}
+        onAddFaction={noop}
+        onFaction={noop}
+        onRemoveFaction={noop}
+        onAddDisposition={noop}
+        onDisposition={noop}
+        onRemoveDisposition={noop}
+        onAddEnding={noop}
+        onEnding={noop}
+        onRemoveEnding={noop}
         onSelect={noop}
       />
     );
@@ -657,6 +702,11 @@ function mountAt(
     onIntelHolders: (id: string, holders: readonly string[]) => void;
     onRemoveIntel: (id: string) => void;
     onStartFacing: (facing: string | undefined) => void;
+    onFaction: (id: string, patch: Record<string, unknown>) => void;
+    onRemoveFaction: (id: string) => void;
+    onAddDisposition: () => void;
+    onDisposition: (index: number, patch: Record<string, unknown>) => void;
+    onRemoveDisposition: (index: number) => void;
   }> = {}
 ) {
   return render(
@@ -685,6 +735,15 @@ function mountAt(
       onIntelReveals={overrides.onIntelReveals ?? noop}
       onIntelHolders={overrides.onIntelHolders ?? noop}
       onRemoveIntel={overrides.onRemoveIntel ?? noop}
+      onAddFaction={noop}
+      onFaction={overrides.onFaction ?? noop}
+      onRemoveFaction={overrides.onRemoveFaction ?? noop}
+      onAddDisposition={overrides.onAddDisposition ?? noop}
+      onDisposition={overrides.onDisposition ?? noop}
+      onRemoveDisposition={overrides.onRemoveDisposition ?? noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={overrides.onSelect ?? noop}
     />
   );

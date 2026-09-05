@@ -804,7 +804,16 @@ export function CreationBoard({
               const facingDeg =
                 p.facing !== undefined ? facingAngleDeg(p.facing) : undefined;
               return (
-                <g key={`${p.ref}:${axialKey(p.at)}`} data-placement={i}>
+                <g
+                  key={`${p.ref}:${axialKey(p.at)}`}
+                  data-placement={i}
+                  // A RESERVED PLACEMENT (rpg-project#375 §3.7): authored,
+                  // and absent at first light. Drawn faded with a dashed
+                  // ring and its word, so the author sees what the party
+                  // will NOT see when the run opens.
+                  data-arrives={p.arrives !== undefined ? '' : undefined}
+                  opacity={p.arrives !== undefined ? 0.55 : undefined}
+                >
                   <circle
                     cx={c.x}
                     cy={c.y}
@@ -860,6 +869,30 @@ export function CreationBoard({
                       fill="#ffd166"
                     >
                       ★
+                    </text>
+                  )}
+                  {p.arrives !== undefined && (
+                    <circle
+                      data-arrives-ring={i}
+                      cx={c.x}
+                      cy={c.y}
+                      r={r * 1.3}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeWidth={1.5}
+                      strokeDasharray="4 3"
+                    />
+                  )}
+                  {p.arrives !== undefined && (
+                    <text
+                      data-arrives-label={i}
+                      x={c.x}
+                      y={c.y + r * 1.3 + size * 0.42}
+                      textAnchor="middle"
+                      fontSize={size * 0.36}
+                      fill="#ffffff"
+                    >
+                      arrives
                     </text>
                   )}
                 </g>

@@ -73,11 +73,14 @@ import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
+import { factionColors } from './factionColor';
 import { MoveIndicator } from './MoveIndicator';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
 import { startAzimuth } from './startAzimuth';
 import { useMoveIndicator } from './useMoveIndicator';
+
+const EMPTY_ROSTER: ReadonlyMap<string, PublicMemberInfo> = new Map();
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
  * cover any dungeon this route draws; only its raycast target, never
@@ -261,6 +264,13 @@ export function SessionScene({
   movementBudgetFeet,
   presentationLayer,
 }: SessionCanvasProps) {
+  // One swatch per declared faction on the roster, by first appearance
+  // (`factionColor.ts`) — the same table the sides legend reads, so the
+  // map and the key agree. Empty for a dungeon that declares none.
+  const factionPalette = useMemo(
+    () => factionColors(roster ?? EMPTY_ROSTER),
+    [roster]
+  );
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
   // see its doc comment). `useCameraControls` mutates this same object in
@@ -612,6 +622,9 @@ export function SessionScene({
             monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
             member.monsterRefId
           }
+          factionColor={factionPalette.get(
+            roster?.get(member.subject)?.faction ?? ''
+          )}
           knowledgeState={member.remembered ? 'remembered' : undefined}
           isDowned={
             member.kind === MemberKind.PLAYER &&

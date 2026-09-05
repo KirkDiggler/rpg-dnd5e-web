@@ -74,6 +74,7 @@ import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { holdDownedReveal } from './downedReveal';
+import { FactionLegend } from './FactionLegend';
 import { exitAt, holdTargets, lootTargets } from './holdingAffordances';
 import { authoredWords, exitCarrier, holdingPhrase } from './holdingBeat';
 import { localWorldDieDimensions } from './local-world-die/diceDials';
@@ -101,6 +102,7 @@ import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldD
 import { resolveName } from './participantNames';
 import { SEARCH_NOTICE } from './searchNotice';
 import { SessionCanvas } from './SessionCanvas';
+import { refreshKeysFor } from './sessionRefreshKeys';
 import { sightingsToEntities } from './sightingEntities';
 import {
   type SessionRefreshKey,
@@ -935,67 +937,10 @@ function SessionEncounterScope({
     ]
   );
 
+  // The refresh table lives in `sessionRefreshKeys.ts`, a pure function
+  // tested against real event fixtures (rpg-project#375 added two rows).
   const refreshKeysForEvent = useCallback(
-    (event: SessionEvent): SessionRefreshKey[] => {
-      switch (event.body.case) {
-        case 'moved':
-          return event.body.value.member === member
-            ? ['where', 'afford', 'turn']
-            : ['view'];
-        case 'struck':
-        case 'missed':
-        case 'activationResult':
-        case 'deathSaveRolled':
-          return ['characterData', 'afford', 'view'];
-        case 'downed':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'fightStarted':
-        case 'fightEnded':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'turnEnded':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'ended':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'joined':
-          return ['roster'];
-        case 'door':
-          return ['doors'];
-        // DOOR_REVEALED / REGION_REVEALED patch this recipient's cached
-        // GetDoors / GetAtlas views in place, per the protos' own doc
-        // comment on both messages. Chosen refresh path (deliberate, per
-        // rpg-project#886): re-run the now member-scoped GetDoors/GetAtlas
-        // rather than splice the event's own doorways/boundaries/props
-        // payload into the cached atlas by hand — reveals are rare beats,
-        // not a hot path, and reusing the already-proven fetch path costs
-        // one extra round trip in exchange for not inventing new
-        // merge/dedup logic this wave has no live server to verify
-        // against. A doorRevealed door may also compose with a lock, so
-        // its DoorInfo belongs in 'doors' too, not atlas alone.
-        case 'doorRevealed':
-          return ['doors', 'atlas'];
-        case 'regionRevealed':
-          return ['atlas'];
-        // A PROP LEFT THE FLOOR, OR LANDED BACK ON IT. Both patch the
-        // held atlas in the same frame below; this refetch is the server's
-        // own answer landing behind it, exactly as the reveal beats do.
-        case 'held':
-        case 'dropped':
-          return ['atlas'];
-        // LOOT REFETCHES NOTHING, and that is design P3 in the refresh
-        // table: a body with nothing to give must be indistinguishable
-        // from the captain, so this beat cannot trigger work that only a
-        // fruitful loot would need. What the looter gained arrives as
-        // their own DOOR_REVEALED beat, which refetches on its own line
-        // above — the same bytes a successful search produces.
-        case 'looted':
-        case 'activated':
-        case 'exited':
-        case undefined:
-          return event.kind === EventKind.ENDED
-            ? ['characterData', 'afford', 'turn', 'view']
-            : [];
-      }
-    },
+    (event: SessionEvent): SessionRefreshKey[] => refreshKeysFor(event, member),
     [member]
   );
 
@@ -1497,49 +1442,54 @@ function SessionEncounterScope({
             location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
             pacingNotice={combat.pacingNotice}
             renderMap={({ attackableTargets, onTargetClick }) => (
-              <SessionCanvas
-                // The dungeon's own starting facing, read from the ATLAS
-                // and nowhere else (rpg-project#374: rpg-api reads it from
-                // the atlas mirror only, and there is no second source
-                // here either). Absent when the author stated none, and
-                // absent entirely for a dungeon with no start — the wire
-                // omits `start` in that case, because a zero-valued one
-                // would claim the party arrives at the origin looking
-                // nowhere.
-                startFacing={atlas?.start?.facing || undefined}
-                scene={lastGoodSceneRef.current!}
-                hexSize={HEX_SIZE}
-                characterId={member}
-                characterName={characterName}
-                classRefId={classRefId}
-                raceRefId={raceRefId}
-                localCustomization={ownerCharacter?.appearance}
-                localIsDowned={localIsDowned}
-                mainHandPresentation={mainHandResolution.presentation}
-                offHandPresentation={offHandResolution.presentation}
-                roster={roster}
-                doors={doors}
-                onDoorClick={runEnded === null ? handleDoorClick : undefined}
-                onInteractClick={
-                  runEnded === null ? handleVendorInteract : undefined
-                }
-                myPosition={displayPosition ?? lastGoodPositionRef.current!}
-                movePath={movePath}
-                moveSeq={moveSeq}
-                onHexClick={runEnded === null ? walkTo : undefined}
-                onEntityClick={runEnded === null ? onTargetClick : undefined}
-                onMovementPresentationComplete={
-                  runEnded === null ? handleWalkAnimationComplete : undefined
-                }
-                otherMembers={revealedMembers}
-                attackableTargets={
-                  runEnded === null ? [...attackableTargets] : []
-                }
-                pathIndex={lastGoodPathIndexRef.current}
-                turnLocked={turnLocked}
-                movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
-                presentationLayer={localWorldDieLayer}
-              />
+              <>
+                {/* Which colour is which side (rpg-project#375 §7). Renders
+                    nothing until a declared faction is on the roster. */}
+                <FactionLegend roster={roster} />
+                <SessionCanvas
+                  // The dungeon's own starting facing, read from the ATLAS
+                  // and nowhere else (rpg-project#374: rpg-api reads it from
+                  // the atlas mirror only, and there is no second source
+                  // here either). Absent when the author stated none, and
+                  // absent entirely for a dungeon with no start — the wire
+                  // omits `start` in that case, because a zero-valued one
+                  // would claim the party arrives at the origin looking
+                  // nowhere.
+                  startFacing={atlas?.start?.facing || undefined}
+                  scene={lastGoodSceneRef.current!}
+                  hexSize={HEX_SIZE}
+                  characterId={member}
+                  characterName={characterName}
+                  classRefId={classRefId}
+                  raceRefId={raceRefId}
+                  localCustomization={ownerCharacter?.appearance}
+                  localIsDowned={localIsDowned}
+                  mainHandPresentation={mainHandResolution.presentation}
+                  offHandPresentation={offHandResolution.presentation}
+                  roster={roster}
+                  doors={doors}
+                  onDoorClick={runEnded === null ? handleDoorClick : undefined}
+                  onInteractClick={
+                    runEnded === null ? handleVendorInteract : undefined
+                  }
+                  myPosition={displayPosition ?? lastGoodPositionRef.current!}
+                  movePath={movePath}
+                  moveSeq={moveSeq}
+                  onHexClick={runEnded === null ? walkTo : undefined}
+                  onEntityClick={runEnded === null ? onTargetClick : undefined}
+                  onMovementPresentationComplete={
+                    runEnded === null ? handleWalkAnimationComplete : undefined
+                  }
+                  otherMembers={revealedMembers}
+                  attackableTargets={
+                    runEnded === null ? [...attackableTargets] : []
+                  }
+                  pathIndex={lastGoodPathIndexRef.current}
+                  turnLocked={turnLocked}
+                  movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
+                  presentationLayer={localWorldDieLayer}
+                />
+              </>
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
             onTargetClick={combat.onTargetClick}
