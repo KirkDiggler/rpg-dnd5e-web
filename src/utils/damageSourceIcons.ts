@@ -15,6 +15,7 @@
  *
  * This file will be removed in a future cleanup.
  */
+import { refLabel } from '@/utils/refs';
 
 /**
  * @deprecated Use DamageSourceBadge component instead
@@ -100,16 +101,15 @@ export function getDamageSourceDisplay(source: string): DamageSourceDisplay {
  * Format a source string into a readable label.
  * Handles patterns like "dnd5e:conditions:some_effect" -> "Some Effect"
  *
+ * Title Case over the shared reading rule: `refLabel` turns the ref's
+ * whole id into words (and reads a bare legacy source like
+ * `fighting_style_dueling` the same way), this only capitalizes them.
+ *
  * @deprecated Use DamageSourceBadge component instead
  */
 function formatSourceName(source: string): string {
-  // Extract the last segment after colons
-  const parts = source.split(':');
-  const name = parts[parts.length - 1];
-
-  // Convert snake_case to Title Case
-  return name
-    .split('_')
+  return refLabel(source)
+    .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
 }

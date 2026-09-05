@@ -5,6 +5,7 @@
  * This is pure presentation data - the API is the source of truth
  * for what features a character has access to.
  */
+import { parseRef } from '@/utils/refs';
 
 /** Icons for activatable features */
 export const FEATURE_ICONS: Record<string, string> = {
@@ -95,16 +96,14 @@ export function getConditionIcon(conditionId: string): string {
 }
 
 /**
- * Parse a source ref string to extract the category.
+ * A source ref's category is its TYPE — the middle field of
+ * `module:type:id`.
  * e.g., "dnd5e:classes:barbarian" -> "classes"
  *       "dnd5e:conditions:frightened" -> "conditions"
+ * A string that is not a ref has no category, and reads as `null`.
  */
 export function parseSourceCategory(sourceRef: string): string | null {
-  const parts = sourceRef.split(':');
-  if (parts.length >= 2) {
-    return parts[1];
-  }
-  return null;
+  return parseRef(sourceRef)?.type ?? null;
 }
 
 /**

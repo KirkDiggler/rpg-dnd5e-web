@@ -14,6 +14,7 @@
  * of that derivation is needed here. That is a simplification, not a port.
  */
 
+import { refId } from '@/utils/refs';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
   AtlasBoundary,
@@ -230,11 +231,11 @@ export function edgeBetween(
   };
 }
 
-/** propName is the id segment of a "module:type:id" ref. */
-export const propName = (ref: string): string => {
-  const parts = ref.split(':');
-  return parts.length === 3 ? parts[2] : ref;
-};
+/** propName is the WHOLE id of a "module:type:id" ref — everything after
+ * the second colon, so an exact ref keeps the family that tells it apart:
+ * `dnd5e:props:plushie:skeleton-dog` is `plushie:skeleton-dog`, not
+ * `skeleton-dog`. A string that is not a ref names itself. */
+export const propName = (ref: string): string => refId(ref) ?? ref;
 
 const PAD = 2;
 

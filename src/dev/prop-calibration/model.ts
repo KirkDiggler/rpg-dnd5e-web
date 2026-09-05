@@ -1,3 +1,5 @@
+import { parseRef } from '@/utils/refs';
+
 export const PROP_CALIBRATION_STORAGE_KEY = 'rpg.prop-calibration.batch.v1';
 
 export interface CalibrationSource {
@@ -197,30 +199,32 @@ export function normalizeYaw(value: number): number {
   return Object.is(normalized, -0) ? 0 : normalized;
 }
 
-function validRefSegments(ref: string): string[] | undefined {
-  const parts = ref.split(':');
-  return parts.every((part) => SEGMENT.test(part)) ? parts : undefined;
-}
-
 export function validateCalibrationEntry(entry: CalibrationEntry): FieldErrors {
   const errors: FieldErrors = {};
   if (!entry.displayName.trim())
     errors.displayName = 'Display name is required.';
 
-  const family = validRefSegments(entry.familyRef);
+  // A family ref is a whole ref whose id is a single part; an exact ref is
+  // the same ref with one more id part naming the model. `parseRef` already
+  // refuses an empty or out-of-grammar part, which is what the hand-rolled
+  // segment check here used to do.
+  const family = parseRef(entry.familyRef);
   if (
     !family ||
-    family.length !== 3 ||
-    family[0] !== 'dnd5e' ||
-    family[1] !== 'props'
+    family.module !== 'dnd5e' ||
+    family.type !== 'props' ||
+    family.idParts.length !== 1
   ) {
     errors.familyRef = 'Use dnd5e:props:<family>.';
   }
 
-  const exact = validRefSegments(entry.ref);
-  if (!exact || exact.length < 4) {
+  const exact = parseRef(entry.ref);
+  if (!exact || exact.idParts.length < 2) {
     errors.ref = 'Exact ref requires at least four valid segments.';
-  } else if (family && exact.slice(0, 3).join(':') !== entry.familyRef) {
+  } else if (
+    family &&
+    `${exact.module}:${exact.type}:${exact.idParts[0]}` !== entry.familyRef
+  ) {
     errors.ref = 'Exact ref must begin with the family ref.';
   }
 

@@ -254,6 +254,12 @@ describe('naming', () => {
     expect(propName('dnd5e:props:statue-reaper')).toBe('statue-reaper');
   });
 
+  it('takes the WHOLE id, so an exact ref keeps its family', () => {
+    expect(propName('dnd5e:props:plushie:skeleton-dog')).toBe(
+      'plushie:skeleton-dog'
+    );
+  });
+
   it('leaves something that is not a ref alone', () => {
     expect(propName('coffin')).toBe('coffin');
   });
