@@ -224,10 +224,12 @@ Notable measured browser facts:
   the table pivot while the sibling stamp remained unchanged;
 - left-drag camera evidence was pixel-identical before/after; right-drag
   changed the rendered camera view, matching the visible instructions;
-- there were no page errors, failed prop-model requests, non-200 model
-  responses, or GLTF loader errors during authoring/reload. The no-API local
-  startup still logs the app's pre-existing `localhost:8080` hook failures;
-  the complete log preserves those rather than hiding them.
+- there were zero console errors, page errors, failed requests, non-200 model
+  responses, or GLTF loader errors. `ConceptsView` lives inside `App`, whose
+  unrelated lobby/race/class/background hooks still start without a local game
+  server; the evidence harness records those exact endpoints and answers them
+  with a valid empty gRPC-web frame so they cannot contaminate this concept's
+  network/error result. No World Building operation calls an API.
 
 Final repository-wide format/lint/build/test command results are recorded in the
 implementation checklist and delivery report after they run on the candidate
