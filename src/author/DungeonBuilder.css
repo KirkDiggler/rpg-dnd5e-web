@@ -230,7 +230,10 @@
   display: block;
   width: 100%;
   color: inherit;
-  font: inherit;
+  /* NOT `font: inherit`. The shorthand took the SIZE with it, so the editor
+     rendered at the app's 16px/24px while `.dg-yaml` above says 11px/1.35 —
+     twenty lines of file, on a pane whose whole job is to show the file.
+     The family is the only part that was ever wanted here. */
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   resize: none;
   white-space: pre;
