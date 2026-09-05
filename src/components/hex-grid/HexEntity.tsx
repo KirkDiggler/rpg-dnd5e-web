@@ -427,15 +427,10 @@ export function HexEntity({
   // caught a terminal load error) so the downed-tilt check below can still
   // fire once we've fallen back to MediumHumanoid — otherwise a downed/dead
   // entity whose GLB happens to be missing/broken would render upright
-  // (rpg-dnd5e-web#502 gate note). One slot covers BOTH the player class
-  // model and the monster model (rpg-dnd5e-web#559) — the two are mutually
-  // exclusive per `type` (a player entity's resolved url is always
-  // `classModelUrl`, a monster's always `monsterModelUrl`, see
-  // `resolvedModelUrl` below), so there's no cross-contamination risk in
-  // sharing one slot. Compared against the *current* resolvedModelUrl each
-  // render rather than a bare boolean so a later class/monster-ref/asset
-  // change (or the file becoming available again) isn't permanently masked
-  // by a stale failure from a different url.
+  // (rpg-dnd5e-web#502 gate note). One failure set covers the mutually
+  // exclusive player, monster and demo NPC model choices. Failures are
+  // keyed by exact URL rather than a bare boolean, so switching to a
+  // different resolved model is not masked by an unrelated load failure.
   const [failedEntityModelUrls, setFailedEntityModelUrls] = useState<
     ReadonlySet<string>
   >(() => new Set());
