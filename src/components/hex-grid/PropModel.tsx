@@ -194,22 +194,32 @@ export function PropModel({
   );
   useRememberedTint(cloned, remembered);
 
+  const modelContents = (
+    <>
+      <primitive object={cloned} />
+      {variant.companions?.map((companion) => (
+        <PropCompanionModel
+          key={companion.file}
+          companion={companion}
+          remembered={remembered}
+        />
+      ))}
+    </>
+  );
+
   return (
     <group
       position={[position[0], position[1] + DUNGEON_SURFACE_Y, position[2]]}
       rotation={[0, rotationY, 0]}
       scale={SYNTY_SCALE}
     >
-      <group name="prop-model-bounds-anchor" position={anchorOffset}>
-        <primitive object={cloned} />
-        {variant.companions?.map((companion) => (
-          <PropCompanionModel
-            key={companion.file}
-            companion={companion}
-            remembered={remembered}
-          />
-        ))}
-      </group>
+      {anchor === 'source-origin' ? (
+        modelContents
+      ) : (
+        <group name="prop-model-bounds-anchor" position={anchorOffset}>
+          {modelContents}
+        </group>
+      )}
     </group>
   );
 }

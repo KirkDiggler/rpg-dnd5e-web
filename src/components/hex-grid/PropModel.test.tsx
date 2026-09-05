@@ -169,6 +169,9 @@ describe('PropModel shared placement', () => {
       .map((n) => (n as unknown as { instance: THREE.Group }).instance);
     const outer = groups.find((group) => group.position.z === 9);
     expect(outer?.scale.x).toBeCloseTo(SYNTY_SCALE);
+    expect(
+      groups.some((group) => group.name === 'prop-model-bounds-anchor')
+    ).toBe(false);
   });
 
   it('adds the dungeon surface height to the caller-provided Y position', async () => {
