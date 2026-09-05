@@ -73,10 +73,14 @@ import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
+import { factionColors } from './factionColor';
 import { MoveIndicator } from './MoveIndicator';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
+import { startAzimuth } from './startAzimuth';
 import { useMoveIndicator } from './useMoveIndicator';
+
+const EMPTY_ROSTER: ReadonlyMap<string, PublicMemberInfo> = new Map();
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
  * cover any dungeon this route draws; only its raycast target, never
@@ -135,6 +139,11 @@ export interface SessionCanvasProps {
    * Never applied to peers. */
   offHandPresentation?: OffHandPresentation;
   myPosition: CubeCoord;
+  /** The dungeon's authored starting facing (`GetAtlasResponse.start`),
+   * or absent when the author stated none — in which case the camera sits
+   * exactly where it always has. Presentation only: it aims the first
+   * frame and gates nothing. */
+  startFacing?: string;
   /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
    * (`MoveResponse.steps`, already bridged to cube coords) — passed
    * straight through to `HexEntity.movePath`. `undefined` when no walk
@@ -237,6 +246,7 @@ export function SessionScene({
   offHandPresentation,
   localIsDowned = false,
   myPosition,
+  startFacing,
   movePath,
   moveSeq,
   onHexClick,
@@ -254,6 +264,13 @@ export function SessionScene({
   movementBudgetFeet,
   presentationLayer,
 }: SessionCanvasProps) {
+  // One swatch per declared faction on the roster, by first appearance
+  // (`factionColor.ts`) — the same table the sides legend reads, so the
+  // map and the key agree. Empty for a dungeon that declares none.
+  const factionPalette = useMemo(
+    () => factionColors(roster ?? EMPTY_ROSTER),
+    [roster]
+  );
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
   // see its doc comment). `useCameraControls` mutates this same object in
@@ -322,6 +339,11 @@ export function SessionScene({
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
     revealedBounds,
+    // WHERE THE CAMERA STARTS, from the dungeon's own start facing
+    // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
+    // moment a player turns the camera it is theirs. Undefined for a
+    // dungeon that states none, which leaves the historical 45°.
+    initialAzimuth: startAzimuth(startFacing),
   });
 
   const attackableSet = useMemo(
@@ -600,6 +622,9 @@ export function SessionScene({
             monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
             member.monsterRefId
           }
+          factionColor={factionPalette.get(
+            roster?.get(member.subject)?.faction ?? ''
+          )}
           knowledgeState={member.remembered ? 'remembered' : undefined}
           isDowned={
             member.kind === MemberKind.PLAYER &&
@@ -637,6 +662,13 @@ export function SessionCanvas(props: SessionCanvasProps) {
       orthographic={!cameraDials.perspective}
       frameloop="demand"
       camera={{
+        // NOT WHERE THE AIMING HAPPENS. `useCameraControls`' mount effect
+        // computes the seat from its own azimuth and distance and calls
+        // `camera.position.set(...)`, so this prop is overwritten before
+        // the first frame — the start's facing seeds the hook instead
+        // (`startAzimuth.ts`). Left as the historical constant because it
+        // is still the position the camera holds for the instant before
+        // that effect runs.
         position: CAMERA_OFFSET,
         near: 0.1,
         far: 1000,

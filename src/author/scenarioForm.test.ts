@@ -6,11 +6,13 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
 import {
+  addFaction,
   emptyDungeon,
   paintCell,
   placeAt,
   setStart,
   toggleExitAt,
+  updateFaction,
   updatePlacement,
   type DungeonDoc,
 } from './dungeonYaml';
@@ -169,5 +171,29 @@ describe('fieldRefusals — the compiler’s sentence lands on the blank it name
   it('takes nothing addressed anywhere else', () => {
     expect(fieldRefusals(errors, 'recover-the-artifact', 'nope')).toEqual([]);
     expect(fieldRefusals(errors, 'kill-the-captain', 'artifact')).toEqual([]);
+  });
+});
+
+describe('the faction kind (rpg-project#375 §2: the hold-out’s `convince`)', () => {
+  const camp = (): DungeonDoc => {
+    let doc = dungeon();
+    doc = updatePlacement(doc, 2, { faction: 'goblins' });
+    doc = addFaction(doc);
+    doc = updateFaction(doc, 'faction-1', { id: 'goblins', mind: 'captain' });
+    doc = addFaction(doc);
+    return updateFaction(doc, 'faction-2', { id: 'wolves' });
+  };
+
+  it('lists the DECLARED factions with how many stand in each — never party or monsters', () => {
+    expect(bindOptions(camp(), entityRef('faction'))).toEqual([
+      { id: 'goblins', label: 'goblins — 1 monster' },
+      { id: 'wolves', label: 'wolves — 0 monsters' },
+    ]);
+  });
+
+  it('says where to declare one when there are none', () => {
+    const field = entityRef('faction');
+    expect(bindOptions(dungeon(), field)).toEqual([]);
+    expect(emptyPickerReason(field, [])).toContain('Factions');
   });
 });

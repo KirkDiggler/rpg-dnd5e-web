@@ -25,6 +25,7 @@ import {
   VOID_FILL,
   WALL_STROKE,
 } from '../markerStyle';
+import type { Selection } from '../types';
 import { wallRaysFrom } from '../wallPicker';
 import { boardWallScene } from './boardWallRuns';
 import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
@@ -341,6 +342,37 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
     expect(growBounds(grown, a)).toBe(grown);
   });
 
+  it('a placement that ARRIVES is drawn faded with a dashed ring and its word; one placed at launch is not (rpg-project#375 §3.7)', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    doc = paintCell(doc, 'region-1', p(2, 1));
+    doc = placeAt(doc, { ref: 'dnd5e:props:scroll', at: p(1, 1) });
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(2, 1) });
+    doc = {
+      ...doc,
+      place: [
+        { ...doc.place[0], id: 'letter', arrives: { round: 6 } },
+        doc.place[1],
+      ],
+    };
+    const { container } = mount(doc);
+    const reserved = container.querySelector(
+      '[data-placement="0"]'
+    ) as SVGGElement;
+    expect(reserved.hasAttribute('data-arrives')).toBe(true);
+    expect(Number(reserved.getAttribute('opacity'))).toBeLessThan(1);
+    expect(container.querySelector('[data-arrives-ring="0"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-arrives-label="0"]')?.textContent
+    ).toBe('arrives');
+    const present = container.querySelector(
+      '[data-placement="1"]'
+    ) as SVGGElement;
+    expect(present.hasAttribute('data-arrives')).toBe(false);
+    expect(present.getAttribute('opacity')).toBeNull();
+    expect(container.querySelector('[data-arrives-ring="1"]')).toBeNull();
+  });
+
   it('a placement offset moves its marker within the hex; facing draws a tick, unfaced does not', () => {
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(1, 1));
@@ -575,7 +607,11 @@ describe('ways out on the board (rpg-project#368 §3.1)', () => {
 
   it('draws each way out with its own id, distinct from the start', () => {
     let doc = withFloor();
-    doc = { ...doc, start: p(0, 0), exits: [{ id: 'entrance', at: p(0, 0) }] };
+    doc = {
+      ...doc,
+      start: { at: p(0, 0) },
+      exits: [{ id: 'entrance', at: p(0, 0) }],
+    };
     const { container } = mount(doc);
     // Both marks stand on the same cell — the tomb's entrance IS its exit
     // — and both are drawn, because `start` is not implicitly a way out.
@@ -605,5 +641,87 @@ describe('ways out on the board (rpg-project#368 §3.1)', () => {
     });
     const exit = container.querySelector('[data-exit="entrance"] rect');
     expect(exit?.getAttribute('stroke')).toBe('#ff3b30');
+  });
+});
+
+describe('a cell shared by the start and a way out (rpg-dnd5e-web#934)', () => {
+  /** The reference tomb's shape: the party comes in where it leaves. */
+  function sharedCell(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (const c of [0, 1]) doc = paintCell(doc, 'region-1', p(c, 0));
+    return {
+      ...doc,
+      start: { at: p(0, 0) },
+      exits: [{ id: 'entrance', at: p(0, 0) }],
+    };
+  }
+
+  it('selects the START first — the entry is what an author reaches for', () => {
+    const selected: unknown[] = [];
+    const { container } = mount(sharedCell(), {
+      tool: 'select',
+      onSelect: (s) => selected.push(s),
+    });
+    fireEvent.pointerDown(cellEl(container, 0, 0), { button: 0 });
+    expect(selected).toEqual([{ kind: 'start' }]);
+  });
+
+  it('CYCLES to the exit on a second click, and back again', () => {
+    // Without this the tomb's `entrance` exit is unreachable: the exit
+    // panel is only ever opened from the board, so an exit under the
+    // start could never be renamed or removed.
+    const selected: unknown[] = [];
+    let selection: Selection = { kind: 'dungeon' };
+    const { container, rerender } = mount(sharedCell(), {
+      tool: 'select',
+      selection,
+      onSelect: (s) => {
+        selected.push(s);
+        selection = s;
+      },
+    });
+    const click = () => {
+      fireEvent.pointerDown(cellEl(container, 0, 0), { button: 0 });
+      rerender(
+        <CreationBoard
+          doc={sharedCell()}
+          tool="select"
+          selection={selection}
+          activeRegionId="region-1"
+          errorTargets={[]}
+          concealedRegionIds={EMPTY_REGION_IDS}
+          onPaintRect={() => {}}
+          onPaint={() => {}}
+          onErase={() => {}}
+          onWallCommit={() => {}}
+          onWallDelete={() => {}}
+          onDoorToggle={() => {}}
+          onCellClick={() => {}}
+          onSelect={(s) => {
+            selected.push(s);
+            selection = s;
+          }}
+        />
+      );
+    };
+    click();
+    click();
+    click();
+    expect(selected).toEqual([
+      { kind: 'start' },
+      { kind: 'exit', index: 0 },
+      { kind: 'start' },
+    ]);
+  });
+
+  it('selects the way out directly when nothing else shares its cell', () => {
+    const doc = sharedCell();
+    const selected: unknown[] = [];
+    const { container } = mount(
+      { ...doc, start: { at: p(1, 0) } },
+      { tool: 'select', onSelect: (s) => selected.push(s) }
+    );
+    fireEvent.pointerDown(cellEl(container, 0, 0), { button: 0 });
+    expect(selected).toEqual([{ kind: 'exit', index: 0 }]);
   });
 });

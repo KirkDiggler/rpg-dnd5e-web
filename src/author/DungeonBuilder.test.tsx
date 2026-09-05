@@ -612,6 +612,32 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
     );
   });
 
+  it('places the generated exact Plushie ref with its explicit behavior', async () => {
+    mountBuilder(stripYaml());
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain('scenery:')
+    );
+
+    const plushie = document.querySelector(
+      '[title^="dnd5e:props:plushie:skeleton-dog"]'
+    ) as HTMLElement;
+    expect(plushie).not.toBeNull();
+    fireEvent.click(plushie);
+    fireEvent.pointerDown(cell(3, 1), { button: 0 });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('yaml-text').textContent).toContain(
+        'dnd5e:props:plushie:skeleton-dog'
+      )
+    );
+    expect(screen.getByTestId('yaml-text').textContent).toContain(
+      'blocks_movement: false'
+    );
+    expect(screen.getByTestId('yaml-text').textContent).toContain(
+      'blocks_los: false'
+    );
+  });
+
   it('refuses a monster on scenery and accepts a prop there (F2)', async () => {
     mountBuilder(stripYaml());
     await waitFor(() =>

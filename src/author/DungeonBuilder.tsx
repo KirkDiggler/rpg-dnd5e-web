@@ -31,6 +31,9 @@ import { CreationBoard } from './creation/CreationBoard';
 import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
+  addDisposition,
+  addEnding,
+  addFaction,
   addIntel,
   addRegion,
   addWall,
@@ -48,7 +51,10 @@ import {
   paintScenery,
   parseDungeon,
   placeAt,
+  removeDisposition,
+  removeEnding,
   removeExit,
+  removeFaction,
   removeIntel,
   removePlacement,
   removeRegion,
@@ -59,13 +65,17 @@ import {
   setIntelReveals,
   setScenarioBinding,
   setStart,
+  setStartFacing,
   setWallHeights,
   setWallName,
   toggleDoorAt,
   toggleExitAt,
+  updateDisposition,
   updateDoor,
   updateDungeon,
+  updateEnding,
   updateExit,
+  updateFaction,
   updateIntel,
   updatePlacement,
   updateRegion,
@@ -144,8 +154,8 @@ const PROP_DEFAULTS = new Map(
   PALETTE_PROPS.map((p) => [
     p.ref,
     {
-      blocksMovement: p.role !== 'decor',
-      blocksLos: p.role === 'obstacle',
+      blocksMovement: p.blocksMovement,
+      blocksLos: p.blocksLoS,
     },
   ])
 );
@@ -521,7 +531,13 @@ export function DungeonBuilder({
         showToast(NOBODY_STANDS);
         return;
       }
-      applyDoc((d) => setStart(d, cell));
+      applyDoc((d) => {
+        const next = setStart(d, cell);
+        // Selected on placement, so the facing compass is one click away
+        // rather than something to go looking for.
+        if (next !== d) setSelection({ kind: 'start' });
+        return next;
+      });
     }
     if (tool === 'place' && armed) {
       if (isMonsterRef(armed.ref) && isScenery(doc, cell)) {
@@ -885,7 +901,29 @@ export function DungeonBuilder({
                 applyDoc((d) => removeIntel(d, id));
                 setSelection({ kind: 'dungeon' });
               }}
+              onAddFaction={() => applyDoc((d) => addFaction(d))}
+              onFaction={(id, patch) =>
+                applyDoc((d) => updateFaction(d, id, patch))
+              }
+              onRemoveFaction={(id) => applyDoc((d) => removeFaction(d, id))}
+              onAddDisposition={() => applyDoc((d) => addDisposition(d))}
+              onDisposition={(index, patch) =>
+                applyDoc((d) => updateDisposition(d, index, patch))
+              }
+              onRemoveDisposition={(index) =>
+                applyDoc((d) => removeDisposition(d, index))
+              }
+              onAddEnding={() => applyDoc((d) => addEnding(d))}
+              onEnding={(index, patch) =>
+                applyDoc((d) => updateEnding(d, index, patch))
+              }
+              onRemoveEnding={(index) =>
+                applyDoc((d) => removeEnding(d, index))
+              }
               onSelect={setSelection}
+              onStartFacing={(facing) =>
+                applyDoc((d) => setStartFacing(d, facing))
+              }
               onAddIntel={() => {
                 applyDoc((d) => {
                   const next = addIntel(d);

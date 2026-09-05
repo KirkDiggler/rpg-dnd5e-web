@@ -23,7 +23,10 @@ import { isDungeonLightSourceRef } from '../rendering/dungeonLightSources';
 export interface PaletteProp {
   ref: string;
   short: string;
+  label: string;
   role: PropRole;
+  blocksMovement: boolean;
+  blocksLoS: boolean;
 }
 
 /**
@@ -96,6 +99,13 @@ export const ROLE_COLOR: Record<PropRole, string> = {
  * resolve under `public/models/synty/`. */
 const ALL_PROP_KEYS = Object.keys(PROP_KEYS);
 
+function displayLabel(key: string): string {
+  return (key.split(':').pop() ?? key)
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 function shortLabel(key: string): string {
   const name = key.split(':').pop() ?? key;
   const parts = name.split('-');
@@ -115,7 +125,16 @@ function shortLabel(key: string): string {
 export const PALETTE_PROPS: PaletteProp[] = ALL_PROP_KEYS.flatMap((ref) => {
   const variant = PROP_KEYS[ref]?.[0];
   if (!variant) return [];
-  return [{ ref, short: shortLabel(ref), role: variant.role }];
+  return [
+    {
+      ref,
+      short: shortLabel(ref),
+      label: variant.displayName ?? displayLabel(ref),
+      role: variant.role,
+      blocksMovement: variant.blocksMovement ?? variant.role !== 'decor',
+      blocksLoS: variant.blocksLoS,
+    },
+  ];
 });
 
 export const MONSTER_COLOR = '#a02020';

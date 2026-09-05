@@ -9,6 +9,8 @@ import {
   placeAt,
   setIntelHolders,
   setIntelReveals,
+  setStart,
+  setStartFacing,
   toggleExitAt,
   updateExit,
   updatePlacement,
@@ -98,11 +100,21 @@ function mountPlacement(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onStartFacing={noop}
       onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
       onIntelHolders={noop}
       onRemoveIntel={noop}
+      onAddFaction={noop}
+      onFaction={noop}
+      onRemoveFaction={noop}
+      onAddDisposition={noop}
+      onDisposition={noop}
+      onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -242,11 +254,21 @@ function mountWall(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onStartFacing={noop}
       onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
       onIntelHolders={noop}
       onRemoveIntel={noop}
+      onAddFaction={noop}
+      onFaction={noop}
+      onRemoveFaction={noop}
+      onAddDisposition={noop}
+      onDisposition={noop}
+      onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -395,11 +417,21 @@ function mountDoor(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onStartFacing={noop}
       onAddIntel={noop}
       onIntel={noop}
       onIntelReveals={noop}
       onIntelHolders={noop}
       onRemoveIntel={noop}
+      onAddFaction={noop}
+      onFaction={noop}
+      onRemoveFaction={noop}
+      onAddDisposition={noop}
+      onDisposition={noop}
+      onRemoveDisposition={noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={noop}
     />
   );
@@ -559,11 +591,21 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onBindScenario={noop}
         scenarios={NO_SCENARIOS}
         errors={[]}
+        onStartFacing={noop}
         onAddIntel={noop}
         onIntel={noop}
         onIntelReveals={noop}
         onIntelHolders={noop}
         onRemoveIntel={noop}
+        onAddFaction={noop}
+        onFaction={noop}
+        onRemoveFaction={noop}
+        onAddDisposition={noop}
+        onDisposition={noop}
+        onRemoveDisposition={noop}
+        onAddEnding={noop}
+        onEnding={noop}
+        onRemoveEnding={noop}
         onSelect={noop}
       />
     );
@@ -594,11 +636,21 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onBindScenario={noop}
         scenarios={NO_SCENARIOS}
         errors={[]}
+        onStartFacing={noop}
         onAddIntel={noop}
         onIntel={noop}
         onIntelReveals={noop}
         onIntelHolders={noop}
         onRemoveIntel={noop}
+        onAddFaction={noop}
+        onFaction={noop}
+        onRemoveFaction={noop}
+        onAddDisposition={noop}
+        onDisposition={noop}
+        onRemoveDisposition={noop}
+        onAddEnding={noop}
+        onEnding={noop}
+        onRemoveEnding={noop}
         onSelect={noop}
       />
     );
@@ -649,6 +701,12 @@ function mountAt(
     onIntelReveals: (id: string, key: string, value: string) => void;
     onIntelHolders: (id: string, holders: readonly string[]) => void;
     onRemoveIntel: (id: string) => void;
+    onStartFacing: (facing: string | undefined) => void;
+    onFaction: (id: string, patch: Record<string, unknown>) => void;
+    onRemoveFaction: (id: string) => void;
+    onAddDisposition: () => void;
+    onDisposition: (index: number, patch: Record<string, unknown>) => void;
+    onRemoveDisposition: (index: number) => void;
   }> = {}
 ) {
   return render(
@@ -671,11 +729,21 @@ function mountAt(
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
       errors={[]}
+      onStartFacing={overrides.onStartFacing ?? noop}
       onAddIntel={noop}
       onIntel={overrides.onIntel ?? noop}
       onIntelReveals={overrides.onIntelReveals ?? noop}
       onIntelHolders={overrides.onIntelHolders ?? noop}
       onRemoveIntel={overrides.onRemoveIntel ?? noop}
+      onAddFaction={noop}
+      onFaction={overrides.onFaction ?? noop}
+      onRemoveFaction={overrides.onRemoveFaction ?? noop}
+      onAddDisposition={overrides.onAddDisposition ?? noop}
+      onDisposition={overrides.onDisposition ?? noop}
+      onRemoveDisposition={overrides.onRemoveDisposition ?? noop}
+      onAddEnding={noop}
+      onEnding={noop}
+      onRemoveEnding={noop}
       onSelect={overrides.onSelect ?? noop}
     />
   );
@@ -1082,5 +1150,60 @@ describe('intel is a dungeon-level section, not a palette item (R7)', () => {
     expect(screen.getByTestId('intel-section').textContent).toContain(
       'a monster or a prop carries it'
     );
+  });
+});
+
+describe('the Start panel — aiming the party’s entry (rpg-project#374)', () => {
+  const withStart = () => setStart(heirloomDoc(), p(0, 0));
+
+  it('offers the same eight-name compass the props use', () => {
+    mountAt(withStart(), { kind: 'start' });
+    expect(screen.getByTestId('start-panel')).toBeTruthy();
+    // One vocabulary, one control: an author who has aimed a statue has
+    // already learned this one.
+    expect(screen.getByTestId('facing-compass')).toBeTruthy();
+    for (const name of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
+      expect(screen.getByTestId(`facing-${name}`)).toBeTruthy();
+    }
+  });
+
+  it('aims the start, and clears it back to none', () => {
+    const onStartFacing = vi.fn();
+    mountAt(withStart(), { kind: 'start' }, { onStartFacing });
+    fireEvent.click(screen.getByTestId('facing-e'));
+    expect(onStartFacing).toHaveBeenCalledWith('e');
+    fireEvent.click(screen.getByTestId('facing-none'));
+    expect(onStartFacing).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('says what no facing MEANS, rather than leaving the control blank', () => {
+    mountAt(withStart(), { kind: 'start' });
+    const note = screen.getByTestId('start-facing-note').textContent ?? '';
+    expect(note).toContain('the camera starts the way it always has');
+    expect(note).toContain('start: [col, row]');
+  });
+
+  it('says what a facing does, and what it does NOT', () => {
+    // Presentation, not a rule — `AtlasStart.facing` says so on the wire.
+    const doc = setStartFacing(withStart(), 'e');
+    mountAt(doc, { kind: 'start' });
+    const note = screen.getByTestId('start-facing-note').textContent ?? '';
+    expect(note).toContain('looks e on the first frame');
+    expect(note).toContain('never decides where the party may walk');
+  });
+
+  it('offers NO remove — dungeonspec requires a start', () => {
+    // An author moves the start with the Start tool; taking it away only
+    // produces a file the server refuses, so the verb is not offered.
+    mountAt(withStart(), { kind: 'start' });
+    expect(screen.queryByTestId('start-remove')).toBeNull();
+  });
+
+  it('falls back to the dungeon panel when no start is authored', () => {
+    // Nothing to aim, so a form for it would be a form for a thing that
+    // does not exist.
+    mountAt(heirloomDoc(), { kind: 'start' });
+    expect(screen.getByTestId('dungeon-panel')).toBeTruthy();
+    expect(screen.queryByTestId('start-panel')).toBeNull();
   });
 });

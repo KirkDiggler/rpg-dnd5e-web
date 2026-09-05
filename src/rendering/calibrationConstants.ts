@@ -54,6 +54,24 @@ export const CAMERA_OFFSET: readonly [number, number, number] = [8, 10, 8];
 /**
  * Unit "ward" direction (world XZ only, Y dropped) — points FROM the scene
  * TOWARD the camera, derived from `CAMERA_OFFSET`'s own X/Z components.
+ *
+ * STILL TRUE FOR THE ROUTE THAT USES IT, and worth writing down because
+ * that stopped being obvious (rpg-dnd5e-web#934). The dungeon's authored
+ * start facing now seeds `useCameraControls`' azimuth — so on THAT route
+ * the camera's bearing is per-dungeon and this constant would not describe
+ * it. It does not have to. The session route DOES render `WallRunMesh`
+ * (`DungeonShell` → `AtlasWalls`), it simply never passes `wallCutaway`:
+ * the prop defaults false, and `effectiveWallHeight` returns the uniform
+ * tall height before it ever consults this direction. The flag is only
+ * ever SET from `EncounterMap`'s `?wallCutaway=1`, and that route seeds no
+ * azimuth, so its camera keeps the hook's historical 45° — which is
+ * exactly the bearing of `CAMERA_OFFSET`'s (8, 8).
+ *
+ * If the cutaway ever reaches a route with a per-dungeon bearing, this
+ * has to become a parameter derived from the live azimuth rather than a
+ * module-load constant. It is two pure functions and their callers
+ * (`wallRunMeshHelpers.ts`), not a redesign — but it is not needed yet,
+ * and threading it now would be a parameter nothing varies.
  * The wall-height cutaway prototype dots this against each envelope/
  * connector run's own outward `facing` vector: a positive dot means the
  * run's outward normal points roughly toward the camera (the run sits on

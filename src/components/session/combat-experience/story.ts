@@ -8,6 +8,7 @@ import {
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { damageTypeWord } from '../combatBeat';
+import { dissolveSentence, formatFactionBeat } from '../factionBeat';
 import { formatHoldingBeat } from '../holdingBeat';
 import { formatDamageRolls, formatRollCalculation } from './rollTrace';
 import type {
@@ -209,9 +210,32 @@ function buildOtherStory(
       return Object.freeze({
         ...base,
         eyebrow: 'Fight ended',
-        headline: 'The fight is over',
+        // By cause (`factionBeat.ts`): the hold-out's dissolve says the
+        // sides stood down rather than that one of them lost.
+        headline: dissolveSentence(event.body.value.cause).replace(/\.$/, ''),
         detail: `Story sequence ${event.seq}.`,
         tone: 'success',
+      });
+    // THE STANCE FOLDED (rpg-project#375 §5): the pair and the word, the
+    // sentence `factionBeat.ts` owns, and nothing of why — who carried what
+    // to whom is knowledge and never rides this beat.
+    case 'stanceChanged':
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Stance',
+        headline: (formatFactionBeat(event) ?? '').replace(/\.$/, ''),
+        detail: `Now ${event.body.value.stance || 'unspecified'}. Story sequence ${event.seq}.`,
+        tone: 'success',
+      });
+    // A RESERVED PLACEMENT ENTERED THE RUN (§3.7): the first the log hears
+    // of it, so it is named by the author's own id.
+    case 'arrived':
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Arrival',
+        headline: (formatFactionBeat(event) ?? '').replace(/\.$/, ''),
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'danger',
       });
     case 'turnEnded': {
       const ended = memberName(event.body.value.member, context);
