@@ -276,7 +276,8 @@ function copyEntities(
   scene: WorldScene,
   included: ReadonlySet<string>,
   idFactory: IdFactory,
-  keepExternalRelations: boolean
+  keepExternalRelations: boolean,
+  forbiddenIds: readonly string[] = []
 ): {
   items: WorldProp[];
   groups: WorldGroup[];
@@ -290,6 +291,7 @@ function copyEntities(
   const usedIds = new Set([
     ...scene.items.map((item) => item.id),
     ...scene.groups.map((group) => group.id),
+    ...forbiddenIds,
   ]);
   [...sourceItems, ...sourceGroups].forEach((entity) => {
     const next = idFactory();
@@ -422,7 +424,10 @@ export function stampArrangement(
     ...arrangement.items.map((item) => item.id),
     ...arrangement.groups.map((group) => group.id),
   ]);
-  const copied = copyEntities(templateScene, included, idFactory, false);
+  const copied = copyEntities(templateScene, included, idFactory, false, [
+    ...scene.items.map((item) => item.id),
+    ...scene.groups.map((group) => group.id),
+  ]);
   const atPoint = <T extends WorldProp | WorldGroup>(entity: T): T => ({
     ...entity,
     transform: {

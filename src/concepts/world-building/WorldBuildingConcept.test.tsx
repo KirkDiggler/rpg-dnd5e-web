@@ -96,9 +96,24 @@ describe('WorldBuildingConcept real editing path', () => {
       transform: { x: 0.22, y: 0.72, z: -0.18 },
     });
 
+    const beforeSupportEdit = scene();
     fireEvent.click(
       screen.getByRole('checkbox', { name: /Select Torture Table/i })
     );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Nudge selection east' })
+    );
+    expect(scene().items[0].transform.x).toBeCloseTo(
+      beforeSupportEdit.items[0].transform.x + 0.1
+    );
+    expect(scene().items[1].transform.x).toBeCloseTo(
+      beforeSupportEdit.items[1].transform.x + 0.1
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate right' }));
+    expect(scene().items[0].transform.rotationY).toBeCloseTo(Math.PI / 12);
+    expect(scene().items[1].transform.rotationY).toBeCloseTo(Math.PI / 12);
+
     fireEvent.click(screen.getByRole('checkbox', { name: /Select Candles/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Group selection' }));
     expect(scene().groups).toHaveLength(1);
@@ -110,6 +125,24 @@ describe('WorldBuildingConcept real editing path', () => {
     expect(scene().groups).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
     expect(scene().groups).toHaveLength(1);
+  });
+
+  it('duplicates, deletes, and restores a selected prop through editor controls', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
+    expect(scene().items).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(scene().items).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(scene().items).toHaveLength(2);
   });
 
   it('saves, stamps twice independently, edits one candle, and reopens after remount', () => {

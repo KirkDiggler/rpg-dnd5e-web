@@ -241,6 +241,32 @@ describe('world-building independent arrangements', () => {
       arrangement.items.find((item) => item.id === 'candle')!.transform.x
     ).toBeCloseTo(0.2);
   });
+
+  it('rejects a stamp identity that collides with the target scene', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:books',
+      { x: 0.1, y: 0, z: 0.2, rotationY: 0 },
+      'already-in-scene'
+    );
+    const arrangement = saveArrangement(
+      scene,
+      ['already-in-scene'],
+      'arrangement-1',
+      'Books',
+      '2026-09-05T00:00:00.000Z'
+    );
+
+    expect(() =>
+      stampArrangement(
+        scene,
+        arrangement,
+        { x: 1, z: 1 },
+        () => 'already-in-scene'
+      )
+    ).toThrow(/duplicate identity/i);
+  });
 });
 
 describe('world-building undo history', () => {

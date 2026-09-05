@@ -26,6 +26,8 @@ import {
   saveSceneToStorage,
   stringifyLibrary,
   stringifyScene,
+  validateLibrary,
+  validateScene,
 } from './serialization';
 import type {
   ArrangementLibrary,
@@ -125,9 +127,18 @@ export function WorldBuildingConcept({
 
   const commit = useCallback(
     (next: WorldScene, selection = selectedIds) => {
-      setHistory((current) => updateHistory(current, next));
-      setSelectedIds(selection);
-      setNotice('');
+      try {
+        const valid = validateScene(next);
+        setHistory((current) => updateHistory(current, valid));
+        setSelectedIds(selection);
+        setNotice('');
+      } catch (error) {
+        setNotice(
+          `Edit rejected; the open scene was kept. ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
     },
     [selectedIds]
   );
@@ -140,16 +151,20 @@ export function WorldBuildingConcept({
   const placeGround = (point: WorldPoint) => {
     if (!placement) return;
     if (placement.kind === 'prop') {
-      const id = idFactory();
-      commit(
-        addProp(
-          scene,
-          placement.id,
-          { x: point.x, y: 0, z: point.z, rotationY: 0 },
-          id
-        ),
-        []
-      );
+      try {
+        const id = idFactory();
+        commit(
+          addProp(
+            scene,
+            placement.id,
+            { x: point.x, y: 0, z: point.z, rotationY: 0 },
+            id
+          ),
+          []
+        );
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+      }
       return;
     }
     if (!activeArrangement) {
@@ -175,13 +190,17 @@ export function WorldBuildingConcept({
     supportId: string
   ) => {
     if (placement?.kind !== 'prop') return;
-    const id = idFactory();
-    commit(
-      addProp(scene, placement.id, { ...point, rotationY: 0 }, id, {
-        supportId,
-      }),
-      []
-    );
+    try {
+      const id = idFactory();
+      commit(
+        addProp(scene, placement.id, { ...point, rotationY: 0 }, id, {
+          supportId,
+        }),
+        []
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const applyToSelection = useCallback(
@@ -293,10 +312,12 @@ export function WorldBuildingConcept({
         arrangementName,
         now()
       );
-      setLibrary((current) => ({
-        ...current,
-        arrangements: [...current.arrangements, arrangement],
-      }));
+      setLibrary(
+        validateLibrary({
+          ...library,
+          arrangements: [...library.arrangements, arrangement],
+        })
+      );
       setArrangementName('New arrangement');
       setNotice('');
     } catch (error) {

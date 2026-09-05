@@ -145,24 +145,25 @@ function WorldPropVisual({
   ];
   if (!entry) return null;
 
+  const placeOnVisibleSurface = (event: ThreeEvent<PointerEvent>) => {
+    if (!placement || !entry.supportsDecoration) return;
+    // Placement rays intentionally land on the loaded PropModel meshes, not
+    // the generous selection box below. This keeps authored Y at the visible
+    // tabletop/upper surface even when the model has an irregular silhouette.
+    event.stopPropagation();
+    if (!hasUpwardFace(event)) return;
+    onPlaceSurface(
+      {
+        x: event.point.x,
+        y: Math.max(0, event.point.y - DUNGEON_SURFACE_Y),
+        z: event.point.z,
+      },
+      item.id
+    );
+  };
+
   const startDrag = (event: ThreeEvent<PointerEvent>) => {
-    if (placement) {
-      const localHitY = event.point.y - DUNGEON_SURFACE_Y - item.transform.y;
-      const hitsUsableTop =
-        hasUpwardFace(event) || (!!bounds && localHitY >= bounds.height * 0.45);
-      if (entry.supportsDecoration && hitsUsableTop) {
-        event.stopPropagation();
-        onPlaceSurface(
-          {
-            x: event.point.x,
-            y: Math.max(0, event.point.y - DUNGEON_SURFACE_Y),
-            z: event.point.z,
-          },
-          item.id
-        );
-      }
-      return;
-    }
+    if (placement) return;
     event.stopPropagation();
     const additive = event.shiftKey || event.ctrlKey || event.metaKey;
     const nextSelection = additive
@@ -203,6 +204,7 @@ function WorldPropVisual({
     <group
       name={`world-prop-${item.id}`}
       userData={{ worldItemId: item.id, assetRef: item.assetRef }}
+      onPointerDown={placeOnVisibleSurface}
     >
       <Suspense fallback={<ModelFallback tone="loading" />}>
         <ErrorBoundary
@@ -228,7 +230,7 @@ function WorldPropVisual({
           />
         </ErrorBoundary>
       </Suspense>
-      {bounds && (
+      {bounds && !placement && (
         <mesh
           name={`world-building-interaction-${item.id}`}
           position={[
@@ -379,6 +381,11 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
         minDistance={4}
         maxDistance={26}
         maxPolarAngle={Math.PI / 2.05}
+        mouseButtons={{
+          LEFT: -1 as THREE.MOUSE,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.ROTATE,
+        }}
         enableDamping
       />
     </>
