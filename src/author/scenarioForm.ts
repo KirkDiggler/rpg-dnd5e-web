@@ -27,7 +27,7 @@ import {
   FieldType,
   type ScenarioField,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
-import { isMonsterRef, type DungeonDoc } from './dungeonYaml';
+import { factionMembers, isMonsterRef, type DungeonDoc } from './dungeonYaml';
 
 /** One thing in this dungeon a blank may be bound to. */
 export interface BindOption {
@@ -85,6 +85,20 @@ export function bindOptions(
       return doc.doors
         .filter((d) => d.id !== '')
         .map((d) => ({ id: d.id, label: d.id }));
+    // A FACTION (rpg-project#375 §2): the dungeon file's declared
+    // `factions[]` — the hold-out's `convince` is the first blank of this
+    // kind. Never the reserved `party` or `monsters`: a scenario convinces
+    // an authored side, and the picker says how many stand in it.
+    case 'faction':
+      return doc.factions
+        .filter((f) => f.id !== '')
+        .map((f) => {
+          const members = factionMembers(doc, f.id).length;
+          return {
+            id: f.id,
+            label: `${f.id} — ${members} monster${members === 1 ? '' : 's'}`,
+          };
+        });
     default:
       return null;
   }
@@ -110,6 +124,8 @@ export function emptyPickerReason(
       return 'this dungeon has no doors yet';
     case 'monster':
       return 'no monster in this dungeon has an id yet — select one and name it';
+    case 'faction':
+      return 'this dungeon declares no factions yet — add one under Factions on the dungeon panel';
     default:
       return null;
   }

@@ -342,6 +342,37 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
     expect(growBounds(grown, a)).toBe(grown);
   });
 
+  it('a placement that ARRIVES is drawn faded with a dashed ring and its word; one placed at launch is not (rpg-project#375 §3.7)', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    doc = paintCell(doc, 'region-1', p(2, 1));
+    doc = placeAt(doc, { ref: 'dnd5e:props:scroll', at: p(1, 1) });
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(2, 1) });
+    doc = {
+      ...doc,
+      place: [
+        { ...doc.place[0], id: 'letter', arrives: { round: 6 } },
+        doc.place[1],
+      ],
+    };
+    const { container } = mount(doc);
+    const reserved = container.querySelector(
+      '[data-placement="0"]'
+    ) as SVGGElement;
+    expect(reserved.hasAttribute('data-arrives')).toBe(true);
+    expect(Number(reserved.getAttribute('opacity'))).toBeLessThan(1);
+    expect(container.querySelector('[data-arrives-ring="0"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-arrives-label="0"]')?.textContent
+    ).toBe('arrives');
+    const present = container.querySelector(
+      '[data-placement="1"]'
+    ) as SVGGElement;
+    expect(present.hasAttribute('data-arrives')).toBe(false);
+    expect(present.getAttribute('opacity')).toBeNull();
+    expect(container.querySelector('[data-arrives-ring="1"]')).toBeNull();
+  });
+
   it('a placement offset moves its marker within the hex; facing draws a tick, unfaced does not', () => {
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(1, 1));

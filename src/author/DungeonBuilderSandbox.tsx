@@ -2,8 +2,9 @@
  * DungeonBuilderSandbox — the Concepts Lab mount of the builder: a
  * query-selected fixture loaded (`reference-tomb` by default,
  * `crypt-prop-showcase` for `?authorFixture=crypt-props` and
- * `crypt-lighting-showcase` for `?authorFixture=crypt-lighting`, and
- * `reference-tomb-heirloom` for `?authorFixture=heirloom`), fixtures mode
+ * `crypt-lighting-showcase` for `?authorFixture=crypt-lighting`,
+ * `reference-tomb-heirloom` for `?authorFixture=heirloom`, and
+ * `reference-raider-camp` for `?authorFixture=raider-camp`), fixtures mode
  * (`fixtureCompile` shapes an atlas from the CURRENT document on every
  * edit; `PutDungeon` is never called), no draft persistence. The real
  * `/author` mount is `AuthorView.tsx`.
@@ -14,6 +15,7 @@ import { emitDungeon, type DungeonDoc } from './dungeonYaml';
 import { cryptLightingShowcaseDoc } from './fixtures/cryptLightingShowcase';
 import { cryptPropShowcaseDoc } from './fixtures/cryptPropShowcase';
 import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
+import { referenceRaiderCampDoc } from './fixtures/referenceRaiderCamp';
 import { referenceTombDoc } from './fixtures/referenceTomb';
 import { referenceTombHeirloomDoc } from './fixtures/referenceTombHeirloom';
 
@@ -27,6 +29,11 @@ export function sandboxDocForSearch(search: string): DungeonDoc {
   // this slice adds is already filled in, so the Lab opens on a dungeon
   // whose scenario form has something to show.
   if (fixture === 'heirloom') return referenceTombHeirloomDoc();
+  // The hold-out's camp (rpg-project#375 §1, step A): factions, a
+  // disposition with an `until`, and a record revealing a fact — so the
+  // Lab opens on a dungeon whose Factions and Dispositions sections have
+  // something to show.
+  if (fixture === 'raider-camp') return referenceRaiderCampDoc();
   return referenceTombDoc();
 }
 

@@ -8,10 +8,12 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ScenariosState } from './authoringRpc';
 import {
+  addFaction,
   emptyDungeon,
   paintCell,
   placeAt,
   toggleExitAt,
+  updateFaction,
   updatePlacement,
   type DungeonDoc,
 } from './dungeonYaml';
@@ -240,5 +242,66 @@ describe('a refusal renders on the blank it names', () => {
         'this scenario needs an artifact — which placed thing is the party here to recover'
       )
     ).toBeNull();
+  });
+});
+
+describe('the hold-out form (rpg-project#375 §7): convince = a faction picker', () => {
+  /** The rulebook's descriptor for the hold-out, as `ListScenarios` sends
+   * it — one blank, an entity_ref of kind `faction`. */
+  const HOLD_OUT = create(ScenarioDescriptorSchema, {
+    id: 'hold-out',
+    name: 'The hold-out',
+    fields: [
+      {
+        key: 'convince',
+        label: 'Convince',
+        type: FieldType.ENTITY_REF,
+        kind: 'faction',
+        guidance:
+          'which faction the party must turn — hostile until its mind learns the fact',
+      },
+    ],
+  });
+
+  function camp(): DungeonDoc {
+    let doc = dungeon();
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:goblin-boss', at: p(0, 0) });
+    const chief = doc.place.length - 1;
+    doc = updatePlacement(doc, chief, { id: 'chief', faction: 'goblins' });
+    doc = addFaction(doc);
+    return updateFaction(doc, 'faction-1', { id: 'goblins', mind: 'chief' });
+  }
+
+  it('offers the declared factions in a dropdown, and binds one', () => {
+    const onBind = mount(camp(), served(HOLD_OUT));
+    const select = screen.getByTestId(
+      'scenario-hold-out-convince'
+    ) as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    expect([...select.options].map((o) => o.value)).toEqual(['', 'goblins']);
+    expect(
+      [...select.options].find((o) => o.value === 'goblins')?.textContent
+    ).toBe('goblins — 1 monster');
+    fireEvent.change(select, { target: { value: 'goblins' } });
+    expect(onBind).toHaveBeenCalledWith('hold-out', 'convince', 'goblins');
+  });
+
+  it('with no faction declared, says where to declare one', () => {
+    mount(dungeon(), served(HOLD_OUT));
+    expect(
+      screen.getByTestId('scenario-hold-out-convince-blank').textContent
+    ).toContain('Factions');
+  });
+
+  it('renders the scenario’s refusal under the blank, in the rulebook’s words', () => {
+    mount(camp(), served(HOLD_OUT), [
+      create(FieldErrorSchema, {
+        path: 'scenarios.hold-out.convince',
+        message: 'a hold-out nobody can win: no record reveals saved-wiseman',
+      }),
+    ]);
+    expect(
+      screen.getByTestId('scenario-hold-out-convince-refusal').textContent
+    ).toBe('a hold-out nobody can win: no record reveals saved-wiseman');
   });
 });

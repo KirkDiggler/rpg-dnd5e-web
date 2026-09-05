@@ -996,6 +996,8 @@ const EXPECTED_OTHER_KIND = {
   held: EventKind.HELD,
   dropped: EventKind.DROPPED,
   deathSaveRolled: EventKind.DEATH_SAVE_ROLLED,
+  stanceChanged: EventKind.STANCE_CHANGED,
+  arrived: EventKind.ARRIVED,
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -1016,6 +1018,8 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.HELD,
   EventKind.DROPPED,
   EventKind.DEATH_SAVE_ROLLED,
+  EventKind.STANCE_CHANGED,
+  EventKind.ARRIVED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -1116,6 +1120,28 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         kind: event.kind,
         bodyCase,
         ending: event.body.value.ending,
+      });
+    // The hold-out's two beats (rpg-project#375 §5): the typed identity is
+    // the pair and the word, and the placement, its kind and its cell.
+    case 'stanceChanged':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        between: Object.freeze([...event.body.value.between]),
+        stance: event.body.value.stance,
+      });
+    case 'arrived':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        id: event.body.value.id,
+        placementKind: event.body.value.kind,
+        cell: event.body.value.cell
+          ? Object.freeze({
+              x: event.body.value.cell.x,
+              y: event.body.value.cell.y,
+            })
+          : null,
       });
     case 'door':
       return Object.freeze({
