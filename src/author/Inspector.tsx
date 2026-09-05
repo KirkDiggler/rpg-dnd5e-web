@@ -7,7 +7,6 @@
 import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
 import type { FieldError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useState } from 'react';
-import type { ScenariosState } from './authoringRpc';
 import {
   floorKeys,
   intelHolders,
@@ -39,7 +38,6 @@ import { sealedBy } from './hexGeometry';
 import { axialKey } from './hexOffset';
 import { PredicateEditor } from './PredicateEditor';
 import { RegionPanel } from './RegionPanel';
-import { ScenarioPanel } from './ScenarioPanel';
 import { APPROACH_ABILITIES, TARGETINGS, type Selection } from './types';
 
 export interface InspectorProps {
@@ -75,8 +73,6 @@ export interface InspectorProps {
   /** Rename one way out. */
   onExit: (index: number, patch: Partial<Pick<ExitDoc, 'id'>>) => void;
   onRemoveExit: (index: number) => void;
-  /** Bind one blank on one scenario's form; an empty value unbinds it. */
-  onBindScenario: (scenarioId: string, key: string, value: string) => void;
   /** Aim the party's entry, or clear the aim. */
   onStartFacing: (facing: string | undefined) => void;
   /** Declare a new record and open its form. */
@@ -105,10 +101,8 @@ export interface InspectorProps {
   onRemoveEnding: (index: number) => void;
   /** Select something else — the monster panel links back to a record. */
   onSelect: (selection: Selection) => void;
-  /** What `ListScenarios` answered — the forms this dungeon may fill in. */
-  scenarios: ScenariosState;
-  /** The compiler's current refusals, whole. The scenario form picks out
-   * the ones addressed to its own blanks. */
+  /** The compiler's current refusals, whole. Each section picks out the
+   * ones addressed to its own fields. */
   errors: readonly FieldError[];
   /** Delete the selected wall. */
   onRemoveWall: (index: number) => void;
@@ -320,15 +314,6 @@ function DungeonPanel(props: InspectorProps) {
         onAddEnding={props.onAddEnding}
         onEnding={props.onEnding}
         onRemoveEnding={props.onRemoveEnding}
-      />
-      {/* The scenario form lives on the DUNGEON, because that is whose
-          fact a binding is — a dungeon is bound to a scenario, not a room
-          or a monster. */}
-      <ScenarioPanel
-        doc={doc}
-        state={props.scenarios}
-        errors={props.errors}
-        onBind={props.onBindScenario}
       />
     </div>
   );

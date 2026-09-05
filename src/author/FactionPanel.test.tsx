@@ -47,7 +47,6 @@ const EMPTY_CONCEALMENT: ConcealmentDerivation = {
   regionIds: new Set(),
   doorByRegion: new Map(),
 };
-const NO_SCENARIOS = { scenarios: [], loading: false, error: null };
 
 /** The camp of design §1 on a strip: a named prop (the letter), a named
  * chief and scout in `goblins` with the chief as mind, an unnamed goblin
@@ -112,8 +111,6 @@ function mountAt(
       onSetWallName={noop}
       onExit={noop}
       onRemoveExit={noop}
-      onBindScenario={noop}
-      scenarios={NO_SCENARIOS}
       errors={errors}
       onStartFacing={noop}
       onAddIntel={noop}

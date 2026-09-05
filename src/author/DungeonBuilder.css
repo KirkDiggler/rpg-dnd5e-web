@@ -58,10 +58,15 @@
   overflow: hidden;
   background: #0b0d11;
 }
+/* ONE PANE, FULL HEIGHT (rpg-dnd5e-web#945). The rail used to stack the
+   inspector over the YAML in an `auto` row, which meant the inspector took
+   whatever it wanted and the YAML got the remainder — a handful of lines on
+   anything under 1440. The tab row is the only `auto` track now, so whichever
+   pane is on screen has the whole column under it. */
 .dg-right {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 6px;
   min-height: 0;
   /* The grip below is positioned against this. */
   position: relative;
@@ -95,26 +100,19 @@
 .dg-grip:focus-visible::after {
   opacity: 1;
 }
-/* The inspector's fold. Folded, its `.dg-col` is just this button, so the
-   rail's `auto` row collapses to it and the YAML pane takes the rest of the
-   height instead of sharing it. */
-.dg-fold {
+/* The rail's head: the tab row, and under it whatever the compiler is
+   saying. Both stay put while the pane below them changes. */
+.dg-rail-head {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
-  width: 100%;
-  background: none;
-  border: 0;
-  padding: 0 0 6px;
-  color: var(--text-primary);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.7;
-  cursor: pointer;
+  min-width: 0;
 }
-.dg-fold:hover {
-  opacity: 1;
+/* The tab row — the same shape as the centre column's Canvas/3D tabs,
+   because they do the same job on the other side of the builder. */
+.dg-rail-tabs {
+  display: flex;
+  gap: 6px;
 }
 .dg-h {
   font-size: 11px;
