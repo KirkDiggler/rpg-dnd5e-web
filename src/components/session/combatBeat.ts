@@ -31,6 +31,7 @@ import {
   DoorState,
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { dissolveSentence, formatFactionBeat } from './factionBeat';
 import { formatHoldingBeat } from './holdingBeat';
 import { resolveName, resolveNameLower } from './participantNames';
 
@@ -83,6 +84,10 @@ export function formatBeat(
     object: (id) => resolveNameLower(names, id, member),
   });
   if (holding !== null) return holding;
+  // The stance and arrival beats, likewise ONE set of sentences
+  // (`factionBeat.ts`, rpg-project#375 §5).
+  const faction = formatFactionBeat(event);
+  if (faction !== null) return faction;
 
   switch (event.body?.case) {
     case 'struck': {
@@ -115,7 +120,9 @@ export function formatBeat(
       return `A fight begins: ${roster}.`;
     }
     case 'fightEnded':
-      return 'The fight is over.';
+      // By cause: a fight that dissolved because the sides stopped being
+      // hostile (BY_STANCE, R1) is said differently from one a side lost.
+      return dissolveSentence(event.body.value.cause);
     case 'door': {
       // A door beat narrates from typed facts (rpg-project#268): an unlock
       // attempt carries its author and its numbers — the miss is as much
