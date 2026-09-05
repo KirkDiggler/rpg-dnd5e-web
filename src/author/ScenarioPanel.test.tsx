@@ -9,9 +9,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ScenariosState } from './authoringRpc';
 import {
   addFaction,
+  addScenario,
   emptyDungeon,
   paintCell,
   placeAt,
+  setScenarioBinding,
   toggleExitAt,
   updateFaction,
   updatePlacement,
@@ -66,34 +68,66 @@ const RECOVER = create(ScenarioDescriptorSchema, {
   ],
 });
 
+/** The rulebook's descriptor for the hold-out, as `ListScenarios` sends it
+ * — one blank, an entity_ref of kind `faction`. */
+const HOLD_OUT = create(ScenarioDescriptorSchema, {
+  id: 'hold-out',
+  name: 'The hold-out',
+  fields: [
+    {
+      key: 'convince',
+      label: 'Convince',
+      type: FieldType.ENTITY_REF,
+      kind: 'faction',
+      guidance:
+        'which faction the party must turn — hostile until its mind learns the fact',
+    },
+  ],
+});
+
 const served = (...scenarios: (typeof RECOVER)[]): ScenariosState => ({
   scenarios,
   loading: false,
   error: null,
 });
 
+/** The panel reads the DOCUMENT, so a form is on screen because the file
+ * binds that scenario — never because the server offers it. */
+function bound(doc: DungeonDoc, ...ids: string[]): DungeonDoc {
+  return ids.reduce(addScenario, doc);
+}
+
 function mount(
   doc: DungeonDoc,
   state: ScenariosState,
-  errors: ReturnType<typeof create<typeof FieldErrorSchema>>[] = [],
-  onBind = vi.fn()
+  errors: ReturnType<typeof create<typeof FieldErrorSchema>>[] = []
 ) {
+  const onBind = vi.fn();
+  const onAdd = vi.fn();
+  const onRemove = vi.fn();
   render(
-    <ScenarioPanel doc={doc} state={state} errors={errors} onBind={onBind} />
+    <ScenarioPanel
+      doc={doc}
+      state={state}
+      errors={errors}
+      onBind={onBind}
+      onAdd={onAdd}
+      onRemove={onRemove}
+    />
   );
-  return onBind;
+  return { onBind, onAdd, onRemove };
 }
 
 describe('the form is whatever the server says it is', () => {
   it('renders one form per descriptor, with the rulebook’s own labels', () => {
-    mount(dungeon(), served(RECOVER));
+    mount(bound(dungeon(), 'recover-the-artifact'), served(RECOVER));
     expect(screen.getByTestId('scenario-recover-the-artifact')).toBeTruthy();
     expect(screen.getByLabelText('Artifact')).toBeTruthy();
     expect(screen.getByLabelText('Way out')).toBeTruthy();
   });
 
   it('shows the rulebook’s guidance sentence, unedited, while a blank is empty', () => {
-    mount(dungeon(), served(RECOVER));
+    mount(bound(dungeon(), 'recover-the-artifact'), served(RECOVER));
     expect(
       screen.getByText(
         'this scenario needs an artifact — which placed thing is the party here to recover'
@@ -118,7 +152,7 @@ describe('the form is whatever the server says it is', () => {
         },
       ],
     });
-    mount(dungeon(), served(invented));
+    mount(bound(dungeon(), 'light-the-beacons'), served(invented));
     expect(screen.getByTestId('scenario-light-the-beacons')).toBeTruthy();
     const blank = screen.getByLabelText('Sigil') as HTMLInputElement;
     expect(blank.tagName).toBe('INPUT');
@@ -148,7 +182,7 @@ describe('the form is whatever the server says it is', () => {
 
 describe('the pickers list this dungeon’s own things', () => {
   it('offers the holdable props by id, and the exits by id', () => {
-    mount(dungeon(), served(RECOVER));
+    mount(bound(dungeon(), 'recover-the-artifact'), served(RECOVER));
     const artifact = screen.getByTestId(
       'scenario-recover-the-artifact-artifact'
     ) as HTMLSelectElement;
@@ -160,7 +194,10 @@ describe('the pickers list this dungeon’s own things', () => {
   });
 
   it('binds the picked id under the descriptor’s own key', () => {
-    const onBind = mount(dungeon(), served(RECOVER));
+    const { onBind } = mount(
+      bound(dungeon(), 'recover-the-artifact'),
+      served(RECOVER)
+    );
     fireEvent.change(
       screen.getByTestId('scenario-recover-the-artifact-artifact'),
       { target: { value: 'heirloom' } }
@@ -173,7 +210,10 @@ describe('the pickers list this dungeon’s own things', () => {
   });
 
   it('unbinds on the empty choice', () => {
-    const onBind = mount(dungeon(), served(RECOVER));
+    const { onBind } = mount(
+      bound(dungeon(), 'recover-the-artifact'),
+      served(RECOVER)
+    );
     fireEvent.change(
       screen.getByTestId('scenario-recover-the-artifact-artifact'),
       { target: { value: '' } }
@@ -184,7 +224,7 @@ describe('the pickers list this dungeon’s own things', () => {
   it('says WHY a picker is empty, in words that name the fix', () => {
     let bare = emptyDungeon();
     bare = paintCell(bare, 'region-1', p(0, 0));
-    mount(bare, served(RECOVER));
+    mount(bound(bare, 'recover-the-artifact'), served(RECOVER));
     expect(
       screen.getByText(/nothing in this dungeon can be picked up yet/)
     ).toBeTruthy();
@@ -211,7 +251,7 @@ describe('the pickers list this dungeon’s own things', () => {
 
 describe('a refusal renders on the blank it names', () => {
   it('shows the compiler’s sentence under that field, unedited', () => {
-    mount(dungeon(), served(RECOVER), [
+    mount(bound(dungeon(), 'recover-the-artifact'), served(RECOVER), [
       create(FieldErrorSchema, {
         path: 'scenarios.recover-the-artifact.artifact',
         message:
@@ -231,7 +271,7 @@ describe('a refusal renders on the blank it names', () => {
   });
 
   it('replaces the guidance while it stands', () => {
-    mount(dungeon(), served(RECOVER), [
+    mount(bound(dungeon(), 'recover-the-artifact'), served(RECOVER), [
       create(FieldErrorSchema, {
         path: 'scenarios.recover-the-artifact.artifact',
         message: 'a refusal',
@@ -246,23 +286,6 @@ describe('a refusal renders on the blank it names', () => {
 });
 
 describe('the hold-out form (rpg-project#375 §7): convince = a faction picker', () => {
-  /** The rulebook's descriptor for the hold-out, as `ListScenarios` sends
-   * it — one blank, an entity_ref of kind `faction`. */
-  const HOLD_OUT = create(ScenarioDescriptorSchema, {
-    id: 'hold-out',
-    name: 'The hold-out',
-    fields: [
-      {
-        key: 'convince',
-        label: 'Convince',
-        type: FieldType.ENTITY_REF,
-        kind: 'faction',
-        guidance:
-          'which faction the party must turn — hostile until its mind learns the fact',
-      },
-    ],
-  });
-
   function camp(): DungeonDoc {
     let doc = dungeon();
     doc = placeAt(doc, { ref: 'dnd5e:monsters:goblin-boss', at: p(0, 0) });
@@ -273,7 +296,7 @@ describe('the hold-out form (rpg-project#375 §7): convince = a faction picker',
   }
 
   it('offers the declared factions in a dropdown, and binds one', () => {
-    const onBind = mount(camp(), served(HOLD_OUT));
+    const { onBind } = mount(bound(camp(), 'hold-out'), served(HOLD_OUT));
     const select = screen.getByTestId(
       'scenario-hold-out-convince'
     ) as HTMLSelectElement;
@@ -287,14 +310,14 @@ describe('the hold-out form (rpg-project#375 §7): convince = a faction picker',
   });
 
   it('with no faction declared, says where to declare one', () => {
-    mount(dungeon(), served(HOLD_OUT));
+    mount(bound(dungeon(), 'hold-out'), served(HOLD_OUT));
     expect(
       screen.getByTestId('scenario-hold-out-convince-blank').textContent
     ).toContain('Factions');
   });
 
   it('renders the scenario’s refusal under the blank, in the rulebook’s words', () => {
-    mount(camp(), served(HOLD_OUT), [
+    mount(bound(camp(), 'hold-out'), served(HOLD_OUT), [
       create(FieldErrorSchema, {
         path: 'scenarios.hold-out.convince',
         message: 'a hold-out nobody can win: no record reveals saved-wiseman',
@@ -303,5 +326,104 @@ describe('the hold-out form (rpg-project#375 §7): convince = a faction picker',
     expect(
       screen.getByTestId('scenario-hold-out-convince-refusal').textContent
     ).toBe('a hold-out nobody can win: no record reveals saved-wiseman');
+  });
+});
+
+describe('the tab is the document, not the registry (rpg-dnd5e-web#945)', () => {
+  it('shows the chooser and nothing else when the file binds nothing', () => {
+    // The panel used to draw every offered scenario's blanks on every
+    // dungeon, which said a dungeon was somehow bound to all of them.
+    mount(dungeon(), served(RECOVER, HOLD_OUT));
+    expect(screen.getByTestId('scenario-panel-unbound')).toBeTruthy();
+    expect(screen.queryByTestId('scenario-recover-the-artifact')).toBeNull();
+    expect(screen.queryByTestId('scenario-hold-out')).toBeNull();
+    expect(screen.queryByLabelText('Artifact')).toBeNull();
+    const pick = screen.getByTestId('scenario-add-pick') as HTMLSelectElement;
+    expect([...pick.options].map((o) => o.value)).toEqual([
+      '',
+      'recover-the-artifact',
+      'hold-out',
+    ]);
+  });
+
+  it('adds the one the author picks, and nothing until they press it', () => {
+    const { onAdd } = mount(dungeon(), served(RECOVER, HOLD_OUT));
+    const add = screen.getByTestId('scenario-add-do') as HTMLButtonElement;
+    // Nothing is picked, so there is nothing to add yet.
+    expect(add.disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('scenario-add-pick'), {
+      target: { value: 'hold-out' },
+    });
+    expect(add.disabled).toBe(false);
+    fireEvent.click(add);
+    expect(onAdd).toHaveBeenCalledWith('hold-out');
+  });
+
+  it('renders what the file binds, in the file’s own order, and offers the rest', () => {
+    const doc = bound(dungeon(), 'hold-out');
+    mount(doc, served(RECOVER, HOLD_OUT));
+    expect(screen.getByTestId('scenario-hold-out')).toBeTruthy();
+    expect(screen.queryByTestId('scenario-panel-unbound')).toBeNull();
+    // Not the one it does not bind — and that one is what is on offer.
+    expect(screen.queryByTestId('scenario-recover-the-artifact')).toBeNull();
+    const pick = screen.getByTestId('scenario-add-pick') as HTMLSelectElement;
+    expect([...pick.options].map((o) => o.value)).toEqual([
+      '',
+      'recover-the-artifact',
+    ]);
+  });
+
+  it('holds several at once — the map is not a radio', () => {
+    const doc = bound(dungeon(), 'hold-out', 'recover-the-artifact');
+    mount(doc, served(RECOVER, HOLD_OUT));
+    expect(screen.getByTestId('scenario-hold-out')).toBeTruthy();
+    expect(screen.getByTestId('scenario-recover-the-artifact')).toBeTruthy();
+    expect(screen.queryByTestId('scenario-add-pick')).toBeNull();
+    expect(screen.getByTestId('scenario-panel-all-bound')).toBeTruthy();
+  });
+
+  it('removes one by name, leaving the others alone', () => {
+    const doc = bound(dungeon(), 'hold-out', 'recover-the-artifact');
+    const { onRemove } = mount(doc, served(RECOVER, HOLD_OUT));
+    fireEvent.click(screen.getByTestId('scenario-hold-out-remove'));
+    expect(onRemove).toHaveBeenCalledWith('hold-out');
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a bound scenario this build does not offer, read only, and says why', () => {
+    // THE TEST FOR FAILING CLOSED. The file is older or newer than the
+    // build. Hiding the binding would mean asking an author to delete
+    // something they cannot see.
+    let doc = setScenarioBinding(dungeon(), 'light-the-beacons', 'sigil', 'a');
+    doc = setScenarioBinding(doc, 'light-the-beacons', 'beacon', 'amon-din');
+    mount(doc, served(RECOVER));
+    expect(
+      screen.getByTestId('scenario-light-the-beacons-unoffered').textContent
+    ).toBe('this build does not offer light-the-beacons');
+    // Its words, exactly as the file carries them, and not editable here.
+    const beacon = screen.getByTestId(
+      'scenario-light-the-beacons-beacon'
+    ) as HTMLInputElement;
+    expect(beacon.value).toBe('amon-din');
+    expect(beacon.readOnly).toBe(true);
+    // And the way out of it is the same Remove every other one has.
+    expect(
+      screen.getByTestId('scenario-light-the-beacons-remove')
+    ).toBeTruthy();
+  });
+
+  it('offers the chooser even while a scenario nobody offers is bound', () => {
+    const doc = setScenarioBinding(
+      dungeon(),
+      'light-the-beacons',
+      'sigil',
+      'a'
+    );
+    mount(doc, served(RECOVER));
+    const pick = screen.getByTestId('scenario-add-pick') as HTMLSelectElement;
+    expect([...pick.options].map((o) => o.value)).toEqual([
+      '',
+      'recover-the-artifact',
+    ]);
   });
 });

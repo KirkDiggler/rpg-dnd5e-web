@@ -36,8 +36,10 @@ import {
   addFaction,
   addIntel,
   addRegion,
+  addScenario,
   addWall,
   applyDerivedConcealment,
+  clearScenarioBinding,
   deriveConcealment,
   detectConcealmentLeaks,
   DungeonParseError,
@@ -912,6 +914,12 @@ export function DungeonBuilder({
               errors={errors}
               onBind={(scenarioId, key, value) =>
                 applyDoc((d) => setScenarioBinding(d, scenarioId, key, value))
+              }
+              onAdd={(scenarioId) =>
+                applyDoc((d) => addScenario(d, scenarioId))
+              }
+              onRemove={(scenarioId) =>
+                applyDoc((d) => clearScenarioBinding(d, scenarioId))
               }
             />
           )}
