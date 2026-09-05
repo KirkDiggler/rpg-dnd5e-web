@@ -133,8 +133,9 @@ function rotatedAround(
   const sin = Math.sin(angle);
   return {
     ...transform,
-    x: pivot.x + x * cos - z * sin,
-    z: pivot.z + x * sin + z * cos,
+    // Match Three.js's right-handed positive-Y yaw: +X turns toward -Z.
+    x: pivot.x + x * cos + z * sin,
+    z: pivot.z - x * sin + z * cos,
     rotationY: transform.rotationY + angle,
   };
 }
@@ -144,7 +145,7 @@ function topLevelSelectedIds(
   selectedIds: readonly string[]
 ): string[] {
   const selected = new Set(selectedIds);
-  return selectedIds.filter((candidate) => {
+  return [...selected].sort().filter((candidate) => {
     const entity = entityById(scene, candidate);
     if (!entity) return false;
     const parents =
@@ -173,16 +174,15 @@ export function rotateSelection(
   selectedIds: readonly string[],
   angle: number
 ): WorldScene {
-  let next = scene;
-  for (const rootId of topLevelSelectedIds(scene, selectedIds)) {
-    const root = entityById(scene, rootId);
-    if (!root) continue;
-    const included = selectionClosure(scene, [rootId]);
-    next = mapTransforms(next, included, (transform) =>
-      rotatedAround(transform, root.transform, angle)
-    );
-  }
-  return next;
+  const roots = topLevelSelectedIds(scene, selectedIds);
+  if (roots.length === 0) return scene;
+  const pivot = selectionCenter(scene, roots);
+  const included = selectionClosure(scene, roots);
+  // Build one transform plan from the original scene. A prop can be reachable
+  // through both a group and a support, but the union ensures it rotates once.
+  return mapTransforms(scene, included, (transform) =>
+    rotatedAround(transform, pivot, angle)
+  );
 }
 
 function selectionCenter(
@@ -376,8 +376,10 @@ export function saveArrangement(
   const pivot = selectionCenter(scene, topLevelSelectedIds(scene, selectedIds));
   const localTransform = (transform: WorldTransform): WorldTransform => ({
     ...transform,
+    // Arrangement X/Z are pivot-local, while Y remains authored height above
+    // the shared floor. stampArrangement likewise adds only X/Z.
     x: transform.x - pivot.x,
-    y: transform.y - pivot.y,
+    y: transform.y,
     z: transform.z - pivot.z,
   });
   return {

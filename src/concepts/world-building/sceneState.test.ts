@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
   addProp,
@@ -78,9 +79,11 @@ describe('world-building continuous scene math', () => {
     expect(
       scene.items.find((item) => item.id === 'candle')!.transform.x
     ).toBeCloseTo(2);
+    // Three.js positive-Y yaw turns +X toward -Z. This expectation is
+    // intentionally independent of the authored helper's implementation.
     expect(
       scene.items.find((item) => item.id === 'candle')!.transform.z
-    ).toBeCloseTo(1);
+    ).toBeCloseTo(0);
     expect(
       scene.items.find((item) => item.id === 'candle')!.transform.rotationY
     ).toBeCloseTo(Math.PI / 2);
@@ -92,6 +95,107 @@ describe('world-building continuous scene math', () => {
     expect(
       scene.items.find((item) => item.id === 'candle')!.transform.x
     ).toBeCloseTo(2.13);
+  });
+
+  it('matches Three.js positive-Y yaw at quarter turns around a non-origin support pivot', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 3, y: 0, z: -2, rotationY: 0 },
+      'table'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candles',
+      { x: 4, y: 1, z: -1.5, rotationY: 0.25 },
+      'candle',
+      { supportId: 'table' }
+    );
+
+    for (const angle of [Math.PI / 2, -Math.PI / 2]) {
+      const rotated = rotateSelection(scene, ['table'], angle);
+      const actual = rotated.items.find((item) => item.id === 'candle')!;
+      const expectedOffset = new THREE.Vector3(1, 1, 0.5).applyAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        angle
+      );
+      expect(actual.transform.x).toBeCloseTo(3 + expectedOffset.x);
+      expect(actual.transform.y).toBeCloseTo(expectedOffset.y);
+      expect(actual.transform.z).toBeCloseTo(-2 + expectedOffset.z);
+      expect(actual.transform.rotationY).toBeCloseTo(0.25 + angle);
+    }
+  });
+
+  it('rotates independent selected roots once around their common pivot regardless of selection order', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:barrel',
+      { x: -1, y: 0, z: 0, rotationY: 0 },
+      'west'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:crate',
+      { x: 1, y: 0, z: 0, rotationY: 0 },
+      'east'
+    );
+
+    const westFirst = rotateSelection(scene, ['west', 'east'], Math.PI / 2);
+    const eastFirst = rotateSelection(scene, ['east', 'west'], Math.PI / 2);
+
+    expect(eastFirst).toEqual(westFirst);
+    const west = westFirst.items.find((item) => item.id === 'west')!;
+    const east = westFirst.items.find((item) => item.id === 'east')!;
+    expect(west.transform.x).toBeCloseTo(0);
+    expect(west.transform.z).toBeCloseTo(1);
+    expect(west.transform.rotationY).toBeCloseTo(Math.PI / 2);
+    expect(east.transform.x).toBeCloseTo(0);
+    expect(east.transform.z).toBeCloseTo(-1);
+    expect(east.transform.rotationY).toBeCloseTo(Math.PI / 2);
+  });
+
+  it('rotates a descendant shared by selected support and group roots exactly once', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 0, y: 0, z: 0, rotationY: 0 },
+      'table'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candles',
+      { x: 1, y: 1, z: 0, rotationY: 0 },
+      'candle',
+      { supportId: 'table' }
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:books',
+      { x: 3, y: 1.2, z: 0, rotationY: 0 },
+      'books'
+    );
+    scene = groupSelection(scene, ['candle', 'books'], 'group', 'Dressing');
+
+    const supportFirst = rotateSelection(
+      scene,
+      ['table', 'group'],
+      Math.PI / 2
+    );
+    const groupFirst = rotateSelection(scene, ['group', 'table'], Math.PI / 2);
+    const candle = supportFirst.items.find((item) => item.id === 'candle')!;
+
+    expect(groupFirst).toEqual(supportFirst);
+    expect(candle.transform.rotationY).toBeCloseTo(Math.PI / 2);
+    // The distinct selected roots are at X 0 and X 2, so the common pivot is
+    // X 1. The candle starts on that pivot and therefore keeps its X/Z.
+    expect(candle.transform.x).toBeCloseTo(1);
+    expect(candle.transform.z).toBeCloseTo(0);
+    expect(
+      supportFirst.items.find((item) => item.id === 'books')!.transform.z
+    ).toBeCloseTo(-2);
   });
 
   it('groups only the exact selection without flattening members or absorbing unrelated content', () => {
@@ -242,6 +346,82 @@ describe('world-building independent arrangements', () => {
     ).toBeCloseTo(0.2);
   });
 
+  it('keeps floor-relative heights when saving and stamping unequal-height decorations', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 4, y: 0, z: -3, rotationY: 0 },
+      'table'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candles',
+      { x: 4.2, y: 0.82, z: -2.9, rotationY: 0.1 },
+      'candle',
+      { supportId: 'table' }
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:books',
+      { x: 4.6, y: 1.24, z: -2.7, rotationY: -0.2 },
+      'books',
+      { supportId: 'table' }
+    );
+
+    const arrangement = saveArrangement(
+      scene,
+      ['candle', 'books'],
+      'arrangement-1',
+      'Table dressing',
+      '2026-09-05T00:00:00.000Z'
+    );
+    expect(arrangement.items.map((item) => item.transform.y)).toEqual([
+      0.82, 1.24,
+    ]);
+    expect(arrangement.items.every((item) => !item.supportId)).toBe(true);
+
+    const stamped = stampArrangement(
+      scene,
+      arrangement,
+      { x: -2, z: 3 },
+      ids('candle-copy', 'books-copy')
+    );
+    expect(
+      stamped.scene.items
+        .filter((item) => stamped.createdIds.includes(item.id))
+        .map((item) => item.transform.y)
+    ).toEqual([0.82, 1.24]);
+    expect(
+      stamped.scene.items.find((item) => item.id === 'candle')!.transform
+    ).toEqual(scene.items.find((item) => item.id === 'candle')!.transform);
+  });
+
+  it('deliberately drops an external support when duplicating only its decoration', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:torture-table',
+      { x: 0, y: 0, z: 0, rotationY: 0 },
+      'table'
+    );
+    scene = addProp(
+      scene,
+      'dnd5e:props:candles',
+      { x: 0.2, y: 0.9, z: 0, rotationY: 0 },
+      'candle',
+      { supportId: 'table' }
+    );
+
+    const duplicated = duplicateSelection(scene, ['candle'], () => 'copy');
+    expect(
+      duplicated.scene.items.find((item) => item.id === 'copy')!.supportId
+    ).toBeUndefined();
+    expect(
+      duplicated.scene.items.find((item) => item.id === 'copy')!.transform.y
+    ).toBe(0.9);
+  });
+
   it('rejects a stamp identity that collides with the target scene', () => {
     let scene = createEmptyScene('scene-1');
     scene = addProp(
@@ -297,5 +477,22 @@ describe('world-building undo history', () => {
       rotateSelection(history.present, ['table'], Math.PI / 6)
     );
     expect(history.future).toEqual([]);
+  });
+
+  it('keeps the newest 80 undo snapshots and evicts older history', () => {
+    let history = createHistory(createEmptyScene('scene-1'));
+    for (let index = 1; index <= 81; index += 1) {
+      history = updateHistory(history, {
+        ...history.present,
+        name: `Edit ${index}`,
+      });
+    }
+
+    expect(history.past).toHaveLength(80);
+    for (let index = 0; index < 80; index += 1) {
+      history = undoHistory(history);
+    }
+    expect(history.present.name).toBe('Edit 1');
+    expect(undoHistory(history)).toBe(history);
   });
 });

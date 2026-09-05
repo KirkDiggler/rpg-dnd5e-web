@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { addProp, createEmptyScene, saveArrangement } from './sceneState';
+import {
+  addProp,
+  createEmptyScene,
+  groupSelection,
+  saveArrangement,
+  stampArrangement,
+} from './sceneState';
 import {
   LIBRARY_STORAGE_KEY,
   SCENE_STORAGE_KEY,
@@ -11,6 +17,7 @@ import {
   saveSceneToStorage,
   stringifyLibrary,
   stringifyScene,
+  validateLibrary,
 } from './serialization';
 import type { ArrangementLibrary, KeyValueStorage } from './types';
 
@@ -98,6 +105,76 @@ describe('world-building serialization validation', () => {
 
   it('rejects oversized JSON before parsing it', () => {
     expect(() => parseSceneJson(' '.repeat(500_001))).toThrow(/too large/i);
+  });
+
+  it('validates, reopens, and stamps grouped and decoration-only arrangements without changing floor-relative heights', () => {
+    let scene = validScene();
+    scene = addProp(
+      scene,
+      'dnd5e:props:books',
+      { x: 0.5, y: 1.24, z: -0.1, rotationY: 0.3 },
+      'books',
+      { supportId: 'table' }
+    );
+    const groupedScene = groupSelection(
+      scene,
+      ['table', 'candle', 'books'],
+      'group',
+      'Decorated table'
+    );
+    const grouped = saveArrangement(
+      groupedScene,
+      ['group'],
+      'grouped-arrangement',
+      'Grouped decorated table',
+      '2026-09-05T00:00:00.000Z'
+    );
+    const decorations = saveArrangement(
+      scene,
+      ['candle', 'books'],
+      'decoration-arrangement',
+      'Loose table dressing',
+      '2026-09-05T00:00:01.000Z'
+    );
+    const library = validateLibrary({
+      version: 1,
+      arrangements: [grouped, decorations],
+    });
+    const reopened = parseLibraryJson(stringifyLibrary(library));
+
+    expect(
+      reopened.arrangements[0]!.items.map((item) => item.transform.y)
+    ).toEqual([0, 0.72, 1.24]);
+    expect(
+      reopened.arrangements[1]!.items.map((item) => item.transform.y)
+    ).toEqual([0.72, 1.24]);
+    expect(
+      reopened.arrangements[1]!.items.every((item) => !item.supportId)
+    ).toBe(true);
+
+    const groupedStamp = stampArrangement(
+      createEmptyScene('stamped'),
+      reopened.arrangements[0]!,
+      { x: 2, z: -2 },
+      (() => {
+        const stampedIds = [
+          'table-copy',
+          'candle-copy',
+          'books-copy',
+          'group-copy',
+        ];
+        let index = 0;
+        return () => stampedIds[index++]!;
+      })()
+    );
+    expect(groupedStamp.scene.items.map((item) => item.transform.y)).toEqual([
+      0, 0.72, 1.24,
+    ]);
+    expect(groupedStamp.scene.items[1]!.supportId).toBe('table-copy');
+    expect(groupedStamp.scene.items[2]!.supportId).toBe('table-copy');
+    expect(
+      groupedStamp.scene.items.every((item) => item.parentId === 'group-copy')
+    ).toBe(true);
   });
 
   it('round trips an initially empty library and a saved selection', () => {

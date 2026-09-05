@@ -44,7 +44,7 @@ export interface Arrangement {
   id: string;
   name: string;
   createdAt: string;
-  /** Local-space copies. Their IDs are template-local and remapped on stamp. */
+  /** X/Z pivot-local, Y floor-relative copies. Template IDs remap on stamp. */
   items: WorldProp[];
   groups: WorldGroup[];
 }

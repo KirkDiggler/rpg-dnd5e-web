@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { KeyValueStorage, WorldScene } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
@@ -33,7 +33,11 @@ vi.mock('./WorldBuildingViewport', () => ({
         disabled={!props.scene.items[0]}
         onClick={() =>
           props.onPlaceSurface(
-            { x: 0.22, y: 0.72, z: -0.18 },
+            {
+              x: 0.22,
+              y: props.placement?.id === 'dnd5e:props:books' ? 1.24 : 0.72,
+              z: -0.18,
+            },
             props.scene.items[0]!.id
           )
         }
@@ -145,6 +149,123 @@ describe('WorldBuildingConcept real editing path', () => {
     expect(scene().items).toHaveLength(2);
   });
 
+  it('saves, stamps, and reopens a grouped decorated table without flattening unequal heights', () => {
+    const storage = new MemoryStorage();
+    const idFactory = deterministicIds();
+    const mounted = render(
+      <WorldBuildingConcept
+        storage={storage}
+        idFactory={idFactory}
+        now={() => '2026-09-05T00:00:00.000Z'}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Place Torture Table' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Place Candles' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Select Torture Table/i })
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select Candles/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Group selection' }));
+    fireEvent.change(screen.getByLabelText('Arrangement name'), {
+      target: { value: 'Grouped decorated table' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
+
+    expect(screen.getByText('Grouped decorated table')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Stamp Grouped decorated table' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
+    const stamped = scene();
+    expect(stamped.items.map((item) => item.transform.y)).toEqual([
+      0, 0.72, 1.24, 0, 0.72, 1.24,
+    ]);
+    expect(stamped.groups).toHaveLength(2);
+    expect(stamped.items[4].supportId).toBe(stamped.items[3].id);
+    expect(stamped.items[5].supportId).toBe(stamped.items[3].id);
+    expect(
+      stamped.items
+        .slice(3)
+        .every((item) => item.parentId === stamped.groups[1].id)
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
+    mounted.unmount();
+    render(<WorldBuildingConcept storage={storage} idFactory={idFactory} />);
+    expect(scene().items.map((item) => item.transform.y)).toEqual([
+      0, 0.72, 1.24, 0, 0.72, 1.24,
+    ]);
+    expect(screen.getByText('Grouped decorated table')).toBeTruthy();
+  });
+
+  it('saves, stamps, and reopens unequal-height decorations independently of their external support', () => {
+    const storage = new MemoryStorage();
+    const idFactory = deterministicIds();
+    const mounted = render(
+      <WorldBuildingConcept
+        storage={storage}
+        idFactory={idFactory}
+        now={() => '2026-09-05T00:00:00.000Z'}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Place Torture Table' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Place Candles' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas tabletop' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select Candles/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
+    fireEvent.change(screen.getByLabelText('Arrangement name'), {
+      target: { value: 'Loose table dressing' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
+
+    expect(screen.getByText('Loose table dressing')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Stamp Loose table dressing' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
+    const stamped = scene();
+    expect(stamped.items.map((item) => item.transform.y)).toEqual([
+      0, 0.72, 1.24, 0.72, 1.24,
+    ]);
+    expect(stamped.items.slice(3).every((item) => !item.supportId)).toBe(true);
+
+    const originalBefore = structuredClone(stamped.items[1].transform);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: new RegExp(`Select Candles ${stamped.items[3].id}`, 'i'),
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Nudge selection east' })
+    );
+    expect(scene().items[1].transform).toEqual(originalBefore);
+    expect(scene().items[3].transform.x).toBeCloseTo(
+      stamped.items[3].transform.x + 0.1
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
+    mounted.unmount();
+    render(<WorldBuildingConcept storage={storage} idFactory={idFactory} />);
+    expect(scene().items.map((item) => item.transform.y)).toEqual([
+      0, 0.72, 1.24, 0.72, 1.24,
+    ]);
+    expect(screen.getByText('Loose table dressing')).toBeTruthy();
+  });
+
   it('saves, stamps twice independently, edits one candle, and reopens after remount', () => {
     const storage = new MemoryStorage();
     const idFactory = deterministicIds();
@@ -207,6 +328,59 @@ describe('WorldBuildingConcept real editing path', () => {
     render(<WorldBuildingConcept storage={storage} idFactory={idFactory} />);
     expect(scene().items).toHaveLength(6);
     expect(screen.getByText('Decorated table')).toBeTruthy();
+  });
+
+  it('leaves Ctrl/Cmd/Alt+R reload keys untouched while plain R rotates', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
+    const before = scene();
+
+    for (const modifiers of [
+      { ctrlKey: true },
+      { metaKey: true },
+      { altKey: true },
+    ]) {
+      const reload = createEvent.keyDown(window, {
+        key: 'r',
+        cancelable: true,
+        ...modifiers,
+      });
+      fireEvent(window, reload);
+      expect(reload.defaultPrevented).toBe(false);
+      expect(scene()).toEqual(before);
+    }
+
+    const rotate = createEvent.keyDown(window, {
+      key: 'r',
+      cancelable: true,
+    });
+    fireEvent(window, rotate);
+    expect(rotate.defaultPrevented).toBe(true);
+    expect(scene().items[0].transform.rotationY).toBeCloseTo(Math.PI / 12);
+  });
+
+  it('keeps intentional Ctrl/Cmd+D duplication shortcuts', () => {
+    const storage = new MemoryStorage();
+    render(
+      <WorldBuildingConcept storage={storage} idFactory={deterministicIds()} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Place Books' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Canvas ground' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select Books/i }));
+
+    const duplicate = createEvent.keyDown(window, {
+      key: 'd',
+      ctrlKey: true,
+      cancelable: true,
+    });
+    fireEvent(window, duplicate);
+    expect(duplicate.defaultPrevented).toBe(true);
+    expect(scene().items).toHaveLength(2);
   });
 
   it('shows non-destructive import errors and keeps the valid open scene', () => {

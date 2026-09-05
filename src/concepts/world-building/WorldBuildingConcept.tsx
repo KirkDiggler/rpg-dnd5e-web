@@ -271,7 +271,12 @@ export function WorldBuildingConcept({
       } else if (modifier && event.key.toLowerCase() === 'd') {
         event.preventDefault();
         duplicate();
-      } else if (event.key.toLowerCase() === 'r') {
+      } else if (
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === 'r'
+      ) {
         event.preventDefault();
         applyToSelection((current) =>
           rotateSelection(current, selectedIds, Math.PI / 12)

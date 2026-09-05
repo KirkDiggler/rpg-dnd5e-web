@@ -24,21 +24,34 @@ The concept currently provides:
 - real catalog-backed props, rendered by the shared `PropModel` rather than a
   concept-only imitation;
 - direct surface placement: while placing a prop, pointer intersections are
-  taken from an upward-facing triangle of an eligible loaded support model;
-  the selection bounding box is not in the placement ray path. The authored Y
-  is the actual mesh intersection and `supportId` is recorded automatically;
+  taken from an upward-facing triangle of an eligible loaded support model.
+  The handler exists only inside the successfully loaded `PropModel` subtree;
+  loading/error fallbacks and selection geometry cannot author a support. The
+  authored Y is the actual mesh intersection and `supportId` is recorded
+  automatically;
 - additive individual or group selection, pointer drag, 15-degree rotation,
   10-cm nudge, group/ungroup, duplicate, delete, undo, redo, and keyboard
   shortcuts;
 - relationship-aware transforms: moving or rotating a support/group carries
-  its descendants, while selecting a descendant edits it independently;
-- named arrangements saved from a selection closure. Each stamp deep-copies the
-  template, creates fresh identities, remaps internal group/support links, and
-  has no linked-template or sibling propagation;
+  its descendants, while selecting a descendant edits it independently. One
+  rotation uses the union closure of the distinct top-level selected roots,
+  rotates every included entity exactly once from the original scene around
+  their common pivot, and matches Three.js positive-Y yaw;
+- named arrangements saved from a selection closure. Arrangement X/Z is local
+  to the saved root pivot while Y stays floor-relative, so grouped tables and
+  decorations at unequal heights validate, reopen, and stamp without flattening
+  or negative local heights. Each stamp deep-copies the template, creates fresh
+  identities, remaps internal group/support links, and has no linked-template
+  or sibling propagation;
 - versioned scene and arrangement-library JSON import/export and independent
   local-storage auto-save. Parse/write failures are visible and do not replace
   the valid in-memory scene/library or a prior good stored payload;
 - a confirmed blank-scene action. There is no silent reset.
+
+Undo retains the newest 80 committed snapshots. Copying only part of a
+relationship retains internal links but deliberately drops references to an
+external group/support; for example, duplicating or saving a candle without its
+table creates a detached copy at the same floor-relative height.
 
 The real-browser forcing case built a torture table with candles and books,
 saved it as `Decorated table`, stamped it twice, edited one stamped candle,
@@ -89,7 +102,7 @@ LibraryEnvelope {
     arrangements: Arrangement[] {
       version: 1
       id, name, createdAt
-      items: WorldProp[]      // local-space template copies
+      items: WorldProp[]      // X/Z-pivot-local, floor-relative-Y copies
       groups: WorldGroup[]
     }
   }
@@ -156,31 +169,28 @@ root and local copies match:
 
 ## Verification evidence
 
-Focused automated evidence:
+The reviewed implementation head had 34 focused and 5,314 full passing tests.
+Fix-stage TDD and final evidence expanded that coverage:
 
 ```bash
-npm ci
-# 449 packages installed from the unchanged lockfile
-
 npm test -- --run \
   src/concepts/world-building/sceneState.test.ts \
   src/concepts/world-building/serialization.test.ts \
   src/concepts/world-building/WorldBuildingConcept.test.tsx \
+  src/concepts/world-building/WorldBuildingViewport.test.tsx \
   src/components/hex-grid/PropModel.test.tsx
-# 4 files, 34 tests passed
+# 5 files, 48 tests passed
 
 npm run typecheck
-# passed
-
-npx prettier --check <17 candidate files/directories>
-npx eslint <candidate TypeScript files/directories>
+npx prettier --check <9 fix-stage paths>
+npx eslint <8 fix-stage TypeScript paths>
 # passed
 
 npm run build
 # 3,546 modules transformed; passed (expected chunk-size warning)
 
 npm test -- --run
-# 371 files passed, 1 skipped; 5,314 tests passed, 5 skipped
+# 372 files passed, 1 skipped; 5,328 tests passed, 5 skipped
 
 npm run ci-check
 # format, lint, typecheck, build guards, and full tests passed
@@ -197,9 +207,12 @@ then passed 111/111 tests, followed by the full green run recorded above.
 
 The component tests mock only the WebGL viewport boundary. State and
 serialization tests separately prove continuous/overlapping positions,
-relationship propagation, collision-safe identity remapping, snapshot history,
-strict catalog-bound parsing, round trips, and non-destructive corrupt
-storage/import handling.
+Three.js-handed relationship rotation (including overlapping multi-root
+closures), collision-safe identity remapping, X/Z-local/floor-relative-Y
+arrangements, the 80-entry snapshot-history cap, strict catalog-bound parsing,
+round trips, and non-destructive corrupt storage/import handling. Focused R3F
+viewport tests prove only the confirmed loaded `PropModel` subtree can author a
+support; loading/error fallbacks and generated selection overlays cannot.
 
 Real R3F/GLB evidence was run with Google Chrome through Playwright at
 `http://127.0.0.1:3018/?concept=world-building`. The reusable managed evidence
@@ -207,21 +220,26 @@ script and complete JSON event/transform receipt are outside Git at:
 
 ```text
 /home/kirk/.pi/agent/sessions/--home-kirk-game-dev--/subagent-artifacts/outputs/
-62a815a5-9728-48a0-8af5-74aec6d1c02d/world-building/evidence/
+67420b71-520b-4297-b400-99dc441c62ad/world-building/evidence/
 ```
 
 Notable measured browser facts:
 
-- table/candles/books reported `Real models loaded 3/3`; after two stamps and a
-  full reload, `9/9`;
-- the actual table mesh intersections authored candle Y `0.9685438682` and
-  books Y `1.2338218388`, both with the table's identity as `supportId`;
-- both stamps had three fresh IDs and internally remapped support identities;
-- nudging the first stamped candle by `+0.1` X left the second stamp and saved
-  library transform byte-for-byte unchanged;
-- reloading retained nine editable items and one arrangement;
-- table translation and `π/12` rotation moved both attached decorations around
-  the table pivot while the sibling stamp remained unchanged;
+- the support reported `Real models loaded 1/1` before surface authoring;
+  table/candles/books then reported `3/3`, and actual loaded-table triangles
+  authored candle Y `0.9685438682` and books Y `1.2338218388`, both with the
+  table's identity as `supportId`;
+- grouping those three unequal-height entities, saving, stamping twice, and
+  reloading preserved heights plus remapped group/support identities; editing
+  the first stamped candle left its sibling and library template byte-for-byte
+  unchanged;
+- table translation and `π/12` rotation matched an independent
+  `THREE.Vector3.applyAxisAngle` calculation. The before/after images visibly
+  show the real rotated table with both decorations still resting on it, while
+  the sibling stamp remained unchanged;
+- saving only the unequal-height candle/books dropped their external group and
+  support links, stamped both at unchanged heights, allowed an independent
+  edit, and reopened with 11 real models loaded and both arrangements intact;
 - left-drag camera evidence was pixel-identical before/after; right-drag
   changed the rendered camera view, matching the visible instructions;
 - there were zero console errors, page errors, failed requests, non-200 model

@@ -122,7 +122,7 @@ interface WorldPropVisualProps {
   onAssetState: WorldBuildingViewportProps['onAssetState'];
 }
 
-function WorldPropVisual({
+export function WorldPropVisual({
   item,
   selected,
   dragDelta,
@@ -204,30 +204,34 @@ function WorldPropVisual({
     <group
       name={`world-prop-${item.id}`}
       userData={{ worldItemId: item.id, assetRef: item.assetRef }}
-      onPointerDown={placeOnVisibleSurface}
     >
       <Suspense fallback={<ModelFallback tone="loading" />}>
         <ErrorBoundary
           fallback={<ModelFallback tone="error" />}
           onError={() => onAssetState(item.id, 'error')}
         >
-          <PropModel
-            variant={entry.variant}
-            position={position}
-            rotationY={item.transform.rotationY}
-            anchor="bounds-floor-center"
-            onBoundsMeasured={(measured) => {
-              setBounds((current) =>
-                current &&
-                current.width === measured.width &&
-                current.height === measured.height &&
-                current.depth === measured.depth
-                  ? current
-                  : measured
-              );
-              onAssetState(item.id, 'loaded');
-            }}
-          />
+          <group
+            name={`world-building-loaded-surface-${item.id}`}
+            onPointerDown={placeOnVisibleSurface}
+          >
+            <PropModel
+              variant={entry.variant}
+              position={position}
+              rotationY={item.transform.rotationY}
+              anchor="bounds-floor-center"
+              onBoundsMeasured={(measured) => {
+                setBounds((current) =>
+                  current &&
+                  current.width === measured.width &&
+                  current.height === measured.height &&
+                  current.depth === measured.depth
+                    ? current
+                    : measured
+                );
+                onAssetState(item.id, 'loaded');
+              }}
+            />
+          </group>
         </ErrorBoundary>
       </Suspense>
       {bounds && !placement && (
