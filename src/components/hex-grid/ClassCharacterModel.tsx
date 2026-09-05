@@ -388,10 +388,18 @@ export function ClassCharacterModel({
   // `Idle_Relaxed`, then `Walk_Forward`; downed variants ship 0 clips, so
   // `names` is empty and `resolvedClipName` is undefined — this effect
   // no-ops cleanly for those, same as before #542.
-  const { actions, names } = useAnimations(animations, cloned);
-  const resolvedClipName = isMoving
-    ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
-    : resolveIdleClipName(names);
+  const { actions, names, mixer } = useAnimations(animations, cloned);
+  const resolvedClipName = remembered
+    ? undefined
+    : isMoving
+      ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
+      : resolveIdleClipName(names);
+  // Other live entities can still drive Canvas frames. Freeze this mixer's
+  // clock too, preserving the last evaluated pose and any pending fade rather
+  // than allowing a remembered body to animate or fade back to its bind pose.
+  useEffect(() => {
+    mixer.timeScale = remembered ? 0 : 1;
+  }, [mixer, remembered]);
   useEffect(() => {
     if (!resolvedClipName) return;
     const action = actions[resolvedClipName];

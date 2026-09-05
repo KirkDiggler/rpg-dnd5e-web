@@ -143,7 +143,11 @@ vi.mock('@react-three/drei', () => ({
 
     return { scene, animations: [] };
   },
-  useAnimations: () => ({ actions: {}, names: [] }),
+  useAnimations: () => ({
+    actions: {},
+    names: [],
+    mixer: new THREE.AnimationMixer(new THREE.Group()),
+  }),
   useTexture: (url: string) => {
     let texture = gltf.textures.get(url);
     if (!texture) {
