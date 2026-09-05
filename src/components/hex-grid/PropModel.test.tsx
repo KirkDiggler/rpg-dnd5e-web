@@ -132,6 +132,34 @@ describe('PropModel companion rendering (rpg-game-assets#36 wave-1, issue #623)'
 });
 
 describe('PropModel shared placement', () => {
+  it('optionally centers visible bounds and grounds their base without changing the default renderer contract', async () => {
+    const onBoundsMeasured = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <PropModel
+        variant={BASE_VARIANT}
+        position={[2, 0, 3]}
+        anchor="bounds-floor-center"
+        onBoundsMeasured={onBoundsMeasured}
+      />
+    );
+    const groups = renderer.scene
+      .findAllByType('Group')
+      .map((n) => (n as unknown as { instance: THREE.Group }).instance);
+    const anchor = groups.find(
+      (group) => group.name === 'prop-model-bounds-anchor'
+    );
+    expect(anchor?.position.x).toBeCloseTo(0);
+    expect(anchor?.position.y).toBeCloseTo(0.5);
+    expect(anchor?.position.z).toBeCloseTo(0);
+    expect(onBoundsMeasured).toHaveBeenCalledWith({
+      minY: 0,
+      maxY: SYNTY_SCALE,
+      width: SYNTY_SCALE,
+      height: SYNTY_SCALE,
+      depth: SYNTY_SCALE,
+    });
+  });
+
   it('renders every prop at the shared SYNTY_SCALE', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <PropModel variant={BASE_VARIANT} position={[0, 0, 9]} />
@@ -141,6 +169,9 @@ describe('PropModel shared placement', () => {
       .map((n) => (n as unknown as { instance: THREE.Group }).instance);
     const outer = groups.find((group) => group.position.z === 9);
     expect(outer?.scale.x).toBeCloseTo(SYNTY_SCALE);
+    expect(
+      groups.some((group) => group.name === 'prop-model-bounds-anchor')
+    ).toBe(false);
   });
 
   it('adds the dungeon surface height to the caller-provided Y position', async () => {
