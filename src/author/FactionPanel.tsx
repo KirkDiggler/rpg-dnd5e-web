@@ -12,6 +12,7 @@
  * this panel, and every §2 refusal the client can know renders under the
  * field it names (`factionRules.ts`).
  */
+import { refId } from '@/utils/refs';
 import { useState } from 'react';
 import {
   factionMembers,
@@ -219,7 +220,7 @@ function FactionRow({
             )}
             {named.map((m) => (
               <option key={m.placement.id} value={m.placement.id as string}>
-                {m.placement.id} · {m.placement.ref.split(':').pop()}
+                {m.placement.id} · {refId(m.placement.ref) ?? m.placement.ref}
               </option>
             ))}
           </select>
@@ -238,7 +239,10 @@ function FactionRow({
         {members.length === 0
           ? 'no members'
           : `${members.length} member${members.length === 1 ? '' : 's'}: ${members
-              .map((m) => m.placement.id ?? m.placement.ref.split(':').pop())
+              .map(
+                (m) =>
+                  m.placement.id ?? refId(m.placement.ref) ?? m.placement.ref
+              )
               .join(', ')}`}
       </div>
 

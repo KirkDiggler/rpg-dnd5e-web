@@ -19,7 +19,10 @@
  * `src/author/thumbs/*.png` — no cropping/resizing
  * needed since the canvas already fills the viewport. See paletteData.ts's
  * `thumbForRef` doc comment for the filename convention
- * (`<ref's last segment>.png`) and CONTRACT.md's "Thumbnail provenance"
+ * (`<the ref's id as one slug>.png` — `refSlug` in `src/utils/refs.ts`
+ * decides it, so an exact ref bakes to `plushie-skeleton-dog.png` and not
+ * to the `skeleton-dog.png` every other family's dog would also claim)
+ * and CONTRACT.md's "Thumbnail provenance"
  * section for the one-off orchestration script (not committed — it's a
  * throwaway loop over `game-dev/tools/browser/screenshot.mjs`, same as any
  * other `_job_*.mjs` in that gitignored directory).

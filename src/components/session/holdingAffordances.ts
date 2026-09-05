@@ -52,6 +52,7 @@
  */
 
 import { hexDistance, type CubeCoord } from '@/components/hex-grid/hexMath';
+import { refLabel } from '@/utils/refs';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type { AtlasExit } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { Standing } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -152,10 +153,10 @@ export function exitAt(
   );
 }
 
-/** A prop ref as a button label — its last segment, spaced. The author's
- * own vocabulary, never a lookup table this client would have to keep in
- * step with the content. */
+/** A prop ref as a button label — its id, read as words (see `refLabel`).
+ * The author's own vocabulary, never a lookup table this client would
+ * have to keep in step with the content. */
 export function propLabel(target: HoldTarget): string {
-  const words = (target.ref.split(':').pop() ?? '').replace(/[-_]+/g, ' ');
+  const words = refLabel(target.ref);
   return words || target.id.replace(/[-_]+/g, ' ');
 }

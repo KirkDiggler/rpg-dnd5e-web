@@ -1,3 +1,4 @@
+import { isExactPropRef } from '@/utils/refs';
 import { Suspense } from 'react';
 import { facingToYaw } from '../hex-grid/facingYaw';
 import { resolvePropVariant } from '../hex-grid/propManifest';
@@ -9,10 +10,6 @@ export interface AtlasPropModelProps {
   prop: SceneProp3D;
   hexSize: number;
   orientation: 'pointy';
-}
-
-function isExactPropRef(ref: string): boolean {
-  return ref.startsWith('dnd5e:props:') && ref.split(':').length >= 4;
 }
 
 export function AtlasPropModel({ prop, hexSize }: AtlasPropModelProps) {

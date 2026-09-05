@@ -47,6 +47,7 @@
 import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
 import { useCameraDials } from '@/feel/useFeelDials';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
+import { refId } from '@/utils/refs';
 import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type {
   DoorInfo,
@@ -106,12 +107,11 @@ const ATTACKABLE_RING_OPACITY = 0.15;
  * `resolveMonsterModelUrl` already speaks (rpg-project#264: the roster's
  * authored ref replaces deriving this by stripping the subject's ordinal;
  * the derivation survives only as the missing-entry fallback above).
- * `undefined` in, or a ref with no segments, is `undefined` out.
+ * `undefined` in, or a string that is not a ref, is `undefined` out.
  */
 function monsterRefIdFrom(monsterRef: string | undefined): string | undefined {
   if (!monsterRef) return undefined;
-  const segment = monsterRef.split(':').pop();
-  return segment || undefined;
+  return refId(monsterRef) ?? undefined;
 }
 
 export interface SessionCanvasProps {
