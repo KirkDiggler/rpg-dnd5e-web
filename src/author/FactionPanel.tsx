@@ -15,13 +15,15 @@
 import { useState } from 'react';
 import {
   factionMembers,
+  MONSTERS,
+  predicateText,
   STANCES,
   type DispositionDoc,
   type DungeonDoc,
   type FactionDoc,
   type Stance,
 } from './dungeonYaml';
-import { refusalsAt, type Refusal } from './factionRules';
+import { messagesAt, type PathMessage, type Refusal } from './factionRules';
 import { FactionPicker, PredicateEditor } from './PredicateEditor';
 
 export interface FactionSectionsProps {
@@ -29,6 +31,10 @@ export interface FactionSectionsProps {
   /** `factionRefusals(doc)`, computed once by the dungeon panel and shared
    * with the placement panel so one sentence renders in both places. */
   refusals: readonly Refusal[];
+  /** The compiler's path-addressed refusals, whole — each row picks out
+   * the ones addressed to its own fields and renders them beside the
+   * client's, once each. */
+  errors: readonly PathMessage[];
   onAddFaction: () => void;
   onFaction: (id: string, patch: Partial<FactionDoc>) => void;
   onRemoveFaction: (id: string) => void;
@@ -88,6 +94,7 @@ export function FactionsSection(props: FactionSectionsProps) {
             index={index}
             faction={faction}
             refusals={refusals}
+            errors={props.errors}
             onChange={(patch) => props.onFaction(faction.id, patch)}
             onRemove={() => props.onRemoveFaction(faction.id)}
           />
@@ -110,6 +117,7 @@ function FactionRow({
   index,
   faction,
   refusals,
+  errors,
   onChange,
   onRemove,
 }: {
@@ -117,6 +125,7 @@ function FactionRow({
   index: number;
   faction: FactionDoc;
   refusals: readonly Refusal[];
+  errors: readonly PathMessage[];
   onChange: (patch: Partial<FactionDoc>) => void;
   onRemove: () => void;
 }) {
@@ -130,8 +139,8 @@ function FactionRow({
   const members = factionMembers(doc, faction.id);
   const named = members.filter((m) => !!m.placement.id);
   const mind = faction.mind ?? '';
-  const mindRefusals = refusalsAt(refusals, `factions[${index}].mind`);
-  const idRefusals = refusalsAt(refusals, `factions[${index}].id`);
+  const mindRefusals = messagesAt(refusals, errors, `factions[${index}].mind`);
+  const idRefusals = messagesAt(refusals, errors, `factions[${index}].id`);
   const testId = `faction-${index}`;
   return (
     <div
@@ -170,7 +179,9 @@ function FactionRow({
           <Refusals testId={`${testId}-id-refusal`} messages={idRefusals} />
         ) : (
           <div className="text-xs opacity-70">
-            The side&apos;s name. `party` is the players and is never declared.
+            The side&apos;s name. `party` is the players and is never declared;
+            `monsters` is every unauthored monster, and may be declared here to
+            give that side a mind.
           </div>
         )}
       </label>
@@ -180,7 +191,9 @@ function FactionRow({
         {named.length === 0 && mind === '' ? (
           <div className="text-xs opacity-70" data-testid={`${testId}-no-mind`}>
             {members.length === 0
-              ? `no monster is in this faction yet — select a monster and set its faction to ${faction.id}`
+              ? faction.id === MONSTERS
+                ? 'no monster is on this side yet — a monster whose faction is left as monsters is'
+                : `no monster is in this faction yet — select a monster and set its faction to ${faction.id}`
               : 'name a monster in this faction first — a mind is a placement id'}
           </div>
         ) : (
@@ -268,6 +281,7 @@ export function DispositionsSection(props: FactionSectionsProps) {
             index={index}
             disposition={disposition}
             refusals={refusals}
+            errors={props.errors}
             onChange={(patch) => props.onDisposition(index, patch)}
             onRemove={() => props.onRemoveDisposition(index)}
           />
@@ -289,6 +303,7 @@ function DispositionRow({
   index,
   disposition,
   refusals,
+  errors,
   onChange,
   onRemove,
 }: {
@@ -296,14 +311,24 @@ function DispositionRow({
   index: number;
   disposition: DispositionDoc;
   refusals: readonly Refusal[];
+  errors: readonly PathMessage[];
   onChange: (patch: Partial<DispositionDoc>) => void;
   onRemove: () => void;
 }) {
   const testId = `disposition-${index}`;
   const path = `dispositions[${index}]`;
   const [a, b] = disposition.between;
-  const betweenRefusals = refusalsAt(refusals, `${path}.between`);
-  const stanceRefusals = refusalsAt(refusals, `${path}.stance`);
+  // The pair as a whole and either element: the compiler addresses a
+  // duplicate pair to `.between` and an unknown name to `.between[j]`.
+  const betweenRefusals = messagesAt(
+    refusals,
+    errors,
+    `${path}.between`,
+    `${path}.between[0]`,
+    `${path}.between[1]`
+  );
+  const stanceRefusals = messagesAt(refusals, errors, `${path}.stance`);
+  const untilRefusals = messagesAt(refusals, errors, `${path}.until`);
   return (
     <div className="flex flex-col gap-2 dg-intel-form" data-testid={testId}>
       <div className="flex gap-1 items-end">
@@ -358,7 +383,7 @@ function DispositionRow({
           </div>
         )}
       </label>
-      {disposition.stance === 'hostile' && (
+      {disposition.stance === 'hostile' ? (
         <div className="dg-label">
           until
           <PredicateEditor
@@ -366,10 +391,26 @@ function DispositionRow({
             value={disposition.until}
             testId={`${testId}-until`}
             noneMeans="the hostility never ends"
-            refusals={refusalsAt(refusals, `${path}.until`)}
+            refusals={untilRefusals}
             onChange={(until) => onChange({ until })}
           />
         </div>
+      ) : (
+        disposition.until !== undefined && (
+          // A hand-written `until` on a pair that is not hostile: the editor
+          // is for hostile pairs only, so the line is shown as written, with
+          // the refusal the compiler addresses to it.
+          <div className="dg-label" data-testid={`${testId}-until-readout`}>
+            until
+            <div className="dg-input opacity-80">
+              {predicateText(disposition.until)}
+            </div>
+            <Refusals
+              testId={`${testId}-until-refusal`}
+              messages={untilRefusals}
+            />
+          </div>
+        )
       )}
       <button
         type="button"

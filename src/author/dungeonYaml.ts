@@ -280,8 +280,11 @@ export type Stance = (typeof STANCES)[number];
 export const PARTY = 'party';
 /** Where every monster that names no faction belongs (R4). Hostile to the
  * party, exactly as every dungeon written before factions existed behaved.
- * Absent from the file: a monster's `faction:` is written only when the
- * author chose one. */
+ * A monster's `faction:` is written only when the author chose one, so
+ * membership here is spelled by ABSENCE. The side itself MAY be declared
+ * under `factions[]` (ruling 2026-09-05) — `{ id: monsters, mind: chief }`
+ * is how the unauthored side is given a mind — and its members are then
+ * exactly the monsters with no faction key (`factionMembers`). */
 export const MONSTERS = 'monsters';
 
 /**
@@ -2403,14 +2406,28 @@ function nextIntelId(doc: DungeonDoc): string {
   return `intel-${n}`;
 }
 
+/** Rename or re-point one intel record. A RENAME FOLLOWS THROUGH to every
+ * `holds:` that names the old id (ruling 2026-09-05: the Intel and Factions
+ * sections sit side by side and must not differ in this — a faction rename
+ * follows through to its members, so a record rename follows through to
+ * its holders), because a `holds` naming a record the file no longer
+ * declares is refused by the compiler and the author did not write that. */
 export function updateIntel(
   doc: DungeonDoc,
   id: string,
   patch: Partial<IntelDoc>
 ): DungeonDoc {
+  const intel = doc.intel.map((r) => (r.id === id ? { ...r, ...patch } : r));
+  const to = patch.id;
+  if (to === undefined || to === id) return { ...doc, intel };
   return {
     ...doc,
-    intel: doc.intel.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+    intel,
+    place: doc.place.map((p) =>
+      p.holds?.includes(id)
+        ? { ...p, holds: p.holds.map((held) => (held === id ? to : held)) }
+        : p
+    ),
   };
 }
 
@@ -2551,11 +2568,11 @@ export function updateFaction(
   });
   const to = patch.id;
   if (to === undefined || to === id) return { ...doc, factions };
-  // A DECLARED `party` IS A REFUSED STATE, NOT A FACTION (§2): the word
-  // in a `between` always means the players' side, so renaming the
-  // mistaken declaration away must not carry every disposition toward the
-  // party off with it. The same holds for removal below.
-  if (id === PARTY) return { ...doc, factions };
+  // A DECLARED `party` OR `monsters` IS A REFUSED STATE, NOT A FACTION
+  // (§2, R4): either word in a `between` always means the reserved side, so
+  // renaming the mistaken declaration away must not carry every disposition
+  // toward that side off with it. The same holds for removal below.
+  if (id === PARTY || id === MONSTERS) return { ...doc, factions };
   return {
     ...doc,
     factions,
@@ -2582,8 +2599,8 @@ export function updateFaction(
  * reference the compiler refuses by name. */
 export function removeFaction(doc: DungeonDoc, id: string): DungeonDoc {
   const factions = doc.factions.filter((f) => f.id !== id);
-  // See `updateFaction`: a mistaken `party` declaration owns nothing.
-  if (id === PARTY) return { ...doc, factions };
+  // See `updateFaction`: a mistaken reserved-side declaration owns nothing.
+  if (id === PARTY || id === MONSTERS) return { ...doc, factions };
   return {
     ...doc,
     factions,
@@ -2658,14 +2675,18 @@ export function removeDisposition(doc: DungeonDoc, index: number): DungeonDoc {
 
 /** The monsters placed in one faction, by index — what a `mind` dropdown
  * offers and what "a faction of many" counts (§2). A prop carrying a
- * `faction` (a state the compiler refuses) is not a member. */
+ * `faction` (a state the compiler refuses) is not a member. The reserved
+ * `monsters` side's members are the monsters with NO faction key — that
+ * is how the side is spelled — so a declared `monsters` faction can name
+ * one of them as its mind. */
 export function factionMembers(
   doc: DungeonDoc,
   factionId: string
 ): { index: number; placement: PlacementDoc }[] {
   const out: { index: number; placement: PlacementDoc }[] = [];
+  const wanted = factionId === MONSTERS ? undefined : factionId;
   doc.place.forEach((placement, index) => {
-    if (isMonsterRef(placement.ref) && placement.faction === factionId) {
+    if (isMonsterRef(placement.ref) && placement.faction === wanted) {
       out.push({ index, placement });
     }
   });

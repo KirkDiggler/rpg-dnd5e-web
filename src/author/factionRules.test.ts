@@ -16,6 +16,8 @@ import {
   factionChoices,
   factionRefusals,
   factNote,
+  messagesAt,
+  MONSTERS_HAS_NO_MIND,
   NAME_A_MIND,
   NO_RECORD_REVEALS_THIS,
   predicateRefusals,
@@ -54,14 +56,24 @@ describe('the fixture-shaped camp earns no refusal', () => {
     expect(factionRefusals(camp())).toEqual([]);
   });
 
-  it('offers the declared factions and the party, never `monsters`', () => {
-    expect(factionChoices(camp())).toEqual(['goblins', 'party']);
+  it('offers the declared factions and BOTH reserved sides — `monsters` is a real faction, reserved from declaration only', () => {
+    expect(factionChoices(camp())).toEqual(['goblins', 'party', 'monsters']);
   });
 
-  it('offers the party ONCE when a faction is mistakenly declared `party`', () => {
+  it('offers a reserved side ONCE when a faction is mistakenly declared by its name', () => {
     let doc = addFaction(camp());
     doc = updateFaction(doc, 'faction-2', { id: 'party' });
-    expect(factionChoices(doc)).toEqual(['goblins', 'party']);
+    expect(factionChoices(doc)).toEqual(['goblins', 'party', 'monsters']);
+  });
+
+  it('a disposition may name `monsters` — the unauthored side stands down', () => {
+    const doc = updateDisposition(camp(), 0, {
+      between: ['monsters', 'party'],
+      stance: 'neutral',
+    });
+    expect(refusalsAt(factionRefusals(doc), 'dispositions[0].between')).toEqual(
+      []
+    );
   });
 });
 
@@ -73,6 +85,22 @@ describe('factions (§2)', () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain('`party`');
     expect(messages[0]).toContain('players');
+  });
+
+  it('ALLOWS `monsters` declared — that is how the unauthored side gets a mind (ruled 2026-09-05)', () => {
+    // A stray goblin with no faction key is on the monsters side; declaring
+    // the side and naming the stray as its mind earns no refusal.
+    let doc = placeAt(camp(), { ref: 'dnd5e:monsters:goblin', at: p(3, 0) });
+    doc = updatePlacement(doc, 3, { id: 'stray' });
+    doc = addFaction(doc);
+    doc = updateFaction(doc, 'faction-2', { id: 'monsters', mind: 'stray' });
+    expect(refusalsAt(factionRefusals(doc), 'factions[1].id')).toEqual([]);
+    expect(refusalsAt(factionRefusals(doc), 'factions[1].mind')).toEqual([]);
+    // …and a goblin that HAS a faction key is outside it.
+    doc = updateFaction(doc, 'monsters', { mind: 'scout' });
+    expect(refusalsAt(factionRefusals(doc), 'factions[1].mind')[0]).toContain(
+      '"scout" is not in monsters'
+    );
   });
 
   it('refuses a blank name and a duplicate', () => {
@@ -174,16 +202,66 @@ describe('dispositions (§2)', () => {
     ).toContain('no faction is called "wolves"');
   });
 
-  it('refuses `until` on a non-hostile stance, at the stance', () => {
+  it('refuses `until` on a non-hostile stance, at the until — the compiler’s own line', () => {
     // A hand-written file: the mutator would have dropped `until` itself.
     let doc = camp();
     doc = {
       ...doc,
       dispositions: [{ ...doc.dispositions[0], stance: 'allied' }],
     };
-    const messages = refusalsAt(factionRefusals(doc), 'dispositions[0].stance');
+    const messages = refusalsAt(factionRefusals(doc), 'dispositions[0].until');
     expect(messages[0]).toContain('`until`');
     expect(messages[0]).toContain('hostile');
+    expect(refusalsAt(factionRefusals(doc), 'dispositions[0].stance')).toEqual(
+      []
+    );
+  });
+
+  it('a fact nobody can learn is said at the until too: no mind, or an undeclared `monsters`', () => {
+    // The declared faction of many with no mind: the design's sentence at
+    // the mind AND at the until the compiler addresses it to.
+    let doc = updateFaction(camp(), 'goblins', { mind: undefined });
+    expect(refusalsAt(factionRefusals(doc), 'dispositions[0].until')).toEqual([
+      NAME_A_MIND,
+    ]);
+    // The reserved side, undeclared, waiting on a fact: the compiler's own
+    // sentence, word for word.
+    doc = updateDisposition(camp(), 0, { between: ['monsters', 'party'] });
+    expect(refusalsAt(factionRefusals(doc), 'dispositions[0].until')).toEqual([
+      MONSTERS_HAS_NO_MIND,
+    ]);
+    // Declare it with a mind and the line clears.
+    let stray = placeAt(doc, { ref: 'dnd5e:monsters:goblin', at: p(3, 0) });
+    stray = updatePlacement(stray, 3, { id: 'stray' });
+    stray = addFaction(stray);
+    stray = updateFaction(stray, 'faction-2', {
+      id: 'monsters',
+      mind: 'stray',
+    });
+    expect(refusalsAt(factionRefusals(stray), 'dispositions[0].until')).toEqual(
+      []
+    );
+  });
+
+  it('messagesAt merges the compiler’s refusals with the client’s, once each', () => {
+    const doc = updateFaction(camp(), 'goblins', { mind: undefined });
+    const client = factionRefusals(doc);
+    const server = [
+      { path: 'dispositions[0].until', message: NAME_A_MIND },
+      { path: 'dispositions[0].between[1]', message: 'no such side "party"' },
+    ];
+    expect(messagesAt(client, server, 'dispositions[0].until')).toEqual([
+      NAME_A_MIND,
+    ]);
+    expect(
+      messagesAt(
+        client,
+        server,
+        'dispositions[0].between',
+        'dispositions[0].between[0]',
+        'dispositions[0].between[1]'
+      )
+    ).toEqual(['no such side "party"']);
   });
 });
 

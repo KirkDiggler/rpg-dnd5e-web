@@ -4,7 +4,7 @@
  * `crypt-prop-showcase` for `?authorFixture=crypt-props` and
  * `crypt-lighting-showcase` for `?authorFixture=crypt-lighting`,
  * `reference-tomb-heirloom` for `?authorFixture=heirloom`, and
- * `reference-goblin-camp` for `?authorFixture=goblin-camp`), fixtures mode
+ * `reference-raider-camp` for `?authorFixture=raider-camp`), fixtures mode
  * (`fixtureCompile` shapes an atlas from the CURRENT document on every
  * edit; `PutDungeon` is never called), no draft persistence. The real
  * `/author` mount is `AuthorView.tsx`.
@@ -15,7 +15,7 @@ import { emitDungeon, type DungeonDoc } from './dungeonYaml';
 import { cryptLightingShowcaseDoc } from './fixtures/cryptLightingShowcase';
 import { cryptPropShowcaseDoc } from './fixtures/cryptPropShowcase';
 import { fixtureAtlasOf } from './fixtures/fixtureAtlas';
-import { referenceGoblinCampDoc } from './fixtures/referenceGoblinCamp';
+import { referenceRaiderCampDoc } from './fixtures/referenceRaiderCamp';
 import { referenceTombDoc } from './fixtures/referenceTomb';
 import { referenceTombHeirloomDoc } from './fixtures/referenceTombHeirloom';
 
@@ -33,7 +33,7 @@ export function sandboxDocForSearch(search: string): DungeonDoc {
   // disposition with an `until`, and a record revealing a fact — so the
   // Lab opens on a dungeon whose Factions and Dispositions sections have
   // something to show.
-  if (fixture === 'goblin-camp') return referenceGoblinCampDoc();
+  if (fixture === 'raider-camp') return referenceRaiderCampDoc();
   return referenceTombDoc();
 }
 

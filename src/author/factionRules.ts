@@ -27,6 +27,7 @@ import {
   factionMembers,
   isFloor,
   isMonsterRef,
+  MONSTERS,
   PARTY,
   revealedFacts,
   type DispositionDoc,
@@ -41,8 +42,18 @@ export interface Refusal {
 }
 
 /** §2's own sentence, word for word: a faction of many with an
- * `until: { fact }` and no mind has nobody to learn the fact. */
+ * `until: { fact }` and no mind has nobody to learn the fact. Rendered at
+ * the faction's mind (where the fix is) AND at the disposition's `until`
+ * (the line the compiler addresses it to), so the server's copy and the
+ * client's land together. */
 export const NAME_A_MIND = 'name a mind, or the faction cannot learn';
+
+/** The compiler's sentence, word for word, for a disposition that waits on
+ * the reserved `monsters` side while nothing declares it: the side exists
+ * but has no mind until `factions: [{ id: monsters, mind: … }]` gives it
+ * one (ruling 2026-09-05). */
+export const MONSTERS_HAS_NO_MIND =
+  'faction "monsters" is not declared, so it has no mind — declare it under `factions:` to give it one';
 
 /** The note under a `{ fact }` nobody reveals — a COST, not a refusal
  * (R8): the dungeon allows it, and the author should know what they have
@@ -51,24 +62,29 @@ export const NO_RECORD_REVEALS_THIS =
   'no record reveals this — nothing in the dungeon can teach it, so this would never hold';
 
 /** Every faction a `between` (or a `stance` predicate) may name: the
- * declared ids, then `party`. NOT `monsters`: §7 lists the party as the
- * one reserved side the dropdowns offer, and whether the unauthored side
- * may be named in a disposition is a question the design has not
- * answered — a file that names it loads and is judged by the compiler. */
+ * declared ids, then the two reserved sides. `monsters` IS a real faction
+ * — the one every unauthored monster is on (ruling 2026-09-05): a DM may
+ * write `between: [monsters, party], stance: neutral` to make the
+ * unauthored monsters stand down, and may DECLARE it under `factions[]`
+ * to give that side a mind. `party` is nameable here and never declared. */
 export function factionChoices(doc: DungeonDoc): string[] {
-  // ONCE EACH. A mistaken `party` declaration (a refused state the file
-  // can hold) must not list the party twice — the pickers key on the name.
+  // ONCE EACH. A mistaken `party` or `monsters` declaration (a refused
+  // state the file can hold) must not list the side twice — the pickers
+  // key on the name.
   return [
     ...new Set([
       ...doc.factions.map((f) => f.id).filter((id) => id !== ''),
       PARTY,
+      MONSTERS,
     ]),
   ];
 }
 
-/** Whether a name is a side this dungeon has — declared, or the party. */
+/** Whether a name is a side this dungeon has — declared, or reserved. */
 function isKnownFaction(doc: DungeonDoc, id: string): boolean {
-  return id === PARTY || doc.factions.some((f) => f.id === id);
+  return (
+    id === PARTY || id === MONSTERS || doc.factions.some((f) => f.id === id)
+  );
 }
 
 /** An unordered pair's key, for the one-per-pair rule. */
@@ -114,7 +130,7 @@ export function predicateRefusals(
     } else if (!isKnownFaction(doc, name)) {
       out.push({
         path,
-        message: `no faction is called "${name}" — the pair is two declared factions, or one and the party`,
+        message: `no faction is called "${name}" — the pair is two declared factions, or one and a reserved side (party, monsters)`,
       });
     }
   }
@@ -226,7 +242,7 @@ export function factionRefusals(doc: DungeonDoc): Refusal[] {
       } else if (!isKnownFaction(doc, name)) {
         out.push({
           path: `${path}.between`,
-          message: `no faction is called "${name}" — the pair is two declared factions, or one and the party`,
+          message: `no faction is called "${name}" — the pair is two declared factions, or one and a reserved side (party, monsters)`,
         });
       }
     }
@@ -241,14 +257,39 @@ export function factionRefusals(doc: DungeonDoc): Refusal[] {
     seenPairs.add(key);
     if (d.until !== undefined) {
       if (d.stance !== 'hostile') {
-        // §2: `until` on a non-hostile stance.
+        // §2: `until` on a non-hostile stance — addressed to the `until`,
+        // the compiler's own line for it.
         out.push({
-          path: `${path}.stance`,
+          path: `${path}.until`,
           message:
             '`until` says when the hostility ends, so it only goes with hostile — an allied or neutral pair has nothing to wait for',
         });
       }
       out.push(...predicateRefusals(doc, d.until, `${path}.until`));
+      // A `{ fact }` needs a mind to learn it. The compiler addresses that
+      // to the `until` that can never hold; the faction's own mind field
+      // says the same sentence above, where the fix is made.
+      if (waitsOnFact(d)) {
+        for (const side of [a, b]) {
+          if (side === PARTY) continue;
+          const declared = doc.factions.find((f) => f.id === side);
+          if (!declared) {
+            if (side === MONSTERS) {
+              out.push({
+                path: `${path}.until`,
+                message: MONSTERS_HAS_NO_MIND,
+              });
+            }
+            continue;
+          }
+          if (
+            declared.mind === undefined &&
+            factionMembers(doc, side).length > 1
+          ) {
+            out.push({ path: `${path}.until`, message: NAME_A_MIND });
+          }
+        }
+      }
     }
   });
 
@@ -261,4 +302,38 @@ export function refusalsAt(
   path: string
 ): string[] {
   return refusals.filter((r) => r.path === path).map((r) => r.message);
+}
+
+/** A path-addressed refusal from the compiler (`FieldError`'s shape) —
+ * kept structural so this module never imports the wire. */
+export interface PathMessage {
+  path: string;
+  message: string;
+}
+
+/** Everything addressed to any of `paths`: the client's own refusals first,
+ * then the compiler's, ONCE EACH — the same sentence arriving from both
+ * sides renders one line, not two. The compiler's paths are the ones it
+ * emits (toolkit dungeonspec, 2026-09-05): `factions[i].id|mind`,
+ * `place[i].faction`, `dispositions[i].between` and `.between[j]`,
+ * `dispositions[i].stance|until`, `intel[i].reveals` and `.reveals.door`. */
+export function messagesAt(
+  refusals: readonly Refusal[],
+  errors: readonly PathMessage[],
+  ...paths: string[]
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (message: string) => {
+    if (seen.has(message)) return;
+    seen.add(message);
+    out.push(message);
+  };
+  for (const path of paths) {
+    for (const message of refusalsAt(refusals, path)) push(message);
+  }
+  for (const path of paths) {
+    for (const e of errors) if (e.path === path) push(e.message);
+  }
+  return out;
 }

@@ -5,6 +5,11 @@
  * on the DOM it renders, so every test here would FAIL if a section did
  * not put its dropdowns on screen.
  */
+import { create } from '@bufbuild/protobuf';
+import {
+  FieldErrorSchema,
+  type FieldError,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConcealmentDerivation } from './dungeonYaml';
@@ -75,7 +80,8 @@ type Handlers = Partial<{
 function mountAt(
   doc: DungeonDoc,
   selection: Selection = { kind: 'dungeon' },
-  h: Handlers = {}
+  h: Handlers = {},
+  errors: FieldError[] = []
 ) {
   return render(
     <Inspector
@@ -96,7 +102,7 @@ function mountAt(
       onRemoveExit={noop}
       onBindScenario={noop}
       scenarios={NO_SCENARIOS}
-      errors={[]}
+      errors={errors}
       onStartFacing={noop}
       onAddIntel={noop}
       onIntel={noop}
@@ -221,6 +227,19 @@ describe('the Factions section (rpg-project#375 §7)', () => {
     );
   });
 
+  it('a declared `monsters` faction offers the unauthored monsters as its mind', () => {
+    let doc = updatePlacement(camp(), 3, { id: 'stray' });
+    doc = addFaction(doc);
+    doc = updateFaction(doc, 'faction-2', { id: 'monsters' });
+    mountAt(doc);
+    // The stray has no faction key; the chief and the scout are goblins.
+    expect(optionValues('faction-1-mind')).toEqual(['', 'stray']);
+    expect(screen.queryByTestId('faction-1-id-refusal')).toBeNull();
+    // And the placement panel does not list the side twice.
+    mountAt(doc, { kind: 'placement', index: 3 });
+    expect(optionValues('placement-faction')).toEqual(['', 'goblins']);
+  });
+
   it('removes a faction', () => {
     const onRemoveFaction = vi.fn();
     mountAt(camp(), { kind: 'dungeon' }, { onRemoveFaction });
@@ -233,8 +252,16 @@ describe('the Dispositions section (rpg-project#375 §7)', () => {
   it('renders the pair as two faction dropdowns (party included), the stance, and the until editor', () => {
     mountAt(camp());
     expect(screen.getByTestId('dispositions-section')).toBeTruthy();
-    expect(optionValues('disposition-0-a')).toEqual(['goblins', 'party']);
-    expect(optionValues('disposition-0-b')).toEqual(['goblins', 'party']);
+    expect(optionValues('disposition-0-a')).toEqual([
+      'goblins',
+      'party',
+      'monsters',
+    ]);
+    expect(optionValues('disposition-0-b')).toEqual([
+      'goblins',
+      'party',
+      'monsters',
+    ]);
     expect(selectValue('disposition-0-a')).toBe('goblins');
     expect(selectValue('disposition-0-b')).toBe('party');
     expect(optionValues('disposition-0-stance')).toEqual([
@@ -287,16 +314,48 @@ describe('the Dispositions section (rpg-project#375 §7)', () => {
     expect(screen.queryByTestId('disposition-0-until')).toBeNull();
   });
 
-  it('a hand-written until on a neutral pair: refused at the stance', () => {
+  it('a hand-written until on a neutral pair: shown as written, refused at the until', () => {
     let doc = camp();
     doc = {
       ...doc,
       dispositions: [{ ...doc.dispositions[0], stance: 'neutral' }],
     };
     mountAt(doc);
+    expect(screen.queryByTestId('disposition-0-until')).toBeNull();
     expect(
-      screen.getByTestId('disposition-0-stance-refusal').textContent
+      screen.getByTestId('disposition-0-until-readout').textContent
+    ).toContain('{ fact: saved-wiseman }');
+    expect(
+      screen.getByTestId('disposition-0-until-refusal').textContent
     ).toContain('`until`');
+  });
+
+  it('renders the compiler’s refusals on the lines it addresses them to, beside the client’s, once each', () => {
+    const doc = updateFaction(camp(), 'goblins', { mind: '' });
+    mountAt(doc, { kind: 'dungeon' }, {}, [
+      create(FieldErrorSchema, {
+        path: 'dispositions[0].until',
+        message: NAME_A_MIND,
+      }),
+      create(FieldErrorSchema, {
+        path: 'dispositions[0].between[1]',
+        message: 'faction "party" is not… (a sentence only the compiler makes)',
+      }),
+      create(FieldErrorSchema, {
+        path: 'factions[0].id',
+        message: 'a server-only sentence about the id',
+      }),
+    ]);
+    // The same sentence from both sides is one line.
+    expect(screen.getAllByTestId('disposition-0-until-refusal')).toHaveLength(
+      1
+    );
+    expect(
+      screen.getByTestId('disposition-0-between-refusal').textContent
+    ).toContain('only the compiler makes');
+    expect(screen.getByTestId('faction-0-id-refusal').textContent).toBe(
+      'a server-only sentence about the id'
+    );
   });
 
   it('refuses a second disposition for one pair, at its pair', () => {
@@ -413,13 +472,16 @@ describe('the predicate editor — one component, four forms (§7)', () => {
   it('stance: two faction dropdowns and the stance it folds to', () => {
     const onDisposition = vi.fn();
     mountAt(
-      withUntil({ stance: { between: ['goblins', 'party'], is: 'neutral' } }),
+      withUntil({
+        stance: { between: ['goblins', 'party'], is: 'neutral' },
+      }),
       { kind: 'dungeon' },
       { onDisposition }
     );
     expect(optionValues('disposition-0-until-stance-a')).toEqual([
       'goblins',
       'party',
+      'monsters',
     ]);
     expect(selectValue('disposition-0-until-stance-b')).toBe('party');
     expect(selectValue('disposition-0-until-stance-is')).toBe('neutral');
@@ -427,7 +489,9 @@ describe('the predicate editor — one component, four forms (§7)', () => {
       target: { value: 'allied' },
     });
     expect(onDisposition).toHaveBeenCalledWith(0, {
-      until: { stance: { between: ['goblins', 'party'], is: 'allied' } },
+      until: {
+        stance: { between: ['goblins', 'party'], is: 'allied' },
+      },
     });
   });
 
@@ -445,7 +509,9 @@ describe('the predicate editor — one component, four forms (§7)', () => {
     expect(onDisposition).toHaveBeenLastCalledWith(0, { until: { fact: '' } });
     fireEvent.change(form, { target: { value: 'stance' } });
     expect(onDisposition).toHaveBeenLastCalledWith(0, {
-      until: { stance: { between: ['goblins', 'party'], is: 'neutral' } },
+      until: {
+        stance: { between: ['goblins', 'party'], is: 'neutral' },
+      },
     });
     fireEvent.change(form, { target: { value: '' } });
     expect(onDisposition).toHaveBeenLastCalledWith(0, { until: undefined });
@@ -539,6 +605,27 @@ describe('the intel form’s reveals: door | fact (§7)', () => {
       target: { value: 'door' },
     });
     expect(onIntelReveals).toHaveBeenCalledWith('intel-1', 'fact', '');
+  });
+
+  it('a compiler refusal addressed to the record’s reveals renders at the field', () => {
+    mountAt(camp(), { kind: 'intel', id: 'intel-1' }, {}, [
+      create(FieldErrorSchema, {
+        path: 'intel[0].reveals',
+        message: 'reveals nothing — pick a door or name a fact',
+      }),
+    ]);
+    expect(screen.getByTestId('intel-reveals-refusal').textContent).toBe(
+      'reveals nothing — pick a door or name a fact'
+    );
+    mountAt(camp(), { kind: 'placement', index: 1 }, {}, [
+      create(FieldErrorSchema, {
+        path: 'place[1].faction',
+        message: 'a sentence about the chief’s faction',
+      }),
+    ]);
+    expect(
+      screen.getAllByTestId('placement-faction-refusal')[0].textContent
+    ).toBe('a sentence about the chief’s faction');
   });
 
   it('a hand-written record with both keys is refused at the field', () => {

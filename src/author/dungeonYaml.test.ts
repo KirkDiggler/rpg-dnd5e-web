@@ -49,6 +49,7 @@ import {
   updateDoor,
   updateExit,
   updateFaction,
+  updateIntel,
   updatePlacement,
   updateRegion,
   wallCrossingKeys,
@@ -1604,6 +1605,16 @@ describe('intel records (rpg-project#372 §2)', () => {
     expect(doc.intel.map((r) => r.id)).toEqual(['intel-1', 'intel-2']);
   });
 
+  it('a rename follows through to every `holds` naming the record (ruled 2026-09-05)', () => {
+    let doc = addIntel(twoPlacements());
+    doc = updatePlacement(doc, 1, { id: 'captain' });
+    doc = setIntelHolders(doc, 'intel-1', ['captain']);
+    doc = updateIntel(doc, 'intel-1', { id: 'vault-map' });
+    expect(doc.intel.map((r) => r.id)).toEqual(['vault-map']);
+    expect(doc.place[1].holds).toEqual(['vault-map']);
+    expect(intelHolders(doc, 'vault-map')).toEqual(['captain']);
+  });
+
   it('clears a target on an empty value rather than writing an empty string', () => {
     let doc = addIntel(twoPlacements());
     doc = setIntelReveals(doc, 'intel-1', 'door', 'vault');
@@ -2048,6 +2059,20 @@ describe('factions (rpg-project#375 §2)', () => {
     const renamed = updateFaction(doc, 'party', { id: 'wolves' });
     expect(renamed.factions.map((f) => f.id)).toEqual(['goblins', 'wolves']);
     expect(renamed.dispositions[0].between).toEqual(['goblins', 'party']);
+  });
+
+  it('the `monsters` side’s members are the monsters with NO faction key', () => {
+    const doc = withFaction();
+    // The captain fights for goblins; a second, unauthored monster is on
+    // the reserved side, and so is a declared `monsters` faction's mind.
+    const grown = placeAt(paintCell(doc, 'region-1', p(2, 0)), {
+      ref: 'dnd5e:monsters:skeleton',
+      at: p(2, 0),
+    });
+    expect(factionMembers(grown, 'monsters').map((m) => m.index)).toEqual([
+      grown.place.length - 1,
+    ]);
+    expect(factionMembers(grown, 'goblins').map((m) => m.index)).toEqual([1]);
   });
 
   it('lists a faction’s members, monsters only', () => {

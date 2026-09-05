@@ -12,6 +12,7 @@ import {
   floorKeys,
   intelHolders,
   isMonsterRef,
+  MONSTERS,
   placementIds,
   predicateText,
   revealedFacts,
@@ -32,7 +33,7 @@ import {
   type WallDoc,
 } from './dungeonYaml';
 import { DispositionsSection, FactionsSection } from './FactionPanel';
-import { factionRefusals, refusalsAt } from './factionRules';
+import { factionRefusals, messagesAt } from './factionRules';
 import { sealedBy } from './hexGeometry';
 import { axialKey } from './hexOffset';
 import { RegionPanel } from './RegionPanel';
@@ -168,6 +169,7 @@ export function Inspector(props: InspectorProps) {
         doc={doc}
         index={selection.index}
         placement={placement}
+        errors={props.errors}
         onChange={(p) => props.onPlacement(selection.index, p)}
         onRemove={() => props.onRemovePlacement(selection.index)}
         onSelectIntel={(id) => props.onSelect({ kind: 'intel', id })}
@@ -275,6 +277,7 @@ function DungeonPanel(props: InspectorProps) {
         onReveals={props.onIntelReveals}
         onHolders={props.onIntelHolders}
         onRemove={props.onRemoveIntel}
+        errors={props.errors}
       />
       {/* FACTIONS and DISPOSITIONS, beside Intel and Scenarios
           (rpg-project#375 §7): who fights as one side, and how two sides
@@ -282,6 +285,7 @@ function DungeonPanel(props: InspectorProps) {
       <FactionsSection
         doc={doc}
         refusals={refusals}
+        errors={props.errors}
         onAddFaction={props.onAddFaction}
         onFaction={props.onFaction}
         onRemoveFaction={props.onRemoveFaction}
@@ -292,6 +296,7 @@ function DungeonPanel(props: InspectorProps) {
       <DispositionsSection
         doc={doc}
         refusals={refusals}
+        errors={props.errors}
         onAddFaction={props.onAddFaction}
         onFaction={props.onFaction}
         onRemoveFaction={props.onRemoveFaction}
@@ -732,6 +737,7 @@ function PlacementPanel({
   doc,
   index,
   placement,
+  errors,
   onChange,
   onRemove,
   onSelectIntel,
@@ -739,6 +745,7 @@ function PlacementPanel({
   doc: DungeonDoc;
   index: number;
   placement: PlacementDoc;
+  errors: readonly FieldError[];
   onChange: (patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>) => void;
   onRemove: () => void;
   onSelectIntel: (id: string) => void;
@@ -794,7 +801,7 @@ function PlacementPanel({
             doc={doc}
             index={index}
             placement={placement}
-            refusals={refusalsAt(refusals, `place[${index}].faction`)}
+            refusals={messagesAt(refusals, errors, `place[${index}].faction`)}
             onChange={(faction) => onChange({ faction })}
           />
         </>
@@ -853,16 +860,18 @@ function PlacementPanel({
           <div className="dg-input opacity-80">
             {predicateText(placement.arrives)}
           </div>
-          {refusalsAt(refusals, `place[${index}].arrives`).map((message, i) => (
-            <div
-              key={i}
-              className="text-xs"
-              data-testid="arrives-refusal"
-              style={{ color: 'var(--color-error, #f87171)' }}
-            >
-              {message}
-            </div>
-          ))}
+          {messagesAt(refusals, errors, `place[${index}].arrives`).map(
+            (message, i) => (
+              <div
+                key={i}
+                className="text-xs"
+                data-testid="arrives-refusal"
+                style={{ color: 'var(--color-error, #f87171)' }}
+              >
+                {message}
+              </div>
+            )
+          )}
           <div className="text-xs opacity-70">
             In reserve until this holds. Authored in the next step; carried as
             written for now.
@@ -911,11 +920,16 @@ function FactionControl({
         {faction !== '' && !doc.factions.some((f) => f.id === faction) && (
           <option value={faction}>{faction}</option>
         )}
-        {doc.factions.map((f) => (
-          <option key={f.id} value={f.id}>
-            {f.id}
-          </option>
-        ))}
+        {/* A DECLARED `monsters` faction is the same side as the choice
+            above — declared only to be given a mind — so it is not listed
+            a second time. */}
+        {doc.factions
+          .filter((f) => f.id !== MONSTERS)
+          .map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.id}
+            </option>
+          ))}
       </select>
       {refusals.length > 0 ? (
         refusals.map((message, i) => (
@@ -1041,6 +1055,7 @@ function IntelSection({
   onReveals,
   onHolders,
   onRemove,
+  errors,
 }: {
   doc: DungeonDoc;
   selectedId: string | null;
@@ -1050,8 +1065,10 @@ function IntelSection({
   onReveals: (id: string, key: string, value: string) => void;
   onHolders: (id: string, holders: readonly string[]) => void;
   onRemove: (id: string) => void;
+  errors: readonly FieldError[];
 }) {
   const selected = doc.intel.find((r) => r.id === selectedId);
+  const selectedIndex = doc.intel.findIndex((r) => r.id === selectedId);
   return (
     <div className="flex flex-col gap-2" data-testid="intel-section">
       <div className="flex items-center justify-between">
@@ -1099,7 +1116,9 @@ function IntelSection({
         <IntelPanel
           key={selected.id}
           doc={doc}
+          index={selectedIndex}
           record={selected}
+          errors={errors}
           onRename={(next) => onRename(selected.id, next)}
           onReveals={(key, value) => onReveals(selected.id, key, value)}
           onHolders={(holders) => onHolders(selected.id, holders)}
@@ -1130,14 +1149,18 @@ function IntelSection({
  */
 function IntelPanel({
   doc,
+  index,
   record,
+  errors,
   onRename,
   onReveals,
   onHolders,
   onRemove,
 }: {
   doc: DungeonDoc;
+  index: number;
   record: IntelDoc;
+  errors: readonly FieldError[];
   onRename: (id: string) => void;
   onReveals: (key: string, value: string) => void;
   onHolders: (holders: readonly string[]) => void;
@@ -1170,6 +1193,15 @@ function IntelPanel({
         ? 'door'
         : kindChoice;
   const twoKeys = 'fact' in record.reveals && 'door' in record.reveals;
+  // The compiler's refusals addressed to this record's reveals — nothing
+  // revealed, both keys, or a door the file does not have.
+  const revealsErrors = messagesAt(
+    [],
+    errors,
+    `intel[${index}].reveals`,
+    `intel[${index}].reveals.door`,
+    `intel[${index}].reveals.fact`
+  );
   // The facts OTHER records reveal, offered as suggestions: a fact is
   // declared by mention, and a second record revealing the same one is
   // how it can be learned two ways.
@@ -1245,6 +1277,16 @@ function IntelPanel({
             a record reveals exactly one thing — a door or a fact, not both
           </div>
         )}
+        {revealsErrors.map((message, i) => (
+          <div
+            key={i}
+            className="text-xs"
+            data-testid="intel-reveals-refusal"
+            style={{ color: 'var(--color-error, #f87171)' }}
+          >
+            {message}
+          </div>
+        ))}
       </label>
       {kind === 'fact' ? (
         <label className="dg-label">
