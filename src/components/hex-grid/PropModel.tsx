@@ -75,6 +75,14 @@ import {
 } from './propManifest';
 import { cloneCryptMaterials } from './sceneKnowledge';
 
+export interface PropModelBounds {
+  minY: number;
+  maxY: number;
+  width: number;
+  height: number;
+  depth: number;
+}
+
 export interface PropModelProps {
   variant: PropVariant;
   /** World position (already converted from hex/cube coords by the
@@ -82,6 +90,12 @@ export interface PropModelProps {
    * shared dungeon surface. */
   position: [number, number, number];
   rotationY?: number;
+  /** Optional authoring placement correction measured from the actual
+   * loaded mesh. Omitted by game callers, preserving source-origin semantics. */
+  anchor?: 'source-origin' | 'bounds-floor-center';
+  /** Reports dimensions after the shared Synty scale and optional anchor.
+   * Authoring consumers use maxY for real-mesh tabletop intersections. */
+  onBoundsMeasured?: (bounds: PropModelBounds) => void;
   /** Render as the viewer's frozen last observation (rpg-dnd5e-web#605/
    * #609) — the same shared crypt-memory material tint
    * ClassCharacterModel.tsx applies to player/monster models. Defaults
@@ -145,18 +159,43 @@ export function PropModel({
   variant,
   position,
   rotationY = 0,
+  anchor = 'source-origin',
+  onBoundsMeasured,
   remembered = false,
 }: PropModelProps) {
   const { scene } = useGLTF(PROPS_MODEL_BASE + variant.file);
   const cloned = useMemo(() => scene.clone(true), [scene]);
+  const localBounds = useMemo(() => {
+    cloned.updateMatrixWorld(true);
+    return new THREE.Box3().setFromObject(cloned, true);
+  }, [cloned]);
+  const anchorOffset = useMemo<[number, number, number]>(() => {
+    if (anchor === 'source-origin' || localBounds.isEmpty()) return [0, 0, 0];
+    const center = localBounds.getCenter(new THREE.Vector3());
+    return [-center.x, -localBounds.min.y, -center.z];
+  }, [anchor, localBounds]);
+  const measuredBounds = useMemo<PropModelBounds>(() => {
+    if (localBounds.isEmpty()) {
+      return { minY: 0, maxY: 0, width: 0, height: 0, depth: 0 };
+    }
+    const size = localBounds.getSize(new THREE.Vector3());
+    const anchoredMinY = localBounds.min.y + anchorOffset[1];
+    return {
+      minY: anchoredMinY * SYNTY_SCALE,
+      maxY: (localBounds.max.y + anchorOffset[1]) * SYNTY_SCALE,
+      width: size.x * SYNTY_SCALE,
+      height: size.y * SYNTY_SCALE,
+      depth: size.z * SYNTY_SCALE,
+    };
+  }, [anchorOffset, localBounds]);
+  useEffect(
+    () => onBoundsMeasured?.(measuredBounds),
+    [measuredBounds, onBoundsMeasured]
+  );
   useRememberedTint(cloned, remembered);
 
-  return (
-    <group
-      position={[position[0], position[1] + DUNGEON_SURFACE_Y, position[2]]}
-      rotation={[0, rotationY, 0]}
-      scale={SYNTY_SCALE}
-    >
+  const modelContents = (
+    <>
       <primitive object={cloned} />
       {variant.companions?.map((companion) => (
         <PropCompanionModel
@@ -165,6 +204,22 @@ export function PropModel({
           remembered={remembered}
         />
       ))}
+    </>
+  );
+
+  return (
+    <group
+      position={[position[0], position[1] + DUNGEON_SURFACE_Y, position[2]]}
+      rotation={[0, rotationY, 0]}
+      scale={SYNTY_SCALE}
+    >
+      {anchor === 'source-origin' ? (
+        modelContents
+      ) : (
+        <group name="prop-model-bounds-anchor" position={anchorOffset}>
+          {modelContents}
+        </group>
+      )}
     </group>
   );
 }

@@ -19,6 +19,7 @@ const hoisted = vi.hoisted(() => ({
     loading: false,
     error: null as Error | null,
   },
+  activeLobbyCalls: 0,
 }));
 
 vi.mock('./api/auth', () => ({
@@ -35,7 +36,10 @@ vi.mock('./api/useDevPlayerIdAuth', () => ({
 }));
 
 vi.mock('./api/useMyActiveLobby', () => ({
-  useMyActiveLobby: () => hoisted.activeLobby,
+  useMyActiveLobby: () => {
+    hoisted.activeLobbyCalls += 1;
+    return hoisted.activeLobby;
+  },
 }));
 
 vi.mock('./api/useLobbyCharacterId', () => ({
@@ -109,6 +113,10 @@ vi.mock('./dev/ThumbHarness', () => ({
   ThumbHarness: () => <div>Thumbnail Harness</div>,
 }));
 
+vi.mock('./dev/prop-calibration/PropCalibrationLab', () => ({
+  PropCalibrationLab: () => <div>Prop Calibration Lab</div>,
+}));
+
 vi.mock('./discord', () => ({
   DiscordDebugPanel: () => <h2>Discord Debug Panel</h2>,
   useDiscord: () => ({
@@ -130,6 +138,7 @@ beforeEach(() => {
   hoisted.lobbyCharacter.characterId = undefined;
   hoisted.lobbyCharacter.loading = false;
   hoisted.lobbyCharacter.error = null;
+  hoisted.activeLobbyCalls = 0;
 });
 
 afterEach(() => {
@@ -167,6 +176,29 @@ describe('App running-encounter resume', () => {
 
     const game = await screen.findByTestId('game-view');
     expect(game.dataset.characterId).toBe('char-alice');
+  });
+});
+
+describe('App prop calibration route', () => {
+  it('mounts the full-window lab only for the explicit local development route', async () => {
+    vi.stubEnv('MODE', 'development');
+    window.history.pushState({}, '', '/?propCalibration=1');
+
+    render(<App />);
+
+    expect(await screen.findByText('Prop Calibration Lab')).toBeTruthy();
+    expect(screen.queryByText('Home View')).toBeNull();
+    expect(hoisted.activeLobbyCalls).toBe(0);
+  });
+
+  it('refuses the prop calibration query in production', () => {
+    vi.stubEnv('MODE', 'production');
+    window.history.pushState({}, '', '/?propCalibration=1');
+
+    render(<App />);
+
+    expect(screen.getByText('Home View')).toBeTruthy();
+    expect(screen.queryByText('Prop Calibration Lab')).toBeNull();
   });
 });
 

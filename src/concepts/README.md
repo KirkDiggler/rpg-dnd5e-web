@@ -37,6 +37,18 @@ convenience and is load-bearing before anyone notices.
 The concept page itself is the composition root — it wires both halves, and in
 production that wiring is what gets replaced by a real subscription.
 
+## World building evidence
+
+`world-building/` is the web#935 durable local authoring concept at
+`?concept=world-building`. It renders catalog-backed scene props through the
+shared `PropModel` on a visible hex scale. Catalog props and saved arrangements
+are dragged into the scene; left click selects, and visible Move/Rotate gizmos
+edit support/group closures as one transaction. It preserves continuous world
+positions, independent arrangement stamps, and versioned local scene/library
+JSON. It starts blank with an empty arrangement library and does not change the
+live dungeon authoring contract. Proven browser behavior, provisional data
+delta, asset receipts, and limits are recorded in `world-building/CONTRACT.md`.
+
 ## Character customization evidence
 
 `character-customization/` is the #877 fixture-first Learn lab at
