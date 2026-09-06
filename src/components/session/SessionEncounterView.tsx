@@ -1606,7 +1606,7 @@ function SessionEncounterScope({
                 mainHandDamage={visibleCharacterData.mainHandDamage}
                 onIntent={(intent) => void handleEquipIntent(intent)}
                 busy={equipping || unequipping}
-                walletCopper={characterData.wallet?.copper}
+                walletCopper={visibleCharacterData.wallet?.copper}
               />
             )}
             {runEnded === null && activeVendor && (
