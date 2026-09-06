@@ -120,6 +120,9 @@ export function WorldBuildingConcept({
   const [portableJson, setPortableJson] = useState('');
   const [notice, setNotice] = useState(initial.error);
   const [saveStatus, setSaveStatus] = useState('Local draft ready');
+  const [workspaceOrigin, setWorkspaceOrigin] = useState<'local' | 'world'>(
+    'local'
+  );
   const [confirmBlank, setConfirmBlank] = useState(false);
   const [compositionRefresh, setCompositionRefresh] = useState(0);
   const [worldBusy, setWorldBusy] = useState(false);
@@ -129,7 +132,10 @@ export function WorldBuildingConcept({
   >({});
   const skippedInitialSceneSave = useRef(false);
   const skippedInitialLibrarySave = useRef(false);
+  const workspaceOriginRef = useRef<'local' | 'world'>('local');
   const scene = history.present;
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
   const [sceneNameDraft, setSceneNameDraft] = useState(scene.name);
   const compositionList = useCompositionList(
     compositionSource,
@@ -145,6 +151,7 @@ export function WorldBuildingConcept({
       skippedInitialSceneSave.current = true;
       return;
     }
+    if (workspaceOrigin === 'world') return;
     const result = saveSceneToStorage(effectiveStorage, scene);
     if (result.error) {
       setNotice(result.error);
@@ -152,7 +159,7 @@ export function WorldBuildingConcept({
     } else {
       setSaveStatus('Saved locally');
     }
-  }, [effectiveStorage, scene]);
+  }, [effectiveStorage, scene, workspaceOrigin]);
 
   useEffect(() => {
     if (!skippedInitialLibrarySave.current) {
@@ -170,6 +177,11 @@ export function WorldBuildingConcept({
         setHistory((current) => updateHistory(current, valid));
         setPreviewScene(null);
         setSelectedIds(selection);
+        setSaveStatus(
+          workspaceOriginRef.current === 'local'
+            ? 'Saving local draft…'
+            : 'World workspace changes are not saved locally'
+        );
         setNotice('');
       } catch (error) {
         setNotice(
@@ -351,8 +363,16 @@ export function WorldBuildingConcept({
     const libraryResult = saveLibraryToStorage(effectiveStorage, library);
     const error = sceneResult.error ?? libraryResult.error;
     setNotice(error ?? '');
+    if (!sceneResult.error) {
+      workspaceOriginRef.current = 'local';
+      setWorkspaceOrigin('local');
+    }
     setSaveStatus(
-      error ? 'Save failed — good in-memory data kept' : 'Saved locally now'
+      sceneResult.error
+        ? 'Save failed — good in-memory data kept'
+        : libraryResult.error
+          ? 'Scene saved locally — library save failed'
+          : 'Saved locally now'
     );
   };
 
@@ -414,6 +434,8 @@ export function WorldBuildingConcept({
       setNotice(error);
       return;
     }
+    workspaceOriginRef.current = 'local';
+    setWorkspaceOrigin('local');
     setHistory(createHistory(sceneResult.value));
     setLibrary(libraryResult.value);
     setPreviewScene(null);
@@ -469,10 +491,28 @@ export function WorldBuildingConcept({
         );
         return;
       }
+      if (workspaceOriginRef.current === 'local') {
+        const localSave = saveSceneToStorage(
+          effectiveStorage,
+          sceneRef.current
+        );
+        if (localSave.error) {
+          setSaveStatus('Save failed — scene kept in memory');
+          setNotice(
+            `Composition ${id} was not opened because the latest local draft could not be preserved. ${localSave.error}`
+          );
+          return;
+        }
+      }
+      workspaceOriginRef.current = 'world';
+      setWorkspaceOrigin('world');
       commit(metadata.scene, []);
       setTool('select');
       setActiveDrag(null);
       setLastWorldSave(composition.id);
+      setSaveStatus(
+        'World snapshot open — not saved locally; local draft preserved'
+      );
       setNotice(`Opened “${metadata.name}” from the world library.`);
     } catch (error) {
       setNotice(
@@ -515,6 +555,7 @@ export function WorldBuildingConcept({
       className={`wb-shell ${compositionSource ? 'wb-shell--world' : ''}`}
       aria-label="World Building Concept"
       data-transform-preview={previewScene ? 'active' : 'idle'}
+      data-workspace-origin={workspaceOrigin}
     >
       <header className="wb-header">
         <div>

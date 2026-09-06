@@ -9,7 +9,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { stringifyScene } from './serialization';
+import { SCENE_STORAGE_KEY, stringifyScene } from './serialization';
 import type { KeyValueStorage, WorldScene } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
@@ -594,16 +594,43 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(screen.getByText(/Latest snapshot ID: composition-2/)).toBeTruthy();
   });
 
-  it('reopens a named API snapshot through Get while preserving local drafts independently', async () => {
-    const storedScene: WorldScene = {
+  it('preserves a distinct local draft after opening a world snapshot, effects flush, and remount', async () => {
+    const localDraft: WorldScene = {
       version: 1,
-      id: 'stored-scene',
-      name: 'API Lantern Room',
+      id: 'local-draft-a',
+      name: 'Local Draft A',
+      items: [],
+      groups: [],
+    };
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot-b',
+      name: 'Remote Snapshot B',
       items: [],
       groups: [],
     };
     const storage = new MemoryStorage();
-    const world = worldSource([storedScene]);
+    storage.setItem(SCENE_STORAGE_KEY, stringifyScene(localDraft));
+    const world = worldSource([remoteSnapshot]);
+    const mounted = render(
+      <WorldBuildingConcept
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={world.source}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Snapshot B' })
+    );
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(localDraft)
+    );
+    expect(screen.getByText(/local draft preserved/i)).toBeTruthy();
+
+    mounted.unmount();
     render(
       <WorldBuildingConcept
         storage={storage}
@@ -611,22 +638,132 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
         compositionSource={world.source}
       />
     );
-    dragLabelTo('Drag Books into scene');
-    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
+    expect(scene()).toEqual(localDraft);
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Open API Lantern Room' })
+      await screen.findByRole('button', { name: 'Open Remote Snapshot B' })
     );
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(localDraft)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen local draft' }));
+    expect(scene()).toEqual(localDraft);
+  });
+
+  it('flushes the latest local edit made while a world Get is pending', async () => {
+    const localDraft: WorldScene = {
+      version: 1,
+      id: 'local-draft-a',
+      name: 'Local Draft A',
+      items: [],
+      groups: [],
+    };
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot-b',
+      name: 'Remote Snapshot B',
+      items: [],
+      groups: [],
+    };
+    const remoteRecord = create(CompositionSchema, {
+      id: 'composition-1',
+      worldId: 'test-world',
+      json: stringifyScene(remoteSnapshot),
+    });
+    let resolveGet!: (record: typeof remoteRecord) => void;
+    const pendingGet = new Promise<typeof remoteRecord>((resolve) => {
+      resolveGet = resolve;
+    });
+    const source: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => [remoteRecord]),
+        getComposition: vi.fn(() => pendingGet),
+      },
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(SCENE_STORAGE_KEY, stringifyScene(localDraft));
+    render(
+      <WorldBuildingConcept storage={storage} compositionSource={source} />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Snapshot B' })
+    );
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Latest Local Draft A' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+    resolveGet(remoteRecord);
+
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    const stored = storage.values.get(SCENE_STORAGE_KEY);
+    expect(stored).toContain('Latest Local Draft A');
+    expect(stored).not.toContain('Remote Snapshot B');
+  });
+
+  it('keeps remote workspace edits out of the local draft until explicit Save local draft', async () => {
+    const localDraft: WorldScene = {
+      version: 1,
+      id: 'local-draft-a',
+      name: 'Local Draft A',
+      items: [],
+      groups: [],
+    };
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot-b',
+      name: 'Remote Snapshot B',
+      items: [],
+      groups: [],
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(SCENE_STORAGE_KEY, stringifyScene(localDraft));
+    const world = worldSource([remoteSnapshot]);
+    render(
+      <WorldBuildingConcept
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={world.source}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Snapshot B' })
+    );
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    dragLabelTo('Drag Books into scene');
     await waitFor(() =>
-      expect(world.getComposition).toHaveBeenCalledWith(
-        'test-world',
-        'composition-1'
+      expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+        stringifyScene(localDraft)
       )
     );
-    expect(scene()).toEqual(storedScene);
+    expect(screen.getByText(/not saved locally/i)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen local draft' }));
-    expect(scene().items[0]?.assetRef).toBe('dnd5e:props:books');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+    await waitFor(() =>
+      expect(world.createComposition).toHaveBeenCalledTimes(1)
+    );
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(localDraft)
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
+    const explicitlySaved = scene();
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(explicitlySaved)
+    );
+    dragLabelTo('Drag Vase into scene');
+    await waitFor(() =>
+      expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+        stringifyScene(scene())
+      )
+    );
+    expect(screen.getByText('Saved locally')).toBeTruthy();
   });
 
   it('shows list/open/save errors without replacing the current valid scene', async () => {

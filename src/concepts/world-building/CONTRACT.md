@@ -102,13 +102,21 @@ handler-owned. Production creates no source or World Builder entry until a
 verified Discord guild-to-world mapping exists.
 
 `Save local draft` and `Reopen local draft` retain the existing browser-local
-workflow. `Save composition to world` calls `CreateComposition` with the same
-scene JSON; every save returns a new immutable ID. List refreshes on the World
-Builder mount, an explicit reload, and successful saves. Opening a listed entry
-calls `GetComposition` before replacing the scene. The authored `scene.name` is
-the human label; opaque IDs are shown only as secondary snapshot receipts.
-Malformed snapshots remain visible as unsupported errors and never replace the
-open scene. API failure never substitutes the fixed development fixture.
+workflow. Ordinary local drafting auto-saves. Opening a listed world snapshot
+first flushes the latest locally owned scene, then marks the opened workspace as
+world-owned: the snapshot and subsequent workspace edits do not replace the
+prior local draft. `Reopen local draft` restores that prior draft. Only the
+explicit `Save local draft` action transfers an open world workspace back to
+local ownership and deliberately replaces it.
+
+`Save composition to world` calls `CreateComposition` with the same scene JSON;
+every save returns a new immutable ID without changing local-draft ownership.
+List refreshes on the World Builder mount, an explicit reload, and successful
+saves. Opening a listed entry calls `GetComposition` before replacing the
+scene. The authored `scene.name` is the human label; opaque IDs are shown only
+as secondary snapshot receipts. Malformed snapshots remain visible as
+unsupported errors and never replace the open scene. API failure never
+substitutes the fixed development fixture.
 
 `VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1` remains an explicit, separate fixture
 option for tests. With the flag absent or disabled, the current-world source is
