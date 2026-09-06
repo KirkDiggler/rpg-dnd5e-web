@@ -298,6 +298,82 @@ describe('AssetReviewLab decisions and property sheet', () => {
     ).toBeTruthy();
   });
 
+  it('renders flat review-only bounds exactly and keeps navigation responsive', async () => {
+    const flatReason =
+      'SM_Env_Grunge_03 slot 0 (Grunge_01): non-default material has no exact reviewed override';
+    const fxReason =
+      'effects are exported as neutral static previews and are never ready-eligible';
+    const flat = candidate(1, {
+      source: {
+        ...candidate(1).source,
+        sourcePath: 'SourceFiles/DarkFortress/FBX/SM_Env_Grunge_03.fbx',
+      },
+      sourceFamily: 'environment',
+      suggestedCategory: 'env',
+      suggestedDisplayName: 'Grunge 03',
+      browsingFamily: 'grunge',
+      refSuffix: 'grunge_03',
+      dimensionsMeters: [119.39999389648438, 0, 212.65313720703125],
+      readyEligible: false,
+      reviewStatus: 'material-review',
+      reasons: [flatReason],
+    });
+    const tinyFx = candidate(3, {
+      source: {
+        ...candidate(3).source,
+        sourcePath: 'SourceFiles/DarkFortress/FBX/FX_SM_Prop_Candle_01.fbx',
+      },
+      sourceFamily: 'effects',
+      suggestedCategory: 'env',
+      suggestedDisplayName: 'SM Prop Candle 01',
+      browsingFamily: 'sm_prop_candle',
+      refSuffix: 'sm_prop_candle_01',
+      dimensionsMeters: [0.0000018477439880371094, 0.0000016391277313232422, 0],
+      readyEligible: false,
+      reviewStatus: 'fx-review',
+      reasons: [fxReason],
+    });
+    const flatCatalog: AssetReviewCatalog = {
+      schemaVersion: 1,
+      candidates: [candidate(0), flat, tinyFx],
+    };
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => flatCatalog,
+    } as Response);
+
+    render(<AssetReviewLab />);
+    await screen.findByDisplayValue(
+      flatCatalog.candidates[0]!.source.sourcePath
+    );
+    fireEvent.click(
+      within(screen.getByTestId('candidate-drawer')).getByRole('button', {
+        name: /SM Prop Candle 01/,
+      })
+    );
+    expect(selectedSource().value).toBe(tinyFx.source.sourcePath);
+    expect(
+      (screen.getByLabelText('Measured bounds') as HTMLInputElement).value
+    ).toBe('0.0000018477439880371094 × 0.0000016391277313232422 × 0');
+    expect(screen.getByText(fxReason)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report scene success' })
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next candidate' }));
+    expect(selectedSource().value).toBe(flat.source.sourcePath);
+    expect(
+      (screen.getByLabelText('Measured bounds') as HTMLInputElement).value
+    ).toBe('119.39999389648438 × 0 × 212.65313720703125');
+    expect(screen.getByText(flatReason)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous candidate' }));
+    expect(selectedSource().value).toBe(tinyFx.source.sourcePath);
+  });
+
   it('autosaves edits and decisions in portable review progress', async () => {
     await renderLab();
 

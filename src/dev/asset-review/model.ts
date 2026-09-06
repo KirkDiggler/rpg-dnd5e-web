@@ -248,15 +248,26 @@ function requireFiniteTuple(
   ];
 }
 
-function requirePositiveDimensions(
+function requireReviewDimensions(
   value: unknown,
-  label: string
+  label: string,
+  readyEligible: boolean
 ): [number, number, number] {
   const dimensions = requireFiniteTuple(value, label);
   requireValue(
-    dimensions.every((axis) => axis > 0),
-    `${label} axes must all be positive`
+    dimensions.every((axis) => axis >= 0),
+    `${label} axes must all be non-negative`
   );
+  requireValue(
+    dimensions.some((axis) => axis > 0),
+    `${label} must include at least one positive axis`
+  );
+  if (readyEligible) {
+    requireValue(
+      dimensions.every((axis) => axis > 0),
+      `${label} axes must all be positive when readyEligible is true`
+    );
+  }
   return dimensions;
 }
 
@@ -393,9 +404,10 @@ function parseCandidate(value: unknown, index: number): AssetReviewCandidate {
     refSuffix: requireString(value.refSuffix, `${label}.refSuffix`, {
       pattern: REF_SUFFIX_PATTERN,
     }),
-    dimensionsMeters: requirePositiveDimensions(
+    dimensionsMeters: requireReviewDimensions(
       value.dimensionsMeters,
-      `${label}.dimensionsMeters`
+      `${label}.dimensionsMeters`,
+      readyEligible
     ),
     readyEligible,
     reviewStatus,
@@ -523,9 +535,10 @@ function parseReviewEntry(value: unknown, index: number): AssetReviewEntry {
     refSuffix: requireString(value.refSuffix, `${label}.refSuffix`, {
       pattern: REF_SUFFIX_PATTERN,
     }),
-    dimensionsMeters: requirePositiveDimensions(
+    dimensionsMeters: requireReviewDimensions(
       value.dimensionsMeters,
-      `${label}.dimensionsMeters`
+      `${label}.dimensionsMeters`,
+      readyEligible
     ),
     readyEligible,
     reviewStatus: parseReviewStatus(

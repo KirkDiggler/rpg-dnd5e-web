@@ -19,8 +19,12 @@ import {
 
 const SOURCE_HASH = 'a'.repeat(64);
 
-type CandidateOverrides = Omit<Partial<AssetReviewCandidate>, 'source'> & {
+type CandidateOverrides = Omit<
+  Partial<AssetReviewCandidate>,
+  'source' | 'dimensionsMeters'
+> & {
   source?: Partial<AssetReviewCandidate['source']>;
+  dimensionsMeters?: readonly [number, number, number];
 };
 
 type EntryOverrides = Omit<
@@ -53,12 +57,12 @@ function candidate(overrides: CandidateOverrides = {}): AssetReviewCandidate {
     browsingFamily: 'brazier',
     referencePack: 'dark-fortress',
     refSuffix: 'brazier_01',
-    dimensionsMeters: [1, 2, 1],
     readyEligible: true,
     reviewStatus: 'trusted',
     reasons: [],
     ...overrides,
     source,
+    dimensionsMeters: [...(overrides.dimensionsMeters ?? [1, 2, 1])],
   };
 }
 
@@ -282,23 +286,55 @@ describe('parseAssetReviewCatalog', () => {
   );
 
   it.each([
-    [[0, 1, 1]],
-    [[-1, 1, 1]],
-    [[Number.NaN, 1, 1]],
-    [[Number.POSITIVE_INFINITY, 1, 1]],
-    [[1, 2]],
-  ])('rejects invalid measured dimensions %j', (dimensionsMeters) => {
-    expect(() =>
-      parseAssetReviewCatalog(
-        catalog([
-          candidate({
-            dimensionsMeters:
-              dimensionsMeters as unknown as AssetReviewCandidate['dimensionsMeters'],
-          }),
-        ])
-      )
-    ).toThrow(/dimensionsMeters/i);
-  });
+    ['material-review', [119.4, 0, 212.65]],
+    ['fx-review', [0.0000018, 0.0000016, 0]],
+  ] as const)(
+    'accepts and preserves exact flat %s review-only bounds',
+    (reviewStatus, dimensionsMeters) => {
+      const input = candidate({
+        readyEligible: false,
+        reviewStatus,
+        reasons: ['Review-only preview'],
+        dimensionsMeters,
+      });
+      const expectedDimensions = [...dimensionsMeters];
+      const parsed = parseAssetReviewCatalog(catalog([input]));
+
+      expect(parsed.candidates[0]?.dimensionsMeters).toEqual(
+        expectedDimensions
+      );
+      input.dimensionsMeters[0] = 999;
+      expect(parsed.candidates[0]?.dimensionsMeters).toEqual(
+        expectedDimensions
+      );
+    }
+  );
+
+  it.each([
+    ['eligible flat', [0, 1, 1], true],
+    ['all zero', [0, 0, 0], false],
+    ['negative', [-1, 1, 1], false],
+    ['NaN', [Number.NaN, 1, 1], false],
+    ['Infinity', [Number.POSITIVE_INFINITY, 1, 1], false],
+    ['wrong length', [1, 2], false],
+  ])(
+    'rejects %s measured dimensions %j',
+    (_label, dimensionsMeters, readyEligible) => {
+      expect(() =>
+        parseAssetReviewCatalog(
+          catalog([
+            candidate({
+              readyEligible,
+              reviewStatus: readyEligible ? 'trusted' : 'material-review',
+              reasons: readyEligible ? [] : ['Review-only preview'],
+              dimensionsMeters:
+                dimensionsMeters as unknown as AssetReviewCandidate['dimensionsMeters'],
+            }),
+          ])
+        )
+      ).toThrow(/dimensionsMeters/i);
+    }
+  );
 });
 
 describe('candidate defaults and decision transitions', () => {
@@ -725,6 +761,73 @@ describe('portable exports', () => {
     expect(serialized).not.toMatch(/localhost|blob:|"url"/i);
   });
 
+  it('preserves exact zero axes across review export and import', () => {
+    const reviewOnlyCatalog = catalog([
+      candidate({
+        readyEligible: false,
+        reviewStatus: 'material-review',
+        reasons: ['Flat geometry requires material review'],
+        dimensionsMeters: [119.4, 0, 212.65],
+      }),
+    ]);
+    const review = mergeCatalogWithReview(reviewOnlyCatalog).batch;
+
+    const serialized = serializeReviewProgress(review);
+    const imported = JSON.parse(serialized) as AssetReviewBatch;
+    expect(imported.entries[0]?.dimensionsMeters).toEqual([119.4, 0, 212.65]);
+    expect(
+      mergeCatalogWithReview(reviewOnlyCatalog, imported).batch.entries[0]
+        ?.dimensionsMeters
+    ).toEqual([119.4, 0, 212.65]);
+  });
+
+  it.each([
+    {
+      label: 'eligible flat',
+      dimensionsMeters: [0, 1, 1],
+      readyEligible: true,
+    },
+    { label: 'all zero', dimensionsMeters: [0, 0, 0], readyEligible: false },
+    { label: 'negative', dimensionsMeters: [-1, 1, 1], readyEligible: false },
+    {
+      label: 'NaN',
+      dimensionsMeters: [Number.NaN, 1, 1],
+      readyEligible: false,
+    },
+    {
+      label: 'Infinity',
+      dimensionsMeters: [Number.POSITIVE_INFINITY, 1, 1],
+      readyEligible: false,
+    },
+  ])(
+    'rejects $label dimensions in strict portable review parsing',
+    ({ dimensionsMeters, readyEligible }) => {
+      const reviewOnlyCatalog = catalog([
+        candidate({
+          readyEligible: false,
+          reviewStatus: 'material-review',
+          reasons: ['Flat geometry requires material review'],
+          dimensionsMeters: [2, 0, 3],
+        }),
+      ]);
+      const imported = JSON.parse(
+        serializeReviewProgress(mergeCatalogWithReview(reviewOnlyCatalog).batch)
+      ) as AssetReviewBatch;
+      const importedEntry = imported.entries[0]!;
+      importedEntry.dimensionsMeters =
+        dimensionsMeters as AssetReviewEntry['dimensionsMeters'];
+      importedEntry.readyEligible = readyEligible;
+      if (readyEligible) {
+        importedEntry.reviewStatus = 'trusted';
+        importedEntry.reasons = [];
+      }
+
+      expect(() => mergeCatalogWithReview(reviewOnlyCatalog, imported)).toThrow(
+        /dimensionsMeters/i
+      );
+    }
+  );
+
   it('round-trips portable review progress through catalog merge', () => {
     const original = mergeCatalogWithReview(catalog()).batch;
     const reviewed = {
@@ -830,6 +933,37 @@ describe('portable exports', () => {
         entries: [entry({ decision: 'keep' }), skipped],
       })
     ).toThrow(/at least one Ready/i);
+  });
+
+  it('refuses Ready transition and provider export for a flat review-only entry', () => {
+    const reviewOnlyCatalog = catalog([
+      candidate({
+        readyEligible: false,
+        reviewStatus: 'fx-review',
+        reasons: ['Static FX preview only'],
+        dimensionsMeters: [0.0000018, 0.0000016, 0],
+      }),
+    ]);
+    const flatEntry = {
+      ...mergeCatalogWithReview(reviewOnlyCatalog).batch.entries[0]!,
+      decision: 'keep' as const,
+      loadedSuccessfully: true,
+    };
+
+    expect(validateReady(flatEntry)).toMatchObject({
+      readyEligible: expect.stringMatching(/not eligible/i),
+      dimensionsMeters: expect.stringMatching(/positive/i),
+    });
+    expect(() => transitionDecision(flatEntry, 'ready')).toThrow(
+      /not eligible|positive/i
+    );
+    expect(() =>
+      serializeReadyProviderBatch({
+        schemaVersion: 1,
+        batchId: 'flat-review-only',
+        entries: [{ ...flatEntry, decision: 'ready' }],
+      })
+    ).toThrow(/not eligible|positive/i);
   });
 
   it('revalidates Ready entries before provider export', () => {
