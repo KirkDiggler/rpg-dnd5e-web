@@ -393,9 +393,14 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
     const { container } = mount(doc);
 
     const cell = cellCenter(p(1, 1), BOARD_HEX_SIZE, 'pointy');
-    const circle = container.querySelector(
-      '[data-placement="0"] circle'
-    ) as SVGCircleElement;
+    const pillarPlacement = container.querySelector('[data-placement="0"]')!;
+    expect(pillarPlacement.querySelector('title')?.textContent).not.toContain(
+      'dnd5e:props:'
+    );
+    expect(pillarPlacement.querySelector('title')?.textContent).toMatch(
+      /pillar/i
+    );
+    const circle = pillarPlacement.querySelector('circle') as SVGCircleElement;
     expect(Number(circle.getAttribute('cx'))).toBeCloseTo(
       cell.x + 0.2 * BOARD_HEX_SIZE,
       6

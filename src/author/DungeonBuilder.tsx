@@ -16,6 +16,7 @@
 import { useListDungeons } from '@/api/useListDungeons';
 import { isCompositionRef } from '@/compositions/compositionRef';
 import type { CompositionSource } from '@/compositions/compositionSource';
+import { useCompositionResolutions } from '@/compositions/useCompositionResolutions';
 import { create } from '@bufbuild/protobuf';
 import { GetDungeonRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -229,6 +230,10 @@ export function DungeonBuilder({
     []
   );
   const [doc, setDoc] = useState<DungeonDoc>(() => initialDerivation.doc);
+  const compositionResolutions = useCompositionResolutions(
+    doc.place,
+    compositionSource
+  );
   // The ratchet's memory (rpg-dnd5e-web#893): the region ids `applyDoc`
   // itself set concealed most recently, so a region a person concealed
   // by hand — never in this set — is never stripped when the graph
@@ -887,6 +892,8 @@ export function DungeonBuilder({
               sealedCells={sealedCells}
               onCellClick={handleCellClick}
               onSelect={selectOnCanvas}
+              compositionSource={compositionSource}
+              compositionResolutions={compositionResolutions}
             />
           ) : (
             <DungeonPreview3D
@@ -1072,6 +1079,8 @@ export function DungeonBuilder({
                 applyDoc((d) => removeEnding(d, index))
               }
               onSelect={setSelection}
+              compositionSource={compositionSource}
+              compositionResolutions={compositionResolutions}
               onStartFacing={(facing) =>
                 applyDoc((d) => setStartFacing(d, facing))
               }

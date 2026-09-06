@@ -91,6 +91,8 @@ describe('CompositionThumbnailTiles', () => {
     });
 
     expect(button.getAttribute('data-thumbnail-state')).toBe('loading');
+    expect(button.getAttribute('title')).toBe('decorated table');
+    expect(button.getAttribute('title')).not.toContain(table.id);
     expect(button.textContent).toContain('DT');
     fireEvent.click(button);
     expect(onArm).toHaveBeenCalledWith({

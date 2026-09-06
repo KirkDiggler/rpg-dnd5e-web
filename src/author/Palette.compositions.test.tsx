@@ -71,6 +71,8 @@ describe('Palette current-world compositions', () => {
       name: 'Place composition The Lantern Table',
     });
     expect(listCompositions).toHaveBeenCalledWith(source.worldId);
+    expect(button.getAttribute('title')).toBe('The Lantern Table');
+    expect(button.getAttribute('title')).not.toContain('composition-uuid-like');
     expect(
       screen.getByLabelText('Unsupported composition table:with space')
         .textContent
@@ -85,6 +87,15 @@ describe('Palette current-world compositions', () => {
       ref: compositionRef('composition-uuid-like'),
     });
     expect(onTool).toHaveBeenCalledWith('place');
+  });
+
+  it('puts friendly ordinary prop and monster names first in hover copy', () => {
+    renderPalette();
+    const prop = screen.getByRole('button', { name: 'PS' });
+    expect(prop.getAttribute('title')).not.toContain('dnd5e:props:');
+    expect(prop.getAttribute('title')).toMatch(/Plushie|Skeleton Dog/i);
+    const skeleton = screen.getByRole('button', { name: 'Sk' });
+    expect(skeleton.getAttribute('title')).toBe('Skeleton');
   });
 
   it('reports missing source and list failures instead of falling back', async () => {

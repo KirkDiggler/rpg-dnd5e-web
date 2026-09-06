@@ -10,6 +10,12 @@
  * component never holds a `[col,row]` (see `hexOffset.ts`).
  */
 import { facingAngleDeg } from '@/components/hex-grid/facingYaw';
+import {
+  compositionPlacementMetadata,
+  type CompositionPlacementMetadata,
+} from '@/compositions/compositionMetadata';
+import type { CompositionResolution } from '@/compositions/CompositionPlacementModel';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { refInitials } from '@/utils/refs';
 import {
   useCallback,
@@ -76,7 +82,7 @@ import {
   VOID_STROKE,
   WALL_STROKE,
 } from '../markerStyle';
-import { thumbForRef } from '../paletteData';
+import { paletteNameForRef, thumbForRef } from '../paletteData';
 import type { BoardTool, Selection } from '../types';
 import {
   boundaryWalls,
@@ -110,6 +116,47 @@ export const BOARD_HEX_SIZE = 24;
  * to fit; it scrolls. */
 export const BOARD_SCALE = 1.25;
 
+const EMPTY_COMPOSITION_RESOLUTIONS: ReadonlyMap<
+  string,
+  CompositionResolution
+> = new Map();
+
+function compositionMarkerColor(
+  metadata: CompositionPlacementMetadata
+): string {
+  switch (metadata.status) {
+    case 'ready':
+      return '#7c3aed';
+    case 'loading':
+      return '#ca8a04';
+    case 'missing':
+      return ERROR_STROKE;
+    case 'error':
+      return '#ea580c';
+    case 'missing-source':
+      return '#64748b';
+  }
+}
+
+function placementTooltip(
+  ref: string,
+  composition: CompositionPlacementMetadata | null
+): string {
+  if (!composition) return paletteNameForRef(ref);
+  switch (composition.status) {
+    case 'ready':
+      return composition.name;
+    case 'loading':
+      return `Loading composition · ${composition.id}`;
+    case 'missing':
+      return `Deleted or missing composition · ${composition.id}`;
+    case 'error':
+      return `Could not load composition · ${composition.id}`;
+    case 'missing-source':
+      return `Composition source not configured · ${composition.id}`;
+  }
+}
+
 export interface CreationBoardProps {
   doc: DungeonDoc;
   tool: BoardTool;
@@ -141,6 +188,9 @@ export interface CreationBoardProps {
   onDoorToggle: (at: PositionRef) => void;
   onCellClick: (cell: Axial) => void;
   onSelect: (selection: Selection) => void;
+  /** Current-world composition reads shared by every placement on the board. */
+  compositionSource?: CompositionSource;
+  compositionResolutions?: ReadonlyMap<string, CompositionResolution>;
   /** The cells the SERVER's compile says nobody can stand on — hatched.
    * Empty until the first compile answers; the picker's own preview is
    * what tells the author the cost before they commit. */
@@ -187,6 +237,8 @@ export function CreationBoard({
   onDoorToggle,
   onCellClick,
   onSelect,
+  compositionSource,
+  compositionResolutions = EMPTY_COMPOSITION_RESOLUTIONS,
   sealedCells,
 }: CreationBoardProps) {
   const o = doc.orientation;
@@ -792,11 +844,18 @@ export function CreationBoard({
               };
               const thumb = thumbForRef(p.ref);
               const monster = isMonsterRef(p.ref);
-              const color = monster
-                ? p.boss
-                  ? BOSS_COLOR
-                  : MONSTER_COLOR
-                : PROP_COLOR;
+              const composition = compositionPlacementMetadata(
+                p.ref,
+                compositionSource,
+                compositionResolutions
+              );
+              const color = composition
+                ? compositionMarkerColor(composition)
+                : monster
+                  ? p.boss
+                    ? BOSS_COLOR
+                    : MONSTER_COLOR
+                  : PROP_COLOR;
               const r = size * 0.62;
               const selected = i === selectedPlacement;
               const error = errorTargets.some(
@@ -808,6 +867,8 @@ export function CreationBoard({
                 <g
                   key={`${p.ref}:${axialKey(p.at)}`}
                   data-placement={i}
+                  data-placement-id={p.id || undefined}
+                  data-composition-status={composition?.status}
                   // A RESERVED PLACEMENT (rpg-project#375 §3.7): authored,
                   // and absent at first light. Drawn faded with a dashed
                   // ring and its word, so the author sees what the party
@@ -815,6 +876,7 @@ export function CreationBoard({
                   data-arrives={p.arrives !== undefined ? '' : undefined}
                   opacity={p.arrives !== undefined ? 0.55 : undefined}
                 >
+                  <title>{placementTooltip(p.ref, composition)}</title>
                   <circle
                     cx={c.x}
                     cy={c.y}
@@ -827,7 +889,14 @@ export function CreationBoard({
                           ? HOVER_STROKE
                           : '#00000088'
                     }
-                    strokeWidth={error || selected ? 3 : 1}
+                    strokeWidth={
+                      error || selected || composition?.status === 'missing'
+                        ? 3
+                        : 1
+                    }
+                    strokeDasharray={
+                      composition?.status === 'missing' ? '4 3' : undefined
+                    }
                   />
                   {thumb ? (
                     <image
@@ -846,7 +915,26 @@ export function CreationBoard({
                       fontSize={size * 0.5}
                       fill="#fff"
                     >
-                      {refInitials(p.ref)}
+                      {composition?.status === 'missing'
+                        ? '!'
+                        : refInitials(
+                            composition?.status === 'ready'
+                              ? composition.name
+                              : p.ref
+                          )}
+                    </text>
+                  )}
+                  {composition?.status === 'missing' && (
+                    <text
+                      data-composition-missing={i}
+                      x={c.x}
+                      y={c.y - r - size * 0.2}
+                      textAnchor="middle"
+                      fontSize={size * 0.3}
+                      fontWeight={700}
+                      fill={ERROR_STROKE}
+                    >
+                      Deleted / missing composition
                     </text>
                   )}
                   {facingDeg !== undefined && (

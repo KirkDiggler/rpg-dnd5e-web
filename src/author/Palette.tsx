@@ -14,6 +14,7 @@ import { regionColor } from './markerStyle';
 import {
   PALETTE_MONSTERS,
   PALETTE_PROPS,
+  paletteNameForRef,
   ROLE_COLOR,
   thumbForRef,
 } from './paletteData';
@@ -183,7 +184,7 @@ export function Palette({
               <button
                 key={p.ref}
                 type="button"
-                title={`${p.ref} · ${p.label} (${p.role})`}
+                title={`${p.label} · ${p.role}`}
                 aria-pressed={on}
                 className={`dg-chip ${on ? 'dg-chip--on' : ''}`}
                 style={{ borderColor: ROLE_COLOR[p.role] }}
@@ -217,7 +218,7 @@ export function Palette({
               <button
                 key={m.ref}
                 type="button"
-                title={m.label}
+                title={paletteNameForRef(m.ref)}
                 aria-pressed={on}
                 className={`dg-chip ${on ? 'dg-chip--on' : ''}`}
                 style={{ borderColor: '#a02020' }}

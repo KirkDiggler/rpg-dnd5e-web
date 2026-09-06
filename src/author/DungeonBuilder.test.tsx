@@ -797,9 +797,7 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
     mountBuilder(stripYaml());
     await waitFor(() => expect(sourceText().textContent).toContain('scenery:'));
 
-    const plushie = document.querySelector(
-      '[title^="dnd5e:props:plushie:skeleton-dog"]'
-    ) as HTMLElement;
+    const plushie = screen.getByRole('button', { name: 'PS' });
     expect(plushie).not.toBeNull();
     fireEvent.click(plushie);
     fireEvent.pointerDown(cell(3, 1), { button: 0 });
@@ -827,9 +825,10 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
     expect(sourceText().textContent).toContain('place: []');
 
     // A prop on the very same cell is fine — that is what the strip is for.
-    const prop = document.querySelector(
-      '[title^="dnd5e:props:"]'
-    ) as HTMLElement;
+    const propsSection = screen.getByRole('heading', {
+      name: 'Props',
+    }).parentElement;
+    const prop = propsSection?.querySelector('button') as HTMLElement;
     expect(prop).not.toBeNull();
     fireEvent.click(prop);
     fireEvent.pointerDown(cell(3, 1), { button: 0 });

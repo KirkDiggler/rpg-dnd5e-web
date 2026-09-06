@@ -136,7 +136,7 @@ export function CompositionThumbnailTiles({
             <button
               key={key}
               type="button"
-              title={`${name} · immutable snapshot ${composition.id}`}
+              title={name}
               aria-label={`Place composition ${name}`}
               aria-pressed={on}
               className={`dg-chip relative ${on ? 'dg-chip--on' : ''}`}
