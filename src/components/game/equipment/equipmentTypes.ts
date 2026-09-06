@@ -40,9 +40,11 @@ export interface ItemLike {
    * resolveIconUrl below); the web never invents one. */
   iconKey: string;
   /** "weapon" | "shield" | "armor" | "gear" — a DISPLAY/slot-compatibility
-   * vocabulary (rpg-toolkit's `itemKind`), not the same as
-   * `shared.EquipmentType` a Sell request needs — see
-   * `equipmentTypeForKind` below. */
+   * vocabulary (rpg-toolkit's `itemKind`), narrower and lossier than
+   * `equipmentType` below (it collapses tool/pack/item/ammunition into one
+   * "gear" bucket) — used only for equip-slot compatibility
+   * (`targetSlotFor`), never for anything that has to round-trip back to
+   * the catalog's own type. */
   kind: string;
   /** Slot keys this item may occupy, e.g. ["main_hand", "off_hand"]. */
   slotKeys: string[];
@@ -54,16 +56,27 @@ export interface ItemLike {
    * the server always recomputes at trade time. Undefined only for a
    * pre-#298 server response. */
   price?: { copper: number };
+  /** The item's real `shared.EquipmentType` — "weapon" | "armor" | "tool" |
+   * "pack" | "item" | "ammunition" (rpg-toolkit#1545/#1546,
+   * rpg-api-protos#301). Same open vocabulary as
+   * `VendorStockEntry.equipmentType`/`TradeItem.equipmentType`, so a Sell
+   * request can use it directly — unlike `kind` above, this one round-trips
+   * correctly for every item, including "gear"-kind ones. */
+  equipmentType: string;
 }
 
 /** slot key -> the Ref worn/wielded there — matches CharacterData.equipped. */
 export type EquippedMap = Record<string, RefLike>;
 
-/** The intent an equip/unequip click emits — exactly the RPC request shape
- * (dnd5e.api.v1alpha2.character.CharacterService.EquipItem/UnequipItem). */
+/** The intent an equip/unequip/unpack click emits. EquipItem/UnequipItem
+ * are exactly the v1alpha2 CharacterService RPC request shape; Unpack is
+ * the v1alpha1 SessionService.Unpack shape (session/actor bound by the
+ * caller) — carries `name` alongside `ref` purely for the success notice,
+ * since `UnpackResponse` itself echoes nothing back to read a name from. */
 export type EquipIntent =
   | { kind: 'EquipItem'; ref: RefLike; slotKey: string }
-  | { kind: 'UnequipItem'; slotKey: string };
+  | { kind: 'UnequipItem'; slotKey: string }
+  | { kind: 'Unpack'; ref: RefLike; name: string; quantity: number };
 
 /**
  * Canonical string key for a Ref — "module:type:id", the same format the
@@ -144,27 +157,4 @@ export function computeCarried(
       ? [{ item, carriedCount, showCount: carriedCount > 1 || owned > 1 }]
       : [];
   });
-}
-
-/**
- * Maps `ItemLike.kind`'s display vocabulary onto the real
- * `shared.EquipmentType` a Sell request's `equipment_type` field needs —
- * NOT the same enum (rpg-toolkit's `itemKind`, `equipment_slots.go`, is a
- * Go-type-switch classification built for slot compatibility, never meant
- * to round-trip back to the catalog's own type).
- *
- * "weapon" and "shield"/"armor" map losslessly: a shield's real
- * `EquipmentType` is "armor" (confirmed in the toolkit's own
- * `shared/equipment.go` doc comment: "EquipmentTypeArmor represents armor
- * and shields"). "gear" is genuinely ambiguous — it collapses
- * tool/pack/item/ammunition into one bucket with no way to tell which, so
- * this returns `undefined` for it rather than guessing: `RemoveInventoryItem`
- * matches strictly on `Type == item.Type`, and a wrong guess would make a
- * real sell wrongly refuse as `ErrNotInInventory`. `undefined` means "not
- * sellable until the server exposes the real type," not "assume a type."
- */
-export function equipmentTypeForKind(kind: string): string | undefined {
-  if (kind === 'weapon') return 'weapon';
-  if (kind === 'armor' || kind === 'shield') return 'armor';
-  return undefined;
 }

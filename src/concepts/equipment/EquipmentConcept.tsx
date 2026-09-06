@@ -34,7 +34,9 @@ export function EquipmentConcept() {
     const wire =
       intent.kind === 'EquipItem'
         ? `EquipItem { ref: "${intent.ref.module}:${intent.ref.type}:${intent.ref.id}", slot: "${intent.slotKey}" }`
-        : `UnequipItem { slot: "${intent.slotKey}" }`;
+        : intent.kind === 'UnequipItem'
+          ? `UnequipItem { slot: "${intent.slotKey}" }`
+          : `Unpack { ref: "${intent.ref.module}:${intent.ref.type}:${intent.ref.id}", quantity: ${intent.quantity} }`;
     setIntentLog((log) => [...log.slice(-7), wire]);
     setEquippedByCast((all) => ({
       ...all,

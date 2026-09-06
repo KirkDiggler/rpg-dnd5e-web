@@ -13,6 +13,7 @@ const ITEMS: ItemLike[] = [
     statLine: '1d8 slashing',
     iconKey: '',
     kind: 'weapon',
+    equipmentType: 'weapon',
     slotKeys: ['main_hand'],
     quantity: 1,
   },
