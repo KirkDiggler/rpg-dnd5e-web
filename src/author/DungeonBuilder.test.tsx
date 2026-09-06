@@ -4,6 +4,11 @@
  * disabled until the file compiles, and Save sends the exact bytes the
  * YAML pane shows.
  */
+import { create } from '@bufbuild/protobuf';
+import {
+  FieldType,
+  ScenarioDescriptorSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   act,
   fireEvent,
@@ -61,6 +66,22 @@ vi.mock('@/api/useListDungeons', () => ({
   }),
 }));
 
+/** What this build's rulebook offers, as `ListScenarios` sends it — one
+ * blank of kind `faction`, which the raider camp is authored against. */
+const HOLD_OUT = create(ScenarioDescriptorSchema, {
+  id: 'hold-out',
+  name: 'The hold-out',
+  fields: [
+    {
+      key: 'convince',
+      label: 'Convince',
+      type: FieldType.ENTITY_REF,
+      kind: 'faction',
+      guidance: 'which faction the party must turn',
+    },
+  ],
+});
+
 function fakeClient(errors: { path: string; message: string }[]) {
   const doc = referenceTombDoc();
   const putDungeon = vi.fn(async (req: { validateOnly: boolean }) => ({
@@ -68,7 +89,12 @@ function fakeClient(errors: { path: string; message: string }[]) {
     atlas: errors.length ? undefined : fixtureAtlasOf(doc),
   }));
   const getDungeon = vi.fn(async () => ({ yaml: emitDungeon(doc) }));
-  return { putDungeon, getDungeon } as unknown as AuthoringClient & {
+  const listScenarios = vi.fn(async () => ({ scenarios: [HOLD_OUT] }));
+  return {
+    putDungeon,
+    getDungeon,
+    listScenarios,
+  } as unknown as AuthoringClient & {
     putDungeon: typeof putDungeon;
   };
 }
@@ -899,5 +925,42 @@ describe('the intel record, end to end through the builder (rpg-project#372)', (
     expect((screen.getByTestId('intel-id') as HTMLInputElement).value).toBe(
       'vault-map'
     );
+  });
+});
+
+describe('the Scenario tab, end to end through the builder (#945)', () => {
+  it('adds the chosen scenario to the FILE as an empty block, and takes it back out', async () => {
+    window.localStorage.clear();
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+        allowYamlFileIO
+      />
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Scenario' }));
+    // The tomb binds nothing, so there is a chooser and no form.
+    await waitFor(() =>
+      expect(screen.getByTestId('scenario-add-pick')).toBeTruthy()
+    );
+    expect(screen.queryByTestId('scenario-hold-out')).toBeNull();
+
+    fireEvent.change(screen.getByTestId('scenario-add-pick'), {
+      target: { value: 'hold-out' },
+    });
+    fireEvent.click(screen.getByTestId('scenario-add-do'));
+    // Its blanks are on screen, unfilled…
+    expect(screen.getByTestId('scenario-hold-out')).toBeTruthy();
+    expect(screen.getByLabelText('Convince')).toBeTruthy();
+    // …and the file says so, in the one token that means "bound, nothing
+    // filled in yet".
+    expect(sourceText().textContent).toContain('scenarios:\n  hold-out: {}');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Scenario' }));
+    fireEvent.click(screen.getByTestId('scenario-hold-out-remove'));
+    expect(screen.queryByTestId('scenario-hold-out')).toBeNull();
+    expect(sourceText().textContent).not.toContain('scenarios:');
+    window.localStorage.clear();
   });
 });
