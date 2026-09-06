@@ -1,0 +1,45 @@
+# Composition rendering contract
+
+`CompositionModel` renders one immutable composition snapshot at one placement.
+Callers must provide the placement's `instanceId`; it is intentionally distinct
+from `composition.id`, because multiple placements can reference the same
+snapshot and move, rotate, or be removed independently.
+
+Loading and error presentation remain caller-owned, matching existing
+`PropModel` use. Wrap **each complete `CompositionModel`** in its own
+`Suspense`/`ErrorBoundary` pair:
+
+```tsx
+<Suspense fallback={<group name={`composition-loading-${instanceId}`} />}>
+  <ErrorBoundary fallback={<group name={`composition-error-${instanceId}`} />}>
+    <CompositionModel
+      composition={composition}
+      instanceId={instanceId}
+      transform={transform}
+    />
+  </ErrorBoundary>
+</Suspense>
+```
+
+Inside an R3F canvas, both fallbacks must be R3F-safe elements (for example, a
+`group` or existing scene placeholder), not the boundary's default DOM UI. The
+boundary surrounds the component itself—not only its `PropModel` leaves—so it
+also contains JSON decode and prop-resolution errors. Suspense contains pending
+GLB loads, while the error boundary contains rejected loads. Keep one pair per
+placement; do not add boundaries per leaf or hidden global handling.
+
+## Phase B handoff
+
+When the reserved builder, preview, and play paths are handed off, each path
+must:
+
+1. Preserve and pass the placed prop's required instance ID separately from its
+   referenced Composition ID.
+2. Put the whole `CompositionModel` inside that placement's existing or minimal
+   caller-owned Suspense/ErrorBoundary presentation, reusing existing loading
+   and error UI/state rather than duplicating it per part.
+3. Resolve compositions by WorldID plus Composition ID. Keep
+   `JsonCompositionAdapter` an explicit development source, never an RPC
+   failure fallback.
+
+Phase A does not wire those reserved routes or claim save/reopen/play support.

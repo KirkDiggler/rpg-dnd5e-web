@@ -7,21 +7,25 @@ import { decodeCompositionScene } from './compositionScene';
 
 export interface CompositionModelProps {
   composition: Composition;
-  /** Optional placed-prop instance identity; the composition itself is immutable. */
-  instanceId?: string;
+  /** Identity of this placement, distinct from the immutable composition ID. */
+  instanceId: string;
   transform: WorldTransform;
 }
 
 /**
  * Draw one immutable composition snapshot beneath one independently movable
- * placement root. World Building stores prop transforms in scene coordinates;
- * group/support relations describe authoring behavior, while item transforms
- * already contain the resulting positions. Nesting them again would double
- * transforms, so every visual leaf remains directly relative to this root.
+ * placement root. Each caller must wrap the entire component in one
+ * per-placement Suspense/ErrorBoundary pair; that pair owns pending/failed GLB
+ * presentation and also catches snapshot decode or prop-resolution failures.
+ *
+ * World Building stores prop transforms in scene coordinates; group/support
+ * relations describe authoring behavior, while item transforms already contain
+ * the resulting positions. Nesting them again would double transforms, so
+ * every visual leaf remains directly relative to this root.
  */
 export function CompositionModel({
   composition,
-  instanceId = composition.id,
+  instanceId,
   transform,
 }: CompositionModelProps) {
   const scene = useMemo(

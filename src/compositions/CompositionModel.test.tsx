@@ -1,11 +1,19 @@
+import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { create } from '@bufbuild/protobuf';
 import {
   CompositionSchema,
   type Composition,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { Suspense } from 'react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import decoratedTableJson from './fixtures/decorated-table.scene.json?raw';
+
+const controlledLeaf = vi.hoisted(() => ({
+  behavior: 'render' as 'render' | 'suspend' | 'throw',
+  rotationY: 0.731,
+  suspension: new Promise<void>(() => undefined),
+}));
 
 vi.mock('@/components/hex-grid/PropModel', () => ({
   PropModel: ({
@@ -18,14 +26,24 @@ vi.mock('@/components/hex-grid/PropModel', () => ({
     position: [number, number, number];
     rotationY: number;
     anchor: string;
-  }) => (
-    <group
-      name={`prop-model-leaf-${variant.name}`}
-      position={position}
-      rotation={[0, rotationY, 0]}
-      userData={{ anchor }}
-    />
-  ),
+  }) => {
+    if (rotationY === controlledLeaf.rotationY) {
+      if (controlledLeaf.behavior === 'throw') {
+        throw new Error('controlled prop load failure');
+      }
+      if (controlledLeaf.behavior === 'suspend') {
+        throw controlledLeaf.suspension;
+      }
+    }
+    return (
+      <group
+        name={`prop-model-leaf-${variant.name}`}
+        position={position}
+        rotation={[0, rotationY, 0]}
+        userData={{ anchor }}
+      />
+    );
+  },
 }));
 
 import { CompositionModel } from './CompositionModel';
@@ -42,20 +60,75 @@ beforeAll(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
+afterEach(() => {
+  controlledLeaf.behavior = 'render';
+  vi.restoreAllMocks();
+});
+
+function withSingleLeaf(rotationY: number): Composition {
+  const envelope = JSON.parse(decoratedTableJson) as {
+    scene: {
+      items: Array<{
+        id: string;
+        transform: { rotationY: number };
+      }>;
+    };
+  };
+  envelope.scene.items = [
+    {
+      ...envelope.scene.items[0],
+      id: 'synthetic-leaf',
+      transform: { ...envelope.scene.items[0].transform, rotationY },
+    },
+  ];
+  return create(CompositionSchema, {
+    ...composition,
+    json: JSON.stringify(envelope),
+  });
+}
+
+function BoundedCompositionModel({
+  value,
+  instanceId,
+}: {
+  value: Composition;
+  instanceId: string;
+}) {
+  return (
+    <Suspense fallback={<group name={`composition-loading-${instanceId}`} />}>
+      <ErrorBoundary
+        fallback={<group name={`composition-error-${instanceId}`} />}
+      >
+        <CompositionModel
+          composition={value}
+          instanceId={instanceId}
+          transform={{ x: 0, y: 0, z: 0, rotationY: 0 }}
+        />
+      </ErrorBoundary>
+    </Suspense>
+  );
+}
+
 describe('CompositionModel', () => {
   it('keeps authored leaf transforms relative to one placement root', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <CompositionModel
         composition={composition}
+        instanceId="placement-main"
         transform={{ x: 4, y: 0.25, z: -2, rotationY: Math.PI / 3 }}
       />
     );
 
     const root = renderer.scene.findByProps({
-      name: 'composition-placement-decorated-table',
+      name: 'composition-placement-placement-main',
     });
     expect(root.props.position).toEqual([4, 0.25, -2]);
     expect(root.props.rotation).toEqual([0, Math.PI / 3, 0]);
+    expect(root.props.userData).toEqual({
+      compositionId: 'decorated-table',
+      compositionWorldId: 'world-a',
+      compositionInstanceId: 'placement-main',
+    });
 
     const leaves = renderer.scene.findAll(
       (node) =>
@@ -107,6 +180,7 @@ describe('CompositionModel', () => {
     const renderer = await ReactThreeTestRenderer.create(
       <CompositionModel
         composition={related}
+        instanceId="placement-related"
         transform={{ x: 0, y: 0, z: 0, rotationY: 0 }}
       />
     );
@@ -117,6 +191,76 @@ describe('CompositionModel', () => {
     expect(tableLeaf.children[0]?.props.position).toEqual([
       -0.22944039237606742, 0, -0.7073681324665922,
     ]);
+  });
+
+  it('passes a synthetic non-zero authored yaw to its visual leaf', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <CompositionModel
+        composition={withSingleLeaf(0.456)}
+        instanceId="placement-rotated-leaf"
+        transform={{ x: 0, y: 0, z: 0, rotationY: 0 }}
+      />
+    );
+
+    const leaf = renderer.scene.findByProps({
+      name: 'composition-leaf-synthetic-leaf',
+    });
+    expect(leaf.children[0]?.props.rotation).toEqual([0, 0.456, 0]);
+  });
+
+  it('keeps decode and leaf errors inside caller-owned placement boundaries', async () => {
+    controlledLeaf.behavior = 'throw';
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const malformed = create(CompositionSchema, {
+      ...composition,
+      json: '{not valid scene json',
+    });
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <>
+        <BoundedCompositionModel
+          value={composition}
+          instanceId="healthy-placement"
+        />
+        <BoundedCompositionModel
+          value={malformed}
+          instanceId="decode-failure"
+        />
+        <BoundedCompositionModel
+          value={withSingleLeaf(controlledLeaf.rotationY)}
+          instanceId="leaf-failure"
+        />
+      </>
+    );
+
+    expect(
+      renderer.scene.findByProps({
+        name: 'composition-placement-healthy-placement',
+      })
+    ).toBeDefined();
+    expect(
+      renderer.scene.findByProps({ name: 'composition-error-decode-failure' })
+    ).toBeDefined();
+    expect(
+      renderer.scene.findByProps({ name: 'composition-error-leaf-failure' })
+    ).toBeDefined();
+  });
+
+  it('uses the caller-owned R3F fallback while a leaf suspends', async () => {
+    controlledLeaf.behavior = 'suspend';
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <BoundedCompositionModel
+        value={withSingleLeaf(controlledLeaf.rotationY)}
+        instanceId="pending-placement"
+      />
+    );
+
+    expect(
+      renderer.scene.findByProps({
+        name: 'composition-loading-pending-placement',
+      })
+    ).toBeDefined();
   });
 
   it('renders two independently transformed roots with unchanged visual parts', async () => {
