@@ -343,10 +343,17 @@ function parseCandidate(value: unknown, index: number): AssetReviewCandidate {
   );
   const reasons = requireStringArray(value.reasons, `${label}.reasons`);
   if (reviewStatus === 'trusted') {
-    requireValue(
-      readyEligible,
-      `${label}: trusted candidates must be eligible`
-    );
+    if (readyEligible) {
+      requireValue(
+        reasons.length === 0,
+        `${label}: trusted eligible candidates must not include blocking reasons`
+      );
+    } else {
+      requireValue(
+        reasons.length > 0,
+        `${label}: trusted ineligible candidates must include a provider-preflight reason`
+      );
+    }
   } else {
     requireValue(
       !readyEligible,

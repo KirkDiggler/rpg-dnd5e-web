@@ -77,6 +77,13 @@ function candidate(
   };
 }
 
+const providerBudgetReason =
+  'planned runtime aggregate decoded texture size 6.0 MiB exceeds 4.5 MiB: PolygonDarkFortress_Texture_01_C=1024x1024 (4.0 MiB), Chains_Normals_01=512x512 (1.0 MiB), Chains_01=512x512 (1.0 MiB)';
+const providerBlockedBrazier = candidate(1, {
+  readyEligible: false,
+  reviewStatus: 'trusted',
+  reasons: [providerBudgetReason],
+});
 const blockedPortal = candidate(3, {
   readyEligible: false,
   reviewStatus: 'fx-review',
@@ -84,7 +91,12 @@ const blockedPortal = candidate(3, {
 });
 const catalog: AssetReviewCatalog = {
   schemaVersion: 1,
-  candidates: [candidate(2), blockedPortal, candidate(1), candidate(0)],
+  candidates: [
+    candidate(2),
+    blockedPortal,
+    providerBlockedBrazier,
+    candidate(0),
+  ],
 };
 
 const downloadedBlobs: Blob[] = [];
@@ -262,6 +274,16 @@ describe('AssetReviewLab decisions and property sheet', () => {
       target: { value: 'lighting, fortress' },
     });
     expect(screen.getByTestId('current-decision').textContent).toBe('Keep');
+
+    fireEvent.click(screen.getByRole('button', { name: /Brazier 02/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report scene success' })
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Mark Ready' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(screen.getByText(providerBudgetReason)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /Magic Portal/ }));
     fireEvent.click(

@@ -205,12 +205,38 @@ describe('parseAssetReviewCatalog', () => {
     ).toThrow(/readyEligible.*boolean/i);
   });
 
-  it('requires trusted candidates to be eligible', () => {
+  it('accepts a trusted provider-ineligible candidate with a preflight reason', () => {
+    const blocked = candidate({
+      readyEligible: false,
+      reviewStatus: 'trusted',
+      reasons: ['Planned runtime textures exceed the provider budget'],
+    });
+
+    expect(parseAssetReviewCatalog(catalog([blocked])).candidates[0]).toEqual(
+      blocked
+    );
+  });
+
+  it('rejects a trusted provider-ineligible candidate without a reason', () => {
     expect(() =>
       parseAssetReviewCatalog(
         catalog([candidate({ readyEligible: false, reviewStatus: 'trusted' })])
       )
-    ).toThrow(/trusted.*eligible/i);
+    ).toThrow(/trusted.*ineligible.*reason/i);
+  });
+
+  it('rejects blocking reasons on a trusted eligible candidate', () => {
+    expect(() =>
+      parseAssetReviewCatalog(
+        catalog([
+          candidate({
+            readyEligible: true,
+            reviewStatus: 'trusted',
+            reasons: ['Should not be blocked'],
+          }),
+        ])
+      )
+    ).toThrow(/trusted.*eligible.*reasons/i);
   });
 
   it.each(['material-review', 'fx-review'] as const)(
@@ -342,17 +368,26 @@ describe('candidate defaults and decision transitions', () => {
     }
   });
 
-  it('refuses Ready when the source is not eligible', () => {
-    const blocked = entry({
-      decision: 'keep',
-      loadedSuccessfully: true,
-      readyEligible: false,
-      reviewStatus: 'material-review',
-      reasons: ['Material conversion required'],
-    });
+  it.each([
+    ['trusted', 'Provider texture budget exceeded'],
+    ['material-review', 'Material conversion required'],
+  ] as const)(
+    'refuses Ready when a %s source is provider-ineligible',
+    (reviewStatus, reason) => {
+      const blocked = entry({
+        decision: 'keep',
+        loadedSuccessfully: true,
+        readyEligible: false,
+        reviewStatus,
+        reasons: [reason],
+      });
 
-    expect(() => transitionDecision(blocked, 'ready')).toThrow(/not eligible/i);
-  });
+      expect(validateReady(blocked)).toHaveProperty('readyEligible');
+      expect(() => transitionDecision(blocked, 'ready')).toThrow(
+        /not eligible/i
+      );
+    }
+  );
 
   it('demotes Ready to Keep after every provider field edit and re-derives ref', () => {
     const ready = readyEntry();
