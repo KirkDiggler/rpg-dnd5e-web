@@ -1,3 +1,4 @@
+import { refLabel } from '@/utils/refs';
 import type {
   Arrangement,
   IdFactory,
@@ -36,7 +37,6 @@ export function addProp(
   relations: Pick<WorldProp, 'parentId' | 'supportId'> = {}
 ): WorldScene {
   if (entityById(scene, id)) throw new Error(`Identity already exists: ${id}`);
-  const short = assetRef.split(':').pop() ?? assetRef;
   return {
     ...cloneScene(scene),
     items: [
@@ -45,7 +45,7 @@ export function addProp(
         id,
         kind: 'prop',
         assetRef,
-        label: short.replaceAll('-', ' '),
+        label: refLabel(assetRef),
         transform: { ...transform },
         ...relations,
       },

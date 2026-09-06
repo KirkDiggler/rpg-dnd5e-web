@@ -22,6 +22,7 @@
  * thing that decides what a rulebook may bind.
  */
 
+import { refLabel } from '@/utils/refs';
 import type { FieldError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   FieldType,
@@ -61,14 +62,14 @@ export function bindOptions(
         .filter((p) => !!p.id && !isMonsterRef(p.ref) && p.holdable === true)
         .map((p) => ({
           id: p.id as string,
-          label: `${p.id} — ${refWord(p.ref)}`,
+          label: `${p.id} — ${refLabel(p.ref)}`,
         }));
     case 'monster':
       return doc.place
         .filter((p) => !!p.id && isMonsterRef(p.ref))
         .map((p) => ({
           id: p.id as string,
-          label: `${p.id} — ${refWord(p.ref)}`,
+          label: `${p.id} — ${refLabel(p.ref)}`,
         }));
     // A BLANK ID IS NOT AN OPTION. The panel refuses one, but a
     // hand-edited file can carry it, and an option whose value is the
@@ -144,10 +145,4 @@ export function fieldRefusals(
 ): string[] {
   const path = `scenarios.${scenarioId}.${key}`;
   return errors.filter((e) => e.path === path).map((e) => e.message);
-}
-
-/** A ref's last segment, spaced — `dnd5e:props:reliquary` -> "reliquary".
- * Presentation only; the file always carries the whole ref. */
-function refWord(ref: string): string {
-  return (ref.split(':').pop() ?? ref).replace(/[-_]+/g, ' ');
 }

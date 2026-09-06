@@ -1464,12 +1464,26 @@ describe('placement id (rpg-project#368 P2)', () => {
     expect(emitDungeon(doc)).not.toContain('- { id:');
   });
 
-  it('suggests the ref’s last segment, and numbers a name already taken', () => {
+  it('suggests the ref’s id, and numbers a name already taken', () => {
     const doc = twoPlacements();
     expect(suggestPlacementId(doc, 'dnd5e:props:reliquary')).toBe('reliquary');
     const named = updatePlacement(doc, 0, { id: 'reliquary' });
     expect(suggestPlacementId(named, 'dnd5e:props:reliquary')).toBe(
       'reliquary-2'
+    );
+  });
+
+  // rpg-dnd5e-web#947 / rpg-project#367: an exact ref's id has parts, and
+  // the whole id is what names the placement. Taking the last segment
+  // alone would suggest `skeleton-dog` for every family that owns a dog,
+  // so two different props would fight over one placement id.
+  it('suggests the WHOLE id of a multi-part exact ref, family included', () => {
+    const doc = twoPlacements();
+    expect(suggestPlacementId(doc, 'dnd5e:props:plushie:skeleton-dog')).toBe(
+      'plushie-skeleton-dog'
+    );
+    expect(suggestPlacementId(doc, 'dnd5e:props:chest:small')).not.toBe(
+      suggestPlacementId(doc, 'dnd5e:props:crate:small')
     );
   });
 

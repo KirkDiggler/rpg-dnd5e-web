@@ -80,6 +80,7 @@ import { CombatExperience } from './combat-experience/CombatExperience';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
+import { useDeathSaveTruthHold } from './deathSaveTruthHold';
 import { holdDownedReveal } from './downedReveal';
 import { FactionLegend } from './FactionLegend';
 import { exitAt, holdTargets, lootTargets } from './holdingAffordances';
@@ -499,6 +500,16 @@ function SessionEncounterScope({
     declarations: coherentDeclarations,
     invalidateAuthoritySnapshots,
     scheduleRefresh,
+  });
+  const {
+    participants: visibleParticipants,
+    characterData: visibleCharacterData,
+  } = useDeathSaveTruthHold({
+    scopeKey: `${sessionId}\u0000${member}`,
+    presentationKey: combat.concealedDeathSavePresentationKey,
+    conceal: combat.concealsDeathSaveTruth,
+    participants: turnParticipants,
+    characterData,
   });
   staleMoveRecoveryRef.current = (declarationId) =>
     combat.recoverStaleDeclaration(declarationId, Verb.MOVE);
@@ -1379,29 +1390,32 @@ function SessionEncounterScope({
   const classRefId = ownRoster?.classRef || undefined;
   const raceRefId = ownRoster?.raceRef || undefined;
   const localIsDowned =
-    turnParticipants.find((participant) => participant.member === member)
+    visibleParticipants.find((participant) => participant.member === member)
       ?.standing === Standing.DOWNED;
   const mainHandResolution = useMemo(
-    () => resolveMainHandPresentation(characterData?.equipped ?? {}),
-    [characterData?.equipped]
+    () => resolveMainHandPresentation(visibleCharacterData?.equipped ?? {}),
+    [visibleCharacterData?.equipped]
   );
   const offHandResolution = useMemo(
-    () => resolveOffHandPresentation(characterData?.equipped ?? {}),
-    [characterData?.equipped]
+    () => resolveOffHandPresentation(visibleCharacterData?.equipped ?? {}),
+    [visibleCharacterData?.equipped]
   );
   // Every owned item with a resolved ref — shared by EquipmentPopover's
   // `items` and the vendor Sell tab's own carried-stack computation below,
-  // rather than filtering the same list twice.
+  // rather than filtering the same list twice. Reads `visibleCharacterData`
+  // (not the raw `characterData`), same as every other player-facing
+  // derivation around it — a concealed death-save window must hold this
+  // back too, not just the combat presentation.
   const ownedItems = useMemo(
     () =>
-      (characterData?.inventory ?? []).filter(
+      (visibleCharacterData?.inventory ?? []).filter(
         (
           item
         ): item is typeof item & {
           ref: NonNullable<typeof item.ref>;
         } => item.ref !== undefined
       ),
-    [characterData?.inventory]
+    [visibleCharacterData?.inventory]
   );
   // Sellable this wave: carried (unequipped), with a resolvable real
   // equipment type AND a server-computed price. "gear"-kind items
@@ -1410,12 +1424,12 @@ function SessionEncounterScope({
   // would be a real correctness bug, not a cosmetic gap.
   const sellableItems = useMemo(
     () =>
-      computeCarried(ownedItems, characterData?.equipped ?? {}).filter(
+      computeCarried(ownedItems, visibleCharacterData?.equipped ?? {}).filter(
         ({ item }) =>
           equipmentTypeForKind(item.kind) !== undefined &&
           item.price !== undefined
       ),
-    [ownedItems, characterData?.equipped]
+    [ownedItems, visibleCharacterData?.equipped]
   );
   const loading = atlasLoading || whereLoading;
   const blockingError = atlasError ?? whereError;
@@ -1518,9 +1532,9 @@ function SessionEncounterScope({
             memberNames={publicMemberNames}
             clock={experienceClock}
             round={turnRound}
-            participants={turnParticipants}
+            participants={visibleParticipants}
             declarations={coherentDeclarations}
-            characterData={characterData}
+            characterData={visibleCharacterData}
             privateStatus={privateStatus}
             privateStatusMessage={
               characterDataError ? errorMessage(characterDataError) : undefined
@@ -1598,7 +1612,7 @@ function SessionEncounterScope({
             onEndTurn={combat.onEndTurn}
             onLogModeChange={combat.onLogModeChange}
             onOpenEquipment={
-              characterData
+              visibleCharacterData
                 ? () => {
                     // Both popovers anchor to the exact same corner
                     // (`.equip-popover`'s own CSS) — only one at a time.
@@ -1607,7 +1621,7 @@ function SessionEncounterScope({
                   }
                 : undefined
             }
-            equipmentOpen={characterData ? equipmentOpen : false}
+            equipmentOpen={visibleCharacterData ? equipmentOpen : false}
             onSearch={runEnded === null && region ? handleSearch : undefined}
             searchPending={searching}
             lootTargets={bodiesToLoot}
@@ -1666,26 +1680,26 @@ function SessionEncounterScope({
               height: 0,
             }}
           >
-            {runEnded === null && characterData && (
+            {runEnded === null && visibleCharacterData && (
               <EquipmentPopover
                 open={equipmentOpen}
                 characterName={characterName}
                 classLabel={classLabel(classRefId) ?? undefined}
-                slots={characterData.slots}
-                equipped={characterData.equipped}
+                slots={visibleCharacterData.slots}
+                equipped={visibleCharacterData.equipped}
                 items={ownedItems}
                 armorClass={
-                  characterData.armorClassDetail
+                  visibleCharacterData.armorClassDetail
                     ? {
-                        total: characterData.armorClassDetail.total,
-                        note: characterData.armorClassDetail.note,
+                        total: visibleCharacterData.armorClassDetail.total,
+                        note: visibleCharacterData.armorClassDetail.note,
                       }
                     : undefined
                 }
-                mainHandDamage={characterData.mainHandDamage}
+                mainHandDamage={visibleCharacterData.mainHandDamage}
                 onIntent={(intent) => void handleEquipIntent(intent)}
                 busy={equipping || unequipping}
-                walletCopper={characterData.wallet?.copper}
+                walletCopper={visibleCharacterData.wallet?.copper}
               />
             )}
             {runEnded === null && activeVendor && (
@@ -1698,7 +1712,7 @@ function SessionEncounterScope({
                 carriedItems={sellableItems}
                 onSell={(item) => handleVendorSell(item)}
                 busy={tradeLoading}
-                walletCopper={characterData?.wallet?.copper}
+                walletCopper={visibleCharacterData?.wallet?.copper}
               />
             )}
           </div>

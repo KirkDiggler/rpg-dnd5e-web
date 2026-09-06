@@ -5,6 +5,7 @@ import {
   type PropRole,
   type PropVariant,
 } from '@/components/hex-grid/propManifest';
+import { refLabel } from '@/utils/refs';
 
 export interface WorldBuildingCatalogEntry {
   ref: string;
@@ -36,10 +37,12 @@ const FIRST_CASE_REFS = [
   'dnd5e:props:rug',
 ];
 
+/** Title Case over the shared reading rule — `refLabel` decides where the
+ * words are, this only capitalizes them. */
 const labelOf = (ref: string) =>
-  (ref.split(':').pop() ?? ref)
-    .split('-')
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+  refLabel(ref)
+    .split(' ')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
 export const WORLD_BUILDING_CATALOG: WorldBuildingCatalogEntry[] = Object.keys(
