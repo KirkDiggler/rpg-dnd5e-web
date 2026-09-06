@@ -117,6 +117,10 @@ vi.mock('./dev/prop-calibration/PropCalibrationLab', () => ({
   PropCalibrationLab: () => <div>Prop Calibration Lab</div>,
 }));
 
+vi.mock('./dev/asset-review/AssetReviewLab', () => ({
+  AssetReviewLab: () => <div>Asset Review Lab</div>,
+}));
+
 vi.mock('./discord', () => ({
   DiscordDebugPanel: () => <h2>Discord Debug Panel</h2>,
   useDiscord: () => ({
@@ -199,6 +203,29 @@ describe('App prop calibration route', () => {
 
     expect(screen.getByText('Home View')).toBeTruthy();
     expect(screen.queryByText('Prop Calibration Lab')).toBeNull();
+  });
+});
+
+describe('App asset review route', () => {
+  it('mounts the full-window lab only for the explicit loopback development route', async () => {
+    vi.stubEnv('MODE', 'development');
+    window.history.pushState({}, '', '/?assetReview=1');
+
+    render(<App />);
+
+    expect(await screen.findByText('Asset Review Lab')).toBeTruthy();
+    expect(screen.queryByText('Home View')).toBeNull();
+    expect(hoisted.activeLobbyCalls).toBe(0);
+  });
+
+  it('refuses the asset review query in production', () => {
+    vi.stubEnv('MODE', 'production');
+    window.history.pushState({}, '', '/?assetReview=1');
+
+    render(<App />);
+
+    expect(screen.getByText('Home View')).toBeTruthy();
+    expect(screen.queryByText('Asset Review Lab')).toBeNull();
   });
 });
 

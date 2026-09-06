@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import App from './App';
 import { ToastProvider } from './components/ui';
+import { isAssetReviewRoute } from './dev/asset-review/route';
 import { isPropCalibrationRoute } from './dev/prop-calibration/route';
 import { DiscordProvider } from './discord';
 
@@ -10,7 +11,7 @@ export interface ApplicationRootProps {
   search: string;
 }
 
-/** Keep the local calibration tool outside application providers and the
+/** Keep local WebGL review tools outside application providers and the
  * development StrictMode teardown probe; ordinary application startup is
  * unchanged. */
 export function ApplicationRoot({
@@ -18,7 +19,12 @@ export function ApplicationRoot({
   hostname,
   search,
 }: ApplicationRootProps) {
-  if (isPropCalibrationRoute(mode, hostname, search)) return <App />;
+  if (
+    isPropCalibrationRoute(mode, hostname, search) ||
+    isAssetReviewRoute(mode, hostname, search)
+  ) {
+    return <App />;
+  }
   return (
     <StrictMode>
       <DiscordProvider>
