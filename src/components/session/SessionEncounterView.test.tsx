@@ -3138,7 +3138,7 @@ describe('SessionEncounterView production combat integration', () => {
       await waitFor(() => screen.getByTestId('vendor-popover'));
     }
 
-    it('scales the offered price by quantity for a multi-unit row — caught live selling a stack of 10 darts as ErrWrongPrice', async () => {
+    it('always buys exactly 1 unit per click, regardless of the row\'s remaining stock count (Kirk, live testing: "one item by one item")', async () => {
       readyScene();
       hoisted.interactFn.mockResolvedValue({
         descriptor: {
@@ -3178,12 +3178,12 @@ describe('SessionEncounterView production combat integration', () => {
           actor: 'char-1',
           target: 'demo-merchant-1',
           range: 0,
-          // Unit price is 5 cp; the line is 20, so the offered total must
-          // be 100 cp, not the bare unit price.
-          give: { items: [], currency: { copper: 100 } },
+          // 20 in stock, but one click buys exactly 1 at its unit price —
+          // not the whole line.
+          give: { items: [], currency: { copper: 5 } },
           receive: {
             items: [
-              { equipmentType: 'weapon', equipmentId: 'arrows', quantity: 20 },
+              { equipmentType: 'weapon', equipmentId: 'arrows', quantity: 1 },
             ],
           },
         })
@@ -3344,7 +3344,7 @@ describe('SessionEncounterView production combat integration', () => {
       await waitFor(() => screen.getByTestId('vendor-sell-dagger'));
     }
 
-    it('scales the expected payout by the carried count for a multi-unit stack — same bug class as Buy (a stack of 10 darts refused as ErrWrongPrice)', async () => {
+    it('always sells exactly 1 unit per click, regardless of the carried count (Kirk, live testing: "what if i only want to sell half my darts")', async () => {
       hoisted.getCharacterDataFn.mockResolvedValue({
         character: privateCharacterData({
           inventory: [
@@ -3395,12 +3395,12 @@ describe('SessionEncounterView production combat integration', () => {
           range: 0,
           give: {
             items: [
-              { equipmentType: 'weapon', equipmentId: 'dart', quantity: 10 },
+              { equipmentType: 'weapon', equipmentId: 'dart', quantity: 1 },
             ],
           },
-          // Unit price is 5 cp; selling all 10 must expect 50 cp back, not
-          // the bare unit price.
-          receive: { items: [], currency: { copper: 50 } },
+          // 10 carried, but one click sells exactly 1 at its unit price —
+          // not the whole stack.
+          receive: { items: [], currency: { copper: 5 } },
         })
       );
     });

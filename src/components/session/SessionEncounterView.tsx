@@ -1141,20 +1141,16 @@ function SessionEncounterScope({
   // button to be enabled (vendorStockPurchasable), so the extra guard
   // below is defense in depth, not new UI.
   //
-  // PRICE IS PER UNIT, NOT PER LINE (caught live selling a stack of 10
-  // darts — ErrWrongPrice). The server's own required price is
-  // `unitPrice.Copper * quantity` (rpg-toolkit's trade.go); `entry.price`
-  // is documented as the unit price, so a quantity > 1 row needs scaling
-  // here or every multi-unit trade is refused.
+  // ONE UNIT PER CLICK (Kirk, live testing: "first implementation is one
+  // item by one item" — a row's remaining stock count is NOT how many to
+  // buy). Repeat clicks buy more, one at a time — no quantity picker this
+  // wave. `entry.price` is the unit price already, so with quantity fixed
+  // at 1 it's also the exact amount to offer, no scaling needed.
   const handleVendorBuy = useCallback(
     (entry: VendorStockEntry) => {
-      const unitPrice = entry.price;
-      if (!member || !activeVendor || !unitPrice) return;
-      const quantity = entry.quantity ?? 1;
-      const price: Money = {
-        ...unitPrice,
-        copper: unitPrice.copper * quantity,
-      };
+      const price = entry.price;
+      if (!member || !activeVendor || !price) return;
+      const quantity = 1;
       setVendorNotice(null);
       void (async () => {
         try {
@@ -1193,28 +1189,26 @@ function SessionEncounterScope({
   );
 
   // Vendor sale (rpg-toolkit#1537) — the mirror of handleVendorBuy above.
-  // Sells the row's full carried count in one click, same "no quantity
-  // picker" simplicity Buy already has. `equipmentTypeForKind` returning
+  // ONE UNIT PER CLICK, same correction as Buy: a carried stack's full
+  // count is not how many to sell — repeat clicks sell more, one at a
+  // time, no quantity picker this wave. `equipmentTypeForKind` returning
   // undefined (a "gear"-kind item) is a real guard, not defense in depth:
   // `sellableItems` already excludes these, but this stays authoritative
   // rather than trusting the popover never calls back with one.
-  //
-  // PRICE IS PER UNIT, NOT PER LINE — same scaling handleVendorBuy just
-  // learned the hard way (a stack of 10 darts refused as ErrWrongPrice):
-  // `item.price` is the unit price, so a carried stack's full sell needs
-  // `unitPrice * quantity` to match the server's own required amount.
   const handleVendorSell = useCallback(
-    (item: ItemLike, quantity: number) => {
+    (item: ItemLike) => {
       const equipmentType = equipmentTypeForKind(item.kind);
       const unitPrice = item.price;
       if (!member || !activeVendor || !equipmentType || !unitPrice) return;
+      const quantity = 1;
       // `ItemLike.price` is deliberately a plain `{copper}` shape
       // (equipmentTypes.ts's own "no generated proto types" rule, so the
       // /concepts bench can keep feeding fixture data) — cast at this one
       // boundary where it actually crosses into the generated-proto-typed
       // Trade request, same as this file's other Money-shaped literals in
-      // tests.
-      const price = { copper: unitPrice.copper * quantity } as Money;
+      // tests. Quantity fixed at 1, so this is also the exact amount to
+      // expect back, no scaling needed.
+      const price = { ...unitPrice } as Money;
       setVendorNotice(null);
       void (async () => {
         try {
@@ -1702,7 +1696,7 @@ function SessionEncounterScope({
                 onClose={() => setActiveVendor(null)}
                 onBuy={(entry: VendorStockEntry) => handleVendorBuy(entry)}
                 carriedItems={sellableItems}
-                onSell={(item, quantity) => handleVendorSell(item, quantity)}
+                onSell={(item) => handleVendorSell(item)}
                 busy={tradeLoading}
                 walletCopper={characterData?.wallet?.copper}
               />

@@ -423,7 +423,7 @@ describe('VendorPopover', () => {
       ).toContain('Sell Dagger for 2 gp?');
     });
 
-    it('Confirm calls onSell with the item and its full carried count, and clears the pending state', () => {
+    it('Confirm calls onSell with just the item — one unit per click, not the full carried count — and clears the pending state', () => {
       const onSell = vi.fn();
       render(
         <VendorPopover
@@ -441,7 +441,7 @@ describe('VendorPopover', () => {
         screen.getByRole('button', { name: 'Confirm sell Dagger' })
       );
       expect(onSell).toHaveBeenCalledOnce();
-      expect(onSell).toHaveBeenCalledWith(CARRIED_ITEMS[0].item, 1);
+      expect(onSell).toHaveBeenCalledWith(CARRIED_ITEMS[0].item);
       expect(screen.queryByTestId('vendor-sell-confirm-dagger')).toBeNull();
       expect(screen.getByRole('button', { name: 'Sell Dagger' })).toBeTruthy();
     });

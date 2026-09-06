@@ -48,9 +48,10 @@ export interface VendorPopoverProps {
   /** The player's own carried, sellable stacks — already filtered by the
    * caller to items `equipmentTypeForKind` can resolve. */
   carriedItems: CarriedStack[];
-  /** Fires once the player confirms selling one stack, at its full
-   * carried count. The caller owns the actual Trade RPC. */
-  onSell?: (item: ItemLike, quantity: number) => void;
+  /** Fires once the player confirms selling one unit of this stack — one
+   * unit per click, same as Buy, no quantity picker this wave. The caller
+   * owns the actual Trade RPC. */
+  onSell?: (item: ItemLike) => void;
   /** A prior Buy or Sell RPC is in flight — disables every row's
    * Buy/Sell/Confirm so a second click can't race the first (mirrors
    * EquipmentSlots' own `busy` convention). */
@@ -303,7 +304,7 @@ export function VendorPopover({
                             disabled={busy}
                             aria-label={`Confirm sell ${item.name}`}
                             onClick={() => {
-                              onSell?.(item, carriedCount);
+                              onSell?.(item);
                               setPendingSell(null);
                             }}
                           >
