@@ -55,6 +55,11 @@ export interface CombatExperienceAttackOutcome {
   target: string;
   action: string;
   attackRef?: string;
+  /**
+   * Display name of the reaction this strike was taken as, verbatim from the
+   * wire's `ReactionRef.name`. Absent on an ordinary declared swing.
+   */
+  reaction?: string;
   d20: number;
   total: number;
   against: number;

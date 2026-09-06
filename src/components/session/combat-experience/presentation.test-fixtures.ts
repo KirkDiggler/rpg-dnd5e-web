@@ -13,6 +13,7 @@ import {
 import {
   AttackRefSchema,
   DamageType,
+  ReactionRefSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { AttackResponseFact, CombatStreamFact } from './presentation';
 
@@ -32,6 +33,9 @@ export interface AttackAuthorityFixtureOptions {
   attackRef?: string;
   attackName?: string;
   damageType?: DamageType;
+  /** Set to record the strike as a reaction (rpg-toolkit#1548 populates it). */
+  reactionRef?: string;
+  reactionName?: string;
 }
 
 export interface AttackAuthorityFixture {
@@ -66,6 +70,13 @@ export function createAttackAuthorityFixture(
     name: options.attackName ?? 'Longsword',
     damageType: options.damageType ?? DamageType.SLASHING,
   });
+  const reaction =
+    options.reactionRef || options.reactionName
+      ? create(ReactionRefSchema, {
+          ref: options.reactionRef ?? '',
+          name: options.reactionName ?? '',
+        })
+      : undefined;
   const response = create(AttackResponseSchema, {
     roll,
     total,
@@ -94,6 +105,7 @@ export function createAttackAuthorityFixture(
             damage,
             attack,
             critical,
+            reaction,
           }),
         }
       : {
@@ -105,6 +117,7 @@ export function createAttackAuthorityFixture(
             total,
             against,
             attack,
+            reaction,
           }),
         },
   });
