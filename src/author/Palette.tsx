@@ -4,12 +4,11 @@
  * (thumbnails from `paletteData.ts`, keyed by the same refs the game's
  * `propManifest`/`monsterModels` resolve).
  */
-import { compositionRef } from '@/compositions/compositionRef';
 import {
   useCompositionList,
   type CompositionSource,
 } from '@/compositions/compositionSource';
-import { refInitials, refLabel } from '@/utils/refs';
+import { CompositionThumbnailTiles } from './CompositionThumbnailTiles';
 import type { DungeonDoc } from './dungeonYaml';
 import { regionColor } from './markerStyle';
 import {
@@ -162,44 +161,15 @@ export function Palette({
               No compositions in {compositionSource?.worldId}.
             </div>
           )}
-        {compositionList.compositions.length > 0 && (
-          <div className="grid grid-cols-4 gap-1">
-            {compositionList.compositions.map((composition) => {
-              let ref: string;
-              try {
-                ref = compositionRef(composition.id);
-              } catch {
-                return (
-                  <div
-                    key={composition.id}
-                    className="col-span-4 text-xs text-red-400"
-                    aria-label={`Unsupported composition ID ${composition.id}`}
-                  >
-                    Unsupported composition ID: <code>{composition.id}</code> —
-                    cannot be represented as a placement reference.
-                  </div>
-                );
-              }
-              const on = armed?.ref === ref && tool === 'place';
-              return (
-                <button
-                  key={composition.id}
-                  type="button"
-                  title={`${refLabel(ref)} · ${composition.id}`}
-                  aria-label={`Place composition ${refLabel(ref)}`}
-                  aria-pressed={on}
-                  className={`dg-chip ${on ? 'dg-chip--on' : ''}`}
-                  style={{ borderColor: '#7c3aed' }}
-                  onClick={() => {
-                    onArm({ kind: 'prop', ref });
-                    onTool('place');
-                  }}
-                >
-                  {refInitials(ref)}
-                </button>
-              );
-            })}
-          </div>
+        {compositionList.compositions.length > 0 && compositionSource && (
+          <CompositionThumbnailTiles
+            sourceWorldId={compositionSource.worldId}
+            compositions={compositionList.compositions}
+            tool={tool}
+            armed={armed}
+            onArm={onArm}
+            onTool={onTool}
+          />
         )}
       </section>
 

@@ -6,6 +6,11 @@ import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/compos
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { emptyDungeon } from './dungeonYaml';
+
+vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
+  CompositionThumbnailRenderer: () => null,
+}));
+
 import { Palette } from './Palette';
 
 function renderPalette(source?: CompositionSource) {
