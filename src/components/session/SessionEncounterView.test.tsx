@@ -3248,6 +3248,191 @@ describe('SessionEncounterView production combat integration', () => {
     });
   });
 
+  describe('vendor Sell (rpg-toolkit#1537)', () => {
+    beforeEach(() => {
+      hoisted.tradeFn.mockReset();
+    });
+
+    async function openVendorSellTab() {
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: privateCharacterData({
+          inventory: [
+            {
+              ref: { module: 'dnd5e', type: 'item', id: 'dagger' },
+              name: 'Dagger',
+              statLine: '1d4 piercing · finesse',
+              iconKey: '',
+              kind: 'weapon',
+              slotKeys: ['main_hand', 'off_hand'],
+              quantity: 1,
+              price: { copper: 200 },
+            },
+          ],
+        }),
+      });
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      await waitFor(() => screen.getByTestId('vendor-sell-dagger'));
+    }
+
+    it('clicking Sell then Confirm calls Trade with the item on give and the expected payout on receive.currency', async () => {
+      await openVendorSellTab();
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'dagger',
+              displayName: 'Dagger',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 1,
+              price: { copper: 200 },
+              playerSold: true,
+            },
+          ],
+        },
+        seq: 2n,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dagger' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          give: {
+            items: [
+              { equipmentType: 'weapon', equipmentId: 'dagger', quantity: 1 },
+            ],
+          },
+          receive: { items: [], currency: { copper: 200 } },
+        })
+      );
+
+      expect(screen.getByText('Sold Dagger.')).toBeTruthy();
+    });
+
+    it('a Sell failure surfaces a notice without crashing the popover', async () => {
+      await openVendorSellTab();
+      hoisted.tradeFn.mockRejectedValue(
+        new Error('actor does not own enough of this item to sell')
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dagger' })
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.getByText('actor does not own enough of this item to sell')
+        ).toBeTruthy()
+      );
+    });
+
+    it('Cancel never calls Trade', async () => {
+      await openVendorSellTab();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel sell' }));
+
+      expect(hoisted.tradeFn).not.toHaveBeenCalled();
+    });
+
+    it("a successful Sell refetches the local player's own CharacterData", async () => {
+      await openVendorSellTab();
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: '',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 2n,
+      });
+      const callsBeforeSell = hoisted.getCharacterDataFn.mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dagger' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
+          callsBeforeSell
+        )
+      );
+    });
+
+    it('a "gear"-kind carried item never appears as sellable (equipment-type gap, rpg-project#390)', async () => {
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: privateCharacterData({
+          inventory: [
+            {
+              ref: { module: 'dnd5e', type: 'item', id: 'torch' },
+              name: 'Torch',
+              statLine: 'light, 20 ft radius',
+              iconKey: '',
+              kind: 'gear',
+              slotKeys: [],
+              quantity: 1,
+              price: { copper: 50 },
+            },
+          ],
+        }),
+      });
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      expect(screen.getByText('Nothing to sell.')).toBeTruthy();
+    });
+  });
+
   describe('concealed-door reveal wiring (rpg-project#886)', () => {
     // A member-scoped atlas whose one region claims the searcher's own
     // resting cell — `readyScene()`'s default atlas authors NO regions,

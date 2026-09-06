@@ -2,6 +2,7 @@ import type { VendorStockEntry } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/
 import { VendorStockMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { CarriedStack } from '../../game/equipment/equipmentTypes';
 import { VendorPopover } from './VendorPopover';
 
 const INVENTORY: VendorStockEntry[] = [
@@ -30,6 +31,37 @@ const INVENTORY: VendorStockEntry[] = [
   },
 ] as unknown as VendorStockEntry[];
 
+const CARRIED_ITEMS: CarriedStack[] = [
+  {
+    item: {
+      ref: { module: 'dnd5e', type: 'item', id: 'dagger' },
+      name: 'Dagger',
+      statLine: '1d4 piercing · finesse',
+      iconKey: '',
+      kind: 'weapon',
+      slotKeys: ['main_hand', 'off_hand'],
+      quantity: 1,
+      price: { copper: 200 },
+    },
+    carriedCount: 1,
+    showCount: false,
+  },
+  {
+    item: {
+      ref: { module: 'dnd5e', type: 'item', id: 'chain-shirt' },
+      name: 'Chain Shirt',
+      statLine: 'AC 13 + Dex',
+      iconKey: '',
+      kind: 'armor',
+      slotKeys: ['armor'],
+      quantity: 1,
+      price: { copper: 5000 },
+    },
+    carriedCount: 1,
+    showCount: false,
+  },
+];
+
 describe('VendorPopover', () => {
   it('renders nothing when closed', () => {
     render(
@@ -38,6 +70,7 @@ describe('VendorPopover', () => {
         displayName="Demo Merchant"
         inventory={INVENTORY}
         onClose={vi.fn()}
+        carriedItems={[]}
       />
     );
     expect(screen.queryByTestId('vendor-popover')).toBeNull();
@@ -50,6 +83,7 @@ describe('VendorPopover', () => {
         displayName="Demo Merchant"
         inventory={INVENTORY}
         onClose={vi.fn()}
+        carriedItems={[]}
       />
     );
     expect(screen.getByTestId('vendor-popover').textContent).toContain(
@@ -82,6 +116,7 @@ describe('VendorPopover', () => {
         displayName="Demo Merchant"
         inventory={INVENTORY}
         onClose={vi.fn()}
+        carriedItems={[]}
       />
     );
     expect(screen.queryByTestId('vendor-wallet')).toBeNull();
@@ -92,6 +127,7 @@ describe('VendorPopover', () => {
         displayName="Demo Merchant"
         inventory={INVENTORY}
         onClose={vi.fn()}
+        carriedItems={[]}
         walletCopper={235}
       />
     );
@@ -107,6 +143,7 @@ describe('VendorPopover', () => {
         displayName="Demo Merchant"
         inventory={[]}
         onClose={vi.fn()}
+        carriedItems={[]}
       />
     );
     expect(screen.getByText('Nothing for sale.')).toBeTruthy();
@@ -120,6 +157,7 @@ describe('VendorPopover', () => {
         displayName="Demo Merchant"
         inventory={INVENTORY}
         onClose={onClose}
+        carriedItems={[]}
       />
     );
     fireEvent.click(screen.getByRole('button', { name: 'Close vendor' }));
@@ -134,6 +172,7 @@ describe('VendorPopover', () => {
           displayName="Demo Merchant"
           inventory={INVENTORY}
           onClose={vi.fn()}
+          carriedItems={[]}
           onBuy={vi.fn()}
         />
       );
@@ -152,6 +191,7 @@ describe('VendorPopover', () => {
           displayName="Demo Merchant"
           inventory={INVENTORY}
           onClose={vi.fn()}
+          carriedItems={[]}
           onBuy={onBuy}
         />
       );
@@ -170,6 +210,7 @@ describe('VendorPopover', () => {
           displayName="Demo Merchant"
           inventory={INVENTORY}
           onClose={vi.fn()}
+          carriedItems={[]}
           onBuy={onBuy}
         />
       );
@@ -193,6 +234,7 @@ describe('VendorPopover', () => {
           displayName="Demo Merchant"
           inventory={INVENTORY}
           onClose={vi.fn()}
+          carriedItems={[]}
           onBuy={onBuy}
         />
       );
@@ -209,6 +251,7 @@ describe('VendorPopover', () => {
           displayName="Demo Merchant"
           inventory={INVENTORY}
           onClose={vi.fn()}
+          carriedItems={[]}
           onBuy={vi.fn()}
         />
       );
@@ -237,6 +280,7 @@ describe('VendorPopover', () => {
           displayName="Demo Merchant"
           inventory={exhausted}
           onClose={vi.fn()}
+          carriedItems={[]}
           onBuy={vi.fn()}
         />
       );
@@ -264,6 +308,7 @@ describe('VendorPopover', () => {
           displayName="Demo Merchant"
           inventory={unpriced}
           onClose={vi.fn()}
+          carriedItems={[]}
           onBuy={vi.fn()}
         />
       );
@@ -283,6 +328,7 @@ describe('VendorPopover', () => {
           displayName="Demo Merchant"
           inventory={INVENTORY}
           onClose={vi.fn()}
+          carriedItems={[]}
           onBuy={vi.fn()}
           busy
         />
@@ -291,6 +337,220 @@ describe('VendorPopover', () => {
         (
           screen.getByRole('button', {
             name: 'Buy Longsword',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+    });
+
+    it('marks a player-sold row without disturbing its normal price/stock label', () => {
+      const soldBack: VendorStockEntry[] = [
+        {
+          equipmentType: 'weapon',
+          equipmentId: 'dagger',
+          displayName: 'Dagger',
+          stockMode: VendorStockMode.LIMITED,
+          quantity: 1,
+          price: { copper: 200 },
+          playerSold: true,
+        } as unknown as VendorStockEntry,
+      ];
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={soldBack}
+          onClose={vi.fn()}
+          carriedItems={[]}
+        />
+      );
+      const text = screen.getByTestId('vendor-stock-dagger').textContent;
+      expect(text).toContain('2 gp');
+      expect(text).toContain('1 left');
+      expect(text).toContain('sold back');
+    });
+  });
+
+  describe('Sell flow', () => {
+    it('defaults to the Buy tab', () => {
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={CARRIED_ITEMS}
+        />
+      );
+      expect(screen.getByTestId('vendor-stock')).toBeTruthy();
+      expect(screen.queryByTestId('vendor-sell-stock')).toBeNull();
+    });
+
+    it('clicking the Sell tab shows the carried items with their price and count', () => {
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={CARRIED_ITEMS}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      expect(screen.queryByTestId('vendor-stock')).toBeNull();
+      const daggerRow = screen.getByTestId('vendor-sell-dagger');
+      expect(daggerRow.textContent).toContain('Dagger');
+      expect(daggerRow.textContent).toContain('2 gp');
+      expect(daggerRow.textContent).toContain('×1');
+    });
+
+    it('shows a Sell button per carried item and an inline confirm on click', () => {
+      const onSell = vi.fn();
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={CARRIED_ITEMS}
+          onSell={onSell}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      expect(onSell).not.toHaveBeenCalled();
+      expect(
+        screen.getByTestId('vendor-sell-confirm-dagger').textContent
+      ).toContain('Sell Dagger for 2 gp?');
+    });
+
+    it('Confirm calls onSell with the item and its full carried count, and clears the pending state', () => {
+      const onSell = vi.fn();
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={CARRIED_ITEMS}
+          onSell={onSell}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dagger' })
+      );
+      expect(onSell).toHaveBeenCalledOnce();
+      expect(onSell).toHaveBeenCalledWith(CARRIED_ITEMS[0].item, 1);
+      expect(screen.queryByTestId('vendor-sell-confirm-dagger')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Sell Dagger' })).toBeTruthy();
+    });
+
+    it('Cancel dismisses the confirm without calling onSell', () => {
+      const onSell = vi.fn();
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={CARRIED_ITEMS}
+          onSell={onSell}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel sell' }));
+      expect(onSell).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('vendor-sell-confirm-dagger')).toBeNull();
+    });
+
+    it('switching tabs mid-confirm clears the pending row on both sides', () => {
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={CARRIED_ITEMS}
+          onBuy={vi.fn()}
+          onSell={vi.fn()}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      expect(screen.queryByTestId('vendor-buy-confirm-longsword')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Buy' }));
+      expect(screen.queryByTestId('vendor-sell-confirm-dagger')).toBeNull();
+    });
+
+    it('shows an empty-sell message when nothing is carried', () => {
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={[]}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      expect(screen.getByText('Nothing to sell.')).toBeTruthy();
+    });
+
+    it('disables Sell for an item with no server-computed price', () => {
+      const unpriced: CarriedStack[] = [
+        {
+          item: {
+            ref: { module: 'dnd5e', type: 'item', id: 'torch' },
+            name: 'Torch',
+            statLine: 'light, 20 ft radius',
+            iconKey: '',
+            kind: 'armor',
+            slotKeys: [],
+            quantity: 1,
+          },
+          carriedCount: 1,
+          showCount: false,
+        },
+      ];
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={unpriced}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Sell Torch',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+    });
+
+    it('disables Sell/Confirm/Cancel while busy', () => {
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={INVENTORY}
+          onClose={vi.fn()}
+          carriedItems={CARRIED_ITEMS}
+          onSell={vi.fn()}
+          busy
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Sell Dagger',
           }) as HTMLButtonElement
         ).disabled
       ).toBe(true);
