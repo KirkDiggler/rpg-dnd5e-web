@@ -18,7 +18,7 @@
  */
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS, type PropRole } from '@/components/hex-grid/propManifest';
-import { refLabel, refSlug } from '@/utils/refs';
+import { refInitials, refLabel, refSlug } from '@/utils/refs';
 import { isDungeonLightSourceRef } from '../rendering/dungeonLightSources';
 
 export interface PaletteProp {
@@ -112,14 +112,6 @@ function displayLabel(key: string): string {
     .join(' ');
 }
 
-/** The two-letter swatch badge: initials of the first two words a ref
- * reads as, or the first two letters when it reads as one word. */
-function shortLabel(key: string): string {
-  const parts = refLabel(key).split(' ');
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
 /** The palette's prop list — one entry per key `propManifest.ts` defines
  * (see `ALL_PROP_KEYS`), pulling `role` from the first variant
  * `propManifest` lists for that key (same "first available" convention
@@ -135,7 +127,7 @@ export const PALETTE_PROPS: PaletteProp[] = ALL_PROP_KEYS.flatMap((ref) => {
   return [
     {
       ref,
-      short: shortLabel(ref),
+      short: refInitials(ref),
       label: variant.displayName ?? displayLabel(ref),
       role: variant.role,
       blocksMovement: variant.blocksMovement ?? variant.role !== 'decor',

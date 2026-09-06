@@ -2,6 +2,7 @@ import {
   isExactPropRef,
   parseRef,
   refId,
+  refInitials,
   refLabel,
   refSlug,
 } from '@/utils/refs';
@@ -130,6 +131,21 @@ describe('refSlug', () => {
   });
 });
 
+describe('refInitials', () => {
+  it('is the first two letters when a ref reads as one word', () => {
+    expect(refInitials('dnd5e:props:pillar')).toBe('PI');
+  });
+
+  it('is the initials of the first two words otherwise', () => {
+    expect(refInitials('dnd5e:props:tomb-open')).toBe('TO');
+    expect(refInitials('dnd5e:props:pillar-broken')).toBe('PB');
+  });
+
+  it('reads a multi-part id as words too, so the board and the palette agree', () => {
+    expect(refInitials('dnd5e:props:plushie:skeleton-dog')).toBe('PS');
+  });
+});
+
 describe('isExactPropRef', () => {
   it('is true for a prop ref whose id has two or more parts', () => {
     expect(isExactPropRef('dnd5e:props:plushie:skeleton-dog')).toBe(true);
@@ -156,6 +172,7 @@ describe('the exact ref rpg-project#367 mints, end to end', () => {
   it('labels, slugs, and is detected as exact through the helper', () => {
     expect(refLabel(REF)).toBe('plushie skeleton dog');
     expect(refSlug(REF)).toBe('plushie-skeleton-dog');
+    expect(refInitials(REF)).toBe('PS');
     expect(isExactPropRef(REF)).toBe(true);
   });
 });

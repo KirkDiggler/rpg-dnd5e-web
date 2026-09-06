@@ -10,9 +10,17 @@
  * it just reads wrong on screen.
  *
  * So this test walks `src/` and fails on any colon split outside the
- * allow-list below. The allow-list is explicit and each entry says why:
- * everything on it splits an equipment CHOICE VALUE (`bundle_0:0:warhammer`,
- * `cat0:id:name`) or a test's own composite key, none of which is a ref.
+ * allow-list below, however that split is spelled — the needle is a
+ * pattern, not a literal, because a guard that only knows one spelling
+ * teaches the next author to use another one. The allow-list is explicit
+ * and each entry says why: everything on it splits an equipment CHOICE
+ * VALUE (`bundle_0:0:warhammer`, `cat0:id:name`) or a test's own composite
+ * key, none of which is a ref.
+ *
+ * Comment lines are skipped, so prose about a split (this file's own, and
+ * the parser's doc comments) is not a finding. A split written inside a
+ * block comment whose line starts with neither a marker nor whitespace is
+ * the one false positive left; add it here if it ever happens.
  *
  * If you are adding a ref site, import from `@/utils/refs` instead. If you
  * are adding a genuinely non-ref split, add it here with its reason.
@@ -26,8 +34,15 @@ import { describe, expect, it } from 'vitest';
 // is what catches a wrong root rather than letting the guard pass empty.
 const SRC = resolve(process.cwd(), 'src');
 
-// Built rather than written, so this file does not match its own needle.
-const NEEDLES = ['.split(' + "':'" + ')', '.split(' + '":"' + ')'];
+/**
+ * Any split on a colon, whatever its spelling: `':'`, `":"`, a template
+ * literal, or the regex `/:/`, with or without a limit argument. Written
+ * as an escaped pattern, so this file never matches itself.
+ */
+const COLON_SPLIT = /\.split\(\s*(?:(['"`]):\1|\/:\/[a-z]*)\s*(?:,[^)]*)?\)/;
+
+/** `//`, `*`, `/*` — a line that is prose, not code. */
+const COMMENT_LINE = /^\s*(?:\/\/|\/?\*)/;
 
 /** path (relative to `src/`, POSIX separators) -> why it is not a ref. */
 const ALLOWED: Record<string, string> = {
@@ -59,8 +74,9 @@ function walk(dir: string, out: string[] = []): string[] {
 const FILES = walk(SRC);
 
 function splitsColons(file: string): boolean {
-  const text = readFileSync(file, 'utf8');
-  return NEEDLES.some((needle) => text.includes(needle));
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .some((line) => !COMMENT_LINE.test(line) && COLON_SPLIT.test(line));
 }
 
 const offenders = FILES.filter(splitsColons).map((file) =>

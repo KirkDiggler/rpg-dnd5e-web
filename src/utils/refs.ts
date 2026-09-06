@@ -98,6 +98,20 @@ export function refSlug(ref: string): string | null {
 }
 
 /**
+ * A ref as a two-letter badge: the initials of the first two words it
+ * reads as, or its first two letters when it reads as one word.
+ * `dnd5e:props:pillar` badges `PI`, `dnd5e:props:tomb-open` badges `TO`,
+ * and `dnd5e:props:plushie:skeleton-dog` badges `PS` — the id's parts are
+ * words like any other, so the board and the palette agree on what a
+ * swatch says instead of one reading `PL` and the other `PS`.
+ */
+export function refInitials(ref: string): string {
+  const words = refLabel(ref).split(' ');
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+/**
  * An exact prop ref: a prop ref whose id names a specific model rather
  * than a family — `dnd5e:props:plushie:skeleton-dog` (exact) against
  * `dnd5e:props:plushie` (the family). The test is structural, "the id has

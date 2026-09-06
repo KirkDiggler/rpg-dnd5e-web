@@ -14,7 +14,7 @@
  * of that derivation is needed here. That is a simplification, not a port.
  */
 
-import { refId } from '@/utils/refs';
+import { refLabel } from '@/utils/refs';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import type {
   AtlasBoundary,
@@ -105,7 +105,8 @@ export interface DoorwayLink {
 /** A prop, placed and carrying its own two answers. */
 export interface PlacedProp {
   ref: string;
-  /** The last segment of the ref — "coffin" out of "dnd5e:props:coffin". */
+  /** What the ref reads as, for the tooltip — "coffin" out of
+   * "dnd5e:props:coffin". Display only; `ref` is the identity. */
   name: string;
   center: Point;
   blocksMovement: boolean;
@@ -231,11 +232,14 @@ export function edgeBetween(
   };
 }
 
-/** propName is the WHOLE id of a "module:type:id" ref — everything after
- * the second colon, so an exact ref keeps the family that tells it apart:
- * `dnd5e:props:plushie:skeleton-dog` is `plushie:skeleton-dog`, not
- * `skeleton-dog`. A string that is not a ref names itself. */
-export const propName = (ref: string): string => refId(ref) ?? ref;
+/** propName reads a "module:type:id" ref as words for the prop tooltip —
+ * the WHOLE id, so an exact ref keeps the family that tells it apart:
+ * `dnd5e:props:plushie:skeleton-dog` reads "plushie skeleton dog", not
+ * "skeleton-dog". The shared display rule (`refLabel`), so a prop is named
+ * here exactly as the session's own hold buttons name it — a raw id would
+ * put the ref's colon on screen. Nothing keys off this; `ref` is the
+ * identity. A string that is not a ref names itself. */
+export const propName = (ref: string): string => refLabel(ref);
 
 const PAD = 2;
 

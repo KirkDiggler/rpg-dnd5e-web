@@ -10,7 +10,7 @@
  * component never holds a `[col,row]` (see `hexOffset.ts`).
  */
 import { facingAngleDeg } from '@/components/hex-grid/facingYaw';
-import { refId } from '@/utils/refs';
+import { refInitials } from '@/utils/refs';
 import {
   useCallback,
   useEffect,
@@ -846,7 +846,7 @@ export function CreationBoard({
                       fontSize={size * 0.5}
                       fill="#fff"
                     >
-                      {(refId(p.ref) ?? p.ref).slice(0, 2).toUpperCase()}
+                      {refInitials(p.ref)}
                     </text>
                   )}
                   {facingDeg !== undefined && (

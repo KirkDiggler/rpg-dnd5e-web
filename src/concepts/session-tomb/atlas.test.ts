@@ -250,14 +250,18 @@ describe('buildScene', () => {
 });
 
 describe('naming', () => {
-  it('takes the id segment out of a ref', () => {
-    expect(propName('dnd5e:props:statue-reaper')).toBe('statue-reaper');
+  it('reads a ref as words, the shared display rule', () => {
+    expect(propName('dnd5e:props:statue-reaper')).toBe('statue reaper');
   });
 
-  it('takes the WHOLE id, so an exact ref keeps its family', () => {
+  it('reads the WHOLE id, so an exact ref keeps its family', () => {
     expect(propName('dnd5e:props:plushie:skeleton-dog')).toBe(
-      'plushie:skeleton-dog'
+      'plushie skeleton dog'
     );
+  });
+
+  it('never puts a ref’s own colon on screen', () => {
+    expect(propName('dnd5e:props:plushie:skeleton-dog')).not.toContain(':');
   });
 
   it('leaves something that is not a ref alone', () => {
