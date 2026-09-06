@@ -39,7 +39,7 @@
     "@connectrpc/connect-web": "^2.0.2",
     "@dimforge/rapier3d-compat": "^0.19.2",
     "@discord/embedded-app-sdk": "^2.1.0",
-    "@kirkdiggler/rpg-api-protos": "github:KirkDiggler/rpg-api-protos#5b99c3fc70a1ef927161bd8ffbcf69fb3a788349",
+    "@kirkdiggler/rpg-api-protos": "github:KirkDiggler/rpg-api-protos#9c00a93aab34a6184f7c1af81ece9740c18a4533",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-tabs": "^1.1.12",

@@ -1,16 +1,25 @@
 import type { VendorStockEntry } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { VendorStockMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { describe, expect, it } from 'vitest';
-import { vendorStockLabel, vendorStockPurchasable } from './vendorStock';
+import {
+  vendorStockLabel,
+  vendorStockPriceLabel,
+  vendorStockPurchasable,
+} from './vendorStock';
 
-function entry(overrides: Partial<VendorStockEntry>): VendorStockEntry {
+type EntryOverrides = Omit<Partial<VendorStockEntry>, 'price'> & {
+  price?: { copper: number };
+};
+
+function entry(overrides: EntryOverrides): VendorStockEntry {
   return {
     equipmentType: 'weapon',
     equipmentId: 'longsword',
     displayName: 'Longsword',
     stockMode: VendorStockMode.UNSPECIFIED,
+    price: { copper: 1500 },
     ...overrides,
-  } as VendorStockEntry;
+  } as unknown as VendorStockEntry;
 }
 
 describe('vendorStockLabel', () => {
@@ -78,5 +87,25 @@ describe('vendorStockPurchasable', () => {
     expect(
       vendorStockPurchasable(entry({ stockMode: VendorStockMode.UNSPECIFIED }))
     ).toBe(true);
+  });
+
+  it('a row with no server-computed price is never purchasable, regardless of stock', () => {
+    expect(
+      vendorStockPurchasable(
+        entry({ stockMode: VendorStockMode.UNLIMITED, price: undefined })
+      )
+    ).toBe(false);
+  });
+});
+
+describe('vendorStockPriceLabel', () => {
+  it('formats a priced entry via formatMoney', () => {
+    expect(vendorStockPriceLabel(entry({ price: { copper: 1500 } }))).toBe(
+      '1 pp 5 gp'
+    );
+  });
+
+  it('falls back to an em dash when the server sent no price', () => {
+    expect(vendorStockPriceLabel(entry({ price: undefined }))).toBe('—');
   });
 });
