@@ -3138,6 +3138,58 @@ describe('SessionEncounterView production combat integration', () => {
       await waitFor(() => screen.getByTestId('vendor-popover'));
     }
 
+    it('scales the offered price by quantity for a multi-unit row — caught live selling a stack of 10 darts as ErrWrongPrice', async () => {
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'arrows',
+              displayName: 'Arrows',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 20,
+              price: { copper: 5 },
+            },
+          ],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Arrows' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Arrows' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          // Unit price is 5 cp; the line is 20, so the offered total must
+          // be 100 cp, not the bare unit price.
+          give: { items: [], currency: { copper: 100 } },
+          receive: {
+            items: [
+              { equipmentType: 'weapon', equipmentId: 'arrows', quantity: 20 },
+            ],
+          },
+        })
+      );
+    });
+
     it('clicking Buy then Confirm calls Trade with an empty give and the row read off as receive, and refreshes the popover from the response', async () => {
       await openVendorWithStock();
       hoisted.tradeFn.mockResolvedValue({
@@ -3291,6 +3343,67 @@ describe('SessionEncounterView production combat integration', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
       await waitFor(() => screen.getByTestId('vendor-sell-dagger'));
     }
+
+    it('scales the expected payout by the carried count for a multi-unit stack — same bug class as Buy (a stack of 10 darts refused as ErrWrongPrice)', async () => {
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: privateCharacterData({
+          inventory: [
+            {
+              ref: { module: 'dnd5e', type: 'item', id: 'dart' },
+              name: 'Dart',
+              statLine: '1d4 piercing · thrown',
+              iconKey: '',
+              kind: 'weapon',
+              slotKeys: [],
+              quantity: 10,
+              price: { copper: 5 },
+            },
+          ],
+        }),
+      });
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      await waitFor(() => screen.getByTestId('vendor-sell-dart'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dart' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dart' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          give: {
+            items: [
+              { equipmentType: 'weapon', equipmentId: 'dart', quantity: 10 },
+            ],
+          },
+          // Unit price is 5 cp; selling all 10 must expect 50 cp back, not
+          // the bare unit price.
+          receive: { items: [], currency: { copper: 50 } },
+        })
+      );
+    });
 
     it('clicking Sell then Confirm calls Trade with the item on give and the expected payout on receive.currency', async () => {
       await openVendorSellTab();

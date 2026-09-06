@@ -1140,10 +1140,21 @@ function SessionEncounterScope({
   // (rpg-toolkit#1534). `entry.price` is already required for the Buy
   // button to be enabled (vendorStockPurchasable), so the extra guard
   // below is defense in depth, not new UI.
+  //
+  // PRICE IS PER UNIT, NOT PER LINE (caught live selling a stack of 10
+  // darts — ErrWrongPrice). The server's own required price is
+  // `unitPrice.Copper * quantity` (rpg-toolkit's trade.go); `entry.price`
+  // is documented as the unit price, so a quantity > 1 row needs scaling
+  // here or every multi-unit trade is refused.
   const handleVendorBuy = useCallback(
     (entry: VendorStockEntry) => {
-      const price = entry.price;
-      if (!member || !activeVendor || !price) return;
+      const unitPrice = entry.price;
+      if (!member || !activeVendor || !unitPrice) return;
+      const quantity = entry.quantity ?? 1;
+      const price: Money = {
+        ...unitPrice,
+        copper: unitPrice.copper * quantity,
+      };
       setVendorNotice(null);
       void (async () => {
         try {
@@ -1154,7 +1165,7 @@ function SessionEncounterScope({
             direction: 'buy',
             equipmentType: entry.equipmentType,
             equipmentId: entry.equipmentId,
-            quantity: entry.quantity ?? 1,
+            quantity,
             price,
           });
           if (response.descriptor) {
@@ -1187,11 +1198,23 @@ function SessionEncounterScope({
   // undefined (a "gear"-kind item) is a real guard, not defense in depth:
   // `sellableItems` already excludes these, but this stays authoritative
   // rather than trusting the popover never calls back with one.
+  //
+  // PRICE IS PER UNIT, NOT PER LINE — same scaling handleVendorBuy just
+  // learned the hard way (a stack of 10 darts refused as ErrWrongPrice):
+  // `item.price` is the unit price, so a carried stack's full sell needs
+  // `unitPrice * quantity` to match the server's own required amount.
   const handleVendorSell = useCallback(
     (item: ItemLike, quantity: number) => {
       const equipmentType = equipmentTypeForKind(item.kind);
-      const price = item.price;
-      if (!member || !activeVendor || !equipmentType || !price) return;
+      const unitPrice = item.price;
+      if (!member || !activeVendor || !equipmentType || !unitPrice) return;
+      // `ItemLike.price` is deliberately a plain `{copper}` shape
+      // (equipmentTypes.ts's own "no generated proto types" rule, so the
+      // /concepts bench can keep feeding fixture data) — cast at this one
+      // boundary where it actually crosses into the generated-proto-typed
+      // Trade request, same as this file's other Money-shaped literals in
+      // tests.
+      const price = { copper: unitPrice.copper * quantity } as Money;
       setVendorNotice(null);
       void (async () => {
         try {
@@ -1203,13 +1226,7 @@ function SessionEncounterScope({
             equipmentType,
             equipmentId: item.ref.id,
             quantity,
-            // `ItemLike.price` is deliberately a plain `{copper}` shape
-            // (equipmentTypes.ts's own "no generated proto types" rule,
-            // so the /concepts bench can keep feeding fixture data) — cast
-            // at this one boundary where it actually crosses into the
-            // generated-proto-typed Trade request, same as this file's
-            // other Money-shaped literals in tests.
-            price: price as Money,
+            price,
           });
           if (response.descriptor) {
             setActiveVendor({
