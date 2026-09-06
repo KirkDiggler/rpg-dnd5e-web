@@ -67,8 +67,6 @@ function propDoc(
 
 function noop() {}
 
-const NO_SCENARIOS = { scenarios: [], loading: false, error: null } as const;
-
 const EMPTY_CONCEALMENT: ConcealmentDerivation = {
   regionIds: new Set(),
   doorByRegion: new Map(),
@@ -97,8 +95,6 @@ function mountPlacement(
       onSetWallName={noop}
       onExit={noop}
       onRemoveExit={noop}
-      onBindScenario={noop}
-      scenarios={NO_SCENARIOS}
       errors={[]}
       onStartFacing={noop}
       onAddIntel={noop}
@@ -251,8 +247,6 @@ function mountWall(
       onSetWallName={overrides.onSetWallName ?? noop}
       onExit={noop}
       onRemoveExit={noop}
-      onBindScenario={noop}
-      scenarios={NO_SCENARIOS}
       errors={[]}
       onStartFacing={noop}
       onAddIntel={noop}
@@ -414,8 +408,6 @@ function mountDoor(
       onSetWallName={noop}
       onExit={noop}
       onRemoveExit={noop}
-      onBindScenario={noop}
-      scenarios={NO_SCENARIOS}
       errors={[]}
       onStartFacing={noop}
       onAddIntel={noop}
@@ -588,8 +580,6 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onSetWallName={noop}
         onExit={noop}
         onRemoveExit={noop}
-        onBindScenario={noop}
-        scenarios={NO_SCENARIOS}
         errors={[]}
         onStartFacing={noop}
         onAddIntel={noop}
@@ -633,8 +623,6 @@ describe('the dungeon panel counts FLOOR, scenery included (rpg-project#360)', (
         onSetWallName={noop}
         onExit={noop}
         onRemoveExit={noop}
-        onBindScenario={noop}
-        scenarios={NO_SCENARIOS}
         errors={[]}
         onStartFacing={noop}
         onAddIntel={noop}
@@ -726,8 +714,6 @@ function mountAt(
       onSetWallName={noop}
       onExit={overrides.onExit ?? noop}
       onRemoveExit={overrides.onRemoveExit ?? noop}
-      onBindScenario={noop}
-      scenarios={NO_SCENARIOS}
       errors={[]}
       onStartFacing={overrides.onStartFacing ?? noop}
       onAddIntel={noop}

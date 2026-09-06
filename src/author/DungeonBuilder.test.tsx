@@ -4,6 +4,11 @@
  * disabled until the file compiles, and Save sends the exact bytes the
  * YAML pane shows.
  */
+import { create } from '@bufbuild/protobuf';
+import {
+  FieldType,
+  ScenarioDescriptorSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import {
   act,
   fireEvent,
@@ -11,7 +16,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthoringClient } from './authoringRpc';
 import { staleAtlasNotice } from './authoringRpc';
 import { DungeonBuilder } from './DungeonBuilder';
@@ -40,6 +45,18 @@ import { axialKey, fromOffset, type Axial } from './hexOffset';
 
 const p = (c: number, r: number): Axial => fromOffset('pointy', [c, r]);
 
+/** The file lives on the rail's Source tab now — one pane at a time
+ * (rpg-dnd5e-web#945) — so reading it means asking for that pane first.
+ * Clicking a tab that is already up costs nothing. */
+function sourceText(): HTMLElement {
+  fireEvent.click(screen.getByRole('tab', { name: 'Source' }));
+  return screen.getByTestId('yaml-text');
+}
+
+// The rail remembers which pane it was on (`dg.rail.tab`), so a test that
+// opens the Source tab would otherwise decide where the NEXT test opens.
+beforeEach(() => window.localStorage.clear());
+
 vi.mock('@/api/useListDungeons', () => ({
   useListDungeons: () => ({
     dungeons: [],
@@ -49,6 +66,22 @@ vi.mock('@/api/useListDungeons', () => ({
   }),
 }));
 
+/** What this build's rulebook offers, as `ListScenarios` sends it — one
+ * blank of kind `faction`, which the raider camp is authored against. */
+const HOLD_OUT = create(ScenarioDescriptorSchema, {
+  id: 'hold-out',
+  name: 'The hold-out',
+  fields: [
+    {
+      key: 'convince',
+      label: 'Convince',
+      type: FieldType.ENTITY_REF,
+      kind: 'faction',
+      guidance: 'which faction the party must turn',
+    },
+  ],
+});
+
 function fakeClient(errors: { path: string; message: string }[]) {
   const doc = referenceTombDoc();
   const putDungeon = vi.fn(async (req: { validateOnly: boolean }) => ({
@@ -56,7 +89,12 @@ function fakeClient(errors: { path: string; message: string }[]) {
     atlas: errors.length ? undefined : fixtureAtlasOf(doc),
   }));
   const getDungeon = vi.fn(async () => ({ yaml: emitDungeon(doc) }));
-  return { putDungeon, getDungeon } as unknown as AuthoringClient & {
+  const listScenarios = vi.fn(async () => ({ scenarios: [HOLD_OUT] }));
+  return {
+    putDungeon,
+    getDungeon,
+    listScenarios,
+  } as unknown as AuthoringClient & {
     putDungeon: typeof putDungeon;
   };
 }
@@ -114,7 +152,7 @@ describe('DungeonBuilder', () => {
     expect(screen.getByTestId('status-line').textContent).toMatch(
       /compiled — 224 cells/
     );
-    expect(screen.getByTestId('yaml-text').textContent).toBe(yaml);
+    expect(sourceText().textContent).toBe(yaml);
     fireEvent.click(save);
     await waitFor(() =>
       expect(client.putDungeon).toHaveBeenLastCalledWith(
@@ -170,7 +208,7 @@ describe('DungeonBuilder', () => {
 });
 
 describe('DungeonBuilder — the YAML pane authors, not just mirrors (#899)', () => {
-  const paneOf = () => screen.getByTestId('yaml-text') as HTMLTextAreaElement;
+  const paneOf = () => sourceText() as HTMLTextAreaElement;
 
   it('takes typed YAML into the document', async () => {
     render(
@@ -192,11 +230,14 @@ describe('DungeonBuilder — the YAML pane authors, not just mirrors (#899)', ()
     fireEvent.focus(pane);
     fireEvent.change(pane, { target: { value: renamed } });
 
-    // The document took it — the inspector is showing the typed name.
+    // Nothing to complain about, said on the pane that was typed into.
+    expect(screen.queryByTestId('yaml-parse-error')).toBeNull();
+    // And the document took it — the inspector, a tab away, is showing the
+    // typed name.
+    fireEvent.click(screen.getByRole('tab', { name: 'Inspector' }));
     await waitFor(() =>
       expect(screen.queryByDisplayValue('The Typed Tomb')).not.toBeNull()
     );
-    expect(screen.queryByTestId('yaml-parse-error')).toBeNull();
   });
 
   it('keeps unparsable text instead of discarding it, and says so', () => {
@@ -218,6 +259,31 @@ describe('DungeonBuilder — the YAML pane authors, not just mirrors (#899)', ()
     expect(paneOf().value).toBe('version: 2\nkey: [unclosed');
   });
 
+  it('keeps an unparsed draft across a look at another pane', async () => {
+    // The rail shows one pane at a time (#945), so the Source pane unmounts
+    // when the author checks the inspector. #899's promise has to survive
+    // that: half-typed text is unfinished work, not junk.
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+      />
+    );
+    const pane = paneOf();
+    fireEvent.focus(pane);
+    fireEvent.change(pane, { target: { value: 'version: 2\nkey: [unclosed' } });
+    expect(screen.getByTestId('yaml-parse-error')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Inspector' }));
+    await waitFor(() =>
+      expect(screen.queryByDisplayValue('The Reference Tomb')).not.toBeNull()
+    );
+    // Back on Source: the text is still there, and so is the reason.
+    expect(paneOf().value).toBe('version: 2\nkey: [unclosed');
+    expect(screen.getByTestId('yaml-parse-error')).toBeTruthy();
+  });
+
   it('does not rewrite the text under the caret while it has focus', async () => {
     render(
       <DungeonBuilder
@@ -236,6 +302,7 @@ describe('DungeonBuilder — the YAML pane authors, not just mirrors (#899)', ()
       'name: Still Typing'
     );
     fireEvent.change(pane, { target: { value: typed } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Inspector' }));
     await waitFor(() =>
       expect(screen.queryByDisplayValue('Still Typing')).not.toBeNull()
     );
@@ -248,29 +315,8 @@ describe('DungeonBuilder — the YAML pane authors, not just mirrors (#899)', ()
 });
 
 describe("DungeonBuilder — the right rail is the author's to control", () => {
-  it('folds the inspector away and remembers it, leaving the YAML pane standing', async () => {
-    window.localStorage.clear();
-    const { unmount } = render(
-      <DungeonBuilder
-        authoringClient={fakeClient([])}
-        initialYaml={emitDungeon(referenceTombDoc())}
-        persistDraft={false}
-      />
-    );
-    const fold = () => screen.getByRole('button', { name: /Inspector/i });
-    expect(fold().getAttribute('aria-expanded')).toBe('true');
-    // The inspector's own fields are on screen while it is open.
-    expect(screen.queryByDisplayValue('The Reference Tomb')).not.toBeNull();
-
-    fireEvent.click(fold());
-    expect(fold().getAttribute('aria-expanded')).toBe('false');
-    expect(screen.queryByDisplayValue('The Reference Tomb')).toBeNull();
-    // Folding the inspector must not take the YAML with it — the whole point
-    // is to give the YAML the height the inspector was using.
-    expect(screen.getByTestId('yaml-pane')).toBeTruthy();
-
-    // It is a preference, so it survives a remount.
-    unmount();
+  const tab = (name: string) => screen.getByRole('tab', { name });
+  const railBuilder = () =>
     render(
       <DungeonBuilder
         authoringClient={fakeClient([])}
@@ -278,11 +324,96 @@ describe("DungeonBuilder — the right rail is the author's to control", () => {
         persistDraft={false}
       />
     );
-    expect(
-      screen
-        .getByRole('button', { name: /Inspector/i })
-        .getAttribute('aria-expanded')
-    ).toBe('false');
+
+  it('shows one pane at a time and remembers which, opening on the Inspector', async () => {
+    window.localStorage.clear();
+    const { unmount } = railBuilder();
+    // The pane the rail has always opened on, and its own fields.
+    expect(tab('Inspector').getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByDisplayValue('The Reference Tomb')).not.toBeNull();
+    expect(screen.queryByTestId('yaml-pane')).toBeNull();
+
+    fireEvent.click(tab('Source'));
+    // ONE AT A TIME: the file gets the whole column, which is the point —
+    // the inspector is not sharing it any more.
+    expect(screen.getByTestId('yaml-pane')).toBeTruthy();
+    expect(screen.queryByDisplayValue('The Reference Tomb')).toBeNull();
+
+    fireEvent.click(tab('Scenario'));
+    expect(screen.getByTestId('scenario-panel')).toBeTruthy();
+    expect(screen.queryByTestId('yaml-pane')).toBeNull();
+
+    // It is a preference, so it survives a remount.
+    unmount();
+    railBuilder();
+    expect(tab('Scenario').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('scenario-panel')).toBeTruthy();
+    window.localStorage.clear();
+  });
+
+  it('brings the Inspector forward when something is selected on the canvas', () => {
+    // A click on the board asks a question only the inspector answers, so
+    // the rail follows the click. Nothing ELSE moves it — the tabs are the
+    // author's.
+    window.localStorage.clear();
+    railBuilder();
+    fireEvent.click(tab('Source'));
+    expect(screen.getByTestId('yaml-pane')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }));
+    fireEvent.pointerDown(
+      document.querySelector(`[data-cell="${axialKey(p(1, 1))}"]`)!,
+      { button: 0 }
+    );
+    expect(tab('Inspector').getAttribute('aria-selected')).toBe('true');
+    // The brazier standing on that cell, on the pane that describes it.
+    expect(screen.getByTestId('placement-panel')).toBeTruthy();
+    window.localStorage.clear();
+  });
+
+  it('stays on its tab when a wall is deleted — a delete is not a selection', () => {
+    // The thing the rail would open on is the thing that just went away,
+    // so an author reading the file keeps reading the file.
+    window.localStorage.clear();
+    railBuilder();
+    fireEvent.click(tab('Source'));
+    expect(document.querySelectorAll('[data-wall]')).toHaveLength(2);
+
+    // jsdom has no layout and no geometry interfaces, so the board's
+    // screen→SVG transform is stubbed as the IDENTITY it effectively is
+    // here: a client point is a point on the board. Everything the gesture
+    // then does — the hit test, the delete, the rail — is the real code.
+    const identity = { inverse: () => identity };
+    vi.stubGlobal(
+      'DOMPoint',
+      class {
+        constructor(
+          readonly x: number,
+          readonly y: number
+        ) {}
+        matrixTransform() {
+          return { x: this.x, y: this.y };
+        }
+      }
+    );
+    const svg = document.querySelector('svg') as SVGSVGElement;
+    (svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () =>
+      identity;
+    const wall = document.querySelector('[data-wall]')!;
+    const at = (n: string) => Number(wall.getAttribute(n));
+    fireEvent.click(screen.getByRole('button', { name: 'Wall' }));
+    // Shift on a wall is the eraser (CreationBoard's own gesture).
+    fireEvent.pointerDown(document.querySelector('[data-cell]')!, {
+      button: 0,
+      shiftKey: true,
+      clientX: (at('x1') + at('x2')) / 2,
+      clientY: (at('y1') + at('y2')) / 2,
+    });
+
+    // It really deleted — otherwise the tab assertion below could not fail.
+    expect(document.querySelectorAll('[data-wall]')).toHaveLength(1);
+    expect(tab('Source').getAttribute('aria-selected')).toBe('true');
+    vi.unstubAllGlobals();
     window.localStorage.clear();
   });
 
@@ -353,9 +484,7 @@ describe('DungeonBuilder — concealment links to the door (rpg-dnd5e-web#893)',
       />
     );
     await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain(
-        'concealed: true'
-      )
+      expect(sourceText().textContent).toContain('concealed: true')
     );
     const region2Cell = document.querySelector(
       `[data-cell="${axialKey(p(2, 0))}"]`
@@ -377,9 +506,7 @@ describe('DungeonBuilder — concealment links to the door (rpg-dnd5e-web#893)',
       />
     );
     await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain(
-        'concealed: true'
-      )
+      expect(sourceText().textContent).toContain('concealed: true')
     );
     fireEvent.click(screen.getByRole('button', { name: 'Select' }));
     fireEvent.pointerDown(
@@ -541,16 +668,14 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
 
   it('paints scenery from the palette and writes it to the file', async () => {
     mountBuilder(stripYaml());
-    await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain('scenery:')
-    );
+    await waitFor(() => expect(sourceText().textContent).toContain('scenery:'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Scenery' }));
     fireEvent.pointerDown(cell(5, 1), { button: 0 });
     fireEvent.pointerUp(document.querySelector('svg')!);
 
     await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain(
+      expect(sourceText().textContent).toContain(
         'scenery:\n      - [[3,1],[4,1],[5,1]]'
       )
     );
@@ -584,9 +709,7 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
   it('refuses the start on scenery IN PLACE, with the reason (design §2.4)', async () => {
     mountBuilder(stripYaml());
     await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain(
-        'start: [0, 1]'
-      )
+      expect(sourceText().textContent).toContain('start: [0, 1]')
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
@@ -599,24 +722,18 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
       )
     );
     // The start did not move — refused in place, not silently relocated.
-    expect(screen.getByTestId('yaml-text').textContent).toContain(
-      'start: [0, 1]'
-    );
+    expect(sourceText().textContent).toContain('start: [0, 1]');
 
     // ...and it still moves onto a room cell.
     fireEvent.pointerDown(cell(1, 1), { button: 0 });
     await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain(
-        'start: [1, 1]'
-      )
+      expect(sourceText().textContent).toContain('start: [1, 1]')
     );
   });
 
   it('places the generated exact Plushie ref with its explicit behavior', async () => {
     mountBuilder(stripYaml());
-    await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain('scenery:')
-    );
+    await waitFor(() => expect(sourceText().textContent).toContain('scenery:'));
 
     const plushie = document.querySelector(
       '[title^="dnd5e:props:plushie:skeleton-dog"]'
@@ -626,23 +743,17 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
     fireEvent.pointerDown(cell(3, 1), { button: 0 });
 
     await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain(
+      expect(sourceText().textContent).toContain(
         'dnd5e:props:plushie:skeleton-dog'
       )
     );
-    expect(screen.getByTestId('yaml-text').textContent).toContain(
-      'blocks_movement: false'
-    );
-    expect(screen.getByTestId('yaml-text').textContent).toContain(
-      'blocks_los: false'
-    );
+    expect(sourceText().textContent).toContain('blocks_movement: false');
+    expect(sourceText().textContent).toContain('blocks_los: false');
   });
 
   it('refuses a monster on scenery and accepts a prop there (F2)', async () => {
     mountBuilder(stripYaml());
-    await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain('scenery:')
-    );
+    await waitFor(() => expect(sourceText().textContent).toContain('scenery:'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Sk' }));
     fireEvent.pointerDown(cell(3, 1), { button: 0 });
@@ -651,7 +762,7 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
         'nobody can stand here'
       )
     );
-    expect(screen.getByTestId('yaml-text').textContent).toContain('place: []');
+    expect(sourceText().textContent).toContain('place: []');
 
     // A prop on the very same cell is fine — that is what the strip is for.
     const prop = document.querySelector(
@@ -661,11 +772,9 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
     fireEvent.click(prop);
     fireEvent.pointerDown(cell(3, 1), { button: 0 });
     await waitFor(() =>
-      expect(screen.getByTestId('yaml-text').textContent).toContain('at: [3,1]')
+      expect(sourceText().textContent).toContain('at: [3,1]')
     );
-    expect(screen.getByTestId('yaml-text').textContent).toContain(
-      'dnd5e:props:'
-    );
+    expect(sourceText().textContent).toContain('dnd5e:props:');
   });
 });
 
@@ -752,7 +861,7 @@ describe('DungeonBuilder — the scenery brush refuses rather than deletes', () 
     expect(cell(1, 0).getAttribute('data-scenery')).toBeNull();
 
     // Nothing was deleted: the file still carries both.
-    const yaml = screen.getByTestId('yaml-text').textContent ?? '';
+    const yaml = sourceText().textContent ?? '';
     expect(yaml).toContain('start: [0, 0]');
     expect(yaml).toContain('dnd5e:monsters:skeleton');
 
@@ -826,7 +935,7 @@ describe('the intel record, end to end through the builder (rpg-project#372)', (
 
     // The TEXTAREA, not the pane: the pane's textContent also carries the
     // toolbar and the status line, which is not a document.
-    const yaml = (screen.getByTestId('yaml-text') as HTMLTextAreaElement).value;
+    const yaml = (sourceText() as HTMLTextAreaElement).value;
     expect(yaml).toContain('- id: the-password');
     expect(yaml).toContain('reveals: { door: hall-tomb }');
     // The captain now carries BOTH — intel copies, and a monster may hold
@@ -862,5 +971,42 @@ describe('the intel record, end to end through the builder (rpg-project#372)', (
     expect((screen.getByTestId('intel-id') as HTMLInputElement).value).toBe(
       'vault-map'
     );
+  });
+});
+
+describe('the Scenario tab, end to end through the builder (#945)', () => {
+  it('adds the chosen scenario to the FILE as an empty block, and takes it back out', async () => {
+    window.localStorage.clear();
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={emitDungeon(referenceTombDoc())}
+        persistDraft={false}
+        allowYamlFileIO
+      />
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Scenario' }));
+    // The tomb binds nothing, so there is a chooser and no form.
+    await waitFor(() =>
+      expect(screen.getByTestId('scenario-add-pick')).toBeTruthy()
+    );
+    expect(screen.queryByTestId('scenario-hold-out')).toBeNull();
+
+    fireEvent.change(screen.getByTestId('scenario-add-pick'), {
+      target: { value: 'hold-out' },
+    });
+    fireEvent.click(screen.getByTestId('scenario-add-do'));
+    // Its blanks are on screen, unfilled…
+    expect(screen.getByTestId('scenario-hold-out')).toBeTruthy();
+    expect(screen.getByLabelText('Convince')).toBeTruthy();
+    // …and the file says so, in the one token that means "bound, nothing
+    // filled in yet".
+    expect(sourceText().textContent).toContain('scenarios:\n  hold-out: {}');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Scenario' }));
+    fireEvent.click(screen.getByTestId('scenario-hold-out-remove'));
+    expect(screen.queryByTestId('scenario-hold-out')).toBeNull();
+    expect(sourceText().textContent).not.toContain('scenarios:');
+    window.localStorage.clear();
   });
 });
