@@ -39,12 +39,21 @@ export interface ItemLike {
   /** Reference key into the asset-owned manifest — may be empty (see
    * resolveIconUrl below); the web never invents one. */
   iconKey: string;
-  /** "weapon" | "shield" | "armor" | "gear" — open vocabulary. */
+  /** "weapon" | "shield" | "armor" | "gear" — a DISPLAY/slot-compatibility
+   * vocabulary (rpg-toolkit's `itemKind`), not the same as
+   * `shared.EquipmentType` a Sell request needs — see
+   * `equipmentTypeForKind` below. */
   kind: string;
   /** Slot keys this item may occupy, e.g. ["main_hand", "off_hand"]. */
   slotKeys: string[];
   /** Number of copies owned, authored by the server. */
   quantity: number;
+  /** Server-computed unit price (rpg-toolkit#1534/#1537,
+   * rpg-api-protos#298), display-only — a preview so a client can
+   * pre-populate a Sell's expected payout. Never the price authority;
+   * the server always recomputes at trade time. Undefined only for a
+   * pre-#298 server response. */
+  price?: { copper: number };
 }
 
 /** slot key -> the Ref worn/wielded there — matches CharacterData.equipped. */
@@ -100,4 +109,62 @@ export function targetSlotFor(
     (s) => item.slotKeys.includes(s.key) && s.accepts.includes(item.kind)
   );
   return compatible.find((s) => !equipped[s.key])?.key ?? compatible[0]?.key;
+}
+
+/** One item stack's carried (unequipped) portion — extracted from
+ * `InventoryLight`'s own carried computation so a second consumer (the
+ * vendor Sell tab) doesn't duplicate it. */
+export interface CarriedStack {
+  item: ItemLike;
+  carriedCount: number;
+  showCount: boolean;
+}
+
+/**
+ * Every owned item's carried (not currently equipped) count — legacy owner
+ * snapshots predate `quantity` and decode its wire default as zero, so that
+ * case is treated as one copy owned during rollout, the same defensive
+ * reading `InventoryLight` always gave it. Keyed by the full
+ * `{module,type,id}` triple via `refKey`, not bare `ref.id` — an id is only
+ * unique within one `{module, type}` pair (Copilot review on #575).
+ */
+export function computeCarried(
+  items: ItemLike[],
+  equipped: EquippedMap
+): CarriedStack[] {
+  const equippedCounts = new Map<string, number>();
+  for (const ref of Object.values(equipped)) {
+    const key = refKey(ref);
+    equippedCounts.set(key, (equippedCounts.get(key) ?? 0) + 1);
+  }
+  return items.flatMap((item) => {
+    const owned = item.quantity > 0 ? item.quantity : 1;
+    const carriedCount = owned - (equippedCounts.get(refKey(item.ref)) ?? 0);
+    return carriedCount > 0
+      ? [{ item, carriedCount, showCount: carriedCount > 1 || owned > 1 }]
+      : [];
+  });
+}
+
+/**
+ * Maps `ItemLike.kind`'s display vocabulary onto the real
+ * `shared.EquipmentType` a Sell request's `equipment_type` field needs —
+ * NOT the same enum (rpg-toolkit's `itemKind`, `equipment_slots.go`, is a
+ * Go-type-switch classification built for slot compatibility, never meant
+ * to round-trip back to the catalog's own type).
+ *
+ * "weapon" and "shield"/"armor" map losslessly: a shield's real
+ * `EquipmentType` is "armor" (confirmed in the toolkit's own
+ * `shared/equipment.go` doc comment: "EquipmentTypeArmor represents armor
+ * and shields"). "gear" is genuinely ambiguous — it collapses
+ * tool/pack/item/ammunition into one bucket with no way to tell which, so
+ * this returns `undefined` for it rather than guessing: `RemoveInventoryItem`
+ * matches strictly on `Type == item.Type`, and a wrong guess would make a
+ * real sell wrongly refuse as `ErrNotInInventory`. `undefined` means "not
+ * sellable until the server exposes the real type," not "assume a type."
+ */
+export function equipmentTypeForKind(kind: string): string | undefined {
+  if (kind === 'weapon') return 'weapon';
+  if (kind === 'armor' || kind === 'shield') return 'armor';
+  return undefined;
 }
