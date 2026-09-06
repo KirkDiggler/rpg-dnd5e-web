@@ -1,5 +1,6 @@
 import {
   ClockKind,
+  ReactChoice,
   Slot,
   Verb,
   type Declaration,
@@ -13,6 +14,10 @@ import {
 } from './actionTooltip';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import {
+  reactionWindowDeclaration,
+  reactionWindowMover,
+} from './reactionWindow';
 import {
   NOT_YOUR_TURN,
   standingActionsBlocked,
@@ -54,6 +59,12 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.DEATH_SAVE) {
     return declaration.deathSave?.name || 'Death Save';
   }
+  // The reaction names itself, exactly as the ability and the weapon do. The
+  // two answers are not labels the server sends — the verb implies them
+  // (`ReactChoice`), so they are written where the panel draws them.
+  if (declaration.verb === Verb.REACT) {
+    return declaration.reaction?.name || 'Reaction';
+  }
   return 'Move';
 }
 
@@ -61,6 +72,7 @@ function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.ATTACK) return '⚔';
   if (declaration.verb === Verb.ACTIVATE) return '✦';
   if (declaration.verb === Verb.DEATH_SAVE) return '✚';
+  if (declaration.verb === Verb.REACT) return '⚡';
   return '➜';
 }
 
@@ -190,7 +202,12 @@ export interface ActionDockProps {
   authorityFresh: boolean;
   endTurnBlocked?: boolean;
   armedDeclarationId?: string;
-  onSelectDeclaration: (declaration: Declaration) => void;
+  /** Roster names, for the one place the dock names somebody who is not the
+   * viewer: the mover an open reaction window is posed against. */
+  memberNames?: ReadonlyMap<string, string>;
+  /** `choice` is sent only for a VERB_REACT declaration, whose two answers
+   * the verb implies rather than the server listing them as candidates. */
+  onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onEndTurn: (declaration: Declaration) => void;
   /** Search, Loot, Hold, Leave — drawn in every clock state, because they
    * are offered in every clock state. What gates them is the TURN, not the
@@ -277,6 +294,7 @@ export function ActionDock({
   authorityFresh,
   endTurnBlocked = false,
   armedDeclarationId,
+  memberNames,
   onSelectDeclaration,
   onEndTurn,
   standingActions = [],
@@ -316,6 +334,75 @@ export function ActionDock({
       </div>
     );
   }
+  // AHEAD OF EVERY "NOT YOUR TURN" RETURN BELOW, because that is precisely
+  // when a reaction window is posed: the mover is a monster, the initiative
+  // is its, and the fight is frozen waiting on THIS viewer's answer. Drawn
+  // under the two returns it would never be drawn at all.
+  //
+  // It replaces the dock rather than joining it. Nothing else is declarable
+  // while a window is open — every other verb comes back with the
+  // WINDOW_OPEN shortfall — so a row of refused buttons beside the question
+  // would only invite clicks that cannot land.
+  const reactionWindow = reactionWindowDeclaration(declarations);
+  if (reactionWindow) {
+    const moverId = reactionWindowMover(reactionWindow);
+    const moverName =
+      (moverId && memberNames?.get(moverId)) || moverId || 'Something';
+    return (
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow} data-testid="reaction-window">
+          <span>{declarationLabel(reactionWindow)}</span>
+          <strong>{moverName} is leaving your reach</strong>
+          <small>
+            {authorityFresh
+              ? 'Strike now, or hold your reaction. The fight waits on you.'
+              : 'Waiting for current Turn and Afford authority.'}
+          </small>
+        </div>
+        <div className={styles.actionGroup} data-testid="reaction-choices">
+          <span className={styles.groupLabel}>Reaction</span>
+          <span className={styles.actionOfferSlot}>
+            <button
+              type="button"
+              className={styles.actionOffer}
+              data-testid="reaction-strike"
+              disabled={!authorityFresh}
+              onClick={() =>
+                onSelectDeclaration(reactionWindow, ReactChoice.STRIKE)
+              }
+            >
+              <span className={styles.actionIcon} aria-hidden="true">
+                {declarationIcon(reactionWindow)}
+              </span>
+              <span className={styles.actionLabel}>Strike</span>
+              <CostBadge slot={reactionWindow.slot} />
+            </button>
+          </span>
+          <span className={styles.actionOfferSlot}>
+            <button
+              type="button"
+              className={styles.actionOffer}
+              data-testid="reaction-hold"
+              disabled={!authorityFresh}
+              onClick={() =>
+                onSelectDeclaration(reactionWindow, ReactChoice.HOLD)
+              }
+            >
+              <span className={styles.actionIcon} aria-hidden="true">
+                ✋
+              </span>
+              {/* HOLDING COSTS NOTHING (plan R1: the reaction is spent when
+                  it is taken), so this button carries no cost badge — one
+                  here would say the refusal is priced. */}
+              <span className={styles.actionLabel}>Hold</span>
+            </button>
+          </span>
+        </div>
+        {standing}
+      </div>
+    );
+  }
+
   if (clock !== ClockKind.TURN) {
     return (
       <div className={styles.actionRow}>

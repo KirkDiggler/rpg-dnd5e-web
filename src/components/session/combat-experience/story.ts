@@ -422,6 +422,28 @@ function buildOtherStory(
       }
       return undefined;
     }
+    // THE FIGHT IS WAITING ON SOMEBODY (rpg-project#316). The step has NOT
+    // happened — `to` is announced, not taken — so this beat narrates the
+    // pause and never the move; the MOVED that follows the answer is where
+    // the mover arrives. The two answers are deliberately not recited here:
+    // the audience reads them off their own VERB_REACT declaration, and a
+    // log that listed them would be a second, staler control surface.
+    case 'windowOpened': {
+      const window = event.body.value;
+      const mover = memberName(window.mover, context);
+      const audience = window.audience
+        .map((id) => memberName(id, context))
+        .join(', ');
+      return Object.freeze({
+        ...base,
+        eyebrow: reactionLabel(window.reaction) ?? 'Reaction',
+        headline: audience
+          ? `${audience} may strike as ${mover} leaves reach`
+          : `${mover} leaves reach`,
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'turn',
+      });
+    }
     case 'struck':
     case 'missed':
     case 'doorRevealed':

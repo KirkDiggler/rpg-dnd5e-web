@@ -2,6 +2,7 @@ import { useSessionActivate } from '@/api/useSessionActivate';
 import { useSessionAttack } from '@/api/useSessionAttack';
 import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
+import { useSessionReact } from '@/api/useSessionReact';
 import type { SessionRefreshKey } from '@/components/session/useCoalescedSessionRefreshes';
 import type {
   DicePresentationEvent,
@@ -12,6 +13,7 @@ import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e
 import {
   ClockKind,
   DeathSaveContinuation,
+  ReactChoice,
   TargetKind,
   Verb,
   type Declaration,
@@ -89,7 +91,9 @@ export interface UseSessionCombatExperienceResult {
   diceRollerName: string;
   pacingNotice: string | null;
   endTurnBlocked: boolean;
-  onSelectDeclaration: (declaration: Declaration) => void;
+  /** `choice` is supplied only for a VERB_REACT declaration: the answer to
+   * an open reaction window. */
+  onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onTargetClick: (target: string) => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
@@ -184,6 +188,7 @@ export function useSessionCombatExperience({
   const automaticEndTurnRef = useRef(false);
   const manualEndTurnBlockedRef = useRef(false);
   const activateInFlightRef = useRef(false);
+  const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
   const staleRecoveryRef = useRef<StaleRecovery | null>(null);
@@ -225,6 +230,7 @@ export function useSessionCombatExperience({
   const { deathSave } = useSessionDeathSave();
   const { activate } = useSessionActivate();
   const { endTurn } = useSessionEndTurn();
+  const { react } = useSessionReact();
 
   const invalidateAuthority = useCallback(() => {
     authorityRef.current = { ...authorityRef.current, fresh: false };
@@ -350,13 +356,71 @@ export function useSessionCombatExperience({
   }, [active, clock, member]);
 
   const onSelectDeclaration = useCallback(
-    (candidate: Declaration) => {
+    (candidate: Declaration, choice?: ReactChoice) => {
+      // THE ONE VERB THAT IS NOT DECLARED ON ITS OWNER'S TURN. Every other
+      // offer here is gated on the initiative standing with this member,
+      // which is exactly the state a reaction window is NOT in: the mover
+      // holds the turn and the fight is frozen on this viewer's answer. The
+      // freshness gate stays — an answer echoed from a stale Afford is still
+      // a stale selector, and the server refuses it — and so does the TURN
+      // clock, because no window is posed on the world clock.
+      const answeringWindow = candidate.verb === Verb.REACT;
       if (
         !mountedRef.current ||
         !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member
+        (!answeringWindow && authorityRef.current.active !== member)
       ) {
+        return;
+      }
+
+      if (answeringWindow) {
+        // UNSPECIFIED IS NOT A DEFAULT. The dock sends one of the two
+        // answers or nothing at all; guessing here would swing a reaction
+        // the player never chose.
+        if (choice === undefined || choice === ReactChoice.UNSPECIFIED) return;
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.REACT,
+          TargetKind.MEMBER
+        );
+        if (!current || reactInFlightRef.current) return;
+        reactInFlightRef.current = true;
+        setInteraction(EMPTY_INTERACTION);
+        setTargeting(false);
+        void (async () => {
+          try {
+            await react({
+              session,
+              member,
+              declarationId: current.id,
+              choice,
+            });
+            if (!mountedRef.current) return;
+            invalidateAuthority();
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          } catch (error) {
+            if (!mountedRef.current) return;
+            if (isStaleDeclarationRefusal(error)) {
+              recoverStaleDeclaration(current.id, Verb.REACT);
+            } else {
+              // Ambiguous either way: the answer may have committed and
+              // resumed the turn before the response was lost. Fail closed,
+              // keep the message, reconcile, and never retry — a replayed
+              // answer would be a second swing.
+              const notice = `Reaction failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              invalidateAuthority();
+              setInteraction({
+                ...EMPTY_INTERACTION,
+                changedOptionNotice: notice,
+              });
+              scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+            }
+          } finally {
+            reactInFlightRef.current = false;
+          }
+        })();
         return;
       }
 
@@ -476,6 +540,7 @@ export function useSessionCombatExperience({
       invalidateAuthority,
       member,
       presentation,
+      react,
       recoverStaleDeclaration,
       scheduleRefresh,
       session,

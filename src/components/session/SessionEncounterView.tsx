@@ -76,6 +76,10 @@ import {
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
 import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
+import {
+  reactionWindowDeclaration,
+  reactionWindowMover,
+} from './combat-experience/reactionWindow';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
 import { useDeathSaveTruthHold } from './deathSaveTruthHold';
@@ -446,6 +450,14 @@ function SessionEncounterScope({
     turnClock === affordClock ? turnClock : ClockKind.UNSPECIFIED;
   const coherentDeclarations =
     experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations;
+  // WHO THE CANVAS RINGS WHILE THE FIGHT IS FROZEN. Read from the viewer's
+  // OWN declarations and nowhere else: a member who was not offered the
+  // window has nothing to answer and sees no ring, which is the same rule
+  // the dock's panel follows. Undefined at every other moment.
+  const reactionWindow = reactionWindowDeclaration(coherentDeclarations);
+  const reactionMover = reactionWindow
+    ? reactionWindowMover(reactionWindow)
+    : undefined;
   // A path preview is actionable only with coherent Move authority. Known
   // WORLD/WORLD uses the valid empty selector and remains unlocked; partial,
   // mismatched, missing, or duplicate authority is shown as locked rather than
@@ -1626,6 +1638,7 @@ function SessionEncounterScope({
                   attackableTargets={
                     runEnded === null ? [...attackableTargets] : []
                   }
+                  reactionMover={runEnded === null ? reactionMover : undefined}
                   pathIndex={lastGoodPathIndexRef.current}
                   turnLocked={turnLocked}
                   movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
