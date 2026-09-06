@@ -11,6 +11,7 @@ const INVENTORY: VendorStockEntry[] = [
     displayName: 'Longsword',
     stockMode: VendorStockMode.LIMITED,
     quantity: 1,
+    price: { copper: 1500 },
   },
   {
     equipmentType: 'weapon',
@@ -18,12 +19,14 @@ const INVENTORY: VendorStockEntry[] = [
     displayName: 'Longbow',
     stockMode: VendorStockMode.LIMITED,
     quantity: 1,
+    price: { copper: 5000 },
   },
   {
     equipmentType: 'ammunition',
     equipmentId: 'arrows',
     displayName: 'Arrows',
     stockMode: VendorStockMode.UNLIMITED,
+    price: { copper: 100 },
   },
 ] as unknown as VendorStockEntry[];
 
@@ -58,11 +61,42 @@ describe('VendorPopover', () => {
     expect(screen.getByTestId('vendor-stock-longsword').textContent).toContain(
       '1 left'
     );
+    expect(screen.getByTestId('vendor-stock-longsword').textContent).toContain(
+      '1 pp 5 gp'
+    );
     expect(screen.getByTestId('vendor-stock-arrows').textContent).toContain(
       'Arrows'
     );
     expect(screen.getByTestId('vendor-stock-arrows').textContent).toContain(
       'Always in stock'
+    );
+    expect(screen.getByTestId('vendor-stock-arrows').textContent).toContain(
+      '1 gp'
+    );
+  });
+
+  it('shows the player wallet in the header when provided, and nothing when omitted', () => {
+    const { rerender } = render(
+      <VendorPopover
+        open
+        displayName="Demo Merchant"
+        inventory={INVENTORY}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.queryByTestId('vendor-wallet')).toBeNull();
+
+    rerender(
+      <VendorPopover
+        open
+        displayName="Demo Merchant"
+        inventory={INVENTORY}
+        onClose={vi.fn()}
+        walletCopper={235}
+      />
+    );
+    expect(screen.getByTestId('vendor-wallet').textContent).toContain(
+      '2 gp 3 sp 5 cp'
     );
   });
 
@@ -125,7 +159,7 @@ describe('VendorPopover', () => {
       expect(onBuy).not.toHaveBeenCalled();
       expect(
         screen.getByTestId('vendor-buy-confirm-longsword').textContent
-      ).toContain('Buy Longsword?');
+      ).toContain('Buy Longsword for 1 pp 5 gp?');
     });
 
     it('Confirm calls onBuy with the exact row entry and clears the pending state', () => {
@@ -183,7 +217,7 @@ describe('VendorPopover', () => {
       expect(screen.queryByTestId('vendor-buy-confirm-longsword')).toBeNull();
       expect(
         screen.getByTestId('vendor-buy-confirm-longbow').textContent
-      ).toContain('Buy Longbow?');
+      ).toContain('Buy Longbow for 5 pp?');
     });
 
     it('disables Buy for a LIMITED row that has hit zero', () => {
@@ -194,6 +228,7 @@ describe('VendorPopover', () => {
           displayName: 'Longsword',
           stockMode: VendorStockMode.LIMITED,
           quantity: 0,
+          price: { copper: 1500 },
         } as unknown as VendorStockEntry,
       ];
       render(
@@ -209,6 +244,33 @@ describe('VendorPopover', () => {
         (
           screen.getByRole('button', {
             name: 'Buy Longsword',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+    });
+
+    it('disables Buy for a row with no server-computed price, even with stock', () => {
+      const unpriced: VendorStockEntry[] = [
+        {
+          equipmentType: 'ammunition',
+          equipmentId: 'arrows',
+          displayName: 'Arrows',
+          stockMode: VendorStockMode.UNLIMITED,
+        } as unknown as VendorStockEntry,
+      ];
+      render(
+        <VendorPopover
+          open
+          displayName="Demo Merchant"
+          inventory={unpriced}
+          onClose={vi.fn()}
+          onBuy={vi.fn()}
+        />
+      );
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Buy Arrows',
           }) as HTMLButtonElement
         ).disabled
       ).toBe(true);

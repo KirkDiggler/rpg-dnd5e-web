@@ -8,6 +8,7 @@
  * RPC wiring.
  */
 
+import { refId } from '@/utils/refs';
 import { create } from '@bufbuild/protobuf';
 import type { EntityState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
@@ -1014,7 +1015,7 @@ describe('buildCryptMoodLights (rpg-dnd5e-web#558 crypt spike, mood-lighting pas
     for (const ref of DUNGEON_LIGHT_SOURCE_REFS) {
       const spec = dungeonLightSourceSpec(ref);
       expect(spec).toBeDefined();
-      const propRefId = ref.split(':').pop()!;
+      const propRefId = refId(ref)!;
       const [light] = buildCryptMoodLights([
         {
           entityId: propRefId,

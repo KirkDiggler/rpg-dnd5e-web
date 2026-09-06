@@ -5,6 +5,7 @@
  * read-only mirror.
  */
 import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
+import { refId } from '@/utils/refs';
 import type { FieldError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useState } from 'react';
 import {
@@ -1399,7 +1400,7 @@ function IntelPanel({
                   <span className="opacity-60">
                     {' '}
                     · {isMonsterRef(carrier.ref) ? 'monster' : 'prop'} ·{' '}
-                    {carrier.ref.split(':').pop()}
+                    {refId(carrier.ref) ?? carrier.ref}
                   </span>
                 </label>
               );

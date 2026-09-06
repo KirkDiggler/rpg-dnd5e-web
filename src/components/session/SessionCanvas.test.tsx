@@ -2852,6 +2852,88 @@ describe('SessionScene', () => {
       },
     ];
 
+    it('renders the exact tomb demo WORLD member with the bartender GLB', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={worldMember}
+        />
+      );
+      expect(
+        renderer.scene.findAll(
+          (node) =>
+            (node.instance as THREE.Object3D).name ===
+            '/models/synty/npcs/bartender-01.glb'
+        )
+      ).toHaveLength(1);
+      await renderer.unmount();
+    });
+
+    it.each([
+      ['same name, other NPC', MemberKind.WORLD, 'another-person'],
+      ['similar id, other NPC', MemberKind.WORLD, 'demo-merchant-2'],
+      ['same id, player', MemberKind.PLAYER, 'demo-merchant-1'],
+      ['same id, monster', MemberKind.MONSTER, 'demo-merchant-1'],
+    ])(
+      'does not give %s the demo appearance',
+      async (_label, kind, subject) => {
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName="Fighter"
+            classRefId={undefined}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+            otherMembers={[{ ...worldMember[0]!, kind, subject }]}
+          />
+        );
+        expect(
+          renderer.scene.findAll(
+            (node) =>
+              (node.instance as THREE.Object3D).name ===
+              '/models/synty/npcs/bartender-01.glb'
+          )
+        ).toHaveLength(0);
+        await renderer.unmount();
+      }
+    );
+
+    it('keeps NPC interaction routing when the bartender asset cannot load', async () => {
+      gltfMockState.failedUrls.add('/models/synty/npcs/bartender-01.glb');
+      const onInteractClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={worldMember}
+          onInteractClick={onInteractClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+      expect(onInteractClick).toHaveBeenCalledWith('demo-merchant-1');
+      expect(onEntityClick).not.toHaveBeenCalled();
+      expect(
+        renderer.scene.findAll(
+          (node) =>
+            (node.instance as THREE.Object3D).name ===
+            '/models/synty/npcs/bartender-01.glb'
+        )
+      ).toHaveLength(0);
+      await renderer.unmount();
+    });
+
     it('clicking a WORLD-kind member fires onInteractClick, never onEntityClick or onHexClick — it is never an attack candidate', async () => {
       const onHexClick = vi.fn();
       const onEntityClick = vi.fn();
