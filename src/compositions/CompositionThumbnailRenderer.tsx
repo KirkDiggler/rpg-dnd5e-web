@@ -6,6 +6,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   type ReactNode,
 } from 'react';
@@ -83,6 +84,20 @@ function CaptureFrame({
   return null;
 }
 
+function ResetCaptureCamera() {
+  const { camera } = useThree();
+
+  useLayoutEffect(() => {
+    camera.position.set(2, 1.6, 2.6);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+    camera.updateProjectionMatrix();
+  }, [camera]);
+
+  return null;
+}
+
 interface ThumbnailCaptureRequestProps {
   composition: Composition;
   requestKey: string;
@@ -129,7 +144,8 @@ function ThumbnailCaptureRequest({
   return (
     <CaptureBoundary fallback={<group />} onError={fail}>
       <Suspense fallback={null}>
-        <Bounds fit clip margin={1.35}>
+        <ResetCaptureCamera />
+        <Bounds fit clip margin={1.35} maxDuration={0}>
           <CompositionModel
             composition={composition}
             instanceId={`thumbnail-${composition.id}`}
@@ -147,6 +163,7 @@ export interface CompositionThumbnailRendererProps {
   requestKey: string;
   onComplete: (requestKey: string, image: string) => void;
   onError: (requestKey: string, message: string) => void;
+  onRootError: (message: string) => void;
 }
 
 /**
@@ -160,7 +177,13 @@ export function CompositionThumbnailRenderer({
   requestKey,
   onComplete,
   onError,
+  onRootError,
 }: CompositionThumbnailRendererProps) {
+  const reportRootError = useCallback(
+    (error: Error) => onRootError(error.message),
+    [onRootError]
+  );
+
   return (
     <div
       aria-hidden="true"
@@ -173,10 +196,7 @@ export function CompositionThumbnailRenderer({
         pointerEvents: 'none',
       }}
     >
-      <CaptureBoundary
-        fallback={null}
-        onError={(error) => onError(requestKey, error.message)}
-      >
+      <CaptureBoundary fallback={null} onError={reportRootError}>
         <Canvas
           camera={{ fov: 32, position: [2, 1.6, 2.6] }}
           dpr={1}

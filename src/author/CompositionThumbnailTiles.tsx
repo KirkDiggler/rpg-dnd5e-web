@@ -3,7 +3,7 @@ import { compositionThumbnailKey } from '@/compositions/compositionThumbnailKey'
 import { CompositionThumbnailRenderer } from '@/compositions/CompositionThumbnailRenderer';
 import { refInitials, refLabel } from '@/utils/refs';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardTool, PaletteItem } from './types';
 
 interface ThumbnailResult {
@@ -55,6 +55,8 @@ export function CompositionThumbnailTiles({
   );
   const desiredKeysRef = useRef(desiredKeys);
   desiredKeysRef.current = desiredKeys;
+  const supportedRef = useRef(supported);
+  supportedRef.current = supported;
   const [results, setResults] = useState<Record<string, ThumbnailResult>>({});
 
   useEffect(() => {
@@ -66,12 +68,31 @@ export function CompositionThumbnailTiles({
   }, [desiredKeys]);
 
   const active = supported.find((entry) => results[entry.key] === undefined);
-  const recordResult = (key: string, result: ThumbnailResult) => {
+  const recordResult = useCallback((key: string, result: ThumbnailResult) => {
     if (!desiredKeysRef.current.has(key)) return;
     setResults((current) =>
       current[key] === undefined ? { ...current, [key]: result } : current
     );
-  };
+  }, []);
+  const recordComplete = useCallback(
+    (key: string, image: string) =>
+      recordResult(key, { status: 'ready', image }),
+    [recordResult]
+  );
+  const recordError = useCallback(
+    (key: string, message: string) =>
+      recordResult(key, { status: 'error', message }),
+    [recordResult]
+  );
+  const recordRootError = useCallback((message: string) => {
+    setResults((current) => {
+      const next = { ...current };
+      for (const entry of supportedRef.current) {
+        next[entry.key] ??= { status: 'error', message };
+      }
+      return next;
+    });
+  }, []);
 
   return (
     <>
@@ -144,12 +165,9 @@ export function CompositionThumbnailTiles({
         <CompositionThumbnailRenderer
           composition={active.composition}
           requestKey={active.key}
-          onComplete={(key, image) =>
-            recordResult(key, { status: 'ready', image })
-          }
-          onError={(key, message) =>
-            recordResult(key, { status: 'error', message })
-          }
+          onComplete={recordComplete}
+          onError={recordError}
+          onRootError={recordRootError}
         />
       )}
     </>
