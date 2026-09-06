@@ -5,8 +5,10 @@ import {
   addFaction,
   addIntel,
   addRegion,
+  addScenario,
   addWall,
   applyDerivedConcealment,
+  clearScenarioBinding,
   deriveConcealment,
   detectConcealmentLeaks,
   doorCrossing,
@@ -1774,7 +1776,10 @@ describe('scenario bindings (rpg-project#368 §3.2)', () => {
     expect(emitDungeon(a)).toBe(emitDungeon(b));
   });
 
-  it('unbinds a field on an empty value, and drops the scenario with its last one', () => {
+  it('unbinds a field on an empty value and leaves the scenario bound', () => {
+    // Emptying the last blank used to delete the scenario. It no longer
+    // does: the author's Remove is what unbinds one, and a form that
+    // vanished while its blank was being changed would be the surprise.
     let doc = setScenarioBinding(
       twoPlacements(),
       'recover-the-artifact',
@@ -1787,8 +1792,56 @@ describe('scenario bindings (rpg-project#368 §3.2)', () => {
       'recover-the-artifact': { artifact: 'heirloom' },
     });
     doc = setScenarioBinding(doc, 'recover-the-artifact', 'artifact', '');
+    expect(doc.scenarios).toEqual({ 'recover-the-artifact': {} });
+    // And the file says so, so the compiler asks for the blank rather than
+    // reading a dungeon that binds nothing.
+    expect(emitDungeon(doc)).toContain('  recover-the-artifact: {}');
+  });
+
+  it('clearing a blank on a scenario nobody bound binds nothing', () => {
+    const doc = setScenarioBinding(twoPlacements(), 'hold-out', 'convince', '');
     expect(doc.scenarios).toEqual({});
     expect(emitDungeon(doc)).not.toContain('scenarios:');
+  });
+
+  it('adds a scenario with its blanks unfilled, and adding twice keeps what is filled in', () => {
+    let doc = addScenario(twoPlacements(), 'hold-out');
+    expect(doc.scenarios).toEqual({ 'hold-out': {} });
+    expect(roundTrips(doc)).toContain('scenarios:\n  hold-out: {}');
+    doc = setScenarioBinding(doc, 'hold-out', 'convince', 'raiders');
+    doc = addScenario(doc, 'hold-out');
+    expect(doc.scenarios).toEqual({ 'hold-out': { convince: 'raiders' } });
+  });
+
+  it('holds several scenarios at once — the map is not a radio', () => {
+    let doc = addScenario(twoPlacements(), 'hold-out');
+    doc = addScenario(doc, 'recover-the-artifact');
+    expect(Object.keys(doc.scenarios).sort()).toEqual([
+      'hold-out',
+      'recover-the-artifact',
+    ]);
+  });
+
+  it('removes one scenario, blanks and all, and leaves the others standing', () => {
+    let doc = setScenarioBinding(
+      twoPlacements(),
+      'hold-out',
+      'convince',
+      'raiders'
+    );
+    doc = addScenario(doc, 'recover-the-artifact');
+    doc = clearScenarioBinding(doc, 'hold-out');
+    expect(doc.scenarios).toEqual({ 'recover-the-artifact': {} });
+    expect(emitDungeon(doc)).not.toContain('hold-out');
+    // The last one out takes the whole key with it.
+    doc = clearScenarioBinding(doc, 'recover-the-artifact');
+    expect(doc.scenarios).toEqual({});
+    expect(emitDungeon(doc)).not.toContain('scenarios:');
+  });
+
+  it('removing a scenario nobody bound changes nothing', () => {
+    const doc = twoPlacements();
+    expect(clearScenarioBinding(doc, 'hold-out')).toBe(doc);
   });
 
   it('carries a key this build has never heard of, unchanged', () => {
