@@ -85,8 +85,11 @@ describe('featureIcons', () => {
       expect(parseSourceCategory('nocolon')).toBeNull();
     });
 
-    it('handles two-part strings', () => {
-      expect(parseSourceCategory('dnd5e:classes')).toBe('classes');
+    // A ref is `module:type:id` (rpg-dnd5e-web#947). `dnd5e:classes` names
+    // no id, so it is not a ref and has no category — the shared parser
+    // refuses it rather than reading a middle field out of half a ref.
+    it('returns null for a two-part string, which is not a ref', () => {
+      expect(parseSourceCategory('dnd5e:classes')).toBeNull();
     });
   });
 

@@ -16,6 +16,7 @@
  * (`factionRules.ts`), so the same sentence renders here whether the
  * predicate sits on a disposition or on a placement.
  */
+import { refId } from '@/utils/refs';
 import {
   namedMonsters,
   PARTY,
@@ -258,7 +259,7 @@ function DownPicker({
       {value === '' && <option value="">(pick a monster)</option>}
       {monsters.map((m) => (
         <option key={m.id} value={m.id}>
-          {m.id} · {m.ref.split(':').pop()}
+          {m.id} · {refId(m.ref) ?? m.ref}
         </option>
       ))}
     </select>

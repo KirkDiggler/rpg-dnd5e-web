@@ -233,12 +233,21 @@ describe('exitAt — which way out the member is standing on', () => {
 });
 
 describe('propLabel', () => {
-  it('reads the ref’s last segment as words', () => {
+  it('reads the ref’s id as words', () => {
     expect(propLabel({ id: 'heirloom', ref: 'dnd5e:props:reliquary' })).toBe(
       'reliquary'
     );
     expect(propLabel({ id: 'x', ref: 'dnd5e:props:statue-reaper' })).toBe(
       'statue reaper'
+    );
+  });
+
+  it('reads every part of a multi-part id, so families stay apart', () => {
+    expect(
+      propLabel({ id: 'toy', ref: 'dnd5e:props:plushie:skeleton-dog' })
+    ).toBe('plushie skeleton dog');
+    expect(propLabel({ id: 'a', ref: 'dnd5e:props:chest:small' })).not.toBe(
+      propLabel({ id: 'b', ref: 'dnd5e:props:crate:small' })
     );
   });
 

@@ -20,6 +20,7 @@
  * cannot represent (wrong version, unknown keys, non-numeric cells).
  */
 
+import { refSlug } from '@/utils/refs';
 import { parse as parseYamlText } from 'yaml';
 import {
   isPositionOffset,
@@ -2822,14 +2823,17 @@ export function placementIds(doc: DungeonDoc): Map<string, number> {
   return ids;
 }
 
-/** A slug the author is OFFERED for a placement's id, from its ref's last
- * segment — `dnd5e:props:reliquary` suggests `reliquary`. Suffixed only
+/** A slug the author is OFFERED for a placement's id, from its ref's id —
+ * `dnd5e:props:reliquary` suggests `reliquary`, and a multi-part id comes
+ * through whole so `dnd5e:props:plushie:skeleton-dog` suggests
+ * `plushie-skeleton-dog` rather than colliding with every other
+ * `skeleton-dog` variant. Suffixed only
  * when that name is already taken, so the first reliquary is `reliquary`
  * and the second is `reliquary-2`. Never applied on its own: the panel
  * shows it and the author accepts or renames it (design: "the panel
  * suggests a slug from the ref, the author may rename"). */
 export function suggestPlacementId(doc: DungeonDoc, ref: string): string {
-  const base = (ref.split(':').pop() ?? 'thing').toLowerCase();
+  const base = refSlug(ref) ?? 'thing';
   const taken = placementIds(doc);
   if (!taken.has(base)) return base;
   let n = 2;
