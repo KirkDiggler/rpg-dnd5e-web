@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EquippedMap, ItemLike } from './equipmentTypes';
-import { computeCarried, equipmentTypeForKind } from './equipmentTypes';
+import { computeCarried } from './equipmentTypes';
 
 const LONGSWORD: ItemLike = {
   ref: { module: 'dnd5e', type: 'item', id: 'longsword' },
@@ -8,6 +8,7 @@ const LONGSWORD: ItemLike = {
   statLine: '1d8 slashing · versatile',
   iconKey: '',
   kind: 'weapon',
+  equipmentType: 'weapon',
   slotKeys: ['main_hand', 'off_hand'],
   quantity: 2,
 };
@@ -52,24 +53,5 @@ describe('computeCarried', () => {
     expect(computeCarried([single], {})).toEqual([
       { item: single, carriedCount: 1, showCount: false },
     ]);
-  });
-});
-
-describe('equipmentTypeForKind', () => {
-  it('maps weapon losslessly', () => {
-    expect(equipmentTypeForKind('weapon')).toBe('weapon');
-  });
-
-  it('maps armor and shield both to the real "armor" EquipmentType', () => {
-    expect(equipmentTypeForKind('armor')).toBe('armor');
-    expect(equipmentTypeForKind('shield')).toBe('armor');
-  });
-
-  it('returns undefined for the ambiguous "gear" bucket rather than guessing', () => {
-    expect(equipmentTypeForKind('gear')).toBeUndefined();
-  });
-
-  it('returns undefined for any unrecognized kind', () => {
-    expect(equipmentTypeForKind('mystery')).toBeUndefined();
   });
 });

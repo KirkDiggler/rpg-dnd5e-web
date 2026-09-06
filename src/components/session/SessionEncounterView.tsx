@@ -24,6 +24,7 @@ import { useSessionRoster } from '@/api/useSessionRoster';
 import { useSessionSearch } from '@/api/useSessionSearch';
 import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
+import { useSessionUnpack } from '@/api/useSessionUnpack';
 import { useSessionView } from '@/api/useSessionView';
 import { useSessionWhere } from '@/api/useSessionWhere';
 import { useUnequipItem } from '@/api/useUnequipItem';
@@ -57,10 +58,7 @@ import { createPortal } from 'react-dom';
 import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
-import {
-  computeCarried,
-  equipmentTypeForKind,
-} from '../game/equipment/equipmentTypes';
+import { computeCarried } from '../game/equipment/equipmentTypes';
 import { coordToKey, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
@@ -235,10 +233,12 @@ function SessionEncounterScope({
   const { unequipItem, loading: unequipping } = useUnequipItem();
   const { interact } = useSessionInteract();
   const { trade, loading: tradeLoading } = useSessionTrade();
+  const { unpack, loading: unpacking } = useSessionUnpack();
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  const [unpackNotice, setUnpackNotice] = useState<string | null>(null);
   /** The one line the loot/hold/leave verbs answer with — a refusal in the
    * server's own words, or nothing. Never an outcome: what a loot found
    * arrives as its own beat (design P3), and what a departure meant
@@ -1202,15 +1202,15 @@ function SessionEncounterScope({
   // Vendor sale (rpg-toolkit#1537) — the mirror of handleVendorBuy above.
   // ONE UNIT PER CLICK, same correction as Buy: a carried stack's full
   // count is not how many to sell — repeat clicks sell more, one at a
-  // time, no quantity picker this wave. `equipmentTypeForKind` returning
-  // undefined (a "gear"-kind item) is a real guard, not defense in depth:
-  // `sellableItems` already excludes these, but this stays authoritative
-  // rather than trusting the popover never calls back with one.
+  // time, no quantity picker this wave. `item.equipmentType` is the
+  // real `shared.EquipmentType` now (rpg-api-protos#301), not the
+  // lossy display `kind` — every carried item has one, so no
+  // "can't resolve type" guard is needed here anymore.
   const handleVendorSell = useCallback(
     (item: ItemLike) => {
-      const equipmentType = equipmentTypeForKind(item.kind);
+      const equipmentType = item.equipmentType;
       const unitPrice = item.price;
-      if (!member || !activeVendor || !equipmentType || !unitPrice) return;
+      if (!member || !activeVendor || !unitPrice) return;
       const quantity = 1;
       // `ItemLike.price` is deliberately a plain `{copper}` shape
       // (equipmentTypes.ts's own "no generated proto types" rule, so the
@@ -1360,6 +1360,26 @@ function SessionEncounterScope({
   const handleEquipIntent = useCallback(
     async (intent: EquipIntent) => {
       if (!member) return;
+      if (intent.kind === 'Unpack') {
+        // SessionService.Unpack (rpg-toolkit#1546) — no counterparty, no
+        // reach, no story beat, and (unlike EquipItem/UnequipItem)
+        // UnpackResponse carries no CharacterData to apply directly, so
+        // a refetch is the only way to see the unpacked contents land.
+        setUnpackNotice(null);
+        try {
+          await unpack({
+            session: sessionId,
+            actor: member,
+            itemId: intent.ref.id,
+            quantity: intent.quantity,
+          });
+          setUnpackNotice(`Unpacked ${intent.name}.`);
+          void refetchCharacterData();
+        } catch (error) {
+          setUnpackNotice(errorMessage(error));
+        }
+        return;
+      }
       try {
         const response =
           intent.kind === 'EquipItem'
@@ -1382,7 +1402,15 @@ function SessionEncounterScope({
         // state remains visible until the player retries.
       }
     },
-    [equipItem, member, replaceCharacterData, unequipItem]
+    [
+      equipItem,
+      member,
+      refetchCharacterData,
+      replaceCharacterData,
+      sessionId,
+      unequipItem,
+      unpack,
+    ]
   );
 
   const ownRoster = roster.get(member);
@@ -1417,17 +1445,15 @@ function SessionEncounterScope({
       ),
     [visibleCharacterData?.inventory]
   );
-  // Sellable this wave: carried (unequipped), with a resolvable real
-  // equipment type AND a server-computed price. "gear"-kind items
-  // (tools, packs, ammunition, misc) are excluded — see
-  // `equipmentTypeForKind`'s own doc comment for why guessing their type
-  // would be a real correctness bug, not a cosmetic gap.
+  // Sellable: carried (unequipped) with a server-computed price.
+  // `equipmentType` (rpg-api-protos#301) is always present now, so
+  // there's no "gear-kind items excluded" restriction anymore — that
+  // was only ever a stand-in for the missing real type, not a design
+  // choice about what should be sellable.
   const sellableItems = useMemo(
     () =>
       computeCarried(ownedItems, visibleCharacterData?.equipped ?? {}).filter(
-        ({ item }) =>
-          equipmentTypeForKind(item.kind) !== undefined &&
-          item.price !== undefined
+        ({ item }) => item.price !== undefined
       ),
     [ownedItems, visibleCharacterData?.equipped]
   );
@@ -1668,6 +1694,7 @@ function SessionEncounterScope({
             {searchNotice && <span>{searchNotice}</span>}
             {holdingNotice && <span>{holdingNotice}</span>}
             {vendorNotice && <span>{vendorNotice}</span>}
+            {unpackNotice && <span>{unpackNotice}</span>}
           </div>
 
           <div
@@ -1698,7 +1725,7 @@ function SessionEncounterScope({
                 }
                 mainHandDamage={visibleCharacterData.mainHandDamage}
                 onIntent={(intent) => void handleEquipIntent(intent)}
-                busy={equipping || unequipping}
+                busy={equipping || unequipping || unpacking}
                 walletCopper={visibleCharacterData.wallet?.copper}
               />
             )}

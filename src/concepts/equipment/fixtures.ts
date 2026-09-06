@@ -77,6 +77,10 @@ const item = (
   ref: { module: 'dnd5e', type: 'item', id },
   name,
   kind,
+  // Not meaningful here — this bench never exercises Sell, the only real
+  // consumer of equipmentType. Reusing `kind` avoids a second parameter
+  // nobody would read.
+  equipmentType: kind,
   statLine,
   iconKey,
   slotKeys,
@@ -307,6 +311,11 @@ export function applyIntent(
   const next = { ...equipped };
   if (intent.kind === 'UnequipItem') {
     delete next[intent.slotKey];
+    return next;
+  }
+  if (intent.kind === 'Unpack') {
+    // This fixture bench models equip state only, not inventory/packs —
+    // Unpack has no equip-state effect to simulate here.
     return next;
   }
   const it = items.find((i) => i.ref.id === intent.ref.id);

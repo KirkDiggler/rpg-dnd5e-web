@@ -16,6 +16,7 @@ const ITEMS: ItemLike[] = [
     statLine: '1d8 slashing · versatile',
     iconKey: 'icons/weapons/longsword.png',
     kind: 'weapon',
+    equipmentType: 'weapon',
     slotKeys: ['main_hand', 'off_hand'],
     quantity: 2,
   },

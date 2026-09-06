@@ -101,6 +101,7 @@ function testEquipment(
         statLine: '1d8 slashing',
         iconKey: '',
         kind: 'weapon',
+        equipmentType: 'weapon',
         slotKeys: ['main_hand', 'off_hand'],
         quantity: 1,
       },
