@@ -371,6 +371,52 @@ describe("DungeonBuilder — the right rail is the author's to control", () => {
     window.localStorage.clear();
   });
 
+  it('stays on its tab when a wall is deleted — a delete is not a selection', () => {
+    // The thing the rail would open on is the thing that just went away,
+    // so an author reading the file keeps reading the file.
+    window.localStorage.clear();
+    railBuilder();
+    fireEvent.click(tab('Source'));
+    expect(document.querySelectorAll('[data-wall]')).toHaveLength(2);
+
+    // jsdom has no layout and no geometry interfaces, so the board's
+    // screen→SVG transform is stubbed as the IDENTITY it effectively is
+    // here: a client point is a point on the board. Everything the gesture
+    // then does — the hit test, the delete, the rail — is the real code.
+    const identity = { inverse: () => identity };
+    vi.stubGlobal(
+      'DOMPoint',
+      class {
+        constructor(
+          readonly x: number,
+          readonly y: number
+        ) {}
+        matrixTransform() {
+          return { x: this.x, y: this.y };
+        }
+      }
+    );
+    const svg = document.querySelector('svg') as SVGSVGElement;
+    (svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () =>
+      identity;
+    const wall = document.querySelector('[data-wall]')!;
+    const at = (n: string) => Number(wall.getAttribute(n));
+    fireEvent.click(screen.getByRole('button', { name: 'Wall' }));
+    // Shift on a wall is the eraser (CreationBoard's own gesture).
+    fireEvent.pointerDown(document.querySelector('[data-cell]')!, {
+      button: 0,
+      shiftKey: true,
+      clientX: (at('x1') + at('x2')) / 2,
+      clientY: (at('y1') + at('y2')) / 2,
+    });
+
+    // It really deleted — otherwise the tab assertion below could not fail.
+    expect(document.querySelectorAll('[data-wall]')).toHaveLength(1);
+    expect(tab('Source').getAttribute('aria-selected')).toBe('true');
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
   it('offers a resize handle that reports itself to assistive tech', () => {
     render(
       <DungeonBuilder

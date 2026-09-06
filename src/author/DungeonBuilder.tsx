@@ -539,9 +539,14 @@ export function DungeonBuilder({
       return next;
     });
   };
+  /** Shift-click on a wall removes it. NOT `selectOnCanvas`: a delete is
+   * not a selection. It asks nothing the inspector answers — the thing the
+   * rail would open on is gone — so an author reading the file keeps
+   * reading the file. Falling back to the dungeon is only so the wall
+   * panel stops describing a wall that is no longer there. */
   const handleWallDelete = (index: number) => {
     applyDoc((d) => removeWalls(d, [index]));
-    selectOnCanvas({ kind: 'dungeon' });
+    setSelection({ kind: 'dungeon' });
   };
   /** A door is a position on a wall (design §2.8). Toggling, and the
    * new door is selected so its lock and concealment are to hand. */
