@@ -81,6 +81,15 @@ export function refreshKeysFor(
     // changed; the fight that dissolves because of it has its own row.
     case 'stanceChanged':
       return ['afford', 'view'];
+    // A REACTION WINDOW OPENED AND THE SEAM IS FROZEN ON ITS ANSWER
+    // (rpg-project#316). `afford` is what the beat is FOR: the audience's
+    // new VERB_REACT offer and everyone else's WINDOW_OPEN shortfalls are
+    // both only in Afford. `view` rides along because the canvas rings the
+    // mover from the audience's own declaration and needs its cell. `turn`
+    // is not here — the initiative has not moved, the turn is paused inside
+    // itself — though the route refreshes it on every beat anyway.
+    case 'windowOpened':
+      return ['afford', 'view'];
     // A RESERVED PLACEMENT ENTERED THE RUN: patch the one view it lands in
     // (`Arrived`'s own doc comment — a monster re-pulls GetRoster as JOINED
     // does, a prop re-pulls GetAtlas), and the sight it may now be in.

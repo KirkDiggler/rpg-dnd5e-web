@@ -42,6 +42,7 @@ function ResultEntry({ result }: { result: CombatExperienceAttackOutcome }) {
   return (
     <article className={`${styles.storyEntry} ${styles.storyResult}`}>
       <span>
+        {result.reaction ? `${result.reaction} · ` : ''}
         {result.actor} · {result.action}
       </span>
       <strong>

@@ -7,6 +7,7 @@ import type {
   ClockKind,
   Declaration,
   Participant,
+  ReactChoice,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { ReactNode } from 'react';
@@ -55,6 +56,11 @@ export interface CombatExperienceAttackOutcome {
   target: string;
   action: string;
   attackRef?: string;
+  /**
+   * Display name of the reaction this strike was taken as, verbatim from the
+   * wire's `ReactionRef.name`. Absent on an ordinary declared swing.
+   */
+  reaction?: string;
   d20: number;
   total: number;
   against: number;
@@ -115,7 +121,10 @@ interface CombatExperienceBaseProps {
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;
-  onSelectDeclaration: (declaration: Declaration) => void;
+  /** `choice` rides only a VERB_REACT declaration — the answer to an open
+   * reaction window, which the verb implies rather than the server offering
+   * it as a candidate. */
+  onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onTargetClick: (targetId: string) => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;

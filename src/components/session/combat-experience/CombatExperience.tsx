@@ -506,6 +506,7 @@ export function CombatExperience({
             armedDeclarationId={
               presentationState.armedDeclarationId ?? undefined
             }
+            memberNames={memberNames}
             onSelectDeclaration={onSelectDeclaration}
             onEndTurn={onEndTurn}
             standingActions={standingActions}

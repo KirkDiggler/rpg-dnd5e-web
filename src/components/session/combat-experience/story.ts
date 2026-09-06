@@ -6,6 +6,7 @@ import {
   DeathSaveOutcome,
   DoorState,
   type AttackRef,
+  type ReactionRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { damageTypeWord } from '../combatBeat';
 import { dissolveSentence, formatFactionBeat } from '../factionBeat';
@@ -53,6 +54,27 @@ function attackSnapshot(
 
 function attackName(attack: AttackRef | undefined): string {
   return attack?.name || attack?.ref || 'Attack';
+}
+
+/**
+ * A strike taken as a reaction is named by the reacting rule itself
+ * (`ReactionRef.name` on Struck/Missed), so an opportunity attack during a
+ * monster's turn stops reading as a bug. The name is used verbatim and never
+ * derived from the ref: no rulebook vocabulary lives in the client. Absent on
+ * an ordinary swing, and the eyebrow then reads exactly as it did before.
+ */
+function reactionLabel(reaction: ReactionRef | undefined): string | undefined {
+  return reaction?.name || undefined;
+}
+
+function attackEyebrow(
+  actor: string,
+  attack: AttackRef | undefined,
+  reaction: ReactionRef | undefined
+): string {
+  const swing = `${actor} · ${attackName(attack)}`;
+  const label = reactionLabel(reaction);
+  return label ? `${label} · ${swing}` : swing;
 }
 
 function healingArithmetic(
@@ -155,7 +177,7 @@ function buildAttackStory(
       : `${damage} damage`;
     return Object.freeze({
       id: storyId(event),
-      eyebrow: `${actor} · ${attackName(struck.attack)}`,
+      eyebrow: attackEyebrow(actor, struck.attack, struck.reaction),
       headline: `${actor} strikes ${target}`,
       detail:
         `d20 ${struck.roll} · total ${struck.total} against AC ${struck.against} · ` +
@@ -170,7 +192,7 @@ function buildAttackStory(
     const target = memberName(missed.target, context);
     return Object.freeze({
       id: storyId(event),
-      eyebrow: `${actor} · ${attackName(missed.attack)}`,
+      eyebrow: attackEyebrow(actor, missed.attack, missed.reaction),
       headline: `${target} evades ${actor}`,
       detail: `d20 ${missed.roll} · total ${missed.total} against AC ${missed.against} · Miss`,
       tone: 'neutral',
@@ -400,6 +422,28 @@ function buildOtherStory(
       }
       return undefined;
     }
+    // THE FIGHT IS WAITING ON SOMEBODY (rpg-project#316). The step has NOT
+    // happened — `to` is announced, not taken — so this beat narrates the
+    // pause and never the move; the MOVED that follows the answer is where
+    // the mover arrives. The two answers are deliberately not recited here:
+    // the audience reads them off their own VERB_REACT declaration, and a
+    // log that listed them would be a second, staler control surface.
+    case 'windowOpened': {
+      const window = event.body.value;
+      const mover = memberName(window.mover, context);
+      const audience = window.audience
+        .map((id) => memberName(id, context))
+        .join(', ');
+      return Object.freeze({
+        ...base,
+        eyebrow: reactionLabel(window.reaction) ?? 'Reaction',
+        headline: audience
+          ? `${audience} may strike as ${mover} leaves reach`
+          : `${mover} leaves reach`,
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'turn',
+      });
+    }
     case 'struck':
     case 'missed':
     case 'doorRevealed':
@@ -461,6 +505,7 @@ export function buildCombatAttackOutcome(
       target: memberName(struck.target, context),
       action: attackName(struck.attack),
       attackRef: struck.attack?.ref || undefined,
+      reaction: reactionLabel(struck.reaction),
       d20: struck.roll,
       total: struck.total,
       against: struck.against,
@@ -481,6 +526,7 @@ export function buildCombatAttackOutcome(
       target: memberName(missed.target, context),
       action: attackName(missed.attack),
       attackRef: missed.attack?.ref || undefined,
+      reaction: reactionLabel(missed.reaction),
       d20: missed.roll,
       total: missed.total,
       against: missed.against,

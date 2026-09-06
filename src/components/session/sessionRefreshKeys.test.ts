@@ -6,6 +6,7 @@ import {
   JoinedSchema,
   MovedSchema,
   StanceChangedSchema,
+  WindowOpenedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { PlacementKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -74,5 +75,37 @@ describe('the hold-out’s two rows (rpg-project#375 §5)', () => {
     });
     expect(refreshKeysFor(monster, VIEWER)).toEqual(['roster', 'view']);
     expect(refreshKeysFor(prop, VIEWER)).toEqual(['atlas', 'view']);
+  });
+});
+
+describe('the reaction window row (rpg-project#316)', () => {
+  it('WINDOW_OPENED re-reads what it changed: the offer, and the board', () => {
+    const event: SessionEvent = create(EventSchema, {
+      kind: EventKind.WINDOW_OPENED,
+      body: {
+        case: 'windowOpened',
+        value: create(WindowOpenedSchema, {
+          audience: [VIEWER],
+          mover: 'skeleton-1',
+        }),
+      },
+    });
+    expect(refreshKeysFor(event, VIEWER)).toEqual(['afford', 'view']);
+  });
+
+  it('says the same to a member the window was not posed to', () => {
+    const event: SessionEvent = create(EventSchema, {
+      kind: EventKind.WINDOW_OPENED,
+      body: {
+        case: 'windowOpened',
+        value: create(WindowOpenedSchema, {
+          audience: ['someone-else'],
+          mover: 'skeleton-1',
+        }),
+      },
+    });
+    // Their verbs are frozen too — the WINDOW_OPEN shortfall is only in
+    // Afford, so everyone re-reads it.
+    expect(refreshKeysFor(event, VIEWER)).toEqual(['afford', 'view']);
   });
 });
