@@ -262,9 +262,13 @@ export function DungeonBuilder({
     () => doc.regions[0]?.id ?? null
   );
   const [armed, setArmed] = useState<PaletteItem | null>(null);
-  const [movingPlacementIndex, setMovingPlacementIndex] = useState<
-    number | null
-  >(null);
+  // A move is tied to the exact placement in the exact document that was
+  // visible when it was armed. Document edits/replacements cancel it rather
+  // than letting a stale array index silently target another placement.
+  const [movingPlacement, setMovingPlacement] = useState<{
+    document: DungeonDoc;
+    placement: DungeonDoc['place'][number];
+  } | null>(null);
   const [tab, setTab] = useState<'board' | 'preview'>('board');
   const [newMenu, setNewMenu] = useState(false);
   const [openMenu, setOpenMenu] = useState(false);
@@ -573,17 +577,26 @@ export function DungeonBuilder({
     });
   };
   const handleCellClick = (cell: Axial) => {
-    if (tool === 'move-placement' && movingPlacementIndex !== null) {
+    if (tool === 'move-placement' && movingPlacement !== null) {
       applyDoc((d) => {
-        const next = movePlacement(d, movingPlacementIndex, cell);
+        if (d !== movingPlacement.document) {
+          showToast('Move cancelled because the document changed');
+          return d;
+        }
+        const placementIndex = d.place.indexOf(movingPlacement.placement);
+        if (placementIndex === -1) {
+          showToast('Move cancelled because the placement changed');
+          return d;
+        }
+        const next = movePlacement(d, placementIndex, cell);
         if (next === d) {
-          showToast('Pick an unoccupied floor cell for this placement');
+          showToast('Placement was not moved; pick a different available cell');
         } else {
-          selectOnCanvas({ kind: 'placement', index: movingPlacementIndex });
+          selectOnCanvas({ kind: 'placement', index: placementIndex });
         }
         return next;
       });
-      setMovingPlacementIndex(null);
+      setMovingPlacement(null);
       setTool('select');
       return;
     }
@@ -806,7 +819,7 @@ export function DungeonBuilder({
           doc={doc}
           tool={tool}
           onTool={(nextTool) => {
-            if (nextTool !== 'move-placement') setMovingPlacementIndex(null);
+            if (nextTool !== 'move-placement') setMovingPlacement(null);
             setTool(nextTool);
           }}
           activeRegionId={activeRegionId}
@@ -1006,9 +1019,11 @@ export function DungeonBuilder({
                 applyDoc((d) => updatePlacement(d, index, patch))
               }
               onMovePlacement={(index) => {
-                setMovingPlacementIndex(index);
+                const placement = doc.place[index];
+                if (!placement) return;
+                setMovingPlacement({ document: doc, placement });
                 setTool('move-placement');
-                showToast('Pick an unoccupied floor cell');
+                showToast('Pick a different available cell for this placement');
               }}
               onRemovePlacement={(index) => {
                 applyDoc((d) => removePlacement(d, index));

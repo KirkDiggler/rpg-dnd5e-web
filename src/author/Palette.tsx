@@ -165,7 +165,21 @@ export function Palette({
         {compositionList.compositions.length > 0 && (
           <div className="grid grid-cols-4 gap-1">
             {compositionList.compositions.map((composition) => {
-              const ref = compositionRef(composition.id);
+              let ref: string;
+              try {
+                ref = compositionRef(composition.id);
+              } catch {
+                return (
+                  <div
+                    key={composition.id}
+                    className="col-span-4 text-xs text-red-400"
+                    aria-label={`Unsupported composition ID ${composition.id}`}
+                  >
+                    Unsupported composition ID: <code>{composition.id}</code> —
+                    cannot be represented as a placement reference.
+                  </div>
+                );
+              }
               const on = armed?.ref === ref && tool === 'place';
               return (
                 <button

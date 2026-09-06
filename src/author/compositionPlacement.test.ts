@@ -80,4 +80,27 @@ describe('composition placements in dungeon YAML', () => {
     expect(doc.place).toEqual([secondBefore]);
     expect(parseDungeon(emitDungeon(doc)).place).toEqual([secondBefore]);
   });
+
+  it('refuses occupied, non-floor, and same-cell move targets in place', () => {
+    const ref = compositionRef('decorated-table');
+    let doc = floorDoc();
+    doc = placeAt(doc, {
+      ref,
+      id: 'decorated-table',
+      at: a(0, 0),
+      blocksMovement: true,
+      blocksLos: false,
+    });
+    doc = placeAt(doc, {
+      ref,
+      id: 'decorated-table-2',
+      at: a(1, 0),
+      blocksMovement: true,
+      blocksLos: false,
+    });
+
+    expect(movePlacement(doc, 0, a(1, 0))).toBe(doc);
+    expect(movePlacement(doc, 0, a(9, 9))).toBe(doc);
+    expect(movePlacement(doc, 0, a(0, 0))).toBe(doc);
+  });
 });

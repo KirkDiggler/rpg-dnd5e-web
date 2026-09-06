@@ -28,9 +28,14 @@ function renderPalette(source?: CompositionSource) {
 }
 
 describe('Palette current-world compositions', () => {
-  it('lists from the injected WorldID and arms one opaque prop ref', async () => {
+  it('keeps a valid entry usable while naming an unsupported opaque ID', async () => {
     const listCompositions = vi.fn(async (worldId: string) => [
       create(CompositionSchema, { id: 'decorated-table', worldId, json: '{}' }),
+      create(CompositionSchema, {
+        id: 'table:with space',
+        worldId,
+        json: '{}',
+      }),
     ]);
     const source: CompositionSource = {
       worldId: 'development-world-web951-compositions',
@@ -45,6 +50,10 @@ describe('Palette current-world compositions', () => {
       name: 'Place composition decorated table',
     });
     expect(listCompositions).toHaveBeenCalledWith(source.worldId);
+    expect(
+      screen.getByLabelText('Unsupported composition ID table:with space')
+        .textContent
+    ).toContain('Unsupported composition ID: table:with space');
     fireEvent.click(button);
     expect(onArm).toHaveBeenCalledWith({
       kind: 'prop',
