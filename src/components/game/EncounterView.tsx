@@ -1430,6 +1430,13 @@ export function EncounterView({
   // applyCharacterEquipment (also refreshes entityAC — see its doc comment).
   const handleEquipIntent = async (intent: EquipIntent) => {
     if (!entityId) return;
+    if (intent.kind === 'Unpack') {
+      // Unpack is session-scoped (SessionService.Unpack, v1alpha1) and
+      // this is the old v1alpha2-only encounter screen, which has no
+      // session context at all — not wired here. See
+      // SessionEncounterView.tsx for the live implementation.
+      return;
+    }
     try {
       const response =
         intent.kind === 'EquipItem'

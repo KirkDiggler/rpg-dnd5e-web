@@ -102,6 +102,7 @@ const hoisted = vi.hoisted(() => ({
   searchFn: vi.fn(),
   interactFn: vi.fn(),
   tradeFn: vi.fn(),
+  unpackFn: vi.fn(),
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
@@ -156,6 +157,7 @@ vi.mock('@/api/client', () => ({
     search: hoisted.searchFn,
     interact: hoisted.interactFn,
     trade: hoisted.tradeFn,
+    unpack: hoisted.unpackFn,
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
@@ -3439,6 +3441,7 @@ describe('SessionEncounterView production combat integration', () => {
               statLine: '1d4 piercing · finesse',
               iconKey: '',
               kind: 'weapon',
+              equipmentType: 'weapon',
               slotKeys: ['main_hand', 'off_hand'],
               quantity: 1,
               price: { copper: 200 },
@@ -3478,6 +3481,7 @@ describe('SessionEncounterView production combat integration', () => {
               statLine: '1d4 piercing · thrown',
               iconKey: '',
               kind: 'weapon',
+              equipmentType: 'weapon',
               slotKeys: [],
               quantity: 10,
               price: { copper: 5 },
@@ -3630,7 +3634,7 @@ describe('SessionEncounterView production combat integration', () => {
       );
     });
 
-    it('a "gear"-kind carried item never appears as sellable (equipment-type gap, rpg-project#390)', async () => {
+    it('a "gear"-kind carried item IS sellable now that Item.equipment_type exists (rpg-api-protos#301 closed the gap)', async () => {
       hoisted.getCharacterDataFn.mockResolvedValue({
         character: privateCharacterData({
           inventory: [
@@ -3640,6 +3644,7 @@ describe('SessionEncounterView production combat integration', () => {
               statLine: 'light, 20 ft radius',
               iconKey: '',
               kind: 'gear',
+              equipmentType: 'item',
               slotKeys: [],
               quantity: 1,
               price: { copper: 50 },
@@ -3666,8 +3671,133 @@ describe('SessionEncounterView production combat integration', () => {
       });
       await waitFor(() => screen.getByTestId('vendor-popover'));
       fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
-      expect(screen.getByText('Nothing to sell.')).toBeTruthy();
+      await waitFor(() => screen.getByTestId('vendor-sell-torch'));
+
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 2n,
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Torch' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Torch' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          give: {
+            items: [
+              { equipmentType: 'item', equipmentId: 'torch', quantity: 1 },
+            ],
+          },
+          receive: { items: [], currency: { copper: 50 } },
+        })
+      );
     });
+  });
+
+  describe('Unpack (rpg-toolkit#1546)', () => {
+    beforeEach(() => {
+      hoisted.unpackFn.mockReset();
+    });
+
+    const PACK_REF = { module: 'dnd5e', type: 'item', id: 'explorers-pack' };
+    const PACK_INVENTORY = [
+      {
+        ref: PACK_REF,
+        name: "Explorer's Pack",
+        statLine: '',
+        iconKey: '',
+        kind: 'gear',
+        equipmentType: 'pack',
+        slotKeys: [],
+        quantity: 1,
+      },
+    ];
+
+    async function openUnpackConfirm() {
+      readyScene();
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: privateCharacterData({
+          equipped: {},
+          inventory: PACK_INVENTORY,
+        }),
+      });
+      renderView();
+      await screen.findByTestId('session-combat-equipment-button');
+      fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
+      fireEvent.click(
+        await screen.findByRole('button', { name: "Unpack Explorer's Pack" })
+      );
+      await screen.findByRole('button', {
+        name: "Confirm unpack Explorer's Pack",
+      });
+    }
+
+    it('Confirm calls Unpack with session/actor/itemId/quantity, shows a success notice, and refetches CharacterData', async () => {
+      await openUnpackConfirm();
+      hoisted.unpackFn.mockResolvedValue({
+        saved: { savedCharacter: true },
+      });
+      const callsBeforeUnpack = hoisted.getCharacterDataFn.mock.calls.length;
+
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: "Confirm unpack Explorer's Pack",
+        })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.unpackFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          itemId: 'explorers-pack',
+          quantity: 1,
+        })
+      );
+      expect(screen.getByText("Unpacked Explorer's Pack.")).toBeTruthy();
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
+          callsBeforeUnpack
+        )
+      );
+    });
+
+    it('Cancel never calls Unpack', async () => {
+      await openUnpackConfirm();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel unpack' }));
+      expect(hoisted.unpackFn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['ErrNotAPack', 'item "torch": not a pack'],
+      ['ErrNotInInventory', 'actor does not own enough of this item to sell'],
+      ['ErrBadPackContents', 'pack contents do not resolve'],
+    ])(
+      '%s surfaces its message as the unpack notice without crashing',
+      async (_name, message) => {
+        await openUnpackConfirm();
+        hoisted.unpackFn.mockRejectedValue(new Error(message));
+
+        fireEvent.click(
+          screen.getByRole('button', {
+            name: "Confirm unpack Explorer's Pack",
+          })
+        );
+
+        await waitFor(() => expect(screen.getByText(message)).toBeTruthy());
+      }
+    );
   });
 
   describe('concealed-door reveal wiring (rpg-project#886)', () => {
@@ -3826,6 +3956,7 @@ describe('SessionEncounterView production combat integration', () => {
           statLine: '1d8 slashing',
           iconKey: '',
           kind: 'weapon',
+          equipmentType: 'weapon',
           slotKeys: ['main_hand'],
         },
       ],
@@ -3881,6 +4012,7 @@ describe('SessionEncounterView production combat integration', () => {
         statLine: '2d6 slashing',
         iconKey: '',
         kind: 'weapon',
+        equipmentType: 'weapon',
         slotKeys: ['main_hand'],
       },
     ];
