@@ -186,6 +186,42 @@ describe('typed combat Story', () => {
     expect(outcome).not.toHaveProperty('hpAfter');
   });
 
+  it('names the reaction on a struck beat, verbatim from the wire', () => {
+    const facts = createAttackAuthorityFixture({
+      attackName: 'Longsword',
+      reactionRef: 'dnd5e:conditions:opportunity-attack',
+      reactionName: 'Opportunity Attack',
+    });
+    const [entry] = buildCombatStory([visible(facts.event)], context);
+    const outcome = buildCombatAttackOutcome(facts.event, context);
+
+    expect(entry?.eyebrow).toBe('Opportunity Attack · Aldric · Longsword');
+    expect(outcome).toMatchObject({ reaction: 'Opportunity Attack' });
+  });
+
+  it('names the reaction on a missed beat too', () => {
+    const facts = createAttackAuthorityFixture({
+      hit: false,
+      attackName: 'Longsword',
+      reactionRef: 'dnd5e:conditions:opportunity-attack',
+      reactionName: 'Opportunity Attack',
+    });
+    const [entry] = buildCombatStory([visible(facts.event)], context);
+    const outcome = buildCombatAttackOutcome(facts.event, context);
+
+    expect(entry?.eyebrow).toBe('Opportunity Attack · Aldric · Longsword');
+    expect(outcome).toMatchObject({ reaction: 'Opportunity Attack' });
+  });
+
+  it('leaves an ordinary declared swing unchanged when no reaction is set', () => {
+    const facts = createAttackAuthorityFixture({ attackName: 'Longsword' });
+    const [entry] = buildCombatStory([visible(facts.event)], context);
+    const outcome = buildCombatAttackOutcome(facts.event, context);
+
+    expect(entry?.eyebrow).toBe('Aldric · Longsword');
+    expect(outcome?.reaction).toBeUndefined();
+  });
+
   it('renders exact provider-authored GWF damage while preserving attack d20 presentation', () => {
     const facts = createAttackAuthorityFixture({
       roll: 15,
