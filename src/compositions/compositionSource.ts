@@ -1,11 +1,15 @@
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { useEffect, useState } from 'react';
-import type { CompositionReader } from './compositionJsonAdapter';
+import type {
+  CompositionReader,
+  CompositionWriter,
+} from './compositionJsonAdapter';
 
 /** Explicit world-scoped read context shared by author preview and play. */
 export interface CompositionSource {
   worldId: string;
   reader: CompositionReader;
+  writer?: CompositionWriter;
 }
 
 export type CompositionListState =
@@ -19,7 +23,8 @@ export type CompositionListState =
     };
 
 export function useCompositionList(
-  source: CompositionSource | undefined
+  source: CompositionSource | undefined,
+  refreshKey = 0
 ): CompositionListState {
   const [state, setState] = useState<CompositionListState>(() =>
     source
@@ -62,7 +67,7 @@ export function useCompositionList(
     return () => {
       current = false;
     };
-  }, [source]);
+  }, [source, refreshKey]);
 
   return state;
 }

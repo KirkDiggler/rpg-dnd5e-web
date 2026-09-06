@@ -62,7 +62,17 @@ function composition(id: string): Composition {
   return create(CompositionSchema, {
     id,
     worldId: 'world-a',
-    json: `{"snapshot":"${id}"}`,
+    json: JSON.stringify({
+      kind: 'rpg-world-building-scene',
+      version: 1,
+      scene: {
+        version: 1,
+        id: `${id}-scene`,
+        name: id,
+        items: [],
+        groups: [],
+      },
+    }),
   });
 }
 

@@ -59,15 +59,21 @@ separate floor-pool treatment. Emission is never inferred from an asset ref.
 The Add control ships with offset `(0, 0.5, 0)`, color `#ff9d52`, intensity
 `1.1`, and range `2.6`; browser evidence may show deliberately edited values.
 
-The temporary JSON verification source is deliberately opt-in:
+The ordinary local-development source is now the real CompositionService:
 
 ```bash
-VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1 npm run dev -- --port 3031 --strictPort
+VITE_DEV_WORLD_ID=test-world npm run dev -- --port 3031 --strictPort
 ```
 
-It exists only in Vite development mode, owns the clearly named
-`development-world-web951-compositions` context, and contains the unchanged
-`decorated-table.scene.json` specimen. Missing sources, reader failures, and
-missing snapshots remain visible per placement; none triggers a fixture or RPC
-fallback. Production still needs composition RPC wiring before it can supply a
-real `CompositionSource`.
+`RpcCompositionAdapter` implements Create/Get/List over the generated Connect
+client. World Builder saves the existing scene envelope as a new immutable
+snapshot, while Dungeon Builder thumbnails/preview and session play resolve the
+same source. Authored `scene.name` labels palette tiles; malformed entries stay
+visible as safe errors. There is no fixture fallback after an RPC or decode
+failure.
+
+The old JSON verification source remains deliberately separate and opt-in with
+`VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1`. It exists only in Vite development,
+owns `development-world-web951-compositions`, and contains the unchanged
+`decorated-table.scene.json` specimen. Production supplies no source and no
+World Builder path until verified Discord guild-to-world mapping exists.

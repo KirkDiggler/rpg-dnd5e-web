@@ -1,3 +1,8 @@
+import { compositionMetadata } from '@/compositions/compositionMetadata';
+import {
+  useCompositionList,
+  type CompositionSource,
+} from '@/compositions/compositionSource';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   WORLD_BUILDING_CATALOG,
@@ -53,6 +58,8 @@ interface WorldBuildingConceptProps {
   storage?: KeyValueStorage;
   idFactory?: IdFactory;
   now?: () => string;
+  compositionSource?: CompositionSource;
+  onBack?: () => void;
 }
 
 const DEFAULT_POINT_LIGHT: WorldPointLight = {
@@ -95,6 +102,8 @@ export function WorldBuildingConcept({
   storage,
   idFactory = defaultId,
   now = () => new Date().toISOString(),
+  compositionSource,
+  onBack,
 }: WorldBuildingConceptProps) {
   const effectiveStorage = storage ?? browserStorage;
   const [initial] = useState(() => bootstrap(effectiveStorage, idFactory));
@@ -112,12 +121,24 @@ export function WorldBuildingConcept({
   const [notice, setNotice] = useState(initial.error);
   const [saveStatus, setSaveStatus] = useState('Local draft ready');
   const [confirmBlank, setConfirmBlank] = useState(false);
+  const [compositionRefresh, setCompositionRefresh] = useState(0);
+  const [worldBusy, setWorldBusy] = useState(false);
+  const [lastWorldSave, setLastWorldSave] = useState<string | null>(null);
   const [assetStates, setAssetStates] = useState<
     Record<string, 'loaded' | 'error'>
   >({});
   const skippedInitialSceneSave = useRef(false);
   const skippedInitialLibrarySave = useRef(false);
   const scene = history.present;
+  const [sceneNameDraft, setSceneNameDraft] = useState(scene.name);
+  const compositionList = useCompositionList(
+    compositionSource,
+    compositionRefresh
+  );
+
+  useEffect(() => {
+    setSceneNameDraft(scene.name);
+  }, [scene.name]);
 
   useEffect(() => {
     if (!skippedInitialSceneSave.current) {
@@ -403,6 +424,67 @@ export function WorldBuildingConcept({
     setSaveStatus('Reopened local scene and library');
   };
 
+  const saveCompositionToWorld = async () => {
+    if (!compositionSource?.writer || worldBusy) return;
+    setWorldBusy(true);
+    setNotice('');
+    try {
+      const saved = await compositionSource.writer.createComposition(
+        compositionSource.worldId,
+        stringifyScene(scene)
+      );
+      setLastWorldSave(saved.id);
+      setCompositionRefresh((current) => current + 1);
+      setNotice(
+        `Saved “${scene.name}” as a new immutable world composition (${saved.id}).`
+      );
+    } catch (error) {
+      setNotice(
+        `World save failed; the open scene and local draft were kept. ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setWorldBusy(false);
+    }
+  };
+
+  const openComposition = async (id: string) => {
+    if (!compositionSource || worldBusy) return;
+    setWorldBusy(true);
+    setNotice('');
+    try {
+      const composition = await compositionSource.reader.getComposition(
+        compositionSource.worldId,
+        id
+      );
+      if (!composition) {
+        setNotice(`Composition ${id} is no longer available in this world.`);
+        return;
+      }
+      const metadata = compositionMetadata(composition);
+      if (metadata.status === 'error') {
+        setNotice(
+          `Composition ${id} could not be opened; the current scene was kept. ${metadata.message}`
+        );
+        return;
+      }
+      commit(metadata.scene, []);
+      setTool('select');
+      setActiveDrag(null);
+      setLastWorldSave(composition.id);
+      setNotice(`Opened “${metadata.name}” from the world library.`);
+    } catch (error) {
+      setNotice(
+        `Composition ${id} could not be opened; the current scene was kept. ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setWorldBusy(false);
+    }
+  };
+
   const loadedCount = scene.items.filter(
     (item) => assetStates[item.id] === 'loaded'
   ).length;
@@ -430,20 +512,33 @@ export function WorldBuildingConcept({
 
   return (
     <section
-      className="wb-shell"
+      className={`wb-shell ${compositionSource ? 'wb-shell--world' : ''}`}
       aria-label="World Building Concept"
       data-transform-preview={previewScene ? 'active' : 'idle'}
     >
       <header className="wb-header">
         <div>
-          <p className="wb-kicker">Durable Concepts Lab · web#935</p>
-          <h2>World Building</h2>
+          <p className="wb-kicker">
+            {compositionSource
+              ? `World library · ${compositionSource.worldId}`
+              : 'Durable Concepts Lab · web#935'}
+          </p>
+          <h2>{compositionSource ? 'World Builder' : 'World Building'}</h2>
           <p>Compose freely in world space. Hexes are scale, not slots.</p>
         </div>
         <div className="wb-save-cluster">
+          {onBack && <button onClick={onBack}>Back to main menu</button>}
           <span aria-live="polite">{saveStatus}</span>
-          <button onClick={saveNow}>Save now</button>
-          <button onClick={reopen}>Reopen local</button>
+          <button onClick={saveNow}>Save local draft</button>
+          <button onClick={reopen}>Reopen local draft</button>
+          {compositionSource?.writer && (
+            <button
+              disabled={worldBusy}
+              onClick={() => void saveCompositionToWorld()}
+            >
+              {worldBusy ? 'Saving composition…' : 'Save composition to world'}
+            </button>
+          )}
           {!confirmBlank ? (
             <button onClick={() => setConfirmBlank(true)}>
               New blank scene
@@ -601,6 +696,24 @@ export function WorldBuildingConcept({
         >
           <section>
             <h3>Edit</h3>
+            <label>
+              <span>Scene name</span>
+              <input
+                aria-label="Scene name"
+                value={sceneNameDraft}
+                maxLength={120}
+                onChange={(event) => setSceneNameDraft(event.target.value)}
+                onBlur={() => {
+                  const name = sceneNameDraft.trim();
+                  if (!name) {
+                    setSceneNameDraft(scene.name);
+                    setNotice('Scene name cannot be empty.');
+                  } else if (name !== scene.name) {
+                    commit({ ...scene, name });
+                  }
+                }}
+              />
+            </label>
             <div className="wb-actions">
               <button disabled={history.past.length === 0} onClick={undo}>
                 Undo
@@ -829,6 +942,69 @@ export function WorldBuildingConcept({
               ))}
             </div>
           </section>
+
+          {compositionSource && (
+            <section aria-label="World composition library">
+              <div className="wb-library-heading">
+                <h3>World compositions</h3>
+                <button
+                  disabled={compositionList.status === 'loading' || worldBusy}
+                  onClick={() =>
+                    setCompositionRefresh((current) => current + 1)
+                  }
+                >
+                  Reload world library
+                </button>
+              </div>
+              <p className="wb-help">
+                Current world: <strong>{compositionSource.worldId}</strong>.
+                Saves are immutable; editing and saving again creates a new ID.
+              </p>
+              {lastWorldSave && (
+                <p className="wb-help">Latest snapshot ID: {lastWorldSave}</p>
+              )}
+              {compositionList.status === 'loading' && (
+                <p>Loading world compositions…</p>
+              )}
+              {compositionList.status === 'error' && (
+                <p className="wb-library-error">
+                  Could not load world compositions: {compositionList.message}
+                </p>
+              )}
+              {compositionList.status === 'ready' &&
+                compositionList.compositions.length === 0 && (
+                  <p>No saved compositions in this world.</p>
+                )}
+              <div className="wb-library">
+                {compositionList.compositions.map((composition) => {
+                  const metadata = compositionMetadata(composition);
+                  if (metadata.status === 'error') {
+                    return (
+                      <article
+                        key={composition.id}
+                        className="wb-library-error"
+                      >
+                        <strong>Unsupported saved composition</strong>
+                        <small>{metadata.message}</small>
+                      </article>
+                    );
+                  }
+                  return (
+                    <article key={composition.id}>
+                      <strong>{metadata.name}</strong>
+                      <small>Immutable world snapshot</small>
+                      <button
+                        disabled={worldBusy}
+                        onClick={() => void openComposition(composition.id)}
+                      >
+                        Open {metadata.name}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <section>
             <h3>Arrangement library</h3>

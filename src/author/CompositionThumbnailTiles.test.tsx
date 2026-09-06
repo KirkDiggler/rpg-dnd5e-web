@@ -35,10 +35,24 @@ vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
 
 import { CompositionThumbnailTiles } from './CompositionThumbnailTiles';
 
+function sceneJson(id: string): string {
+  return JSON.stringify({
+    kind: 'rpg-world-building-scene',
+    version: 1,
+    scene: {
+      version: 1,
+      id: `${id}-scene`,
+      name: id.replaceAll('-', ' '),
+      items: [],
+      groups: [],
+    },
+  });
+}
+
 function composition(
   id: string,
   worldId = 'world-a',
-  json = `{"snapshot":"${id}-v1"}`
+  json = sceneJson(id)
 ): Composition {
   return create(CompositionSchema, { id, worldId, json });
 }
@@ -149,7 +163,7 @@ describe('CompositionThumbnailTiles', () => {
     const changed = composition(
       'decorated-table',
       'world-a',
-      '{"snapshot":"decorated-table-v2"}'
+      sceneJson('decorated-table-v2')
     );
     view.rerender(
       <CompositionThumbnailTiles

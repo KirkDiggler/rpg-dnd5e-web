@@ -11,6 +11,10 @@ export interface CompositionReader {
   getComposition(worldId: string, id: string): Promise<Composition | null>;
 }
 
+export interface CompositionWriter {
+  createComposition(worldId: string, json: string): Promise<Composition>;
+}
+
 function requireIdentity(value: string, field: 'id' | 'worldId'): void {
   if (value.trim().length === 0) {
     throw new Error(`Composition ${field} must not be empty.`);

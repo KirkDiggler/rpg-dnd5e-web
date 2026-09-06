@@ -3,13 +3,21 @@
 Issue: [KirkDiggler/rpg-dnd5e-web#935](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/935)  
 Parent journey: [KirkDiggler/rpg-project#169](https://github.com/KirkDiggler/rpg-project/issues/169)
 
-## Boundary
+## Boundary and promoted mount
 
-This is a durable, development-only Concepts Lab at `?concept=world-building`.
-It proves a local scene-composition loop for DMs and streamers; it does not
-promote a new production authoring format. It makes no server calls, changes no
-live `/author` or encounter path, and changes no dungeon YAML, API, proto, or
-toolkit behavior.
+The same editor implementation has two mounts:
+
+- the original durable Concepts Lab at `?concept=world-building`, with its
+  local-only behavior unchanged; and
+- the development main-menu **World Builder**, which injects the configured
+  current-world CompositionService source and adds explicit immutable
+  save/list/open controls.
+
+No second editor or scene dialect was created. Both mounts preserve the local
+scene draft, arrangement library, import/export, continuous transforms,
+selection, groups/supports, gizmos, and visual-light declarations described
+below. The live mount still does not alter dungeon YAML, proto, toolkit, asset,
+or gameplay behavior.
 
 The first-run scene is blank and the author-created arrangement library is
 empty. Hex lines use the shared hex math and are visible only as scale/planning
@@ -84,6 +92,31 @@ with one Undo. It then moved a grouped table/support closure, drag-stamped its
 arrangement twice with fresh remapped identities, exercised Blender-style
 camera gestures, and reloaded exact scene/library data. The complete receipt is
 under the current evidence path in Verification evidence.
+
+## World-library persistence
+
+In Vite development, `VITE_DEV_WORLD_ID` selects the visible current world and
+defaults to `test-world`, matching the API's `RPG_DEV_WORLD_ID`. The request
+world is a selector only; server authentication/authorization remains
+handler-owned. Production creates no source or World Builder entry until a
+verified Discord guild-to-world mapping exists.
+
+`Save local draft` and `Reopen local draft` retain the existing browser-local
+workflow. `Save composition to world` calls `CreateComposition` with the same
+scene JSON; every save returns a new immutable ID. List refreshes on the World
+Builder mount, an explicit reload, and successful saves. Opening a listed entry
+calls `GetComposition` before replacing the scene. The authored `scene.name` is
+the human label; opaque IDs are shown only as secondary snapshot receipts.
+Malformed snapshots remain visible as unsupported errors and never replace the
+open scene. API failure never substitutes the fixed development fixture.
+
+`VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1` remains an explicit, separate fixture
+option for tests. With the flag absent or disabled, the current-world source is
+the real RPC adapter.
+
+The isolated local Redis remains ephemeral across a full stack teardown. Local
+drafts and exported files remain the durable escape hatch; ordinary page reload
+and API-only restart are valid local-library checks, not a durability promise.
 
 ## Provisional local JSON
 

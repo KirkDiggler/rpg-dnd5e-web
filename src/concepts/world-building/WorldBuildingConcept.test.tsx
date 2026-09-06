@@ -1,5 +1,15 @@
-import { createEvent, fireEvent, render, screen } from '@testing-library/react';
+import type { CompositionSource } from '@/compositions/compositionSource';
+import { create } from '@bufbuild/protobuf';
+import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
+import {
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { stringifyScene } from './serialization';
 import type { KeyValueStorage, WorldScene } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
@@ -176,6 +186,45 @@ function dragLabelTo(label: string, targetTestId = 'canvas-ground') {
 }
 
 afterEach(() => vi.restoreAllMocks());
+
+function worldSource(initial: WorldScene[] = []): {
+  source: CompositionSource;
+  createComposition: ReturnType<typeof vi.fn>;
+  getComposition: ReturnType<typeof vi.fn>;
+  listCompositions: ReturnType<typeof vi.fn>;
+} {
+  const records = initial.map((entry, index) =>
+    create(CompositionSchema, {
+      id: `composition-${index + 1}`,
+      worldId: 'test-world',
+      json: stringifyScene(entry),
+    })
+  );
+  const createComposition = vi.fn(async (worldId: string, json: string) => {
+    const record = create(CompositionSchema, {
+      id: `composition-${records.length + 1}`,
+      worldId,
+      json,
+    });
+    records.push(record);
+    return record;
+  });
+  const getComposition = vi.fn(
+    async (_worldId: string, id: string) =>
+      records.find((entry) => entry.id === id) ?? null
+  );
+  const listCompositions = vi.fn(async () => [...records]);
+  return {
+    source: {
+      worldId: 'test-world',
+      reader: { getComposition, listCompositions },
+      writer: { createComposition },
+    },
+    createComposition,
+    getComposition,
+    listCompositions,
+  };
+}
 
 describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
   it('keeps Select / Move / Rotate visible and never arms placement from ordinary clicks', () => {
@@ -497,12 +546,128 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       target: { value: 'Books arrangement' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
     mounted.unmount();
 
     render(<WorldBuildingConcept storage={storage} idFactory={ids} />);
     expect(scene().items).toHaveLength(1);
     expect(screen.getByText('Books arrangement')).toBeTruthy();
+  });
+
+  it('saves immutable named snapshots to the configured world and refreshes the list', async () => {
+    const world = worldSource();
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+        compositionSource={world.source}
+      />
+    );
+
+    expect(screen.getByText(/World library · test-world/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Lantern Supper' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+    dragLabelTo('Drag Candles into scene');
+    fireEvent.click(screen.getByRole('button', { name: 'Add point light' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+
+    await waitFor(() =>
+      expect(world.createComposition).toHaveBeenCalledTimes(1)
+    );
+    const [worldId, json] = world.createComposition.mock.calls[0]!;
+    expect(worldId).toBe('test-world');
+    expect(json).toContain('Lantern Supper');
+    expect(json).toContain('"pointLight"');
+    expect(await screen.findByText('Lantern Supper')).toBeTruthy();
+    expect(world.listCompositions).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+    await waitFor(() =>
+      expect(world.createComposition).toHaveBeenCalledTimes(2)
+    );
+    expect(screen.getByText(/Latest snapshot ID: composition-2/)).toBeTruthy();
+  });
+
+  it('reopens a named API snapshot through Get while preserving local drafts independently', async () => {
+    const storedScene: WorldScene = {
+      version: 1,
+      id: 'stored-scene',
+      name: 'API Lantern Room',
+      items: [],
+      groups: [],
+    };
+    const storage = new MemoryStorage();
+    const world = worldSource([storedScene]);
+    render(
+      <WorldBuildingConcept
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={world.source}
+      />
+    );
+    dragLabelTo('Drag Books into scene');
+    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open API Lantern Room' })
+    );
+    await waitFor(() =>
+      expect(world.getComposition).toHaveBeenCalledWith(
+        'test-world',
+        'composition-1'
+      )
+    );
+    expect(scene()).toEqual(storedScene);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen local draft' }));
+    expect(scene().items[0]?.assetRef).toBe('dnd5e:props:books');
+  });
+
+  it('shows list/open/save errors without replacing the current valid scene', async () => {
+    const original: WorldScene = {
+      version: 1,
+      id: 'original',
+      name: 'Original scene',
+      items: [],
+      groups: [],
+    };
+    const source: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => {
+          throw new Error('library offline');
+        }),
+        getComposition: vi.fn(),
+      },
+      writer: {
+        createComposition: vi.fn(async () => {
+          throw new Error('save refused');
+        }),
+      },
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(
+      'rpg.concepts.world-building.scene.v1',
+      stringifyScene(original)
+    );
+    render(
+      <WorldBuildingConcept storage={storage} compositionSource={source} />
+    );
+
+    expect(await screen.findByText(/library offline/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /save refused/
+    );
+    expect(scene()).toEqual(original);
   });
 
   it('shows non-destructive strict import errors and keeps the valid scene', () => {

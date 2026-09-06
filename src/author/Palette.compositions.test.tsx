@@ -32,12 +32,28 @@ function renderPalette(source?: CompositionSource) {
   return { onArm, onTool };
 }
 
+const sceneJson = (name: string) =>
+  JSON.stringify({
+    kind: 'rpg-world-building-scene',
+    version: 1,
+    scene: { version: 1, id: 'scene-id', name, items: [], groups: [] },
+  });
+
 describe('Palette current-world compositions', () => {
-  it('keeps a valid entry usable while naming an unsupported opaque ID', async () => {
+  it('uses the authored scene name while keeping unsupported and malformed entries safe', async () => {
     const listCompositions = vi.fn(async (worldId: string) => [
-      create(CompositionSchema, { id: 'decorated-table', worldId, json: '{}' }),
+      create(CompositionSchema, {
+        id: 'composition-uuid-like',
+        worldId,
+        json: sceneJson('The Lantern Table'),
+      }),
       create(CompositionSchema, {
         id: 'table:with space',
+        worldId,
+        json: sceneJson('Unrepresentable table'),
+      }),
+      create(CompositionSchema, {
+        id: 'malformed-record',
         worldId,
         json: '{}',
       }),
@@ -52,17 +68,21 @@ describe('Palette current-world compositions', () => {
     const { onArm, onTool } = renderPalette(source);
 
     const button = await screen.findByRole('button', {
-      name: 'Place composition decorated table',
+      name: 'Place composition The Lantern Table',
     });
     expect(listCompositions).toHaveBeenCalledWith(source.worldId);
     expect(
-      screen.getByLabelText('Unsupported composition ID table:with space')
+      screen.getByLabelText('Unsupported composition table:with space')
         .textContent
     ).toContain('Unsupported composition ID: table:with space');
+    expect(
+      screen.getByLabelText('Unsupported composition malformed-record')
+        .textContent
+    ).toContain('Malformed composition malformed-record');
     fireEvent.click(button);
     expect(onArm).toHaveBeenCalledWith({
       kind: 'prop',
-      ref: compositionRef('decorated-table'),
+      ref: compositionRef('composition-uuid-like'),
     });
     expect(onTool).toHaveBeenCalledWith('place');
   });

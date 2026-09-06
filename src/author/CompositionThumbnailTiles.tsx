@@ -1,7 +1,8 @@
+import { compositionMetadata } from '@/compositions/compositionMetadata';
 import { compositionRef } from '@/compositions/compositionRef';
 import { compositionThumbnailKey } from '@/compositions/compositionThumbnailKey';
 import { CompositionThumbnailRenderer } from '@/compositions/CompositionThumbnailRenderer';
-import { refInitials, refLabel } from '@/utils/refs';
+import { refInitials } from '@/utils/refs';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BoardTool, PaletteItem } from './types';
@@ -32,22 +33,40 @@ export function CompositionThumbnailTiles({
   onArm,
   onTool,
 }: CompositionThumbnailTilesProps) {
-  const supported = useMemo(
+  const entries = useMemo(
     () =>
-      compositions.flatMap((composition) => {
+      compositions.map((composition) => {
+        let ref: string;
         try {
-          return [
-            {
-              composition,
-              ref: compositionRef(composition.id),
-              key: compositionThumbnailKey(sourceWorldId, composition),
-            },
-          ];
+          ref = compositionRef(composition.id);
         } catch {
-          return [];
+          return {
+            composition,
+            status: 'error' as const,
+            message: `Unsupported composition ID: ${composition.id} — cannot be represented as a placement reference.`,
+          };
         }
+        const metadata = compositionMetadata(composition);
+        if (metadata.status === 'error') {
+          return {
+            composition,
+            status: 'error' as const,
+            message: `Malformed composition ${composition.id}: ${metadata.message}`,
+          };
+        }
+        return {
+          composition,
+          status: 'ready' as const,
+          ref,
+          name: metadata.name,
+          key: compositionThumbnailKey(sourceWorldId, composition),
+        };
       }),
     [compositions, sourceWorldId]
+  );
+  const supported = useMemo(
+    () => entries.filter((entry) => entry.status === 'ready'),
+    [entries]
   );
   const desiredKeys = useMemo(
     () => new Set(supported.map((entry) => entry.key)),
@@ -97,31 +116,28 @@ export function CompositionThumbnailTiles({
   return (
     <>
       <div className="grid grid-cols-4 gap-1">
-        {compositions.map((composition) => {
-          let ref: string;
-          try {
-            ref = compositionRef(composition.id);
-          } catch {
+        {entries.map((entry) => {
+          const { composition } = entry;
+          if (entry.status === 'error') {
             return (
               <div
                 key={composition.id}
                 className="col-span-4 text-xs text-red-400"
-                aria-label={`Unsupported composition ID ${composition.id}`}
+                aria-label={`Unsupported composition ${composition.id}`}
               >
-                Unsupported composition ID: <code>{composition.id}</code> —
-                cannot be represented as a placement reference.
+                {entry.message}
               </div>
             );
           }
-          const key = compositionThumbnailKey(sourceWorldId, composition);
+          const { ref, key, name } = entry;
           const result = results[key];
           const on = armed?.ref === ref && tool === 'place';
           return (
             <button
               key={key}
               type="button"
-              title={`${refLabel(ref)} · ${composition.id}`}
-              aria-label={`Place composition ${refLabel(ref)}`}
+              title={`${name} · immutable snapshot ${composition.id}`}
+              aria-label={`Place composition ${name}`}
               aria-pressed={on}
               className={`dg-chip relative ${on ? 'dg-chip--on' : ''}`}
               style={{ borderColor: '#7c3aed' }}
@@ -142,7 +158,7 @@ export function CompositionThumbnailTiles({
                   aria-hidden="true"
                   className="flex w-full h-full items-center justify-center"
                 >
-                  {refInitials(ref)}
+                  {refInitials(name)}
                   {result?.status === 'error' && (
                     <span className="absolute right-1 top-0 text-red-400">
                       !
