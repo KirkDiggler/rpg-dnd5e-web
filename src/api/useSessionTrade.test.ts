@@ -48,6 +48,7 @@ describe('useSessionTrade', () => {
         session: 'session-1',
         actor: 'char-1',
         target: 'demo-merchant-1',
+        direction: 'buy',
         equipmentType: 'weapon',
         equipmentId: 'longsword',
         quantity: 1,
@@ -80,6 +81,7 @@ describe('useSessionTrade', () => {
         actor: 'char-1',
         target: 'demo-merchant-1',
         range: 3,
+        direction: 'buy',
         equipmentType: 'ammunition',
         equipmentId: 'arrows',
         quantity: 20,
@@ -115,6 +117,7 @@ describe('useSessionTrade', () => {
         session: 'session-1',
         actor: 'char-1',
         target: 'demo-merchant-1',
+        direction: 'buy',
         equipmentType: 'weapon',
         equipmentId: 'longsword',
         quantity: 1,
@@ -141,6 +144,7 @@ describe('useSessionTrade', () => {
           session: 'session-1',
           actor: 'char-1',
           target: 'demo-merchant-1',
+          direction: 'buy',
           equipmentType: 'weapon',
           equipmentId: 'longsword',
           quantity: 1,
@@ -166,6 +170,7 @@ describe('useSessionTrade', () => {
           session: 'session-1',
           actor: 'char-1',
           target: 'demo-merchant-1',
+          direction: 'buy',
           equipmentType: 'weapon',
           equipmentId: 'longsword',
           quantity: 1,
@@ -180,6 +185,7 @@ describe('useSessionTrade', () => {
         session: 'session-1',
         actor: 'char-1',
         target: 'demo-merchant-1',
+        direction: 'buy',
         equipmentType: 'weapon',
         equipmentId: 'longsword',
         quantity: 1,
@@ -188,5 +194,78 @@ describe('useSessionTrade', () => {
     });
     expect(result.current.error).toBeNull();
     expect(result.current.loading).toBe(false);
+  });
+
+  describe('direction: sell (rpg-toolkit#1537)', () => {
+    it('puts the item line on give and the expected payout on receive.currency', async () => {
+      const fakeResponse = {
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          displayName: 'Demo Merchant',
+        },
+        seq: 1n,
+      } as unknown as TradeResponse;
+      hoisted.tradeFn.mockResolvedValue(fakeResponse);
+
+      const { result } = renderHook(() => useSessionTrade());
+
+      await act(async () => {
+        await result.current.trade({
+          session: 'session-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          direction: 'sell',
+          equipmentType: 'weapon',
+          equipmentId: 'longsword',
+          quantity: 1,
+          price: money(750),
+        });
+      });
+
+      expect(hoisted.tradeFn).toHaveBeenCalledWith({
+        session: 'session-1',
+        actor: 'char-1',
+        target: 'demo-merchant-1',
+        range: 0,
+        give: {
+          items: [
+            { equipmentType: 'weapon', equipmentId: 'longsword', quantity: 1 },
+          ],
+        },
+        receive: { items: [], currency: { copper: 750 } },
+      });
+    });
+
+    it('still defaults range to 0 and passes an explicit range through unchanged', async () => {
+      hoisted.tradeFn.mockResolvedValue({} as TradeResponse);
+      const { result } = renderHook(() => useSessionTrade());
+
+      await act(async () => {
+        await result.current.trade({
+          session: 'session-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 2,
+          direction: 'sell',
+          equipmentType: 'armor',
+          equipmentId: 'shield',
+          quantity: 1,
+          price: money(500),
+        });
+      });
+
+      expect(hoisted.tradeFn).toHaveBeenCalledWith({
+        session: 'session-1',
+        actor: 'char-1',
+        target: 'demo-merchant-1',
+        range: 2,
+        give: {
+          items: [
+            { equipmentType: 'armor', equipmentId: 'shield', quantity: 1 },
+          ],
+        },
+        receive: { items: [], currency: { copper: 500 } },
+      });
+    });
   });
 });

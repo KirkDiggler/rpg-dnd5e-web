@@ -1,6 +1,6 @@
 /**
- * railLayout — how wide the builder's right rail is, and whether the
- * inspector above the YAML is folded away.
+ * railLayout — how wide the builder's right rail is, and which of its three
+ * panes is on screen.
  *
  * The rail defaults to `clamp(340px, 24%, 560px)` in CSS and stays there
  * until somebody drags it, so nothing moves for an author who never touches
@@ -11,7 +11,10 @@
  *
  * — while the rail fits roughly fifty at its measured 376px. No amount of
  * vertical room fixes a line clipped in half, which is why the width is the
- * control that matters and the fold is the complement.
+ * control that matters and the tabs are the complement: the rail used to
+ * stack the inspector over the YAML in an `auto` row, so on anything under
+ * 1440 the YAML got a handful of lines. One pane at a time gives whichever
+ * pane is on screen the whole column.
  *
  * Both live in localStorage rather than the document: they are how ONE person
  * likes to look at the builder, not a fact about the dungeon, and a dungeon
@@ -29,7 +32,13 @@ export const CANVAS_MIN = 360;
 const PALETTE_AND_GAPS = 220 + 12 + 12;
 
 const WIDTH_KEY = 'dg.rail.width';
-const FOLD_KEY = 'dg.rail.inspectorFolded';
+const TAB_KEY = 'dg.rail.tab';
+
+/** The rail's three panes: the scenarios this dungeon runs, whatever is
+ * selected, and the file itself. */
+export type RailTab = 'scenario' | 'inspector' | 'source';
+
+const TABS: readonly RailTab[] = ['scenario', 'inspector', 'source'];
 
 /**
  * The width a drag lands on, clamped so the rail stays readable and the
@@ -78,21 +87,24 @@ export function writeRailWidth(width: number | null): void {
   }
 }
 
-/** Whether the inspector is folded away. Defaults to OPEN: an author who has
- * never folded it should see the panel they have always seen. */
-export function readInspectorFolded(): boolean {
+/** The pane the rail opens on. Defaults to the INSPECTOR — the pane that
+ * has always been at the top of the rail, so an author who has never touched
+ * a tab sees what they saw before. A stored value that is not one of the
+ * three is not a tab, so it reads as the default rather than blanking the
+ * rail. */
+export function readRailTab(): RailTab {
   try {
-    return window.localStorage.getItem(FOLD_KEY) === '1';
+    const raw = window.localStorage.getItem(TAB_KEY);
+    return TABS.includes(raw as RailTab) ? (raw as RailTab) : 'inspector';
   } catch {
-    return false;
+    return 'inspector';
   }
 }
 
-/** Persist the fold. */
-export function writeInspectorFolded(folded: boolean): void {
+/** Persist the pane. */
+export function writeRailTab(tab: RailTab): void {
   try {
-    if (folded) window.localStorage.setItem(FOLD_KEY, '1');
-    else window.localStorage.removeItem(FOLD_KEY);
+    window.localStorage.setItem(TAB_KEY, tab);
   } catch {
     // See writeRailWidth.
   }

@@ -17,7 +17,7 @@ import type {
   ItemLike,
   SlotDefLike,
 } from './equipmentTypes';
-import { refKey, targetSlotFor } from './equipmentTypes';
+import { computeCarried, refKey, targetSlotFor } from './equipmentTypes';
 
 export interface InventoryLightProps {
   slots: SlotDefLike[];
@@ -37,22 +37,7 @@ export function InventoryLight({
   onIntent,
   busy,
 }: InventoryLightProps) {
-  // Keyed by the full {module,type,id} triple, not bare ref.id — an id is
-  // only unique within one {module,type} pair (Copilot review on #575).
-  const equippedCounts = new Map<string, number>();
-  for (const ref of Object.values(equipped)) {
-    const key = refKey(ref);
-    equippedCounts.set(key, (equippedCounts.get(key) ?? 0) + 1);
-  }
-  const carried = items.flatMap((item) => {
-    // Legacy owner snapshots predate quantity and decode its wire default as
-    // zero. Treat only that display case as one copy during rollout.
-    const owned = item.quantity > 0 ? item.quantity : 1;
-    const carriedCount = owned - (equippedCounts.get(refKey(item.ref)) ?? 0);
-    return carriedCount > 0
-      ? [{ item, carriedCount, showCount: carriedCount > 1 || owned > 1 }]
-      : [];
-  });
+  const carried = computeCarried(items, equipped);
   const slotLabel = (key: string) =>
     slots.find((s) => s.key === key)?.displayLabel ?? key;
 

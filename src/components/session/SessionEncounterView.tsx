@@ -40,7 +40,10 @@ import type {
   VendorStockEntry,
   WorldNPCDescriptor,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
-import type { AtlasProp } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import type {
+  AtlasProp,
+  Money,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   ClockKind,
   DoorState,
@@ -53,7 +56,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
-import type { EquipIntent } from '../game/equipment/equipmentTypes';
+import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
+import {
+  computeCarried,
+  equipmentTypeForKind,
+} from '../game/equipment/equipmentTypes';
 import { coordToKey, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
@@ -1144,10 +1151,17 @@ function SessionEncounterScope({
   // (rpg-toolkit#1534). `entry.price` is already required for the Buy
   // button to be enabled (vendorStockPurchasable), so the extra guard
   // below is defense in depth, not new UI.
+  //
+  // ONE UNIT PER CLICK (Kirk, live testing: "first implementation is one
+  // item by one item" — a row's remaining stock count is NOT how many to
+  // buy). Repeat clicks buy more, one at a time — no quantity picker this
+  // wave. `entry.price` is the unit price already, so with quantity fixed
+  // at 1 it's also the exact amount to offer, no scaling needed.
   const handleVendorBuy = useCallback(
     (entry: VendorStockEntry) => {
       const price = entry.price;
       if (!member || !activeVendor || !price) return;
+      const quantity = 1;
       setVendorNotice(null);
       void (async () => {
         try {
@@ -1155,9 +1169,10 @@ function SessionEncounterScope({
             session: sessionId,
             actor: member,
             target: activeVendor.subject,
+            direction: 'buy',
             equipmentType: entry.equipmentType,
             equipmentId: entry.equipmentId,
-            quantity: entry.quantity ?? 1,
+            quantity,
             price,
           });
           if (response.descriptor) {
@@ -1174,6 +1189,59 @@ function SessionEncounterScope({
             // include 'characterData' in its own refresh set — a real
             // gap caught live: free-roam vendor purchases have no turn
             // boundary to piggyback on at all.
+            void refetchCharacterData();
+          }
+        } catch (error) {
+          setVendorNotice(errorMessage(error));
+        }
+      })();
+    },
+    [activeVendor, member, refetchCharacterData, sessionId, trade]
+  );
+
+  // Vendor sale (rpg-toolkit#1537) — the mirror of handleVendorBuy above.
+  // ONE UNIT PER CLICK, same correction as Buy: a carried stack's full
+  // count is not how many to sell — repeat clicks sell more, one at a
+  // time, no quantity picker this wave. `equipmentTypeForKind` returning
+  // undefined (a "gear"-kind item) is a real guard, not defense in depth:
+  // `sellableItems` already excludes these, but this stays authoritative
+  // rather than trusting the popover never calls back with one.
+  const handleVendorSell = useCallback(
+    (item: ItemLike) => {
+      const equipmentType = equipmentTypeForKind(item.kind);
+      const unitPrice = item.price;
+      if (!member || !activeVendor || !equipmentType || !unitPrice) return;
+      const quantity = 1;
+      // `ItemLike.price` is deliberately a plain `{copper}` shape
+      // (equipmentTypes.ts's own "no generated proto types" rule, so the
+      // /concepts bench can keep feeding fixture data) — cast at this one
+      // boundary where it actually crosses into the generated-proto-typed
+      // Trade request, same as this file's other Money-shaped literals in
+      // tests. Quantity fixed at 1, so this is also the exact amount to
+      // expect back, no scaling needed.
+      const price = { ...unitPrice } as Money;
+      setVendorNotice(null);
+      void (async () => {
+        try {
+          const response = await trade({
+            session: sessionId,
+            actor: member,
+            target: activeVendor.subject,
+            direction: 'sell',
+            equipmentType,
+            equipmentId: item.ref.id,
+            quantity,
+            price,
+          });
+          if (response.descriptor) {
+            setActiveVendor({
+              subject: activeVendor.subject,
+              descriptor: response.descriptor,
+            });
+            setVendorNotice(`Sold ${item.name}.`);
+            // Same reasoning as handleVendorBuy: TradeResponse carries
+            // only the vendor's descriptor, and a sale changes BOTH the
+            // wallet and the inventory on the actor's own CharacterData.
             void refetchCharacterData();
           }
         } catch (error) {
@@ -1331,6 +1399,37 @@ function SessionEncounterScope({
   const offHandResolution = useMemo(
     () => resolveOffHandPresentation(visibleCharacterData?.equipped ?? {}),
     [visibleCharacterData?.equipped]
+  );
+  // Every owned item with a resolved ref — shared by EquipmentPopover's
+  // `items` and the vendor Sell tab's own carried-stack computation below,
+  // rather than filtering the same list twice. Reads `visibleCharacterData`
+  // (not the raw `characterData`), same as every other player-facing
+  // derivation around it — a concealed death-save window must hold this
+  // back too, not just the combat presentation.
+  const ownedItems = useMemo(
+    () =>
+      (visibleCharacterData?.inventory ?? []).filter(
+        (
+          item
+        ): item is typeof item & {
+          ref: NonNullable<typeof item.ref>;
+        } => item.ref !== undefined
+      ),
+    [visibleCharacterData?.inventory]
+  );
+  // Sellable this wave: carried (unequipped), with a resolvable real
+  // equipment type AND a server-computed price. "gear"-kind items
+  // (tools, packs, ammunition, misc) are excluded — see
+  // `equipmentTypeForKind`'s own doc comment for why guessing their type
+  // would be a real correctness bug, not a cosmetic gap.
+  const sellableItems = useMemo(
+    () =>
+      computeCarried(ownedItems, visibleCharacterData?.equipped ?? {}).filter(
+        ({ item }) =>
+          equipmentTypeForKind(item.kind) !== undefined &&
+          item.price !== undefined
+      ),
+    [ownedItems, visibleCharacterData?.equipped]
   );
   const loading = atlasLoading || whereLoading;
   const blockingError = atlasError ?? whereError;
@@ -1588,13 +1687,7 @@ function SessionEncounterScope({
                 classLabel={classLabel(classRefId) ?? undefined}
                 slots={visibleCharacterData.slots}
                 equipped={visibleCharacterData.equipped}
-                items={visibleCharacterData.inventory.filter(
-                  (
-                    item
-                  ): item is typeof item & {
-                    ref: NonNullable<typeof item.ref>;
-                  } => item.ref !== undefined
-                )}
+                items={ownedItems}
                 armorClass={
                   visibleCharacterData.armorClassDetail
                     ? {
@@ -1616,8 +1709,10 @@ function SessionEncounterScope({
                 inventory={activeVendor.descriptor.inventory}
                 onClose={() => setActiveVendor(null)}
                 onBuy={(entry: VendorStockEntry) => handleVendorBuy(entry)}
+                carriedItems={sellableItems}
+                onSell={(item) => handleVendorSell(item)}
                 busy={tradeLoading}
-                walletCopper={characterData?.wallet?.copper}
+                walletCopper={visibleCharacterData?.wallet?.copper}
               />
             )}
           </div>
