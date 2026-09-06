@@ -109,6 +109,13 @@ WorldProp {
   transform: { x, y, z, rotationY }
   parentId?                   // group identity
   supportId?                  // prop identity
+  pointLight?: {
+    enabled
+    offset: { x, y, z }       // part-local scene-coordinate units
+    color                     // #RRGGBB
+    intensity                 // rendering control, 0..20
+    range                     // scene-coordinate units, 0.01..24
+  }
 }
 
 WorldGroup {
@@ -142,6 +149,14 @@ envelopes, non-finite or out-of-range transforms, duplicate identities,
 unknown asset refs (including arbitrary URLs), missing/invalid relation
 targets, and relation cycles. Editor commits pass through the same scene
 validator.
+
+Point lights are explicit author declarations only; asset names and meshes never
+imply emission. The part-local offset rotates with the part, then the complete
+composition placement applies once. Rendering selects at most the established
+12 point lights nearest the view across ordinary dungeon sources and resolved
+composition placements. This is visual rendering only: intensity is not a
+physical measurement, range is not D&D bright/dim distance, and no visibility
+or lit-cell facts are computed.
 
 Local-storage keys are:
 
@@ -278,8 +293,10 @@ Notable measured facts from `browser-evidence.json`:
 - Attachments are authored relations propagated by editor operations, not a
   runtime constraint solver. An author may intentionally edit an attached
   child away from its support while retaining the relation.
-- No scale, full tilt, numeric gizmo, advanced precision controls, floor painting, wall
+- No scale, full tilt, general numeric transform inspector, advanced precision controls, floor painting, wall
   construction, behavior/quest wiring, or linked-prefab overrides exist.
+- Composition point lights have no shadows, flicker, fuel, gameplay on/off verb,
+  occlusion, darkness/visibility computation, or physical/D&D illumination meaning.
 - The finite limits above are concept safety bounds, not proposed server limits.
 - The catalog can only reference locally synced `PROP_KEYS`; missing licensed
   assets cannot be embedded in exports and are not committed here.

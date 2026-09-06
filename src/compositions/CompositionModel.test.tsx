@@ -147,6 +147,62 @@ describe('CompositionModel', () => {
     );
   });
 
+  it('renders authored enabled lights through the shared point-light leaf and can defer to a scene owner', async () => {
+    const envelope = JSON.parse(decoratedTableJson) as {
+      scene: {
+        items: Array<{
+          id: string;
+          pointLight?: {
+            enabled: boolean;
+            offset: { x: number; y: number; z: number };
+            color: string;
+            intensity: number;
+            range: number;
+          };
+        }>;
+      };
+    };
+    envelope.scene.items[0]!.pointLight = {
+      enabled: true,
+      offset: { x: 0.1, y: 0.5, z: -0.2 },
+      color: '#ff9d52',
+      intensity: 1.7,
+      range: 3.4,
+    };
+    const lit = create(CompositionSchema, {
+      ...composition,
+      json: JSON.stringify(envelope),
+    });
+    const renderer = await ReactThreeTestRenderer.create(
+      <CompositionModel
+        composition={lit}
+        instanceId="lit-placement"
+        transform={{ x: 2, y: 0, z: 3, rotationY: 0.5 }}
+      />
+    );
+    const light = renderer.scene.find(
+      (node) => node.instance?.type === 'PointLight'
+    );
+    expect(light.props).toMatchObject({
+      color: '#ff9d52',
+      intensity: 1.7,
+      distance: 3.4,
+      decay: 2,
+    });
+
+    await renderer.update(
+      <CompositionModel
+        composition={lit}
+        instanceId="lit-placement"
+        transform={{ x: 2, y: 0, z: 3, rotationY: 0.5 }}
+        renderLights={false}
+      />
+    );
+    expect(
+      renderer.scene.findAll((node) => node.instance?.type === 'PointLight')
+    ).toHaveLength(0);
+  });
+
   it('does not reapply authored group or support transforms to visual leaves', async () => {
     const envelope = JSON.parse(decoratedTableJson) as {
       scene: {

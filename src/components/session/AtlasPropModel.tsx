@@ -1,4 +1,7 @@
-import { CompositionPlacementModel } from '@/compositions/CompositionPlacementModel';
+import {
+  CompositionPlacementModel,
+  type CompositionResolution,
+} from '@/compositions/CompositionPlacementModel';
 import { compositionIdFromRef } from '@/compositions/compositionRef';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { isExactPropRef } from '@/utils/refs';
@@ -14,12 +17,14 @@ export interface AtlasPropModelProps {
   hexSize: number;
   orientation: 'pointy';
   compositionSource?: CompositionSource;
+  compositionResolution?: CompositionResolution;
 }
 
 export function AtlasPropModel({
   prop,
   hexSize,
   compositionSource,
+  compositionResolution,
 }: AtlasPropModelProps) {
   const world = propWorldPosition(prop, hexSize);
   const compositionId = compositionIdFromRef(prop.ref);
@@ -29,6 +34,8 @@ export function AtlasPropModel({
         compositionId={compositionId}
         instanceId={prop.id ?? ''}
         source={compositionSource}
+        managedResolution={compositionResolution}
+        renderLights={false}
         transform={{
           x: world.x,
           y: world.y,

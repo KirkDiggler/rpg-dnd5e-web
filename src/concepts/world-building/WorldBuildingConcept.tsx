@@ -14,6 +14,7 @@ import {
   redoHistory,
   rotateSelection,
   saveArrangement,
+  setPropPointLight,
   stampArrangement,
   undoHistory,
   ungroup,
@@ -36,6 +37,7 @@ import type {
   IdFactory,
   KeyValueStorage,
   SceneHistory,
+  WorldPointLight,
   WorldScene,
 } from './types';
 import './worldBuilding.css';
@@ -52,6 +54,14 @@ interface WorldBuildingConceptProps {
   idFactory?: IdFactory;
   now?: () => string;
 }
+
+const DEFAULT_POINT_LIGHT: WorldPointLight = {
+  enabled: true,
+  offset: { x: 0, y: 0.5, z: 0 },
+  color: '#ff9d52',
+  intensity: 1.1,
+  range: 2.6,
+};
 
 const browserStorage: KeyValueStorage = {
   getItem: (key) => window.localStorage.getItem(key),
@@ -399,6 +409,24 @@ export function WorldBuildingConcept({
   const failedCount = scene.items.filter(
     (item) => assetStates[item.id] === 'error'
   ).length;
+  const selectedProp =
+    selectedIds.length === 1
+      ? scene.items.find((item) => item.id === selectedIds[0])
+      : undefined;
+  const updateSelectedLight = (
+    update: (current: WorldPointLight) => WorldPointLight
+  ) => {
+    if (!selectedProp?.pointLight) return;
+    commit(
+      setPropPointLight(
+        scene,
+        selectedProp.id,
+        update(structuredClone(selectedProp.pointLight))
+      )
+    );
+  };
+  const numberFrom = (value: string): number =>
+    value.trim() === '' ? Number.NaN : Number(value);
 
   return (
     <section
@@ -625,6 +653,134 @@ export function WorldBuildingConcept({
               Shortcuts: Delete · Ctrl/Cmd+D · Ctrl/Cmd+Z · Shift+Ctrl/Cmd+Z · R
               · Esc
             </p>
+            {selectedProp && (
+              <div className="wb-light-editor">
+                <h4>Visual point light</h4>
+                {!selectedProp.pointLight ? (
+                  <>
+                    <button
+                      onClick={() =>
+                        commit(
+                          setPropPointLight(
+                            scene,
+                            selectedProp.id,
+                            DEFAULT_POINT_LIGHT
+                          )
+                        )
+                      }
+                    >
+                      Add point light
+                    </button>
+                    <p className="wb-help">
+                      Explicit author choice; never inferred from the asset.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <label className="wb-light-toggle">
+                      <input
+                        type="checkbox"
+                        aria-label="Light enabled"
+                        checked={selectedProp.pointLight.enabled}
+                        onChange={(event) =>
+                          updateSelectedLight((light) => ({
+                            ...light,
+                            enabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Enabled</span>
+                    </label>
+                    <div className="wb-light-grid">
+                      {(['x', 'y', 'z'] as const).map((axis) => (
+                        <label key={axis}>
+                          <span>Offset {axis.toUpperCase()}</span>
+                          <input
+                            type="number"
+                            aria-label={`Light offset ${axis.toUpperCase()}`}
+                            min={-12}
+                            max={12}
+                            step={0.05}
+                            value={selectedProp.pointLight!.offset[axis]}
+                            onChange={(event) =>
+                              updateSelectedLight((light) => ({
+                                ...light,
+                                offset: {
+                                  ...light.offset,
+                                  [axis]: numberFrom(event.target.value),
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      ))}
+                      <label>
+                        <span>Color</span>
+                        <input
+                          type="color"
+                          aria-label="Light color"
+                          value={selectedProp.pointLight.color}
+                          onChange={(event) =>
+                            updateSelectedLight((light) => ({
+                              ...light,
+                              color: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>Intensity</span>
+                        <input
+                          type="number"
+                          aria-label="Light intensity"
+                          min={0}
+                          max={20}
+                          step={0.1}
+                          value={selectedProp.pointLight.intensity}
+                          onChange={(event) =>
+                            updateSelectedLight((light) => ({
+                              ...light,
+                              intensity: numberFrom(event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>Range</span>
+                        <input
+                          type="number"
+                          aria-label="Light range"
+                          min={0.01}
+                          max={24}
+                          step={0.1}
+                          value={selectedProp.pointLight.range}
+                          onChange={(event) =>
+                            updateSelectedLight((light) => ({
+                              ...light,
+                              range: numberFrom(event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <p className="wb-help">
+                      Offset/range use scene units. Intensity is a rendering
+                      control, not physical or D&amp;D illumination.
+                    </p>
+                    <button
+                      className="wb-danger"
+                      onClick={() =>
+                        commit(
+                          setPropPointLight(scene, selectedProp.id, undefined)
+                        )
+                      }
+                    >
+                      Remove point light
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </section>
 
           <section>

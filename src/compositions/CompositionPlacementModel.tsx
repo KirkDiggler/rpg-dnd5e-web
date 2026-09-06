@@ -5,20 +5,15 @@ import { Suspense, useEffect, useState } from 'react';
 import { CompositionModel } from './CompositionModel';
 import type { CompositionSource } from './compositionSource';
 
-type Resolution =
-  | { source: CompositionSource | undefined; id: string; status: 'loading' }
-  | {
-      source: CompositionSource | undefined;
-      id: string;
-      status: 'ready';
-      composition: Composition;
-    }
-  | {
-      source: CompositionSource | undefined;
-      id: string;
-      status: 'missing' | 'error';
-      message: string;
-    };
+export type CompositionResolution =
+  | { status: 'loading' }
+  | { status: 'ready'; composition: Composition }
+  | { status: 'missing' | 'error'; message: string };
+
+type LocalResolution = CompositionResolution & {
+  source: CompositionSource | undefined;
+  id: string;
+};
 
 function PlacementMarker({
   instanceId,
@@ -52,6 +47,10 @@ export interface CompositionPlacementModelProps {
   instanceId: string;
   transform: WorldTransform;
   source?: CompositionSource;
+  /** DungeonEnvironment-owned resolution; prevents a duplicate per-placement read. */
+  managedResolution?: CompositionResolution;
+  /** False when DungeonEnvironment renders all sources through its shared budget. */
+  renderLights?: boolean;
 }
 
 /** Resolve and render one placement without sharing loading/error state. */
@@ -60,15 +59,17 @@ export function CompositionPlacementModel({
   instanceId,
   transform,
   source,
+  managedResolution,
+  renderLights = true,
 }: CompositionPlacementModelProps) {
-  const [resolution, setResolution] = useState<Resolution>({
+  const [resolution, setResolution] = useState<LocalResolution>({
     source,
     id: compositionId,
     status: 'loading',
   });
 
   useEffect(() => {
-    if (!source) return;
+    if (!source || managedResolution) return;
     let current = true;
     setResolution({ source, id: compositionId, status: 'loading' });
     void source.reader.getComposition(source.worldId, compositionId).then(
@@ -115,7 +116,7 @@ export function CompositionPlacementModel({
     return () => {
       current = false;
     };
-  }, [compositionId, source]);
+  }, [compositionId, managedResolution, source]);
 
   if (!instanceId) {
     return (
@@ -139,9 +140,10 @@ export function CompositionPlacementModel({
   }
 
   const current =
-    resolution.source === source && resolution.id === compositionId
+    managedResolution ??
+    (resolution.source === source && resolution.id === compositionId
       ? resolution
-      : ({ source, id: compositionId, status: 'loading' } as const);
+      : ({ source, id: compositionId, status: 'loading' } as const));
   if (current.status !== 'ready') {
     return (
       <PlacementMarker
@@ -175,6 +177,7 @@ export function CompositionPlacementModel({
           composition={current.composition}
           instanceId={instanceId}
           transform={transform}
+          renderLights={renderLights}
         />
       </ErrorBoundary>
     </Suspense>

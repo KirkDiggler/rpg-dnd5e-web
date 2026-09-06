@@ -4,6 +4,7 @@ import type {
   ArrangementLibrary,
   KeyValueStorage,
   WorldGroup,
+  WorldPointLight,
   WorldProp,
   WorldScene,
   WorldTransform,
@@ -82,6 +83,31 @@ function transform(value: unknown, field: string): WorldTransform {
   };
 }
 
+function pointLight(value: unknown, field: string): WorldPointLight {
+  const input = object(value);
+  if (typeof input.enabled !== 'boolean') {
+    throw new Error(`${field}.enabled must be a boolean.`);
+  }
+  const offset = object(input.offset);
+  if (
+    typeof input.color !== 'string' ||
+    !/^#[0-9a-fA-F]{6}$/.test(input.color)
+  ) {
+    throw new Error(`${field}.color must be a six-digit hex color.`);
+  }
+  return {
+    enabled: input.enabled,
+    offset: {
+      x: finiteNumber(offset.x, `${field}.offset.x`, -WORLD_LIMIT, WORLD_LIMIT),
+      y: finiteNumber(offset.y, `${field}.offset.y`, -WORLD_LIMIT, WORLD_LIMIT),
+      z: finiteNumber(offset.z, `${field}.offset.z`, -WORLD_LIMIT, WORLD_LIMIT),
+    },
+    color: input.color,
+    intensity: finiteNumber(input.intensity, `${field}.intensity`, 0, 20),
+    range: finiteNumber(input.range, `${field}.range`, 0.01, WORLD_LIMIT * 2),
+  };
+}
+
 function prop(value: unknown, field: string): WorldProp {
   const input = object(value);
   if (input.kind !== 'prop') throw new Error(`${field}.kind must be prop.`);
@@ -97,6 +123,10 @@ function prop(value: unknown, field: string): WorldProp {
     transform: transform(input.transform, `${field}.transform`),
     parentId: optionalId(input.parentId, `${field}.parentId`),
     supportId: optionalId(input.supportId, `${field}.supportId`),
+    pointLight:
+      input.pointLight === undefined
+        ? undefined
+        : pointLight(input.pointLight, `${field}.pointLight`),
   };
 }
 

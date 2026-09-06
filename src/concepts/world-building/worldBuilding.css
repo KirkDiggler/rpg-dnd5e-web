@@ -333,6 +333,44 @@
   font-weight: 700;
 }
 
+.wb-light-editor {
+  margin-top: 0.65rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #283c3a;
+}
+
+.wb-light-editor h4 {
+  margin: 0 0 0.4rem;
+  color: #f9d989;
+  font-size: 0.72rem;
+}
+
+.wb-light-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.wb-light-toggle > span {
+  display: inline !important;
+  margin: 0 !important;
+}
+
+.wb-light-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.wb-light-grid input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: 0.25rem;
+  font-size: 0.68rem;
+}
+
 .wb-danger {
   border-color: #7f1d1d !important;
   color: #fecaca !important;

@@ -1,8 +1,12 @@
 import { PropModel } from '@/components/hex-grid/PropModel';
 import { resolvePropVariant } from '@/components/hex-grid/propManifest';
 import type { WorldTransform } from '@/concepts/world-building/types';
+import { DUNGEON_POINT_LIGHT_BUDGET } from '@/rendering/dungeonLighting';
+import { selectBoundedVisualPointLights } from '@/rendering/visualPointLightSelection';
+import { VisualPointLights } from '@/rendering/visualPointLights';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { useMemo } from 'react';
+import { projectCompositionPointLights } from './compositionLightSources';
 import { decodeCompositionScene } from './compositionScene';
 
 export interface CompositionModelProps {
@@ -10,6 +14,8 @@ export interface CompositionModelProps {
   /** Identity of this placement, distinct from the immutable composition ID. */
   instanceId: string;
   transform: WorldTransform;
+  /** DungeonEnvironment owns the shared scene budget and disables leaf lights. */
+  renderLights?: boolean;
 }
 
 /**
@@ -27,10 +33,26 @@ export function CompositionModel({
   composition,
   instanceId,
   transform,
+  renderLights = true,
 }: CompositionModelProps) {
   const scene = useMemo(
     () => decodeCompositionScene(composition),
     [composition]
+  );
+  const lights = useMemo(
+    () =>
+      renderLights
+        ? selectBoundedVisualPointLights(
+            projectCompositionPointLights(scene, {
+              compositionId: composition.id,
+              placementId: instanceId,
+              transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+            }),
+            { x: 0, z: 0 },
+            DUNGEON_POINT_LIGHT_BUDGET
+          )
+        : [],
+    [composition.id, instanceId, renderLights, scene]
   );
   const leaves = useMemo(
     () =>
@@ -65,6 +87,7 @@ export function CompositionModel({
           />
         </group>
       ))}
+      <VisualPointLights lights={lights} />
     </group>
   );
 }

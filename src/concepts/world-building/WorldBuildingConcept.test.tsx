@@ -227,6 +227,49 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(scene().items).toHaveLength(0);
   });
 
+  it('authors, edits, toggles, and removes a visual point light on the selected prop', () => {
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    dragLabelTo('Drag Candles into scene');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add point light' }));
+    expect(scene().items[0]!.pointLight).toEqual({
+      enabled: true,
+      offset: { x: 0, y: 0.5, z: 0 },
+      color: '#ff9d52',
+      intensity: 1.1,
+      range: 2.6,
+    });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Light enabled' }));
+    fireEvent.change(screen.getByLabelText('Light offset X'), {
+      target: { value: '0.25' },
+    });
+    fireEvent.change(screen.getByLabelText('Light color'), {
+      target: { value: '#abcdef' },
+    });
+    fireEvent.change(screen.getByLabelText('Light intensity'), {
+      target: { value: '2.5' },
+    });
+    fireEvent.change(screen.getByLabelText('Light range'), {
+      target: { value: '4.5' },
+    });
+    expect(scene().items[0]!.pointLight).toMatchObject({
+      enabled: false,
+      offset: { x: 0.25 },
+      color: '#abcdef',
+      intensity: 2.5,
+      range: 4.5,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove point light' }));
+    expect(scene().items[0]!.pointLight).toBeUndefined();
+  });
+
   it('records exact tabletop height/support from one valid prop drop', () => {
     render(
       <WorldBuildingConcept

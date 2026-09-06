@@ -12,6 +12,7 @@ import {
   redoHistory,
   rotateSelection,
   saveArrangement,
+  setPropPointLight,
   stampArrangement,
   undoHistory,
   updateHistory,
@@ -321,6 +322,52 @@ describe('world-building continuous scene math', () => {
       grouped.items.find((item) => item.id === 'other')!.parentId
     ).toBeUndefined();
     expect(grouped.items.map((item) => item.id)).toEqual(['a', 'b', 'other']);
+  });
+
+  it('keeps an authored part-local light through transforms and clones it independently', () => {
+    let scene = createEmptyScene('scene-1');
+    scene = addProp(
+      scene,
+      'dnd5e:props:candles',
+      { x: 1, y: 0.7, z: 2, rotationY: 0.4 },
+      'candle'
+    );
+    scene = setPropPointLight(scene, 'candle', {
+      enabled: true,
+      offset: { x: 0.1, y: 0.35, z: -0.2 },
+      color: '#ff9d52',
+      intensity: 1.1,
+      range: 2.6,
+    });
+
+    const moved = moveSelection(scene, ['candle'], { x: 1, y: 0, z: -1 });
+    const rotated = rotateSelection(moved, ['candle'], Math.PI / 2);
+    expect(rotated.items[0]!.pointLight).toEqual(scene.items[0]!.pointLight);
+
+    const duplicated = duplicateSelection(rotated, ['candle'], () => 'copy');
+    const copy = duplicated.scene.items.find((item) => item.id === 'copy')!;
+    expect(copy.pointLight).toEqual(scene.items[0]!.pointLight);
+    copy.pointLight!.offset.x = 9;
+    expect(scene.items[0]!.pointLight!.offset.x).toBe(0.1);
+
+    const arrangement = saveArrangement(
+      scene,
+      ['candle'],
+      'lit-candle',
+      'Lit candle',
+      '2026-09-05T00:00:00.000Z'
+    );
+    const stamped = stampArrangement(
+      createEmptyScene('target'),
+      arrangement,
+      { x: 3, z: -3 },
+      () => 'stamp'
+    );
+    expect(stamped.scene.items[0]!.pointLight).toEqual(
+      scene.items[0]!.pointLight
+    );
+    stamped.scene.items[0]!.pointLight!.color = '#ffffff';
+    expect(arrangement.items[0]!.pointLight!.color).toBe('#ff9d52');
   });
 
   it('duplicates and deletes through relationship-aware selection roots', () => {

@@ -46,6 +46,15 @@ Phase B routes `composition:props:<Composition.ID>` through the existing opaque
 placement `ref`. The separately authored `place[].id` remains the placement
 identity, while WorldID comes only from the injected `CompositionSource`.
 
+Optional `WorldProp.pointLight` declarations render through the same point-light
+leaf in the composer, `CompositionModel` (including thumbnail capture), and the
+dungeon environment. Offset/range are existing scene-coordinate units;
+intensity is only a renderer control. A dungeon environment resolves each
+unique snapshot once, projects each placement/part identity independently, and
+combines these sources with dungeon sources before applying the existing
+12-light nearest-view budget. Standalone composition renders apply that same
+maximum locally. Emission is never inferred from an asset ref.
+
 The temporary JSON verification source is deliberately opt-in:
 
 ```bash
