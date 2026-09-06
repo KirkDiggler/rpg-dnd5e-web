@@ -14,6 +14,8 @@
  * sandbox (`authoringClient`, fixed `initialYaml`, no New/Open/file IO).
  */
 import { useListDungeons } from '@/api/useListDungeons';
+import { isCompositionRef } from '@/compositions/compositionRef';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { create } from '@bufbuild/protobuf';
 import { GetDungeonRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -48,6 +50,7 @@ import {
   eraseCell,
   isMonsterRef,
   isScenery,
+  movePlacement,
   paintCell,
   paintRect,
   paintScenery,
@@ -70,6 +73,7 @@ import {
   setStartFacing,
   setWallHeights,
   setWallName,
+  suggestPlacementId,
   toggleDoorAt,
   toggleExitAt,
   updateDisposition,
@@ -147,6 +151,7 @@ export interface DungeonBuilderProps {
   onPlay?: (key: string) => Promise<void>;
   /** Why Save & Play is disabled right now (no character picked, say). */
   playDisabledReason?: string | null;
+  compositionSource?: CompositionSource;
 }
 
 /** The rail's three panes, in the order they read: what this dungeon is
@@ -207,6 +212,7 @@ export function DungeonBuilder({
   onSaveSucceeded,
   onPlay,
   playDisabledReason = null,
+  compositionSource,
 }: DungeonBuilderProps) {
   // The FIRST doc runs through the same derivation every later edit
   // does (rpg-dnd5e-web#893) — a loaded draft, `initialYaml`, or an old
@@ -256,6 +262,9 @@ export function DungeonBuilder({
     () => doc.regions[0]?.id ?? null
   );
   const [armed, setArmed] = useState<PaletteItem | null>(null);
+  const [movingPlacementIndex, setMovingPlacementIndex] = useState<
+    number | null
+  >(null);
   const [tab, setTab] = useState<'board' | 'preview'>('board');
   const [newMenu, setNewMenu] = useState(false);
   const [openMenu, setOpenMenu] = useState(false);
@@ -564,6 +573,20 @@ export function DungeonBuilder({
     });
   };
   const handleCellClick = (cell: Axial) => {
+    if (tool === 'move-placement' && movingPlacementIndex !== null) {
+      applyDoc((d) => {
+        const next = movePlacement(d, movingPlacementIndex, cell);
+        if (next === d) {
+          showToast('Pick an unoccupied floor cell for this placement');
+        } else {
+          selectOnCanvas({ kind: 'placement', index: movingPlacementIndex });
+        }
+        return next;
+      });
+      setMovingPlacementIndex(null);
+      setTool('select');
+      return;
+    }
     if (tool === 'exit') {
       // Refused in place with the reason, exactly as `start` is — the
       // compiler refuses an exit on scenery in `start`'s own words, and a
@@ -609,7 +632,14 @@ export function DungeonBuilder({
             blocksLos: false,
           });
       applyDoc((d) => {
-        const next = placeAt(d, { ref: armed.ref, at: cell, ...defaults });
+        const next = placeAt(d, {
+          ref: armed.ref,
+          at: cell,
+          ...defaults,
+          ...(isCompositionRef(armed.ref)
+            ? { id: suggestPlacementId(d, armed.ref) }
+            : {}),
+        });
         if (next !== d) {
           selectOnCanvas({ kind: 'placement', index: next.place.length - 1 });
         }
@@ -775,7 +805,10 @@ export function DungeonBuilder({
         <Palette
           doc={doc}
           tool={tool}
-          onTool={setTool}
+          onTool={(nextTool) => {
+            if (nextTool !== 'move-placement') setMovingPlacementIndex(null);
+            setTool(nextTool);
+          }}
           activeRegionId={activeRegionId}
           onActiveRegion={(id) => {
             setActiveRegionId(id);
@@ -793,6 +826,7 @@ export function DungeonBuilder({
           }}
           armed={armed}
           onArm={setArmed}
+          compositionSource={compositionSource}
         />
       </div>
 
@@ -847,6 +881,7 @@ export function DungeonBuilder({
               doc={doc}
               status={statusLine}
               staleNotice={staleAtlasNotice(preview)}
+              compositionSource={compositionSource}
             />
           )}
         </div>
@@ -970,6 +1005,11 @@ export function DungeonBuilder({
               onPlacement={(index, patch) =>
                 applyDoc((d) => updatePlacement(d, index, patch))
               }
+              onMovePlacement={(index) => {
+                setMovingPlacementIndex(index);
+                setTool('move-placement');
+                showToast('Pick an unoccupied floor cell');
+              }}
               onRemovePlacement={(index) => {
                 applyDoc((d) => removePlacement(d, index));
                 setSelection({ kind: 'dungeon' });

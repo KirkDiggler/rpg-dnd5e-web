@@ -22,6 +22,7 @@
  * LobbyFlow's own call, not this component's (Copilot review, PR #764).
  */
 
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { useState } from 'react';
 import { SessionEncounterView } from '../session/SessionEncounterView';
 import { LobbyFlow } from './LobbyFlow';
@@ -52,6 +53,7 @@ export interface GameViewProps {
    * from it directly.
    */
   initialLobbyId?: string;
+  compositionSource?: CompositionSource;
 }
 
 export function GameView({
@@ -60,6 +62,7 @@ export function GameView({
   onBack,
   initialEncounterId,
   initialLobbyId,
+  compositionSource,
 }: GameViewProps) {
   const [sessionId, setSessionId] = useState<string | null>(
     initialEncounterId ?? null
@@ -82,6 +85,7 @@ export function GameView({
         characterId={lobbyCharacterId ?? characterId}
         playerId={playerId}
         onBack={onBack}
+        compositionSource={compositionSource}
       />
     );
   }

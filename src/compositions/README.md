@@ -42,4 +42,19 @@ must:
    `JsonCompositionAdapter` an explicit development source, never an RPC
    failure fallback.
 
-Phase A does not wire those reserved routes or claim save/reopen/play support.
+Phase B routes `composition:props:<Composition.ID>` through the existing opaque
+placement `ref`. The separately authored `place[].id` remains the placement
+identity, while WorldID comes only from the injected `CompositionSource`.
+
+The temporary JSON verification source is deliberately opt-in:
+
+```bash
+VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1 npm run dev -- --port 3031 --strictPort
+```
+
+It exists only in Vite development mode, owns the clearly named
+`development-world-web951-compositions` context, and contains the unchanged
+`decorated-table.scene.json` specimen. Missing sources, reader failures, and
+missing snapshots remain visible per placement; none triggers a fixture or RPC
+fallback. Production still needs composition RPC wiring before it can supply a
+real `CompositionSource`.

@@ -17,6 +17,7 @@ import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
+import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
@@ -61,6 +62,26 @@ const hasConceptDeepLink = (): boolean =>
   new URLSearchParams(window.location.search).has('concept');
 
 function AppContent() {
+  const [compositionSource, setCompositionSource] = useState<
+    CompositionSource | undefined
+  >();
+  useEffect(() => {
+    if (
+      import.meta.env.MODE !== 'development' ||
+      import.meta.env.VITE_ENABLE_DEVELOPMENT_COMPOSITIONS !== '1'
+    ) {
+      return;
+    }
+    let current = true;
+    void import('./compositions/developmentCompositionSource').then(
+      ({ createDevelopmentCompositionSource }) => {
+        if (current) setCompositionSource(createDevelopmentCompositionSource());
+      }
+    );
+    return () => {
+      current = false;
+    };
+  }, []);
   // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
   // /playtest is a permanent verification surface (design.md), not slated
@@ -379,6 +400,7 @@ function AppContent() {
             onBack={handleBackToHome}
             initialEncounterId={resumeEncounterId ?? undefined}
             initialLobbyId={resumeLobbyId ?? undefined}
+            compositionSource={compositionSource}
           />
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
@@ -387,6 +409,7 @@ function AppContent() {
             onBack={handleBackToHome}
             characterId={selectedType === 'character' ? selectedId : null}
             onPlay={handlePlayAuthored}
+            compositionSource={compositionSource}
           />
         ) : currentView === 'home' && resumeIdentityError ? (
           <div className="flex items-center justify-center h-screen">

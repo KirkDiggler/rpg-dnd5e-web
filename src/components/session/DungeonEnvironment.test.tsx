@@ -1,3 +1,5 @@
+import type { CompositionReader } from '@/compositions/compositionJsonAdapter';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -15,8 +17,14 @@ vi.mock('./DungeonShell', () => ({
   }) => <group name="environment-shell" userData={{ floorLighting }} />,
 }));
 vi.mock('./AtlasPropModel', () => ({
-  AtlasPropModel: ({ prop }: { prop: SceneProp3D }) => (
-    <group name="environment-prop" userData={{ prop }} />
+  AtlasPropModel: ({
+    prop,
+    compositionSource,
+  }: {
+    prop: SceneProp3D;
+    compositionSource?: CompositionSource;
+  }) => (
+    <group name="environment-prop" userData={{ prop, compositionSource }} />
   ),
 }));
 
@@ -82,6 +90,10 @@ function light(
 describe('DungeonEnvironment', () => {
   it('resolves one crypt environment and passes floor lighting to its shell', async () => {
     const onLightingDiagnostics = vi.fn();
+    const compositionSource: CompositionSource = {
+      worldId: 'world-current',
+      reader: {} as CompositionReader,
+    };
     const renderer = await ReactThreeTestRenderer.create(
       <DungeonEnvironment
         scene={sceneWith(factsWithSources(1), [
@@ -95,6 +107,7 @@ describe('DungeonEnvironment', () => {
         focus={{ x: 0, z: 0 }}
         hexSize={1}
         onLightingDiagnostics={onLightingDiagnostics}
+        compositionSource={compositionSource}
       />
     );
 
@@ -103,11 +116,17 @@ describe('DungeonEnvironment', () => {
         (node) => node.instance?.name === 'environment-shell'
       )
     ).toHaveLength(1);
+    const environmentProps = renderer.scene.findAll(
+      (node) => node.instance?.name === 'environment-prop'
+    );
+    expect(environmentProps).toHaveLength(1);
     expect(
-      renderer.scene.findAll(
-        (node) => node.instance?.name === 'environment-prop'
-      )
-    ).toHaveLength(1);
+      (
+        environmentProps[0]!.instance as unknown as {
+          userData: { compositionSource: CompositionSource };
+        }
+      ).userData.compositionSource
+    ).toBe(compositionSource);
     expect(light(renderer, 'AmbientLight').instance.intensity).toBe(0.2);
     expect(light(renderer, 'DirectionalLight').instance.intensity).toBe(0.1);
     expect(pointLights(renderer)).toHaveLength(1);

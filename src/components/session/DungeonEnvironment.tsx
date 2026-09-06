@@ -1,3 +1,4 @@
+import type { CompositionSource } from '@/compositions/compositionSource';
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { ReactElement } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
@@ -16,6 +17,7 @@ export interface DungeonEnvironmentProps {
   readonly onDoorClick?: (door: string) => void;
   readonly onShellFallbackReason?: (reason: ShellFallbackReason | null) => void;
   readonly onLightingDiagnostics?: (messages: readonly string[]) => void;
+  readonly compositionSource?: CompositionSource;
 }
 
 export function DungeonEnvironment({
@@ -26,6 +28,7 @@ export function DungeonEnvironment({
   onDoorClick,
   onShellFallbackReason,
   onLightingDiagnostics,
+  compositionSource,
 }: DungeonEnvironmentProps): ReactElement {
   const plan = useMemo(
     () => resolveDungeonLighting(scene.lighting, { x: focus.x, z: focus.z }),
@@ -74,6 +77,7 @@ export function DungeonEnvironment({
           prop={prop}
           hexSize={hexSize}
           orientation="pointy"
+          compositionSource={compositionSource}
         />
       ))}
     </>

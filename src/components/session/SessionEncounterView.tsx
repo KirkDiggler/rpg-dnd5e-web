@@ -32,6 +32,7 @@ import {
   createNeutralVisualThrowProfile,
   type VisualThrowProfileV1,
 } from '@/components/ui/dice/visualThrowProfile';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -129,6 +130,7 @@ export interface SessionEncounterViewProps {
   characterId?: string;
   playerId: string;
   onBack: () => void;
+  compositionSource?: CompositionSource;
 }
 
 function endingHeadline(ending: string): string {
@@ -181,6 +183,7 @@ function SessionEncounterScope({
   characterId,
   playerId,
   onBack,
+  compositionSource,
 }: SessionEncounterViewProps) {
   const member = characterId ?? '';
   // GetCharacter is the local owner's complete creation projection and the
@@ -1574,6 +1577,7 @@ function SessionEncounterScope({
                   startFacing={atlas?.start?.facing || undefined}
                   scene={lastGoodSceneRef.current!}
                   hexSize={HEX_SIZE}
+                  compositionSource={compositionSource}
                   characterId={member}
                   characterName={characterName}
                   classRefId={classRefId}

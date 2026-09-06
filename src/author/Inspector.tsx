@@ -71,6 +71,7 @@ export interface InspectorProps {
     patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>
   ) => void;
   onRemovePlacement: (index: number) => void;
+  onMovePlacement?: (index: number) => void;
   /** Rename one way out. */
   onExit: (index: number, patch: Partial<Pick<ExitDoc, 'id'>>) => void;
   onRemoveExit: (index: number) => void;
@@ -173,6 +174,11 @@ export function Inspector(props: InspectorProps) {
         placement={placement}
         errors={props.errors}
         onChange={(p) => props.onPlacement(selection.index, p)}
+        onMove={
+          props.onMovePlacement
+            ? () => props.onMovePlacement?.(selection.index)
+            : undefined
+        }
         onRemove={() => props.onRemovePlacement(selection.index)}
         onSelectIntel={(id) => props.onSelect({ kind: 'intel', id })}
       />
@@ -742,6 +748,7 @@ function PlacementPanel({
   placement,
   errors,
   onChange,
+  onMove,
   onRemove,
   onSelectIntel,
 }: {
@@ -750,6 +757,7 @@ function PlacementPanel({
   placement: PlacementDoc;
   errors: readonly FieldError[];
   onChange: (patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>) => void;
+  onMove?: () => void;
   onRemove: () => void;
   onSelectIntel: (id: string) => void;
 }) {
@@ -882,9 +890,16 @@ function PlacementPanel({
           </div>
         )}
       </div>
-      <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
-        remove
-      </button>
+      <div className="flex gap-2">
+        {onMove && (
+          <button type="button" className="dg-mini" onClick={onMove}>
+            move to another cell
+          </button>
+        )}
+        <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
+          remove
+        </button>
+      </div>
     </div>
   );
 }
