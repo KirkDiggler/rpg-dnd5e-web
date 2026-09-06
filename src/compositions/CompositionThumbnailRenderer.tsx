@@ -1,15 +1,25 @@
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { Bounds } from '@react-three/drei';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import {
+  createRoot,
+  extend,
+  useFrame,
+  useThree,
+  type Catalogue,
+  type ReconcilerRoot,
+} from '@react-three/fiber';
+import { FiberProvider, useContextBridge } from 'its-fine';
 import {
   Component,
   Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   type ReactNode,
 } from 'react';
+import * as THREE from 'three';
 import { CompositionModel } from './CompositionModel';
 
 interface CaptureBoundaryProps {
@@ -22,8 +32,9 @@ interface CaptureBoundaryState {
   failed: boolean;
 }
 
-/** Error boundaries are needed on both sides of the R3F root: one for scene
- * loading/rendering and one for WebGL-root creation itself. */
+/** Error boundaries are needed inside the R3F root for both the whole surface
+ * and the current scene request. Renderer setup failures are observed where
+ * createRoot/configure are owned below, before an R3F React tree exists. */
 class CaptureBoundary extends Component<
   CaptureBoundaryProps,
   CaptureBoundaryState
@@ -158,6 +169,126 @@ function ThumbnailCaptureRequest({
   );
 }
 
+interface ThumbnailRootProps {
+  children: ReactNode;
+  onError: (error: unknown) => void;
+}
+
+/** A deliberately small R3F lifecycle owner so configure failures are part of
+ * this component's observed promise chain instead of Canvas's fire-and-forget
+ * setup. It retains Canvas's THREE catalogue and React-context bridge. */
+function ThumbnailRoot({ children, onError }: ThumbnailRootProps) {
+  return (
+    <FiberProvider>
+      <ThumbnailRootLifecycle onError={onError}>
+        {children}
+      </ThumbnailRootLifecycle>
+    </FiberProvider>
+  );
+}
+
+function ThumbnailRootLifecycle({ children, onError }: ThumbnailRootProps) {
+  useMemo(() => extend(THREE as unknown as Catalogue), []);
+  const ContextBridge = useContextBridge();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rootRef = useRef<ReconcilerRoot<HTMLCanvasElement> | null>(null);
+  const configuredRootRef = useRef<ReconcilerRoot<HTMLCanvasElement> | null>(
+    null
+  );
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const failed = useRef(false);
+  const pendingDisposal = useRef<{ cancelled: boolean } | null>(null);
+
+  const reportError = useCallback((error: unknown) => {
+    if (failed.current) return;
+    failed.current = true;
+    onErrorRef.current(error);
+  }, []);
+
+  const scene = useMemo(
+    () => (
+      <ContextBridge>
+        <CaptureBoundary fallback={null} onError={reportError}>
+          {children}
+        </CaptureBoundary>
+      </ContextBridge>
+    ),
+    [ContextBridge, children, reportError]
+  );
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    if (pendingDisposal.current) pendingDisposal.current.cancelled = true;
+    pendingDisposal.current = null;
+    let disposed = false;
+    let root: ReconcilerRoot<HTMLCanvasElement> | null = null;
+    try {
+      root = rootRef.current ?? createRoot(canvas);
+      rootRef.current = root;
+      const setup = root.configure({
+        camera: { fov: 32, position: [2, 1.6, 2.6] },
+        dpr: 1,
+        frameloop: 'demand',
+        gl: { alpha: false, antialias: true, preserveDrawingBuffer: true },
+        size: { width: 128, height: 128, top: 0, left: 0 },
+      });
+      void setup.then(
+        (configuredRoot) => {
+          if (disposed || failed.current) return;
+          configuredRootRef.current = configuredRoot;
+          try {
+            configuredRoot.render(sceneRef.current);
+          } catch (error) {
+            reportError(error);
+          }
+        },
+        (error) => {
+          if (!disposed) reportError(error);
+        }
+      );
+    } catch (error) {
+      reportError(error);
+    }
+
+    return () => {
+      disposed = true;
+      configuredRootRef.current = null;
+      // React StrictMode immediately replays layout effects. Delay disposal one
+      // microtask so that replay can retain this one surface, while a real
+      // unmount still tears it down before any stale setup can render.
+      const disposal = { cancelled: false };
+      pendingDisposal.current = disposal;
+      queueMicrotask(() => {
+        if (!disposal.cancelled) root?.unmount();
+      });
+    };
+  }, [reportError]);
+
+  useLayoutEffect(() => {
+    const root = configuredRootRef.current;
+    if (!root || failed.current) return;
+    try {
+      root.render(scene);
+    } catch (error) {
+      reportError(error);
+    }
+  }, [reportError, scene]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={128}
+      height={128}
+      style={{ display: 'block', width: '100%', height: '100%' }}
+    />
+  );
+}
+
 export interface CompositionThumbnailRendererProps {
   composition: Composition;
   requestKey: string;
@@ -180,7 +311,8 @@ export function CompositionThumbnailRenderer({
   onRootError,
 }: CompositionThumbnailRendererProps) {
   const reportRootError = useCallback(
-    (error: Error) => onRootError(error.message),
+    (error: unknown) =>
+      onRootError(error instanceof Error ? error.message : String(error)),
     [onRootError]
   );
 
@@ -196,26 +328,19 @@ export function CompositionThumbnailRenderer({
         pointerEvents: 'none',
       }}
     >
-      <CaptureBoundary fallback={null} onError={reportRootError}>
-        <Canvas
-          camera={{ fov: 32, position: [2, 1.6, 2.6] }}
-          dpr={1}
-          frameloop="demand"
-          gl={{ alpha: false, antialias: true, preserveDrawingBuffer: true }}
-        >
-          <color attach="background" args={['#14110f']} />
-          <ambientLight intensity={1} />
-          <directionalLight position={[3, 5, 4]} intensity={1.2} />
-          <directionalLight position={[-4, 2, -3]} intensity={0.5} />
-          <ThumbnailCaptureRequest
-            key={requestKey}
-            composition={composition}
-            requestKey={requestKey}
-            onComplete={onComplete}
-            onError={onError}
-          />
-        </Canvas>
-      </CaptureBoundary>
+      <ThumbnailRoot onError={reportRootError}>
+        <color attach="background" args={['#14110f']} />
+        <ambientLight intensity={1} />
+        <directionalLight position={[3, 5, 4]} intensity={1.2} />
+        <directionalLight position={[-4, 2, -3]} intensity={0.5} />
+        <ThumbnailCaptureRequest
+          key={requestKey}
+          composition={composition}
+          requestKey={requestKey}
+          onComplete={onComplete}
+          onError={onError}
+        />
+      </ThumbnailRoot>
     </div>
   );
 }
