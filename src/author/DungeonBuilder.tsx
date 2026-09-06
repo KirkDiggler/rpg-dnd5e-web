@@ -89,11 +89,13 @@ import { PALETTE_PROPS } from './paletteData';
 import { DungeonPreview3D } from './preview3d/DungeonPreview3D';
 import {
   nextRailWidth,
-  readInspectorFolded,
+  readRailTab,
   readRailWidth,
-  writeInspectorFolded,
+  writeRailTab,
   writeRailWidth,
+  type RailTab,
 } from './railLayout';
+import { ScenarioPanel } from './ScenarioPanel';
 import type { BoardTool, PaletteItem, Selection } from './types';
 import { YamlPane } from './YamlPane';
 
@@ -144,6 +146,15 @@ export interface DungeonBuilderProps {
   /** Why Save & Play is disabled right now (no character picked, say). */
   playDisabledReason?: string | null;
 }
+
+/** The rail's three panes, in the order they read: what this dungeon is
+ * FOR, whatever is selected on the board, and the file itself. One at a
+ * time, so each gets the whole column (rpg-dnd5e-web#945). */
+const RAIL_TABS: readonly (readonly [RailTab, string])[] = [
+  ['scenario', 'Scenario'],
+  ['inspector', 'Inspector'],
+  ['source', 'Source'],
+];
 
 /** `concealment.regionIds` is `null` only when there is no start to
  * derive reachability from — the canvas has nothing to highlight either
@@ -218,6 +229,27 @@ export function DungeonBuilder({
   const derivedIdsRef = useRef<Set<string>>(initialDerivation.derivedIds);
   const [tool, setTool] = useState<BoardTool>('region');
   const [selection, setSelection] = useState<Selection>({ kind: 'dungeon' });
+  // Which of the rail's three panes is on screen, remembered across sessions
+  // (railLayout.ts). A preference about looking at the builder, never a fact
+  // about the dungeon.
+  const [railTab, setRailTab] = useState<RailTab>(readRailTab);
+  const showTab = useCallback((tab: RailTab) => {
+    setRailTab(tab);
+    writeRailTab(tab);
+  }, []);
+  /**
+   * Selecting on the CANVAS brings the inspector forward, because the click
+   * asked a question only the inspector answers — a door picked while the
+   * Source tab is up would otherwise select something the author cannot see.
+   * Nothing else moves the rail: the tabs are the author's.
+   */
+  const selectOnCanvas = useCallback(
+    (next: Selection) => {
+      setSelection(next);
+      showTab('inspector');
+    },
+    [showTab]
+  );
   const [activeRegionId, setActiveRegionId] = useState<string | null>(
     () => doc.regions[0]?.id ?? null
   );
@@ -369,6 +401,10 @@ export function DungeonBuilder({
     // written.
     const derived = applyDerivedConcealment(next, new Set());
     setDoc(derived.doc);
+    // New/Open/Load replaces the document, so any text in flight is about a
+    // file that is gone.
+    setYamlDraft(null);
+    setYamlParseError(null);
     derivedIdsRef.current = derived.derivedIds;
     setSelection({ kind: 'dungeon' });
     setActiveRegionId(derived.doc.regions[0]?.id ?? null);
@@ -405,6 +441,21 @@ export function DungeonBuilder({
   // keystroke is an EDIT to the document open in front of them, exactly like
   // dragging a wall, so it takes the same path — including the concealment
   // ratchet, so hand-written YAML self-heals the way the canvas does.
+  // The YAML pane's text in flight and why it will not parse. It lives here
+  // rather than in the pane because the rail unmounts the pane whenever the
+  // author looks at another tab, and #899's promise — text that does not
+  // parse is never discarded — cannot be kept by something that stops
+  // existing. `null` means the pane is showing the file.
+  const [yamlDraft, setYamlDraft] = useState<string | null>(null);
+  const [yamlParseError, setYamlParseError] = useState<string | null>(null);
+  const handleYamlDraft = useCallback(
+    (draft: string | null, parseError: string | null) => {
+      setYamlDraft(draft);
+      setYamlParseError(parseError);
+    },
+    []
+  );
+
   const handleEditYaml = useCallback(
     (text: string): string | null => {
       try {
@@ -482,13 +533,13 @@ export function DungeonBuilder({
     applyDoc((d) => {
       const next = addWall(d, start, end);
       if (next !== d)
-        setSelection({ kind: 'wall', index: next.walls.length - 1 });
+        selectOnCanvas({ kind: 'wall', index: next.walls.length - 1 });
       return next;
     });
   };
   const handleWallDelete = (index: number) => {
     applyDoc((d) => removeWalls(d, [index]));
-    setSelection({ kind: 'dungeon' });
+    selectOnCanvas({ kind: 'dungeon' });
   };
   /** A door is a position on a wall (design §2.8). Toggling, and the
    * new door is selected so its lock and concealment are to hand. */
@@ -497,7 +548,7 @@ export function DungeonBuilder({
       const before = d.doors.length;
       const next = toggleDoorAt(d, at);
       if (next !== d && next.doors.length > before) {
-        setSelection({
+        selectOnCanvas({
           kind: 'door',
           id: next.doors[next.doors.length - 1].id,
         });
@@ -517,7 +568,7 @@ export function DungeonBuilder({
       applyDoc((d) => {
         const next = toggleExitAt(d, cell);
         if (next !== d && next.exits.length > d.exits.length) {
-          setSelection({ kind: 'exit', index: next.exits.length - 1 });
+          selectOnCanvas({ kind: 'exit', index: next.exits.length - 1 });
         }
         return next;
       });
@@ -535,7 +586,7 @@ export function DungeonBuilder({
         const next = setStart(d, cell);
         // Selected on placement, so the facing compass is one click away
         // rather than something to go looking for.
-        if (next !== d) setSelection({ kind: 'start' });
+        if (next !== d) selectOnCanvas({ kind: 'start' });
         return next;
       });
     }
@@ -553,7 +604,7 @@ export function DungeonBuilder({
       applyDoc((d) => {
         const next = placeAt(d, { ref: armed.ref, at: cell, ...defaults });
         if (next !== d) {
-          setSelection({ kind: 'placement', index: next.place.length - 1 });
+          selectOnCanvas({ kind: 'placement', index: next.place.length - 1 });
         }
         return next;
       });
@@ -584,13 +635,10 @@ export function DungeonBuilder({
     playing ||
     !doc.key;
 
-  // How this author likes to look at the builder (railLayout.ts): a rail
-  // width, and whether the inspector is folded away above the YAML. Neither
-  // touches the document.
+  // How wide this author likes the rail (railLayout.ts, beside the pane it
+  // opens on above). Neither touches the document.
   const rootRef = useRef<HTMLDivElement>(null);
   const [railWidth, setRailWidth] = useState<number | null>(readRailWidth);
-  const [inspectorFolded, setInspectorFolded] =
-    useState<boolean>(readInspectorFolded);
   const dragRef = useRef<{ x: number; width: number } | null>(null);
 
   const beginRailDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -632,13 +680,6 @@ export function DungeonBuilder({
     setRailWidth(null);
     writeRailWidth(null);
   };
-  const toggleInspector = () => {
-    setInspectorFolded((folded) => {
-      writeInspectorFolded(!folded);
-      return !folded;
-    });
-  };
-
   return (
     <div
       className="dg-root"
@@ -791,7 +832,7 @@ export function DungeonBuilder({
               onDoorToggle={handleDoorToggle}
               sealedCells={sealedCells}
               onCellClick={handleCellClick}
-              onSelect={setSelection}
+              onSelect={selectOnCanvas}
             />
           ) : (
             <DungeonPreview3D
@@ -817,19 +858,64 @@ export function DungeonBuilder({
           onPointerCancel={endRailDrag}
           onDoubleClick={resetRail}
         />
-        <div className="dg-col">
-          <button
-            type="button"
-            className="dg-fold"
-            onClick={toggleInspector}
-            aria-expanded={!inspectorFolded}
-          >
-            <span aria-hidden="true">
-              {inspectorFolded ? '\u25b8' : '\u25be'}
-            </span>
-            Inspector
-          </button>
-          {!inspectorFolded && (
+        {/* The tab row and, under it, what the compiler is saying — the
+            status line and its refusals belong to the BUILDER rather than to
+            whichever pane is up, so they stay on screen while the author
+            works on any of the three. */}
+        <div className="dg-rail-head">
+          <div className="dg-rail-tabs" role="tablist" aria-label="Rail">
+            {RAIL_TABS.map(([tab, label]) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                id={`dg-rail-tab-${tab}`}
+                aria-selected={railTab === tab}
+                aria-controls="dg-rail-pane"
+                className={`dg-mini ${railTab === tab ? 'dg-tool--on' : ''}`}
+                onClick={() => showTab(tab)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs opacity-80" data-testid="status-line">
+            {statusLine}
+          </div>
+          {errors.length > 0 && (
+            <ul className="dg-errors" data-testid="error-list">
+              {errors.map((err, i) => (
+                <li key={`${err.path}-${i}`}>
+                  <code>{err.path}</code> {err.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {leaks.length > 0 && (
+            <ul className="dg-warnings" data-testid="warning-list">
+              {leaks.map((w, i) => (
+                <li key={i}>{w.message}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div
+          className="dg-col"
+          role="tabpanel"
+          id="dg-rail-pane"
+          aria-labelledby={`dg-rail-tab-${railTab}`}
+        >
+          {railTab === 'scenario' && (
+            <ScenarioPanel
+              doc={doc}
+              state={scenarios}
+              errors={errors}
+              onBind={(scenarioId, key, value) =>
+                applyDoc((d) => setScenarioBinding(d, scenarioId, key, value))
+              }
+            />
+          )}
+          {railTab === 'inspector' && (
             <Inspector
               doc={doc}
               selection={selection}
@@ -882,9 +968,6 @@ export function DungeonBuilder({
                 applyDoc((d) => removeExit(d, index));
                 setSelection({ kind: 'dungeon' });
               }}
-              onBindScenario={(scenarioId, key, value) =>
-                applyDoc((d) => setScenarioBinding(d, scenarioId, key, value))
-              }
               onIntel={(id, patch) => {
                 applyDoc((d) => updateIntel(d, id, patch));
                 if (patch.id !== undefined) {
@@ -934,22 +1017,21 @@ export function DungeonBuilder({
                   return next;
                 });
               }}
-              scenarios={scenarios}
               errors={errors}
             />
           )}
-        </div>
-        <div className="dg-col">
-          <YamlPane
-            yaml={yaml}
-            filename={`${doc.key || 'dungeon'}.yaml`}
-            errors={errors}
-            warnings={leaks}
-            statusLine={statusLine}
-            allowFileIO={allowYamlFileIO}
-            onLoad={handleLoadText}
-            onEdit={allowYamlFileIO ? handleEditYaml : undefined}
-          />
+          {railTab === 'source' && (
+            <YamlPane
+              yaml={yaml}
+              filename={`${doc.key || 'dungeon'}.yaml`}
+              allowFileIO={allowYamlFileIO}
+              onLoad={handleLoadText}
+              onEdit={allowYamlFileIO ? handleEditYaml : undefined}
+              draft={yamlDraft}
+              parseError={yamlParseError}
+              onDraft={handleYamlDraft}
+            />
+          )}
         </div>
       </div>
 

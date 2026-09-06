@@ -3,9 +3,9 @@ import {
   CANVAS_MIN,
   nextRailWidth,
   RAIL_MIN,
-  readInspectorFolded,
+  readRailTab,
   readRailWidth,
-  writeInspectorFolded,
+  writeRailTab,
   writeRailWidth,
 } from './railLayout';
 
@@ -57,11 +57,21 @@ describe('persistence', () => {
     expect(readRailWidth()).toBeNull();
   });
 
-  it('defaults the inspector to OPEN and round-trips the fold', () => {
-    expect(readInspectorFolded()).toBe(false);
-    writeInspectorFolded(true);
-    expect(readInspectorFolded()).toBe(true);
-    writeInspectorFolded(false);
-    expect(readInspectorFolded()).toBe(false);
+  it('defaults to the inspector and round-trips the pane', () => {
+    expect(readRailTab()).toBe('inspector');
+    writeRailTab('scenario');
+    expect(readRailTab()).toBe('scenario');
+    writeRailTab('source');
+    expect(readRailTab()).toBe('source');
+    writeRailTab('inspector');
+    expect(readRailTab()).toBe('inspector');
+  });
+
+  it('reads a stored pane that is not one of the three as the default', () => {
+    // A key left by an older build, or by hand. There is no fourth pane to
+    // show, so the rail opens on the one it has always opened on rather
+    // than rendering nothing.
+    window.localStorage.setItem('dg.rail.tab', 'yaml');
+    expect(readRailTab()).toBe('inspector');
   });
 });
