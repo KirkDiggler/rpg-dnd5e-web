@@ -1,4 +1,5 @@
 import type { CompositionReader } from '@/compositions/compositionJsonAdapter';
+import type { CompositionResolution } from '@/compositions/CompositionPlacementModel';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useGLTF } from '@react-three/drei';
@@ -15,15 +16,26 @@ vi.mock('@/compositions/CompositionPlacementModel', () => ({
     instanceId,
     transform,
     source,
+    managedResolution,
+    renderLights,
   }: {
     compositionId: string;
     instanceId: string;
     transform: { x: number; y: number; z: number; rotationY: number };
     source?: CompositionSource;
+    managedResolution?: CompositionResolution;
+    renderLights?: boolean;
   }) => (
     <group
       name="resolved-composition-placement"
-      userData={{ compositionId, instanceId, transform, source }}
+      userData={{
+        compositionId,
+        instanceId,
+        transform,
+        source,
+        managedResolution,
+        renderLights,
+      }}
     />
   ),
 }));
@@ -79,6 +91,7 @@ describe('AtlasPropModel', () => {
       worldId: 'world-current',
       reader: {} as CompositionReader,
     };
+    const compositionResolution: CompositionResolution = { status: 'loading' };
     const renderer = await ReactThreeTestRenderer.create(
       <AtlasPropModel
         prop={{
@@ -91,6 +104,7 @@ describe('AtlasPropModel', () => {
         hexSize={1}
         orientation="pointy"
         compositionSource={compositionSource}
+        compositionResolution={compositionResolution}
       />
     );
 
@@ -100,6 +114,10 @@ describe('AtlasPropModel', () => {
     expect(placement.props.userData.compositionId).toBe('decorated-table');
     expect(placement.props.userData.instanceId).toBe('decorated-table-2');
     expect(placement.props.userData.source).toBe(compositionSource);
+    expect(placement.props.userData.managedResolution).toBe(
+      compositionResolution
+    );
+    expect(placement.props.userData.renderLights).toBe(false);
     expect(placement.props.userData.transform.rotationY).toBeCloseTo(
       facingToYaw('ne')
     );

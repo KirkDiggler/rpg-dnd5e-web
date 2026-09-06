@@ -153,10 +153,12 @@ validator.
 Point lights are explicit author declarations only; asset names and meshes never
 imply emission. The part-local offset rotates with the part, then the complete
 composition placement applies once. Rendering selects at most the established
-12 point lights nearest the view across ordinary dungeon sources and resolved
-composition placements. This is visual rendering only: intensity is not a
-physical measurement, range is not D&D bright/dim distance, and no visibility
-or lit-cell facts are computed.
+12 point lights: dungeon selection uses its current view focus, while composer
+and standalone/thumbnail selection currently use the composition origin rather
+than camera position. Authored sources illuminate meshes but do not add crypt
+floor pools. This is visual rendering only: intensity is not a physical
+measurement, range is not D&D bright/dim distance, and no visibility or
+lit-cell facts are computed.
 
 Local-storage keys are:
 

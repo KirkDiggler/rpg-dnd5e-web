@@ -266,6 +266,25 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       range: 4.5,
     });
 
+    const imported = scene();
+    imported.items[0]!.pointLight!.color = '#ABCDEF';
+    fireEvent.change(screen.getByLabelText('Portable JSON'), {
+      target: {
+        value: JSON.stringify({
+          kind: 'rpg-world-building-scene',
+          version: 1,
+          scene: imported,
+        }),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Import scene JSON' }));
+    expect(scene().items).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText(/Select candles/i));
+    expect(
+      (screen.getByLabelText('Light color') as HTMLInputElement).value
+    ).toBe('#abcdef');
+    expect(scene().items[0]!.pointLight!.color).toBe('#ABCDEF');
+
     fireEvent.click(screen.getByRole('button', { name: 'Remove point light' }));
     expect(scene().items[0]!.pointLight).toBeUndefined();
   });

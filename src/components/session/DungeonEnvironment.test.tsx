@@ -257,10 +257,10 @@ describe('DungeonEnvironment', () => {
         node.instance as unknown as { position: { toArray: () => number[] } }
       ).position.toArray()
     );
-    expect(positions.some(([x, y, z]) => x === 1 && y === 0.5 && z === 0)).toBe(
+    expect(positions.some(([x, y, z]) => x === 1 && y === 0.7 && z === 0)).toBe(
       true
     );
-    expect(positions.some(([x, y, z]) => x !== 1 && y === 0.5 && z !== 0)).toBe(
+    expect(positions.some(([x, y, z]) => x !== 1 && y === 0.7 && z !== 0)).toBe(
       true
     );
   });

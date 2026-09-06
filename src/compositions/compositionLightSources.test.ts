@@ -1,4 +1,5 @@
 import type { WorldScene } from '@/concepts/world-building/types';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { describe, expect, it } from 'vitest';
 import { projectCompositionPointLights } from './compositionLightSources';
 
@@ -56,10 +57,11 @@ describe('composition authored point-light projection', () => {
       intensity: 1.1,
       distance: 2.6,
     });
-    // Part yaw moves local +X to -Z: item-space position (2, .75, 0).
+    // Part yaw moves local +X to -Z: item-space XZ position (2, 0).
     // Placement yaw then moves (2, 0) to (0, -2), before root translation.
+    // Y includes the one shared rendered-prop surface lift.
     expect(light!.position[0]).toBeCloseTo(10);
-    expect(light!.position[1]).toBeCloseTo(2.75);
+    expect(light!.position[1]).toBeCloseTo(2.75 + DUNGEON_SURFACE_Y);
     expect(light!.position[2]).toBeCloseTo(-5);
   });
 

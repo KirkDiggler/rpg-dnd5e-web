@@ -2,6 +2,7 @@ import type {
   WorldScene,
   WorldTransform,
 } from '@/concepts/world-building/types';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import type { VisualPointLightSource } from '@/rendering/visualPointLightSelection';
 
 export interface CompositionLightPlacement {
@@ -19,8 +20,9 @@ function rotateYaw(x: number, z: number, yaw: number): [number, number] {
 
 /**
  * Project enabled authored declarations to render coordinates. The offset is
- * part-local: part yaw applies first, then the complete composition placement
- * applies once. Group/support records are authoring relations, not transforms.
+ * part-local: part yaw applies first, the shared rendered-prop surface lift is
+ * added once, then the complete composition placement applies once.
+ * Group/support records are authoring relations, not transforms.
  */
 export function projectCompositionPointLights(
   scene: WorldScene,
@@ -36,7 +38,7 @@ export function projectCompositionPointLights(
       item.transform.rotationY
     );
     const localX = item.transform.x + partOffsetX;
-    const localY = item.transform.y + light.offset.y;
+    const localY = item.transform.y + DUNGEON_SURFACE_Y + light.offset.y;
     const localZ = item.transform.z + partOffsetZ;
     const [placedX, placedZ] = rotateYaw(
       localX,

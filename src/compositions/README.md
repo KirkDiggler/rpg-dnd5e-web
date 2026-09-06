@@ -52,8 +52,12 @@ dungeon environment. Offset/range are existing scene-coordinate units;
 intensity is only a renderer control. A dungeon environment resolves each
 unique snapshot once, projects each placement/part identity independently, and
 combines these sources with dungeon sources before applying the existing
-12-light nearest-view budget. Standalone composition renders apply that same
-maximum locally. Emission is never inferred from an asset ref.
+12-light nearest-view budget. Composer and standalone/thumbnail renders apply
+that same maximum nearest the current composition origin, not their camera.
+Authored point lights illuminate rendered meshes but do not add the crypt's
+separate floor-pool treatment. Emission is never inferred from an asset ref.
+The Add control ships with offset `(0, 0.5, 0)`, color `#ff9d52`, intensity
+`1.1`, and range `2.6`; browser evidence may show deliberately edited values.
 
 The temporary JSON verification source is deliberately opt-in:
 

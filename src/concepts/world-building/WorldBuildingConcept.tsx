@@ -719,7 +719,7 @@ export function WorldBuildingConcept({
                         <input
                           type="color"
                           aria-label="Light color"
-                          value={selectedProp.pointLight.color}
+                          value={selectedProp.pointLight.color.toLowerCase()}
                           onChange={(event) =>
                             updateSelectedLight((light) => ({
                               ...light,
