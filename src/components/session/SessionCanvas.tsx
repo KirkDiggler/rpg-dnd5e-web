@@ -101,6 +101,17 @@ const ATTACKABLE_RING_COLOR = '#f97316';
 // is the BASE value so the rendered ring lands at the intended ~0.22.
 const ATTACKABLE_RING_OPACITY = 0.15;
 
+/** The mover a reaction window is posed against (rpg-project#316) — a
+ * DIFFERENT hue from the in-reach rings on purpose. Those say "you may hit
+ * this"; this one says "this one is leaving, and the fight is waiting on
+ * you", which is a question and not an inventory. Violet reads as neither
+ * the attackable orange nor the movement preview. */
+const REACTION_MOVER_RING_COLOR = '#a78bfa';
+/** Brighter than the passive in-reach ring, and for the same reason: it is
+ * the one thing on the board being asked about. `PathPreview` multiplies a
+ * single-cell path's opacity by 1.5x, so this lands at ~0.45. */
+const REACTION_MOVER_RING_OPACITY = 0.3;
+
 /**
  * The model-resolving id inside an authored monster ref —
  * "dnd5e:monsters:skeleton" -> "skeleton", the vocabulary
@@ -206,6 +217,11 @@ export interface SessionCanvasProps {
    * comment on why this is narrower than every in-reach candidate.
    * Undefined/empty means nothing is attackable right now. */
   attackableTargets?: string[];
+  /** The mover an open reaction window is posed against — ringed while THIS
+   * viewer holds the window, and undefined at every other moment. One
+   * subject: a window names a single mover, and several windows over the
+   * same step are all that mover's. */
+  reactionMover?: string;
   /** The atlas's movement graph (`atlasPath.ts`'s `buildAtlasPathIndex`) —
    * the SAME index `useSessionWalk` builds its `MoveRequest` path from.
    * Feeds the hover/path indicator via `useMoveIndicator`. `undefined`/
@@ -259,6 +275,7 @@ export function SessionScene({
   onDoorClick,
   onInteractClick,
   attackableTargets,
+  reactionMover,
   pathIndex = null,
   turnLocked = false,
   movementBudgetFeet,
@@ -507,6 +524,19 @@ export function SessionScene({
   // 'target' ring on top (rendered separately below), which is the
   // "hover can add a little more" Kirk asked for — no extra state needed
   // here, the two simply layer.
+  // The mover being asked about, resolved through the same roster the
+  // in-reach rings use — a remembered (last-known-position) sighting is not
+  // ringed, because the question is about where the mover IS.
+  const reactionMoverMember = useMemo(
+    () =>
+      reactionMover
+        ? (otherMembers ?? []).find(
+            (m) => !m.remembered && m.subject === reactionMover
+          )
+        : undefined,
+    [otherMembers, reactionMover]
+  );
+
   const attackableRingPositions = useMemo(
     () =>
       (otherMembers ?? []).filter(
@@ -549,6 +579,15 @@ export function SessionScene({
           opacity={ATTACKABLE_RING_OPACITY}
         />
       ))}
+      {reactionMoverMember && (
+        <PathPreview
+          key={`reaction-mover-ring-${reactionMoverMember.subject}`}
+          path={[reactionMoverMember.position]}
+          hexSize={hexSize}
+          color={REACTION_MOVER_RING_COLOR}
+          opacity={REACTION_MOVER_RING_OPACITY}
+        />
+      )}
       <MoveIndicator
         selection={moveIndicatorSelection}
         hexSize={hexSize}

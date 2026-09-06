@@ -18,12 +18,14 @@ import {
   RollComponentSchema,
   RollSourceSchema,
   StanceChangedSchema,
+  WindowOpenedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   AbilityRefSchema,
   DamageType,
   DissolveKind,
   PlacementKind,
+  ReactionRefSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
@@ -667,5 +669,53 @@ describe('the Story log on the hold-out beats (rpg-project#375 §5)', () => {
       'The fight dissolves — the sides are no longer hostile'
     );
     expect(byDefeat.headline).toBe('The fight is over');
+  });
+
+  it('a window opened names the reaction, the audience and the mover it waits on', () => {
+    const [entry] = buildCombatStory(
+      [
+        beat(12n, EventKind.WINDOW_OPENED, {
+          case: 'windowOpened',
+          value: create(WindowOpenedSchema, {
+            audience: ['aldric'],
+            mover: 'skeleton-guard',
+            from: { x: 2, y: 3 },
+            to: { x: 3, y: 3 },
+            reaction: create(ReactionRefSchema, {
+              ref: 'dnd5e:conditions:opportunity_attack',
+              name: 'Opportunity Attack',
+            }),
+          }),
+        }),
+      ],
+      context
+    );
+    expect(entry.eyebrow).toBe('Opportunity Attack');
+    expect(entry.headline).toBe(
+      'Aldric may strike as Skeleton Guard leaves reach'
+    );
+    expect(entry.tone).toBe('turn');
+  });
+
+  it('several reactors of one step are all named in the one beat', () => {
+    const [entry] = buildCombatStory(
+      [
+        beat(13n, EventKind.WINDOW_OPENED, {
+          case: 'windowOpened',
+          value: create(WindowOpenedSchema, {
+            audience: ['aldric', 'unknown-member'],
+            mover: 'skeleton-guard',
+            reaction: create(ReactionRefSchema, {
+              ref: 'dnd5e:conditions:opportunity_attack',
+              name: 'Opportunity Attack',
+            }),
+          }),
+        }),
+      ],
+      context
+    );
+    expect(entry.headline).toBe(
+      'Aldric, unknown-member may strike as Skeleton Guard leaves reach'
+    );
   });
 });
