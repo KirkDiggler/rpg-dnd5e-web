@@ -605,7 +605,22 @@ function SessionEncounterScope({
   const localWorldDiePlanningOperation = useRef(0);
   const admittedWitnessPlans = useRef(new Set<string>());
   const witnessInbox = useRef(
-    new LocalWorldDieWitnessInbox({ ttlMs: 1_500, capacity: 16 })
+    new LocalWorldDieWitnessInbox({
+      ttlMs: 1_500,
+      capacity: 16,
+      // A peer published a throw and this client never matched it to a roll.
+      // Nothing else on this path is audible, so without this the feature can
+      // die completely and look exactly like nobody having rolled.
+      onExpired: (plan) =>
+        console.warn(
+          'shared die: a peer published a throw this client never matched',
+          {
+            presentationId: plan.presentationId,
+            roller: plan.roller,
+            attempt: plan.attempt,
+          }
+        ),
+    })
   );
   const witnessExpectationRef = useRef<
     LocalWorldDieWitnessExpectation | undefined
@@ -738,7 +753,10 @@ function SessionEncounterScope({
         );
         if (plan) playWitnessPlan(plan);
       },
-      onUnavailable: () => {},
+      // Shared dice are decorative: losing the stream must never stop play.
+      // But it must not be inaudible either — say it once, then carry on.
+      onUnavailable: () =>
+        console.warn('shared die: witness plan stream unavailable'),
     });
     return () => controller.abort();
   }, [member, playWitnessPlan, sessionId]);
@@ -844,10 +862,12 @@ function SessionEncounterScope({
                 plan: terminal,
               });
               if (localWorldDiePlanningOperation.current !== operation) return;
-            } catch {
+            } catch (error) {
               if (localWorldDiePlanningOperation.current !== operation) return;
               // Decorative transport failure keeps the authoritative actor
-              // functional through the same local planned playback.
+              // functional through the same local planned playback — but it
+              // means nobody else will see this throw, which is worth saying.
+              console.warn('shared die: publishing this throw failed', error);
             }
           }
           setLocalWorldDieCommand({
