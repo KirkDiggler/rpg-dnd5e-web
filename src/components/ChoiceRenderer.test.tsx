@@ -161,11 +161,32 @@ describe('ChoiceRenderer - TOOLS by count', () => {
     });
     expect(screen.getByText('(0/3 selected)')).toBeTruthy();
     // A SINGLE-SELECT CONTROL WOULD PASS EVERY OTHER ASSERTION HERE while
-    // making three picks impossible, so the control itself is asserted.
+    // making three picks impossible, so the control itself is asserted: the
+    // same checkbox grid the skills are drawn in, one square mark per option.
     expect(container.querySelectorAll('select')).toHaveLength(0);
-    expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(
-      INSTRUMENTS.length
+    expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(0);
+    expect(container.querySelectorAll('.grid')).toHaveLength(1);
+    const marks = container.querySelectorAll('span[aria-hidden="true"]');
+    expect(marks).toHaveLength(INSTRUMENTS.length);
+    expect(
+      [...marks].every((m) => m.getAttribute('style')?.includes('4px'))
+    ).toBe(true);
+  });
+
+  it('heads the card with nothing, because instruments have no group', () => {
+    // Skills are drawn under ability headers; instruments have no such axis.
+    // A card headed "Other" would invent a category the rulebook never named.
+    const { container } = render(
+      <ChoiceRenderer
+        choice={instrumentChoice(3)}
+        currentSelections={[]}
+        onSelectionChange={vi.fn()}
+      />
     );
+
+    const card = container.querySelector('.border.rounded-lg');
+    expect(card).toBeTruthy();
+    expect(card!.querySelector('.font-medium.mb-3')).toBeNull();
   });
 
   it('marks every option as pickable, the way the skills above it do', () => {
@@ -247,6 +268,8 @@ describe('ChoiceRenderer - TOOLS by count', () => {
     expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(
       0
     );
+    // The rows control, not the checkbox grid.
+    expect(container.querySelectorAll('.grid')).toHaveLength(0);
     expect(screen.queryByText(/selected\)/)).toBeNull();
 
     // One replaces the other rather than joining it.

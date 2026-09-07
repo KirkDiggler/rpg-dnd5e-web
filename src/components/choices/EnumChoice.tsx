@@ -93,7 +93,19 @@ export function EnumChoice<T extends number>({
   const filteredAvailable = available.filter((item) => item !== 0);
 
   // Auto-detect layout
-  const effectiveLayout = layout || (getGroup ? 'grouped' : 'rows');
+  // THE COUNT PICKS THE LAYOUT, not the category. A requirement that asks for
+  // more than one gets the checkbox grid the skills use, whether it is asking
+  // for skills, instruments, languages or anything else: two controls posing
+  // the same kind of question in two different shapes is what made a working
+  // choose-three read as a single-select (Kirk's walk, rpg-project#397). A
+  // choose-one keeps the single-pick rows control.
+  //
+  // GROUPING IS SEPARATE FROM LAYOUT. Skills arrive with a group function and
+  // are drawn under ability headers; instruments have no such axis and are
+  // drawn as one unheaded card in the same grid. An explicit `layout` still
+  // wins over both.
+  const effectiveLayout: ChoiceLayout =
+    layout ?? (getGroup || choice.chooseCount > 1 ? 'grouped' : 'rows');
 
   // A CHOOSE-ONE PICK REPLACES; A CHOOSE-MANY PICK ADDS. That difference is
   // the whole of the control's behaviour, and it is read off the requirement's
@@ -125,20 +137,21 @@ export function EnumChoice<T extends number>({
     !isSelected && !replaces && currentSelections.length >= choice.chooseCount;
 
   // Render grouped layout
-  if (effectiveLayout === 'grouped' && getGroup) {
-    // Group items by the group function
+  if (effectiveLayout === 'grouped') {
+    // One bucket per group, or a single unnamed bucket when the options have
+    // no axis to group on. The empty key is what suppresses the header — a
+    // card headed "Other" would invent a category the rulebook never named.
     const itemsByGroup: Record<string, T[]> = {};
 
     filteredAvailable.forEach((item) => {
-      const group = getGroup(item);
+      const group = getGroup ? getGroup(item) : '';
       if (!itemsByGroup[group]) {
         itemsByGroup[group] = [];
       }
       itemsByGroup[group].push(item);
     });
 
-    // Order groups if specified
-    const groups = groupOrder || Object.keys(itemsByGroup);
+    const groups = (getGroup && groupOrder) || Object.keys(itemsByGroup);
 
     return (
       <div className="space-y-4">
@@ -167,12 +180,14 @@ export function EnumChoice<T extends number>({
                 backgroundColor: 'var(--card-bg)',
               }}
             >
-              <div
-                className="font-medium mb-3 text-sm"
-                style={{ color: 'var(--accent-primary)' }}
-              >
-                {group}
-              </div>
+              {group && (
+                <div
+                  className="font-medium mb-3 text-sm"
+                  style={{ color: 'var(--accent-primary)' }}
+                >
+                  {group}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {items.map((item) => {
