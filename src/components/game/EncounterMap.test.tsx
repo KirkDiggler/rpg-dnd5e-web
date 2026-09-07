@@ -299,12 +299,19 @@ describe('EncounterMap wall truth gate (game walls from truth — zones are not 
   });
 });
 
-describe("EncounterMap authored-wall-run wiring (unit/authored-wall-runs: authored walls speak the game's run language)", () => {
+describe('EncounterMap wall wiring after the authored-run extraction was deleted (rpg-project#360 slice 2)', () => {
+  // The extraction fed `computeAuthoredWallRuns`, the chain-fitter that
+  // went with the pair form. This legacy v1alpha2 route has no line to
+  // read — its wire carries `Wall` messages, not segments — so every
+  // interior wall it used to hand to a fitted run goes back to the
+  // per-cell `SyntyHexWall` path it came from, which never stopped
+  // selecting them. These tests pin that, so nobody re-adds a fitter
+  // here by accident.
+
   /** A non-door boundary-edge wall between two adjacent hexes that are
-   * BOTH inside the same painted zone — exactly the shape #720
-   * established an authored dungeon's real wall edges take relative to
-   * its own (semantic-only) zone hex membership: categorizeWall's
-   * 'interior' branch, the extraction point for authoredWallRuns. */
+   * BOTH inside the same painted zone — the shape #720 established an
+   * authored dungeon's real wall edges take relative to its own
+   * (semantic-only) zone hex membership. */
   function interiorBoundaryWall(
     fromCol: number,
     fromRow: number,
@@ -322,7 +329,7 @@ describe("EncounterMap authored-wall-run wiring (unit/authored-wall-runs: author
     });
   }
 
-  it("an authored dungeon's real boundary-edge wall renders as an authored run, not through legacySyntyWalls (the jagged-per-edge regression this unit fixes)", () => {
+  it('an interior boundary-edge wall renders through legacySyntyWalls, no run being fitted for it any more', () => {
     const zone = zoneHexes('room-a'); // a 2x2 block: (0,0),(1,0),(0,1),(1,1)
     const edge = interiorBoundaryWall(0, 0, 1, 0, 'edge-1');
     render(
@@ -340,8 +347,8 @@ describe("EncounterMap authored-wall-run wiring (unit/authored-wall-runs: author
       />
     );
     const props = hoisted.lastHexGridProps.current!;
-    expect(props.authoredRuns!.length).toBeGreaterThanOrEqual(1);
-    expect(props.legacySyntyWalls).not.toContainEqual(edge);
+    expect(props.authoredRuns ?? []).toEqual([]);
+    expect(props.legacySyntyWalls).toContainEqual(edge);
   });
 
   it("a chain dungeon's real wall data (never in the interior category — covered by an envelope/connector run or a door instead) produces NO authored runs — regression guard for the existing chain-dungeon render path", () => {
@@ -360,9 +367,9 @@ describe("EncounterMap authored-wall-run wiring (unit/authored-wall-runs: author
       />
     );
     const props = hoisted.lastHexGridProps.current!;
-    expect(props.authoredRuns).toEqual([]);
-    // The pre-existing chain-dungeon envelope behavior (#720's own
-    // regression guard, above) is untouched by this addition.
+    expect(props.authoredRuns ?? []).toEqual([]);
+    // The chain-dungeon envelope behaviour (#720's own regression
+    // guard, above) is untouched by the deletion.
     expect(props.envelopeRuns!.length).toBe(4);
   });
 
@@ -384,7 +391,7 @@ describe("EncounterMap authored-wall-run wiring (unit/authored-wall-runs: author
       />
     );
     const props = hoisted.lastHexGridProps.current!;
-    expect(props.authoredRuns).toEqual([]);
+    expect(props.authoredRuns ?? []).toEqual([]);
     expect(props.legacySyntyWalls).toContainEqual(pillar);
   });
 

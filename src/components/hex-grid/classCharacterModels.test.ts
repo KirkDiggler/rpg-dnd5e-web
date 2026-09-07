@@ -1,74 +1,281 @@
+import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
 import { describe, expect, it } from 'vitest';
-import {
-  resolveClassCharacterModelUrl,
-  resolveIdleClipName,
-  resolveWalkClipName,
-} from './classCharacterModels';
+import type { PlayerCharacterModelResolution } from './classCharacterModels';
+import * as classCharacterModels from './classCharacterModels';
+
+const asResolution = (resolution: PlayerCharacterModelResolution) => resolution;
 
 describe('resolveClassCharacterModelUrl', () => {
   const shippedClasses = ['fighter', 'barbarian', 'monk', 'rogue'];
 
   for (const classRefId of shippedClasses) {
     it(`resolves the standing model for "${classRefId}"`, () => {
-      expect(resolveClassCharacterModelUrl(classRefId, false)).toBe(
-        `/models/synty/characters/${classRefId}.glb`
-      );
+      expect(
+        classCharacterModels.resolveClassCharacterModelUrl(classRefId, false)
+      ).toBe(`/models/synty/characters/${classRefId}.glb`);
     });
 
     it(`resolves the downed model for "${classRefId}"`, () => {
-      expect(resolveClassCharacterModelUrl(classRefId, true)).toBe(
-        `/models/synty/characters/${classRefId}-downed.glb`
-      );
+      expect(
+        classCharacterModels.resolveClassCharacterModelUrl(classRefId, true)
+      ).toBe(`/models/synty/characters/${classRefId}-downed.glb`);
     });
   }
 
   it('is case-insensitive', () => {
-    expect(resolveClassCharacterModelUrl('ROGUE', false)).toBe(
-      '/models/synty/characters/rogue.glb'
-    );
+    expect(
+      classCharacterModels.resolveClassCharacterModelUrl('ROGUE', false)
+    ).toBe('/models/synty/characters/rogue.glb');
   });
 
   it('returns undefined for an unmapped class (no dedicated GLB shipped yet)', () => {
-    expect(resolveClassCharacterModelUrl('wizard', false)).toBeUndefined();
-    expect(resolveClassCharacterModelUrl('cleric', true)).toBeUndefined();
+    expect(
+      classCharacterModels.resolveClassCharacterModelUrl('wizard', false)
+    ).toBeUndefined();
+    expect(
+      classCharacterModels.resolveClassCharacterModelUrl('cleric', true)
+    ).toBeUndefined();
   });
 
   it('returns undefined when classRefId is undefined', () => {
-    expect(resolveClassCharacterModelUrl(undefined, false)).toBeUndefined();
+    expect(
+      classCharacterModels.resolveClassCharacterModelUrl(undefined, false)
+    ).toBeUndefined();
   });
 
   it('returns undefined for an empty string', () => {
-    expect(resolveClassCharacterModelUrl('', false)).toBeUndefined();
+    expect(
+      classCharacterModels.resolveClassCharacterModelUrl('', false)
+    ).toBeUndefined();
   });
 });
 
 describe('resolveIdleClipName', () => {
   it("falls back to the first clip when none is named 'idle'", () => {
-    expect(resolveIdleClipName(['Take 001'])).toBe('Take 001');
+    expect(classCharacterModels.resolveIdleClipName(['Take 001'])).toBe(
+      'Take 001'
+    );
   });
 
   it('prefers a clip whose name contains "idle" over an earlier non-idle clip', () => {
-    expect(resolveIdleClipName(['Walk', 'Idle_Loop', 'Attack'])).toBe(
-      'Idle_Loop'
-    );
+    expect(
+      classCharacterModels.resolveIdleClipName(['Walk', 'Idle_Loop', 'Attack'])
+    ).toBe('Idle_Loop');
   });
 
   it('matches "idle" case-insensitively', () => {
-    expect(resolveIdleClipName(['IDLE'])).toBe('IDLE');
+    expect(classCharacterModels.resolveIdleClipName(['IDLE'])).toBe('IDLE');
   });
 
   it('falls back to the first clip when multiple exist and none is idle-named', () => {
-    expect(resolveIdleClipName(['Walk', 'Run', 'Attack'])).toBe('Walk');
+    expect(
+      classCharacterModels.resolveIdleClipName(['Walk', 'Run', 'Attack'])
+    ).toBe('Walk');
   });
 
   it('returns undefined for an empty clip list', () => {
-    expect(resolveIdleClipName([])).toBeUndefined();
+    expect(classCharacterModels.resolveIdleClipName([])).toBeUndefined();
   });
 
   it('picks the first idle-named clip when multiple clips are idle-named', () => {
-    expect(resolveIdleClipName(['Idle_Alert', 'Idle_Relaxed'])).toBe(
-      'Idle_Alert'
-    );
+    expect(
+      classCharacterModels.resolveIdleClipName(['Idle_Alert', 'Idle_Relaxed'])
+    ).toBe('Idle_Alert');
+  });
+});
+
+describe('resolvePlayerCharacterModel', () => {
+  it.each(['barbarian', 'fighter', 'monk', 'rogue'])(
+    'resolves the exact standing Elf %s race-class model',
+    (classRefId) => {
+      const body =
+        CHARACTER_CUSTOMIZATION_CATALOG.profiles.elf.bodies[
+          classRefId as 'barbarian' | 'fighter' | 'monk' | 'rogue'
+        ];
+      const expected = asResolution({
+        url: body.url,
+        rigFamily: 'modular-fantasy-hero-v1',
+        source: 'race-class',
+        customizationProfileRef: 'modular-fantasy-hero-v1:elf',
+        fallbackUrl: body.fallbackUrl,
+        fallbackSha256: body.fallbackSha256,
+      });
+
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel?.(
+          ' Elf ',
+          ` ${classRefId.toUpperCase()} `,
+          false
+        )
+      ).toEqual(expected);
+    }
+  );
+
+  it.each([
+    [
+      'barbarian',
+      'dfd29de0d5a3611f6e92b88e7f706587ef705b332f0a8a949ee23919396a9a7f',
+    ],
+    [
+      'fighter',
+      '7e1c611b5b5e02a709e75ed71deeccdc30242e0716da469adc2ddaa559068224',
+    ],
+    [
+      'monk',
+      'e44a953e0678b029a379822a0593b21111fb7052c18152750ded94eed7086247',
+    ],
+    [
+      'rogue',
+      'a6de5c8247d8fdd8eae3888ee10faa9eddb73b624be92e81c25993b24063cfe7',
+    ],
+  ] as const)(
+    'resolves the generated active and immutable fallback Dwarf %s body',
+    (classRefId, fallbackSha256) => {
+      const expected = asResolution({
+        url: `/models/synty/characters/customization/dwarf-v1/bodies/dwarf-${classRefId}-body.glb`,
+        rigFamily: 'modular-fantasy-hero-v1',
+        source: 'race-class',
+        customizationProfileRef: 'modular-fantasy-hero-v1:dwarf',
+        fallbackUrl: `/models/synty/characters/race-class/dwarf-${classRefId}.glb`,
+        fallbackSha256,
+      });
+
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel?.(
+          ' Dwarf ',
+          ` ${classRefId.toUpperCase()} `,
+          false
+        )
+      ).toEqual(expected);
+    }
+  );
+
+  it.each(['half-elf', 'tiefling', 'halfling', 'gnome', 'half-orc'])(
+    'resolves every exact standing %s starter-class model',
+    (raceRefId) => {
+      for (const classRefId of ['barbarian', 'fighter', 'monk', 'rogue']) {
+        const profile =
+          CHARACTER_CUSTOMIZATION_CATALOG.profiles[
+            raceRefId as
+              | 'half-elf'
+              | 'tiefling'
+              | 'halfling'
+              | 'gnome'
+              | 'half-orc'
+          ];
+        const body =
+          profile.bodies[
+            classRefId as 'barbarian' | 'fighter' | 'monk' | 'rogue'
+          ];
+        const expected = asResolution({
+          url: body.url,
+          rigFamily: 'modular-fantasy-hero-v1',
+          source: 'race-class',
+          customizationProfileRef: profile.profileRef,
+          fallbackUrl: body.fallbackUrl,
+          fallbackSha256: body.fallbackSha256,
+        });
+
+        expect(
+          classCharacterModels.resolvePlayerCharacterModel?.(
+            ` ${raceRefId.toUpperCase()} `,
+            ` ${classRefId.toUpperCase()} `,
+            false
+          )
+        ).toEqual(expected);
+      }
+    }
+  );
+
+  it.each([
+    'human',
+    'elf',
+    'dwarf',
+    'half-elf',
+    'tiefling',
+    'halfling',
+    'gnome',
+    'half-orc',
+  ])('falls back to the class model for a downed %s Fighter', (raceRefId) => {
+    const expected = asResolution({
+      url: '/models/synty/characters/fighter-downed.glb',
+      rigFamily: 'townfolk-v1',
+      source: 'class',
+    });
+
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        raceRefId,
+        'fighter',
+        true
+      )
+    ).toEqual(expected);
+  });
+
+  it('resolves the exact Human customization body and generated complete fallback', () => {
+    const body =
+      CHARACTER_CUSTOMIZATION_CATALOG.profiles.human.bodies.barbarian;
+    const expected = asResolution({
+      url: body.url,
+      rigFamily: 'modular-fantasy-hero-v1',
+      source: 'race-class',
+      customizationProfileRef: 'modular-fantasy-hero-v1:human',
+      fallbackUrl: body.fallbackUrl,
+      fallbackSha256: body.fallbackSha256,
+    });
+
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        ' human ',
+        ' barbarian ',
+        false
+      )
+    ).toEqual(expected);
+  });
+
+  it('falls back to the class model when raceRefId is missing', () => {
+    const expected = asResolution({
+      url: '/models/synty/characters/fighter.glb',
+      rigFamily: 'townfolk-v1',
+      source: 'class',
+    });
+
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        undefined,
+        'fighter',
+        false
+      )
+    ).toEqual(expected);
+  });
+
+  it('treats a blank raceRefId as missing and falls back to the class model', () => {
+    const expected = asResolution({
+      url: '/models/synty/characters/fighter.glb',
+      rigFamily: 'townfolk-v1',
+      source: 'class',
+    });
+
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        '   ',
+        'fighter',
+        false
+      )
+    ).toEqual(expected);
+  });
+
+  it('returns undefined for an unknown class', () => {
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.('elf', 'wizard', false)
+    ).toBeUndefined();
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel?.(
+        'dwarf',
+        '__proto__',
+        false
+      )
+    ).toBeUndefined();
   });
 });
 
@@ -76,22 +283,31 @@ describe('resolveWalkClipName', () => {
   it('resolves the exact merged Townfolk standing release shape', () => {
     const releaseClipNames = ['Idle_Relaxed', 'Walk_Forward'];
 
-    expect(resolveIdleClipName(releaseClipNames)).toBe('Idle_Relaxed');
-    expect(resolveWalkClipName(releaseClipNames)).toBe('Walk_Forward');
+    expect(classCharacterModels.resolveIdleClipName(releaseClipNames)).toBe(
+      'Idle_Relaxed'
+    );
+    expect(classCharacterModels.resolveWalkClipName(releaseClipNames)).toBe(
+      'Walk_Forward'
+    );
   });
 
   it('matches "walk" case-insensitively', () => {
-    expect(resolveWalkClipName(['WALK_FORWARD'])).toBe('WALK_FORWARD');
+    expect(classCharacterModels.resolveWalkClipName(['WALK_FORWARD'])).toBe(
+      'WALK_FORWARD'
+    );
   });
 
   it('returns undefined when no clip is walk-named — unlike resolveIdleClipName, does NOT fall back to the first available clip', () => {
     expect(
-      resolveWalkClipName(['Idle_Relaxed', 'Idle_Drinking'])
+      classCharacterModels.resolveWalkClipName([
+        'Idle_Relaxed',
+        'Idle_Drinking',
+      ])
     ).toBeUndefined();
   });
 
   it('returns undefined for an empty clip list (downed variants, or any clip-less model)', () => {
-    expect(resolveWalkClipName([])).toBeUndefined();
+    expect(classCharacterModels.resolveWalkClipName([])).toBeUndefined();
   });
 
   it('DOES match a clip whose name merely contains "walk" as a substring of an unrelated word — documents /walk/i is a substring test, not word-boundary-aware', () => {
@@ -99,8 +315,11 @@ describe('resolveWalkClipName', () => {
     // but the point is /walk/i really is a plain substring test, not a
     // word-boundary one — this is documenting the actual (intentional)
     // behavior, not a bug to fix.
-    expect(resolveWalkClipName(['Idle_Relaxed', 'Boardwalk_Loop'])).toBe(
-      'Boardwalk_Loop'
-    );
+    expect(
+      classCharacterModels.resolveWalkClipName([
+        'Idle_Relaxed',
+        'Boardwalk_Loop',
+      ])
+    ).toBe('Boardwalk_Loop');
   });
 });

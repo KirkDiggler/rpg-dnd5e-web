@@ -68,5 +68,22 @@
       "src/components/ui/dice/RollGroupRuntimeMember.tsx",
       "rpg-dnd5e-web#826"
     ]
+  },
+  {
+    "type": "pattern",
+    "id": "fence-r3f-instance-lifecycle-from-treatment-and-strict-probes",
+    "created": "2026-09-01",
+    "updated": "2026-09-01",
+    "status": "active",
+    "name": "Fence R3F instance lifecycle from treatment updates and StrictMode probe evidence",
+    "description": "Keep clone/bind/add/remove/dispose effects dependent only on asset and mount identity. Read volatile renderer callbacks and presentation treatments through latest refs, then mutate instance-owned materials in a separate effect. In StrictMode, a child's second passive setup can report before its parent's identity-restoring setup; if that terminal report is fenced, retry it in a microtask only while the exact second mounted instance is still current so diagnostics cannot retain UUIDs from the disposed probe instance.",
+    "example": "SkinnedAccessoryAttachment retains mesh/material UUIDs across color/PBR updates, keeps the latest R3F invalidate callback behind a ref, and retries only the still-mounted StrictMode attachment's terminal status.",
+    "anti_pattern": "Putting treatment values or a volatile useThree callback in the clone/bind lifecycle dependency list, or relaxing stale-identity fencing to make StrictMode's second terminal report pass.",
+    "domain": "web/r3f-render-lifecycle",
+    "references": [
+      "src/components/hex-grid/SkinnedAccessoryAttachment.tsx",
+      "src/components/hex-grid/SkinnedAccessoryAttachment.test.tsx",
+      "rpg-dnd5e-web#881"
+    ]
   }
 ]

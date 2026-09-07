@@ -1,9 +1,11 @@
 import type { Interceptor } from '@connectrpc/connect';
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
+import { CompositionService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import { AuthoringService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { LobbyService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
+import { SessionPresentationService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/presentation/v1alpha1/service_pb';
 import { SessionService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { CharacterService as CharacterServiceV2 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/character/service_pb';
@@ -42,6 +44,35 @@ const authInterceptor: Interceptor = (next) => async (req) => {
   return next(req);
 };
 
+const PRESENTATION_SERVICE_PREFIX =
+  'dnd5e.api.session.presentation.v1alpha1.SessionPresentationService.';
+
+function loggedPayload(methodName: string, value: unknown) {
+  if (!methodName.startsWith(PRESENTATION_SERVICE_PREFIX)) return value;
+  const wrapper =
+    value && typeof value === 'object'
+      ? (value as Record<string, unknown>)
+      : undefined;
+  const plan =
+    wrapper?.draft && typeof wrapper.draft === 'object'
+      ? (wrapper.draft as Record<string, unknown>)
+      : wrapper?.plan && typeof wrapper.plan === 'object'
+        ? (wrapper.plan as Record<string, unknown>)
+        : wrapper;
+  const terminal =
+    plan?.terminal && typeof plan.terminal === 'object'
+      ? (plan.terminal as Record<string, unknown>)
+      : undefined;
+  return {
+    presentationId:
+      typeof plan?.presentationId === 'string' ? plan.presentationId : '',
+    attempt: typeof plan?.attempt === 'number' ? plan.attempt : 0,
+    bodyCount: Array.isArray(plan?.bodies) ? plan.bodies.length : 0,
+    contactCount: Array.isArray(plan?.contacts) ? plan.contacts.length : 0,
+    terminalCount: Array.isArray(terminal?.dice) ? terminal.dice.length : 0,
+  };
+}
+
 // Logging interceptor for debugging. Exported (only) so it can be unit
 // tested directly against fake `next` responses — not intended as a public
 // API for other modules to import interceptors from.
@@ -50,7 +81,10 @@ export const loggingInterceptor: Interceptor = (next) => async (req) => {
   const methodName = `${req.service.typeName}.${req.method.name}`;
 
   if (import.meta.env.MODE === 'development') {
-    console.log(`🔵 Request: ${methodName}`, req.message);
+    console.log(
+      `🔵 Request: ${methodName}`,
+      loggedPayload(methodName, req.message)
+    );
     console.log(`📡 API Host: ${API_HOST}`);
   }
 
@@ -73,7 +107,7 @@ export const loggingInterceptor: Interceptor = (next) => async (req) => {
     if (import.meta.env.MODE === 'development') {
       console.log(
         `🟢 Response: ${methodName} (${duration}ms)`,
-        response.message
+        loggedPayload(methodName, response.message)
       );
     }
 
@@ -130,11 +164,23 @@ export const encounterClient = createClient(EncounterService, transport);
 // never created on this stack. Probe and fall back rather than assuming.
 export const sessionClient = createClient(SessionService, transport);
 
+// Decorative dice coordination remains separate from authoritative SessionService.
+// Published actors use the unary call; visual-only witnesses consume the live stream.
+export const sessionPresentationClient = createClient(
+  SessionPresentationService,
+  transport
+);
+
 // Create the lobby service client (dnd5e.api.lobby.v1alpha1 — party
 // assembly, GameView slice 2). Distinct service from the old v1alpha1
 // EncounterService's CreateEncounter/JoinEncounter/SetReady lobby RPCs,
 // deleted in slice 3 along with LobbyView, their only caller.
 export const lobbyClient = createClient(LobbyService, transport);
+
+// Create the immutable world-composition client. The API registers this
+// service only in its authenticated local-development mode until a verified
+// Discord guild-to-world mapping exists.
+export const compositionClient = createClient(CompositionService, transport);
 
 // Create the authoring service client (dnd5e.api.authoring.v1alpha1 —
 // PutDungeon). Absent from the server's reflection list (Unimplemented)

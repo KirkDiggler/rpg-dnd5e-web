@@ -145,6 +145,37 @@ describe('wrapStreamResponseForLogging', () => {
     expect(logSpy.mock.calls[1][0]).toContain('(no case set)');
   });
 
+  it('logs presentation plans as bounded metadata without raw transforms', async () => {
+    const plan = {
+      presentationId: 'session:enc-1:42',
+      attempt: 1,
+      bodies: [
+        {
+          dieId: 'attack-d20',
+          state: { linearVelocity: { x: 7, y: 8, z: 9 } },
+        },
+      ],
+      contacts: [],
+      terminal: { dice: [{ dieId: 'attack-d20', step: 42 }] },
+    };
+    const response = makeStreamResponse(fromArray([plan]));
+
+    const wrapped = wrapStreamResponseForLogging(
+      'dnd5e.api.session.presentation.v1alpha1.SessionPresentationService.StreamDiceThrows',
+      response
+    );
+    await drain(wrapped.message);
+
+    expect(logSpy.mock.calls[1][1]).toEqual({
+      presentationId: 'session:enc-1:42',
+      attempt: 1,
+      bodyCount: 1,
+      contactCount: 0,
+      terminalCount: 1,
+    });
+    expect(logSpy.mock.calls[1][1]).not.toBe(plan);
+  });
+
   it('falls back to no summary label for a non-EncounterEvent-shaped message', async () => {
     const response = makeStreamResponse(fromArray([{ foo: 'bar' }]));
 

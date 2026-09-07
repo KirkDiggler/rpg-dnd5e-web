@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "providerCommit": "fa908b7990de37630606b4117d4dbe08270768b8",
+  "providerManifestSha256": "7fd139faceafe55cad9c67add23645e68c2c228034809640f3e8bf7e44424aeb",
+  "providerInventorySha256": "51ca72cae606d0d2e37e5b58a76e28dfb8b69a03d0fb5c9d7f580334f451daef",
+  "combinations": {
+    "half-orc:barbarian": {"modelUrl": "/models/synty/characters/race-class/half-orc-barbarian.glb", "sha256": "a59e6cf665da6805968a5112250f49aff16da5f9769de1fb48d16fd889ea09f5"},
+    "half-orc:fighter": {"modelUrl": "/models/synty/characters/race-class/half-orc-fighter.glb", "sha256": "2ffcb8d7acf9b0c91fa2075f8a53bcd0be42e05146d3b6b6663dad8eeaf11c12"},
+    "half-orc:monk": {"modelUrl": "/models/synty/characters/race-class/half-orc-monk.glb", "sha256": "2d344f5b2f3c1da9e6a643821fc210e939db9f4d17a5f3f48e54cbda7ed57b9f"},
+    "half-orc:rogue": {"modelUrl": "/models/synty/characters/race-class/half-orc-rogue.glb", "sha256": "82dd6fb1bcb5e054c268d3648ba223a3a41f4538bf83cdb72750b05d24824048"}
+  },
+  "identity": {
+    "head": "Chr_Head_Male_03",
+    "ears": "Chr_Ear_Ear_02",
+    "hair": "Chr_Hair_08",
+    "proportions": [1.08, 1.05, 1.08]
+  },
+  "halfOrcPalette": {
+    "key": "01-a-half-orc-olive-40",
+    "sourceSha256": "7f84972790e530f8d83b378eb95f3151e2664c7b4ac23b1d125a55e1efcecd62",
+    "derivedSha256": "ef5e37f511a20f94844b729bac2bfb2a0f2341be22da8dcc3e0801d325f15791",
+    "changedPixelCount": 247941,
+    "monsterGeometryUsed": false
+  },
+  "armContract": {
+    "method": "tpose-x-scale-v1",
+    "derivation": "vertical-over-radial",
+    "factor": 0.9722222222222222
+  },
+  "rigFamily": "modular-fantasy-hero-v1",
+  "socketProfile": "modular-fantasy-hero-main-hand-v1",
+  "animations": ["Idle_Relaxed", "Walk_Forward"],
+  "weapons": {
+    "canonicalFullSize": true,
+    "raceSpecificScaling": false,
+    "mainHands": {
+      "barbarian": "dnd5e:item:greataxe",
+      "fighter": "dnd5e:item:greatsword",
+      "monk": "dnd5e:item:shortsword",
+      "rogue": "dnd5e:item:rapier"
+    }
+  },
+  "weaponHashes": {
+    "greataxe": "39c08c15e778c1f1c915478001204f218382c47cad3c1306626784f7ca398bb7",
+    "greatsword": "600d83e67e47ff461efc94c43bde39e09139c3778ec82cfd86d47e03fb26eea1",
+    "shortsword": "ee5f39b67f7d77df01a9425c5a2a371603eff83138d236ba5049033a7dc4ce9b",
+    "rapier": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+  },
+  "normalCreation": {
+    "fixturePatch": false,
+    "finalizeDraftSucceeded": 4,
+    "players": [
+      "O871 Half-Orc Barbarian",
+      "O871 Half-Orc Fighter",
+      "O871 Half-Orc Monk",
+      "O871 Half-Orc Rogue"
+    ]
+  },
+  "equipment": {
+    "method": "dnd5e.api.v1alpha2.character.CharacterService.EquipItem",
+    "endpoint": "lab2",
+    "successfulCalls": 4,
+    "storagePatch": false
+  },
+  "realRoute": {
+    "dungeon": "The Reference Tomb",
+    "session": "four Half-Orcs",
+    "allModelResponses": 4,
+    "allWeaponResponses": 4,
+    "httpStatus": 200,
+    "movement": "successful two-step Half-Orc Barbarian SessionService.Move response; Walking observed",
+    "capturedProofWindowConsoleErrors": 0,
+    "capturedProofWindowPageErrors": 0,
+    "capturedProofWindowUnexpectedRequestFailures": 0
+  },
+  "captures": [
+    "half-orc-four-classes-close-real-route.png",
+    "half-orc-four-classes-rotated-real-route.png",
+    "half-orc-barbarian-walk-real-route.png",
+    "half-orc-barbarian-greataxe-real-route.png",
+    "half-orc-fighter-greatsword-real-route.png",
+    "half-orc-monk-shortsword-real-route.png",
+    "half-orc-rogue-rapier-real-route.png"
+  ]
+}

@@ -1,18 +1,37 @@
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import {
+  HairCustomizationSchema,
+  StyleSelectionSchema,
+  type HairCustomization,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import {
+  DiceThrowPlanSchema,
+  type DiceThrowPlan,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/presentation/v1alpha1/service_pb';
+import {
+  ActivatedSchema,
+  ActivationResultSchema,
   EventKind,
   EventSchema,
+  HealingAppliedSchema,
   type Event as SessionEvent,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import { VendorStockMode } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
+  AbilityRefSchema,
   AttackRefSchema,
   ClockKind,
   DamageType,
+  DeathSaveContinuation,
+  DeathSaveOutcome,
+  DeathSaveProgressSchema,
+  DeathSaveRefSchema,
   DeclarationSchema,
   DoorState,
   GridKind,
   HexLayout,
+  LifeState,
   MemberKind,
   ShortfallReason,
   ShortfallSchema,
@@ -32,8 +51,17 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { StrictMode } from 'react';
+import { isValidElement, StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildLocalWorldDieColliders } from './local-world-die/localWorldDieColliders';
+import type { LocalWorldDieCommand } from './local-world-die/localWorldDieCommand';
+import type { LocalWorldDieLayerProps } from './local-world-die/LocalWorldDieLayer';
+import * as localWorldDiePreSimulation from './local-world-die/localWorldDiePreSimulation';
+import {
+  fingerprintLocalWorldDieColliders,
+  type LocalWorldDiePlanTerminal,
+} from './local-world-die/localWorldDiePreSimulation';
+import { localWorldDieDraft } from './local-world-die/localWorldDiePublish';
 import type { SessionCanvasProps } from './SessionCanvas';
 
 const hoisted = vi.hoisted(() => ({
@@ -43,25 +71,42 @@ const hoisted = vi.hoisted(() => ({
     loading: true,
     error: null as Error | null,
     refetch: vi.fn(),
+    applyReveal: vi.fn(),
   },
   whereResult: {
     position: null as unknown,
     loading: true,
     error: null as Error | null,
     refetch: vi.fn(),
+    applyReveal: vi.fn(),
   },
   getCharacterFn: vi.fn(),
+  getCharacterHookFn: vi.fn(),
+  characterResult: {
+    data: null as { appearance?: { hair?: HairCustomization } } | null,
+    loading: false,
+    error: null as Error | null,
+    refetch: vi.fn(),
+    applyReveal: vi.fn(),
+  },
   moveFn: vi.fn(),
   streamEventsFn: vi.fn(),
+  streamDiceThrowsFn: vi.fn(),
+  publishDiceThrowFn: vi.fn(),
   getStoryFn: vi.fn(),
   getViewFn: vi.fn(),
   getRosterFn: vi.fn(),
   getDoorsFn: vi.fn(),
   openDoorFn: vi.fn(),
   unlockFn: vi.fn(),
+  searchFn: vi.fn(),
+  interactFn: vi.fn(),
+  tradeFn: vi.fn(),
+  unpackFn: vi.fn(),
   affordFn: vi.fn(),
   turnFn: vi.fn(),
   attackFn: vi.fn(),
+  deathSaveFn: vi.fn(),
   endTurnFn: vi.fn(),
   getCharacterDataFn: vi.fn(),
   equipItemFn: vi.fn(),
@@ -83,12 +128,23 @@ vi.mock('../../api/useSessionWhere', () => ({
   useSessionWhere: () => hoisted.whereResult,
 }));
 
-// This legacy source must remain unused by the production session route.
+// This imperative legacy source remains unused by the production session route.
 vi.mock('../../api/characterHooks', () => ({
   useGetCharacter: () => ({ getCharacter: hoisted.getCharacterFn }),
 }));
 
+vi.mock('../../api/hooks', () => ({
+  useGetCharacter: (characterId: string) => {
+    hoisted.getCharacterHookFn(characterId);
+    return hoisted.characterResult;
+  },
+}));
+
 vi.mock('@/api/client', () => ({
+  sessionPresentationClient: {
+    streamDiceThrows: hoisted.streamDiceThrowsFn,
+    publishDiceThrow: hoisted.publishDiceThrowFn,
+  },
   sessionClient: {
     move: hoisted.moveFn,
     streamEvents: hoisted.streamEventsFn,
@@ -98,9 +154,14 @@ vi.mock('@/api/client', () => ({
     getDoors: hoisted.getDoorsFn,
     openDoor: hoisted.openDoorFn,
     unlock: hoisted.unlockFn,
+    search: hoisted.searchFn,
+    interact: hoisted.interactFn,
+    trade: hoisted.tradeFn,
+    unpack: hoisted.unpackFn,
     afford: hoisted.affordFn,
     turn: hoisted.turnFn,
     attack: hoisted.attackFn,
+    deathSave: hoisted.deathSaveFn,
     endTurn: hoisted.endTurnFn,
   },
   characterV2Client: {
@@ -144,6 +205,7 @@ function privateCharacterData(overrides: Record<string, unknown> = {}) {
     features: [],
     conditions: [],
     resources: [],
+    wallet: { copper: 4523 },
     ...overrides,
   };
 }
@@ -211,6 +273,42 @@ function endTurnDeclaration(id = 'v1.end'): Declaration {
   });
 }
 
+function deathSaveDeclaration(id = 'selector.death-save'): Declaration {
+  return create(DeclarationSchema, {
+    id,
+    verb: Verb.DEATH_SAVE,
+    slot: Slot.NONE,
+    available: true,
+    targetKind: TargetKind.NONE,
+    candidates: [],
+    deathSave: create(DeathSaveRefSchema, { name: 'Death Save' }),
+  });
+}
+
+function readyDyingTurn() {
+  readyTurn([deathSaveDeclaration(), endTurnDeclaration()]);
+  hoisted.turnFn.mockResolvedValue({
+    clock: ClockKind.TURN,
+    active: 'char-1',
+    round: 2,
+    order: ['char-1', 'skeleton-1'],
+    participants: [
+      participant('char-1', {
+        active: true,
+        standing: Standing.DOWNED,
+        lifeState: LifeState.DYING,
+        deathSaves: create(DeathSaveProgressSchema, {
+          successes: 1,
+          failures: 2,
+          successesNeeded: 2,
+          failuresRemaining: 1,
+        }),
+      }),
+      participant('skeleton-1'),
+    ],
+  });
+}
+
 function fakeStream(events: SessionEvent[]) {
   return {
     [Symbol.asyncIterator]: async function* () {
@@ -229,6 +327,30 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function deferredDiceStream(planCount = 1) {
+  const gates = Array.from({ length: planCount }, () =>
+    deferred<DiceThrowPlan>()
+  );
+  let publishIndex = 0;
+  return {
+    stream: {
+      [Symbol.asyncIterator]: async function* () {
+        for (const gate of gates) yield await gate.promise;
+      },
+    },
+    publish: (plan: DiceThrowPlan) => {
+      gates[publishIndex++]?.resolve(plan);
+    },
+  };
+}
+
+function currentLocalWorldDieCommand(): LocalWorldDieCommand | undefined {
+  const layer = hoisted.lastCanvasProps.current?.presentationLayer;
+  return isValidElement<{ command: LocalWorldDieCommand }>(layer)
+    ? layer.props.command
+    : undefined;
+}
+
 function deferredStream(events: SessionEvent[]) {
   const gate = deferred<void>();
   return {
@@ -239,6 +361,23 @@ function deferredStream(events: SessionEvent[]) {
       },
     },
     release: () => gate.resolve(),
+  };
+}
+
+function steppedEventStream(stepCount: number) {
+  const gates = Array.from({ length: stepCount }, () =>
+    deferred<SessionEvent>()
+  );
+  let publishIndex = 0;
+  return {
+    stream: {
+      [Symbol.asyncIterator]: async function* () {
+        for (const gate of gates) yield await gate.promise;
+      },
+    },
+    publish: (next: SessionEvent) => {
+      gates[publishIndex++]?.resolve(next);
+    },
   };
 }
 
@@ -305,6 +444,12 @@ function renderView(
 beforeEach(() => {
   nextSeq = 1n;
   hoisted.lastCanvasProps.current = null;
+  Object.assign(hoisted.characterResult, {
+    data: null,
+    loading: false,
+    error: null,
+  });
+  hoisted.characterResult.refetch.mockReset();
   Object.assign(hoisted.atlasResult, {
     atlas: null,
     loading: true,
@@ -320,8 +465,11 @@ beforeEach(() => {
 
   for (const mock of [
     hoisted.getCharacterFn,
+    hoisted.getCharacterHookFn,
     hoisted.moveFn,
     hoisted.streamEventsFn,
+    hoisted.streamDiceThrowsFn,
+    hoisted.publishDiceThrowFn,
     hoisted.getStoryFn,
     hoisted.getViewFn,
     hoisted.getRosterFn,
@@ -331,6 +479,7 @@ beforeEach(() => {
     hoisted.affordFn,
     hoisted.turnFn,
     hoisted.attackFn,
+    hoisted.deathSaveFn,
     hoisted.endTurnFn,
     hoisted.getCharacterDataFn,
     hoisted.equipItemFn,
@@ -340,6 +489,7 @@ beforeEach(() => {
   }
 
   hoisted.streamEventsFn.mockReturnValue(fakeStream([]));
+  hoisted.streamDiceThrowsFn.mockReturnValue(fakeStream([]));
   hoisted.getStoryFn.mockResolvedValue({ entries: [] });
   hoisted.getViewFn.mockResolvedValue({ sightings: [] });
   hoisted.getRosterFn.mockResolvedValue({
@@ -398,11 +548,46 @@ const struck = () =>
     },
   } as SessionEvent['body']);
 
-const turnEnded = () =>
+const turnEnded = (member = 'skeleton-1', next = 'char-1') =>
   event(EventKind.TURN_ENDED, {
     case: 'turnEnded',
-    value: { member: 'skeleton-1', next: 'char-1' },
+    value: { member, next },
   } as SessionEvent['body']);
+
+const activated = () =>
+  event(EventKind.ACTIVATED, {
+    case: 'activated',
+    value: create(ActivatedSchema, {
+      actor: 'char-1',
+      ability: create(AbilityRefSchema, {
+        ref: 'dnd5e:features:second_wind',
+        name: 'Second Wind',
+      }),
+      target: '',
+    }),
+  });
+
+const activationResult = () =>
+  event(EventKind.ACTIVATION_RESULT, {
+    case: 'activationResult',
+    value: create(ActivationResultSchema, {
+      actor: 'char-1',
+      result: {
+        case: 'healingApplied',
+        value: create(HealingAppliedSchema, {
+          target: 'char-1',
+          amount: 2,
+          requested: 7,
+          roll: 6,
+          modifier: 1,
+          sourceRef: 'dnd5e:features:second_wind',
+          sourceName: 'Second Wind',
+          hpBefore: 8,
+          hpAfter: 10,
+        }),
+      },
+    }),
+  });
 
 describe('SessionEncounterView production combat integration', () => {
   it('shows a clear error when no character is bound', () => {
@@ -440,7 +625,13 @@ describe('SessionEncounterView production combat integration', () => {
     expect(screen.queryByText('24/28')).toBeNull();
     expect(screen.queryByTestId('session-combat-equipment-button')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /longsword/i },
+        { timeout: 5000 }
+      )
+    );
     await waitFor(() =>
       expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
         'skeleton-1',
@@ -460,22 +651,193 @@ describe('SessionEncounterView production combat integration', () => {
 
   it('uses public roster identity/body on the world clock and private CharacterData only for sheet status', async () => {
     readyScene();
+    const rosterLoad = deferred<{
+      members: Awaited<ReturnType<typeof hoisted.getRosterFn>>['members'];
+    }>();
+    hoisted.getRosterFn.mockReturnValueOnce(rosterLoad.promise);
     hoisted.getCharacterDataFn.mockResolvedValue({
       character: privateCharacterData({
         classRef: { module: 'private', type: 'class', id: 'wizard' },
+        raceRef: { module: 'private', type: 'race', id: 'human' },
       }),
+    });
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+        {
+          id: 'skeleton-1',
+          kind: MemberKind.MONSTER,
+          name: 'Skeleton',
+          classRef: '',
+          raceRef: '',
+          monsterRef: 'dnd5e:monsters:skeleton',
+        },
+      ],
     });
     renderView();
 
     await waitFor(() => screen.getByTestId('session-canvas'));
     expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
-    expect(hoisted.lastCanvasProps.current?.characterName).toBe('Aldric');
-    expect(hoisted.lastCanvasProps.current?.classRefId).toBe('fighter');
+    expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
+    expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.raceRefId).toBeUndefined();
+
+    await act(async () => {
+      rosterLoad.resolve({
+        members: [
+          {
+            id: 'char-1',
+            kind: MemberKind.PLAYER,
+            name: 'Aldric',
+            classRef: 'fighter',
+            raceRef: 'elf',
+            monsterRef: '',
+          },
+          {
+            id: 'skeleton-1',
+            kind: MemberKind.MONSTER,
+            name: 'Skeleton',
+            classRef: '',
+            raceRef: '',
+            monsterRef: 'dnd5e:monsters:skeleton',
+          },
+        ],
+      });
+      await rosterLoad.promise;
+    });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current).toMatchObject({
+        characterName: 'Aldric',
+        classRefId: 'fighter',
+        raceRefId: 'elf',
+      })
+    );
+    expect(hoisted.getCharacterFn).not.toHaveBeenCalled();
     const dock = screen.getByTestId('session-combat-dock');
     within(dock).getByText('Aldric');
     within(dock).getByText(/level 3 fighter/i);
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
     screen.getByText('24/28');
+  });
+
+  it('passes complete owner Appearance to SessionCanvas while peers remain roster-only with no private sheet fetch', async () => {
+    readyScene();
+    const hair = create(HairCustomizationSchema, {
+      scalp: create(StyleSelectionSchema, {
+        selection: {
+          case: 'styleRef',
+          value: 'modular-fantasy-hero:hair:38',
+        },
+      }),
+      facialHair: create(StyleSelectionSchema, {
+        selection: {
+          case: 'styleRef',
+          value: 'modular-fantasy-hero:facial-hair:01',
+        },
+      }),
+      colorSrgb: 0xd6b26e,
+      roughness: 0.55,
+    });
+    hoisted.characterResult.data = { appearance: { hair } };
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData(),
+    });
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Owner',
+          classRef: 'barbarian',
+          raceRef: 'dwarf',
+          monsterRef: '',
+        },
+        {
+          id: 'char-peer',
+          kind: MemberKind.PLAYER,
+          name: 'Peer',
+          classRef: 'rogue',
+          raceRef: 'dwarf',
+          monsterRef: '',
+          customization: { hair },
+        },
+      ],
+    });
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => {
+      const props = hoisted.lastCanvasProps
+        .current as SessionCanvasProps | null;
+      expect(props?.localCustomization?.hair).toEqual(hair);
+      expect(props?.roster?.get('char-peer')?.customization?.hair).toEqual(
+        hair
+      );
+    });
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledWith(
+      expect.objectContaining({ characterId: 'char-1' }),
+      expect.any(Object)
+    );
+    expect(hoisted.getCharacterHookFn).toHaveBeenCalled();
+    expect(
+      new Set(hoisted.getCharacterHookFn.mock.calls.map(([id]) => id))
+    ).toEqual(new Set(['char-1']));
+  });
+
+  it('derives the local downed state from the public turn participant instead of private HP state', async () => {
+    readyTurn();
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 2,
+      order: ['char-1'],
+      participants: [
+        participant('char-1', {
+          active: true,
+          standing: Standing.DOWNED,
+          name: 'Turn Snapshot Name',
+        }),
+      ],
+    });
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+      ],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        hitPoints: { current: 24, max: 28, temp: 0 },
+      }),
+    });
+    renderView();
+
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => {
+      const currentCanvasProps = hoisted.lastCanvasProps.current as
+        | (SessionCanvasProps & { localIsDowned?: boolean })
+        | null;
+      expect(currentCanvasProps).toMatchObject({
+        characterName: 'Aldric',
+        classRefId: 'fighter',
+        raceRefId: 'elf',
+        localIsDowned: true,
+      });
+    });
   });
 
   it('projects owner-authoritative main_hand into the local canvas presentation', async () => {
@@ -509,6 +871,38 @@ describe('SessionEncounterView production combat integration', () => {
     );
   });
 
+  it('projects owner-authoritative off_hand into the local canvas presentation', async () => {
+    readyScene();
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        equipped: {
+          off_hand: { module: 'dnd5e', type: 'item', id: 'shield' },
+        },
+      }),
+    });
+    renderView();
+
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.offHandPresentation).toEqual({
+        ref: 'dnd5e:item:shield',
+        assetUrl: '/models/synty/off-hand/shield.glb',
+        assetKind: 'shield',
+        socket: {
+          bone: 'Hand_L',
+          boneUnitMeters: 0.01,
+          positionMeters: [
+            0.08494041442871093, -0.02545013666152954, -0.06444666385650635,
+          ],
+          rotationQuaternion: [
+            0.6342147588729858, 0.538684606552124, 0.31252291798591614,
+            0.45817017555236816,
+          ],
+          scale: 1,
+        },
+      })
+    );
+  });
+
   it('keeps dock identity on the public roster during a turn instead of Turn participants or private CharacterData', async () => {
     readyTurn();
     hoisted.turnFn.mockResolvedValue({
@@ -528,8 +922,10 @@ describe('SessionEncounterView production combat integration', () => {
     renderView();
 
     const dock = await screen.findByTestId('session-combat-dock');
-    within(dock).getByText('Aldric');
-    within(dock).getByText(/level 3 fighter/i);
+    await waitFor(() => {
+      within(dock).getByText('Aldric');
+      within(dock).getByText(/level 3 fighter/i);
+    });
     expect(within(dock).queryByText('Turn Snapshot Name')).toBeNull();
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
   });
@@ -571,6 +967,7 @@ describe('SessionEncounterView production combat integration', () => {
     expect(within(dock).queryByText(/wizard/i)).toBeNull();
     expect(hoisted.lastCanvasProps.current?.characterName).toBe('You');
     expect(hoisted.lastCanvasProps.current?.classRefId).toBeUndefined();
+    expect(hoisted.lastCanvasProps.current?.raceRefId).toBeUndefined();
   });
 
   it('keeps an already-drawn canvas mounted through a failed background Where refresh', async () => {
@@ -603,7 +1000,9 @@ describe('SessionEncounterView production combat integration', () => {
     hoisted.moveFn.mockReturnValue(new Promise(() => {}));
     renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
-    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false)
+    );
 
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
@@ -652,6 +1051,8 @@ describe('SessionEncounterView production combat integration', () => {
   it('clears the turn Move selector when authority transitions to world clock before the next free-roam request', async () => {
     readyScene();
     const turnParticipants = [participant('char-1', { active: true })];
+    const postFightTurnRefresh = deferred<unknown>();
+    const postFightAffordRefresh = deferred<unknown>();
     hoisted.turnFn
       .mockResolvedValueOnce({
         clock: ClockKind.TURN,
@@ -660,19 +1061,21 @@ describe('SessionEncounterView production combat integration', () => {
         order: ['char-1'],
         participants: turnParticipants,
       })
-      .mockResolvedValue({
+      .mockResolvedValueOnce({
         clock: ClockKind.WORLD,
         active: '',
         round: 0,
         order: [],
         participants: [],
-      });
+      })
+      .mockReturnValue(postFightTurnRefresh.promise);
     hoisted.affordFn
       .mockResolvedValueOnce({
         clock: ClockKind.TURN,
         declarations: [moveDeclaration()],
       })
-      .mockResolvedValue({ clock: ClockKind.WORLD, declarations: [] });
+      .mockResolvedValueOnce({ clock: ClockKind.WORLD, declarations: [] })
+      .mockReturnValue(postFightAffordRefresh.promise);
     hoisted.moveFn.mockResolvedValue({ steps: [] });
     const ended = deferredStream([
       event(EventKind.FIGHT_ENDED, {
@@ -693,11 +1096,44 @@ describe('SessionEncounterView production combat integration', () => {
       )
     );
 
-    ended.release();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
     await waitFor(() => screen.getByTestId('session-combat-free-roam'));
+
+    ended.release();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(3));
+    await waitFor(() => screen.getByTestId('session-combat-free-roam'));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true)
+    );
+
+    await act(async () => {
+      postFightTurnRefresh.resolve({
+        clock: ClockKind.WORLD,
+        active: '',
+        round: 0,
+        order: [],
+        participants: [],
+      });
+      postFightAffordRefresh.resolve({
+        clock: ClockKind.WORLD,
+        declarations: [],
+      });
+      await Promise.all([
+        postFightTurnRefresh.promise,
+        postFightAffordRefresh.promise,
+      ]);
+    });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(false)
+    );
+    expect(hoisted.moveFn).toHaveBeenCalledTimes(1);
+
     act(() => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
+    await waitFor(() => expect(hoisted.moveFn).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(hoisted.moveFn).toHaveBeenLastCalledWith(
         expect.objectContaining({ declarationId: '' })
@@ -739,7 +1175,9 @@ describe('SessionEncounterView production combat integration', () => {
     await screen.findByText(/actions may be out of date/i);
     expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
     expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
-    expect(hoisted.lastCanvasProps.current?.moveSeq).toBe(1);
+    expect(hoisted.lastCanvasProps.current?.movements?.get('char-1')?.seq).toBe(
+      1
+    );
     expect(hoisted.whereResult.refetch).not.toHaveBeenCalled();
     act(() => {
       oldTargetClick?.('skeleton-1');
@@ -799,13 +1237,15 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
     await waitFor(() =>
-      expect(hoisted.lastCanvasProps.current?.moveSeq).toBe(1)
+      expect(
+        hoisted.lastCanvasProps.current?.movements?.get('char-1')?.seq
+      ).toBe(1)
     );
-    expect(hoisted.lastCanvasProps.current?.movePath).toEqual([
-      { x: 1, y: -1, z: 0 },
-    ]);
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('char-1')?.route
+    ).toEqual([{ x: 1, y: -1, z: 0 }]);
     act(() => {
-      hoisted.lastCanvasProps.current?.onMovementPresentationComplete?.(1);
+      hoisted.lastCanvasProps.current?.onMovementPainted?.('char-1', 1, 1);
     });
     await waitFor(() => expect(hoisted.whereResult.refetch).toHaveBeenCalled());
   });
@@ -894,6 +1334,770 @@ describe('SessionEncounterView production combat integration', () => {
     });
   });
 
+  it('dispatches one exact no-target Death Save command and fences a duplicate click in flight', async () => {
+    readyDyingTurn();
+    const pending = deferred<unknown>();
+    hoisted.deathSaveFn.mockReturnValue(pending.promise);
+    renderView();
+
+    const button = await screen.findByRole('button', { name: /^death save/i });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+    expect(hoisted.deathSaveFn).toHaveBeenCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'selector.death-save',
+    });
+    expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
+    expect(screen.queryByRole('list', { name: /targets/i })).toBeNull();
+  });
+
+  it.each([
+    [
+      'missing DeathSaveRef',
+      () => {
+        const malformed = deathSaveDeclaration();
+        malformed.deathSave = undefined;
+        return malformed;
+      },
+    ],
+    [
+      'nonempty candidates',
+      () => {
+        const malformed = deathSaveDeclaration();
+        malformed.candidates = [
+          create(TargetCandidateSchema, {
+            member: 'skeleton-1',
+            available: true,
+          }),
+        ];
+        return malformed;
+      },
+    ],
+  ] as const)(
+    'never RPC-dispatches a Death Save with %s',
+    async (_label, makeDeclaration) => {
+      readyDyingTurn();
+      hoisted.affordFn.mockResolvedValue({
+        clock: ClockKind.TURN,
+        declarations: [makeDeclaration(), endTurnDeclaration()],
+      });
+      renderView();
+
+      await screen.findByRole('button', { name: /end turn/i });
+      const malformedButton = screen.queryByRole('button', {
+        name: /death save/i,
+      });
+      if (malformedButton) fireEvent.click(malformedButton);
+      expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
+      expect(malformedButton).toBeNull();
+    }
+  );
+
+  it('re-arms the same Death Save selector only after fresh authority observes it absent', async () => {
+    readyDyingTurn();
+    const progression = steppedEventStream(2);
+    const response = deferred<unknown>();
+    const sameOfferTurnRefresh = deferred<unknown>();
+    const sameOfferAffordRefresh = deferred<unknown>();
+    hoisted.streamEventsFn.mockReturnValue(progression.stream);
+    hoisted.deathSaveFn
+      .mockReturnValueOnce(response.promise)
+      .mockReturnValueOnce(new Promise(() => {}));
+    renderView();
+
+    let button = await screen.findByRole('button', { name: /^death save/i });
+    fireEvent.click(button);
+    hoisted.turnFn.mockReturnValue(sameOfferTurnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(sameOfferAffordRefresh.promise);
+    await act(async () => {
+      response.resolve({
+        seq: 41n,
+        roll: 12,
+        outcome: DeathSaveOutcome.SUCCESS,
+        successesAdded: 1,
+        successes: 1,
+        failures: 0,
+        successesNeeded: 2,
+        failuresRemaining: 3,
+        continuation: DeathSaveContinuation.END_TURN,
+        presentationId: 'presentation_first-turn',
+      });
+      await response.promise;
+    });
+
+    await screen.findByText(/actions may be out of date/i);
+    button = screen.getByRole('button', { name: /^death save/i });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      sameOfferTurnRefresh.resolve({
+        clock: ClockKind.TURN,
+        active: 'char-1',
+        round: 2,
+        order: ['char-1', 'skeleton-1'],
+        participants: [
+          participant('char-1', {
+            active: true,
+            standing: Standing.DOWNED,
+            lifeState: LifeState.DYING,
+          }),
+          participant('skeleton-1'),
+        ],
+      });
+      sameOfferAffordRefresh.resolve({
+        clock: ClockKind.TURN,
+        declarations: [deathSaveDeclaration(), endTurnDeclaration()],
+      });
+      await Promise.all([
+        sameOfferTurnRefresh.promise,
+        sameOfferAffordRefresh.promise,
+      ]);
+    });
+    await waitFor(() =>
+      expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
+    );
+    button = screen.getByRole('button', { name: /^death save/i });
+    fireEvent.click(button);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'skeleton-1',
+      round: 2,
+      order: ['char-1', 'skeleton-1'],
+      participants: [
+        participant('char-1', {
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+        }),
+        participant('skeleton-1', { active: true }),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [],
+    });
+    progression.publish(turnEnded('char-1', 'skeleton-1'));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^death save/i })).toBeNull()
+    );
+
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 3,
+      order: ['char-1', 'skeleton-1'],
+      participants: [
+        participant('char-1', {
+          active: true,
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+        }),
+        participant('skeleton-1'),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [deathSaveDeclaration(), endTurnDeclaration()],
+    });
+    progression.publish(turnEnded());
+    button = await screen.findByRole('button', { name: /^death save/i });
+
+    fireEvent.click(button);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledTimes(2);
+    expect(hoisted.deathSaveFn).toHaveBeenLastCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'selector.death-save',
+    });
+  });
+
+  it('blocks manual End Turn and physical release for a live event-first actor until the response supplies authority sequence', async () => {
+    readyDyingTurn();
+    const response = deferred<unknown>();
+    hoisted.deathSaveFn.mockReturnValue(response.promise);
+    let publishedPlan: DiceThrowPlan | undefined;
+    hoisted.publishDiceThrowFn.mockImplementation(async (input) => {
+      const draft = input.draft!;
+      publishedPlan = create(DiceThrowPlanSchema, {
+        schemaVersion: draft.schemaVersion,
+        session: input.session,
+        presentationId: draft.presentationId,
+        authoritySeq: draft.authoritySeq,
+        roller: input.member,
+        attempt: draft.attempt,
+        physicsSchema: draft.physicsSchema,
+        colliderFingerprint: draft.colliderFingerprint,
+        bodies: draft.bodies,
+        contacts: draft.contacts,
+        terminal: draft.terminal,
+      });
+      return { plan: publishedPlan };
+    });
+    const eventFirst = deferredStream([
+      event(
+        EventKind.DEATH_SAVE_ROLLED,
+        {
+          case: 'deathSaveRolled',
+          value: {
+            actor: 'char-1',
+            roll: 12,
+            outcome: DeathSaveOutcome.SUCCESS,
+            successesAdded: 1,
+            failuresAdded: 0,
+            successes: 2,
+            failures: 1,
+            successesNeeded: 1,
+            failuresRemaining: 2,
+            stabilized: false,
+            dead: false,
+            recovered: false,
+            hpRestored: 0,
+            continuation: DeathSaveContinuation.END_TURN,
+            presentationId: 'presentation_event-first-actor',
+          },
+        } as SessionEvent['body'],
+        103n
+      ),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(eventFirst.stream);
+    const actorView = renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    eventFirst.release();
+    await waitFor(() => {
+      const endTurn = screen.getByRole('button', { name: /end turn/i });
+      expect((endTurn as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
+      expect(hoisted.publishDiceThrowFn).not.toHaveBeenCalled();
+    });
+    const endTurn = screen.getByRole('button', { name: /end turn/i });
+
+    await act(async () => {
+      response.resolve({
+        seq: 27n,
+        roll: 12,
+        outcome: DeathSaveOutcome.SUCCESS,
+        successesAdded: 1,
+        failuresAdded: 0,
+        successes: 2,
+        failures: 1,
+        successesNeeded: 1,
+        failuresRemaining: 2,
+        stabilized: false,
+        dead: false,
+        recovered: false,
+        hpRestored: 0,
+        continuation: DeathSaveContinuation.END_TURN,
+        presentationId: 'presentation_event-first-actor',
+      });
+      await response.promise;
+    });
+    expect(await screen.findByText('Preparing shared d20')).toBeTruthy();
+    expect((endTurn as HTMLButtonElement).disabled).toBe(true);
+    let layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onReadyChange(true);
+      }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(hoisted.publishDiceThrowFn).toHaveBeenCalledOnce()
+    );
+    expect(hoisted.publishDiceThrowFn.mock.calls[0]?.[0]).toMatchObject({
+      session: 'enc-1',
+      member: 'char-1',
+      draft: {
+        presentationId: 'presentation_event-first-actor',
+        authoritySeq: 27n,
+        attempt: 1,
+      },
+    });
+    await waitFor(() => expect(publishedPlan).toBeDefined());
+    actorView.unmount();
+
+    readyScene();
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'human',
+          monsterRef: '',
+        },
+        {
+          id: 'char-2',
+          kind: MemberKind.PLAYER,
+          name: 'Lyra',
+          classRef: 'wizard',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+      ],
+    });
+    const witnessEvent = deferredStream([
+      event(
+        EventKind.DEATH_SAVE_ROLLED,
+        {
+          case: 'deathSaveRolled',
+          value: {
+            actor: 'char-1',
+            roll: 12,
+            outcome: DeathSaveOutcome.SUCCESS,
+            successesAdded: 1,
+            failuresAdded: 0,
+            successes: 2,
+            failures: 1,
+            successesNeeded: 1,
+            failuresRemaining: 2,
+            stabilized: false,
+            dead: false,
+            recovered: false,
+            hpRestored: 0,
+            continuation: DeathSaveContinuation.END_TURN,
+            presentationId: 'presentation_event-first-actor',
+          },
+        } as SessionEvent['body'],
+        501n
+      ),
+    ]);
+    const witnessPlans = deferredDiceStream();
+    hoisted.streamEventsFn.mockReturnValue(witnessEvent.stream);
+    hoisted.streamDiceThrowsFn.mockReturnValue(witnessPlans.stream);
+    renderView({ characterId: 'char-2', playerId: 'player-2' });
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+
+    await act(async () => witnessPlans.publish(publishedPlan!));
+    witnessEvent.release();
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({
+        kind: 'witness',
+        plan: {
+          presentationId: 'presentation_event-first-actor',
+          authoritySeq: 27n,
+          roller: 'char-1',
+        },
+      })
+    );
+    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    expect(
+      isValidElement<LocalWorldDieLayerProps>(layer) &&
+        layer.props.authoritativeFace
+    ).toBe(12);
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onTerminal('settled');
+      }
+    });
+    await screen.findByText('Death save! 2 successes — 1 to stabilize.');
+  });
+
+  it('renders no Death Save control when the exact declaration is absent even with Dying progress and zero HP', async () => {
+    readyDyingTurn();
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [endTurnDeclaration()],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        hitPoints: { current: 0, max: 28, temp: 0 },
+        lifeState: LifeState.DYING,
+        deathSaves: create(DeathSaveProgressSchema, {
+          successes: 2,
+          failures: 2,
+          successesNeeded: 1,
+          failuresRemaining: 1,
+        }),
+      }),
+    });
+    renderView();
+
+    await screen.findByRole('button', { name: /end turn/i });
+    expect(screen.queryByRole('button', { name: /death save/i })).toBeNull();
+    expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
+  });
+
+  it('invalidates command authority after a Death Save response and retains its provider continuation for dice release', async () => {
+    readyDyingTurn();
+    const response = deferred<unknown>();
+    hoisted.deathSaveFn.mockReturnValue(response.promise);
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    const turnRefresh = deferred<unknown>();
+    const affordRefresh = deferred<unknown>();
+    hoisted.turnFn.mockReturnValue(turnRefresh.promise);
+    hoisted.affordFn.mockReturnValue(affordRefresh.promise);
+    await act(async () => {
+      response.resolve({
+        seq: 27n,
+        roll: 12,
+        outcome: DeathSaveOutcome.SUCCESS,
+        successesAdded: 1,
+        failuresAdded: 0,
+        successes: 2,
+        failures: 2,
+        successesNeeded: 1,
+        failuresRemaining: 1,
+        stabilized: false,
+        dead: false,
+        recovered: false,
+        hpRestored: 0,
+        continuation: DeathSaveContinuation.END_TURN,
+        presentationId: 'presentation_opaque-token',
+      });
+      await response.promise;
+    });
+
+    await screen.findByText(/actions may be out of date/i);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: /^death save/i,
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+  });
+
+  it('never retries an ambiguous Death Save failure and reconciles authority instead', async () => {
+    readyDyingTurn();
+    hoisted.deathSaveFn.mockRejectedValue(
+      new Error('transport status unknown')
+    );
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+
+    await screen.findByText(/death save failed: transport status unknown/i);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+
+    const sameOffer = screen.getByRole('button', { name: /^death save/i });
+    expect((sameOffer as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(sameOffer);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+  });
+
+  it('retries an off-table Death Save presentation with the same result and token, then ends the turn exactly once after settlement', async () => {
+    readyDyingTurn();
+    hoisted.deathSaveFn.mockResolvedValue({
+      seq: 27n,
+      roll: 12,
+      outcome: DeathSaveOutcome.SUCCESS,
+      successesAdded: 1,
+      failuresAdded: 0,
+      successes: 2,
+      failures: 2,
+      successesNeeded: 1,
+      failuresRemaining: 1,
+      continuation: DeathSaveContinuation.END_TURN,
+      presentationId: 'presentation_opaque-token',
+    });
+    hoisted.endTurnFn.mockResolvedValue({ next: 'skeleton-1', seq: 28n });
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    await screen.findByText('Preparing shared d20');
+    await waitFor(() =>
+      expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
+    );
+    const manualEndTurn = screen.getByRole('button', { name: /end turn/i });
+    expect((manualEndTurn as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(manualEndTurn);
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+
+    let layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onReadyChange(true);
+      }
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()?.kind).toBe('released')
+    );
+    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onTerminal('off-table');
+      }
+    });
+
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Death save!/i)).toBeNull();
+    expect((manualEndTurn as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(manualEndTurn);
+    expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()?.kind).toBe('released')
+    );
+    layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onTerminal('settled');
+      }
+    });
+
+    await waitFor(() => expect(hoisted.endTurnFn).toHaveBeenCalledOnce());
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+    expect(hoisted.endTurnFn).toHaveBeenCalledWith({
+      session: 'enc-1',
+      member: 'char-1',
+      declarationId: 'v1.end',
+    });
+  });
+
+  it('keeps refreshed natural-20 HP/life/progress hidden until semantic settlement, then releases the latest snapshots', async () => {
+    readyDyingTurn();
+    hoisted.getCharacterDataFn.mockResolvedValueOnce({
+      character: privateCharacterData({
+        hitPoints: { current: 0, max: 28, temp: 0 },
+        lifeState: LifeState.DYING,
+        deathSaves: create(DeathSaveProgressSchema, {
+          successes: 1,
+          failures: 2,
+          successesNeeded: 2,
+          failuresRemaining: 1,
+        }),
+      }),
+    });
+    hoisted.deathSaveFn.mockResolvedValue({
+      seq: 29n,
+      roll: 20,
+      outcome: DeathSaveOutcome.RECOVERED,
+      successes: 0,
+      failures: 0,
+      successesNeeded: 3,
+      failuresRemaining: 3,
+      recovered: true,
+      hpRestored: 1,
+      continuation: DeathSaveContinuation.KEEP_TURN,
+      presentationId: '',
+    });
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 2,
+      order: ['char-1', 'skeleton-1'],
+      participants: [
+        participant('char-1', {
+          active: true,
+          standing: Standing.UP,
+          lifeState: LifeState.CONSCIOUS,
+        }),
+        participant('skeleton-1'),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [endTurnDeclaration()],
+    });
+    hoisted.getCharacterDataFn.mockResolvedValue({
+      character: privateCharacterData({
+        hitPoints: { current: 1, max: 28, temp: 0 },
+        lifeState: LifeState.CONSCIOUS,
+      }),
+    });
+
+    const reveal = await screen.findByRole('button', {
+      name: 'Reveal result',
+    });
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+    expect(screen.getByText('0/28')).toBeTruthy();
+    expect(screen.getByText('1 successes · 2 to stabilize')).toBeTruthy();
+    expect(hoisted.lastCanvasProps.current?.localIsDowned).toBe(true);
+
+    fireEvent.click(reveal);
+
+    await waitFor(() => expect(screen.getByText('1/28')).toBeTruthy());
+    expect(screen.queryByTestId('death-save-progress')).toBeNull();
+    expect(hoisted.lastCanvasProps.current?.localIsDowned).toBe(false);
+  });
+
+  it('preserves a failed automatic End Turn error, reconciles, and cannot reroll the accepted save', async () => {
+    readyDyingTurn();
+    hoisted.deathSaveFn.mockResolvedValue({
+      seq: 29n,
+      roll: 12,
+      outcome: DeathSaveOutcome.SUCCESS,
+      successesAdded: 1,
+      successes: 2,
+      failures: 1,
+      successesNeeded: 1,
+      failuresRemaining: 2,
+      continuation: DeathSaveContinuation.END_TURN,
+      presentationId: '',
+    });
+    hoisted.endTurnFn.mockRejectedValue(new Error('continuation unavailable'));
+    renderView();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    const reveal = await screen.findByRole('button', {
+      name: 'Reveal result',
+    });
+    await waitFor(() =>
+      expect(screen.queryByText(/actions may be out of date/i)).toBeNull()
+    );
+    const before = {
+      turn: hoisted.turnFn.mock.calls.length,
+      afford: hoisted.affordFn.mock.calls.length,
+    };
+
+    fireEvent.click(reveal);
+
+    await screen.findByText(/end turn failed: continuation unavailable/i);
+    expect(hoisted.endTurnFn).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(hoisted.turnFn.mock.calls.length).toBeGreaterThan(before.turn)
+    );
+    await waitFor(() =>
+      expect(hoisted.affordFn.mock.calls.length).toBeGreaterThan(before.afford)
+    );
+    const deathSave = await screen.findByRole('button', {
+      name: /^death save/i,
+    });
+    fireEvent.click(deathSave);
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+  });
+
+  it('remounts from spent provider authority with End Turn and no second die or Death Save', async () => {
+    readyDyingTurn();
+    hoisted.deathSaveFn.mockResolvedValue({
+      seq: 30n,
+      roll: 12,
+      outcome: DeathSaveOutcome.SUCCESS,
+      successesAdded: 1,
+      successes: 2,
+      failures: 1,
+      successesNeeded: 1,
+      failuresRemaining: 2,
+      continuation: DeathSaveContinuation.END_TURN,
+      presentationId: 'presentation_remount',
+    });
+    const first = renderView();
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^death save/i })
+    );
+    await screen.findByText('Preparing shared d20');
+    first.unmount();
+
+    readyScene();
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-1',
+      round: 2,
+      order: ['char-1', 'skeleton-1'],
+      participants: [
+        participant('char-1', {
+          active: true,
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+        }),
+        participant('skeleton-1'),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [endTurnDeclaration()],
+    });
+    renderView();
+
+    await screen.findByRole('button', { name: /end turn/i });
+    expect(screen.queryByRole('button', { name: /^death save/i })).toBeNull();
+    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
+    expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['KEEP_TURN', DeathSaveContinuation.KEEP_TURN],
+    ['ALREADY_ADVANCED', DeathSaveContinuation.ALREADY_ADVANCED],
+  ])(
+    'settled %s sends no second mutation and refreshes CharacterData/Turn/Afford',
+    async (_label, continuation) => {
+      readyDyingTurn();
+      hoisted.deathSaveFn.mockResolvedValue({
+        seq: 31n,
+        roll: 20,
+        outcome: DeathSaveOutcome.RECOVERED,
+        successes: 0,
+        failures: 0,
+        successesNeeded: 3,
+        failuresRemaining: 3,
+        recovered: true,
+        hpRestored: 1,
+        continuation,
+        // Deliberately unsafe for decorative dice so the existing explicit
+        // semantic fallback can settle without involving another game RPC.
+        presentationId: '',
+      });
+      renderView();
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: /^death save/i })
+      );
+      const reveal = await screen.findByRole('button', {
+        name: 'Reveal result',
+      });
+      await waitFor(() =>
+        expect(hoisted.turnFn.mock.calls.length).toBeGreaterThan(1)
+      );
+      await waitFor(() =>
+        expect(hoisted.affordFn.mock.calls.length).toBeGreaterThan(1)
+      );
+      const before = {
+        character: hoisted.getCharacterDataFn.mock.calls.length,
+        turn: hoisted.turnFn.mock.calls.length,
+        afford: hoisted.affordFn.mock.calls.length,
+      };
+
+      fireEvent.click(reveal);
+
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
+          before.character
+        )
+      );
+      await waitFor(() =>
+        expect(hoisted.turnFn.mock.calls.length).toBeGreaterThan(before.turn)
+      );
+      await waitFor(() =>
+        expect(hoisted.affordFn.mock.calls.length).toBeGreaterThan(
+          before.afford
+        )
+      );
+      expect(hoisted.deathSaveFn).toHaveBeenCalledOnce();
+      expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+    }
+  );
+
   it('keeps panel-first actions live through the development StrictMode setup/cleanup probe', async () => {
     readyTurn();
     hoisted.attackFn.mockReturnValue(new Promise(() => {}));
@@ -965,13 +2169,556 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
     });
 
-    await waitFor(() => screen.getByText(/Roll your carved iron d20/i));
+    await waitFor(() => screen.getByText('Preparing shared d20'));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
     localStrike.release();
     fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
     await waitFor(() => screen.getByText(/source=live/i));
     fireEvent.click(screen.getByRole('button', { name: 'Story' }));
     expect(screen.queryByText(/Aldric strikes Skeleton/i)).toBeNull();
+  });
+
+  it('automatically plans and publishes the actor throw without a playback selector', async () => {
+    readyTurn();
+    hoisted.atlasResult.atlas = pointyAtlas({
+      boundaries: [
+        {
+          from: { x: 0, y: 0 },
+          to: { x: 1, y: 0 },
+          blocksMovement: true,
+          blocksLineOfSight: true,
+        },
+      ],
+      doorways: [
+        {
+          connection: 'crypt-door',
+          from: { x: 0, y: 0 },
+          to: { x: 1, y: 0 },
+        },
+      ],
+    });
+    hoisted.getDoorsFn
+      .mockResolvedValueOnce({
+        doors: [{ door: 'crypt-door', state: DoorState.CLOSED, dc: 0 }],
+      })
+      .mockResolvedValueOnce({
+        doors: [{ door: 'crypt-door', state: DoorState.OPEN, dc: 0 }],
+      });
+    const doorUpdate = deferredStream([
+      event(EventKind.DOOR, {
+        case: 'door',
+        value: {
+          door: 'crypt-door',
+          state: DoorState.OPEN,
+          actor: 'char-1',
+          dc: 0,
+          total: 0,
+          beaten: false,
+        },
+      } as SessionEvent['body']),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(doorUpdate.stream);
+    hoisted.attackFn.mockResolvedValue({
+      seq: 7n,
+      roll: 17,
+      total: 20,
+      against: 13,
+      hit: true,
+      critical: false,
+      damage: 6,
+      attack: attackDeclaration().attack,
+    });
+    hoisted.publishDiceThrowFn.mockImplementation(async (input) => {
+      const draft = input.draft!;
+      return {
+        plan: create(DiceThrowPlanSchema, {
+          schemaVersion: draft.schemaVersion,
+          session: input.session,
+          presentationId: draft.presentationId,
+          authoritySeq: draft.authoritySeq,
+          roller: input.member,
+          attempt: draft.attempt,
+          physicsSchema: draft.physicsSchema,
+          colliderFingerprint: draft.colliderFingerprint,
+          bodies: draft.bodies,
+          contacts: draft.contacts,
+          terminal: draft.terminal,
+        }),
+      };
+    });
+    renderView();
+    await screen.findByRole('button', { name: /longsword/i });
+    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+
+    await screen.findByText('Preparing shared d20');
+    const preparingLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    expect(
+      isValidElement<LocalWorldDieLayerProps>(preparingLayer) &&
+        preparingLayer.props.colliders.some(({ id }) => id === 'crypt-door')
+    ).toBe(true);
+    doorUpdate.release();
+    await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
+    const refreshedLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    expect(
+      isValidElement<LocalWorldDieLayerProps>(refreshedLayer) &&
+        refreshedLayer.props.colliders.some(({ id }) => id === 'crypt-door')
+    ).toBe(true);
+    expect(
+      isValidElement<LocalWorldDieLayerProps>(preparingLayer) &&
+        isValidElement<LocalWorldDieLayerProps>(refreshedLayer) &&
+        refreshedLayer.props.colliders
+    ).toBe(
+      isValidElement<LocalWorldDieLayerProps>(preparingLayer)
+        ? preparingLayer.props.colliders
+        : undefined
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll d20' }));
+    expect(screen.queryByText('Shared d20 presentation')).toBeNull();
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(preparingLayer)) {
+        preparingLayer.props.onReadyChange(true);
+      }
+    });
+
+    await screen.findByText('Shared d20 presentation');
+    await waitFor(() =>
+      expect(hoisted.publishDiceThrowFn).toHaveBeenCalledTimes(1)
+    );
+    expect(hoisted.publishDiceThrowFn.mock.calls[0]?.[0]).toMatchObject({
+      session: 'enc-1',
+      member: 'char-1',
+      draft: {
+        presentationId: 'session:enc-1:7',
+        authoritySeq: 7n,
+        attempt: 1,
+      },
+    });
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({
+        kind: 'released',
+        plannedTerminal: { step: expect.any(Number) },
+      })
+    );
+    expect(screen.queryByRole('group', { name: /playback mode/i })).toBeNull();
+
+    const firstAttemptLayer =
+      hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(firstAttemptLayer)) {
+        firstAttemptLayer.props.onTerminal('off-table');
+      }
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+    await waitFor(() =>
+      expect(hoisted.publishDiceThrowFn).toHaveBeenCalledTimes(2)
+    );
+    expect(hoisted.publishDiceThrowFn.mock.calls[1]?.[0]?.draft?.attempt).toBe(
+      2
+    );
+
+    const failedLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(failedLayer)) {
+        failedLayer.props.onTerminal('failure');
+      }
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reveal result' })
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('local-world-die-tile')).toBeNull()
+    );
+  });
+
+  it('offers explicit semantic completion when local planning fails', async () => {
+    readyTurn();
+    hoisted.attackFn.mockResolvedValue({
+      seq: 8n,
+      roll: 11,
+      total: 14,
+      against: 13,
+      hit: true,
+      critical: false,
+      damage: 4,
+      attack: attackDeclaration().attack,
+    });
+    vi.spyOn(
+      localWorldDiePreSimulation,
+      'preSimulateLocalWorldDie'
+    ).mockRejectedValueOnce(new Error('planner unavailable'));
+    renderView();
+    await screen.findByRole('button', { name: /longsword/i });
+    fireEvent.click(screen.getByRole('button', { name: /longsword/i }));
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([
+        'skeleton-1',
+      ])
+    );
+    act(() => {
+      hoisted.lastCanvasProps.current?.onEntityClick?.('skeleton-1');
+    });
+    await screen.findByText('Preparing shared d20');
+    const layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onReadyChange(true);
+      }
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Roll d20' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Reveal result' })
+    ).toBeTruthy();
+    expect(hoisted.publishDiceThrowFn).not.toHaveBeenCalled();
+    expect(currentLocalWorldDieCommand()).toMatchObject({ kind: 'reset' });
+  });
+
+  it('mounts one noninteractive witness command for an admitted live player plan', async () => {
+    readyScene();
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'human',
+          monsterRef: '',
+        },
+        {
+          id: 'char-2',
+          kind: MemberKind.PLAYER,
+          name: 'Lyra',
+          classRef: 'wizard',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+        {
+          id: 'skeleton-1',
+          kind: MemberKind.MONSTER,
+          name: 'Skeleton',
+          classRef: '',
+          raceRef: '',
+          monsterRef: 'dnd5e:monsters:skeleton',
+        },
+      ],
+    });
+    const authoritativeStrike = deferredStream([
+      event(
+        EventKind.STRUCK,
+        {
+          case: 'struck',
+          value: {
+            attacker: 'char-2',
+            target: 'skeleton-1',
+            roll: 14,
+            total: 18,
+            against: 13,
+            damage: 5,
+            attack: attackDeclaration().attack,
+            critical: false,
+          },
+        } as SessionEvent['body'],
+        42n
+      ),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(authoritativeStrike.stream);
+    const livePlans = deferredDiceStream(2);
+    hoisted.streamDiceThrowsFn.mockReturnValue(livePlans.stream);
+    renderView();
+
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    const scene = hoisted.lastCanvasProps.current!.scene;
+    const fingerprint = await fingerprintLocalWorldDieColliders(
+      buildLocalWorldDieColliders(scene, new Set())
+    );
+    const initialState = {
+      position: { x: 0, y: 1.25, z: 0 },
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      linearVelocity: { x: 1, y: 0.8, z: 0 },
+      angularVelocity: { x: 0, y: 0, z: -2 },
+    };
+    const terminalState = {
+      position: { x: 0.5, y: 0.3, z: 0 },
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      linearVelocity: { x: 0, y: 0, z: 0 },
+      angularVelocity: { x: 0, y: 0, z: 0 },
+    };
+    const planned: LocalWorldDiePlanTerminal = {
+      kind: 'off-table',
+      step: 42,
+      elapsedMs: 4,
+      fingerprint,
+      initialState,
+      terminalState,
+    };
+    const draft = localWorldDieDraft({
+      presentationId: 'session:enc-1:42',
+      authoritySeq: 42n,
+      attempt: 1,
+      plan: planned,
+    });
+    const accepted = create(DiceThrowPlanSchema, {
+      schemaVersion: draft.schemaVersion,
+      session: 'enc-1',
+      presentationId: draft.presentationId,
+      authoritySeq: draft.authoritySeq,
+      roller: 'char-2',
+      attempt: draft.attempt,
+      physicsSchema: draft.physicsSchema,
+      colliderFingerprint: draft.colliderFingerprint,
+      bodies: draft.bodies,
+      contacts: draft.contacts,
+      terminal: draft.terminal,
+    });
+
+    await act(async () => livePlans.publish(accepted));
+    expect(currentLocalWorldDieCommand()?.kind).not.toBe('witness');
+
+    authoritativeStrike.release();
+    await screen.findByText(/Lyra strikes Skeleton/i);
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()?.kind).toBe('witness')
+    );
+    const command = currentLocalWorldDieCommand();
+    expect(command?.kind === 'witness' && command.plan).toMatchObject({
+      presentationId: 'session:enc-1:42',
+      roller: 'char-2',
+      attempt: 1,
+    });
+    expect(screen.queryByTestId('local-world-die-tile')).toBeNull();
+
+    const firstLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    expect(isValidElement<LocalWorldDieLayerProps>(firstLayer)).toBe(true);
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(firstLayer)) {
+        firstLayer.props.onTerminal('off-table');
+      }
+    });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.presentationLayer).toBeNull()
+    );
+
+    const retryDraft = localWorldDieDraft({
+      presentationId: 'session:enc-1:42',
+      authoritySeq: 42n,
+      attempt: 2,
+      plan: { ...planned, kind: 'settled' },
+    });
+    const retryAccepted = create(DiceThrowPlanSchema, {
+      schemaVersion: retryDraft.schemaVersion,
+      session: 'enc-1',
+      presentationId: retryDraft.presentationId,
+      authoritySeq: retryDraft.authoritySeq,
+      roller: 'char-2',
+      attempt: retryDraft.attempt,
+      physicsSchema: retryDraft.physicsSchema,
+      colliderFingerprint: retryDraft.colliderFingerprint,
+      bodies: retryDraft.bodies,
+      contacts: retryDraft.contacts,
+      terminal: retryDraft.terminal,
+    });
+    await act(async () => livePlans.publish(retryAccepted));
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({
+        kind: 'witness',
+        plan: { attempt: 2, terminal: { kind: 'settled' } },
+      })
+    );
+
+    const retryLayer = hoisted.lastCanvasProps.current?.presentationLayer;
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(retryLayer)) {
+        retryLayer.props.onTerminal('settled');
+      }
+    });
+    await waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.presentationLayer).toBeNull()
+    );
+    expect(screen.getByText(/Lyra strikes Skeleton/i)).toBeTruthy();
+  });
+
+  it('plays a Death Save witness plan with the provider result/token despite differing recipient-local sequence', async () => {
+    readyScene();
+    hoisted.getRosterFn.mockResolvedValue({
+      members: [
+        {
+          id: 'char-1',
+          kind: MemberKind.PLAYER,
+          name: 'Aldric',
+          classRef: 'fighter',
+          raceRef: 'human',
+          monsterRef: '',
+        },
+        {
+          id: 'char-2',
+          kind: MemberKind.PLAYER,
+          name: 'Lyra',
+          classRef: 'wizard',
+          raceRef: 'elf',
+          monsterRef: '',
+        },
+      ],
+    });
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-2',
+      round: 2,
+      order: ['char-2', 'char-1'],
+      participants: [
+        participant('char-2', {
+          active: true,
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+          deathSaves: create(DeathSaveProgressSchema, {
+            successes: 1,
+            failures: 1,
+            successesNeeded: 2,
+            failuresRemaining: 2,
+          }),
+        }),
+        participant('char-1'),
+      ],
+    });
+    hoisted.affordFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      declarations: [],
+    });
+    const deathSaveEvent = deferredStream([
+      event(
+        EventKind.DEATH_SAVE_ROLLED,
+        {
+          case: 'deathSaveRolled',
+          value: {
+            actor: 'char-2',
+            roll: 12,
+            outcome: DeathSaveOutcome.SUCCESS,
+            successesAdded: 1,
+            failuresAdded: 0,
+            successes: 2,
+            failures: 1,
+            successesNeeded: 1,
+            failuresRemaining: 2,
+            stabilized: false,
+            dead: false,
+            recovered: false,
+            hpRestored: 0,
+            continuation: DeathSaveContinuation.END_TURN,
+            presentationId: 'presentation_witness-death-save',
+          },
+        } as SessionEvent['body'],
+        103n
+      ),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(deathSaveEvent.stream);
+    const livePlans = deferredDiceStream();
+    hoisted.streamDiceThrowsFn.mockReturnValue(livePlans.stream);
+    renderView();
+
+    await screen.findByText('1 successes · 2 to stabilize');
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    const scene = hoisted.lastCanvasProps.current!.scene;
+    const fingerprint = await fingerprintLocalWorldDieColliders(
+      buildLocalWorldDieColliders(scene, new Set())
+    );
+    const initialState = {
+      position: { x: 0, y: 1.25, z: 0 },
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      linearVelocity: { x: 1, y: 0.8, z: 0 },
+      angularVelocity: { x: 0, y: 0, z: -2 },
+    };
+    const terminalState = {
+      position: { x: 0.5, y: 0.3, z: 0 },
+      rotation: { x: 0, y: 0, z: 0, w: 1 },
+      linearVelocity: { x: 0, y: 0, z: 0 },
+      angularVelocity: { x: 0, y: 0, z: 0 },
+    };
+    const draft = localWorldDieDraft({
+      presentationId: 'presentation_witness-death-save',
+      authoritySeq: 27n,
+      attempt: 1,
+      plan: {
+        kind: 'settled',
+        step: 42,
+        elapsedMs: 4,
+        fingerprint,
+        initialState,
+        terminalState,
+      },
+    });
+    const accepted = create(DiceThrowPlanSchema, {
+      schemaVersion: draft.schemaVersion,
+      session: 'enc-1',
+      presentationId: draft.presentationId,
+      authoritySeq: draft.authoritySeq,
+      roller: 'char-2',
+      attempt: draft.attempt,
+      physicsSchema: draft.physicsSchema,
+      colliderFingerprint: draft.colliderFingerprint,
+      bodies: draft.bodies,
+      contacts: draft.contacts,
+      terminal: draft.terminal,
+    });
+
+    await act(async () => livePlans.publish(accepted));
+    expect(currentLocalWorldDieCommand()?.kind).not.toBe('witness');
+    hoisted.turnFn.mockResolvedValue({
+      clock: ClockKind.TURN,
+      active: 'char-2',
+      round: 2,
+      order: ['char-2', 'char-1'],
+      participants: [
+        participant('char-2', {
+          active: true,
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+          deathSaves: create(DeathSaveProgressSchema, {
+            successes: 2,
+            failures: 1,
+            successesNeeded: 1,
+            failuresRemaining: 2,
+          }),
+        }),
+        participant('char-1'),
+      ],
+    });
+    deathSaveEvent.release();
+    expect(screen.queryByText(/Death save!/i)).toBeNull();
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('1 successes · 2 to stabilize')).toBeTruthy();
+    expect(screen.queryByText('2 successes · 1 to stabilize')).toBeNull();
+    await waitFor(() =>
+      expect(currentLocalWorldDieCommand()).toMatchObject({
+        kind: 'witness',
+        plan: {
+          presentationId: 'presentation_witness-death-save',
+          authoritySeq: 27n,
+          roller: 'char-2',
+        },
+      })
+    );
+    const layer = hoisted.lastCanvasProps.current?.presentationLayer;
+    expect(
+      isValidElement<LocalWorldDieLayerProps>(layer) &&
+        layer.props.authoritativeFace
+    ).toBe(12);
+    act(() => {
+      if (isValidElement<LocalWorldDieLayerProps>(layer)) {
+        layer.props.onTerminal('settled');
+      }
+    });
+    await screen.findByText('Death save! 2 successes — 1 to stabilize.');
+    expect(screen.getByText('2 successes · 1 to stabilize')).toBeTruthy();
+    expect(hoisted.deathSaveFn).not.toHaveBeenCalled();
   });
 
   it('shows an unavailable candidate provider reason and never dispatches it', async () => {
@@ -1087,6 +2834,52 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2);
   });
 
+  it('uses only the unconditional Turn/Afford refresh for Activated', async () => {
+    readyTurn();
+    const live = deferredStream([activated()]);
+    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1)
+    );
+
+    live.release();
+
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    expect(hoisted.getViewFn).toHaveBeenCalledTimes(1);
+    expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1);
+    await waitFor(() => screen.getByText('Aldric uses Second Wind'));
+  });
+
+  it('refreshes CharacterData, Afford, and View for ActivationResult through the unconditional funnel', async () => {
+    readyTurn();
+    const live = deferredStream([activationResult()]);
+    hoisted.streamEventsFn.mockReturnValue(live.stream);
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(1)
+    );
+
+    live.release();
+
+    await waitFor(() => expect(hoisted.affordFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.turnFn).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(hoisted.getCharacterDataFn).toHaveBeenCalledTimes(2)
+    );
+    await waitFor(() => screen.getByText('Aldric recovers 2 HP'));
+  });
+
   it('paces another member Story with monsterBeatQueue semantics without delaying query reconciliation or raw Debug', async () => {
     readyTurn();
     hoisted.turnFn.mockResolvedValue({
@@ -1101,22 +2894,35 @@ describe('SessionEncounterView production combat integration', () => {
     });
     const burst = deferredStream([struck(), turnEnded()]);
     hoisted.streamEventsFn.mockReturnValue(burst.stream);
-    renderView();
+    const { unmount } = renderView();
     await waitFor(() => screen.getByTestId('session-canvas'));
     await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(1));
 
-    burst.release();
-    await waitFor(() => screen.getByText("Skeleton's turn."));
-    // Authority reconciliation is immediate, before the 300ms Story cursor.
-    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalledTimes(2));
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        burst.release();
+        await vi.advanceTimersByTimeAsync(0);
+      });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
-    await waitFor(() => screen.getAllByText(/source=live/i));
-    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
-    expect(screen.queryByText(/Skeleton strikes Aldric/i)).toBeNull();
-    await waitFor(() => screen.getByText(/Skeleton strikes Aldric/i), {
-      timeout: 1500,
-    });
+      screen.getByText("Skeleton's turn.");
+      // Authority reconciliation is immediate, before the 300ms Story cursor.
+      expect(hoisted.getViewFn).toHaveBeenCalledTimes(2);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Debug' }));
+      expect(screen.getAllByText(/source=live/i)).toHaveLength(2);
+      fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+      expect(screen.queryByText(/Skeleton strikes Aldric/i)).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      screen.getByText(/Skeleton strikes Aldric/i);
+    } finally {
+      unmount();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('renders catch-up Story immediately instead of replaying retained history slowly', async () => {
@@ -1237,6 +3043,54 @@ describe('SessionEncounterView production combat integration', () => {
     ).toBe(DoorState.OPEN);
   });
 
+  it('a live other member occupies its cell in pathIndex — the path preview must route around it, same as a wall (PR #920 follow-up)', async () => {
+    readyScene();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'demo-merchant-1',
+          name: 'Demo Merchant',
+          kind: MemberKind.WORLD,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: ['sight'],
+        },
+      ],
+    });
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.size
+      ).toBe(1)
+    );
+    expect(
+      hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.has('1,-1,0')
+    ).toBe(true);
+  });
+
+  it('a remembered (stale-memory) sighting never blocks the path — it is not confirmed still there', async () => {
+    readyScene();
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [
+        {
+          subject: 'demo-merchant-1',
+          name: 'Demo Merchant',
+          kind: MemberKind.WORLD,
+          seen: { position: { x: 1, y: 0 }, standing: Standing.UP },
+          currentVia: [],
+        },
+      ],
+    });
+    renderView();
+    await waitFor(() => screen.getByTestId('session-canvas'));
+
+    await waitFor(() => expect(hoisted.getViewFn).toHaveBeenCalled());
+    expect(hoisted.lastCanvasProps.current?.pathIndex?.occupiedCells.size).toBe(
+      0
+    );
+  });
+
   it('preserves door actions and refreshes live door state', async () => {
     readyScene();
     hoisted.getDoorsFn.mockResolvedValue({
@@ -1264,6 +3118,844 @@ describe('SessionEncounterView production combat integration', () => {
     await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
   });
 
+  describe('vendor interaction (rpg-api#903 Phase 1)', () => {
+    it('clicking a world NPC calls Interact and opens the vendor popover with its stock', async () => {
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'longsword',
+              displayName: 'Longsword',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 1,
+              price: { copper: 1500 },
+            },
+            {
+              equipmentType: 'ammunition',
+              equipmentId: 'arrows',
+              displayName: 'Arrows',
+              stockMode: VendorStockMode.UNLIMITED,
+              price: { copper: 100 },
+            },
+          ],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+
+      await waitFor(() =>
+        expect(hoisted.interactFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+        })
+      );
+
+      const popover = await waitFor(() => screen.getByTestId('vendor-popover'));
+      expect(popover.textContent).toContain('Demo Merchant');
+      expect(popover.textContent).toContain('Longsword');
+      expect(popover.textContent).toContain('1 left');
+      expect(popover.textContent).toContain('1 pp 5 gp');
+      expect(popover.textContent).toContain('Arrows');
+      expect(popover.textContent).toContain('Always in stock');
+      // The player's own wallet (privateCharacterData()'s default) reaches
+      // the vendor popover header, sourced from the same characterData
+      // this view already fetches — not a second RPC.
+      expect(screen.getByTestId('vendor-wallet').textContent).toContain(
+        '4 pp 5 gp 2 sp 3 cp'
+      );
+    });
+
+    it('surfaces the server refusal as a notice and never opens the popover on failure', async () => {
+      readyScene();
+      hoisted.interactFn.mockRejectedValue(new Error('target out of range'));
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText('target out of range')).toBeTruthy()
+      );
+      expect(screen.queryByTestId('vendor-popover')).toBeNull();
+    });
+
+    it('clicking a second world NPC while one popover is open never leaves the FIRST vendor stale on a failed second click (Copilot review, PR #920)', async () => {
+      readyScene();
+      hoisted.interactFn.mockResolvedValueOnce({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: '',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      expect(screen.getByTestId('vendor-popover').textContent).toContain(
+        'Demo Merchant'
+      );
+
+      // A second click, on a DIFFERENT world NPC, fails — the first
+      // vendor's popover must not linger showing stale inventory.
+      hoisted.interactFn.mockRejectedValueOnce(new Error('too far away'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('other-npc-1');
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText('too far away')).toBeTruthy()
+      );
+      expect(screen.queryByTestId('vendor-popover')).toBeNull();
+    });
+  });
+
+  describe('vendor Buy — Trade RPC (rpg-project#369/#370)', () => {
+    beforeEach(() => {
+      hoisted.tradeFn.mockReset();
+    });
+
+    async function openVendorWithStock() {
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'longsword',
+              displayName: 'Longsword',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 1,
+              price: { copper: 1500 },
+            },
+          ],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+    }
+
+    it('always buys exactly 1 unit per click, regardless of the row\'s remaining stock count (Kirk, live testing: "one item by one item")', async () => {
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'arrows',
+              displayName: 'Arrows',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 20,
+              price: { copper: 5 },
+            },
+          ],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Arrows' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Arrows' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          // 20 in stock, but one click buys exactly 1 at its unit price —
+          // not the whole line.
+          give: { items: [], currency: { copper: 5 } },
+          receive: {
+            items: [
+              { equipmentType: 'weapon', equipmentId: 'arrows', quantity: 1 },
+            ],
+          },
+        })
+      );
+    });
+
+    it('clicking Buy then Confirm calls Trade with an empty give and the row read off as receive, and refreshes the popover from the response', async () => {
+      await openVendorWithStock();
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'longsword',
+              displayName: 'Longsword',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 0,
+              price: { copper: 1500 },
+            },
+          ],
+        },
+        seq: 2n,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Longsword' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          give: { items: [], currency: { copper: 1500 } },
+          receive: {
+            items: [
+              {
+                equipmentType: 'weapon',
+                equipmentId: 'longsword',
+                quantity: 1,
+              },
+            ],
+          },
+        })
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.getByTestId('vendor-stock-longsword').textContent
+        ).toContain('0 left')
+      );
+      expect(screen.getByText('Bought Longsword.')).toBeTruthy();
+    });
+
+    it('a Trade failure surfaces a notice and leaves the existing vendor descriptor in place', async () => {
+      await openVendorWithStock();
+      hoisted.tradeFn.mockRejectedValue(new Error('longsword: out of stock'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Longsword' })
+      );
+
+      await waitFor(() =>
+        expect(screen.getByText('longsword: out of stock')).toBeTruthy()
+      );
+      // Still showing the pre-failure stock, not blanked or stale-cleared.
+      expect(
+        screen.getByTestId('vendor-stock-longsword').textContent
+      ).toContain('1 left');
+    });
+
+    it('Cancel never calls Trade', async () => {
+      await openVendorWithStock();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel buy' }));
+
+      expect(hoisted.tradeFn).not.toHaveBeenCalled();
+    });
+
+    it("a successful Buy refetches the local player's own CharacterData — TradeResponse carries only the vendor's descriptor, nothing to replaceCharacterData from, and free-roam purchases have no turnEnded event to piggyback a refresh on", async () => {
+      await openVendorWithStock();
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: '',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 2n,
+      });
+      const callsBeforeBuy = hoisted.getCharacterDataFn.mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: 'Buy Longsword' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm buy Longsword' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
+          callsBeforeBuy
+        )
+      );
+    });
+  });
+
+  describe('vendor Sell (rpg-toolkit#1537)', () => {
+    beforeEach(() => {
+      hoisted.tradeFn.mockReset();
+    });
+
+    async function openVendorSellTab() {
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: privateCharacterData({
+          inventory: [
+            {
+              ref: { module: 'dnd5e', type: 'item', id: 'dagger' },
+              name: 'Dagger',
+              statLine: '1d4 piercing · finesse',
+              iconKey: '',
+              kind: 'weapon',
+              equipmentType: 'weapon',
+              slotKeys: ['main_hand', 'off_hand'],
+              quantity: 1,
+              price: { copper: 200 },
+            },
+          ],
+        }),
+      });
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      await waitFor(() => screen.getByTestId('vendor-sell-dagger'));
+    }
+
+    it('always sells exactly 1 unit per click, regardless of the carried count (Kirk, live testing: "what if i only want to sell half my darts")', async () => {
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: privateCharacterData({
+          inventory: [
+            {
+              ref: { module: 'dnd5e', type: 'item', id: 'dart' },
+              name: 'Dart',
+              statLine: '1d4 piercing · thrown',
+              iconKey: '',
+              kind: 'weapon',
+              equipmentType: 'weapon',
+              slotKeys: [],
+              quantity: 10,
+              price: { copper: 5 },
+            },
+          ],
+        }),
+      });
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      await waitFor(() => screen.getByTestId('vendor-sell-dart'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dart' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dart' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          give: {
+            items: [
+              { equipmentType: 'weapon', equipmentId: 'dart', quantity: 1 },
+            ],
+          },
+          // 10 carried, but one click sells exactly 1 at its unit price —
+          // not the whole stack.
+          receive: { items: [], currency: { copper: 5 } },
+        })
+      );
+    });
+
+    it('clicking Sell then Confirm calls Trade with the item on give and the expected payout on receive.currency, then confirms only after the response', async () => {
+      await openVendorSellTab();
+      const tradeResponse = {
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [
+            {
+              equipmentType: 'weapon',
+              equipmentId: 'dagger',
+              displayName: 'Dagger',
+              stockMode: VendorStockMode.LIMITED,
+              quantity: 1,
+              price: { copper: 200 },
+              playerSold: true,
+            },
+          ],
+        },
+        seq: 2n,
+      };
+      const response = deferred<typeof tradeResponse>();
+      hoisted.tradeFn.mockReturnValue(response.promise);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dagger' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          give: {
+            items: [
+              { equipmentType: 'weapon', equipmentId: 'dagger', quantity: 1 },
+            ],
+          },
+          receive: { items: [], currency: { copper: 200 } },
+        })
+      );
+      expect(screen.queryByText('Sold Dagger.')).toBeNull();
+
+      await act(async () => {
+        response.resolve(tradeResponse);
+        await response.promise;
+      });
+
+      expect(await screen.findByText('Sold Dagger.')).toBeTruthy();
+    });
+
+    it('a Sell failure surfaces a notice without crashing the popover', async () => {
+      await openVendorSellTab();
+      hoisted.tradeFn.mockRejectedValue(
+        new Error('actor does not own enough of this item to sell')
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dagger' })
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.getByText('actor does not own enough of this item to sell')
+        ).toBeTruthy()
+      );
+    });
+
+    it('Cancel never calls Trade', async () => {
+      await openVendorSellTab();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel sell' }));
+
+      expect(hoisted.tradeFn).not.toHaveBeenCalled();
+    });
+
+    it("a successful Sell refetches the local player's own CharacterData", async () => {
+      await openVendorSellTab();
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: '',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 2n,
+      });
+      const callsBeforeSell = hoisted.getCharacterDataFn.mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Dagger' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
+          callsBeforeSell
+        )
+      );
+    });
+
+    it('a "gear"-kind carried item IS sellable now that Item.equipment_type exists (rpg-api-protos#301 closed the gap)', async () => {
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: privateCharacterData({
+          inventory: [
+            {
+              ref: { module: 'dnd5e', type: 'item', id: 'torch' },
+              name: 'Torch',
+              statLine: 'light, 20 ft radius',
+              iconKey: '',
+              kind: 'gear',
+              equipmentType: 'item',
+              slotKeys: [],
+              quantity: 1,
+              price: { copper: 50 },
+            },
+          ],
+        }),
+      });
+      readyScene();
+      hoisted.interactFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 1n,
+      });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      act(() => {
+        hoisted.lastCanvasProps.current?.onInteractClick?.('demo-merchant-1');
+      });
+      await waitFor(() => screen.getByTestId('vendor-popover'));
+      fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+      await waitFor(() => screen.getByTestId('vendor-sell-torch'));
+
+      hoisted.tradeFn.mockResolvedValue({
+        descriptor: {
+          targetId: 'demo-merchant-1',
+          ref: 'dnd5e:npcs:demo-merchant',
+          displayName: 'Demo Merchant',
+          capabilities: ['vendor'],
+          combatPolicy: 'non_combatant',
+          inventory: [],
+        },
+        seq: 2n,
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Sell Torch' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm sell Torch' })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.tradeFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          target: 'demo-merchant-1',
+          range: 0,
+          give: {
+            items: [
+              { equipmentType: 'item', equipmentId: 'torch', quantity: 1 },
+            ],
+          },
+          receive: { items: [], currency: { copper: 50 } },
+        })
+      );
+    });
+  });
+
+  describe('Unpack (rpg-toolkit#1546)', () => {
+    beforeEach(() => {
+      hoisted.unpackFn.mockReset();
+    });
+
+    const PACK_REF = { module: 'dnd5e', type: 'item', id: 'explorers-pack' };
+    const PACK_INVENTORY = [
+      {
+        ref: PACK_REF,
+        name: "Explorer's Pack",
+        statLine: '',
+        iconKey: '',
+        kind: 'gear',
+        equipmentType: 'pack',
+        slotKeys: [],
+        quantity: 1,
+      },
+    ];
+
+    async function openUnpackConfirm() {
+      readyScene();
+      hoisted.getCharacterDataFn.mockResolvedValue({
+        character: privateCharacterData({
+          equipped: {},
+          inventory: PACK_INVENTORY,
+        }),
+      });
+      renderView();
+      await screen.findByTestId('session-combat-equipment-button');
+      fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
+      fireEvent.click(
+        await screen.findByRole('button', { name: "Unpack Explorer's Pack" })
+      );
+      await screen.findByRole('button', {
+        name: "Confirm unpack Explorer's Pack",
+      });
+    }
+
+    it('Confirm calls Unpack with session/actor/itemId/quantity, shows a success notice, and refetches CharacterData', async () => {
+      await openUnpackConfirm();
+      hoisted.unpackFn.mockResolvedValue({
+        saved: { savedCharacter: true },
+      });
+      const callsBeforeUnpack = hoisted.getCharacterDataFn.mock.calls.length;
+
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: "Confirm unpack Explorer's Pack",
+        })
+      );
+
+      await waitFor(() =>
+        expect(hoisted.unpackFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          actor: 'char-1',
+          itemId: 'explorers-pack',
+          quantity: 1,
+        })
+      );
+      expect(await screen.findByText("Unpacked Explorer's Pack.")).toBeTruthy();
+      await waitFor(() =>
+        expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
+          callsBeforeUnpack
+        )
+      );
+    });
+
+    it('Cancel never calls Unpack', async () => {
+      await openUnpackConfirm();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel unpack' }));
+      expect(hoisted.unpackFn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['ErrNotAPack', 'item "torch": not a pack'],
+      ['ErrNotInInventory', 'actor does not own enough of this item to sell'],
+      ['ErrBadPackContents', 'pack contents do not resolve'],
+    ])(
+      '%s surfaces its message as the unpack notice without crashing',
+      async (_name, message) => {
+        await openUnpackConfirm();
+        hoisted.unpackFn.mockRejectedValue(new Error(message));
+
+        fireEvent.click(
+          screen.getByRole('button', {
+            name: "Confirm unpack Explorer's Pack",
+          })
+        );
+
+        await waitFor(() => expect(screen.getByText(message)).toBeTruthy());
+      }
+    );
+  });
+
+  describe('concealed-door reveal wiring (rpg-project#886)', () => {
+    // A member-scoped atlas whose one region claims the searcher's own
+    // resting cell — `readyScene()`'s default atlas authors NO regions,
+    // so the search button (gated on a resolved region) never appears
+    // there. This is the fixture every test below needs to see it.
+    function readySearchableScene() {
+      readyScene();
+      hoisted.atlasResult.atlas = pointyAtlas({
+        regions: [
+          {
+            id: 'entrance-hall',
+            name: 'Entrance Hall',
+            archetype: 'crypt',
+            cells: [{ x: 0, y: 0 }],
+            lighting: { intensity: 1 },
+          },
+        ],
+      });
+    }
+
+    it('a doorRevealed event refreshes both doors and atlas — the recipient patches its cached GetDoors AND GetAtlas', async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      const reveal = deferredStream([
+        event(EventKind.DOOR_REVEALED, {
+          case: 'doorRevealed',
+          value: {},
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1));
+      expect(hoisted.atlasResult.refetch).not.toHaveBeenCalled();
+
+      reveal.release();
+      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(hoisted.atlasResult.refetch).toHaveBeenCalledTimes(1)
+      );
+    });
+
+    it('a regionRevealed event refreshes atlas alone — no door list changed', async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      const reveal = deferredStream([
+        event(EventKind.REGION_REVEALED, {
+          case: 'regionRevealed',
+          value: {},
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      await waitFor(() => expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1));
+
+      reveal.release();
+      await waitFor(() =>
+        expect(hoisted.atlasResult.refetch).toHaveBeenCalledTimes(1)
+      );
+      expect(hoisted.getDoorsFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("the search button is absent until the searcher's own region is known", async () => {
+      readyScene(); // default atlas authors no regions
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+      expect(screen.queryByTestId('session-combat-search-button')).toBeNull();
+    });
+
+    it('clicking Search sends session/member/region and shows the same notice regardless of what the response carries — the secrecy law (rpg-project#886)', async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      // Two structurally different resolved values: an outcome-carrying
+      // reader would have to pick a different message for one of them.
+      // This assertion is the point — see searchNotice.ts.
+      hoisted.searchFn.mockResolvedValueOnce({
+        saved: { ok: true },
+      } as never);
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      const button = await screen.findByTestId('session-combat-search-button');
+      fireEvent.click(button);
+      await waitFor(() =>
+        expect(hoisted.searchFn).toHaveBeenCalledWith({
+          session: 'enc-1',
+          member: 'char-1',
+          region: 'entrance-hall',
+        })
+      );
+      const firstNotice = await screen.findByText('You search the area.');
+      expect(firstNotice).toBeTruthy();
+
+      hoisted.searchFn.mockResolvedValueOnce({} as never);
+      fireEvent.click(button);
+      await waitFor(() => expect(hoisted.searchFn).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText('You search the area.')).toBeTruthy();
+    });
+
+    it('a transport failure shows the error, not the search notice — a real RPC failure is not a check outcome', async () => {
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      hoisted.searchFn.mockRejectedValue(new Error('session not found'));
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      const button = await screen.findByTestId('session-combat-search-button');
+      fireEvent.click(button);
+      await waitFor(() => screen.getByText('session not found'));
+      expect(screen.queryByText('You search the area.')).toBeNull();
+    });
+
+    it("a doorRevealed/regionRevealed beat clears a standing search notice — matches doorNotice's own staleness reset on the 'door' case", async () => {
+      hoisted.atlasResult.applyReveal.mockClear();
+      readySearchableScene();
+      hoisted.getDoorsFn.mockResolvedValue({ doors: [] });
+      hoisted.searchFn.mockResolvedValue({} as never);
+      const reveal = deferredStream([
+        event(EventKind.DOOR_REVEALED, {
+          case: 'doorRevealed',
+          value: {},
+        } as SessionEvent['body']),
+      ]);
+      hoisted.streamEventsFn.mockReturnValue(reveal.stream);
+      renderView();
+      await waitFor(() => screen.getByTestId('session-canvas'));
+
+      const button = await screen.findByTestId('session-combat-search-button');
+      fireEvent.click(button);
+      await screen.findByText('You search the area.');
+
+      reveal.release();
+      await waitFor(() =>
+        expect(screen.queryByText('You search the area.')).toBeNull()
+      );
+      // And the beat PATCHED the held atlas in the same frame (design
+      // 5.2a): the mock's presence is not what holds this test up. The
+      // hoisted mock is shared by the whole file, so count from this beat.
+      expect(hoisted.atlasResult.applyReveal).toHaveBeenCalled();
+    });
+  });
+
   it('replaces private equipment state directly from UnequipItem response without a read or client recompute', async () => {
     readyScene();
     const sword = { module: 'dnd5e', type: 'item', id: 'longsword' };
@@ -1276,6 +3968,7 @@ describe('SessionEncounterView production combat integration', () => {
           statLine: '1d8 slashing',
           iconKey: '',
           kind: 'weapon',
+          equipmentType: 'weapon',
           slotKeys: ['main_hand'],
         },
       ],
@@ -1331,6 +4024,7 @@ describe('SessionEncounterView production combat integration', () => {
         statLine: '2d6 slashing',
         iconKey: '',
         kind: 'weapon',
+        equipmentType: 'weapon',
         slotKeys: ['main_hand'],
       },
     ];
@@ -1786,5 +4480,259 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.endTurnFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('the Leave button learns what the viewer carries (rpg-dnd5e-web#927)', () => {
+  it('names the drop once a HELD beat says this member is carrying', async () => {
+    // THE OTHER INTEGRATION POINT. `viewerHoldings.ts` has its own unit
+    // test and `CombatExperience` has its own; nothing proved the view
+    // ever connects them. Deleting the `setViewerHolding` line left the
+    // whole suite green while the button silently stopped warning — which
+    // is the walk finding this PR exists to fix.
+    const held = deferredStream([
+      event(EventKind.HELD, {
+        case: 'held',
+        value: { holder: 'char-1', prop: 'heirloom' },
+      } as SessionEvent['body']),
+    ]);
+    readyScene();
+    hoisted.streamEventsFn.mockReturnValue(held.stream);
+    renderView();
+
+    const leave = await screen.findByTestId('session-combat-leave-button');
+    // Before the beat: nothing known to be carried, so no cost claimed.
+    expect(leave.textContent).toBe('🚪Leave');
+
+    held.release();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('session-combat-leave-button').textContent
+      ).toBe('🚪Leave (drops the heirloom)')
+    );
+  });
+
+  it('goes quiet again when the member drops it', async () => {
+    const beats = deferredStream([
+      event(EventKind.HELD, {
+        case: 'held',
+        value: { holder: 'char-1', prop: 'heirloom' },
+      } as SessionEvent['body']),
+      event(EventKind.DROPPED, {
+        case: 'dropped',
+        value: { member: 'char-1', prop: 'heirloom', at: { x: 0, y: 0 } },
+      } as SessionEvent['body']),
+    ]);
+    readyScene();
+    hoisted.streamEventsFn.mockReturnValue(beats.stream);
+    renderView();
+    await screen.findByTestId('session-combat-leave-button');
+
+    beats.release();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('session-combat-leave-button').textContent
+      ).toBe('🚪Leave')
+    );
+  });
+
+  it('says nothing about a holding that belongs to somebody else', async () => {
+    // Somebody else's pickup first, then the viewer's own. The second
+    // beat is what proves the first was DELIVERED and ignored rather than
+    // merely slow — a label that named the crown would be this client
+    // warning about a holding it does not have.
+    const beats = deferredStream([
+      event(EventKind.HELD, {
+        case: 'held',
+        value: { holder: 'skeleton-1', prop: 'crown' },
+      } as SessionEvent['body']),
+      event(EventKind.HELD, {
+        case: 'held',
+        value: { holder: 'char-1', prop: 'heirloom' },
+      } as SessionEvent['body']),
+    ]);
+    readyScene();
+    hoisted.streamEventsFn.mockReturnValue(beats.stream);
+    renderView();
+    await screen.findByTestId('session-combat-leave-button');
+
+    beats.release();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('session-combat-leave-button').textContent
+      ).toBe('🚪Leave (drops the heirloom)')
+    );
+    expect(
+      screen.getByTestId('session-combat-leave-button').textContent
+    ).not.toContain('crown');
+  });
+});
+
+describe('the camera starts the way the dungeon says (rpg-project#374)', () => {
+  it('aims it by the atlas’s authored start facing', () => {
+    // THE INTEGRATION POINT. `startAzimuth` — the seed `SessionScene`
+    // hands `useCameraControls` as its `initialAzimuth` option — has its
+    // own mounted-hook test, but nothing proved the view ever hands the
+    // atlas's word DOWN to it, and reading the facing from anywhere but
+    // `GetAtlasResponse.start` is the one thing the design forbids.
+    readyScene();
+    hoisted.atlasResult.atlas = {
+      ...pointyAtlas(),
+      start: { at: { x: 0, y: 0 }, facing: 'e' },
+    } as typeof hoisted.atlasResult.atlas;
+    renderView();
+    return waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.startFacing).toBe('e')
+    );
+  });
+
+  it('hands it nothing when the author stated no facing', () => {
+    // Empty is the zero value telling the truth, and the canvas seats the
+    // camera exactly where it always has.
+    readyScene();
+    hoisted.atlasResult.atlas = {
+      ...pointyAtlas(),
+      start: { at: { x: 0, y: 0 }, facing: '' },
+    } as typeof hoisted.atlasResult.atlas;
+    renderView();
+    return waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.startFacing).toBeUndefined()
+    );
+  });
+
+  it('hands it nothing for a dungeon with no start at all', () => {
+    // The wire OMITS `start` when nobody authored one, rather than sending
+    // a zero-valued one — so this is the ordinary case for every dungeon
+    // written before the field existed.
+    readyScene();
+    renderView();
+    return waitFor(() =>
+      expect(hoisted.lastCanvasProps.current?.startFacing).toBeUndefined()
+    );
+  });
+});
+
+describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
+  const movedBeat = (member: string, x: number, y: number, seq: bigint) =>
+    event(
+      EventKind.MOVED,
+      {
+        case: 'moved',
+        value: { member, to: { x, y } },
+      } as SessionEvent['body'],
+      seq
+    );
+
+  const sightingOf = (
+    subject: string,
+    x: number,
+    y: number,
+    currentVia: string[] = ['sight']
+  ) => ({
+    subject,
+    name: subject,
+    kind: MemberKind.PLAYER,
+    seen: { position: { x, y }, standing: Standing.UP },
+    currentVia,
+  });
+
+  it("assembles a peer's arriving steps into one route the canvas can animate", async () => {
+    readyScene();
+    // A movement only animates for an actor the viewer can actually see, so
+    // the peer has to be a LIVE sighting for this to mean anything.
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [sightingOf('scout', 0, 0)],
+    });
+    // A four-cell walk reaches a witness as four beats, one per cell.
+    const steps = deferredStream([
+      movedBeat('scout', 1, 0, 601n),
+      movedBeat('scout', 2, 0, 602n),
+      movedBeat('scout', 3, 0, 603n),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(steps.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    // The peer must be a live sighting BEFORE their steps arrive — a beat for
+    // someone the viewer cannot see is deliberately not banked.
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (m) => m.subject === 'scout'
+        )
+      ).toBe(true)
+    );
+    steps.release();
+
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.movements?.get('scout')?.route
+      ).toHaveLength(3)
+    );
+    const movement = hoisted.lastCanvasProps.current?.movements?.get('scout');
+    // Wire axial (q, r) bridged to cube — the route the walk clip steps along.
+    expect(movement?.route).toEqual([
+      { x: 1, y: -1, z: 0 },
+      { x: 2, y: -2, z: 0 },
+      { x: 3, y: -3, z: 0 },
+    ]);
+    // A sequence that never advances is exactly what used to leave every
+    // non-local actor snapping in its idle pose.
+    expect(movement?.seq).toBeGreaterThan(0);
+  });
+
+  it('a remembered actor banks no route — a ghost snaps, it does not walk', async () => {
+    readyScene();
+    // `currentVia: []` is a held MEMORY, not a live sighting. The wire still
+    // sends this actor's steps (the audience for a step is the whole
+    // roster), so without a visibility gate the route would sit here and
+    // replay the moment they were sighted again. Kirk, 2026-09-07: "I saw
+    // the skeleton move when it was a ghost, which is when we would teleport."
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [sightingOf('skeleton-1', 4, 0, [])],
+    });
+    const steps = deferredStream([
+      movedBeat('skeleton-1', 5, 0, 621n),
+      movedBeat('skeleton-1', 6, 0, 622n),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(steps.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (m) => m.subject === 'skeleton-1'
+        )
+      ).toBe(true)
+    );
+    const viewCallsBefore = hoisted.getViewFn.mock.calls.length;
+    steps.release();
+    // A non-local movement beat invalidates the view, so this fires only
+    // once the beats have actually been handled — no arbitrary sleep.
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(
+        viewCallsBefore
+      )
+    );
+
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('skeleton-1')
+    ).toBeUndefined();
+  });
+
+  it('does not double-drive the local player, whose route arrives whole from their own Move answer', async () => {
+    readyScene();
+    const mine = deferredStream([movedBeat('char-1', 1, 0, 611n)]);
+    hoisted.streamEventsFn.mockReturnValue(mine.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    mine.release();
+
+    await waitFor(() => expect(hoisted.whereResult.refetch).toHaveBeenCalled());
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('char-1')
+    ).toBeUndefined();
   });
 });

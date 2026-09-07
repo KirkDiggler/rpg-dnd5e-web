@@ -97,8 +97,8 @@ export function reconstructEquipmentChoice(
   };
 }
 
-/** Mirrors the server's per-category duplicate rule without conflating IDs
- * that are independently eligible in different category choices. */
+/** Requires each equipment category's declared count. Repeated authoritative
+ * selection IDs remain ordered, valid entries in that count. */
 export function isCompleteEquipmentChoice(
   choice: Choice,
   selection: EquipmentChoice | undefined
@@ -118,9 +118,7 @@ export function isCompleteEquipmentChoice(
       selection.categorySelections.find(
         (item) => item.categoryIndex === categoryIndex
       )?.equipmentIds ?? [];
-    return (
-      ids.length === (category.choose || 1) && new Set(ids).size === ids.length
-    );
+    return ids.length === (category.choose || 1);
   });
 }
 

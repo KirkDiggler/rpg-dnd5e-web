@@ -1,5 +1,6 @@
 import {
   ClockKind,
+  ReactChoice,
   Slot,
   Verb,
   type Declaration,
@@ -12,6 +13,16 @@ import {
   type ActionTooltip,
 } from './actionTooltip';
 import styles from './CombatExperience.module.css';
+import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
+import {
+  reactionWindowDeclaration,
+  reactionWindowMover,
+} from './reactionWindow';
+import {
+  NOT_YOUR_TURN,
+  standingActionsBlocked,
+  type StandingAction,
+} from './standingActions';
 
 function CostBadge({ slot }: { slot: Slot }) {
   const label = slotLabel(slot);
@@ -45,12 +56,23 @@ function declarationLabel(declaration: Declaration): string {
     // refs to names would go stale the first time one was renamed.
     return declaration.ability?.name || 'Ability';
   }
+  if (declaration.verb === Verb.DEATH_SAVE) {
+    return declaration.deathSave?.name || 'Death Save';
+  }
+  // The reaction names itself, exactly as the ability and the weapon do. The
+  // two answers are not labels the server sends — the verb implies them
+  // (`ReactChoice`), so they are written where the panel draws them.
+  if (declaration.verb === Verb.REACT) {
+    return declaration.reaction?.name || 'Reaction';
+  }
   return 'Move';
 }
 
 function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.ATTACK) return '⚔';
   if (declaration.verb === Verb.ACTIVATE) return '✦';
+  if (declaration.verb === Verb.DEATH_SAVE) return '✚';
+  if (declaration.verb === Verb.REACT) return '⚡';
   return '➜';
 }
 
@@ -178,9 +200,76 @@ export interface ActionDockProps {
   participants: readonly Participant[];
   declarations: readonly Declaration[];
   authorityFresh: boolean;
+  endTurnBlocked?: boolean;
   armedDeclarationId?: string;
-  onSelectDeclaration: (declaration: Declaration) => void;
+  /** Roster names, for the one place the dock names somebody who is not the
+   * viewer: the mover an open reaction window is posed against. */
+  memberNames?: ReadonlyMap<string, string>;
+  /** `choice` is sent only for a VERB_REACT declaration, whose two answers
+   * the verb implies rather than the server listing them as candidates. */
+  onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onEndTurn: (declaration: Declaration) => void;
+  /** Search, Loot, Hold, Leave — drawn in every clock state, because they
+   * are offered in every clock state. What gates them is the TURN, not the
+   * dock: see `standingActionsBlocked`. */
+  standingActions?: readonly StandingAction[];
+}
+
+/**
+ * Why the standing verbs are not clickable right now, or null when they
+ * are.
+ *
+ * FREE ON YOUR TURN, REFUSED OFF IT (design §4.4). Out of combat there is
+ * no turn economy and they are simply free. In a fight the engine refuses
+ * them off-turn, and the button says so rather than sending a call that
+ * comes back refused — whose turn it is is public (`Turn.active`, the same
+ * fact the dock already reads to decide whose commands to draw), so this
+ * is presentation of a known fact and not a rule invented here. The server
+ * stays the authority either way: on-turn the button is enabled and the
+ * seam still refuses out of range, already held, or closed.
+ */
+/** The standing verbs, drawn like the declarations beside them. */
+function StandingActionGroup({
+  actions,
+  blocked,
+}: {
+  actions: readonly StandingAction[];
+  blocked: string | null;
+}) {
+  return (
+    <div className={styles.actionGroup} data-testid="standing-actions">
+      <span className={styles.groupLabel}>Explore</span>
+      {actions.map((action) => (
+        <span className={styles.actionOfferSlot} key={action.key}>
+          <button
+            type="button"
+            className={styles.actionOffer}
+            data-testid={action.key}
+            disabled={blocked !== null || action.pending === true}
+            title={blocked ?? action.title}
+            onClick={action.onSelect}
+          >
+            <span className={styles.actionIcon} aria-hidden="true">
+              {action.icon}
+            </span>
+            <span className={styles.actionLabel}>{action.label}</span>
+          </button>
+          {/* ONLY WHAT IS THIS BUTTON'S OWN. "Not your turn" is a fact
+              about these verbs that nothing else on screen states, so it
+              is announced here and names its action. Stale authority and
+              "waiting" are already said once by the row above, and
+              repeating them per button would read the same sentence five
+              times — noise for a screen reader, and an ambiguous query
+              for anything looking for that text. */}
+          {blocked === NOT_YOUR_TURN && (
+            <span className={styles.semanticOnly}>
+              {action.label} unavailable: {blocked}
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 // exactlyOne is CORRECT ONLY FOR END TURN, and would be a bug anywhere else
@@ -203,33 +292,126 @@ export function ActionDock({
   participants,
   declarations,
   authorityFresh,
+  endTurnBlocked = false,
   armedDeclarationId,
+  memberNames,
   onSelectDeclaration,
   onEndTurn,
+  standingActions = [],
 }: ActionDockProps) {
+  // THE STANDING VERBS ARE DRAWN IN EVERY CLOCK STATE, which is the whole
+  // of Kirk's second walk finding: every one of his four runs was inside a
+  // fight from round 1, so a dock that only drew them out of combat drew
+  // them never. They are disabled off-turn with the reason, rather than
+  // hidden — a verb you cannot see is one you cannot learn exists.
+  const blocked = standingActionsBlocked(
+    clock,
+    viewerMember,
+    participants,
+    authorityFresh
+  );
+  const standing = standingActions.length > 0 && (
+    <StandingActionGroup actions={standingActions} blocked={blocked} />
+  );
+
   if (clock === ClockKind.WORLD) {
     return (
-      <div className={styles.passiveActionRow}>
-        <span>Exploration</span>
-        <strong>
-          {authorityFresh
-            ? 'Click the floor to move'
-            : 'Actions may be out of date'}
-        </strong>
-        <small>
-          {authorityFresh
-            ? 'No turn economy on the world clock.'
-            : 'Waiting for current Turn and Afford authority.'}
-        </small>
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow}>
+          <span>Exploration</span>
+          <strong>
+            {authorityFresh
+              ? 'Click the floor to move'
+              : 'Actions may be out of date'}
+          </strong>
+          <small>
+            {authorityFresh
+              ? 'No turn economy on the world clock.'
+              : 'Waiting for current Turn and Afford authority.'}
+          </small>
+        </div>
+        {standing}
       </div>
     );
   }
+  // AHEAD OF EVERY "NOT YOUR TURN" RETURN BELOW, because that is precisely
+  // when a reaction window is posed: the mover is a monster, the initiative
+  // is its, and the fight is frozen waiting on THIS viewer's answer. Drawn
+  // under the two returns it would never be drawn at all.
+  //
+  // It replaces the dock rather than joining it. Nothing else is declarable
+  // while a window is open — every other verb comes back with the
+  // WINDOW_OPEN shortfall — so a row of refused buttons beside the question
+  // would only invite clicks that cannot land.
+  const reactionWindow = reactionWindowDeclaration(declarations);
+  if (reactionWindow) {
+    const moverId = reactionWindowMover(reactionWindow);
+    const moverName =
+      (moverId && memberNames?.get(moverId)) || moverId || 'Something';
+    return (
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow} data-testid="reaction-window">
+          <span>{declarationLabel(reactionWindow)}</span>
+          <strong>{moverName} is leaving your reach</strong>
+          <small>
+            {authorityFresh
+              ? 'Strike now, or hold your reaction. The fight waits on you.'
+              : 'Waiting for current Turn and Afford authority.'}
+          </small>
+        </div>
+        <div className={styles.actionGroup} data-testid="reaction-choices">
+          <span className={styles.groupLabel}>Reaction</span>
+          <span className={styles.actionOfferSlot}>
+            <button
+              type="button"
+              className={styles.actionOffer}
+              data-testid="reaction-strike"
+              disabled={!authorityFresh}
+              onClick={() =>
+                onSelectDeclaration(reactionWindow, ReactChoice.STRIKE)
+              }
+            >
+              <span className={styles.actionIcon} aria-hidden="true">
+                {declarationIcon(reactionWindow)}
+              </span>
+              <span className={styles.actionLabel}>Strike</span>
+              <CostBadge slot={reactionWindow.slot} />
+            </button>
+          </span>
+          <span className={styles.actionOfferSlot}>
+            <button
+              type="button"
+              className={styles.actionOffer}
+              data-testid="reaction-hold"
+              disabled={!authorityFresh}
+              onClick={() =>
+                onSelectDeclaration(reactionWindow, ReactChoice.HOLD)
+              }
+            >
+              <span className={styles.actionIcon} aria-hidden="true">
+                ✋
+              </span>
+              {/* HOLDING COSTS NOTHING (plan R1: the reaction is spent when
+                  it is taken), so this button carries no cost badge — one
+                  here would say the refusal is priced. */}
+              <span className={styles.actionLabel}>Hold</span>
+            </button>
+          </span>
+        </div>
+        {standing}
+      </div>
+    );
+  }
+
   if (clock !== ClockKind.TURN) {
     return (
-      <div className={styles.passiveActionRow}>
-        <span>Synchronizing</span>
-        <strong>Actions are not ready</strong>
-        <small>Waiting for coherent Turn and Afford authority.</small>
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow}>
+          <span>Synchronizing</span>
+          <strong>Actions are not ready</strong>
+          <small>Waiting for coherent Turn and Afford authority.</small>
+        </div>
+        {standing}
       </div>
     );
   }
@@ -239,12 +421,15 @@ export function ActionDock({
   );
   if (!activeParticipant || activeParticipant.member !== viewerMember) {
     return (
-      <div className={styles.passiveActionRow}>
-        <span>Watching</span>
-        <strong>
-          {activeParticipant?.name ?? 'Another participant'}’s turn
-        </strong>
-        <small>Your commands return when the initiative reaches you.</small>
+      <div className={styles.actionRow}>
+        <div className={styles.passiveActionRow}>
+          <span>Watching</span>
+          <strong>
+            {activeParticipant?.name ?? 'Another participant'}’s turn
+          </strong>
+          <small>Your commands return when the initiative reaches you.</small>
+        </div>
+        {standing}
       </div>
     );
   }
@@ -258,7 +443,9 @@ export function ActionDock({
     (declaration) =>
       declaration.verb === Verb.ATTACK ||
       declaration.verb === Verb.MOVE ||
-      declaration.verb === Verb.ACTIVATE
+      declaration.verb === Verb.ACTIVATE ||
+      (declaration.verb === Verb.DEATH_SAVE &&
+        isDeathSaveExecutableShape(declaration, 'display'))
   );
   const endTurn = exactlyOne(declarations, Verb.END_TURN);
 
@@ -279,6 +466,7 @@ export function ActionDock({
           ))}
         </div>
       </div>
+      {standing}
       {!authorityFresh && (
         <div className={styles.authorityStale} role="status">
           Actions may be out of date
@@ -288,22 +476,30 @@ export function ActionDock({
         <button
           type="button"
           className={styles.endTurn}
-          disabled={!authorityFresh || !endTurn.available}
+          disabled={!authorityFresh || endTurnBlocked || !endTurn.available}
           title={
             !authorityFresh
               ? 'Actions may be out of date'
-              : endTurn.available
-                ? 'End turn'
-                : endTurn.why?.text || 'Unavailable'
+              : endTurnBlocked
+                ? 'Finish the Death Save roll before ending turn'
+                : endTurn.available
+                  ? 'End turn'
+                  : endTurn.why?.text || 'Unavailable'
           }
           onClick={() => onEndTurn(endTurn)}
         >
           End turn
           <span aria-hidden="true">→</span>
-          {!endTurn.available && (
+          {endTurnBlocked ? (
             <span className={styles.semanticOnly}>
-              Unavailable: {endTurn.why?.text || 'Unavailable'}
+              Unavailable: finish the Death Save roll first
             </span>
+          ) : (
+            !endTurn.available && (
+              <span className={styles.semanticOnly}>
+                Unavailable: {endTurn.why?.text || 'Unavailable'}
+              </span>
+            )
           )}
         </button>
       )}

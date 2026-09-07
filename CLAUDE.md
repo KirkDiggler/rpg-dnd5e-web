@@ -32,11 +32,11 @@ This catches:
 - TypeScript errors
 - Build failures
 
-**The pre-push hook will enforce this, but run it manually to save time!**
+**There is no pre-push hook (Kirk, 2026-09-04): `ci-check` is the manual gate you run once before opening a PR, and CI is the gate that counts.** Paste its output in the PR body. Pre-commit still runs lint-staged (format + lint on staged files, seconds).
 
 ## 🚨 CRITICAL: NEVER Use --no-verify 🚨
 
-**NEVER use `--no-verify` on git commit or git push.**
+**NEVER use `--no-verify` on git commit or git push.** (Only pre-commit exists now; it is seconds.)
 
 ```bash
 # ❌ NEVER DO THIS
@@ -50,7 +50,7 @@ git push
 
 **Why this matters:**
 
-- Pre-commit and pre-push hooks exist as safety nets
+- The pre-commit hook exists as a safety net; `ci-check` before a PR and CI on the PR are the others
 - "I just ran the checks manually" is not an excuse - hooks catch what you might have missed
 - Bypassing hooks normalizes skipping safeguards
 - If hooks are slow or hanging, investigate why - don't bypass them
@@ -294,12 +294,12 @@ Source assets live in `rpg-project/assets/`. This is how they map here:
 ### Format/Lint Issues
 
 - **Auto-fix**: Run `npm run format` and `npm run lint --fix`
-- **Pre-commit hook**: Runs automatically via husky
+- **Pre-commit hook**: Runs lint-staged automatically via husky; `ci-check` is manual, once before the PR
 - **CI mismatch**: Ensure local prettier/eslint configs match CI
 
 ### Best Practices
 
-1. Always run `npm run ci-check` before pushing
+1. Run `npm run ci-check` once before opening or updating a PR (not on every push — the hook that did that is gone)
 2. Fix issues locally - don't rely on CI to catch them
 3. Keep dependencies up to date with lock file
 4. Write tests for new features

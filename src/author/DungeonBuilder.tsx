@@ -14,6 +14,9 @@
  * sandbox (`authoringClient`, fixed `initialYaml`, no New/Open/file IO).
  */
 import { useListDungeons } from '@/api/useListDungeons';
+import { isCompositionRef } from '@/compositions/compositionRef';
+import type { CompositionSource } from '@/compositions/compositionSource';
+import { useCompositionResolutions } from '@/compositions/useCompositionResolutions';
 import { create } from '@bufbuild/protobuf';
 import { GetDungeonRequestSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
@@ -22,48 +25,84 @@ import {
   defaultAuthoringClient,
   errorMessageOf,
   staleAtlasNotice,
+  useListScenarios,
   usePutDungeonPreview,
   useSaveDungeon,
   type AuthoringClient,
 } from './authoringRpc';
 import { CreationBoard } from './creation/CreationBoard';
-import {
-  applyDoorDraw,
-  applyReshape,
-  applyWallDraw,
-  applyWallErase,
-} from './creation/wallGesture';
 import { discardDraft, loadDraft, saveDraft } from './draftStorage';
 import './DungeonBuilder.css';
 import {
+  addDisposition,
+  addEnding,
+  addFaction,
+  addIntel,
   addRegion,
+  addScenario,
+  addWall,
+  applyDerivedConcealment,
+  clearScenarioBinding,
+  deriveConcealment,
+  detectConcealmentLeaks,
   DungeonParseError,
   emitDungeon,
   emptyDungeon,
   eraseCell,
   isMonsterRef,
+  isScenery,
+  movePlacement,
   paintCell,
+  paintRect,
+  paintScenery,
   parseDungeon,
   placeAt,
+  removeDisposition,
+  removeEnding,
+  removeExit,
+  removeFaction,
+  removeIntel,
   removePlacement,
   removeRegion,
   removeWalls,
   resolveErrorTargets,
+  sceneryBlockedBy,
+  setIntelHolders,
+  setIntelReveals,
+  setScenarioBinding,
   setStart,
+  setStartFacing,
   setWallHeights,
-  toggleDoorEdge,
-  toggleWall,
+  setWallName,
+  suggestPlacementId,
+  toggleDoorAt,
+  toggleExitAt,
+  updateDisposition,
   updateDoor,
   updateDungeon,
+  updateEnding,
+  updateExit,
+  updateFaction,
+  updateIntel,
   updatePlacement,
   updateRegion,
   type DungeonDoc,
+  type PositionRef,
 } from './dungeonYaml';
-import { edgeKey, type Axial, type Edge, type Orientation } from './hexOffset';
+import { type Axial, type Orientation } from './hexOffset';
 import { Inspector } from './Inspector';
 import { Palette } from './Palette';
 import { PALETTE_PROPS } from './paletteData';
 import { DungeonPreview3D } from './preview3d/DungeonPreview3D';
+import {
+  nextRailWidth,
+  readRailTab,
+  readRailWidth,
+  writeRailTab,
+  writeRailWidth,
+  type RailTab,
+} from './railLayout';
+import { ScenarioPanel } from './ScenarioPanel';
 import type { BoardTool, PaletteItem, Selection } from './types';
 import { YamlPane } from './YamlPane';
 
@@ -113,14 +152,29 @@ export interface DungeonBuilderProps {
   onPlay?: (key: string) => Promise<void>;
   /** Why Save & Play is disabled right now (no character picked, say). */
   playDisabledReason?: string | null;
+  compositionSource?: CompositionSource;
 }
+
+/** The rail's three panes, in the order they read: what this dungeon is
+ * FOR, whatever is selected on the board, and the file itself. One at a
+ * time, so each gets the whole column (rpg-dnd5e-web#945). */
+const RAIL_TABS: readonly (readonly [RailTab, string])[] = [
+  ['scenario', 'Scenario'],
+  ['inspector', 'Inspector'],
+  ['source', 'Source'],
+];
+
+/** `concealment.regionIds` is `null` only when there is no start to
+ * derive reachability from — the canvas has nothing to highlight either
+ * way, and a shared empty set keeps that a stable reference. */
+const EMPTY_REGION_IDS: ReadonlySet<string> = new Set();
 
 const PROP_DEFAULTS = new Map(
   PALETTE_PROPS.map((p) => [
     p.ref,
     {
-      blocksMovement: p.role !== 'decor',
-      blocksLos: p.role === 'obstacle',
+      blocksMovement: p.blocksMovement,
+      blocksLos: p.blocksLoS,
     },
   ])
 );
@@ -159,16 +213,67 @@ export function DungeonBuilder({
   onSaveSucceeded,
   onPlay,
   playDisabledReason = null,
+  compositionSource,
 }: DungeonBuilderProps) {
-  const [doc, setDoc] = useState<DungeonDoc>(() =>
-    initialDoc(initialYaml, persistDraft)
+  // The FIRST doc runs through the same derivation every later edit
+  // does (rpg-dnd5e-web#893) — a loaded draft, `initialYaml`, or an old
+  // file hand-authored before this existed may have a concealed door
+  // whose region was never ticked (rpg-dnd5e-web#890's bug); this
+  // self-heals it before the first compile rather than leaving it for
+  // the next edit to fix by accident. Computed once at mount — the
+  // `useMemo([])` a component-scoped one-time computation, same spirit
+  // as `docGeneration` below being a ref rather than state.
+  const initialDerivation = useMemo(
+    () =>
+      applyDerivedConcealment(initialDoc(initialYaml, persistDraft), new Set()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only: initialYaml/persistDraft are launch-time props, same assumption `initialDoc` already makes
+    []
   );
+  const [doc, setDoc] = useState<DungeonDoc>(() => initialDerivation.doc);
+  const compositionResolutions = useCompositionResolutions(
+    doc.place,
+    compositionSource
+  );
+  // The ratchet's memory (rpg-dnd5e-web#893): the region ids `applyDoc`
+  // itself set concealed most recently, so a region a person concealed
+  // by hand — never in this set — is never stripped when the graph
+  // changes. Read by `applyDoc`'s updater and kept in step by the
+  // toast/derivation effect below, after each commit.
+  const derivedIdsRef = useRef<Set<string>>(initialDerivation.derivedIds);
   const [tool, setTool] = useState<BoardTool>('region');
   const [selection, setSelection] = useState<Selection>({ kind: 'dungeon' });
+  // Which of the rail's three panes is on screen, remembered across sessions
+  // (railLayout.ts). A preference about looking at the builder, never a fact
+  // about the dungeon.
+  const [railTab, setRailTab] = useState<RailTab>(readRailTab);
+  const showTab = useCallback((tab: RailTab) => {
+    setRailTab(tab);
+    writeRailTab(tab);
+  }, []);
+  /**
+   * Selecting on the CANVAS brings the inspector forward, because the click
+   * asked a question only the inspector answers — a door picked while the
+   * Source tab is up would otherwise select something the author cannot see.
+   * Nothing else moves the rail: the tabs are the author's.
+   */
+  const selectOnCanvas = useCallback(
+    (next: Selection) => {
+      setSelection(next);
+      showTab('inspector');
+    },
+    [showTab]
+  );
   const [activeRegionId, setActiveRegionId] = useState<string | null>(
     () => doc.regions[0]?.id ?? null
   );
   const [armed, setArmed] = useState<PaletteItem | null>(null);
+  // A move is tied to the exact placement in the exact document that was
+  // visible when it was armed. Document edits/replacements cancel it rather
+  // than letting a stale array index silently target another placement.
+  const [movingPlacement, setMovingPlacement] = useState<{
+    document: DungeonDoc;
+    placement: DungeonDoc['place'][number];
+  } | null>(null);
   const [tab, setTab] = useState<'board' | 'preview'>('board');
   const [newMenu, setNewMenu] = useState(false);
   const [openMenu, setOpenMenu] = useState(false);
@@ -185,8 +290,22 @@ export function DungeonBuilder({
     client: authoringClient,
     fixtureAtlas,
   });
+  /** The cells the SERVER says nobody can stand on — scenery and the
+   * cells walls seal. Region membership no longer implies standable
+   * (design §5.2's `sealed`), so the board is TOLD rather than left to
+   * derive it: what one wall seals is closed-form, what two seal
+   * between them is the compiler's alone. Empty until the first compile
+   * answers. */
+  const sealedCells = useMemo(
+    () => new Set((preview.atlas?.sealed ?? []).map((p) => `${p.x},${p.y}`)),
+    [preview.atlas]
+  );
   const fixtures = fixtureCompile !== undefined;
   const saver = useSaveDungeon(authoringClient);
+  // The forms this dungeon may be bound to, asked once per client. There
+  // is no fallback descriptor: an empty answer renders "no scenarios
+  // offered" (`useListScenarios`'s own doc comment).
+  const scenarios = useListScenarios(authoringClient);
   const [listNonce, setListNonce] = useState(0);
 
   useEffect(() => {
@@ -242,15 +361,73 @@ export function DungeonBuilder({
   );
   const hasErrors = errors.length > 0;
 
+  // The door-links-to-region derivation (rpg-dnd5e-web#893), recomputed
+  // straight from the document on every render — the canvas highlight
+  // and the region panel's provenance note both read this directly, no
+  // ratchet needed for DISPLAY (only `applyDoc`'s write path needs to
+  // remember what IT set, to know what it may take back).
+  const concealment = useMemo(() => deriveConcealment(doc), [doc]);
+  // Concealed doors that currently hide nothing (rpg-dnd5e-web#893's leak
+  // case) — not a compiler defect, so it rides beside `errors` rather
+  // than inside it; the document still compiles and Save stays enabled.
+  const leaks = useMemo(() => detectConcealmentLeaks(doc), [doc]);
+
+  // Every document mutator (`dungeonYaml.ts`) is pure and knows nothing
+  // of concealment; every edit re-derives it on top, ratcheted so a
+  // region a person concealed by hand is never stripped (`applyDoc`'s
+  // own doc comment). This is the ONE place `setDoc` is called with a
+  // raw mutator result — every handler below goes through this instead.
+  const applyDoc = useCallback(
+    (updater: DungeonDoc | ((d: DungeonDoc) => DungeonDoc)) => {
+      setDoc((d) => {
+        const raw = typeof updater === 'function' ? updater(d) : updater;
+        if (raw === d) return d;
+        return applyDerivedConcealment(raw, derivedIdsRef.current).doc;
+      });
+    },
+    []
+  );
+
+  // Keeps the ratchet's memory in step with what the document now says
+  // is derived, and shows the author what just went dark — "derived
+  // state that appears silently is the cost of this approach, and
+  // visibility is what pays it" (rpg-dnd5e-web#893). Runs after every
+  // commit, so `applyDoc`'s NEXT call always reads a ref that matches
+  // the document as of the previous one.
+  useEffect(() => {
+    const current = concealment.regionIds ?? new Set<string>();
+    const newlyHidden = [...current].filter(
+      (id) => !derivedIdsRef.current.has(id)
+    );
+    derivedIdsRef.current = current;
+    if (newlyHidden.length === 0) return;
+    const names = newlyHidden
+      .map((id) => doc.regions.find((r) => r.id === id)?.name || id)
+      .join(', ');
+    showToast(`now hidden: ${names} — reachable only through a concealed door`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doc.regions is read only for names, not a reachability input
+  }, [concealment, showToast]);
+
   // Every document replacement bumps this; a late async Open whose
   // generation is no longer current is dropped rather than overwriting a
   // newer document (New, Load, or a second Open).
   const docGeneration = useRef(0);
   const replaceDoc = (next: DungeonDoc) => {
     docGeneration.current += 1;
-    setDoc(next);
+    // New/Open/Load self-heal the same way the first mount does (see
+    // `initialDerivation` above): nothing in the incoming file is
+    // presumed strippable yet, so only newly-required concealment gets
+    // added here — anything the file already declared stays exactly as
+    // written.
+    const derived = applyDerivedConcealment(next, new Set());
+    setDoc(derived.doc);
+    // New/Open/Load replaces the document, so any text in flight is about a
+    // file that is gone.
+    setYamlDraft(null);
+    setYamlParseError(null);
+    derivedIdsRef.current = derived.derivedIds;
     setSelection({ kind: 'dungeon' });
-    setActiveRegionId(next.regions[0]?.id ?? null);
+    setActiveRegionId(derived.doc.regions[0]?.id ?? null);
   };
 
   const handleNew = (orientation: Orientation) => {
@@ -277,6 +454,39 @@ export function DungeonBuilder({
       );
     }
   };
+
+  // Typed YAML (rpg-dnd5e-web#899). Goes through `applyDoc`, not
+  // `replaceDoc`: replacing resets the selection and the active region, which
+  // on every keystroke would yank the canvas out from under the typist. A
+  // keystroke is an EDIT to the document open in front of them, exactly like
+  // dragging a wall, so it takes the same path — including the concealment
+  // ratchet, so hand-written YAML self-heals the way the canvas does.
+  // The YAML pane's text in flight and why it will not parse. It lives here
+  // rather than in the pane because the rail unmounts the pane whenever the
+  // author looks at another tab, and #899's promise — text that does not
+  // parse is never discarded — cannot be kept by something that stops
+  // existing. `null` means the pane is showing the file.
+  const [yamlDraft, setYamlDraft] = useState<string | null>(null);
+  const [yamlParseError, setYamlParseError] = useState<string | null>(null);
+  const handleYamlDraft = useCallback(
+    (draft: string | null, parseError: string | null) => {
+      setYamlDraft(draft);
+      setYamlParseError(parseError);
+    },
+    []
+  );
+
+  const handleEditYaml = useCallback(
+    (text: string): string | null => {
+      try {
+        applyDoc(parseDungeon(text));
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : 'could not read that YAML';
+      }
+    },
+    [applyDoc]
+  );
 
   const handleLoadText = (text: string) => {
     try {
@@ -310,48 +520,60 @@ export function DungeonBuilder({
     }
   };
 
+  /** "Nobody can stand here" — the one reason scenery refuses a drop
+   * (design §2.4). Named once so the start and the monster paths say the
+   * same words about the same fact. */
+  const NOBODY_STANDS = 'nobody can stand here — that cell is scenery';
+
   const handlePaint = (cell: Axial) => {
-    if (activeRegionId) setDoc((d) => paintCell(d, activeRegionId, cell));
-  };
-  const handleErase = (cell: Axial) => setDoc((d) => eraseCell(d, cell));
-  // The wall drag commits its RAW taut chain; applying the same
-  // mutator composition the board's live preview used (wallGesture's
-  // apply*) is what makes the preview the commit (#804).
-  const handleWallDraw = (chain: Edge[]) => {
-    setDoc((d) => applyWallDraw(d, chain));
-  };
-  const handleWallErase = (chain: Edge[]) => {
-    setDoc((d) => applyWallErase(d, chain));
-  };
-  // Manipulation rides selection (Kirk's walk ruling): keep the wall
-  // selected through a reshape by re-selecting the edges the re-derived
-  // chains produced, so its handles stay up for the next grab.
-  const handleWallReshape = (oldChains: Edge[][], newChains: Edge[][]) => {
-    setDoc((d) => {
-      const next = applyReshape(d, oldChains, newChains);
-      if (next !== d) {
-        const untouched = new Set(
-          removeWalls(
-            d,
-            oldChains.flatMap((c) => c)
-          ).walls.map((w) => edgeKey(w.edge))
+    // The board's brush; WHICH brush is the owner's business (the same
+    // split `handleCellClick` already makes for start vs place).
+    if (tool === 'scenery') {
+      // Refused in place, naming what is in the way — the brush never
+      // deletes something the author placed, and this builder has no undo.
+      const blocker = sceneryBlockedBy(doc, cell);
+      if (blocker !== null) {
+        showToast(
+          blocker === 'start'
+            ? 'the party starts here — move the start before painting scenery'
+            : 'a monster stands here — move it before painting scenery'
         );
-        setSelection({
-          kind: 'wall',
-          edges: next.walls
-            .filter((w) => !untouched.has(edgeKey(w.edge)))
-            .map((w) => w.edge),
-        });
+        return;
       }
+      applyDoc((d) => paintScenery(d, cell));
+      return;
+    }
+    if (activeRegionId) applyDoc((d) => paintCell(d, activeRegionId, cell));
+  };
+  const handleErase = (cell: Axial) => applyDoc((d) => eraseCell(d, cell));
+  /** The picker's commit (design §2.6): the two positions the author
+   * picked become one `walls[]` entry, and the new wall is selected so
+   * its name and height are one click away. */
+  const handleWallCommit = (start: PositionRef, end: PositionRef) => {
+    applyDoc((d) => {
+      const next = addWall(d, start, end);
+      if (next !== d)
+        selectOnCanvas({ kind: 'wall', index: next.walls.length - 1 });
       return next;
     });
   };
-  // One drag, ONE door — and select it, same as the click path does.
-  const handleDoorDraw = (chain: Edge[]) => {
-    setDoc((d) => {
-      const next = applyDoorDraw(d, chain);
-      if (next !== d && next.doors.length > 0) {
-        setSelection({
+  /** Shift-click on a wall removes it. NOT `selectOnCanvas`: a delete is
+   * not a selection. It asks nothing the inspector answers — the thing the
+   * rail would open on is gone — so an author reading the file keeps
+   * reading the file. Falling back to the dungeon is only so the wall
+   * panel stops describing a wall that is no longer there. */
+  const handleWallDelete = (index: number) => {
+    applyDoc((d) => removeWalls(d, [index]));
+    setSelection({ kind: 'dungeon' });
+  };
+  /** A door is a position on a wall (design §2.8). Toggling, and the
+   * new door is selected so its lock and concealment are to hand. */
+  const handleDoorToggle = (at: PositionRef) => {
+    applyDoc((d) => {
+      const before = d.doors.length;
+      const next = toggleDoorAt(d, at);
+      if (next !== d && next.doors.length > before) {
+        selectOnCanvas({
           kind: 'door',
           id: next.doors[next.doors.length - 1].id,
         });
@@ -359,35 +581,85 @@ export function DungeonBuilder({
       return next;
     });
   };
-  const handleEdgeClick = (edge: Edge) => {
-    if (tool === 'wall') setDoc((d) => toggleWall(d, edge));
-    if (tool === 'door') {
-      const doorId = selection.kind === 'door' ? selection.id : undefined;
-      setDoc((d) => {
-        const next = toggleDoorEdge(d, edge, doorId);
-        if (next !== d && next.doors.length > 0 && !doorId) {
-          setSelection({
-            kind: 'door',
-            id: next.doors[next.doors.length - 1].id,
-          });
+  const handleCellClick = (cell: Axial) => {
+    if (tool === 'move-placement' && movingPlacement !== null) {
+      applyDoc((d) => {
+        if (d !== movingPlacement.document) {
+          showToast('Move cancelled because the document changed');
+          return d;
+        }
+        const placementIndex = d.place.indexOf(movingPlacement.placement);
+        if (placementIndex === -1) {
+          showToast('Move cancelled because the placement changed');
+          return d;
+        }
+        const next = movePlacement(d, placementIndex, cell);
+        if (next === d) {
+          showToast('Placement was not moved; pick a different available cell');
+        } else {
+          selectOnCanvas({ kind: 'placement', index: placementIndex });
         }
         return next;
       });
+      setMovingPlacement(null);
+      setTool('select');
+      return;
     }
-  };
-  const handleCellClick = (cell: Axial) => {
-    if (tool === 'start') setDoc((d) => setStart(d, cell));
+    if (tool === 'exit') {
+      // Refused in place with the reason, exactly as `start` is — the
+      // compiler refuses an exit on scenery in `start`'s own words, and a
+      // click that silently did nothing would be the worse answer.
+      if (isScenery(doc, cell)) {
+        showToast(NOBODY_STANDS);
+        return;
+      }
+      applyDoc((d) => {
+        const next = toggleExitAt(d, cell);
+        if (next !== d && next.exits.length > d.exits.length) {
+          selectOnCanvas({ kind: 'exit', index: next.exits.length - 1 });
+        }
+        return next;
+      });
+      return;
+    }
+    if (tool === 'start') {
+      // REFUSED IN PLACE WITH THE REASON (design §2.4): the mutator hands
+      // back the same document, and the author is told why rather than
+      // watching a click do nothing.
+      if (isScenery(doc, cell)) {
+        showToast(NOBODY_STANDS);
+        return;
+      }
+      applyDoc((d) => {
+        const next = setStart(d, cell);
+        // Selected on placement, so the facing compass is one click away
+        // rather than something to go looking for.
+        if (next !== d) selectOnCanvas({ kind: 'start' });
+        return next;
+      });
+    }
     if (tool === 'place' && armed) {
+      if (isMonsterRef(armed.ref) && isScenery(doc, cell)) {
+        showToast(NOBODY_STANDS);
+        return;
+      }
       const defaults = isMonsterRef(armed.ref)
         ? {}
         : (PROP_DEFAULTS.get(armed.ref) ?? {
             blocksMovement: true,
             blocksLos: false,
           });
-      setDoc((d) => {
-        const next = placeAt(d, { ref: armed.ref, at: cell, ...defaults });
+      applyDoc((d) => {
+        const next = placeAt(d, {
+          ref: armed.ref,
+          at: cell,
+          ...defaults,
+          ...(isCompositionRef(armed.ref)
+            ? { id: suggestPlacementId(d, armed.ref) }
+            : {}),
+        });
         if (next !== d) {
-          setSelection({ kind: 'placement', index: next.place.length - 1 });
+          selectOnCanvas({ kind: 'placement', index: next.place.length - 1 });
         }
         return next;
       });
@@ -418,8 +690,62 @@ export function DungeonBuilder({
     playing ||
     !doc.key;
 
+  // How wide this author likes the rail (railLayout.ts, beside the pane it
+  // opens on above). Neither touches the document.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [railWidth, setRailWidth] = useState<number | null>(readRailWidth);
+  const dragRef = useRef<{ x: number; width: number } | null>(null);
+
+  const beginRailDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rail = e.currentTarget.parentElement;
+    if (!rail) return;
+    dragRef.current = {
+      x: e.clientX,
+      width: rail.getBoundingClientRect().width,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const moveRailDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const root = rootRef.current;
+    if (!drag || !root) return;
+    setRailWidth(
+      nextRailWidth(
+        drag.width,
+        e.clientX - drag.x,
+        root.getBoundingClientRect().width
+      )
+    );
+  };
+  const endRailDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    // RELEASE THE CAPTURE EXPLICITLY. Without this the grip keeps every
+    // subsequent pointer event, so the canvas goes dead after one resize —
+    // the room tool stopped previewing and the brush stopped painting, and
+    // nothing about it looked like the rail's fault.
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    writeRailWidth(railWidth);
+  };
+  // Double-click hands the rail back to the CSS default, so a drag is never
+  // a one-way door.
+  const resetRail = () => {
+    setRailWidth(null);
+    writeRailWidth(null);
+  };
   return (
-    <div className="dg-root" data-testid="dungeon-builder">
+    <div
+      className="dg-root"
+      data-testid="dungeon-builder"
+      ref={rootRef}
+      style={
+        railWidth === null
+          ? undefined
+          : { gridTemplateColumns: `220px minmax(0, 1fr) ${railWidth}px` }
+      }
+    >
       <div className="dg-topbar">
         {allowNewCanvas && (
           <span className="relative">
@@ -497,14 +823,17 @@ export function DungeonBuilder({
         <Palette
           doc={doc}
           tool={tool}
-          onTool={setTool}
+          onTool={(nextTool) => {
+            if (nextTool !== 'move-placement') setMovingPlacement(null);
+            setTool(nextTool);
+          }}
           activeRegionId={activeRegionId}
           onActiveRegion={(id) => {
             setActiveRegionId(id);
             setSelection({ kind: 'region', id });
           }}
           onAddRegion={() => {
-            setDoc((d) => {
+            applyDoc((d) => {
               const next = addRegion(d);
               const id = next.regions[next.regions.length - 1].id;
               setActiveRegionId(id);
@@ -515,6 +844,7 @@ export function DungeonBuilder({
           }}
           armed={armed}
           onArm={setArmed}
+          compositionSource={compositionSource}
         />
       </div>
 
@@ -546,15 +876,24 @@ export function DungeonBuilder({
               selection={selection}
               activeRegionId={activeRegionId}
               errorTargets={errorTargets}
+              concealedRegionIds={concealment.regionIds ?? EMPTY_REGION_IDS}
               onPaint={handlePaint}
+              onPaintRect={(a, b) => {
+                if (!activeRegionId) {
+                  showToast('Pick a region first');
+                  return;
+                }
+                applyDoc((d) => paintRect(d, activeRegionId, a, b));
+              }}
               onErase={handleErase}
-              onEdgeClick={handleEdgeClick}
-              onWallDraw={handleWallDraw}
-              onWallErase={handleWallErase}
-              onWallReshape={handleWallReshape}
-              onDoorDraw={handleDoorDraw}
+              onWallCommit={handleWallCommit}
+              onWallDelete={handleWallDelete}
+              onDoorToggle={handleDoorToggle}
+              sealedCells={sealedCells}
               onCellClick={handleCellClick}
-              onSelect={setSelection}
+              onSelect={selectOnCanvas}
+              compositionSource={compositionSource}
+              compositionResolutions={compositionResolutions}
             />
           ) : (
             <DungeonPreview3D
@@ -562,65 +901,214 @@ export function DungeonBuilder({
               doc={doc}
               status={statusLine}
               staleNotice={staleAtlasNotice(preview)}
+              compositionSource={compositionSource}
             />
           )}
         </div>
       </div>
 
       <div className="dg-right">
-        <div className="dg-col">
-          <Inspector
-            doc={doc}
-            selection={selection}
-            onDungeon={(patch) => setDoc((d) => updateDungeon(d, patch))}
-            onRegion={(id, patch) => {
-              setDoc((d) => updateRegion(d, id, patch));
-              if (patch.id !== undefined) {
-                setSelection({ kind: 'region', id: patch.id });
-                if (activeRegionId === id) setActiveRegionId(patch.id);
-              }
-            }}
-            onRemoveRegion={(id) => {
-              setDoc((d) => removeRegion(d, id));
-              setSelection({ kind: 'dungeon' });
-            }}
-            onDoor={(id, patch) => {
-              setDoc((d) => updateDoor(d, id, patch));
-              if (patch.id !== undefined)
-                setSelection({ kind: 'door', id: patch.id });
-            }}
-            onRemoveWall={(edges) => {
-              setDoc((d) => removeWalls(d, edges));
-              setSelection({ kind: 'dungeon' });
-            }}
-            onSetWallHeight={(edges, height) => {
-              setDoc((d) => setWallHeights(d, edges, height));
-            }}
-            onRemoveDoor={(id) => {
-              setDoc((d) => ({
-                ...d,
-                doors: d.doors.filter((x) => x.id !== id),
-              }));
-              setSelection({ kind: 'dungeon' });
-            }}
-            onPlacement={(index, patch) =>
-              setDoc((d) => updatePlacement(d, index, patch))
-            }
-            onRemovePlacement={(index) => {
-              setDoc((d) => removePlacement(d, index));
-              setSelection({ kind: 'dungeon' });
-            }}
-          />
+        <div
+          className="dg-grip"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the inspector rail"
+          title="Drag to resize · double-click to reset"
+          onPointerDown={beginRailDrag}
+          onPointerMove={moveRailDrag}
+          onPointerUp={endRailDrag}
+          onPointerCancel={endRailDrag}
+          onDoubleClick={resetRail}
+        />
+        {/* The tab row and, under it, what the compiler is saying — the
+            status line and its refusals belong to the BUILDER rather than to
+            whichever pane is up, so they stay on screen while the author
+            works on any of the three. */}
+        <div className="dg-rail-head">
+          <div className="dg-rail-tabs" role="tablist" aria-label="Rail">
+            {RAIL_TABS.map(([tab, label]) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                id={`dg-rail-tab-${tab}`}
+                aria-selected={railTab === tab}
+                aria-controls="dg-rail-pane"
+                className={`dg-mini ${railTab === tab ? 'dg-tool--on' : ''}`}
+                onClick={() => showTab(tab)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs opacity-80" data-testid="status-line">
+            {statusLine}
+          </div>
+          {errors.length > 0 && (
+            <ul className="dg-errors" data-testid="error-list">
+              {errors.map((err, i) => (
+                <li key={`${err.path}-${i}`}>
+                  <code>{err.path}</code> {err.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          {leaks.length > 0 && (
+            <ul className="dg-warnings" data-testid="warning-list">
+              {leaks.map((w, i) => (
+                <li key={i}>{w.message}</li>
+              ))}
+            </ul>
+          )}
         </div>
-        <div className="dg-col">
-          <YamlPane
-            yaml={yaml}
-            filename={`${doc.key || 'dungeon'}.yaml`}
-            errors={errors}
-            statusLine={statusLine}
-            allowFileIO={allowYamlFileIO}
-            onLoad={handleLoadText}
-          />
+        <div
+          className="dg-col"
+          role="tabpanel"
+          id="dg-rail-pane"
+          aria-labelledby={`dg-rail-tab-${railTab}`}
+        >
+          {railTab === 'scenario' && (
+            <ScenarioPanel
+              doc={doc}
+              state={scenarios}
+              errors={errors}
+              onBind={(scenarioId, key, value) =>
+                applyDoc((d) => setScenarioBinding(d, scenarioId, key, value))
+              }
+              onAdd={(scenarioId) =>
+                applyDoc((d) => addScenario(d, scenarioId))
+              }
+              onRemove={(scenarioId) =>
+                applyDoc((d) => clearScenarioBinding(d, scenarioId))
+              }
+            />
+          )}
+          {railTab === 'inspector' && (
+            <Inspector
+              doc={doc}
+              selection={selection}
+              concealment={concealment}
+              onDungeon={(patch) => applyDoc((d) => updateDungeon(d, patch))}
+              onRegion={(id, patch) => {
+                applyDoc((d) => updateRegion(d, id, patch));
+                if (patch.id !== undefined) {
+                  setSelection({ kind: 'region', id: patch.id });
+                  if (activeRegionId === id) setActiveRegionId(patch.id);
+                }
+              }}
+              onRemoveRegion={(id) => {
+                applyDoc((d) => removeRegion(d, id));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onDoor={(id, patch) => {
+                applyDoc((d) => updateDoor(d, id, patch));
+                if (patch.id !== undefined)
+                  setSelection({ kind: 'door', id: patch.id });
+              }}
+              onRemoveWall={(index) => {
+                applyDoc((d) => removeWalls(d, [index]));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onSetWallHeight={(index, height) => {
+                applyDoc((d) => setWallHeights(d, [index], height));
+              }}
+              onSetWallName={(index, name) => {
+                applyDoc((d) => setWallName(d, index, name));
+              }}
+              onRemoveDoor={(id) => {
+                applyDoc((d) => ({
+                  ...d,
+                  doors: d.doors.filter((x) => x.id !== id),
+                }));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onPlacement={(index, patch) =>
+                applyDoc((d) => updatePlacement(d, index, patch))
+              }
+              onMovePlacement={(index) => {
+                const placement = doc.place[index];
+                if (!placement) return;
+                setMovingPlacement({ document: doc, placement });
+                setTool('move-placement');
+                showToast('Pick a different available cell for this placement');
+              }}
+              onRemovePlacement={(index) => {
+                applyDoc((d) => removePlacement(d, index));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onExit={(index, patch) =>
+                applyDoc((d) => updateExit(d, index, patch))
+              }
+              onRemoveExit={(index) => {
+                applyDoc((d) => removeExit(d, index));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onIntel={(id, patch) => {
+                applyDoc((d) => updateIntel(d, id, patch));
+                if (patch.id !== undefined) {
+                  setSelection({ kind: 'intel', id: patch.id });
+                }
+              }}
+              onIntelReveals={(id, key, value) =>
+                applyDoc((d) => setIntelReveals(d, id, key, value))
+              }
+              onIntelHolders={(id, holders) =>
+                applyDoc((d) => setIntelHolders(d, id, holders))
+              }
+              onRemoveIntel={(id) => {
+                applyDoc((d) => removeIntel(d, id));
+                setSelection({ kind: 'dungeon' });
+              }}
+              onAddFaction={() => applyDoc((d) => addFaction(d))}
+              onFaction={(id, patch) =>
+                applyDoc((d) => updateFaction(d, id, patch))
+              }
+              onRemoveFaction={(id) => applyDoc((d) => removeFaction(d, id))}
+              onAddDisposition={() => applyDoc((d) => addDisposition(d))}
+              onDisposition={(index, patch) =>
+                applyDoc((d) => updateDisposition(d, index, patch))
+              }
+              onRemoveDisposition={(index) =>
+                applyDoc((d) => removeDisposition(d, index))
+              }
+              onAddEnding={() => applyDoc((d) => addEnding(d))}
+              onEnding={(index, patch) =>
+                applyDoc((d) => updateEnding(d, index, patch))
+              }
+              onRemoveEnding={(index) =>
+                applyDoc((d) => removeEnding(d, index))
+              }
+              onSelect={setSelection}
+              compositionSource={compositionSource}
+              compositionResolutions={compositionResolutions}
+              onStartFacing={(facing) =>
+                applyDoc((d) => setStartFacing(d, facing))
+              }
+              onAddIntel={() => {
+                applyDoc((d) => {
+                  const next = addIntel(d);
+                  setSelection({
+                    kind: 'intel',
+                    id: next.intel[next.intel.length - 1].id,
+                  });
+                  return next;
+                });
+              }}
+              errors={errors}
+            />
+          )}
+          {railTab === 'source' && (
+            <YamlPane
+              yaml={yaml}
+              filename={`${doc.key || 'dungeon'}.yaml`}
+              allowFileIO={allowYamlFileIO}
+              onLoad={handleLoadText}
+              onEdit={allowYamlFileIO ? handleEditYaml : undefined}
+              draft={yamlDraft}
+              parseError={yamlParseError}
+              onDraft={handleYamlDraft}
+            />
+          )}
         </div>
       </div>
 

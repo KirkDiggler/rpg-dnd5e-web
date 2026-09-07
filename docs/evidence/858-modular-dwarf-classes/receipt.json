@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "providerCommit": "3c779ebc13409e2169ef2143644495aad66f8f2f",
+  "providerManifestSha256": "ba804119ea38b0a6d39acd4a00ab331633ee06eb4d33fe309a7d7d49defe2741",
+  "providerInventorySha256": "35159bdea75f8392b907c271df3f2586c1ade8363e7a5787f023a5f695370d30",
+  "combinations": {
+    "dwarf:barbarian": {
+      "modelUrl": "/models/synty/characters/race-class/dwarf-barbarian.glb",
+      "sha256": "9420770680b3efcca3443a50803bb1bf9fd9ca4e4f03d125961ab52652742b8c"
+    },
+    "dwarf:fighter": {
+      "modelUrl": "/models/synty/characters/race-class/dwarf-fighter.glb",
+      "sha256": "e2ccabd29b471fad0732fb1a728ec13627e71a4cb747c1366ed56a06dc7cafa5"
+    },
+    "dwarf:monk": {
+      "modelUrl": "/models/synty/characters/race-class/dwarf-monk.glb",
+      "sha256": "397e13577ceb793e676d50e218d661f8fa9b7eb0e8cc6c5716f4b9574aceece7"
+    },
+    "dwarf:rogue": {
+      "modelUrl": "/models/synty/characters/race-class/dwarf-rogue.glb",
+      "sha256": "a189b0836af26106f6745157a01bcf79c0c52ca76a192d35ed75178489a9742e"
+    }
+  },
+  "rigFamily": "modular-fantasy-hero-v1",
+  "socketProfile": "modular-fantasy-hero-main-hand-v1",
+  "proportions": [1.08, 0.78, 1.08],
+  "animations": ["Idle_Relaxed", "Walk_Forward"],
+  "captures": [
+    "four-dwarf-classes-close-real-route.png",
+    "four-dwarf-classes-rotated-real-route.png",
+    "dwarf-barbarian-walk-real-route.png",
+    "dwarf-barbarian-greataxe-real-route.png",
+    "dwarf-fighter-greatsword-real-route.png",
+    "dwarf-monk-shortsword-real-route.png",
+    "dwarf-rogue-rapier-real-route.png"
+  ],
+  "browser": {
+    "scope": "captured-proof-window",
+    "url": "http://127.0.0.1:3013/?playerId=dwarf-barbarian-858",
+    "players": [
+      "D858 Dwarf Barbarian",
+      "D858 Dwarf Fighter",
+      "D858 Dwarf Monk",
+      "D858 Dwarf Rogue"
+    ],
+    "modelResponses": {
+      "dwarf:barbarian": {"status": 200, "sha256": "9420770680b3efcca3443a50803bb1bf9fd9ca4e4f03d125961ab52652742b8c"},
+      "dwarf:fighter": {"status": 200, "sha256": "e2ccabd29b471fad0732fb1a728ec13627e71a4cb747c1366ed56a06dc7cafa5"},
+      "dwarf:monk": {"status": 200, "sha256": "397e13577ceb793e676d50e218d661f8fa9b7eb0e8cc6c5716f4b9574aceece7"},
+      "dwarf:rogue": {"status": 200, "sha256": "a189b0836af26106f6745157a01bcf79c0c52ca76a192d35ed75178489a9742e"}
+    },
+    "weaponResponses": {
+      "greataxe": {"status": 200, "sha256": "39c08c15e778c1f1c915478001204f218382c47cad3c1306626784f7ca398bb7"},
+      "greatsword": {"status": 200, "sha256": "600d83e67e47ff461efc94c43bde39e09139c3778ec82cfd86d47e03fb26eea1"},
+      "shortsword": {"status": 200, "sha256": "ee5f39b67f7d77df01a9425c5a2a371603eff83138d236ba5049033a7dc4ce9b"},
+      "rapier": {"status": 200, "sha256": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"}
+    },
+    "moveRpcObserved": true,
+    "walkingSeen": true,
+    "movementStoryObserved": [
+      "D858 Dwarf Barbarian moves — Position 1, 3.",
+      "D858 Dwarf Barbarian moves — Position 2, 3."
+    ],
+    "consoleErrors": 0,
+    "pageErrors": 0,
+    "unexpectedRequestFailures": 0
+  },
+  "isolatedFixture": {
+    "dungeonAlias": "dwarf-tomb-858",
+    "dwarfDraftToolChoice": "The current lab API UpdateRace handler accepts but does not persist CHOICE_CATEGORY_TOOLS. The isolated draft was completed with the toolkit-native dwarf-tool-proficiency/smiths-tools choice before FinalizeDraft.",
+    "mainHandState": "The isolated characters' authoritative equipment_slots.main_hand values were seeded in character storage after the session had already begun; the production presentation path then resolved and rendered those public values."
+  }
+}

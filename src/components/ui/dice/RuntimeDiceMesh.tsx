@@ -107,6 +107,12 @@ export interface RuntimeDiceMeshProps {
   readonly magicalAnimation?: boolean;
   readonly selectedGroupName?: string;
   readonly shadowName?: string;
+  /** Uniform multiplier on the die's visual normalization scale and its
+   * shadow disc radius (`?dieScale=`, session/local-world-die/diceDials.ts,
+   * #906). Default 1 — every OTHER consumer of this shared component
+   * (AttackDie3D, RollGroupDie3D/RollGroupRuntimeMember, the concepts
+   * PhysicsTraySpike) is unaffected unless it opts in. */
+  readonly sizeScale?: number;
 }
 
 const DEFAULT_TREATMENT: DiceMaterialTreatment = Object.freeze({
@@ -225,6 +231,7 @@ export function RuntimeDiceMesh({
   magicalAnimation = false,
   selectedGroupName = 'attack-die-selected-group',
   shadowName = 'attack-die-shadow',
+  sizeScale = 1,
 }: RuntimeDiceMeshProps) {
   const group = useRef<Group>(null);
   const shadow = useRef<Mesh>(null);
@@ -397,7 +404,7 @@ export function RuntimeDiceMesh({
         {bundle.normalization ? (
           <group
             name="attack-die-runtime-normalization"
-            scale={bundle.normalization.scale}
+            scale={bundle.normalization.scale * sizeScale}
           >
             <group
               name="attack-die-runtime-recenter"
@@ -417,7 +424,7 @@ export function RuntimeDiceMesh({
         rotation={[-Math.PI / 2, 0, 0]}
         scale={initialPose.shadow.scale}
       >
-        <circleGeometry args={[0.34, 48]} />
+        <circleGeometry args={[0.34 * sizeScale, 48]} />
         <meshBasicMaterial
           ref={shadowMaterial}
           name="attack-die-shadow-material"

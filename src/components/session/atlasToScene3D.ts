@@ -37,15 +37,20 @@
  * # Walls live in atlasWallRuns.ts, not here
  *
  * The floor tiles this file builds are per-hex (`SyntyHexFloor` renders
- * one tile per cell either way). Walls are not: Kirk's ruling on PR #762's
- * live review was that the game's walls should stay STRAIGHT modular runs
- * (the presentation `WallRunMesh`/`wallRuns.ts` already established for
- * the old route), not a piece per declared boundary edge. `buildScene3D`
- * composes that separate module's output (`boundariesToWallRuns`) with
- * this file's own floor tiles into one `Scene3D` — see atlasWallRuns.ts's
- * own module doc comment for the wall geometry itself, including why the
- * atlas's declared boundaries and cell mask remain the sole AUTHORITY
- * even though the PRESENTATION is now straight runs.
+ * one tile per cell either way). Walls are not: a wall is the line its
+ * author drew, and the wire carries it as an `AtlasSegment`.
+ * `buildScene3D` composes that separate module's output
+ * (`segmentsToWallRuns`) with this file's own floor tiles into one
+ * `Scene3D`. `boundaries` and `doorways` stay the mechanical truth and
+ * are not read here; `segments` is what gets drawn.
+ *
+ * # Sealed cells are floor
+ *
+ * A cell a wall seals keeps its region and stays in `cells`, so it tiles
+ * as floor like any other — it is floor nobody stands on, and refusing a
+ * step onto it is the engine's job, not the renderer's. The same is true
+ * of the footing cells a presented wall puts in the recipient's atlas
+ * (design C18): they arrive in `cells` and tile.
  */
 
 import {
@@ -54,9 +59,9 @@ import {
   type CubeCoord,
   type WorldPos,
 } from '@/components/hex-grid/hexMath';
-import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
 import type { AbsoluteFloorTile } from '@/hooks/dungeonMapGeometry';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import { cellBoundingBox } from '../../author/hexGeometry';
 import {
   layoutFromWire,
   type HexLayout,
@@ -67,13 +72,19 @@ import {
   type DungeonLightingRegionInput,
   type DungeonLightingSourceInput,
 } from '../../rendering/dungeonLighting';
-import { boundariesToWallRuns, type DoorGapPiece } from './atlasWallRuns';
+import {
+  segmentsToWallRuns,
+  type AuthoredWallRun,
+  type DoorGapPiece,
+} from './atlasWallRuns';
 import { positionToCube, worldPositionOf } from './positionBridge';
 
 export { positionToCube, worldPositionOf };
 
 export interface SceneProp3D {
   ref: string;
+  /** The authored placement identity, required by composition placements. */
+  id?: string;
   /** The cell it stands on — mechanics stay cell-scoped (design's
    * "presentation never decides mechanics" law): this is the position
    * movement/LOS reason about, unaffected by `offset`. */
@@ -93,10 +104,24 @@ export interface SceneProp3D {
 }
 
 /**
- * A prop's actual render position: its cell center plus its authored
- * `offset`, each component scaled by `hexSize` (design: "offset * HEX_SIZE
- * applied in the shared scene path") — including the world-Y the third
- * component raises it to (rpg-project#272: floor + offset.z · hexSize).
+ * A prop's actual render position: its cell centre plus its authored
+ * `offset`.
+ *
+ * # The planar offset is BOUNDING-BOX FRACTIONS
+ *
+ * `x` is measured in cell WIDTHS and `y` in cell HEIGHTS — design §1.11's
+ * one offset unit, shared with a wall position and a door position, so
+ * the whole file speaks one language about where inside a cell something
+ * sits. It used to be circumradii, which meant `[0.5, 0]` put a prop
+ * halfway to a VERTEX — inside the hex, nowhere in particular. In
+ * bounding-box fractions the same `[0.5, 0]` puts it exactly on the side
+ * midpoint: `0.5 × √3·hexSize` is the inradius. The content that would
+ * have needed converting is being recreated in the same wave.
+ *
+ * `z` is unchanged: it is the height above the floor, not a planar
+ * nudge, and keeps its own cell-size unit and its own [0,3] range
+ * (rpg-project#272).
+ *
  * ONE place, so `DungeonPreview3D`'s prop path and the game route's
  * (`SessionCanvas`) can never disagree — the same symmetric-bug
  * discipline `hexOffset.ts` names.
@@ -106,16 +131,38 @@ export function propWorldPosition(
   hexSize: number
 ): WorldPos & { y: number } {
   const center = cubeToWorld(prop.position, hexSize);
+  const { width, height } = cellBoundingBox('pointy', hexSize);
   return {
-    x: center.x + prop.offset.x * hexSize,
+    x: center.x + prop.offset.x * width,
     y: prop.offset.z * hexSize,
-    z: center.z + prop.offset.y * hexSize,
+    z: center.z + prop.offset.y * height,
   };
+}
+
+/** One authored way out, ready to draw: the author's id and the cell it
+ * stands on (rpg-project#368 §3.1). */
+export interface SceneExit3D {
+  id: string;
+  position: CubeCoord;
 }
 
 export interface Scene3D {
   floorTiles: Map<string, AbsoluteFloorTile>;
   props: SceneProp3D[];
+  /**
+   * The ways out, drawn from the start.
+   *
+   * KIRK'S WALK FOUND THIS MISSING (2026-09-04): he searched out the
+   * vault, held the heirloom, hit Leave on the wrong cell and dropped it.
+   * R9 worked exactly as designed — and the map had never told him where
+   * the way out was. An exit the party cannot see is a rule they can only
+   * learn by losing to it.
+   *
+   * Empty for every dungeon authored before slice 2, and for an atlas from
+   * a server older than the field: no marker, and the route behaves as it
+   * always did.
+   */
+  exits: SceneExit3D[];
   archetypes: readonly string[];
   lighting: DungeonLightingFacts;
   wallRuns: AuthoredWallRun[];
@@ -179,11 +226,50 @@ export function resolveSceneLayout(
  * only (rpg-dnd5e-web#763); asking for `flat` throws by name rather than
  * drawing the rotated picture ADR-0040 warns about.
  */
+/**
+ * The ways out, as scene facts. A tiny derivation, exported so it can be
+ * tested without a WebGL canvas — the same split every other pure selector
+ * on this route keeps.
+ *
+ * Three ways an entry is skipped, all of them "a marker in the wrong place
+ * is worse than no marker" — the whole lesson of the walk that asked for
+ * this layer:
+ *
+ *   - NO CELL: there is nowhere to draw it, and the origin is a lie.
+ *   - NO ID: there is nothing to label it, and two unnamed exits would
+ *     collide on the same React key and reconcile one of them away.
+ *     `holdTargets` skips an id-less holdable prop for the same reason —
+ *     it is a producer defect, and the compiler refuses the file.
+ *   - NO FLOOR THIS MEMBER KNOWS: `exits` is the same for every member,
+ *     but `cells` is what this one has seen. An exit in a room they have
+ *     not opened would otherwise float a cyan hex and a label over void.
+ *     Not a secrecy question — the proto says an exit is not concealable —
+ *     purely "do not draw a marker where there is nothing to mark".
+ *
+ * `atlas.exits ?? []` for `atlasToScene3D`'s standing reason: a server or
+ * a client-side schema older than the field hands back a message with it
+ * absent, not empty, and a bare read is `undefined`.
+ */
+export function sceneExits(
+  atlas: Partial<Pick<GetAtlasResponse, 'exits'>>,
+  knownFloor?: ReadonlySet<string>
+): SceneExit3D[] {
+  const exits: SceneExit3D[] = [];
+  for (const exit of atlas.exits ?? []) {
+    if (!exit.at || !exit.id) continue;
+    const position = positionToCube(exit.at);
+    if (knownFloor && !knownFloor.has(coordToKey(position))) continue;
+    exits.push({ id: exit.id, position });
+  }
+  return exits;
+}
+
 export function buildScene3D(
   atlas: Pick<
     GetAtlasResponse,
-    'cells' | 'props' | 'boundaries' | 'doorways' | 'regions'
-  >,
+    'cells' | 'props' | 'segments' | 'doorways' | 'regions'
+  > &
+    Partial<Pick<GetAtlasResponse, 'exits'>>,
   hexSize: number,
   layout: HexLayout
 ): Scene3D {
@@ -219,6 +305,7 @@ export function buildScene3D(
     // to that same "unfaced, centered" default instead of vanishing.
     const sceneProp = {
       ref: prop.ref,
+      id: prop.id ?? '',
       position: positionToCube(prop.at),
       facing: prop.facing ?? '',
       offset: {
@@ -257,7 +344,18 @@ export function buildScene3D(
     lightingRegions,
     lightingSources
   );
-  const { wallRuns, doorGaps } = boundariesToWallRuns(atlas, hexSize);
+  const { wallRuns, doorGaps } = segmentsToWallRuns(atlas, hexSize);
 
-  return { floorTiles, props, archetypes, lighting, wallRuns, doorGaps };
+  return {
+    floorTiles,
+    props,
+    archetypes,
+    lighting,
+    wallRuns,
+    doorGaps,
+    // The floor this member knows is what was just built above, so an
+    // exit in a room they have not opened is skipped rather than floated
+    // over void.
+    exits: sceneExits(atlas, new Set(floorTiles.keys())),
+  };
 }

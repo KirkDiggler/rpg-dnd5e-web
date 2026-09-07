@@ -63,27 +63,26 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Sync Synty assets from private repo
+      - name: Package production runtime assets from private provider
         env:
           ASSETS_READ_TOKEN: ${{ secrets.ASSETS_READ_TOKEN }}
         run: |
-          set -e
-          if [ -z "$ASSETS_READ_TOKEN" ]; then
-            echo "::warning::ASSETS_READ_TOKEN is not set — building WITHOUT Synty assets. Set the ASSETS_READ_TOKEN repo secret to enable this step."
-            exit 0
+          set -eu
+          if [ -z "${ASSETS_READ_TOKEN:-}" ]; then
+            echo "::error::ASSETS_READ_TOKEN is required to package production runtime assets."
+            exit 1
           fi
 
           TMP_DIR=$(mktemp -d)
+          trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
           git clone --depth 1 "https://x-access-token:${ASSETS_READ_TOKEN}@github.com/KirkDiggler/rpg-game-assets.git" "$TMP_DIR"
 
-          mkdir -p public/models/synty
-          cp -r "$TMP_DIR"/harness/models/synty/. public/models/synty/
-          rm -rf "$TMP_DIR"
-
-          FILE_COUNT=$(find public/models/synty -type f | wc -l)
-          echo "Synced $FILE_COUNT Synty asset file(s) from rpg-game-assets into public/models/synty/"
+          RPG_GAME_ASSETS_PATH="$TMP_DIR" \
+            RPG_WEB_ROOT="$GITHUB_WORKSPACE" \
+            ASSETS_SYNC_SKIP_UPDATE=1 \
+            sh scripts/sync-game-assets.sh --runtime-assets
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -98,6 +97,7 @@ jobs:
             VITE_DISCORD_CLIENT_ID=${{ secrets.VITE_DISCORD_CLIENT_ID }}
             VITE_API_HOST=${{ secrets.VITE_API_HOST }}
             BUILD_ID=${{ github.sha }}
+            VITE_FEEL_LAB=1
 
       - name: Trigger deployment
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'

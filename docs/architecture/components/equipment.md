@@ -1,11 +1,11 @@
 ---
 name: equipment
 description: The equipment chip + popover on the live game screen — wire-shaped components shared with the /concepts bench
-updated: 2026-07-22
-confidence: high — verified by reading the components/hooks in full and by a live MCP playtest against a running rpg-api/rpg-toolkit stack
+updated: 2026-08-31
+confidence: high automated — quantity-aware carried/equipped rendering is component-tested; the original equip flow was also live-playtested against rpg-api/rpg-toolkit
 ---
 
-# Equipment (rpg-dnd5e-web#571)
+# Equipment (rpg-dnd5e-web#571, #880)
 
 The equipment chip + popover on `EncounterDock`, letting a player equip/
 unequip mid-run and see server-computed AC/damage update. Originated as
@@ -29,8 +29,11 @@ Production components: `src/components/game/equipment/`
 - `EquipmentSlots.tsx` — the worn/wielded picture, one HUD-framed socket
   per `SlotDef`. Click an occupied socket -> `UnequipItem` intent.
 - `InventoryLight.tsx` — the carried-items list (a compact list, not a
-  grid). Click an equippable row -> `EquipItem` intent targeting
-  `targetSlotFor`'s pick.
+  grid). Each owner stack subtracts equipped occurrences of its full
+  `{module,type,id}` ref; a multi-copy stack remains visible with its carried
+  count (including `×1`) until every copy is equipped. A legacy zero quantity
+  displays as one rollout-compatible copy. Click an equippable row ->
+  `EquipItem` intent targeting `targetSlotFor`'s pick.
 - `EquipmentPopover.tsx` — composes the two above plus the AC/damage
   readout header. Fully prop-driven: no fixture dependency, no internal
   equip-simulation state — the caller owns `equipped`/`items`/`slots`/
@@ -94,26 +97,40 @@ one file per verb, mirroring `useTakeAction`/`useInteract`.
   combat log (both anchor bottom-right); the log's own open/hidden
   preference is untouched and restores the instant the popover closes.
 
-### Session-route main-hand presentation (#832)
+### Session-route owner hand presentation (#832, #878)
 
 The live `SessionEncounterView` already owns the authenticated player's
-owner-private `CharacterData` cache. It now projects only
-`equipped.main_hand` through `src/components/hex-grid/mainHandWeapons.ts` and
-passes the resulting presentation through `SessionCanvas` and `HexEntity` to
-`ClassCharacterModel`.
+owner-private `CharacterData` cache. It projects `equipped.main_hand` through
+`mainHandWeapons.ts` and the reviewed `equipped.off_hand` catalog through
+`offHandEquipment.ts`, then passes both presentations through `SessionCanvas`
+and `HexEntity` to `ClassCharacterModel`.
 
-The resolver is display-only and exact-ref-only: the current 12 promoted
-`dnd5e:item:*` refs map to `/models/synty/weapons/*.glb`; attack refs and
-unknown items remain unarmed. All four current class rigs share
-`townfolk-main-hand-v1`; no class × weapon offset table exists. Equip/unequip
+The resolver is display-only and exact-ref-only: the current 30 promoted
+`dnd5e:item:*` refs (provider commit `00cbd7cdcc338edaa249e3707492341fe1c4a416`,
+`weapons/manifest.json` sha256
+`eb0c2fd4402c05e8ac68c9b950d9fd9f6d3784e2ec16a9e36fac06bb45eba46a`) map to
+`/models/synty/weapons/*.glb`. Glaive, Scimitar, and Trident append after the
+prior 27-item roster without changing its order or paths. Attack refs and
+unknown items such as Flail and Lance remain unarmed. All four current class
+rigs share `townfolk-main-hand-v1`; no class × weapon offset table exists. Equip/unequip
 continues replacing the complete owner cache from the RPC response, so the
 model changes on that same render. A cold running-encounter resume recovers the
 authenticated player's character ID from the retained lobby's first snapshot
 before `GetCharacterData` restores equipment.
 
+The off-hand catalog consumes exact provider merge
+`00cbd7cdcc338edaa249e3707492341fe1c4a416` / manifest
+`975833c55e9bf405573ebb4e911f8fb1a3fe50e680cb4718f21c6b4587feadf1`:
+Shield, Dagger, Shortsword, Handaxe, Sickle, and Scimitar. Dagger/Shortsword
+reuse the canonical weapon GLBs; Handaxe/Sickle/Scimitar use provider-baked
+left-hand variants. Unsupported and attack-shaped refs remain visually empty.
+Townfolk and modular rigs each use one `Hand_L` socket; the browser owns no item
+transform table.
+
 Only the acting player's private equipment reaches this path. A sighted peer's
-public roster entry has no equipment projection, so peer weapons remain a
-separate contract rather than a client guess.
+public roster entry has no equipment projection, so peer hand equipment remains
+a separate contract rather than a client guess. Existing server equip/unequip,
+AC, damage, two-handed displacement, and reconnect authority are unchanged.
 
 ## Scope decisions
 
@@ -137,9 +154,10 @@ separate contract rather than a client guess.
   `ideas/equipment/item-icons/design.md` for the full coverage boundary
   and tier rationale (dedicated/approximate/generic — recorded metadata,
   not rendered in v1).
-- **No drag-and-drop, encumbrance, or stacking** — per the `/concepts`
-  bench's original scope decisions (CONTRACT.md), unchanged by
-  promotion.
+- **No drag-and-drop or encumbrance.** Owner-authored stack quantities are
+  display input (#880), not client inventory rules: equip intent and server
+  legality remain unchanged. The `/concepts` fixture simulator still uses
+  single-copy items and does not model stack mutations.
 
 ## Tests
 
@@ -149,7 +167,8 @@ separate contract rather than a client guess.
 - `src/api/useEquipItem.test.ts` / `useUnequipItem.test.ts` — RPC request
   shape, loading/error state, mirroring `useTakeAction.test.ts`.
 - `src/components/game/equipment/{EquipmentSlots,InventoryLight,EquipmentPopover}.test.tsx`
-  — prop-driven rendering, intent emission, icon fallback, `busy` gating.
+  — prop-driven rendering, quantity-aware carried counts, repeated refs in
+  both sockets, intent emission, icon fallback, `busy` gating.
 - `src/hooks/useEncounterState.test.ts` — snapshot/appear equipment
   hydration, `applyCharacterEquipment` (including the `entityAC`
   refresh), preservation across entries/characters.

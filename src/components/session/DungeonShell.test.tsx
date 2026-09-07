@@ -5,12 +5,12 @@ import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { StrictMode } from 'react';
 import * as THREE from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AuthoredWallRun } from '../../hooks/authoredWallRuns';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
 import type { DungeonShellProfile } from '../../rendering/dungeonShellManifest';
 import type { DungeonShellCatalogSnapshot } from '../../rendering/dungeonShellProvider';
 import type { DungeonFloorLighting } from '../hex-grid/syntyHexFloorHelpers';
+import type { AuthoredWallRun } from '../session/atlasWallRuns';
 import type { Scene3D } from './atlasToScene3D';
 
 const PROFILE_URLS = [
@@ -209,6 +209,7 @@ function scene(archetypes: string[] = ['crypt']): Scene3D {
     ['0,0,0', { x: 0, y: 0, z: 0, roomId: '' }],
   ]);
   return {
+    exits: [],
     floorTiles,
     props: [],
     archetypes,

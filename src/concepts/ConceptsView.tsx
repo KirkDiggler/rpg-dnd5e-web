@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { AssetAnchorLabConcept } from '../author/AssetAnchorLabConcept';
 import { DungeonBuilderSandbox } from '../author/DungeonBuilderSandbox';
 import { AttackDie3DConcept } from './attack-die-3d/AttackDie3DConcept';
+import { CharacterCustomizationConcept } from './character-customization/CharacterCustomizationConcept';
 import { ClassSelectionConcept } from './class-selection/ClassSelectionConcept';
 import { CombatPacingConcept } from './combat-pacing/CombatPacingConcept';
 import { CombatPanelConcept } from './combat-panel/CombatPanelConcept';
@@ -10,13 +11,16 @@ import { EncounterDockConcept } from './encounter-dock/EncounterDockConcept';
 import { EquipmentConcept } from './equipment/EquipmentConcept';
 import { FogOfWarConcept } from './fog-of-war/FogOfWarConcept';
 import { JustRollConcept } from './just-roll/JustRollConcept';
+import { OffHandAttachmentConcept } from './off-hand-attachment/OffHandAttachmentConcept';
 import { SessionCombatConcept } from './session-combat/SessionCombatConcept';
 import { SessionTombConcept } from './session-tomb/SessionTombConcept';
 import { WeaponAttachmentConcept } from './weapon-attachment/WeaponAttachmentConcept';
+import { WorldBuildingConcept } from './world-building/WorldBuildingConcept';
 
 type ConceptPage =
   | 'attack-die-3d'
   | 'class-selection'
+  | 'character-customization'
   | 'encounter-dock'
   | 'combat-panel'
   | 'equipment'
@@ -26,12 +30,15 @@ type ConceptPage =
   | 'session-combat'
   | 'session-tomb'
   | 'weapon-attachment'
+  | 'off-hand-attachment'
   | 'dungeon-builder'
-  | 'asset-anchor-lab';
+  | 'asset-anchor-lab'
+  | 'world-building';
 
 const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'attack-die-3d', label: 'Attack Die 3D' },
   { id: 'class-selection', label: 'Class Selection' },
+  { id: 'character-customization', label: 'Character Customization' },
   { id: 'encounter-dock', label: 'Encounter Dock' },
   { id: 'combat-panel', label: 'Combat Panel' },
   { id: 'equipment', label: 'Equipment' },
@@ -41,8 +48,10 @@ const CONCEPT_PAGES: { id: ConceptPage; label: string }[] = [
   { id: 'session-combat', label: 'Session Combat' },
   { id: 'session-tomb', label: 'Session Tomb' },
   { id: 'weapon-attachment', label: 'Weapon Attachment' },
+  { id: 'off-hand-attachment', label: 'Off-Hand Attachment' },
   { id: 'dungeon-builder', label: 'Dungeon Builder' },
   { id: 'asset-anchor-lab', label: 'Asset Anchor Lab' },
+  { id: 'world-building', label: 'World Building' },
 ];
 
 interface ConceptsViewProps {
@@ -96,6 +105,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
           <button
             key={page.id}
             onClick={() => setActivePage(page.id)}
+            aria-pressed={activePage === page.id}
             className="px-4 py-2 rounded text-sm font-medium transition-colors"
             style={{
               backgroundColor:
@@ -123,6 +133,9 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
       >
         {activePage === 'attack-die-3d' && <AttackDie3DConcept />}
         {activePage === 'class-selection' && <ClassSelectionConcept />}
+        {activePage === 'character-customization' && (
+          <CharacterCustomizationConcept />
+        )}
         {activePage === 'encounter-dock' && <EncounterDockConcept />}
         {activePage === 'combat-panel' && <CombatPanelConcept />}
         {activePage === 'equipment' && <EquipmentConcept />}
@@ -132,6 +145,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
         {activePage === 'session-combat' && <SessionCombatConcept />}
         {activePage === 'session-tomb' && <SessionTombConcept />}
         {activePage === 'weapon-attachment' && <WeaponAttachmentConcept />}
+        {activePage === 'off-hand-attachment' && <OffHandAttachmentConcept />}
         {/* Graduated (rpg-project#194): the real builder now lives at the
             `/author` AppView (`src/author/AuthorView.tsx`), LIVE mode. This
             tab is the dev sandbox — the same `DungeonBuilder` on a fixture
@@ -140,6 +154,7 @@ export function ConceptsView({ onBack }: ConceptsViewProps) {
             per Kirk's ask ("a dev one that is hooked to fixture data"). */}
         {activePage === 'dungeon-builder' && <DungeonBuilderSandbox />}
         {activePage === 'asset-anchor-lab' && <AssetAnchorLabConcept />}
+        {activePage === 'world-building' && <WorldBuildingConcept />}
       </motion.div>
     </div>
   );

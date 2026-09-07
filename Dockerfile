@@ -22,11 +22,16 @@ ARG VITE_API_HOST
 # .git, so vite.config.ts can't derive a SHA in-image — the workflow passes
 # github.sha through this arg instead.
 ARG BUILD_ID
+# Playtest-era flag that ships the feel dials drawer (#906) — the deployed
+# activity IS the playtest surface, so it's on in the shipped image. Flip
+# off at v1.
+ARG VITE_FEEL_LAB
 
 # Set environment variables for the build
 ENV VITE_DISCORD_CLIENT_ID=$VITE_DISCORD_CLIENT_ID
 ENV VITE_API_HOST=$VITE_API_HOST
 ENV BUILD_ID=$BUILD_ID
+ENV VITE_FEEL_LAB=$VITE_FEEL_LAB
 
 # Build the application. public/themes/ is the single git-tracked home of the
 # runtime theme CSS (loaded by useTheme at /themes/*.css) — never copy over it

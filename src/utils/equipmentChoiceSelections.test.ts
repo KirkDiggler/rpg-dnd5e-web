@@ -82,7 +82,7 @@ describe('persisted equipment-choice hydration', () => {
     expect(isCompleteEquipmentChoice(declaredChoice, reconstructed)).toBe(true);
   });
 
-  it('keeps a legacy same-category duplicate invalid, including at final-submit gating', () => {
+  it('accepts a repeated same-category ID by declared count, including at final-submit gating', () => {
     const persisted = persistedDraftChoice([
       'longsword-selection',
       'longsword-selection',
@@ -94,10 +94,50 @@ describe('persisted equipment-choice hydration', () => {
         declaredChoice,
         reconstructEquipmentChoice(declaredChoice, persisted)
       )
-    ).toBe(false);
+    ).toBe(true);
     expect(hasNoInvalidEquipmentChoices([declaredChoice], [persisted])).toBe(
-      false
+      true
     );
+  });
+});
+
+describe('equipment choice serialization', () => {
+  it('preserves two identical authoritative selections as two ordered wire entries', () => {
+    const converted = convertEquipmentChoiceToProto(
+      {
+        choiceId: 'fighter-starting-equipment',
+        bundleId: 'fighter-pack-a',
+        categorySelections: [
+          {
+            categoryIndex: 0,
+            equipmentIds: ['longsword-selection', 'longsword-selection'],
+          },
+        ],
+      },
+      ChoiceSource.CLASS
+    );
+
+    expect(converted.selection).toEqual({
+      case: 'equipment',
+      value: create(EquipmentSelectionSchema, {
+        items: [
+          create(EquipmentSelectionItemSchema, {
+            equipment: {
+              case: 'otherEquipmentId',
+              value: 'longsword-selection',
+            },
+            quantity: 1,
+          }),
+          create(EquipmentSelectionItemSchema, {
+            equipment: {
+              case: 'otherEquipmentId',
+              value: 'longsword-selection',
+            },
+            quantity: 1,
+          }),
+        ],
+      }),
+    });
   });
 });
 

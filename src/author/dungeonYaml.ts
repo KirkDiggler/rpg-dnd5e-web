@@ -20,19 +20,37 @@
  * cannot represent (wrong version, unknown keys, non-numeric cells).
  */
 
+import { refSlug } from '@/utils/refs';
 import { parse as parseYamlText } from 'yaml';
 import {
+  isPositionOffset,
+  latticeKey,
+  latticeOf,
+  latticeWalk,
+  positionCrossing,
+  positionKey,
+  positionSpellings,
+  sealedBy,
+  wallCrossings,
+  wallFootprint,
+  type Lattice,
+  type Offset,
+  type PositionRef,
+} from './hexGeometry';
+import {
   axialKey,
+  axialNeighbors,
   compareAxial,
   edgeKey,
   fromOffset,
-  normalizeEdge,
   toOffset,
   type Axial,
   type Edge,
   type OffsetPair,
   type Orientation,
 } from './hexOffset';
+
+export type { PositionRef } from './hexGeometry';
 
 export type VoidKind = 'opaque' | 'transparent';
 
@@ -43,19 +61,52 @@ export interface RegionDoc {
   archetype: string;
   lighting: { intensity: number };
   cells: Axial[];
+  /** Hidden space — "the room hides with its door" (rpg-project#351).
+   * DECLARED HERE, NEVER CASCADED from a concealed door: the room and its
+   * door are separate authored facts (dungeonspec.RegionSpec.Concealed).
+   * Server-validated coherence (a walk-in room cannot be a secret; a room
+   * only reachable through a concealed door must be concealed too) is not
+   * repeated client-side — this module only refuses what it cannot
+   * represent. Omitted means not concealed; only ever written `true`. */
+  concealed?: boolean;
 }
 
-export interface LockDoc {
-  dc: number;
+/** One authored check's approach: an ability or skill, an optional tool,
+ * and the DC that route must beat — mirrors dungeonspec's `ApproachSpec`
+ * (rpg-project#350). Every field is opaque; this module never interprets
+ * `ability` or `tool`. */
+export interface ApproachDoc {
   ability: string;
+  tool?: string;
+  dc: number;
 }
+
+/** A door's lock or its find check: the accepted approaches through it,
+ * success by any listed one, each priced with its own DC. Mirrors
+ * dungeonspec's `CheckSpec` — a bare list, not a wrapping object, because
+ * the builder authors a check as approach rows and the file reads as the
+ * rows it is. */
+export type CheckDoc = ApproachDoc[];
 
 export interface DoorDoc {
   id: string;
-  edges: Edge[];
+  /** The position the door stands on — a side midpoint of some wall
+   * (design §3.4, F10/F11). The door IS that side's crossing: one door,
+   * one crossing, and a wider doorway is two doors. `edges` is retired
+   * with the pair form. */
+  at: PositionRef;
   /** Omitted = open doorway; `closed` = shut, not locked; `locked` wins. */
   closed?: boolean;
-  locked?: LockDoc;
+  /** NIL, NOT LEN 0, IS "NOT LOCKED" (dungeonspec.DoorSpec.Locked's law):
+   * an authored-but-empty list is a lock with no way through it, refused
+   * server-side by name — this module still represents it (round-trips
+   * unchanged) rather than silently reading it as open. */
+  locked?: CheckDoc;
+  /** The find check that hides this door — COMPOSES with plain, closed,
+   * or locked underneath; whether a door is shut and whether anyone knows
+   * it is there are separate authored facts (rpg-project#350). Same
+   * nil-vs-empty law as `locked`. */
+  concealed?: CheckDoc;
 }
 
 /** A placement's authored offset: `[x, y]` or `[x, y, height]`
@@ -93,24 +144,323 @@ export interface PlacementDoc {
   /** Monsters only; opaque to the builder. */
   targeting?: string;
   boss?: boolean;
+  /** THE AUTHOR'S NAME for this placement — the third id the dialect
+   * carries, after a region's and a door's (rpg-project#368 P2). Optional
+   * and unique within the dungeon; required only by whatever BINDS to it
+   * (a scenario binding, and the pick-up verb, which names its target by
+   * this id and nothing else). Refused on collision by the server, naming
+   * both lines; the builder refuses one inline before it is typed into
+   * the file. Omitted means the author named none, which is most props. */
+  id?: string;
+  /** The INTEL RECORD ids this placement carries from spawn
+   * (rpg-project#372 §2). Legal on MONSTERS AND PROPS alike (R6, from
+   * Kirk's walk: "tech could get intel by holding something too … not the
+   * hardest monster to kill in the game") — a scroll on a table is intel
+   * a party can reach without winning a fight first.
+   *
+   * This replaced `knows`, which named a door directly. Knowledge is
+   * spelled ONCE now, as a record — the monster holds the record and the
+   * record says what it reveals — so a record that later reveals a region
+   * or a treasure's location needs no second spelling here (design R1:
+   * "if we don't have a use case for it then it goes"). `knows` is refused
+   * by name at parse.
+   *
+   * Carried verbatim; this module never checks that a listed record
+   * exists, and the same record may be held by several monsters (intel
+   * COPIES on loot, it does not move). NIL, NOT LEN 0, is "holds
+   * nothing": an authored-but-empty list round-trips unchanged rather
+   * than being silently read as absent. */
+  holds?: string[];
+  /** Props only, REFUSED on monsters. Whether a member can pick this prop
+   * up off the floor (rpg-project#368 §5). Defaulting to false — a thing
+   * nobody declared stays scenery — so it is written ONLY when true, which
+   * keeps every dungeon that uses none emitting the bytes it always did.
+   *
+   * THE WORD IS HOLD, NOT TAKE (design R10): this flag makes a run-scoped
+   * `holds:` fact possible, and *take* is reserved for the act that lands
+   * a thing in a character's inventory. The file key is `holdable:`, which
+   * is what dungeonspec parses. The pinned protos still call the RPC
+   * `Take` — that half renames in a wave-0 follow-up and is confined to
+   * `useSessionHold.ts` and `holdingBeat.ts` on the game side. */
+  holdable?: boolean;
+  /** Monsters only, REFUSED on props. The declared faction this monster
+   * fights for (rpg-project#375 §2). ABSENT MEANS `monsters` — the reserved
+   * side every unauthored monster is on, hostile to the party — so a
+   * dungeon that names no faction emits the bytes it always did and plays
+   * exactly as it always has (R4). Written only when the author chose one;
+   * the panel shows `monsters` for an absent value and writes nothing.
+   * Carried verbatim; that the faction is declared is `factionRules.ts`'s
+   * inline refusal and the compiler's, not this module's. */
+  faction?: string;
+  /** Monsters and props. The predicate that brings this placement into the
+   * run — until it holds the placement is in reserve: no cell, no turn,
+   * absent from every projection (rpg-project#375 §3.7). PARSED AND
+   * EMITTED HERE, NOT YET AUTHORED: the editor for it is step B of the
+   * hold-out slice (design §10); this module carries the field so a file
+   * written with it round-trips rather than being refused by a builder one
+   * step behind the compiler. `at` still MUST be floor — it is where the
+   * placement lands when the predicate holds. */
+  arrives?: PredicateDoc;
 }
 
-/** One authored wall entry: its edge, plus the authored height when one
- * was written (rpg-project#273). In the file the bare pair stays the
- * common form; the object form `{ between, height }` exists for the
- * edge that carries more facts than its endpoints. Identity and
- * attribute live in ONE entry deliberately — erasing a wall erases its
- * height with it, so a later redraw can never resurrect a stale one. */
+/**
+ * The party's entry point: a floor cell, and optionally which way they are
+ * looking when they arrive (rpg-project#374 design, "The walks" — Kirk:
+ * "we always start looking the wrong way and have to spin around").
+ *
+ * TWO SPELLINGS PARSE, ONE IS EMITTED. `start: [c, r]` is the bare pair
+ * every dungeon written before this used, and it stays legal: it means a
+ * start whose facing the author did not state. `start: { at: [c, r],
+ * facing: e }` states one. This module emits the BARE PAIR whenever there
+ * is no facing and the map whenever there is, so a file that states no
+ * facing keeps the bytes it has always had — which is what the toolkit's
+ * own fixtures are, and what their byte-pins check.
+ *
+ * The one consequence, accepted deliberately: a hand-written
+ * `start: { at: [c, r] }` with no facing re-emits as `start: [c, r]`. The
+ * same document, different bytes. Carrying the spelling through the model
+ * to avoid that would be state that goes stale for no reader's benefit.
+ *
+ * FACING IS PRESENTATION, NOT A RULE (`AtlasStart.facing`'s own doc
+ * comment): it aims the camera on the first frame and decides nothing
+ * about where a member may walk or what they can see. Omitted means the
+ * author stated none, which is the zero value telling the truth.
+ */
+export interface StartDoc {
+  at: Axial;
+  /** One of the eight true-compass names, or absent. Carried verbatim —
+   * this module never checks that the word is one of the eight; that is
+   * the server's call, surfaced as a `start.facing` `FieldError` the way
+   * `place[].facing` already is. */
+  facing?: string;
+}
+
+/** One authored way out of the dungeon: an id and a floor cell — the
+ * shape `start` already has (rpg-project#368 §3.1).
+ *
+ * STRUCTURE, NOT SCENARIO. A dungeon has ways out whatever the party is
+ * there for, so exits sit beside `start` rather than inside a scenario's
+ * bindings. `start` is NOT implicitly one of these: nothing is defaulted,
+ * and a dungeon whose entrance is also its exit authors that in one line.
+ */
+export interface ExitDoc {
+  id: string;
+  at: Axial;
+}
+
+/** One authored piece of intel: an id, and what learning it reveals
+ * (rpg-project#372 §2).
+ *
+ * A DECLARATION, LIKE A DOOR. It sits in the dungeon file, a monster is
+ * given it through `place[].holds`, and Loot applies its `reveals` to the
+ * looter. Nothing about it is scenario machinery: a DM sets up intel for
+ * whatever their story needs, and a scenario binds only the nouns its own
+ * quest has (design R3, R5).
+ *
+ * `reveals` is CARRIED OPAQUELY, a map this module never interprets —
+ * `{ door: <door id> }` is the only key the engine reads in this cut, and
+ * the set grows one key per use case (a region, a treasure's location, a
+ * lock's approach). Modelling it as a map rather than a `door` field is
+ * what lets a file written against a newer rulebook round-trip here
+ * unchanged, exactly as `scenarios` bindings do. */
+export interface IntelDoc {
+  id: string;
+  reveals: Record<string, string>;
+}
+
+/** The three stances a disposition may declare (rpg-project#375 §2) — a
+ * closed set, in the compiler's own words. `hostile` is the only one an
+ * `until` is legal with: a predicate says when the hostility ENDS, and
+ * when it holds the stance becomes `neutral` (R2). */
+export const STANCES = ['hostile', 'neutral', 'allied'] as const;
+export type Stance = (typeof STANCES)[number];
+
+/** The players' side. NEVER DECLARED under `factions:` — it is the one
+ * faction every dungeon has without saying so, and a file that declares it
+ * is refused by name (§2). It IS nameable in a disposition's `between`. */
+export const PARTY = 'party';
+/** Where every monster that names no faction belongs (R4). Hostile to the
+ * party, exactly as every dungeon written before factions existed behaved.
+ * A monster's `faction:` is written only when the author chose one, so
+ * membership here is spelled by ABSENCE. The side itself MAY be declared
+ * under `factions[]` (ruling 2026-09-05) — `{ id: monsters, mind: chief }`
+ * is how the unauthored side is given a mind — and its members are then
+ * exactly the monsters with no faction key (`factionMembers`). */
+export const MONSTERS = 'monsters';
+
+/**
+ * A PREDICATE — the one authorable grammar `until` (and, in step B,
+ * `arrives` and `endings[].when`) are written in (rpg-project#375 §2).
+ *
+ * EXACTLY ONE KEY, and the key says which form it is:
+ *
+ *   `{ round: N }`     any fight in the run has started round N (N ≥ 1)
+ *   `{ down: <id> }`   that placement is Down
+ *   `{ fact: <id> }`   the fact is known — by the faction's mind on
+ *                      `until`, by anyone on `arrives`
+ *   `{ stance: { between: [a, b], is: <stance> } }`
+ *                      the pair's stance folds to that value
+ *
+ * Each form compiles to an encounter `Trigger`; the set is sealed the way
+ * `Trigger` is and grows one form per use case. Two keys in one map is not
+ * a predicate this module can represent, so the parser refuses the shape;
+ * whether the thing a form names exists is the refusal logic's question
+ * (`factionRules.ts`), rendered inline at the field.
+ */
+export type PredicateDoc =
+  | { round: number }
+  | { down: string }
+  | { fact: string }
+  | { stance: { between: [string, string]; is: Stance } };
+
+export const PREDICATE_FORMS = ['round', 'down', 'fact', 'stance'] as const;
+export type PredicateForm = (typeof PREDICATE_FORMS)[number];
+
+/** Which form a predicate is — the one key it carries. */
+export function predicateForm(p: PredicateDoc): PredicateForm {
+  if ('round' in p) return 'round';
+  if ('down' in p) return 'down';
+  if ('fact' in p) return 'fact';
+  return 'stance';
+}
+
+/** One declared faction: who fights as one side (rpg-project#375 §2).
+ *
+ * `mind` is the hub knowledge spreads through — the faction knows what
+ * its mind knows (R3), so a fact carried into the mind's region is what
+ * flips an `until: { fact }`. It MUST name a monster placed in this
+ * faction. Optional: a faction of one has its member as mind; a faction
+ * of many with an `until: { fact }` and no mind is refused ("name a mind,
+ * or the faction cannot learn") — inline here, by name from the compiler.
+ * Carried verbatim; whether the id names a member is `factionRules.ts`'s
+ * question, not the parser's. */
+export interface FactionDoc {
+  id: string;
+  mind?: string;
+}
+
+/** One disposition: how two factions stand to each other, and the
+ * predicate that ends the hostility (rpg-project#375 §2).
+ *
+ * `between` is UNORDERED in meaning and kept IN THE AUTHOR'S ORDER in the
+ * bytes — a pair is a list the author wrote, not a map, so the emitter has
+ * nothing to sort and re-emits what was parsed. One disposition per pair;
+ * the second is refused inline and by the compiler. `until` is legal only
+ * with `stance: hostile` and, when it holds, the stance becomes `neutral`.
+ * Omitted means the stance never changes. */
+export interface DispositionDoc {
+  between: [string, string];
+  stance: Stance;
+  until?: PredicateDoc;
+}
+
+/** One authored way the run ends: a name, and when (rpg-project#375 R10).
+ *
+ * THE PREDICATE GRAMMAR'S THIRD CONSUMER: `until` ends a hostility,
+ * `arrives` brings a placement in, and `when` ends the run — one spelling,
+ * one type. A scenario's own field is sugar for one of these:
+ * `scenarios: { hold-out: { convince: raiders } }` declares exactly the
+ * ending `{ id: hold-out, when: { stance: { between: [raiders, party], is:
+ * neutral } } }` would. The id is what the `ended` beat names — required
+ * and unique; `when` is required, nothing is defaulted. Written after
+ * `exits` and before `scenarios`, the compiler's own order. */
+export interface EndingDoc {
+  id: string;
+  when: PredicateDoc;
+}
+
+/** One scenario's bindings: the form's field keys mapped to the ids the
+ * author picked. CARRIED OPAQUELY — the builder learns the keys from
+ * `ListScenarios` and never interprets one, exactly as dungeonspec
+ * carries them and the scenario package's own `New(cfg)` validates them
+ * (ruled 2026-09-01). A key this client has never heard of round-trips
+ * unchanged rather than being dropped. */
+export type ScenarioBindings = Record<string, string>;
+
+/** One authored wall: a STRAIGHT LINE between two positions, and the
+ * file holds nothing else (rpg-project#360 slice 2, design §1.5, §3.2).
+ *
+ * The pair form — a wall as the list of hex-to-hex crossings it blocks —
+ * is DELETED, not deprecated. It could not say what the author drew: on
+ * a hex grid every degree-2 corner turns 60°, so a room corner and a
+ * zigzag step were the same angle and the client had to guess the line
+ * back out of the crossings with a tolerance. A wall now IS its line,
+ * and the crossings it blocks, the cells it passes through and the cells
+ * it seals are all derived from these two points — by the compiler for
+ * the record, by `hexGeometry.ts` for the picker's preview.
+ *
+ * `start` and `end` are two of the seven positions (§3.3). A CORNER is
+ * two walls carrying the same position at an end (F5) — the designer
+ * writes a join by copying the position, and neither this module nor the
+ * compiler has a corner concept. */
 export interface WallDoc {
-  edge: Edge;
+  start: PositionRef;
+  end: PositionRef;
+  /** The wall's display name, for the human reading the file and the
+   * errors about it — "north wall" beats `walls[7]` for the streamers
+   * who author these. Carried, never interpreted. */
+  name?: string;
   /** Raise-only MULTIPLIER of the standard rendered wall height, in
-   * `[1, 3]` (rpg-project#273's ruling: walls raise, they never
-   * lower). Omitted means standard — exactly what writing `1` means.
-   * Bounds are the server's call, surfaced as a `walls[i].height`
-   * `FieldError` like any other field; this module only checks the
-   * SHAPE (a finite number). VISUAL ONLY: a wall blocks movement and
-   * sight identically — and cannot be seen past — at every height. */
+   * `[1, 3]` (rpg-project#273's ruling: walls raise, they never lower).
+   * Omitted means standard — exactly what writing `1` means. Bounds are
+   * the server's call, surfaced as a `walls[i].height` `FieldError` like
+   * any other field; this module only checks the SHAPE (a finite
+   * number). VISUAL ONLY: a wall blocks movement and sight identically —
+   * and cannot be seen past — at every height. */
   height?: number;
+}
+
+/** A wall's two ends on the lattice — the form every derivation takes
+ * them in. */
+export const wallLattice = (
+  o: Orientation,
+  wall: WallDoc
+): { a: Lattice; b: Lattice } => ({
+  a: latticeOf(o, wall.start),
+  b: latticeOf(o, wall.end),
+});
+
+/** Every crossing the document's walls block, derived (C7) — the
+ * client's mirror of what the compiler computes, and the ONLY way the
+ * builder learns which hex-to-hex steps a wall stops now that the file
+ * no longer lists them. A door's own crossing is NOT subtracted here: a
+ * door stands IN a wall, and the compiler is what hands the crossing
+ * back to the door (rpg-project#355, unchanged by the line form). */
+export function wallCrossingKeys(doc: DungeonDoc): Set<string> {
+  // FLOOR TO FLOOR ONLY, matching C2: a wall's ends stick out past the
+  // room it caps, and the crossings out there run into void, which is
+  // impassable already. Reporting them would put a wall where the
+  // compiler puts nothing.
+  const floor = floorKeys(doc);
+  const keys = new Set<string>();
+  for (const wall of doc.walls) {
+    const { a, b } = wallLattice(doc.orientation, wall);
+    for (const edge of wallCrossings(doc.orientation, a, b)) {
+      if (!floor.has(axialKey(edge[0])) || !floor.has(axialKey(edge[1]))) {
+        continue;
+      }
+      keys.add(edgeKey(edge));
+    }
+  }
+  return keys;
+}
+
+/** Every cell one wall on its own seals — the cells its line halves
+ * (design §4.3). What walls seal in COMBINATION is the compiler's answer
+ * and arrives as `sealed` off the wire; this is the closed-form preview
+ * the picker shows before the author commits. Floor only: a wall through
+ * void seals nothing, there being nothing there to stand on. */
+export function sealedKeys(doc: DungeonDoc): Set<string> {
+  const floor = floorKeys(doc);
+  const keys = new Set<string>();
+  for (const wall of doc.walls) {
+    const { a, b } = wallLattice(doc.orientation, wall);
+    for (const cell of sealedBy(doc.orientation, a, b)) {
+      const key = axialKey(cell);
+      if (floor.has(key)) keys.add(key);
+    }
+  }
+  return keys;
 }
 
 export interface DungeonDoc {
@@ -120,10 +470,62 @@ export interface DungeonDoc {
   orientation: Orientation;
   void: VoidKind;
   regions: RegionDoc[];
-  start: Axial | null;
+  /** Floor nobody stands on — the cells belonging to no region at all
+   * (rpg-project#360 slice 1, design §1.4/§3.1).
+   *
+   * A cell carries two facts, an OWNER and whether it is STANDABLE, and
+   * scenery is the second without the first: floor for a wall to stand on
+   * and a prop to sit on, never floor for feet. A cell is in exactly one
+   * of a region, `scenery`, or void — the brush enforces that here
+   * (`paintScenery`/`paintCell`) so the file can never carry the overlap
+   * F1 refuses.
+   *
+   * ALWAYS PRESENT IN THE MODEL, WRITTEN ONLY WHEN IT HAS CELLS. The
+   * field is optional in the file ("omitted = none", §3.1), which is what
+   * keeps a dungeon that uses no scenery emitting the same bytes it
+   * always did — and keeps it compiling on a server whose decoder does
+   * not know the key yet. An empty list here is that absence, not a
+   * different state. */
+  scenery: Axial[];
+  /** Where the party comes in, and which way they are looking when they
+   * get there (`StartDoc`). NULL WHEN NOBODY AUTHORED ONE — the start is a
+   * pointer end to end (rpg-project#374 design, "The walks"): a
+   * zero-valued start would claim the party arrives at the origin looking
+   * nowhere, so its absence is spelled as absence and the wire omits it. */
+  start: StartDoc | null;
   walls: WallDoc[];
   doors: DoorDoc[];
   place: PlacementDoc[];
+  /** The ways out (`ExitDoc`). ALWAYS PRESENT IN THE MODEL, WRITTEN ONLY
+   * WHEN IT HAS ENTRIES — `scenery`'s own convention, and for its reason:
+   * a dungeon that authors none emits exactly the bytes it always did and
+   * keeps compiling on a server whose decoder has not learned the key. */
+  exits: ExitDoc[];
+  /** The intel records this dungeon declares (`IntelDoc`). ALWAYS PRESENT
+   * IN THE MODEL, WRITTEN ONLY WHEN IT HAS ENTRIES — `exits`'s convention,
+   * and for its reason: a dungeon that declares none emits exactly the
+   * bytes it always did. */
+  intel: IntelDoc[];
+  /** The factions this dungeon declares (`FactionDoc`). ALWAYS PRESENT IN
+   * THE MODEL, WRITTEN ONLY WHEN IT HAS ENTRIES — `intel`'s convention,
+   * for its reason: a dungeon that declares none emits exactly the bytes
+   * it always did, and its monsters stay `monsters`. */
+  factions: FactionDoc[];
+  /** The declared dispositions (`DispositionDoc`), in DOCUMENT order.
+   * Same presence rule. What is NOT declared is defaulted by the engine,
+   * never written here: `party` and `monsters` mutually hostile, a
+   * declared faction hostile to `party` unless told otherwise, declared
+   * factions neutral to each other (§2). */
+  dispositions: DispositionDoc[];
+  /** The authored endings (`EndingDoc`), in DOCUMENT order. ALWAYS PRESENT
+   * IN THE MODEL, WRITTEN ONLY WHEN IT HAS ENTRIES, for `exits`'s reason. */
+  endings: EndingDoc[];
+  /** Scenario id -> that scenario's bindings. A dungeon may bind several;
+   * the run ends when any bound ending fires. Written only when non-empty,
+   * for `exits`'s reason. Emitted with both levels of keys SORTED, so the
+   * bytes do not depend on the order an author happened to fill the form
+   * in — the same determinism `cells` and `walls` already have. */
+  scenarios: Record<string, ScenarioBindings>;
 }
 
 export const MONSTER_REF_PREFIX = 'dnd5e:monsters:';
@@ -198,14 +600,99 @@ function offsetPair(v: unknown, path: string): PlacementOffset {
     : [v[0] as number, v[1] as number, v[2] as number];
 }
 
-function edge(v: unknown, path: string, o: Orientation): Edge {
-  if (!Array.isArray(v) || v.length !== 2) {
-    throw new DungeonParseError(`${path}: expected [[col,row],[col,row]]`);
+/** One `{ cell: [col,row], offset: [x,y] }` position (design §3.2/§3.3).
+ * The offset MUST be one of the seven (F8) — an offset outside the set
+ * is not a position this builder can place, name or draw, so it is
+ * refused here by value rather than carried to the server as a
+ * pretend one. */
+function position(v: unknown, path: string, o: Orientation): PositionRef {
+  if (!isRecord(v)) {
+    throw new DungeonParseError(
+      `${path}: expected { cell: [col,row], offset: [x,y] }`
+    );
   }
-  return [
-    fromOffset(o, pair(v[0], `${path}[0]`)),
-    fromOffset(o, pair(v[1], `${path}[1]`)),
-  ];
+  expectKeys(v, ['cell', 'offset'], path);
+  const cell = fromOffset(o, pair(v.cell, `${path}.cell`));
+  const raw = v.offset;
+  if (
+    !Array.isArray(raw) ||
+    raw.length !== 2 ||
+    !raw.every((c) => Number.isFinite(c))
+  ) {
+    throw new DungeonParseError(`${path}.offset: expected [x,y]`);
+  }
+  const offset: Offset = [raw[0] as number, raw[1] as number];
+  if (!isPositionOffset(o, offset)) {
+    throw new DungeonParseError(
+      `${path}.offset: [${offset[0]},${offset[1]}] is not one of the seven ` +
+        `positions of a ${o}-top hex — a wall end and a door stand on a side ` +
+        `midpoint or the centre, nowhere else (${POSITION_HELP[o]})`
+    );
+  }
+  return { cell, offset };
+}
+
+/** The seven, spelled for a refusal a streamer can act on. */
+const POSITION_HELP: Record<Orientation, string> = {
+  pointy:
+    '[0,0], [0.5,0], [-0.5,0], [0.25,-0.375], [-0.25,-0.375], ' +
+    '[0.25,0.375], [-0.25,0.375]',
+  flat:
+    '[0,0], [0,0.5], [0,-0.5], [0.375,0.25], [0.375,-0.25], ' +
+    '[-0.375,0.25], [-0.375,-0.25]',
+};
+
+/** THE DELETED `knows:` FIELD, refused by name (rpg-project#372 R1).
+ *
+ * A monster no longer knows a door; it HOLDS AN INTEL RECORD, and the
+ * record says what it reveals. One spelling of knowledge, so the next
+ * thing intel can reveal — a region, a treasure, how a lock opens —
+ * arrives on the record and not as a second field here.
+ *
+ * Refused before anything else is read, and in the COMPILER'S OWN WORDS,
+ * because a refusal a streamer meets twice — once here on load, once from
+ * the server — must read the same both times or the two look like two
+ * different problems. Same treatment `refusePairForm` gives the deleted
+ * wall form.
+ */
+function refuseKnows(raw: Raw): void {
+  const place = Array.isArray(raw.place) ? raw.place : [];
+  const bad = place.findIndex((p) => isRecord(p) && p.knows !== undefined);
+  if (bad === -1) return;
+  throw new DungeonParseError(`place[${bad}].knows: ${KNOWS_IS_GONE}`);
+}
+
+/** The compiler's sentence for the deleted field, word for word. */
+export const KNOWS_IS_GONE =
+  '`knows` is gone: declare an `intel:` record with what it reveals, and ' +
+  'give the monster `holds: [<record id>]`.';
+
+/** The pair form, refused at the header (F4). A `walls[]` entry written
+ * as a bare `[[col,row],[col,row]]` or carrying `between`/`edges`, or a
+ * `doors[]` entry carrying `edges`, is version 2's DELETED wall form —
+ * not a field this loader failed to learn. Refused before anything else
+ * is read, so the author gets the one sentence that explains the whole
+ * file rather than a per-entry shape complaint. */
+function refusePairForm(raw: Raw): void {
+  const pairShaped = (w: unknown): boolean =>
+    Array.isArray(w) ||
+    (isRecord(w) && (w.between !== undefined || w.edges !== undefined));
+  const walls = Array.isArray(raw.walls) ? raw.walls : [];
+  const doors = Array.isArray(raw.doors) ? raw.doors : [];
+  const badWall = walls.findIndex(pairShaped);
+  const badDoor = doors.findIndex((d) => isRecord(d) && d.edges !== undefined);
+  if (badWall === -1 && badDoor === -1) return;
+  const where = badWall !== -1 ? `walls[${badWall}]` : `doors[${badDoor}]`;
+  // THE COMPILER'S OWN SENTENCE, word for word (dungeonspec's constant),
+  // prefixed with the field path the way it prefixes one. A refusal a
+  // streamer meets twice — once here on load, once from the server —
+  // must read the same both times, or the two look like two different
+  // problems.
+  throw new DungeonParseError(
+    `${where}: \`edges\` is the deleted pair form: a wall is now a line, ` +
+      '`start` and `end`, each a cell and one of the seven offsets, and a ' +
+      'door is `at` one position on it.'
+  );
 }
 
 function list(v: unknown, path: string): unknown[] {
@@ -213,6 +700,106 @@ function list(v: unknown, path: string): unknown[] {
   if (!Array.isArray(v))
     throw new DungeonParseError(`${path}: expected a list`);
   return v;
+}
+
+/** One `{ ability, tool?, dc }` row — mirrors dungeonspec's `ApproachSpec`
+ * parse. `tool` is written only when present, same optional-field
+ * convention as every other doc type here. */
+function approach(v: unknown, path: string): ApproachDoc {
+  if (!isRecord(v)) throw new DungeonParseError(`${path}: expected a map`);
+  expectKeys(v, ['ability', 'tool', 'dc'], path);
+  if (!Number.isInteger(v.dc)) {
+    throw new DungeonParseError(`${path}.dc: expected an integer`);
+  }
+  const out: ApproachDoc = {
+    ability: str(v, 'ability', path),
+    dc: v.dc as number,
+  };
+  if (v.tool !== undefined && v.tool !== null) {
+    out.tool = str(v, 'tool', path);
+  }
+  return out;
+}
+
+/** A bare list of approach rows — a door's `locked` or `concealed`. An
+ * authored-but-empty list parses through unchanged (this module only
+ * refuses what it cannot represent; "at least one approach" is the
+ * server's refusal to make, not the loader's). */
+function checkList(v: unknown, path: string): CheckDoc {
+  if (!Array.isArray(v)) {
+    throw new DungeonParseError(`${path}: expected a list`);
+  }
+  return v.map((a, i) => approach(a, `${path}[${i}]`));
+}
+
+/** The predicate grammar, spelled for a refusal a streamer can act on. */
+export const PREDICATE_SHAPE =
+  'a predicate is exactly one of { round: N }, { down: <placement id> }, ' +
+  '{ fact: <id> }, or { stance: { between: [a, b], is: hostile|neutral|allied } }';
+
+/** `[faction, faction]` — two strings, carried verbatim. */
+function factionPair(v: unknown, path: string): [string, string] {
+  if (
+    !Array.isArray(v) ||
+    v.length !== 2 ||
+    !v.every((x) => typeof x === 'string')
+  ) {
+    throw new DungeonParseError(`${path}: expected [faction, faction]`);
+  }
+  return [v[0] as string, v[1] as string];
+}
+
+/** One of the three stances, refused by name otherwise — a closed set the
+ * panel's select has to be able to show. */
+function stanceWord(obj: Raw, key: string, path: string): Stance {
+  const word = str(obj, key, path);
+  if (!(STANCES as readonly string[]).includes(word)) {
+    throw new DungeonParseError(
+      `${path}.${key}: expected hostile | neutral | allied`
+    );
+  }
+  return word as Stance;
+}
+
+/** One predicate (`PredicateDoc`): a map with EXACTLY ONE of the four keys.
+ * Refused by SHAPE only — a `{ down }` naming nobody or a `{ round: 0 }`
+ * is a predicate this module can hold and the panel refuses inline; a map
+ * with two keys, or a key this grammar has not learned, is not a predicate
+ * at all. */
+function predicate(v: unknown, path: string): PredicateDoc {
+  if (!isRecord(v)) throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+  const keys = Object.keys(v);
+  if (keys.length !== 1) {
+    throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+  }
+  switch (keys[0]) {
+    case 'round':
+      if (!Number.isInteger(v.round)) {
+        throw new DungeonParseError(`${path}.round: expected an integer`);
+      }
+      return { round: v.round as number };
+    case 'down':
+      return { down: str(v, 'down', path) };
+    case 'fact':
+      return { fact: str(v, 'fact', path) };
+    case 'stance': {
+      const s = v.stance;
+      if (!isRecord(s)) {
+        throw new DungeonParseError(
+          `${path}.stance: expected { between: [a, b], is: hostile | neutral | allied }`
+        );
+      }
+      expectKeys(s, ['between', 'is'], `${path}.stance`);
+      return {
+        stance: {
+          between: factionPair(s.between, `${path}.stance.between`),
+          is: stanceWord(s, 'is', `${path}.stance`),
+        },
+      };
+    }
+    default:
+      throw new DungeonParseError(`${path}: ${PREDICATE_SHAPE}`);
+  }
 }
 
 export function parseDungeon(text: string): DungeonDoc {
@@ -234,10 +821,17 @@ export function parseDungeon(text: string): DungeonDoc {
       'orientation',
       'void',
       'regions',
+      'scenery',
       'start',
       'walls',
       'doors',
       'place',
+      'exits',
+      'scenarios',
+      'intel',
+      'factions',
+      'dispositions',
+      'endings',
     ],
     'document'
   );
@@ -246,6 +840,8 @@ export function parseDungeon(text: string): DungeonDoc {
       `version: this builder writes dungeonspec version 2; got ${JSON.stringify(raw.version)} (version 1 is deleted, not supported)`
     );
   }
+  refusePairForm(raw);
+  refuseKnows(raw);
   const orientation = str(raw, 'orientation', 'document');
   if (orientation !== 'pointy' && orientation !== 'flat') {
     throw new DungeonParseError('orientation: expected pointy | flat');
@@ -258,7 +854,11 @@ export function parseDungeon(text: string): DungeonDoc {
   const regions = list(raw.regions, 'regions').map((r, i): RegionDoc => {
     const path = `regions[${i}]`;
     if (!isRecord(r)) throw new DungeonParseError(`${path}: expected a map`);
-    expectKeys(r, ['id', 'name', 'archetype', 'lighting', 'cells'], path);
+    expectKeys(
+      r,
+      ['id', 'name', 'archetype', 'lighting', 'cells', 'concealed'],
+      path
+    );
     const lighting = r.lighting;
     let intensity = 0;
     if (lighting !== undefined && lighting !== null) {
@@ -281,50 +881,92 @@ export function parseDungeon(text: string): DungeonDoc {
         );
       }
     }
-    return {
+    const region: RegionDoc = {
       id: str(r, 'id', path),
       name: str(r, 'name', path, ''),
       archetype: str(r, 'archetype', path, ''),
       lighting: { intensity },
       cells,
     };
+    if (r.concealed !== undefined && r.concealed !== null) {
+      if (typeof r.concealed !== 'boolean') {
+        throw new DungeonParseError(`${path}.concealed: expected a boolean`);
+      }
+      if (r.concealed) region.concealed = true;
+    }
+    return region;
   });
 
-  const start =
-    raw.start === undefined || raw.start === null
-      ? null
-      : fromOffset(orientation, pair(raw.start, 'start'));
+  // Same row encoding as `regions[].cells` — rows of `[col,row]` — so the
+  // author reads one shape for floor whoever owns it. Absent is empty.
+  const scenery: Axial[] = [];
+  for (const [ri, row] of list(raw.scenery, 'scenery').entries()) {
+    for (const [ci, c] of list(row, `scenery[${ri}]`).entries()) {
+      scenery.push(fromOffset(orientation, pair(c, `scenery[${ri}][${ci}]`)));
+    }
+  }
+
+  // BOTH SPELLINGS PARSE (`StartDoc`): the bare pair every older dungeon
+  // uses, and the map that states a facing. Neither is preferred here —
+  // the emitter picks one, and it picks by whether there is a facing.
+  let start: StartDoc | null = null;
+  if (raw.start !== undefined && raw.start !== null) {
+    if (Array.isArray(raw.start)) {
+      start = { at: fromOffset(orientation, pair(raw.start, 'start')) };
+    } else if (isRecord(raw.start)) {
+      expectKeys(raw.start, ['at', 'facing'], 'start');
+      start = { at: fromOffset(orientation, pair(raw.start.at, 'start.at')) };
+      // EMPTY FACING IS NO FACING — the zero value telling the truth, not
+      // a third state. `AtlasStart.facing`'s own law says empty means the
+      // author stated none, and every reader downstream collapses it that
+      // way; carrying `facing: ''` in the model would let it re-emit as
+      // `facing: ""` and print "the camera looks  on the first frame".
+      const facing = raw.start.facing;
+      if (facing !== undefined && facing !== null) {
+        const word = str(raw.start, 'facing', 'start');
+        if (word !== '') start.facing = word;
+      }
+    } else {
+      throw new DungeonParseError(
+        'start: expected [col,row] or { at: [col,row], facing? }'
+      );
+    }
+  }
 
   const walls = list(raw.walls, 'walls').map((w, i): WallDoc => {
     const path = `walls[${i}]`;
-    if (Array.isArray(w)) return { edge: edge(w, path, orientation) };
-    if (isRecord(w)) {
-      expectKeys(w, ['between', 'height'], path);
-      const wall: WallDoc = {
-        edge: edge(w.between, `${path}.between`, orientation),
-      };
-      if (w.height !== undefined && w.height !== null) {
-        if (!Number.isFinite(w.height)) {
-          throw new DungeonParseError(`${path}.height: expected a number`);
-        }
-        wall.height = w.height as number;
-      }
-      return wall;
+    if (!isRecord(w)) {
+      throw new DungeonParseError(
+        `${path}: expected { start, end, height?, name? }`
+      );
     }
-    throw new DungeonParseError(
-      `${path}: expected [[col,row],[col,row]] or { between, height }`
-    );
+    expectKeys(w, ['start', 'end', 'height', 'name'], path);
+    const wall: WallDoc = {
+      start: position(w.start, `${path}.start`, orientation),
+      end: position(w.end, `${path}.end`, orientation),
+    };
+    if (w.name !== undefined && w.name !== null) {
+      if (typeof w.name !== 'string') {
+        throw new DungeonParseError(`${path}.name: expected a string`);
+      }
+      wall.name = w.name;
+    }
+    if (w.height !== undefined && w.height !== null) {
+      if (!Number.isFinite(w.height)) {
+        throw new DungeonParseError(`${path}.height: expected a number`);
+      }
+      wall.height = w.height as number;
+    }
+    return wall;
   });
 
   const doors = list(raw.doors, 'doors').map((d, i): DoorDoc => {
     const path = `doors[${i}]`;
     if (!isRecord(d)) throw new DungeonParseError(`${path}: expected a map`);
-    expectKeys(d, ['id', 'edges', 'closed', 'locked'], path);
+    expectKeys(d, ['id', 'at', 'closed', 'locked', 'concealed'], path);
     const door: DoorDoc = {
       id: str(d, 'id', path),
-      edges: list(d.edges, `${path}.edges`).map((e, j) =>
-        edge(e, `${path}.edges[${j}]`, orientation)
-      ),
+      at: position(d.at, `${path}.at`, orientation),
     };
     if (d.closed !== undefined && d.closed !== null) {
       if (typeof d.closed !== 'boolean') {
@@ -333,17 +975,10 @@ export function parseDungeon(text: string): DungeonDoc {
       if (d.closed) door.closed = true;
     }
     if (d.locked !== undefined && d.locked !== null) {
-      if (!isRecord(d.locked)) {
-        throw new DungeonParseError(`${path}.locked: expected a map`);
-      }
-      expectKeys(d.locked, ['dc', 'ability'], `${path}.locked`);
-      if (!Number.isInteger(d.locked.dc)) {
-        throw new DungeonParseError(`${path}.locked.dc: expected an integer`);
-      }
-      door.locked = {
-        dc: d.locked.dc as number,
-        ability: str(d.locked, 'ability', `${path}.locked`),
-      };
+      door.locked = checkList(d.locked, `${path}.locked`);
+    }
+    if (d.concealed !== undefined && d.concealed !== null) {
+      door.concealed = checkList(d.concealed, `${path}.concealed`);
     }
     return door;
   });
@@ -362,6 +997,11 @@ export function parseDungeon(text: string): DungeonDoc {
         'offset',
         'targeting',
         'boss',
+        'id',
+        'holds',
+        'holdable',
+        'faction',
+        'arrives',
       ],
       path
     );
@@ -390,8 +1030,169 @@ export function parseDungeon(text: string): DungeonDoc {
     if (p.targeting !== undefined && p.targeting !== null) {
       placement.targeting = str(p, 'targeting', path);
     }
+    if (p.id !== undefined && p.id !== null) {
+      placement.id = str(p, 'id', path);
+    }
+    // NIL, NOT LEN 0, IS "HOLDS NOTHING" (`PlacementDoc.holds`'s law, the
+    // same one `DoorDoc.locked` keeps): an authored empty list is carried
+    // through rather than silently read as absent, so what the author
+    // wrote is what the server judges.
+    if (p.holds !== undefined && p.holds !== null) {
+      placement.holds = list(p.holds, `${path}.holds`).map((d, j) => {
+        if (typeof d !== 'string') {
+          throw new DungeonParseError(`${path}.holds[${j}]: expected a string`);
+        }
+        return d;
+      });
+    }
+    if (p.holdable !== undefined && p.holdable !== null) {
+      if (typeof p.holdable !== 'boolean') {
+        throw new DungeonParseError(`${path}.holdable: expected a boolean`);
+      }
+      if (p.holdable) placement.holdable = true;
+    }
+    // Carried verbatim, monster or prop: the "monsters only" rule is the
+    // compiler's refusal to make and `factionRules.ts`'s to render, so a
+    // file that breaks it loads and shows the line rather than bouncing.
+    if (p.faction !== undefined && p.faction !== null) {
+      placement.faction = str(p, 'faction', path);
+    }
+    if (p.arrives !== undefined && p.arrives !== null) {
+      placement.arrives = predicate(p.arrives, `${path}.arrives`);
+    }
     return placement;
   });
+
+  // The ways out. `at` is a plain `[col,row]`, exactly like `start`.
+  const exits = list(raw.exits, 'exits').map((e, i): ExitDoc => {
+    const path = `exits[${i}]`;
+    if (!isRecord(e)) {
+      throw new DungeonParseError(`${path}: expected { id, at: [col,row] }`);
+    }
+    expectKeys(e, ['id', 'at'], path);
+    return {
+      id: str(e, 'id', path),
+      at: fromOffset(orientation, pair(e.at, `${path}.at`)),
+    };
+  });
+
+  // The intel records this dungeon declares. `reveals` is read as a map of
+  // strings and nothing here knows what a key means — `door` is the only
+  // one the engine reads today, and the set grows one key per use case.
+  const intel = list(raw.intel, 'intel').map((r, i): IntelDoc => {
+    const path = `intel[${i}]`;
+    if (!isRecord(r)) {
+      throw new DungeonParseError(`${path}: expected { id, reveals }`);
+    }
+    expectKeys(r, ['id', 'reveals'], path);
+    const reveals: Record<string, string> = {};
+    if (r.reveals !== undefined && r.reveals !== null) {
+      if (!isRecord(r.reveals)) {
+        throw new DungeonParseError(`${path}.reveals: expected a map`);
+      }
+      for (const [key, value] of Object.entries(r.reveals)) {
+        if (typeof value !== 'string') {
+          throw new DungeonParseError(
+            `${path}.reveals.${key}: expected a string`
+          );
+        }
+        reveals[key] = value;
+      }
+    }
+    return { id: str(r, 'id', path), reveals };
+  });
+
+  // The factions this dungeon declares. `mind` is read as a string and
+  // nothing here checks that it names a member — that is a refusal the
+  // panel renders inline (`factionRules.ts`) and the compiler makes by
+  // name, so a half-authored file still loads.
+  const factions = list(raw.factions, 'factions').map((f, i): FactionDoc => {
+    const path = `factions[${i}]`;
+    if (!isRecord(f)) {
+      throw new DungeonParseError(`${path}: expected { id, mind? }`);
+    }
+    expectKeys(f, ['id', 'mind'], path);
+    const faction: FactionDoc = { id: str(f, 'id', path) };
+    if (f.mind !== undefined && f.mind !== null) {
+      faction.mind = str(f, 'mind', path);
+    }
+    return faction;
+  });
+
+  // The dispositions, in the author's order. `stance` is a closed set this
+  // module has to interpret (the panel's select needs a value it knows), so
+  // an unknown word is refused here the way `orientation`'s is; `between`
+  // is two strings carried verbatim, and `until` is a predicate.
+  const dispositions = list(raw.dispositions, 'dispositions').map(
+    (d, i): DispositionDoc => {
+      const path = `dispositions[${i}]`;
+      if (!isRecord(d)) {
+        throw new DungeonParseError(
+          `${path}: expected { between: [a, b], stance, until? }`
+        );
+      }
+      expectKeys(d, ['between', 'stance', 'until'], path);
+      const disposition: DispositionDoc = {
+        between: factionPair(d.between, `${path}.between`),
+        stance: stanceWord(d, 'stance', path),
+      };
+      if (d.until !== undefined && d.until !== null) {
+        disposition.until = predicate(d.until, `${path}.until`);
+      }
+      return disposition;
+    }
+  );
+
+  // The authored endings: an id and a predicate. `when` is REQUIRED — an
+  // ending that does not say when it fires is not one this module can
+  // represent — and everything about whether it can fire is the compiler's.
+  const endings = list(raw.endings, 'endings').map((e, i): EndingDoc => {
+    const path = `endings[${i}]`;
+    if (!isRecord(e)) {
+      throw new DungeonParseError(
+        `${path}: expected { id, when: <predicate> }`
+      );
+    }
+    expectKeys(e, ['id', 'when'], path);
+    if (e.when === undefined || e.when === null) {
+      throw new DungeonParseError(
+        `${path}.when: the ending does not say when it fires — ${PREDICATE_SHAPE}`
+      );
+    }
+    return {
+      id: str(e, 'id', path, ''),
+      when: predicate(e.when, `${path}.when`),
+    };
+  });
+
+  // CARRIED OPAQUELY. Every binding value is read as a string and nothing
+  // here knows what a key means — that is the scenario package's question,
+  // asked through `New(cfg)` on the server (ruled 2026-09-01). A key this
+  // build has never heard of survives the round trip untouched.
+  const scenarios: Record<string, ScenarioBindings> = {};
+  if (raw.scenarios !== undefined && raw.scenarios !== null) {
+    if (!isRecord(raw.scenarios)) {
+      throw new DungeonParseError('scenarios: expected a map');
+    }
+    for (const [id, bindings] of Object.entries(raw.scenarios)) {
+      const path = `scenarios.${id}`;
+      if (bindings === undefined || bindings === null) {
+        scenarios[id] = {};
+        continue;
+      }
+      if (!isRecord(bindings)) {
+        throw new DungeonParseError(`${path}: expected a map`);
+      }
+      const out: ScenarioBindings = {};
+      for (const [key, value] of Object.entries(bindings)) {
+        if (typeof value !== 'string') {
+          throw new DungeonParseError(`${path}.${key}: expected a string`);
+        }
+        out[key] = value;
+      }
+      scenarios[id] = out;
+    }
+  }
 
   return {
     version: 2,
@@ -400,10 +1201,17 @@ export function parseDungeon(text: string): DungeonDoc {
     orientation,
     void: voidKind,
     regions,
+    scenery,
     start,
     walls,
     doors,
     place,
+    exits,
+    scenarios,
+    intel,
+    factions,
+    dispositions,
+    endings,
   };
 }
 
@@ -424,6 +1232,26 @@ function scalar(s: string): string {
 
 const fmtPair = ([c, r]: OffsetPair): string => `[${c},${r}]`;
 
+/** One `{ ability, tool?, dc }` row, key order matching
+ * dungeonspec.ApproachSpec's own field order (ability, tool, dc). */
+function fmtApproach(a: ApproachDoc): string {
+  const fields = [`ability: ${scalar(a.ability)}`];
+  if (a.tool !== undefined) fields.push(`tool: ${scalar(a.tool)}`);
+  fields.push(`dc: ${a.dc}`);
+  return `{ ${fields.join(', ')} }`;
+}
+
+/** One predicate as the file writes it — a one-key flow map, the key's
+ * spelling being the form (`PredicateDoc`). Exported for the panels that
+ * show a predicate read-only in the file's own words. */
+export function predicateText(p: PredicateDoc): string {
+  if ('round' in p) return `{ round: ${p.round} }`;
+  if ('down' in p) return `{ down: ${scalar(p.down)} }`;
+  if ('fact' in p) return `{ fact: ${scalar(p.fact)} }`;
+  const [a, b] = p.stance.between;
+  return `{ stance: { between: [${scalar(a)}, ${scalar(b)}], is: ${p.stance.is} } }`;
+}
+
 function compareOffset(a: OffsetPair, b: OffsetPair): number {
   return a[1] - b[1] || a[0] - b[0];
 }
@@ -436,53 +1264,78 @@ function compareOffset(a: OffsetPair, b: OffsetPair): number {
  */
 export interface EmittedLayout {
   regions: { region: RegionDoc; rows: Axial[][] }[];
+  /** `scenery`'s rows, in the emitted order — the same row-per-line shape
+   * a region's cells take, so `scenery[i][j]` in a compiler path names
+   * the cell the emitter put there. */
+  scenery: Axial[][];
   walls: WallDoc[];
-  doors: { door: DoorDoc; edges: Edge[] }[];
+  doors: DoorDoc[];
+  /** The exits in the emitted order, which is the DOCUMENT order — the
+   * same treatment `doors` gets, so `exits[i]` in a compiler path names
+   * the entry the emitter put there. */
+  exits: ExitDoc[];
+}
+
+/** Cells sorted by row then column and grouped one ROW per entry — the
+ * file's cell shape, shared by a region's `cells` and by `scenery` so
+ * both read and diff the same way. */
+function cellRows(o: Orientation, cells: Axial[]): Axial[][] {
+  const sorted = [...cells].sort((a, b) =>
+    compareOffset(toOffset(o, a), toOffset(o, b))
+  );
+  const rows: Axial[][] = [];
+  for (const cell of sorted) {
+    const last = rows[rows.length - 1];
+    if (last && toOffset(o, last[0])[1] === toOffset(o, cell)[1]) {
+      last.push(cell);
+    } else rows.push([cell]);
+  }
+  return rows;
 }
 
 export function emittedLayout(doc: DungeonDoc): EmittedLayout {
   const o = doc.orientation;
-  const byOffset = (a: Axial, b: Axial) =>
-    compareOffset(toOffset(o, a), toOffset(o, b));
   return {
-    regions: doc.regions.map((region) => {
-      const sorted = [...region.cells].sort(byOffset);
-      const rows: Axial[][] = [];
-      for (const cell of sorted) {
-        const last = rows[rows.length - 1];
-        if (last && toOffset(o, last[0])[1] === toOffset(o, cell)[1]) {
-          last.push(cell);
-        } else rows.push([cell]);
-      }
-      return { region, rows };
-    }),
-    walls: sortedWalls(doc.walls),
-    doors: doc.doors.map((door) => ({ door, edges: sortedEdges(door.edges) })),
+    regions: doc.regions.map((region) => ({
+      region,
+      rows: cellRows(o, region.cells),
+    })),
+    scenery: cellRows(o, doc.scenery),
+    walls: sortedWalls(o, doc.walls),
+    doors: doc.doors,
+    exits: doc.exits,
   };
 }
 
-function fmtEdge(o: Orientation, e: Edge): string {
-  const [a, b] = normalizeEdge(e);
-  return `[${fmtPair(toOffset(o, a))},${fmtPair(toOffset(o, b))}]`;
+/** A number as the file writes it — plain decimal, never exponential
+ * and never a trailing `.0`, so `0.25` and `-0.375` read back as the
+ * same dyadic values the position set is made of. */
+const fmtNum = (n: number): string => String(n);
+
+function fmtPosition(o: Orientation, p: PositionRef): string {
+  return `{ cell: ${fmtPair(toOffset(o, p.cell))}, offset: [${fmtNum(
+    p.offset[0]
+  )}, ${fmtNum(p.offset[1])}] }`;
 }
 
-function sortedEdges(edges: Edge[]): Edge[] {
-  return edges.map(normalizeEdge).sort((x, y) => {
-    return compareAxial(x[0], y[0]) || compareAxial(x[1], y[1]);
+/** Walls in a stable order: by their start position, then their end —
+ * so `walls[i]` in the emitted file and in a compiler error path name
+ * the same wall, and re-emitting a parsed file is byte-identical.
+ * Compared on the LATTICE, not on the `{cell, offset}` spelling, so two
+ * walls that meet at a corner sort by where they actually are. */
+function sortedWalls(o: Orientation, walls: WallDoc[]): WallDoc[] {
+  const rank = (p: PositionRef): [number, number] => {
+    const l = latticeOf(o, p);
+    return [l.v, l.u];
+  };
+  return [...walls].sort((x, y) => {
+    const [xv, xu] = rank(x.start);
+    const [yv, yu] = rank(y.start);
+    if (xv !== yv || xu !== yu) return xv - yv || xu - yu;
+    const [xev, xeu] = rank(x.end);
+    const [yev, yeu] = rank(y.end);
+    return xev - yev || xeu - yeu;
   });
-}
-
-/** `sortedEdges` for wall entries: same normalized edge order, with each
- * entry's own height riding along — so `walls[i]` in the emitted file
- * and in a compiler error path name the same entry. */
-function sortedWalls(walls: WallDoc[]): WallDoc[] {
-  return walls
-    .map((w) => ({ ...w, edge: normalizeEdge(w.edge) }))
-    .sort((x, y) => {
-      return (
-        compareAxial(x.edge[0], y.edge[0]) || compareAxial(x.edge[1], y.edge[1])
-      );
-    });
 }
 
 export function emitDungeon(doc: DungeonDoc): string {
@@ -514,12 +1367,35 @@ export function emitDungeon(doc: DungeonDoc): string {
           );
         }
       }
+      if (region.concealed) {
+        out.push('    concealed: true');
+      }
+    }
+  }
+
+  // Written ONLY when it has cells (design §3.1: "optional; omitted =
+  // none"). A dungeon with no scenery emits exactly the bytes it always
+  // did — which is what keeps every existing file byte-identical and
+  // keeps it compiling on a server that has not learned the key yet.
+  if (layout.scenery.length > 0) {
+    out.push('scenery:');
+    for (const row of layout.scenery) {
+      out.push(
+        `      - [${row.map((c) => fmtPair(toOffset(o, c))).join(',')}]`
+      );
     }
   }
 
   if (doc.start) {
-    const [c, r] = toOffset(o, doc.start);
-    out.push(`start: [${c}, ${r}]`);
+    const [c, r] = toOffset(o, doc.start.at);
+    // THE BARE PAIR WHEN THERE IS NO FACING. Every dungeon written before
+    // facing existed keeps the bytes it has always had, which is what the
+    // toolkit fixtures are and what their byte-pins check.
+    out.push(
+      doc.start.facing === undefined
+        ? `start: [${c}, ${r}]`
+        : `start: { at: [${c}, ${r}], facing: ${scalar(doc.start.facing)} }`
+    );
   }
 
   if (doc.walls.length === 0) {
@@ -527,11 +1403,12 @@ export function emitDungeon(doc: DungeonDoc): string {
   } else {
     out.push('walls:');
     for (const w of layout.walls) {
-      out.push(
-        w.height === undefined
-          ? `  - ${fmtEdge(o, w.edge)}`
-          : `  - { between: ${fmtEdge(o, w.edge)}, height: ${w.height} }`
-      );
+      // One line per end, `start` above `end`, so a wall that moves
+      // diffs as the end that moved (design §3.2's own shape).
+      out.push(`  - start: ${fmtPosition(o, w.start)}`);
+      out.push(`    end: ${fmtPosition(o, w.end)}`);
+      if (w.name !== undefined) out.push(`    name: ${scalar(w.name)}`);
+      if (w.height !== undefined) out.push(`    height: ${w.height}`);
     }
   }
 
@@ -539,15 +1416,16 @@ export function emitDungeon(doc: DungeonDoc): string {
     out.push('doors: []');
   } else {
     out.push('doors:');
-    for (const { door: d, edges } of layout.doors) {
+    for (const d of layout.doors) {
       out.push(`  - id: ${scalar(d.id)}`);
-      out.push(`    edges: [${edges.map((e) => fmtEdge(o, e)).join(',')}]`);
-      if (d.locked) {
-        out.push(
-          `    locked: { dc: ${d.locked.dc}, ability: ${scalar(d.locked.ability)} }`
-        );
+      out.push(`    at: ${fmtPosition(o, d.at)}`);
+      if (d.locked !== undefined) {
+        out.push(`    locked: [${d.locked.map(fmtApproach).join(', ')}]`);
       } else if (d.closed) {
         out.push('    closed: true');
+      }
+      if (d.concealed !== undefined) {
+        out.push(`    concealed: [${d.concealed.map(fmtApproach).join(', ')}]`);
       }
     }
   }
@@ -557,8 +1435,17 @@ export function emitDungeon(doc: DungeonDoc): string {
   } else {
     out.push('place:');
     for (const p of doc.place) {
-      const fields = [`ref: ${JSON.stringify(p.ref)}`];
+      // `id` LEADS the entry, the way a door's and a region's do — it is
+      // the author's name for this line, and the thing a refusal about it
+      // will quote.
+      const fields = p.id !== undefined ? [`id: ${scalar(p.id)}`] : [];
+      fields.push(`ref: ${JSON.stringify(p.ref)}`);
       fields.push(`at: ${fmtPair(toOffset(o, p.at))}`);
+      // The side, right after the cell — design §1's own order — and
+      // only when the author chose one: absent IS `monsters`.
+      if (p.faction !== undefined) {
+        fields.push(`faction: ${scalar(p.faction)}`);
+      }
       if (p.blocksMovement !== undefined) {
         fields.push(`blocks_movement: ${p.blocksMovement}`);
       }
@@ -567,11 +1454,115 @@ export function emitDungeon(doc: DungeonDoc): string {
       if (p.offset !== undefined) {
         fields.push(`offset: [${p.offset.join(', ')}]`);
       }
+      if (p.holdable) fields.push('holdable: true');
       if (p.targeting !== undefined) {
         fields.push(`targeting: ${scalar(p.targeting)}`);
       }
+      if (p.holds !== undefined) {
+        fields.push(`holds: [${p.holds.map(scalar).join(', ')}]`);
+      }
       if (p.boss) fields.push('boss: true');
+      if (p.arrives !== undefined) {
+        fields.push(`arrives: ${predicateText(p.arrives)}`);
+      }
       out.push(`  - { ${fields.join(', ')} }`);
+    }
+  }
+
+  // Written ONLY when there are any (`DungeonDoc.factions`'s law), one
+  // flow map per line in DOCUMENT order — design §1's own shape. A
+  // dungeon that declares none emits the bytes it always did.
+  if (doc.factions.length > 0) {
+    out.push('factions:');
+    for (const f of doc.factions) {
+      const fields = [`id: ${scalar(f.id)}`];
+      if (f.mind !== undefined) fields.push(`mind: ${scalar(f.mind)}`);
+      out.push(`  - { ${fields.join(', ')} }`);
+    }
+  }
+
+  // The pair IN THE AUTHOR'S ORDER (`DispositionDoc.between`): a list the
+  // author wrote, so re-emitting a parsed file is byte-identical without
+  // this module deciding which of two unordered names comes first.
+  if (doc.dispositions.length > 0) {
+    out.push('dispositions:');
+    for (const d of doc.dispositions) {
+      const fields = [
+        `between: [${scalar(d.between[0])}, ${scalar(d.between[1])}]`,
+        `stance: ${d.stance}`,
+      ];
+      if (d.until !== undefined) {
+        fields.push(`until: ${predicateText(d.until)}`);
+      }
+      out.push(`  - { ${fields.join(', ')} }`);
+    }
+  }
+
+  // Written ONLY when there are any, so a dungeon that declares no intel
+  // emits exactly the bytes it always did. Records in DOCUMENT order —
+  // the author's own order, the way `doors` and `exits` keep theirs — and
+  // each record's `reveals` keys SORTED, so the bytes do not depend on
+  // which target the author happened to pick first.
+  if (doc.intel.length > 0) {
+    out.push('intel:');
+    for (const record of doc.intel) {
+      out.push(`  - id: ${scalar(record.id)}`);
+      const keys = Object.keys(record.reveals).sort();
+      if (keys.length === 0) {
+        // A record that reveals nothing yet — the state a brand new one
+        // is in before its target is picked. `{}` says that in one token.
+        out.push('    reveals: {}');
+      } else {
+        out.push(
+          `    reveals: { ${keys
+            .map((key) => `${scalar(key)}: ${scalar(record.reveals[key])}`)
+            .join(', ')} }`
+        );
+      }
+    }
+  }
+
+  // Written ONLY when there are any (`DungeonDoc.exits`'s own law), so a
+  // dungeon that authors no way out emits the bytes it always did. `at` is
+  // spelled exactly like `start` above — one authored cell, one shape.
+  if (doc.exits.length > 0) {
+    out.push('exits:');
+    for (const e of layout.exits) {
+      const [c, r] = toOffset(o, e.at);
+      out.push(`  - { id: ${scalar(e.id)}, at: [${c}, ${r}] }`);
+    }
+  }
+
+  // Written ONLY when there are any, after `exits` and before `scenarios`
+  // — the compiler's own order — one flow map per line in DOCUMENT order.
+  if (doc.endings.length > 0) {
+    out.push('endings:');
+    for (const e of doc.endings) {
+      out.push(`  - { id: ${scalar(e.id)}, when: ${predicateText(e.when)} }`);
+    }
+  }
+
+  // BOTH LEVELS SORTED. A map has no order of its own, and the author
+  // filled the form in whatever order they clicked; sorting is what makes
+  // the bytes a function of the document rather than of the session. It is
+  // also the order the compiler enumerates these in, so its refusal list
+  // and this file read down in step.
+  const scenarioIds = Object.keys(doc.scenarios).sort();
+  if (scenarioIds.length > 0) {
+    out.push('scenarios:');
+    for (const id of scenarioIds) {
+      out.push(`  ${scalar(id)}:`);
+      const bindings = doc.scenarios[id];
+      const keys = Object.keys(bindings).sort();
+      if (keys.length === 0) {
+        // A scenario bound with nothing filled in yet. `{}` says that in
+        // one token; a key with no value would be a different document.
+        out[out.length - 1] = `  ${scalar(id)}: {}`;
+        continue;
+      }
+      for (const key of keys) {
+        out.push(`    ${scalar(key)}: ${scalar(bindings[key])}`);
+      }
     }
   }
 
@@ -596,20 +1587,93 @@ export function floorOwners(doc: DungeonDoc): Map<string, string> {
   return owners;
 }
 
-export const isFloor = (doc: DungeonDoc, cell: Axial): boolean =>
-  floorOwners(doc).has(axialKey(cell));
-
-export function wallKeys(doc: DungeonDoc): Set<string> {
-  return new Set(doc.walls.map((w) => edgeKey(w.edge)));
+/** The scenery cells as keys — floor with no owner. */
+export function sceneryKeys(doc: DungeonDoc): Set<string> {
+  return new Set(doc.scenery.map(axialKey));
 }
 
-/** Edge key → door id, for every door edge. */
+export const isScenery = (doc: DungeonDoc, cell: Axial): boolean =>
+  sceneryKeys(doc).has(axialKey(cell));
+
+/** Every FLOOR cell — owned or scenery (design §1.1: "Floor is any cell
+ * with an owner or a scenery mark"). What a wall may stand on, what a
+ * door may cross, what a prop may sit on. */
+export function floorKeys(doc: DungeonDoc): Set<string> {
+  const keys = sceneryKeys(doc);
+  for (const key of floorOwners(doc).keys()) keys.add(key);
+  return keys;
+}
+
+export const isFloor = (doc: DungeonDoc, cell: Axial): boolean =>
+  floorKeys(doc).has(axialKey(cell));
+
+/** Whether FEET may be here. Owned floor only: scenery is floor nobody
+ * stands on (design §1.3), so the start and every monster need this and
+ * a prop needs only `isFloor`. Slice 1's whole difference between the
+ * two predicates; slice 2 subtracts the cells walls seal as well. */
+export const isStandable = (doc: DungeonDoc, cell: Axial): boolean =>
+  floorOwners(doc).has(axialKey(cell));
+
+/** Crossing key → door id, for every door. A door IS one crossing
+ * (F11): the one across the side its position is the midpoint of. A
+ * door parked on a centre — a position that is the midpoint of no side —
+ * opens nothing and is listed nowhere here; the server refuses it by
+ * name. */
 export function doorEdgeOwners(doc: DungeonDoc): Map<string, string> {
   const owners = new Map<string, string>();
   for (const door of doc.doors) {
-    for (const e of door.edges) owners.set(edgeKey(e), door.id);
+    const edge = positionCrossing(
+      doc.orientation,
+      latticeOf(doc.orientation, door.at)
+    );
+    if (edge) owners.set(edgeKey(edge), door.id);
   }
   return owners;
+}
+
+/** The crossing a door opens, or null for one standing on a centre. */
+export const doorCrossing = (doc: DungeonDoc, door: DoorDoc): Edge | null =>
+  positionCrossing(doc.orientation, latticeOf(doc.orientation, door.at));
+
+/**
+ * The `{cell, offset}` spelling this document should WRITE for a lattice
+ * point: the one whose cell is floor.
+ *
+ * A side midpoint has two spellings, one per cell sharing the side, and
+ * they are the same point — but only one of them may name a cell that is
+ * on the map. A wall capping a room's north edge ends half a hex above
+ * row 0, and the orientation-only canonical spelling can name row −1: a
+ * cell nobody painted, that no error can highlight and no reader can
+ * find. Naming it from the floor cell instead keeps every coordinate in
+ * the file inside the dungeon.
+ *
+ * When both cells are floor there is nothing to choose between them and
+ * the canonical spelling stands; when neither is, the point is off the
+ * map either way and the canonical spelling stands too. Only the
+ * asymmetric case moves, which is the case that matters.
+ */
+export function nameFromFloor(doc: DungeonDoc, l: Lattice): PositionRef | null {
+  const o = doc.orientation;
+  const floor = floorKeys(doc);
+  const spellings = positionSpellings(o, l);
+  return (
+    spellings.find((p) => floor.has(axialKey(p.cell))) ?? spellings[0] ?? null
+  );
+}
+
+/** Whether a wall passes through a position — F10's test, and what the
+ * door tool offers on. Exact: the position is on the wall's own lattice
+ * walk, not near it. */
+export function wallsThrough(doc: DungeonDoc, at: PositionRef): number[] {
+  const o = doc.orientation;
+  const target = positionKey(o, at);
+  const out: number[] = [];
+  doc.walls.forEach((wall, i) => {
+    const { a, b } = wallLattice(o, wall);
+    const walk = latticeWalk(a, b);
+    if (walk?.some((l) => latticeKey(l) === target)) out.push(i);
+  });
+  return out;
 }
 
 export function placementAt(
@@ -619,6 +1683,319 @@ export function placementAt(
   const key = axialKey(cell);
   const index = doc.place.findIndex((p) => axialKey(p.at) === key);
   return index === -1 ? null : { index, placement: doc.place[index] };
+}
+
+// ---------------------------------------------------------------------------
+// Concealment derivation (rpg-dnd5e-web#893) — "concealment links to the
+// door": a region's hidden status is DERIVED from which doors are marked
+// concealed, rather than declared a second time by hand for every room
+// behind one. This walks the SAME "ways" the toolkit's own coherence check
+// does (dungeonspec/validate.go's `concealment()`), so a document this
+// module derives satisfies that check without repeating it (this module
+// still "only refuses what it cannot represent", per the header comment;
+// the server stays the validator of record).
+//
+// A WAY IS A FLOOD, NOT A CROSSING (rpg-project#360 slice 1, design C4).
+// It used to be one step between two regions' cells, because that was the
+// only way space could join. Scenery adds floor that belongs to no room,
+// so a way is now "a wall-free path from a cell of A to a cell of B whose
+// INTERIOR cells are all scenery" — never through a third region's cells,
+// which is what keeps the flood from tunnelling one room into the next.
+//
+// TWO REGIONS ARE JOINED IN `open` IFF SOME WAY BETWEEN THEM HAS NO
+// CONCEALED DOOR ON ANY CROSSING — not "iff the first crossing out is
+// clear". The toolkit builder found that first-crossing depends on which
+// end you start from: visible room, bare crossing, scenery, then the
+// secret room's own concealed door reads as open from the visible side
+// and closed from the secret side. The flood crosses bare crossings and
+// ordinary doors, passes through scenery, and stops at walls and
+// concealed doors, so both ends agree.
+// ---------------------------------------------------------------------------
+
+/** The region graph `deriveConcealment` walks. `open` carries every way
+ * that needs no search to use — an unwalled crossing, or a door that is
+ * NOT concealed — so reachability over `open` alone is what a party can
+ * walk to from the start without finding anything. `full` adds every
+ * concealed door's own crossing on top: the dungeon's actual physical
+ * connectivity, secrets included. `concealedDoorCrossings` is kept
+ * separately, per door, for leak detection and provenance — which region
+ * pairs each concealed door itself joins. */
+interface RegionGraph {
+  open: Map<string, Set<string>>;
+  full: Map<string, Set<string>>;
+  concealedDoorCrossings: Map<string, [string, string][]>;
+}
+
+function addRegionEdge(
+  graph: Map<string, Set<string>>,
+  a: string,
+  b: string
+): void {
+  if (!graph.has(a)) graph.set(a, new Set());
+  if (!graph.has(b)) graph.set(b, new Set());
+  graph.get(a)!.add(b);
+  graph.get(b)!.add(a);
+}
+
+/** What one crossing does to a way through it. */
+type CrossingKind = 'wall' | 'plain' | 'concealed';
+
+function buildRegionGraph(doc: DungeonDoc): RegionGraph {
+  const owners = floorOwners(doc);
+  const scenery = sceneryKeys(doc);
+  // The crossings the walls block, DERIVED (C7) — the file no longer
+  // lists them. A door's own crossing is subtracted, exactly as the
+  // compiler subtracts it: a door stands IN a wall, and the wall hands
+  // that one crossing back (rpg-project#355, unchanged by the line
+  // form). That one substitution is what makes a door drawn inside a
+  // wall a door here rather than a wall.
+  const doorEdges = doorEdgeOwners(doc);
+  const walls = new Set(
+    [...wallCrossingKeys(doc)].filter((k) => !doorEdges.has(k))
+  );
+  const doorById = new Map(doc.doors.map((d) => [d.id, d] as const));
+  const open: Map<string, Set<string>> = new Map();
+  const full: Map<string, Set<string>> = new Map();
+  const concealedDoorCrossings = new Map<string, [string, string][]>();
+
+  const kindOf = (ek: string): CrossingKind => {
+    // `walls` is the COMPILED set, so the crossing a door stands in has
+    // already been subtracted from it (rpg-project#355 — a run keeps that
+    // crossing and the compiler hands the edge back to the door), exactly
+    // as the server subtracts it. That one substitution is what makes a
+    // door drawn inside a wall run a door here rather than a wall; asking
+    // about the door first as well would only hide which fact carries it.
+    if (walls.has(ek)) return 'wall';
+    const doorId = doorEdges.get(ek);
+    const door = doorId ? doorById.get(doorId) : undefined;
+    return door && door.concealed !== undefined ? 'concealed' : 'plain';
+  };
+
+  /** Every region a way from `seeds` leads to.
+   *
+   * The flood leaves the seeds, walks SCENERY ONLY, and stops the moment
+   * it lands on any region's cell — that cell is where the way ends, so a
+   * third room is a destination and never a corridor (design C4). Walls
+   * always stop it; a concealed door stops it unless `allowConcealed`,
+   * which is the whole difference between the `open` graph and the
+   * `full` one. `originId` is the region the seeds belong to, so a way
+   * back into its own cells is not reported as joining anything. */
+  const waysFrom = (
+    seeds: readonly Axial[],
+    originId: string | null,
+    allowConcealed: boolean
+  ): Set<string> => {
+    const reached = new Set<string>();
+    const seen = new Set(seeds.map(axialKey));
+    const queue = [...seeds];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const n of axialNeighbors(cur)) {
+        const kind = kindOf(edgeKey([cur, n]));
+        if (kind === 'wall') continue;
+        if (kind === 'concealed' && !allowConcealed) continue;
+        const nk = axialKey(n);
+        const there = owners.get(nk);
+        if (there !== undefined) {
+          if (there !== originId) reached.add(there);
+          continue;
+        }
+        if (!scenery.has(nk) || seen.has(nk)) continue;
+        seen.add(nk);
+        queue.push(n);
+      }
+    }
+    return reached;
+  };
+
+  for (const region of doc.regions) {
+    for (const there of waysFrom(region.cells, region.id, false)) {
+      addRegionEdge(open, region.id, there);
+    }
+    // Every open way is a way, and the permissive flood explores a
+    // superset of the strict one's crossings, so `full` needs only this.
+    for (const there of waysFrom(region.cells, region.id, true)) {
+      addRegionEdge(full, region.id, there);
+    }
+  }
+
+  /** The regions one side of a concealed door's crossing opens onto,
+   * without passing another concealed door — the door's own side of the
+   * pair it joins. An owned cell IS its region; a scenery cell floods
+   * until it finds one. */
+  const regionsTouching = (cell: Axial): Set<string> => {
+    const owner = owners.get(axialKey(cell));
+    if (owner !== undefined) return new Set([owner]);
+    if (!scenery.has(axialKey(cell))) return new Set();
+    return waysFrom([cell], null, false);
+  };
+
+  for (const door of doc.doors) {
+    if (door.concealed === undefined) continue;
+    const pairs: [string, string][] = [];
+    const crossing = doorCrossing(doc, door);
+    for (const [near, far] of crossing ? [crossing] : []) {
+      for (const a of regionsTouching(near)) {
+        for (const b of regionsTouching(far)) {
+          if (a === b) continue;
+          const [x, y] = a <= b ? [a, b] : [b, a];
+          if (!pairs.some(([px, py]) => px === x && py === y)) {
+            pairs.push([x, y]);
+          }
+        }
+      }
+    }
+    if (pairs.length > 0) concealedDoorCrossings.set(door.id, pairs);
+  }
+
+  return { open, full, concealedDoorCrossings };
+}
+
+/** The region graph as two questions, for the tests that must agree with
+ * the toolkit's own walk (design C4, acceptance A3). The derivation below
+ * rests entirely on these two facts, and "separated" and "joined only
+ * through a secret" are different answers that `deriveConcealment` alone
+ * cannot tell apart — both leave a region unmarked. */
+export interface RegionWays {
+  /** Some way joins these two regions. Crossings may include concealed
+   * doors; walls always stop a way. */
+  joined(a: string, b: string): boolean;
+  /** Some way joins them with NO concealed door on ANY of its crossings —
+   * what a party can walk without finding anything first. */
+  openly(a: string, b: string): boolean;
+}
+
+export function regionWays(doc: DungeonDoc): RegionWays {
+  const { open, full } = buildRegionGraph(doc);
+  return {
+    joined: (a, b) => full.get(a)?.has(b) ?? false,
+    openly: (a, b) => open.get(a)?.has(b) ?? false,
+  };
+}
+
+function startRegionId(doc: DungeonDoc): string | null {
+  if (!doc.start) return null;
+  return floorOwners(doc).get(axialKey(doc.start.at)) ?? null;
+}
+
+interface RegionBfs {
+  visited: Set<string>;
+  parent: Map<string, string>;
+  depth: Map<string, number>;
+}
+
+function bfsRegions(start: string, graph: Map<string, Set<string>>): RegionBfs {
+  const visited = new Set([start]);
+  const parent = new Map<string, string>();
+  const depth = new Map([[start, 0]]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const next of graph.get(cur) ?? []) {
+      if (visited.has(next)) continue;
+      visited.add(next);
+      parent.set(next, cur);
+      depth.set(next, (depth.get(cur) ?? 0) + 1);
+      queue.push(next);
+    }
+  }
+  return { visited, parent, depth };
+}
+
+export interface ConcealmentDerivation {
+  /** Region ids reachable only by ALSO crossing a concealed door — the
+   * space `deriveConcealment` marks concealed. `null` when there is no
+   * start to derive reachability from (already its own reported defect,
+   * `validation.start()`'s "the dungeon does not say where the party
+   * starts" — this module has nothing to add on top of that). */
+  regionIds: Set<string> | null;
+  /** Region id -> a concealed door whose own crossing touches it
+   * directly, for the inspector's provenance note. A region hidden only
+   * by sitting past ANOTHER hidden region — no door of its own — has no
+   * entry here even though it IS in `regionIds`. */
+  doorByRegion: Map<string, string>;
+}
+
+/** The derivation itself (rpg-dnd5e-web#893's ruling): a region is hidden
+ * space when the party can reach it crossing concealed doors but NOT
+ * without them — reachable in the full graph, unreachable in the open
+ * one. Concealed-to-concealed adjacency composes for free here, the same
+ * way it does in the toolkit's own check: a region behind a concealed
+ * door that opens onto ANOTHER hidden region through a plain, unwalled
+ * gap is `full`-reachable only via the door, so it lands in the result
+ * too, door of its own or not.
+ *
+ * A region genuinely disconnected from start — no concealed door
+ * anywhere on its only paths, so it is unreachable in `full` as well —
+ * is left alone: this module does not invent a secret for it. That is
+ * a deliberate choice, NOT a claim the engine catches the gap some
+ * other way — measured live (PR #894 review), a disconnected region
+ * with no concealment authored anywhere in the file compiles with zero
+ * errors today. Closing that gap is a validator question, tracked
+ * separately; this module's job stays narrow: derive from what IS
+ * authored, don't guess at what a silent void might mean. */
+export function deriveConcealment(doc: DungeonDoc): ConcealmentDerivation {
+  const graph = buildRegionGraph(doc);
+  const doorByRegion = new Map<string, string>();
+  for (const [doorId, pairs] of graph.concealedDoorCrossings) {
+    for (const [a, b] of pairs) {
+      if (!doorByRegion.has(a)) doorByRegion.set(a, doorId);
+      if (!doorByRegion.has(b)) doorByRegion.set(b, doorId);
+    }
+  }
+  const start = startRegionId(doc);
+  if (!start) return { regionIds: null, doorByRegion };
+  const openReach = bfsRegions(start, graph.open).visited;
+  const fullReach = bfsRegions(start, graph.full).visited;
+  const regionIds = new Set<string>();
+  for (const id of fullReach) {
+    if (!openReach.has(id)) regionIds.add(id);
+  }
+  return { regionIds, doorByRegion };
+}
+
+export interface ConcealmentLeak {
+  doorId: string;
+  message: string;
+}
+
+/** A concealed door whose crossing isolates nothing: both regions it
+ * connects are ALSO reachable without it, so marking it concealed hides
+ * no space (rpg-dnd5e-web#893's leak case). This is not a defect the
+ * toolkit's own compiler reports — a concealed door's crossing is never
+ * itself "a walk-in", so `concealment()`'s frontier check passes it
+ * whether or not the room behind it actually goes dark — so it would
+ * otherwise ship silently: the checkbox reads concealed, nothing is
+ * actually hidden. Reported ONCE per door, naming the region that should
+ * have gone dark and where its other way in actually is, rather than
+ * once per leaking edge. */
+export function detectConcealmentLeaks(doc: DungeonDoc): ConcealmentLeak[] {
+  const graph = buildRegionGraph(doc);
+  const start = startRegionId(doc);
+  if (!start) return [];
+  const bfs = bfsRegions(start, graph.open);
+  const name = (id: string) => doc.regions.find((r) => r.id === id)?.name || id;
+  const leaks: ConcealmentLeak[] = [];
+  for (const door of doc.doors) {
+    if (door.concealed === undefined) continue;
+    const pairs = graph.concealedDoorCrossings.get(door.id) ?? [];
+    const leaking = pairs.filter(
+      ([a, b]) => bfs.visited.has(a) && bfs.visited.has(b)
+    );
+    if (leaking.length === 0) continue;
+    const [a, b] = leaking[0];
+    const depthA = bfs.depth.get(a) ?? 0;
+    const depthB = bfs.depth.get(b) ?? 0;
+    const far = depthA >= depthB ? a : b;
+    const near = far === a ? b : a;
+    const entry = bfs.parent.get(far);
+    const source = entry && entry !== far ? entry : near;
+    leaks.push({
+      doorId: door.id,
+      message: `${door.id} is concealed, but ${name(far)} is already reachable from ${name(source)} without passing through it`,
+    });
+  }
+  return leaks;
 }
 
 // ---------------------------------------------------------------------------
@@ -644,16 +2021,91 @@ export function emptyDungeon(
         cells: [],
       },
     ],
+    scenery: [],
     start: null,
     walls: [],
     doors: [],
     place: [],
+    exits: [],
+    scenarios: {},
+    intel: [],
+    factions: [],
+    dispositions: [],
+    endings: [],
   };
 }
 
 /** Paint `cell` into `regionId`. A cell is floor in exactly ONE region:
  * painting it moves it out of whichever region held it before, so the
  * brush can never produce the overlap the server refuses. */
+/** The offset-space rectangle two cells span, as axial cells.
+ *
+ * A "square room" is a rectangle in OFFSET coordinates — the `[col,row]` the
+ * file is written in and the shape the canvas actually draws. Doing it in
+ * axial would give a rhombus, which is not the room anybody means when they
+ * drag a box. */
+export function rectCells(o: Orientation, a: Axial, b: Axial): Axial[] {
+  const [ac, ar] = toOffset(o, a);
+  const [bc, br] = toOffset(o, b);
+  const cells: Axial[] = [];
+  for (let r = Math.min(ar, br); r <= Math.max(ar, br); r += 1) {
+    for (let c = Math.min(ac, bc); c <= Math.max(ac, bc); c += 1) {
+      cells.push(fromOffset(o, [c, r]));
+    }
+  }
+  return cells;
+}
+
+/** Paint the whole rectangle `a`..`b` into `regionId` — the region-rect
+ * commit (rpg-dnd5e-web#902).
+ *
+ * The floor as a box instead of eighty-four brush strokes. The rectangle is
+ * taken in OFFSET space because that is the shape the canvas draws; the same
+ * corners in axial give a rhombus. Cells already owned by another region
+ * change hands, exactly as the brush does — the tool paints, it does not
+ * negotiate.
+ *
+ * NOTE this paints FLOOR only. Walls are not authored from a rectangle: a
+ * rectangle of hex edges is a staircase, and drawing it as a square is a
+ * rendering problem the edge-slice model cannot solve. Kirk's ruling for the
+ * real fix (rpg-dnd5e-web#905): a wall is a line that cuts hexes wherever it
+ * likes, and a hex with more than 80% of itself left is one you can stand on. */
+export function paintRect(
+  doc: DungeonDoc,
+  regionId: string,
+  a: Axial,
+  b: Axial
+): DungeonDoc {
+  const wanted = rectCells(doc.orientation, a, b);
+  const keys = new Set(wanted.map(axialKey));
+  const owners = floorOwners(doc);
+  const scenery = doc.scenery.filter((c) => !keys.has(axialKey(c)));
+  // Nothing to do when every cell is already this region's AND none of
+  // them is scenery — a rectangle over a scenery strip claims it.
+  if (
+    scenery.length === doc.scenery.length &&
+    wanted.every((c) => owners.get(axialKey(c)) === regionId)
+  ) {
+    return doc;
+  }
+  return {
+    ...doc,
+    scenery,
+    regions: doc.regions.map((region) => {
+      const without = region.cells.filter((c) => !keys.has(axialKey(c)));
+      if (region.id === regionId) {
+        return {
+          ...region,
+          cells: [...without, ...wanted].sort(compareAxial),
+        };
+      }
+      return without.length === region.cells.length
+        ? region
+        : { ...region, cells: without };
+    }),
+  };
+}
+
 export function paintCell(
   doc: DungeonDoc,
   regionId: string,
@@ -661,14 +2113,67 @@ export function paintCell(
 ): DungeonDoc {
   const key = axialKey(cell);
   const current = floorOwners(doc).get(key);
-  if (current === regionId) return doc;
+  // ONE STATE PER CELL (design §2.2): a room painted over scenery moves
+  // the cell in, so the two lists can never both claim it.
+  const scenery = doc.scenery.filter((c) => axialKey(c) !== key);
+  if (current === regionId && scenery.length === doc.scenery.length) return doc;
   return {
     ...doc,
+    scenery,
     regions: doc.regions.map((region) => {
       const without = region.cells.filter((c) => axialKey(c) !== key);
       if (region.id === regionId) {
         return { ...region, cells: [...without, cell].sort(compareAxial) };
       }
+      return without.length === region.cells.length
+        ? region
+        : { ...region, cells: without };
+    }),
+  };
+}
+
+/** What stands on `cell` and could not stand on scenery — the start, or
+ * a monster. `null` when the cell is free to become scenery.
+ *
+ * Named, not boolean, because the caller's job is to say WHICH thing is
+ * in the way (design §2.5: errors point at the thing). Props are never
+ * in the way: they sit on scenery quite legally, which is most of why
+ * the brush exists. */
+export type SceneryBlocker = 'start' | 'monster';
+
+export function sceneryBlockedBy(
+  doc: DungeonDoc,
+  cell: Axial
+): SceneryBlocker | null {
+  const key = axialKey(cell);
+  if (doc.start && axialKey(doc.start.at) === key) return 'start';
+  const standing = doc.place.find(
+    (pl) => axialKey(pl.at) === key && isMonsterRef(pl.ref)
+  );
+  return standing ? 'monster' : null;
+}
+
+/** Paint `cell` as SCENERY — floor belonging to no room (design §2.1).
+ *
+ * The mirror of `paintCell`: one state per cell, so a room cell painted
+ * scenery moves OUT of its region rather than joining a second list.
+ *
+ * REFUSED IN PLACE when the start or a monster stands there. The design
+ * cascades placements under ERASE and only under erase (§2.2, which names
+ * erase as the thing that takes walls, doors and placements with it);
+ * the monster-meets-scenery collision it rules on is a REFUSAL with a
+ * reason (§2.4). This is that same collision from the other side, so it
+ * gets the same answer rather than silently deleting something the
+ * author placed — there is no undo in this builder. */
+export function paintScenery(doc: DungeonDoc, cell: Axial): DungeonDoc {
+  const key = axialKey(cell);
+  if (sceneryKeys(doc).has(key)) return doc;
+  if (sceneryBlockedBy(doc, cell) !== null) return doc;
+  return {
+    ...doc,
+    scenery: [...doc.scenery, cell].sort(compareAxial),
+    regions: doc.regions.map((region) => {
+      const without = region.cells.filter((c) => axialKey(c) !== key);
       return without.length === region.cells.length
         ? region
         : { ...region, cells: without };
@@ -682,151 +2187,147 @@ export function paintCell(
  * canvas never shows one. */
 export function eraseCell(doc: DungeonDoc, cell: Axial): DungeonDoc {
   const key = axialKey(cell);
-  if (!floorOwners(doc).has(key)) return doc;
+  if (!floorKeys(doc).has(key)) return doc;
   const touches = (e: Edge) => axialKey(e[0]) === key || axialKey(e[1]) === key;
   return {
     ...doc,
+    scenery: doc.scenery.filter((c) => axialKey(c) !== key),
     regions: doc.regions.map((region) => {
       const without = region.cells.filter((c) => axialKey(c) !== key);
       return without.length === region.cells.length
         ? region
         : { ...region, cells: without };
     }),
-    walls: doc.walls.filter((w) => !touches(w.edge)),
-    doors: doc.doors
-      .map((d) => ({ ...d, edges: d.edges.filter((e) => !touches(e)) }))
-      .filter((d) => d.edges.length > 0),
-    start: doc.start && axialKey(doc.start) === key ? null : doc.start,
+    // A wall goes with the cell only when the cell is one of its OWN
+    // footprint (design §2.2's cascade): a line whose footprint the
+    // erase empties stands nowhere, and one that merely passed nearby
+    // is left alone. A door goes when its crossing touched the cell.
+    walls: doc.walls.filter((w) => {
+      const { a, b } = wallLattice(doc.orientation, w);
+      const footprint = wallFootprint(doc.orientation, a, b);
+      return footprint.some(
+        (c) => axialKey(c) !== key && floorKeys(doc).has(axialKey(c))
+      );
+    }),
+    doors: doc.doors.filter((d) => {
+      const crossing = doorCrossing(doc, d);
+      return crossing !== null && !touches(crossing);
+    }),
+    start: doc.start && axialKey(doc.start.at) === key ? null : doc.start,
     place: doc.place.filter((p) => axialKey(p.at) !== key),
   };
 }
 
-/** Toggle a wall on an edge. Both endpoints must be floor and adjacent;
- * an edge that is part of a door is left alone (the server refuses an
- * edge in both lists — the tool simply does not offer it). Returns the
- * same doc for a no-op. */
-export function toggleWall(doc: DungeonDoc, e: Edge): DungeonDoc {
-  const key = edgeKey(e);
-  if (!edgeIsOfferable(doc, e) || doorEdgeOwners(doc).has(key)) return doc;
-  const exists = doc.walls.some((w) => edgeKey(w.edge) === key);
-  return {
-    ...doc,
-    walls: exists
-      ? doc.walls.filter((w) => edgeKey(w.edge) !== key)
-      : [...doc.walls, { edge: normalizeEdge(e) }],
-  };
-}
-
-/** An edge the wall/door tools may act on: two adjacent floor cells. */
-export function edgeIsOfferable(doc: DungeonDoc, edge: Edge): boolean {
-  return edgeOfferableWith(floorOwners(doc), edge);
-}
-
-/** `edgeIsOfferable` against a PRECOMPUTED owner map — the batch
- * mutators below run per pointer move on the live preview, so they
- * build `floorOwners` once per call instead of once per edge (Copilot
- * review, PR #808: the per-edge rebuild made a long drag scan the
- * whole floor per candidate, O(chain × floor) instead of O(chain)). */
-function edgeOfferableWith(owners: Map<string, string>, [a, b]: Edge): boolean {
-  return (
-    owners.has(axialKey(a)) &&
-    owners.has(axialKey(b)) &&
-    Math.abs(a.q - b.q) <= 1 &&
-    Math.abs(a.r - b.r) <= 1 &&
-    Math.abs(a.q + a.r - b.q - b.r) <= 1 &&
-    !(a.q === b.q && a.r === b.r)
-  );
-}
-
-/** Add every offerable, non-door, not-already-present edge of `edges`
- * to `walls[]` — the wall gesture's commit (rpg-dnd5e-web#804). Unlike
- * `toggleWall`, drawing over an existing wall is IDEMPOTENT (the design's
- * dedup rule): an edge already present is skipped, never removed. Door
- * edges are skipped (an edge in both lists is a validation failure the
- * gesture never authors) and the chain simply breaks there. Returns the
- * same doc when nothing survives the filter. */
-export function addWalls(
+/** Add one wall: the line between two picked positions (design §2.6).
+ *
+ * IDEMPOTENT AND UNDIRECTED: a line already in `walls[]` — either way
+ * round, since a wall has no direction — is not added twice. The two
+ * ends are stored exactly as picked, which is how a corner is written:
+ * picking a position another wall already ends at copies that position,
+ * and the two entries then carry the same `{cell, offset}` (F5).
+ *
+ * REFUSED IN PLACE, returning the same doc, when the line is not one of
+ * the twelve directions (F13) or when its footprint holds no floor at
+ * all (C2 — a wall standing in nothing). The picker only ever offers
+ * legal ends, so this is the guard for a caller that did not go through
+ * it, not the author's normal path. */
+export function addWall(
   doc: DungeonDoc,
-  edges: Edge[],
+  start: PositionRef,
+  end: PositionRef,
   height?: number
 ): DungeonDoc {
-  const owners = floorOwners(doc);
-  const doorKeys = doorEdgeOwners(doc);
-  const present = wallKeys(doc);
-  const toAdd: WallDoc[] = [];
-  for (const e of edges) {
-    const key = edgeKey(e);
-    if (
-      !edgeOfferableWith(owners, e) ||
-      doorKeys.has(key) ||
-      present.has(key)
-    ) {
-      continue;
-    }
-    present.add(key);
-    const wall: WallDoc = { edge: normalizeEdge(e) };
-    if (height !== undefined) wall.height = height;
-    toAdd.push(wall);
-  }
-  return toAdd.length === 0 ? doc : { ...doc, walls: [...doc.walls, ...toAdd] };
+  const o = doc.orientation;
+  const a = latticeOf(o, start);
+  const b = latticeOf(o, end);
+  const floor = floorKeys(doc);
+  // ONE guard for two rules, because for a pair off the twelve they are
+  // the same condition: a wall that is not on one of the directions has
+  // no lattice walk, so it has no footprint either, and a second
+  // `wallDirection` check beside this one could never be the reason
+  // anything was refused. F13 (a direction off the twelve) and C2 (a
+  // wall standing in nothing) both land here.
+  if (!wallFootprint(o, a, b).some((c) => floor.has(axialKey(c)))) return doc;
+  const key = wallKey(o, { start, end });
+  if (doc.walls.some((w) => wallKey(o, w) === key)) return doc;
+  const wall: WallDoc = { start, end };
+  if (height !== undefined) wall.height = height;
+  return { ...doc, walls: [...doc.walls, wall] };
 }
 
-/** Stamp `height` on every wall whose edge is in `edges` — the height
- * stepper's commit (rpg-project#273). Chain-level intent: the caller
- * passes the SELECTION's edges and every one of them takes the value,
- * exactly as the door affordance treats a selection. `undefined`
- * clears back to standard. Returns the same doc for a no-op. */
+/** A wall's identity: its two ends on the lattice, unordered — a wall
+ * drawn from either end is the same wall. */
+export function wallKey(o: Orientation, wall: WallDoc): string {
+  const a = latticeKey(latticeOf(o, wall.start));
+  const b = latticeKey(latticeOf(o, wall.end));
+  return a <= b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/** Remove walls by index — the wall selection's Delete. */
+export function removeWalls(doc: DungeonDoc, indexes: number[]): DungeonDoc {
+  const drop = new Set(indexes);
+  if (drop.size === 0) return doc;
+  const walls = doc.walls.filter((_, i) => !drop.has(i));
+  return walls.length === doc.walls.length ? doc : { ...doc, walls };
+}
+
+/** Stamp `height` on the selected walls — the height stepper's commit
+ * (rpg-project#273). `undefined` clears back to standard. Height belongs
+ * to the WALL now, so nothing splits: a wall is one line and one height
+ * by construction, which is what the run's chain-level stamp was
+ * approximating. */
 export function setWallHeights(
   doc: DungeonDoc,
-  edges: Edge[],
+  indexes: number[],
   height: number | undefined
 ): DungeonDoc {
-  const keys = new Set(edges.map(edgeKey));
+  const chosen = new Set(indexes);
   let changed = false;
-  const walls = doc.walls.map((w) => {
-    if (!keys.has(edgeKey(w.edge)) || w.height === height) return w;
+  const walls = doc.walls.map((wall, i) => {
+    if (!chosen.has(i) || wall.height === height) return wall;
     changed = true;
-    const next: WallDoc = { edge: w.edge };
+    const next: WallDoc = { start: wall.start, end: wall.end };
+    if (wall.name !== undefined) next.name = wall.name;
     if (height !== undefined) next.height = height;
     return next;
   });
   return changed ? { ...doc, walls } : doc;
 }
 
-/** Remove every edge of `edges` from `walls[]` — the erase drag's commit
- * and the wall selection's Delete (rpg-dnd5e-web#804). Door edges are
- * untouchable by construction: they are never IN `walls[]` (an edge is a
- * wall OR a door), so filtering `walls` alone is the whole rule. */
-export function removeWalls(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
-  const keys = new Set(edges.map(edgeKey));
-  const walls = doc.walls.filter((w) => !keys.has(edgeKey(w.edge)));
-  return walls.length === doc.walls.length ? doc : { ...doc, walls };
+/** Name a wall — "north wall" beats `walls[7]` for the streamer reading
+ * the file and the errors about it. An empty name clears the field. */
+export function setWallName(
+  doc: DungeonDoc,
+  index: number,
+  name: string
+): DungeonDoc {
+  const wall = doc.walls[index];
+  if (!wall) return doc;
+  const next: WallDoc = { start: wall.start, end: wall.end };
+  if (name.trim() !== '') next.name = name;
+  if (wall.height !== undefined) next.height = wall.height;
+  return { ...doc, walls: doc.walls.map((w, i) => (i === index ? next : w)) };
 }
 
-/** One door from one drag's chain (rpg-dnd5e-web#804, design: "a door
- * drag's chain becomes ONE door's `edges[]`"). Offerable edges only;
- * edges already belonging to any door are skipped rather than stolen;
- * walls on the surviving edges are replaced, same as `toggleDoorEdge`'s
- * wall-or-door rule. Returns the same doc when no edge survives. */
-export function addDoor(doc: DungeonDoc, edges: Edge[]): DungeonDoc {
-  const owners = floorOwners(doc);
-  const doorKeys = doorEdgeOwners(doc);
-  const seen = new Set<string>();
-  const clean: Edge[] = [];
-  for (const e of edges) {
-    const key = edgeKey(e);
-    if (!edgeOfferableWith(owners, e) || doorKeys.has(key) || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    clean.push(normalizeEdge(e));
+/** Door tool: a click on a position a wall passes through (design §2.8).
+ * Clicking a position that already carries a door removes it; otherwise
+ * a new door stands there.
+ *
+ * REFUSED IN PLACE when no wall passes through the position (F10) or
+ * when the position is a centre, which is the midpoint of no side and so
+ * opens no crossing. A door in a wall that seals both its cells IS legal
+ * (F11a — nobody passes it, sight does; the designer labels it), so
+ * nothing about standability is checked here. */
+export function toggleDoorAt(doc: DungeonDoc, at: PositionRef): DungeonDoc {
+  const o = doc.orientation;
+  const key = positionKey(o, at);
+  const existing = doc.doors.findIndex((d) => positionKey(o, d.at) === key);
+  if (existing !== -1) {
+    return { ...doc, doors: doc.doors.filter((_, i) => i !== existing) };
   }
-  if (clean.length === 0) return doc;
-  return {
-    ...doc,
-    walls: doc.walls.filter((w) => !seen.has(edgeKey(w.edge))),
-    doors: [...doc.doors, { id: nextDoorId(doc), edges: clean }],
-  };
+  if (positionCrossing(o, latticeOf(o, at)) === null) return doc;
+  if (wallsThrough(doc, at).length === 0) return doc;
+  return { ...doc, doors: [...doc.doors, { id: nextDoorId(doc), at }] };
 }
 
 function nextDoorId(doc: DungeonDoc): string {
@@ -836,52 +2337,10 @@ function nextDoorId(doc: DungeonDoc): string {
   return `door-${n}`;
 }
 
-/** Door tool: clicking an edge that is already a door edge removes it
- * from its door (deleting the door when empty); otherwise it joins
- * `doorId` (or a new door). A wall on that edge is replaced — an edge is
- * a wall OR a door, never both. */
-export function toggleDoorEdge(
-  doc: DungeonDoc,
-  e: Edge,
-  doorId?: string
-): DungeonDoc {
-  if (!edgeIsOfferable(doc, e)) return doc;
-  const key = edgeKey(e);
-  const owner = doorEdgeOwners(doc).get(key);
-  if (owner !== undefined) {
-    return {
-      ...doc,
-      doors: doc.doors
-        .map((d) =>
-          d.id === owner
-            ? { ...d, edges: d.edges.filter((x) => edgeKey(x) !== key) }
-            : d
-        )
-        .filter((d) => d.edges.length > 0),
-    };
-  }
-  const walls = doc.walls.filter((w) => edgeKey(w.edge) !== key);
-  const target = doorId && doc.doors.find((d) => d.id === doorId);
-  if (target) {
-    return {
-      ...doc,
-      walls,
-      doors: doc.doors.map((d) =>
-        d.id === target.id ? { ...d, edges: [...d.edges, normalizeEdge(e)] } : d
-      ),
-    };
-  }
-  return {
-    ...doc,
-    walls,
-    doors: [...doc.doors, { id: nextDoorId(doc), edges: [normalizeEdge(e)] }],
-  };
-}
-
 export function updateDoor(
   doc: DungeonDoc,
   doorId: string,
-  patch: Partial<Pick<DoorDoc, 'id' | 'closed' | 'locked'>>
+  patch: Partial<Pick<DoorDoc, 'id' | 'closed' | 'locked' | 'concealed'>>
 ): DungeonDoc {
   return {
     ...doc,
@@ -890,14 +2349,523 @@ export function updateDoor(
       const next: DoorDoc = { ...d, ...patch };
       if (!next.closed) delete next.closed;
       if (!next.locked) delete next.locked;
+      if (!next.concealed) delete next.concealed;
       return next;
     }),
   };
 }
 
+/** The party's entry cell. STANDABLE floor only (design §2.4/F2): the
+ * start on scenery is a file the server refuses, and refusing it here in
+ * place — the same doc back — is what lets the caller say why. */
 export function setStart(doc: DungeonDoc, cell: Axial | null): DungeonDoc {
-  if (cell && !isFloor(doc, cell)) return doc;
-  return { ...doc, start: cell };
+  if (cell && !isStandable(doc, cell)) return doc;
+  // MOVING THE START KEEPS ITS FACING. The author picked which way the
+  // party looks; dragging the entry one cell over is not them changing
+  // their mind about that.
+  if (!cell) return { ...doc, start: null };
+  return {
+    ...doc,
+    start: { ...(doc.start ?? {}), at: cell },
+  };
+}
+
+/** Aim the start, or clear the aim. An empty name removes `facing`, which
+ * is how the file says "the author stated none" — the bare pair. */
+export function setStartFacing(
+  doc: DungeonDoc,
+  facing: string | undefined
+): DungeonDoc {
+  if (!doc.start) return doc;
+  const next: StartDoc = { at: doc.start.at };
+  if (facing) next.facing = facing;
+  return { ...doc, start: next };
+}
+
+/** Put a way out on a cell, or take the one already there away — the
+ * `start` tool's gesture with a list behind it (design §3.1).
+ *
+ * STANDABLE FLOOR ONLY, the same refusal-in-place `setStart` makes and for
+ * the same reason: the compiler refuses an exit on scenery in `start`'s own
+ * words, and handing the same document back is what lets the caller say
+ * why instead of the click appearing to do nothing. */
+export function toggleExitAt(doc: DungeonDoc, cell: Axial): DungeonDoc {
+  const key = axialKey(cell);
+  const existing = doc.exits.findIndex((e) => axialKey(e.at) === key);
+  if (existing !== -1) {
+    return { ...doc, exits: doc.exits.filter((_, i) => i !== existing) };
+  }
+  if (!isStandable(doc, cell)) return doc;
+  return { ...doc, exits: [...doc.exits, { id: nextExitId(doc), at: cell }] };
+}
+
+function nextExitId(doc: DungeonDoc): string {
+  const taken = new Set(doc.exits.map((e) => e.id));
+  let n = doc.exits.length + 1;
+  while (taken.has(`exit-${n}`)) n += 1;
+  return `exit-${n}`;
+}
+
+export function updateExit(
+  doc: DungeonDoc,
+  index: number,
+  patch: Partial<Pick<ExitDoc, 'id'>>
+): DungeonDoc {
+  return {
+    ...doc,
+    exits: doc.exits.map((e, i) => (i === index ? { ...e, ...patch } : e)),
+  };
+}
+
+export function removeExit(doc: DungeonDoc, index: number): DungeonDoc {
+  return { ...doc, exits: doc.exits.filter((_, i) => i !== index) };
+}
+
+/** Bind this dungeon to a scenario with nothing filled in yet — what the
+ * author's choice on the Scenario tab writes (`scenarios: { hold-out: {} }`).
+ * The empty block is the whole point: it is what makes the scenario's blanks
+ * appear, and what makes the compiler start asking for them. Choosing one
+ * that is already bound changes nothing rather than wiping what is in it. */
+export function addScenario(doc: DungeonDoc, scenarioId: string): DungeonDoc {
+  if (doc.scenarios[scenarioId] !== undefined) return doc;
+  return { ...doc, scenarios: { ...doc.scenarios, [scenarioId]: {} } };
+}
+
+/** Unbind a scenario entirely, blanks and all — the Remove beside its form.
+ *
+ * This is the ONLY way a scenario leaves the file (rpg-dnd5e-web#945).
+ * Clearing the last blank used to do it as a side effect, which was right
+ * while filling a blank in was the only way to bind one; now that adding and
+ * removing are verbs the author presses, a form must not vanish out from
+ * under the hand that emptied it. */
+export function clearScenarioBinding(
+  doc: DungeonDoc,
+  scenarioId: string
+): DungeonDoc {
+  if (doc.scenarios[scenarioId] === undefined) return doc;
+  const scenarios = { ...doc.scenarios };
+  delete scenarios[scenarioId];
+  return { ...doc, scenarios };
+}
+
+/** Bind one field of one scenario. An EMPTY value UNBINDS the field and
+ * leaves the scenario bound with that blank empty — a state the compiler
+ * refuses out loud, by name, which is the answer an author wants over a
+ * form that quietly disappears. `clearScenarioBinding` is the way out. */
+export function setScenarioBinding(
+  doc: DungeonDoc,
+  scenarioId: string,
+  key: string,
+  value: string
+): DungeonDoc {
+  const current = doc.scenarios[scenarioId];
+  // Clearing a blank on a scenario this dungeon does not bind binds nothing:
+  // the empty value has to mean "no binding" here too, or an unbind would be
+  // how a scenario gets into the file.
+  if (current === undefined && value === '') return doc;
+  const next: ScenarioBindings = { ...(current ?? {}) };
+  if (value === '') delete next[key];
+  else next[key] = value;
+  return { ...doc, scenarios: { ...doc.scenarios, [scenarioId]: next } };
+}
+
+/** Declare a new intel record, with a suggested id and nothing revealed
+ * yet — the author picks its target and its holders from the panel
+ * (design R2: "the form should assign the Intel to something"). */
+export function addIntel(doc: DungeonDoc): DungeonDoc {
+  return {
+    ...doc,
+    intel: [...doc.intel, { id: nextIntelId(doc), reveals: {} }],
+  };
+}
+
+function nextIntelId(doc: DungeonDoc): string {
+  const taken = new Set(doc.intel.map((r) => r.id));
+  let n = doc.intel.length + 1;
+  while (taken.has(`intel-${n}`)) n += 1;
+  return `intel-${n}`;
+}
+
+/** Rename or re-point one intel record. A RENAME FOLLOWS THROUGH to every
+ * `holds:` that names the old id (ruling 2026-09-05: the Intel and Factions
+ * sections sit side by side and must not differ in this — a faction rename
+ * follows through to its members, so a record rename follows through to
+ * its holders), because a `holds` naming a record the file no longer
+ * declares is refused by the compiler and the author did not write that. */
+export function updateIntel(
+  doc: DungeonDoc,
+  id: string,
+  patch: Partial<IntelDoc>
+): DungeonDoc {
+  const intel = doc.intel.map((r) => (r.id === id ? { ...r, ...patch } : r));
+  const to = patch.id;
+  if (to === undefined || to === id) return { ...doc, intel };
+  return {
+    ...doc,
+    intel,
+    place: doc.place.map((p) =>
+      p.holds?.includes(id)
+        ? { ...p, holds: p.holds.map((held) => (held === id ? to : held)) }
+        : p
+    ),
+  };
+}
+
+/** Point one record at one thing. An EMPTY value clears that target, and a
+ * record revealing nothing is a legal in-progress state the file can hold
+ * — the compiler is what refuses to compile it, in its own words. */
+export function setIntelReveals(
+  doc: DungeonDoc,
+  id: string,
+  key: string,
+  value: string
+): DungeonDoc {
+  return {
+    ...doc,
+    intel: doc.intel.map((record) => {
+      if (record.id !== id) return record;
+      const reveals = { ...record.reveals };
+      if (value === '') delete reveals[key];
+      else reveals[key] = value;
+      return { ...record, reveals };
+    }),
+  };
+}
+
+/** Remove a record, and take it out of every monster holding it — a
+ * `holds:` naming a record the file does not declare is refused by the
+ * compiler, and deleting the record is not a way to author that. */
+export function removeIntel(doc: DungeonDoc, id: string): DungeonDoc {
+  return {
+    ...doc,
+    intel: doc.intel.filter((r) => r.id !== id),
+    place: doc.place.map((p) => {
+      if (!p.holds?.includes(id)) return p;
+      const holds = p.holds.filter((held) => held !== id);
+      const next: PlacementDoc = { ...p, holds };
+      if (holds.length === 0) delete next.holds;
+      return next;
+    }),
+  };
+}
+
+/**
+ * Assign one record to exactly this set of monsters, by placement id.
+ *
+ * THE ASSIGNMENT IS EDITED FROM THE RECORD, not from the thing holding it
+ * (design R2/§5): the author says "who holds the vault map", and the
+ * placement's own panel shows what it holds read-only. So this writes
+ * across every placement at once rather than patching one.
+ *
+ * MONSTERS AND PROPS ALIKE (R6). A placement may hold several records and
+ * a record may be held by several placements — intel COPIES, it does not
+ * move.
+ */
+export function setIntelHolders(
+  doc: DungeonDoc,
+  recordId: string,
+  holderIds: readonly string[]
+): DungeonDoc {
+  const holders = new Set(holderIds);
+  return {
+    ...doc,
+    place: doc.place.map((p) => {
+      const has = p.holds?.includes(recordId) ?? false;
+      const wants = !!p.id && holders.has(p.id);
+      if (has === wants) return p;
+      const holds = wants
+        ? [...(p.holds ?? []), recordId]
+        : (p.holds ?? []).filter((held) => held !== recordId);
+      const next: PlacementDoc = { ...p, holds };
+      if (holds.length === 0) delete next.holds;
+      return next;
+    }),
+  };
+}
+
+/** Which monsters hold this record, by placement id, in document order. */
+export function intelHolders(doc: DungeonDoc, recordId: string): string[] {
+  return doc.place
+    .filter((p) => !!p.id && p.holds?.includes(recordId))
+    .map((p) => p.id as string);
+}
+
+// ---------------------------------------------------------------------------
+// Factions and dispositions (rpg-project#375 §2, §7)
+// ---------------------------------------------------------------------------
+
+/** Declare a new faction with a suggested id and no mind yet — the author
+ * names it and picks its mind from the panel. */
+export function addFaction(doc: DungeonDoc): DungeonDoc {
+  return { ...doc, factions: [...doc.factions, { id: nextFactionId(doc) }] };
+}
+
+function nextFactionId(doc: DungeonDoc): string {
+  const taken = new Set(doc.factions.map((f) => f.id));
+  let n = doc.factions.length + 1;
+  while (taken.has(`faction-${n}`)) n += 1;
+  return `faction-${n}`;
+}
+
+/** One predicate with every mention of faction `from` renamed to `to` —
+ * only the `stance` form names a faction. */
+function renamePredicateFaction(
+  p: PredicateDoc,
+  from: string,
+  to: string
+): PredicateDoc {
+  if (!('stance' in p)) return p;
+  const follow = (name: string) => (name === from ? to : name);
+  const [a, b] = p.stance.between;
+  return { stance: { between: [follow(a), follow(b)], is: p.stance.is } };
+}
+
+/** Whether a predicate names faction `id` — the `stance` form is the only
+ * one that can. */
+function predicateNamesFaction(p: PredicateDoc, id: string): boolean {
+  return 'stance' in p && p.stance.between.includes(id);
+}
+
+/**
+ * Rename or re-mind one faction. A RENAME FOLLOWS THROUGH to every line
+ * that points at the old name — each member's `faction`, every
+ * disposition's `between`, every `stance` predicate — because a faction's
+ * id is what those lines are written in terms of, and a rename that left
+ * three refusals behind would be a trap the author did not set. The panel
+ * holds a blank or clashing name as typed text and never sends it here,
+ * exactly as the placement id control does.
+ */
+export function updateFaction(
+  doc: DungeonDoc,
+  id: string,
+  patch: Partial<FactionDoc>
+): DungeonDoc {
+  const factions = doc.factions.map((f) => {
+    if (f.id !== id) return f;
+    const next: FactionDoc = { ...f, ...patch };
+    if (next.mind === undefined || next.mind === '') delete next.mind;
+    return next;
+  });
+  const to = patch.id;
+  if (to === undefined || to === id) return { ...doc, factions };
+  // A DECLARED `party` OR `monsters` IS A REFUSED STATE, NOT A FACTION
+  // (§2, R4): either word in a `between` always means the reserved side, so
+  // renaming the mistaken declaration away must not carry every disposition
+  // toward that side off with it. The same holds for removal below.
+  if (id === PARTY || id === MONSTERS) return { ...doc, factions };
+  return {
+    ...doc,
+    factions,
+    place: doc.place.map((p) => (p.faction === id ? { ...p, faction: to } : p)),
+    dispositions: doc.dispositions.map((d) => {
+      const follow = (name: string) => (name === id ? to : name);
+      const next: DispositionDoc = {
+        ...d,
+        between: [follow(d.between[0]), follow(d.between[1])],
+      };
+      if (d.until !== undefined) {
+        next.until = renamePredicateFaction(d.until, id, to);
+      }
+      return next;
+    }),
+    endings: doc.endings.map((e) => ({
+      ...e,
+      when: renamePredicateFaction(e.when, id, to),
+    })),
+  };
+}
+
+/** Remove a faction, and every line that pointed at it: its members go
+ * back to `monsters` (the field is dropped, which is how `monsters` is
+ * spelled), a disposition naming it in `between` goes with it, and an
+ * `until` naming it in a `stance` predicate is dropped from its
+ * disposition. Deleting a faction is not a way to author a dangling
+ * reference the compiler refuses by name. */
+export function removeFaction(doc: DungeonDoc, id: string): DungeonDoc {
+  const factions = doc.factions.filter((f) => f.id !== id);
+  // See `updateFaction`: a mistaken reserved-side declaration owns nothing.
+  if (id === PARTY || id === MONSTERS) return { ...doc, factions };
+  return {
+    ...doc,
+    factions,
+    place: doc.place.map((p) => {
+      if (p.faction !== id) return p;
+      const next: PlacementDoc = { ...p };
+      delete next.faction;
+      return next;
+    }),
+    dispositions: doc.dispositions
+      .filter((d) => !d.between.includes(id))
+      .map((d) => {
+        if (d.until === undefined || !predicateNamesFaction(d.until, id)) {
+          return d;
+        }
+        const next: DispositionDoc = { ...d };
+        delete next.until;
+        return next;
+      }),
+  };
+}
+
+/** Declare a new disposition: the FIRST DECLARED FACTION against the
+ * party, hostile, no `until` — the pair the hold-out is about, and the
+ * only stance a predicate is legal with. There is nothing to declare one
+ * about until a faction exists, so with none the document is returned
+ * unchanged and the panel disables the verb and says why. */
+export function addDisposition(doc: DungeonDoc): DungeonDoc {
+  const first = doc.factions[0];
+  if (!first) return doc;
+  return {
+    ...doc,
+    dispositions: [
+      ...doc.dispositions,
+      { between: [first.id, PARTY], stance: 'hostile' },
+    ],
+  };
+}
+
+/** Patch one disposition by index. A STANCE THAT IS NO LONGER HOSTILE
+ * DROPS ITS `until`: the predicate says when the hostility ends, so it has
+ * nothing to say about a neutral or allied pair, and the panel hides the
+ * editor the moment the stance changes — leaving the line in the file
+ * would author the "`until` on a non-hostile stance" refusal on the
+ * author's behalf. A hand-written file in that state still loads, and the
+ * panel names the refusal at the stance field until someone touches it. */
+export function updateDisposition(
+  doc: DungeonDoc,
+  index: number,
+  patch: Partial<DispositionDoc>
+): DungeonDoc {
+  return {
+    ...doc,
+    dispositions: doc.dispositions.map((d, i) => {
+      if (i !== index) return d;
+      const next: DispositionDoc = { ...d, ...patch };
+      if (next.until === undefined) delete next.until;
+      if (patch.stance !== undefined && next.stance !== 'hostile') {
+        delete next.until;
+      }
+      return next;
+    }),
+  };
+}
+
+export function removeDisposition(doc: DungeonDoc, index: number): DungeonDoc {
+  return {
+    ...doc,
+    dispositions: doc.dispositions.filter((_, i) => i !== index),
+  };
+}
+
+/** Declare a new ending with a suggested id and a predicate the author
+ * can fire from the panel. `when` is REQUIRED, so one is chosen rather
+ * than left blank: the first named monster's fall, which is the ending
+ * every boss fight has; with no monster named, round 1 — an ending that
+ * fires at once, visibly, until the author says otherwise. */
+export function addEnding(doc: DungeonDoc): DungeonDoc {
+  const first = namedMonsters(doc)[0];
+  const when: PredicateDoc = first
+    ? { down: first.id as string }
+    : { round: 1 };
+  return {
+    ...doc,
+    endings: [...doc.endings, { id: nextEndingId(doc), when }],
+  };
+}
+
+function nextEndingId(doc: DungeonDoc): string {
+  const taken = new Set(doc.endings.map((e) => e.id));
+  let n = doc.endings.length + 1;
+  while (taken.has(`ending-${n}`)) n += 1;
+  return `ending-${n}`;
+}
+
+export function updateEnding(
+  doc: DungeonDoc,
+  index: number,
+  patch: Partial<EndingDoc>
+): DungeonDoc {
+  return {
+    ...doc,
+    endings: doc.endings.map((e, i) => (i === index ? { ...e, ...patch } : e)),
+  };
+}
+
+export function removeEnding(doc: DungeonDoc, index: number): DungeonDoc {
+  return { ...doc, endings: doc.endings.filter((_, i) => i !== index) };
+}
+
+/** The monsters placed in one faction, by index — what a `mind` dropdown
+ * offers and what "a faction of many" counts (§2). A prop carrying a
+ * `faction` (a state the compiler refuses) is not a member. The reserved
+ * `monsters` side's members are the monsters with NO faction key — that
+ * is how the side is spelled — so a declared `monsters` faction can name
+ * one of them as its mind. */
+export function factionMembers(
+  doc: DungeonDoc,
+  factionId: string
+): { index: number; placement: PlacementDoc }[] {
+  const out: { index: number; placement: PlacementDoc }[] = [];
+  const wanted = factionId === MONSTERS ? undefined : factionId;
+  doc.place.forEach((placement, index) => {
+    if (isMonsterRef(placement.ref) && placement.faction === wanted) {
+      out.push({ index, placement });
+    }
+  });
+  return out;
+}
+
+/** Every fact id some intel record reveals, sorted and deduplicated —
+ * what a `{ fact }` predicate's dropdown offers. A fact is declared by
+ * mention (§2: "fact ids are plain strings, declared by mention"), so this
+ * is the set of facts a party can actually learn in this dungeon; an
+ * `until` naming one outside it is legal and shown with its cost. */
+export function revealedFacts(doc: DungeonDoc): string[] {
+  const facts = new Set<string>();
+  for (const record of doc.intel) {
+    const fact = record.reveals.fact;
+    if (fact !== undefined && fact !== '') facts.add(fact);
+  }
+  return [...facts].sort();
+}
+
+/** Every NAMED monster, by id, in document order — what a `{ down }`
+ * predicate's dropdown offers. A monster with no id cannot be named by
+ * anything, which is the same rule `holds` and the scenario form keep. */
+export function namedMonsters(doc: DungeonDoc): PlacementDoc[] {
+  return doc.place.filter((p) => !!p.id && isMonsterRef(p.ref));
+}
+
+/** Every placement id the file declares, in document order, with the index
+ * that declared it — what the id field checks a rename against and what the
+ * scenario form's `entity_ref` pickers list. A DUPLICATE KEEPS THE FIRST
+ * (the same rule `floorOwners` follows); the builder refuses the second
+ * before it is typed, and the compiler refuses it by name if a hand-written
+ * file carries one anyway. */
+export function placementIds(doc: DungeonDoc): Map<string, number> {
+  const ids = new Map<string, number>();
+  doc.place.forEach((p, i) => {
+    if (p.id && !ids.has(p.id)) ids.set(p.id, i);
+  });
+  return ids;
+}
+
+/** A slug the author is OFFERED for a placement's id, from its ref's id —
+ * `dnd5e:props:reliquary` suggests `reliquary`, and a multi-part id comes
+ * through whole so `dnd5e:props:plushie:skeleton-dog` suggests
+ * `plushie-skeleton-dog` rather than colliding with every other
+ * `skeleton-dog` variant. Suffixed only
+ * when that name is already taken, so the first reliquary is `reliquary`
+ * and the second is `reliquary-2`. Never applied on its own: the panel
+ * shows it and the author accepts or renames it (design: "the panel
+ * suggests a slug from the ref, the author may rename"). */
+export function suggestPlacementId(doc: DungeonDoc, ref: string): string {
+  const base = refSlug(ref) ?? 'thing';
+  const taken = placementIds(doc);
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
 }
 
 /** Drop a placement on a floor cell; one placement per cell — a drop
@@ -908,9 +2876,17 @@ export function setStart(doc: DungeonDoc, cell: Axial | null): DungeonDoc {
  * would strand a caller that prefills a facing/offset at drop time),
  * REFUSED on monsters same as `blocks_*`. */
 export function placeAt(doc: DungeonDoc, placement: PlacementDoc): DungeonDoc {
-  if (!isFloor(doc, placement.at)) return doc;
+  // A PROP DROPS ON SCENERY, A MONSTER DOES NOT (design §2.4, F2): props
+  // want floor, feet want standable floor. Refused in place — the same
+  // doc back — so the caller shows the reason rather than the drop just
+  // not happening.
+  const room = isMonsterRef(placement.ref)
+    ? isStandable(doc, placement.at)
+    : isFloor(doc, placement.at);
+  if (!room) return doc;
   const key = axialKey(placement.at);
   const clean: PlacementDoc = { ref: placement.ref, at: placement.at };
+  if (placement.id !== undefined) clean.id = placement.id;
   if (isMonsterRef(placement.ref)) {
     if (placement.targeting) clean.targeting = placement.targeting;
     if (placement.boss) clean.boss = true;
@@ -930,6 +2906,35 @@ export function removePlacement(doc: DungeonDoc, index: number): DungeonDoc {
   return { ...doc, place: doc.place.filter((_, i) => i !== index) };
 }
 
+/** Move one placement without replacing another or changing its identity. */
+export function movePlacement(
+  doc: DungeonDoc,
+  index: number,
+  at: Axial
+): DungeonDoc {
+  const placement = doc.place[index];
+  if (!placement) return doc;
+  const allowed = isMonsterRef(placement.ref)
+    ? isStandable(doc, at)
+    : isFloor(doc, at);
+  if (!allowed) return doc;
+  const target = axialKey(at);
+  if (
+    doc.place.some((candidate, candidateIndex) =>
+      candidateIndex === index ? false : axialKey(candidate.at) === target
+    )
+  ) {
+    return doc;
+  }
+  if (axialKey(placement.at) === target) return doc;
+  return {
+    ...doc,
+    place: doc.place.map((candidate, candidateIndex) =>
+      candidateIndex === index ? { ...candidate, at } : candidate
+    ),
+  };
+}
+
 export function updatePlacement(
   doc: DungeonDoc,
   index: number,
@@ -944,6 +2949,15 @@ export function updatePlacement(
       if (next.targeting === '') delete next.targeting;
       if (next.facing === undefined) delete next.facing;
       if (next.offset === undefined) delete next.offset;
+      if (next.id === '' || next.id === undefined) delete next.id;
+      if (next.holdable !== true) delete next.holdable;
+      // AN EMPTY FACTION IS `monsters`, and `monsters` is spelled by
+      // absence (R4): the panel's "(monsters)" choice clears the field
+      // rather than writing the reserved name into the file.
+      if (next.faction === '' || next.faction === undefined) {
+        delete next.faction;
+      }
+      if (next.arrives === undefined) delete next.arrives;
       // Same REFUSED-on-monsters rule placeAt enforces at creation
       // (Copilot review, PR #795): updatePlacement is the OTHER way a
       // facing/offset patch reaches a placement, so it needs the same
@@ -951,6 +2965,22 @@ export function updatePlacement(
       if (isMonsterRef(next.ref)) {
         delete next.facing;
         delete next.offset;
+        // A PROP HOLDS NOTHING AND A MONSTER IS NOT PICKED UP — the two
+        // halves of the server's own rule (dungeonspec `validate.go`),
+        // enforced on this write path for `facing`/`offset`'s reason: the
+        // panel is not the only thing that can send a patch.
+        delete next.holdable;
+      } else {
+        // A PROP HAS NO SIDE — `faction` is monsters only (§2), and this
+        // is the write path that keeps a prop from being given one.
+        delete next.faction;
+      }
+      // NIL, NOT LEN 0 (`PlacementDoc.holds`): an empty list is a state
+      // this module can represent, so a caller that means "holds nothing"
+      // clears the field rather than writing `holds: []`. The panel's
+      // last-box-unticked path takes exactly this.
+      if (next.holds !== undefined && next.holds.length === 0) {
+        delete next.holds;
       }
       return next;
     }),
@@ -987,13 +3017,56 @@ export function removeRegion(doc: DungeonDoc, regionId: string): DungeonDoc {
 export function updateRegion(
   doc: DungeonDoc,
   regionId: string,
-  patch: Partial<Pick<RegionDoc, 'id' | 'name' | 'archetype' | 'lighting'>>
+  patch: Partial<
+    Pick<RegionDoc, 'id' | 'name' | 'archetype' | 'lighting' | 'concealed'>
+  >
 ): DungeonDoc {
   return {
     ...doc,
-    regions: doc.regions.map((r) =>
-      r.id === regionId ? { ...r, ...patch } : r
-    ),
+    regions: doc.regions.map((r) => {
+      if (r.id !== regionId) return r;
+      const next: RegionDoc = { ...r, ...patch };
+      if (!next.concealed) delete next.concealed;
+      return next;
+    }),
+  };
+}
+
+/** Apply `deriveConcealment` to `doc`, ratcheted against `priorDerivedIds`
+ * — the region ids THIS function itself set concealed last time it ran
+ * (rpg-dnd5e-web#893). A region newly required goes to `concealed: true`;
+ * a region no longer required comes back off ONLY when it is in
+ * `priorDerivedIds` — concealment a person set by hand (never in that
+ * set, because this function never put it there) is never touched, so
+ * unmarking a door cannot silently strip a hand-authored secret. Returns
+ * the SAME doc when nothing changed, same convention as every mutator
+ * here. */
+export function applyDerivedConcealment(
+  doc: DungeonDoc,
+  priorDerivedIds: ReadonlySet<string>
+): { doc: DungeonDoc; derivedIds: Set<string> } {
+  const { regionIds } = deriveConcealment(doc);
+  if (regionIds === null) {
+    return { doc, derivedIds: new Set(priorDerivedIds) };
+  }
+  let changed = false;
+  const regions = doc.regions.map((r): RegionDoc => {
+    if (regionIds.has(r.id)) {
+      if (r.concealed) return r;
+      changed = true;
+      return { ...r, concealed: true };
+    }
+    if (r.concealed && priorDerivedIds.has(r.id)) {
+      changed = true;
+      const next: RegionDoc = { ...r };
+      delete next.concealed;
+      return next;
+    }
+    return r;
+  });
+  return {
+    doc: changed ? { ...doc, regions } : doc,
+    derivedIds: regionIds,
   };
 }
 
@@ -1013,11 +3086,16 @@ export function updateDungeon(
  * (`key`, `version`, an unparseable path) — it is listed, not drawn. */
 export type ErrorTarget =
   | { kind: 'cell'; cell: Axial }
-  | { kind: 'edge'; edge: Edge }
+  | { kind: 'wall'; index: number }
   | { kind: 'placement'; index: number; cell: Axial }
   | { kind: 'region'; regionId: string }
   | { kind: 'door'; doorId: string }
   | { kind: 'start' }
+  | { kind: 'exit'; index: number }
+  /** A refusal the compiler addressed to one blank on one scenario's form
+   * (`scenarios.<id>.<key>`) — the form renders it under that blank, in the
+   * words the rulebook wrote. */
+  | { kind: 'scenario'; scenarioId: string; key: string }
   | { kind: 'document' };
 
 export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
@@ -1029,6 +3107,15 @@ export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
     const cell = layout.regions[+m[1]]?.rows[+m[2]]?.[+m[3]];
     return cell ? { kind: 'cell', cell } : { kind: 'document' };
   }
+  // Scenery rows are addressed exactly like a region's cells — the whole
+  // reason both use the same encoding — so a refusal naming a scenery
+  // cell (design §2.5, and the C4 walk's own message) lands on the cell.
+  m = /^scenery\[(\d+)\]\[(\d+)\]/.exec(path);
+  if (m) {
+    const cell = layout.scenery[+m[1]]?.[+m[2]];
+    return cell ? { kind: 'cell', cell } : { kind: 'document' };
+  }
+
   m = /^regions\[(\d+)\]/.exec(path);
   if (m) {
     const region = layout.regions[+m[1]]?.region;
@@ -1036,19 +3123,19 @@ export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
       ? { kind: 'region', regionId: region.id }
       : { kind: 'document' };
   }
+  // A wall's defect names the WALL, whichever field of it the compiler
+  // faulted (`walls[3].start.offset`, `walls[3].height`) — a wall is one
+  // line, so there is no smaller thing on the canvas to point at. The
+  // path resolves to the wall's index in the EMITTED order, which is the
+  // order the compiler read.
   m = /^walls\[(\d+)\]/.exec(path);
   if (m) {
-    const wall = layout.walls[+m[1]];
-    return wall ? { kind: 'edge', edge: wall.edge } : { kind: 'document' };
-  }
-  m = /^doors\[(\d+)\]\.edges\[(\d+)\]/.exec(path);
-  if (m) {
-    const edge = layout.doors[+m[1]]?.edges[+m[2]];
-    return edge ? { kind: 'edge', edge } : { kind: 'document' };
+    const index = doc.walls.indexOf(layout.walls[+m[1]]);
+    return index === -1 ? { kind: 'document' } : { kind: 'wall', index };
   }
   m = /^doors\[(\d+)\]/.exec(path);
   if (m) {
-    const door = layout.doors[+m[1]]?.door;
+    const door = layout.doors[+m[1]];
     return door ? { kind: 'door', doorId: door.id } : { kind: 'document' };
   }
   m = /^place\[(\d+)\]/.exec(path);
@@ -1057,6 +3144,29 @@ export function resolveErrorPath(doc: DungeonDoc, path: string): ErrorTarget {
     return placement
       ? { kind: 'placement', index: +m[1], cell: placement.at }
       : { kind: 'document' };
+  }
+  m = /^exits\[(\d+)\]/.exec(path);
+  if (m) {
+    const index = doc.exits.indexOf(layout.exits[+m[1]]);
+    return index === -1 ? { kind: 'document' } : { kind: 'exit', index };
+  }
+  // `scenarios.<id>.<key>` — the compiler's own spelling (dungeonspec
+  // `validate.go`). A scenario id may carry hyphens and dots, so the key
+  // is taken as everything after the LAST dot rather than by splitting on
+  // the first: `scenarios.recover-the-artifact.artifact` names the key
+  // `artifact`, not `the-artifact`.
+  m = /^scenarios\.(.+)$/.exec(path);
+  if (m) {
+    const rest = m[1];
+    const dot = rest.lastIndexOf('.');
+    if (dot > 0) {
+      const scenarioId = rest.slice(0, dot);
+      const key = rest.slice(dot + 1);
+      if (doc.scenarios[scenarioId]) {
+        return { kind: 'scenario', scenarioId, key };
+      }
+    }
+    return { kind: 'document' };
   }
   return { kind: 'document' };
 }

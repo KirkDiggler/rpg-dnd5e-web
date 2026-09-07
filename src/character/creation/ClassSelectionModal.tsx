@@ -376,7 +376,7 @@ export function ClassSelectionModal({
       );
       if (!isCompleteEquipmentChoice(choice, equipmentChoice)) {
         setErrorMessage(
-          `Please complete each equipment category with different items: ${choice.description}`
+          `Please complete each equipment category: ${choice.description}`
         );
         return;
       }

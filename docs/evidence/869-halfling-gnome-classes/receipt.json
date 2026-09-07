@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "providerCommit": "03aae3bf60893ec7a948aa6794a03179fbfaaec6",
+  "providerManifestSha256": "da5b72d7d5df08271478c47b58a4a5eafd1dfda4a86115a87e212ce21cd7a935",
+  "providerInventorySha256": "1a9c18e8a071cd7b9657680010b75c76d24b9a0b25caf8122d0899b90bdaf998",
+  "combinations": {
+    "dwarf:barbarian": {"modelUrl": "/models/synty/characters/race-class/dwarf-barbarian.glb", "sha256": "dfd29de0d5a3611f6e92b88e7f706587ef705b332f0a8a949ee23919396a9a7f"},
+    "dwarf:fighter": {"modelUrl": "/models/synty/characters/race-class/dwarf-fighter.glb", "sha256": "7e1c611b5b5e02a709e75ed71deeccdc30242e0716da469adc2ddaa559068224"},
+    "dwarf:monk": {"modelUrl": "/models/synty/characters/race-class/dwarf-monk.glb", "sha256": "e44a953e0678b029a379822a0593b21111fb7052c18152750ded94eed7086247"},
+    "dwarf:rogue": {"modelUrl": "/models/synty/characters/race-class/dwarf-rogue.glb", "sha256": "a6de5c8247d8fdd8eae3888ee10faa9eddb73b624be92e81c25993b24063cfe7"},
+    "halfling:barbarian": {"modelUrl": "/models/synty/characters/race-class/halfling-barbarian.glb", "sha256": "4bec886592680bffa6534aac726fd1477451b30b8429bffcfa330a27751a3b70"},
+    "halfling:fighter": {"modelUrl": "/models/synty/characters/race-class/halfling-fighter.glb", "sha256": "74232e1eca2149752722d6ed14c482b4e69cc7551c835fbe84ba681c3de685d1"},
+    "halfling:monk": {"modelUrl": "/models/synty/characters/race-class/halfling-monk.glb", "sha256": "c06d21673cb573ac7edc9b71a31dda613e0ad2192a8ecbb73da3b1d94d0694ae"},
+    "halfling:rogue": {"modelUrl": "/models/synty/characters/race-class/halfling-rogue.glb", "sha256": "8b5020f2b225544033dce772a201f8914f2eb03b8d45383e6dbd535e5ea3d981"},
+    "gnome:barbarian": {"modelUrl": "/models/synty/characters/race-class/gnome-barbarian.glb", "sha256": "b95342c60e335f4138b5de3a18a554c49156ae57fb08654e7d874a432a905d58"},
+    "gnome:fighter": {"modelUrl": "/models/synty/characters/race-class/gnome-fighter.glb", "sha256": "f60688fb49f7dbcf25787c6b1b6da56477367fe134b90371e4ce0089dd926e3c"},
+    "gnome:monk": {"modelUrl": "/models/synty/characters/race-class/gnome-monk.glb", "sha256": "75b267f3e9ed9bb7dd73433c99009f4ee9ea664d367afb4e9242949a747f9d60"},
+    "gnome:rogue": {"modelUrl": "/models/synty/characters/race-class/gnome-rogue.glb", "sha256": "e5a83d2c8ebdf33f27763cb5e8032dfb53175b5d7fb43dace17c61c83ec1bb0e"}
+  },
+  "identities": {
+    "dwarf": {"head": "Chr_Head_Male_00", "ears": "Chr_Ear_Ear_01", "hair": "Chr_Hair_04", "facialHair": "Chr_FacialHair_Male_02", "proportions": [1.08, 0.78, 1.08]},
+    "halfling": {"head": "Chr_Head_Male_00", "ears": "Chr_Ear_Ear_01", "hair": "Chr_Hair_16", "proportions": [0.84, 0.52, 0.84]},
+    "gnome": {"head": "Chr_Head_Male_00", "ears": "Chr_Ear_Ear_01", "hair": "Chr_Hair_16", "proportions": [0.76, 0.64, 0.76]}
+  },
+  "armContract": {
+    "method": "tpose-x-scale-v1",
+    "derivation": "vertical-over-radial",
+    "fingertipMinusKneeMeters": {"previousDwarf": -0.094966, "refreshedDwarf": 0.132184, "halfling": 0.085533, "gnome": 0.11116}
+  },
+  "rigFamily": "modular-fantasy-hero-v1",
+  "socketProfile": "modular-fantasy-hero-main-hand-v1",
+  "animations": ["Idle_Relaxed", "Walk_Forward"],
+  "weapons": {
+    "canonicalFullSize": true,
+    "raceSpecificScaling": false,
+    "hashes": {
+      "greataxe": "39c08c15e778c1f1c915478001204f218382c47cad3c1306626784f7ca398bb7",
+      "greatsword": "600d83e67e47ff461efc94c43bde39e09139c3778ec82cfd86d47e03fb26eea1",
+      "shortsword": "ee5f39b67f7d77df01a9425c5a2a371603eff83138d236ba5049033a7dc4ce9b",
+      "rapier": "3318941a7dcfcd37256a289d234529da6279976e286734ba10b2dd41dee6c96f"
+    }
+  },
+  "normalCreation": {
+    "fixturePatch": false,
+    "finalizeDraftSucceeded": 8,
+    "players": [
+      "H869 Halfling Barbarian", "H869 Halfling Fighter", "H869 Halfling Monk", "H869 Halfling Rogue",
+      "G869 Gnome Barbarian", "G869 Gnome Fighter", "G869 Gnome Monk", "G869 Gnome Rogue"
+    ]
+  },
+  "equipment": {
+    "method": "dnd5e.api.v1alpha2.character.CharacterService.EquipItem",
+    "endpoint": "lab2",
+    "successfulCalls": 8,
+    "storagePatch": false,
+    "mainHands": {"barbarian": "dnd5e:item:greataxe", "fighter": "dnd5e:item:greatsword", "monk": "dnd5e:item:shortsword", "rogue": "dnd5e:item:rapier"}
+  },
+  "realRoute": {
+    "dungeon": "The Reference Tomb",
+    "sessions": ["four Halflings", "four Gnomes"],
+    "refreshedDwarfSample": true,
+    "allModelResponses": 9,
+    "allWeaponResponses": 9,
+    "httpStatus": 200,
+    "movement": "successful two-step Halfling Barbarian SessionService.Move response; Walking observed",
+    "capturedProofWindowConsoleErrors": 0,
+    "capturedProofWindowPageErrors": 0,
+    "capturedProofWindowUnexpectedRequestFailures": 0
+  },
+  "captures": [
+    "halfling-four-classes-close-real-route.png", "halfling-four-classes-rotated-real-route.png", "halfling-barbarian-walk-real-route.png",
+    "halfling-barbarian-greataxe-real-route.png", "halfling-fighter-greatsword-real-route.png", "halfling-monk-shortsword-real-route.png", "halfling-rogue-rapier-real-route.png",
+    "gnome-four-classes-close-real-route.png", "gnome-four-classes-rotated-real-route.png", "gnome-barbarian-walk-real-route.png",
+    "gnome-barbarian-greataxe-real-route.png", "gnome-fighter-greatsword-real-route.png", "gnome-monk-shortsword-real-route.png", "gnome-rogue-rapier-real-route.png",
+    "dwarf-refreshed-barbarian-greataxe-real-route.png"
+  ]
+}

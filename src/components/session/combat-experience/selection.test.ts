@@ -1,5 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import {
+  DeathSaveRefSchema,
   DeclarationSchema,
   ShortfallReason,
   ShortfallSchema,
@@ -136,6 +137,44 @@ describe('selectCombatExperience', () => {
         [attack, move, endTurn],
         state('v1.end', 'goblin-1')
       )?.candidate
+    ).toBeNull();
+  });
+
+  it('recognizes the exact selector-bearing no-target Death Save declaration without arming a candidate', () => {
+    const deathSave = declaration('selector.death-save', {
+      verb: Verb.DEATH_SAVE,
+      slot: Slot.NONE,
+      targetKind: TargetKind.NONE,
+      candidates: [],
+      deathSave: create(DeathSaveRefSchema, { name: 'Death Save' }),
+    });
+
+    expect(
+      selectCombatExperience(
+        [deathSave],
+        state('selector.death-save', 'must-not-become-a-target')
+      )
+    ).toEqual({ declaration: deathSave, candidate: null, whyText: null });
+  });
+
+  it('fails closed on a malformed Death Save identity or target shape', () => {
+    const missingIdentity = declaration('selector.missing', {
+      verb: Verb.DEATH_SAVE,
+      slot: Slot.NONE,
+      targetKind: TargetKind.NONE,
+    });
+    const targeted = declaration('selector.targeted', {
+      verb: Verb.DEATH_SAVE,
+      slot: Slot.NONE,
+      targetKind: TargetKind.MEMBER,
+      deathSave: create(DeathSaveRefSchema, { name: 'Death Save' }),
+    });
+
+    expect(
+      selectCombatExperience([missingIdentity], state('selector.missing'))
+    ).toBeNull();
+    expect(
+      selectCombatExperience([targeted], state('selector.targeted'))
     ).toBeNull();
   });
 

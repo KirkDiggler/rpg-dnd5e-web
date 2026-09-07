@@ -1,5 +1,11 @@
 import { create } from '@bufbuild/protobuf';
+import { EmptySchema } from '@bufbuild/protobuf/wkt';
 import {
+  HairCustomizationSchema,
+  StyleSelectionSchema,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
+import {
+  AppearanceSchema,
   BackgroundInfoSchema,
   CharacterDraftSchema,
   ClassInfoSchema,
@@ -18,6 +24,8 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import {
   Armor,
+  Class,
+  Race,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -91,24 +99,29 @@ function persistedDuplicateEquipmentChoice() {
 function draftState(
   finalizeDraft: CharacterDraftState['finalizeDraft'],
   overrides: Partial<
-    Pick<CharacterDraftState, 'classInfo' | 'classChoices'>
+    Pick<
+      CharacterDraftState,
+      'draft' | 'raceInfo' | 'classInfo' | 'classChoices'
+    >
   > = {}
 ): CharacterDraftState {
   return {
     draftId: 'persisted-draft',
-    draft: create(CharacterDraftSchema, {
-      id: 'persisted-draft',
-      name: 'Aria',
-      baseAbilityScores: {
-        strength: 15,
-        dexterity: 14,
-        constitution: 13,
-        intelligence: 12,
-        wisdom: 10,
-        charisma: 8,
-      },
-    }),
-    raceInfo: create(RaceInfoSchema, { name: 'Human' }),
+    draft:
+      overrides.draft ??
+      create(CharacterDraftSchema, {
+        id: 'persisted-draft',
+        name: 'Aria',
+        baseAbilityScores: {
+          strength: 15,
+          dexterity: 14,
+          constitution: 13,
+          intelligence: 12,
+          wisdom: 10,
+          charisma: 8,
+        },
+      }),
+    raceInfo: overrides.raceInfo ?? create(RaceInfoSchema, { name: 'Human' }),
     classInfo:
       overrides.classInfo ??
       create(ClassInfoSchema, {
@@ -145,9 +158,116 @@ function draftState(
   };
 }
 
+describe('InteractiveCharacterSheet profile-driven appearance entry', () => {
+  const dwarf = create(RaceInfoSchema, {
+    name: 'Dwarf',
+    raceId: Race.DWARF,
+  });
+
+  it.each([
+    [dwarf, 'Dwarf'],
+    [create(RaceInfoSchema, { name: 'Human', raceId: Race.HUMAN }), 'Human'],
+    [
+      create(RaceInfoSchema, { name: 'Half-Orc', raceId: Race.HALF_ORC }),
+      'Half-Orc',
+    ],
+  ])(
+    'offers the accessible %s hair picker after a supported class is selected',
+    (raceInfo, label) => {
+      render(
+        <CharacterDraftContext.Provider
+          value={draftState(vi.fn(), {
+            raceInfo,
+            classInfo: create(ClassInfoSchema, {
+              name: 'Rogue',
+              classId: Class.ROGUE,
+            }),
+            classChoices: [],
+          })}
+        >
+          <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+        </CharacterDraftContext.Provider>
+      );
+
+      expect(
+        screen.getByRole('button', { name: `Customize ${label} appearance` })
+      ).not.toBeNull();
+    }
+  );
+
+  it.each([
+    [create(RaceInfoSchema, { name: 'Dragonborn' }), 'Fighter'],
+    [dwarf, 'Wizard'],
+  ])(
+    'does not offer the picker for an unsupported race/class pair',
+    (raceInfo, className) => {
+      render(
+        <CharacterDraftContext.Provider
+          value={draftState(vi.fn(), {
+            raceInfo,
+            classInfo: create(ClassInfoSchema, { name: className }),
+            classChoices: [],
+          })}
+        >
+          <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+        </CharacterDraftContext.Provider>
+      );
+
+      expect(
+        screen.queryByRole('button', { name: /Customize .* appearance/ })
+      ).toBeNull();
+      expect(screen.queryByText('Customize Appearance')).toBeNull();
+    }
+  );
+
+  it('summarizes persisted style, none, black, and zero roughness without legacy swatches', () => {
+    const appearance = create(AppearanceSchema, {
+      hair: create(HairCustomizationSchema, {
+        scalp: create(StyleSelectionSchema, {
+          selection: {
+            case: 'styleRef',
+            value: 'modular-fantasy-hero:hair:38',
+          },
+        }),
+        facialHair: create(StyleSelectionSchema, {
+          selection: { case: 'none', value: create(EmptySchema) },
+        }),
+        colorSrgb: 0,
+        roughness: 0,
+      }),
+    });
+    render(
+      <CharacterDraftContext.Provider
+        value={draftState(vi.fn(), {
+          draft: create(CharacterDraftSchema, {
+            id: 'persisted-draft',
+            appearance,
+          }),
+          raceInfo: dwarf,
+          classInfo: create(ClassInfoSchema, {
+            name: 'Fighter',
+            classId: Class.FIGHTER,
+          }),
+          classChoices: [],
+        })}
+      >
+        <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
+      </CharacterDraftContext.Provider>
+    );
+
+    expect(screen.getByText('Scalp: Hair 38')).not.toBeNull();
+    expect(screen.getByText('Facial: None')).not.toBeNull();
+    expect(screen.getByText('#000000 · roughness 0.00')).not.toBeNull();
+    expect(screen.queryByTitle('Skin Tone')).toBeNull();
+    expect(screen.queryByTitle('Primary Color')).toBeNull();
+  });
+});
+
 describe('InteractiveCharacterSheet persisted equipment guard', () => {
-  it('disables finalization and does not invoke FinalizeDraft for a same-category legacy duplicate', () => {
-    const finalizeDraft = vi.fn<() => Promise<string>>();
+  it('allows finalization for a same-category repeated equipment selection', () => {
+    const finalizeDraft = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValue('char-1');
     render(
       <CharacterDraftContext.Provider value={draftState(finalizeDraft)}>
         <InteractiveCharacterSheet onComplete={vi.fn()} onCancel={vi.fn()} />
@@ -155,9 +275,9 @@ describe('InteractiveCharacterSheet persisted equipment guard', () => {
     );
 
     const finalize = screen.getByRole('button', { name: /begin adventure/i });
-    expect(finalize.getAttribute('disabled')).not.toBeNull();
+    expect(finalize.getAttribute('disabled')).toBeNull();
     fireEvent.click(finalize);
-    expect(finalizeDraft).not.toHaveBeenCalled();
+    expect(finalizeDraft).toHaveBeenCalled();
   });
 });
 

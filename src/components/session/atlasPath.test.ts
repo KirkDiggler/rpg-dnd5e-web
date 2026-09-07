@@ -10,6 +10,7 @@ import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/sess
 import { DoorState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import referenceTombCells from '../../concepts/session-tomb/referenceTombCells.json';
+import { coordToKey } from '../hex-grid/hexMath';
 import { buildAtlasPathIndex, edgePassable, findAtlasPath } from './atlasPath';
 import { positionToCube } from './positionBridge';
 
@@ -445,5 +446,60 @@ describe('door state gates the doorway (rpg-project#268)', () => {
     );
     expect(index.shutDoorEdges.size).toBe(1);
     expect(index.blockedEdges.size).toBe(0);
+  });
+});
+
+describe('live member occupancy blocks the destination cell (pathing preview follow-up, PR #920)', () => {
+  it('a cell with no occupied set at all stays enterable — the pre-occupancy behavior', () => {
+    const index = buildAtlasPathIndex(openPairAtlas());
+    expect(
+      edgePassable(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toBe(true);
+  });
+
+  it('a cell occupied by a live other member (e.g. a placed world NPC) refuses the edge, same as a movement-blocking prop', () => {
+    const index = buildAtlasPathIndex(
+      openPairAtlas(),
+      undefined,
+      new Set([coordToKey(positionToCube(pos(1, 0)))])
+    );
+    expect(
+      edgePassable(index, positionToCube(pos(0, 0)), positionToCube(pos(1, 0)))
+    ).toBe(false);
+  });
+
+  it('occupancy never leaks into blockedCells — it is live data, not construction truth, the same distinction shutDoorEdges already draws', () => {
+    const index = buildAtlasPathIndex(
+      openPairAtlas(),
+      undefined,
+      new Set([coordToKey(positionToCube(pos(1, 0)))])
+    );
+    expect(index.occupiedCells.size).toBe(1);
+    expect(index.blockedCells.size).toBe(0);
+  });
+
+  it('findAtlasPath routes AROUND an occupied cell rather than refusing the whole route, when an unoccupied detour exists', () => {
+    // (0,0) start and (2,-1) goal share exactly two common neighbors —
+    // (1,0) and (1,-1) — the classic hex rhombus detour shape. Occupying
+    // (1,0) must push the route onto (1,-1), not fail the whole search.
+    const atlas = {
+      cells: [pos(0, 0), pos(1, 0), pos(1, -1), pos(2, -1)],
+      boundaries: [],
+      doorways: [],
+      props: [],
+    } as never;
+    const index = buildAtlasPathIndex(
+      atlas,
+      undefined,
+      new Set([coordToKey(positionToCube(pos(1, 0)))])
+    );
+    const path = findAtlasPath(
+      index,
+      positionToCube(pos(0, 0)),
+      positionToCube(pos(2, -1))
+    );
+    const keys = path.map((c) => coordToKey(c));
+    expect(keys).toContain(coordToKey(positionToCube(pos(1, -1))));
+    expect(keys).not.toContain(coordToKey(positionToCube(pos(1, 0))));
   });
 });

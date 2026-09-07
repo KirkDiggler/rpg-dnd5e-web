@@ -1,8 +1,8 @@
 ---
 name: rpg-dnd5e-web status
 description: Where we are with the React/Discord Activity UI — active work, paused, known rough edges, per-subsystem confidence
-updated: 2026-08-26
-confidence: medium — session combat is current through #817; older unrelated entries still need the dedicated refresh noted below.
+updated: 2026-08-31
+confidence: medium — session combat is current through #817 and equipment through #880; older unrelated entries still need the dedicated refresh noted below.
 ---
 
 # rpg-dnd5e-web: Where We Are
@@ -11,6 +11,17 @@ This is a living doc. Edit it in the same PR that invalidates a line. Don't
 let it rot.
 
 ## Active work
+
+- **Local world composition library / World Builder (#951)** — the existing
+  web#935 editor is promoted unchanged onto the development main menu beside
+  Dungeon Builder. `VITE_DEV_WORLD_ID` (default `test-world`) supplies one real
+  CompositionService Create/Get/List source shared by World Builder,
+  Dungeon Builder list/thumbnails/preview, and session play. Scene names come
+  from authored JSON; malformed and RPC-error states fail visibly without the
+  explicit fixed fixture as fallback. Local drafts/arrangements/import/export
+  remain independent. Production remains gated on verified Discord
+  guild-to-world mapping, and local Redis remains ephemeral across full-stack
+  teardown.
 
 - **Production session combat experience (#817; design #270/PR #271,
   concept #809/#810)** — `SessionEncounterView` now mounts the same
@@ -53,12 +64,18 @@ let it rot.
   Run-ended presentation closes equipment immediately, places an inert/hidden
   game surface beneath the focused `aria-modal` action, and layers the modal
   above every panel. A transient private refresh error keeps the last confirmed
-  CharacterData and cannot freeze newer door/path state. Attack outcomes never
-  display bonus equations, target `hpAfter`, or peer exact HP. The old session
-  CombatPanel/useCombatPanel/combatPanel, DeclarationRow/TurnHud
-  bridge, direct-floor attack, and separate DebugCombatLog are deleted.
-  Provider baseline: proto v0.1.143 (`a7db07a`), toolkit dnd5e v0.100.0 /
-  session v0.30.0 / resolution v0.13.0, merged API dev `f1aa9d2` (PR #845).
+  CharacterData and cannot freeze newer door/path state. Typed
+  Activated/ActivationResult events render one ordered Story entry per event:
+  provider names drive abilities and conditions, healing reports the applied HP
+  with provider roll inputs, and condition removal/capacity retain typed prose.
+  Raw Debug preserves every activation/result field. Results refresh
+  CharacterData/Afford/View; Activated adds no owner snapshot beyond the route's
+  unconditional Turn/Afford funnel. Attack outcomes never display bonus
+  equations, target `hpAfter`, or peer exact HP. The old session
+  CombatPanel/useCombatPanel/combatPanel, DeclarationRow/TurnHud bridge,
+  direct-floor attack, and separate DebugCombatLog are deleted. Provider
+  baseline: proto v0.1.153 (`f87c098`), toolkit dnd5e v0.100.0 / session
+  v0.30.0 / resolution v0.13.0, merged API dev `f1aa9d2` (PR #845).
   Automated web gates are recorded in the Task 14 report; licensed Synty assets
   and authenticated two-browser live API verification remain environment gates.
 
@@ -72,27 +89,31 @@ let it rot.
   fixed items first (the toolkit's own build order); a toolkit-enumerated wire
   item (weapon/armor/tool/pack/ammunition enum, not `other_equipment_id`) is
   mapped back to its authoritative `selectionId` via that category's own
-  `options`, not re-derived client-side. A same-category legacy duplicate is
-  surfaced for correction and cannot invoke finalization, the same selection ID
-  remains valid in independently declared categories, and persisted items left
-  over after every declared slot has consumed its slice are treated as invalid
-  rather than silently finalized: the affected equipment control announces a
-  correction alert (not completion) until the player changes that choice.
-  The equipment controls re-sync if a reopened draft's persisted selection
-  resolves after the choice has already mounted. A raw `other_equipment_id`
-  remains an opaque server selection ID: the client deliberately does not
-  duplicate category eligibility rules to reject it locally, because API
-  finalization delegates authoritative eligibility/count/uniqueness validation
-  to the toolkit. Proto dependency: `rpg-api-protos#207` / `v0.1.118`;
+  `options`, not re-derived client-side. A repeated same-category selection ID
+  is accepted when it fills the declared equipment count (the same selection ID
+  also remains valid in independently declared categories), while persisted
+  items left over after every declared slot has consumed its slice are treated
+  as invalid rather than silently finalized: the affected equipment control
+  announces a correction alert (not completion) until the player changes that
+  choice. The equipment controls re-sync if a reopened draft's persisted
+  selection resolves after the choice has already mounted. A raw
+  `other_equipment_id` remains an opaque server selection ID: the client
+  deliberately does not duplicate category eligibility rules to reject it
+  locally, because API finalization delegates authoritative eligibility/count
+  validation to the toolkit. Current proto dependency: `v0.1.147`; original
+  authoritative-options dependency: `rpg-api-protos#207` / `v0.1.118`;
   provider: `rpg-api#764`.
 
-- **Equipment live on the game screen (#571)** — the `/concepts` equipment
+- **Equipment live on the game screen (#571, #880)** — the `/concepts` equipment
   chip + popover bench (#531/#557) is wired to the real
   `dnd5e.api.v1alpha2.character.CharacterService.EquipItem`/`UnequipItem`
   RPCs (`v0.1.110` proto bump). `EncounterDock` gains an equipment chip
   (chestplate icon, hidden for non-CHARACTER entities) that opens a
   popover fed from the encounter snapshot's `CharacterData` — no separate
-  fetch. Equip/unequip is character-scoped and never turn-gated
+  fetch. Inventory rows now subtract full-ref equipped occurrences from the
+  owner-authored quantity, retain a carried `×1` row when one of two copies is
+  equipped, and disappear only when every copy is equipped. Equip/unequip is
+  character-scoped and never turn-gated
   (protos#187 defers encounter-scoped equip with an action cost to
   rpg-project#94). `EquipmentSlots`/`InventoryLight`/`EquipmentPopover`
   moved from `src/concepts/equipment/` to `src/components/game/equipment/`

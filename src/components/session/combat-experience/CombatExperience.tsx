@@ -1,20 +1,29 @@
+import { useDiceDials } from '@/feel/useFeelDials';
 import {
   ClockKind,
   Standing,
   type Participant,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { propLabel } from '../holdingAffordances';
+import {
+  authoredWords as exitWords,
+  holdingPhrase as holdingWords,
+} from '../holdingBeat';
 import { ActionDock } from './ActionDock';
 import { presentCharacterData } from './characterPresentation';
 import styles from './CombatExperience.module.css';
 import { DamageToasts } from './DamageToasts';
-import { DiceDrawer } from './DiceDrawer';
+import { LocalWorldDieTile } from './LocalWorldDieTile';
+import { RollFlashToasts } from './RollFlashToasts';
 import { movementBudgetFeet, selectCombatExperience } from './selection';
+import type { StandingAction } from './standingActions';
 import { StoryLog } from './StoryLog';
 import { holdStoryUntilSettled } from './storyReveal';
 import { TargetSurface } from './TargetSurface';
 import type { CombatExperienceProps } from './types';
 import { useDamageToasts } from './useDamageToasts';
 import { useDiceSettleGate } from './useDiceSettleGate';
+import { useRollFlash } from './useRollFlash';
 
 function portraitOf(name: string): string {
   return name
@@ -32,6 +41,37 @@ function labelOf(value?: string): string {
     .filter(Boolean)
     .map((part) => `${part[0]?.toUpperCase()}${part.slice(1)}`)
     .join(' ');
+}
+
+function DeathSaveProgress({ participant }: { participant: Participant }) {
+  const progress = participant.deathSaves;
+  if (!progress) return null;
+  return (
+    <span
+      className={styles.deathSaveProgress}
+      data-testid="death-save-progress"
+      aria-label={`${participant.name} death saves`}
+    >
+      <span className={styles.deathSavePips} aria-hidden="true">
+        {Array.from({ length: progress.successes }, (_, index) => (
+          <i key={`success:${index}`} data-testid="death-save-success-pip" />
+        ))}
+        {Array.from({ length: progress.failures }, (_, index) => (
+          <i
+            key={`failure:${index}`}
+            data-testid="death-save-failure-pip"
+            data-failure="true"
+          />
+        ))}
+      </span>
+      <span>
+        {progress.successes} successes · {progress.successesNeeded} to stabilize
+      </span>
+      <span>
+        {progress.failures} failures · {progress.failuresRemaining} remaining
+      </span>
+    </span>
+  );
 }
 
 function InitiativeEntry({
@@ -54,6 +94,7 @@ function InitiativeEntry({
       <span className={styles.initiativeName}>
         {you ? 'You' : participant.name}
       </span>
+      <DeathSaveProgress participant={participant} />
     </div>
   );
 }
@@ -96,6 +137,7 @@ export function CombatExperience({
   privateStatusMessage,
   onRetryPrivateStatus,
   authorityFresh,
+  endTurnBlocked = false,
   presentationState,
   phase,
   showTurnNotice,
@@ -107,7 +149,8 @@ export function CombatExperience({
   diceEvents,
   diceSemanticFallback,
   diceWitnessRole,
-  diceRollerName,
+  localWorldDieControl,
+  localWorldDieSettled = false,
   location,
   pacingNotice,
   renderMap,
@@ -117,7 +160,18 @@ export function CombatExperience({
   onLogModeChange,
   onOpenEquipment,
   equipmentOpen,
-  onDiceReleaseRequest,
+  onSearch,
+  searchPending = false,
+  lootTargets = [],
+  onLoot,
+  lootPending = false,
+  holdTargets = [],
+  onHold,
+  holdPending = false,
+  onLeave,
+  leavePending = false,
+  leaveExitId,
+  leaveHolding = [],
   onDiceSemanticReleaseRequest,
   diagnosticsEnabled,
 }: CombatExperienceProps) {
@@ -132,14 +186,24 @@ export function CombatExperience({
   const diePresented =
     diceWitnessRole === 'roller' &&
     !diceSemanticFallback &&
+    !localWorldDieSettled &&
     diceEvents.length > 0;
   // `result` goes visible when the die is THROWN, not when it lands. Hold it
   // until the die is observed at rest — see useDiceSettleGate.ts.
-  const { settledResult, onDiceTelemetry } = useDiceSettleGate({
+  const { settledResult } = useDiceSettleGate({
     result,
     diePresented,
   });
   const damageToasts = useDamageToasts(settledResult);
+  // `?rollFlash=` (diceDials.ts) — LIVE (#906 batch 2). `settledResult` is
+  // the SAME signal useDamageToasts uses — see rollFlash.ts's own doc
+  // comment for why that already produces "at settle" for the roller and
+  // "at result arrival" for a spectator, with no extra logic needed here.
+  const rollFlashDial = useDiceDials().rollFlash;
+  const rollFlashes = useRollFlash(
+    settledResult,
+    rollFlashDial === 'toast' || rollFlashDial === 'both'
+  );
   // The log narrates the same beat the toast announces, so it waits on the
   // same signal. Withholding the toast alone would have left the strike, its
   // damage, and the downed line that follows still spoiling the roll from the
@@ -152,6 +216,67 @@ export function CombatExperience({
     (participant) => participant.active
   );
   const isViewerTurn = activeParticipant?.member === viewerMember;
+
+  /**
+   * Search, Loot, Hold and Leave, as dock actions (Kirk's second walk:
+   * "these should be buttons like the other actions I can take").
+   *
+   * Built here rather than in the dock because this component is what
+   * holds the offers — which bodies are down beside you, which props you
+   * can reach — and the dock's job is to draw what it is handed. The
+   * ORDER is fixed and not sorted by anything: a list that reordered
+   * itself as the party moved would move the button out from under a
+   * finger mid-fight.
+   */
+  const standingActions: StandingAction[] = [];
+  if (onSearch) {
+    standingActions.push({
+      key: 'session-combat-search-button',
+      label: searchPending ? 'Searching…' : 'Search',
+      icon: '🔍',
+      title: "Search the room you're standing in",
+      pending: searchPending,
+      onSelect: onSearch,
+    });
+  }
+  if (onLoot) {
+    // ONE PER DOWNED BODY, all of them, in the order given (design P3):
+    // a body with nothing to give offers exactly what the captain does.
+    for (const target of lootTargets) {
+      standingActions.push({
+        key: `session-combat-loot-${target.subject}`,
+        label: lootPending ? 'Looting…' : `Loot ${target.name}`,
+        icon: '🖐',
+        title: `Loot ${target.name}`,
+        pending: lootPending,
+        onSelect: () => onLoot(target.subject),
+      });
+    }
+  }
+  if (onHold) {
+    for (const target of holdTargets) {
+      standingActions.push({
+        key: `session-combat-hold-${target.id}`,
+        label: holdPending ? 'Holding…' : `Hold the ${propLabel(target)}`,
+        icon: '✋',
+        title: `Pick up the ${propLabel(target)}`,
+        pending: holdPending,
+        onSelect: () => onHold(target.id),
+      });
+    }
+  }
+  if (onLeave) {
+    standingActions.push({
+      key: 'session-combat-leave-button',
+      label: leavePending ? 'Leaving…' : leaveLabel(leaveExitId, leaveHolding),
+      icon: '🚪',
+      title: leaveExitId
+        ? `Leave through the ${exitWords(leaveExitId)}. Carrying what the run is about, that ends it`
+        : 'Leave the dungeon. Away from a way out, whatever you carry stays where you stood',
+      pending: leavePending,
+      onSelect: onLeave,
+    });
+  }
   const selection = authorityFresh
     ? selectCombatExperience(declarations, presentationState)
     : null;
@@ -254,6 +379,7 @@ export function CombatExperience({
         )}
 
         <DamageToasts toasts={damageToasts} />
+        <RollFlashToasts flashes={rollFlashes} />
 
         <StoryLog
           story={revealedStory}
@@ -265,27 +391,25 @@ export function CombatExperience({
           diagnosticsEnabled={diagnosticsEnabled}
         />
 
-        {diceWitnessRole === 'roller' ? (
-          <DiceDrawer
-            phase={phase}
-            events={diceEvents}
-            rollerName={diceRollerName ?? viewerName}
-            semanticFallback={diceSemanticFallback}
-            witnessRole="roller"
-            onReleaseRequest={onDiceReleaseRequest}
-            onSemanticReleaseRequest={onDiceSemanticReleaseRequest}
-            onDiceTelemetry={onDiceTelemetry}
-          />
-        ) : (
-          <DiceDrawer
-            phase={phase}
-            events={diceEvents}
-            rollerName={diceRollerName ?? viewerName}
-            semanticFallback={diceSemanticFallback}
-            witnessRole="spectator"
-            onDiceTelemetry={onDiceTelemetry}
-          />
-        )}
+        {diceWitnessRole === 'roller' &&
+          phase === 'awaiting-roll' &&
+          localWorldDieControl !== null && (
+            <div className={styles.localWorldDieControlLayer}>
+              {localWorldDieControl !== undefined ? (
+                localWorldDieControl
+              ) : (
+                <LocalWorldDieTile
+                  mode={diceSemanticFallback ? 'fallback' : 'ready'}
+                  pickupReady={!diceSemanticFallback}
+                  onRevealResult={
+                    diceSemanticFallback
+                      ? onDiceSemanticReleaseRequest
+                      : undefined
+                  }
+                />
+              )}
+            </div>
+          )}
 
         <div data-testid="session-combat-dock" className={styles.dock}>
           <div className={styles.identityRow}>
@@ -378,14 +502,55 @@ export function CombatExperience({
             participants={participants}
             declarations={declarations}
             authorityFresh={authorityFresh}
+            endTurnBlocked={endTurnBlocked}
             armedDeclarationId={
               presentationState.armedDeclarationId ?? undefined
             }
+            memberNames={memberNames}
             onSelectDeclaration={onSelectDeclaration}
             onEndTurn={onEndTurn}
+            standingActions={standingActions}
           />
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * What the Leave button says.
+ *
+ * # It never claims a departure is free
+ *
+ * Away from every authored way out, the drop is CERTAIN — no exit at all
+ * is the scenario's bound exit — so the button names what it costs. That
+ * is design R9's price, and the walk that asked for this line is a carrier
+ * who paid it without being told.
+ *
+ * ON an authored way out it says what is true and no more: which way out,
+ * and what is being carried through it. IT DOES NOT SAY THE HOLDING IS
+ * SAFE, because this client cannot know that. `GetAtlasResponse.exits` is
+ * every authored exit — structure, not scenario — and nothing on the wire
+ * says which one the scenario BOUND. A dungeon with two ways out, bound to
+ * one, would otherwise read "Leave through the sally port" with no warning
+ * and drop the artifact anyway: Kirk's walk again, with the button now
+ * actively reassuring him. A label that omits a cost is survivable; one
+ * that implies its absence is not.
+ *
+ * Carrying nothing, there is no cost either way and the button says
+ * nothing about one.
+ */
+function leaveLabel(
+  exitId: string | undefined,
+  holding: readonly string[]
+): string {
+  // The PHRASE, not the count: an id that renders to nothing (`-`) would
+  // otherwise produce "Leave (drops )". `holdingPhrase` documents exactly
+  // this distinction for exactly this kind of caller.
+  const carried = holdingWords(holding);
+  if (exitId) {
+    const through = `Leave through the ${exitWords(exitId)}`;
+    return carried ? `${through} with ${carried}` : through;
+  }
+  return carried ? `Leave (drops ${carried})` : 'Leave';
 }

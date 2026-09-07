@@ -1,10 +1,13 @@
 import type { EquippedMap } from '@/components/game/equipment/equipmentTypes';
 import { describe, expect, it } from 'vitest';
-import {
+import type { MainHandSocket } from './mainHandPresentation';
+import * as mainHandWeapons from './mainHandWeapons';
+
+const {
   CURRENT_MAIN_HAND_WEAPONS,
   TOWNFOLK_MAIN_HAND_SOCKET,
   resolveMainHandPresentation,
-} from './mainHandWeapons';
+} = mainHandWeapons;
 
 const itemRef = (id: string) => ({ module: 'dnd5e', type: 'item', id });
 const equipped = (id?: string): EquippedMap =>
@@ -23,7 +26,49 @@ const EXPECTED_WEAPONS = [
   ['club', 'Club', '/models/synty/weapons/club.glb'],
   ['greatclub', 'Greatclub', '/models/synty/weapons/greatclub.glb'],
   ['warhammer', 'Warhammer', '/models/synty/weapons/warhammer.glb'],
+  [
+    'light-crossbow',
+    'Light Crossbow',
+    '/models/synty/weapons/light-crossbow.glb',
+  ],
+  ['longbow', 'Longbow', '/models/synty/weapons/longbow.glb'],
+  ['javelin', 'Javelin', '/models/synty/weapons/javelin.glb'],
+  ['rapier', 'Rapier', '/models/synty/weapons/rapier.glb'],
+  ['light-hammer', 'Light Hammer', '/models/synty/weapons/light-hammer.glb'],
+  ['mace', 'Mace', '/models/synty/weapons/mace.glb'],
+  ['sickle', 'Sickle', '/models/synty/weapons/sickle.glb'],
+  ['spear', 'Spear', '/models/synty/weapons/spear.glb'],
+  ['sling', 'Sling', '/models/synty/weapons/sling.glb'],
+  ['dart', 'Dart', '/models/synty/weapons/dart.glb'],
+  ['halberd', 'Halberd', '/models/synty/weapons/halberd.glb'],
+  ['maul', 'Maul', '/models/synty/weapons/maul.glb'],
+  ['morningstar', 'Morningstar', '/models/synty/weapons/morningstar.glb'],
+  ['pike', 'Pike', '/models/synty/weapons/pike.glb'],
+  ['war-pick', 'War Pick', '/models/synty/weapons/war-pick.glb'],
+  ['glaive', 'Glaive', '/models/synty/weapons/glaive.glb'],
+  ['scimitar', 'Scimitar', '/models/synty/weapons/scimitar.glb'],
+  ['trident', 'Trident', '/models/synty/weapons/trident.glb'],
 ] as const;
+
+const EXPECTED_MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET = {
+  bone: 'Hand_R',
+  boneUnitMeters: 0.01,
+  positionMeters: [-0.113634511828, 0.043524894863, -0.006868128199],
+  rotationQuaternion: [
+    -0.31697111189640637, -0.4555468694563118, 0.6829896921327775,
+    0.47490151020194044,
+  ],
+  scale: 1,
+} satisfies MainHandSocket;
+
+type Task8MainHandWeaponsModule = typeof mainHandWeapons & {
+  MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET?: MainHandSocket;
+  mainHandSocketForRigFamily?: (
+    rigFamily: 'townfolk-v1' | 'modular-fantasy-hero-v1'
+  ) => MainHandSocket;
+};
+
+const task8MainHandWeapons = mainHandWeapons as Task8MainHandWeaponsModule;
 
 describe('production main-hand weapon presentation', () => {
   it.each(EXPECTED_WEAPONS)(
@@ -49,30 +94,45 @@ describe('production main-hand weapon presentation', () => {
     }
   );
 
-  it('exposes exactly the current 12-item provider roster', () => {
-    expect(CURRENT_MAIN_HAND_WEAPONS).toHaveLength(12);
-    expect(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.ref)).toEqual(
-      EXPECTED_WEAPONS.map(([id]) => `dnd5e:item:${id}`)
+  it('exposes the exact 30-item provider roster in order with no duplicates', () => {
+    expect(CURRENT_MAIN_HAND_WEAPONS).toEqual(
+      EXPECTED_WEAPONS.map(([id, label, weaponUrl]) => ({
+        ref: `dnd5e:item:${id}`,
+        id,
+        label,
+        weaponUrl,
+      }))
     );
+
+    expect(
+      new Set(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.ref)).size
+    ).toBe(30);
+    expect(
+      new Set(CURRENT_MAIN_HAND_WEAPONS.map((weapon) => weapon.weaponUrl)).size
+    ).toBe(30);
   });
 
   it('treats absent main_hand as intentionally unarmed', () => {
     expect(resolveMainHandPresentation({})).toEqual({ code: 'unarmed' });
   });
 
-  it('refuses unknown and attack-shaped refs instead of guessing', () => {
-    expect(resolveMainHandPresentation(equipped('rapier'))).toEqual({
-      code: 'unmapped-ref',
-      ref: 'dnd5e:item:rapier',
-    });
-    expect(
-      resolveMainHandPresentation({
-        main_hand: { module: 'dnd5e', type: 'weapons', id: 'longsword' },
-      })
-    ).toEqual({
-      code: 'unmapped-ref',
-      ref: 'dnd5e:weapons:longsword',
-    });
+  it('refuses unknown, Lance, and attack-shaped refs instead of guessing', () => {
+    for (const id of ['flail', 'lance']) {
+      expect(resolveMainHandPresentation(equipped(id))).toEqual({
+        code: 'unmapped-ref',
+        ref: `dnd5e:item:${id}`,
+      });
+    }
+    for (const id of ['glaive', 'scimitar', 'trident']) {
+      expect(
+        resolveMainHandPresentation({
+          main_hand: { module: 'dnd5e', type: 'weapons', id },
+        })
+      ).toEqual({
+        code: 'unmapped-ref',
+        ref: `dnd5e:weapons:${id}`,
+      });
+    }
   });
 
   it('uses the one accepted townfolk socket for every mapped weapon', () => {
@@ -92,5 +152,27 @@ describe('production main-hand weapon presentation', () => {
       const result = resolveMainHandPresentation(equipped(id));
       expect(result.presentation?.socket).toBe(TOWNFOLK_MAIN_HAND_SOCKET);
     }
+  });
+
+  it('pins the reviewed modular-fantasy-hero socket and returns stable rig-family identities', () => {
+    expect(task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET).toEqual(
+      EXPECTED_MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET
+    );
+    expect(task8MainHandWeapons.mainHandSocketForRigFamily).toBeTypeOf(
+      'function'
+    );
+    if (
+      !task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET ||
+      !task8MainHandWeapons.mainHandSocketForRigFamily
+    ) {
+      return;
+    }
+
+    expect(task8MainHandWeapons.mainHandSocketForRigFamily('townfolk-v1')).toBe(
+      TOWNFOLK_MAIN_HAND_SOCKET
+    );
+    expect(
+      task8MainHandWeapons.mainHandSocketForRigFamily('modular-fantasy-hero-v1')
+    ).toBe(task8MainHandWeapons.MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET);
   });
 });

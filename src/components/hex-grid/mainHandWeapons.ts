@@ -2,6 +2,7 @@ import {
   refKey,
   type EquippedMap,
 } from '@/components/game/equipment/equipmentTypes';
+import type { CharacterRigFamily } from './classCharacterModels';
 import type {
   MainHandPresentation,
   MainHandSocket,
@@ -17,8 +18,8 @@ export interface MainHandWeaponDefinition {
 /**
  * Shared by the four current Townfolk class rigs. Provider evidence #67
  * measured exact-equal Hand_R matrices across fighter, barbarian, monk, and
- * rogue over sampled idle/walk frames; provider #71 binds every current weapon
- * output to this accepted profile.
+ * rogue over sampled idle/walk frames; cumulative provider #114 binds all 30
+ * current weapon outputs to this accepted rig-family profile.
  */
 export const TOWNFOLK_MAIN_HAND_SOCKET: MainHandSocket = Object.freeze({
   bone: 'Hand_R',
@@ -33,10 +34,41 @@ export const TOWNFOLK_MAIN_HAND_SOCKET: MainHandSocket = Object.freeze({
   scale: 1,
 });
 
+/** Exact reviewed provider socket profile `modular-fantasy-hero-main-hand-v1`
+ * from rpg-game-assets PR #81 (reviewed head 8aa058dbfaac0f5d7cd239a1ede63ef1a7a2fbe4),
+ * copied by value so this repo stays independent of provider checkout. */
+export const MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET: MainHandSocket =
+  Object.freeze({
+    bone: 'Hand_R',
+    boneUnitMeters: 0.01,
+    positionMeters: Object.freeze([
+      -0.113634511828, 0.043524894863, -0.006868128199,
+    ] as const),
+    rotationQuaternion: Object.freeze([
+      -0.31697111189640637, -0.4555468694563118, 0.6829896921327775,
+      0.47490151020194044,
+    ] as const),
+    scale: 1,
+  });
+
+export function mainHandSocketForRigFamily(
+  rigFamily: CharacterRigFamily
+): MainHandSocket {
+  switch (rigFamily) {
+    case 'modular-fantasy-hero-v1':
+      return MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET;
+    case 'townfolk-v1':
+      return TOWNFOLK_MAIN_HAND_SOCKET;
+  }
+}
+
 /**
- * The complete current provider roster from rpg-game-assets#71. This is an
- * exact presentation lookup, not weapon rules: no proficiency, handedness, or
- * attack identity is inferred here.
+ * The complete current 30-item provider roster from rpg-game-assets#114
+ * (provider commit 00cbd7cdcc338edaa249e3707492341fe1c4a416,
+ * weapons/manifest.json sha256
+ * eb0c2fd4402c05e8ac68c9b950d9fd9f6d3784e2ec16a9e36fac06bb45eba46a). This is
+ * an exact presentation lookup, not weapon rules: no proficiency,
+ * handedness, or attack identity is inferred here.
  */
 export const CURRENT_MAIN_HAND_WEAPONS = Object.freeze([
   {
@@ -110,6 +142,114 @@ export const CURRENT_MAIN_HAND_WEAPONS = Object.freeze([
     id: 'warhammer',
     label: 'Warhammer',
     weaponUrl: '/models/synty/weapons/warhammer.glb',
+  },
+  {
+    ref: 'dnd5e:item:light-crossbow',
+    id: 'light-crossbow',
+    label: 'Light Crossbow',
+    weaponUrl: '/models/synty/weapons/light-crossbow.glb',
+  },
+  {
+    ref: 'dnd5e:item:longbow',
+    id: 'longbow',
+    label: 'Longbow',
+    weaponUrl: '/models/synty/weapons/longbow.glb',
+  },
+  {
+    ref: 'dnd5e:item:javelin',
+    id: 'javelin',
+    label: 'Javelin',
+    weaponUrl: '/models/synty/weapons/javelin.glb',
+  },
+  {
+    ref: 'dnd5e:item:rapier',
+    id: 'rapier',
+    label: 'Rapier',
+    weaponUrl: '/models/synty/weapons/rapier.glb',
+  },
+  {
+    ref: 'dnd5e:item:light-hammer',
+    id: 'light-hammer',
+    label: 'Light Hammer',
+    weaponUrl: '/models/synty/weapons/light-hammer.glb',
+  },
+  {
+    ref: 'dnd5e:item:mace',
+    id: 'mace',
+    label: 'Mace',
+    weaponUrl: '/models/synty/weapons/mace.glb',
+  },
+  {
+    ref: 'dnd5e:item:sickle',
+    id: 'sickle',
+    label: 'Sickle',
+    weaponUrl: '/models/synty/weapons/sickle.glb',
+  },
+  {
+    ref: 'dnd5e:item:spear',
+    id: 'spear',
+    label: 'Spear',
+    weaponUrl: '/models/synty/weapons/spear.glb',
+  },
+  {
+    ref: 'dnd5e:item:sling',
+    id: 'sling',
+    label: 'Sling',
+    weaponUrl: '/models/synty/weapons/sling.glb',
+  },
+  {
+    ref: 'dnd5e:item:dart',
+    id: 'dart',
+    label: 'Dart',
+    weaponUrl: '/models/synty/weapons/dart.glb',
+  },
+  {
+    ref: 'dnd5e:item:halberd',
+    id: 'halberd',
+    label: 'Halberd',
+    weaponUrl: '/models/synty/weapons/halberd.glb',
+  },
+  {
+    ref: 'dnd5e:item:maul',
+    id: 'maul',
+    label: 'Maul',
+    weaponUrl: '/models/synty/weapons/maul.glb',
+  },
+  {
+    ref: 'dnd5e:item:morningstar',
+    id: 'morningstar',
+    label: 'Morningstar',
+    weaponUrl: '/models/synty/weapons/morningstar.glb',
+  },
+  {
+    ref: 'dnd5e:item:pike',
+    id: 'pike',
+    label: 'Pike',
+    weaponUrl: '/models/synty/weapons/pike.glb',
+  },
+  {
+    ref: 'dnd5e:item:war-pick',
+    id: 'war-pick',
+    label: 'War Pick',
+    weaponUrl: '/models/synty/weapons/war-pick.glb',
+  },
+  {
+    ref: 'dnd5e:item:glaive',
+    id: 'glaive',
+    label: 'Glaive',
+    weaponUrl: '/models/synty/weapons/glaive.glb',
+  },
+  {
+    ref: 'dnd5e:item:scimitar',
+    id: 'scimitar',
+    label: 'Scimitar',
+    weaponUrl: '/models/synty/weapons/scimitar.glb',
+  },
+  {
+    ref: 'dnd5e:item:trident',
+    id: 'trident',
+    label: 'Trident',
+    weaponUrl: '/models/synty/weapons/trident.glb',
   },
 ] as const satisfies readonly MainHandWeaponDefinition[]);
 

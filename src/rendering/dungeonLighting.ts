@@ -1,3 +1,8 @@
+import {
+  coordToKey,
+  getHexNeighbors,
+  type CubeCoord,
+} from '@/components/hex-grid/hexMath';
 import type { FloorPoolLight } from '@/components/hex-grid/syntyHexFloorHelpers';
 import {
   createReadonlyMap,
@@ -5,6 +10,7 @@ import {
   type DungeonLightSourceSpec,
 } from './dungeonLightSources';
 import { DUNGEON_SURFACE_Y } from './dungeonSurface';
+import type { VisualPointLightSource } from './visualPointLightSelection';
 
 export type DungeonLightingFallbackReason =
   | 'no-regions'
@@ -12,7 +18,6 @@ export type DungeonLightingFallbackReason =
   | 'mixed-archetypes'
   | 'invalid-intensity'
   | 'conflicting-region-cells'
-  | 'unowned-floor-cells'
   | 'source-outside-region'
   | 'invalid-region-identity'
   | 'duplicate-region-identity'
@@ -95,6 +100,74 @@ function fallbackFacts(
   });
 }
 
+/** `coordToKey`'s inverse — the atlas hands this module cell KEYS, and the
+ * flood below needs the coordinate back to ask who is adjacent. Returns
+ * NaN components for anything that is not a cube key; those simply match
+ * no neighbour, so a malformed key floods nowhere rather than throwing. */
+function keyToCoord(cellKey: string): CubeCoord {
+  const [x, y, z] = cellKey.split(',').map(Number);
+  return { x, y, z };
+}
+
+/** What an ownerless floor cell inherits from the owned cell nearest it. */
+interface InheritedLight {
+  readonly regionId: string;
+  readonly intensity: number;
+}
+
+/** Give every ownerless floor cell the region and intensity of the
+ * nearest owned floor cell, mutating the two maps in place.
+ *
+ * A flood from every owned cell at once, stepping only between adjacent
+ * FLOOR cells. A uniform-step flood from many seeds reaches each cell by
+ * its nearest seed, and among equally near seeds by whichever was
+ * enqueued first — so seeding in the ATLAS'S OWN CELL ORDER is the
+ * tie-break the design names, with no second rule to keep in step with
+ * it. Owned cells are claimed at seeding, which is also what stops their
+ * authored light from ever being overwritten.
+ *
+ * An ownerless cell with no owned floor reachable is left OUT of both
+ * maps, which is how it takes the scene's ambient — the same thing an
+ * unlisted cell has always meant here. */
+function inheritLightingFromNearestOwned(
+  floorCellKeys: readonly string[],
+  regionByCell: Map<string, string>,
+  intensityByCell: Map<string, number>
+): void {
+  const floor = new Set(floorCellKeys);
+  const claims = new Map<string, InheritedLight>();
+  const queue: string[] = [];
+
+  for (const cellKey of floorCellKeys) {
+    const regionId = regionByCell.get(cellKey);
+    if (regionId === undefined || claims.has(cellKey)) continue;
+    claims.set(cellKey, {
+      regionId,
+      intensity: intensityByCell.get(cellKey)!,
+    });
+    queue.push(cellKey);
+  }
+
+  for (let head = 0; head < queue.length; head += 1) {
+    const cellKey = queue[head];
+    const here = claims.get(cellKey)!;
+    for (const neighbor of getHexNeighbors(keyToCoord(cellKey))) {
+      const nk = coordToKey(neighbor);
+      // Through FLOOR only — void is not a way for light any more than it
+      // is for feet — and only the FIRST claim on a cell counts.
+      if (!floor.has(nk) || claims.has(nk)) continue;
+      claims.set(nk, here);
+      queue.push(nk);
+    }
+  }
+
+  for (const [cellKey, claim] of claims) {
+    if (regionByCell.has(cellKey)) continue;
+    regionByCell.set(cellKey, claim.regionId);
+    intensityByCell.set(cellKey, claim.intensity);
+  }
+}
+
 export function buildDungeonLightingFacts(
   floorCellKeys: readonly string[],
   regions: readonly DungeonLightingRegionInput[],
@@ -158,9 +231,21 @@ export function buildDungeonLightingFacts(
     }
   }
 
-  if (floorCellKeys.some((cellKey) => !regionByCell.has(cellKey))) {
-    return fallbackFacts('unowned-floor-cells');
-  }
+  // PLAIN FLOOR IS LIT LIKE THE FLOOR BESIDE IT (rpg-project#360, design
+  // §2.1). An ownerless floor cell — scenery, and in slice 2 every sliver
+  // a wall cuts and every wall's footing — takes the light of the NEAREST
+  // owned floor cell, by a flood from every owned cell through floor.
+  //
+  // This replaces a bail to legacy lighting for the whole dungeon, a
+  // guard written when an ownerless floor cell was impossible. It is not
+  // impossible any more, and one scenery cell must not darken every room.
+  //
+  // It inherits the REGION as well as the intensity, so a scenery cell
+  // also takes that region's floor pools and a light source standing on
+  // it is attributed somewhere. Inheriting the exposure alone would leave
+  // an unpooled fringe around every wall in slice 2 — the tell one layer
+  // down, and the thing this design exists to remove.
+  inheritLightingFromNearestOwned(floorCellKeys, regionByCell, intensityByCell);
 
   const normalizedSources: DungeonLightSource[] = [];
   const seenSourceKeys = new Set<string>();
@@ -246,35 +331,85 @@ function legacyLightingPlan(
 
 export function resolveDungeonLighting(
   facts: DungeonLightingFacts,
-  focus: Readonly<{ x: number; z: number }>
+  focus: Readonly<{ x: number; z: number }>,
+  authoredSources: readonly VisualPointLightSource[] = []
 ): DungeonLightingPlan {
-  if (facts.mode === 'legacy' || facts.fallbackReason !== null) {
+  if (
+    (facts.mode === 'legacy' || facts.fallbackReason !== null) &&
+    authoredSources.length === 0
+  ) {
     return legacyLightingPlan(facts.fallbackReason ?? 'no-regions');
   }
 
-  const sortedSources = [...facts.sources].sort((left, right) => {
-    const leftDx = left.position[0] - focus.x;
-    const leftDz = left.position[2] - focus.z;
-    const rightDx = right.position[0] - focus.x;
-    const rightDz = right.position[2] - focus.z;
+  type Candidate =
+    | {
+        readonly kind: 'dungeon';
+        readonly source: DungeonLightSource;
+        readonly sortKey: string;
+      }
+    | {
+        readonly kind: 'authored';
+        readonly source: VisualPointLightSource;
+        readonly sortKey: string;
+      };
+  const candidates: Candidate[] = [
+    ...facts.sources.map((source) => ({
+      kind: 'dungeon' as const,
+      source,
+      sortKey: `${source.cellKey}|${source.ref}|${source.key}`,
+    })),
+    ...authoredSources.map((source) => ({
+      kind: 'authored' as const,
+      source,
+      sortKey: source.key,
+    })),
+  ];
+  candidates.sort((left, right) => {
+    const leftDx = left.source.position[0] - focus.x;
+    const leftDz = left.source.position[2] - focus.z;
+    const rightDx = right.source.position[0] - focus.x;
+    const rightDz = right.source.position[2] - focus.z;
     const distanceDifference =
       leftDx * leftDx +
       leftDz * leftDz -
       (rightDx * rightDx + rightDz * rightDz);
     if (distanceDifference !== 0) return distanceDifference;
-    const leftKey = `${left.cellKey}|${left.ref}|${left.key}`;
-    const rightKey = `${right.cellKey}|${right.ref}|${right.key}`;
-    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    return left.sortKey < right.sortKey
+      ? -1
+      : left.sortKey > right.sortKey
+        ? 1
+        : 0;
   });
-  const selectedSources = sortedSources.slice(0, DUNGEON_POINT_LIGHT_BUDGET);
-  const pointLights = selectedSources.map((source) =>
+  const selectedCandidates = candidates.slice(0, DUNGEON_POINT_LIGHT_BUDGET);
+  const pointLights = selectedCandidates.map(({ kind, source }) =>
     Object.freeze({
       key: source.key,
       position: source.position,
-      color: source.spec.color,
-      intensity: source.spec.intensity,
-      distance: source.spec.distance,
+      color: kind === 'dungeon' ? source.spec.color : source.color,
+      intensity: kind === 'dungeon' ? source.spec.intensity : source.intensity,
+      distance: kind === 'dungeon' ? source.spec.distance : source.distance,
     })
+  );
+
+  const legacy = facts.mode === 'legacy' || facts.fallbackReason !== null;
+  if (legacy) {
+    const base = legacyLightingPlan(facts.fallbackReason ?? 'no-regions');
+    return Object.freeze({
+      ...base,
+      pointLights: Object.freeze(pointLights),
+      diagnostics: Object.freeze([
+        ...base.diagnostics,
+        ...(candidates.length > DUNGEON_POINT_LIGHT_BUDGET
+          ? [
+              `${DUNGEON_POINT_LIGHT_BUDGET} of ${candidates.length} placed light sources active near this view`,
+            ]
+          : []),
+      ]),
+    });
+  }
+
+  const selectedSources = selectedCandidates.flatMap((candidate) =>
+    candidate.kind === 'dungeon' ? [candidate.source] : []
   );
 
   const poolsByCell = new Map<string, DungeonFloorPool[]>();
@@ -296,9 +431,9 @@ export function resolveDungeonLighting(
   }
 
   const diagnostics =
-    facts.sources.length > DUNGEON_POINT_LIGHT_BUDGET
+    candidates.length > DUNGEON_POINT_LIGHT_BUDGET
       ? [
-          `${DUNGEON_POINT_LIGHT_BUDGET} of ${facts.sources.length} placed light sources active near this view`,
+          `${DUNGEON_POINT_LIGHT_BUDGET} of ${candidates.length} placed light sources active near this view`,
         ]
       : [];
   return Object.freeze({

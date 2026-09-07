@@ -21,7 +21,9 @@ const ITEMS: ItemLike[] = [
     statLine: '1d8 slashing · versatile',
     iconKey: '',
     kind: 'weapon',
+    equipmentType: 'weapon',
     slotKeys: ['main_hand', 'off_hand'],
+    quantity: 2,
   },
   {
     ref: { module: 'dnd5e', type: 'item', id: 'greatsword' },
@@ -29,7 +31,9 @@ const ITEMS: ItemLike[] = [
     statLine: '2d6 slashing · two-handed',
     iconKey: '',
     kind: 'weapon',
+    equipmentType: 'weapon',
     slotKeys: ['main_hand'],
+    quantity: 1,
   },
   {
     ref: { module: 'dnd5e', type: 'item', id: 'torch' },
@@ -37,12 +41,25 @@ const ITEMS: ItemLike[] = [
     statLine: 'light, 20 ft radius',
     iconKey: '',
     kind: 'gear',
+    equipmentType: 'item',
     slotKeys: [],
+    quantity: 1,
   },
 ];
 
+const EXPLORERS_PACK: ItemLike = {
+  ref: { module: 'dnd5e', type: 'item', id: 'explorers-pack' },
+  name: "Explorer's Pack",
+  statLine: '',
+  iconKey: '',
+  kind: 'gear',
+  equipmentType: 'pack',
+  slotKeys: [],
+  quantity: 1,
+};
+
 describe('InventoryLight', () => {
-  it('lists only items NOT referenced by `equipped`', () => {
+  it('shows ×1 carried and targets the empty hand when one of two copies is equipped', () => {
     const equipped: EquippedMap = {
       main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
     };
@@ -54,25 +71,72 @@ describe('InventoryLight', () => {
         onIntent={vi.fn()}
       />
     );
-    expect(screen.queryByTestId(invTestId('longsword'))).toBeNull();
+    const longswordRow = screen.getByTestId(invTestId('longsword'));
+    expect(longswordRow.textContent).toContain('×1');
+    expect(longswordRow.getAttribute('aria-label')).toContain('Off hand');
     expect(screen.getByTestId(invTestId('greatsword'))).toBeTruthy();
     expect(screen.getByTestId(invTestId('torch'))).toBeTruthy();
   });
 
-  it('shows the empty-carried message when everything is equipped', () => {
+  it('removes the carried row after both owned copies are equipped', () => {
     const equipped: EquippedMap = {
       main_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
-      off_hand: { module: 'dnd5e', type: 'item', id: 'greatsword' },
+      off_hand: { module: 'dnd5e', type: 'item', id: 'longsword' },
     };
     render(
       <InventoryLight
         slots={SLOTS}
         equipped={equipped}
-        items={ITEMS.slice(0, 2)}
+        items={ITEMS.slice(0, 1)}
         onIntent={vi.fn()}
       />
     );
+    expect(screen.queryByTestId(invTestId('longsword'))).toBeNull();
     expect(screen.getByText('Nothing carried.')).toBeTruthy();
+  });
+
+  it('renders the declared count for an unequipped multi-copy stack', () => {
+    render(
+      <InventoryLight
+        slots={SLOTS}
+        equipped={{}}
+        items={ITEMS.slice(0, 1)}
+        onIntent={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId(invTestId('longsword')).textContent).toContain(
+      '×2'
+    );
+  });
+
+  it('does not subtract an equipped item that only shares the bare ref id', () => {
+    const equipped: EquippedMap = {
+      main_hand: { module: 'homebrew', type: 'item', id: 'longsword' },
+    };
+    render(
+      <InventoryLight
+        slots={SLOTS}
+        equipped={equipped}
+        items={ITEMS.slice(0, 1)}
+        onIntent={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId(invTestId('longsword')).textContent).toContain(
+      '×2'
+    );
+  });
+
+  it('falls back to one carried copy for a legacy zero-quantity owner item', () => {
+    render(
+      <InventoryLight
+        slots={SLOTS}
+        equipped={{}}
+        items={[{ ...ITEMS[1], quantity: 0 }]}
+        onIntent={vi.fn()}
+      />
+    );
+    const row = screen.getByTestId(invTestId('greatsword'));
+    expect(row.textContent).not.toMatch(/×\d+/);
   });
 
   it('renders slotless gear unclickable, with a "gear" badge', () => {
@@ -165,5 +229,108 @@ describe('InventoryLight', () => {
     expect(
       (screen.getByTestId(invTestId('longsword')) as HTMLButtonElement).disabled
     ).toBe(true);
+  });
+
+  describe('a pack row (rpg-toolkit#1546)', () => {
+    it('shows an Unpack button instead of an unclickable gear row', () => {
+      render(
+        <InventoryLight
+          slots={SLOTS}
+          equipped={{}}
+          items={[EXPLORERS_PACK]}
+          onIntent={vi.fn()}
+        />
+      );
+      expect(
+        screen.getByRole('button', { name: "Unpack Explorer's Pack" })
+      ).toBeTruthy();
+    });
+
+    it('clicking Unpack shows an inline confirm instead of emitting the intent immediately', () => {
+      const onIntent = vi.fn();
+      render(
+        <InventoryLight
+          slots={SLOTS}
+          equipped={{}}
+          items={[EXPLORERS_PACK]}
+          onIntent={onIntent}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: "Unpack Explorer's Pack" })
+      );
+      expect(onIntent).not.toHaveBeenCalled();
+      expect(
+        screen.getByTestId(`unpack-confirm-${refKey(EXPLORERS_PACK.ref)}`)
+          .textContent
+      ).toContain("Unpack Explorer's Pack?");
+    });
+
+    it('Confirm emits a single-instance Unpack intent and clears the pending state', () => {
+      const onIntent = vi.fn();
+      render(
+        <InventoryLight
+          slots={SLOTS}
+          equipped={{}}
+          items={[EXPLORERS_PACK]}
+          onIntent={onIntent}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: "Unpack Explorer's Pack" })
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: "Confirm unpack Explorer's Pack" })
+      );
+      expect(onIntent).toHaveBeenCalledOnce();
+      expect(onIntent).toHaveBeenCalledWith({
+        kind: 'Unpack',
+        ref: EXPLORERS_PACK.ref,
+        name: "Explorer's Pack",
+        quantity: 1,
+      });
+      expect(
+        screen.queryByTestId(`unpack-confirm-${refKey(EXPLORERS_PACK.ref)}`)
+      ).toBeNull();
+    });
+
+    it('Cancel dismisses the confirm without emitting an intent', () => {
+      const onIntent = vi.fn();
+      render(
+        <InventoryLight
+          slots={SLOTS}
+          equipped={{}}
+          items={[EXPLORERS_PACK]}
+          onIntent={onIntent}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: "Unpack Explorer's Pack" })
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel unpack' }));
+      expect(onIntent).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId(`unpack-confirm-${refKey(EXPLORERS_PACK.ref)}`)
+      ).toBeNull();
+    });
+
+    it('disables Unpack/Confirm/Cancel while `busy`', () => {
+      render(
+        <InventoryLight
+          slots={SLOTS}
+          equipped={{}}
+          items={[EXPLORERS_PACK]}
+          onIntent={vi.fn()}
+          busy
+        />
+      );
+      expect(
+        (
+          screen.getByRole('button', {
+            name: "Unpack Explorer's Pack",
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+    });
   });
 });

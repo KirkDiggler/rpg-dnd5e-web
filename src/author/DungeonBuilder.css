@@ -58,11 +58,61 @@
   overflow: hidden;
   background: #0b0d11;
 }
+/* ONE PANE, FULL HEIGHT (rpg-dnd5e-web#945). The rail used to stack the
+   inspector over the YAML in an `auto` row, which meant the inspector took
+   whatever it wanted and the YAML got the remainder — a handful of lines on
+   anything under 1440. The tab row is the only `auto` track now, so whichever
+   pane is on screen has the whole column under it. */
 .dg-right {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 6px;
   min-height: 0;
+  /* The grip below is positioned against this. */
+  position: relative;
+}
+/* The rail's resize handle. It sits IN the grid's own 12px gutter rather
+   than taking a track of its own, so the columns stay the three the layout
+   has always had and an author who never drags sees no change at all.
+   `clamp(340px, 24%, 560px)` remains the default; dragging writes an inline
+   `grid-template-columns` over it and double-clicking clears it again. */
+.dg-grip {
+  position: absolute;
+  left: -12px;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  cursor: col-resize;
+  /* Without this the browser claims the gesture for scrolling and the rail
+     never moves on a touch device. */
+  touch-action: none;
+}
+.dg-grip::after {
+  content: '';
+  position: absolute;
+  inset: 0 5px;
+  border-radius: 1px;
+  background: var(--border-primary);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.dg-grip:hover::after,
+.dg-grip:focus-visible::after {
+  opacity: 1;
+}
+/* The rail's head: the tab row, and under it whatever the compiler is
+   saying. Both stay put while the pane below them changes. */
+.dg-rail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+/* The tab row — the same shape as the centre column's Canvas/3D tabs,
+   because they do the same job on the other side of the builder. */
+.dg-rail-tabs {
+  display: flex;
+  gap: 6px;
 }
 .dg-h {
   font-size: 11px;
@@ -171,6 +221,43 @@
   padding: 8px;
   white-space: pre;
 }
+/* The pane as an EDITOR (rpg-dnd5e-web#899). A textarea rather than a
+   contenteditable so the caret, undo stack and selection are the browser's
+   own — an author hand-editing YAML expects ctrl-Z to work. `resize: none`
+   because the rail's drag grip is how this pane is resized; two competing
+   resize affordances on one box is worse than one. */
+.dg-yaml--edit {
+  display: block;
+  width: 100%;
+  color: inherit;
+  /* NOT `font: inherit`. The shorthand took the SIZE with it, so the editor
+     rendered at the app's 16px/24px while `.dg-yaml` above says 11px/1.35 —
+     twenty lines of file, on a pane whose whole job is to show the file.
+     The family is the only part that was ever wanted here. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: none;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 2;
+}
+.dg-yaml--edit:focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+/* A parse failure while typing is NOT the compiler's red error list: it says
+   "not valid YAML yet", which is the ordinary state of a half-typed line. It
+   reads as a hint so the pane does not flash alarm on every keystroke. */
+.dg-yaml-parse {
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid #b45309;
+  border-radius: 6px;
+  background: var(--bg-primary);
+  font-size: 11px;
+  color: var(--text-primary);
+  opacity: 0.9;
+}
 .dg-errors {
   max-height: 140px;
   overflow: auto;
@@ -184,6 +271,17 @@
 }
 .dg-errors code {
   color: #fff;
+}
+.dg-warnings {
+  max-height: 140px;
+  overflow: auto;
+  margin: 0;
+  padding: 6px 8px 6px 22px;
+  background: #3b2a0a;
+  border: 1px solid #92651d;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #fde8c2;
 }
 .dg-preview-empty {
   height: 100%;

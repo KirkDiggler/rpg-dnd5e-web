@@ -42,10 +42,12 @@
  * clip as of rpg-game-assets#20.
  */
 
+import type { OutfitPresentation } from '@/character/customization/outfitCustomization';
+import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useMemo } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import {
@@ -56,8 +58,25 @@ import { MainHandAttachmentSlot } from './MainHandAttachment';
 import {
   type MainHandAttachmentStatus,
   type MainHandPresentation,
+  type MainHandSocket,
 } from './mainHandPresentation';
-import { cloneCryptMaterials } from './sceneKnowledge';
+import { OffHandAttachmentSlot } from './OffHandAttachment';
+import type {
+  OffHandAttachmentStatus,
+  OffHandPresentation,
+} from './offHandEquipment';
+import {
+  prepareOutfitMaterial,
+  updateOutfitMaterial,
+  type PreparedOutfitMaterial,
+} from './outfitMaterialTreatment';
+import { OutfitTreatmentSlot } from './OutfitTreatmentSlot';
+import { applyRuntimeEntityMaterialOverlay } from './runtimeSurfaceTreatment';
+import {
+  SkinnedAccessoryAttachment,
+  type SkinnedAccessoryPresentation,
+  type SkinnedAccessoryStatus,
+} from './SkinnedAccessoryAttachment';
 
 export interface ClassCharacterModelProps {
   url: string;
@@ -82,7 +101,76 @@ export interface ClassCharacterModelProps {
    * standing-model caller. */
   isDownedVariant?: boolean;
   mainHandPresentation?: MainHandPresentation;
+  mainHandSocketOverride?: MainHandSocket;
   onMainHandStatus?: (status: MainHandAttachmentStatus) => void;
+  offHandPresentation?: OffHandPresentation;
+  offHandSocketOverride?: OffHandPresentation['socket'];
+  onOffHandStatus?: (status: OffHandAttachmentStatus) => void;
+  accessories?: readonly SkinnedAccessoryPresentation[];
+  onAccessoryStatus?: (status: SkinnedAccessoryStatus) => void;
+  /** Stable, provider-authoritative class outfit profile and optional dyes. */
+  outfit?: OutfitPresentation;
+  onOutfitStatus?: (status: OutfitTreatmentStatus) => void;
+}
+
+export type OutfitTreatmentStatus =
+  | { readonly code: 'attached'; readonly profileKey: string }
+  | {
+      readonly code: 'rejected';
+      readonly profileKey: string;
+      readonly message: string;
+    };
+
+interface MaterialSnapshot {
+  readonly color?: THREE.Color;
+  readonly emissive?: THREE.Color;
+  readonly emissiveIntensity?: number;
+  readonly transparent: boolean;
+  readonly opacity: number;
+  readonly depthWrite: boolean;
+}
+
+function snapshotMaterial(material: THREE.Material): MaterialSnapshot {
+  return {
+    color:
+      'color' in material && material.color instanceof THREE.Color
+        ? material.color.clone()
+        : undefined,
+    emissive:
+      material instanceof THREE.MeshStandardMaterial
+        ? material.emissive.clone()
+        : undefined,
+    emissiveIntensity:
+      material instanceof THREE.MeshStandardMaterial
+        ? material.emissiveIntensity
+        : undefined,
+    transparent: material.transparent,
+    opacity: material.opacity,
+    depthWrite: material.depthWrite,
+  };
+}
+
+function restoreMaterial(
+  material: THREE.Material,
+  snapshot: MaterialSnapshot
+): void {
+  if (
+    snapshot.color &&
+    'color' in material &&
+    material.color instanceof THREE.Color
+  ) {
+    material.color.copy(snapshot.color);
+  }
+  if (material instanceof THREE.MeshStandardMaterial) {
+    if (snapshot.emissive) material.emissive.copy(snapshot.emissive);
+    if (snapshot.emissiveIntensity !== undefined) {
+      material.emissiveIntensity = snapshot.emissiveIntensity;
+    }
+  }
+  material.transparent = snapshot.transparent;
+  material.opacity = snapshot.opacity;
+  material.depthWrite = snapshot.depthWrite;
+  material.needsUpdate = true;
 }
 
 export function ClassCharacterModel({
@@ -94,7 +182,15 @@ export function ClassCharacterModel({
   isMoving = false,
   isDownedVariant = false,
   mainHandPresentation,
+  mainHandSocketOverride,
   onMainHandStatus,
+  offHandPresentation,
+  offHandSocketOverride,
+  onOffHandStatus,
+  accessories,
+  onAccessoryStatus,
+  outfit,
+  onOutfitStatus,
 }: ClassCharacterModelProps) {
   // useGLTF returns drei's shared, URL-keyed cache — mutating it directly
   // during render is a render-phase side effect on shared state (same
@@ -134,74 +230,155 @@ export function ClassCharacterModel({
     return clone;
   }, [scene]);
 
-  // Snapshot each mesh's original (untinted) material once per `cloned`
-  // identity, so the tint effect below always starts from a clean base —
-  // never compounds a tint onto a previously-tinted clone (which would
-  // happen if we cloned-and-tinted the current material on every toggle).
-  const originalMaterials = useMemo(() => {
-    const map = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+  // Each rendered character owns material clones from mount onward. This keeps
+  // cached GLTF atlas materials immutable and lets overlays/dyes mutate one
+  // stable instance rather than swapping materials on every state transition.
+  const materialOwnership = useMemo(() => {
+    const baseByMesh = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    const snapshots = new Map<THREE.Material, MaterialSnapshot>();
     cloned.traverse((child) => {
-      if (child instanceof THREE.Mesh) map.set(child, child.material);
+      if (!(child instanceof THREE.Mesh)) return;
+      const source = Array.isArray(child.material)
+        ? child.material
+        : [child.material];
+      const owned = source.map((material) => material.clone());
+      owned.forEach((material) =>
+        snapshots.set(material, snapshotMaterial(material))
+      );
+      const assignment = Array.isArray(child.material) ? owned : owned[0]!;
+      child.material = assignment;
+      baseByMesh.set(child, assignment);
     });
-    return map;
+    return { baseByMesh, snapshots };
   }, [cloned]);
 
-  useEffect(() => {
-    if (!isSelected && !isGhost && !remembered) {
-      originalMaterials.forEach((mat, mesh) => {
-        mesh.material = mat;
+  const outfitRef = useRef(outfit);
+  outfitRef.current = outfit;
+  const overlayRef = useRef({ isSelected, isGhost, remembered });
+  overlayRef.current = { isSelected, isGhost, remembered };
+  const preparedOutfitsRef = useRef<
+    Array<{
+      readonly mesh: THREE.Mesh;
+      readonly base: THREE.Material | THREE.Material[];
+      readonly prepared: readonly PreparedOutfitMaterial[];
+    }>
+  >([]);
+
+  const resetAndApplyOverlay = useCallback(() => {
+    const preparedSources = new Map<THREE.Material, THREE.Material>();
+    for (const entry of preparedOutfitsRef.current) {
+      entry.prepared.forEach((prepared, index) => {
+        const base = Array.isArray(entry.base) ? entry.base[index] : entry.base;
+        if (base) preparedSources.set(prepared.material, base);
       });
-      // Nothing tinted this run — no-op cleanup, matching the branch below.
-      return () => {};
     }
-    // Track every clone THIS run creates so the cleanup below can dispose
-    // exactly those (never the shared `originalMaterials`, which are the
-    // same instances the cached GLTF scene's other live instances use —
-    // disposing those would break every other on-screen copy of this
-    // class model). React runs this cleanup both before the next run of
-    // this effect (toggle-to-toggle, or toggle-to-restore above) and on
-    // unmount, so one cleanup covers "stop being tinted", "re-tint with a
-    // different flag", and "entity disappears while highlighted" without
-    // three separate disposal call sites (Copilot review on #509 flagged
-    // all three as GPU-resource leaks — cloned materials were never
-    // disposed in any of them).
-    const created: THREE.Material[] = [];
-    originalMaterials.forEach((mat, mesh) => {
-      // Memory wins over every other tint. Uses the one shared crypt
-      // treatment (sceneKnowledge) rather than approximating it here, so
-      // remembered geometry and remembered entities cannot drift apart.
-      if (remembered) {
-        const crypt = cloneCryptMaterials(mat);
-        (Array.isArray(crypt) ? crypt : [crypt]).forEach((m) =>
-          created.push(m)
+    const active = new Set<THREE.Material>();
+    materialOwnership.baseByMesh.forEach((_base, mesh) => {
+      const materials = Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+      materials.forEach((material) => {
+        const source = preparedSources.get(material);
+        const snapshot = source
+          ? materialOwnership.snapshots.get(source)
+          : materialOwnership.snapshots.get(material);
+        if (snapshot) restoreMaterial(material, snapshot);
+        active.add(material);
+      });
+    });
+    applyRuntimeEntityMaterialOverlay([...active], overlayRef.current);
+  }, [materialOwnership]);
+
+  const releaseOutfitMaterials = useCallback(() => {
+    for (const entry of preparedOutfitsRef.current) {
+      entry.mesh.material = entry.base;
+      entry.prepared.forEach(({ material }) => material.dispose());
+    }
+    preparedOutfitsRef.current = [];
+  }, []);
+
+  const prepareOutfit = useCallback(
+    (mask: THREE.Texture) => {
+      const presentation = outfitRef.current;
+      if (!presentation) return;
+      releaseOutfitMaterials();
+      const declaredMeshes = new Set(presentation.meshNames);
+      const preparedEntries: typeof preparedOutfitsRef.current = [];
+      materialOwnership.baseByMesh.forEach((base, mesh) => {
+        if (!declaredMeshes.has(mesh.name)) return;
+        const sources = Array.isArray(base) ? base : [base];
+        if (
+          sources.some(
+            (material) => !(material instanceof THREE.MeshStandardMaterial)
+          )
+        ) {
+          return;
+        }
+        const prepared = sources.map((source) =>
+          prepareOutfitMaterial(
+            source as THREE.MeshStandardMaterial,
+            mask,
+            presentation
+          )
         );
-        mesh.material = crypt;
+        mesh.material = Array.isArray(base)
+          ? prepared.map((entry) => entry.material)
+          : prepared[0]!.material;
+        preparedEntries.push({ mesh, base, prepared });
+      });
+      preparedOutfitsRef.current = preparedEntries;
+      if (preparedEntries.length === 0) {
+        onOutfitStatus?.({
+          code: 'rejected',
+          profileKey: presentation.profileKey,
+          message: 'No provider-declared outfit mesh accepted this treatment.',
+        });
         return;
       }
-      const wasArray = Array.isArray(mat);
-      const materials = wasArray ? mat : [mat];
-      const tinted = materials.map((m) => {
-        const tintedMat = m.clone();
-        created.push(tintedMat);
-        // emissive/emissiveIntensity are Standard/Physical-material-only;
-        // transparent/opacity are on the THREE.Material base and safe for
-        // any material type a GLB might legally use.
-        if (isSelected && tintedMat instanceof THREE.MeshStandardMaterial) {
-          tintedMat.emissive = new THREE.Color('#ffffff');
-          tintedMat.emissiveIntensity = 0.25;
-        }
-        if (isGhost) {
-          tintedMat.transparent = true;
-          tintedMat.opacity = 0.35;
-        }
-        return tintedMat;
+      resetAndApplyOverlay();
+      onOutfitStatus?.({
+        code: 'attached',
+        profileKey: presentation.profileKey,
       });
-      mesh.material = wasArray ? tinted : tinted[0]!;
-    });
-    return () => {
-      created.forEach((mat) => mat.dispose());
-    };
-  }, [originalMaterials, isSelected, isGhost, remembered]);
+    },
+    [
+      materialOwnership,
+      onOutfitStatus,
+      releaseOutfitMaterials,
+      resetAndApplyOverlay,
+    ]
+  );
+
+  useEffect(() => {
+    resetAndApplyOverlay();
+  }, [isSelected, isGhost, remembered, resetAndApplyOverlay]);
+
+  useEffect(() => {
+    if (!outfit || preparedOutfitsRef.current.length === 0) return;
+    preparedOutfitsRef.current.forEach((entry) =>
+      entry.prepared.forEach((prepared) =>
+        updateOutfitMaterial(prepared, outfit)
+      )
+    );
+    resetAndApplyOverlay();
+  }, [
+    outfit,
+    outfit?.primaryColor,
+    outfit?.secondaryColor,
+    outfit?.usePrimary,
+    outfit?.useSecondary,
+    resetAndApplyOverlay,
+  ]);
+
+  useEffect(
+    () => () => {
+      releaseOutfitMaterials();
+      materialOwnership.snapshots.forEach((_snapshot, material) =>
+        material.dispose()
+      );
+    },
+    [materialOwnership, releaseOutfitMaterials]
+  );
 
   // Play the resolved clip on loop. While `isMoving` (rpg-dnd5e-web#542),
   // prefer a `Walk_*` clip (resolveWalkClipName), falling back to idle if
@@ -211,10 +388,18 @@ export function ClassCharacterModel({
   // `Idle_Relaxed`, then `Walk_Forward`; downed variants ship 0 clips, so
   // `names` is empty and `resolvedClipName` is undefined — this effect
   // no-ops cleanly for those, same as before #542.
-  const { actions, names } = useAnimations(animations, cloned);
-  const resolvedClipName = isMoving
-    ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
-    : resolveIdleClipName(names);
+  const { actions, names, mixer } = useAnimations(animations, cloned);
+  const resolvedClipName = remembered
+    ? undefined
+    : isMoving
+      ? (resolveWalkClipName(names) ?? resolveIdleClipName(names))
+      : resolveIdleClipName(names);
+  // Other live entities can still drive Canvas frames. Freeze this mixer's
+  // clock too, preserving the last evaluated pose and any pending fade rather
+  // than allowing a remembered body to animate or fade back to its bind pose.
+  useEffect(() => {
+    mixer.timeScale = remembered ? 0 : 1;
+  }, [mixer, remembered]);
   useEffect(() => {
     if (!resolvedClipName) return;
     const action = actions[resolvedClipName];
@@ -265,6 +450,22 @@ export function ClassCharacterModel({
     if (resolvedClipName) state.invalidate();
   });
 
+  const effectiveOffHandPresentation = useMemo(
+    () =>
+      offHandPresentation && offHandSocketOverride
+        ? { ...offHandPresentation, socket: offHandSocketOverride }
+        : offHandPresentation,
+    [offHandPresentation, offHandSocketOverride]
+  );
+
+  const effectiveMainHandPresentation = useMemo(
+    () =>
+      mainHandPresentation && mainHandSocketOverride
+        ? { ...mainHandPresentation, socket: mainHandSocketOverride }
+        : mainHandPresentation,
+    [mainHandPresentation, mainHandSocketOverride]
+  );
+
   return (
     <>
       <primitive
@@ -272,16 +473,59 @@ export function ClassCharacterModel({
         scale={SYNTY_SCALE}
         rotation={[0, facingRotation, 0]}
       />
+      {outfit && (
+        <ErrorBoundary
+          key={outfit.profileKey}
+          fallback={null}
+          onError={() =>
+            onOutfitStatus?.({
+              code: 'rejected',
+              profileKey: outfit.profileKey,
+              message:
+                'The provider outfit mask could not be loaded or compiled.',
+            })
+          }
+        >
+          <Suspense fallback={null}>
+            <OutfitTreatmentSlot
+              presentation={outfit}
+              onMaskReady={prepareOutfit}
+              onMaskDetached={releaseOutfitMaterials}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      )}
       <MainHandAttachmentSlot
         key={
-          mainHandPresentation
-            ? `${mainHandPresentation.ref}|${mainHandPresentation.weaponUrl}`
-            : 'unarmed'
+          effectiveMainHandPresentation
+            ? `main-hand|${effectiveMainHandPresentation.ref}|${effectiveMainHandPresentation.weaponUrl}`
+            : 'main-hand|unarmed'
         }
         characterRoot={cloned}
-        presentation={mainHandPresentation}
+        presentation={effectiveMainHandPresentation}
         onStatus={onMainHandStatus}
       />
+      <OffHandAttachmentSlot
+        key={
+          effectiveOffHandPresentation
+            ? `off-hand|${effectiveOffHandPresentation.ref}|${effectiveOffHandPresentation.assetUrl}`
+            : 'off-hand|empty'
+        }
+        characterRoot={cloned}
+        presentation={effectiveOffHandPresentation}
+        onStatus={onOffHandStatus}
+      />
+      {accessories?.map((accessory) => (
+        <SkinnedAccessoryAttachment
+          key={accessory.slot}
+          characterRoot={cloned}
+          presentation={accessory}
+          isSelected={isSelected}
+          isGhost={isGhost}
+          remembered={remembered}
+          onStatus={onAccessoryStatus}
+        />
+      ))}
     </>
   );
 }

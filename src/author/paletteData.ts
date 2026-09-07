@@ -18,12 +18,16 @@
  */
 import { resolveMonsterModelUrl } from '@/components/hex-grid/monsterModels';
 import { PROP_KEYS, type PropRole } from '@/components/hex-grid/propManifest';
+import { refInitials, refLabel, refSlug } from '@/utils/refs';
 import { isDungeonLightSourceRef } from '../rendering/dungeonLightSources';
 
 export interface PaletteProp {
   ref: string;
   short: string;
+  label: string;
   role: PropRole;
+  blocksMovement: boolean;
+  blocksLoS: boolean;
 }
 
 /**
@@ -63,7 +67,10 @@ export function categoryForProp(
  * picked up automatically without touching this file — a ref with no
  * baked thumbnail yet resolves to `undefined` and the palette Row falls
  * back to its colored-swatch+short-label rendering (same as before this
- * change), never a broken <img>.
+ * change), never a broken <img>. A multi-part id slugs to one filename
+ * (`dnd5e:props:plushie:skeleton-dog` -> `thumbs/plushie-skeleton-dog.png`)
+ * so two variants of different families never fight over one thumbnail.
+ *
  */
 const THUMB_MODULES = import.meta.glob<string>('./thumbs/*.png', {
   eager: true,
@@ -71,7 +78,7 @@ const THUMB_MODULES = import.meta.glob<string>('./thumbs/*.png', {
 });
 
 export function thumbForRef(ref: string): string | undefined {
-  const slug = ref.split(':').pop();
+  const slug = refSlug(ref);
   return slug ? THUMB_MODULES[`./thumbs/${slug}.png`] : undefined;
 }
 
@@ -96,11 +103,13 @@ export const ROLE_COLOR: Record<PropRole, string> = {
  * resolve under `public/models/synty/`. */
 const ALL_PROP_KEYS = Object.keys(PROP_KEYS);
 
-function shortLabel(key: string): string {
-  const name = key.split(':').pop() ?? key;
-  const parts = name.split('-');
-  if (parts.length === 1) return name.slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
+/** The palette's own Title Case over the shared reading rule — see
+ * `refLabel`, which is what decides where the words are. */
+function displayLabel(key: string): string {
+  return refLabel(key)
+    .split(' ')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 /** The palette's prop list — one entry per key `propManifest.ts` defines
@@ -115,7 +124,16 @@ function shortLabel(key: string): string {
 export const PALETTE_PROPS: PaletteProp[] = ALL_PROP_KEYS.flatMap((ref) => {
   const variant = PROP_KEYS[ref]?.[0];
   if (!variant) return [];
-  return [{ ref, short: shortLabel(ref), role: variant.role }];
+  return [
+    {
+      ref,
+      short: refInitials(ref),
+      label: variant.displayName ?? displayLabel(ref),
+      role: variant.role,
+      blocksMovement: variant.blocksMovement ?? variant.role !== 'decor',
+      blocksLoS: variant.blocksLoS,
+    },
+  ];
 });
 
 export const MONSTER_COLOR = '#a02020';
@@ -204,3 +222,15 @@ export const PALETTE_MONSTERS: PaletteMonster[] = (
 ).filter(
   (m) => resolveMonsterModelUrl(m.refId, undefined, false) !== undefined
 );
+
+/** Friendly palette/board copy for an ordinary authored ref. The stable ref
+ * remains the lookup key; it is not forced into the author's hover text. */
+export function paletteNameForRef(ref: string): string {
+  return (
+    PALETTE_PROPS.find((item) => item.ref === ref)?.label ??
+    PALETTE_MONSTERS.find((item) => item.ref === ref)
+      ?.label?.replaceAll('-', ' ')
+      .replace(/^./, (first) => first.toUpperCase()) ??
+    displayLabel(ref)
+  );
+}

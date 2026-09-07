@@ -81,6 +81,32 @@ function summarizeHexKnowledgeChanged(value: unknown): string {
  * doesn't duck-type as one (a plain-message stream — the full object still
  * follows as the log's last argument regardless).
  */
+const PRESENTATION_SERVICE_PREFIX =
+  'dnd5e.api.session.presentation.v1alpha1.SessionPresentationService.';
+
+function streamLogPayload(methodName: string, message: unknown) {
+  if (
+    !methodName.startsWith(PRESENTATION_SERVICE_PREFIX) ||
+    !message ||
+    typeof message !== 'object'
+  ) {
+    return message;
+  }
+  const plan = message as Record<string, unknown>;
+  const terminal =
+    plan.terminal && typeof plan.terminal === 'object'
+      ? (plan.terminal as Record<string, unknown>)
+      : undefined;
+  return {
+    presentationId:
+      typeof plan.presentationId === 'string' ? plan.presentationId : '',
+    attempt: typeof plan.attempt === 'number' ? plan.attempt : 0,
+    bodyCount: Array.isArray(plan.bodies) ? plan.bodies.length : 0,
+    contactCount: Array.isArray(plan.contacts) ? plan.contacts.length : 0,
+    terminalCount: Array.isArray(terminal?.dice) ? terminal.dice.length : 0,
+  };
+}
+
 function summarizeStreamMessage(message: unknown): string {
   const envelope = oneofEnvelope(message, 'event');
   if (!envelope) return '';
@@ -122,7 +148,7 @@ export function wrapStreamResponseForLogging<Res extends StreamResponse>(
           `🟣 Stream: ${methodName} #${index} +${elapsedMs}ms${
             label ? ` ${label}` : ''
           }`,
-          message
+          streamLogPayload(methodName, message)
         );
         yield message;
       }

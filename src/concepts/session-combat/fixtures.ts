@@ -3,7 +3,10 @@ import {
   AttackRefSchema,
   ClockKind,
   DamageType,
+  DeathSaveProgressSchema,
+  DeathSaveRefSchema,
   DeclarationSchema,
+  LifeState,
   MemberKind,
   ParticipantSchema,
   ShortfallReason,
@@ -197,6 +200,20 @@ const characterData = create(CharacterDataSchema, {
   ],
 });
 
+const deathSaveProgress = create(DeathSaveProgressSchema, {
+  successes: 2,
+  failures: 1,
+  successesNeeded: 1,
+  failuresRemaining: 2,
+});
+
+const dyingCharacterData = create(CharacterDataSchema, {
+  ...characterData,
+  hitPoints: create(HitPointsSchema, { current: 0, max: 28, temp: 0 }),
+  lifeState: LifeState.DYING,
+  deathSaves: deathSaveProgress,
+});
+
 const story = Object.freeze([
   {
     id: 'round-1-guard',
@@ -263,6 +280,7 @@ const freshTurn: SessionCombatFixture = {
   clock: ClockKind.TURN,
   streamState: 'live',
   resultVisible: false,
+  endTurnBlocked: false,
   participants: participants('aldric'),
   declarations: declarations(true, true, 25),
   characterData,
@@ -340,6 +358,49 @@ const freeRoam: SessionCombatFixture = {
   ],
 };
 
+const deathSaveTurn: SessionCombatFixture = {
+  ...freshTurn,
+  id: 'death-save',
+  label: 'Death Save turn',
+  description:
+    'Aldric is Dying: provider progress remains public while the exact SlotNone Death Save waits on the shared d20.',
+  participants: participants('aldric').map((participant) =>
+    participant.member === 'aldric'
+      ? create(ParticipantSchema, {
+          ...participant,
+          standing: Standing.DOWNED,
+          lifeState: LifeState.DYING,
+          deathSaves: deathSaveProgress,
+        })
+      : participant
+  ),
+  declarations: [
+    create(DeclarationSchema, {
+      id: 'offer:aldric:death-save',
+      verb: Verb.DEATH_SAVE,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+      candidates: [],
+      deathSave: create(DeathSaveRefSchema, { name: 'Death Save' }),
+    }),
+    create(DeclarationSchema, {
+      id: 'offer:aldric:end-turn',
+      verb: Verb.END_TURN,
+      slot: Slot.NONE,
+      available: true,
+      targetKind: TargetKind.NONE,
+    }),
+  ],
+  characterData: dyingCharacterData,
+  resultVisible: false,
+  endTurnBlocked: true,
+  debug: [
+    ...freshTurn.debug,
+    'afford clock=TURN declarations=2 verb=DEATH_SAVE life_state=DYING',
+  ],
+};
+
 const reconnected: SessionCombatFixture = {
   ...freshTurn,
   id: 'reconnected',
@@ -362,4 +423,36 @@ const reconnected: SessionCombatFixture = {
 };
 
 export const SESSION_COMBAT_FIXTURES: readonly SessionCombatFixture[] =
-  Object.freeze([freshTurn, spentTurn, spectating, freeRoam, reconnected]);
+  Object.freeze([
+    freshTurn,
+    spentTurn,
+    spectating,
+    freeRoam,
+    reconnected,
+    deathSaveTurn,
+  ]);
+
+/**
+ * The seam's standing verbs, as the Lab shows them: Search, Loot, Hold and
+ * Leave in the action bar beside the server's declarations.
+ *
+ * Here because Kirk's second walk found them unreachable in practice —
+ * every run was inside a fight from round 1, and the old skinny row beside
+ * the dock read as chrome. Reviewing that surface should not require
+ * getting into a real fight next to a real prop, so the Lab holds one of
+ * each: a body to loot, a prop to pick up, a room to search, a way out.
+ *
+ * Presentation only. The handlers do nothing — the Lab never calls the
+ * seam — and the offers are what a client WOULD have computed from an
+ * atlas and a view, not anything this file decides is legal. The server
+ * refuses or allows; this just draws the buttons.
+ */
+export const SESSION_COMBAT_STANDING_ACTIONS = {
+  onSearch: () => {},
+  lootTargets: [{ subject: 'skeleton-1', name: 'Skeleton' }],
+  onLoot: () => {},
+  holdTargets: [{ id: 'obelisk', ref: 'dnd5e:props:obelisk' }],
+  onHold: () => {},
+  onLeave: () => {},
+  leaveHolding: [] as readonly string[],
+} as const;

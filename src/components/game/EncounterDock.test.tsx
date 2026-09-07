@@ -98,7 +98,9 @@ function equipmentFixture(): CharacterEquipment {
         statLine: '1d8 slashing · versatile',
         iconKey: '',
         kind: 'weapon',
+        equipmentType: 'weapon',
         slotKeys: ['main_hand', 'off_hand'],
+        quantity: 1,
       },
       {
         ref: { module: 'dnd5e', type: 'item', id: 'shield' },
@@ -106,7 +108,9 @@ function equipmentFixture(): CharacterEquipment {
         statLine: '+2 AC',
         iconKey: '',
         kind: 'shield',
+        equipmentType: 'armor',
         slotKeys: ['off_hand'],
+        quantity: 1,
       },
       {
         ref: { module: 'dnd5e', type: 'item', id: 'greatsword' },
@@ -114,7 +118,9 @@ function equipmentFixture(): CharacterEquipment {
         statLine: '2d6 slashing · two-handed',
         iconKey: '',
         kind: 'weapon',
+        equipmentType: 'weapon',
         slotKeys: ['main_hand'],
+        quantity: 1,
       },
     ],
     slots: [

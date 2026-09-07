@@ -156,11 +156,7 @@ export function useEquipmentBundleSelection(
     // Check each category choice has the required selections
     return bundle.categoryChoices.every((category, index) => {
       const selections = categorySelections.get(index) || [];
-      const selectionIds = selections.map((selection) => selection.selectionId);
-      return (
-        selections.length >= category.choose &&
-        new Set(selectionIds).size === selectionIds.length
-      );
+      return selections.length >= category.choose;
     });
   }, [getSelectedBundle, categorySelections]);
 

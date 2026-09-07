@@ -22,7 +22,10 @@ import {
   createSessionCombatDiceRequest,
   createSessionCombatNeutralRelease,
 } from './diceFixture';
-import { SESSION_COMBAT_FIXTURES } from './fixtures';
+import {
+  SESSION_COMBAT_FIXTURES,
+  SESSION_COMBAT_STANDING_ACTIONS,
+} from './fixtures';
 import { SessionCombatMap } from './SessionCombatMap';
 
 const EMPTY_PRESENTATION_STATE: CombatExperiencePresentationState = {
@@ -59,8 +62,18 @@ export function SessionCombatConcept() {
     if (!next) return;
     setFixtureId(next.id);
     setPresentationState(EMPTY_PRESENTATION_STATE);
-    setDiceEvents([]);
-    setPhase('fresh');
+    if (next.id === 'death-save') {
+      setDiceEvents(
+        createSessionCombatDiceRequest(
+          'presentation_death-save-review',
+          next.attackOutcome.d20
+        )
+      );
+      setPhase('awaiting-roll');
+    } else {
+      setDiceEvents([]);
+      setPhase('fresh');
+    }
     setShowTurnNotice(next.id === 'fresh-turn');
     setLogMode('story');
   };
@@ -82,6 +95,16 @@ export function SessionCombatConcept() {
     setShowTurnNotice(false);
     setDiceEvents([]);
     setPresentationState(nextState);
+    if (declaration.verb === Verb.DEATH_SAVE) {
+      setDiceEvents(
+        createSessionCombatDiceRequest(
+          'presentation_death-save-review',
+          fixture.attackOutcome.d20
+        )
+      );
+      setPhase('awaiting-roll');
+      return;
+    }
     setPhase(
       declaration.verb === Verb.ATTACK &&
         declaration.targetKind === TargetKind.MEMBER
@@ -236,8 +259,9 @@ export function SessionCombatConcept() {
         characterData={fixture.characterData}
         privateStatus="ready"
         authorityFresh
+        endTurnBlocked={fixture.endTurnBlocked}
         presentationState={presentationState}
-        phase={phase}
+        phase={fixture.id === 'death-save' ? 'awaiting-roll' : phase}
         showTurnNotice={showTurnNotice}
         logMode={logMode}
         streamState={fixture.streamState}
@@ -260,6 +284,7 @@ export function SessionCombatConcept() {
         onTargetClick={chooseTarget}
         onEndTurn={armDeclaration}
         onLogModeChange={setLogMode}
+        {...SESSION_COMBAT_STANDING_ACTIONS}
         diceWitnessRole="roller"
         onDiceReleaseRequest={handleDiceRelease}
         onDiceSemanticReleaseRequest={() => setPhase('settled')}

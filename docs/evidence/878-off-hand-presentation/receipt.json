@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/878",
+  "status": "ready for review",
+  "codeHead": "472dde5725d657bb2930cad5a772eeb447d8f68c",
+  "capturedAtUtc": "2026-08-31T15:24:21.567306+00:00",
+  "provider": {
+    "repository": "KirkDiggler/rpg-game-assets",
+    "commit": "71dff14f57afe41ff320dee15081123ec1daddc2",
+    "providerManifestPath": "harness/models/synty/off-hand/manifest.json",
+    "syncedWebManifestPath": "public/models/synty/off-hand/manifest.json",
+    "manifestSha256": "bdfbf2484ab15fd0d054222f16f127922e8a6ea0aea2e5ce430bb97aaeb8c790",
+    "trackedLicensedGlbs": 0,
+    "httpProbes": {
+      "/models/synty/off-hand/shield.glb": {
+        "status": 200,
+        "sizeBytes": 426100,
+        "sha256": "8d25301a563da849b78523612b736cdf306d3437ee0d2771ca6ec7d0d2f714e1"
+      },
+      "/models/synty/off-hand/handaxe.glb": {
+        "status": 200,
+        "sizeBytes": 370616,
+        "sha256": "1b8d8facdbc786b12808a980c08cefe4f86580612ff64f0ee0a45b7a30c171de"
+      },
+      "/models/synty/off-hand/sickle.glb": {
+        "status": 200,
+        "sizeBytes": 357856,
+        "sha256": "82f6d5c99f276e3eaf45f30dd54bfd087545969749a0ad80bd14c942071462e4"
+      },
+      "/models/synty/weapons/dagger.glb": {
+        "status": 200,
+        "sizeBytes": 328428,
+        "sha256": "e02ea36a0f0e1dfdb288503733b11a66f5bd0e1320b3e2f8f710e925cbccba41"
+      },
+      "/models/synty/weapons/shortsword.glb": {
+        "status": 200,
+        "sizeBytes": 330920,
+        "sha256": "ee5f39b67f7d77df01a9425c5a2a371603eff83138d236ba5049033a7dc4ce9b"
+      },
+      "/models/synty/weapons/longsword.glb": {
+        "status": 200,
+        "sizeBytes": 341788,
+        "sha256": "91cd687e76bf8416a270e20c819d699bbea9b6d097d1ede9fb82b8e4c6cf9aa8"
+      }
+    }
+  },
+  "environment": {
+    "browser": "151.0.7922.169",
+    "playwright": "1.61.1",
+    "previewOrigin": "http://127.0.0.1:3029",
+    "apiOrigin": "http://localhost:8080"
+  },
+  "concept": {
+    "states": [
+      "Shield only",
+      "Longsword + Shield",
+      "Shortsword + Dagger"
+    ],
+    "townfolkClasses": [
+      "fighter",
+      "barbarian",
+      "monk",
+      "rogue"
+    ],
+    "modularFighterRaces": [
+      "dwarf",
+      "elf",
+      "half-elf",
+      "tiefling",
+      "halfling",
+      "gnome",
+      "half-orc"
+    ],
+    "walkRaces": [
+      "human",
+      "elf"
+    ],
+    "counts": {
+      "townfolk": 12,
+      "modular": 21,
+      "walk": 6,
+      "total": 39
+    },
+    "unexpectedConsoleErrors": 0,
+    "pageErrors": 0,
+    "unexpectedRequestFailures": 0
+  },
+  "authority": {
+    "fixture": {
+      "kind": "repository-backed Weapon Gallery",
+      "apiMerge": "9254f85d66793dff276386cb240840b634c70f12",
+      "weaponCount": 27,
+      "itemRows": 31
+    },
+    "initialOwnerState": {
+      "equipped": {},
+      "armorClass": 12,
+      "hitPoints": {
+        "current": 12,
+        "max": 12
+      },
+      "speedFeet": 30,
+      "mainHandDamage": ""
+    },
+    "shieldSequence": {
+      "equipHttpStatus": 200,
+      "reconnectArmorClass": 14,
+      "unequipHttpStatus": 200,
+      "finalReconnectArmorClass": 12,
+      "immediatePresentation": true,
+      "reconnectRestoration": true
+    },
+    "dualSequence": {
+      "shortswordEquipHttpStatus": 200,
+      "daggerOffHandEquipHttpStatus": 200,
+      "serverDamage": "1d6 piercing damage \u00b7 off-hand 1d4 piercing damage",
+      "reconnectRestoration": true,
+      "offHandUnequipHttpStatus": 200,
+      "mainHandUnequipHttpStatus": 200
+    },
+    "finalOwnerState": {
+      "equipped": {},
+      "armorClass": 12,
+      "hitPoints": {
+        "current": 12,
+        "max": 12
+      },
+      "speedFeet": 30,
+      "mainHandDamage": ""
+    },
+    "exactInitialFinalParity": true,
+    "expectedStreamAbortCount": 6,
+    "unexpectedErrors": []
+  },
+  "sheets": [
+    {
+      "name": "authoritative-off-hand-contact-sheet.png",
+      "sha256": "d34c21414a07be34a50fa31d1764eabfc027219646ae417dc1144f00d0c4089b",
+      "sizeBytes": 1910854,
+      "dimensions": [
+        1280,
+        2210
+      ],
+      "decodedRgbSha256": "06e66da565e40e509a381cedaf51666c1f78fafa7130b2c2e4a6c08ac53f2784"
+    },
+    {
+      "name": "off-hand-modular-contact-sheet.png",
+      "sha256": "7cd2f6871071aa6a4fb75351e5f4657590902e8829efcc9f8aa236ca4ad96ab9",
+      "sizeBytes": 324500,
+      "dimensions": [
+        1260,
+        2289
+      ],
+      "decodedRgbSha256": "33de8db9d681ac21a993220c39ce1f3e0376aadee87a8b0b6cb2309216fb348d"
+    },
+    {
+      "name": "off-hand-townfolk-contact-sheet.png",
+      "sha256": "3b72dbde07037d6fed2bd129727eeafcd26fcaed4b47de7ff28dad841f9d1367",
+      "sizeBytes": 184087,
+      "dimensions": [
+        1260,
+        1308
+      ],
+      "decodedRgbSha256": "d2b8e42bcd6d0671aa6c6bb8783bf9b2389177f958a899e90cfc3142cf7ef919"
+    },
+    {
+      "name": "off-hand-walk-contact-sheet.png",
+      "sha256": "9f3ed72c7c5d179b3da2c8b1f20be56d28094c89b455a802ed22e43e7774cf94",
+      "sizeBytes": 96079,
+      "dimensions": [
+        1260,
+        654
+      ],
+      "decodedRgbSha256": "aa4dcaf45d329e07bc21101fe5a5ee24a45187aa6516412b04f7743abba3e352"
+    }
+  ],
+  "publicSafety": {
+    "absolutePaths": 0,
+    "tokensOrSecrets": 0,
+    "characterLobbySessionIds": 0,
+    "privateRedisAddresses": 0
+  }
+}

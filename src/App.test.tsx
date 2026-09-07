@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { FEEL_LAB_LAYER_Z } from './feel/layer';
 
 const hoisted = vi.hoisted(() => ({
   activeLobby: {
@@ -18,6 +19,7 @@ const hoisted = vi.hoisted(() => ({
     loading: false,
     error: null as Error | null,
   },
+  activeLobbyCalls: 0,
 }));
 
 vi.mock('./api/auth', () => ({
@@ -34,7 +36,10 @@ vi.mock('./api/useDevPlayerIdAuth', () => ({
 }));
 
 vi.mock('./api/useMyActiveLobby', () => ({
-  useMyActiveLobby: () => hoisted.activeLobby,
+  useMyActiveLobby: () => {
+    hoisted.activeLobbyCalls += 1;
+    return hoisted.activeLobby;
+  },
 }));
 
 vi.mock('./api/useLobbyCharacterId', () => ({
@@ -96,6 +101,23 @@ vi.mock('./concepts/ConceptsView', () => ({
   ),
 }));
 
+vi.mock('./concepts/world-building/WorldBuildingConcept', () => ({
+  WorldBuildingConcept: ({ onBack }: { onBack: () => void }) => (
+    <section>
+      <h1>World Builder View</h1>
+      <button onClick={onBack}>Back to main menu</button>
+    </section>
+  ),
+}));
+
+vi.mock('./compositions/rpcCompositionSource', () => ({
+  createRpcCompositionSource: () => ({
+    worldId: 'test-world',
+    reader: {},
+    writer: {},
+  }),
+}));
+
 vi.mock('./dev/AttackDieDevRouteSurface', () => ({
   AttackDieDevRouteSurface: () => <div>Attack Die Dev Route</div>,
 }));
@@ -106,6 +128,14 @@ vi.mock('./dev/attackDiePerfRoute', () => ({
 
 vi.mock('./dev/ThumbHarness', () => ({
   ThumbHarness: () => <div>Thumbnail Harness</div>,
+}));
+
+vi.mock('./dev/prop-calibration/PropCalibrationLab', () => ({
+  PropCalibrationLab: () => <div>Prop Calibration Lab</div>,
+}));
+
+vi.mock('./dev/asset-review/AssetReviewLab', () => ({
+  AssetReviewLab: () => <div>Asset Review Lab</div>,
 }));
 
 vi.mock('./discord', () => ({
@@ -129,6 +159,7 @@ beforeEach(() => {
   hoisted.lobbyCharacter.characterId = undefined;
   hoisted.lobbyCharacter.loading = false;
   hoisted.lobbyCharacter.error = null;
+  hoisted.activeLobbyCalls = 0;
 });
 
 afterEach(() => {
@@ -169,30 +200,99 @@ describe('App running-encounter resume', () => {
   });
 });
 
+describe('App prop calibration route', () => {
+  it('mounts the full-window lab only for the explicit local development route', async () => {
+    vi.stubEnv('MODE', 'development');
+    window.history.pushState({}, '', '/?propCalibration=1');
+
+    render(<App />);
+
+    expect(await screen.findByText('Prop Calibration Lab')).toBeTruthy();
+    expect(screen.queryByText('Home View')).toBeNull();
+    expect(hoisted.activeLobbyCalls).toBe(0);
+  });
+
+  it('refuses the prop calibration query in production', () => {
+    vi.stubEnv('MODE', 'production');
+    window.history.pushState({}, '', '/?propCalibration=1');
+
+    render(<App />);
+
+    expect(screen.getByText('Home View')).toBeTruthy();
+    expect(screen.queryByText('Prop Calibration Lab')).toBeNull();
+  });
+});
+
+describe('App asset review route', () => {
+  it('mounts the full-window lab only for the explicit loopback development route', async () => {
+    vi.stubEnv('MODE', 'development');
+    window.history.pushState({}, '', '/?assetReview=1');
+
+    render(<App />);
+
+    expect(await screen.findByText('Asset Review Lab')).toBeTruthy();
+    expect(screen.queryByText('Home View')).toBeNull();
+    expect(hoisted.activeLobbyCalls).toBe(0);
+  });
+
+  it('refuses the asset review query in production', () => {
+    vi.stubEnv('MODE', 'production');
+    window.history.pushState({}, '', '/?assetReview=1');
+
+    render(<App />);
+
+    expect(screen.getByText('Home View')).toBeTruthy();
+    expect(screen.queryByText('Asset Review Lab')).toBeNull();
+  });
+});
+
+describe('App main-menu World Builder', () => {
+  it('routes the development world source into the promoted editor and back', async () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open World Builder' })
+    );
+    expect(
+      screen.getByRole('heading', { name: 'World Builder View' })
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    expect(screen.getByText('Home View')).toBeTruthy();
+  });
+
+  it('does not invent a World Builder path in production', () => {
+    vi.stubEnv('MODE', 'production');
+    render(<App />);
+    expect(
+      screen.queryByRole('button', { name: 'Open World Builder' })
+    ).toBeNull();
+  });
+});
+
 describe('App global development tools', () => {
-  it('hides the controls and open Discord panel in Concepts, then restores them on Back', () => {
+  it('shows only the wrench — #906 round 5: Kirk, "we do not need the concepts lab in there"', () => {
     vi.stubEnv('MODE', 'development');
     render(<App />);
 
     expect(screen.getByText('Home View')).toBeTruthy();
-    const openConcepts = screen.getByTitle('Open Concepts Lab');
     expect(screen.getByTitle('Show Debug Panel')).toBeTruthy();
-
-    fireEvent.click(screen.getByTitle('Show Debug Panel'));
-    expect(screen.getByTitle('Hide Debug Panel')).toBeTruthy();
-    expect(screen.getByText('Discord Debug Panel')).toBeTruthy();
-
-    fireEvent.click(openConcepts);
-    expect(screen.getByRole('heading', { name: 'Concepts Lab' })).toBeTruthy();
     expect(screen.queryByTitle('Open Concepts Lab')).toBeNull();
-    expect(screen.queryByTitle('Hide Debug Panel')).toBeNull();
+    expect(screen.queryByText('🧪')).toBeNull();
+  });
+
+  it('hides the wrench in Concepts (reachable only via the ?concept= deep link now, not a button), then restores it on Back', () => {
+    vi.stubEnv('MODE', 'development');
+    window.history.pushState({}, '', '/?concept=some-concept');
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Concepts Lab' })).toBeTruthy();
+    expect(screen.queryByTitle('Show Debug Panel')).toBeNull();
     expect(screen.queryByText('Discord Debug Panel')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByText('Home View')).toBeTruthy();
-    expect(screen.getByTitle('Open Concepts Lab')).toBeTruthy();
-    expect(screen.getByTitle('Hide Debug Panel')).toBeTruthy();
-    expect(screen.getByText('Discord Debug Panel')).toBeTruthy();
+    expect(screen.getByTitle('Show Debug Panel')).toBeTruthy();
   });
 
   it('does not render global development tools in production', () => {
@@ -200,8 +300,29 @@ describe('App global development tools', () => {
     render(<App />);
 
     expect(screen.getByText('Home View')).toBeTruthy();
-    expect(screen.queryByTitle('Open Concepts Lab')).toBeNull();
     expect(screen.queryByTitle('Show Debug Panel')).toBeNull();
     expect(screen.queryByText('Discord Debug Panel')).toBeNull();
+  });
+
+  it('shares FEEL_LAB_LAYER_Z with the drawer, not its own z-index — #906 round 4: the button row painted behind a live session for the same reason the drawer once did', () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+
+    const wrench = screen.getByTitle('Show Debug Panel');
+    const row = wrench.parentElement as HTMLElement;
+    expect(row.style.zIndex).toBe(String(FEEL_LAB_LAYER_Z));
+  });
+
+  it('sits above the combat dock (174px tall) rather than inside its band', () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+
+    const wrench = screen.getByTitle('Show Debug Panel');
+    const row = wrench.parentElement as HTMLElement;
+    // bottom-48 = 12rem = 192px, clearing the dock's 174px with room to
+    // spare; the old bottom-4 (16px) sat well inside it.
+    const classes = row.className.split(/\s+/);
+    expect(classes).toContain('bottom-48');
+    expect(classes).not.toContain('bottom-4');
   });
 });

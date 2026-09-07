@@ -1,4 +1,4 @@
-import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
 import type {
   ConnectorRun,
   EnvelopeCorner,

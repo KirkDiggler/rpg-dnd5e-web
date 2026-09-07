@@ -5,6 +5,11 @@
  * at the specified hex position.
  */
 
+import { resolveHairPresentation } from '@/character/customization/hairCustomization';
+import {
+  resolveOutfitPresentation,
+  type CharacterCustomizationContainer,
+} from '@/character/customization/outfitCustomization';
 import type {
   FacialHairStyle,
   HairStyle,
@@ -13,6 +18,7 @@ import type {
 } from '@/config/attachmentModels';
 import { isTwoHandedWeapon, WEAPON_CONFIGS } from '@/config/attachmentModels';
 import type { HeadVariant } from '@/config/characterModels';
+import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type { Character } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import type { MonsterCombatState } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/encounter_pb';
 import {
@@ -24,7 +30,8 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ErrorBoundary } from '../ui/Feedback/ErrorBoundary';
 import { ClassCharacterModel } from './ClassCharacterModel';
-import { resolveClassCharacterModelUrl } from './classCharacterModels';
+import { resolvePlayerCharacterModel } from './classCharacterModels';
+import { resolveDemoNpcModelUrl } from './demoNpcModels';
 import {
   DEFAULT_HEADING_BY_TYPE,
   MEDIUM_HUMANOID_FORWARD_OFFSET,
@@ -33,9 +40,14 @@ import {
 } from './facing';
 import { cubeToWorld, type CubeCoord } from './hexMath';
 import type { MainHandPresentation } from './mainHandPresentation';
-import { MediumHumanoid, type SkinTone } from './MediumHumanoid';
+import { mainHandSocketForRigFamily } from './mainHandWeapons';
+import { MediumHumanoid } from './MediumHumanoid';
 import { resolveMonsterModelUrl } from './monsterModels';
 import { resolvePropVariantForEntity } from './obstaclePropKeys';
+import {
+  offHandSocketForRigFamily,
+  type OffHandPresentation,
+} from './offHandEquipment';
 import { PROPS_MODEL_BASE } from './propManifest';
 import { PropModel } from './PropModel';
 import {
@@ -50,7 +62,11 @@ export interface HexEntityProps {
   entityId: string;
   name: string;
   position: CubeCoord;
-  type: 'player' | 'monster' | 'obstacle';
+  /** 'npc' is a placed, non-combatant MEMBER_KIND_WORLD member. The exact
+   * reference-tomb demo member has a temporary bartender appearance; other
+   * NPCs keep the neutral, unarmed MediumHumanoid placeholder. NPCs never
+   * resolve through player class/race/equipment or monster identity. */
+  type: 'player' | 'monster' | 'obstacle' | 'npc';
   hexSize: number;
   isSelected?: boolean;
   onClick?: (entityId: string) => void;
@@ -84,6 +100,13 @@ export interface HexEntityProps {
   facialHairStyle?: FacialHairStyle;
   /** Whether the entity is dead (show visual dead state, disable interaction) */
   isDead?: boolean;
+  /** The colour of the SIDE this member fights for, when the author
+   * declared one (rpg-project#375 §7, `factionColor.ts`). Overrides the
+   * kind's own colour for the ring and the placeholder; absent for a
+   * player, an unauthored monster or a world NPC, which keep the blue,
+   * red and gold they always had. Presentation only — it decides nothing
+   * about who may be attacked. */
+  factionColor?: string;
   /** Whether the entity is outside LoS (v1alpha2). Render at last-known position with ghost shader (semi-transparent, desaturated). */
   isGhost?: boolean;
   /**
@@ -94,13 +117,26 @@ export interface HexEntityProps {
    * Undefined means live, so every existing caller is unchanged.
    */
   knowledgeState?: SceneKnowledgeState;
-  /** v1alpha2 CharacterData.class_ref.id — resolves a class GLB for player
-   * entities (rpg-dnd5e-web#501). Unmapped/undefined falls back to
-   * MediumHumanoid, unchanged (the #479 boundary lineage). */
+  /** Public roster class ref id — resolves a player GLB when one is mapped.
+   * Unmapped/undefined falls back to MediumHumanoid, unchanged (the #479
+   * boundary lineage). */
   classRefId?: string;
+  /** Public roster race ref id — paired with classRefId for exact promoted
+   * player models; blank/missing falls back to honest class or neutral
+   * placeholder. */
+  raceRefId?: string;
+  /** Complete owner Appearance / peer public Customization projection.
+   * Only a standing active player body consumes hair and outfit treatments. */
+  customization?: CharacterCustomizationContainer;
+  /** @deprecated Compatibility seam for old callers; new owner/peer paths use
+   * `customization` so sibling Hair and Outfit cannot be separated. */
+  hairCustomization?: HairCustomization;
   /** Exact owner-authoritative visual projection for this player's main hand.
    * Undefined means unarmed; only class GLBs consume it. */
   mainHandPresentation?: MainHandPresentation;
+  /** Exact owner-private visual projection for this player's off hand.
+   * Undefined means no reviewed off-hand presentation. */
+  offHandPresentation?: OffHandPresentation;
   /** True for a CHARACTER entity carrying the "unconscious" condition —
    * swaps to the class's downed GLB variant (rpg-dnd5e-web#501). */
   isDowned?: boolean;
@@ -128,7 +164,7 @@ export interface HexEntityProps {
    * (`EntityMoved.actualPath`), set only alongside `moveSeq` — see
    * `useEncounterState.ts`'s `mergeEntityPosition` doc comment. Undefined
    * for an entity that has never moved this session. */
-  movePath?: CubeCoord[];
+  movePath?: readonly CubeCoord[];
   /** Monotonic counter bumped only by a genuine move (rpg-dnd5e-web#542) —
    * `useHexMovePath` watches this, not `position` itself, to distinguish a
    * real move from initial placement or a ghost/revive reconciliation. */
@@ -151,6 +187,10 @@ const COLORS = {
     default: '#805ad5', // purple
     selected: '#b794f4', // brighter purple
   },
+  npc: {
+    default: '#d69e2e', // gold
+    selected: '#f6d55c', // brighter gold
+  },
 };
 
 // Entity dimensions relative to hex size (used for obstacles/fallback)
@@ -160,6 +200,20 @@ const Y_OFFSET = 0.1; // Small Y offset to sit above the hex plane
 
 // Clear the default 0.20 Synty floor and slightly negative GLB foot minima.
 const CHARACTER_Y_OFFSET = 0.21;
+const CRYPT_HEX = `#${CRYPT_MEMORY_COLOR.getHexString()}`;
+
+/** Keeps generic fallback state treatment independent of retired appearance fields. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function mediumHumanoidFallbackColors(
+  remembered: boolean,
+  isDead: boolean
+) {
+  return {
+    skinTone: remembered ? CRYPT_HEX : isDead ? '#555' : undefined,
+    primaryColor: remembered ? CRYPT_HEX : isDead ? '#444' : undefined,
+    secondaryColor: remembered ? CRYPT_HEX : isDead ? '#333' : undefined,
+  } as const;
+}
 
 /**
  * Whether the dead/downed corpse tilt (60 degrees about Z) should apply.
@@ -304,10 +358,15 @@ export function HexEntity({
   hairColor,
   facialHairStyle,
   isDead = false,
+  factionColor,
   isGhost = false,
   knowledgeState,
   classRefId,
+  raceRefId,
+  customization,
+  hairCustomization,
   mainHandPresentation,
+  offHandPresentation,
   isDowned = false,
   obstacleType,
   propRefId,
@@ -343,7 +402,7 @@ export function HexEntity({
   // The fallback humanoid is cel-shaded from flat colours rather than GLB
   // materials, so its crypt treatment is those colours sourced from the one
   // shared constant — not a second palette.
-  const cryptHex = `#${CRYPT_MEMORY_COLOR.getHexString()}`;
+  const cryptHex = CRYPT_HEX;
   const { isMoving } = useHexMovePath(
     position,
     remembered ? undefined : movePath,
@@ -368,18 +427,13 @@ export function HexEntity({
   // caught a terminal load error) so the downed-tilt check below can still
   // fire once we've fallen back to MediumHumanoid — otherwise a downed/dead
   // entity whose GLB happens to be missing/broken would render upright
-  // (rpg-dnd5e-web#502 gate note). One slot covers BOTH the player class
-  // model and the monster model (rpg-dnd5e-web#559) — the two are mutually
-  // exclusive per `type` (a player entity's resolved url is always
-  // `classModelUrl`, a monster's always `monsterModelUrl`, see
-  // `resolvedModelUrl` below), so there's no cross-contamination risk in
-  // sharing one slot. Compared against the *current* resolvedModelUrl each
-  // render rather than a bare boolean so a later class/monster-ref/asset
-  // change (or the file becoming available again) isn't permanently masked
-  // by a stale failure from a different url.
-  const [failedEntityModelUrl, setFailedEntityModelUrl] = useState<
-    string | undefined
-  >(undefined);
+  // (rpg-dnd5e-web#502 gate note). One failure set covers the mutually
+  // exclusive player, monster and demo NPC model choices. Failures are
+  // keyed by exact URL rather than a bare boolean, so switching to a
+  // different resolved model is not masked by an unrelated load failure.
+  const [failedEntityModelUrls, setFailedEntityModelUrls] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
 
   // R3F runs the canvas in frameloop="demand" mode (HexGrid.tsx). When only
   // the ghost flag changes (entity stays at last_known position), no other
@@ -404,8 +458,8 @@ export function HexEntity({
   const color = isDead
     ? '#666666'
     : selected
-      ? COLORS[type].selected
-      : COLORS[type].default;
+      ? (factionColor ?? COLORS[type].selected)
+      : (factionColor ?? COLORS[type].default);
 
   // Handle click events - dead and ghost entities are not interactive.
   // Ghosts represent last-known position outside LoS — clicking would let a
@@ -442,17 +496,13 @@ export function HexEntity({
           },
         };
 
-  // Use character model for players and monsters
-  if (type === 'player' || type === 'monster') {
+  // Players, monsters and world NPCs share the animated renderer, but keep
+  // separate model-selection gates. Unknown NPCs retain the neutral
+  // placeholder; only the explicit tomb demo bridge opts into an NPC GLB.
+  if (type === 'player' || type === 'monster' || type === 'npc') {
     const characterClass = character?.class;
     const characterRace = character?.race;
     const monsterType = monster?.monsterType;
-
-    // Resolve appearance from proto data
-    const appearance = character?.appearance;
-    const skinTone: SkinTone | string = appearance?.skinTone || 'medium';
-    const primaryColor = appearance?.primaryColor || undefined;
-    const secondaryColor = appearance?.secondaryColor || undefined;
 
     // Resolve head variant from race
     const headVariant = getHeadVariant(characterRace);
@@ -468,15 +518,21 @@ export function HexEntity({
       : resolveWeaponType(character, 'offHand');
     const shield = isTwoHanded ? undefined : resolveShield(character);
 
-    // Player class GLB (rpg-dnd5e-web#501). Unmapped class / missing
-    // classRefId falls through to undefined here, which is exactly the
-    // MediumHumanoid fallback signal below (the #479 boundary lineage: a
-    // data gap degrades to the known-working placeholder, never a broken
-    // model ref).
-    const classModelUrl =
+    // Player GLB (public race/class identity). Exact promoted race+class
+    // standing models win when shipped; missing/blank race falls back to the
+    // honest class GLB, and unmapped class still falls through to the known
+    // MediumHumanoid placeholder.
+    const playerModelResolution =
       type === 'player'
-        ? resolveClassCharacterModelUrl(classRefId, isDowned)
+        ? resolvePlayerCharacterModel(raceRefId, classRefId, isDowned)
         : undefined;
+    const classModelUrl = playerModelResolution?.url;
+    const mainHandSocketOverride = playerModelResolution
+      ? mainHandSocketForRigFamily(playerModelResolution.rigFamily)
+      : undefined;
+    const offHandSocketOverride = playerModelResolution
+      ? offHandSocketForRigFamily(playerModelResolution.rigFamily)
+      : undefined;
     // Monster npc GLB (rpg-dnd5e-web#559) — the same resolve-or-undefined
     // shape as classModelUrl above, one entry per promoted crypt-roster
     // monster (monsterModels.ts). `isDead` (not `isDowned`, which is a
@@ -490,10 +546,44 @@ export function HexEntity({
       type === 'monster'
         ? resolveMonsterModelUrl(monsterRefId, monsterType, isDead, entityId)
         : undefined;
-    // Mutually exclusive by `type` — never both defined for the same
-    // entity, so combining them into one resolved url + one sticky-failure
-    // slot (failedEntityModelUrl above) is safe.
-    const resolvedModelUrl = classModelUrl ?? monsterModelUrl;
+    // Explicit temporary proof, not NPC template/appearance inference. No
+    // downed asset exists for this non-combatant model; an unexpected dead
+    // NPC keeps the existing placeholder treatment instead.
+    const npcModelUrl =
+      type === 'npc' && !isDead ? resolveDemoNpcModelUrl(entityId) : undefined;
+    // Mutually exclusive by type; all retain the same load-error fallback.
+    const resolvedModelUrl = classModelUrl ?? monsterModelUrl ?? npcModelUrl;
+    // Only generated profile truth can name an exact complete class fallback.
+    // Monsters and unsupported profiles retain one-step MediumHumanoid degradation.
+    const generatedClassFallbackUrl =
+      type === 'player' ? playerModelResolution?.fallbackUrl : undefined;
+    const effectiveModelUrl = [resolvedModelUrl, generatedClassFallbackUrl]
+      .filter((url): url is string => Boolean(url))
+      .find((url) => !failedEntityModelUrls.has(url));
+    const isPrimaryCustomizationBody =
+      effectiveModelUrl === classModelUrl &&
+      playerModelResolution?.customizationProfileRef !== undefined &&
+      !isDowned;
+    const completeCustomization =
+      customization ??
+      (hairCustomization ? { hair: hairCustomization } : undefined);
+    const hairPresentation = isPrimaryCustomizationBody
+      ? resolveHairPresentation({
+          raceRefId,
+          classRefId,
+          customization: completeCustomization,
+        })
+      : undefined;
+    const outfitResolution = isPrimaryCustomizationBody
+      ? resolveOutfitPresentation({
+          classRefId,
+          customization: completeCustomization,
+        })
+      : undefined;
+    const outfitPresentation =
+      outfitResolution && !('presentation' in outfitResolution)
+        ? outfitResolution
+        : undefined;
     // Same per-type selection the two resolver calls above already made
     // (isDowned for player, isDead for monster) — exposed as its own value
     // so ClassCharacterModel knows whether a zero-clip mount is expected
@@ -507,16 +597,9 @@ export function HexEntity({
     // for MEDIUM_HUMANOID_FORWARD_OFFSET once an entity renders a real
     // Synty GLB instead of the MediumHumanoid placeholder).
     const modelForwardOffset =
-      type === 'player'
-        ? SYNTY_GLB_FORWARD_OFFSET
-        : POLYGON_DUNGEON_FORWARD_OFFSET;
-    // undefined once resolvedModelUrl itself is undefined, or once THIS url
-    // has failed to load — never stuck failed against a different url.
-    const effectiveModelUrl =
-      resolvedModelUrl && resolvedModelUrl !== failedEntityModelUrl
-        ? resolvedModelUrl
-        : undefined;
-
+      type === 'monster'
+        ? POLYGON_DUNGEON_FORWARD_OFFSET
+        : SYNTY_GLB_FORWARD_OFFSET;
     // Shared fallback element — used both as the "no class model" branch
     // and as the ErrorBoundary fallback when a mapped class model exists
     // but its GLB fails to load (missing/unsynced asset, bad file, etc.).
@@ -525,6 +608,7 @@ export function HexEntity({
     // ErrorBoundary wrapping) and would otherwise unmount this entity's
     // whole Canvas tree instead of degrading to the known-working
     // placeholder (the #479 boundary lineage).
+    const fallbackColors = mediumHumanoidFallbackColors(remembered, isDead);
     const mediumHumanoidElement = (
       <MediumHumanoid
         color={remembered ? cryptHex : color}
@@ -535,17 +619,15 @@ export function HexEntity({
         race={characterRace}
         characterClass={characterClass}
         monsterType={monsterType}
-        skinTone={remembered ? cryptHex : isDead ? '#555' : skinTone}
-        primaryColor={remembered ? cryptHex : isDead ? '#444' : primaryColor}
-        secondaryColor={
-          remembered ? cryptHex : isDead ? '#333' : secondaryColor
-        }
+        skinTone={fallbackColors.skinTone}
+        primaryColor={fallbackColors.primaryColor}
+        secondaryColor={fallbackColors.secondaryColor}
         hairStyle={hairStyle}
         hairColor={remembered ? cryptHex : isDead ? '#333' : hairColor}
         facialHairStyle={facialHairStyle}
         mainHandWeapon={mainHandWeapon}
-        offHandWeapon={offHandWeapon}
-        shield={shield}
+        offHandWeapon={type === 'player' ? undefined : offHandWeapon}
+        shield={type === 'player' ? undefined : shield}
         showOutline={!isDead && !remembered}
         ghostAmount={isGhost ? 1.0 : 0.0}
       />
@@ -607,8 +689,15 @@ export function HexEntity({
           >
             {effectiveModelUrl ? (
               <ErrorBoundary
+                key={effectiveModelUrl}
                 fallback={mediumHumanoidElement}
-                onError={() => setFailedEntityModelUrl(effectiveModelUrl)}
+                onError={() =>
+                  setFailedEntityModelUrls((failed) => {
+                    const next = new Set(failed);
+                    next.add(effectiveModelUrl);
+                    return next;
+                  })
+                }
               >
                 <ClassCharacterModel
                   url={effectiveModelUrl}
@@ -621,6 +710,13 @@ export function HexEntity({
                   mainHandPresentation={
                     type === 'player' ? mainHandPresentation : undefined
                   }
+                  mainHandSocketOverride={mainHandSocketOverride}
+                  offHandPresentation={
+                    type === 'player' ? offHandPresentation : undefined
+                  }
+                  offHandSocketOverride={offHandSocketOverride}
+                  accessories={hairPresentation?.accessories}
+                  outfit={outfitPresentation}
                 />
               </ErrorBoundary>
             ) : (

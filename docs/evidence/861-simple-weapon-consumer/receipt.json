@@ -1,0 +1,803 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/861",
+  "status": "ready for review",
+  "codeHead": "45fba578b9c44cdc289094b3f08526b84fd5ce65",
+  "capturedAtUtc": "2026-08-30T10:39:12.273668Z",
+  "provider": {
+    "repository": "KirkDiggler/rpg-game-assets",
+    "commit": "11b78a0f24278a54f057a5a1abf416d30c0a879b",
+    "syncedManifestPath": "public/models/synty/weapons/manifest.json",
+    "manifestSha256": "729282ee2a05b0d1b9f194066e7aa4da5f3682b2a5811cfbc13de4353b8d68be",
+    "exactBytesVerifiedBeforeCapture": true,
+    "sixSimpleWeaponOutputs": {
+      "light-hammer": {
+        "path": "/models/synty/weapons/light-hammer.glb",
+        "sha256": "81985e1e9416ee6804699a94a99ef22b71288f181f26d7c2dc9366dc0227d008"
+      },
+      "mace": {
+        "path": "/models/synty/weapons/mace.glb",
+        "sha256": "86de1cdd4a46a64c81fba1abb3253dd74fe95a6f30470daa2788859623d4735a"
+      },
+      "sickle": {
+        "path": "/models/synty/weapons/sickle.glb",
+        "sha256": "cf5722eefe57e3199b0d45d86acde3abf62fe020892e3a78f25ec33ab6a45df2"
+      },
+      "spear": {
+        "path": "/models/synty/weapons/spear.glb",
+        "sha256": "4eb1ac71190816254ea0df4ca4f1d471a6de5f1fd33be63f0cb0d88a467b24be"
+      },
+      "sling": {
+        "path": "/models/synty/weapons/sling.glb",
+        "sha256": "a139762c8de7ff22f5fb56d75cfb32e356cbe0fc903c990df46881599e363645"
+      },
+      "dart": {
+        "path": "/models/synty/weapons/dart.glb",
+        "sha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+      }
+    }
+  },
+  "captureRuntime": {
+    "webPort": 3025,
+    "surface": "production build compiled with Vite development mode and served by the existing branch Vite preview",
+    "browser": {
+      "engine": "Chromium",
+      "version": "151.0.7922.169",
+      "playwright": "1.61.1"
+    },
+    "startup": {
+      "rootHttpStatus": 200,
+      "conceptHttpStatus": 200,
+      "serverStartupErrors": 0
+    }
+  },
+  "conceptEvidence": {
+    "boundary": "Visual fixture compatibility through the production-backed ?concept=weapon-attachment route; not inventory authority for classes.",
+    "idleCapture": {
+      "motion": "idle",
+      "view": "orbit",
+      "facing": 0,
+      "assetRequestMethod": "GET",
+      "observations": [
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:light-hammer",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-hammer.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "81985e1e9416ee6804699a94a99ef22b71288f181f26d7c2dc9366dc0227d008"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:mace",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/mace.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "86de1cdd4a46a64c81fba1abb3253dd74fe95a6f30470daa2788859623d4735a"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:sickle",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sickle.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "cf5722eefe57e3199b0d45d86acde3abf62fe020892e3a78f25ec33ab6a45df2"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:spear",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/spear.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "4eb1ac71190816254ea0df4ca4f1d471a6de5f1fd33be63f0cb0d88a467b24be"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:sling",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sling.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a139762c8de7ff22f5fb56d75cfb32e356cbe0fc903c990df46881599e363645"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:dart",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/dart.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:light-hammer",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-hammer.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "81985e1e9416ee6804699a94a99ef22b71288f181f26d7c2dc9366dc0227d008"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:mace",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/mace.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "86de1cdd4a46a64c81fba1abb3253dd74fe95a6f30470daa2788859623d4735a"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:sickle",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sickle.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "cf5722eefe57e3199b0d45d86acde3abf62fe020892e3a78f25ec33ab6a45df2"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:spear",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/spear.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "4eb1ac71190816254ea0df4ca4f1d471a6de5f1fd33be63f0cb0d88a467b24be"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:sling",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sling.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a139762c8de7ff22f5fb56d75cfb32e356cbe0fc903c990df46881599e363645"
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:dart",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/dart.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:light-hammer",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-hammer.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "81985e1e9416ee6804699a94a99ef22b71288f181f26d7c2dc9366dc0227d008"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:mace",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/mace.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "86de1cdd4a46a64c81fba1abb3253dd74fe95a6f30470daa2788859623d4735a"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:sickle",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sickle.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "cf5722eefe57e3199b0d45d86acde3abf62fe020892e3a78f25ec33ab6a45df2"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:spear",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/spear.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "4eb1ac71190816254ea0df4ca4f1d471a6de5f1fd33be63f0cb0d88a467b24be"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:sling",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sling.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a139762c8de7ff22f5fb56d75cfb32e356cbe0fc903c990df46881599e363645"
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:dart",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/dart.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:light-hammer",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-hammer.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "81985e1e9416ee6804699a94a99ef22b71288f181f26d7c2dc9366dc0227d008"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:mace",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/mace.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "86de1cdd4a46a64c81fba1abb3253dd74fe95a6f30470daa2788859623d4735a"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:sickle",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sickle.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "cf5722eefe57e3199b0d45d86acde3abf62fe020892e3a78f25ec33ab6a45df2"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:spear",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/spear.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "4eb1ac71190816254ea0df4ca4f1d471a6de5f1fd33be63f0cb0d88a467b24be"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:sling",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sling.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a139762c8de7ff22f5fb56d75cfb32e356cbe0fc903c990df46881599e363645"
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:dart",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/dart.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+        }
+      ]
+    },
+    "fighterWalkCapture": {
+      "motion": "walk",
+      "view": "orbit",
+      "facing": 0,
+      "assetRequestMethod": "GET",
+      "observations": [
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:light-hammer",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/light-hammer.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "81985e1e9416ee6804699a94a99ef22b71288f181f26d7c2dc9366dc0227d008"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:mace",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/mace.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "86de1cdd4a46a64c81fba1abb3253dd74fe95a6f30470daa2788859623d4735a"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:sickle",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sickle.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "cf5722eefe57e3199b0d45d86acde3abf62fe020892e3a78f25ec33ab6a45df2"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:spear",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/spear.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "4eb1ac71190816254ea0df4ca4f1d471a6de5f1fd33be63f0cb0d88a467b24be"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:sling",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/sling.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a139762c8de7ff22f5fb56d75cfb32e356cbe0fc903c990df46881599e363645"
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:dart",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/dart.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+        }
+      ]
+    },
+    "counts": {
+      "idle": 24,
+      "fighterWalk": 6,
+      "observations": 30,
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "requestFailures": 0
+    }
+  },
+  "authoritativeRoute": {
+    "surface": "normal web UI under the dedicated dev identity; Home -> Play -> Lobby/Resume -> Session equipment popover; no direct API mutation script",
+    "fixtureDependency": {
+      "repository": "KirkDiggler/rpg-api",
+      "issue": 860,
+      "pullRequest": 863,
+      "state": "merged",
+      "mergedCommit": "ddc20b18a6a1f784ed3cac64b40144763194b74f",
+      "mergeOrder": "satisfied: API fixture PR merged before this web slice"
+    },
+    "actingIdentity": "weapon-gallery",
+    "ownerDisplay": "Weapon Gallery",
+    "ownerClass": "fighter",
+    "ownerRace": "human",
+    "ids": "redacted; no character/lobby/session identifiers are published",
+    "listCharacters": {
+      "totalSize": 1,
+      "characterCount": 1,
+      "totalInventoryCount": 26,
+      "weaponInventoryCount": 22,
+      "weaponInventoryRefs": [
+        "dnd5e:item:shortbow",
+        "dnd5e:item:longsword",
+        "dnd5e:item:shortsword",
+        "dnd5e:item:dagger",
+        "dnd5e:item:greataxe",
+        "dnd5e:item:quarterstaff",
+        "dnd5e:item:greatsword",
+        "dnd5e:item:battleaxe",
+        "dnd5e:item:handaxe",
+        "dnd5e:item:club",
+        "dnd5e:item:greatclub",
+        "dnd5e:item:warhammer",
+        "dnd5e:item:light-crossbow",
+        "dnd5e:item:longbow",
+        "dnd5e:item:javelin",
+        "dnd5e:item:rapier",
+        "dnd5e:item:light-hammer",
+        "dnd5e:item:mace",
+        "dnd5e:item:sickle",
+        "dnd5e:item:spear",
+        "dnd5e:item:sling",
+        "dnd5e:item:dart"
+      ],
+      "duplicateWeaponRefs": false,
+      "evidenceSource": "normal web UI character selection/list result; HTTP status not separately bound"
+    },
+    "initialOwnerState": {
+      "equipped": {},
+      "presentedArmorClass": 12,
+      "armorClassNote": "10 + 2 DEX",
+      "mainHandDamage": "",
+      "hitPoints": {
+        "current": 12,
+        "max": 12
+      },
+      "baseSpeedFeet": 30
+    },
+    "finalOwnerState": {
+      "equipped": {},
+      "presentedArmorClass": 12,
+      "armorClassNote": "10 + 2 DEX",
+      "mainHandDamage": "",
+      "hitPoints": {
+        "current": 12,
+        "max": 12
+      },
+      "baseSpeedFeet": 30
+    },
+    "authoritativeSequence": [
+      "UI proves enabled carried Dart row",
+      "EquipItem HTTP 200 equips Dart",
+      "fresh browser context restores Dart from GetCharacterData HTTP 200",
+      "UnequipItem HTTP 200 returns unarmed",
+      "fresh browser context restores unarmed from GetCharacterData HTTP 200",
+      "restore exact observed initial state",
+      "fresh browser context verifies final initial parity"
+    ],
+    "stages": [
+      {
+        "name": "initial-owner-ui-dart-row",
+        "equipped": {},
+        "presentedArmorClass": 12,
+        "armorClassNote": "10 + 2 DEX",
+        "mainHandDamage": "",
+        "dartRowEnabled": true,
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 1,
+        "dartRowVisibleInContactSheet": true
+      },
+      {
+        "name": "equip-dart-immediate",
+        "equipped": {
+          "main_hand": "dnd5e:item:dart"
+        },
+        "presentedArmorClass": 12,
+        "armorClassNote": "10 + 2 DEX",
+        "mainHandDamage": "1d4 piercing damage",
+        "rpc": {
+          "method": "EquipItem",
+          "httpStatus": 200
+        },
+        "dartAsset": {
+          "httpStatus": 200,
+          "sha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+        },
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 2
+      },
+      {
+        "name": "fresh-context-restores-dart",
+        "equipped": {
+          "main_hand": "dnd5e:item:dart"
+        },
+        "presentedArmorClass": 12,
+        "armorClassNote": "10 + 2 DEX",
+        "mainHandDamage": "1d4 piercing damage",
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 3
+      },
+      {
+        "name": "unequip-dart-immediate-unarmed",
+        "equipped": {},
+        "presentedArmorClass": 12,
+        "armorClassNote": "10 + 2 DEX",
+        "mainHandDamage": "",
+        "rpc": {
+          "method": "UnequipItem",
+          "httpStatus": 200
+        },
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 4
+      },
+      {
+        "name": "fresh-context-restores-unarmed",
+        "equipped": {},
+        "presentedArmorClass": 12,
+        "armorClassNote": "10 + 2 DEX",
+        "mainHandDamage": "",
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 5
+      },
+      {
+        "name": "restore-exact-initial-in-same-context",
+        "equipped": {},
+        "presentedArmorClass": 12,
+        "armorClassNote": "10 + 2 DEX",
+        "mainHandDamage": "",
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 6
+      },
+      {
+        "name": "fresh-context-verifies-restored-initial",
+        "equipped": {},
+        "presentedArmorClass": 12,
+        "armorClassNote": "10 + 2 DEX",
+        "mainHandDamage": "",
+        "exactRestoration": {
+          "slotsEqual": true,
+          "armorClassEqual": true,
+          "mainHandDamageEqual": true
+        },
+        "contactSheet": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+        "contactSheetTile": 7
+      }
+    ],
+    "dartAssetResponses": [
+      {
+        "method": "GET",
+        "status": 200,
+        "path": "/models/synty/weapons/dart.glb",
+        "sha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+      },
+      {
+        "method": "GET",
+        "status": 200,
+        "path": "/models/synty/weapons/dart.glb",
+        "sha256": "b9b506018e91cc351c77f70297f7c9e6ebc573e41b098396c94cf7669d900367"
+      }
+    ],
+    "relevantHttpStatuses": [
+      {
+        "context": "initial-equip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby"
+      },
+      {
+        "context": "initial-equip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby"
+      },
+      {
+        "context": "initial-equip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.v1alpha2.character.CharacterService/GetCharacterData"
+      },
+      {
+        "context": "initial-equip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.session.v1alpha1.SessionService/GetRoster"
+      },
+      {
+        "context": "initial-equip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.session.v1alpha1.SessionService/GetRoster"
+      },
+      {
+        "context": "initial-equip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.v1alpha2.character.CharacterService/EquipItem"
+      },
+      {
+        "context": "reconnect-dart-unequip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby"
+      },
+      {
+        "context": "reconnect-dart-unequip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby"
+      },
+      {
+        "context": "reconnect-dart-unequip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.v1alpha2.character.CharacterService/GetCharacterData"
+      },
+      {
+        "context": "reconnect-dart-unequip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.session.v1alpha1.SessionService/GetRoster"
+      },
+      {
+        "context": "reconnect-dart-unequip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.session.v1alpha1.SessionService/GetRoster"
+      },
+      {
+        "context": "reconnect-dart-unequip",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.v1alpha2.character.CharacterService/UnequipItem"
+      },
+      {
+        "context": "reconnect-unarmed",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby"
+      },
+      {
+        "context": "reconnect-unarmed",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby"
+      },
+      {
+        "context": "reconnect-unarmed",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.session.v1alpha1.SessionService/GetRoster"
+      },
+      {
+        "context": "reconnect-unarmed",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.v1alpha2.character.CharacterService/GetCharacterData"
+      },
+      {
+        "context": "reconnect-unarmed",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.session.v1alpha1.SessionService/GetRoster"
+      },
+      {
+        "context": "fresh-final-verify",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.lobby.v1alpha1.LobbyService/GetMyActiveLobby"
+      },
+      {
+        "context": "fresh-final-verify",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.lobby.v1alpha1.LobbyService/StreamLobby"
+      },
+      {
+        "context": "fresh-final-verify",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.v1alpha2.character.CharacterService/GetCharacterData"
+      },
+      {
+        "context": "fresh-final-verify",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.session.v1alpha1.SessionService/GetRoster"
+      },
+      {
+        "context": "fresh-final-verify",
+        "method": "POST",
+        "status": 200,
+        "endpoint": "dnd5e.api.session.v1alpha1.SessionService/GetRoster"
+      }
+    ],
+    "expectedStreamAbortFailures": 4,
+    "expectedStreamConsoleErrors": 0,
+    "errorTotals": {
+      "unexpectedConsoleErrors": 0,
+      "pageErrors": 0,
+      "unexpectedRequestFailures": 0
+    },
+    "exactRestorationFacts": {
+      "slotsEqual": true,
+      "presentedArmorClassEqual": true,
+      "mainHandDamageEqual": true,
+      "initialWasAlreadyUnarmed": true
+    }
+  },
+  "integrity": {
+    "requiredExtension": ".png",
+    "requiredMediaType": "image/png",
+    "requiredMagicHex": "89504e470d0a1a0a",
+    "requiredPillowFormat": "PNG",
+    "volatileMetadataPolicy": "PNG sheets are re-encoded without metadata; decoded RGB hashes are bound below."
+  },
+  "sheets": [
+    {
+      "path": "docs/evidence/861-simple-weapon-consumer/simple-weapon-four-class-contact-sheet.png",
+      "mediaType": "image/png",
+      "magicHex": "89504e470d0a1a0a",
+      "byteSize": 322388,
+      "sha256": "ee1e00116529e9b7704a6790c791b25e60ca08f29625b26c185af5f666533b83",
+      "pillowFormat": "PNG",
+      "dimensions": [
+        2226,
+        1180
+      ],
+      "decodedRgbSha256": "64ac8977c88bb80f138694b568109bc711181382f5c0de33d1e8c370d0eb7063",
+      "volatileMetadataPresent": false
+    },
+    {
+      "path": "docs/evidence/861-simple-weapon-consumer/simple-weapon-fighter-walk-contact-sheet.png",
+      "mediaType": "image/png",
+      "magicHex": "89504e470d0a1a0a",
+      "byteSize": 102945,
+      "sha256": "2e98c1fe412e2ad44f032fb42bd179157fd0a3474f3afb71e20dd344ca42eed4",
+      "pillowFormat": "PNG",
+      "dimensions": [
+        2226,
+        343
+      ],
+      "decodedRgbSha256": "38a2b8177add4cefc8024b3897aac96ecf999224d59c8eac64a8afe22668cd2f",
+      "volatileMetadataPresent": false
+    },
+    {
+      "path": "docs/evidence/861-simple-weapon-consumer/authoritative-dart-fighter-contact-sheet.png",
+      "mediaType": "image/png",
+      "magicHex": "89504e470d0a1a0a",
+      "byteSize": 872965,
+      "sha256": "6a559eff8f1587f6ca265fb28a0fdfa12a145b53a9bd30a59510273f38e2dd8f",
+      "pillowFormat": "PNG",
+      "dimensions": [
+        1114,
+        1862
+      ],
+      "decodedRgbSha256": "b453d236d51f84f13de1d77889e00a8532e49fd9c1108bd3d4be7b853601b865",
+      "volatileMetadataPresent": false
+    }
+  ],
+  "scope": {
+    "proves": [
+      "six simple weapon visual compatibility in Concept",
+      "acting owner Dart equip/reconnect/unequip/reconnect authority",
+      "exact restoration to observed initial equipment/stats"
+    ],
+    "doesNotProve": [
+      "inventory authority for Fighter/Barbarian/Monk/Rogue concept fixtures",
+      "peer equipment",
+      "combat/projectile behavior",
+      "second-hand contact/finger posing"
+    ]
+  }
+}

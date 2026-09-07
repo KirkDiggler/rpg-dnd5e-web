@@ -26,6 +26,7 @@ import {
 import { PathPreview } from '@/components/hex-grid/PathPreview';
 import { DungeonEnvironment } from '@/components/session/DungeonEnvironment';
 import type { ShellFallbackReason } from '@/components/session/DungeonShell';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import type { GetAtlasResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import { OrbitControls } from '@react-three/drei';
@@ -57,6 +58,7 @@ export interface DungeonPreview3DProps {
    * (#804 walk finding: freshly drawn walls missing from the 3D view
    * looked like the views disagreeing). */
   staleNotice?: string | null;
+  compositionSource?: CompositionSource;
 }
 
 export function DungeonPreview3D({
@@ -64,6 +66,7 @@ export function DungeonPreview3D({
   doc,
   status,
   staleNotice = null,
+  compositionSource,
 }: DungeonPreview3DProps) {
   const built = useMemo(() => (atlas ? previewScene(atlas) : null), [atlas]);
   const target = useMemo(() => {
@@ -192,10 +195,11 @@ export function DungeonPreview3D({
           hexSize={HEX_SIZE}
           onShellFallbackReason={setShellFallbackReason}
           onLightingDiagnostics={setLightingDiagnostics}
+          compositionSource={compositionSource}
         />
         {doc.start && (
           <PathPreview
-            path={[axialToCube(doc.start)]}
+            path={[axialToCube(doc.start.at)]}
             hexSize={HEX_SIZE}
             color={START_COLOR}
             opacity={0.5}

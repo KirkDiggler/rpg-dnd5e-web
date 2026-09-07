@@ -1,0 +1,101 @@
+.prop-calibration-lab {
+  font:
+    14px/1.35 Inter,
+    system-ui,
+    sans-serif;
+}
+
+.prop-calibration-lab button {
+  border: 1px solid #42615e;
+  border-radius: 4px;
+  background: #172526;
+  color: #d9efeb;
+  padding: 6px 9px;
+  cursor: pointer;
+}
+
+.prop-calibration-lab button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.prop-calibration-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #091314;
+}
+
+.prop-calibration-sheet fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid #304c4a;
+  border-radius: 6px;
+  padding: 10px;
+  background: #10191a;
+}
+
+.prop-calibration-sheet legend {
+  color: #72bdb4;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 4px;
+}
+
+.prop-calibration-sheet label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: #bdd1cd;
+  font-size: 12px;
+}
+
+.prop-calibration-sheet label:has(input[type='checkbox']) {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.prop-calibration-sheet input:not([type='checkbox']):not([type='range']),
+.prop-calibration-sheet select,
+.prop-calibration-sheet textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #42615e;
+  border-radius: 4px;
+  background: #071011;
+  color: #e7f5f2;
+  padding: 6px 7px;
+  font:
+    12px/1.3 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+
+.prop-calibration-sheet input[readonly] {
+  color: #91aaa5;
+  background: #0d1718;
+}
+
+.prop-calibration-sheet input[type='range'] {
+  width: 100%;
+  accent-color: #55dccb;
+}
+
+.prop-calibration-sheet textarea {
+  min-height: 58px;
+  resize: vertical;
+}
+
+.prop-calibration-sheet input:focus,
+.prop-calibration-sheet select:focus,
+.prop-calibration-sheet textarea:focus,
+.prop-calibration-sheet button:focus-visible {
+  outline: 2px solid #65f1df;
+  outline-offset: 1px;
+}

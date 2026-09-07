@@ -10,6 +10,8 @@ export interface DicePresentationRequestedEvent {
   type: 'dice-presentation-requested';
   eventId: string;
   presentationId: string;
+  /** Numeric recipient-local authority coordinate, separate from the opaque id. */
+  authoritySeq?: bigint;
   roller: Readonly<{
     entityId: string;
     role: 'player' | 'monster';
@@ -44,6 +46,15 @@ const REQUEST_KEYS = [
   'type',
   'eventId',
   'presentationId',
+  'roller',
+  'die',
+] as const;
+const REQUEST_KEYS_WITH_AUTHORITY = [
+  'schemaVersion',
+  'type',
+  'eventId',
+  'presentationId',
+  'authoritySeq',
   'roller',
   'die',
 ] as const;
@@ -91,16 +102,18 @@ function snapshotEvent(
       return undefined;
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record);
-    const expected = sameKeys(keys, REQUEST_KEYS)
-      ? REQUEST_KEYS
-      : sameKeys(keys, RELEASE_KEYS)
-        ? RELEASE_KEYS
+    const requestKeys = sameKeys(keys, REQUEST_KEYS_WITH_AUTHORITY)
+      ? REQUEST_KEYS_WITH_AUTHORITY
+      : sameKeys(keys, REQUEST_KEYS)
+        ? REQUEST_KEYS
         : undefined;
+    const expected =
+      requestKeys ?? (sameKeys(keys, RELEASE_KEYS) ? RELEASE_KEYS : undefined);
     if (!expected) return undefined;
     const snapshot: Record<string, unknown> = {};
     for (const key of expected) snapshot[key] = record[key];
     return {
-      kind: expected === REQUEST_KEYS ? 'requested' : 'released',
+      kind: requestKeys ? 'requested' : 'released',
       value: snapshot,
     };
   } catch {
@@ -120,6 +133,8 @@ function parseRequestedEvent(
   if (
     value.schemaVersion !== 1 ||
     value.type !== 'dice-presentation-requested' ||
+    (value.authoritySeq !== undefined &&
+      (typeof value.authoritySeq !== 'bigint' || value.authoritySeq < 0n)) ||
     !isDicePresentationIdentifier(value.eventId) ||
     !isDicePresentationIdentifier(value.presentationId) ||
     !roller ||
@@ -139,6 +154,9 @@ function parseRequestedEvent(
     type: 'dice-presentation-requested',
     eventId: value.eventId,
     presentationId: value.presentationId,
+    ...(typeof value.authoritySeq === 'bigint'
+      ? { authoritySeq: value.authoritySeq }
+      : {}),
     roller: Object.freeze({
       entityId: roller.entityId,
       role: roller.role,

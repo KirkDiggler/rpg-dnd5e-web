@@ -3,17 +3,30 @@
  * pointer events and assert on the document the callbacks produce.
  */
 import { fireEvent, render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
-  addWalls,
+  addWall,
   emptyDungeon,
   eraseCell,
   paintCell,
+  paintScenery,
   placeAt,
-  toggleWall,
   type DungeonDoc,
+  type PositionRef,
 } from '../dungeonYaml';
-import { axialKey, edgeKey, fromOffset, type Edge } from '../hexOffset';
+import { latticeKey, latticeOf, positionAt } from '../hexGeometry';
+import { axialKey, edgeKey, fromOffset, toOffset } from '../hexOffset';
+import {
+  ENVELOPE_DASH,
+  ENVELOPE_STROKE,
+  SCENERY_FILL,
+  SCENERY_HATCH_ID,
+  SCENERY_STROKE,
+  VOID_FILL,
+  WALL_STROKE,
+} from '../markerStyle';
+import type { Selection } from '../types';
+import { wallRaysFrom } from '../wallPicker';
 import { boardWallScene } from './boardWallRuns';
 import { cellCenter, growBounds, neededBounds } from './canvasGeometry';
 import {
@@ -22,17 +35,18 @@ import {
   CreationBoard,
   type CreationBoardProps,
 } from './CreationBoard';
-import { cornerPoint, sameCorner, type CornerRef } from './hexCorner';
-import { chainEndpoints, runVertices, tautPath } from './wallGesture';
 
 const p = (c: number, r: number) => fromOffset('pointy', [c, r]);
+const EMPTY_REGION_IDS: ReadonlySet<string> = new Set();
 
 function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
-  const calls: { paint: string[]; erase: string[]; edges: Edge[] } = {
-    paint: [],
-    erase: [],
-    edges: [],
-  };
+  const calls: {
+    paint: string[];
+    erase: string[];
+    walls: [PositionRef, PositionRef][];
+    deleted: number[];
+    doors: PositionRef[];
+  } = { paint: [], erase: [], walls: [], deleted: [], doors: [] };
   const utils = render(
     <CreationBoard
       doc={doc}
@@ -40,13 +54,13 @@ function mount(doc: DungeonDoc, overrides: Partial<CreationBoardProps> = {}) {
       selection={{ kind: 'dungeon' }}
       activeRegionId="region-1"
       errorTargets={[]}
+      concealedRegionIds={EMPTY_REGION_IDS}
+      onPaintRect={() => {}}
       onPaint={(c) => calls.paint.push(axialKey(c))}
       onErase={(c) => calls.erase.push(axialKey(c))}
-      onEdgeClick={(e) => calls.edges.push(e)}
-      onWallDraw={() => {}}
-      onWallErase={() => {}}
-      onWallReshape={() => {}}
-      onDoorDraw={() => {}}
+      onWallCommit={(a, b) => calls.walls.push([a, b])}
+      onWallDelete={(i) => calls.deleted.push(i)}
+      onDoorToggle={(at) => calls.doors.push(at)}
       onCellClick={() => {}}
       onSelect={() => {}}
       {...overrides}
@@ -85,81 +99,149 @@ describe('CreationBoard', () => {
     expect(doc.regions.map((r) => r.cells.length)).toEqual([0, 1]);
   });
 
-  it('the wall tool on a void cell never reports an edge', () => {
-    const { container, calls } = mount(emptyDungeon(), { tool: 'wall' });
-    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
-    fireEvent.pointerUp(container.querySelector('svg')!);
-    expect(calls.edges).toHaveLength(0);
+  it('the wall tool shows a hex\u2019s seven positions when it is clicked (design \u00a72.6)', () => {
+    let doc = emptyDungeon('pointy', 'opaque');
+    doc = paintCell(doc, 'region-1', p(2, 2));
+    const { container } = mount(doc, { tool: 'wall' });
+    fireEvent.pointerDown(cellEl(container, 2, 2));
+    // Seven and no more: a wall starts on a side midpoint or the
+    // centre, and there is nothing else to click.
+    expect(container.querySelectorAll('[data-position]')).toHaveLength(7);
   });
 
-  it('the wall tool reports an edge from a floor cell to one of its six neighbours', () => {
-    let doc = emptyDungeon();
-    doc = paintCell(doc, 'region-1', p(1, 1));
-    doc = paintCell(doc, 'region-1', p(2, 1));
-    const { container, calls } = mount(doc, { tool: 'wall' });
-    // Press + release without moving: the drag-capable wall tool still
-    // commits today's single-edge toggle, on release (#804).
-    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
-    fireEvent.pointerUp(container.querySelector('svg')!);
-    expect(calls.edges).toHaveLength(1);
-    const [a, b] = calls.edges[0];
-    expect(axialKey(a)).toBe(axialKey(p(1, 1)));
-    // jsdom has no layout, so the pointer lands at the SVG origin; the
-    // reported neighbour is still one of the six, never a far cell.
+  it('draws the twelve rays once a start is picked, telling thin and thick apart', () => {
+    let doc = emptyDungeon('pointy', 'opaque');
+    for (let row = 0; row < 6; row += 1) {
+      for (let col = 0; col < 6; col += 1)
+        doc = paintCell(doc, 'region-1', p(col, row));
+    }
+    const { container } = mount(doc, { tool: 'wall' });
+    fireEvent.pointerDown(cellEl(container, 3, 3));
+    const seats = container.querySelectorAll('[data-position]');
+    // The CENTRE, whose every ray is thick (F15) — the clearest case to
+    // assert the cost labelling on.
+    const centre = positionAt(
+      'pointy',
+      latticeOf('pointy', { cell: p(3, 3), offset: [0, 0] })
+    )!;
+    const seat = [...seats].find(
+      (el) =>
+        el.getAttribute('data-position') ===
+        latticeKey(latticeOf('pointy', centre))
+    )!;
+    fireEvent.pointerDown(seat);
+    const rays = container.querySelectorAll('[data-ray]');
+    expect(rays).toHaveLength(12);
     expect(
-      Math.abs(a.q - b.q) +
-        Math.abs(a.r - b.r) +
-        Math.abs(a.q + a.r - b.q - b.r)
-    ).toBe(2);
-    // and the DOCUMENT rule: a non-adjacent pair is a no-op
-    expect(toggleWall(doc, [p(1, 1), p(5, 5)])).toBe(doc);
+      [...rays].every((r) => r.getAttribute('data-thick') === 'true')
+    ).toBe(true);
+    // And every ray offers at least one end to click.
+    expect(container.querySelectorAll('[data-ray-end]').length).toBeGreaterThan(
+      11
+    );
   });
 
-  it('draws a declared wall as a straight RUN and a door in its gap — the picture 3D will render (#800)', () => {
-    let doc = emptyDungeon();
-    doc = paintCell(doc, 'region-1', p(1, 1));
-    doc = paintCell(doc, 'region-1', p(2, 1));
-    doc = paintCell(doc, 'region-1', p(3, 1));
-    doc = toggleWall(doc, [p(1, 1), p(2, 1)]);
-    doc = { ...doc, doors: [{ id: 'd', edges: [[p(2, 1), p(3, 1)]] }] };
-    const { container } = mount(doc, {
-      tool: 'select',
-      errorTargets: [{ kind: 'cell', cell: p(3, 1) }],
-    });
-    // The wall and door render as run geometry, not literal hex edges…
-    expect(container.querySelectorAll('[data-run]')).toHaveLength(1);
-    expect(container.querySelectorAll('[data-door-run]')).toHaveLength(1);
-    expect(container.querySelectorAll('[data-edge^="w:"]')).toHaveLength(0);
-    expect(container.querySelectorAll('[data-edge^="d:"]')).toHaveLength(0);
-    // …and cell errors still highlight in red, as before.
-    expect(cellEl(container, 3, 1).getAttribute('stroke')).toBe('#ff3b30');
-    expect(cellEl(container, 2, 1).getAttribute('stroke')).not.toBe('#ff3b30');
+  it('commits the two picked positions and nothing derived', () => {
+    let doc = emptyDungeon('pointy', 'opaque');
+    for (let row = 0; row < 6; row += 1) {
+      for (let col = 0; col < 6; col += 1)
+        doc = paintCell(doc, 'region-1', p(col, row));
+    }
+    const { container, calls } = mount(doc, { tool: 'wall' });
+    fireEvent.pointerDown(cellEl(container, 3, 3));
+    const start = { cell: p(3, 3), offset: [0.25, -0.375] } as PositionRef;
+    fireEvent.pointerDown(
+      container.querySelector(
+        `[data-position="${latticeKey(latticeOf('pointy', start))}"]`
+      )!
+    );
+    const east = wallRaysFrom(doc, start).find((r) => r.degrees === 0)!;
+    fireEvent.pointerDown(
+      container.querySelector(
+        `[data-ray-end="${latticeKey(east.ends[0].lattice)}"]`
+      )!
+    );
+    expect(calls.walls).toHaveLength(1);
+    expect(latticeOf('pointy', calls.walls[0][0])).toEqual(
+      latticeOf('pointy', start)
+    );
+    expect(latticeOf('pointy', calls.walls[0][1])).toEqual(
+      east.ends[0].lattice
+    );
+    // The picker closes after a commit — no half-made second wall.
+    expect(container.querySelectorAll('[data-ray]')).toHaveLength(0);
   });
 
-  it('an EDGE error stays a literal red hex edge on top of the runs — edge-scoped truth (#800)', () => {
-    let doc = emptyDungeon();
-    doc = paintCell(doc, 'region-1', p(1, 1));
-    doc = paintCell(doc, 'region-1', p(2, 1));
-    doc = toggleWall(doc, [p(1, 1), p(2, 1)]);
-    const { container } = mount(doc, {
-      errorTargets: [{ kind: 'edge', edge: [p(1, 1), p(2, 1)] }],
-    });
-    // The run still draws, and the literal error edge draws over it.
-    expect(container.querySelectorAll('[data-run]')).toHaveLength(1);
-    const literal = container.querySelectorAll('[data-edge^="w:"]');
-    expect(literal).toHaveLength(1);
-    expect(literal[0].getAttribute('stroke')).toBe('#ff3b30');
+  it('draws a declared wall as the line it is, and its door as a gap in that line', () => {
+    let doc = emptyDungeon('pointy', 'opaque');
+    for (let row = 0; row < 6; row += 1) {
+      for (let col = 0; col < 6; col += 1)
+        doc = paintCell(doc, 'region-1', p(col, row));
+    }
+    const start = { cell: p(1, 1), offset: [0.25, -0.375] } as PositionRef;
+    const east = wallRaysFrom(doc, start).find((r) => r.degrees === 0)!;
+    doc = addWall(doc, start, east.ends[3].position);
+    doc = {
+      ...doc,
+      doors: [{ id: 'd1', at: east.ends[1].position }],
+    };
+    const { container } = mount(doc, { tool: 'select' });
+    const line = container.querySelector('[data-wall="0"]')!;
+    const scene = boardWallScene(doc, BOARD_HEX_SIZE);
+    // The drawn line IS the authored positions, to the pixel.
+    expect(Number(line.getAttribute('x1'))).toBeCloseTo(scene.walls[0].a.x, 9);
+    expect(Number(line.getAttribute('y2'))).toBeCloseTo(scene.walls[0].b.y, 9);
+    expect(container.querySelector('[data-door-run="d1"]')).not.toBeNull();
   });
 
-  it('a flat-top document keeps the literal edge drawing — 3D refuses flat-top, so literal IS the honest picture (#763)', () => {
-    const f = (c: number, r: number) => fromOffset('flat', [c, r]);
-    let doc = emptyDungeon('flat');
-    doc = paintCell(doc, 'region-1', f(1, 1));
-    doc = paintCell(doc, 'region-1', f(2, 1));
-    doc = toggleWall(doc, [f(1, 1), f(2, 1)]);
-    const { container } = mount(doc);
-    expect(container.querySelectorAll('[data-run]')).toHaveLength(0);
-    expect(container.querySelectorAll('[data-edge^="w:"]')).toHaveLength(1);
+  it('shift-clicking a wall deletes it', () => {
+    let doc = emptyDungeon('pointy', 'opaque');
+    for (let row = 0; row < 6; row += 1) {
+      for (let col = 0; col < 6; col += 1)
+        doc = paintCell(doc, 'region-1', p(col, row));
+    }
+    const start = { cell: p(1, 1), offset: [0.25, -0.375] } as PositionRef;
+    const east = wallRaysFrom(doc, start).find((r) => r.degrees === 0)!;
+    doc = addWall(doc, start, east.ends[3].position);
+    const { container, calls } = mount(doc, { tool: 'wall' });
+    // jsdom has no layout, so `svgPoint` returns the origin; the wall
+    // under the origin is the one hit. That is enough to prove the
+    // shift branch routes to delete rather than to the picker.
+    fireEvent.pointerDown(cellEl(container, 1, 1), { shiftKey: true });
+    expect(calls.walls).toHaveLength(0);
+    expect(container.querySelectorAll('[data-position]')).toHaveLength(0);
+    expect(calls.deleted.length).toBeLessThanOrEqual(1);
+  });
+
+  it('the door tool offers the positions its walls pass through, and toggles one', () => {
+    let doc = emptyDungeon('pointy', 'opaque');
+    for (let row = 0; row < 6; row += 1) {
+      for (let col = 0; col < 6; col += 1)
+        doc = paintCell(doc, 'region-1', p(col, row));
+    }
+    const start = { cell: p(1, 1), offset: [0.25, -0.375] } as PositionRef;
+    const east = wallRaysFrom(doc, start).find((r) => r.degrees === 0)!;
+    doc = addWall(doc, start, east.ends[3].position);
+    const { container } = mount(doc, { tool: 'door' });
+    const targets = container.querySelectorAll('[data-door-target]');
+    expect(targets.length).toBeGreaterThan(0);
+  });
+
+  it('a flat-top document draws its walls too — the lattice places both', () => {
+    let doc = emptyDungeon('flat', 'opaque');
+    for (let row = 0; row < 5; row += 1) {
+      for (let col = 0; col < 5; col += 1) {
+        doc = paintCell(doc, 'region-1', fromOffset('flat', [col, row]));
+      }
+    }
+    const start = {
+      cell: fromOffset('flat', [1, 1]),
+      offset: [0.375, -0.25],
+    } as PositionRef;
+    const ray = wallRaysFrom(doc, start)[0];
+    doc = addWall(doc, start, ray.ends[0].position);
+    const { container } = mount(doc, { tool: 'select' });
+    expect(container.querySelector('[data-wall="0"]')).not.toBeNull();
   });
 });
 
@@ -192,13 +274,13 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         selection={{ kind: 'dungeon' }}
         activeRegionId="region-1"
         errorTargets={[]}
+        concealedRegionIds={EMPTY_REGION_IDS}
+        onPaintRect={() => {}}
         onPaint={() => {}}
         onErase={() => {}}
-        onEdgeClick={() => {}}
-        onWallDraw={() => {}}
-        onWallErase={() => {}}
-        onWallReshape={() => {}}
-        onDoorDraw={() => {}}
+        onWallCommit={() => {}}
+        onWallDelete={() => {}}
+        onDoorToggle={() => {}}
         onCellClick={() => {}}
         onSelect={() => {}}
       />
@@ -237,13 +319,13 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         selection={{ kind: 'dungeon' }}
         activeRegionId="region-1"
         errorTargets={[]}
+        concealedRegionIds={EMPTY_REGION_IDS}
+        onPaintRect={() => {}}
         onPaint={() => {}}
         onErase={() => {}}
-        onEdgeClick={() => {}}
-        onWallDraw={() => {}}
-        onWallErase={() => {}}
-        onWallReshape={() => {}}
-        onDoorDraw={() => {}}
+        onWallCommit={() => {}}
+        onWallDelete={() => {}}
+        onDoorToggle={() => {}}
         onCellClick={() => {}}
         onSelect={() => {}}
       />
@@ -260,12 +342,43 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
     expect(growBounds(grown, a)).toBe(grown);
   });
 
+  it('a placement that ARRIVES is drawn faded with a dashed ring and its word; one placed at launch is not (rpg-project#375 §3.7)', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    doc = paintCell(doc, 'region-1', p(2, 1));
+    doc = placeAt(doc, { ref: 'dnd5e:props:scroll', at: p(1, 1) });
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(2, 1) });
+    doc = {
+      ...doc,
+      place: [
+        { ...doc.place[0], id: 'letter', arrives: { round: 6 } },
+        doc.place[1],
+      ],
+    };
+    const { container } = mount(doc);
+    const reserved = container.querySelector(
+      '[data-placement="0"]'
+    ) as SVGGElement;
+    expect(reserved.hasAttribute('data-arrives')).toBe(true);
+    expect(Number(reserved.getAttribute('opacity'))).toBeLessThan(1);
+    expect(container.querySelector('[data-arrives-ring="0"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-arrives-label="0"]')?.textContent
+    ).toBe('arrives');
+    const present = container.querySelector(
+      '[data-placement="1"]'
+    ) as SVGGElement;
+    expect(present.hasAttribute('data-arrives')).toBe(false);
+    expect(present.getAttribute('opacity')).toBeNull();
+    expect(container.querySelector('[data-arrives-ring="1"]')).toBeNull();
+  });
+
   it('a placement offset moves its marker within the hex; facing draws a tick, unfaced does not', () => {
     let doc = emptyDungeon();
     doc = paintCell(doc, 'region-1', p(1, 1));
     doc = paintCell(doc, 'region-1', p(2, 1));
     doc = placeAt(doc, { ref: 'dnd5e:props:pillar', at: p(1, 1) });
-    doc = placeAt(doc, { ref: 'dnd5e:props:brazier', at: p(2, 1) });
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(2, 1) });
     doc = {
       ...doc,
       place: [
@@ -277,12 +390,23 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         doc.place[1],
       ],
     };
-    const { container } = mount(doc);
+    const onSelect = vi.fn();
+    const { container } = mount(doc, { tool: 'select', onSelect });
 
     const cell = cellCenter(p(1, 1), BOARD_HEX_SIZE, 'pointy');
-    const circle = container.querySelector(
-      '[data-placement="0"] circle'
-    ) as SVGCircleElement;
+    const pillarPlacement = container.querySelector('[data-placement="0"]')!;
+    expect(pillarPlacement.querySelector('title')).toBeNull();
+    const pillarCell = cellEl(container, 1, 1);
+    expect(
+      pillarCell.querySelector(':scope > title')?.textContent
+    ).not.toContain('dnd5e:props:');
+    expect(pillarCell.querySelector(':scope > title')?.textContent).toMatch(
+      /pillar/i
+    );
+    fireEvent.pointerEnter(pillarCell);
+    fireEvent.pointerDown(pillarCell);
+    expect(onSelect).toHaveBeenLastCalledWith({ kind: 'placement', index: 0 });
+    const circle = pillarPlacement.querySelector('circle') as SVGCircleElement;
     expect(Number(circle.getAttribute('cx'))).toBeCloseTo(
       cell.x + 0.2 * BOARD_HEX_SIZE,
       6
@@ -293,364 +417,329 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
     );
     expect(container.querySelector('[data-facing-tick="0"]')).not.toBeNull();
 
-    // The un-offset, un-faced brazier sits exactly at its cell center and
-    // draws no tick.
-    const brazierCell = cellCenter(p(2, 1), BOARD_HEX_SIZE, 'pointy');
-    const brazierCircle = container.querySelector(
+    // The un-offset, un-faced monster sits exactly at its cell center and
+    // draws no tick. It uses the same hit-tested-cell tooltip path as props.
+    const monsterCell = cellCenter(p(2, 1), BOARD_HEX_SIZE, 'pointy');
+    const monsterCircle = container.querySelector(
       '[data-placement="1"] circle'
     ) as SVGCircleElement;
-    expect(Number(brazierCircle.getAttribute('cx'))).toBeCloseTo(
-      brazierCell.x,
+    const monsterTarget = cellEl(container, 2, 1);
+    expect(monsterTarget.querySelector(':scope > title')?.textContent).toMatch(
+      /skeleton/i
+    );
+    fireEvent.pointerEnter(monsterTarget);
+    fireEvent.pointerDown(monsterTarget);
+    expect(onSelect).toHaveBeenLastCalledWith({ kind: 'placement', index: 1 });
+    expect(Number(monsterCircle.getAttribute('cx'))).toBeCloseTo(
+      monsterCell.x,
       6
     );
-    expect(Number(brazierCircle.getAttribute('cy'))).toBeCloseTo(
-      brazierCell.y,
+    expect(Number(monsterCircle.getAttribute('cy'))).toBeCloseTo(
+      monsterCell.y,
       6
     );
     expect(container.querySelector('[data-facing-tick="1"]')).toBeNull();
   });
 });
 
-describe('wall gesture affordances (#804)', () => {
-  function walledDoc() {
+describe('the implied envelope is drawn (rpg-dnd5e-web#902)', () => {
+  it('outlines the floor so a freshly dragged room reads as a room', () => {
+    // One cell: six crossings into void, so six envelope segments.
     let doc = emptyDungeon();
-    for (const [c, r] of [
-      [1, 1],
-      [2, 1],
-      [1, 2],
-      [2, 2],
-    ] as const) {
-      doc = paintCell(doc, 'region-1', p(c, r));
-    }
-    return addWalls(doc, [[p(1, 1), p(2, 1)]]);
-  }
+    doc = paintCell(doc, 'region-1', p(2, 2));
+    const { container, unmount } = mount(doc, { tool: 'region-rect' });
+    const envelope = () =>
+      [...container.querySelectorAll('[data-edge^="env:"]')].length;
+    expect(envelope()).toBe(6);
+    unmount();
 
-  it('selecting a wall shows a handle at each chain endpoint — manipulation rides selection', () => {
-    const doc = walledDoc();
-    const { container } = mount(doc, {
-      tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
-    });
-    // One single-edge run: two endpoint vertices, each with exactly one
-    // incident run, visible the moment the wall is selected.
-    const handles = container.querySelectorAll('[data-run-vertex]');
-    expect(handles).toHaveLength(2);
-    handles.forEach((h) => expect(h.getAttribute('data-run-vertex')).toBe('1'));
+    // Two neighbours share an edge, so that crossing is NOT envelope:
+    // 12 sides minus the 2 half-edges they share = 10.
+    let pair = emptyDungeon();
+    pair = paintCell(pair, 'region-1', p(2, 2));
+    pair = paintCell(pair, 'region-1', p(3, 2));
+    const { container: c2 } = mount(pair, { tool: 'region-rect' });
+    expect([...c2.querySelectorAll('[data-edge^="env:"]')]).toHaveLength(10);
   });
 
-  it('the wall tool draws — it shows no handles (continuing a wall presses at its end)', () => {
-    const { container } = mount(walledDoc(), { tool: 'wall' });
-    expect(container.querySelectorAll('[data-run-vertex]')).toHaveLength(0);
-  });
-
-  it('an unselected board shows no handles under the select tool', () => {
-    const { container } = mount(walledDoc(), { tool: 'select' });
-    expect(container.querySelectorAll('[data-run-vertex]')).toHaveLength(0);
-  });
-
-  it('a wall selection highlights the run whose edges it holds', () => {
-    const doc = walledDoc();
-    const { container } = mount(doc, {
-      tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
-    });
-    const selected = container.querySelectorAll('[data-run][data-selected]');
-    expect(selected).toHaveLength(1);
+  it('is drawn dimmer than an authored wall, because it is implied not written', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(2, 2));
+    const { container } = mount(doc, { tool: 'select' });
+    const env = container.querySelector('[data-edge^="env:"]')!;
+    expect(env).toBeTruthy();
+    // The envelope is a fact about the floor's edge, not a line in the file,
+    // so it must not be mistakable for an authored wall.
+    expect(env.getAttribute('stroke')).toBe(ENVELOPE_STROKE);
+    expect(env.getAttribute('stroke')).not.toBe(WALL_STROKE);
+    expect(Number(env.getAttribute('stroke-width'))).toBeLessThan(4);
+    // DASHED, so it never reads as a wall. Kirk: "walls are intentional" — an
+    // unwalled boundary is its own authored choice, and a region is allowed a
+    // cliff edge. This line only says the floor stops here.
+    expect(env.getAttribute('stroke-dasharray')).toBe(ENVELOPE_DASH);
   });
 });
 
-/**
- * Press–move–release integration (#804, Copilot review on PR #808):
- * the pure module pins the derivation; these pin the PLUMBING — that a
- * DOM drag reaches onWallDraw/onWallErase/onDoorDraw/onWallReshape
- * with the exact taut chain. jsdom has no SVG layout, so `svgPoint`'s
- * CTM path is enabled with a scoped identity polyfill: `getScreenCTM`
- * returns an identity whose inverse maps client coords straight to SVG
- * user space, and events carry SVG coordinates in clientX/clientY.
- */
-describe('gesture plumbing — press, drag, release (#804)', () => {
-  const S = BOARD_HEX_SIZE;
-  const ref = (c: number, r: number, corner: number): CornerRef => ({
-    cell: p(c, r),
-    corner,
-  });
-  const pt = (r: CornerRef) => cornerPoint(r, S, 'pointy');
-  const keys = (edges: readonly Edge[]) => edges.map(edgeKey);
-
-  beforeEach(() => {
-    vi.stubGlobal(
-      'DOMPoint',
-      class {
-        x: number;
-        y: number;
-        constructor(x = 0, y = 0) {
-          this.x = x;
-          this.y = y;
-        }
-        matrixTransform() {
-          return { x: this.x, y: this.y };
-        }
-      }
-    );
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  function floorDoc() {
+describe('the region-rect tool paints a rectangle (rpg-dnd5e-web#902)', () => {
+  it('commits the two dragged corners, and previews exactly what it will paint', () => {
     let doc = emptyDungeon();
-    for (const [c, r] of [
-      [1, 1],
-      [2, 1],
-      [1, 2],
-      [2, 2],
-    ] as const) {
-      doc = paintCell(doc, 'region-1', p(c, r));
+    // A patch of floor so the board has an extent to render.
+    for (let c = 0; c <= 6; c += 1) {
+      for (let r = 0; r <= 4; r += 1) doc = paintCell(doc, 'region-1', p(c, r));
     }
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
+
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerEnter(cellEl(container, 3, 3));
+
+    // The preview IS the commit: every cell of the 3x3 block is marked, and
+    // nothing outside it is.
+    const previewed = [...container.querySelectorAll('[data-cell]')].filter(
+      (el) => el.getAttribute('opacity') === '0.85'
+    );
+    expect(previewed).toHaveLength(9);
+
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRect).toHaveBeenCalledTimes(1);
+    const [from, to] = onPaintRect.mock.calls[0];
+    expect(toOffset('pointy', from)).toEqual([1, 1]);
+    expect(toOffset('pointy', to)).toEqual([3, 3]);
+  });
+
+  it('a press with no travel is a one-cell room, not a no-op', () => {
+    let doc = emptyDungeon();
+    doc = paintCell(doc, 'region-1', p(1, 1));
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRect).toHaveBeenCalledTimes(1);
+  });
+
+  it('a canceled pointer drops the room without painting it', () => {
+    let doc = emptyDungeon();
+    for (let c = 0; c <= 3; c += 1) doc = paintCell(doc, 'region-1', p(c, 1));
+    const onPaintRect = vi.fn();
+    const { container } = mount(doc, { tool: 'region-rect', onPaintRect });
+    fireEvent.pointerDown(cellEl(container, 1, 1), { button: 0 });
+    fireEvent.pointerEnter(cellEl(container, 3, 1));
+    fireEvent.pointerCancel(container.querySelector('svg')!);
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(onPaintRect).not.toHaveBeenCalled();
+  });
+});
+
+describe('the scenery brush on the board (rpg-project#360 §2.1)', () => {
+  /** A room and a scenery strip beside it, the shape the yardstick uses. */
+  function stripDoc(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (const c of [0, 1, 2]) doc = paintCell(doc, 'region-1', p(c, 1));
+    doc = paintScenery(doc, p(3, 1));
+    doc = paintScenery(doc, p(4, 1));
     return doc;
   }
 
-  function enableSvgCtm(container: HTMLElement) {
-    const svg = container.querySelector('svg')!;
-    (svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({
-      inverse: () => ({}),
-    });
-    return svg;
-  }
+  it('drags like the region brush and erases with shift', () => {
+    const { container, calls } = mount(stripDoc(), { tool: 'scenery' });
+    fireEvent.pointerDown(cellEl(container, 3, 2), { button: 0 });
+    fireEvent.pointerEnter(cellEl(container, 4, 2));
+    fireEvent.pointerUp(container.querySelector('svg')!);
+    expect(calls.paint).toEqual([axialKey(p(3, 2)), axialKey(p(4, 2))]);
 
-  const at = (point: { x: number; y: number }) => ({
-    button: 0,
-    clientX: point.x,
-    clientY: point.y,
-  });
-
-  // A = top of the col1|2 seam's row-1 edge, B = bottom of its row-2
-  // edge — the expected chain is the module's own tautPath, pinned
-  // exactly in wallGesture.test.ts.
-  const A = ref(1, 1, 0); // (√3·2, 1)·size
-  const B = ref(2, 2, 3); // (√3·1.5, 3.5)·size
-  const expectedChain = () => tautPath(A, B, S, 'pointy');
-
-  it('a wall drag commits the derived chain through onWallDraw', () => {
-    const onWallDraw = vi.fn();
-    const { container } = mount(floorDoc(), { tool: 'wall', onWallDraw });
-    const svg = enableSvgCtm(container);
-    fireEvent.pointerDown(cellEl(container, 1, 1), at(pt(A)));
-    fireEvent.pointerMove(cellEl(container, 2, 2), at(pt(B)));
-    fireEvent.pointerUp(svg);
-    expect(onWallDraw).toHaveBeenCalledTimes(1);
-    expect(keys(onWallDraw.mock.calls[0][0])).toEqual(keys(expectedChain()));
-    expect(expectedChain().length).toBeGreaterThan(0);
-  });
-
-  it('a shift-drag erases along the same derived path through onWallErase', () => {
-    const onWallErase = vi.fn();
-    const doc = addWalls(floorDoc(), expectedChain());
-    const { container } = mount(doc, { tool: 'wall', onWallErase });
-    const svg = enableSvgCtm(container);
-    fireEvent.pointerDown(cellEl(container, 1, 1), {
-      ...at(pt(A)),
+    fireEvent.pointerDown(cellEl(container, 3, 1), {
+      button: 0,
       shiftKey: true,
     });
-    fireEvent.pointerMove(cellEl(container, 2, 2), at(pt(B)));
-    fireEvent.pointerUp(svg);
-    expect(onWallErase).toHaveBeenCalledTimes(1);
-    expect(keys(onWallErase.mock.calls[0][0])).toEqual(keys(expectedChain()));
+    expect(calls.erase).toEqual([axialKey(p(3, 1))]);
   });
 
-  it('a door drag commits ONE chain through onDoorDraw', () => {
-    const onDoorDraw = vi.fn();
-    const { container } = mount(floorDoc(), { tool: 'door', onDoorDraw });
-    const svg = enableSvgCtm(container);
-    fireEvent.pointerDown(cellEl(container, 1, 1), at(pt(A)));
-    fireEvent.pointerMove(cellEl(container, 2, 2), at(pt(B)));
-    fireEvent.pointerUp(svg);
-    expect(onDoorDraw).toHaveBeenCalledTimes(1);
-    expect(keys(onDoorDraw.mock.calls[0][0])).toEqual(keys(expectedChain()));
+  it('draws scenery as hatched FLOOR, not as void and not as a region', () => {
+    const { container } = mount(stripDoc(), { tool: 'scenery' });
+    const strip = cellEl(container, 3, 1);
+    expect(strip.getAttribute('data-scenery')).toBe('true');
+    expect(strip.getAttribute('data-region')).toBe('');
+    expect(strip.getAttribute('fill')).toBe(`url(#${SCENERY_HATCH_ID})`);
+    expect(strip.getAttribute('stroke')).toBe(SCENERY_STROKE);
+    // The pattern it points at is actually defined, and carries the hatch.
+    const pattern = container.querySelector(`#${SCENERY_HATCH_ID}`)!;
+    expect(pattern).not.toBeNull();
+    expect(pattern.querySelector('rect')!.getAttribute('fill')).toBe(
+      SCENERY_FILL
+    );
+
+    // A room cell keeps its region fill; a void cell stays void.
+    expect(cellEl(container, 1, 1).getAttribute('data-scenery')).toBeNull();
+    expect(cellEl(container, 1, 1).getAttribute('fill')).not.toBe(
+      `url(#${SCENERY_HATCH_ID})`
+    );
+    expect(cellEl(container, 1, 0).getAttribute('data-scenery')).toBeNull();
+    expect(cellEl(container, 1, 0).getAttribute('fill')).toBe(VOID_FILL);
   });
 
-  it('grabbing a selected wall’s handle re-derives the chain through onWallReshape', () => {
-    const onWallReshape = vi.fn();
-    const wall: Edge[] = [[p(1, 1), p(2, 1)]];
-    const doc = addWalls(floorDoc(), wall);
+  it('puts scenery inside the floor envelope instead of drawing a cliff at the room edge', () => {
+    const { container } = mount(stripDoc());
+    const envelope = new Set(
+      [...container.querySelectorAll('line[data-edge^="env:"]')].map((l) =>
+        l.getAttribute('data-edge')
+      )
+    );
+    expect(envelope.size).toBeGreaterThan(0);
+
+    // The floor's outer edge runs around the strip too, so the crossing
+    // from the last room cell into the first scenery cell is NOT one: both
+    // sides are floor. Scenery that drew its own cliff would say the floor
+    // stopped where it plainly continues.
+    expect(envelope.has(`env:${edgeKey([p(2, 1), p(3, 1)])}`)).toBe(false);
+    // ...and the far side of the strip IS one: there the floor really stops.
+    expect(envelope.has(`env:${edgeKey([p(4, 1), p(5, 1)])}`)).toBe(true);
+  });
+
+  it('lets the wall tool pick positions on a scenery cell (§2.3)', () => {
+    const doc = stripDoc();
+    const { container } = mount(doc, { tool: 'wall' });
+    fireEvent.pointerDown(cellEl(container, 3, 1), { button: 0 });
+    // A wall may stand on ANY floor, so scenery offers its seven
+    // positions like a room cell. An unowned cell used to return before
+    // the edge tool ever ran, which made a strip of scenery unwallable.
+    expect(container.querySelectorAll('[data-position]')).toHaveLength(7);
+  });
+});
+
+describe('ways out on the board (rpg-project#368 §3.1)', () => {
+  function withFloor(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (const c of [0, 1]) doc = paintCell(doc, 'region-1', p(c, 0));
+    return doc;
+  }
+
+  it('hands a click on the exit tool to the caller, like the start tool does', () => {
+    const clicks: string[] = [];
+    const { container } = mount(withFloor(), {
+      tool: 'exit',
+      onCellClick: (c) => clicks.push(axialKey(c)),
+    });
+    fireEvent.pointerDown(cellEl(container, 1, 0), { button: 0 });
+    expect(clicks).toEqual([axialKey(p(1, 0))]);
+  });
+
+  it('draws each way out with its own id, distinct from the start', () => {
+    let doc = withFloor();
+    doc = {
+      ...doc,
+      start: { at: p(0, 0) },
+      exits: [{ id: 'entrance', at: p(0, 0) }],
+    };
+    const { container } = mount(doc);
+    // Both marks stand on the same cell — the tomb's entrance IS its exit
+    // — and both are drawn, because `start` is not implicitly a way out.
+    expect(container.querySelector('[data-start]')).toBeTruthy();
+    const exit = container.querySelector('[data-exit="entrance"]');
+    expect(exit).toBeTruthy();
+    expect(exit?.textContent).toBe('entrance');
+  });
+
+  it('selects the way out under the pointer with the select tool', () => {
+    let doc = withFloor();
+    doc = { ...doc, exits: [{ id: 'entrance', at: p(1, 0) }] };
+    const selected: unknown[] = [];
     const { container } = mount(doc, {
       tool: 'select',
-      selection: { kind: 'wall', edges: doc.walls.map((w) => w.edge) },
-      onWallReshape,
+      onSelect: (s) => selected.push(s),
     });
-    const svg = enableSvgCtm(container);
-    // The handle sits at the RENDERED endpoint; grab the bottom one.
-    const vertices = runVertices(boardWallScene(doc, S)!.runs, S, 'pointy');
-    const bottom = vertices.reduce((acc, v) =>
-      v.point.y > acc.point.y ? v : acc
-    );
-    const target = ref(1, 1, 2); // (√3·1.5, 2.5)·size
-    fireEvent.pointerDown(cellEl(container, 1, 1), at(bottom.point));
-    fireEvent.pointerMove(cellEl(container, 1, 1), at(pt(target)));
-    fireEvent.pointerUp(svg);
-    expect(onWallReshape).toHaveBeenCalledTimes(1);
-    const [oldChains, newChains] = onWallReshape.mock.calls[0];
-    expect(oldChains.map(keys)).toEqual([keys(wall)]);
-    const far = vertices.find((v) => v !== bottom)!;
-    expect(newChains.map(keys)).toEqual([
-      keys(tautPath(far.ref, target, S, 'pointy')),
+    fireEvent.pointerDown(cellEl(container, 1, 0), { button: 0 });
+    expect(selected).toEqual([{ kind: 'exit', index: 0 }]);
+  });
+
+  it('marks the way out the compiler refused', () => {
+    let doc = withFloor();
+    doc = { ...doc, exits: [{ id: 'entrance', at: p(1, 0) }] };
+    const { container } = mount(doc, {
+      errorTargets: [{ kind: 'exit', index: 0 }],
+    });
+    const exit = container.querySelector('[data-exit="entrance"] rect');
+    expect(exit?.getAttribute('stroke')).toBe('#ff3b30');
+  });
+});
+
+describe('a cell shared by the start and a way out (rpg-dnd5e-web#934)', () => {
+  /** The reference tomb's shape: the party comes in where it leaves. */
+  function sharedCell(): DungeonDoc {
+    let doc = emptyDungeon();
+    for (const c of [0, 1]) doc = paintCell(doc, 'region-1', p(c, 0));
+    return {
+      ...doc,
+      start: { at: p(0, 0) },
+      exits: [{ id: 'entrance', at: p(0, 0) }],
+    };
+  }
+
+  it('selects the START first — the entry is what an author reaches for', () => {
+    const selected: unknown[] = [];
+    const { container } = mount(sharedCell(), {
+      tool: 'select',
+      onSelect: (s) => selected.push(s),
+    });
+    fireEvent.pointerDown(cellEl(container, 0, 0), { button: 0 });
+    expect(selected).toEqual([{ kind: 'start' }]);
+  });
+
+  it('CYCLES to the exit on a second click, and back again', () => {
+    // Without this the tomb's `entrance` exit is unreachable: the exit
+    // panel is only ever opened from the board, so an exit under the
+    // start could never be renamed or removed.
+    const selected: unknown[] = [];
+    let selection: Selection = { kind: 'dungeon' };
+    const { container, rerender } = mount(sharedCell(), {
+      tool: 'select',
+      selection,
+      onSelect: (s) => {
+        selected.push(s);
+        selection = s;
+      },
+    });
+    const click = () => {
+      fireEvent.pointerDown(cellEl(container, 0, 0), { button: 0 });
+      rerender(
+        <CreationBoard
+          doc={sharedCell()}
+          tool="select"
+          selection={selection}
+          activeRegionId="region-1"
+          errorTargets={[]}
+          concealedRegionIds={EMPTY_REGION_IDS}
+          onPaintRect={() => {}}
+          onPaint={() => {}}
+          onErase={() => {}}
+          onWallCommit={() => {}}
+          onWallDelete={() => {}}
+          onDoorToggle={() => {}}
+          onCellClick={() => {}}
+          onSelect={(s) => {
+            selected.push(s);
+            selection = s;
+          }}
+        />
+      );
+    };
+    click();
+    click();
+    click();
+    expect(selected).toEqual([
+      { kind: 'start' },
+      { kind: 'exit', index: 0 },
+      { kind: 'start' },
     ]);
   });
 
-  it('a canceled pointer drops the gesture without committing', () => {
-    const onWallDraw = vi.fn();
-    const { container } = mount(floorDoc(), { tool: 'wall', onWallDraw });
-    const svg = enableSvgCtm(container);
-    fireEvent.pointerDown(cellEl(container, 1, 1), at(pt(A)));
-    fireEvent.pointerMove(cellEl(container, 2, 2), at(pt(B)));
-    fireEvent.pointerCancel(svg);
-    fireEvent.pointerUp(svg); // a later unrelated release commits nothing
-    expect(onWallDraw).not.toHaveBeenCalled();
-  });
-});
-
-/**
- * Kirk's round-2 walk finding ("I cannot get that upper right corner to
- * snap in", again): verified NOT reproducible through the board's real
- * pointer path at this head — these two scenarios pin the whole chain
- * end-to-end (press snapping, move snapping, commit, and the rendered
- * join), so a future preview/commit path that bypassed the magnetism
- * would fail here, not on a walk.
- */
-describe('corner capture through the real pointer path (#804 walk round 2)', () => {
-  const S = BOARD_HEX_SIZE;
-  const ref = (c: number, r: number, corner: number): CornerRef => ({
-    cell: p(c, r),
-    corner,
-  });
-  const pt = (r: CornerRef) => cornerPoint(r, S, 'pointy');
-
-  beforeEach(() => {
-    vi.stubGlobal(
-      'DOMPoint',
-      class {
-        x: number;
-        y: number;
-        constructor(x = 0, y = 0) {
-          this.x = x;
-          this.y = y;
-        }
-        matrixTransform() {
-          return { x: this.x, y: this.y };
-        }
-      }
+  it('selects the way out directly when nothing else shares its cell', () => {
+    const doc = sharedCell();
+    const selected: unknown[] = [];
+    const { container } = mount(
+      { ...doc, start: { at: p(1, 0) } },
+      { tool: 'select', onSelect: (s) => selected.push(s) }
     );
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  function bigFloor(): DungeonDoc {
-    let doc = emptyDungeon();
-    for (let row = 0; row <= 8; row += 1) {
-      for (let col = 0; col <= 9; col += 1) {
-        doc = paintCell(doc, 'region-1', p(col, row));
-      }
-    }
-    return doc;
-  }
-
-  function boardDrag(
-    doc: DungeonDoc,
-    from: { x: number; y: number },
-    to: { x: number; y: number }
-  ): Edge[] {
-    const onWallDraw = vi.fn();
-    const { container, unmount } = mount(doc, { tool: 'wall', onWallDraw });
-    const svg = container.querySelector('svg')!;
-    (svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({
-      inverse: () => ({}),
-    });
-    const cell = cellEl(container, 2, 2);
-    fireEvent.pointerDown(cell, {
-      button: 0,
-      clientX: from.x,
-      clientY: from.y,
-    });
-    fireEvent.pointerMove(cell, { clientX: to.x, clientY: to.y });
-    fireEvent.pointerUp(svg);
-    unmount();
-    expect(onWallDraw).toHaveBeenCalledTimes(1);
-    return onWallDraw.mock.calls[0][0] as Edge[];
-  }
-
-  /** The diagonal chain's far end: its chain-end lattice ref, its
-   * rendered (drawn) endpoint, and the outward direction of the run. */
-  function drawnEndOf(doc: DungeonDoc, near: CornerRef) {
-    const scene = boardWallScene(doc, S)!;
-    expect(scene.runs).toHaveLength(1);
-    const run = scene.runs[0];
-    const nearP = pt(near);
-    const endRef = chainEndpoints(run.edges, S, 'pointy').reduce((acc, e) => {
-      const pe = cornerPoint(e, S, 'pointy');
-      const pa = cornerPoint(acc, S, 'pointy');
-      return Math.hypot(pe.x - nearP.x, pe.y - nearP.y) <
-        Math.hypot(pa.x - nearP.x, pa.y - nearP.y)
-        ? e
-        : acc;
-    });
-    const lp = cornerPoint(endRef, S, 'pointy');
-    const drawn =
-      Math.hypot(run.a.x - lp.x, run.a.y - lp.y) <
-      Math.hypot(run.b.x - lp.x, run.b.y - lp.y)
-        ? run.a
-        : run.b;
-    const other = drawn === run.a ? run.b : run.a;
-    const len = Math.hypot(drawn.x - other.x, drawn.y - other.y);
-    return {
-      endRef,
-      drawn,
-      dir: { x: (drawn.x - other.x) / len, y: (drawn.y - other.y) / len },
-    };
-  }
-
-  it('a second drag aimed just past a diagonal chain’s DRAWN end shares its vertex and the runs join', () => {
-    const doc = bigFloor();
-    const chain1 = boardDrag(doc, pt(ref(1, 1, 0)), pt(ref(5, 5, 1)));
-    const doc1 = addWalls(doc, chain1);
-    const { endRef, drawn, dir } = drawnEndOf(doc1, ref(5, 5, 1));
-    const aim = {
-      x: drawn.x + dir.x * 0.15 * S,
-      y: drawn.y + dir.y * 0.15 * S,
-    };
-    const chain2 = boardDrag(doc1, pt(ref(8, 7, 1)), aim);
-    expect(
-      chainEndpoints(chain2, S, 'pointy').some((e) =>
-        sameCorner(e, endRef, S, 'pointy')
-      )
-    ).toBe(true);
-    // The rendered picture closes: the two runs' facing endpoints meet
-    // within the corner-overlap miter, never a lateral gap.
-    const scene = boardWallScene(addWalls(doc1, chain2), S)!;
-    expect(scene.runs).toHaveLength(2);
-    let minGap = Infinity;
-    for (const q of [scene.runs[0].a, scene.runs[0].b]) {
-      for (const w of [scene.runs[1].a, scene.runs[1].b]) {
-        minGap = Math.min(minGap, Math.hypot(q.x - w.x, q.y - w.y));
-      }
-    }
-    expect(minGap).toBeLessThan(0.35 * S);
-  });
-
-  it('pressing ON a drawn end and dragging onward CONTINUES the wall — one merged run', () => {
-    const doc = bigFloor();
-    const chain1 = boardDrag(doc, pt(ref(1, 1, 0)), pt(ref(5, 5, 1)));
-    const doc1 = addWalls(doc, chain1);
-    const { endRef, drawn, dir } = drawnEndOf(doc1, ref(5, 5, 1));
-    const release = { x: drawn.x + dir.x * 3 * S, y: drawn.y + dir.y * 3 * S };
-    const chain2 = boardDrag(doc1, drawn, release);
-    expect(
-      chainEndpoints(chain2, S, 'pointy').some((e) =>
-        sameCorner(e, endRef, S, 'pointy')
-      )
-    ).toBe(true);
-    // Near-collinear + shared vertex: the shared module fuses the two
-    // chains into ONE straight run — continuation leaves no seam.
-    expect(boardWallScene(addWalls(doc1, chain2), S)!.runs).toHaveLength(1);
+    fireEvent.pointerDown(cellEl(container, 0, 0), { button: 0 });
+    expect(selected).toEqual([{ kind: 'exit', index: 0 }]);
   });
 });

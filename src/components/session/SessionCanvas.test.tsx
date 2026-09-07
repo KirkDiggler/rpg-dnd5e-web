@@ -5,9 +5,16 @@
  * Canvas-content component directly through the test renderer's own root
  * rather than nesting a second `<Canvas>` inside it.
  */
-import type { AuthoredWallRun } from '@/hooks/authoredWallRuns';
+import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
 import { __resetDungeonShellProviderForTests } from '@/rendering/dungeonShellProvider';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { create } from '@bufbuild/protobuf';
+import {
+  HairCustomizationSchema,
+  OutfitCustomizationSchema,
+  StyleSelectionSchema,
+  type HairCustomization,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type { PublicMemberInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   MemberKind,
@@ -18,10 +25,18 @@ import ReactThreeTestRenderer from '@react-three/test-renderer';
 import { readFileSync } from 'node:fs';
 import { useEffect, useLayoutEffect } from 'react';
 import * as THREE from 'three';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import { cellBoundingBox } from '../../author/hexGeometry';
 import type { AbsoluteFloorTile } from '../../hooks/dungeonMapGeometry';
 import { buildDungeonLightingFacts } from '../../rendering/dungeonLighting';
-import { resolveClassCharacterModelUrl } from '../hex-grid/classCharacterModels';
 import { facingToYaw } from '../hex-grid/facingYaw';
 import { cubeToWorld } from '../hex-grid/hexMath';
 import { buildAtlasPathIndex } from './atlasPath';
@@ -40,8 +55,20 @@ vi.mock('@react-three/fiber', async (importOriginal) => {
 const gltfMockState = vi.hoisted(() => ({
   failedUrls: new Set<string>(),
   pendingUrls: new Set<string>(),
+  requests: [] as string[],
+  textureRequests: [] as string[],
   pending: new Promise<never>(() => undefined),
 }));
+
+const mediumHumanoidMockState = vi.hoisted(() => ({
+  markerPrefix: '__test-medium-humanoid__',
+}));
+
+beforeAll(() => {
+  (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+});
 
 beforeEach(() => {
   __resetDungeonShellProviderForTests();
@@ -51,12 +78,80 @@ beforeEach(() => {
 afterEach(() => {
   gltfMockState.failedUrls.clear();
   gltfMockState.pendingUrls.clear();
+  gltfMockState.requests.length = 0;
+  gltfMockState.textureRequests.length = 0;
   window.history.replaceState({}, '', '/');
   vi.unstubAllGlobals();
 });
 
 vi.mock('@react-three/drei', () => {
+  const makeSkinned = (name: string, accessory: boolean) => {
+    const scene = new THREE.Group();
+    const root = new THREE.Bone();
+    root.name = 'Root';
+    const head = new THREE.Bone();
+    head.name = 'Head';
+    root.add(head);
+    const bones = accessory ? [root, head] : [root, head];
+    if (!accessory) {
+      const hand = new THREE.Bone();
+      hand.name = 'Hand_R';
+      const offHand = new THREE.Bone();
+      offHand.name = 'Hand_L';
+      head.add(hand, offHand);
+      bones.push(hand, offHand);
+    }
+    const mesh = new THREE.SkinnedMesh(
+      new THREE.BoxGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    );
+    const classRef = name.match(
+      /-(barbarian|fighter|monk|rogue)-body\.glb/
+    )?.[1];
+    const outfitByClass = {
+      barbarian: '01',
+      fighter: '16',
+      monk: '08',
+      rogue: '10',
+    } as const;
+    mesh.name =
+      !accessory && classRef
+        ? `Chr_Torso_Male_${outfitByClass[classRef as keyof typeof outfitByClass]}`
+        : `${name}:skinned`;
+    mesh.bind(
+      new THREE.Skeleton(
+        bones,
+        bones.map(() => new THREE.Matrix4())
+      ),
+      new THREE.Matrix4()
+    );
+    // Keep the existing ordinary-Mesh marker shape so all pre-Task-9 URL
+    // assertions still observe the same test boundary while the sibling
+    // SkinnedMesh supplies the real attachment contract for new tests.
+    const marker = new THREE.Mesh(
+      new THREE.BoxGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    );
+    marker.name = name;
+    mesh.add(marker);
+    scene.add(root, mesh);
+    return scene;
+  };
   const make = (name = '') => {
+    if (
+      name.includes('/characters/customization/') &&
+      name.includes('/bodies/')
+    ) {
+      return makeSkinned(name, false);
+    }
+    if (
+      (name.includes('/characters/customization/') &&
+        name.includes('/scalp/')) ||
+      (name.includes('/characters/customization/') &&
+        name.includes('/facial-hair/'))
+    ) {
+      return makeSkinned(name, true);
+    }
     const scene = new THREE.Group();
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(),
@@ -67,27 +162,61 @@ vi.mock('@react-three/drei', () => {
     if (name.includes('/models/synty/characters/')) {
       const hand = new THREE.Bone();
       hand.name = 'Hand_R';
-      scene.add(hand);
+      const offHand = new THREE.Bone();
+      offHand.name = 'Hand_L';
+      scene.add(hand, offHand);
     }
     return scene;
   };
   return {
     useGLTF: (url: string) => {
+      gltfMockState.requests.push(url);
       if (gltfMockState.failedUrls.has(url)) {
         throw new Error(`failed to load ${url}`);
       }
       if (gltfMockState.pendingUrls.has(url)) throw gltfMockState.pending;
       return { scene: make(url), animations: [] };
     },
-    useTexture: () => new THREE.Texture(),
+    useTexture: (url: string) => {
+      gltfMockState.textureRequests.push(url);
+      return new THREE.Texture();
+    },
     useAnimations: () => ({
       actions: {},
       names: [],
       mixer: new THREE.AnimationMixer(new THREE.Group()),
     }),
+    // The exit markers' label (`SessionExitMarkers.tsx`). Billboard is a
+    // plain group that re-aims itself each frame, so a group is a faithful
+    // stand-in for what this file asserts on — where the marker sits.
+    // `Text` renders nothing: troika cannot build an SDF in jsdom, and the
+    // glyphs are the screenshot's job, not this suite's.
+    Billboard: ({
+      children,
+      ...props
+    }: {
+      children?: React.ReactNode;
+      [key: string]: unknown;
+    }) => <group {...props}>{children}</group>,
+    Text: () => null,
   };
 });
 
+vi.mock('../hex-grid/MediumHumanoid', () => ({
+  MediumHumanoid: ({ variant }: { variant?: string }) => (
+    <mesh
+      name={`${mediumHumanoidMockState.markerPrefix}${variant ?? 'unknown'}`}
+    >
+      <boxGeometry args={[0.35, 0.9, 0.35]} />
+      <meshStandardMaterial color={0xff00ff} />
+    </mesh>
+  ),
+}));
+
+import {
+  MODULAR_FANTASY_HERO_OFF_HAND_SOCKET,
+  TOWNFOLK_OFF_HAND_SOCKET,
+} from '../hex-grid/offHandEquipment';
 import { SessionScene } from './SessionCanvas';
 
 function floorTiles(...coords: Array<[number, number, number]>) {
@@ -157,6 +286,7 @@ function scene(): Scene3D {
     },
   ];
   return {
+    exits: [],
     floorTiles: floorTiles([0, 0, 0], [1, -1, 0], [1, 0, -1]),
     props: [],
     archetypes: [],
@@ -165,6 +295,108 @@ function scene(): Scene3D {
     doorGaps,
   };
 }
+
+const ELF_CLASS_URLS = {
+  barbarian:
+    '/models/synty/characters/customization/elf-v1/bodies/elf-barbarian-body.glb',
+  fighter:
+    '/models/synty/characters/customization/elf-v1/bodies/elf-fighter-body.glb',
+  monk: '/models/synty/characters/customization/elf-v1/bodies/elf-monk-body.glb',
+  rogue:
+    '/models/synty/characters/customization/elf-v1/bodies/elf-rogue-body.glb',
+} as const;
+const DWARF_CLASS_URLS = {
+  barbarian:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-barbarian-body.glb',
+  fighter:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-fighter-body.glb',
+  monk: '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-monk-body.glb',
+  rogue:
+    '/models/synty/characters/customization/dwarf-v1/bodies/dwarf-rogue-body.glb',
+} as const;
+const DWARF_FIGHTER_FALLBACK_URL =
+  '/models/synty/characters/race-class/dwarf-fighter.glb';
+const HUMAN_FIGHTER_BODY_URL =
+  '/models/synty/characters/customization/human-v1/bodies/human-fighter-body.glb';
+const HUMAN_FIGHTER_FALLBACK_URL =
+  '/models/synty/characters/customization/human-v1/fallbacks/human-fighter-complete.glb';
+const HUMAN_DEFAULT_HAIR_URL =
+  '/models/synty/characters/customization/human-v1/scalp/hair-16.glb';
+const HAIR_38_URL =
+  '/models/synty/characters/customization/dwarf-v1/scalp/hair-38.glb';
+const FACIAL_HAIR_01_URL =
+  '/models/synty/characters/customization/dwarf-v1/facial-hair/facial-hair-01.glb';
+const DEFAULT_HAIR_URL =
+  '/models/synty/characters/customization/dwarf-v1/scalp/hair-04.glb';
+const DEFAULT_FACIAL_HAIR_URL =
+  '/models/synty/characters/customization/dwarf-v1/facial-hair/facial-hair-02.glb';
+
+function customStyleUrls(raceRef: string) {
+  return [
+    `/models/synty/characters/customization/${raceRef}-v1/scalp/hair-38.glb`,
+    `/models/synty/characters/customization/${raceRef}-v1/facial-hair/facial-hair-01.glb`,
+  ] as const;
+}
+
+function customHair(colorSrgb = 0x8a4b32, roughness = 0.2): HairCustomization {
+  return create(HairCustomizationSchema, {
+    scalp: create(StyleSelectionSchema, {
+      selection: {
+        case: 'styleRef',
+        value: 'modular-fantasy-hero:hair:38',
+      },
+    }),
+    facialHair: create(StyleSelectionSchema, {
+      selection: {
+        case: 'styleRef',
+        value: 'modular-fantasy-hero:facial-hair:01',
+      },
+    }),
+    colorSrgb,
+    roughness,
+  });
+}
+function customizationClassUrls(raceRef: string) {
+  return Object.fromEntries(
+    ['barbarian', 'fighter', 'monk', 'rogue'].map((classRef) => [
+      classRef,
+      `/models/synty/characters/customization/${raceRef}-v1/bodies/${raceRef}-${classRef}-body.glb`,
+    ])
+  ) as Record<'barbarian' | 'fighter' | 'monk' | 'rogue', string>;
+}
+const HALF_ELF_CLASS_URLS = customizationClassUrls('half-elf');
+const TIEFLING_CLASS_URLS = customizationClassUrls('tiefling');
+const HALFLING_CLASS_URLS = customizationClassUrls('halfling');
+const GNOME_CLASS_URLS = customizationClassUrls('gnome');
+const HALF_ORC_CLASS_URLS = customizationClassUrls('half-orc');
+const ELF_FIGHTER_URL = ELF_CLASS_URLS.fighter;
+const ELF_FIGHTER_FALLBACK_URL =
+  '/models/synty/characters/race-class/elf-fighter.glb';
+const FIGHTER_CLASS_URL = '/models/synty/characters/fighter.glb';
+const FIGHTER_DOWNED_URL = '/models/synty/characters/fighter-downed.glb';
+const MEDIUM_HUMANOID_MARKER = mediumHumanoidMockState.markerPrefix + 'human';
+const TOWNFOLK_MAIN_HAND_SOCKET = {
+  bone: 'Hand_R',
+  boneUnitMeters: 0.01,
+  positionMeters: [
+    -0.11356871832209599, 0.0437807216160595, -0.0070717729664129085,
+  ] as const,
+  rotationQuaternion: [
+    -0.31717459916354807, -0.45555976264236875, 0.6828311428133312,
+    0.47498148472569474,
+  ] as const,
+  scale: 1,
+};
+const MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET = {
+  bone: 'Hand_R',
+  boneUnitMeters: 0.01,
+  positionMeters: [-0.113634511828, 0.043524894863, -0.006868128199] as const,
+  rotationQuaternion: [
+    -0.31697111189640637, -0.4555468694563118, 0.6829896921327775,
+    0.47490151020194044,
+  ] as const,
+  scale: 1,
+};
 
 function renderSession(scene3D = scene()) {
   return ReactThreeTestRenderer.create(
@@ -235,6 +467,14 @@ function meshInstances(
     .map((node) => (node as unknown as { instance: THREE.Mesh }).instance);
 }
 
+function mediumHumanoidMarkers(
+  renderer: Awaited<ReturnType<typeof renderSession>>
+): THREE.Mesh[] {
+  return meshInstances(renderer).filter((mesh) =>
+    mesh.name.includes(MEDIUM_HUMANOID_MARKER)
+  );
+}
+
 function lightIntensity(
   renderer: Awaited<ReturnType<typeof renderSession>>,
   type: string
@@ -244,6 +484,40 @@ function lightIntensity(
       (candidate as { instance?: { type?: string } }).instance?.type === type
   ) as unknown as { instance: { intensity: number } };
   return node.instance.intensity;
+}
+
+function attachedMainHandRoot(
+  renderer: Awaited<ReturnType<typeof renderSession>>
+): THREE.Object3D {
+  const hand = renderer.scene.findAll(
+    (node) =>
+      node.instance instanceof THREE.Bone &&
+      (node.instance as THREE.Bone).name === 'Hand_R'
+  )[0]!.instance as THREE.Bone;
+  expect(hand.children.length).toBeGreaterThan(0);
+  return hand.children[0]!;
+}
+
+function attachedOffHandRoot(
+  renderer: Awaited<ReturnType<typeof renderSession>>
+): THREE.Object3D {
+  const hand = renderer.scene.findAll(
+    (node) =>
+      node.instance instanceof THREE.Bone &&
+      (node.instance as THREE.Bone).name === 'Hand_L'
+  )[0]!.instance as THREE.Bone;
+  expect(hand.children.length).toBeGreaterThan(0);
+  return hand.children[0]!;
+}
+
+function expectVectorCloseTo(
+  actual: readonly number[],
+  expected: readonly number[]
+) {
+  expect(actual).toHaveLength(expected.length);
+  actual.forEach((value, index) => {
+    expect(value).toBeCloseTo(expected[index]!, 6);
+  });
 }
 
 function expectOneVisiblePlaceholder(
@@ -275,6 +549,7 @@ describe('SessionScene', () => {
     expect(source).not.toMatch(/<AtlasPropModel\b/);
     expect(source).toContain('doors={doors}');
     expect(source).toContain('onDoorClick={onDoorClick}');
+    expect(source).toContain('compositionSource={compositionSource}');
     expect(source).not.toContain('onFallbackReason');
     expect(source).not.toContain('onLightingDiagnostics');
   });
@@ -400,6 +675,279 @@ describe('SessionScene', () => {
     expect(allMeshes.length).toBeGreaterThan(floorMeshes.length);
   });
 
+  it('mounts every exact local public Elf starter-class model URL', async () => {
+    for (const [classRefId, modelUrl] of Object.entries(ELF_CLASS_URLS)) {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName={`Toolkit Sandbox ${classRefId}`}
+          classRefId={classRefId}
+          raceRefId="elf"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+        />
+      );
+
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(modelUrl)
+      );
+      expect(exactMeshes.length, classRefId).toBeGreaterThan(0);
+    }
+  });
+
+  it('mounts every exact local public Dwarf starter-class model URL', async () => {
+    for (const [classRefId, modelUrl] of Object.entries(DWARF_CLASS_URLS)) {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName={`Toolkit Sandbox ${classRefId}`}
+          classRefId={classRefId}
+          raceRefId="dwarf"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+        />
+      );
+
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(modelUrl)
+      );
+      expect(exactMeshes.length, classRefId).toBeGreaterThan(0);
+    }
+  });
+
+  it.each([
+    ['half-elf', HALF_ELF_CLASS_URLS],
+    ['tiefling', TIEFLING_CLASS_URLS],
+    ['halfling', HALFLING_CLASS_URLS],
+    ['gnome', GNOME_CLASS_URLS],
+    ['half-orc', HALF_ORC_CLASS_URLS],
+  ] as const)(
+    'mounts every exact local public %s starter-class model URL',
+    async (raceRefId, classUrls) => {
+      for (const [classRefId, modelUrl] of Object.entries(classUrls)) {
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName={`Toolkit Sandbox ${classRefId}`}
+            classRefId={classRefId}
+            raceRefId={raceRefId}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+          />
+        );
+
+        const exactMeshes = renderer.scene.findAll(
+          (node) =>
+            node.type === 'Mesh' &&
+            (node.instance as THREE.Mesh).name.includes(modelUrl)
+        );
+        expect(exactMeshes.length, classRefId).toBeGreaterThan(0);
+      }
+    }
+  );
+
+  it('uses the Fighter downed class GLB, not the standing exact Elf Fighter GLB, for an authoritatively downed local player and keeps the Townfolk socket', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        {...({
+          scene: scene(),
+          hexSize: 1,
+          characterId: 'char-1',
+          characterName: 'Toolkit Sandbox Fighter',
+          classRefId: 'fighter',
+          raceRefId: 'elf',
+          localIsDowned: true,
+          myPosition: { x: 0, y: 0, z: 0 },
+          mainHandPresentation: {
+            ref: 'dnd5e:item:longsword',
+            weaponUrl: '/models/synty/weapons/longsword.glb',
+            socket: TOWNFOLK_MAIN_HAND_SOCKET,
+          },
+        } as Parameters<typeof SessionScene>[0] & {
+          localIsDowned: boolean;
+        })}
+      />
+    );
+
+    const downedMeshes = renderer.scene.findAll(
+      (node) =>
+        node.type === 'Mesh' &&
+        (node.instance as THREE.Mesh).name.includes(FIGHTER_DOWNED_URL)
+    );
+    const exactMeshes = renderer.scene.findAll(
+      (node) =>
+        node.type === 'Mesh' &&
+        (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
+    );
+
+    expect(downedMeshes.length).toBeGreaterThan(0);
+    expect(exactMeshes).toHaveLength(0);
+
+    const attached = attachedMainHandRoot(renderer);
+    const unitsPerMeter = 1 / TOWNFOLK_MAIN_HAND_SOCKET.boneUnitMeters;
+
+    expectVectorCloseTo(attached.position.toArray(), [
+      TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+      TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+      TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+    ]);
+    expectVectorCloseTo(attached.quaternion.toArray(), [
+      ...TOWNFOLK_MAIN_HAND_SOCKET.rotationQuaternion,
+    ]);
+    expectVectorCloseTo(attached.scale.toArray(), [
+      TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+      TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+      TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+    ]);
+  });
+
+  it('uses the exact complete Elf fallback when its active customization body fails', async () => {
+    gltfMockState.failedUrls.add(ELF_FIGHTER_URL);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const outcome = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Toolkit Sandbox Fighter"
+        classRefId="fighter"
+        raceRefId="elf"
+        myPosition={{ x: 0, y: 0, z: 0 }}
+      />
+    ).then(
+      (renderer) => ({ renderer }),
+      (error: unknown) => ({ error })
+    );
+    consoleError.mockRestore();
+
+    expect(outcome).toHaveProperty('renderer');
+    if ('renderer' in outcome) {
+      const exactMeshes = outcome.renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
+      );
+      const fallbackMeshes = outcome.renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_FALLBACK_URL)
+      );
+      expect(exactMeshes).toHaveLength(0);
+      expect(fallbackMeshes.length).toBeGreaterThan(0);
+      expect(mediumHumanoidMarkers(outcome.renderer)).toHaveLength(0);
+    }
+  });
+
+  it('falls from a failed modular Dwarf body to its exact generated immutable class fallback without accessories', async () => {
+    gltfMockState.failedUrls.add(DWARF_CLASS_URLS.fighter);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const hair = customHair();
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        {...({
+          scene: scene(),
+          hexSize: 1,
+          characterId: 'char-1',
+          characterName: 'Dwarf Fighter',
+          classRefId: 'fighter',
+          raceRefId: 'dwarf',
+          localHair: hair,
+          myPosition: { x: 0, y: 0, z: 0 },
+        } as Parameters<typeof SessionScene>[0] & {
+          localHair: HairCustomization;
+        })}
+      />
+    );
+    consoleError.mockRestore();
+
+    expect(gltfMockState.requests).toContain(DWARF_CLASS_URLS.fighter);
+    expect(gltfMockState.requests).toContain(DWARF_FIGHTER_FALLBACK_URL);
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name === DWARF_FIGHTER_FALLBACK_URL
+      ).length
+    ).toBeGreaterThan(0);
+    expect(gltfMockState.requests).not.toContain(HAIR_38_URL);
+    expect(gltfMockState.requests).not.toContain(FACIAL_HAIR_01_URL);
+    expect(mediumHumanoidMarkers(renderer)).toHaveLength(0);
+  });
+
+  it('falls from a failed Human active body to its generated complete fallback without accessories', async () => {
+    gltfMockState.failedUrls.add(HUMAN_FIGHTER_BODY_URL);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        {...({
+          scene: scene(),
+          hexSize: 1,
+          characterId: 'char-1',
+          characterName: 'Human Fighter',
+          classRefId: 'fighter',
+          raceRefId: 'human',
+          localHair: customHair(),
+          myPosition: { x: 0, y: 0, z: 0 },
+        } as Parameters<typeof SessionScene>[0] & {
+          localHair: HairCustomization;
+        })}
+      />
+    );
+    consoleError.mockRestore();
+
+    expect(gltfMockState.requests).toContain(HUMAN_FIGHTER_BODY_URL);
+    expect(gltfMockState.requests).toContain(HUMAN_FIGHTER_FALLBACK_URL);
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(
+            HUMAN_FIGHTER_FALLBACK_URL
+          )
+      ).length
+    ).toBeGreaterThan(0);
+    for (const url of customStyleUrls('human')) {
+      expect(gltfMockState.requests).not.toContain(url);
+    }
+  });
+
+  it('falls from failed modular and generated Dwarf bodies to the existing generic model fallback', async () => {
+    gltfMockState.failedUrls.add(DWARF_CLASS_URLS.fighter);
+    gltfMockState.failedUrls.add(DWARF_FIGHTER_FALLBACK_URL);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Dwarf Fighter"
+        classRefId="fighter"
+        raceRefId="dwarf"
+        myPosition={{ x: 0, y: 0, z: 0 }}
+      />
+    );
+    consoleError.mockRestore();
+
+    expect(gltfMockState.requests).toContain(DWARF_CLASS_URLS.fighter);
+    expect(gltfMockState.requests).toContain(DWARF_FIGHTER_FALLBACK_URL);
+    expect(mediumHumanoidMarkers(renderer)).toHaveLength(1);
+  });
+
   it('places a mapped AtlasProp on the same dungeon surface as the floor', async () => {
     const position = { x: 1, y: -1, z: 0 };
     const renderer = await renderSession(
@@ -432,11 +980,17 @@ describe('SessionScene', () => {
     );
     expect(propMesh).toBeDefined();
 
+    // The planar offset is BOUNDING-BOX FRACTIONS (atlasToScene3D.ts's
+    // propWorldPosition doc comment) — x in cell widths (sqrt(3)*hexSize
+    // for pointy-top), y in cell heights (2*hexSize) — not raw hexSize,
+    // which used to put an offset partway to a hex VERTEX instead of the
+    // side it names.
+    const { width, height } = cellBoundingBox('pointy', 1);
     const cellCenter = cubeToWorld(position, 1);
     const propAnchor = propMesh?.parent?.parent as THREE.Group | undefined;
-    expect(propAnchor?.position.x).toBeCloseTo(cellCenter.x + 0.2, 9);
+    expect(propAnchor?.position.x).toBeCloseTo(cellCenter.x + 0.2 * width, 9);
     expect(propAnchor?.position.y).toBeCloseTo(DUNGEON_SURFACE_Y + 0.6, 9);
-    expect(propAnchor?.position.z).toBeCloseTo(cellCenter.z - 0.3, 9);
+    expect(propAnchor?.position.z).toBeCloseTo(cellCenter.z - 0.3 * height, 9);
     expect(propAnchor?.rotation.y).toBeCloseTo(facingToYaw('ne'), 9);
   });
 
@@ -642,8 +1196,8 @@ describe('SessionScene', () => {
     expect(renderer.scene.children.length).toBeGreaterThan(0);
   });
 
-  it('mounts without throwing when a walk is in flight (movePath/moveSeq/onMovementPresentationComplete wired)', async () => {
-    const onMovementPresentationComplete = vi.fn();
+  it('mounts without throwing when a walk is in flight (movements/onMovementPainted wired)', async () => {
+    const onMovementPainted = vi.fn();
     const renderer = await ReactThreeTestRenderer.create(
       <SessionScene
         scene={scene()}
@@ -652,12 +1206,22 @@ describe('SessionScene', () => {
         characterName="Toolkit Sandbox Fighter"
         classRefId={undefined}
         myPosition={{ x: 1, y: 0, z: -1 }}
-        movePath={[
-          { x: 0, y: 0, z: 0 },
-          { x: 1, y: 0, z: -1 },
-        ]}
-        moveSeq={1}
-        onMovementPresentationComplete={onMovementPresentationComplete}
+        movements={
+          new Map([
+            [
+              'char-1',
+              {
+                route: [
+                  { x: 0, y: 0, z: 0 },
+                  { x: 1, y: 0, z: -1 },
+                ],
+                seq: 1,
+                reached: 0,
+              },
+            ],
+          ])
+        }
+        onMovementPainted={onMovementPainted}
       />
     );
     expect(renderer.scene.children.length).toBeGreaterThan(0);
@@ -775,6 +1339,147 @@ describe('SessionScene', () => {
       );
       expect(weaponMeshes.length).toBeGreaterThan(0);
     });
+
+    it('mounts exact off-hand presentation independently on the local class character', async () => {
+      const assetUrl = '/models/synty/off-hand/shield.glb';
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId="fighter"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          offHandPresentation={{
+            ref: 'dnd5e:item:shield',
+            assetUrl,
+            assetKind: 'shield',
+            socket: TOWNFOLK_OFF_HAND_SOCKET,
+          }}
+        />
+      );
+
+      expect(
+        attachedOffHandRoot(renderer).getObjectByName(assetUrl)
+      ).toBeDefined();
+    });
+
+    it('uses the modular off-hand socket for exact modular player models', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId="fighter"
+          raceRefId="elf"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          offHandPresentation={{
+            ref: 'dnd5e:item:dagger',
+            assetUrl: '/models/synty/weapons/dagger.glb',
+            assetKind: 'weapon',
+            socket: TOWNFOLK_OFF_HAND_SOCKET,
+          }}
+        />
+      );
+      const attached = attachedOffHandRoot(renderer);
+      const unitsPerMeter =
+        1 / MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.boneUnitMeters;
+      expectVectorCloseTo(attached.position.toArray(), [
+        MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+        MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+        MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+      ]);
+      expectVectorCloseTo(attached.quaternion.toArray(), [
+        ...MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.rotationQuaternion,
+      ]);
+    });
+
+    it.each([
+      'elf',
+      'dwarf',
+      'half-elf',
+      'tiefling',
+      'halfling',
+      'gnome',
+      'half-orc',
+    ])(
+      'applies the reviewed modular rig-family override to the exact local %s Fighter model',
+      async (raceRefId) => {
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName="Toolkit Sandbox Fighter"
+            classRefId="fighter"
+            raceRefId={raceRefId}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+            mainHandPresentation={{
+              ref: 'dnd5e:item:longsword',
+              weaponUrl: '/models/synty/weapons/longsword.glb',
+              socket: TOWNFOLK_MAIN_HAND_SOCKET,
+            }}
+          />
+        );
+
+        const attached = attachedMainHandRoot(renderer);
+        const unitsPerMeter =
+          1 / MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.boneUnitMeters;
+
+        expectVectorCloseTo(attached.position.toArray(), [
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[0] *
+            unitsPerMeter,
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[1] *
+            unitsPerMeter,
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[2] *
+            unitsPerMeter,
+        ]);
+        expectVectorCloseTo(attached.quaternion.toArray(), [
+          ...MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.rotationQuaternion,
+        ]);
+        expectVectorCloseTo(attached.scale.toArray(), [
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+        ]);
+      }
+    );
+
+    it('keeps class-model fallback players on the Townfolk socket family', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId="fighter"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          mainHandPresentation={{
+            ref: 'dnd5e:item:longsword',
+            weaponUrl: '/models/synty/weapons/longsword.glb',
+            socket: MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET,
+          }}
+        />
+      );
+
+      const attached = attachedMainHandRoot(renderer);
+      const unitsPerMeter = 1 / TOWNFOLK_MAIN_HAND_SOCKET.boneUnitMeters;
+
+      expectVectorCloseTo(attached.position.toArray(), [
+        TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+        TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+        TOWNFOLK_MAIN_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+      ]);
+      expectVectorCloseTo(attached.quaternion.toArray(), [
+        ...TOWNFOLK_MAIN_HAND_SOCKET.rotationQuaternion,
+      ]);
+      expectVectorCloseTo(attached.scale.toArray(), [
+        TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+        TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+        TOWNFOLK_MAIN_HAND_SOCKET.scale * unitsPerMeter,
+      ]);
+    });
   });
 
   describe('roster identity (rpg-project#264, rpg-dnd5e-web#806)', () => {
@@ -788,7 +1493,7 @@ describe('SessionScene', () => {
       standing: Standing.UP,
     };
 
-    it('a PLAYER-kind member with a roster entry mounts their CLASS GLB, not the neutral placeholder', async () => {
+    it('a PLAYER-kind member with a roster entry mounts their exact public Elf Rogue GLB, not the neutral placeholder', async () => {
       const renderer = await ReactThreeTestRenderer.create(
         <SessionScene
           scene={scene()}
@@ -806,8 +1511,8 @@ describe('SessionScene', () => {
                   id: 'char-bob',
                   kind: MemberKind.PLAYER,
                   name: 'Bob',
-                  classRef: 'fighter',
-                  raceRef: 'human',
+                  classRef: 'rogue',
+                  raceRef: 'elf',
                   monsterRef: '',
                 } as PublicMemberInfo,
               ],
@@ -815,16 +1520,446 @@ describe('SessionScene', () => {
           }
         />
       );
-      // Mocked useGLTF names its mesh after the resolved URL — the fighter
-      // class GLB path appears only when the class model actually mounted.
-      const expectedUrl = resolveClassCharacterModelUrl('fighter', false);
-      expect(expectedUrl).toBeTruthy();
-      const classMeshes = renderer.scene.findAll(
+      const exactMeshes = renderer.scene.findAll(
         (node) =>
           node.type === 'Mesh' &&
-          (node.instance as THREE.Mesh).name.includes(expectedUrl as string)
+          (node.instance as THREE.Mesh).name.includes(ELF_CLASS_URLS.rogue)
       );
-      expect(classMeshes.length).toBeGreaterThan(0);
+      expect(exactMeshes.length).toBeGreaterThan(0);
+    });
+
+    it('a PLAYER-kind member with a roster entry mounts their exact public Dwarf Monk GLB, not the neutral placeholder', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[sightedPlayer]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'monk',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(DWARF_CLASS_URLS.monk)
+      );
+      expect(exactMeshes.length).toBeGreaterThan(0);
+    });
+
+    it.each([
+      'human',
+      'elf',
+      'dwarf',
+      'half-elf',
+      'tiefling',
+      'halfling',
+      'gnome',
+      'half-orc',
+    ])(
+      'renders equal local Appearance and peer roster customization through the same %s accessory presentation',
+      async (raceRef) => {
+        const hair = customHair();
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            {...({
+              scene: scene(),
+              hexSize: 1,
+              characterId: 'char-1',
+              characterName: 'Owner',
+              classRefId: 'fighter',
+              raceRefId: raceRef,
+              localHair: hair,
+              myPosition: { x: 0, y: 0, z: 0 },
+              otherMembers: [sightedPlayer],
+              roster: new Map([
+                [
+                  'char-bob',
+                  {
+                    id: 'char-bob',
+                    kind: MemberKind.PLAYER,
+                    name: 'Bob',
+                    classRef: 'rogue',
+                    raceRef,
+                    monsterRef: '',
+                    customization: { hair },
+                  } as PublicMemberInfo,
+                ],
+              ]),
+            } as Parameters<typeof SessionScene>[0] & {
+              localHair: HairCustomization;
+            })}
+          />
+        );
+
+        const materialUuids: string[] = [];
+        for (const url of customStyleUrls(raceRef)) {
+          const accessories = renderer.scene.findAll(
+            (node) => (node.instance as THREE.Mesh).name === `${url}:skinned`
+          );
+          expect(accessories, url).toHaveLength(2);
+          for (const accessory of accessories) {
+            const material = (accessory.instance as THREE.Mesh)
+              .material as THREE.MeshStandardMaterial;
+            materialUuids.push(material.uuid);
+            expect(material.color.getHexString()).toBe('8a4b32');
+            expect(material.roughness).toBeCloseTo(0.2);
+            expect(material.metalness).toBe(0);
+          }
+        }
+        expect(new Set(materialUuids).size).toBe(4);
+        expect(gltfMockState.requests.some((url) => url.endsWith('.png'))).toBe(
+          false
+        );
+      }
+    );
+
+    it('keeps different owner/peer treatments on disjoint per-instance material UUIDs', async () => {
+      const ownerHair = customHair(0x8a4b32, 0.2);
+      const peerHair = customHair(0xd6b26e, 0.55);
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...({
+            scene: scene(),
+            hexSize: 1,
+            characterId: 'char-1',
+            characterName: 'Owner',
+            classRefId: 'fighter',
+            raceRefId: 'dwarf',
+            localHair: ownerHair,
+            myPosition: { x: 0, y: 0, z: 0 },
+            otherMembers: [sightedPlayer],
+            roster: new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'rogue',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                  customization: { hair: peerHair },
+                } as PublicMemberInfo,
+              ],
+            ]),
+          } as Parameters<typeof SessionScene>[0] & {
+            localHair: HairCustomization;
+          })}
+        />
+      );
+
+      const scalpMaterials = renderer.scene
+        .findAll(
+          (node) =>
+            (node.instance as THREE.Mesh).name === `${HAIR_38_URL}:skinned`
+        )
+        .map(
+          (node) =>
+            (node.instance as THREE.Mesh).material as THREE.MeshStandardMaterial
+        );
+      expect(scalpMaterials).toHaveLength(2);
+      expect(
+        new Set(scalpMaterials.map((material) => material.uuid)).size
+      ).toBe(2);
+      expect(
+        scalpMaterials.map((material) => ({
+          color: material.color.getHexString(),
+          roughness: material.roughness,
+        }))
+      ).toEqual(
+        expect.arrayContaining([
+          { color: '8a4b32', roughness: expect.closeTo(0.2) },
+          { color: 'd6b26e', roughness: expect.closeTo(0.55) },
+        ])
+      );
+    });
+
+    it('routes owner Appearance and peer Customization outfit values to isolated class mask uniforms', async () => {
+      const ownerOutfit = create(OutfitCustomizationSchema, {
+        primaryColorSrgb: 0,
+        secondaryColorSrgb: 0x123456,
+      });
+      const peerOutfit = create(OutfitCustomizationSchema, {
+        primaryColorSrgb: 0xabcdef,
+        secondaryColorSrgb: 0x654321,
+      });
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Owner"
+          classRefId="fighter"
+          raceRefId="dwarf"
+          localCustomization={{ outfit: ownerOutfit }}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[sightedPlayer]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'rogue',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                  customization: { outfit: peerOutfit },
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+      const uniformFor = (meshName: string) => {
+        const mesh = renderer.scene.findAll(
+          (node) => (node.instance as THREE.Mesh).name === meshName
+        )[0]!.instance as THREE.Mesh;
+        const material = mesh.material as THREE.MeshStandardMaterial;
+        const shader = {
+          fragmentShader: '#include <common>\n#include <map_fragment>',
+          uniforms: {},
+        };
+        material.onBeforeCompile(shader as never, {} as THREE.WebGLRenderer);
+        return shader.uniforms as Record<string, { value: THREE.Color }>;
+      };
+      const owner = uniformFor('Chr_Torso_Male_16');
+      const peer = uniformFor('Chr_Torso_Male_10');
+
+      expect(owner.primaryColor.value.getHex()).toBe(0);
+      expect(owner.secondaryColor.value.getHex()).toBe(0x123456);
+      expect(peer.primaryColor.value.getHex()).toBe(0xabcdef);
+      expect(peer.secondaryColor.value.getHex()).toBe(0x654321);
+      expect(owner.primaryColor).not.toBe(peer.primaryColor);
+      expect(gltfMockState.textureRequests).toEqual(
+        expect.arrayContaining([
+          '/models/synty/characters/outfit-customization/v1/masks/fighter-16.png',
+          '/models/synty/characters/outfit-customization/v1/masks/rogue-10.png',
+        ])
+      );
+    });
+
+    it('uses provider defaults for an absent peer roster customization', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Owner"
+          classRefId="fighter"
+          raceRefId="human"
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[sightedPlayer]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'monk',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+
+      expect(
+        renderer.scene.findAll(
+          (node) =>
+            node.type === 'Mesh' &&
+            (node.instance as THREE.Mesh).name === HUMAN_DEFAULT_HAIR_URL
+        )
+      ).toHaveLength(1);
+      for (const url of [DEFAULT_HAIR_URL, DEFAULT_FACIAL_HAIR_URL]) {
+        expect(
+          renderer.scene.findAll(
+            (node) =>
+              node.type === 'Mesh' && (node.instance as THREE.Mesh).name === url
+          ),
+          url
+        ).toHaveLength(1);
+      }
+    });
+
+    it('renders non-Dwarf owner hair while ignoring monster and downed-player hair', async () => {
+      const hair = customHair();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          {...({
+            scene: scene(),
+            hexSize: 1,
+            characterId: 'char-1',
+            characterName: 'Elf Owner',
+            classRefId: 'fighter',
+            raceRefId: 'elf',
+            localHair: hair,
+            myPosition: { x: 0, y: 0, z: 0 },
+            otherMembers: [
+              { ...sightedPlayer, standing: Standing.DOWNED },
+              {
+                ...sightedPlayer,
+                subject: 'monster-1',
+                kind: MemberKind.MONSTER,
+                position: { x: 1, y: 0, z: -1 },
+              },
+            ],
+            roster: new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'fighter',
+                  raceRef: 'dwarf',
+                  monsterRef: '',
+                  customization: { hair },
+                } as PublicMemberInfo,
+              ],
+              [
+                'monster-1',
+                {
+                  id: 'monster-1',
+                  kind: MemberKind.MONSTER,
+                  name: 'Monster',
+                  classRef: 'fighter',
+                  raceRef: 'dwarf',
+                  monsterRef: 'dnd5e:monsters:skeleton',
+                  customization: { hair },
+                } as PublicMemberInfo,
+              ],
+            ]),
+          } as Parameters<typeof SessionScene>[0] & {
+            localHair: HairCustomization;
+          })}
+        />
+      );
+
+      for (const url of customStyleUrls('elf')) {
+        expect(
+          renderer.scene.findAll(
+            (node) => (node.instance as THREE.Mesh).name === `${url}:skinned`
+          ),
+          url
+        ).toHaveLength(1);
+      }
+      for (const url of [HAIR_38_URL, FACIAL_HAIR_01_URL]) {
+        expect(
+          renderer.scene.findAll(
+            (node) =>
+              node.type === 'Mesh' && (node.instance as THREE.Mesh).name === url
+          ),
+          url
+        ).toHaveLength(0);
+      }
+    });
+
+    it.each([
+      ['half-elf', 'rogue', HALF_ELF_CLASS_URLS.rogue],
+      ['tiefling', 'monk', TIEFLING_CLASS_URLS.monk],
+      ['halfling', 'barbarian', HALFLING_CLASS_URLS.barbarian],
+      ['gnome', 'fighter', GNOME_CLASS_URLS.fighter],
+      ['half-orc', 'rogue', HALF_ORC_CLASS_URLS.rogue],
+    ])(
+      'a PLAYER-kind member mounts their exact public %s %s GLB',
+      async (raceRef, classRef, modelUrl) => {
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName="Toolkit Sandbox Fighter"
+            classRefId={undefined}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+            otherMembers={[sightedPlayer]}
+            roster={
+              new Map([
+                [
+                  'char-bob',
+                  {
+                    id: 'char-bob',
+                    kind: MemberKind.PLAYER,
+                    name: 'Bob',
+                    classRef,
+                    raceRef,
+                    monsterRef: '',
+                  } as PublicMemberInfo,
+                ],
+              ])
+            }
+          />
+        );
+        const exactMeshes = renderer.scene.findAll(
+          (node) =>
+            node.type === 'Mesh' &&
+            (node.instance as THREE.Mesh).name.includes(modelUrl)
+        );
+        expect(exactMeshes.length).toBeGreaterThan(0);
+      }
+    );
+
+    it('a downed PLAYER-kind member with a roster entry mounts the Fighter downed class GLB, not the standing exact Elf Fighter GLB', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={[{ ...sightedPlayer, standing: Standing.DOWNED }]}
+          roster={
+            new Map([
+              [
+                'char-bob',
+                {
+                  id: 'char-bob',
+                  kind: MemberKind.PLAYER,
+                  name: 'Bob',
+                  classRef: 'fighter',
+                  raceRef: 'elf',
+                  monsterRef: '',
+                } as PublicMemberInfo,
+              ],
+            ])
+          }
+        />
+      );
+      const downedMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(FIGHTER_DOWNED_URL)
+      );
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
+      );
+      expect(downedMeshes.length).toBeGreaterThan(0);
+      expect(exactMeshes).toHaveLength(0);
     });
 
     it('a PLAYER-kind member with NO roster entry keeps the neutral placeholder — a missing row degrades, never blocks', async () => {
@@ -840,14 +1975,19 @@ describe('SessionScene', () => {
           roster={new Map()}
         />
       );
-      const expectedUrl = resolveClassCharacterModelUrl('fighter', false);
       const classMeshes = renderer.scene.findAll(
         (node) =>
           node.type === 'Mesh' &&
-          (node.instance as THREE.Mesh).name.includes(expectedUrl as string)
+          (node.instance as THREE.Mesh).name.includes(FIGHTER_CLASS_URL)
+      );
+      const exactMeshes = renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(ELF_FIGHTER_URL)
       );
       expect(classMeshes).toHaveLength(0);
-      expect(renderer.scene.children.length).toBeGreaterThan(0);
+      expect(exactMeshes).toHaveLength(0);
+      expect(mediumHumanoidMarkers(renderer)).toHaveLength(2);
     });
 
     it("a MONSTER-kind member's model resolves from the roster's authored ref — no subject-derived monsterRefId needed", async () => {
@@ -1684,6 +2824,178 @@ describe('SessionScene', () => {
     });
   });
 
+  describe('click routing: world NPC interact (rpg-api#903 Phase 1)', () => {
+    function findGroundPlaneProps(renderer: {
+      scene: { findAll: (p: (n: unknown) => boolean) => unknown[] };
+    }) {
+      const nodes = renderer.scene.findAll(
+        (node) =>
+          (node as { instance: THREE.Mesh }).instance.geometry?.type ===
+          'PlaneGeometry'
+      ) as Array<{ fiber: { props: Record<string, unknown> } }>;
+      return nodes[0]!.fiber.props;
+    }
+
+    function clickAt(
+      props: Record<string, unknown>,
+      cube: { x: number; y: number; z: number }
+    ) {
+      const onClick = props.onClick as (event: {
+        point: THREE.Vector3;
+        stopPropagation: () => void;
+      }) => void;
+      const worldPos = cubeToWorld(cube, 1);
+      onClick({
+        point: new THREE.Vector3(worldPos.x, 0, worldPos.z),
+        stopPropagation: () => {},
+      });
+    }
+
+    const worldMember = [
+      {
+        subject: 'demo-merchant-1',
+        name: 'Demo Merchant',
+        monsterRefId: undefined,
+        kind: MemberKind.WORLD,
+        position: { x: 1, y: -1, z: 0 },
+        remembered: false,
+        standing: Standing.UP,
+      },
+    ];
+
+    it('renders the exact tomb demo WORLD member with the bartender GLB', async () => {
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={worldMember}
+        />
+      );
+      expect(
+        renderer.scene.findAll(
+          (node) =>
+            (node.instance as THREE.Object3D).name ===
+            '/models/synty/npcs/bartender-01.glb'
+        )
+      ).toHaveLength(1);
+      await renderer.unmount();
+    });
+
+    it.each([
+      ['same name, other NPC', MemberKind.WORLD, 'another-person'],
+      ['similar id, other NPC', MemberKind.WORLD, 'demo-merchant-2'],
+      ['same id, player', MemberKind.PLAYER, 'demo-merchant-1'],
+      ['same id, monster', MemberKind.MONSTER, 'demo-merchant-1'],
+    ])(
+      'does not give %s the demo appearance',
+      async (_label, kind, subject) => {
+        const renderer = await ReactThreeTestRenderer.create(
+          <SessionScene
+            scene={scene()}
+            hexSize={1}
+            characterId="char-1"
+            characterName="Fighter"
+            classRefId={undefined}
+            myPosition={{ x: 0, y: 0, z: 0 }}
+            otherMembers={[{ ...worldMember[0]!, kind, subject }]}
+          />
+        );
+        expect(
+          renderer.scene.findAll(
+            (node) =>
+              (node.instance as THREE.Object3D).name ===
+              '/models/synty/npcs/bartender-01.glb'
+          )
+        ).toHaveLength(0);
+        await renderer.unmount();
+      }
+    );
+
+    it('keeps NPC interaction routing when the bartender asset cannot load', async () => {
+      gltfMockState.failedUrls.add('/models/synty/npcs/bartender-01.glb');
+      const onInteractClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={worldMember}
+          onInteractClick={onInteractClick}
+          onEntityClick={onEntityClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+      expect(onInteractClick).toHaveBeenCalledWith('demo-merchant-1');
+      expect(onEntityClick).not.toHaveBeenCalled();
+      expect(
+        renderer.scene.findAll(
+          (node) =>
+            (node.instance as THREE.Object3D).name ===
+            '/models/synty/npcs/bartender-01.glb'
+        )
+      ).toHaveLength(0);
+      await renderer.unmount();
+    });
+
+    it('clicking a WORLD-kind member fires onInteractClick, never onEntityClick or onHexClick — it is never an attack candidate', async () => {
+      const onHexClick = vi.fn();
+      const onEntityClick = vi.fn();
+      const onInteractClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={worldMember}
+          onHexClick={onHexClick}
+          onEntityClick={onEntityClick}
+          onInteractClick={onInteractClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+
+      expect(onInteractClick).toHaveBeenCalledWith('demo-merchant-1');
+      expect(onEntityClick).not.toHaveBeenCalled();
+      expect(onHexClick).not.toHaveBeenCalled();
+    });
+
+    it('a WORLD-kind member is never drawn as an attackable ring even if a caller mistakenly lists it in attackableTargets', async () => {
+      const onEntityClick = vi.fn();
+      const onInteractClick = vi.fn();
+      const renderer = await ReactThreeTestRenderer.create(
+        <SessionScene
+          scene={scene()}
+          hexSize={1}
+          characterId="char-1"
+          characterName="Toolkit Sandbox Fighter"
+          classRefId={undefined}
+          myPosition={{ x: 0, y: 0, z: 0 }}
+          otherMembers={worldMember}
+          attackableTargets={['demo-merchant-1']}
+          onEntityClick={onEntityClick}
+          onInteractClick={onInteractClick}
+        />
+      );
+      clickAt(findGroundPlaneProps(renderer), { x: 1, y: -1, z: 0 });
+
+      // handleTargetClick checks kind === WORLD before the attackableSet
+      // gate, so onInteractClick still wins even in this misconfigured case.
+      expect(onInteractClick).toHaveBeenCalledWith('demo-merchant-1');
+      expect(onEntityClick).not.toHaveBeenCalled();
+    });
+  });
+
   describe('onHoverEntity', () => {
     async function hoverAtPlane(
       renderer: {
@@ -1799,5 +3111,40 @@ describe('SessionScene', () => {
       });
       expect(onHoverEntity).toHaveBeenLastCalledWith(null);
     });
+  });
+});
+
+describe('the ways out reach the map (rpg-dnd5e-web#927)', () => {
+  it('draws a marker for every exit the scene carries', async () => {
+    // THE INTEGRATION POINT. `SessionExitMarkers` has its own unit test,
+    // but nothing proved the scene ever hands it anything: deleting the
+    // element from `SessionScene`, or passing `scene.props` in place of
+    // `scene.exits`, left the whole suite green while the game map showed
+    // no way out at all — which is the entire bug this fixes.
+    const renderer = await renderSession({
+      ...scene(),
+      exits: [
+        { id: 'entrance', position: { x: 0, y: 0, z: 0 } },
+        { id: 'sally-port', position: { x: 1, y: -1, z: 0 } },
+      ],
+    });
+    expect(
+      renderer.scene.findByProps({ name: 'session-exit-markers' })
+    ).toBeTruthy();
+    expect(
+      renderer.scene.findByProps({ name: 'session-exit-entrance' })
+    ).toBeTruthy();
+    expect(
+      renderer.scene.findByProps({ name: 'session-exit-sally-port' })
+    ).toBeTruthy();
+    await renderer.unmount();
+  });
+
+  it('draws no marker layer for a dungeon that declares no way out', async () => {
+    const renderer = await renderSession();
+    expect(
+      renderer.scene.findAllByProps({ name: 'session-exit-markers' })
+    ).toHaveLength(0);
+    await renderer.unmount();
   });
 });

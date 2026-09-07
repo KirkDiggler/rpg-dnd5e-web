@@ -31,6 +31,8 @@ import {
   DoorState,
   type AttackRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { dissolveSentence, formatFactionBeat } from './factionBeat';
+import { formatHoldingBeat } from './holdingBeat';
 import { resolveName, resolveNameLower } from './participantNames';
 
 const DAMAGE_TYPE_WORD: Partial<Record<DamageType, string>> = {
@@ -73,6 +75,20 @@ export function formatBeat(
   member: string,
   names: Map<string, string>
 ): string | null {
+  // Loot, hold, drop and leave read as ONE set of sentences wherever they
+  // are narrated (`holdingBeat.ts`), so this line and the Story log cannot
+  // drift into two different accounts of the same beat. It answers `null`
+  // for everything else and the switch below carries on.
+  const holding = formatHoldingBeat(event, {
+    subject: (id) => resolveName(names, id, member),
+    object: (id) => resolveNameLower(names, id, member),
+  });
+  if (holding !== null) return holding;
+  // The stance and arrival beats, likewise ONE set of sentences
+  // (`factionBeat.ts`, rpg-project#375 §5).
+  const faction = formatFactionBeat(event);
+  if (faction !== null) return faction;
+
   switch (event.body?.case) {
     case 'struck': {
       const s = event.body.value;
@@ -104,7 +120,9 @@ export function formatBeat(
       return `A fight begins: ${roster}.`;
     }
     case 'fightEnded':
-      return 'The fight is over.';
+      // By cause: a fight that dissolved because the sides stopped being
+      // hostile (BY_STANCE, R1) is said differently from one a side lost.
+      return dissolveSentence(event.body.value.cause);
     case 'door': {
       // A door beat narrates from typed facts (rpg-project#268): an unlock
       // attempt carries its author and its numbers — the miss is as much

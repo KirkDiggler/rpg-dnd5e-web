@@ -25,6 +25,12 @@
  * `keys` section against this file after any prop-role-map.json change.
  */
 
+import {
+  GENERATED_EXACT_PROP_PALETTE_REFS,
+  GENERATED_EXACT_PROP_REFS,
+  GENERATED_PROP_FAMILY_DEFAULTS,
+} from './generatedPropCatalog';
+
 export type PropRole = 'obstacle' | 'cover' | 'decor';
 
 /** A companion mesh rendered alongside its parent piece at the SAME local
@@ -45,6 +51,8 @@ export interface PropCompanion {
 export interface PropVariant {
   /** Piece name, e.g. "SM_Prop_Barrel_01" — for debugging/logging only. */
   name: string;
+  /** Human-facing name supplied by generated exact-ref recipes. */
+  displayName?: string;
   /** Path relative to PROPS_MODEL_BASE, e.g. "props/SM_Prop_Barrel_01.glb". */
   file: string;
   role: PropRole;
@@ -52,6 +60,8 @@ export interface PropVariant {
    * a render-time scale multiplier (see PropModel.tsx) — reserved for
    * placement-sanity checks/asserts and future multi-hex layout logic. */
   footprintHexes: number;
+  /** Explicit for generated props; legacy entries derive this from role. */
+  blocksMovement?: boolean;
   blocksLoS: boolean;
   /**
    * Extra meshes to render alongside this variant at its own anchor point
@@ -84,7 +94,7 @@ export const PROPS_MODEL_BASE = '/models/synty/';
  * keys rpg-game-assets#36's look-lab wave-1 appended -- 44 total).
  * Variant order matches the source manifest's piece order.
  */
-export const PROP_KEYS: Record<string, PropVariant[]> = {
+const LEGACY_PROP_KEYS: Record<string, PropVariant[]> = {
   'dnd5e:props:pillar': [
     {
       name: 'SM_Env_Pillar_Round_01',
@@ -819,6 +829,26 @@ export const PROP_KEYS: Record<string, PropVariant[]> = {
   ],
 };
 
+const GENERATED_PROP_KEYS: Record<string, PropVariant[]> = Object.fromEntries(
+  Object.entries(GENERATED_EXACT_PROP_REFS).map(([ref, variant]) => [
+    ref,
+    [{ ...variant }],
+  ])
+);
+
+/** Legacy curated variants plus generated exact-ref entries. Family aliases
+ * are resolved separately so they never become duplicate Builder tiles. */
+export const PROP_KEYS: Record<string, PropVariant[]> = {
+  ...LEGACY_PROP_KEYS,
+  ...GENERATED_PROP_KEYS,
+};
+
+export const EXACT_PROP_PALETTE_REFS: readonly string[] =
+  GENERATED_EXACT_PROP_PALETTE_REFS;
+
+const PROP_FAMILY_DEFAULTS: Readonly<Record<string, string>> =
+  GENERATED_PROP_FAMILY_DEFAULTS;
+
 /**
  * The 17-key list agreed in rpg-dnd5e-web#523's comment thread — kept as
  * its own hand-authored list (deliberately NOT derived from
@@ -898,7 +928,10 @@ export function resolvePropVariant(
   key: string | undefined
 ): PropVariant | undefined {
   if (!key) return undefined;
-  return PROP_KEYS[key]?.[0];
+  const direct = PROP_KEYS[key]?.[0];
+  if (direct) return direct;
+  const exactRef = PROP_FAMILY_DEFAULTS[key];
+  return exactRef ? PROP_KEYS[exactRef]?.[0] : undefined;
 }
 
 /** Resolve a reference key straight to a loadable GLB url, or undefined

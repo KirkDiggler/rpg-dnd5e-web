@@ -14,6 +14,7 @@ import {
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { resolveDungeonLighting } from '../../rendering/dungeonLighting';
+import { isMonsterRef } from '../dungeonYaml';
 import { cryptPropShowcaseDoc } from '../fixtures/cryptPropShowcase';
 import { fixtureAtlasOf } from '../fixtures/fixtureAtlas';
 import { referenceTombDoc } from '../fixtures/referenceTomb';
@@ -38,7 +39,8 @@ function tombWithFacedProp() {
 }
 
 describe('previewScene', () => {
-  const atlas = fixtureAtlasOf(referenceTombDoc());
+  const tomb = referenceTombDoc();
+  const atlas = fixtureAtlasOf(tomb);
 
   it('mounts the shared environment rather than duplicating floor, wall, light, or prop leaves', () => {
     const source = readFileSync(
@@ -94,10 +96,13 @@ describe('previewScene', () => {
     // two seams, one doorway each
     expect(preview.scene.doorGaps).toHaveLength(2);
     expect(preview.scene.wallRuns.length).toBeGreaterThan(0);
-    expect(preview.scene.props.map((p) => p.ref)).toEqual([
-      'dnd5e:props:brazier',
-      'dnd5e:props:pillar',
-    ]);
+    // Every non-monster placement in the toolkit's own tomb, in file
+    // order — read off the document rather than restated here, so
+    // re-authoring the fixture upstream cannot leave this test asserting
+    // a tomb that no longer exists.
+    expect(preview.scene.props.map((p) => p.ref)).toEqual(
+      tomb.place.filter((p) => !isMonsterRef(p.ref)).map((p) => p.ref)
+    );
     // rpg-project#261: the additive facing/offset fields change nothing
     // absent — every tomb prop still renders at its asset default,
     // centered. Named explicitly so a future field the golden equality

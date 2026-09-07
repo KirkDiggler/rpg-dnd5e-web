@@ -1,14 +1,19 @@
 import { useSessionActivate } from '@/api/useSessionActivate';
 import { useSessionAttack } from '@/api/useSessionAttack';
+import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
+import { useSessionReact } from '@/api/useSessionReact';
 import type { SessionRefreshKey } from '@/components/session/useCoalescedSessionRefreshes';
 import type {
   DicePresentationEvent,
   DicePresentationReleasedEvent,
 } from '@/components/ui/dice/dicePresentationEvent';
 import type { Event } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import type { DeathSaveResponse } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
   ClockKind,
+  DeathSaveContinuation,
+  ReactChoice,
   TargetKind,
   Verb,
   type Declaration,
@@ -16,6 +21,7 @@ import {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionEventDeliveryMetadata } from '../useSessionEventStream';
+import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
   isStaleDeclarationRefusal,
   selectCombatExperience,
@@ -30,6 +36,7 @@ import type {
 } from './types';
 import {
   attackResponseFact,
+  deathSaveResponseFact,
   useCombatPresentation,
 } from './useCombatPresentation';
 import { useCombatStoryPacing } from './useCombatStoryPacing';
@@ -70,6 +77,11 @@ export interface UseSessionCombatExperienceResult {
   story: readonly CombatExperienceStoryExchange[];
   debug: readonly string[];
   result?: CombatExperienceAttackOutcome;
+  /** Accepted provider result retained for the release/continuation layer. */
+  pendingDeathSaveResponse?: DeathSaveResponse;
+  /** Explicit presentation authority for current-state Death Save concealment. */
+  concealsDeathSaveTruth: boolean;
+  concealedDeathSavePresentationKey?: string;
   /** Targets whose attack roll has not been revealed on screen yet. The map
    * holds their downed reveal until it has — see `downedReveal.ts`. */
   unresolvedAttackTargets: ReadonlySet<string>;
@@ -78,12 +90,16 @@ export interface UseSessionCombatExperienceResult {
   diceWitnessRole: 'roller' | 'spectator';
   diceRollerName: string;
   pacingNotice: string | null;
-  onSelectDeclaration: (declaration: Declaration) => void;
+  endTurnBlocked: boolean;
+  /** `choice` is supplied only for a VERB_REACT declaration: the answer to
+   * an open reaction window. */
+  onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onTargetClick: (target: string) => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onDiceReleaseRequest: (event: DicePresentationReleasedEvent) => void;
   onDiceSemanticReleaseRequest: () => void;
+  onWitnessDiceSettlement: (presentationId: string) => void;
   /** Synchronous event-sequence authority revocation. */
   invalidateAuthority: () => void;
   /** Unified FAILED_PRECONDITION selector recovery used by Move too. */
@@ -163,9 +179,16 @@ export function useSessionCombatExperience({
   const [targeting, setTargeting] = useState(false);
   const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
   const [showTurnNotice, setShowTurnNotice] = useState(false);
+  const [pendingDeathSaveResponse, setPendingDeathSaveResponse] =
+    useState<DeathSaveResponse>();
   const attackInFlightRef = useRef(false);
+  const deathSaveInFlightRef = useRef(false);
+  const attemptedDeathSaveDeclarationIdRef = useRef<string | null>(null);
   const endTurnInFlightRef = useRef(false);
+  const automaticEndTurnRef = useRef(false);
+  const manualEndTurnBlockedRef = useRef(false);
   const activateInFlightRef = useRef(false);
+  const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
   const staleRecoveryRef = useRef<StaleRecovery | null>(null);
@@ -195,6 +218,7 @@ export function useSessionCombatExperience({
     memberNames: presentationMemberNames,
     memberRoles: presentationMemberRoles,
   });
+  manualEndTurnBlockedRef.current = presentation.blocksManualEndTurn;
   const pacing = useCombatStoryPacing({
     member,
     participants,
@@ -203,8 +227,10 @@ export function useSessionCombatExperience({
     result: presentation.result,
   });
   const { attack } = useSessionAttack();
+  const { deathSave } = useSessionDeathSave();
   const { activate } = useSessionActivate();
   const { endTurn } = useSessionEndTurn();
+  const { react } = useSessionReact();
 
   const invalidateAuthority = useCallback(() => {
     authorityRef.current = { ...authorityRef.current, fresh: false };
@@ -249,6 +275,27 @@ export function useSessionCombatExperience({
         refreshedWhy(declarations, recovery)
       ),
     });
+  }, [authorityFresh, declarations]);
+
+  // A selector is only fenced for the authoritative generation in which it
+  // was attempted. Stale/loading snapshots retain the fence because their
+  // last-good declarations cannot prove that generation advanced. A fresh
+  // snapshot that no longer carries the executable offer provides that proof,
+  // allowing a later generation to reuse even the same opaque selector.
+  useEffect(() => {
+    const attemptedId = attemptedDeathSaveDeclarationIdRef.current;
+    if (
+      !authorityFresh ||
+      attemptedId === null ||
+      declarations.some(
+        (declaration) =>
+          declaration.id === attemptedId &&
+          isDeathSaveExecutableShape(declaration, 'execute')
+      )
+    ) {
+      return;
+    }
+    attemptedDeathSaveDeclarationIdRef.current = null;
   }, [authorityFresh, declarations]);
 
   const { armedIsCurrent, presentationState } = useMemo(() => {
@@ -309,13 +356,71 @@ export function useSessionCombatExperience({
   }, [active, clock, member]);
 
   const onSelectDeclaration = useCallback(
-    (candidate: Declaration) => {
+    (candidate: Declaration, choice?: ReactChoice) => {
+      // THE ONE VERB THAT IS NOT DECLARED ON ITS OWNER'S TURN. Every other
+      // offer here is gated on the initiative standing with this member,
+      // which is exactly the state a reaction window is NOT in: the mover
+      // holds the turn and the fight is frozen on this viewer's answer. The
+      // freshness gate stays — an answer echoed from a stale Afford is still
+      // a stale selector, and the server refuses it — and so does the TURN
+      // clock, because no window is posed on the world clock.
+      const answeringWindow = candidate.verb === Verb.REACT;
       if (
         !mountedRef.current ||
         !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
-        authorityRef.current.active !== member
+        (!answeringWindow && authorityRef.current.active !== member)
       ) {
+        return;
+      }
+
+      if (answeringWindow) {
+        // UNSPECIFIED IS NOT A DEFAULT. The dock sends one of the two
+        // answers or nothing at all; guessing here would swing a reaction
+        // the player never chose.
+        if (choice === undefined || choice === ReactChoice.UNSPECIFIED) return;
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.REACT,
+          TargetKind.MEMBER
+        );
+        if (!current || reactInFlightRef.current) return;
+        reactInFlightRef.current = true;
+        setInteraction(EMPTY_INTERACTION);
+        setTargeting(false);
+        void (async () => {
+          try {
+            await react({
+              session,
+              member,
+              declarationId: current.id,
+              choice,
+            });
+            if (!mountedRef.current) return;
+            invalidateAuthority();
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          } catch (error) {
+            if (!mountedRef.current) return;
+            if (isStaleDeclarationRefusal(error)) {
+              recoverStaleDeclaration(current.id, Verb.REACT);
+            } else {
+              // Ambiguous either way: the answer may have committed and
+              // resumed the turn before the response was lost. Fail closed,
+              // keep the message, reconcile, and never retry — a replayed
+              // answer would be a second swing.
+              const notice = `Reaction failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              invalidateAuthority();
+              setInteraction({
+                ...EMPTY_INTERACTION,
+                changedOptionNotice: notice,
+              });
+              scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+            }
+          } finally {
+            reactInFlightRef.current = false;
+          }
+        })();
         return;
       }
 
@@ -333,6 +438,60 @@ export function useSessionCombatExperience({
           changedOptionNotice: null,
         });
         setTargeting(true);
+        return;
+      }
+
+      if (candidate.verb === Verb.DEATH_SAVE) {
+        if (!isDeathSaveExecutableShape(candidate, 'execute')) return;
+        const current = uniqueCurrentDeclaration(
+          declarationsRef.current,
+          candidate,
+          Verb.DEATH_SAVE,
+          TargetKind.NONE
+        );
+        if (
+          !current ||
+          !isDeathSaveExecutableShape(current, 'execute') ||
+          deathSaveInFlightRef.current ||
+          attemptedDeathSaveDeclarationIdRef.current === current.id
+        )
+          return;
+        setInteraction(EMPTY_INTERACTION);
+        setTargeting(false);
+        deathSaveInFlightRef.current = true;
+        void (async () => {
+          try {
+            const response = await deathSave({
+              session,
+              member,
+              declarationId: current.id,
+            });
+            if (!mountedRef.current) return;
+            attemptedDeathSaveDeclarationIdRef.current = current.id;
+            setPendingDeathSaveResponse(response);
+            presentation.acceptDeathSaveResponse(
+              deathSaveResponseFact({ session, member, response })
+            );
+            invalidateAuthority();
+            scheduleRefresh(['characterData', 'turn', 'afford']);
+          } catch (error) {
+            if (!mountedRef.current) return;
+            if (isStaleDeclarationRefusal(error)) {
+              recoverStaleDeclaration(current.id, Verb.DEATH_SAVE);
+            } else {
+              attemptedDeathSaveDeclarationIdRef.current = current.id;
+              const notice = `Death Save failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              invalidateAuthority();
+              setInteraction({
+                ...EMPTY_INTERACTION,
+                changedOptionNotice: notice,
+              });
+              scheduleRefresh(['characterData', 'turn', 'afford']);
+            }
+          } finally {
+            deathSaveInFlightRef.current = false;
+          }
+        })();
         return;
       }
 
@@ -376,7 +535,16 @@ export function useSessionCombatExperience({
         runActivateRef.current(candidate);
       }
     },
-    [member]
+    [
+      deathSave,
+      invalidateAuthority,
+      member,
+      presentation,
+      react,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
   );
 
   const onTargetClick = useCallback(
@@ -598,6 +766,7 @@ export function useSessionCombatExperience({
       if (
         !mountedRef.current ||
         endTurnInFlightRef.current ||
+        (manualEndTurnBlockedRef.current && !automaticEndTurnRef.current) ||
         !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
@@ -657,6 +826,53 @@ export function useSessionCombatExperience({
     ]
   );
 
+  const continuedDeathSavesRef = useRef(new Set<string>());
+  useEffect(() => {
+    const settled = presentation.settledDeathSave;
+    if (
+      !settled ||
+      continuedDeathSavesRef.current.has(settled.presentationId)
+    ) {
+      return;
+    }
+
+    if (settled.continuation === DeathSaveContinuation.END_TURN) {
+      if (!authorityFresh) return;
+      const candidates = declarations.filter(
+        (declaration) => declaration.verb === Verb.END_TURN
+      );
+      const endTurnDeclaration =
+        candidates.length === 1 ? candidates[0] : undefined;
+      if (
+        !endTurnDeclaration ||
+        !endTurnDeclaration.available ||
+        endTurnDeclaration.targetKind !== TargetKind.NONE
+      ) {
+        return;
+      }
+      continuedDeathSavesRef.current.add(settled.presentationId);
+      automaticEndTurnRef.current = true;
+      onEndTurn(endTurnDeclaration);
+      automaticEndTurnRef.current = false;
+      return;
+    }
+
+    continuedDeathSavesRef.current.add(settled.presentationId);
+    if (settled.continuation === DeathSaveContinuation.KEEP_TURN) {
+      scheduleRefresh(['characterData', 'turn', 'afford']);
+      return;
+    }
+    if (settled.continuation === DeathSaveContinuation.ALREADY_ADVANCED) {
+      scheduleRefresh(['characterData', 'turn', 'afford']);
+    }
+  }, [
+    authorityFresh,
+    declarations,
+    onEndTurn,
+    presentation.settledDeathSave,
+    scheduleRefresh,
+  ]);
+
   const acceptStreamEvent = useCallback(
     (event: Event, metadata: SessionEventDeliveryMetadata) => {
       if (!mountedRef.current) return;
@@ -677,18 +893,24 @@ export function useSessionCombatExperience({
       story: pacing.story,
       debug: presentation.debug,
       result: pacing.result,
+      pendingDeathSaveResponse,
+      concealsDeathSaveTruth: presentation.concealsDeathSaveTruth,
+      concealedDeathSavePresentationKey:
+        presentation.concealedDeathSavePresentationKey,
       unresolvedAttackTargets: presentation.unresolvedAttackTargets,
       diceEvents: presentation.diceEvents,
       diceSemanticFallback: presentation.semanticFallback,
       diceWitnessRole: presentation.diceWitnessRole,
       diceRollerName: presentation.diceRollerName,
       pacingNotice: pacing.notice,
+      endTurnBlocked: presentation.blocksManualEndTurn,
       onSelectDeclaration,
       onTargetClick,
       onEndTurn,
       onLogModeChange: setLogMode,
       onDiceReleaseRequest: presentation.onDiceReleaseRequest,
       onDiceSemanticReleaseRequest: presentation.onSemanticReleaseRequest,
+      onWitnessDiceSettlement: presentation.onWitnessDiceSettlement,
       invalidateAuthority,
       recoverStaleDeclaration,
       acceptStreamEvent,
@@ -703,13 +925,18 @@ export function useSessionCombatExperience({
       pacing.notice,
       pacing.result,
       pacing.story,
+      pendingDeathSaveResponse,
       phase,
+      presentation.blocksManualEndTurn,
+      presentation.concealedDeathSavePresentationKey,
+      presentation.concealsDeathSaveTruth,
       presentation.debug,
       presentation.diceEvents,
       presentation.diceRollerName,
       presentation.diceWitnessRole,
       presentation.onDiceReleaseRequest,
       presentation.onSemanticReleaseRequest,
+      presentation.onWitnessDiceSettlement,
       presentation.semanticFallback,
       presentation.unresolvedAttackTargets,
       presentationState,

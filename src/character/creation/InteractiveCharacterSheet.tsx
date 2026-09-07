@@ -1,3 +1,9 @@
+import {
+  characterCustomizationRaceLabel,
+  resolveCharacterCustomizationModel,
+} from '@/character/customization/characterCustomization';
+import { summarizeHair } from '@/character/customization/hairSummary';
+import { outfitDefaultColors } from '@/character/customization/outfitCustomization';
 import type { Step } from '@/components/ProgressTracker';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import { useToast } from '@/components/ui';
@@ -189,6 +195,30 @@ export function InteractiveCharacterSheet({
   }, [draft.draft?.name]);
   const { setBackground } = draft;
   const { addToast } = useToast();
+  const selectedClassRef = isClassInfo(draft.classInfo)
+    ? draft.classInfo.name
+    : undefined;
+  const canCustomizeHair = Boolean(
+    resolveCharacterCustomizationModel(draft.raceInfo?.name, selectedClassRef)
+  );
+  const customizationRaceLabel = characterCustomizationRaceLabel(
+    draft.raceInfo?.name
+  );
+  const hairSummary = draft.draft?.appearance
+    ? summarizeHair(draft.draft.appearance.hair, draft.raceInfo?.name)
+    : undefined;
+  const gearDefaults = outfitDefaultColors(selectedClassRef);
+  const rgb24 = (value: number | undefined, fallback: string | undefined) =>
+    value !== undefined &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 0xffffff
+      ? `#${value.toString(16).padStart(6, '0').toUpperCase()}`
+      : fallback;
+
+  useEffect(() => {
+    if (!canCustomizeHair) setIsAppearanceModalOpen(false);
+  }, [canCustomizeHair]);
 
   // Convert draft choices to modal format
   const structuredClassChoices = useMemo(() => {
@@ -1460,107 +1490,104 @@ export function InteractiveCharacterSheet({
                 )}
               </div>
 
-              {/* Appearance Selection */}
-              <div className="space-y-4">
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  className="cursor-pointer p-4 rounded-lg border-2 border-dashed transition-all hover:border-solid"
-                  style={{
-                    backgroundColor: draft.draft?.appearance
-                      ? 'var(--card-bg)'
-                      : 'var(--bg-secondary)',
-                    borderColor: draft.draft?.appearance
-                      ? 'var(--accent-primary)'
-                      : 'var(--border-primary)',
-                    cursor:
-                      !draft.draftId || draft.loading || draft.saving
-                        ? 'not-allowed'
-                        : 'pointer',
-                    opacity:
-                      !draft.draftId || draft.loading || draft.saving ? 0.6 : 1,
-                  }}
-                  onClick={() => {
-                    if (!draft.loading && !draft.saving && draft.draftId) {
-                      setIsAppearanceModalOpen(true);
-                    }
-                  }}
-                >
-                  <div className="text-center space-y-2">
-                    <div className="text-3xl">🎨</div>
-                    <div>
-                      <h3
-                        className="text-lg font-bold"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {draft.draft?.appearance
-                          ? 'Appearance'
-                          : 'Customize Appearance'}
-                      </h3>
-                      <p
-                        className="text-xs"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        {draft.draft?.appearance
-                          ? 'Click to change'
-                          : 'Set colors'}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Show appearance preview if set */}
-                {draft.draft?.appearance && (
-                  <div
-                    className="rounded-lg p-3 border"
+              {/* Production hair customization is offered only when the generated
+                  profile/model resolver confirms the exact race/class. */}
+              {canCustomizeHair && customizationRaceLabel && (
+                <div className="space-y-4">
+                  <motion.button
+                    type="button"
+                    aria-label={`Customize ${customizationRaceLabel} appearance`}
+                    whileHover={{ scale: 1.02 }}
+                    disabled={!draft.draftId || draft.loading || draft.saving}
+                    className="w-full cursor-pointer rounded-lg border-2 border-dashed p-4 transition-all hover:border-solid focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
                     style={{
-                      backgroundColor: 'var(--bg-secondary)',
-                      borderColor: 'var(--border-primary)',
+                      backgroundColor: draft.draft?.appearance
+                        ? 'var(--card-bg)'
+                        : 'var(--bg-secondary)',
+                      borderColor: draft.draft?.appearance
+                        ? 'var(--accent-primary)'
+                        : 'var(--border-primary)',
                     }}
+                    onClick={() => setIsAppearanceModalOpen(true)}
                   >
-                    <h4
-                      className="text-xs font-semibold mb-2"
-                      style={{ color: 'var(--text-primary)' }}
-                    >
-                      Color Scheme
-                    </h4>
-                    <div className="flex gap-2 justify-center">
-                      <div
-                        className="w-6 h-6 rounded border"
-                        style={{
-                          backgroundColor: draft.draft.appearance.skinTone,
-                          borderColor: 'var(--border-primary)',
-                        }}
-                        title="Skin Tone"
-                      />
-                      <div
-                        className="w-6 h-6 rounded border"
-                        style={{
-                          backgroundColor: draft.draft.appearance.primaryColor,
-                          borderColor: 'var(--border-primary)',
-                        }}
-                        title="Primary Color"
-                      />
-                      <div
-                        className="w-6 h-6 rounded border"
-                        style={{
-                          backgroundColor:
-                            draft.draft.appearance.secondaryColor,
-                          borderColor: 'var(--border-primary)',
-                        }}
-                        title="Accent Color"
-                      />
-                      <div
-                        className="w-6 h-6 rounded border"
-                        style={{
-                          backgroundColor: draft.draft.appearance.eyeColor,
-                          borderColor: 'var(--border-primary)',
-                        }}
-                        title="Eye Color"
-                      />
+                    <div className="space-y-2 text-center">
+                      <div aria-hidden="true" className="text-3xl">
+                        🧔
+                      </div>
+                      <div>
+                        <h3
+                          className="text-lg font-bold"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {customizationRaceLabel} Appearance
+                        </h3>
+                        <p
+                          className="text-xs"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {draft.draft?.appearance
+                            ? 'Click to change'
+                            : 'Choose hair styles and gear colors'}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  </motion.button>
+
+                  {hairSummary && (
+                    <div
+                      className="space-y-1 rounded-lg border p-3 text-xs"
+                      style={{
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderColor: 'var(--border-primary)',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <p>Scalp: {hairSummary.scalp}</p>
+                      <p>Facial: {hairSummary.facialHair}</p>
+                      <div className="flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="h-5 w-5 rounded border"
+                          style={{
+                            backgroundColor: hairSummary.colorHex,
+                            borderColor: 'var(--border-primary)',
+                          }}
+                        />
+                        <span>
+                          {hairSummary.colorHex} · roughness{' '}
+                          {hairSummary.roughness.toFixed(2)}
+                        </span>
+                      </div>
+                      {gearDefaults && (
+                        <div className="flex items-center gap-2">
+                          {[
+                            rgb24(
+                              draft.draft?.appearance?.outfit?.primaryColorSrgb,
+                              gearDefaults.primaryColor
+                            ),
+                            rgb24(
+                              draft.draft?.appearance?.outfit
+                                ?.secondaryColorSrgb,
+                              gearDefaults.secondaryColor
+                            ),
+                          ].map((color, index) => (
+                            <span
+                              key={index}
+                              aria-label={`Gear ${index === 0 ? 'primary' : 'secondary'} ${color}`}
+                              className="h-5 w-5 rounded border"
+                              style={{
+                                backgroundColor: color,
+                                borderColor: 'var(--border-primary)',
+                              }}
+                            />
+                          ))}
+                          <span>Gear colors</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1859,22 +1886,23 @@ export function InteractiveCharacterSheet({
       />
 
       {/* Appearance Selection Modal */}
-      <AppearanceSelectionModal
-        isOpen={isAppearanceModalOpen}
-        currentAppearance={draft.draft?.appearance}
-        characterClass={
-          isClassInfo(draft.classInfo) ? draft.classInfo.classId : undefined
-        }
-        onConfirm={async (appearance) => {
-          await draft.updateAppearance(appearance);
-          addToast({
-            type: 'success',
-            message: 'Appearance updated',
-            duration: 2000,
-          });
-        }}
-        onClose={() => setIsAppearanceModalOpen(false)}
-      />
+      {canCustomizeHair && (
+        <AppearanceSelectionModal
+          isOpen={isAppearanceModalOpen}
+          raceRefId={draft.raceInfo?.name}
+          classRefId={selectedClassRef}
+          currentAppearance={draft.draft?.appearance}
+          onConfirm={async (appearance) => {
+            await draft.updateAppearance(appearance);
+            addToast({
+              type: 'success',
+              message: 'Appearance updated',
+              duration: 2000,
+            });
+          }}
+          onClose={() => setIsAppearanceModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

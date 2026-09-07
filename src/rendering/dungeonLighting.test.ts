@@ -121,7 +121,6 @@ describe('buildDungeonLightingFacts', () => {
       [],
       'invalid-intensity',
     ],
-    ['unowned floor', [region('room', ['0,0,0'])], [], 'unowned-floor-cells'],
     [
       'source outside region',
       [region('room', ['0,0,0'])],
@@ -131,11 +130,7 @@ describe('buildDungeonLightingFacts', () => {
   ] as const)(
     'rejects %s with the exact fallback reason',
     (_label, regions, sources, reason) => {
-      const facts = buildDungeonLightingFacts(
-        ['0,0,0', ...(reason === 'unowned-floor-cells' ? ['1,0,0'] : [])],
-        regions,
-        sources
-      );
+      const facts = buildDungeonLightingFacts(['0,0,0'], regions, sources);
       expect(facts.fallbackReason).toBe(reason);
       expect(facts.sources).toEqual([]);
     }
@@ -313,6 +308,59 @@ describe('resolveDungeonLighting source budget and floor pools', () => {
     ]);
   });
 
+  it('combines authored composition lights before applying the same scene-wide budget', () => {
+    const cellKeys = Array.from({ length: 8 }, (_, index) => `cell-${index}`);
+    const facts = buildDungeonLightingFacts(
+      cellKeys,
+      [region('room', cellKeys)],
+      cellKeys.map((cellKey, index) =>
+        source(`dungeon-${index}`, 'dnd5e:props:brazier', cellKey, [
+          10 + index,
+          0,
+          0,
+        ])
+      )
+    );
+    const authored = Array.from({ length: 8 }, (_, index) => ({
+      key: `composition:p${index}:part`,
+      compositionId: 'lit-composition',
+      placementId: `p${index}`,
+      partId: 'part',
+      position: [index, 1, 0] as const,
+      color: '#ff9d52',
+      intensity: 1,
+      distance: 3,
+    }));
+
+    const plan = resolveDungeonLighting(facts, { x: 0, z: 0 }, authored);
+    expect(plan.pointLights).toHaveLength(12);
+    expect(plan.pointLights.slice(0, 8).map((light) => light.key)).toEqual(
+      authored.map((light) => light.key)
+    );
+    expect(plan.diagnostics).toEqual([
+      '12 of 16 placed light sources active near this view',
+    ]);
+  });
+
+  it('retains legacy ambient lighting while rendering explicit authored sources', () => {
+    const facts = buildDungeonLightingFacts([], [], []);
+    const plan = resolveDungeonLighting(facts, { x: 0, z: 0 }, [
+      {
+        key: 'composition:placement:part',
+        compositionId: 'composition',
+        placementId: 'placement',
+        partId: 'part',
+        position: [1, 2, 3],
+        color: '#abcdef',
+        intensity: 2,
+        distance: 4,
+      },
+    ]);
+    expect(plan.mode).toBe('legacy');
+    expect(plan.ambientIntensity).toBe(0.6);
+    expect(plan.pointLights).toHaveLength(1);
+  });
+
   it('clips each selected floor pool to the source region', () => {
     const facts = buildDungeonLightingFacts(
       ['0,0,0', '1,-1,0'],
@@ -333,5 +381,142 @@ describe('resolveDungeonLighting source budget and floor pools', () => {
     expect(pools.get('1,-1,0')?.map(({ position }) => position)).toEqual([
       [1, DUNGEON_SURFACE_Y + 1.2, 0],
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plain floor is lit like the floor beside it (rpg-project#360, design §2.1).
+// An ownerless floor cell takes the light of the NEAREST owned floor cell.
+// This replaced a bail that dropped the WHOLE dungeon to legacy lighting the
+// moment any floor cell had no region — a guard written when that was
+// impossible, and impossible is exactly what scenery stopped being.
+// ---------------------------------------------------------------------------
+
+describe('ownerless floor takes the nearest owned cell’s light', () => {
+  /** A row of adjacent hexes: step (1,-1,0) from the origin. */
+  const row = (n: number) =>
+    Array.from({ length: n }, (_, i) => `${i},${-i},0`);
+  const FOCUS = { x: 0, z: 0 };
+
+  it('leaves every OWNED cell byte-identical to the pre-scenery answer', () => {
+    const cells = row(3);
+    const regions = [
+      region('bright', [cells[0]], 0.6),
+      region('dark', [cells[2]], 0.15),
+    ];
+    const before = buildDungeonLightingFacts([cells[0], cells[2]], regions, []);
+    // The same document with one scenery cell painted between them.
+    const after = buildDungeonLightingFacts(cells, regions, []);
+
+    for (const owned of [cells[0], cells[2]]) {
+      expect(after.intensityByCell.get(owned)).toBe(
+        before.intensityByCell.get(owned)
+      );
+      expect(after.regionByCell.get(owned)).toBe(
+        before.regionByCell.get(owned)
+      );
+    }
+    expect(after.mode).toBe('crypt');
+    expect(after.fallbackReason).toBeNull();
+  });
+
+  it('gives a scenery cell its neighbour’s intensity, and its floor pools with it', () => {
+    const cells = row(2);
+    const facts = buildDungeonLightingFacts(
+      cells,
+      [region('bright', [cells[0]], 0.6)],
+      [source('torch', 'dnd5e:props:brazier', cells[0], [0, 0, 0])]
+    );
+    expect(facts.intensityByCell.get(cells[1])).toBe(0.6);
+    // The REGION is inherited too, so the strip is not an unpooled fringe
+    // beside pooled floor — the tell this design exists to remove.
+    expect(facts.regionByCell.get(cells[1])).toBe('bright');
+    const plan = resolveDungeonLighting(facts, FOCUS);
+    expect(plan.floorExposureByCell.get(cells[1])).toBe(0.6);
+    expect(plan.floorPoolsByCell.get(cells[1])?.length).toBe(1);
+  });
+
+  it('splits a strip between two rooms of different light at the flood boundary, deterministically', () => {
+    const cells = row(5);
+    const bright = region('bright', [cells[0]], 0.6);
+    const dark = region('dark', [cells[4]], 0.15);
+    const expected = {
+      [cells[1]]: 0.6, // one step from bright, three from dark
+      [cells[2]]: 0.6, // two from each — the tie goes to the earlier atlas cell
+      [cells[3]]: 0.15, // one step from dark
+    };
+
+    // Listing the regions the other way round must not change the answer:
+    // the tie is broken by ATLAS cell order, not by iteration order.
+    for (const regions of [
+      [bright, dark],
+      [dark, bright],
+    ]) {
+      const facts = buildDungeonLightingFacts(cells, regions, []);
+      for (const [cellKey, intensity] of Object.entries(expected)) {
+        expect(facts.intensityByCell.get(cellKey)).toBe(intensity);
+      }
+    }
+  });
+
+  it('breaks a tie by ATLAS cell order, so reversing the atlas flips the split', () => {
+    // Same geometry, same regions, the floor list reversed. The contested
+    // middle cell is two steps from each room, so the only thing that can
+    // decide it is which owned cell the atlas lists first.
+    const cells = row(5);
+    const regions = [
+      region('bright', [cells[0]], 0.6),
+      region('dark', [cells[4]], 0.15),
+    ];
+    expect(
+      buildDungeonLightingFacts(cells, regions, []).intensityByCell.get(
+        cells[2]
+      )
+    ).toBe(0.6);
+    expect(
+      buildDungeonLightingFacts(
+        [...cells].reverse(),
+        regions,
+        []
+      ).intensityByCell.get(cells[2])
+    ).toBe(0.15);
+  });
+
+  it('leaves an isolated scenery cell to the scene’s ambient', () => {
+    // An island: floor, but no owned floor reachable through floor.
+    const island = '9,-9,0';
+    const facts = buildDungeonLightingFacts(
+      ['0,0,0', island],
+      [region('bright', ['0,0,0'], 0.6)],
+      []
+    );
+    // Unlisted in both maps is what "ambient" has always meant here.
+    expect(facts.intensityByCell.has(island)).toBe(false);
+    expect(facts.regionByCell.has(island)).toBe(false);
+    expect(facts.mode).toBe('crypt');
+  });
+
+  it('never shows the legacy banner for ownerless floor', () => {
+    const plan = resolveDungeonLighting(
+      buildDungeonLightingFacts(row(4), [region('bright', ['0,0,0'], 0.6)], []),
+      FOCUS
+    );
+    expect(plan.mode).toBe('crypt');
+    expect(plan.diagnostics).toEqual([]);
+  });
+
+  it('accepts a light source standing ON scenery, attributed to the light it inherited', () => {
+    // Props may sit on scenery (design §2.4/F2), and a brazier is a prop.
+    // Before the flood this was `source-outside-region` and took the whole
+    // dungeon to legacy with it.
+    const cells = row(2);
+    const facts = buildDungeonLightingFacts(
+      cells,
+      [region('bright', [cells[0]], 0.6)],
+      [source('torch', 'dnd5e:props:brazier', cells[1], [1, 0, 0])]
+    );
+    expect(facts.fallbackReason).toBeNull();
+    expect(facts.sources).toHaveLength(1);
+    expect(facts.sources[0]?.regionId).toBe('bright');
   });
 });

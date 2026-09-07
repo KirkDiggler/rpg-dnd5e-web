@@ -1,7 +1,9 @@
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
   DamageType,
+  DissolveKind,
   DoorState,
+  PlacementKind,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { describe, expect, it } from 'vitest';
 import { damageTypeWord, formatBeat } from './combatBeat';
@@ -243,5 +245,43 @@ describe('formatBeat: the door and the end (rpg-project#268)', () => {
         names
       )
     ).toBe('The encounter is over.');
+  });
+});
+
+describe('the hold-out beats on the beat line (rpg-project#375 §5)', () => {
+  it('a fight that dissolved BY_STANCE is said differently from one a side lost', () => {
+    const byStance = event({
+      case: 'fightEnded',
+      value: { cause: DissolveKind.BY_STANCE } as never,
+    });
+    const byDefeat = event({
+      case: 'fightEnded',
+      value: { cause: DissolveKind.BY_DEFEAT } as never,
+    });
+    expect(formatBeat(byStance, 'char-1', names)).toBe(
+      'The fight dissolves — the sides are no longer hostile.'
+    );
+    expect(formatBeat(byDefeat, 'char-1', names)).toBe('The fight is over.');
+  });
+
+  it('narrates the stance and arrival beats through the one sentence module', () => {
+    const stance = event({
+      case: 'stanceChanged',
+      value: { between: ['goblins', 'party'], stance: 'neutral' } as never,
+    });
+    expect(formatBeat(stance, 'char-1', names)).toBe(
+      'The goblins and the party are no longer hostile.'
+    );
+    const arrival = event({
+      case: 'arrived',
+      value: {
+        id: 'reinforcement-1',
+        kind: PlacementKind.MONSTER,
+        cell: { x: 1, y: 4 },
+      } as never,
+    });
+    expect(formatBeat(arrival, 'char-1', names)).toBe(
+      'The reinforcement 1 arrives at 1,4.'
+    );
   });
 });

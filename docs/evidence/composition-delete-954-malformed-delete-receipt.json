@@ -1,0 +1,26 @@
+{
+  "id": "composition_f157b53f-4c46-4b36-999f-626a3e94bf13",
+  "worldId": "test-world",
+  "expectedName": "API 8090 Composition Proof - ce25de9",
+  "requests": [
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/ListCompositions",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/ListCompositions",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/DeleteComposition",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/ListCompositions",
+      "status": 200
+    }
+  ],
+  "confirmation": "Permanently delete “composition_f157b53f-4c46-4b36-999f-626a3e94bf13”? This cannot be undone. Dungeon placements that use it will remain as deleted or missing references until you remove them explicitly.Cancel delete composition_f157b53f-4c46-4b36-999f-626a3e94bf13Permanently delete composition_f157b53f-4c46-4b36-999f-626a3e94bf13",
+  "deleteHttpStatus": 200,
+  "listExcluded": true
+}

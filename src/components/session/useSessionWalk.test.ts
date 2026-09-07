@@ -165,6 +165,7 @@ describe('useSessionWalk', () => {
   });
 
   it('reports successful Move acceptance before animation completion', async () => {
+    const routeBegan = vi.fn();
     hoisted.moveFn.mockResolvedValue({
       steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
     });
@@ -179,7 +180,8 @@ describe('useSessionWalk', () => {
         'v1.move',
         undefined,
         () => true,
-        onMoveAccepted
+        onMoveAccepted,
+        routeBegan
       )
     );
 
@@ -187,16 +189,17 @@ describe('useSessionWalk', () => {
 
     await waitFor(() => expect(onMoveAccepted).toHaveBeenCalledOnce());
     expect(result.current.busy).toBe(true);
-    expect(result.current.moveSeq).toBe(1);
+    await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
   });
 
-  it('a resolved Move sets movePath/moveSeq from the returned steps and jumps display position to the last step, staying busy', async () => {
+  it('a resolved Move hands the returned steps to the move controller and jumps display position to the last step, staying busy', async () => {
     hoisted.moveFn.mockResolvedValue({
       steps: [
         { position: { x: 1, y: 0 }, seq: 5n },
         { position: { x: 2, y: -1 }, seq: 6n },
       ],
     });
+    const routeBegan = vi.fn();
     const { result } = renderHook(() =>
       useSessionWalk(
         'enc-1',
@@ -204,14 +207,18 @@ describe('useSessionWalk', () => {
         corridorIndex(),
         { x: 0, y: 0 } as never,
         vi.fn(),
-        ''
+        '',
+        undefined,
+        undefined,
+        undefined,
+        routeBegan
       )
     );
 
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
 
-    await waitFor(() => expect(result.current.moveSeq).toBe(1));
-    expect(result.current.movePath).toEqual([
+    await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
+    expect(routeBegan).toHaveBeenCalledWith([
       { x: 1, y: -1, z: 0 },
       { x: 2, y: -1, z: -1 },
     ]);
@@ -224,6 +231,7 @@ describe('useSessionWalk', () => {
     hoisted.moveFn.mockResolvedValue({
       steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
     });
+    const routeBegan = vi.fn();
     const { result } = renderHook(() =>
       useSessionWalk(
         'enc-1',
@@ -231,17 +239,22 @@ describe('useSessionWalk', () => {
         corridorIndex(),
         { x: 0, y: 0 } as never,
         vi.fn(),
-        ''
+        '',
+        undefined,
+        undefined,
+        undefined,
+        routeBegan
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
-    await waitFor(() => expect(result.current.moveSeq).toBe(1));
-    expect(result.current.movePath).toEqual([{ x: 1, y: -1, z: 0 }]);
+    await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
+    expect(routeBegan).toHaveBeenCalledWith([{ x: 1, y: -1, z: 0 }]);
     expect(result.current.moveError).toBeNull();
   });
 
   it('a Move RPC that returns zero steps clears busy without animating', async () => {
     hoisted.moveFn.mockResolvedValue({ steps: [] });
+    const routeBegan = vi.fn();
     const { result } = renderHook(() =>
       useSessionWalk(
         'enc-1',
@@ -249,12 +262,16 @@ describe('useSessionWalk', () => {
         corridorIndex(),
         { x: 0, y: 0 } as never,
         vi.fn(),
-        ''
+        '',
+        undefined,
+        undefined,
+        undefined,
+        routeBegan
       )
     );
     act(() => result.current.walkTo({ x: 2, y: -1, z: -1 }));
     await waitFor(() => expect(result.current.busy).toBe(false));
-    expect(result.current.moveSeq).toBeUndefined();
+    expect(routeBegan).not.toHaveBeenCalled();
   });
 
   it('a Move RPC failure sets moveError and clears busy, no crash', async () => {
@@ -337,10 +354,11 @@ describe('useSessionWalk', () => {
     expect(result.current.notYourTurn).toBe(false);
   });
 
-  it('onWalkAnimationComplete for the current moveSeq reconciles via refetchWhere and then clears busy', async () => {
+  it('onWalkAnimationComplete reconciles via refetchWhere and then clears busy', async () => {
     hoisted.moveFn.mockResolvedValue({
       steps: [{ position: { x: 1, y: 0 }, seq: 5n }],
     });
+    const routeBegan = vi.fn();
     let resolveRefetch: () => void = () => {};
     const refetchWhere = vi.fn(
       () =>
@@ -355,13 +373,17 @@ describe('useSessionWalk', () => {
         corridorIndex(),
         { x: 0, y: 0 } as never,
         refetchWhere,
-        ''
+        '',
+        undefined,
+        undefined,
+        undefined,
+        routeBegan
       )
     );
     act(() => result.current.walkTo({ x: 1, y: -1, z: 0 }));
-    await waitFor(() => expect(result.current.moveSeq).toBe(1));
+    await waitFor(() => expect(routeBegan).toHaveBeenCalledOnce());
 
-    act(() => result.current.onWalkAnimationComplete(1));
+    act(() => result.current.onWalkAnimationComplete());
     expect(refetchWhere).toHaveBeenCalledTimes(1);
     expect(result.current.busy).toBe(true); // still, until refetch resolves
 
@@ -372,7 +394,7 @@ describe('useSessionWalk', () => {
     await waitFor(() => expect(result.current.busy).toBe(false));
   });
 
-  it('onWalkAnimationComplete for a stale/mismatched seq is ignored', () => {
+  it('onWalkAnimationComplete with no walk in flight is ignored', () => {
     const refetchWhere = vi.fn();
     const { result } = renderHook(() =>
       useSessionWalk(
@@ -383,7 +405,10 @@ describe('useSessionWalk', () => {
         refetchWhere
       )
     );
-    act(() => result.current.onWalkAnimationComplete(999));
+    // The seq guard this replaced did the same job: a completion that is not
+    // this hook's own in-flight walk (a peer's, or a stray callback) must
+    // never reconcile the local player's position.
+    act(() => result.current.onWalkAnimationComplete());
     expect(refetchWhere).not.toHaveBeenCalled();
   });
 

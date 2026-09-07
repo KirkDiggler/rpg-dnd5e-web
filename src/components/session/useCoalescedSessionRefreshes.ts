@@ -7,7 +7,8 @@ export type SessionRefreshKey =
   | 'view'
   | 'where'
   | 'roster'
-  | 'doors';
+  | 'doors'
+  | 'atlas';
 
 export type SessionRefreshCallbacks = Readonly<
   Record<SessionRefreshKey, () => Promise<void>>

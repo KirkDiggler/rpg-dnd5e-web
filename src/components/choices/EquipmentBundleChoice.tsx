@@ -83,14 +83,6 @@ function CategorySelector({
     onSelect(categoryIndex, selectedItems);
   };
 
-  // Check for duplicate selections across slots
-  const hasDuplicates = (() => {
-    const selectedIds = selectedBySlot.filter(
-      (id): id is string => id !== null
-    );
-    return new Set(selectedIds).size !== selectedIds.length;
-  })();
-
   return (
     <div style={{ marginTop: '8px' }}>
       <label
@@ -126,16 +118,6 @@ function CategorySelector({
                 } --`}
                 options={options}
                 selectedId={selectedBySlot[slotIndex]}
-                // The toolkit validates uniqueness per category requirement,
-                // not across independent category choices.
-                disabledOptionIds={
-                  new Set(
-                    selectedBySlot.filter(
-                      (id, index): id is string =>
-                        index !== slotIndex && id !== null
-                    )
-                  )
-                }
                 onChange={(value) => handleSlotChange(slotIndex, value)}
               />
               {selectedItem?.equipmentDetail && (
@@ -150,22 +132,6 @@ function CategorySelector({
           );
         })}
       </div>
-      {hasDuplicates && (
-        <div
-          role="alert"
-          style={{
-            marginTop: '8px',
-            padding: '8px 12px',
-            backgroundColor: 'rgba(251, 191, 36, 0.1)',
-            border: '1px solid var(--border-primary)',
-            borderRadius: '4px',
-            fontSize: '12px',
-            color: 'var(--text-muted)',
-          }}
-        >
-          ⚠️ Select a different item in each slot before continuing.
-        </div>
-      )}
     </div>
   );
 }

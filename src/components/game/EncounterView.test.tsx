@@ -1591,6 +1591,7 @@ describe('EncounterView equip/unequip (rpg-dnd5e-web#571)', () => {
                           iconKey: '',
                           kind: 'weapon',
                           slotKeys: ['main_hand', 'off_hand'],
+                          quantity: 1,
                         },
                         {
                           ref: { module: 'dnd5e', type: 'item', id: 'shield' },
@@ -1599,6 +1600,7 @@ describe('EncounterView equip/unequip (rpg-dnd5e-web#571)', () => {
                           iconKey: '',
                           kind: 'shield',
                           slotKeys: ['off_hand'],
+                          quantity: 1,
                         },
                       ],
                       slots: [

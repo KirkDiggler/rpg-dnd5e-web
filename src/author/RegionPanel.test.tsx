@@ -17,6 +17,7 @@ describe('RegionPanel', () => {
       <RegionPanel
         region={region}
         takenIds={new Set(['tomb'])}
+        isDerived={false}
         onChange={onChange}
         onRemove={() => {}}
       />
@@ -43,5 +44,38 @@ describe('RegionPanel', () => {
       target: { value: 'hall-2' },
     });
     expect(onChange).toHaveBeenLastCalledWith({ id: 'hall-2' });
+  });
+
+  it('the concealed checkbox reflects the doc and reports both directions (rpg-project#351)', () => {
+    const onChange = vi.fn();
+    render(
+      <RegionPanel
+        region={region}
+        takenIds={new Set()}
+        isDerived={false}
+        onChange={onChange}
+        onRemove={() => {}}
+      />
+    );
+    const checkbox = screen.getByLabelText('concealed') as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    fireEvent.click(checkbox);
+    expect(onChange).toHaveBeenLastCalledWith({ concealed: true });
+
+    onChange.mockClear();
+    render(
+      <RegionPanel
+        region={{ ...region, concealed: true }}
+        takenIds={new Set()}
+        isDerived={false}
+        onChange={onChange}
+        onRemove={() => {}}
+      />
+    );
+    const checkboxes = screen.getAllByLabelText('concealed');
+    const concealedOne = checkboxes.at(-1) as HTMLInputElement;
+    expect(concealedOne.checked).toBe(true);
+    fireEvent.click(concealedOne);
+    expect(onChange).toHaveBeenLastCalledWith({ concealed: false });
   });
 });

@@ -44,7 +44,12 @@
  * falling back to the ground plane's own hit otherwise.
  */
 
+import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
+import type { CompositionSource } from '@/compositions/compositionSource';
+import { useCameraDials } from '@/feel/useFeelDials';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
+import { refId } from '@/utils/refs';
+import type { HairCustomization } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/customization/v1alpha1/types_pb';
 import type {
   DoorInfo,
   PublicMemberInfo,
@@ -60,19 +65,25 @@ import {
   type ReactNode,
 } from 'react';
 import * as THREE from 'three';
-import { readCameraDials } from '../hex-grid/cameraDials';
 import { HexEntity } from '../hex-grid/HexEntity';
 import { coordToKey, cubeToWorld, type CubeCoord } from '../hex-grid/hexMath';
 import type { MainHandPresentation } from '../hex-grid/mainHandPresentation';
+import type { OffHandPresentation } from '../hex-grid/offHandEquipment';
 import { PathPreview } from '../hex-grid/PathPreview';
 import { useCameraControls } from '../hex-grid/useCameraControls';
 import { useHexInteraction } from '../hex-grid/useHexInteraction';
 import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
+import { factionColors } from './factionColor';
+import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator';
+import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
+import { startAzimuth } from './startAzimuth';
 import { useMoveIndicator } from './useMoveIndicator';
+
+const EMPTY_ROSTER: ReadonlyMap<string, PublicMemberInfo> = new Map();
 
 /** Matches `HexGrid.tsx`'s own invisible ground plane — big enough to
  * cover any dungeon this route draws; only its raycast target, never
@@ -92,41 +103,70 @@ const ATTACKABLE_RING_COLOR = '#f97316';
 // is the BASE value so the rendered ring lands at the intended ~0.22.
 const ATTACKABLE_RING_OPACITY = 0.15;
 
+/** The mover a reaction window is posed against (rpg-project#316) — a
+ * DIFFERENT hue from the in-reach rings on purpose. Those say "you may hit
+ * this"; this one says "this one is leaving, and the fight is waiting on
+ * you", which is a question and not an inventory. Violet reads as neither
+ * the attackable orange nor the movement preview. */
+const REACTION_MOVER_RING_COLOR = '#a78bfa';
+/** Brighter than the passive in-reach ring, and for the same reason: it is
+ * the one thing on the board being asked about. `PathPreview` multiplies a
+ * single-cell path's opacity by 1.5x, so this lands at ~0.45. */
+const REACTION_MOVER_RING_OPACITY = 0.3;
+
 /**
  * The model-resolving id inside an authored monster ref —
  * "dnd5e:monsters:skeleton" -> "skeleton", the vocabulary
  * `resolveMonsterModelUrl` already speaks (rpg-project#264: the roster's
  * authored ref replaces deriving this by stripping the subject's ordinal;
  * the derivation survives only as the missing-entry fallback above).
- * `undefined` in, or a ref with no segments, is `undefined` out.
+ * `undefined` in, or a string that is not a ref, is `undefined` out.
  */
 function monsterRefIdFrom(monsterRef: string | undefined): string | undefined {
   if (!monsterRef) return undefined;
-  const segment = monsterRef.split(':').pop();
-  return segment || undefined;
+  return refId(monsterRef) ?? undefined;
 }
 
 export interface SessionCanvasProps {
   scene: Scene3D;
   hexSize: number;
+  compositionSource?: CompositionSource;
   characterId: string;
   /** Public roster identity; never owner-private CharacterData. */
   characterName: string;
   /** Public roster body ref; private CharacterData does not choose models. */
   classRefId: string | undefined;
+  /** Public roster race ref; private CharacterData does not choose models. */
+  raceRefId?: string;
+  /** Owner Appearance and peer PublicMemberInfo.customization share this
+   * complete structural container. The legacy hair prop remains test-only
+   * compatibility for older callers. */
+  localCustomization?: CharacterCustomizationContainer;
+  localHair?: HairCustomization;
+  /** Public turn-participant standing for the local player; never derived from
+   * owner-private HP state. */
+  localIsDowned?: boolean;
   /** Owner-authoritative equipped main-hand presentation for the local player.
    * Never applied to `otherMembers`, whose equipment is not public today. */
   mainHandPresentation?: MainHandPresentation;
+  /** Owner-authoritative reviewed off-hand presentation for the local player.
+   * Never applied to peers. */
+  offHandPresentation?: OffHandPresentation;
   myPosition: CubeCoord;
-  /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
-   * (`MoveResponse.steps`, already bridged to cube coords) — passed
-   * straight through to `HexEntity.movePath`. `undefined` when no walk
-   * has happened yet this mount. */
-  movePath?: CubeCoord[];
-  /** Bumped once per genuine walk — passed straight through to
-   * `HexEntity.moveSeq`, which is what actually triggers the animation
-   * (see `useHexMovePath.ts`). */
-  moveSeq?: number;
+  /** The dungeon's authored starting facing (`GetAtlasResponse.start`),
+   * or absent when the author stated none — in which case the camera sits
+   * exactly where it always has. Presentation only: it aims the first
+   * frame and gates nothing. */
+  startFacing?: string;
+  /** Every actor's movement-in-progress, keyed by member id
+   * (`moveController.ts`). ONE shape for everyone: the local player's
+   * route arrives whole from their own Move answer, everyone else's a
+   * cell at a time off the stream, and both produce the same object. This
+   * is what actually triggers a walk clip — `useHexMovePath` animates on
+   * a CHANGING sequence, so an actor absent from this map snaps, which is
+   * exactly what every non-local actor used to do always
+   * (rpg-dnd5e-web#961). */
+  movements?: Movements;
   /** Fires when a floor hex is clicked (and it isn't an attack — see this
    * component's own doc comment) — the request-shaping/pathfinding and
    * the `Move` RPC itself live in the caller (`useSessionWalk`), not
@@ -140,20 +180,20 @@ export interface SessionCanvasProps {
    * only (drives the panel's "Attack <name>" hover label); this
    * component makes no affordability judgment of its own. */
   onHoverEntity?: (subject: string | null) => void;
-  /** Fires once the local player's walk ANIMATION finishes painting
-   * `movePath` for the given `moveSeq` — presentation-only, matches
-   * `HexEntity`'s own `onMovementPresentationComplete` contract (entityId
-   * dropped here since this route only ever animates the local player). */
-  onMovementPresentationComplete?: (moveSeq: number) => void;
+  /** Fires once an actor's walk ANIMATION finishes painting its route —
+   * presentation-only, for ANY actor now, not just the local player. The
+   * `reached` count is how many cells were actually painted; today that
+   * is only ever the whole route, and reporting it per cell later is an
+   * extra call rather than a changed shape (`moveController.ts`). */
+  onMovementPainted?: (member: string, seq: number, reached: number) => void;
   /** Every OTHER member the local player currently perceives
    * (`GetView.sightings`, mapped by `sightingsToEntities`). Drawn as a
    * player or monster `HexEntity` per `member.kind` (rpg-dnd5e-web#792 —
-   * see this component's render below for the split), with no
-   * `movePath`/`moveSeq` of their own either way: `useHexMovePath` already
-   * snaps an entity straight to a new `position` when `moveSeq` never
-   * advances, so a `GetView` refetch that moves one of these simply
-   * relocates it on the next render. Undefined/empty draws nothing
-   * extra. */
+   * see this component's render below for the split). Each one now reads
+   * its movement out of `movements` exactly as the local player does, so
+   * a walking peer walks instead of sliding; an actor with no movement in
+   * flight still just relocates on the next `GetView`. Undefined/empty
+   * draws nothing extra. */
   otherMembers?: readonly SightedMember[];
   /** The session roster keyed by member id (`useSessionRoster` —
    * rpg-project#264): the PUBLIC identity each sighted member renders
@@ -169,11 +209,22 @@ export interface SessionCanvasProps {
   /** Fires with the clicked door's id — the open/unlock affordance lives
    * in the caller, which knows who acts and what the door's state is. */
   onDoorClick?: (door: string) => void;
+  /** Fires when a click lands on a MEMBER_KIND_WORLD member's cell (a
+   * placed world NPC, e.g. a vendor) — routed separately from
+   * `onEntityClick`, which is gated on `attackableTargets` and a world NPC
+   * is never an attack candidate. The Interact RPC and range/adjacency are
+   * entirely the caller's concern; this component only owns the click. */
+  onInteractClick?: (subject: string) => void;
   /** Subject ids the caller currently offers as in-reach, AFFORDABLE
    * Attack candidates (rpg-project#249) — see this component's own doc
    * comment on why this is narrower than every in-reach candidate.
    * Undefined/empty means nothing is attackable right now. */
   attackableTargets?: string[];
+  /** The mover an open reaction window is posed against — ringed while THIS
+   * viewer holds the window, and undefined at every other moment. One
+   * subject: a window names a single mover, and several windows over the
+   * same step are all that mover's. */
+  reactionMover?: string;
   /** The atlas's movement graph (`atlasPath.ts`'s `buildAtlasPathIndex`) —
    * the SAME index `useSessionWalk` builds its `MoveRequest` path from.
    * Feeds the hover/path indicator via `useMoveIndicator`. `undefined`/
@@ -207,24 +258,39 @@ export function SessionScene({
   characterId,
   characterName,
   classRefId,
+  raceRefId,
+  localCustomization,
+  localHair,
   mainHandPresentation,
+  offHandPresentation,
+  localIsDowned = false,
   myPosition,
-  movePath,
-  moveSeq,
+  startFacing,
+  movements,
   onHexClick,
   onEntityClick,
   onHoverEntity,
-  onMovementPresentationComplete,
+  onMovementPainted,
   otherMembers,
   roster,
   doors,
   onDoorClick,
+  onInteractClick,
   attackableTargets,
+  reactionMover,
   pathIndex = null,
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
+  compositionSource,
 }: SessionCanvasProps) {
+  // One swatch per declared faction on the roster, by first appearance
+  // (`factionColor.ts`) — the same table the sides legend reads, so the
+  // map and the key agree. Empty for a dungeon that declares none.
+  const factionPalette = useMemo(
+    () => factionColors(roster ?? EMPTY_ROSTER),
+    [roster]
+  );
   // Stable base target, seeded ONCE from the character's starting position
   // and frozen after that (HexGrid.tsx's own `initialTargetRef` pattern —
   // see its doc comment). `useCameraControls` mutates this same object in
@@ -249,21 +315,70 @@ export function SessionScene({
     () => new THREE.Vector3(target.x, 0, target.z),
     [target.x, target.z]
   );
-  const cameraDials = useMemo(() => readCameraDials(), []);
+  // LIVE (#906 batch 2) — see HexGrid.tsx's own identical note: rotateSpeed/
+  // panSpeed/orbitPivot/the zoom-pitch ladder apply on the next render, no
+  // remount; perspective/fovDeg/minDistance/maxDistance stay URL-only.
+  const cameraDials = useCameraDials();
+  // Revealed-floor bbox — HexGrid.tsx's own `revealedBounds` computation,
+  // equivalent for this route's `scene.floorTiles`. Feeds `Home`'s
+  // on-demand fit (#906, cameraFit.ts) only; never acted on by itself.
+  const revealedBounds = useMemo(() => {
+    if (scene.floorTiles.size === 0) return null;
+    let minX = Infinity,
+      maxX = -Infinity;
+    let minZ = Infinity,
+      maxZ = -Infinity;
+    for (const tile of scene.floorTiles.values()) {
+      const worldPos = cubeToWorld(
+        { x: tile.x, y: tile.y, z: tile.z },
+        hexSize
+      );
+      minX = Math.min(minX, worldPos.x);
+      maxX = Math.max(maxX, worldPos.x);
+      minZ = Math.min(minZ, worldPos.z);
+      maxZ = Math.max(maxZ, worldPos.z);
+    }
+    return {
+      centerX: (minX + maxX) / 2,
+      centerZ: (minZ + maxZ) / 2,
+      width: maxX - minX + hexSize * 2,
+      height: maxZ - minZ + hexSize * 2,
+    };
+  }, [scene.floorTiles, hexSize]);
   useCameraControls({
     target: initialTargetRef.current,
     focusTarget,
+    panSpeed: cameraDials.panSpeed,
+    rotateSpeed: cameraDials.rotateSpeed,
+    orbitPivot: cameraDials.orbitPivot,
+    dragRotate: cameraDials.dragRotate,
     minZoom: cameraDials.zoomMin,
     maxZoom: cameraDials.zoomMax,
     curve: cameraDials.curve,
     perspective: cameraDials.perspective,
     minDistance: cameraDials.minDistance,
     maxDistance: cameraDials.maxDistance,
+    revealedBounds,
+    // WHERE THE CAMERA STARTS, from the dungeon's own start facing
+    // (rpg-project#374). Seeds the hook's azimuth once, at mount; the
+    // moment a player turns the camera it is theirs. Undefined for a
+    // dungeon that states none, which leaves the historical 45°.
+    initialAzimuth: startAzimuth(startFacing),
   });
 
   const attackableSet = useMemo(
     () => new Set(attackableTargets ?? []),
     [attackableTargets]
+  );
+
+  // ONE lookup for every actor, self included — the whole point of
+  // rpg-dnd5e-web#961. `characterId` is the local player's member id, the
+  // same key the controller stores peers under.
+  const selfMovement = movements?.get(characterId);
+
+  const membersBySubject = useMemo(
+    () => new Map((otherMembers ?? []).map((m) => [m.subject, m])),
+    [otherMembers]
   );
 
   // The ONE place a target click is resolved — both the ground plane's
@@ -272,11 +387,20 @@ export function SessionScene({
   // handlers of its own) and each live entity's `HexEntity.onClick` call
   // this directly. See this module's own doc comment on why the entity
   // mesh needs its own wired handler at all.
+  //
+  // A MEMBER_KIND_WORLD subject (a placed world NPC) routes to
+  // `onInteractClick` unconditionally — it is never an attack candidate, so
+  // it would never appear in `attackableSet` and a click on it would
+  // otherwise be silently swallowed by the gate below.
   const handleTargetClick = useCallback(
     (subject: string) => {
+      if (membersBySubject.get(subject)?.kind === MemberKind.WORLD) {
+        onInteractClick?.(subject);
+        return;
+      }
       if (attackableSet.has(subject)) onEntityClick?.(subject);
     },
-    [attackableSet, onEntityClick]
+    [membersBySubject, attackableSet, onEntityClick, onInteractClick]
   );
 
   // Click-to-walk: the raycast/hover/validity machinery is the SAME
@@ -408,6 +532,19 @@ export function SessionScene({
   // 'target' ring on top (rendered separately below), which is the
   // "hover can add a little more" Kirk asked for — no extra state needed
   // here, the two simply layer.
+  // The mover being asked about, resolved through the same roster the
+  // in-reach rings use — a remembered (last-known-position) sighting is not
+  // ringed, because the question is about where the mover IS.
+  const reactionMoverMember = useMemo(
+    () =>
+      reactionMover
+        ? (otherMembers ?? []).find(
+            (m) => !m.remembered && m.subject === reactionMover
+          )
+        : undefined,
+    [otherMembers, reactionMover]
+  );
+
   const attackableRingPositions = useMemo(
     () =>
       (otherMembers ?? []).filter(
@@ -424,7 +561,13 @@ export function SessionScene({
         hexSize={hexSize}
         doors={doors}
         onDoorClick={onDoorClick}
+        compositionSource={compositionSource}
       />
+      {/* THE WAYS OUT, MARKED FROM THE START (Kirk's walk, 2026-09-04:
+          he dropped the heirloom leaving from the wrong cell because the
+          map never said where the exit was). Drawing only — Leave stays
+          offered wherever the member stands. */}
+      <SessionExitMarkers exits={scene.exits} hexSize={hexSize} />
       {/* Invisible ground plane for hit detection — HexGrid.tsx's own
           convention, unchanged. */}
       <mesh
@@ -445,6 +588,15 @@ export function SessionScene({
           opacity={ATTACKABLE_RING_OPACITY}
         />
       ))}
+      {reactionMoverMember && (
+        <PathPreview
+          key={`reaction-mover-ring-${reactionMoverMember.subject}`}
+          path={[reactionMoverMember.position]}
+          hexSize={hexSize}
+          color={REACTION_MOVER_RING_COLOR}
+          opacity={REACTION_MOVER_RING_OPACITY}
+        />
+      )}
       <MoveIndicator
         selection={moveIndicatorSelection}
         hexSize={hexSize}
@@ -457,11 +609,21 @@ export function SessionScene({
         type="player"
         hexSize={hexSize}
         classRefId={classRefId}
+        raceRefId={raceRefId}
+        customization={
+          localCustomization ?? (localHair ? { hair: localHair } : undefined)
+        }
+        isDowned={localIsDowned}
         mainHandPresentation={mainHandPresentation}
-        movePath={movePath}
-        moveSeq={moveSeq}
-        onMovementPresentationComplete={(_entityId, completedMoveSeq) =>
-          onMovementPresentationComplete?.(completedMoveSeq)
+        offHandPresentation={offHandPresentation}
+        movePath={selfMovement?.route}
+        moveSeq={selfMovement?.seq}
+        onMovementPresentationComplete={(entityId, completedMoveSeq) =>
+          onMovementPainted?.(
+            entityId,
+            completedMoveSeq,
+            selfMovement?.route.length ?? 0
+          )
         }
       />
       {otherMembers?.map((member) => (
@@ -485,19 +647,54 @@ export function SessionScene({
           entityId={member.subject}
           name={member.name}
           position={member.position}
-          type={member.kind === MemberKind.PLAYER ? 'player' : 'monster'}
+          movePath={movements?.get(member.subject)?.route}
+          moveSeq={movements?.get(member.subject)?.seq}
+          onMovementPresentationComplete={(entityId, completedMoveSeq) =>
+            onMovementPainted?.(
+              entityId,
+              completedMoveSeq,
+              movements?.get(entityId)?.route.length ?? 0
+            )
+          }
+          type={
+            member.kind === MemberKind.PLAYER
+              ? 'player'
+              : member.kind === MemberKind.WORLD
+                ? 'npc'
+                : 'monster'
+          }
           hexSize={hexSize}
           classRefId={
             member.kind === MemberKind.PLAYER
               ? roster?.get(member.subject)?.classRef
               : undefined
           }
+          raceRefId={
+            member.kind === MemberKind.PLAYER
+              ? roster?.get(member.subject)?.raceRef || undefined
+              : undefined
+          }
+          customization={
+            member.kind === MemberKind.PLAYER
+              ? roster?.get(member.subject)?.customization
+              : undefined
+          }
           monsterRefId={
             monsterRefIdFrom(roster?.get(member.subject)?.monsterRef) ??
             member.monsterRefId
           }
+          factionColor={factionPalette.get(
+            roster?.get(member.subject)?.faction ?? ''
+          )}
           knowledgeState={member.remembered ? 'remembered' : undefined}
-          isDead={isSightedDowned(member.standing)}
+          isDowned={
+            member.kind === MemberKind.PLAYER &&
+            isSightedDowned(member.standing)
+          }
+          isDead={
+            member.kind === MemberKind.MONSTER &&
+            isSightedDowned(member.standing)
+          }
           onClick={handleTargetClick}
           onPointerOver={setMeshHoveredSubject}
           onPointerOut={() => setMeshHoveredSubject(null)}
@@ -515,13 +712,24 @@ export function SessionScene({
  * (WASD/Q-E/wheel/right-drag) takes over placement from there.
  */
 export function SessionCanvas(props: SessionCanvasProps) {
-  const cameraDials = useMemo(() => readCameraDials(), []);
+  // Mount-time Canvas config only — see HexGrid.tsx's own `canvasDials` doc
+  // comment: a drawer edit to zoomStart/fovDeg takes effect at the next
+  // remount (the `key` below only follows `perspective`, which is
+  // URL-only and never changes live).
+  const cameraDials = useCameraDials();
   return (
     <Canvas
       key={cameraDials.perspective ? 'persp' : 'ortho'}
       orthographic={!cameraDials.perspective}
       frameloop="demand"
       camera={{
+        // NOT WHERE THE AIMING HAPPENS. `useCameraControls`' mount effect
+        // computes the seat from its own azimuth and distance and calls
+        // `camera.position.set(...)`, so this prop is overwritten before
+        // the first frame — the start's facing seeds the hook instead
+        // (`startAzimuth.ts`). Left as the historical constant because it
+        // is still the position the camera holds for the instant before
+        // that effect runs.
         position: CAMERA_OFFSET,
         near: 0.1,
         far: 1000,

@@ -1,16 +1,11 @@
-import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
-import { ToastProvider } from './components/ui';
-import { DiscordProvider } from './discord';
+import { ApplicationRoot } from './ApplicationRoot';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <DiscordProvider>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
-    </DiscordProvider>
-  </StrictMode>
+  <ApplicationRoot
+    mode={import.meta.env.MODE}
+    hostname={window.location.hostname}
+    search={window.location.search}
+  />
 );

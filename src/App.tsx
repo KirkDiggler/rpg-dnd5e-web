@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { getPlayerId } from './api/auth';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
@@ -17,11 +17,17 @@ import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
+import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
+import { WorldBuildingConcept } from './concepts/world-building/WorldBuildingConcept';
+import { isAssetReviewRoute } from './dev/asset-review/route';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
+import { isPropCalibrationRoute } from './dev/prop-calibration/route';
 import { ThumbHarness } from './dev/ThumbHarness';
-import { DiscordDebugPanel, useDiscord } from './discord';
+import { useDiscord } from './discord';
+import { FeelDialsDrawer } from './feel/FeelDialsDrawer';
+import { FEEL_LAB_LAYER_Z } from './feel/layer';
 import { isToolkitContributorSandboxRoute } from './toolkit-contributor-sandbox/route';
 
 const LazyToolkitContributorSandbox =
@@ -35,6 +41,30 @@ const LazyToolkitContributorSandbox =
       )
     : null;
 
+// Keep the local calibration implementation out of production builds. Vitest
+// uses "test" mode, so retain the lazy module there while the route gate still
+// requires an explicit development mode at render time.
+const LazyPropCalibrationLab =
+  import.meta.env.MODE === 'production'
+    ? null
+    : lazy(() =>
+        import('./dev/prop-calibration/PropCalibrationLab').then(
+          ({ PropCalibrationLab }) => ({ default: PropCalibrationLab })
+        )
+      );
+
+// Asset candidates are intentionally absent from the ordinary application
+// graph in production. Test mode retains the boundary so the route refusal and
+// Lab interactions can be exercised without weakening the runtime route gate.
+const LazyAssetReviewLab =
+  import.meta.env.MODE === 'production'
+    ? null
+    : lazy(() =>
+        import('./dev/asset-review/AssetReviewLab').then(
+          ({ AssetReviewLab }) => ({ default: AssetReviewLab })
+        )
+      );
+
 /**
  * Dev-only deep link: `?concept=<id>` opens the Concepts Lab directly and must
  * KEEP it open — the active-lobby effect otherwise steals the
@@ -46,6 +76,35 @@ const hasConceptDeepLink = (): boolean =>
   new URLSearchParams(window.location.search).has('concept');
 
 function AppContent() {
+  const [compositionSource, setCompositionSource] = useState<
+    CompositionSource | undefined
+  >();
+  useEffect(() => {
+    if (import.meta.env.MODE !== 'development') return;
+    let current = true;
+    const fixedFixture =
+      import.meta.env.VITE_ENABLE_DEVELOPMENT_COMPOSITIONS === '1';
+    const load = fixedFixture
+      ? import('./compositions/developmentCompositionSource').then(
+          ({ createDevelopmentCompositionSource }) =>
+            createDevelopmentCompositionSource()
+        )
+      : import('./compositions/rpcCompositionSource').then(
+          ({ createRpcCompositionSource }) => createRpcCompositionSource()
+        );
+    void load.then((source) => {
+      if (current) setCompositionSource(source);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+  const invalidateCompositionResolutions = useCallback(() => {
+    // Existing composition resolution caches reset on source identity. Keep
+    // invalidation at that small seam so a deleted snapshot cannot retain
+    // stale models or lights after the next relevant render/navigation.
+    setCompositionSource((current) => (current ? { ...current } : current));
+  }, []);
   // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
   // /playtest is a permanent verification surface (design.md), not slated
@@ -62,7 +121,6 @@ function AppContent() {
       import.meta.env.MODE === 'development' &&
       !!new URLSearchParams(window.location.search).get('thumbGlb')
   );
-
   const [currentView, setCurrentView] = useState<AppView>(
     hasConceptDeepLink() ? 'concepts' : 'home'
   );
@@ -89,10 +147,14 @@ function AppContent() {
 
   // In production, require Discord auth. In dev, allow test player
   const isDevelopment = import.meta.env.MODE === 'development';
-  const showGlobalDevTools = shouldRenderGlobalDevTools(
-    import.meta.env.MODE,
-    currentView
-  );
+  // #906 batch 2: shouldRenderGlobalDevTools is dev-mode-and-not-concepts
+  // only, so it is always false in a production build. The Discord dev
+  // deployment still runs a production build, so it opts back in with
+  // VITE_FEEL_LAB=1 — this is the only way to ship the feel dials drawer
+  // there without also shipping the rest of dev tooling.
+  const showGlobalDevTools =
+    shouldRenderGlobalDevTools(import.meta.env.MODE, currentView) ||
+    import.meta.env.VITE_FEEL_LAB === '1';
   // Dev override: ?playerId=alice|bob lets two tabs run as different players
   // without Discord (slice 2 playtest infrastructure)
   const devPlayerIdOverride = isDevelopment
@@ -148,6 +210,24 @@ function AppContent() {
     }
   }, [myActiveLobby.data, resumedLobbyCharacter.loading, resumeIdentityError]);
 
+  // #906 batch 2: backtick toggles the feel dials drawer, mirroring the
+  // wrench button, so it's reachable without hunting for the button —
+  // ignored while typing in a field so it never eats a literal backtick.
+  useEffect(() => {
+    if (!showGlobalDevTools) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '`') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
+        return;
+      }
+      setShowDebugPanel((current) => !current);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showGlobalDevTools]);
+
   const handleCreateCharacter = async () => {
     try {
       // Reset any existing draft
@@ -198,12 +278,12 @@ function AppContent() {
     setCurrentView('home');
   };
 
-  const handleOpenConcepts = () => {
-    setCurrentView('concepts');
-  };
-
   const handleOpenAuthor = () => {
     setCurrentView('author');
+  };
+
+  const handleOpenWorldBuilder = () => {
+    setCurrentView('world-builder');
   };
 
   // Save & Play from the Dungeon Builder (rpg-project#256): the builder
@@ -273,7 +353,9 @@ function AppContent() {
   // is a pixel its canvas never gets. Both draw their own chrome, so the
   // shell's header row is theirs to skip as well.
   const fullBleed =
-    currentView === 'character-sheet' || currentView === 'author';
+    currentView === 'character-sheet' ||
+    currentView === 'author' ||
+    currentView === 'world-builder';
 
   return (
     <div
@@ -347,14 +429,22 @@ function AppContent() {
             onBack={handleBackToHome}
             initialEncounterId={resumeEncounterId ?? undefined}
             initialLobbyId={resumeLobbyId ?? undefined}
+            compositionSource={compositionSource}
           />
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
+        ) : currentView === 'world-builder' && compositionSource ? (
+          <WorldBuildingConcept
+            onBack={handleBackToHome}
+            compositionSource={compositionSource}
+            onCompositionDeleted={invalidateCompositionResolutions}
+          />
         ) : currentView === 'author' ? (
           <AuthorView
             onBack={handleBackToHome}
             characterId={selectedType === 'character' ? selectedId : null}
             onPlay={handlePlayAuthored}
+            compositionSource={compositionSource}
           />
         ) : currentView === 'home' && resumeIdentityError ? (
           <div className="flex items-center justify-center h-screen">
@@ -390,6 +480,8 @@ function AppContent() {
             onDelete={handleDeleteCharacter}
             onDeleteDraft={handleDeleteDraft}
             onOpenAuthor={handleOpenAuthor}
+            onOpenWorldBuilder={handleOpenWorldBuilder}
+            worldBuilderAvailable={compositionSource !== undefined}
           />
         ) : currentView === 'character-sheet' && currentCharacterId ? (
           <CharacterSheet
@@ -410,16 +502,20 @@ function AppContent() {
           />
         )}
 
-        {/* Dev tools buttons */}
+        {/* Dev tools buttons. #906 round 4: this row paints behind a live
+            session route for the same reason the drawer once did —
+            SessionEncounterView portals its whole view into document.body
+            at zIndex: 100 — so it shares FEEL_LAB_LAYER_Z with the drawer
+            rather than its own z-50 (see src/feel/layer.ts). It's also
+            lifted from bottom-4 to bottom-48 (192px) to clear the combat
+            dock, which is 174px tall and spans the full width at the
+            bottom of the screen — at bottom-4 the buttons sat inside that
+            band and the End Turn button intercepted every click. */}
         {showGlobalDevTools && (
-          <div className="fixed bottom-4 right-4 z-50 flex gap-2">
-            <button
-              onClick={handleOpenConcepts}
-              className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
-              title="Open Concepts Lab"
-            >
-              🧪
-            </button>
+          <div
+            style={{ zIndex: FEEL_LAB_LAYER_Z }}
+            className="fixed bottom-48 right-4 flex gap-2"
+          >
             <button
               onClick={() => setShowDebugPanel(!showDebugPanel)}
               className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-full shadow-lg transition-all"
@@ -430,17 +526,16 @@ function AppContent() {
           </div>
         )}
 
-        {/* Preserve the requested debug state while keeping all global dev
-            surfaces out of Concepts Lab. */}
-        {showGlobalDevTools && showDebugPanel && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="mt-8"
-          >
-            <DiscordDebugPanel />
-          </motion.div>
+        {/* #906 batch 2: the dev overlay is now this slide-out drawer —
+            "Feel dials" first, the former DiscordDebugPanel content second.
+            It's `position: fixed` internally, so it never affects layout
+            here; open/close is animated by the drawer itself via its own
+            transform, not by mounting/unmounting. */}
+        {showGlobalDevTools && (
+          <FeelDialsDrawer
+            open={showDebugPanel}
+            onClose={() => setShowDebugPanel(false)}
+          />
         )}
       </motion.div>
     </div>
@@ -461,6 +556,8 @@ interface HomeViewProps {
   onDelete: (characterId: string) => void;
   onDeleteDraft: (draftId: string) => void;
   onOpenAuthor: () => void;
+  onOpenWorldBuilder: () => void;
+  worldBuilderAvailable: boolean;
 }
 
 function HomeView({
@@ -476,6 +573,8 @@ function HomeView({
   onDelete,
   onDeleteDraft,
   onOpenAuthor,
+  onOpenWorldBuilder,
+  worldBuilderAvailable,
 }: HomeViewProps) {
   // Fetch characters and drafts to find selected item data
   const { data: characters } = useListCharacters({ playerId, sessionId });
@@ -493,11 +592,26 @@ function HomeView({
 
   return (
     <div className="space-y-8">
-      {/* Home menu — real chrome, not dev-gated (rpg-project#194). Button
-          is self-gating (useAuthoringGate): hidden when authoring is off
-          server-side, disabled-with-retry when the server's unreachable. */}
-      <div className="flex justify-center">
+      {/* Home authoring menu. Dungeon Builder owns its existing server probe;
+          World Builder appears only when the app has an explicit current-world
+          source (development today; no fabricated production world). */}
+      <div className="flex justify-center gap-3">
         <DungeonBuilderHomeButton onOpen={onOpenAuthor} />
+        {worldBuilderAvailable && (
+          <button
+            onClick={onOpenWorldBuilder}
+            aria-label="Open World Builder"
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            style={{
+              backgroundColor: 'var(--accent-primary)',
+              color: 'white',
+              border: '1px solid var(--accent-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            🌍 World Builder
+          </button>
+        )}
       </div>
 
       {/* Character Carousel */}
@@ -524,6 +638,36 @@ function HomeView({
 }
 
 function App() {
+  if (
+    isPropCalibrationRoute(
+      import.meta.env.MODE,
+      window.location.hostname,
+      window.location.search
+    ) &&
+    LazyPropCalibrationLab
+  ) {
+    return (
+      <Suspense fallback={<div>Loading prop calibration…</div>}>
+        <LazyPropCalibrationLab />
+      </Suspense>
+    );
+  }
+
+  if (
+    isAssetReviewRoute(
+      import.meta.env.MODE,
+      window.location.hostname,
+      window.location.search
+    ) &&
+    LazyAssetReviewLab
+  ) {
+    return (
+      <Suspense fallback={<div>Loading asset review…</div>}>
+        <LazyAssetReviewLab />
+      </Suspense>
+    );
+  }
+
   if (
     isToolkitContributorSandboxRoute(
       import.meta.env.MODE,

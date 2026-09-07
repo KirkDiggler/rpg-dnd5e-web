@@ -54,7 +54,7 @@ vi.mock('@react-three/drei', () => {
   };
 });
 
-import { HexEntity } from './HexEntity';
+import { HexEntity, mediumHumanoidFallbackColors } from './HexEntity';
 
 const base = {
   entityId: 'goblin-1',
@@ -69,6 +69,26 @@ const handlerCount = (
 ) =>
   renderer.scene.findAll((node) => typeof node.props[prop] === 'function')
     .length;
+
+describe('generic MediumHumanoid fallback colors', () => {
+  it('preserves remembered and dead state tints without retired appearance fields', () => {
+    expect(mediumHumanoidFallbackColors(true, false)).toEqual({
+      skinTone: '#465366',
+      primaryColor: '#465366',
+      secondaryColor: '#465366',
+    });
+    expect(mediumHumanoidFallbackColors(false, true)).toEqual({
+      skinTone: '#555',
+      primaryColor: '#444',
+      secondaryColor: '#333',
+    });
+    expect(mediumHumanoidFallbackColors(false, false)).toEqual({
+      skinTone: undefined,
+      primaryColor: undefined,
+      secondaryColor: undefined,
+    });
+  });
+});
 
 describe('remembered entities are inert', () => {
   it('gives a remembered monster no pointer handlers at all', async () => {
@@ -86,6 +106,24 @@ describe('remembered entities are inert', () => {
     expect(handlerCount(renderer, 'onClick')).toBe(0);
     expect(handlerCount(renderer, 'onPointerOver')).toBe(0);
     expect(handlerCount(renderer, 'onPointerOut')).toBe(0);
+  });
+
+  it('gives a remembered bartender no pointer handlers', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <HexEntity
+        {...base}
+        entityId="demo-merchant-1"
+        type="npc"
+        knowledgeState="remembered"
+        onClick={() => {}}
+        onPointerOver={() => {}}
+        onPointerOut={() => {}}
+      />
+    );
+    expect(handlerCount(renderer, 'onClick')).toBe(0);
+    expect(handlerCount(renderer, 'onPointerOver')).toBe(0);
+    expect(handlerCount(renderer, 'onPointerOut')).toBe(0);
+    await renderer.unmount();
   });
 
   it('leaves an ordinary ghost its stop-propagating click', async () => {

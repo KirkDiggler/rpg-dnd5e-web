@@ -25,6 +25,10 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Local npm config (this sandbox blocks git-protocol deps by default;
+# allow-git=true here is environment-specific, not a project policy)
+.npmrc
 *.sln
 *.sw?
 

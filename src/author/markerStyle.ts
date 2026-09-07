@@ -29,11 +29,66 @@ export function litColor(hex: string, intensity: number): string {
 export const VOID_FILL = '#0b0d11';
 export const VOID_STROKE = '#22262e';
 export const WALL_STROKE = '#f4f1ea';
+
+/** The wall picker's two cost colours (rpg-project#360 §2.6). Green for
+ * a THIN line, which shaves its neighbours and seals nothing; orange for
+ * a THICK one, which runs through cell centres and seals every cell it
+ * halves. The same two colours the design's own `wall-geometry-lines.svg`
+ * uses, so the picture in the design and the picture on the board agree
+ * without anyone having to translate. */
+export const THIN_RAY_STROKE = '#5fd48a';
+export const THICK_RAY_STROKE = '#f0a24a';
+
+/** A cell nobody can stand on, hatched over its region colour — the
+ * sealed mark (design §4.3). Distinct from SCENERY_HATCH: scenery is
+ * floor with no owner, a sealed cell keeps the room it belongs to. */
+export const SEALED_HATCH = '#f0a24a';
+export const SEALED_HATCH_ID = 'dg-sealed-hatch';
+
+/** What a candidate wall WOULD seal, greyed at pick time (design §2.6's
+ * own word). Grey and not the committed hatch's orange, so "this is the
+ * cost of the wall you are hovering" never reads as "this cell is
+ * already sealed". */
+export const SEALED_PREVIEW_FILL = '#8b8f96';
+/** The floor's outer edge. NOT a wall — a wall is something the author put
+ * there on purpose (Kirk: "walls are intentional"), and an unwalled boundary
+ * is a real authored choice: a region is allowed a cliff edge. Drawn dimmer
+ * AND dashed so it can never be mistaken for a wall; it says "the floor stops
+ * here", which is the only thing it knows.
+ *
+ * Drawn at all because a region with no boundary at all reads as an unfinished
+ * patch of floor rather than a place (rpg-dnd5e-web#902). */
+export const ENVELOPE_STROKE = 'rgba(244, 241, 234, 0.34)';
+/** The dash that keeps the floor's edge from reading as a wall. */
+export const ENVELOPE_DASH = '2 4';
 export const DOOR_STROKE = '#d97706';
 export const DOOR_LOCKED_STROKE = '#dc2626';
 export const START_COLOR = '#22c55e';
+/** A way out (rpg-project#368 §3.1). Blue, deliberately NOT the start's
+ * green: the entrance and the exit are usually the same cell in the tomb
+ * this slice ships, and two marks the same colour on one hex would read as
+ * one mark. `start` is not implicitly an exit and the board must show
+ * that. */
+export const EXIT_COLOR = '#38bdf8';
 export const ERROR_STROKE = '#ff3b30';
 export const HOVER_STROKE = '#ffffff';
 export const MONSTER_COLOR = '#a02020';
 export const BOSS_COLOR = '#7a1414';
 export const PROP_COLOR = '#b8922a';
+/** A region the builder currently derives as concealed (rpg-dnd5e-web#893)
+ * — "reachable only through a concealed door". Distinct from every other
+ * stroke on the board (door orange, error red, wall cream, hover white)
+ * so a newly-hidden room reads as its own kind of fact, not an error. */
+export const CONCEALED_STROKE = '#a855f7';
+
+/** Scenery — floor no room owns (rpg-project#360 §2.1). It reads as FLOOR
+ * (a wall stands on it, a prop sits on it) and never as a room, so it gets
+ * a stone grey of its own rather than a ninth region swatch, hatched so
+ * "nobody stands here" is visible at a glance without a legend. Distinct
+ * from void's near-black, which is the absence of floor entirely. */
+export const SCENERY_FILL = '#343a44';
+export const SCENERY_HATCH = 'rgba(226, 232, 240, 0.30)';
+export const SCENERY_STROKE = 'rgba(226, 232, 240, 0.45)';
+/** The `<pattern>` the board defines once and every scenery cell fills
+ * with. Exported so the board and its tests name the same thing. */
+export const SCENERY_HATCH_ID = 'dg-scenery-hatch';

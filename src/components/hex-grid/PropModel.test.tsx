@@ -1,3 +1,5 @@
+import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
+import type { WorldScene } from '@/concepts/world-building/types';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
@@ -132,6 +134,34 @@ describe('PropModel companion rendering (rpg-game-assets#36 wave-1, issue #623)'
 });
 
 describe('PropModel shared placement', () => {
+  it('optionally centers visible bounds and grounds their base without changing the default renderer contract', async () => {
+    const onBoundsMeasured = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <PropModel
+        variant={BASE_VARIANT}
+        position={[2, 0, 3]}
+        anchor="bounds-floor-center"
+        onBoundsMeasured={onBoundsMeasured}
+      />
+    );
+    const groups = renderer.scene
+      .findAllByType('Group')
+      .map((n) => (n as unknown as { instance: THREE.Group }).instance);
+    const anchor = groups.find(
+      (group) => group.name === 'prop-model-bounds-anchor'
+    );
+    expect(anchor?.position.x).toBeCloseTo(0);
+    expect(anchor?.position.y).toBeCloseTo(0.5);
+    expect(anchor?.position.z).toBeCloseTo(0);
+    expect(onBoundsMeasured).toHaveBeenCalledWith({
+      minY: 0,
+      maxY: SYNTY_SCALE,
+      width: SYNTY_SCALE,
+      height: SYNTY_SCALE,
+      depth: SYNTY_SCALE,
+    });
+  });
+
   it('renders every prop at the shared SYNTY_SCALE', async () => {
     const renderer = await ReactThreeTestRenderer.create(
       <PropModel variant={BASE_VARIANT} position={[0, 0, 9]} />
@@ -141,11 +171,16 @@ describe('PropModel shared placement', () => {
       .map((n) => (n as unknown as { instance: THREE.Group }).instance);
     const outer = groups.find((group) => group.position.z === 9);
     expect(outer?.scale.x).toBeCloseTo(SYNTY_SCALE);
+    expect(
+      groups.some((group) => group.name === 'prop-model-bounds-anchor')
+    ).toBe(false);
   });
 
-  it('adds the dungeon surface height to the caller-provided Y position', async () => {
+  it('aligns projected part-local lights with the actual surface-lifted prop root', async () => {
+    const partY = 0.07;
+    const offsetY = 0.45;
     const renderer = await ReactThreeTestRenderer.create(
-      <PropModel variant={BASE_VARIANT} position={[2, 0.07, 5]} />
+      <PropModel variant={BASE_VARIANT} position={[2, partY, 5]} />
     );
     const groups = renderer.scene
       .findAllByType('Group')
@@ -153,7 +188,36 @@ describe('PropModel shared placement', () => {
     const outer = groups.find(
       (group) => group.position.x === 2 && group.position.z === 5
     );
-    expect(outer?.position.y).toBeCloseTo(0.07 + DUNGEON_SURFACE_Y);
+    expect(outer?.position.y).toBeCloseTo(partY + DUNGEON_SURFACE_Y);
+
+    const scene: WorldScene = {
+      version: 1,
+      id: 'render-convention',
+      name: 'Render convention',
+      groups: [],
+      items: [
+        {
+          id: 'candles',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:candles',
+          label: 'Candles',
+          transform: { x: 2, y: partY, z: 5, rotationY: 0 },
+          pointLight: {
+            enabled: true,
+            offset: { x: 0, y: offsetY, z: 0 },
+            color: '#ff9d52',
+            intensity: 1.1,
+            range: 2.6,
+          },
+        },
+      ],
+    };
+    const [light] = projectCompositionPointLights(scene, {
+      compositionId: 'render-convention',
+      placementId: 'standalone',
+      transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+    });
+    expect(light?.position[1]).toBeCloseTo(outer!.position.y + offsetY);
   });
 });
 

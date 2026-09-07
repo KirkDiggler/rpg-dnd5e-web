@@ -10,23 +10,47 @@
  * damage, HP, equipment, or other game rule is constructed here.
  */
 import { sessionClient } from '@/api/client';
+import { useGetCharacter } from '@/api/hooks';
 import { useCharacterData } from '@/api/useCharacterData';
 import { useEquipItem } from '@/api/useEquipItem';
 import { useSessionAfford } from '@/api/useSessionAfford';
 import { useSessionAtlas } from '@/api/useSessionAtlas';
 import { useSessionDoors } from '@/api/useSessionDoors';
+import { useSessionHold } from '@/api/useSessionHold';
+import { useSessionInteract } from '@/api/useSessionInteract';
+import { useSessionLeave } from '@/api/useSessionLeave';
+import { useSessionLoot } from '@/api/useSessionLoot';
 import { useSessionRoster } from '@/api/useSessionRoster';
+import { useSessionSearch } from '@/api/useSessionSearch';
+import { useSessionTrade } from '@/api/useSessionTrade';
 import { useSessionTurn } from '@/api/useSessionTurn';
+import { useSessionUnpack } from '@/api/useSessionUnpack';
 import { useSessionView } from '@/api/useSessionView';
 import { useSessionWhere } from '@/api/useSessionWhere';
 import { useUnequipItem } from '@/api/useUnequipItem';
+import type { DicePresentationRequestedEvent } from '@/components/ui/dice/dicePresentationEvent';
+import {
+  createNeutralVisualThrowProfile,
+  type VisualThrowProfileV1,
+} from '@/components/ui/dice/visualThrowProfile';
+import type { CompositionSource } from '@/compositions/compositionSource';
+import { useDiceDials } from '@/feel/useFeelDials';
 import { errorMessage } from '@/utils/combatFormat';
 import type { Event as SessionEvent } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { EventKind } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import type {
+  VendorStockEntry,
+  WorldNPCDescriptor,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
+import type {
+  AtlasProp,
+  Money,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import {
   ClockKind,
   DoorState,
   MemberKind,
+  Standing,
   TargetKind,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
@@ -34,38 +58,88 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
-import type { EquipIntent } from '../game/equipment/equipmentTypes';
-import { HEX_SIZE } from '../hex-grid/hexMath';
+import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
+import { computeCarried } from '../game/equipment/equipmentTypes';
+import {
+  coordToKey,
+  type CubeCoord,
+  cubeToWorld,
+  HEX_SIZE,
+} from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
+import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
+import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
-import { buildAtlasPathIndex } from './atlasPath';
+import { applyDropped, applyHeld, heldProp } from './applyHolding';
+import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
+import { arrivingStep } from './arrivingStep';
+import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
+import { regionAt } from './atlasRegion';
 import {
   buildScene3D,
   positionToCube,
   resolveSceneLayout,
 } from './atlasToScene3D';
 import { CombatExperience } from './combat-experience/CombatExperience';
+import { LocalWorldDieTile } from './combat-experience/LocalWorldDieTile';
+import {
+  reactionWindowDeclaration,
+  reactionWindowMover,
+} from './combat-experience/reactionWindow';
 import { movementBudgetFeet } from './combat-experience/selection';
 import { useSessionCombatExperience } from './combat-experience/useSessionCombatExperience';
+import { useDeathSaveTruthHold } from './deathSaveTruthHold';
 import { holdDownedReveal } from './downedReveal';
+import { FactionLegend } from './FactionLegend';
+import { exitAt, holdTargets, lootTargets } from './holdingAffordances';
+import { authoredWords, exitCarrier, holdingPhrase } from './holdingBeat';
+import { localWorldDieDimensions } from './local-world-die/diceDials';
+import {
+  createLocalWorldDieAttemptSnapshot,
+  type LocalWorldDieAttemptSnapshot,
+} from './local-world-die/localWorldDieAttemptSnapshot';
+import { localWorldDieReleaseEvent } from './local-world-die/localWorldDieAuthority';
+import type {
+  LocalWorldDieCommand,
+  LocalWorldDieHeldState,
+} from './local-world-die/localWorldDieCommand';
+import { LocalWorldDieLayer } from './local-world-die/LocalWorldDieLayer';
+import {
+  fingerprintLocalWorldDieColliders,
+  preSimulateLocalWorldDie,
+} from './local-world-die/localWorldDiePreSimulation';
+import { publishLocalWorldDie } from './local-world-die/localWorldDiePublish';
+import { LocalWorldDieWitnessInbox } from './local-world-die/localWorldDieWitnessInbox';
+import type {
+  LocalWorldDieWitnessExpectation,
+  LocalWorldDieWitnessPlan,
+} from './local-world-die/localWorldDieWitnessPlan';
+import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
+import { resolveName } from './participantNames';
+import { SEARCH_NOTICE } from './searchNotice';
 import { SessionCanvas } from './SessionCanvas';
+import { refreshKeysFor } from './sessionRefreshKeys';
 import { sightingsToEntities } from './sightingEntities';
 import {
   type SessionRefreshKey,
   useCoalescedSessionRefreshes,
 } from './useCoalescedSessionRefreshes';
+import { useMoveController } from './useMoveController';
 import {
   type SessionEventDeliveryMetadata,
   useSessionEventStream,
 } from './useSessionEventStream';
 import { useSessionWalk } from './useSessionWalk';
+import { VendorPopover } from './vendor/VendorPopover';
+import { nextViewerHoldings } from './viewerHoldings';
 
 export interface SessionEncounterViewProps {
   sessionId: string;
   characterId?: string;
   playerId: string;
   onBack: () => void;
+  compositionSource?: CompositionSource;
 }
 
 function endingHeadline(ending: string): string {
@@ -118,14 +192,20 @@ function SessionEncounterScope({
   characterId,
   playerId,
   onBack,
+  compositionSource,
 }: SessionEncounterViewProps) {
   const member = characterId ?? '';
+  // GetCharacter is the local owner's complete creation projection and the
+  // only private session source that carries Appearance.hair. Peer looks stay
+  // on public roster Customization and never trigger another sheet read.
+  const { data: ownerCharacter } = useGetCharacter(member);
   const {
     atlas,
     loading: atlasLoading,
     error: atlasError,
     refetch: refetchAtlas,
-  } = useSessionAtlas(sessionId);
+    applyReveal: applyAtlasReveal,
+  } = useSessionAtlas(sessionId, member);
   const {
     position: wherePosition,
     loading: whereLoading,
@@ -134,7 +214,11 @@ function SessionEncounterScope({
   } = useSessionWhere(sessionId, member);
   const { sightings, refetch: refetchView } = useSessionView(sessionId, member);
   const { roster, refetch: refetchRoster } = useSessionRoster(sessionId);
-  const { doors, refetch: refetchDoors } = useSessionDoors(sessionId);
+  const { doors, refetch: refetchDoors } = useSessionDoors(sessionId, member);
+  const { search, loading: searching } = useSessionSearch();
+  const { loot, loading: looting } = useSessionLoot();
+  const { hold, loading: holding } = useSessionHold();
+  const { leave, loading: leaving } = useSessionLeave();
   const {
     clock: affordClock,
     declarations: affordDeclarations,
@@ -161,9 +245,55 @@ function SessionEncounterScope({
 
   const { equipItem, loading: equipping } = useEquipItem();
   const { unequipItem, loading: unequipping } = useUnequipItem();
+  const { interact } = useSessionInteract();
+  const { trade, loading: tradeLoading } = useSessionTrade();
+  const { unpack, loading: unpacking } = useSessionUnpack();
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [runEnded, setRunEnded] = useState<string | null>(null);
   const [doorNotice, setDoorNotice] = useState<string | null>(null);
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  const [unpackNotice, setUnpackNotice] = useState<string | null>(null);
+  /** The one line the loot/hold/leave verbs answer with — a refusal in the
+   * server's own words, or nothing. Never an outcome: what a loot found
+   * arrives as its own beat (design P3), and what a departure meant
+   * arrives on EXITED and ENDED. */
+  const [holdingNotice, setHoldingNotice] = useState<string | null>(null);
+  /** WHO WALKED OUT WITH IT. `Ended` names an ending key and nothing else,
+   * so the overlay's carrier is remembered from the departure that
+   * preceded it — a member who left THROUGH AN AUTHORED EXIT while holding
+   * something (`holdingBeat.ts`'s `exitCarrier`). Null until one does, and
+   * the overlay simply does not claim a carrier while it is. */
+  const [carrier, setCarrier] = useState<{
+    member: string;
+    exit: string;
+    holding: readonly string[];
+  } | null>(null);
+  /** What this client removed from its atlas when a prop was picked up,
+   * kept so a later DROPPED beat can put the same thing back — `Dropped`
+   * carries the id and the cell, never the ref (`applyHolding.ts`). A
+   * plain ref, not state: nothing renders from it, it only feeds the next
+   * patch.
+   *
+   * NOT CLEARED ON THE DROP, deliberately. A beat delivered twice is the
+   * case that decides it: `applyDropped` is idempotent on the id, so a
+   * redelivered DROPPED with the memory already discarded would REPLACE
+   * the drawn prop with a bare id-and-cell entry and the reliquary would
+   * vanish into an empty ref. Keeping it costs one entry per holdable
+   * placement in one dungeon — the map is keyed by `place[].id`, so it is
+   * bounded by the file, not by the length of the session — and the whole
+   * ref dies with this scope, which remounts per session and member. A
+   * prop picked up again simply overwrites its own entry. */
+  const heldPropsRef = useRef(new Map<string, AtlasProp>());
+  /** What the local member is carrying, projected from the beats — the
+   * wire reports a member's holdings nowhere else (`viewerHoldings.ts`).
+   * Read only by the Leave button, to name what leaving from the wrong
+   * cell would drop. */
+  const [viewerHolding, setViewerHolding] = useState<readonly string[]>([]);
+  const [activeVendor, setActiveVendor] = useState<{
+    subject: string;
+    descriptor: WorldNPCDescriptor;
+  } | null>(null);
+  const [vendorNotice, setVendorNotice] = useState<string | null>(null);
   const encounterContentRef = useRef<HTMLDivElement>(null);
   const leaveRunButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -182,6 +312,22 @@ function SessionEncounterScope({
     return () => underlying?.removeAttribute('inert');
   }, [runEnded]);
 
+  // The searcher's own current region, resolved from data this member's
+  // own atlas already carries — never chosen, never guessed (the law: "a
+  // player cannot target structure they do not know exists").
+  const region = useMemo(
+    () => regionAt(atlas, wherePosition),
+    [atlas, wherePosition]
+  );
+  // "You search the area" stops describing the player's surroundings the
+  // moment those surroundings change — matches `doorNotice`'s own
+  // staleness law, just for a different trigger (a door's notice goes
+  // stale when the door's OWN state moves on; a search's notice goes
+  // stale when the SEARCHER moves on). Cosmetic only — the text is
+  // content-invariant either way, so this has no secrecy implication.
+  useEffect(() => {
+    setSearchNotice(null);
+  }, [region, member]);
   const layoutOutcome = useMemo(
     () => (atlas ? resolveSceneLayout(atlas) : null),
     [atlas]
@@ -193,11 +339,6 @@ function SessionEncounterScope({
         : null,
     [atlas, layoutOutcome]
   );
-  const pathIndex = useMemo(
-    () => (atlas ? buildAtlasPathIndex(atlas, doors) : null),
-    [atlas, doors]
-  );
-
   // Once owner-private CharacterData has been confirmed it remains valid
   // presentation input while a background refresh is loading or reports a
   // transient status error. Neither condition may freeze newer public door /
@@ -208,11 +349,10 @@ function SessionEncounterScope({
   const lastGoodPositionRef = useRef<ReturnType<typeof positionToCube> | null>(
     null
   );
-  const lastGoodPathIndexRef = useRef<typeof pathIndex>(null);
+  const lastGoodPathIndexRef = useRef<AtlasPathIndex | null>(null);
   if (canDrawSceneNow) {
     lastGoodSceneRef.current = scene;
     lastGoodPositionRef.current = positionToCube(wherePosition);
-    lastGoodPathIndexRef.current = pathIndex;
   }
   const canDrawScene =
     lastGoodSceneRef.current !== null && lastGoodPositionRef.current !== null;
@@ -253,10 +393,16 @@ function SessionEncounterScope({
     moveAcceptedRef.current();
   }, []);
 
+  // ONE movement per actor, whoever they are (rpg-dnd5e-web#961). Declared
+  // ahead of the walk hook, which feeds it the local player's route.
+  const moves = useMoveController();
+  const beginLocalRoute = useCallback(
+    (route: readonly CubeCoord[]) => moves.beginRoute(member, route),
+    [moves, member]
+  );
+
   const {
     displayPosition,
-    movePath,
-    moveSeq,
     busy: walking,
     walkTo,
     onWalkAnimationComplete,
@@ -270,13 +416,67 @@ function SessionEncounterScope({
     moveDeclarationId,
     handleStaleMoveRefusal,
     isMoveAuthorityFresh,
-    handleMoveAccepted
+    handleMoveAccepted,
+    beginLocalRoute
   );
 
   const otherMembers = useMemo(
     () => sightingsToEntities(sightings, member),
     [member, sightings]
   );
+
+  // A movement is something the viewer WATCHES happen, so it lives only as
+  // long as they can see the actor. The wire tells us about every roster
+  // member's steps whether or not they are in sight, so without this an
+  // unseen actor banks a route and `useHexMovePath` replays it the moment
+  // they are sighted again — a remembered skeleton walking across the map
+  // instead of simply being at its new cell (rpg-dnd5e-web#961 follow-up).
+  const liveSighted = useMemo(() => {
+    const ids = new Set<string>([member]);
+    for (const sighted of otherMembers) {
+      if (!sighted.remembered) ids.add(sighted.subject);
+    }
+    return ids;
+  }, [otherMembers, member]);
+  // Read through a ref at beat time: the stream handler must not be rebuilt
+  // every time a sighting shifts.
+  const liveSightedRef = useRef(liveSighted);
+  liveSightedRef.current = liveSighted;
+  const { forgetUnsighted: forgetUnsightedMovements } = moves;
+  // Two guards, because they cover different moments. The feed guard below
+  // refuses to bank a step for an actor the viewer cannot see right now; this
+  // one drops an actor who goes out of sight MID-walk, whose route was
+  // legitimately banked while they were still visible.
+  useEffect(() => {
+    forgetUnsightedMovements(liveSighted);
+  }, [liveSighted, forgetUnsightedMovements]);
+
+  // The path PREVIEW must route around exactly what the server's own Move
+  // already refuses to enter — a live other member's cell, world NPC,
+  // monster, or player alike (the vendor is only what made the gap
+  // visible: it is the first entity that sits permanently in open floor).
+  // A `remembered` sighting is filtered out here, not left for
+  // `buildAtlasPathIndex` to guess: it is a held memory, not confirmed
+  // still there, and must never block a route the way a live one does —
+  // the same distinction `SightedMember.remembered`'s own doc comment
+  // already draws for rendering.
+  const occupiedCellKeys = useMemo(
+    () =>
+      new Set(
+        otherMembers
+          .filter((m) => !m.remembered)
+          .map((m) => coordToKey(m.position))
+      ),
+    [otherMembers]
+  );
+  const pathIndex = useMemo(
+    () => (atlas ? buildAtlasPathIndex(atlas, doors, occupiedCellKeys) : null),
+    [atlas, doors, occupiedCellKeys]
+  );
+  if (canDrawSceneNow) {
+    lastGoodPathIndexRef.current = pathIndex;
+  }
+
   const publicMemberNames = useMemo(
     () => new Map([...roster].map(([id, entry]) => [id, entry.name])),
     [roster]
@@ -293,6 +493,14 @@ function SessionEncounterScope({
     turnClock === affordClock ? turnClock : ClockKind.UNSPECIFIED;
   const coherentDeclarations =
     experienceClock === ClockKind.UNSPECIFIED ? [] : affordDeclarations;
+  // WHO THE CANVAS RINGS WHILE THE FIGHT IS FROZEN. Read from the viewer's
+  // OWN declarations and nowhere else: a member who was not offered the
+  // window has nothing to answer and sees no ring, which is the same rule
+  // the dock's panel follows. Undefined at every other moment.
+  const reactionWindow = reactionWindowDeclaration(coherentDeclarations);
+  const reactionMover = reactionWindow
+    ? reactionWindowMover(reactionWindow)
+    : undefined;
   // A path preview is actionable only with coherent Move authority. Known
   // WORLD/WORLD uses the valid empty selector and remains unlocked; partial,
   // mismatched, missing, or duplicate authority is shown as locked rather than
@@ -317,9 +525,11 @@ function SessionEncounterScope({
       where: refetchWhere,
       roster: refetchRoster,
       doors: refetchDoors,
+      atlas: refetchAtlas,
     }),
     [
       refetchAfford,
+      refetchAtlas,
       refetchCharacterData,
       refetchDoors,
       refetchRoster,
@@ -346,6 +556,16 @@ function SessionEncounterScope({
     invalidateAuthoritySnapshots,
     scheduleRefresh,
   });
+  const {
+    participants: visibleParticipants,
+    characterData: visibleCharacterData,
+  } = useDeathSaveTruthHold({
+    scopeKey: `${sessionId}\u0000${member}`,
+    presentationKey: combat.concealedDeathSavePresentationKey,
+    conceal: combat.concealsDeathSaveTruth,
+    participants: turnParticipants,
+    characterData,
+  });
   staleMoveRecoveryRef.current = (declarationId) =>
     combat.recoverStaleDeclaration(declarationId, Verb.MOVE);
   moveAcceptedRef.current = () => {
@@ -362,37 +582,438 @@ function SessionEncounterScope({
     () => holdDownedReveal(otherMembers, combat.unresolvedAttackTargets),
     [otherMembers, combat.unresolvedAttackTargets]
   );
+  const localWorldDieOpenDoors = useMemo(
+    () =>
+      new Set(
+        [...doors]
+          .filter(([, door]) => door.state === DoorState.OPEN)
+          .map(([id]) => id)
+      ),
+    [doors]
+  );
+  const localWorldDieRequest = combat.diceEvents.find(
+    (event): event is DicePresentationRequestedEvent =>
+      event.type === 'dice-presentation-requested'
+  );
+  const localWorldDieProjectionRef = useRef<TrayPlaneProjection | undefined>(
+    undefined
+  );
+  const localWorldDieCommandId = useRef(1);
+  const localWorldDieProfile = useRef<VisualThrowProfileV1 | undefined>(
+    undefined
+  );
+  const localWorldDiePlanningOperation = useRef(0);
+  const admittedWitnessPlans = useRef(new Set<string>());
+  const witnessInbox = useRef(
+    new LocalWorldDieWitnessInbox({ ttlMs: 1_500, capacity: 16 })
+  );
+  const witnessExpectationRef = useRef<
+    LocalWorldDieWitnessExpectation | undefined
+  >(undefined);
+  const localWorldDieAttemptSnapshotRef = useRef<
+    LocalWorldDieAttemptSnapshot | undefined
+  >(undefined);
+  const [localWorldDieCommand, setLocalWorldDieCommand] =
+    useState<LocalWorldDieCommand>({ id: 0, kind: 'reset' });
+  const [localWorldDieReady, setLocalWorldDieReady] = useState(false);
+  const [localWorldDieRolling, setLocalWorldDieRolling] = useState(false);
+  const [localWorldDiePendingRoll, setLocalWorldDiePendingRoll] =
+    useState(false);
+  const [localWorldDieAttemptState, setLocalWorldDieAttemptState] = useState({
+    presentationId: localWorldDieRequest?.presentationId,
+    attempt: 1,
+  });
+  const localWorldDieAttempt =
+    localWorldDieAttemptState.presentationId ===
+    localWorldDieRequest?.presentationId
+      ? localWorldDieAttemptState.attempt
+      : 1;
+  const [localWorldDieWitnessActive, setLocalWorldDieWitnessActive] =
+    useState(false);
+  const [localWorldDieSettled, setLocalWorldDieSettled] = useState(false);
+  const [localWorldDiePresentationFailed, setLocalWorldDiePresentationFailed] =
+    useState(false);
+  const localWorldDiePhysical =
+    combat.diceWitnessRole === 'roller' &&
+    combat.phase === 'awaiting-roll' &&
+    !combat.diceSemanticFallback &&
+    localWorldDieRequest?.authoritySeq !== undefined;
+  const snapshotScene = lastGoodSceneRef.current;
+  const localWorldDieAttemptScopeKey =
+    localWorldDieRequest && snapshotScene
+      ? `${sessionId.length}:${sessionId}:${localWorldDieRequest.presentationId.length}:${localWorldDieRequest.presentationId}:${localWorldDieRequest.roller.entityId.length}:${localWorldDieRequest.roller.entityId}:${localWorldDieAttempt}`
+      : undefined;
+  if (!localWorldDieAttemptScopeKey || !snapshotScene) {
+    localWorldDieAttemptSnapshotRef.current = undefined;
+  } else if (
+    localWorldDieAttemptSnapshotRef.current?.scopeKey !==
+    localWorldDieAttemptScopeKey
+  ) {
+    localWorldDieAttemptSnapshotRef.current =
+      createLocalWorldDieAttemptSnapshot({
+        scopeKey: localWorldDieAttemptScopeKey,
+        scene: snapshotScene,
+        openDoorIds: localWorldDieOpenDoors,
+      });
+  }
+  const localWorldDieAttemptSnapshot = localWorldDieAttemptSnapshotRef.current;
+  const [localWorldDieFingerprintState, setLocalWorldDieFingerprintState] =
+    useState<
+      Readonly<{ scopeKey: string; fingerprint: Uint8Array }> | undefined
+    >(undefined);
+  const localWorldDieFingerprint =
+    localWorldDieFingerprintState &&
+    localWorldDieAttemptSnapshot &&
+    localWorldDieFingerprintState.scopeKey ===
+      localWorldDieAttemptSnapshot.scopeKey
+      ? localWorldDieFingerprintState.fingerprint
+      : undefined;
 
-  const refreshKeysForEvent = useCallback(
-    (event: SessionEvent): SessionRefreshKey[] => {
-      switch (event.body.case) {
-        case 'moved':
-          return event.body.value.member === member
-            ? ['where', 'afford', 'turn']
-            : ['view'];
-        case 'struck':
-        case 'missed':
-          return ['characterData', 'afford', 'view'];
-        case 'downed':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'fightStarted':
-        case 'fightEnded':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'turnEnded':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'ended':
-          return ['characterData', 'afford', 'turn', 'view'];
-        case 'joined':
-          return ['roster'];
-        case 'door':
-          return ['doors'];
-        case 'exited':
-        case undefined:
-          return event.kind === EventKind.ENDED
-            ? ['characterData', 'afford', 'turn', 'view']
-            : [];
-      }
+  useEffect(() => {
+    let active = true;
+    if (!localWorldDieAttemptSnapshot) return;
+    void fingerprintLocalWorldDieColliders(
+      localWorldDieAttemptSnapshot.colliders
+    ).then((fingerprint) => {
+      if (!active) return;
+      setLocalWorldDieFingerprintState({
+        scopeKey: localWorldDieAttemptSnapshot.scopeKey,
+        fingerprint,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [localWorldDieAttemptSnapshot]);
+
+  const witnessExpectation = useMemo(
+    () =>
+      combat.diceWitnessRole === 'spectator' &&
+      localWorldDieRequest?.roller.role === 'player' &&
+      localWorldDieRequest.roller.entityId !== member &&
+      localWorldDieFingerprint
+        ? {
+            session: sessionId,
+            presentationId: localWorldDieRequest.presentationId,
+            roller: localWorldDieRequest.roller.entityId,
+            attempt: localWorldDieAttempt,
+            viewerMember: member,
+            fingerprint: localWorldDieFingerprint,
+          }
+        : undefined,
+    [
+      combat.diceWitnessRole,
+      localWorldDieAttempt,
+      localWorldDieFingerprint,
+      localWorldDieRequest,
+      member,
+      sessionId,
+    ]
+  );
+  witnessExpectationRef.current = witnessExpectation;
+
+  const playWitnessPlan = useCallback((plan: LocalWorldDieWitnessPlan) => {
+    const identity = `${plan.presentationId}:${plan.attempt}`;
+    if (admittedWitnessPlans.current.has(identity)) return;
+    admittedWitnessPlans.current.add(identity);
+    setLocalWorldDieWitnessActive(true);
+    setLocalWorldDieCommand({
+      id: localWorldDieCommandId.current++,
+      kind: 'witness',
+      plan,
+    });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void consumeLocalWorldDieWitnessStream({
+      session: sessionId,
+      member,
+      signal: controller.signal,
+      onPlan: (wirePlan) => {
+        const plan = witnessInbox.current.offer(
+          wirePlan,
+          witnessExpectationRef.current,
+          performance.now()
+        );
+        if (plan) playWitnessPlan(plan);
+      },
+      onUnavailable: () => {},
+    });
+    return () => controller.abort();
+  }, [member, playWitnessPlan, sessionId]);
+
+  useEffect(() => {
+    localWorldDiePlanningOperation.current += 1;
+    setLocalWorldDieAttemptState({
+      presentationId: localWorldDieRequest?.presentationId,
+      attempt: 1,
+    });
+    admittedWitnessPlans.current.clear();
+    setLocalWorldDieWitnessActive(false);
+    setLocalWorldDieSettled(false);
+    setLocalWorldDiePresentationFailed(false);
+    setLocalWorldDiePendingRoll(false);
+    localWorldDieProfile.current = undefined;
+  }, [localWorldDieRequest?.presentationId]);
+
+  useEffect(() => {
+    if (!witnessExpectation) return;
+    const plan = witnessInbox.current.reconsider(
+      witnessExpectation,
+      performance.now()
+    );
+    if (plan) playWitnessPlan(plan);
+  }, [playWitnessPlan, witnessExpectation]);
+
+  useEffect(() => {
+    if (localWorldDiePhysical) return;
+    localWorldDiePlanningOperation.current += 1;
+    setLocalWorldDieCommand({
+      id: localWorldDieCommandId.current++,
+      kind: 'reset',
+    });
+    setLocalWorldDieReady(false);
+    setLocalWorldDieRolling(false);
+    localWorldDieProjectionRef.current = undefined;
+  }, [localWorldDiePhysical]);
+
+  const handleLocalWorldDieHeld = useCallback(
+    (held: LocalWorldDieHeldState | undefined) => {
+      if (localWorldDieRolling) return;
+      setLocalWorldDieCommand(
+        held
+          ? {
+              id: localWorldDieCommandId.current++,
+              kind: 'held',
+              held,
+            }
+          : { id: localWorldDieCommandId.current++, kind: 'reset' }
+      );
     },
+    [localWorldDieRolling]
+  );
+  const failLocalWorldDiePresentation = useCallback(() => {
+    localWorldDiePlanningOperation.current += 1;
+    setLocalWorldDieRolling(false);
+    setLocalWorldDiePendingRoll(false);
+    setLocalWorldDiePresentationFailed(true);
+    setLocalWorldDieCommand({
+      id: localWorldDieCommandId.current++,
+      kind: 'reset',
+    });
+  }, []);
+
+  const handleLocalWorldDieRelease = useCallback(
+    (held: LocalWorldDieHeldState, profile: VisualThrowProfileV1) => {
+      localWorldDieProfile.current = profile;
+      setLocalWorldDieRolling(true);
+      const snapshot = localWorldDieAttemptSnapshotRef.current;
+      if (!snapshot) {
+        failLocalWorldDiePresentation();
+        return;
+      }
+      const operation = ++localWorldDiePlanningOperation.current;
+      setLocalWorldDieCommand({
+        id: localWorldDieCommandId.current++,
+        kind: 'held',
+        held,
+      });
+      void preSimulateLocalWorldDie({
+        scene: snapshot.scene,
+        colliders: snapshot.colliders,
+        held,
+        profile,
+      }).then(
+        async (terminal) => {
+          if (
+            localWorldDiePlanningOperation.current !== operation ||
+            !localWorldDiePhysical
+          )
+            return;
+          const request = localWorldDieRequest;
+          const authoritySeq = request?.authoritySeq;
+          if (request && authoritySeq !== undefined) {
+            try {
+              await publishLocalWorldDie({
+                session: sessionId,
+                member,
+                presentationId: request.presentationId,
+                authoritySeq,
+                attempt: localWorldDieAttempt,
+                plan: terminal,
+              });
+              if (localWorldDiePlanningOperation.current !== operation) return;
+            } catch {
+              if (localWorldDiePlanningOperation.current !== operation) return;
+              // Decorative transport failure keeps the authoritative actor
+              // functional through the same local planned playback.
+            }
+          }
+          setLocalWorldDieCommand({
+            id: localWorldDieCommandId.current++,
+            kind: 'released',
+            held,
+            profile,
+            plannedTerminal: terminal,
+          });
+        },
+        () => {
+          if (localWorldDiePlanningOperation.current !== operation) return;
+          failLocalWorldDiePresentation();
+        }
+      );
+    },
+    [
+      failLocalWorldDiePresentation,
+      localWorldDieAttempt,
+      localWorldDiePhysical,
+      localWorldDieRequest,
+      member,
+      sessionId,
+    ]
+  );
+  // `?dieScale=`/`?rollFlash=` (diceDials.ts) — LIVE (#906 batch 2). Note
+  // dieScale specifically: LocalWorldDieLayer.tsx only mounts while a throw
+  // is in flight, so in practice a drawer edit here takes effect the next
+  // time the die is thrown, not mid-throw.
+  const diceDials = useDiceDials();
+  // The no-drag "Roll" button below needs the same held-height default the
+  // drag gesture uses.
+  const localWorldDieDimensionsForNeutralRoll = useMemo(
+    () => localWorldDieDimensions(diceDials.dieScale),
+    [diceDials.dieScale]
+  );
+  // The die-anchored flash (`?rollFlash=die`/`both`) — round 3 fix: this
+  // USED to be gated on `localWorldDieSettled` + `combat.result`, but
+  // `localWorldDieSettled` only flips true at the END of the 750ms hold
+  // (`handleLocalWorldDieTerminal`), by which point the layer is already
+  // being torn down — the flash never actually rendered. LocalWorldDieLayer
+  // now triggers and renders its own flash internally, from the moment the
+  // die is physically at rest (see its own doc comment), using
+  // `authoritativeFace` it already has — so this view only needs to pass
+  // whether die-mode is on at all. Passed to the SAME LocalWorldDieLayer
+  // instance used for both the roller's own throw AND a spectator's witness
+  // playback (see `localWorldDieLayer` below), so a witnessed throw flashes
+  // too.
+  const dieRollFlashEnabled =
+    diceDials.rollFlash === 'die' || diceDials.rollFlash === 'both';
+  const runLocalWorldDieNeutralRoll = useCallback(() => {
+    const origin = lastGoodPositionRef.current;
+    if (!origin) return;
+    const world = cubeToWorld(origin, HEX_SIZE);
+    const authoritySeq = localWorldDieRequest?.authoritySeq;
+    handleLocalWorldDieRelease(
+      {
+        position: [world.x, world.z],
+        height: localWorldDieDimensionsForNeutralRoll.holdHeightDefault,
+      },
+      createNeutralVisualThrowProfile(
+        Number((authoritySeq ?? 0n) & 0xffff_ffffn)
+      )
+    );
+  }, [
+    handleLocalWorldDieRelease,
+    localWorldDieRequest,
+    localWorldDieDimensionsForNeutralRoll,
+  ]);
+  const handleLocalWorldDieRoll = useCallback(() => {
+    if (!localWorldDieReady) {
+      setLocalWorldDiePendingRoll(true);
+      return;
+    }
+    runLocalWorldDieNeutralRoll();
+  }, [localWorldDieReady, runLocalWorldDieNeutralRoll]);
+
+  useEffect(() => {
+    if (!localWorldDiePendingRoll || !localWorldDieReady) return;
+    setLocalWorldDiePendingRoll(false);
+    runLocalWorldDieNeutralRoll();
+  }, [
+    localWorldDiePendingRoll,
+    localWorldDieReady,
+    runLocalWorldDieNeutralRoll,
+  ]);
+
+  const handleLocalWorldDieFailureReveal = useCallback(() => {
+    const request = localWorldDieRequest;
+    if (!request) return;
+    const authoritySeq = request.authoritySeq;
+    const profile =
+      localWorldDieProfile.current ??
+      createNeutralVisualThrowProfile(
+        Number((authoritySeq ?? 0n) & 0xffff_ffffn)
+      );
+    setLocalWorldDiePresentationFailed(false);
+    setLocalWorldDiePendingRoll(false);
+    setLocalWorldDieSettled(true);
+    setLocalWorldDieRolling(false);
+    setLocalWorldDieCommand({
+      id: localWorldDieCommandId.current++,
+      kind: 'reset',
+    });
+    combat.onDiceReleaseRequest(localWorldDieReleaseEvent(request, profile));
+  }, [combat, localWorldDieRequest]);
+
+  const handleLocalWorldDieTerminal = useCallback(
+    (kind: 'settled' | 'off-table' | 'failure') => {
+      if (localWorldDieWitnessActive) {
+        if (kind === 'off-table') {
+          setLocalWorldDieAttemptState({
+            presentationId: localWorldDieRequest?.presentationId,
+            attempt: localWorldDieAttempt + 1,
+          });
+        }
+        if (kind === 'settled' && localWorldDieRequest) {
+          combat.onWitnessDiceSettlement(localWorldDieRequest.presentationId);
+        }
+        setLocalWorldDieWitnessActive(false);
+        setLocalWorldDieCommand({
+          id: localWorldDieCommandId.current++,
+          kind: 'reset',
+        });
+        return;
+      }
+      if (kind === 'failure') {
+        failLocalWorldDiePresentation();
+        return;
+      }
+      if (kind === 'off-table') {
+        setLocalWorldDieAttemptState({
+          presentationId: localWorldDieRequest?.presentationId,
+          attempt: localWorldDieAttempt + 1,
+        });
+        setLocalWorldDieRolling(false);
+        setLocalWorldDieCommand({
+          id: localWorldDieCommandId.current++,
+          kind: 'reset',
+        });
+        return;
+      }
+      const request = localWorldDieRequest;
+      const profile = localWorldDieProfile.current;
+      if (!request || !profile) return;
+      setLocalWorldDieSettled(true);
+      setLocalWorldDieRolling(false);
+      setLocalWorldDieCommand({
+        id: localWorldDieCommandId.current++,
+        kind: 'reset',
+      });
+      combat.onDiceReleaseRequest(localWorldDieReleaseEvent(request, profile));
+    },
+    [
+      combat,
+      failLocalWorldDiePresentation,
+      localWorldDieAttempt,
+      localWorldDieRequest,
+      localWorldDieWitnessActive,
+    ]
+  );
+
+  // The refresh table lives in `sessionRefreshKeys.ts`, a pure function
+  // tested against real event fixtures (rpg-project#375 added two rows).
+  const refreshKeysForEvent = useCallback(
+    (event: SessionEvent): SessionRefreshKey[] => refreshKeysFor(event, member),
     [member]
   );
 
@@ -413,7 +1034,69 @@ function SessionEncounterScope({
       ]);
       acceptStreamEvent(event, metadata);
 
+      // A movement beat now DRAWS. One beat per cell reaches every member of
+      // the roster, the mover included — but the local player's own route
+      // already arrived whole from their Move answer, so feeding their beats
+      // here as well would drive the same walk twice.
+      const step = arrivingStep(event);
+      if (
+        step &&
+        step.member !== member &&
+        liveSightedRef.current.has(step.member)
+      ) {
+        moves.stepArrived(step.member, step.to);
+      }
+
+      // A REVEAL PATCHES THE HELD ATLAS IN THE SAME FRAME (design §5.2
+      // as amended): the room, its walls and its sealed cells appear now,
+      // not a round trip later. `applyReveal.ts` holds the merge rule —
+      // segments append, sealed replaces within the revealed region's
+      // cells — and the refetch scheduled above still lands afterwards
+      // with the server's own answer, so the patch buys the frame and
+      // the server keeps the truth.
+      if (event.body.case === 'regionRevealed') {
+        const beat = event.body.value;
+        applyAtlasReveal((current) => applyRegionRevealed(current, beat));
+      }
+      if (event.body.case === 'doorRevealed') {
+        const beat = event.body.value;
+        applyAtlasReveal((current) => applyDoorRevealed(current, beat));
+      }
+      // THE SAME FRAME, THE OTHER DIRECTION. A reveal adds what a member
+      // may see; these two take a thing off the floor and put it back.
+      // The refetch scheduled above still lands afterwards with the
+      // server's own answer, so the patch buys the frame and the server
+      // keeps the truth (`applyHolding.ts`).
+      if (event.body.case === 'held') {
+        const beat = event.body.value;
+        applyAtlasReveal((current) => {
+          const removed = heldProp(current, beat);
+          if (removed) heldPropsRef.current.set(beat.prop, removed);
+          return applyHeld(current, beat);
+        });
+      }
+      if (event.body.case === 'dropped') {
+        const beat = event.body.value;
+        applyAtlasReveal((current) =>
+          applyDropped(current, beat, heldPropsRef.current.get(beat.prop))
+        );
+      }
+      // Remembered BEFORE the ending arrives, because the ending beat does
+      // not name a carrier — see `carrier`'s own comment.
+      const carried = exitCarrier(event);
+      if (carried) setCarrier(carried);
+      // The reducer answers the SAME array when nothing moved, so this is
+      // a no-op re-render for every beat that is not one of the three.
+      setViewerHolding((held) => nextViewerHoldings(held, event, member));
       if (event.body.case === 'door') setDoorNotice(null);
+      // The same law: a DOOR_REVEALED/REGION_REVEALED beat is search's own
+      // "the world moved on" signal, mirroring the 'door' case above.
+      if (
+        event.body.case === 'doorRevealed' ||
+        event.body.case === 'regionRevealed'
+      ) {
+        setSearchNotice(null);
+      }
       if (event.body.case === 'ended' || event.kind === EventKind.ENDED) {
         // Equipment must disappear in the same authoritative event update,
         // before the modal receives focus or can be layered over the panel.
@@ -423,7 +1106,9 @@ function SessionEncounterScope({
     },
     [
       acceptStreamEvent,
+      applyAtlasReveal,
       invalidateAuthority,
+      member,
       refreshKeysForEvent,
       scheduleRefresh,
     ]
@@ -432,6 +1117,14 @@ function SessionEncounterScope({
   const handleStreamAgedOut = useCallback(() => {
     invalidateAuthority();
     scheduleRefresh(['characterData', 'turn', 'afford', 'view', 'where']);
+    // THE ONE PLACE THIS CLIENT KNOWS IT LOST BEATS, and holdings are
+    // projected from beats alone (`viewerHoldings.ts`) — nothing refetches
+    // them, because nothing on the wire reports them. A DROPPED inside the
+    // gap would leave the button warning forever about a heirloom the
+    // member is not carrying, which is the exact lie that module promises
+    // never to tell. Back to saying nothing: under-claiming is the right
+    // way round to be wrong here.
+    setViewerHolding((held) => (held.length === 0 ? held : []));
   }, [invalidateAuthority, scheduleRefresh]);
   const streamState = useSessionEventStream(
     sessionId,
@@ -448,11 +1141,14 @@ function SessionEncounterScope({
     if (!member) return;
     scheduleRefresh(['afford', 'turn']);
   }, [member, scheduleRefresh]);
-  const handleWalkAnimationComplete = useCallback(
-    (completedSeq: number) => {
-      onWalkAnimationComplete(completedSeq);
+  const handleMovementPainted = useCallback(
+    (paintedMember: string, seq: number, reached: number) => {
+      moves.movementPainted(paintedMember, seq, reached);
+      // Only the local player's walk holds a reconcile open; a peer's walk
+      // is presentation and nothing waits on it.
+      if (paintedMember === member) onWalkAnimationComplete();
     },
-    [onWalkAnimationComplete]
+    [moves, member, onWalkAnimationComplete]
   );
 
   const handleDoorClick = useCallback(
@@ -486,9 +1182,275 @@ function SessionEncounterScope({
     [doors, member, scheduleRefresh, sessionId]
   );
 
+  // Vendor NPC interaction (rpg-api#903 Phase 1, SessionService.Interact).
+  // No client-side reach/adjacency check — same law every other session
+  // verb keeps; an out-of-range click surfaces the server's own refusal as
+  // `vendorNotice` rather than being pre-empted here.
+  const handleVendorInteract = useCallback(
+    (subject: string) => {
+      if (!member) return;
+      setVendorNotice(null);
+      // Clear any already-open vendor before firing — a failed or
+      // descriptor-less response for THIS click must never leave a
+      // PREVIOUS vendor's stale popover on screen (Copilot review, PR #920).
+      setActiveVendor(null);
+      void (async () => {
+        try {
+          const response = await interact({
+            session: sessionId,
+            actor: member,
+            target: subject,
+          });
+          if (response.descriptor) {
+            setEquipmentOpen(false);
+            setActiveVendor({ subject, descriptor: response.descriptor });
+          }
+        } catch (error) {
+          setVendorNotice(errorMessage(error));
+        }
+      })();
+    },
+    [interact, member, sessionId]
+  );
+
+  // Vendor purchase (rpg-project#369/#370, SessionService.Trade). One
+  // item per click, quantity read off the row itself (LIMITED rows carry
+  // a real count; UNLIMITED rows default to 1 — see vendorStock.ts's own
+  // `quantity ?? 0` convention for the same reason). `give.items` is
+  // always empty this wave — one-directional acquisition only — but
+  // `give.currency` carries the row's own server-computed price
+  // (rpg-toolkit#1534). `entry.price` is already required for the Buy
+  // button to be enabled (vendorStockPurchasable), so the extra guard
+  // below is defense in depth, not new UI.
+  //
+  // ONE UNIT PER CLICK (Kirk, live testing: "first implementation is one
+  // item by one item" — a row's remaining stock count is NOT how many to
+  // buy). Repeat clicks buy more, one at a time — no quantity picker this
+  // wave. `entry.price` is the unit price already, so with quantity fixed
+  // at 1 it's also the exact amount to offer, no scaling needed.
+  const handleVendorBuy = useCallback(
+    (entry: VendorStockEntry) => {
+      const price = entry.price;
+      if (!member || !activeVendor || !price) return;
+      const quantity = 1;
+      setVendorNotice(null);
+      void (async () => {
+        try {
+          const response = await trade({
+            session: sessionId,
+            actor: member,
+            target: activeVendor.subject,
+            direction: 'buy',
+            equipmentType: entry.equipmentType,
+            equipmentId: entry.equipmentId,
+            quantity,
+            price,
+          });
+          if (response.descriptor) {
+            setActiveVendor({
+              subject: activeVendor.subject,
+              descriptor: response.descriptor,
+            });
+            setVendorNotice(`Bought ${entry.displayName}.`);
+            // Unlike EquipItem/UnequipItem, TradeResponse carries the
+            // VENDOR's descriptor, not the buyer's CharacterData — there
+            // is nothing here to replaceCharacterData from. Without this,
+            // the bought item wouldn't reach the equipment panel until
+            // some unrelated stream event (e.g. turnEnded) happened to
+            // include 'characterData' in its own refresh set — a real
+            // gap caught live: free-roam vendor purchases have no turn
+            // boundary to piggyback on at all.
+            void refetchCharacterData();
+          }
+        } catch (error) {
+          setVendorNotice(errorMessage(error));
+        }
+      })();
+    },
+    [activeVendor, member, refetchCharacterData, sessionId, trade]
+  );
+
+  // Vendor sale (rpg-toolkit#1537) — the mirror of handleVendorBuy above.
+  // ONE UNIT PER CLICK, same correction as Buy: a carried stack's full
+  // count is not how many to sell — repeat clicks sell more, one at a
+  // time, no quantity picker this wave. `item.equipmentType` is the
+  // real `shared.EquipmentType` now (rpg-api-protos#301), not the
+  // lossy display `kind` — every carried item has one, so no
+  // "can't resolve type" guard is needed here anymore.
+  const handleVendorSell = useCallback(
+    (item: ItemLike) => {
+      const equipmentType = item.equipmentType;
+      const unitPrice = item.price;
+      if (!member || !activeVendor || !unitPrice) return;
+      const quantity = 1;
+      // `ItemLike.price` is deliberately a plain `{copper}` shape
+      // (equipmentTypes.ts's own "no generated proto types" rule, so the
+      // /concepts bench can keep feeding fixture data) — cast at this one
+      // boundary where it actually crosses into the generated-proto-typed
+      // Trade request, same as this file's other Money-shaped literals in
+      // tests. Quantity fixed at 1, so this is also the exact amount to
+      // expect back, no scaling needed.
+      const price = { ...unitPrice } as Money;
+      setVendorNotice(null);
+      void (async () => {
+        try {
+          const response = await trade({
+            session: sessionId,
+            actor: member,
+            target: activeVendor.subject,
+            direction: 'sell',
+            equipmentType,
+            equipmentId: item.ref.id,
+            quantity,
+            price,
+          });
+          if (response.descriptor) {
+            setActiveVendor({
+              subject: activeVendor.subject,
+              descriptor: response.descriptor,
+            });
+            setVendorNotice(`Sold ${item.name}.`);
+            // Same reasoning as handleVendorBuy: TradeResponse carries
+            // only the vendor's descriptor, and a sale changes BOTH the
+            // wallet and the inventory on the actor's own CharacterData.
+            void refetchCharacterData();
+          }
+        } catch (error) {
+          setVendorNotice(errorMessage(error));
+        }
+      })();
+    },
+    [activeVendor, member, refetchCharacterData, sessionId, trade]
+  );
+
+  // THE SECRECY LAW, ENFORCED HERE (rpg-project#350/#886): SearchResponse
+  // carries no outcome, so this handler never reads `response` at all —
+  // only whether the call itself resolved or threw. A find or a fruitless
+  // room both land on the exact same `setSearchNotice(SEARCH_NOTICE)`
+  // call; only a genuine RPC/transport failure (a caller defect, never a
+  // check outcome) gets a different message, the same distinction
+  // `handleDoorClick` already draws. A find still reaches the searcher —
+  // later, as its own recipient-scoped DOOR_REVEALED beat on the stream,
+  // handled by `refreshKeysForEvent` — never through this call's return
+  // value, so no refresh is scheduled here.
+  const handleSearch = useCallback(() => {
+    if (!member || !region) return;
+    setSearchNotice(null);
+    void (async () => {
+      try {
+        await search({ session: sessionId, member, region });
+        setSearchNotice(SEARCH_NOTICE);
+      } catch (error) {
+        setSearchNotice(errorMessage(error));
+      }
+    })();
+  }, [member, region, search, sessionId]);
+
+  // WHERE THE VIEWER STANDS, as a cube coordinate — the one input both
+  // offers below need. Null until GetWhere has answered, which is what
+  // makes both lists empty rather than wrong.
+  const viewerCube = useMemo(
+    () => (wherePosition ? positionToCube(wherePosition) : null),
+    [wherePosition]
+  );
+  // EVERY downed body beside the viewer, and every NAMED prop beside them.
+  // `holdingAffordances.ts` holds the reasoning; the only thing computed
+  // is adjacency, and P3's law — no filter that would say which body is
+  // worth looting — lives there with its own comment.
+  const bodiesToLoot = useMemo(
+    () => lootTargets(otherMembers, viewerCube),
+    [otherMembers, viewerCube]
+  );
+  const propsToHold = useMemo(
+    () => holdTargets(atlas, viewerCube),
+    [atlas, viewerCube]
+  );
+  // Which way out they are standing on, for the button to name — NOT a
+  // gate on offering Leave (`AtlasExit`'s own doc comment, and R9: the
+  // carrier has to be able to leave from the vault and drop it there).
+  const standingOnExit = useMemo(
+    () => exitAt(atlas, viewerCube),
+    [atlas, viewerCube]
+  );
+
+  // THE SAME SECRECY LAW `handleSearch` KEEPS (design P3): the response
+  // carries nothing about what moved, so this handler never reads it. A
+  // fruitful loot and an empty body land on the identical silent success;
+  // only a genuine RPC failure says anything, and it says the server's own
+  // refusal. What the looter gained arrives later as their own
+  // DOOR_REVEALED beat, never through this call.
+  const handleLoot = useCallback(
+    (target: string) => {
+      if (!member) return;
+      setHoldingNotice(null);
+      void (async () => {
+        try {
+          await loot({ session: sessionId, member, target });
+        } catch (error) {
+          setHoldingNotice(errorMessage(error));
+        }
+      })();
+    },
+    [loot, member, sessionId]
+  );
+
+  // No client-side check that the prop IS holdable — the wire does not say
+  // and the rule half refuses by name (`holdingAffordances.ts`). The prop
+  // leaving the map arrives as the beat, which patches the atlas above.
+  const handleHold = useCallback(
+    (target: string) => {
+      if (!member) return;
+      setHoldingNotice(null);
+      void (async () => {
+        try {
+          await hold({ session: sessionId, member, target });
+        } catch (error) {
+          setHoldingNotice(errorMessage(error));
+        }
+      })();
+    },
+    [hold, member, sessionId]
+  );
+
+  // The client just says leave (design R6/R7). It reads NOTHING out of the
+  // answer: whether that ended the run, dropped what was carried, or
+  // simply removed one member is the server's call, and it arrives on the
+  // EXITED and ENDED beats like every other world fact.
+  const handleLeave = useCallback(() => {
+    if (!member) return;
+    setHoldingNotice(null);
+    void (async () => {
+      try {
+        await leave({ session: sessionId, member });
+      } catch (error) {
+        setHoldingNotice(errorMessage(error));
+      }
+    })();
+  }, [leave, member, sessionId]);
+
   const handleEquipIntent = useCallback(
     async (intent: EquipIntent) => {
       if (!member) return;
+      if (intent.kind === 'Unpack') {
+        // SessionService.Unpack (rpg-toolkit#1546) — no counterparty, no
+        // reach, no story beat, and (unlike EquipItem/UnequipItem)
+        // UnpackResponse carries no CharacterData to apply directly, so
+        // a refetch is the only way to see the unpacked contents land.
+        setUnpackNotice(null);
+        try {
+          await unpack({
+            session: sessionId,
+            actor: member,
+            itemId: intent.ref.id,
+            quantity: intent.quantity,
+          });
+          setUnpackNotice(`Unpacked ${intent.name}.`);
+          void refetchCharacterData();
+        } catch (error) {
+          setUnpackNotice(errorMessage(error));
+        }
+        return;
+      }
       try {
         const response =
           intent.kind === 'EquipItem'
@@ -511,15 +1473,60 @@ function SessionEncounterScope({
         // state remains visible until the player retries.
       }
     },
-    [equipItem, member, replaceCharacterData, unequipItem]
+    [
+      equipItem,
+      member,
+      refetchCharacterData,
+      replaceCharacterData,
+      sessionId,
+      unequipItem,
+      unpack,
+    ]
   );
 
   const ownRoster = roster.get(member);
   const characterName = ownRoster?.name || 'You';
   const classRefId = ownRoster?.classRef || undefined;
+  const raceRefId = ownRoster?.raceRef || undefined;
+  const localIsDowned =
+    visibleParticipants.find((participant) => participant.member === member)
+      ?.standing === Standing.DOWNED;
   const mainHandResolution = useMemo(
-    () => resolveMainHandPresentation(characterData?.equipped ?? {}),
-    [characterData?.equipped]
+    () => resolveMainHandPresentation(visibleCharacterData?.equipped ?? {}),
+    [visibleCharacterData?.equipped]
+  );
+  const offHandResolution = useMemo(
+    () => resolveOffHandPresentation(visibleCharacterData?.equipped ?? {}),
+    [visibleCharacterData?.equipped]
+  );
+  // Every owned item with a resolved ref — shared by EquipmentPopover's
+  // `items` and the vendor Sell tab's own carried-stack computation below,
+  // rather than filtering the same list twice. Reads `visibleCharacterData`
+  // (not the raw `characterData`), same as every other player-facing
+  // derivation around it — a concealed death-save window must hold this
+  // back too, not just the combat presentation.
+  const ownedItems = useMemo(
+    () =>
+      (visibleCharacterData?.inventory ?? []).filter(
+        (
+          item
+        ): item is typeof item & {
+          ref: NonNullable<typeof item.ref>;
+        } => item.ref !== undefined
+      ),
+    [visibleCharacterData?.inventory]
+  );
+  // Sellable: carried (unequipped) with a server-computed price.
+  // `equipmentType` (rpg-api-protos#301) is always present now, so
+  // there's no "gear-kind items excluded" restriction anymore — that
+  // was only ever a stand-in for the missing real type, not a design
+  // choice about what should be sellable.
+  const sellableItems = useMemo(
+    () =>
+      computeCarried(ownedItems, visibleCharacterData?.equipped ?? {}).filter(
+        ({ item }) => item.price !== undefined
+      ),
+    [ownedItems, visibleCharacterData?.equipped]
   );
   const loading = atlasLoading || whereLoading;
   const blockingError = atlasError ?? whereError;
@@ -532,6 +1539,51 @@ function SessionEncounterScope({
     : characterDataError
       ? ('unavailable' as const)
       : ('loading' as const);
+  const localWorldDieControl =
+    combat.diceWitnessRole === 'roller' &&
+    combat.phase === 'awaiting-roll' &&
+    (combat.diceSemanticFallback || localWorldDiePhysical) ? (
+      localWorldDiePresentationFailed ? (
+        <LocalWorldDieTile
+          mode="fallback"
+          onRevealResult={handleLocalWorldDieFailureReveal}
+        />
+      ) : localWorldDieRolling ? (
+        <LocalWorldDieTile mode="status" />
+      ) : combat.diceSemanticFallback ? (
+        <LocalWorldDieTile
+          mode="fallback"
+          onRevealResult={combat.onDiceSemanticReleaseRequest}
+        />
+      ) : localWorldDieAttemptSnapshot &&
+        !localWorldDieRolling &&
+        !localWorldDieSettled ? (
+        <LocalWorldDieTile
+          mode="ready"
+          pickupReady={localWorldDieReady}
+          scene={localWorldDieAttemptSnapshot.scene}
+          projectionRef={localWorldDieProjectionRef}
+          onHeldChange={handleLocalWorldDieHeld}
+          onRelease={handleLocalWorldDieRelease}
+          onRoll={handleLocalWorldDieRoll}
+        />
+      ) : null
+    ) : null;
+  const localWorldDieLayer =
+    (localWorldDiePhysical || localWorldDieWitnessActive) &&
+    localWorldDieAttemptSnapshot &&
+    localWorldDieRequest ? (
+      <LocalWorldDieLayer
+        command={localWorldDieCommand}
+        scene={localWorldDieAttemptSnapshot.scene}
+        colliders={localWorldDieAttemptSnapshot.colliders}
+        authoritativeFace={localWorldDieRequest.die.authoritativeResult}
+        projectionRef={localWorldDieProjectionRef}
+        onReadyChange={setLocalWorldDieReady}
+        onTerminal={handleLocalWorldDieTerminal}
+        rollFlashEnabled={dieRollFlashEnabled}
+      />
+    ) : null;
 
   let content: React.ReactNode;
   if (!characterId) {
@@ -577,15 +1629,16 @@ function SessionEncounterScope({
             memberNames={publicMemberNames}
             clock={experienceClock}
             round={turnRound}
-            participants={turnParticipants}
+            participants={visibleParticipants}
             declarations={coherentDeclarations}
-            characterData={characterData}
+            characterData={visibleCharacterData}
             privateStatus={privateStatus}
             privateStatusMessage={
               characterDataError ? errorMessage(characterDataError) : undefined
             }
             onRetryPrivateStatus={() => void refetchCharacterData()}
             authorityFresh={authorityFresh}
+            endTurnBlocked={combat.endTurnBlocked}
             presentationState={combat.presentationState}
             phase={combat.phase}
             showTurnNotice={combat.showTurnNotice}
@@ -597,46 +1650,88 @@ function SessionEncounterScope({
             diceEvents={combat.diceEvents}
             diceSemanticFallback={combat.diceSemanticFallback}
             diceRollerName={combat.diceRollerName}
+            localWorldDieControl={localWorldDieControl}
+            localWorldDieSettled={localWorldDieSettled}
             location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
             pacingNotice={combat.pacingNotice}
             renderMap={({ attackableTargets, onTargetClick }) => (
-              <SessionCanvas
-                scene={lastGoodSceneRef.current!}
-                hexSize={HEX_SIZE}
-                characterId={member}
-                characterName={characterName}
-                classRefId={classRefId}
-                mainHandPresentation={mainHandResolution.presentation}
-                roster={roster}
-                doors={doors}
-                onDoorClick={runEnded === null ? handleDoorClick : undefined}
-                myPosition={displayPosition ?? lastGoodPositionRef.current!}
-                movePath={movePath}
-                moveSeq={moveSeq}
-                onHexClick={runEnded === null ? walkTo : undefined}
-                onEntityClick={runEnded === null ? onTargetClick : undefined}
-                onMovementPresentationComplete={
-                  runEnded === null ? handleWalkAnimationComplete : undefined
-                }
-                otherMembers={revealedMembers}
-                attackableTargets={
-                  runEnded === null ? [...attackableTargets] : []
-                }
-                pathIndex={lastGoodPathIndexRef.current}
-                turnLocked={turnLocked}
-                movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
-              />
+              <>
+                {/* Which colour is which side (rpg-project#375 §7). Renders
+                    nothing until a declared faction is on the roster. */}
+                <FactionLegend roster={roster} />
+                <SessionCanvas
+                  // The dungeon's own starting facing, read from the ATLAS
+                  // and nowhere else (rpg-project#374: rpg-api reads it from
+                  // the atlas mirror only, and there is no second source
+                  // here either). Absent when the author stated none, and
+                  // absent entirely for a dungeon with no start — the wire
+                  // omits `start` in that case, because a zero-valued one
+                  // would claim the party arrives at the origin looking
+                  // nowhere.
+                  startFacing={atlas?.start?.facing || undefined}
+                  scene={lastGoodSceneRef.current!}
+                  hexSize={HEX_SIZE}
+                  compositionSource={compositionSource}
+                  characterId={member}
+                  characterName={characterName}
+                  classRefId={classRefId}
+                  raceRefId={raceRefId}
+                  localCustomization={ownerCharacter?.appearance}
+                  localIsDowned={localIsDowned}
+                  mainHandPresentation={mainHandResolution.presentation}
+                  offHandPresentation={offHandResolution.presentation}
+                  roster={roster}
+                  doors={doors}
+                  onDoorClick={runEnded === null ? handleDoorClick : undefined}
+                  onInteractClick={
+                    runEnded === null ? handleVendorInteract : undefined
+                  }
+                  myPosition={displayPosition ?? lastGoodPositionRef.current!}
+                  movements={moves.movements}
+                  onHexClick={runEnded === null ? walkTo : undefined}
+                  onEntityClick={runEnded === null ? onTargetClick : undefined}
+                  onMovementPainted={
+                    runEnded === null ? handleMovementPainted : undefined
+                  }
+                  otherMembers={revealedMembers}
+                  attackableTargets={
+                    runEnded === null ? [...attackableTargets] : []
+                  }
+                  reactionMover={runEnded === null ? reactionMover : undefined}
+                  pathIndex={lastGoodPathIndexRef.current}
+                  turnLocked={turnLocked}
+                  movementBudgetFeet={movementBudgetFeet(coherentDeclarations)}
+                  presentationLayer={localWorldDieLayer}
+                />
+              </>
             )}
             onSelectDeclaration={combat.onSelectDeclaration}
             onTargetClick={combat.onTargetClick}
             onEndTurn={combat.onEndTurn}
             onLogModeChange={combat.onLogModeChange}
             onOpenEquipment={
-              characterData
-                ? () => setEquipmentOpen((open) => !open)
+              visibleCharacterData
+                ? () => {
+                    // Both popovers anchor to the exact same corner
+                    // (`.equip-popover`'s own CSS) — only one at a time.
+                    setActiveVendor(null);
+                    setEquipmentOpen((open) => !open);
+                  }
                 : undefined
             }
-            equipmentOpen={characterData ? equipmentOpen : false}
+            equipmentOpen={visibleCharacterData ? equipmentOpen : false}
+            onSearch={runEnded === null && region ? handleSearch : undefined}
+            searchPending={searching}
+            lootTargets={bodiesToLoot}
+            onLoot={runEnded === null ? handleLoot : undefined}
+            lootPending={looting}
+            holdTargets={propsToHold}
+            onHold={runEnded === null ? handleHold : undefined}
+            holdPending={holding}
+            onLeave={runEnded === null ? handleLeave : undefined}
+            leavePending={leaving}
+            leaveExitId={standingOnExit?.id}
+            leaveHolding={viewerHolding}
             {...(combat.diceWitnessRole === 'roller'
               ? {
                   diceWitnessRole: 'roller' as const,
@@ -668,6 +1763,10 @@ function SessionEncounterScope({
               </span>
             )}
             {doorNotice && <span>{doorNotice}</span>}
+            {searchNotice && <span>{searchNotice}</span>}
+            {holdingNotice && <span>{holdingNotice}</span>}
+            {vendorNotice && <span>{vendorNotice}</span>}
+            {unpackNotice && <span>{unpackNotice}</span>}
           </div>
 
           <div
@@ -680,31 +1779,39 @@ function SessionEncounterScope({
               height: 0,
             }}
           >
-            {runEnded === null && characterData && (
+            {runEnded === null && visibleCharacterData && (
               <EquipmentPopover
                 open={equipmentOpen}
                 characterName={characterName}
                 classLabel={classLabel(classRefId) ?? undefined}
-                slots={characterData.slots}
-                equipped={characterData.equipped}
-                items={characterData.inventory.filter(
-                  (
-                    item
-                  ): item is typeof item & {
-                    ref: NonNullable<typeof item.ref>;
-                  } => item.ref !== undefined
-                )}
+                slots={visibleCharacterData.slots}
+                equipped={visibleCharacterData.equipped}
+                items={ownedItems}
                 armorClass={
-                  characterData.armorClassDetail
+                  visibleCharacterData.armorClassDetail
                     ? {
-                        total: characterData.armorClassDetail.total,
-                        note: characterData.armorClassDetail.note,
+                        total: visibleCharacterData.armorClassDetail.total,
+                        note: visibleCharacterData.armorClassDetail.note,
                       }
                     : undefined
                 }
-                mainHandDamage={characterData.mainHandDamage}
+                mainHandDamage={visibleCharacterData.mainHandDamage}
                 onIntent={(intent) => void handleEquipIntent(intent)}
-                busy={equipping || unequipping}
+                busy={equipping || unequipping || unpacking}
+                walletCopper={visibleCharacterData.wallet?.copper}
+              />
+            )}
+            {runEnded === null && activeVendor && (
+              <VendorPopover
+                open
+                displayName={activeVendor.descriptor.displayName}
+                inventory={activeVendor.descriptor.inventory}
+                onClose={() => setActiveVendor(null)}
+                onBuy={(entry: VendorStockEntry) => handleVendorBuy(entry)}
+                carriedItems={sellableItems}
+                onSell={(item) => handleVendorSell(item)}
+                busy={tradeLoading}
+                walletCopper={visibleCharacterData?.wallet?.copper}
               />
             )}
           </div>
@@ -735,7 +1842,19 @@ function SessionEncounterScope({
               }}
             >
               <h2 id="run-ended-headline">{endingHeadline(runEnded)}</h2>
-              <p>The encounter is over — the outcome is recorded.</p>
+              {/* Names the carrier when one walked out through an authored
+                  exit holding something, and says nothing about one
+                  otherwise — a run that ended for any other reason had no
+                  carrier, and the overlay must not invent one. */}
+              {carrier ? (
+                <p data-testid="run-ended-carrier">
+                  {`${resolveName(publicMemberNames, carrier.member, member)} carried ${holdingPhrase(
+                    carrier.holding
+                  )} out through the ${authoredWords(carrier.exit)}.`}
+                </p>
+              ) : (
+                <p>The encounter is over — the outcome is recorded.</p>
+              )}
               <Button ref={leaveRunButtonRef} size="sm" onClick={onBack}>
                 Leave
               </Button>

@@ -63,6 +63,10 @@ import {
   DissolveKind,
   DoorState,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import {
+  formatDebugDamageComponents,
+  formatDebugRollCalculation,
+} from './combat-experience/rollTrace';
 
 /** One rendered debug-log entry. `text` is the full line, ready to
  * display and select-all-copy verbatim; `ids` are the raw member ids
@@ -78,6 +82,12 @@ function displayName(names: Map<string, string>, id: string): string {
   return names.get(id) ?? id;
 }
 
+/** JSON string quoting keeps provider-authored text lossless and on one framed
+ * Debug line while preserving the existing `"ordinary"` representation. */
+function quoteDebugString(value: string): string {
+  return JSON.stringify(value);
+}
+
 function positionText(position: { x: number; y: number } | undefined): string {
   return position ? `(${position.x},${position.y})` : '(?,?)';
 }
@@ -90,21 +100,6 @@ function attackText(
   if (!attack) return 'attack.ref=? attack.name=? type=?';
   const typeName = DamageType[attack.damageType] ?? String(attack.damageType);
   return `attack.ref=${attack.ref} attack.name="${attack.name}" type=${typeName}`;
-}
-
-function damageComponentText(component: DamageComponent): string {
-  const fields = [`source=${component.source}`];
-  if (component.sourceRef) fields.push(`ref=${component.sourceRef}`);
-  if (component.dice) fields.push(`dice=${component.dice}`);
-  fields.push(`final_rolls=[${(component.finalRolls ?? []).join(',')}]`);
-  fields.push(`flat=${component.flatBonus}`);
-  fields.push(
-    `type=${DamageType[component.damageType] ?? String(component.damageType)}`
-  );
-  if (component.multiplier !== undefined) {
-    fields.push(`multiplier=${component.multiplier}`);
-  }
-  return `{${fields.join(' ')}}`;
 }
 
 function attackModifierSourceText(
@@ -130,9 +125,7 @@ function strikeDetailText(
   const disadvantage = disadvantageSources ?? [];
   const segments: string[] = [];
   if (components.length > 0) {
-    segments.push(
-      `components=[${components.map(damageComponentText).join(', ')}]`
-    );
+    segments.push(`components=${formatDebugDamageComponents(components)}`);
   }
   if (advantage.length > 0) {
     segments.push(
@@ -200,6 +193,79 @@ export function formatDebugLine(
         text:
           `${prefix} missed attacker=${name(b.attacker)} target=${name(b.target)} ` +
           `roll=${b.roll} total=${b.total} against=${b.against} ${attackText(b.attack)}`,
+      };
+    }
+    case 'activated': {
+      const b = event.body.value;
+      const target = b.target ? ` target=${name(b.target)}` : ' target=';
+      return {
+        seq,
+        ids: b.target ? [b.actor, b.target] : [b.actor],
+        text:
+          `${prefix} activated actor=${name(b.actor)} ` +
+          `ability.ref=${b.ability?.ref ?? '?'} ability.name=${b.ability ? quoteDebugString(b.ability.name) : '?'}${target}`,
+      };
+    }
+    case 'activationResult': {
+      const b = event.body.value;
+      const actor = `${prefix} activation_result actor=${name(b.actor)}`;
+      switch (b.result.case) {
+        case 'healingApplied': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.target],
+            text:
+              `${actor} result=healing_applied target=${name(result.target)} ` +
+              `amount=${result.amount} requested=${result.requested} ` +
+              `roll=${result.roll} modifier=${result.modifier} ` +
+              `hp.before=${result.hpBefore} hp.after=${result.hpAfter} ` +
+              `source.ref=${result.sourceRef} source.name=${quoteDebugString(result.sourceName)} ` +
+              `calculation=${formatDebugRollCalculation(result.calculation)}`,
+          };
+        }
+        case 'conditionApplied': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.target],
+            text:
+              `${actor} result=condition_applied target=${name(result.target)} ` +
+              `condition.ref=${result.ref} condition.name=${quoteDebugString(result.name)}`,
+          };
+        }
+        case 'conditionRemoved': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.target],
+            text:
+              `${actor} result=condition_removed target=${name(result.target)} ` +
+              `condition.ref=${result.ref} condition.name=${quoteDebugString(result.name)} ` +
+              `reason=${quoteDebugString(result.reason)}`,
+          };
+        }
+        case 'capacityGranted': {
+          const result = b.result.value;
+          return {
+            seq,
+            ids: [b.actor, result.member],
+            text:
+              `${actor} result=capacity_granted member=${name(result.member)} ` +
+              `description=${quoteDebugString(result.description)}`,
+          };
+        }
+        case undefined:
+          return {
+            seq,
+            ids: [b.actor],
+            text: `${actor} result=none`,
+          };
+      }
+      return {
+        seq,
+        ids: [b.actor],
+        text: `${actor} result=unknown body=${safeJson(b.result)}`,
       };
     }
     case 'downed': {

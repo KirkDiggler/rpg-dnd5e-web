@@ -29,11 +29,8 @@ import type {
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import { useMemo } from 'react';
 import { DevPerfProbe } from '../../dev/DevPerfProbe';
-import { computeAuthoredWallRuns } from '../../hooks/authoredWallRuns';
 import type { EntityMeta, EntityStatus } from '../../hooks/useEncounterState';
 import {
-  authoredWallEdgeCandidates,
-  authoredWallRunEdgeInputs,
   connectorDoorHeights,
   connectorDoorInputsFromWalls,
   connectorDoorPlanes,
@@ -292,52 +289,13 @@ export function EncounterMap({
   // real perimeter/connector walls are never in 'interior' category (they
   // resolve to an envelope/connector run or a door instead), so this is a
   // no-op there — see wallRunAdapters.test.ts's own regression coverage
-  // against real reference-tomb wire data.
-  const authoredWallEdges = useMemo(
-    () =>
-      authoredWallEdgeCandidates(
-        wallList,
-        regions,
-        wallRunsResult.connectorRuns,
-        connectorDoors
-      ),
-    [wallList, regions, wallRunsResult, connectorDoors]
-  );
-  const authoredWallRuns = useMemo(() => {
-    const edgeInputs = authoredWallRunEdgeInputs(
-      wallList,
-      regions,
-      wallRunsResult.connectorRuns,
-      connectorDoors
-    );
-    // Ground each run's outward `facing` in real floor proximity (every
-    // revealed region's own hex membership) rather than the pure
-    // connected-component-centroid fallback — see
-    // computeAuthoredWallRuns' own `floorHexes` doc comment for why a
-    // centroid-only heuristic breaks down on a finely irregular boundary
-    // (verified live against dungeon-one's own wall data: roughly half
-    // its crenellated stretch's tiled pieces showed their flat,
-    // undecorated back to the player instead of the tinted/detailed
-    // front — exactly Kirk's live report that authored walls read as
-    // dark/illegible, worst under crypt's already-dim mood lighting).
-    const floorHexes = regions.flatMap((region) => region.hexes);
-    return computeAuthoredWallRuns(edgeInputs, HEX_SIZE, floorHexes);
-  }, [wallList, regions, wallRunsResult, connectorDoors]);
-  // legacySyntyWallsRaw still includes every 'interior' wall (degenerate
-  // AND boundary-edge alike — legacyRenderWalls' own contract is
-  // unchanged, see authoredWallEdgeCandidates' doc comment on why it
-  // stays a narrower, separate selection rather than a mutation of that
-  // function). Subtract exactly the boundary-edge ones now covered by
-  // authoredWallRuns above, by reference (both derive from the SAME
-  // `wallList` array, so its own elements are shared, not cloned) — a
-  // degenerate 'interior' wall (a real blocked-cell obstacle, e.g. a
-  // crypt pillar) is never in `authoredWallEdges`, so it stays on
-  // SyntyHexWall's legacy per-cell path unaffected.
-  const legacySyntyWalls = useMemo(() => {
-    if (authoredWallEdges.length === 0) return legacySyntyWallsRaw;
-    const covered = new Set(authoredWallEdges);
-    return legacySyntyWallsRaw.filter((wall) => !covered.has(wall));
-  }, [legacySyntyWallsRaw, authoredWallEdges]);
+  // THE AUTHORED-RUN EXTRACTION IS GONE (rpg-project#360 slice 2). It
+  // fed `computeAuthoredWallRuns`, the chain-fitter deleted with the
+  // pair form: a wall is a line now, and this legacy v1alpha2 route has
+  // no line to read — its wire carries `Wall` messages, not segments. Its
+  // interior walls go back to the per-cell `SyntyHexWall` path they came
+  // from, which never stopped selecting them.
+  const legacySyntyWalls = legacySyntyWallsRaw;
   // W3 "fallback restyle" (rpg-project#133 design.md/plan.md): the same
   // structural safety-net candidates legacyRenderWalls used to keep for
   // SyntyHexWall's legacy per-cell renderer now render as straight,
@@ -643,7 +601,6 @@ export function EncounterMap({
         envelopeCorners={wallRunsResult.envelopeCorners}
         connectorRuns={wallRunsResult.connectorRuns}
         connectorFallbackSegments={fallbackSegments}
-        authoredRuns={authoredWallRuns}
         doorPlaneOverrides={doorPlaneOverrides}
         wallHeight={wallHeightOverride}
         wallCutaway={wallCutawayOverride}

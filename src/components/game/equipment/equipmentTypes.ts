@@ -39,20 +39,44 @@ export interface ItemLike {
   /** Reference key into the asset-owned manifest — may be empty (see
    * resolveIconUrl below); the web never invents one. */
   iconKey: string;
-  /** "weapon" | "shield" | "armor" | "gear" — open vocabulary. */
+  /** "weapon" | "shield" | "armor" | "gear" — a DISPLAY/slot-compatibility
+   * vocabulary (rpg-toolkit's `itemKind`), narrower and lossier than
+   * `equipmentType` below (it collapses tool/pack/item/ammunition into one
+   * "gear" bucket) — used only for equip-slot compatibility
+   * (`targetSlotFor`), never for anything that has to round-trip back to
+   * the catalog's own type. */
   kind: string;
   /** Slot keys this item may occupy, e.g. ["main_hand", "off_hand"]. */
   slotKeys: string[];
+  /** Number of copies owned, authored by the server. */
+  quantity: number;
+  /** Server-computed unit price (rpg-toolkit#1534/#1537,
+   * rpg-api-protos#298), display-only — a preview so a client can
+   * pre-populate a Sell's expected payout. Never the price authority;
+   * the server always recomputes at trade time. Undefined only for a
+   * pre-#298 server response. */
+  price?: { copper: number };
+  /** The item's real `shared.EquipmentType` — "weapon" | "armor" | "tool" |
+   * "pack" | "item" | "ammunition" (rpg-toolkit#1545/#1546,
+   * rpg-api-protos#301). Same open vocabulary as
+   * `VendorStockEntry.equipmentType`/`TradeItem.equipmentType`, so a Sell
+   * request can use it directly — unlike `kind` above, this one round-trips
+   * correctly for every item, including "gear"-kind ones. */
+  equipmentType: string;
 }
 
 /** slot key -> the Ref worn/wielded there — matches CharacterData.equipped. */
 export type EquippedMap = Record<string, RefLike>;
 
-/** The intent an equip/unequip click emits — exactly the RPC request shape
- * (dnd5e.api.v1alpha2.character.CharacterService.EquipItem/UnequipItem). */
+/** The intent an equip/unequip/unpack click emits. EquipItem/UnequipItem
+ * are exactly the v1alpha2 CharacterService RPC request shape; Unpack is
+ * the v1alpha1 SessionService.Unpack shape (session/actor bound by the
+ * caller) — carries `name` alongside `ref` purely for the success notice,
+ * since `UnpackResponse` itself echoes nothing back to read a name from. */
 export type EquipIntent =
   | { kind: 'EquipItem'; ref: RefLike; slotKey: string }
-  | { kind: 'UnequipItem'; slotKey: string };
+  | { kind: 'UnequipItem'; slotKey: string }
+  | { kind: 'Unpack'; ref: RefLike; name: string; quantity: number };
 
 /**
  * Canonical string key for a Ref — "module:type:id", the same format the
@@ -98,4 +122,39 @@ export function targetSlotFor(
     (s) => item.slotKeys.includes(s.key) && s.accepts.includes(item.kind)
   );
   return compatible.find((s) => !equipped[s.key])?.key ?? compatible[0]?.key;
+}
+
+/** One item stack's carried (unequipped) portion — extracted from
+ * `InventoryLight`'s own carried computation so a second consumer (the
+ * vendor Sell tab) doesn't duplicate it. */
+export interface CarriedStack {
+  item: ItemLike;
+  carriedCount: number;
+  showCount: boolean;
+}
+
+/**
+ * Every owned item's carried (not currently equipped) count — legacy owner
+ * snapshots predate `quantity` and decode its wire default as zero, so that
+ * case is treated as one copy owned during rollout, the same defensive
+ * reading `InventoryLight` always gave it. Keyed by the full
+ * `{module,type,id}` triple via `refKey`, not bare `ref.id` — an id is only
+ * unique within one `{module, type}` pair (Copilot review on #575).
+ */
+export function computeCarried(
+  items: ItemLike[],
+  equipped: EquippedMap
+): CarriedStack[] {
+  const equippedCounts = new Map<string, number>();
+  for (const ref of Object.values(equipped)) {
+    const key = refKey(ref);
+    equippedCounts.set(key, (equippedCounts.get(key) ?? 0) + 1);
+  }
+  return items.flatMap((item) => {
+    const owned = item.quantity > 0 ? item.quantity : 1;
+    const carriedCount = owned - (equippedCounts.get(refKey(item.ref)) ?? 0);
+    return carriedCount > 0
+      ? [{ item, carriedCount, showCount: carriedCount > 1 || owned > 1 }]
+      : [];
+  });
 }

@@ -1,0 +1,724 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/KirkDiggler/rpg-dnd5e-web/issues/872",
+  "status": "ready for review",
+  "codeHead": "e49b03e1b3021c862e963b7f53d9ddc82771b969",
+  "capturedAtUtc": "2026-08-31T01:42:01.449Z",
+  "postCaptureRebase": {
+    "base": "041816028f6ff6a9912a4cc14a47b1c90ef5115c",
+    "mappingPatchEquivalent": true,
+    "upstreamChange": "world-die settlement rerender fix; no equipment, attachment, Concept, or owner RPC route changes"
+  },
+  "provider": {
+    "repository": "KirkDiggler/rpg-game-assets",
+    "commit": "a67f916880718a84b502b66b2b63683b03990f59",
+    "syncedManifestPath": "public/models/synty/weapons/manifest.json",
+    "manifestSha256": "cec88cd26d95568de01e6d1181184ced0eb4212c28d0cf1524b30c640fc449db",
+    "exactBytesVerifiedBeforeCapture": true,
+    "fiveHeavyPolearmOutputs": {
+      "halberd": {
+        "path": "/models/synty/weapons/halberd.glb",
+        "sha256": "2df50e7544c878f9c0653582618c0357ec23263a756403b243a38f69635ce1c5"
+      },
+      "maul": {
+        "path": "/models/synty/weapons/maul.glb",
+        "sha256": "6d04849da463e31f6da3d05472edbabedff1efc95988b36baeff7a7b4648d9d9"
+      },
+      "morningstar": {
+        "path": "/models/synty/weapons/morningstar.glb",
+        "sha256": "06bf092b6f993a52c4186e7ab728bdb777ccd545d4f29181f78c47bec0a33fa0"
+      },
+      "pike": {
+        "path": "/models/synty/weapons/pike.glb",
+        "sha256": "d600b59121f346c84eba90a037c165634c04879bbebd82a3c49c229e006a223c"
+      },
+      "war-pick": {
+        "path": "/models/synty/weapons/war-pick.glb",
+        "sha256": "a823309d77478dbcc3a83877c1c70dde5241c3768bae33716f8bc6e0b943867a"
+      }
+    }
+  },
+  "captureRuntime": {
+    "webPort": 3027,
+    "surface": "production build compiled with Vite development mode and served by the branch Vite preview",
+    "browser": {
+      "engine": "Chromium",
+      "version": "151.0.7922.169",
+      "playwright": "1.61.1"
+    },
+    "startup": {
+      "rootHttpStatus": 200,
+      "conceptHttpStatus": 200,
+      "serverStartupErrors": 0
+    }
+  },
+  "conceptEvidence": {
+    "boundary": "Visual fixture compatibility through the production-backed ?concept=weapon-attachment route; not inventory authority for classes.",
+    "idleCapture": {
+      "motion": "idle",
+      "view": "orbit",
+      "facing": 0,
+      "assetRequestMethod": "GET",
+      "observations": [
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:halberd",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/halberd.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2df50e7544c878f9c0653582618c0357ec23263a756403b243a38f69635ce1c5",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:maul",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/maul.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "6d04849da463e31f6da3d05472edbabedff1efc95988b36baeff7a7b4648d9d9",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:morningstar",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/morningstar.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "06bf092b6f993a52c4186e7ab728bdb777ccd545d4f29181f78c47bec0a33fa0",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:pike",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/pike.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "d600b59121f346c84eba90a037c165634c04879bbebd82a3c49c229e006a223c",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:war-pick",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/war-pick.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a823309d77478dbcc3a83877c1c70dde5241c3768bae33716f8bc6e0b943867a",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:halberd",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/halberd.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2df50e7544c878f9c0653582618c0357ec23263a756403b243a38f69635ce1c5",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:maul",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/maul.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "6d04849da463e31f6da3d05472edbabedff1efc95988b36baeff7a7b4648d9d9",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:morningstar",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/morningstar.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "06bf092b6f993a52c4186e7ab728bdb777ccd545d4f29181f78c47bec0a33fa0",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:pike",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/pike.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "d600b59121f346c84eba90a037c165634c04879bbebd82a3c49c229e006a223c",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "barbarian",
+          "weaponRef": "dnd5e:item:war-pick",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/war-pick.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a823309d77478dbcc3a83877c1c70dde5241c3768bae33716f8bc6e0b943867a",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:halberd",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/halberd.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2df50e7544c878f9c0653582618c0357ec23263a756403b243a38f69635ce1c5",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:maul",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/maul.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "6d04849da463e31f6da3d05472edbabedff1efc95988b36baeff7a7b4648d9d9",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:morningstar",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/morningstar.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "06bf092b6f993a52c4186e7ab728bdb777ccd545d4f29181f78c47bec0a33fa0",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:pike",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/pike.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "d600b59121f346c84eba90a037c165634c04879bbebd82a3c49c229e006a223c",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "monk",
+          "weaponRef": "dnd5e:item:war-pick",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/war-pick.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a823309d77478dbcc3a83877c1c70dde5241c3768bae33716f8bc6e0b943867a",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:halberd",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/halberd.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2df50e7544c878f9c0653582618c0357ec23263a756403b243a38f69635ce1c5",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:maul",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/maul.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "6d04849da463e31f6da3d05472edbabedff1efc95988b36baeff7a7b4648d9d9",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:morningstar",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/morningstar.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "06bf092b6f993a52c4186e7ab728bdb777ccd545d4f29181f78c47bec0a33fa0",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:pike",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/pike.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "d600b59121f346c84eba90a037c165634c04879bbebd82a3c49c229e006a223c",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "rogue",
+          "weaponRef": "dnd5e:item:war-pick",
+          "motion": "idle",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/war-pick.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a823309d77478dbcc3a83877c1c70dde5241c3768bae33716f8bc6e0b943867a",
+          "expectedStreamAbortCount": 1
+        }
+      ]
+    },
+    "fighterWalkCapture": {
+      "motion": "walk",
+      "view": "orbit",
+      "facing": 0,
+      "assetRequestMethod": "GET",
+      "observations": [
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:halberd",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/halberd.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "2df50e7544c878f9c0653582618c0357ec23263a756403b243a38f69635ce1c5",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:maul",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/maul.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "6d04849da463e31f6da3d05472edbabedff1efc95988b36baeff7a7b4648d9d9",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:morningstar",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/morningstar.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "06bf092b6f993a52c4186e7ab728bdb777ccd545d4f29181f78c47bec0a33fa0",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:pike",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/pike.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "d600b59121f346c84eba90a037c165634c04879bbebd82a3c49c229e006a223c",
+          "expectedStreamAbortCount": 1
+        },
+        {
+          "class": "fighter",
+          "weaponRef": "dnd5e:item:war-pick",
+          "motion": "walk",
+          "view": "orbit",
+          "facing": 0,
+          "attachmentStatus": "attached",
+          "assetPath": "/models/synty/weapons/war-pick.glb",
+          "assetHttpStatus": 200,
+          "assetSha256": "a823309d77478dbcc3a83877c1c70dde5241c3768bae33716f8bc6e0b943867a",
+          "expectedStreamAbortCount": 1
+        }
+      ]
+    },
+    "counts": {
+      "idle": 20,
+      "fighterWalk": 5,
+      "observations": 25,
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "unexpectedRequestFailures": 0,
+      "expectedStreamAborts": 25
+    }
+  },
+  "authoritativeRoute": {
+    "surface": "normal web UI under the dedicated dev identity; Home -> Play -> Lobby/Resume -> Session equipment popover; no direct API mutation script",
+    "fixtureDependency": {
+      "repository": "KirkDiggler/rpg-api",
+      "issue": 864,
+      "pullRequest": 865,
+      "state": "merged",
+      "mergedCommit": "9254f85d66793dff276386cb240840b634c70f12",
+      "mergeOrder": "satisfied: API gallery update merged before this web slice"
+    },
+    "actingIdentity": "weapon-gallery",
+    "ownerDisplay": "Weapon Gallery",
+    "ownerClass": "fighter",
+    "ownerRace": "human",
+    "ids": "redacted; no character/lobby/session identifiers are published",
+    "listCharacters": {
+      "totalSize": 1,
+      "characterCount": 1,
+      "totalInventoryCount": 31,
+      "weaponInventoryCount": 27,
+      "weaponInventoryRefs": [
+        "dnd5e:item:shortbow",
+        "dnd5e:item:longsword",
+        "dnd5e:item:shortsword",
+        "dnd5e:item:dagger",
+        "dnd5e:item:greataxe",
+        "dnd5e:item:quarterstaff",
+        "dnd5e:item:greatsword",
+        "dnd5e:item:battleaxe",
+        "dnd5e:item:handaxe",
+        "dnd5e:item:club",
+        "dnd5e:item:greatclub",
+        "dnd5e:item:warhammer",
+        "dnd5e:item:light-crossbow",
+        "dnd5e:item:longbow",
+        "dnd5e:item:javelin",
+        "dnd5e:item:rapier",
+        "dnd5e:item:light-hammer",
+        "dnd5e:item:mace",
+        "dnd5e:item:sickle",
+        "dnd5e:item:spear",
+        "dnd5e:item:sling",
+        "dnd5e:item:dart",
+        "dnd5e:item:halberd",
+        "dnd5e:item:maul",
+        "dnd5e:item:morningstar",
+        "dnd5e:item:pike",
+        "dnd5e:item:war-pick"
+      ],
+      "duplicateWeaponRefs": false,
+      "evidenceSource": "normal web UI character selection and equipment result; HTTP status not separately bound"
+    },
+    "initialOwnerState": {
+      "equipped": {},
+      "presentedArmorClass": 12,
+      "armorClassNote": "10 + 2 DEX",
+      "mainHandDamage": "",
+      "hitPoints": {
+        "current": 12,
+        "max": 12
+      },
+      "baseSpeedFeet": 30
+    },
+    "finalOwnerState": {
+      "equipped": {},
+      "presentedArmorClass": 12,
+      "armorClassNote": "10 + 2 DEX",
+      "mainHandDamage": "",
+      "hitPoints": {
+        "current": 12,
+        "max": 12
+      },
+      "baseSpeedFeet": 30
+    },
+    "authoritativeSequence": [
+      "UI proves enabled carried Halberd row",
+      "EquipItem HTTP 200 equips Halberd",
+      "fresh browser context restores Halberd from GetCharacterData HTTP 200",
+      "UnequipItem HTTP 200 returns unarmed",
+      "fresh browser context restores unarmed from GetCharacterData HTTP 200",
+      "restore exact observed initial state",
+      "fresh browser context verifies final initial parity"
+    ],
+    "stages": [
+      {
+        "name": "initial-owner-ui-halberd-row",
+        "state": {
+          "equipped": {},
+          "presentedArmorClass": 12,
+          "armorClassNote": "10 + 2 DEX",
+          "mainHandDamage": "",
+          "hitPoints": {
+            "current": 12,
+            "max": 12
+          },
+          "baseSpeedFeet": 30
+        },
+        "inventoryWeaponCount": 27,
+        "halberdRowEnabled": true,
+        "errorTotals": {
+          "unexpectedConsoleErrors": 0,
+          "pageErrors": 0,
+          "unexpectedRequestFailures": 0
+        },
+        "contactSheet": "docs/evidence/872-heavy-polearm-consumer/authoritative-halberd-fighter-contact-sheet.png",
+        "contactSheetTile": 1
+      },
+      {
+        "name": "equip-halberd-immediate",
+        "state": {
+          "equipped": {
+            "main_hand": "dnd5e:item:halberd"
+          },
+          "presentedArmorClass": 12,
+          "armorClassNote": "10 + 2 DEX",
+          "mainHandDamage": "1d10 slashing damage",
+          "hitPoints": {
+            "current": 12,
+            "max": 12
+          },
+          "baseSpeedFeet": 30
+        },
+        "rpc": {
+          "method": "EquipItem",
+          "httpStatus": 200
+        },
+        "asset": {
+          "path": "/models/synty/weapons/halberd.glb",
+          "httpStatus": 200,
+          "sha256": "2df50e7544c878f9c0653582618c0357ec23263a756403b243a38f69635ce1c5"
+        },
+        "errorTotals": {
+          "unexpectedConsoleErrors": 0,
+          "pageErrors": 0,
+          "unexpectedRequestFailures": 0
+        },
+        "contactSheet": "docs/evidence/872-heavy-polearm-consumer/authoritative-halberd-fighter-contact-sheet.png",
+        "contactSheetTile": 2
+      },
+      {
+        "name": "fresh-restores-halberd",
+        "state": {
+          "equipped": {
+            "main_hand": "dnd5e:item:halberd"
+          },
+          "presentedArmorClass": 12,
+          "armorClassNote": "10 + 2 DEX",
+          "mainHandDamage": "1d10 slashing damage",
+          "hitPoints": {
+            "current": 12,
+            "max": 12
+          },
+          "baseSpeedFeet": 30
+        },
+        "getCharacterData": {
+          "httpStatus": 200
+        },
+        "asset": {
+          "path": "/models/synty/weapons/halberd.glb",
+          "httpStatus": 200,
+          "sha256": "2df50e7544c878f9c0653582618c0357ec23263a756403b243a38f69635ce1c5"
+        },
+        "errorTotals": {
+          "unexpectedConsoleErrors": 0,
+          "pageErrors": 0,
+          "unexpectedRequestFailures": 0
+        },
+        "contactSheet": "docs/evidence/872-heavy-polearm-consumer/authoritative-halberd-fighter-contact-sheet.png",
+        "contactSheetTile": 3
+      },
+      {
+        "name": "unequip-halberd-immediate",
+        "state": {
+          "equipped": {},
+          "presentedArmorClass": 12,
+          "armorClassNote": "10 + 2 DEX",
+          "mainHandDamage": "",
+          "hitPoints": {
+            "current": 12,
+            "max": 12
+          },
+          "baseSpeedFeet": 30
+        },
+        "rpc": {
+          "method": "UnequipItem",
+          "httpStatus": 200
+        },
+        "errorTotals": {
+          "unexpectedConsoleErrors": 0,
+          "pageErrors": 0,
+          "unexpectedRequestFailures": 0
+        },
+        "contactSheet": "docs/evidence/872-heavy-polearm-consumer/authoritative-halberd-fighter-contact-sheet.png",
+        "contactSheetTile": 4
+      },
+      {
+        "name": "fresh-restores-unarmed",
+        "state": {
+          "equipped": {},
+          "presentedArmorClass": 12,
+          "armorClassNote": "10 + 2 DEX",
+          "mainHandDamage": "",
+          "hitPoints": {
+            "current": 12,
+            "max": 12
+          },
+          "baseSpeedFeet": 30
+        },
+        "getCharacterData": {
+          "httpStatus": 200
+        },
+        "errorTotals": {
+          "unexpectedConsoleErrors": 0,
+          "pageErrors": 0,
+          "unexpectedRequestFailures": 0
+        },
+        "contactSheet": "docs/evidence/872-heavy-polearm-consumer/authoritative-halberd-fighter-contact-sheet.png",
+        "contactSheetTile": 5
+      },
+      {
+        "name": "exact-initial-restored",
+        "state": {
+          "equipped": {},
+          "presentedArmorClass": 12,
+          "armorClassNote": "10 + 2 DEX",
+          "mainHandDamage": "",
+          "hitPoints": {
+            "current": 12,
+            "max": 12
+          },
+          "baseSpeedFeet": 30
+        },
+        "extraMutation": false,
+        "errorTotals": {
+          "unexpectedConsoleErrors": 0,
+          "pageErrors": 0,
+          "unexpectedRequestFailures": 0
+        },
+        "contactSheet": "docs/evidence/872-heavy-polearm-consumer/authoritative-halberd-fighter-contact-sheet.png",
+        "contactSheetTile": 6
+      },
+      {
+        "name": "fresh-final-parity",
+        "state": {
+          "equipped": {},
+          "presentedArmorClass": 12,
+          "armorClassNote": "10 + 2 DEX",
+          "mainHandDamage": "",
+          "hitPoints": {
+            "current": 12,
+            "max": 12
+          },
+          "baseSpeedFeet": 30
+        },
+        "getCharacterData": {
+          "httpStatus": 200
+        },
+        "errorTotals": {
+          "unexpectedConsoleErrors": 0,
+          "pageErrors": 0,
+          "unexpectedRequestFailures": 0
+        },
+        "contactSheet": "docs/evidence/872-heavy-polearm-consumer/authoritative-halberd-fighter-contact-sheet.png",
+        "contactSheetTile": 7
+      }
+    ],
+    "exactRestorationFacts": {
+      "slotsEqual": true,
+      "presentedArmorClassEqual": true,
+      "mainHandDamageEqual": true,
+      "hitPointsEqual": true,
+      "speedEqual": true
+    },
+    "expectedStreamAborts": 6,
+    "errorTotals": {
+      "unexpectedConsoleErrors": 0,
+      "pageErrors": 0,
+      "unexpectedRequestFailures": 0
+    }
+  },
+  "sheets": [
+    {
+      "path": "docs/evidence/872-heavy-polearm-consumer/heavy-polearm-four-class-contact-sheet.png",
+      "mediaType": "image/png",
+      "magicHex": "89504e470d0a1a0a",
+      "byteSize": 338067,
+      "dimensions": [
+        1872,
+        1160
+      ],
+      "sha256": "abc0f353ef7b3844792e6e22f05ea963eef04bfd2375dc23fa8027c1d1b92be5",
+      "pillowFormat": "PNG",
+      "decodedRgbSha256": "79659b6dd2b77caef1e34663d6affed34a9b9c845727c6f404b2d642f15bf91d",
+      "volatileMetadataPresent": false
+    },
+    {
+      "path": "docs/evidence/872-heavy-polearm-consumer/heavy-polearm-fighter-walk-contact-sheet.png",
+      "mediaType": "image/png",
+      "magicHex": "89504e470d0a1a0a",
+      "byteSize": 101729,
+      "dimensions": [
+        1872,
+        329
+      ],
+      "sha256": "9a453ed0c08ab78264442bc058d3ccdddadfe2a01ad470b33c96fb0c76609d6a",
+      "pillowFormat": "PNG",
+      "decodedRgbSha256": "6520a4511fcfd4a2d146b8d823ddddbd2eeec6a76e44211f3a9488627de33b22",
+      "volatileMetadataPresent": false
+    },
+    {
+      "path": "docs/evidence/872-heavy-polearm-consumer/authoritative-halberd-fighter-contact-sheet.png",
+      "mediaType": "image/png",
+      "magicHex": "89504e470d0a1a0a",
+      "byteSize": 837043,
+      "dimensions": [
+        1128,
+        1756
+      ],
+      "sha256": "454571b6a3eebd49c4608a4216cf888c31bb0fa20e89a5f6854eb36a9e3a5c5e",
+      "pillowFormat": "PNG",
+      "decodedRgbSha256": "45ae23a82753321306c57c63434e1b3175316aee589ae307b7b402a26ad3d72d",
+      "volatileMetadataPresent": false
+    }
+  ],
+  "integrity": {
+    "requiredMagicHex": "89504e470d0a1a0a",
+    "allPngDecodable": true,
+    "allMetadataEmpty": true,
+    "publicSafety": {
+      "absolutePaths": 0,
+      "characterLobbySessionIds": 0,
+      "tokensOrSecrets": 0
+    }
+  },
+  "scope": {
+    "actingOwnerMainHandOnly": true,
+    "peerEquipment": false,
+    "offHandOrTwoHandContact": false,
+    "combatOrProjectileBehavior": false,
+    "licensedGlbsTracked": false
+  }
+}

@@ -7,6 +7,7 @@ import type {
   ClockKind,
   Declaration,
   Participant,
+  ReactChoice,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { CharacterData } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/types_pb';
 import type { ReactNode } from 'react';
@@ -55,6 +56,11 @@ export interface CombatExperienceAttackOutcome {
   target: string;
   action: string;
   attackRef?: string;
+  /**
+   * Display name of the reaction this strike was taken as, verbatim from the
+   * wire's `ReactionRef.name`. Absent on an ordinary declared swing.
+   */
+  reaction?: string;
   d20: number;
   total: number;
   against: number;
@@ -94,6 +100,8 @@ interface CombatExperienceBaseProps {
   onRetryPrivateStatus?: () => void;
   /** Turn + Afford both succeeded for their newest current generation. */
   authorityFresh: boolean;
+  /** Accepted local Death Save is awaiting an in-bounds settlement. */
+  endTurnBlocked?: boolean;
   presentationState: CombatExperiencePresentationState;
   phase: CombatExperiencePhase;
   showTurnNotice: boolean;
@@ -105,16 +113,78 @@ interface CombatExperienceBaseProps {
   diceEvents: readonly DicePresentationEvent[];
   diceSemanticFallback?: boolean;
   diceRollerName?: string;
+  /** Production actor-only checkpoint control. `null` suppresses the default tile. */
+  localWorldDieControl?: ReactNode;
+  /** The actor-only world die has already reached its visible terminal. */
+  localWorldDieSettled?: boolean;
   location: { name: string; area: string };
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;
   renderMap: (props: CombatExperienceMapRenderProps) => ReactNode;
-  onSelectDeclaration: (declaration: Declaration) => void;
+  /** `choice` rides only a VERB_REACT declaration — the answer to an open
+   * reaction window, which the verb implies rather than the server offering
+   * it as a candidate. */
+  onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
   onTargetClick: (targetId: string) => void;
   onEndTurn: (declaration: Declaration) => void;
   onLogModeChange: (mode: CombatExperienceLogMode) => void;
   onOpenEquipment?: () => void;
   equipmentOpen?: boolean;
+  /**
+   * Search the region the viewer stands in (rpg-project#350/#886).
+   * Universally attemptable — no prerequisites, no turn requirement,
+   * independent of `clock`/`authorityFresh` — so `undefined` means only
+   * "the viewer's region is not known yet," never "not your turn." A
+   * find is never learned here: it arrives later as its own reveal beat.
+   */
+  onSearch?: () => void;
+  /** A search RPC is in flight; disables the button without hiding it. */
+  searchPending?: boolean;
+  /**
+   * EVERY downed body within reach, in the order the view reported them
+   * (rpg-project#368 P3). One button each, and the panel neither reorders
+   * nor annotates them: an affordance that singled one out would say which
+   * corpse is worth looting, which is the secret the whole slice keeps.
+   * Empty means nothing is down beside the viewer, never "nothing worth
+   * taking".
+   */
+  lootTargets?: readonly { subject: string; name: string }[];
+  onLoot?: (subject: string) => void;
+  /** A loot RPC is in flight; disables the buttons without hiding them. */
+  lootPending?: boolean;
+  /**
+   * Every NAMED prop within reach — the only props the pick-up verb can
+   * target, since it names its target by the author's placement id. Whether
+   * one can actually be picked up is the seam's answer, refused by name.
+   */
+  holdTargets?: readonly { id: string; ref: string }[];
+  onHold?: (id: string) => void;
+  holdPending?: boolean;
+  /**
+   * Declare the departure (design R6/R7). Offered wherever the viewer
+   * stands, because WHAT A DEPARTURE MEANS is the server's call: at a
+   * scenario's bound exit while carrying its artifact it ends the run; from
+   * anywhere else it drops what is carried and the run goes on. The client
+   * says leave and reads the answer off the beats.
+   */
+  onLeave?: () => void;
+  leavePending?: boolean;
+  /**
+   * The authored way out the viewer is STANDING ON, if any — the button
+   * says so. Never a gate: `AtlasExit`'s own doc comment is explicit that
+   * the exits list is "for drawing the way out, not for gating it", because
+   * R9 needs a departure from anywhere to be possible.
+   */
+  leaveExitId?: string;
+  /**
+   * What the viewer is carrying, as placement ids — so the button can name
+   * the COST of leaving from the wrong cell before the click, not after
+   * (Kirk's walk, 2026-09-04: he dropped the heirloom and found out
+   * afterwards). Empty means nothing to drop, and the button says nothing
+   * about dropping; a client that joined after the pickup also shows
+   * nothing, which under-claims rather than lying.
+   */
+  leaveHolding?: readonly string[];
   /** Explicit Concepts diagnostic surface; allowed independently of DEV. */
   diagnosticsEnabled?: boolean;
 }

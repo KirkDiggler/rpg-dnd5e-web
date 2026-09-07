@@ -23,6 +23,29 @@ describe('PALETTE_PROPS (2026-08-07 palette content sync — full manifest vocab
     }
   });
 
+  it('includes generated exact refs with provider labels and explicit behavior', () => {
+    expect(
+      PALETTE_PROPS.find(
+        (prop) => prop.ref === 'dnd5e:props:plushie:skeleton-dog'
+      )
+    ).toMatchObject({
+      label: 'Skele Dog Plushie',
+      role: 'decor',
+      blocksMovement: false,
+      blocksLoS: false,
+    });
+    expect(
+      PALETTE_PROPS.some((prop) => prop.ref === 'dnd5e:props:plushie')
+    ).toBe(false);
+  });
+
+  it('hands explicit generated behavior to DungeonBuilder instead of re-deriving it from role', () => {
+    const builder = readFileSync('src/author/DungeonBuilder.tsx', 'utf8');
+    expect(builder).toContain('blocksMovement: p.blocksMovement');
+    expect(builder).toContain('blocksLos: p.blocksLoS');
+    expect(builder).not.toContain("blocksMovement: p.role !== 'decor'");
+  });
+
   it('has no duplicate refs', () => {
     const refs = PALETTE_PROPS.map((p) => p.ref);
     expect(new Set(refs).size).toBe(refs.length);
