@@ -11,6 +11,7 @@ import type { CubeCoord } from '../hex-grid/hexMath';
 import {
   beginRoute,
   emptyMovements,
+  forgetUnsighted,
   movementPainted,
   stepArrived,
   type Movements,
@@ -29,6 +30,9 @@ export interface UseMoveControllerResult {
     seq: number,
     reached: number
   ) => void;
+  /** Drop everyone the viewer is not sighting live, so an unseen actor's
+   * route cannot be replayed when they come back into view. */
+  readonly forgetUnsighted: (sighted: ReadonlySet<string>) => void;
 }
 
 export function useMoveController(): UseMoveControllerResult {
@@ -50,13 +54,20 @@ export function useMoveController(): UseMoveControllerResult {
     []
   );
 
+  const forget = useCallback(
+    (sighted: ReadonlySet<string>) =>
+      setMovements((prev) => forgetUnsighted(prev, sighted)),
+    []
+  );
+
   return useMemo(
     () => ({
       movements,
       beginRoute: begin,
       stepArrived: step,
       movementPainted: painted,
+      forgetUnsighted: forget,
     }),
-    [movements, begin, step, painted]
+    [movements, begin, step, painted, forget]
   );
 }

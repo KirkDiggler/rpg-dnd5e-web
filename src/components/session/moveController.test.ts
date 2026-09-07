@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   beginRoute,
   emptyMovements,
+  forgetUnsighted,
   movementPainted,
   stepArrived,
 } from './moveController';
@@ -95,5 +96,53 @@ describe('moveController — both feeds make the same thing', () => {
 
     expect(piecemeal.get('actor')?.route).toEqual(whole?.route);
     expect(piecemeal.get('actor')?.reached).toBe(whole?.reached);
+  });
+});
+
+describe('moveController — only what the viewer can actually see', () => {
+  // The wire sends a movement beat for every roster member, visible or not
+  // (audience is the whole roster; only a concealed-region step is withheld).
+  // So an actor the viewer cannot see still accumulates a route here — and
+  // `useHexMovePath` would replay it the moment that actor became visible
+  // again, walking a ghost across the map where it should simply be at its
+  // new cell. Kirk, 2026-09-07: "I saw the skeleton move when it was a ghost,
+  // which is when we would teleport."
+  it('drops a member the viewer no longer sees live', () => {
+    let state = stepArrived(emptyMovements(), 'skeleton-1', {
+      x: 1,
+      y: -1,
+      z: 0,
+    });
+    state = stepArrived(state, 'me', { x: 5, y: -5, z: 0 });
+
+    const next = forgetUnsighted(state, new Set(['me']));
+
+    expect(next.has('skeleton-1')).toBe(false);
+    expect(next.get('me')?.route).toHaveLength(1);
+  });
+
+  it('keeps everyone still sighted, and is the same object when nothing is dropped', () => {
+    const state = stepArrived(emptyMovements(), 'scout', { x: 1, y: -1, z: 0 });
+
+    expect(forgetUnsighted(state, new Set(['scout']))).toBe(state);
+  });
+
+  it('a re-sighted member starts a fresh route rather than replaying the old one', () => {
+    let state = stepArrived(emptyMovements(), 'skeleton-1', {
+      x: 1,
+      y: -1,
+      z: 0,
+    });
+    state = stepArrived(state, 'skeleton-1', { x: 2, y: -2, z: 0 });
+    const seqWhileSighted = state.get('skeleton-1')?.seq;
+
+    // Out of sight: forgotten. Back in sight: one new beat.
+    state = forgetUnsighted(state, new Set());
+    state = stepArrived(state, 'skeleton-1', { x: 9, y: -9, z: 0 });
+
+    const back = state.get('skeleton-1');
+    expect(back?.route).toEqual([{ x: 9, y: -9, z: 0 }]);
+    expect(back?.seq).toBe(1);
+    expect(back?.seq).not.toBe(seqWhileSighted);
   });
 });

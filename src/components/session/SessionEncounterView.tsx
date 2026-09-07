@@ -422,6 +422,32 @@ function SessionEncounterScope({
     [member, sightings]
   );
 
+  // A movement is something the viewer WATCHES happen, so it lives only as
+  // long as they can see the actor. The wire tells us about every roster
+  // member's steps whether or not they are in sight, so without this an
+  // unseen actor banks a route and `useHexMovePath` replays it the moment
+  // they are sighted again — a remembered skeleton walking across the map
+  // instead of simply being at its new cell (rpg-dnd5e-web#961 follow-up).
+  const liveSighted = useMemo(() => {
+    const ids = new Set<string>([member]);
+    for (const sighted of otherMembers) {
+      if (!sighted.remembered) ids.add(sighted.subject);
+    }
+    return ids;
+  }, [otherMembers, member]);
+  // Read through a ref at beat time: the stream handler must not be rebuilt
+  // every time a sighting shifts.
+  const liveSightedRef = useRef(liveSighted);
+  liveSightedRef.current = liveSighted;
+  const { forgetUnsighted: forgetUnsightedMovements } = moves;
+  // Two guards, because they cover different moments. The feed guard below
+  // refuses to bank a step for an actor the viewer cannot see right now; this
+  // one drops an actor who goes out of sight MID-walk, whose route was
+  // legitimately banked while they were still visible.
+  useEffect(() => {
+    forgetUnsightedMovements(liveSighted);
+  }, [liveSighted, forgetUnsightedMovements]);
+
   // The path PREVIEW must route around exactly what the server's own Move
   // already refuses to enter — a live other member's cell, world NPC,
   // monster, or player alike (the vendor is only what made the gap
@@ -1010,7 +1036,11 @@ function SessionEncounterScope({
       // already arrived whole from their Move answer, so feeding their beats
       // here as well would drive the same walk twice.
       const step = arrivingStep(event);
-      if (step && step.member !== member) {
+      if (
+        step &&
+        step.member !== member &&
+        liveSightedRef.current.has(step.member)
+      ) {
         moves.stepArrived(step.member, step.to);
       }
 

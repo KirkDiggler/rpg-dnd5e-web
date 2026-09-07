@@ -4615,8 +4615,26 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
       seq
     );
 
+  const sightingOf = (
+    subject: string,
+    x: number,
+    y: number,
+    currentVia: string[] = ['sight']
+  ) => ({
+    subject,
+    name: subject,
+    kind: MemberKind.PLAYER,
+    seen: { position: { x, y }, standing: Standing.UP },
+    currentVia,
+  });
+
   it("assembles a peer's arriving steps into one route the canvas can animate", async () => {
     readyScene();
+    // A movement only animates for an actor the viewer can actually see, so
+    // the peer has to be a LIVE sighting for this to mean anything.
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [sightingOf('scout', 0, 0)],
+    });
     // A four-cell walk reaches a witness as four beats, one per cell.
     const steps = deferredStream([
       movedBeat('scout', 1, 0, 601n),
@@ -4627,6 +4645,15 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
 
     renderView();
     await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    // The peer must be a live sighting BEFORE their steps arrive — a beat for
+    // someone the viewer cannot see is deliberately not banked.
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (m) => m.subject === 'scout'
+        )
+      ).toBe(true)
+    );
     steps.release();
 
     await waitFor(() =>
@@ -4644,6 +4671,46 @@ describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
     // A sequence that never advances is exactly what used to leave every
     // non-local actor snapping in its idle pose.
     expect(movement?.seq).toBeGreaterThan(0);
+  });
+
+  it('a remembered actor banks no route — a ghost snaps, it does not walk', async () => {
+    readyScene();
+    // `currentVia: []` is a held MEMORY, not a live sighting. The wire still
+    // sends this actor's steps (the audience for a step is the whole
+    // roster), so without a visibility gate the route would sit here and
+    // replay the moment they were sighted again. Kirk, 2026-09-07: "I saw
+    // the skeleton move when it was a ghost, which is when we would teleport."
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [sightingOf('skeleton-1', 4, 0, [])],
+    });
+    const steps = deferredStream([
+      movedBeat('skeleton-1', 5, 0, 621n),
+      movedBeat('skeleton-1', 6, 0, 622n),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(steps.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (m) => m.subject === 'skeleton-1'
+        )
+      ).toBe(true)
+    );
+    const viewCallsBefore = hoisted.getViewFn.mock.calls.length;
+    steps.release();
+    // A non-local movement beat invalidates the view, so this fires only
+    // once the beats have actually been handled — no arbitrary sleep.
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(
+        viewCallsBefore
+      )
+    );
+
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('skeleton-1')
+    ).toBeUndefined();
   });
 
   it('does not double-drive the local player, whose route arrives whole from their own Move answer', async () => {

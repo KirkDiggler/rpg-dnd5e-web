@@ -126,6 +126,43 @@ export function beginRoute(
 }
 
 /**
+ * Forget every member the viewer is not currently sighting live.
+ *
+ * The wire sends a movement beat for the WHOLE roster, seen or not — the
+ * audience for a step is `rosterIDs()`, and the only narrowing is a
+ * concealed-region step, which withholds the beat entirely rather than
+ * trimming it. So without this, an actor the viewer cannot see accumulates a
+ * route anyway, and `useHexMovePath` replays it the instant that actor is
+ * sighted again: a remembered skeleton walks across the map instead of
+ * simply being at its new cell. While it is remembered `HexEntity` passes
+ * `moveSeq` as `undefined`, which clears `seenSeq` — so the stored sequence
+ * reads as brand new on return, and "brand new" is exactly what that hook
+ * means by a genuine move.
+ *
+ * Dropping the entry is what makes the return a snap: with nothing stored
+ * there is no route to replay, and the next real beat starts at 1.
+ *
+ * Also the honest reading of what a movement IS here. This module presents
+ * what the viewer watches happen; an actor they cannot see is not something
+ * they are watching, whatever the wire chose to tell them.
+ *
+ * Returns the same object when nothing is dropped, so the common case adds
+ * no referential churn to the memo feeding the canvas.
+ */
+export function forgetUnsighted(
+  prev: Movements,
+  sighted: ReadonlySet<string>
+): Movements {
+  let next: Map<string, Movement> | undefined;
+  for (const member of prev.keys()) {
+    if (sighted.has(member)) continue;
+    if (!next) next = new Map(prev);
+    next.delete(member);
+  }
+  return next ?? prev;
+}
+
+/**
  * The presentation reporting how far it has actually painted — an
  * observation of the drawn thing, in the spirit of the die reporting that it
  * came to rest rather than a timer guessing when it might have.
