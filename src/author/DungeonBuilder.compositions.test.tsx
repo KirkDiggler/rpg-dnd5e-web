@@ -109,11 +109,13 @@ function placement(index: number): SVGGElement {
   return document.querySelector(`[data-placement="${index}"]`)!;
 }
 
+function occupiedCell(column = 0): SVGPolygonElement {
+  return document.querySelector(`[data-cell="${axialKey(p(column))}"]`)!;
+}
+
 function selectPlacement(column = 0) {
   fireEvent.click(screen.getByRole('button', { name: 'Select' }));
-  fireEvent.pointerDown(
-    document.querySelector(`[data-cell="${axialKey(p(column))}"]`)!
-  );
+  fireEvent.pointerDown(occupiedCell(column));
 }
 
 beforeEach(() => {
@@ -137,13 +139,17 @@ describe('DungeonBuilder composition placement metadata', () => {
       'world-current',
       'snapshot-1234'
     );
-    expect(placement(0).querySelector('title')?.textContent).toBe(
+    expect(placement(0).querySelector('title')).toBeNull();
+    expect(occupiedCell(0).querySelector(':scope > title')?.textContent).toBe(
       'The Lantern Table'
     );
-    expect(placement(1).querySelector('title')?.textContent).toBe(
+    expect(occupiedCell(1).querySelector(':scope > title')?.textContent).toBe(
       'The Lantern Table'
     );
 
+    // The title-bearing element remains the real pointer target: entering it
+    // updates the board hover path and pressing it keeps selection routing.
+    fireEvent.pointerEnter(occupiedCell(0));
     selectPlacement();
     expect(
       screen.getByTestId('placement-panel').querySelector('h3')?.textContent
@@ -165,7 +171,7 @@ describe('DungeonBuilder composition placement metadata', () => {
         'missing'
       )
     );
-    expect(placement(0).querySelector('title')?.textContent).toBe(
+    expect(occupiedCell().querySelector(':scope > title')?.textContent).toBe(
       'Deleted or missing composition · snapshot-1234'
     );
     expect(
@@ -207,7 +213,7 @@ describe('DungeonBuilder composition placement metadata', () => {
     expect(placement(0).getAttribute('data-composition-status')).toBe(
       'loading'
     );
-    expect(placement(0).querySelector('title')?.textContent).toBe(
+    expect(occupiedCell().querySelector(':scope > title')?.textContent).toBe(
       'Loading composition · snapshot-1234'
     );
     expect(placement(0).textContent).not.toContain('deleted');
@@ -216,7 +222,7 @@ describe('DungeonBuilder composition placement metadata', () => {
     await waitFor(() =>
       expect(placement(0).getAttribute('data-composition-status')).toBe('error')
     );
-    expect(placement(0).querySelector('title')?.textContent).toBe(
+    expect(occupiedCell().querySelector(':scope > title')?.textContent).toBe(
       'Could not load composition · snapshot-1234'
     );
     expect(placement(0).textContent).not.toContain('deleted');
@@ -240,9 +246,9 @@ describe('DungeonBuilder composition placement metadata', () => {
     await waitFor(() =>
       expect(placement(0).getAttribute('data-composition-status')).toBe('error')
     );
-    expect(placement(0).querySelector('title')?.textContent).not.toContain(
-      'Wrong World'
-    );
+    expect(
+      occupiedCell().querySelector(':scope > title')?.textContent
+    ).not.toContain('Wrong World');
     expect(screen.queryByText(/Deleted or missing composition/)).toBeNull();
 
     view.rerender(
@@ -256,7 +262,7 @@ describe('DungeonBuilder composition placement metadata', () => {
     expect(placement(0).getAttribute('data-composition-status')).toBe(
       'missing-source'
     );
-    expect(placement(0).querySelector('title')?.textContent).toBe(
+    expect(occupiedCell().querySelector(':scope > title')?.textContent).toBe(
       'Composition source not configured · snapshot-1234'
     );
   });

@@ -597,6 +597,24 @@ export function CreationBoard({
   const selectedWall = selection?.kind === 'wall' ? selection.index : null;
   const selectedPlacement =
     selection?.kind === 'placement' ? selection.index : null;
+  /** Placement artwork deliberately stays outside hit testing so every board
+   * gesture continues to route through its cell. Put the native SVG tooltip on
+   * that actual pointer target rather than on the inert artwork above it. */
+  const placementTooltipByCell = useMemo(() => {
+    const tooltips = new Map<string, string>();
+    for (const placement of doc.place) {
+      const key = axialKey(placement.at);
+      // Selection also chooses the first placement on a cell.
+      if (tooltips.has(key)) continue;
+      const composition = compositionPlacementMetadata(
+        placement.ref,
+        compositionSource,
+        compositionResolutions
+      );
+      tooltips.set(key, placementTooltip(placement.ref, composition));
+    }
+    return tooltips;
+  }, [doc.place, compositionSource, compositionResolutions]);
 
   // Literal hex-edge lines are the FLOOR'S OUTER EDGE and nothing else.
   // Walls and doors are drawn as the lines they are, below; the dashed
@@ -727,6 +745,7 @@ export function CreationBoard({
               const isError = errorCells.has(key);
               const isConcealed = !!ownerId && concealedRegionIds.has(ownerId);
               const isHover = hoverCell && axialKey(hoverCell) === key;
+              const placementTitle = placementTooltipByCell.get(key);
               const inRect = rectPreview?.has(key) ?? false;
               // Sealed = the compile's answer, hatched. Previewed =
               // what the hovered end WOULD seal, greyed before the
@@ -785,7 +804,9 @@ export function CreationBoard({
                     onPointerDown={(e) => handleCellDown(cell, e)}
                     onPointerMove={(e) => handleCellMove(cell, e)}
                     onPointerEnter={(e) => handleCellMove(cell, e)}
-                  />
+                  >
+                    {placementTitle && <title>{placementTitle}</title>}
+                  </polygon>
                   {(isSealed || isPreviewSealed) && (
                     <polygon
                       data-sealed={isSealed || undefined}
@@ -876,7 +897,6 @@ export function CreationBoard({
                   data-arrives={p.arrives !== undefined ? '' : undefined}
                   opacity={p.arrives !== undefined ? 0.55 : undefined}
                 >
-                  <title>{placementTooltip(p.ref, composition)}</title>
                   <circle
                     cx={c.x}
                     cy={c.y}

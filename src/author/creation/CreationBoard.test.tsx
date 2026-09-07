@@ -378,7 +378,7 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
     doc = paintCell(doc, 'region-1', p(1, 1));
     doc = paintCell(doc, 'region-1', p(2, 1));
     doc = placeAt(doc, { ref: 'dnd5e:props:pillar', at: p(1, 1) });
-    doc = placeAt(doc, { ref: 'dnd5e:props:brazier', at: p(2, 1) });
+    doc = placeAt(doc, { ref: 'dnd5e:monsters:skeleton', at: p(2, 1) });
     doc = {
       ...doc,
       place: [
@@ -390,16 +390,22 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
         doc.place[1],
       ],
     };
-    const { container } = mount(doc);
+    const onSelect = vi.fn();
+    const { container } = mount(doc, { tool: 'select', onSelect });
 
     const cell = cellCenter(p(1, 1), BOARD_HEX_SIZE, 'pointy');
     const pillarPlacement = container.querySelector('[data-placement="0"]')!;
-    expect(pillarPlacement.querySelector('title')?.textContent).not.toContain(
-      'dnd5e:props:'
-    );
-    expect(pillarPlacement.querySelector('title')?.textContent).toMatch(
+    expect(pillarPlacement.querySelector('title')).toBeNull();
+    const pillarCell = cellEl(container, 1, 1);
+    expect(
+      pillarCell.querySelector(':scope > title')?.textContent
+    ).not.toContain('dnd5e:props:');
+    expect(pillarCell.querySelector(':scope > title')?.textContent).toMatch(
       /pillar/i
     );
+    fireEvent.pointerEnter(pillarCell);
+    fireEvent.pointerDown(pillarCell);
+    expect(onSelect).toHaveBeenLastCalledWith({ kind: 'placement', index: 0 });
     const circle = pillarPlacement.querySelector('circle') as SVGCircleElement;
     expect(Number(circle.getAttribute('cx'))).toBeCloseTo(
       cell.x + 0.2 * BOARD_HEX_SIZE,
@@ -411,18 +417,25 @@ describe('CreationBoard viewport (Kirk walk 2026-08-23: no jumping at the edges)
     );
     expect(container.querySelector('[data-facing-tick="0"]')).not.toBeNull();
 
-    // The un-offset, un-faced brazier sits exactly at its cell center and
-    // draws no tick.
-    const brazierCell = cellCenter(p(2, 1), BOARD_HEX_SIZE, 'pointy');
-    const brazierCircle = container.querySelector(
+    // The un-offset, un-faced monster sits exactly at its cell center and
+    // draws no tick. It uses the same hit-tested-cell tooltip path as props.
+    const monsterCell = cellCenter(p(2, 1), BOARD_HEX_SIZE, 'pointy');
+    const monsterCircle = container.querySelector(
       '[data-placement="1"] circle'
     ) as SVGCircleElement;
-    expect(Number(brazierCircle.getAttribute('cx'))).toBeCloseTo(
-      brazierCell.x,
+    const monsterTarget = cellEl(container, 2, 1);
+    expect(monsterTarget.querySelector(':scope > title')?.textContent).toMatch(
+      /skeleton/i
+    );
+    fireEvent.pointerEnter(monsterTarget);
+    fireEvent.pointerDown(monsterTarget);
+    expect(onSelect).toHaveBeenLastCalledWith({ kind: 'placement', index: 1 });
+    expect(Number(monsterCircle.getAttribute('cx'))).toBeCloseTo(
+      monsterCell.x,
       6
     );
-    expect(Number(brazierCircle.getAttribute('cy'))).toBeCloseTo(
-      brazierCell.y,
+    expect(Number(monsterCircle.getAttribute('cy'))).toBeCloseTo(
+      monsterCell.y,
       6
     );
     expect(container.querySelector('[data-facing-tick="1"]')).toBeNull();
