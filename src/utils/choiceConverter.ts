@@ -10,7 +10,6 @@ import {
   FightingStyleSelectionSchema,
   LanguageSelectionSchema,
   SkillSelectionSchema,
-  SpellSelectionSchema,
   ToolSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
@@ -19,7 +18,6 @@ import type {
   FeatureChoice,
   LanguageChoice,
   SkillChoice,
-  SpellChoice,
   ToolChoice,
 } from '../types/choices';
 
@@ -74,32 +72,6 @@ export function convertToolChoiceToProto(
       case: 'tools',
       value: create(ToolSelectionSchema, {
         tools: choice.tools,
-      }),
-    },
-  });
-}
-
-/**
- * A cantrip or spell pick, sent back under the category the server asked with.
- *
- * THE CATEGORY IS NOT DECIDED HERE. Cantrips and spells are the same shape on
- * the wire and differ only by `ChoiceCategory`; echoing the requirement's own
- * category is what keeps a client table from deciding which of the two a
- * requirement was, and it is why a third spell-shaped requirement needs no
- * change here.
- */
-export function convertSpellChoiceToProto(
-  choice: SpellChoice,
-  source: ChoiceSource
-): ChoiceData {
-  return create(ChoiceDataSchema, {
-    choiceId: choice.choiceId,
-    category: choice.category,
-    source,
-    selection: {
-      case: 'spells',
-      value: create(SpellSelectionSchema, {
-        spells: choice.spells,
       }),
     },
   });

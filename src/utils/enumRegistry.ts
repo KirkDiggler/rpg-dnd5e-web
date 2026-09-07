@@ -5,7 +5,6 @@ import {
   FightingStyle,
   Language,
   Skill,
-  Spell,
   Tool,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type { EnumDisplayInfo } from '../components/choices/EnumChoice';
@@ -176,35 +175,6 @@ export function getSkillAbility(skill: Skill): string {
 
 export function getToolInfo(tool: Tool): EnumDisplayInfo {
   return toolRegistry[tool] || { name: 'Unknown' };
-}
-
-/** Words that stay lowercase inside a spell's name, but never as its first. */
-const SPELL_MINOR_WORDS = new Set(['the', 'of', 'a', 'an', 'and', 'to']);
-
-/**
- * A spell's display name, DERIVED from the generated enum rather than tabled.
- *
- * There are sixty spells today and the rulebook adds more every slice. A
- * hand-written table would be a second list to keep in step with the protos,
- * and its failure mode is silent: a spell the server offers renders as
- * "Unknown" and the player cannot tell what they are picking. The enum name is
- * already the authority, so this only re-cases it.
- *
- * An unknown value fails closed to a visible marker rather than an empty row.
- */
-export function getSpellInfo(spell: Spell): EnumDisplayInfo {
-  const key = Spell[spell];
-  if (!key || spell === Spell.UNSPECIFIED) return { name: 'Unknown Spell' };
-  const name = key
-    .toLowerCase()
-    .split('_')
-    .map((word, index) =>
-      index > 0 && SPELL_MINOR_WORDS.has(word)
-        ? word
-        : word.charAt(0).toUpperCase() + word.slice(1)
-    )
-    .join(' ');
-  return { name };
 }
 
 // Dungeon Theme - visual themes for dungeon runs

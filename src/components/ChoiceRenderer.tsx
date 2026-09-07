@@ -5,7 +5,6 @@ import {
   getLanguageInfo,
   getSkillAbility,
   getSkillInfo,
-  getSpellInfo,
   getToolInfo,
 } from '../utils/enumRegistry';
 import { EnumChoice } from './choices/EnumChoice';
@@ -141,25 +140,6 @@ export function ChoiceRenderer({
         available={choice.options.value.available}
         currentSelections={currentSelections}
         getDisplayInfo={getToolInfo}
-        onSelectionChange={onSelectionChange}
-      />
-    );
-  }
-
-  // Cantrips and levelled spells — one arm, because they are the same shape.
-  // The category names WHICH requirement this is; it does not change how the
-  // question is asked, and the count decides the control as it does elsewhere.
-  if (
-    (choice.choiceType === ChoiceCategory.CANTRIPS ||
-      choice.choiceType === ChoiceCategory.SPELLS) &&
-    choice.options?.case === 'spellOptions'
-  ) {
-    return (
-      <EnumChoice
-        choice={choice}
-        available={choice.options.value.available}
-        currentSelections={currentSelections}
-        getDisplayInfo={getSpellInfo}
         onSelectionChange={onSelectionChange}
       />
     );
