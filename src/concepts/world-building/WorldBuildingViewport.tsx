@@ -3,10 +3,7 @@ import {
   HEX_SIZE,
   hexCorners,
 } from '@/components/hex-grid/hexMath';
-import {
-  PropModel,
-  type PropModelBounds,
-} from '@/components/hex-grid/PropModel';
+import { PropModel } from '@/components/hex-grid/PropModel';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
 import { DUNGEON_POINT_LIGHT_BUDGET } from '@/rendering/dungeonLighting';
@@ -29,6 +26,10 @@ import type {
   TransformControls as TransformControlsImpl,
 } from 'three-stdlib';
 import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
+import {
+  compositionGuideBounds,
+  type MeasuredWorldPropBounds,
+} from './placementGuides';
 import { selectionClosure } from './sceneState';
 import type { WorldScene } from './types';
 import type { WorldBuildingDragPayload } from './worldBuildingDrag';
@@ -41,6 +42,7 @@ import {
   resolveWorldSelectionId,
   type WorldBuildingDropTarget,
 } from './worldBuildingPointer';
+import { WorldPlacementGuides } from './WorldPlacementGuides';
 
 export interface WorldBuildingViewportProps {
   /** Last committed scene. Transform previews never replace this value. */
@@ -116,6 +118,7 @@ interface WorldPropVisualProps {
     intersections: readonly THREE.Intersection[]
   ) => string | null;
   onAssetState: WorldBuildingViewportProps['onAssetState'];
+  onBoundsMeasured?: (id: string, measurement: MeasuredWorldPropBounds) => void;
 }
 
 export function WorldPropVisual({
@@ -126,9 +129,13 @@ export function WorldPropVisual({
   isGizmoPointer,
   resolveSelectionId,
   onAssetState,
+  onBoundsMeasured,
 }: WorldPropVisualProps) {
   const entry = WORLD_BUILDING_CATALOG_BY_REF.get(item.assetRef);
-  const [bounds, setBounds] = useState<PropModelBounds | null>(null);
+  const [measurement, setMeasurement] =
+    useState<MeasuredWorldPropBounds | null>(null);
+  const bounds =
+    measurement?.assetRef === item.assetRef ? measurement.bounds : null;
   const position: [number, number, number] = [
     item.transform.x,
     item.transform.y,
@@ -172,14 +179,20 @@ export function WorldPropVisual({
               rotationY={item.transform.rotationY}
               anchor="bounds-floor-center"
               onBoundsMeasured={(measured) => {
-                setBounds((current) =>
-                  current &&
-                  current.width === measured.width &&
-                  current.height === measured.height &&
-                  current.depth === measured.depth
+                setMeasurement((current) =>
+                  current?.assetRef === item.assetRef &&
+                  current.bounds.minY === measured.minY &&
+                  current.bounds.maxY === measured.maxY &&
+                  current.bounds.width === measured.width &&
+                  current.bounds.height === measured.height &&
+                  current.bounds.depth === measured.depth
                     ? current
-                    : measured
+                    : { assetRef: item.assetRef, bounds: measured }
                 );
+                onBoundsMeasured?.(item.id, {
+                  assetRef: item.assetRef,
+                  bounds: measured,
+                });
                 onAssetState(item.id, 'loaded');
               }}
             />
@@ -286,6 +299,34 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
   const boundaryGeometry = useMemo(() => makeGroundBoundary(11.5), []);
   const controlsRef = useRef<TransformControlsImpl>(null);
   const [transforming, setTransforming] = useState(false);
+  const [measuredById, setMeasuredById] = useState<
+    ReadonlyMap<string, MeasuredWorldPropBounds>
+  >(() => new Map());
+  const recordMeasuredBounds = useCallback(
+    (id: string, measurement: MeasuredWorldPropBounds) => {
+      setMeasuredById((current) => {
+        const previous = current.get(id);
+        if (
+          previous?.assetRef === measurement.assetRef &&
+          previous.bounds.minY === measurement.bounds.minY &&
+          previous.bounds.maxY === measurement.bounds.maxY &&
+          previous.bounds.width === measurement.bounds.width &&
+          previous.bounds.height === measurement.bounds.height &&
+          previous.bounds.depth === measurement.bounds.depth
+        ) {
+          return current;
+        }
+        const next = new Map(current);
+        next.set(id, measurement);
+        return next;
+      });
+    },
+    []
+  );
+  const guideBounds = useMemo(
+    () => compositionGuideBounds(displayScene, measuredById),
+    [displayScene, measuredById]
+  );
   const selectedClosure = useMemo(
     () => selectionClosure(displayScene, selectedIds),
     [displayScene, selectedIds]
@@ -350,6 +391,7 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
       <lineLoop geometry={boundaryGeometry} raycast={() => null}>
         <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
       </lineLoop>
+      <WorldPlacementGuides bounds={guideBounds} />
       {displayScene.items.map((item) => (
         <WorldPropVisual
           key={item.id}
@@ -360,6 +402,7 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
           isGizmoPointer={isGizmoPointer}
           resolveSelectionId={resolveSelectionId}
           onAssetState={props.onAssetState}
+          onBoundsMeasured={recordMeasuredBounds}
         />
       ))}
       <WorldBuildingCameraControls enabled={!transforming} />
@@ -385,14 +428,26 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
 
 export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
   return (
-    <Canvas
-      camera={{ position: [8, 9, 8], fov: 48, near: 0.1, far: 100 }}
-      dpr={[1, 1.6]}
-      shadows
-      data-testid="world-building-canvas"
-      aria-label="World building 3D canvas. Left click selects; Shift-left adds selection; middle drag orbits; Shift-middle drag pans; wheel zooms; right click cancels a transform."
-    >
-      <WorldSceneContents {...props} />
-    </Canvas>
+    <>
+      <Canvas
+        camera={{ position: [8, 9, 8], fov: 48, near: 0.1, far: 100 }}
+        dpr={[1, 1.6]}
+        shadows
+        data-testid="world-building-canvas"
+        aria-label="World building 3D canvas. The gold X0/Z0 hex is the placement anchor; the orange box is the visual composition bounds, not a mechanical footprint. Left click selects; Shift-left adds selection; middle drag orbits; Shift-middle drag pans; wheel zooms; right click cancels a transform."
+      >
+        <WorldSceneContents {...props} />
+      </Canvas>
+      <div className="wb-placement-guide-legend" aria-hidden="true">
+        <span>
+          <i className="wb-placement-guide-swatch wb-placement-guide-swatch--anchor" />
+          Placement anchor · X0 / Z0
+        </span>
+        <span>
+          <i className="wb-placement-guide-swatch wb-placement-guide-swatch--bounds" />
+          Composition bounds · visual guide only, not a footprint
+        </span>
+      </div>
+    </>
   );
 }
