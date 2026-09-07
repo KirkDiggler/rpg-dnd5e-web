@@ -77,8 +77,9 @@ beforeEach(() => {
 });
 
 describe('WorldPropVisual surface and pointer ownership', () => {
-  it('routes generated exact refs through WorldAssetModel without changing authored transforms', async () => {
+  it('routes generated exact refs through WorldAssetModel and reports their provider bounds to placement guides', async () => {
     const onAssetState = vi.fn();
+    const onBoundsMeasured = vi.fn();
     const renderer = await ReactThreeTestRenderer.create(
       <WorldPropVisual
         item={GENERATED_PROP}
@@ -88,6 +89,7 @@ describe('WorldPropVisual surface and pointer ownership', () => {
         isGizmoPointer={() => false}
         resolveSelectionId={() => GENERATED_PROP.id}
         onAssetState={onAssetState}
+        onBoundsMeasured={onBoundsMeasured}
       />
     );
     const model = renderer.scene.findByProps({ name: 'world-asset-model' });
@@ -95,6 +97,15 @@ describe('WorldPropVisual surface and pointer ownership', () => {
     expect(model.instance.position.z).toBe(2);
     expect(model.instance.rotation.y).toBeCloseTo(0.5);
     expect(onAssetState).toHaveBeenCalledWith('alchemy-tools', 'loaded');
+    expect(onBoundsMeasured).toHaveBeenCalledWith('alchemy-tools', {
+      assetRef: GENERATED_PROP.assetRef,
+      bounds: expect.objectContaining({
+        minY: 0,
+        width: expect.any(Number),
+        height: expect.any(Number),
+        depth: expect.any(Number),
+      }),
+    });
   });
 
   it('prefers an overlapping supported decoration so Shift-left can add it after its support', () => {
