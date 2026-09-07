@@ -51,6 +51,8 @@ const ALLOWED: Record<string, string> = {
     'equipment choice values (`bundle_0:0:warhammer`), not refs',
   'character/creation/ClassSelectionModal.tsx':
     'equipment choice values: a bundle id and `cat<index>:<id>:<name>` selections',
+  'character/creation/BackgroundSelectionModal.tsx':
+    'equipment choice values: a bundle id and `cat<index>:<id>:<name>` selections',
   'character/creation/InteractiveCharacterSheet.tsx':
     'equipment choice values (`bundle_0:0:EQUIPMENT_WARHAMMER`), not refs',
   'character/creation/components/EquipmentChoiceSelector.tsx':

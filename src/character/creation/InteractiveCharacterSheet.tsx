@@ -25,7 +25,11 @@ import {
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ClassModalChoices, RaceModalChoices } from '../../types/choices';
+import type {
+  BackgroundModalChoices,
+  ClassModalChoices,
+  RaceModalChoices,
+} from '../../types/choices';
 import {
   convertEquipmentChoiceToProto,
   convertExpertiseChoiceToProto,
@@ -289,6 +293,40 @@ export function InteractiveCharacterSheet({
 
     return choices;
   }, [draft.classChoices, draft.classInfo]);
+
+  // Convert draft background choices to modal format
+  const structuredBackgroundChoices = useMemo(() => {
+    const choices: BackgroundModalChoices = {
+      equipment: [],
+      tools: [],
+    };
+
+    (draft.backgroundChoices || []).forEach((choice) => {
+      if (
+        choice.category === ChoiceCategory.EQUIPMENT &&
+        choice.selection?.case === 'equipment'
+      ) {
+        const declaredChoice = draft.backgroundInfo?.choices?.find(
+          (candidate) => candidate.id === choice.choiceId
+        );
+        if (declaredChoice) {
+          choices.equipment?.push(
+            reconstructEquipmentChoice(declaredChoice, choice)
+          );
+        }
+      } else if (
+        choice.category === ChoiceCategory.TOOLS &&
+        choice.selection?.case === 'tools'
+      ) {
+        choices.tools?.push({
+          choiceId: choice.choiceId,
+          tools: choice.selection.value.tools || [],
+        });
+      }
+    });
+
+    return choices;
+  }, [draft.backgroundChoices, draft.backgroundInfo]);
 
   // Sync draft state with local character state
   useEffect(() => {
@@ -1878,8 +1916,31 @@ export function InteractiveCharacterSheet({
       <BackgroundSelectionModal
         isOpen={isBackgroundModalOpen}
         currentBackground={draft.backgroundInfo?.name}
-        onSelect={async (background) => {
-          await setBackground(background, []);
+        existingChoices={structuredBackgroundChoices}
+        onSelect={async (background, choices) => {
+          // Convert choices to ChoiceData format for the API
+          const choiceData: ChoiceData[] = [];
+
+          if (choices.equipment) {
+            choices.equipment.forEach((equipChoice) => {
+              choiceData.push(
+                convertEquipmentChoiceToProto(
+                  equipChoice,
+                  ChoiceSource.BACKGROUND
+                )
+              );
+            });
+          }
+
+          if (choices.tools) {
+            choices.tools.forEach((toolChoice) => {
+              choiceData.push(
+                convertToolChoiceToProto(toolChoice, ChoiceSource.BACKGROUND)
+              );
+            });
+          }
+
+          await setBackground(background, choiceData);
           setIsBackgroundModalOpen(false);
         }}
         onClose={() => setIsBackgroundModalOpen(false)}
