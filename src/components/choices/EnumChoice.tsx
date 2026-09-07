@@ -45,18 +45,34 @@ export function EnumChoice<T extends number>({
   // Auto-detect layout
   const effectiveLayout = layout || (getGroup ? 'grouped' : 'rows');
 
+  // A CHOOSE-ONE PICK REPLACES; A CHOOSE-MANY PICK ADDS. That difference is
+  // the whole of the control's behaviour, and it is read off the requirement's
+  // own count rather than off what the requirement is for — so any choose-N
+  // skill, tool, language or fighting-style requirement behaves the same way.
+  const replaces = choice.chooseCount === 1;
+
   const handleToggle = (value: T) => {
-    if (choice.chooseCount === 1) {
-      // Radio button behavior
+    if (replaces) {
       onSelectionChange(choice.id, [value]);
-    } else {
-      // Checkbox behavior
-      const newSelections = currentSelections.includes(value)
-        ? currentSelections.filter((s) => s !== value)
-        : [...currentSelections, value].slice(0, choice.chooseCount);
-      onSelectionChange(choice.id, newSelections);
+      return;
     }
+    const newSelections = currentSelections.includes(value)
+      ? currentSelections.filter((s) => s !== value)
+      : [...currentSelections, value].slice(0, choice.chooseCount);
+    onSelectionChange(choice.id, newSelections);
   };
+
+  /**
+   * Whether an unpicked option is refused right now.
+   *
+   * A FULL CHOOSE-ONE CHOICE IS NOT FULL, it is DECIDED, and a decision can be
+   * changed. Treating it as full disabled every other option the moment the
+   * first was picked, which locked the player into their first click with no
+   * way back — visible on every single-pick requirement in creation, not just
+   * the bard's. The limit only refuses a pick that would ADD an N+1th.
+   */
+  const refusesMore = (isSelected: boolean) =>
+    !isSelected && !replaces && currentSelections.length >= choice.chooseCount;
 
   // Render grouped layout
   if (effectiveLayout === 'grouped' && getGroup) {
@@ -111,9 +127,7 @@ export function EnumChoice<T extends number>({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {items.map((item) => {
                   const isSelected = currentSelections.includes(item);
-                  const isDisabled =
-                    !isSelected &&
-                    currentSelections.length >= choice.chooseCount;
+                  const isDisabled = refusesMore(isSelected);
                   const info = getDisplayInfo(item);
 
                   return (
@@ -210,8 +224,7 @@ export function EnumChoice<T extends number>({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {filteredAvailable.map((item) => {
           const isSelected = currentSelections.includes(item);
-          const isDisabled =
-            !isSelected && currentSelections.length >= choice.chooseCount;
+          const isDisabled = refusesMore(isSelected);
           const info = getDisplayInfo(item);
 
           return (
