@@ -3,7 +3,11 @@ import {
   HEX_SIZE,
   hexCorners,
 } from '@/components/hex-grid/hexMath';
-import { PropModel } from '@/components/hex-grid/PropModel';
+import {
+  PropModel,
+  type PropModelBounds,
+} from '@/components/hex-grid/PropModel';
+import { WorldAssetModel } from '@/components/hex-grid/WorldAssetModel';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
 import { DUNGEON_POINT_LIGHT_BUDGET } from '@/rendering/dungeonLighting';
@@ -146,6 +150,24 @@ export function WorldPropVisual({
   ];
   if (!entry) return null;
 
+  const recordBounds = (measured: PropModelBounds) => {
+    setMeasurement((current) =>
+      current?.assetRef === item.assetRef &&
+      current.bounds.minY === measured.minY &&
+      current.bounds.maxY === measured.maxY &&
+      current.bounds.width === measured.width &&
+      current.bounds.height === measured.height &&
+      current.bounds.depth === measured.depth
+        ? current
+        : { assetRef: item.assetRef, bounds: measured }
+    );
+    onBoundsMeasured?.(item.id, {
+      assetRef: item.assetRef,
+      bounds: measured,
+    });
+    onAssetState(item.id, 'loaded');
+  };
+
   const select = (event: ThreeEvent<PointerEvent>) => {
     if (event.button !== 0 || isGizmoPointer()) return;
     event.stopPropagation();
@@ -176,29 +198,23 @@ export function WorldPropVisual({
                 : undefined
             }
           >
-            <PropModel
-              variant={entry.variant}
-              position={position}
-              rotationY={item.transform.rotationY}
-              anchor="bounds-floor-center"
-              onBoundsMeasured={(measured) => {
-                setMeasurement((current) =>
-                  current?.assetRef === item.assetRef &&
-                  current.bounds.minY === measured.minY &&
-                  current.bounds.maxY === measured.maxY &&
-                  current.bounds.width === measured.width &&
-                  current.bounds.height === measured.height &&
-                  current.bounds.depth === measured.depth
-                    ? current
-                    : { assetRef: item.assetRef, bounds: measured }
-                );
-                onBoundsMeasured?.(item.id, {
-                  assetRef: item.assetRef,
-                  bounds: measured,
-                });
-                onAssetState(item.id, 'loaded');
-              }}
-            />
+            {entry.source === 'generated' ? (
+              <WorldAssetModel
+                assetRef={entry.ref}
+                position={position}
+                rotationY={item.transform.rotationY}
+                onDiagnostic={() => onAssetState(item.id, 'error')}
+                onBoundsMeasured={recordBounds}
+              />
+            ) : (
+              <PropModel
+                variant={entry.variant}
+                position={position}
+                rotationY={item.transform.rotationY}
+                anchor="bounds-floor-center"
+                onBoundsMeasured={recordBounds}
+              />
+            )}
           </group>
         </ErrorBoundary>
       </Suspense>

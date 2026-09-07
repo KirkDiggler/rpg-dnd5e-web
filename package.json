@@ -21,6 +21,8 @@
     "ci-check": "./scripts/ci-check.sh",
     "ci-fix": "npm run format && npm run lint --fix && npm run typecheck && npm run build",
     "assets:sync": "sh scripts/sync-game-assets.sh",
+    "world-assets:sync": "bash scripts/sync-game-assets.sh --world-assets",
+    "world-assets:check": "bash scripts/sync-game-assets.sh --world-assets --check",
     "props:sync": "npm run assets:sync && node scripts/generate-prop-catalog.mjs",
     "props:check": "node scripts/generate-prop-catalog.mjs --check",
     "attack-die:build": "npm run build -- --mode development",
