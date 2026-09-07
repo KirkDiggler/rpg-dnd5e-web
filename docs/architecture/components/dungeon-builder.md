@@ -18,7 +18,7 @@ is the artifact, the canvas is a view of it, and the atlas is the proof.**
 | `creation/CreationBoard.tsx` | The SVG canvas, in axial, drawn under the authored orientation via `concepts/session-tomb/atlas.ts`'s hex geometry. Tools: region brush, erase, wall, door, start, place, select.                                                                           |
 | `authoringRpc.ts`            | `usePutDungeonPreview` (debounced `PutDungeon{validate_only}` → `errors[]` + atlas) and `useSaveDungeon`.                                                                                                                                                   |
 | `preview3d/`                 | `previewScene` = `resolveSceneLayout` + `buildScene3D` (the session route's own path); `DungeonPreview3D` draws it with `SyntyHexFloor`, `AtlasWalls`, `PropModel`, `HexEntity`. No builder-side geometry.                                                  |
-| `DungeonBuilder.tsx`         | Composition root: top-bar verbs (New/Open/Save/Save & Play), palette, canvas or preview, inspector, YAML pane.                                                                                                                                              |
+| `DungeonBuilder.tsx`         | Composition root: top-bar verbs (New/Open/Save/Save & Play), palette, canvas or preview, inspector, YAML pane. Its composition palette/list/thumbnails and preview receive the same current-world RPC source as session play.                               |
 | `AuthorView.tsx`             | The live mount; owns Save & Play (create lobby → ready → `StartEncounter{dungeon_key}` → game route).                                                                                                                                                       |
 | `useAuthoringGate.ts`        | Home-button gate: `GetDungeon("reference-tomb")` succeeds ⇒ authoring is on.                                                                                                                                                                                |
 | `fixtures/`                  | `referenceTombDoc()` and `fixtureAtlasOf(doc)` for tests and the Concepts Lab mount (`DungeonBuilderSandbox`).                                                                                                                                              |
@@ -34,3 +34,14 @@ is the artifact, the canvas is a view of it, and the atlas is the proof.**
 
 - Concepts Lab `?concept=dungeon-builder`: fixtures mode (`fixtureAtlas`), never calls the server.
 - Toolkit-contributor sandbox: `authoringClient` injected, fixed version-2 document, no New/Open/file IO.
+
+## Current-world compositions
+
+A development app injects one `CompositionSource` backed by the generated
+CompositionService client and `VITE_DEV_WORLD_ID` (`test-world` by default).
+The palette lists that world on each builder navigation and names valid entries
+from authored `scene.name`, not opaque snapshot IDs. Thumbnail, preview, and
+session play resolve by the same WorldID + Composition ID reader. Malformed,
+missing, and RPC-error states stay visible; the explicit fixed fixture is never
+a failure fallback. Production has no source until guild-to-world mapping is
+verified.

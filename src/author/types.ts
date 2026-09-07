@@ -18,7 +18,9 @@ export type BoardTool =
    * be several and each carries an id. Nothing is defaulted: the cell the
    * party starts on is an exit only if the author says so. */
   | 'exit'
-  | 'place';
+  | 'place'
+  /** One-shot mode armed from a selected placement's existing inspector. */
+  | 'move-placement';
 
 /** What the inspector is looking at. A wall selection is an INDEX into
  * `walls[]` — the file has a wall in it now (rpg-project#360 slice 2),

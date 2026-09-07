@@ -5,6 +5,7 @@ import type {
   SceneHistory,
   WorldGroup,
   WorldPoint,
+  WorldPointLight,
   WorldProp,
   WorldScene,
   WorldTransform,
@@ -50,6 +51,27 @@ export function addProp(
         ...relations,
       },
     ],
+  };
+}
+
+export function setPropPointLight(
+  scene: WorldScene,
+  propId: string,
+  pointLight: WorldPointLight | undefined
+): WorldScene {
+  if (!scene.items.some((item) => item.id === propId)) {
+    throw new Error(`Prop does not exist: ${propId}`);
+  }
+  return {
+    ...scene,
+    items: scene.items.map((item) =>
+      item.id === propId
+        ? {
+            ...item,
+            pointLight: pointLight ? structuredClone(pointLight) : undefined,
+          }
+        : item
+    ),
   };
 }
 

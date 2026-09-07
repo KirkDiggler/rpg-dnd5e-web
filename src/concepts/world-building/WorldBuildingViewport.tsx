@@ -8,7 +8,11 @@ import {
   type PropModelBounds,
 } from '@/components/hex-grid/PropModel';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
+import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
+import { DUNGEON_POINT_LIGHT_BUDGET } from '@/rendering/dungeonLighting';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
+import { VisualPointLights } from '@/rendering/visualPointLights';
+import { selectBoundedVisualPointLights } from '@/rendering/visualPointLightSelection';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import {
@@ -286,6 +290,19 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
     () => selectionClosure(displayScene, selectedIds),
     [displayScene, selectedIds]
   );
+  const pointLights = useMemo(
+    () =>
+      selectBoundedVisualPointLights(
+        projectCompositionPointLights(displayScene, {
+          compositionId: displayScene.id,
+          placementId: 'composer',
+          transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+        }),
+        { x: 0, z: 0 },
+        DUNGEON_POINT_LIGHT_BUDGET
+      ),
+    [displayScene]
+  );
   const isGizmoPointer = () => {
     const controls = controlsRef.current as unknown as {
       axis: string | null;
@@ -303,6 +320,7 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
       <ambientLight intensity={1.2} />
       <directionalLight position={[7, 12, 6]} intensity={1.35} castShadow />
       <hemisphereLight args={['#a5f3fc', '#172026', 0.55]} />
+      <VisualPointLights lights={pointLights} />
       <mesh
         name="world-building-finite-ground"
         userData={{ worldBuildingGround: true }}

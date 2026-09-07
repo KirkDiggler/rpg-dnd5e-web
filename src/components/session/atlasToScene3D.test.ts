@@ -274,7 +274,7 @@ describe('buildScene3D', () => {
     });
   });
 
-  it('projects every positioned AtlasProp by its opaque ref and axial cell, carrying facing/offset verbatim', () => {
+  it('projects every positioned AtlasProp by its opaque ref and axial cell, carrying id/facing/offset verbatim', () => {
     const scene = buildScene3D(
       {
         cells: [pos(3, -2), pos(0, 1)],
@@ -284,6 +284,7 @@ describe('buildScene3D', () => {
         props: [
           {
             ref: 'dnd5e:props:pillar',
+            id: 'pillar-one',
             at: pos(3, -2),
             blocksMovement: true,
             blocksLineOfSight: true,
@@ -294,6 +295,7 @@ describe('buildScene3D', () => {
           },
           {
             ref: 'homebrew:props:unknown',
+            id: 'unknown-two',
             at: pos(0, 1),
             blocksMovement: false,
             blocksLineOfSight: false,
@@ -310,12 +312,14 @@ describe('buildScene3D', () => {
     expect(scene.props).toEqual([
       {
         ref: 'dnd5e:props:pillar',
+        id: 'pillar-one',
         position: { x: 3, y: -1, z: -2 },
         facing: 'ne',
         offset: { x: 0.2, y: -0.1, z: 0.6 },
       },
       {
         ref: 'homebrew:props:unknown',
+        id: 'unknown-two',
         position: { x: 0, y: -1, z: 1 },
         facing: '',
         offset: { x: 0, y: 0, z: 0 },

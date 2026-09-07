@@ -83,6 +83,8 @@ export { positionToCube, worldPositionOf };
 
 export interface SceneProp3D {
   ref: string;
+  /** The authored placement identity, required by composition placements. */
+  id?: string;
   /** The cell it stands on — mechanics stay cell-scoped (design's
    * "presentation never decides mechanics" law): this is the position
    * movement/LOS reason about, unaffected by `offset`. */
@@ -303,6 +305,7 @@ export function buildScene3D(
     // to that same "unfaced, centered" default instead of vanishing.
     const sceneProp = {
       ref: prop.ref,
+      id: prop.id ?? '',
       position: positionToCube(prop.at),
       facing: prop.facing ?? '',
       offset: {

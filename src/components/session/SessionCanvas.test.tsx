@@ -549,6 +549,7 @@ describe('SessionScene', () => {
     expect(source).not.toMatch(/<AtlasPropModel\b/);
     expect(source).toContain('doors={doors}');
     expect(source).toContain('onDoorClick={onDoorClick}');
+    expect(source).toContain('compositionSource={compositionSource}');
     expect(source).not.toContain('onFallbackReason');
     expect(source).not.toContain('onLightingDiagnostics');
   });

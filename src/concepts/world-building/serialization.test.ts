@@ -19,7 +19,11 @@ import {
   stringifyScene,
   validateLibrary,
 } from './serialization';
-import type { ArrangementLibrary, KeyValueStorage } from './types';
+import type {
+  ArrangementLibrary,
+  KeyValueStorage,
+  WorldPointLight,
+} from './types';
 
 function validScene() {
   let scene = createEmptyScene('scene-1');
@@ -70,6 +74,48 @@ describe('world-building serialization validation', () => {
   it('round trips a bounded catalog-backed scene with continuous transforms and support links', () => {
     const scene = validScene();
     expect(parseSceneJson(stringifyScene(scene))).toEqual(scene);
+  });
+
+  it('keeps old no-light data unchanged and round trips explicit rendering light settings', () => {
+    const scene = validScene();
+    const noLightJson = stringifyScene(scene);
+    expect(noLightJson).not.toContain('pointLight');
+    expect(stringifyScene(parseSceneJson(noLightJson))).toBe(noLightJson);
+
+    const pointLight: WorldPointLight = {
+      enabled: false,
+      offset: { x: 0.15, y: 0.8, z: -0.2 },
+      color: '#ff9d52',
+      intensity: 1.4,
+      range: 3.2,
+    };
+    scene.items[1]!.pointLight = pointLight;
+    expect(parseSceneJson(stringifyScene(scene)).items[1]!.pointLight).toEqual(
+      pointLight
+    );
+  });
+
+  it.each([
+    ['non-boolean enabled', { enabled: 'yes' }],
+    ['invalid color', { color: 'orange' }],
+    ['negative intensity', { intensity: -1 }],
+    ['zero range', { range: 0 }],
+    ['non-finite offset', { offset: { x: 0, y: Infinity, z: 0 } }],
+  ])('rejects %s in authored light settings', (_label, patch) => {
+    const value = JSON.parse(
+      stringifyScene(validScene())
+    ) as MutableSceneEnvelope & {
+      scene: { items: Array<Record<string, unknown>> };
+    };
+    value.scene.items[0]!.pointLight = {
+      enabled: true,
+      offset: { x: 0, y: 0.5, z: 0 },
+      color: '#ff9d52',
+      intensity: 1.1,
+      range: 2.6,
+      ...patch,
+    };
+    expect(() => parseSceneJson(JSON.stringify(value))).toThrow(/pointLight/);
   });
 
   it.each<[string, (value: MutableSceneEnvelope) => void]>([

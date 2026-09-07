@@ -101,6 +101,23 @@ vi.mock('./concepts/ConceptsView', () => ({
   ),
 }));
 
+vi.mock('./concepts/world-building/WorldBuildingConcept', () => ({
+  WorldBuildingConcept: ({ onBack }: { onBack: () => void }) => (
+    <section>
+      <h1>World Builder View</h1>
+      <button onClick={onBack}>Back to main menu</button>
+    </section>
+  ),
+}));
+
+vi.mock('./compositions/rpcCompositionSource', () => ({
+  createRpcCompositionSource: () => ({
+    worldId: 'test-world',
+    reader: {},
+    writer: {},
+  }),
+}));
+
 vi.mock('./dev/AttackDieDevRouteSurface', () => ({
   AttackDieDevRouteSurface: () => <div>Attack Die Dev Route</div>,
 }));
@@ -199,6 +216,30 @@ describe('App prop calibration route', () => {
 
     expect(screen.getByText('Home View')).toBeTruthy();
     expect(screen.queryByText('Prop Calibration Lab')).toBeNull();
+  });
+});
+
+describe('App main-menu World Builder', () => {
+  it('routes the development world source into the promoted editor and back', async () => {
+    vi.stubEnv('MODE', 'development');
+    render(<App />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open World Builder' })
+    );
+    expect(
+      screen.getByRole('heading', { name: 'World Builder View' })
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to main menu' }));
+    expect(screen.getByText('Home View')).toBeTruthy();
+  });
+
+  it('does not invent a World Builder path in production', () => {
+    vi.stubEnv('MODE', 'production');
+    render(<App />);
+    expect(
+      screen.queryByRole('button', { name: 'Open World Builder' })
+    ).toBeNull();
   });
 });
 

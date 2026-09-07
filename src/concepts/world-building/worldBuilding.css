@@ -18,6 +18,13 @@
   box-shadow: 0 24px 70px rgb(0 0 0 / 35%);
 }
 
+.wb-shell--world {
+  height: 100vh;
+  min-height: 640px;
+  border: 0;
+  border-radius: 0;
+}
+
 .wb-shell button,
 .wb-shell input,
 .wb-shell textarea,
@@ -157,6 +164,25 @@
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid #283c3a;
+}
+
+.wb-library-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.wb-library-heading h3 {
+  margin: 0;
+}
+
+.wb-library-error {
+  color: #fca5a5;
+}
+
+.wb-library-error small {
+  display: block;
 }
 
 .wb-panel label > span {
@@ -333,6 +359,44 @@
   font-weight: 700;
 }
 
+.wb-light-editor {
+  margin-top: 0.65rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #283c3a;
+}
+
+.wb-light-editor h4 {
+  margin: 0 0 0.4rem;
+  color: #f9d989;
+  font-size: 0.72rem;
+}
+
+.wb-light-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.wb-light-toggle > span {
+  display: inline !important;
+  margin: 0 !important;
+}
+
+.wb-light-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.wb-light-grid input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: 0.25rem;
+  font-size: 0.68rem;
+}
+
 .wb-danger {
   border-color: #7f1d1d !important;
   color: #fecaca !important;
@@ -356,6 +420,20 @@
 .wb-library article[draggable='true'] {
   cursor: grab;
   user-select: none;
+}
+
+.wb-delete-confirm {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.35rem;
+  border: 1px solid #b45309;
+  border-radius: 4px;
+  background: #32170d;
+}
+
+.wb-delete-confirm p {
+  margin: 0;
+  color: #ffedd5;
 }
 
 .wb-library strong,
