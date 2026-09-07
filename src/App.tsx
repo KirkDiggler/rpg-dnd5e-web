@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { getPlayerId } from './api/auth';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
@@ -17,7 +17,9 @@ import { GameView } from './components/game/GameView';
 import { CharacterCarousel, SelectedCharacterPanel } from './components/home';
 import { ThemeSelector } from './components/ThemeSelector';
 import { ErrorDisplay } from './components/ui/Feedback';
+import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
+import { WorldBuildingConcept } from './concepts/world-building/WorldBuildingConcept';
 import { isAssetReviewRoute } from './dev/asset-review/route';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
@@ -74,6 +76,35 @@ const hasConceptDeepLink = (): boolean =>
   new URLSearchParams(window.location.search).has('concept');
 
 function AppContent() {
+  const [compositionSource, setCompositionSource] = useState<
+    CompositionSource | undefined
+  >();
+  useEffect(() => {
+    if (import.meta.env.MODE !== 'development') return;
+    let current = true;
+    const fixedFixture =
+      import.meta.env.VITE_ENABLE_DEVELOPMENT_COMPOSITIONS === '1';
+    const load = fixedFixture
+      ? import('./compositions/developmentCompositionSource').then(
+          ({ createDevelopmentCompositionSource }) =>
+            createDevelopmentCompositionSource()
+        )
+      : import('./compositions/rpcCompositionSource').then(
+          ({ createRpcCompositionSource }) => createRpcCompositionSource()
+        );
+    void load.then((source) => {
+      if (current) setCompositionSource(source);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+  const invalidateCompositionResolutions = useCallback(() => {
+    // Existing composition resolution caches reset on source identity. Keep
+    // invalidation at that small seam so a deleted snapshot cannot retain
+    // stale models or lights after the next relevant render/navigation.
+    setCompositionSource((current) => (current ? { ...current } : current));
+  }, []);
   // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
   // /playtest is a permanent verification surface (design.md), not slated
@@ -251,6 +282,10 @@ function AppContent() {
     setCurrentView('author');
   };
 
+  const handleOpenWorldBuilder = () => {
+    setCurrentView('world-builder');
+  };
+
   // Save & Play from the Dungeon Builder (rpg-project#256): the builder
   // already started the encounter on the authored key; drop straight
   // into it the same way resume-after-refresh does.
@@ -318,7 +353,9 @@ function AppContent() {
   // is a pixel its canvas never gets. Both draw their own chrome, so the
   // shell's header row is theirs to skip as well.
   const fullBleed =
-    currentView === 'character-sheet' || currentView === 'author';
+    currentView === 'character-sheet' ||
+    currentView === 'author' ||
+    currentView === 'world-builder';
 
   return (
     <div
@@ -392,14 +429,22 @@ function AppContent() {
             onBack={handleBackToHome}
             initialEncounterId={resumeEncounterId ?? undefined}
             initialLobbyId={resumeLobbyId ?? undefined}
+            compositionSource={compositionSource}
           />
         ) : currentView === 'concepts' ? (
           <ConceptsView onBack={handleBackToHome} />
+        ) : currentView === 'world-builder' && compositionSource ? (
+          <WorldBuildingConcept
+            onBack={handleBackToHome}
+            compositionSource={compositionSource}
+            onCompositionDeleted={invalidateCompositionResolutions}
+          />
         ) : currentView === 'author' ? (
           <AuthorView
             onBack={handleBackToHome}
             characterId={selectedType === 'character' ? selectedId : null}
             onPlay={handlePlayAuthored}
+            compositionSource={compositionSource}
           />
         ) : currentView === 'home' && resumeIdentityError ? (
           <div className="flex items-center justify-center h-screen">
@@ -435,6 +480,8 @@ function AppContent() {
             onDelete={handleDeleteCharacter}
             onDeleteDraft={handleDeleteDraft}
             onOpenAuthor={handleOpenAuthor}
+            onOpenWorldBuilder={handleOpenWorldBuilder}
+            worldBuilderAvailable={compositionSource !== undefined}
           />
         ) : currentView === 'character-sheet' && currentCharacterId ? (
           <CharacterSheet
@@ -509,6 +556,8 @@ interface HomeViewProps {
   onDelete: (characterId: string) => void;
   onDeleteDraft: (draftId: string) => void;
   onOpenAuthor: () => void;
+  onOpenWorldBuilder: () => void;
+  worldBuilderAvailable: boolean;
 }
 
 function HomeView({
@@ -524,6 +573,8 @@ function HomeView({
   onDelete,
   onDeleteDraft,
   onOpenAuthor,
+  onOpenWorldBuilder,
+  worldBuilderAvailable,
 }: HomeViewProps) {
   // Fetch characters and drafts to find selected item data
   const { data: characters } = useListCharacters({ playerId, sessionId });
@@ -541,11 +592,26 @@ function HomeView({
 
   return (
     <div className="space-y-8">
-      {/* Home menu — real chrome, not dev-gated (rpg-project#194). Button
-          is self-gating (useAuthoringGate): hidden when authoring is off
-          server-side, disabled-with-retry when the server's unreachable. */}
-      <div className="flex justify-center">
+      {/* Home authoring menu. Dungeon Builder owns its existing server probe;
+          World Builder appears only when the app has an explicit current-world
+          source (development today; no fabricated production world). */}
+      <div className="flex justify-center gap-3">
         <DungeonBuilderHomeButton onOpen={onOpenAuthor} />
+        {worldBuilderAvailable && (
+          <button
+            onClick={onOpenWorldBuilder}
+            aria-label="Open World Builder"
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            style={{
+              backgroundColor: 'var(--accent-primary)',
+              color: 'white',
+              border: '1px solid var(--accent-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            🌍 World Builder
+          </button>
+        )}
       </div>
 
       {/* Character Carousel */}

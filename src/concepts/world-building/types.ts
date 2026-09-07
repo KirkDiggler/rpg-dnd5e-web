@@ -11,6 +11,21 @@ export interface WorldTransform {
   rotationY: number;
 }
 
+/**
+ * An explicitly authored visual point light on one prop. Offset and range use
+ * the scene-coordinate units used by WorldTransform. Intensity is a renderer
+ * control only, not physical illumination or a D&D bright/dim distance.
+ */
+export interface WorldPointLight {
+  enabled: boolean;
+  /** Position relative to the prop, rotated by the prop's authored yaw. */
+  offset: { x: number; y: number; z: number };
+  /** Six-digit CSS hex color. */
+  color: string;
+  intensity: number;
+  range: number;
+}
+
 export interface WorldProp {
   id: string;
   kind: 'prop';
@@ -21,6 +36,8 @@ export interface WorldProp {
   parentId?: string;
   /** Optional surface attachment. Moving/rotating the support carries this prop. */
   supportId?: string;
+  /** Optional, explicitly authored visual emission; never inferred from assetRef. */
+  pointLight?: WorldPointLight;
 }
 
 export interface WorldGroup {

@@ -10,6 +10,7 @@ import {
   type DungeonLightSourceSpec,
 } from './dungeonLightSources';
 import { DUNGEON_SURFACE_Y } from './dungeonSurface';
+import type { VisualPointLightSource } from './visualPointLightSelection';
 
 export type DungeonLightingFallbackReason =
   | 'no-regions'
@@ -330,35 +331,85 @@ function legacyLightingPlan(
 
 export function resolveDungeonLighting(
   facts: DungeonLightingFacts,
-  focus: Readonly<{ x: number; z: number }>
+  focus: Readonly<{ x: number; z: number }>,
+  authoredSources: readonly VisualPointLightSource[] = []
 ): DungeonLightingPlan {
-  if (facts.mode === 'legacy' || facts.fallbackReason !== null) {
+  if (
+    (facts.mode === 'legacy' || facts.fallbackReason !== null) &&
+    authoredSources.length === 0
+  ) {
     return legacyLightingPlan(facts.fallbackReason ?? 'no-regions');
   }
 
-  const sortedSources = [...facts.sources].sort((left, right) => {
-    const leftDx = left.position[0] - focus.x;
-    const leftDz = left.position[2] - focus.z;
-    const rightDx = right.position[0] - focus.x;
-    const rightDz = right.position[2] - focus.z;
+  type Candidate =
+    | {
+        readonly kind: 'dungeon';
+        readonly source: DungeonLightSource;
+        readonly sortKey: string;
+      }
+    | {
+        readonly kind: 'authored';
+        readonly source: VisualPointLightSource;
+        readonly sortKey: string;
+      };
+  const candidates: Candidate[] = [
+    ...facts.sources.map((source) => ({
+      kind: 'dungeon' as const,
+      source,
+      sortKey: `${source.cellKey}|${source.ref}|${source.key}`,
+    })),
+    ...authoredSources.map((source) => ({
+      kind: 'authored' as const,
+      source,
+      sortKey: source.key,
+    })),
+  ];
+  candidates.sort((left, right) => {
+    const leftDx = left.source.position[0] - focus.x;
+    const leftDz = left.source.position[2] - focus.z;
+    const rightDx = right.source.position[0] - focus.x;
+    const rightDz = right.source.position[2] - focus.z;
     const distanceDifference =
       leftDx * leftDx +
       leftDz * leftDz -
       (rightDx * rightDx + rightDz * rightDz);
     if (distanceDifference !== 0) return distanceDifference;
-    const leftKey = `${left.cellKey}|${left.ref}|${left.key}`;
-    const rightKey = `${right.cellKey}|${right.ref}|${right.key}`;
-    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    return left.sortKey < right.sortKey
+      ? -1
+      : left.sortKey > right.sortKey
+        ? 1
+        : 0;
   });
-  const selectedSources = sortedSources.slice(0, DUNGEON_POINT_LIGHT_BUDGET);
-  const pointLights = selectedSources.map((source) =>
+  const selectedCandidates = candidates.slice(0, DUNGEON_POINT_LIGHT_BUDGET);
+  const pointLights = selectedCandidates.map(({ kind, source }) =>
     Object.freeze({
       key: source.key,
       position: source.position,
-      color: source.spec.color,
-      intensity: source.spec.intensity,
-      distance: source.spec.distance,
+      color: kind === 'dungeon' ? source.spec.color : source.color,
+      intensity: kind === 'dungeon' ? source.spec.intensity : source.intensity,
+      distance: kind === 'dungeon' ? source.spec.distance : source.distance,
     })
+  );
+
+  const legacy = facts.mode === 'legacy' || facts.fallbackReason !== null;
+  if (legacy) {
+    const base = legacyLightingPlan(facts.fallbackReason ?? 'no-regions');
+    return Object.freeze({
+      ...base,
+      pointLights: Object.freeze(pointLights),
+      diagnostics: Object.freeze([
+        ...base.diagnostics,
+        ...(candidates.length > DUNGEON_POINT_LIGHT_BUDGET
+          ? [
+              `${DUNGEON_POINT_LIGHT_BUDGET} of ${candidates.length} placed light sources active near this view`,
+            ]
+          : []),
+      ]),
+    });
+  }
+
+  const selectedSources = selectedCandidates.flatMap((candidate) =>
+    candidate.kind === 'dungeon' ? [candidate.source] : []
   );
 
   const poolsByCell = new Map<string, DungeonFloorPool[]>();
@@ -380,9 +431,9 @@ export function resolveDungeonLighting(
   }
 
   const diagnostics =
-    facts.sources.length > DUNGEON_POINT_LIGHT_BUDGET
+    candidates.length > DUNGEON_POINT_LIGHT_BUDGET
       ? [
-          `${DUNGEON_POINT_LIGHT_BUDGET} of ${facts.sources.length} placed light sources active near this view`,
+          `${DUNGEON_POINT_LIGHT_BUDGET} of ${candidates.length} placed light sources active near this view`,
         ]
       : [];
   return Object.freeze({

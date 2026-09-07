@@ -14,6 +14,7 @@ import { useCreateLobby } from '@/api/useCreateLobby';
 import { useSetLobbyReady } from '@/api/useSetLobbyReady';
 import { useStartLobbyEncounter } from '@/api/useStartLobbyEncounter';
 import { ThemeSelector } from '@/components/ThemeSelector';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DungeonBuilder } from './DungeonBuilder';
 
@@ -27,9 +28,15 @@ interface AuthorViewProps {
   characterId?: string | null;
   /** Routes to the game on the started encounter. */
   onPlay: (encounterId: string, characterId: string) => void;
+  compositionSource?: CompositionSource;
 }
 
-export function AuthorView({ onBack, characterId, onPlay }: AuthorViewProps) {
+export function AuthorView({
+  onBack,
+  characterId,
+  onPlay,
+  compositionSource,
+}: AuthorViewProps) {
   const { createLobby } = useCreateLobby();
   const { setReady } = useSetLobbyReady();
   const { startEncounter } = useStartLobbyEncounter();
@@ -108,6 +115,7 @@ export function AuthorView({ onBack, characterId, onPlay }: AuthorViewProps) {
       <div className="flex-1 min-h-0">
         <DungeonBuilder
           onPlay={play}
+          compositionSource={compositionSource}
           playDisabledReason={
             characterId ? null : 'Pick a character on Home to play'
           }

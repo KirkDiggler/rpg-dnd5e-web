@@ -1,0 +1,72 @@
+{
+  "kind": "rpg-world-building-scene",
+  "version": 1,
+  "scene": {
+    "version": 1,
+    "id": "559aca26-b37d-4066-a199-188cf1f484fe",
+    "name": "Untitled world",
+    "items": [
+      {
+        "id": "4e87cd16-f226-48c7-8359-fe92e8b2e4fa",
+        "kind": "prop",
+        "assetRef": "dnd5e:props:candles",
+        "label": "candles",
+        "transform": {
+          "x": 0.38142525472960387,
+          "y": 0.6898566486691006,
+          "z": -1.0634568851500192,
+          "rotationY": 0
+        }
+      },
+      {
+        "id": "02c56a73-06c1-4a73-96ac-ce8fada0ea07",
+        "kind": "prop",
+        "assetRef": "dnd5e:props:candles",
+        "label": "candles",
+        "transform": {
+          "x": 0.6825433408366083,
+          "y": 0.6629800483396081,
+          "z": -0.8828770832089027,
+          "rotationY": 0
+        }
+      },
+      {
+        "id": "17c67f39-6b5d-49ad-a9be-e63722824dc1",
+        "kind": "prop",
+        "assetRef": "dnd5e:props:skeleton-table",
+        "label": "skeleton table",
+        "transform": {
+          "x": -0.22944039237606742,
+          "y": 0,
+          "z": -0.7073681324665922,
+          "rotationY": 0
+        }
+      },
+      {
+        "id": "6c004333-7658-464e-b2d3-2d3605a5d738",
+        "kind": "prop",
+        "assetRef": "dnd5e:props:books",
+        "label": "books",
+        "transform": {
+          "x": -1.0915920947310305,
+          "y": 0.6639906743146522,
+          "z": -0.48453184292194595,
+          "rotationY": 0
+        }
+      },
+      {
+        "id": "30202906-db34-46eb-a31e-fabc9cd92c36",
+        "kind": "prop",
+        "assetRef": "dnd5e:props:books",
+        "label": "books",
+        "transform": {
+          "x": -0.703216183471233,
+          "y": 0.6639906743146522,
+          "z": -0.9345318429219459,
+          "rotationY": 0
+        }
+      }
+    ],
+    "groups": []
+  }
+}

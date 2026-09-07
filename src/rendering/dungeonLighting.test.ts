@@ -308,6 +308,59 @@ describe('resolveDungeonLighting source budget and floor pools', () => {
     ]);
   });
 
+  it('combines authored composition lights before applying the same scene-wide budget', () => {
+    const cellKeys = Array.from({ length: 8 }, (_, index) => `cell-${index}`);
+    const facts = buildDungeonLightingFacts(
+      cellKeys,
+      [region('room', cellKeys)],
+      cellKeys.map((cellKey, index) =>
+        source(`dungeon-${index}`, 'dnd5e:props:brazier', cellKey, [
+          10 + index,
+          0,
+          0,
+        ])
+      )
+    );
+    const authored = Array.from({ length: 8 }, (_, index) => ({
+      key: `composition:p${index}:part`,
+      compositionId: 'lit-composition',
+      placementId: `p${index}`,
+      partId: 'part',
+      position: [index, 1, 0] as const,
+      color: '#ff9d52',
+      intensity: 1,
+      distance: 3,
+    }));
+
+    const plan = resolveDungeonLighting(facts, { x: 0, z: 0 }, authored);
+    expect(plan.pointLights).toHaveLength(12);
+    expect(plan.pointLights.slice(0, 8).map((light) => light.key)).toEqual(
+      authored.map((light) => light.key)
+    );
+    expect(plan.diagnostics).toEqual([
+      '12 of 16 placed light sources active near this view',
+    ]);
+  });
+
+  it('retains legacy ambient lighting while rendering explicit authored sources', () => {
+    const facts = buildDungeonLightingFacts([], [], []);
+    const plan = resolveDungeonLighting(facts, { x: 0, z: 0 }, [
+      {
+        key: 'composition:placement:part',
+        compositionId: 'composition',
+        placementId: 'placement',
+        partId: 'part',
+        position: [1, 2, 3],
+        color: '#abcdef',
+        intensity: 2,
+        distance: 4,
+      },
+    ]);
+    expect(plan.mode).toBe('legacy');
+    expect(plan.ambientIntensity).toBe(0.6);
+    expect(plan.pointLights).toHaveLength(1);
+  });
+
   it('clips each selected floor pool to the source region', () => {
     const facts = buildDungeonLightingFacts(
       ['0,0,0', '1,-1,0'],

@@ -5,6 +5,7 @@ export const APP_VIEWS = [
   'lobby',
   'concepts',
   'author',
+  'world-builder',
 ] as const;
 
 export type AppView = (typeof APP_VIEWS)[number];

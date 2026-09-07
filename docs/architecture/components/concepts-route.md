@@ -7,7 +7,7 @@ confidence: high — verified by reading ConceptsView.tsx and the concepts/ dire
 
 # /concepts route
 
-`src/concepts/` — a sandbox for UI prototyping without touching production paths.
+`src/concepts/` — a sandbox for UI prototyping and retained harnesses for components promoted into app paths.
 
 ## Purpose
 
@@ -111,6 +111,12 @@ all four PBR presets plus arbitrary sliders, idle/walk, close/orbit/tactical,
 rapid changes, reference isolation, and the optional canonical weapon witness.
 `src/concepts/character-customization/CONTRACT.md` records the measured success
 and its non-production/provider/Platform boundaries; local GLBs remain ignored.
+
+`src/concepts/world-building/` — the editor originally proved by web#935 and
+now reused unchanged by the development main-menu **World Builder**. The
+Concepts mount keeps local-only fixtures/drafts; the app mount injects the real
+current-world CompositionService source for immutable save/list/open. This is a
+data-source and chrome promotion, not a second editor implementation.
 
 ## Promotion process
 

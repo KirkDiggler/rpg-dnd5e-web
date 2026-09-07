@@ -1,6 +1,7 @@
 import type { Interceptor } from '@connectrpc/connect';
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
+import { CompositionService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { DiceService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/v1alpha1/dice_pb';
 import { AuthoringService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { LobbyService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/lobby/v1alpha1/service_pb';
@@ -175,6 +176,11 @@ export const sessionPresentationClient = createClient(
 // EncounterService's CreateEncounter/JoinEncounter/SetReady lobby RPCs,
 // deleted in slice 3 along with LobbyView, their only caller.
 export const lobbyClient = createClient(LobbyService, transport);
+
+// Create the immutable world-composition client. The API registers this
+// service only in its authenticated local-development mode until a verified
+// Discord guild-to-world mapping exists.
+export const compositionClient = createClient(CompositionService, transport);
 
 // Create the authoring service client (dnd5e.api.authoring.v1alpha1 —
 // PutDungeon). Absent from the server's reflection list (Unimplemented)

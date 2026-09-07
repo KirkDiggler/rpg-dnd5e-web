@@ -3765,7 +3765,7 @@ describe('SessionEncounterView production combat integration', () => {
           quantity: 1,
         })
       );
-      expect(screen.getByText("Unpacked Explorer's Pack.")).toBeTruthy();
+      expect(await screen.findByText("Unpacked Explorer's Pack.")).toBeTruthy();
       await waitFor(() =>
         expect(hoisted.getCharacterDataFn.mock.calls.length).toBeGreaterThan(
           callsBeforeUnpack

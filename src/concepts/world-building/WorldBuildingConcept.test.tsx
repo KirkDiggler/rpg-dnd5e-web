@@ -1,5 +1,15 @@
-import { createEvent, fireEvent, render, screen } from '@testing-library/react';
+import type { CompositionSource } from '@/compositions/compositionSource';
+import { create } from '@bufbuild/protobuf';
+import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
+import {
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SCENE_STORAGE_KEY, stringifyScene } from './serialization';
 import type { KeyValueStorage, WorldScene } from './types';
 import { WorldBuildingConcept } from './WorldBuildingConcept';
 
@@ -177,6 +187,51 @@ function dragLabelTo(label: string, targetTestId = 'canvas-ground') {
 
 afterEach(() => vi.restoreAllMocks());
 
+function worldSource(initial: WorldScene[] = []): {
+  source: CompositionSource;
+  createComposition: ReturnType<typeof vi.fn>;
+  getComposition: ReturnType<typeof vi.fn>;
+  listCompositions: ReturnType<typeof vi.fn>;
+  deleteComposition: ReturnType<typeof vi.fn>;
+} {
+  const records = initial.map((entry, index) =>
+    create(CompositionSchema, {
+      id: `composition-${index + 1}`,
+      worldId: 'test-world',
+      json: stringifyScene(entry),
+    })
+  );
+  const createComposition = vi.fn(async (worldId: string, json: string) => {
+    const record = create(CompositionSchema, {
+      id: `composition-${records.length + 1}`,
+      worldId,
+      json,
+    });
+    records.push(record);
+    return record;
+  });
+  const getComposition = vi.fn(
+    async (_worldId: string, id: string) =>
+      records.find((entry) => entry.id === id) ?? null
+  );
+  const listCompositions = vi.fn(async () => [...records]);
+  const deleteComposition = vi.fn(async (_worldId: string, id: string) => {
+    const index = records.findIndex((entry) => entry.id === id);
+    if (index >= 0) records.splice(index, 1);
+  });
+  return {
+    source: {
+      worldId: 'test-world',
+      reader: { getComposition, listCompositions },
+      writer: { createComposition, deleteComposition },
+    },
+    createComposition,
+    getComposition,
+    listCompositions,
+    deleteComposition,
+  };
+}
+
 describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
   it('searches, places, groups, exports, and reopens a generated exact ref with legacy assets', () => {
     const storage = new MemoryStorage();
@@ -221,7 +276,7 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     expect(JSON.parse(portable).scene.items[0].assetRef).toBe(
       'dnd5e:props:dark-fortress:alchemy_tools_01'
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
     mounted.unmount();
 
     render(<WorldBuildingConcept storage={storage} idFactory={ids} />);
@@ -278,6 +333,68 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(scene().items).toHaveLength(0);
+  });
+
+  it('authors, edits, toggles, and removes a visual point light on the selected prop', () => {
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+      />
+    );
+    dragLabelTo('Drag Candles into scene');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add point light' }));
+    expect(scene().items[0]!.pointLight).toEqual({
+      enabled: true,
+      offset: { x: 0, y: 0.5, z: 0 },
+      color: '#ff9d52',
+      intensity: 1.1,
+      range: 2.6,
+    });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Light enabled' }));
+    fireEvent.change(screen.getByLabelText('Light offset X'), {
+      target: { value: '0.25' },
+    });
+    fireEvent.change(screen.getByLabelText('Light color'), {
+      target: { value: '#abcdef' },
+    });
+    fireEvent.change(screen.getByLabelText('Light intensity'), {
+      target: { value: '2.5' },
+    });
+    fireEvent.change(screen.getByLabelText('Light range'), {
+      target: { value: '4.5' },
+    });
+    expect(scene().items[0]!.pointLight).toMatchObject({
+      enabled: false,
+      offset: { x: 0.25 },
+      color: '#abcdef',
+      intensity: 2.5,
+      range: 4.5,
+    });
+
+    const imported = scene();
+    imported.items[0]!.pointLight!.color = '#ABCDEF';
+    fireEvent.change(screen.getByLabelText('Portable JSON'), {
+      target: {
+        value: JSON.stringify({
+          kind: 'rpg-world-building-scene',
+          version: 1,
+          scene: imported,
+        }),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Import scene JSON' }));
+    expect(scene().items).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText(/Select candles/i));
+    expect(
+      (screen.getByLabelText('Light color') as HTMLInputElement).value
+    ).toBe('#abcdef');
+    expect(scene().items[0]!.pointLight!.color).toBe('#ABCDEF');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove point light' }));
+    expect(scene().items[0]!.pointLight).toBeUndefined();
   });
 
   it('records exact tabletop height/support from one valid prop drop', () => {
@@ -488,12 +605,490 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
       target: { value: 'Books arrangement' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
     mounted.unmount();
 
     render(<WorldBuildingConcept storage={storage} idFactory={ids} />);
     expect(scene().items).toHaveLength(1);
     expect(screen.getByText('Books arrangement')).toBeTruthy();
+  });
+
+  it('saves immutable named snapshots to the configured world and refreshes the list', async () => {
+    const world = worldSource();
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        idFactory={deterministicIds()}
+        compositionSource={world.source}
+      />
+    );
+
+    expect(screen.getByText(/World library · test-world/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Lantern Supper' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+    dragLabelTo('Drag Candles into scene');
+    fireEvent.click(screen.getByRole('button', { name: 'Add point light' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+
+    await waitFor(() =>
+      expect(world.createComposition).toHaveBeenCalledTimes(1)
+    );
+    const [worldId, json] = world.createComposition.mock.calls[0]!;
+    expect(worldId).toBe('test-world');
+    expect(json).toContain('Lantern Supper');
+    expect(json).toContain('"pointLight"');
+    expect(await screen.findByText('Lantern Supper')).toBeTruthy();
+    expect(world.listCompositions).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+    await waitFor(() =>
+      expect(world.createComposition).toHaveBeenCalledTimes(2)
+    );
+    expect(screen.getByText(/Latest snapshot ID: composition-2/)).toBeTruthy();
+  });
+
+  it('requires explicit permanent-delete confirmation, leaves cancellation untouched, and refreshes after success', async () => {
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot',
+      name: 'Disposable Lantern Supper',
+      items: [],
+      groups: [],
+    };
+    const world = worldSource([remoteSnapshot]);
+    const onCompositionDeleted = vi.fn();
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        compositionSource={world.source}
+        onCompositionDeleted={onCompositionDeleted}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Delete Disposable Lantern Supper',
+      })
+    );
+    expect(
+      screen.getByRole('group', {
+        name: 'Permanent deletion confirmation for Disposable Lantern Supper',
+      }).textContent
+    ).toMatch(/dungeon placements.*remain.*remove them explicitly/i);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Cancel delete Disposable Lantern Supper',
+      })
+    );
+    expect(world.deleteComposition).not.toHaveBeenCalled();
+    expect(screen.getByText('Disposable Lantern Supper')).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Delete Disposable Lantern Supper',
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Permanently delete Disposable Lantern Supper',
+      })
+    );
+
+    await waitFor(() =>
+      expect(world.deleteComposition).toHaveBeenCalledWith(
+        'test-world',
+        'composition-1'
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Disposable Lantern Supper')).toBeNull()
+    );
+    expect(world.listCompositions).toHaveBeenCalledTimes(2);
+    expect(onCompositionDeleted).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /dungeon placements were not changed.*remove them explicitly/i
+    );
+  });
+
+  it('keeps reader-only compositions openable and clears a pending delete when write access is removed', async () => {
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot',
+      name: 'Reader Only Supper',
+      items: [],
+      groups: [],
+    };
+    const world = worldSource([remoteSnapshot]);
+    const { rerender } = render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        compositionSource={world.source}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete Reader Only Supper' })
+    );
+    expect(
+      screen.getByRole('group', {
+        name: 'Permanent deletion confirmation for Reader Only Supper',
+      })
+    ).toBeTruthy();
+
+    const readerOnlySource: CompositionSource = {
+      worldId: world.source.worldId,
+      reader: world.source.reader,
+    };
+    rerender(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        compositionSource={readerOnlySource}
+      />
+    );
+
+    await screen.findByRole('button', { name: 'Open Reader Only Supper' });
+    expect(
+      screen.queryByRole('button', { name: 'Delete Reader Only Supper' })
+    ).toBeNull();
+    expect(
+      screen.queryByRole('group', {
+        name: 'Permanent deletion confirmation for Reader Only Supper',
+      })
+    ).toBeNull();
+    expect(world.deleteComposition).not.toHaveBeenCalled();
+  });
+
+  it('can delete malformed unopenable records by ID while preserving them on failure', async () => {
+    const malformed = create(CompositionSchema, {
+      id: 'composition-bad-json',
+      worldId: 'test-world',
+      json: '{not valid scene json',
+    });
+    const deleteComposition = vi
+      .fn<(worldId: string, id: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error('delete refused'))
+      .mockResolvedValueOnce();
+    const listCompositions = vi
+      .fn()
+      .mockResolvedValueOnce([malformed])
+      .mockResolvedValueOnce([]);
+    const source: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions,
+        getComposition: vi.fn(async () => malformed),
+      },
+      writer: {
+        createComposition: vi.fn(),
+        deleteComposition,
+      },
+    };
+    render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        compositionSource={source}
+      />
+    );
+
+    expect(await screen.findByText('composition-bad-json')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete composition-bad-json' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Permanently delete composition-bad-json',
+      })
+    );
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /delete refused/
+    );
+    expect(screen.getByText('composition-bad-json')).toBeTruthy();
+    expect(listCompositions).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Permanently delete composition-bad-json',
+      })
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('composition-bad-json')).toBeNull()
+    );
+    expect(deleteComposition).toHaveBeenCalledTimes(2);
+    expect(listCompositions).toHaveBeenCalledTimes(2);
+  });
+
+  it('deleting the currently open world record keeps its workspace and prior local draft', async () => {
+    const localDraft: WorldScene = {
+      version: 1,
+      id: 'local-draft-a',
+      name: 'Local Draft A',
+      items: [],
+      groups: [],
+    };
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot-b',
+      name: 'Open Snapshot B',
+      items: [],
+      groups: [],
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(SCENE_STORAGE_KEY, stringifyScene(localDraft));
+    const world = worldSource([remoteSnapshot]);
+    render(
+      <WorldBuildingConcept
+        storage={storage}
+        compositionSource={world.source}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Open Snapshot B' })
+    );
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete Open Snapshot B' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Permanently delete Open Snapshot B',
+      })
+    );
+
+    await waitFor(() => expect(world.deleteComposition).toHaveBeenCalled());
+    expect(scene()).toEqual(remoteSnapshot);
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(localDraft)
+    );
+    expect(screen.getByText(/World snapshot open/i)).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+    await waitFor(() =>
+      expect(world.createComposition).toHaveBeenCalledTimes(1)
+    );
+    expect(screen.getByText(/Latest snapshot ID: composition-1/)).toBeTruthy();
+  });
+
+  it('preserves a distinct local draft after opening a world snapshot, effects flush, and remount', async () => {
+    const localDraft: WorldScene = {
+      version: 1,
+      id: 'local-draft-a',
+      name: 'Local Draft A',
+      items: [],
+      groups: [],
+    };
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot-b',
+      name: 'Remote Snapshot B',
+      items: [],
+      groups: [],
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(SCENE_STORAGE_KEY, stringifyScene(localDraft));
+    const world = worldSource([remoteSnapshot]);
+    const mounted = render(
+      <WorldBuildingConcept
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={world.source}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Snapshot B' })
+    );
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(localDraft)
+    );
+    expect(screen.getByText(/local draft preserved/i)).toBeTruthy();
+
+    mounted.unmount();
+    render(
+      <WorldBuildingConcept
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={world.source}
+      />
+    );
+    expect(scene()).toEqual(localDraft);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Snapshot B' })
+    );
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(localDraft)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen local draft' }));
+    expect(scene()).toEqual(localDraft);
+  });
+
+  it('flushes the latest local edit made while a world Get is pending', async () => {
+    const localDraft: WorldScene = {
+      version: 1,
+      id: 'local-draft-a',
+      name: 'Local Draft A',
+      items: [],
+      groups: [],
+    };
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot-b',
+      name: 'Remote Snapshot B',
+      items: [],
+      groups: [],
+    };
+    const remoteRecord = create(CompositionSchema, {
+      id: 'composition-1',
+      worldId: 'test-world',
+      json: stringifyScene(remoteSnapshot),
+    });
+    let resolveGet!: (record: typeof remoteRecord) => void;
+    const pendingGet = new Promise<typeof remoteRecord>((resolve) => {
+      resolveGet = resolve;
+    });
+    const source: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => [remoteRecord]),
+        getComposition: vi.fn(() => pendingGet),
+      },
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(SCENE_STORAGE_KEY, stringifyScene(localDraft));
+    render(
+      <WorldBuildingConcept storage={storage} compositionSource={source} />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Snapshot B' })
+    );
+    fireEvent.change(screen.getByLabelText('Scene name'), {
+      target: { value: 'Latest Local Draft A' },
+    });
+    fireEvent.blur(screen.getByLabelText('Scene name'));
+    resolveGet(remoteRecord);
+
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    const stored = storage.values.get(SCENE_STORAGE_KEY);
+    expect(stored).toContain('Latest Local Draft A');
+    expect(stored).not.toContain('Remote Snapshot B');
+  });
+
+  it('keeps remote workspace edits out of the local draft until explicit Save local draft', async () => {
+    const localDraft: WorldScene = {
+      version: 1,
+      id: 'local-draft-a',
+      name: 'Local Draft A',
+      items: [],
+      groups: [],
+    };
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot-b',
+      name: 'Remote Snapshot B',
+      items: [],
+      groups: [],
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(SCENE_STORAGE_KEY, stringifyScene(localDraft));
+    const world = worldSource([remoteSnapshot]);
+    render(
+      <WorldBuildingConcept
+        storage={storage}
+        idFactory={deterministicIds()}
+        compositionSource={world.source}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Remote Snapshot B' })
+    );
+    await waitFor(() => expect(scene()).toEqual(remoteSnapshot));
+    dragLabelTo('Drag Books into scene');
+    await waitFor(() =>
+      expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+        stringifyScene(localDraft)
+      )
+    );
+    expect(screen.getByText(/not saved locally/i)).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+    await waitFor(() =>
+      expect(world.createComposition).toHaveBeenCalledTimes(1)
+    );
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(localDraft)
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save local draft' }));
+    const explicitlySaved = scene();
+    expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+      stringifyScene(explicitlySaved)
+    );
+    dragLabelTo('Drag Vase into scene');
+    await waitFor(() =>
+      expect(storage.values.get(SCENE_STORAGE_KEY)).toBe(
+        stringifyScene(scene())
+      )
+    );
+    expect(screen.getByText('Saved locally')).toBeTruthy();
+  });
+
+  it('shows list/open/save errors without replacing the current valid scene', async () => {
+    const original: WorldScene = {
+      version: 1,
+      id: 'original',
+      name: 'Original scene',
+      items: [],
+      groups: [],
+    };
+    const source: CompositionSource = {
+      worldId: 'test-world',
+      reader: {
+        listCompositions: vi.fn(async () => {
+          throw new Error('library offline');
+        }),
+        getComposition: vi.fn(),
+      },
+      writer: {
+        createComposition: vi.fn(async () => {
+          throw new Error('save refused');
+        }),
+        deleteComposition: vi.fn(),
+      },
+    };
+    const storage = new MemoryStorage();
+    storage.setItem(
+      'rpg.concepts.world-building.scene.v1',
+      stringifyScene(original)
+    );
+    render(
+      <WorldBuildingConcept storage={storage} compositionSource={source} />
+    );
+
+    expect(await screen.findByText(/library offline/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save composition to world' })
+    );
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /save refused/
+    );
+    expect(scene()).toEqual(original);
   });
 
   it('shows non-destructive strict import errors and keeps the valid scene', () => {

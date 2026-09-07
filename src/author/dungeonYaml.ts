@@ -2886,6 +2886,7 @@ export function placeAt(doc: DungeonDoc, placement: PlacementDoc): DungeonDoc {
   if (!room) return doc;
   const key = axialKey(placement.at);
   const clean: PlacementDoc = { ref: placement.ref, at: placement.at };
+  if (placement.id !== undefined) clean.id = placement.id;
   if (isMonsterRef(placement.ref)) {
     if (placement.targeting) clean.targeting = placement.targeting;
     if (placement.boss) clean.boss = true;
@@ -2903,6 +2904,35 @@ export function placeAt(doc: DungeonDoc, placement: PlacementDoc): DungeonDoc {
 
 export function removePlacement(doc: DungeonDoc, index: number): DungeonDoc {
   return { ...doc, place: doc.place.filter((_, i) => i !== index) };
+}
+
+/** Move one placement without replacing another or changing its identity. */
+export function movePlacement(
+  doc: DungeonDoc,
+  index: number,
+  at: Axial
+): DungeonDoc {
+  const placement = doc.place[index];
+  if (!placement) return doc;
+  const allowed = isMonsterRef(placement.ref)
+    ? isStandable(doc, at)
+    : isFloor(doc, at);
+  if (!allowed) return doc;
+  const target = axialKey(at);
+  if (
+    doc.place.some((candidate, candidateIndex) =>
+      candidateIndex === index ? false : axialKey(candidate.at) === target
+    )
+  ) {
+    return doc;
+  }
+  if (axialKey(placement.at) === target) return doc;
+  return {
+    ...doc,
+    place: doc.place.map((candidate, candidateIndex) =>
+      candidateIndex === index ? { ...candidate, at } : candidate
+    ),
+  };
 }
 
 export function updatePlacement(
