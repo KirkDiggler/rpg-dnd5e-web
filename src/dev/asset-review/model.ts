@@ -179,8 +179,21 @@ const DISPLAY_NAME_FORBIDDEN_MARKERS = [
   '://',
 ] as const;
 const DISPLAY_NAME_NONPRINTABLE_PATTERN = /[\p{C}\p{Z}]/u;
-const TAG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+const PROVIDER_MARKER_CASEFOLD_EXPANSIONS: Readonly<Record<string, string>> =
+  Object.freeze({
+    '\u00DF': 'ss',
+    '\u017F': 's',
+    '\u1E9E': 'ss',
+    '\uFB00': 'ff',
+    '\uFB01': 'fi',
+    '\uFB02': 'fl',
+    '\uFB03': 'ffi',
+    '\uFB04': 'ffl',
+    '\uFB05': 'st',
+    '\uFB06': 'st',
+  });
 const TAG_LIMIT = 20;
+const TAG_MAX_CODE_POINTS = 40;
 const SHARED_SYNTY_SCALE = 0.75;
 const MAX_RUNTIME_AXIS_METERS = 20;
 
@@ -191,11 +204,43 @@ function requireValue(condition: unknown, message: string): asserts condition {
 }
 
 function containsForbiddenDisplayNameMarker(value: string): boolean {
-  // Uppercasing first expands full Unicode folds such as `ﬁ` -> `FI`.
-  const folded = value.toUpperCase().toLowerCase();
+  const folded = Array.from(value, (character) => {
+    return (
+      PROVIDER_MARKER_CASEFOLD_EXPANSIONS[character] ?? character.toLowerCase()
+    );
+  }).join('');
   return DISPLAY_NAME_FORBIDDEN_MARKERS.some((marker) =>
     folded.includes(marker)
   );
+}
+
+function isAsciiLowercaseLetterOrDigit(character: string): boolean {
+  const codePoint = character.codePointAt(0);
+  return (
+    codePoint !== undefined &&
+    ((codePoint >= 0x61 && codePoint <= 0x7a) ||
+      (codePoint >= 0x30 && codePoint <= 0x39))
+  );
+}
+
+function isValidProviderTag(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const codePoints = Array.from(value);
+  if (codePoints.length < 1 || codePoints.length > TAG_MAX_CODE_POINTS) {
+    return false;
+  }
+  if (!isAsciiLowercaseLetterOrDigit(codePoints[0]!)) {
+    return false;
+  }
+  return codePoints.slice(1).every((character) => {
+    return (
+      isAsciiLowercaseLetterOrDigit(character) ||
+      character === '_' ||
+      character === '-'
+    );
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -788,9 +833,7 @@ export function validateReady(entry: AssetReviewEntry): FieldErrors {
     errors.tags = 'Tags must be an array';
   } else if (entry.tags.length > TAG_LIMIT) {
     errors.tags = 'Tags must contain at most 20 tags';
-  } else if (
-    entry.tags.some((tag) => typeof tag !== 'string' || !TAG_PATTERN.test(tag))
-  ) {
+  } else if (entry.tags.some((tag) => !isValidProviderTag(tag))) {
     errors.tags = 'Each tag must match lowercase [a-z0-9][a-z0-9_-]{0,39}';
   } else if (new Set(entry.tags).size !== entry.tags.length) {
     errors.tags = 'Tags must contain unique tags';

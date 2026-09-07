@@ -7,7 +7,11 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ASSET_REVIEW_STORAGE_KEY, AssetReviewLab } from './AssetReviewLab';
-import type { AssetReviewCandidate, AssetReviewCatalog } from './model';
+import {
+  mergeCatalogWithReview,
+  type AssetReviewCandidate,
+  type AssetReviewCatalog,
+} from './model';
 
 vi.mock('./AssetReviewScene', () => ({
   AssetReviewScene: ({
@@ -296,6 +300,46 @@ describe('AssetReviewLab decisions and property sheet', () => {
     expect(
       screen.getByText('Particle effect conversion required')
     ).toBeTruthy();
+  });
+
+  it('shows exact casefold and trailing-newline tag blockers before Mark Ready', async () => {
+    const stored = mergeCatalogWithReview(catalog).batch;
+    stored.entries[0] = {
+      ...stored.entries[0]!,
+      decision: 'keep',
+      loadedSuccessfully: true,
+      tags: ['lighting\n'],
+    };
+    window.localStorage.setItem(
+      ASSET_REVIEW_STORAGE_KEY,
+      JSON.stringify(stored)
+    );
+
+    await renderLab();
+
+    const ready = screen.getByRole('button', {
+      name: 'Mark Ready',
+    }) as HTMLButtonElement;
+    const displayName = screen.getByLabelText('Display name');
+    const tags = screen.getByLabelText('Tags') as HTMLInputElement;
+
+    expect(ready.disabled).toBe(true);
+    expect(
+      screen.getAllByText(/Each tag must match lowercase/).length
+    ).toBeGreaterThan(0);
+
+    fireEvent.change(tags, { target: { value: 'lighting-safe' } });
+    expect(ready.disabled).toBe(false);
+    fireEvent.change(displayName, { target: { value: 'downloadẞ' } });
+    expect(ready.disabled).toBe(true);
+    expect(
+      screen.getAllByText(/source-path or URI markers/).length
+    ).toBeGreaterThan(0);
+
+    fireEvent.change(displayName, { target: { value: 'fıle:' } });
+    expect(ready.disabled).toBe(false);
+    fireEvent.click(ready);
+    expect(screen.getByTestId('current-decision').textContent).toBe('Ready');
   });
 
   it('shows provider metadata blockers, accepts Unicode, and exports valid tags in authored order', async () => {

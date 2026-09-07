@@ -425,6 +425,21 @@ describe('candidate defaults and decision transitions', () => {
     }
   );
 
+  it.each([
+    ['full-casefolded provider marker', { displayName: 'downloadẞ' }],
+    ['trailing-newline tag', { tags: ['lighting\n'] }],
+  ])('refuses a Ready transition with %s', (_case, overrides) => {
+    const kept = entry({
+      decision: 'keep',
+      loadedSuccessfully: true,
+      ...overrides,
+    });
+
+    expect(() => transitionDecision(kept, 'ready')).toThrow(
+      /displayName|tags/i
+    );
+  });
+
   it('demotes Ready to Keep after every provider field edit and re-derives ref', () => {
     const ready = readyEntry();
 
@@ -458,7 +473,7 @@ describe('validateReady', () => {
       validateReady(
         entry({
           loadedSuccessfully: true,
-          displayName: '火鉢 😀',
+          displayName: '火鉢 😀 fıle:',
           tags: ['lighting', 'dark-fortress', 'large_prop'],
         })
       )
@@ -475,6 +490,7 @@ describe('validateReady', () => {
     ['leading whitespace', ' Brazier 01', /leading or trailing whitespace/i],
     ['source marker', 'SourceFiles Brazier 01', /source-path or URI/i],
     ['machine marker', 'Downloads Brazier 01', /source-path or URI/i],
+    ['full-casefolded machine marker', 'downloadẞ', /source-path or URI/i],
     ['file URI', 'FILE:C:asset', /source-path or URI/i],
     ['Unicode-casefolded file URI', 'ﬁle:asset', /source-path or URI/i],
     ['HTTP URI', 'HTTP:example.test', /source-path or URI/i],
@@ -498,6 +514,10 @@ describe('validateReady', () => {
     ['uppercase', ['Lighting']],
     ['spaces', ['dark fortress']],
     ['overlength', [`a${'b'.repeat(40)}`]],
+    ['empty', ['']],
+    ['trailing newline', ['lighting\n']],
+    ['control character', ['light\u0000ing']],
+    ['non-ASCII', ['lightíng']],
     ['duplicates', ['lighting', 'lighting']],
     ['more than 20', Array.from({ length: 21 }, (_, index) => `tag-${index}`)],
   ])('rejects %s tags', (_case, tags) => {
@@ -1035,7 +1055,9 @@ describe('portable exports', () => {
   it.each([
     ['calibration', { calibration: { ...readyEntry().calibration, scale: 0 } }],
     ['display name', { displayName: 'Brazier 01 ' }],
+    ['full-casefolded display name', { displayName: 'downloadẞ' }],
     ['tags', { tags: ['dark fortress'] }],
+    ['trailing-newline tag', { tags: ['lighting\n'] }],
   ])('revalidates invalid %s before provider export', (_case, patch) => {
     expect(() =>
       serializeReadyProviderBatch({
