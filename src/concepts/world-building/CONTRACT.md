@@ -21,7 +21,10 @@ or gameplay behavior.
 
 The first-run scene is blank and the author-created arrangement library is
 empty. Hex lines use the shared hex math and are visible only as scale/planning
-references. They are not placement slots.
+references. They are not placement slots. The highlighted X0/Z0 hex marks the
+composition placement anchor, while a separate orange box encloses the loaded
+props' measured visual bounds. Both are non-interactive visual guides; the box
+is not a mechanical footprint and neither guide changes authored transforms.
 
 ## Proved behavior
 
