@@ -296,6 +296,70 @@ describe('private game asset sync boundary', () => {
     }
   );
 
+  it.each([
+    ['top-level evidence directory', 'evidence/Original_D20_Source.glb'],
+    ['top-level review directory', 'review/Original_D20_Source.glb'],
+    [
+      'nested evidence directory',
+      'original-set/evidence/Original_D20_Source.glb',
+    ],
+    ['nested review directory', 'original-set/review/Original_D20_Source.glb'],
+    [
+      'blend directory component',
+      'original-set/source.blend/Original_D20_Source.glb',
+    ],
+    ['blend file component', 'original-set/Original_D20_Source.blend'],
+  ])(
+    'fails before either destination is mutated when the production d20 path uses an excluded %s',
+    async (_exclusion, relativePath) => {
+      const fixture = await makeFixture();
+      await rm(
+        join(
+          fixture.customDiceSource,
+          'original-set',
+          'Original_D20_Source.glb'
+        )
+      );
+      await put(
+        join(fixture.customDiceSource, relativePath),
+        'excluded-production-d20'
+      );
+      await put(
+        join(fixture.customDiceSource, 'dice-tray-presets.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          presets: [
+            {
+              presetId: 'dice.original.carved.d20',
+              model: { path: relativePath },
+            },
+          ],
+        })
+      );
+      await commitFixture(fixture.assetsRoot, `exclude ${relativePath}`);
+      const syntySentinel = join(fixture.syntyDestination, 'keep-synty.txt');
+      const customSentinel = join(
+        fixture.customDiceDestination,
+        'keep-custom.txt'
+      );
+      await put(syntySentinel, 'do-not-mutate');
+      await put(customSentinel, 'do-not-mutate');
+
+      await expect(
+        runRuntimeSync(fixture.assetsRoot, fixture.webRoot)
+      ).rejects.toMatchObject({
+        code: expect.any(Number),
+        stderr: expect.stringContaining(relativePath),
+      });
+      await expect(readFile(syntySentinel, 'utf8')).resolves.toBe(
+        'do-not-mutate'
+      );
+      await expect(readFile(customSentinel, 'utf8')).resolves.toBe(
+        'do-not-mutate'
+      );
+    }
+  );
+
   it('fails when the explicit production provider root is missing', async () => {
     const fixture = await makeFixture();
     await rm(fixture.assetsRoot, { recursive: true });

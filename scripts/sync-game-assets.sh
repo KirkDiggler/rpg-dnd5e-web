@@ -205,6 +205,17 @@ try {
   ) {
     throw new Error('production d20 model path must stay within custom-dice');
   }
+  const excludedSegment = segments.find(
+    (segment, index) =>
+      segment.endsWith('.blend') ||
+      (index < segments.length - 1 &&
+        (segment === 'evidence' || segment === 'review'))
+  );
+  if (excludedSegment) {
+    throw new Error(
+      `production d20 model path is excluded from runtime sync: ${modelPath}`
+    );
+  }
   process.stdout.write(modelPath);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
