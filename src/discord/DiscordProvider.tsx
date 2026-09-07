@@ -32,6 +32,8 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
   const [grantedScopes, setGrantedScopes] = useState<readonly string[]>([]);
   const [authSessionId, setAuthSessionId] = useState(0);
   const authSessionRef = useRef(0);
+  const authorizationAttemptRef = useRef(0);
+  const mountedRef = useRef(true);
   const [participants, setParticipants] = useState<DiscordParticipant[]>([]);
 
   const isDiscord = isDiscordEnvironment();
@@ -44,8 +46,23 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
     return next;
   }, []);
 
+  const beginAuthorizationAttempt = useCallback(() => {
+    const next = authorizationAttemptRef.current + 1;
+    authorizationAttemptRef.current = next;
+    return next;
+  }, []);
+
+  const isAuthorizationAttemptCurrent = useCallback(
+    (expected: number) =>
+      mountedRef.current && authorizationAttemptRef.current === expected,
+    []
+  );
+
   const clearAuthentication = useCallback(
     (message?: string) => {
+      // Clearing is also cancellation: pending OAuth/token/authenticate stages
+      // lose ownership synchronously and cannot commit afterward.
+      authorizationAttemptRef.current += 1;
       clearAuth();
       setUser(null);
       setIsAuthenticated(false);
@@ -72,23 +89,41 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
   );
 
   const handleRefreshParticipants = useCallback(
-    async (discordSdk?: DiscordSDK) => {
+    async (discordSdk?: DiscordSDK, authorizationAttemptId?: number) => {
       const sdkToUse = discordSdk || sdk;
       if (!sdkToUse) return;
+      if (
+        authorizationAttemptId !== undefined &&
+        !isAuthorizationAttemptCurrent(authorizationAttemptId)
+      ) {
+        return;
+      }
 
       try {
         const result =
           await sdkToUse.commands.getInstanceConnectedParticipants();
+        if (
+          authorizationAttemptId !== undefined &&
+          !isAuthorizationAttemptCurrent(authorizationAttemptId)
+        ) {
+          return;
+        }
         setParticipants(result.participants as DiscordParticipant[]);
         console.log(`👥 Found ${result.participants.length} participants`);
       } catch (err) {
+        if (
+          authorizationAttemptId !== undefined &&
+          !isAuthorizationAttemptCurrent(authorizationAttemptId)
+        ) {
+          return;
+        }
         console.error(
           '🔴 Failed to fetch participants:',
           err instanceof Error ? err.message : 'Discord provider error'
         );
       }
     },
-    [sdk]
+    [sdk, isAuthorizationAttemptCurrent]
   );
 
   const handleAuthenticate = useCallback(
@@ -101,6 +136,7 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
       // Re-consent replaces the credential session. Tear down the old source
       // before opening Discord's modal; denial must not retain the old grant.
       if (isAuthenticated) clearAuthentication();
+      const authorizationAttemptId = beginAuthorizationAttempt();
 
       try {
         console.log('🔐 Requesting Discord authorization...');
@@ -110,6 +146,7 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           state: '',
           scope: ['identify', 'applications.commands', MEMBERSHIP_SCOPE],
         });
+        if (!isAuthorizationAttemptCurrent(authorizationAttemptId)) return;
 
         const isDiscordActivity =
           window.location.hostname.includes('discordsays.com');
@@ -123,17 +160,20 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),
         });
+        if (!isAuthorizationAttemptCurrent(authorizationAttemptId)) return;
 
         if (!response.ok) {
           const errorData = await response
             .json()
             .catch(() => ({ error: 'Unknown error' }));
+          if (!isAuthorizationAttemptCurrent(authorizationAttemptId)) return;
           throw new Error(
             errorData.error || `HTTP ${response.status}: ${response.statusText}`
           );
         }
 
         const body: unknown = await response.json();
+        if (!isAuthorizationAttemptCurrent(authorizationAttemptId)) return;
         const accessToken =
           body && typeof body === 'object' && 'access_token' in body
             ? (body as { access_token?: unknown }).access_token
@@ -145,6 +185,7 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         const auth = await sdkToUse.commands.authenticate({
           access_token: accessToken,
         });
+        if (!isAuthorizationAttemptCurrent(authorizationAttemptId)) return;
         const scopes: string[] = [];
         for (const scope of auth.scopes ?? []) {
           if (typeof scope === 'string') scopes.push(scope);
@@ -168,6 +209,7 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         const guildId = sdkToUse.guildId ?? null;
 
         // Commit React and module auth as one successful credential epoch.
+        if (!isAuthorizationAttemptCurrent(authorizationAttemptId)) return;
         setAuth(accessToken, authenticatedUser.id, guildId);
         setUser(authenticatedUser);
         setGrantedScopes([...scopes]);
@@ -180,8 +222,9 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           hasGuild: !!guildId,
         });
 
-        await handleRefreshParticipants(sdkToUse);
+        await handleRefreshParticipants(sdkToUse, authorizationAttemptId);
       } catch (err) {
+        if (!isAuthorizationAttemptCurrent(authorizationAttemptId)) return;
         const errorMessage =
           err instanceof Error && err.message ? err.message : RECONNECT_MESSAGE;
         console.error('🔴 Discord authentication failed:', errorMessage);
@@ -194,8 +237,18 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
       handleRefreshParticipants,
       advanceAuthSession,
       clearAuthentication,
+      beginAuthorizationAttempt,
+      isAuthorizationAttemptCurrent,
     ]
   );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      authorizationAttemptRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     async function init() {

@@ -2,6 +2,7 @@ import type { CompositionReader } from '@/compositions/compositionJsonAdapter';
 import { compositionRef } from '@/compositions/compositionRef';
 import type { CompositionSource } from '@/compositions/compositionSource';
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { CompositionSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -153,6 +154,53 @@ describe('Palette current-world compositions', () => {
         name: 'Place composition Replacement Palette',
       })
     ).toBeTruthy();
+  });
+
+  it('uses safe generic copy for access denial without relabeling arbitrary failures', async () => {
+    const deniedReader = {
+      listCompositions: vi.fn(async () => {
+        throw new ConnectError(
+          'internal membership policy details',
+          Code.PermissionDenied
+        );
+      }),
+      getComposition: vi.fn(),
+    } as unknown as CompositionReader;
+    const denied = renderPalette({
+      worldId: '123456789012345678',
+      reader: deniedReader,
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/You do not have access to this server's world/i)
+      ).toBeDefined()
+    );
+    expect(
+      screen.queryByText(/internal membership policy details/i)
+    ).toBeNull();
+
+    denied.rerenderSource(undefined);
+    const unavailableReader = {
+      listCompositions: vi.fn(async () => {
+        throw new ConnectError(
+          'provider temporarily unavailable',
+          Code.Unavailable
+        );
+      }),
+      getComposition: vi.fn(),
+    } as unknown as CompositionReader;
+    denied.rerenderSource({
+      worldId: '123456789012345678',
+      reader: unavailableReader,
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/provider temporarily unavailable/i)
+      ).toBeDefined()
+    );
+    expect(
+      screen.queryByText(/You do not have access to this server's world/i)
+    ).toBeNull();
   });
 
   it('reports missing source and list failures instead of falling back', async () => {

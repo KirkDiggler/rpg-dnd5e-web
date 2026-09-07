@@ -355,6 +355,20 @@ describe('App main-menu World Builder', () => {
         },
       }),
     ]);
+
+    const sourceInput = hoisted.sourceFactoryCalls[0] as {
+      onUnauthenticated(authSessionId: number): void;
+      isAuthSessionCurrent(authSessionId: number): boolean;
+    };
+    sourceInput.onUnauthenticated(9);
+    expect(hoisted.discord.clearAuthenticationForSession).toHaveBeenCalledWith(
+      9,
+      'Your Discord session expired. Please reconnect.'
+    );
+    expect(sourceInput.isAuthSessionCurrent(9)).toBe(true);
+    expect(hoisted.discord.isAuthenticationSessionCurrent).toHaveBeenCalledWith(
+      9
+    );
   });
 
   it('shows a disabled server-launch state instead of falling back without an SDK guild', async () => {
