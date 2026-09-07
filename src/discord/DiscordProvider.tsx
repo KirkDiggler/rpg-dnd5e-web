@@ -1,5 +1,5 @@
 import type { DiscordSDK } from '@discord/embedded-app-sdk';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { clearAuth, setAuth } from '@/api/auth';
 
@@ -15,6 +15,10 @@ import type {
   DiscordUser,
 } from './types';
 
+const MEMBERSHIP_SCOPE = 'guilds.members.read';
+const RECONNECT_MESSAGE =
+  'Discord authorization was cancelled or denied. Please reconnect.';
+
 interface DiscordProviderProps {
   children: React.ReactNode;
 }
@@ -25,10 +29,47 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<DiscordUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [grantedScopes, setGrantedScopes] = useState<readonly string[]>([]);
+  const [authSessionId, setAuthSessionId] = useState(0);
+  const authSessionRef = useRef(0);
   const [participants, setParticipants] = useState<DiscordParticipant[]>([]);
 
   const isDiscord = isDiscordEnvironment();
   const envInfo = getEnvironmentInfo();
+
+  const advanceAuthSession = useCallback(() => {
+    const next = authSessionRef.current + 1;
+    authSessionRef.current = next;
+    setAuthSessionId(next);
+    return next;
+  }, []);
+
+  const clearAuthentication = useCallback(
+    (message?: string) => {
+      clearAuth();
+      setUser(null);
+      setIsAuthenticated(false);
+      setGrantedScopes([]);
+      setParticipants([]);
+      setError(message ?? null);
+      advanceAuthSession();
+    },
+    [advanceAuthSession]
+  );
+
+  const clearAuthenticationForSession = useCallback(
+    (expectedAuthSessionId: number, message?: string) => {
+      if (authSessionRef.current !== expectedAuthSessionId) return;
+      clearAuthentication(message);
+    },
+    [clearAuthentication]
+  );
+
+  const isAuthenticationSessionCurrent = useCallback(
+    (expectedAuthSessionId: number) =>
+      authSessionRef.current === expectedAuthSessionId,
+    []
+  );
 
   const handleRefreshParticipants = useCallback(
     async (discordSdk?: DiscordSDK) => {
@@ -41,7 +82,10 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         setParticipants(result.participants as DiscordParticipant[]);
         console.log(`👥 Found ${result.participants.length} participants`);
       } catch (err) {
-        console.error('🔴 Failed to fetch participants:', err);
+        console.error(
+          '🔴 Failed to fetch participants:',
+          err instanceof Error ? err.message : 'Discord provider error'
+        );
       }
     },
     [sdk]
@@ -54,26 +98,19 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         throw new Error('Discord SDK not available');
       }
 
+      // Re-consent replaces the credential session. Tear down the old source
+      // before opening Discord's modal; denial must not retain the old grant.
+      if (isAuthenticated) clearAuthentication();
+
       try {
-        // Step 1: Get authorization code from Discord
         console.log('🔐 Requesting Discord authorization...');
         const { code } = await sdkToUse.commands.authorize({
           client_id: import.meta.env.VITE_DISCORD_CLIENT_ID,
           response_type: 'code',
           state: '',
-          prompt: 'none',
-          scope: ['identify', 'applications.commands'],
+          scope: ['identify', 'applications.commands', MEMBERSHIP_SCOPE],
         });
 
-        console.log(
-          '🔐 Got authorization code:',
-          code ? 'received' : 'missing'
-        );
-
-        // Step 2: Exchange the code for an access token via our backend
-        console.log('🔐 Exchanging code for token...');
-
-        // In Discord Activities, we need to use the proxy path
         const isDiscordActivity =
           window.location.hostname.includes('discordsays.com');
         const apiBase = import.meta.env.VITE_API_HOST || '';
@@ -81,13 +118,9 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           ? '/.proxy/auth/discord/token'
           : `${apiBase}/auth/discord/token`;
 
-        console.log('🔐 Calling API:', apiUrl);
-
         const response = await fetch(apiUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),
         });
 
@@ -100,65 +133,70 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
           );
         }
 
-        const { access_token } = await response.json();
-        console.log(
-          '🔐 Got access token:',
-          access_token ? 'received' : 'missing'
-        );
+        const body: unknown = await response.json();
+        const accessToken =
+          body && typeof body === 'object' && 'access_token' in body
+            ? (body as { access_token?: unknown }).access_token
+            : undefined;
+        if (typeof accessToken !== 'string' || !accessToken) {
+          throw new Error('Token exchange returned no access token.');
+        }
 
-        // Step 3: Authenticate with Discord using the access token
-        console.log('🔐 Authenticating with Discord SDK...');
         const auth = await sdkToUse.commands.authenticate({
-          access_token,
+          access_token: accessToken,
         });
+        const scopes: string[] = [];
+        for (const scope of auth.scopes ?? []) {
+          if (typeof scope === 'string') scopes.push(scope);
+        }
+        if (!scopes.includes(MEMBERSHIP_SCOPE)) {
+          throw new Error(
+            'Discord did not grant server membership access. Please reconnect and approve access.'
+          );
+        }
+        if (!auth.user) {
+          throw new Error('Discord authentication returned no user.');
+        }
 
-        console.log('🎉 Authentication successful!', auth);
+        const authenticatedUser: DiscordUser = {
+          id: auth.user.id,
+          username: auth.user.username,
+          discriminator: auth.user.discriminator,
+          avatar: auth.user.avatar || undefined,
+          global_name: auth.user.global_name || undefined,
+        };
+        const guildId = sdkToUse.guildId ?? null;
+
+        // Commit React and module auth as one successful credential epoch.
+        setAuth(accessToken, authenticatedUser.id, guildId);
+        setUser(authenticatedUser);
+        setGrantedScopes([...scopes]);
         setIsAuthenticated(true);
         setError(null);
+        advanceAuthSession();
+        console.log('🎉 Discord authentication successful', {
+          userId: authenticatedUser.id,
+          scopeCount: scopes.length,
+          hasGuild: !!guildId,
+        });
 
-        // Extract user info from auth response
-        if (auth.user) {
-          setUser({
-            id: auth.user.id,
-            username: auth.user.username,
-            discriminator: auth.user.discriminator,
-            avatar: auth.user.avatar || undefined,
-            global_name: auth.user.global_name || undefined,
-          });
-          console.log('👤 User authenticated:', auth.user.username);
-
-          // Update auth store for gRPC interceptor
-          setAuth(access_token, auth.user.id);
-        }
-
-        // Fetch initial participants
         await handleRefreshParticipants(sdkToUse);
       } catch (err) {
-        console.error('🔴 Discord authentication failed:', err);
-        // Clear auth state on failure
-        clearAuth();
-        // Store error for display
-        let errorMessage = 'Unknown error';
-        if (err instanceof Error) {
-          errorMessage = err.message;
-          // Add more context for fetch errors
-          if (err.message.includes('fetch')) {
-            errorMessage = `Network error: ${err.message}. This might be due to Discord's security restrictions.`;
-          }
-        } else if (err && typeof err === 'object') {
-          // Handle Discord SDK error objects
-          errorMessage = JSON.stringify(err, null, 2);
-        } else {
-          errorMessage = String(err);
-        }
-        setError(errorMessage);
-        // Don't throw - let user see error and retry
+        const errorMessage =
+          err instanceof Error && err.message ? err.message : RECONNECT_MESSAGE;
+        console.error('🔴 Discord authentication failed:', errorMessage);
+        clearAuthentication(errorMessage);
       }
     },
-    [sdk, handleRefreshParticipants]
+    [
+      sdk,
+      isAuthenticated,
+      handleRefreshParticipants,
+      advanceAuthSession,
+      clearAuthentication,
+    ]
   );
 
-  // Initialize Discord SDK on mount
   useEffect(() => {
     async function init() {
       try {
@@ -171,9 +209,6 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
         const discordSdk = await initializeDiscordSdk();
         setSdk(discordSdk);
         setIsReady(true);
-
-        // Don't auto-authenticate - let user trigger it manually
-        // This helps us see any errors in the debug panel
         console.log(
           '🎮 Discord SDK ready - click authenticate button to login'
         );
@@ -183,34 +218,32 @@ export function DiscordProvider({ children }: DiscordProviderProps) {
             ? err.message
             : 'Failed to initialize Discord SDK';
         setError(errorMessage);
-        console.error('🔴 Discord SDK initialization failed:', err);
-        setIsReady(true); // Still mark as ready so app can function
+        console.error('🔴 Discord SDK initialization failed:', errorMessage);
+        setIsReady(true);
       }
     }
 
-    init();
-  }, [isDiscord, handleAuthenticate]);
+    void init();
+  }, [isDiscord]);
 
   const contextValue: DiscordContextType = {
-    // SDK and environment
     sdk,
     isDiscord,
     isReady,
     error,
-
-    // User and authentication
     user,
     isAuthenticated,
-
-    // Party/session info
+    grantedScopes,
+    authSessionId,
     participants,
     instanceId: envInfo.instanceId,
     channelId: envInfo.channelId,
-    guildId: envInfo.guildId,
-
-    // Actions
+    guildId: sdk?.guildId ?? null,
     authenticate: () => handleAuthenticate(),
     refreshParticipants: () => handleRefreshParticipants(),
+    clearAuthentication,
+    clearAuthenticationForSession,
+    isAuthenticationSessionCurrent,
   };
 
   return (

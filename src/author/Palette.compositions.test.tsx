@@ -16,7 +16,7 @@ import { Palette } from './Palette';
 function renderPalette(source?: CompositionSource) {
   const onArm = vi.fn();
   const onTool = vi.fn();
-  render(
+  const props = (compositionSource?: CompositionSource) => (
     <Palette
       doc={emptyDungeon()}
       tool="select"
@@ -26,10 +26,16 @@ function renderPalette(source?: CompositionSource) {
       onAddRegion={() => {}}
       armed={null}
       onArm={onArm}
-      compositionSource={source}
+      compositionSource={compositionSource}
     />
   );
-  return { onArm, onTool };
+  const view = render(props(source));
+  return {
+    onArm,
+    onTool,
+    rerenderSource: (nextSource?: CompositionSource) =>
+      view.rerender(props(nextSource)),
+  };
 }
 
 const sceneJson = (name: string) =>
@@ -96,6 +102,57 @@ describe('Palette current-world compositions', () => {
     expect(prop.getAttribute('title')).toMatch(/Plushie|Skeleton Dog/i);
     const skeleton = screen.getByRole('button', { name: 'Sk' });
     expect(skeleton.getAttribute('title')).toBe('Skeleton');
+  });
+
+  it('keeps a replacement session palette when the prior list finishes late', async () => {
+    let resolveOld!: (value: ReturnType<typeof create>[]) => void;
+    const oldList = new Promise<ReturnType<typeof create>[]>((resolve) => {
+      resolveOld = resolve;
+    });
+    const oldSource: CompositionSource = {
+      worldId: '123456789012345678',
+      reader: {
+        listCompositions: vi.fn(() => oldList),
+        getComposition: vi.fn(),
+      } as unknown as CompositionReader,
+    };
+    const replacement = create(CompositionSchema, {
+      id: 'replacement-id',
+      worldId: '123456789012345678',
+      json: sceneJson('Replacement Palette'),
+    });
+    const newSource: CompositionSource = {
+      worldId: '123456789012345678',
+      reader: {
+        listCompositions: vi.fn(async () => [replacement]),
+        getComposition: vi.fn(),
+      } as unknown as CompositionReader,
+    };
+    const view = renderPalette(oldSource);
+
+    view.rerenderSource(newSource);
+    expect(
+      await screen.findByRole('button', {
+        name: 'Place composition Replacement Palette',
+      })
+    ).toBeTruthy();
+
+    resolveOld([
+      create(CompositionSchema, {
+        id: 'stale-id',
+        worldId: '123456789012345678',
+        json: sceneJson('Stale Palette'),
+      }),
+    ]);
+    await Promise.resolve();
+    expect(
+      screen.queryByRole('button', { name: 'Place composition Stale Palette' })
+    ).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: 'Place composition Replacement Palette',
+      })
+    ).toBeTruthy();
   });
 
   it('reports missing source and list failures instead of falling back', async () => {
