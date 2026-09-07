@@ -1,3 +1,5 @@
+import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
+import type { WorldScene } from '@/concepts/world-building/types';
 import { SYNTY_SCALE } from '@/rendering/calibrationConstants';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
@@ -174,9 +176,11 @@ describe('PropModel shared placement', () => {
     ).toBe(false);
   });
 
-  it('adds the dungeon surface height to the caller-provided Y position', async () => {
+  it('aligns projected part-local lights with the actual surface-lifted prop root', async () => {
+    const partY = 0.07;
+    const offsetY = 0.45;
     const renderer = await ReactThreeTestRenderer.create(
-      <PropModel variant={BASE_VARIANT} position={[2, 0.07, 5]} />
+      <PropModel variant={BASE_VARIANT} position={[2, partY, 5]} />
     );
     const groups = renderer.scene
       .findAllByType('Group')
@@ -184,7 +188,36 @@ describe('PropModel shared placement', () => {
     const outer = groups.find(
       (group) => group.position.x === 2 && group.position.z === 5
     );
-    expect(outer?.position.y).toBeCloseTo(0.07 + DUNGEON_SURFACE_Y);
+    expect(outer?.position.y).toBeCloseTo(partY + DUNGEON_SURFACE_Y);
+
+    const scene: WorldScene = {
+      version: 1,
+      id: 'render-convention',
+      name: 'Render convention',
+      groups: [],
+      items: [
+        {
+          id: 'candles',
+          kind: 'prop',
+          assetRef: 'dnd5e:props:candles',
+          label: 'Candles',
+          transform: { x: 2, y: partY, z: 5, rotationY: 0 },
+          pointLight: {
+            enabled: true,
+            offset: { x: 0, y: offsetY, z: 0 },
+            color: '#ff9d52',
+            intensity: 1.1,
+            range: 2.6,
+          },
+        },
+      ],
+    };
+    const [light] = projectCompositionPointLights(scene, {
+      compositionId: 'render-convention',
+      placementId: 'standalone',
+      transform: { x: 0, y: 0, z: 0, rotationY: 0 },
+    });
+    expect(light?.position[1]).toBeCloseTo(outer!.position.y + offsetY);
   });
 });
 

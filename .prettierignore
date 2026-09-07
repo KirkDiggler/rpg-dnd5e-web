@@ -9,6 +9,9 @@
 src/author/specimens/*.yaml
 src/author/specimens/*.json
 
+# Exact exported World Building forcing specimen (web#951).
+src/compositions/fixtures/*.scene.json
+
 # The toolkit's own dungeonspec testdata, copied byte-for-byte
 # (rpg-project#368 §3.1 and its predecessor). These files are not this
 # repo's to format: they are the exact text the compiler compiles and

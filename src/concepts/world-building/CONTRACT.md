@@ -3,13 +3,21 @@
 Issue: [KirkDiggler/rpg-dnd5e-web#935](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/935)  
 Parent journey: [KirkDiggler/rpg-project#169](https://github.com/KirkDiggler/rpg-project/issues/169)
 
-## Boundary
+## Boundary and promoted mount
 
-This is a durable, development-only Concepts Lab at `?concept=world-building`.
-It proves a local scene-composition loop for DMs and streamers; it does not
-promote a new production authoring format. It makes no server calls, changes no
-live `/author` or encounter path, and changes no dungeon YAML, API, proto, or
-toolkit behavior.
+The same editor implementation has two mounts:
+
+- the original durable Concepts Lab at `?concept=world-building`, with its
+  local-only behavior unchanged; and
+- the development main-menu **World Builder**, which injects the configured
+  current-world CompositionService source and adds explicit immutable
+  save/list/open controls.
+
+No second editor or scene dialect was created. Both mounts preserve the local
+scene draft, arrangement library, import/export, continuous transforms,
+selection, groups/supports, gizmos, and visual-light declarations described
+below. The live mount still does not alter dungeon YAML, proto, toolkit, asset,
+or gameplay behavior.
 
 The first-run scene is blank and the author-created arrangement library is
 empty. Hex lines use the shared hex math and are visible only as scale/planning
@@ -85,6 +93,43 @@ arrangement twice with fresh remapped identities, exercised Blender-style
 camera gestures, and reloaded exact scene/library data. The complete receipt is
 under the current evidence path in Verification evidence.
 
+## World-library persistence
+
+In Vite development, `VITE_DEV_WORLD_ID` selects the visible current world and
+defaults to `test-world`, matching the API's `RPG_DEV_WORLD_ID`. The request
+world is a selector only; server authentication/authorization remains
+handler-owned. Production creates no source or World Builder entry until a
+verified Discord guild-to-world mapping exists.
+
+`Save local draft` and `Reopen local draft` retain the existing browser-local
+workflow. Ordinary local drafting auto-saves. Opening a listed world snapshot
+first flushes the latest locally owned scene, then marks the opened workspace as
+world-owned: the snapshot and subsequent workspace edits do not replace the
+prior local draft. `Reopen local draft` restores that prior draft. Only the
+explicit `Save local draft` action transfers an open world workspace back to
+local ownership and deliberately replaces it.
+
+`Save composition to world` calls `CreateComposition` with the same scene JSON;
+every save returns a new immutable ID without changing local-draft ownership.
+List refreshes on the World Builder mount, an explicit reload, and successful
+saves or deletes. Opening a listed entry calls `GetComposition` before replacing
+the scene. The authored `scene.name` is the human label; malformed snapshots
+fall back to their opaque ID and remain deletable without being opened.
+Permanent deletion requires inline confirmation and never edits dungeon
+placements: dangling references stay visible for explicit removal. Cancel or
+failure keeps the row and data. Success invalidates the current source identity
+so composition resolution caches cannot retain deleted models or lights.
+Deleting an open snapshot does not replace its editable workspace or prior
+local draft. API failure never substitutes the fixed development fixture.
+
+`VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1` remains an explicit, separate fixture
+option for tests. With the flag absent or disabled, the current-world source is
+the real RPC adapter.
+
+The isolated local Redis remains ephemeral across a full stack teardown. Local
+drafts and exported files remain the durable escape hatch; ordinary page reload
+and API-only restart are valid local-library checks, not a durability promise.
+
 ## Provisional local JSON
 
 Two independent envelopes are stored/exported:
@@ -109,6 +154,13 @@ WorldProp {
   transform: { x, y, z, rotationY }
   parentId?                   // group identity
   supportId?                  // prop identity
+  pointLight?: {
+    enabled
+    offset: { x, y, z }       // part-local scene-coordinate units
+    color                     // #RRGGBB
+    intensity                 // rendering control, 0..20
+    range                     // scene-coordinate units, 0.01..24
+  }
 }
 
 WorldGroup {
@@ -142,6 +194,16 @@ envelopes, non-finite or out-of-range transforms, duplicate identities,
 unknown asset refs (including arbitrary URLs), missing/invalid relation
 targets, and relation cycles. Editor commits pass through the same scene
 validator.
+
+Point lights are explicit author declarations only; asset names and meshes never
+imply emission. The part-local offset rotates with the part, then the complete
+composition placement applies once. Rendering selects at most the established
+12 point lights: dungeon selection uses its current view focus, while composer
+and standalone/thumbnail selection currently use the composition origin rather
+than camera position. Authored sources illuminate meshes but do not add crypt
+floor pools. This is visual rendering only: intensity is not a physical
+measurement, range is not D&D bright/dim distance, and no visibility or
+lit-cell facts are computed.
 
 Local-storage keys are:
 
@@ -278,8 +340,10 @@ Notable measured facts from `browser-evidence.json`:
 - Attachments are authored relations propagated by editor operations, not a
   runtime constraint solver. An author may intentionally edit an attached
   child away from its support while retaining the relation.
-- No scale, full tilt, numeric gizmo, advanced precision controls, floor painting, wall
+- No scale, full tilt, general numeric transform inspector, advanced precision controls, floor painting, wall
   construction, behavior/quest wiring, or linked-prefab overrides exist.
+- Composition point lights have no shadows, flicker, fuel, gameplay on/off verb,
+  occlusion, darkness/visibility computation, or physical/D&D illumination meaning.
 - The finite limits above are concept safety bounds, not proposed server limits.
 - The catalog can only reference locally synced `PROP_KEYS`; missing licensed
   assets cannot be embedded in exports and are not committed here.

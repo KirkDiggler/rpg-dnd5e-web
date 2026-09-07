@@ -222,3 +222,15 @@ export const PALETTE_MONSTERS: PaletteMonster[] = (
 ).filter(
   (m) => resolveMonsterModelUrl(m.refId, undefined, false) !== undefined
 );
+
+/** Friendly palette/board copy for an ordinary authored ref. The stable ref
+ * remains the lookup key; it is not forced into the author's hover text. */
+export function paletteNameForRef(ref: string): string {
+  return (
+    PALETTE_PROPS.find((item) => item.ref === ref)?.label ??
+    PALETTE_MONSTERS.find((item) => item.ref === ref)
+      ?.label?.replaceAll('-', ' ')
+      .replace(/^./, (first) => first.toUpperCase()) ??
+    displayLabel(ref)
+  );
+}

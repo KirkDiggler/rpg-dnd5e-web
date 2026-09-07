@@ -207,6 +207,68 @@ describe('DungeonBuilder', () => {
   });
 });
 
+describe('DungeonBuilder — moving a placement is target-safe', () => {
+  function movementYaml(): string {
+    let doc = emptyDungeon();
+    for (const column of [0, 1, 2, 3]) {
+      doc = paintCell(doc, 'region-1', p(column, 0));
+    }
+    doc = placeAt(doc, {
+      id: 'original',
+      ref: 'dnd5e:props:brazier',
+      at: p(0, 0),
+      blocksMovement: true,
+      blocksLos: false,
+    });
+    doc = placeAt(doc, {
+      id: 'other',
+      ref: 'dnd5e:props:barrel',
+      at: p(1, 0),
+      blocksMovement: true,
+      blocksLos: false,
+    });
+    return emitDungeon(doc);
+  }
+
+  const cell = (column: number) =>
+    document.querySelector(`[data-cell="${axialKey(p(column, 0))}"]`)!;
+
+  it('moves the selected instance normally, then cancels rather than moving the placement shifted into its index after removal', () => {
+    render(
+      <DungeonBuilder
+        authoringClient={fakeClient([])}
+        initialYaml={movementYaml()}
+        persistDraft={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }));
+    fireEvent.pointerDown(cell(0), { button: 0 });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'move to another cell' })
+    );
+    fireEvent.pointerDown(cell(2), { button: 0 });
+
+    let moved = parseDungeon((sourceText() as HTMLTextAreaElement).value);
+    expect(moved.place).toEqual([
+      expect.objectContaining({ id: 'original', at: p(2, 0) }),
+      expect.objectContaining({ id: 'other', at: p(1, 0) }),
+    ]);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Inspector' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'move to another cell' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'remove' }));
+    fireEvent.pointerDown(cell(3), { button: 0 });
+
+    moved = parseDungeon((sourceText() as HTMLTextAreaElement).value);
+    expect(moved.place).toEqual([
+      expect.objectContaining({ id: 'other', at: p(1, 0) }),
+    ]);
+  });
+});
+
 describe('DungeonBuilder — the YAML pane authors, not just mirrors (#899)', () => {
   const paneOf = () => sourceText() as HTMLTextAreaElement;
 
@@ -735,9 +797,7 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
     mountBuilder(stripYaml());
     await waitFor(() => expect(sourceText().textContent).toContain('scenery:'));
 
-    const plushie = document.querySelector(
-      '[title^="dnd5e:props:plushie:skeleton-dog"]'
-    ) as HTMLElement;
+    const plushie = screen.getByRole('button', { name: 'PS' });
     expect(plushie).not.toBeNull();
     fireEvent.click(plushie);
     fireEvent.pointerDown(cell(3, 1), { button: 0 });
@@ -765,9 +825,10 @@ describe('DungeonBuilder — the scenery brush (rpg-project#360 slice 1)', () =>
     expect(sourceText().textContent).toContain('place: []');
 
     // A prop on the very same cell is fine — that is what the strip is for.
-    const prop = document.querySelector(
-      '[title^="dnd5e:props:"]'
-    ) as HTMLElement;
+    const propsSection = screen.getByRole('heading', {
+      name: 'Props',
+    }).parentElement;
+    const prop = propsSection?.querySelector('button') as HTMLElement;
     expect(prop).not.toBeNull();
     fireEvent.click(prop);
     fireEvent.pointerDown(cell(3, 1), { button: 0 });

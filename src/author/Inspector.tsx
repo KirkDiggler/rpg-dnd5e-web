@@ -5,6 +5,12 @@
  * read-only mirror.
  */
 import { FACING_NAMES, facingAngleDeg } from '@/components/hex-grid/facingYaw';
+import {
+  compositionPlacementMetadata,
+  type CompositionPlacementMetadata,
+} from '@/compositions/compositionMetadata';
+import type { CompositionResolution } from '@/compositions/CompositionPlacementModel';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { refId } from '@/utils/refs';
 import type { FieldError } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/authoring/v1alpha1/service_pb';
 import { useState } from 'react';
@@ -41,6 +47,11 @@ import { PredicateEditor } from './PredicateEditor';
 import { RegionPanel } from './RegionPanel';
 import { APPROACH_ABILITIES, TARGETINGS, type Selection } from './types';
 
+const EMPTY_COMPOSITION_RESOLUTIONS: ReadonlyMap<
+  string,
+  CompositionResolution
+> = new Map();
+
 export interface InspectorProps {
   doc: DungeonDoc;
   selection: Selection;
@@ -71,6 +82,7 @@ export interface InspectorProps {
     patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>
   ) => void;
   onRemovePlacement: (index: number) => void;
+  onMovePlacement?: (index: number) => void;
   /** Rename one way out. */
   onExit: (index: number, patch: Partial<Pick<ExitDoc, 'id'>>) => void;
   onRemoveExit: (index: number) => void;
@@ -105,6 +117,9 @@ export interface InspectorProps {
   /** The compiler's current refusals, whole. Each section picks out the
    * ones addressed to its own fields. */
   errors: readonly FieldError[];
+  /** Shared current-world reads used to name composition placements. */
+  compositionSource?: CompositionSource;
+  compositionResolutions?: ReadonlyMap<string, CompositionResolution>;
   /** Delete the selected wall. */
   onRemoveWall: (index: number) => void;
   /** Stamp a height on the selected wall. A wall is one line and one
@@ -171,8 +186,18 @@ export function Inspector(props: InspectorProps) {
         doc={doc}
         index={selection.index}
         placement={placement}
+        composition={compositionPlacementMetadata(
+          placement.ref,
+          props.compositionSource,
+          props.compositionResolutions ?? EMPTY_COMPOSITION_RESOLUTIONS
+        )}
         errors={props.errors}
         onChange={(p) => props.onPlacement(selection.index, p)}
+        onMove={
+          props.onMovePlacement
+            ? () => props.onMovePlacement?.(selection.index)
+            : undefined
+        }
         onRemove={() => props.onRemovePlacement(selection.index)}
         onSelectIntel={(id) => props.onSelect({ kind: 'intel', id })}
       />
@@ -736,20 +761,54 @@ function DoorPanel({
   );
 }
 
+function CompositionPlacementStatus({
+  metadata,
+}: {
+  metadata: CompositionPlacementMetadata;
+}) {
+  const detail = (() => {
+    switch (metadata.status) {
+      case 'ready':
+        return `Composition · ${metadata.name}`;
+      case 'loading':
+        return `Loading composition · ${metadata.id}`;
+      case 'missing':
+        return `Deleted or missing composition · ${metadata.id}`;
+      case 'error':
+        return `Could not load composition · ${metadata.id}: ${metadata.message}`;
+      case 'missing-source':
+        return `Composition source not configured · ${metadata.id}`;
+    }
+  })();
+  return (
+    <div
+      className={`text-xs ${metadata.status === 'missing' ? 'text-red-400' : 'opacity-70'}`}
+      data-testid="composition-placement-status"
+      data-status={metadata.status}
+    >
+      {detail}
+    </div>
+  );
+}
+
 function PlacementPanel({
   doc,
   index,
   placement,
+  composition,
   errors,
   onChange,
+  onMove,
   onRemove,
   onSelectIntel,
 }: {
   doc: DungeonDoc;
   index: number;
   placement: PlacementDoc;
+  composition: CompositionPlacementMetadata | null;
   errors: readonly FieldError[];
   onChange: (patch: Partial<Omit<PlacementDoc, 'ref' | 'at'>>) => void;
+  onMove?: () => void;
   onRemove: () => void;
   onSelectIntel: (id: string) => void;
 }) {
@@ -757,7 +816,16 @@ function PlacementPanel({
   const refusals = factionRefusals(doc);
   return (
     <div className="flex flex-col gap-3" data-testid="placement-panel">
-      <h3 className="dg-h">{monster ? 'Monster' : 'Prop'}</h3>
+      <h3 className="dg-h">
+        {composition?.status === 'ready'
+          ? composition.name
+          : composition
+            ? 'Composition'
+            : monster
+              ? 'Monster'
+              : 'Prop'}
+      </h3>
+      {composition && <CompositionPlacementStatus metadata={composition} />}
       <div className="dg-label">
         ref
         <div className="dg-input opacity-80 break-all">{placement.ref}</div>
@@ -882,9 +950,16 @@ function PlacementPanel({
           </div>
         )}
       </div>
-      <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
-        remove
-      </button>
+      <div className="flex gap-2">
+        {onMove && (
+          <button type="button" className="dg-mini" onClick={onMove}>
+            move to another cell
+          </button>
+        )}
+        <button type="button" className="dg-mini dg-danger" onClick={onRemove}>
+          remove
+        </button>
+      </div>
     </div>
   );
 }

@@ -63,6 +63,7 @@ export function fixtureAtlasOf(doc: DungeonDoc): GetAtlasResponse {
       .filter((p) => !isMonsterRef(p.ref))
       .map((p) => ({
         ref: p.ref,
+        id: p.id ?? '',
         at: pos(p.at),
         blocksMovement: !!p.blocksMovement,
         blocksLineOfSight: !!p.blocksLos,

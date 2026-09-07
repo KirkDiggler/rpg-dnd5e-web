@@ -45,6 +45,7 @@
  */
 
 import type { CharacterCustomizationContainer } from '@/character/customization/outfitCustomization';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { useCameraDials } from '@/feel/useFeelDials';
 import { CAMERA_OFFSET } from '@/rendering/calibrationConstants';
 import { refId } from '@/utils/refs';
@@ -128,6 +129,7 @@ function monsterRefIdFrom(monsterRef: string | undefined): string | undefined {
 export interface SessionCanvasProps {
   scene: Scene3D;
   hexSize: number;
+  compositionSource?: CompositionSource;
   characterId: string;
   /** Public roster identity; never owner-private CharacterData. */
   characterName: string;
@@ -280,6 +282,7 @@ export function SessionScene({
   turnLocked = false,
   movementBudgetFeet,
   presentationLayer,
+  compositionSource,
 }: SessionCanvasProps) {
   // One swatch per declared faction on the roster, by first appearance
   // (`factionColor.ts`) — the same table the sides legend reads, so the
@@ -553,6 +556,7 @@ export function SessionScene({
         hexSize={hexSize}
         doors={doors}
         onDoorClick={onDoorClick}
+        compositionSource={compositionSource}
       />
       {/* THE WAYS OUT, MARKED FROM THE START (Kirk's walk, 2026-09-04:
           he dropped the heirloom leaving from the wrong cell because the

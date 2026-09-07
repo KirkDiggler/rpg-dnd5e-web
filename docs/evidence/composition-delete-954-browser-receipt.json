@@ -1,0 +1,106 @@
+{
+  "compName": "WEB954 Disposable Lit Composition 202609070134",
+  "compositionId": "composition_8cc279d7-213e-4157-b25b-d5f407d90f9b",
+  "dungeonKey": "web954-delete-proof-202609070134",
+  "dungeonName": "WEB954 Delete Proof Dungeon 202609070134",
+  "deleteHttpStatus": 200,
+  "cancelSurvived": true,
+  "dungeonSaved": true,
+  "requests": [
+    {
+      "url": "http://localhost:8090/dnd5e.api.authoring.v1alpha1.AuthoringService/GetDungeon",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/dnd5e.api.authoring.v1alpha1.AuthoringService/GetDungeon",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/ListCompositions",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/ListCompositions",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/ListCompositions",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/dnd5e.api.authoring.v1alpha1.AuthoringService/ListScenarios",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/ListCompositions",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/dnd5e.api.authoring.v1alpha1.AuthoringService/ListScenarios",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/dnd5e.api.authoring.v1alpha1.AuthoringService/GetDungeon",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/api.composition.v1alpha1.CompositionService/GetComposition",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/dnd5e.api.authoring.v1alpha1.AuthoringService/PutDungeon",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/dnd5e.api.authoring.v1alpha1.AuthoringService/PutDungeon",
+      "status": 200
+    },
+    {
+      "url": "http://localhost:8090/dnd5e.api.authoring.v1alpha1.AuthoringService/PutDungeon",
+      "status": 200
+    }
+  ],
+  "console": [
+    "🔵 Request: dnd5e.api.authoring.v1alpha1.AuthoringService.GetDungeon {$typeName: dnd5e.api.authoring.v1alpha1.GetDungeonRequest, key: reference-tomb}",
+    "🔵 Request: dnd5e.api.authoring.v1alpha1.AuthoringService.GetDungeon {$typeName: dnd5e.api.authoring.v1alpha1.GetDungeonRequest, key: reference-tomb}",
+    "🟢 Response: dnd5e.api.authoring.v1alpha1.AuthoringService.GetDungeon (51ms) {$typeName: dnd5e.api.authoring.v1alpha1.GetDungeonResponse, yaml: version: 2\nkey: reference-tomb\nname: The Reference…n\", at: [23,5], targeting: closest, boss: true }\n}",
+    "🟢 Response: dnd5e.api.authoring.v1alpha1.AuthoringService.GetDungeon (72ms) {$typeName: dnd5e.api.authoring.v1alpha1.GetDungeonResponse, yaml: version: 2\nkey: reference-tomb\nname: The Reference…n\", at: [23,5], targeting: closest, boss: true }\n}",
+    "🔵 Request: api.composition.v1alpha1.CompositionService.ListCompositions {$typeName: api.composition.v1alpha1.ListCompositionsRequest, worldId: test-world}",
+    "🔵 Request: api.composition.v1alpha1.CompositionService.ListCompositions {$typeName: api.composition.v1alpha1.ListCompositionsRequest, worldId: test-world}",
+    "🟢 Response: api.composition.v1alpha1.CompositionService.ListCompositions (98ms) {$typeName: api.composition.v1alpha1.ListCompositionsResponse, compositions: Array(6)}",
+    "🟢 Response: api.composition.v1alpha1.CompositionService.ListCompositions (101ms) {$typeName: api.composition.v1alpha1.ListCompositionsResponse, compositions: Array(6)}",
+    "🔵 Request: api.composition.v1alpha1.CompositionService.ListCompositions {$typeName: api.composition.v1alpha1.ListCompositionsRequest, worldId: test-world}",
+    "🔵 Request: dnd5e.api.authoring.v1alpha1.AuthoringService.ListScenarios {$typeName: dnd5e.api.authoring.v1alpha1.ListScenariosRequest}",
+    "🔵 Request: api.composition.v1alpha1.CompositionService.ListCompositions {$typeName: api.composition.v1alpha1.ListCompositionsRequest, worldId: test-world}",
+    "🔵 Request: dnd5e.api.authoring.v1alpha1.AuthoringService.ListScenarios {$typeName: dnd5e.api.authoring.v1alpha1.ListScenariosRequest}",
+    "🟢 Response: api.composition.v1alpha1.CompositionService.ListCompositions (92ms) {$typeName: api.composition.v1alpha1.ListCompositionsResponse, compositions: Array(6)}",
+    "🟢 Response: dnd5e.api.authoring.v1alpha1.AuthoringService.ListScenarios (91ms) {$typeName: dnd5e.api.authoring.v1alpha1.ListScenariosResponse, scenarios: Array(2)}",
+    "🟢 Response: api.composition.v1alpha1.CompositionService.ListCompositions (90ms) {$typeName: api.composition.v1alpha1.ListCompositionsResponse, compositions: Array(6)}",
+    "🟢 Response: dnd5e.api.authoring.v1alpha1.AuthoringService.ListScenarios (89ms) {$typeName: dnd5e.api.authoring.v1alpha1.ListScenariosResponse, scenarios: Array(2)}",
+    "🔵 Request: dnd5e.api.authoring.v1alpha1.AuthoringService.GetDungeon {$typeName: dnd5e.api.authoring.v1alpha1.GetDungeonRequest, key: web954-delete-proof-202609070134}",
+    "🟢 Response: dnd5e.api.authoring.v1alpha1.AuthoringService.GetDungeon (42ms) {$typeName: dnd5e.api.authoring.v1alpha1.GetDungeonResponse, yaml: version: 2\nkey: web954-delete-proof-202609070134\nn…ks_los: false, facing: se, offset: [0.2, -0.1] }\n}",
+    "🔵 Request: api.composition.v1alpha1.CompositionService.GetComposition {$typeName: api.composition.v1alpha1.GetCompositionRequest, worldId: test-world, id: composition_8cc279d7-213e-4157-b25b-d5f407d90f9b}",
+    "🔴 Error: api.composition.v1alpha1.CompositionService.GetComposition (81ms) ConnectError: [not_found] get composition\n    at findTrailerError (http://127.0.0.1:3031/node_modules/.vite/deps/chunk-C2ZQNCH4.js?v=96267cde:1476:14)\n    at validateResponse2 (http://127.0.0.1:3031/node_modules/.vite/deps/@connectrpc_connect-web.js?v=7c1f05c0:292:20)\n    at next (http://127.0.0.1:3031/node_modules/.vite/deps/@connectrpc_connect-web.js?v=7c1f05c0:372:35)\n    at async http://127.0.0.1:3031/src/api/client.ts:51:22\n    at async Object.unary (http://127.0.0.1:3031/node_modules/.vite/deps/@connectrpc_connect-web.js?v=7c1f05c0:354:14)\n    at async Object.getComposition (http://127.0.0.1:3031/node_modules/.vite/deps/chunk-C2ZQNCH4.js?v=96267cde:1151:22)\n    at async RpcCompositionAdapter.getComposition (http://127.0.0.1:3031/src/compositions/rpcCompositionSource.ts:32:24)",
+    "🔵 Request: dnd5e.api.authoring.v1alpha1.AuthoringService.PutDungeon {$typeName: dnd5e.api.authoring.v1alpha1.PutDungeonRequest, key: web954-delete-proof-202609070134, yaml: version: 2\nkey: web954-delete-proof-202609070134\nn…ks_los: false, facing: se, offset: [0.2, -0.1] }\n, validateOnly: true}",
+    "🟢 Response: dnd5e.api.authoring.v1alpha1.AuthoringService.PutDungeon (12ms) {$typeName: dnd5e.api.authoring.v1alpha1.PutDungeonResponse, errors: Array(0), atlas: Object}",
+    "🔵 Request: dnd5e.api.authoring.v1alpha1.AuthoringService.PutDungeon {$typeName: dnd5e.api.authoring.v1alpha1.PutDungeonRequest, key: web954-delete-proof-202609070134, yaml: version: 2\nkey: web954-delete-proof-202609070134\nn…,0]]\nstart: [0, 0]\nwalls: []\ndoors: []\nplace: []\n, validateOnly: true}",
+    "🟢 Response: dnd5e.api.authoring.v1alpha1.AuthoringService.PutDungeon (5ms) {$typeName: dnd5e.api.authoring.v1alpha1.PutDungeonResponse, errors: Array(0), atlas: Object}",
+    "🔵 Request: dnd5e.api.authoring.v1alpha1.AuthoringService.PutDungeon {$typeName: dnd5e.api.authoring.v1alpha1.PutDungeonRequest, key: web954-delete-proof-202609070134, yaml: version: 2\nkey: web954-delete-proof-202609070134\nn…,0]]\nstart: [0, 0]\nwalls: []\ndoors: []\nplace: []\n, validateOnly: false}",
+    "🟢 Response: dnd5e.api.authoring.v1alpha1.AuthoringService.PutDungeon (51ms) {$typeName: dnd5e.api.authoring.v1alpha1.PutDungeonResponse, errors: Array(0), atlas: Object}"
+  ],
+  "validationDiagnostics": [
+    "initial proof needed a start cell",
+    "start and placement must use distinct cells"
+  ],
+  "listExcluded": true,
+  "missingStatus": "missing",
+  "markerTitle": "Deleted or missing composition · composition_8cc279d7-213e-4157-b25b-d5f407d90f9b",
+  "markerText": "!Deleted / missing composition",
+  "inspectorStatus": "Deleted or missing composition · composition_8cc279d7-213e-4157-b25b-d5f407d90f9b",
+  "placementId": "owned-proof-placement",
+  "yamlBeforeRemove": "version: 2\nkey: web954-delete-proof-202609070134\nname: WEB954 Delete Proof Dungeon 202609070134\norientation: pointy\nvoid: opaque\nregions:\n  - id: region-1\n    name: Region 1\n    archetype: crypt\n    lighting: { intensity: 0.6 }\n    cells:\n      - [[0,0],[1,0]]\nstart: [0, 0]\nwalls: []\ndoors: []\nplace:\n  - { id: owned-proof-placement, ref: \"composition:props:composition_8cc279d7-213e-4157-b25b-d5f407d90f9b\", at: [1,0], blocks_movement: false, blocks_los: false, facing: se, offset: [0.2, -0.1] }\n",
+  "yamlAfterRemove": "version: 2\nkey: web954-delete-proof-202609070134\nname: WEB954 Delete Proof Dungeon 202609070134\norientation: pointy\nvoid: opaque\nregions:\n  - id: region-1\n    name: Region 1\n    archetype: crypt\n    lighting: { intensity: 0.6 }\n    cells:\n      - [[0,0],[1,0]]\nstart: [0, 0]\nwalls: []\ndoors: []\nplace: []\n",
+  "originalPreservedBeforeRemove": true,
+  "removedExplicitly": true,
+  "removalSaved": true
+}

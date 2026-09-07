@@ -1,4 +1,5 @@
 import type { DungeonLightingPlan } from '../../rendering/dungeonLighting';
+import { VisualPointLights } from '../../rendering/visualPointLights';
 
 export const DUNGEON_SCENE_LIGHTING = {
   ambientIntensity: 0.6,
@@ -19,16 +20,7 @@ export function DungeonSceneLights({ plan }: DungeonSceneLightsProps) {
         intensity={lighting.directionalIntensity}
         position={lighting.directionalPosition}
       />
-      {plan?.pointLights.map((light) => (
-        <pointLight
-          key={light.key}
-          position={light.position}
-          color={light.color}
-          intensity={light.intensity}
-          distance={light.distance}
-          decay={2}
-        />
-      ))}
+      <VisualPointLights lights={plan?.pointLights ?? []} />
     </>
   );
 }

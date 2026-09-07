@@ -38,7 +38,7 @@ Gaps:
 ### gRPC client — B-
 
 Clean Connect RPC client setup (`characterClient`, `encounterClient`,
-`lobbyClient`, `diceClient`) with auth + logging interceptors well
+`lobbyClient`, `diceClient`, `compositionClient`) with auth + logging interceptors well
 factored in `client.ts`. The old v1alpha1 `encounterHooks.ts`/
 `lobbyHooks.ts` wrapper hooks this section used to grade are deleted
 (rpg-dnd5e-web#447) — their only real consumers (`LobbyView` and a

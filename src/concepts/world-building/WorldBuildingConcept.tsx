@@ -1,3 +1,8 @@
+import { compositionMetadata } from '@/compositions/compositionMetadata';
+import {
+  useCompositionList,
+  type CompositionSource,
+} from '@/compositions/compositionSource';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   WORLD_BUILDING_CATALOG,
@@ -14,6 +19,7 @@ import {
   redoHistory,
   rotateSelection,
   saveArrangement,
+  setPropPointLight,
   stampArrangement,
   undoHistory,
   ungroup,
@@ -36,6 +42,7 @@ import type {
   IdFactory,
   KeyValueStorage,
   SceneHistory,
+  WorldPointLight,
   WorldScene,
 } from './types';
 import './worldBuilding.css';
@@ -51,7 +58,18 @@ interface WorldBuildingConceptProps {
   storage?: KeyValueStorage;
   idFactory?: IdFactory;
   now?: () => string;
+  compositionSource?: CompositionSource;
+  onCompositionDeleted?: () => void;
+  onBack?: () => void;
 }
+
+const DEFAULT_POINT_LIGHT: WorldPointLight = {
+  enabled: true,
+  offset: { x: 0, y: 0.5, z: 0 },
+  color: '#ff9d52',
+  intensity: 1.1,
+  range: 2.6,
+};
 
 const browserStorage: KeyValueStorage = {
   getItem: (key) => window.localStorage.getItem(key),
@@ -85,6 +103,9 @@ export function WorldBuildingConcept({
   storage,
   idFactory = defaultId,
   now = () => new Date().toISOString(),
+  compositionSource,
+  onCompositionDeleted,
+  onBack,
 }: WorldBuildingConceptProps) {
   const effectiveStorage = storage ?? browserStorage;
   const [initial] = useState(() => bootstrap(effectiveStorage, idFactory));
@@ -101,19 +122,46 @@ export function WorldBuildingConcept({
   const [portableJson, setPortableJson] = useState('');
   const [notice, setNotice] = useState(initial.error);
   const [saveStatus, setSaveStatus] = useState('Local draft ready');
+  const [workspaceOrigin, setWorkspaceOrigin] = useState<'local' | 'world'>(
+    'local'
+  );
   const [confirmBlank, setConfirmBlank] = useState(false);
+  const [compositionRefresh, setCompositionRefresh] = useState(0);
+  const [worldBusy, setWorldBusy] = useState(false);
+  const [lastWorldSave, setLastWorldSave] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
   const [assetStates, setAssetStates] = useState<
     Record<string, 'loaded' | 'error'>
   >({});
   const skippedInitialSceneSave = useRef(false);
   const skippedInitialLibrarySave = useRef(false);
+  const workspaceOriginRef = useRef<'local' | 'world'>('local');
   const scene = history.present;
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
+  const [sceneNameDraft, setSceneNameDraft] = useState(scene.name);
+  const compositionList = useCompositionList(
+    compositionSource,
+    compositionRefresh
+  );
+
+  useEffect(() => {
+    setSceneNameDraft(scene.name);
+  }, [scene.name]);
+
+  useEffect(() => {
+    if (!compositionSource?.writer) setDeleteCandidate(null);
+  }, [compositionSource?.writer]);
 
   useEffect(() => {
     if (!skippedInitialSceneSave.current) {
       skippedInitialSceneSave.current = true;
       return;
     }
+    if (workspaceOrigin === 'world') return;
     const result = saveSceneToStorage(effectiveStorage, scene);
     if (result.error) {
       setNotice(result.error);
@@ -121,7 +169,7 @@ export function WorldBuildingConcept({
     } else {
       setSaveStatus('Saved locally');
     }
-  }, [effectiveStorage, scene]);
+  }, [effectiveStorage, scene, workspaceOrigin]);
 
   useEffect(() => {
     if (!skippedInitialLibrarySave.current) {
@@ -139,6 +187,11 @@ export function WorldBuildingConcept({
         setHistory((current) => updateHistory(current, valid));
         setPreviewScene(null);
         setSelectedIds(selection);
+        setSaveStatus(
+          workspaceOriginRef.current === 'local'
+            ? 'Saving local draft…'
+            : 'World workspace changes are not saved locally'
+        );
         setNotice('');
       } catch (error) {
         setNotice(
@@ -320,8 +373,16 @@ export function WorldBuildingConcept({
     const libraryResult = saveLibraryToStorage(effectiveStorage, library);
     const error = sceneResult.error ?? libraryResult.error;
     setNotice(error ?? '');
+    if (!sceneResult.error) {
+      workspaceOriginRef.current = 'local';
+      setWorkspaceOrigin('local');
+    }
     setSaveStatus(
-      error ? 'Save failed — good in-memory data kept' : 'Saved locally now'
+      sceneResult.error
+        ? 'Save failed — good in-memory data kept'
+        : libraryResult.error
+          ? 'Scene saved locally — library save failed'
+          : 'Saved locally now'
     );
   };
 
@@ -383,6 +444,8 @@ export function WorldBuildingConcept({
       setNotice(error);
       return;
     }
+    workspaceOriginRef.current = 'local';
+    setWorkspaceOrigin('local');
     setHistory(createHistory(sceneResult.value));
     setLibrary(libraryResult.value);
     setPreviewScene(null);
@@ -393,29 +456,166 @@ export function WorldBuildingConcept({
     setSaveStatus('Reopened local scene and library');
   };
 
+  const saveCompositionToWorld = async () => {
+    if (!compositionSource?.writer || worldBusy) return;
+    setWorldBusy(true);
+    setNotice('');
+    try {
+      const saved = await compositionSource.writer.createComposition(
+        compositionSource.worldId,
+        stringifyScene(scene)
+      );
+      setLastWorldSave(saved.id);
+      setCompositionRefresh((current) => current + 1);
+      setNotice(
+        `Saved “${scene.name}” as a new immutable world composition (${saved.id}).`
+      );
+    } catch (error) {
+      setNotice(
+        `World save failed; the open scene and local draft were kept. ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setWorldBusy(false);
+    }
+  };
+
+  const deleteComposition = async (id: string, label: string) => {
+    if (!compositionSource?.writer || worldBusy) return;
+    setWorldBusy(true);
+    setNotice('');
+    try {
+      await compositionSource.writer.deleteComposition(
+        compositionSource.worldId,
+        id
+      );
+      setDeleteCandidate(null);
+      setCompositionRefresh((current) => current + 1);
+      onCompositionDeleted?.();
+      setNotice(
+        `Permanently deleted “${label}”. Existing dungeon placements were not changed; remove them explicitly from each dungeon.`
+      );
+    } catch (error) {
+      setNotice(
+        `Delete failed; “${label}” and all existing data were kept. ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setWorldBusy(false);
+    }
+  };
+
+  const openComposition = async (id: string) => {
+    if (!compositionSource || worldBusy) return;
+    setWorldBusy(true);
+    setNotice('');
+    try {
+      const composition = await compositionSource.reader.getComposition(
+        compositionSource.worldId,
+        id
+      );
+      if (!composition) {
+        setNotice(`Composition ${id} is no longer available in this world.`);
+        return;
+      }
+      const metadata = compositionMetadata(composition);
+      if (metadata.status === 'error') {
+        setNotice(
+          `Composition ${id} could not be opened; the current scene was kept. ${metadata.message}`
+        );
+        return;
+      }
+      if (workspaceOriginRef.current === 'local') {
+        const localSave = saveSceneToStorage(
+          effectiveStorage,
+          sceneRef.current
+        );
+        if (localSave.error) {
+          setSaveStatus('Save failed — scene kept in memory');
+          setNotice(
+            `Composition ${id} was not opened because the latest local draft could not be preserved. ${localSave.error}`
+          );
+          return;
+        }
+      }
+      workspaceOriginRef.current = 'world';
+      setWorkspaceOrigin('world');
+      commit(metadata.scene, []);
+      setTool('select');
+      setActiveDrag(null);
+      setLastWorldSave(composition.id);
+      setSaveStatus(
+        'World snapshot open — not saved locally; local draft preserved'
+      );
+      setNotice(`Opened “${metadata.name}” from the world library.`);
+    } catch (error) {
+      setNotice(
+        `Composition ${id} could not be opened; the current scene was kept. ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setWorldBusy(false);
+    }
+  };
+
   const loadedCount = scene.items.filter(
     (item) => assetStates[item.id] === 'loaded'
   ).length;
   const failedCount = scene.items.filter(
     (item) => assetStates[item.id] === 'error'
   ).length;
+  const selectedProp =
+    selectedIds.length === 1
+      ? scene.items.find((item) => item.id === selectedIds[0])
+      : undefined;
+  const updateSelectedLight = (
+    update: (current: WorldPointLight) => WorldPointLight
+  ) => {
+    if (!selectedProp?.pointLight) return;
+    commit(
+      setPropPointLight(
+        scene,
+        selectedProp.id,
+        update(structuredClone(selectedProp.pointLight))
+      )
+    );
+  };
+  const numberFrom = (value: string): number =>
+    value.trim() === '' ? Number.NaN : Number(value);
 
   return (
     <section
-      className="wb-shell"
+      className={`wb-shell ${compositionSource ? 'wb-shell--world' : ''}`}
       aria-label="World Building Concept"
       data-transform-preview={previewScene ? 'active' : 'idle'}
+      data-workspace-origin={workspaceOrigin}
     >
       <header className="wb-header">
         <div>
-          <p className="wb-kicker">Durable Concepts Lab · web#935</p>
-          <h2>World Building</h2>
+          <p className="wb-kicker">
+            {compositionSource
+              ? `World library · ${compositionSource.worldId}`
+              : 'Durable Concepts Lab · web#935'}
+          </p>
+          <h2>{compositionSource ? 'World Builder' : 'World Building'}</h2>
           <p>Compose freely in world space. Hexes are scale, not slots.</p>
         </div>
         <div className="wb-save-cluster">
+          {onBack && <button onClick={onBack}>Back to main menu</button>}
           <span aria-live="polite">{saveStatus}</span>
-          <button onClick={saveNow}>Save now</button>
-          <button onClick={reopen}>Reopen local</button>
+          <button onClick={saveNow}>Save local draft</button>
+          <button onClick={reopen}>Reopen local draft</button>
+          {compositionSource?.writer && (
+            <button
+              disabled={worldBusy}
+              onClick={() => void saveCompositionToWorld()}
+            >
+              {worldBusy ? 'Saving composition…' : 'Save composition to world'}
+            </button>
+          )}
           {!confirmBlank ? (
             <button onClick={() => setConfirmBlank(true)}>
               New blank scene
@@ -573,6 +773,24 @@ export function WorldBuildingConcept({
         >
           <section>
             <h3>Edit</h3>
+            <label>
+              <span>Scene name</span>
+              <input
+                aria-label="Scene name"
+                value={sceneNameDraft}
+                maxLength={120}
+                onChange={(event) => setSceneNameDraft(event.target.value)}
+                onBlur={() => {
+                  const name = sceneNameDraft.trim();
+                  if (!name) {
+                    setSceneNameDraft(scene.name);
+                    setNotice('Scene name cannot be empty.');
+                  } else if (name !== scene.name) {
+                    commit({ ...scene, name });
+                  }
+                }}
+              />
+            </label>
             <div className="wb-actions">
               <button disabled={history.past.length === 0} onClick={undo}>
                 Undo
@@ -625,6 +843,134 @@ export function WorldBuildingConcept({
               Shortcuts: Delete · Ctrl/Cmd+D · Ctrl/Cmd+Z · Shift+Ctrl/Cmd+Z · R
               · Esc
             </p>
+            {selectedProp && (
+              <div className="wb-light-editor">
+                <h4>Visual point light</h4>
+                {!selectedProp.pointLight ? (
+                  <>
+                    <button
+                      onClick={() =>
+                        commit(
+                          setPropPointLight(
+                            scene,
+                            selectedProp.id,
+                            DEFAULT_POINT_LIGHT
+                          )
+                        )
+                      }
+                    >
+                      Add point light
+                    </button>
+                    <p className="wb-help">
+                      Explicit author choice; never inferred from the asset.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <label className="wb-light-toggle">
+                      <input
+                        type="checkbox"
+                        aria-label="Light enabled"
+                        checked={selectedProp.pointLight.enabled}
+                        onChange={(event) =>
+                          updateSelectedLight((light) => ({
+                            ...light,
+                            enabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Enabled</span>
+                    </label>
+                    <div className="wb-light-grid">
+                      {(['x', 'y', 'z'] as const).map((axis) => (
+                        <label key={axis}>
+                          <span>Offset {axis.toUpperCase()}</span>
+                          <input
+                            type="number"
+                            aria-label={`Light offset ${axis.toUpperCase()}`}
+                            min={-12}
+                            max={12}
+                            step={0.05}
+                            value={selectedProp.pointLight!.offset[axis]}
+                            onChange={(event) =>
+                              updateSelectedLight((light) => ({
+                                ...light,
+                                offset: {
+                                  ...light.offset,
+                                  [axis]: numberFrom(event.target.value),
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      ))}
+                      <label>
+                        <span>Color</span>
+                        <input
+                          type="color"
+                          aria-label="Light color"
+                          value={selectedProp.pointLight.color.toLowerCase()}
+                          onChange={(event) =>
+                            updateSelectedLight((light) => ({
+                              ...light,
+                              color: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>Intensity</span>
+                        <input
+                          type="number"
+                          aria-label="Light intensity"
+                          min={0}
+                          max={20}
+                          step={0.1}
+                          value={selectedProp.pointLight.intensity}
+                          onChange={(event) =>
+                            updateSelectedLight((light) => ({
+                              ...light,
+                              intensity: numberFrom(event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>Range</span>
+                        <input
+                          type="number"
+                          aria-label="Light range"
+                          min={0.01}
+                          max={24}
+                          step={0.1}
+                          value={selectedProp.pointLight.range}
+                          onChange={(event) =>
+                            updateSelectedLight((light) => ({
+                              ...light,
+                              range: numberFrom(event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <p className="wb-help">
+                      Offset/range use scene units. Intensity is a rendering
+                      control, not physical or D&amp;D illumination.
+                    </p>
+                    <button
+                      className="wb-danger"
+                      onClick={() =>
+                        commit(
+                          setPropPointLight(scene, selectedProp.id, undefined)
+                        )
+                      }
+                    >
+                      Remove point light
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </section>
 
           <section>
@@ -673,6 +1019,121 @@ export function WorldBuildingConcept({
               ))}
             </div>
           </section>
+
+          {compositionSource && (
+            <section aria-label="World composition library">
+              <div className="wb-library-heading">
+                <h3>World compositions</h3>
+                <button
+                  disabled={compositionList.status === 'loading' || worldBusy}
+                  onClick={() =>
+                    setCompositionRefresh((current) => current + 1)
+                  }
+                >
+                  Reload world library
+                </button>
+              </div>
+              <p className="wb-help">
+                Current world: <strong>{compositionSource.worldId}</strong>.
+                Saves are immutable; editing and saving again creates a new ID.
+                Permanent deletion does not change dungeon placements; remove
+                those references explicitly in each dungeon.
+              </p>
+              {lastWorldSave && (
+                <p className="wb-help">Latest snapshot ID: {lastWorldSave}</p>
+              )}
+              {compositionList.status === 'loading' && (
+                <p>Loading world compositions…</p>
+              )}
+              {compositionList.status === 'error' && (
+                <p className="wb-library-error">
+                  Could not load world compositions: {compositionList.message}
+                </p>
+              )}
+              {compositionList.status === 'ready' &&
+                compositionList.compositions.length === 0 && (
+                  <p>No saved compositions in this world.</p>
+                )}
+              <div className="wb-library">
+                {compositionList.compositions.map((composition) => {
+                  const metadata = compositionMetadata(composition);
+                  const label =
+                    metadata.status === 'ready'
+                      ? metadata.name
+                      : composition.id;
+                  const confirming = deleteCandidate?.id === composition.id;
+                  return (
+                    <article
+                      key={composition.id}
+                      className={
+                        metadata.status === 'error'
+                          ? 'wb-library-error'
+                          : undefined
+                      }
+                    >
+                      <strong>{label}</strong>
+                      <small>
+                        {metadata.status === 'ready'
+                          ? 'Immutable world snapshot'
+                          : `Could not open this saved composition. ${metadata.message}`}
+                      </small>
+                      {metadata.status === 'ready' && (
+                        <button
+                          disabled={worldBusy}
+                          onClick={() => void openComposition(composition.id)}
+                        >
+                          Open {metadata.name}
+                        </button>
+                      )}
+                      {!compositionSource.writer ? null : !confirming ? (
+                        <button
+                          className="wb-danger"
+                          disabled={worldBusy}
+                          onClick={() =>
+                            setDeleteCandidate({ id: composition.id, label })
+                          }
+                        >
+                          Delete {label}
+                        </button>
+                      ) : (
+                        <div
+                          className="wb-delete-confirm"
+                          role="group"
+                          aria-label={`Permanent deletion confirmation for ${label}`}
+                        >
+                          <p>
+                            Permanently delete “{label}”? This cannot be undone.
+                            Dungeon placements that use it will remain as
+                            deleted or missing references until you remove them
+                            explicitly.
+                          </p>
+                          <div className="wb-actions">
+                            <button
+                              disabled={worldBusy}
+                              onClick={() => setDeleteCandidate(null)}
+                            >
+                              Cancel delete {label}
+                            </button>
+                            <button
+                              className="wb-danger"
+                              disabled={worldBusy}
+                              onClick={() =>
+                                void deleteComposition(composition.id, label)
+                              }
+                            >
+                              {worldBusy
+                                ? 'Deleting permanently…'
+                                : `Permanently delete ${label}`}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <section>
             <h3>Arrangement library</h3>

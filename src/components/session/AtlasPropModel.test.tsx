@@ -1,3 +1,6 @@
+import type { CompositionReader } from '@/compositions/compositionJsonAdapter';
+import type { CompositionResolution } from '@/compositions/CompositionPlacementModel';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { useGLTF } from '@react-three/drei';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
@@ -6,6 +9,36 @@ import { describe, expect, it, vi } from 'vitest';
 import { facingToYaw } from '../hex-grid/facingYaw';
 import { AtlasPropModel } from './AtlasPropModel';
 import type { SceneProp3D } from './atlasToScene3D';
+
+vi.mock('@/compositions/CompositionPlacementModel', () => ({
+  CompositionPlacementModel: ({
+    compositionId,
+    instanceId,
+    transform,
+    source,
+    managedResolution,
+    renderLights,
+  }: {
+    compositionId: string;
+    instanceId: string;
+    transform: { x: number; y: number; z: number; rotationY: number };
+    source?: CompositionSource;
+    managedResolution?: CompositionResolution;
+    renderLights?: boolean;
+  }) => (
+    <group
+      name="resolved-composition-placement"
+      userData={{
+        compositionId,
+        instanceId,
+        transform,
+        source,
+        managedResolution,
+        renderLights,
+      }}
+    />
+  ),
+}));
 
 vi.mock('@react-three/drei', () => ({
   useGLTF: (url: string) => {
@@ -51,6 +84,44 @@ describe('AtlasPropModel', () => {
     const outer = propMesh?.parent?.parent as THREE.Group | undefined;
     expect(outer?.position.y).toBeCloseTo(DUNGEON_SURFACE_Y);
     expect(outer?.rotation.y).toBeCloseTo(facingToYaw('ne'));
+  });
+
+  it('routes composition refs through the world-scoped resolver with authored identity and transform', async () => {
+    const compositionSource: CompositionSource = {
+      worldId: 'world-current',
+      reader: {} as CompositionReader,
+    };
+    const compositionResolution: CompositionResolution = { status: 'loading' };
+    const renderer = await ReactThreeTestRenderer.create(
+      <AtlasPropModel
+        prop={{
+          ref: 'composition:props:decorated-table',
+          id: 'decorated-table-2',
+          position: { x: 1, y: -1, z: 0 },
+          facing: 'ne',
+          offset: { x: 0.2, y: -0.3, z: 0.4 },
+        }}
+        hexSize={1}
+        orientation="pointy"
+        compositionSource={compositionSource}
+        compositionResolution={compositionResolution}
+      />
+    );
+
+    const placement = renderer.scene.findByProps({
+      name: 'resolved-composition-placement',
+    });
+    expect(placement.props.userData.compositionId).toBe('decorated-table');
+    expect(placement.props.userData.instanceId).toBe('decorated-table-2');
+    expect(placement.props.userData.source).toBe(compositionSource);
+    expect(placement.props.userData.managedResolution).toBe(
+      compositionResolution
+    );
+    expect(placement.props.userData.renderLights).toBe(false);
+    expect(placement.props.userData.transform.rotationY).toBeCloseTo(
+      facingToYaw('ne')
+    );
+    expect(placement.props.userData.transform.y).toBeCloseTo(0.4);
   });
 
   it('resolves the generated exact Plushie ref', async () => {

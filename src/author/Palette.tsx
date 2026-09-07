@@ -4,11 +4,17 @@
  * (thumbnails from `paletteData.ts`, keyed by the same refs the game's
  * `propManifest`/`monsterModels` resolve).
  */
+import {
+  useCompositionList,
+  type CompositionSource,
+} from '@/compositions/compositionSource';
+import { CompositionThumbnailTiles } from './CompositionThumbnailTiles';
 import type { DungeonDoc } from './dungeonYaml';
 import { regionColor } from './markerStyle';
 import {
   PALETTE_MONSTERS,
   PALETTE_PROPS,
+  paletteNameForRef,
   ROLE_COLOR,
   thumbForRef,
 } from './paletteData';
@@ -23,6 +29,7 @@ export interface PaletteProps {
   onAddRegion: () => void;
   armed: PaletteItem | null;
   onArm: (item: PaletteItem) => void;
+  compositionSource?: CompositionSource;
 }
 
 const TOOLS: { id: BoardTool; label: string; hint: string }[] = [
@@ -79,7 +86,9 @@ export function Palette({
   onAddRegion,
   armed,
   onArm,
+  compositionSource,
 }: PaletteProps) {
+  const compositionList = useCompositionList(compositionSource);
   return (
     <div className="flex flex-col gap-4 text-sm" data-testid="palette">
       <section>
@@ -132,6 +141,39 @@ export function Palette({
         </div>
       </section>
 
+      <section data-testid="composition-palette">
+        <h3 className="dg-h">Compositions</h3>
+        {compositionList.status === 'missing-source' && (
+          <div className="text-xs opacity-70">
+            No current-world composition source is configured.
+          </div>
+        )}
+        {compositionList.status === 'loading' && (
+          <div className="text-xs opacity-70">Loading current world…</div>
+        )}
+        {compositionList.status === 'error' && (
+          <div className="text-xs text-red-400">
+            Could not load compositions: {compositionList.message}
+          </div>
+        )}
+        {compositionList.status === 'ready' &&
+          compositionList.compositions.length === 0 && (
+            <div className="text-xs opacity-70">
+              No compositions in {compositionSource?.worldId}.
+            </div>
+          )}
+        {compositionList.compositions.length > 0 && compositionSource && (
+          <CompositionThumbnailTiles
+            sourceWorldId={compositionSource.worldId}
+            compositions={compositionList.compositions}
+            tool={tool}
+            armed={armed}
+            onArm={onArm}
+            onTool={onTool}
+          />
+        )}
+      </section>
+
       <section>
         <h3 className="dg-h">Props</h3>
         <div className="grid grid-cols-4 gap-1">
@@ -142,7 +184,7 @@ export function Palette({
               <button
                 key={p.ref}
                 type="button"
-                title={`${p.ref} · ${p.label} (${p.role})`}
+                title={`${p.label} · ${p.role}`}
                 aria-pressed={on}
                 className={`dg-chip ${on ? 'dg-chip--on' : ''}`}
                 style={{ borderColor: ROLE_COLOR[p.role] }}
@@ -176,7 +218,7 @@ export function Palette({
               <button
                 key={m.ref}
                 type="button"
-                title={m.label}
+                title={paletteNameForRef(m.ref)}
                 aria-pressed={on}
                 className={`dg-chip ${on ? 'dg-chip--on' : ''}`}
                 style={{ borderColor: '#a02020' }}

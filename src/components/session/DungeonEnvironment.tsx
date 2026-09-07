@@ -1,12 +1,18 @@
+import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
+import { compositionIdFromRef } from '@/compositions/compositionRef';
+import { decodeCompositionScene } from '@/compositions/compositionScene';
+import type { CompositionSource } from '@/compositions/compositionSource';
 import type { DoorInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import type { ReactElement } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { resolveDungeonLighting } from '../../rendering/dungeonLighting';
+import { facingToYaw } from '../hex-grid/facingYaw';
 import { coordToKey } from '../hex-grid/hexMath';
 import { AtlasPropModel } from './AtlasPropModel';
-import type { Scene3D } from './atlasToScene3D';
+import { propWorldPosition, type Scene3D } from './atlasToScene3D';
 import { DungeonSceneLights } from './DungeonSceneLights';
 import { DungeonShell, type ShellFallbackReason } from './DungeonShell';
+import { useDungeonCompositions } from './useDungeonCompositions';
 
 export interface DungeonEnvironmentProps {
   readonly scene: Scene3D;
@@ -16,6 +22,7 @@ export interface DungeonEnvironmentProps {
   readonly onDoorClick?: (door: string) => void;
   readonly onShellFallbackReason?: (reason: ShellFallbackReason | null) => void;
   readonly onLightingDiagnostics?: (messages: readonly string[]) => void;
+  readonly compositionSource?: CompositionSource;
 }
 
 export function DungeonEnvironment({
@@ -26,10 +33,54 @@ export function DungeonEnvironment({
   onDoorClick,
   onShellFallbackReason,
   onLightingDiagnostics,
+  compositionSource,
 }: DungeonEnvironmentProps): ReactElement {
+  const compositionResolutions = useDungeonCompositions(
+    scene.props,
+    compositionSource
+  );
+  const authoredPointLights = useMemo(
+    () =>
+      scene.props.flatMap((prop) => {
+        const compositionId = compositionIdFromRef(prop.ref);
+        const resolution = compositionId
+          ? compositionResolutions.get(compositionId)
+          : undefined;
+        if (!compositionId || !prop.id || resolution?.status !== 'ready') {
+          return [];
+        }
+        try {
+          const world = propWorldPosition(prop, hexSize);
+          return projectCompositionPointLights(
+            decodeCompositionScene(resolution.composition),
+            {
+              compositionId,
+              placementId: prop.id,
+              transform: {
+                x: world.x,
+                y: world.y,
+                z: world.z,
+                rotationY: facingToYaw(prop.facing),
+              },
+            }
+          );
+        } catch {
+          // CompositionPlacementModel's existing boundary presents malformed
+          // snapshots. One bad placement contributes no lights but does not
+          // erase healthy resolved placements.
+          return [];
+        }
+      }),
+    [compositionResolutions, hexSize, scene.props]
+  );
   const plan = useMemo(
-    () => resolveDungeonLighting(scene.lighting, { x: focus.x, z: focus.z }),
-    [scene.lighting, focus.x, focus.z]
+    () =>
+      resolveDungeonLighting(
+        scene.lighting,
+        { x: focus.x, z: focus.z },
+        authoredPointLights
+      ),
+    [authoredPointLights, scene.lighting, focus.x, focus.z]
   );
   const floorLighting = useMemo(
     () => ({
@@ -68,14 +119,25 @@ export function DungeonEnvironment({
         onFallbackReason={onShellFallbackReason}
         floorLighting={floorLighting}
       />
-      {scene.props.map((prop, index) => (
-        <AtlasPropModel
-          key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
-          prop={prop}
-          hexSize={hexSize}
-          orientation="pointy"
-        />
-      ))}
+      {scene.props.map((prop, index) => {
+        const compositionId = compositionIdFromRef(prop.ref);
+        const compositionResolution =
+          compositionSource && compositionId
+            ? (compositionResolutions.get(compositionId) ?? {
+                status: 'loading' as const,
+              })
+            : undefined;
+        return (
+          <AtlasPropModel
+            key={`${prop.ref}-${coordToKey(prop.position)}-${index}`}
+            prop={prop}
+            hexSize={hexSize}
+            orientation="pointy"
+            compositionSource={compositionSource}
+            compositionResolution={compositionResolution}
+          />
+        );
+      })}
     </>
   );
 }

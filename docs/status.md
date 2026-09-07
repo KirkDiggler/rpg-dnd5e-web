@@ -12,6 +12,17 @@ let it rot.
 
 ## Active work
 
+- **Local world composition library / World Builder (#951)** — the existing
+  web#935 editor is promoted unchanged onto the development main menu beside
+  Dungeon Builder. `VITE_DEV_WORLD_ID` (default `test-world`) supplies one real
+  CompositionService Create/Get/List source shared by World Builder,
+  Dungeon Builder list/thumbnails/preview, and session play. Scene names come
+  from authored JSON; malformed and RPC-error states fail visibly without the
+  explicit fixed fixture as fallback. Local drafts/arrangements/import/export
+  remain independent. Production remains gated on verified Discord
+  guild-to-world mapping, and local Redis remains ephemeral across full-stack
+  teardown.
+
 - **Production session combat experience (#817; design #270/PR #271,
   concept #809/#810)** — `SessionEncounterView` now mounts the same
   production-owned `CombatExperience` renderer used by
