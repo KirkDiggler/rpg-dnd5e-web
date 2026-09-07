@@ -453,8 +453,74 @@ describe('candidate defaults and decision transitions', () => {
 });
 
 describe('validateReady', () => {
-  it('accepts a complete eligible and successfully loaded entry', () => {
-    expect(validateReady(entry({ loadedSuccessfully: true }))).toEqual({});
+  it('accepts provider-safe Unicode display names and authored tag order', () => {
+    expect(
+      validateReady(
+        entry({
+          loadedSuccessfully: true,
+          displayName: '火鉢 😀',
+          tags: ['lighting', 'dark-fortress', 'large_prop'],
+        })
+      )
+    ).toEqual({});
+    expect(
+      validateReady(
+        entry({ loadedSuccessfully: true, displayName: '😀'.repeat(80) })
+      )
+    ).toEqual({});
+  });
+
+  it.each([
+    ['trailing whitespace', 'Brazier 01 ', /leading or trailing whitespace/i],
+    ['leading whitespace', ' Brazier 01', /leading or trailing whitespace/i],
+    ['source marker', 'SourceFiles Brazier 01', /source-path or URI/i],
+    ['machine marker', 'Downloads Brazier 01', /source-path or URI/i],
+    ['file URI', 'FILE:C:asset', /source-path or URI/i],
+    ['Unicode-casefolded file URI', 'ﬁle:asset', /source-path or URI/i],
+    ['HTTP URI', 'HTTP:example.test', /source-path or URI/i],
+    ['HTTPS URI', 'HTTPS:example.test', /source-path or URI/i],
+    ['URI delimiter', 'asset :// example.test', /path separators/i],
+    ['forward path separator', 'props/brazier', /path separators/i],
+    ['backward path separator', 'props\\brazier', /path separators/i],
+    ['control character', 'Brazier\n01', /printable, non-control/i],
+    ['format character', 'Brazier\u200B01', /printable, non-control/i],
+    ['81 Unicode code points', '😀'.repeat(81), /80 Unicode code points/i],
+  ] as const)(
+    'rejects a display name containing %s',
+    (_case, displayName, message) => {
+      expect(
+        validateReady(entry({ loadedSuccessfully: true, displayName }))
+      ).toMatchObject({ displayName: expect.stringMatching(message) });
+    }
+  );
+
+  it.each([
+    ['uppercase', ['Lighting']],
+    ['spaces', ['dark fortress']],
+    ['overlength', [`a${'b'.repeat(40)}`]],
+    ['duplicates', ['lighting', 'lighting']],
+    ['more than 20', Array.from({ length: 21 }, (_, index) => `tag-${index}`)],
+  ])('rejects %s tags', (_case, tags) => {
+    expect(
+      validateReady(entry({ loadedSuccessfully: true, tags }))
+    ).toHaveProperty('tags');
+  });
+
+  it('preserves provider-invalid display names and tags in Keep drafts', () => {
+    const updated = updateProviderFields(readyEntry(), {
+      displayName: 'Brazier 01 ',
+      tags: ['Lighting', 'dark fortress', 'Lighting'],
+    });
+
+    expect(updated).toMatchObject({
+      decision: 'keep',
+      displayName: 'Brazier 01 ',
+      tags: ['Lighting', 'dark fortress', 'Lighting'],
+    });
+    expect(validateReady(updated)).toMatchObject({
+      displayName: expect.any(String),
+      tags: expect.any(String),
+    });
   });
 
   it.each([
@@ -966,18 +1032,17 @@ describe('portable exports', () => {
     ).toThrow(/not eligible|positive/i);
   });
 
-  it('revalidates Ready entries before provider export', () => {
+  it.each([
+    ['calibration', { calibration: { ...readyEntry().calibration, scale: 0 } }],
+    ['display name', { displayName: 'Brazier 01 ' }],
+    ['tags', { tags: ['dark fortress'] }],
+  ])('revalidates invalid %s before provider export', (_case, patch) => {
     expect(() =>
       serializeReadyProviderBatch({
         schemaVersion: 1,
         batchId: 'invalid-ready',
-        entries: [
-          {
-            ...readyEntry(),
-            calibration: { ...readyEntry().calibration, scale: 0 },
-          },
-        ],
+        entries: [{ ...readyEntry(), ...patch }],
       })
-    ).toThrow(/scale/i);
+    ).toThrow(/calibration\.scale|displayName|tags/i);
   });
 });

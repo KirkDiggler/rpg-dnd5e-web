@@ -831,6 +831,7 @@ export function AssetReviewLab() {
                     })
                   }
                 />
+                <FieldError message={readyErrors.tags} />
               </label>
               <label className="asset-review-check">
                 <input

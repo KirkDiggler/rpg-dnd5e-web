@@ -169,6 +169,18 @@ const REF_SUFFIX_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 const REVIEW_URL_PATTERN =
   /^\/models\/synty\/asset-review\/([0-9a-f]{12})-([A-Za-z0-9][A-Za-z0-9_-]*)\.glb$/;
 const BATCH_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const DISPLAY_NAME_MAX_CODE_POINTS = 80;
+const DISPLAY_NAME_FORBIDDEN_MARKERS = [
+  'sourcefiles',
+  'downloads',
+  'file:',
+  'http:',
+  'https:',
+  '://',
+] as const;
+const DISPLAY_NAME_NONPRINTABLE_PATTERN = /[\p{C}\p{Z}]/u;
+const TAG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+const TAG_LIMIT = 20;
 const SHARED_SYNTY_SCALE = 0.75;
 const MAX_RUNTIME_AXIS_METERS = 20;
 
@@ -176,6 +188,14 @@ function requireValue(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function containsForbiddenDisplayNameMarker(value: string): boolean {
+  // Uppercasing first expands full Unicode folds such as `ﬁ` -> `FI`.
+  const folded = value.toUpperCase().toLowerCase();
+  return DISPLAY_NAME_FORBIDDEN_MARKERS.some((marker) =>
+    folded.includes(marker)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -738,7 +758,44 @@ export function validateReady(entry: AssetReviewEntry): FieldErrors {
     entry.displayName.trim() === ''
   ) {
     errors.displayName = 'Display name is required';
+  } else if (entry.displayName !== entry.displayName.trim()) {
+    errors.displayName =
+      'Display name must not have leading or trailing whitespace';
+  } else if (
+    Array.from(entry.displayName).length > DISPLAY_NAME_MAX_CODE_POINTS
+  ) {
+    errors.displayName =
+      'Display name must contain at most 80 Unicode code points';
+  } else if (
+    Array.from(entry.displayName).some(
+      (character) =>
+        character !== ' ' && DISPLAY_NAME_NONPRINTABLE_PATTERN.test(character)
+    )
+  ) {
+    errors.displayName =
+      'Display name must contain only printable, non-control characters';
+  } else if (
+    entry.displayName.includes('/') ||
+    entry.displayName.includes('\\')
+  ) {
+    errors.displayName = 'Display name must not contain path separators';
+  } else if (containsForbiddenDisplayNameMarker(entry.displayName)) {
+    errors.displayName =
+      'Display name must not contain source-path or URI markers';
   }
+
+  if (!Array.isArray(entry.tags)) {
+    errors.tags = 'Tags must be an array';
+  } else if (entry.tags.length > TAG_LIMIT) {
+    errors.tags = 'Tags must contain at most 20 tags';
+  } else if (
+    entry.tags.some((tag) => typeof tag !== 'string' || !TAG_PATTERN.test(tag))
+  ) {
+    errors.tags = 'Each tag must match lowercase [a-z0-9][a-z0-9_-]{0,39}';
+  } else if (new Set(entry.tags).size !== entry.tags.length) {
+    errors.tags = 'Tags must contain unique tags';
+  }
+
   if (!CATEGORIES.has(entry.category)) {
     errors.category = 'Category is invalid';
   }

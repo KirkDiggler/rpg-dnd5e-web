@@ -298,6 +298,63 @@ describe('AssetReviewLab decisions and property sheet', () => {
     ).toBeTruthy();
   });
 
+  it('shows provider metadata blockers, accepts Unicode, and exports valid tags in authored order', async () => {
+    await renderLab();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Report scene success' })
+    );
+    const ready = screen.getByRole('button', {
+      name: 'Mark Ready',
+    }) as HTMLButtonElement;
+    const displayName = screen.getByLabelText('Display name');
+    const tags = screen.getByLabelText('Tags') as HTMLInputElement;
+
+    fireEvent.change(displayName, { target: { value: 'Brazier 01 ' } });
+    expect(ready.disabled).toBe(true);
+    expect(
+      screen.getAllByText(/leading or trailing whitespace/i).length
+    ).toBeGreaterThan(0);
+
+    fireEvent.change(displayName, { target: { value: '火鉢 😀' } });
+    expect(ready.disabled).toBe(false);
+
+    for (const [invalidTags, blocker] of [
+      ['Lighting', /Each tag must match lowercase/],
+      ['dark fortress', /Each tag must match lowercase/],
+      [`a${'b'.repeat(40)}`, /Each tag must match lowercase/],
+      ['lighting, lighting', /Tags must contain unique tags/],
+      [
+        Array.from({ length: 21 }, (_, index) => `tag-${index}`).join(', '),
+        /Tags must contain at most 20 tags/,
+      ],
+    ] as const) {
+      fireEvent.change(tags, { target: { value: invalidTags } });
+      expect(ready.disabled).toBe(true);
+      expect(screen.getAllByText(blocker).length).toBeGreaterThan(0);
+    }
+
+    fireEvent.change(tags, {
+      target: { value: 'lighting, dark-fortress, large_prop' },
+    });
+    expect(tags.value).toBe('lighting, dark-fortress, large_prop');
+    expect(ready.disabled).toBe(false);
+    fireEvent.click(ready);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Export Ready provider JSON' })
+    );
+
+    const exported = JSON.parse(await blobText(downloadedBlobs.at(-1)!)) as {
+      entries: Array<{ displayName: string; tags: string[] }>;
+    };
+    expect(exported.entries).toMatchObject([
+      {
+        displayName: '火鉢 😀',
+        tags: ['lighting', 'dark-fortress', 'large_prop'],
+      },
+    ]);
+  });
+
   it('renders flat review-only bounds exactly and keeps navigation responsive', async () => {
     const flatReason =
       'SM_Env_Grunge_03 slot 0 (Grunge_01): non-default material has no exact reviewed override';
