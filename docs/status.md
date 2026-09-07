@@ -12,16 +12,19 @@ let it rot.
 
 ## Active work
 
-- **Local world composition library / World Builder (#951)** — the existing
-  web#935 editor is promoted unchanged onto the development main menu beside
-  Dungeon Builder. `VITE_DEV_WORLD_ID` (default `test-world`) supplies one real
-  CompositionService Create/Get/List source shared by World Builder,
-  Dungeon Builder list/thumbnails/preview, and session play. Scene names come
-  from authored JSON; malformed and RPC-error states fail visibly without the
-  explicit fixed fixture as fallback. Local drafts/arrangements/import/export
-  remain independent. Production remains gated on verified Discord
-  guild-to-world mapping, and local Redis remains ephemeral across full-stack
-  teardown.
+- **Guild-bound world composition library / World Builder (#974, project
+  #399)** — normal Discord auth requests `guilds.members.read` consent and uses
+  `DiscordSDK.guildId` as the untrusted selector and canonical WorldID. Only
+  CompositionService calls carry `x-rpg-guild-id`; the API independently
+  verifies same-token membership. Sources are scoped to the opaque credential
+  epoch plus guild, stale results/errors cannot replace current palette or
+  resolution state, and stale sources are fenced before the global transport
+  can use replacement credentials. No-guild, denied/missing consent,
+  unauthenticated, and provider failures have no Dev/test-world fallback. The
+  explicit `VITE_DEV_WORLD_ID` (default `test-world`) remains available only
+  for actual Dev auth in a Vite development build. Local editor draft/import/
+  export semantics remain independent. Real Discord consent and proxy-path
+  proof remain a coordinated deployment acceptance step.
 
 - **Production session combat experience (#817; design #270/PR #271,
   concept #809/#810)** — `SessionEncounterView` now mounts the same

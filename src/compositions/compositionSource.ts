@@ -1,3 +1,4 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { useEffect, useState } from 'react';
 import type {
@@ -10,6 +11,15 @@ export interface CompositionSource {
   worldId: string;
   reader: CompositionReader;
   writer?: CompositionWriter;
+}
+
+const GENERIC_ACCESS_DENIAL = "You do not have access to this server's world.";
+
+export function compositionErrorMessage(error: unknown): string {
+  if (ConnectError.from(error).code === Code.PermissionDenied) {
+    return GENERIC_ACCESS_DENIAL;
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 export type CompositionListState =
@@ -60,7 +70,7 @@ export function useCompositionList(
         setState({
           status: 'error',
           compositions: [],
-          message: error instanceof Error ? error.message : String(error),
+          message: compositionErrorMessage(error),
         });
       }
     );
