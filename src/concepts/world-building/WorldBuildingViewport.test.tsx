@@ -33,6 +33,14 @@ const TABLE: WorldProp = {
   transform: { x: 2, y: 0, z: 3, rotationY: 0 },
 };
 
+const GENERATED_PROP: WorldProp = {
+  ...TABLE,
+  id: 'alchemy-tools',
+  assetRef: 'dnd5e:props:dark-fortress:alchemy_tools_01',
+  label: 'alchemy tools 01',
+  transform: { x: -1, y: 0.2, z: 2, rotationY: 0.5 },
+};
+
 function renderVisual(
   options: {
     selected?: boolean;
@@ -69,6 +77,37 @@ beforeEach(() => {
 });
 
 describe('WorldPropVisual surface and pointer ownership', () => {
+  it('routes generated exact refs through WorldAssetModel and reports their provider bounds to placement guides', async () => {
+    const onAssetState = vi.fn();
+    const onBoundsMeasured = vi.fn();
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldPropVisual
+        item={GENERATED_PROP}
+        selected={false}
+        onSelect={vi.fn()}
+        selectedIds={[]}
+        isGizmoPointer={() => false}
+        resolveSelectionId={() => GENERATED_PROP.id}
+        onAssetState={onAssetState}
+        onBoundsMeasured={onBoundsMeasured}
+      />
+    );
+    const model = renderer.scene.findByProps({ name: 'world-asset-model' });
+    expect(model.instance.position.x).toBe(-1);
+    expect(model.instance.position.z).toBe(2);
+    expect(model.instance.rotation.y).toBeCloseTo(0.5);
+    expect(onAssetState).toHaveBeenCalledWith('alchemy-tools', 'loaded');
+    expect(onBoundsMeasured).toHaveBeenCalledWith('alchemy-tools', {
+      assetRef: GENERATED_PROP.assetRef,
+      bounds: expect.objectContaining({
+        minY: 0,
+        width: expect.any(Number),
+        height: expect.any(Number),
+        depth: expect.any(Number),
+      }),
+    });
+  });
+
   it('prefers an overlapping supported decoration so Shift-left can add it after its support', () => {
     const tableHitbox = new THREE.Mesh();
     tableHitbox.userData.worldBuildingInteractionId = 'table';

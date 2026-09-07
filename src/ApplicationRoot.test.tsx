@@ -30,6 +30,20 @@ describe('ApplicationRoot', () => {
     expect(screen.queryByTestId('toast-provider')).toBeNull();
   });
 
+  it('renders the loopback asset review tool outside providers and the StrictMode WebGL teardown probe', () => {
+    render(
+      <ApplicationRoot
+        mode="development"
+        hostname="127.0.0.1"
+        search="?assetReview=1"
+      />
+    );
+
+    expect(screen.getByText('Application')).toBeTruthy();
+    expect(screen.queryByTestId('discord-provider')).toBeNull();
+    expect(screen.queryByTestId('toast-provider')).toBeNull();
+  });
+
   it('keeps the ordinary application inside its providers', () => {
     render(
       <ApplicationRoot mode="development" hostname="127.0.0.1" search="" />

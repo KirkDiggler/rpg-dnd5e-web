@@ -1,4 +1,4 @@
-import { PROP_KEYS } from '@/components/hex-grid/propManifest';
+import { WORLD_BUILDING_CATALOG_BY_REF } from './catalog';
 import type {
   Arrangement,
   ArrangementLibrary,
@@ -112,7 +112,7 @@ function prop(value: unknown, field: string): WorldProp {
   const input = object(value);
   if (input.kind !== 'prop') throw new Error(`${field}.kind must be prop.`);
   const assetRef = string(input.assetRef, `${field}.assetRef`, 160);
-  if (!PROP_KEYS[assetRef]) {
+  if (!WORLD_BUILDING_CATALOG_BY_REF.has(assetRef)) {
     throw new Error(`${field}.assetRef is not in the local prop catalog.`);
   }
   return {

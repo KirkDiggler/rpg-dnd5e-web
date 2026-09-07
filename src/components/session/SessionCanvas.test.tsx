@@ -1196,8 +1196,8 @@ describe('SessionScene', () => {
     expect(renderer.scene.children.length).toBeGreaterThan(0);
   });
 
-  it('mounts without throwing when a walk is in flight (movePath/moveSeq/onMovementPresentationComplete wired)', async () => {
-    const onMovementPresentationComplete = vi.fn();
+  it('mounts without throwing when a walk is in flight (movements/onMovementPainted wired)', async () => {
+    const onMovementPainted = vi.fn();
     const renderer = await ReactThreeTestRenderer.create(
       <SessionScene
         scene={scene()}
@@ -1206,12 +1206,22 @@ describe('SessionScene', () => {
         characterName="Toolkit Sandbox Fighter"
         classRefId={undefined}
         myPosition={{ x: 1, y: 0, z: -1 }}
-        movePath={[
-          { x: 0, y: 0, z: 0 },
-          { x: 1, y: 0, z: -1 },
-        ]}
-        moveSeq={1}
-        onMovementPresentationComplete={onMovementPresentationComplete}
+        movements={
+          new Map([
+            [
+              'char-1',
+              {
+                route: [
+                  { x: 0, y: 0, z: 0 },
+                  { x: 1, y: 0, z: -1 },
+                ],
+                seq: 1,
+                reached: 0,
+              },
+            ],
+          ])
+        }
+        onMovementPainted={onMovementPainted}
       />
     );
     expect(renderer.scene.children.length).toBeGreaterThan(0);

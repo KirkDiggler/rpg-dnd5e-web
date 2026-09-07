@@ -1175,7 +1175,9 @@ describe('SessionEncounterView production combat integration', () => {
     await screen.findByText(/actions may be out of date/i);
     expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
     expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
-    expect(hoisted.lastCanvasProps.current?.moveSeq).toBe(1);
+    expect(hoisted.lastCanvasProps.current?.movements?.get('char-1')?.seq).toBe(
+      1
+    );
     expect(hoisted.whereResult.refetch).not.toHaveBeenCalled();
     act(() => {
       oldTargetClick?.('skeleton-1');
@@ -1235,13 +1237,15 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
     await waitFor(() =>
-      expect(hoisted.lastCanvasProps.current?.moveSeq).toBe(1)
+      expect(
+        hoisted.lastCanvasProps.current?.movements?.get('char-1')?.seq
+      ).toBe(1)
     );
-    expect(hoisted.lastCanvasProps.current?.movePath).toEqual([
-      { x: 1, y: -1, z: 0 },
-    ]);
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('char-1')?.route
+    ).toEqual([{ x: 1, y: -1, z: 0 }]);
     act(() => {
-      hoisted.lastCanvasProps.current?.onMovementPresentationComplete?.(1);
+      hoisted.lastCanvasProps.current?.onMovementPainted?.('char-1', 1, 1);
     });
     await waitFor(() => expect(hoisted.whereResult.refetch).toHaveBeenCalled());
   });
@@ -3533,9 +3537,9 @@ describe('SessionEncounterView production combat integration', () => {
       );
     });
 
-    it('clicking Sell then Confirm calls Trade with the item on give and the expected payout on receive.currency', async () => {
+    it('clicking Sell then Confirm calls Trade with the item on give and the expected payout on receive.currency, then confirms only after the response', async () => {
       await openVendorSellTab();
-      hoisted.tradeFn.mockResolvedValue({
+      const tradeResponse = {
         descriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
@@ -3555,7 +3559,9 @@ describe('SessionEncounterView production combat integration', () => {
           ],
         },
         seq: 2n,
-      });
+      };
+      const response = deferred<typeof tradeResponse>();
+      hoisted.tradeFn.mockReturnValue(response.promise);
 
       fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
       fireEvent.click(
@@ -3576,8 +3582,14 @@ describe('SessionEncounterView production combat integration', () => {
           receive: { items: [], currency: { copper: 200 } },
         })
       );
+      expect(screen.queryByText('Sold Dagger.')).toBeNull();
 
-      expect(screen.getByText('Sold Dagger.')).toBeTruthy();
+      await act(async () => {
+        response.resolve(tradeResponse);
+        await response.promise;
+      });
+
+      expect(await screen.findByText('Sold Dagger.')).toBeTruthy();
     });
 
     it('a Sell failure surfaces a notice without crashing the popover', async () => {
@@ -4597,5 +4609,130 @@ describe('the camera starts the way the dungeon says (rpg-project#374)', () => {
     return waitFor(() =>
       expect(hoisted.lastCanvasProps.current?.startFacing).toBeUndefined()
     );
+  });
+});
+
+describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
+  const movedBeat = (member: string, x: number, y: number, seq: bigint) =>
+    event(
+      EventKind.MOVED,
+      {
+        case: 'moved',
+        value: { member, to: { x, y } },
+      } as SessionEvent['body'],
+      seq
+    );
+
+  const sightingOf = (
+    subject: string,
+    x: number,
+    y: number,
+    currentVia: string[] = ['sight']
+  ) => ({
+    subject,
+    name: subject,
+    kind: MemberKind.PLAYER,
+    seen: { position: { x, y }, standing: Standing.UP },
+    currentVia,
+  });
+
+  it("assembles a peer's arriving steps into one route the canvas can animate", async () => {
+    readyScene();
+    // A movement only animates for an actor the viewer can actually see, so
+    // the peer has to be a LIVE sighting for this to mean anything.
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [sightingOf('scout', 0, 0)],
+    });
+    // A four-cell walk reaches a witness as four beats, one per cell.
+    const steps = deferredStream([
+      movedBeat('scout', 1, 0, 601n),
+      movedBeat('scout', 2, 0, 602n),
+      movedBeat('scout', 3, 0, 603n),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(steps.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    // The peer must be a live sighting BEFORE their steps arrive — a beat for
+    // someone the viewer cannot see is deliberately not banked.
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (m) => m.subject === 'scout'
+        )
+      ).toBe(true)
+    );
+    steps.release();
+
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.movements?.get('scout')?.route
+      ).toHaveLength(3)
+    );
+    const movement = hoisted.lastCanvasProps.current?.movements?.get('scout');
+    // Wire axial (q, r) bridged to cube — the route the walk clip steps along.
+    expect(movement?.route).toEqual([
+      { x: 1, y: -1, z: 0 },
+      { x: 2, y: -2, z: 0 },
+      { x: 3, y: -3, z: 0 },
+    ]);
+    // A sequence that never advances is exactly what used to leave every
+    // non-local actor snapping in its idle pose.
+    expect(movement?.seq).toBeGreaterThan(0);
+  });
+
+  it('a remembered actor banks no route — a ghost snaps, it does not walk', async () => {
+    readyScene();
+    // `currentVia: []` is a held MEMORY, not a live sighting. The wire still
+    // sends this actor's steps (the audience for a step is the whole
+    // roster), so without a visibility gate the route would sit here and
+    // replay the moment they were sighted again. Kirk, 2026-09-07: "I saw
+    // the skeleton move when it was a ghost, which is when we would teleport."
+    hoisted.getViewFn.mockResolvedValue({
+      sightings: [sightingOf('skeleton-1', 4, 0, [])],
+    });
+    const steps = deferredStream([
+      movedBeat('skeleton-1', 5, 0, 621n),
+      movedBeat('skeleton-1', 6, 0, 622n),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(steps.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.otherMembers?.some(
+          (m) => m.subject === 'skeleton-1'
+        )
+      ).toBe(true)
+    );
+    const viewCallsBefore = hoisted.getViewFn.mock.calls.length;
+    steps.release();
+    // A non-local movement beat invalidates the view, so this fires only
+    // once the beats have actually been handled — no arbitrary sleep.
+    await waitFor(() =>
+      expect(hoisted.getViewFn.mock.calls.length).toBeGreaterThan(
+        viewCallsBefore
+      )
+    );
+
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('skeleton-1')
+    ).toBeUndefined();
+  });
+
+  it('does not double-drive the local player, whose route arrives whole from their own Move answer', async () => {
+    readyScene();
+    const mine = deferredStream([movedBeat('char-1', 1, 0, 611n)]);
+    hoisted.streamEventsFn.mockReturnValue(mine.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    mine.release();
+
+    await waitFor(() => expect(hoisted.whereResult.refetch).toHaveBeenCalled());
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('char-1')
+    ).toBeUndefined();
   });
 });
