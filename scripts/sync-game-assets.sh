@@ -5,6 +5,11 @@
 # Usage: npm run assets:sync
 #   or:  sh scripts/sync-game-assets.sh
 #
+# Modes:
+#   --runtime-assets        mirror only the two production runtime roots
+#   --world-assets          mirror world assets and generate their catalog
+#   --world-assets --check  validate the world runtime/catalog without changes
+#
 # Local/automation overrides:
 #   RPG_GAME_ASSETS_PATH    explicit private provider checkout (never updated)
 #   RPG_GAME_ASSETS_DIR     legacy private provider checkout override
@@ -15,10 +20,12 @@
 
 set -e
 
+RUNTIME_ASSETS_ONLY=0
 WORLD_ASSETS_ONLY=0
 CHECK_ONLY=0
 for ARG in "$@"; do
   case "$ARG" in
+    --runtime-assets) RUNTIME_ASSETS_ONLY=1 ;;
     --world-assets) WORLD_ASSETS_ONLY=1 ;;
     --check) CHECK_ONLY=1 ;;
     *)
@@ -27,6 +34,10 @@ for ARG in "$@"; do
       ;;
   esac
 done
+if [ "$RUNTIME_ASSETS_ONLY" = "1" ] && { [ "$WORLD_ASSETS_ONLY" = "1" ] || [ "$CHECK_ONLY" = "1" ]; }; then
+  echo "ERROR: --runtime-assets cannot be combined with other modes" >&2
+  exit 2
+fi
 if [ "$CHECK_ONLY" = "1" ] && [ "$WORLD_ASSETS_ONLY" != "1" ]; then
   echo "ERROR: --check currently requires --world-assets" >&2
   exit 2
@@ -95,6 +106,8 @@ sync_runtime_root() {
     --exclude='*.blend' \
     --exclude='evidence/' \
     --exclude='*/evidence/' \
+    --exclude='review/' \
+    --exclude='*/review/' \
     "$SRC/" "$DEST/"
 }
 
@@ -144,6 +157,89 @@ if [ "$WORLD_ASSETS_ONLY" = "1" ]; then
   exit 0
 fi
 
+SYNTY_SRC="$ASSETS_DIR/harness/models/synty"
+CUSTOM_DICE_SRC="$ASSETS_DIR/harness/models/custom-dice"
+SYNTY_DEST="$WEB_ROOT/public/models/synty"
+CUSTOM_DICE_DEST="$WEB_ROOT/public/models/custom-dice"
+
+# Preflight the complete approved boundary before rsync --delete can mutate
+# either destination. Runtime roots and required dice files must be real
+# provider entries rather than links to material outside the approved roots.
+for SRC in "$SYNTY_SRC" "$CUSTOM_DICE_SRC"; do
+  if [ ! -d "$SRC" ] || [ -L "$SRC" ]; then
+    echo "ERROR: expected asset source dir not found: $SRC" >&2
+    exit 1
+  fi
+done
+
+if [ "$RUNTIME_ASSETS_ONLY" = "1" ]; then
+  DICE_MANIFEST="$CUSTOM_DICE_SRC/dice-tray-presets.json"
+  if [ ! -f "$DICE_MANIFEST" ] || [ -L "$DICE_MANIFEST" ]; then
+    echo "ERROR: required production dice manifest not found: $DICE_MANIFEST" >&2
+    exit 1
+  fi
+  DICE_MODEL_RELATIVE_PATH=$(
+    node - "$DICE_MANIFEST" <<'NODE'
+const fs = require('node:fs');
+
+try {
+  const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  const matches = Array.isArray(manifest.presets)
+    ? manifest.presets.filter(
+        (entry) => entry?.presetId === 'dice.original.carved.d20'
+      )
+    : [];
+  if (matches.length !== 1) {
+    throw new Error(
+      'expected exactly one dice.original.carved.d20 production preset'
+    );
+  }
+  const modelPath = matches[0]?.model?.path;
+  const segments =
+    typeof modelPath === 'string' ? modelPath.split('/') : [];
+  if (
+    segments.length === 0 ||
+    segments.some((segment) => !segment || segment === '.' || segment === '..') ||
+    modelPath.startsWith('/') ||
+    modelPath.includes('\\')
+  ) {
+    throw new Error('production d20 model path must stay within custom-dice');
+  }
+  const excludedSegment = segments.find(
+    (segment, index) =>
+      segment.endsWith('.blend') ||
+      (index < segments.length - 1 &&
+        (segment === 'evidence' || segment === 'review'))
+  );
+  if (excludedSegment) {
+    throw new Error(
+      `production d20 model path is excluded from runtime sync: ${modelPath}`
+    );
+  }
+  process.stdout.write(modelPath);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+NODE
+  ) || {
+    echo "ERROR: invalid production dice manifest: $DICE_MANIFEST" >&2
+    exit 1
+  }
+  DICE_MODEL="$CUSTOM_DICE_SRC/$DICE_MODEL_RELATIVE_PATH"
+  if [ ! -f "$DICE_MODEL" ] || [ -L "$DICE_MODEL" ]; then
+    echo "ERROR: required manifest-referenced production dice model not found: $DICE_MODEL" >&2
+    exit 1
+  fi
+
+  # Production packaging intentionally skips tracked catalog generation: the
+  # clean provider checkout remains authoritative for these private bytes.
+  sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
+  sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
+  echo "Done. production public/models/{synty,custom-dice}/ runtime roots are complete for provider $ASSETS_HEAD."
+  exit 0
+fi
+
 CATALOG_GENERATOR=${RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR:-${RPG_DWARF_CATALOG_GENERATOR:-$SCRIPT_DIR/generateCharacterCustomizationCatalog.ts}}
 CATALOG_RUNNER=${RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER:-${RPG_DWARF_CATALOG_RUNNER:-$WEB_ROOT/node_modules/.bin/tsx}}
 if [ ! -f "$CATALOG_GENERATOR" ] || [ -L "$CATALOG_GENERATOR" ]; then
@@ -154,20 +250,6 @@ if [ ! -x "$CATALOG_RUNNER" ]; then
   echo "ERROR: customization catalog TypeScript runner is unavailable: $CATALOG_RUNNER" >&2
   exit 1
 fi
-
-SYNTY_SRC="$ASSETS_DIR/harness/models/synty"
-CUSTOM_DICE_SRC="$ASSETS_DIR/harness/models/custom-dice"
-SYNTY_DEST="$WEB_ROOT/public/models/synty"
-CUSTOM_DICE_DEST="$WEB_ROOT/public/models/custom-dice"
-
-# Preflight the complete approved boundary before rsync --delete can mutate
-# either destination.
-for SRC in "$SYNTY_SRC" "$CUSTOM_DICE_SRC"; do
-  if [ ! -d "$SRC" ]; then
-    echo "ERROR: expected asset source dir not found: $SRC" >&2
-    exit 1
-  fi
-done
 
 # Validate and generate against the clean provider before either rsync --delete
 # can mutate a destination. The tracked catalog becomes visible only after both
