@@ -8,6 +8,7 @@ import {
   Class,
   Language,
   Skill,
+  Spell,
   Tool,
   Weapon,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
@@ -403,6 +404,31 @@ export function ClassSelectionModal({
       if (selected.length !== choice.chooseCount) {
         setErrorMessage(
           `Please select ${choice.chooseCount} tool${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    // Validate cantrip and spell choices. ONE LOOP OVER BOTH CATEGORIES: they
+    // are the same requirement shape with different counts, and the message
+    // reads off the server's own description rather than naming a category.
+    const spellChoices =
+      choicesSource?.filter(
+        (choice) =>
+          choice.choiceType === ChoiceCategory.CANTRIPS ||
+          choice.choiceType === ChoiceCategory.SPELLS
+      ) || [];
+
+    for (const choice of spellChoices) {
+      const picked = currentClassChoices.spells?.find(
+        (sc) => sc.choiceId === choice.id
+      );
+      const selected = picked?.spells || [];
+      if (selected.length !== choice.chooseCount) {
+        const noun =
+          choice.choiceType === ChoiceCategory.CANTRIPS ? 'cantrip' : 'spell';
+        setErrorMessage(
+          `Please select ${choice.chooseCount} ${noun}${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
         );
         return;
       }
@@ -1404,6 +1430,92 @@ export function ClassSelectionModal({
                       );
                     })()}
 
+                    {/* Cantrip and spell choices. ONE BLOCK FOR BOTH, in the
+                        order the server sent them, because they differ only by
+                        category and count — a second block would be the same
+                        code with a different noun in the heading. */}
+                    {(() => {
+                      const spellChoices =
+                        choicesSource?.filter(
+                          (choice) =>
+                            choice.choiceType === ChoiceCategory.CANTRIPS ||
+                            choice.choiceType === ChoiceCategory.SPELLS
+                        ) || [];
+
+                      if (spellChoices.length === 0) return null;
+
+                      return (
+                        <div>
+                          <h4
+                            style={{
+                              color: textPrimary,
+                              fontSize: '18px',
+                              fontWeight: 'bold',
+                              marginBottom: '12px',
+                              fontFamily: 'Cinzel, serif',
+                            }}
+                          >
+                            Choose Your Spells{' '}
+                            <span
+                              style={{ color: '#ef4444', fontSize: '16px' }}
+                            >
+                              *
+                            </span>
+                          </h4>
+                          {spellChoices.map((choice) => (
+                            <div
+                              key={choice.id}
+                              style={{ marginBottom: '16px' }}
+                            >
+                              <ChoiceRenderer
+                                choice={choice}
+                                currentSelections={
+                                  currentClassChoices.spells?.find(
+                                    (sc) => sc.choiceId === choice.id
+                                  )?.spells || []
+                                }
+                                onSelectionChange={(_choiceId, selections) => {
+                                  const spellEnums = selections as Spell[];
+
+                                  setClassChoicesMap((prev) => {
+                                    const currentChoices = prev[choiceKey] || {
+                                      skills: [],
+                                      tools: [],
+                                      equipment: [],
+                                      features: [],
+                                    };
+                                    const updatedSpells =
+                                      currentChoices.spells?.filter(
+                                        (sc) => sc.choiceId !== choice.id
+                                      ) || [];
+
+                                    if (spellEnums.length > 0) {
+                                      updatedSpells.push({
+                                        choiceId: choice.id,
+                                        // ECHOED, NEVER DECIDED HERE: the
+                                        // requirement says which of the two it
+                                        // is, and the submission says it back.
+                                        category: choice.choiceType,
+                                        spells: spellEnums,
+                                      });
+                                    }
+
+                                    return {
+                                      ...prev,
+                                      [choiceKey]: {
+                                        ...currentChoices,
+                                        spells: updatedSpells,
+                                      },
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* Expertise Choices */}
                     {(() => {
                       const expertiseChoices =
@@ -1805,7 +1917,12 @@ export function ClassSelectionModal({
                             choice.choiceType !== ChoiceCategory.EQUIPMENT &&
                             choice.choiceType !==
                               ChoiceCategory.FIGHTING_STYLE &&
-                            choice.choiceType !== ChoiceCategory.EXPERTISE
+                            choice.choiceType !== ChoiceCategory.EXPERTISE &&
+                            // Drawn by the spell section above. Left in, the
+                            // same requirement rendered twice and answering
+                            // either one silently overwrote the other.
+                            choice.choiceType !== ChoiceCategory.CANTRIPS &&
+                            choice.choiceType !== ChoiceCategory.SPELLS
                         ) || [];
 
                       if (otherChoices.length === 0) return null;

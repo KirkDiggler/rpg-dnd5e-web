@@ -36,6 +36,7 @@ import {
   convertFeatureChoiceToProto,
   convertLanguageChoiceToProto,
   convertSkillChoiceToProto,
+  convertSpellChoiceToProto,
   convertToolChoiceToProto,
   convertTraitChoiceToProto,
 } from '../../utils/choiceConverter';
@@ -50,6 +51,7 @@ import {
   getWeaponDisplay,
   getWeaponProficiencyCategoryDisplay,
 } from '../../utils/enumDisplay';
+import { getSpellInfo } from '../../utils/enumRegistry';
 import {
   hasNoInvalidEquipmentChoices,
   reconstructEquipmentChoice,
@@ -138,6 +140,31 @@ function getExtraLanguages(
 }
 
 // Helper function to get tool proficiencies
+/**
+ * The spells recorded against one choice category, by display name.
+ *
+ * READ OFF THE SUBMITTED CHOICES, not off the class payload's option lists:
+ * the options say what COULD have been picked and the submissions say what
+ * was. A sheet built from the former would list every spell the bard was
+ * offered.
+ */
+function spellNamesFor(
+  classChoices: readonly ChoiceData[],
+  category: ChoiceCategory
+): string[] {
+  return classChoices
+    .filter(
+      (choice) =>
+        choice.category === category && choice.selection?.case === 'spells'
+    )
+    .flatMap((choice) =>
+      choice.selection?.case === 'spells'
+        ? choice.selection.value.spells || []
+        : []
+    )
+    .map((spell) => getSpellInfo(spell).name);
+}
+
 function getToolProficiencies(allProficiencies: Set<string>): string[] {
   return Array.from(allProficiencies)
     .filter((prof) => {
@@ -1233,6 +1260,57 @@ export function InteractiveCharacterSheet({
                           return null;
                         })()}
 
+                        {/* Known cantrips and spells, read back from the
+                            draft's own recorded choices — the same source the
+                            chosen skills above are read from, so the sheet
+                            shows what was SENT rather than what the modal
+                            happens to still hold in memory.
+
+                            SPLIT BY CATEGORY, NOT BY SPELL LEVEL. The server
+                            says which requirement each pick answered; deriving
+                            "is this a cantrip" from a level here would be a
+                            second opinion about the same fact. */}
+                        {(() => {
+                          const rows: Array<{
+                            label: string;
+                            names: string[];
+                          }> = [
+                            {
+                              label: 'Cantrips',
+                              names: spellNamesFor(
+                                draft.classChoices,
+                                ChoiceCategory.CANTRIPS
+                              ),
+                            },
+                            {
+                              label: 'Known Spells',
+                              names: spellNamesFor(
+                                draft.classChoices,
+                                ChoiceCategory.SPELLS
+                              ),
+                            },
+                          ].filter((row) => row.names.length > 0);
+
+                          if (rows.length === 0) return null;
+
+                          return rows.map((row) => (
+                            <div
+                              key={row.label}
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              <span
+                                style={{
+                                  color: 'var(--text-primary)',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                {row.label}:
+                              </span>{' '}
+                              {row.names.join(', ')}
+                            </div>
+                          ));
+                        })()}
+
                         {/* Display Class Features (like Fighting Style) */}
                         {(() => {
                           const featureChoices =
@@ -1850,6 +1928,18 @@ export function InteractiveCharacterSheet({
             choices.features.forEach((featureChoice) => {
               choiceData.push(
                 convertFeatureChoiceToProto(featureChoice, ChoiceSource.CLASS)
+              );
+            });
+          }
+
+          // Cantrips and spells go up in the SAME UpdateClass call as the
+          // skills, tools and equipment beside them. A second round trip for
+          // them would let a draft exist with a class but no spells, which is
+          // exactly the state the server refuses to finalize.
+          if (choices.spells) {
+            choices.spells.forEach((spellChoice) => {
+              choiceData.push(
+                convertSpellChoiceToProto(spellChoice, ChoiceSource.CLASS)
               );
             });
           }
