@@ -21,6 +21,7 @@ interface CompositionRpcClient {
   listCompositions(request: {
     worldId: string;
   }): Promise<{ compositions: Composition[] }>;
+  deleteComposition(request: { worldId: string; id: string }): Promise<object>;
 }
 
 function requireComposition(
@@ -74,6 +75,10 @@ export class RpcCompositionAdapter
     return response.compositions.map((composition) =>
       requireComposition(composition, worldId)
     );
+  }
+
+  async deleteComposition(worldId: string, id: string): Promise<void> {
+    await this.client.deleteComposition({ worldId, id });
   }
 }
 

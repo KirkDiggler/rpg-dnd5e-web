@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { getPlayerId } from './api/auth';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
@@ -85,6 +85,12 @@ function AppContent() {
     return () => {
       current = false;
     };
+  }, []);
+  const invalidateCompositionResolutions = useCallback(() => {
+    // Existing composition resolution caches reset on source identity. Keep
+    // invalidation at that small seam so a deleted snapshot cannot retain
+    // stale models or lights after the next relevant render/navigation.
+    setCompositionSource((current) => (current ? { ...current } : current));
   }, []);
   // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
@@ -418,6 +424,7 @@ function AppContent() {
           <WorldBuildingConcept
             onBack={handleBackToHome}
             compositionSource={compositionSource}
+            onCompositionDeleted={invalidateCompositionResolutions}
           />
         ) : currentView === 'author' ? (
           <AuthorView

@@ -59,6 +59,7 @@ interface WorldBuildingConceptProps {
   idFactory?: IdFactory;
   now?: () => string;
   compositionSource?: CompositionSource;
+  onCompositionDeleted?: () => void;
   onBack?: () => void;
 }
 
@@ -103,6 +104,7 @@ export function WorldBuildingConcept({
   idFactory = defaultId,
   now = () => new Date().toISOString(),
   compositionSource,
+  onCompositionDeleted,
   onBack,
 }: WorldBuildingConceptProps) {
   const effectiveStorage = storage ?? browserStorage;
@@ -127,6 +129,10 @@ export function WorldBuildingConcept({
   const [compositionRefresh, setCompositionRefresh] = useState(0);
   const [worldBusy, setWorldBusy] = useState(false);
   const [lastWorldSave, setLastWorldSave] = useState<string | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
   const [assetStates, setAssetStates] = useState<
     Record<string, 'loaded' | 'error'>
   >({});
@@ -463,6 +469,32 @@ export function WorldBuildingConcept({
     } catch (error) {
       setNotice(
         `World save failed; the open scene and local draft were kept. ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setWorldBusy(false);
+    }
+  };
+
+  const deleteComposition = async (id: string, label: string) => {
+    if (!compositionSource?.writer || worldBusy) return;
+    setWorldBusy(true);
+    setNotice('');
+    try {
+      await compositionSource.writer.deleteComposition(
+        compositionSource.worldId,
+        id
+      );
+      setDeleteCandidate(null);
+      setCompositionRefresh((current) => current + 1);
+      onCompositionDeleted?.();
+      setNotice(
+        `Permanently deleted “${label}”. Existing dungeon placements were not changed; remove them explicitly from each dungeon.`
+      );
+    } catch (error) {
+      setNotice(
+        `Delete failed; “${label}” and all existing data were kept. ${
           error instanceof Error ? error.message : String(error)
         }`
       );
@@ -1000,6 +1032,8 @@ export function WorldBuildingConcept({
               <p className="wb-help">
                 Current world: <strong>{compositionSource.worldId}</strong>.
                 Saves are immutable; editing and saving again creates a new ID.
+                Permanent deletion does not change dungeon placements; remove
+                those references explicitly in each dungeon.
               </p>
               {lastWorldSave && (
                 <p className="wb-help">Latest snapshot ID: {lastWorldSave}</p>
@@ -1019,27 +1053,77 @@ export function WorldBuildingConcept({
               <div className="wb-library">
                 {compositionList.compositions.map((composition) => {
                   const metadata = compositionMetadata(composition);
-                  if (metadata.status === 'error') {
-                    return (
-                      <article
-                        key={composition.id}
-                        className="wb-library-error"
-                      >
-                        <strong>Unsupported saved composition</strong>
-                        <small>{metadata.message}</small>
-                      </article>
-                    );
-                  }
+                  const label =
+                    metadata.status === 'ready'
+                      ? metadata.name
+                      : composition.id;
+                  const confirming = deleteCandidate?.id === composition.id;
                   return (
-                    <article key={composition.id}>
-                      <strong>{metadata.name}</strong>
-                      <small>Immutable world snapshot</small>
-                      <button
-                        disabled={worldBusy}
-                        onClick={() => void openComposition(composition.id)}
-                      >
-                        Open {metadata.name}
-                      </button>
+                    <article
+                      key={composition.id}
+                      className={
+                        metadata.status === 'error'
+                          ? 'wb-library-error'
+                          : undefined
+                      }
+                    >
+                      <strong>{label}</strong>
+                      <small>
+                        {metadata.status === 'ready'
+                          ? 'Immutable world snapshot'
+                          : `Could not open this saved composition. ${metadata.message}`}
+                      </small>
+                      {metadata.status === 'ready' && (
+                        <button
+                          disabled={worldBusy}
+                          onClick={() => void openComposition(composition.id)}
+                        >
+                          Open {metadata.name}
+                        </button>
+                      )}
+                      {!confirming ? (
+                        <button
+                          className="wb-danger"
+                          disabled={worldBusy}
+                          onClick={() =>
+                            setDeleteCandidate({ id: composition.id, label })
+                          }
+                        >
+                          Delete {label}
+                        </button>
+                      ) : (
+                        <div
+                          className="wb-delete-confirm"
+                          role="group"
+                          aria-label={`Permanent deletion confirmation for ${label}`}
+                        >
+                          <p>
+                            Permanently delete “{label}”? This cannot be undone.
+                            Dungeon placements that use it will remain as
+                            deleted or missing references until you remove them
+                            explicitly.
+                          </p>
+                          <div className="wb-actions">
+                            <button
+                              disabled={worldBusy}
+                              onClick={() => setDeleteCandidate(null)}
+                            >
+                              Cancel delete {label}
+                            </button>
+                            <button
+                              className="wb-danger"
+                              disabled={worldBusy}
+                              onClick={() =>
+                                void deleteComposition(composition.id, label)
+                              }
+                            >
+                              {worldBusy
+                                ? 'Deleting permanently…'
+                                : `Permanently delete ${label}`}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </article>
                   );
                 })}

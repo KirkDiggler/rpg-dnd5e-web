@@ -1,0 +1,24 @@
+{
+  "capturedBeforeDelete": "2026-09-07T10:36:00Z",
+  "redisHash": "composition:test-world",
+  "redisField": "composition_f157b53f-4c46-4b36-999f-626a3e94bf13",
+  "rawRedisValue": "{\"id\":\"composition_f157b53f-4c46-4b36-999f-626a3e94bf13\",\"world_id\":\"test-world\",\"json\":{\"name\":\"API 8090 Composition Proof - ce25de9\",\"version\":1,\"items\":[]}}",
+  "rawRedisValueWithTrailingNewlineSha256": "fc4679283ac5d4a04118cc83b46cc280cdf51ff9b6c7fd7dd87b2953f84615f1",
+  "identityChecks": {
+    "idMatchesAuthorizedRecord": true,
+    "worldId": "test-world",
+    "authoredName": "API 8090 Composition Proof - ce25de9",
+    "payloadIsMalformedForWorldBuilderEnvelope": true
+  },
+  "savedDungeonReferenceCheck": {
+    "root": "/home/kirk/game-dev/.runtime/local/compositions/sources/rpg-deployment/content",
+    "yamlFilesChecked": [
+      "reference-raider-camp.yaml",
+      "reference-tomb-heirloom.yaml",
+      "reference-tomb.yaml",
+      "web951-library-proof-06502870.yaml",
+      "web954-delete-proof-202609070134.yaml"
+    ],
+    "fixedStringMatches": []
+  }
+}

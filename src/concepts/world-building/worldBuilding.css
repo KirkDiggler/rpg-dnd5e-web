@@ -422,6 +422,20 @@
   user-select: none;
 }
 
+.wb-delete-confirm {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.35rem;
+  border: 1px solid #b45309;
+  border-radius: 4px;
+  background: #32170d;
+}
+
+.wb-delete-confirm p {
+  margin: 0;
+  color: #ffedd5;
+}
+
 .wb-library strong,
 .wb-library small {
   display: block;

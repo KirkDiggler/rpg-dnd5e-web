@@ -23,12 +23,13 @@ function client(overrides: Partial<FakeClient> = {}): FakeClient {
     listCompositions: vi.fn(async ({ worldId }) => ({
       compositions: [snapshot('composition-one', worldId)],
     })),
+    deleteComposition: vi.fn(async () => ({})),
     ...overrides,
   };
 }
 
 describe('RpcCompositionAdapter', () => {
-  it('routes Create/Get/List through the generated client and preserves snapshot JSON', async () => {
+  it('routes typed Create/Get/List/Delete through the generated client and preserves snapshot JSON', async () => {
     const rpc = client();
     const adapter = new RpcCompositionAdapter(rpc);
     const json = '{"kind":"rpg-world-building-scene"}';
@@ -36,6 +37,7 @@ describe('RpcCompositionAdapter', () => {
     const created = await adapter.createComposition('test-world', json);
     const fetched = await adapter.getComposition('test-world', created.id);
     const listed = await adapter.listCompositions('test-world');
+    await adapter.deleteComposition('test-world', 'composition-new');
 
     expect(rpc.createComposition).toHaveBeenCalledWith({
       worldId: 'test-world',
@@ -47,6 +49,10 @@ describe('RpcCompositionAdapter', () => {
     });
     expect(rpc.listCompositions).toHaveBeenCalledWith({
       worldId: 'test-world',
+    });
+    expect(rpc.deleteComposition).toHaveBeenCalledWith({
+      worldId: 'test-world',
+      id: 'composition-new',
     });
     expect(created.json).toBe(json);
     expect(fetched?.id).toBe('composition-new');

@@ -65,12 +65,14 @@ The ordinary local-development source is now the real CompositionService:
 VITE_DEV_WORLD_ID=test-world npm run dev -- --port 3031 --strictPort
 ```
 
-`RpcCompositionAdapter` implements Create/Get/List over the generated Connect
-client. World Builder saves the existing scene envelope as a new immutable
-snapshot, while Dungeon Builder thumbnails/preview and session play resolve the
-same source. Authored `scene.name` labels palette tiles; malformed entries stay
-visible as safe errors. There is no fixture fallback after an RPC or decode
-failure.
+`RpcCompositionAdapter` implements Create/Get/List/Delete over the generated
+Connect client. World Builder saves the existing scene envelope as a new
+immutable snapshot and requires explicit confirmation before permanent delete,
+while Dungeon Builder thumbnails/preview and session play resolve the same
+source. Authored `scene.name` labels valid records; malformed entries fall back
+to their IDs and remain deletable without decode. Deletion leaves every dungeon
+reference untouched for normal explicit removal and refreshes the list/source
+resolution seam. There is no fixture fallback after an RPC or decode failure.
 
 The old JSON verification source remains deliberately separate and opt-in with
 `VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1`. It exists only in Vite development,

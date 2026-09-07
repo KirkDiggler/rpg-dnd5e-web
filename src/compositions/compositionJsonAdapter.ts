@@ -13,6 +13,7 @@ export interface CompositionReader {
 
 export interface CompositionWriter {
   createComposition(worldId: string, json: string): Promise<Composition>;
+  deleteComposition(worldId: string, id: string): Promise<void>;
 }
 
 function requireIdentity(value: string, field: 'id' | 'worldId'): void {

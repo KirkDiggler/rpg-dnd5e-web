@@ -112,11 +112,15 @@ local ownership and deliberately replaces it.
 `Save composition to world` calls `CreateComposition` with the same scene JSON;
 every save returns a new immutable ID without changing local-draft ownership.
 List refreshes on the World Builder mount, an explicit reload, and successful
-saves. Opening a listed entry calls `GetComposition` before replacing the
-scene. The authored `scene.name` is the human label; opaque IDs are shown only
-as secondary snapshot receipts. Malformed snapshots remain visible as
-unsupported errors and never replace the open scene. API failure never
-substitutes the fixed development fixture.
+saves or deletes. Opening a listed entry calls `GetComposition` before replacing
+the scene. The authored `scene.name` is the human label; malformed snapshots
+fall back to their opaque ID and remain deletable without being opened.
+Permanent deletion requires inline confirmation and never edits dungeon
+placements: dangling references stay visible for explicit removal. Cancel or
+failure keeps the row and data. Success invalidates the current source identity
+so composition resolution caches cannot retain deleted models or lights.
+Deleting an open snapshot does not replace its editable workspace or prior
+local draft. API failure never substitutes the fixed development fixture.
 
 `VITE_ENABLE_DEVELOPMENT_COMPOSITIONS=1` remains an explicit, separate fixture
 option for tests. With the flag absent or disabled, the current-world source is
