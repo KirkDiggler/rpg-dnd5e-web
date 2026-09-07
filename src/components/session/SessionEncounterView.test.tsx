@@ -3533,9 +3533,9 @@ describe('SessionEncounterView production combat integration', () => {
       );
     });
 
-    it('clicking Sell then Confirm calls Trade with the item on give and the expected payout on receive.currency', async () => {
+    it('clicking Sell then Confirm calls Trade with the item on give and the expected payout on receive.currency, then confirms only after the response', async () => {
       await openVendorSellTab();
-      hoisted.tradeFn.mockResolvedValue({
+      const tradeResponse = {
         descriptor: {
           targetId: 'demo-merchant-1',
           ref: 'dnd5e:npcs:demo-merchant',
@@ -3555,7 +3555,9 @@ describe('SessionEncounterView production combat integration', () => {
           ],
         },
         seq: 2n,
-      });
+      };
+      const response = deferred<typeof tradeResponse>();
+      hoisted.tradeFn.mockReturnValue(response.promise);
 
       fireEvent.click(screen.getByRole('button', { name: 'Sell Dagger' }));
       fireEvent.click(
@@ -3576,8 +3578,14 @@ describe('SessionEncounterView production combat integration', () => {
           receive: { items: [], currency: { copper: 200 } },
         })
       );
+      expect(screen.queryByText('Sold Dagger.')).toBeNull();
 
-      expect(screen.getByText('Sold Dagger.')).toBeTruthy();
+      await act(async () => {
+        response.resolve(tradeResponse);
+        await response.promise;
+      });
+
+      expect(await screen.findByText('Sold Dagger.')).toBeTruthy();
     });
 
     it('a Sell failure surfaces a notice without crashing the popover', async () => {
