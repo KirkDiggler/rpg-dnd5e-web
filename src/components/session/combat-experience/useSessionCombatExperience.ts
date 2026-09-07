@@ -326,12 +326,20 @@ export function useSessionCombatExperience({
         : declarations.filter(
             (declaration) => declaration.id === interaction.armedDeclarationId
           );
+    // EVERY VERB THAT PROMPTS FOR A MEMBER, not Attack alone. Arming is the
+    // same for all of them — hold an offer, wait for a candidate the server
+    // ruled — and `onTargetClick` already accepts both (`targetTakingVerb`).
+    // Pinned to ATTACK here, arming Bardic Inspiration or Help was judged
+    // incoherent one render later and torn down as "that option changed",
+    // with no RPC sent and nothing for the player to review: the offer was
+    // unchanged, and two reads of Afford return it byte for byte.
+    const armedVerb = armedMatches[0]?.verb;
     const current =
       authorityFresh &&
       clock === ClockKind.TURN &&
       active === member &&
       armedMatches.length === 1 &&
-      armedMatches[0]?.verb === Verb.ATTACK &&
+      (armedVerb === Verb.ATTACK || armedVerb === Verb.ACTIVATE) &&
       armedMatches[0]?.targetKind === TargetKind.MEMBER &&
       armedMatches[0]?.available;
     return {
