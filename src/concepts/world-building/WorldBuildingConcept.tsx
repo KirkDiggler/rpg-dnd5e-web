@@ -153,6 +153,10 @@ export function WorldBuildingConcept({
   }, [scene.name]);
 
   useEffect(() => {
+    if (!compositionSource?.writer) setDeleteCandidate(null);
+  }, [compositionSource?.writer]);
+
+  useEffect(() => {
     if (!skippedInitialSceneSave.current) {
       skippedInitialSceneSave.current = true;
       return;
@@ -1081,7 +1085,7 @@ export function WorldBuildingConcept({
                           Open {metadata.name}
                         </button>
                       )}
-                      {!confirming ? (
+                      {!compositionSource.writer ? null : !confirming ? (
                         <button
                           className="wb-danger"
                           disabled={worldBusy}

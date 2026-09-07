@@ -663,6 +663,54 @@ describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
     );
   });
 
+  it('keeps reader-only compositions openable and clears a pending delete when write access is removed', async () => {
+    const remoteSnapshot: WorldScene = {
+      version: 1,
+      id: 'remote-snapshot',
+      name: 'Reader Only Supper',
+      items: [],
+      groups: [],
+    };
+    const world = worldSource([remoteSnapshot]);
+    const { rerender } = render(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        compositionSource={world.source}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete Reader Only Supper' })
+    );
+    expect(
+      screen.getByRole('group', {
+        name: 'Permanent deletion confirmation for Reader Only Supper',
+      })
+    ).toBeTruthy();
+
+    const readerOnlySource: CompositionSource = {
+      worldId: world.source.worldId,
+      reader: world.source.reader,
+    };
+    rerender(
+      <WorldBuildingConcept
+        storage={new MemoryStorage()}
+        compositionSource={readerOnlySource}
+      />
+    );
+
+    await screen.findByRole('button', { name: 'Open Reader Only Supper' });
+    expect(
+      screen.queryByRole('button', { name: 'Delete Reader Only Supper' })
+    ).toBeNull();
+    expect(
+      screen.queryByRole('group', {
+        name: 'Permanent deletion confirmation for Reader Only Supper',
+      })
+    ).toBeNull();
+    expect(world.deleteComposition).not.toHaveBeenCalled();
+  });
+
   it('can delete malformed unopenable records by ID while preserving them on failure', async () => {
     const malformed = create(CompositionSchema, {
       id: 'composition-bad-json',
