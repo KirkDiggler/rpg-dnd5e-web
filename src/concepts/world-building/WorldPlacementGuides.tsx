@@ -28,10 +28,37 @@ function makeAnchorFillGeometry(
   return geometry;
 }
 
+export function WorldPlacementGuideControl({
+  showCompositionBounds,
+  onShowCompositionBoundsChange,
+}: {
+  showCompositionBounds: boolean;
+  onShowCompositionBoundsChange: (show: boolean) => void;
+}) {
+  return (
+    <label className="wb-placement-guide-control">
+      <input
+        type="checkbox"
+        checked={showCompositionBounds}
+        onChange={(event) =>
+          onShowCompositionBoundsChange(event.currentTarget.checked)
+        }
+      />
+      <i
+        className="wb-placement-guide-swatch wb-placement-guide-swatch--bounds"
+        aria-hidden="true"
+      />
+      <span>Show composition bounds</span>
+    </label>
+  );
+}
+
 export function WorldPlacementGuides({
   bounds,
+  showCompositionBounds,
 }: {
   bounds: CompositionGuideBounds | null;
+  showCompositionBounds: boolean;
 }) {
   const anchor = useMemo(placementAnchorHex, []);
   const fillGeometry = useMemo(
@@ -73,7 +100,7 @@ export function WorldPlacementGuides({
       >
         <lineBasicMaterial color="#fbbf24" toneMapped={false} />
       </lineLoop>
-      {bounds && (
+      {showCompositionBounds && bounds && (
         <mesh
           name="world-building-composition-bounds"
           position={bounds.center}

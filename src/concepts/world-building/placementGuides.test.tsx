@@ -5,6 +5,8 @@ import {
 } from '@/components/hex-grid/hexMath';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import ReactThreeTestRenderer from '@react-three/test-renderer';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   compositionGuideBounds,
@@ -12,7 +14,10 @@ import {
   type MeasuredWorldPropBounds,
 } from './placementGuides';
 import type { WorldScene } from './types';
-import { WorldPlacementGuides } from './WorldPlacementGuides';
+import {
+  WorldPlacementGuideControl,
+  WorldPlacementGuides,
+} from './WorldPlacementGuides';
 
 const SCENE: WorldScene = {
   version: 1,
@@ -132,17 +137,76 @@ describe('World Building placement guides', () => {
     ).toBeNull();
   });
 
-  it('does not mutate authored scene JSON and gives every visual overlay a disabled raycast', async () => {
+  it('toggles only the composition bounds mesh while retaining the anchor and authored scene JSON', async () => {
     const before = JSON.stringify(SCENE);
     const bounds = compositionGuideBounds(
       SCENE,
       new Map([['table', TABLE_BOUNDS]])
     );
+    const renderer = await ReactThreeTestRenderer.create(
+      <WorldPlacementGuides bounds={bounds} showCompositionBounds />
+    );
+
+    function ControlHarness() {
+      const [showCompositionBounds, setShowCompositionBounds] = useState(true);
+      return (
+        <WorldPlacementGuideControl
+          showCompositionBounds={showCompositionBounds}
+          onShowCompositionBoundsChange={setShowCompositionBounds}
+        />
+      );
+    }
+
+    render(<ControlHarness />);
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'Show composition bounds',
+    });
+    const expectAnchorRetained = () => {
+      expect(
+        renderer.scene.findByProps({
+          name: 'world-building-placement-anchor-fill',
+        })
+      ).toBeTruthy();
+      expect(
+        renderer.scene.findByProps({
+          name: 'world-building-placement-anchor-outline',
+        })
+      ).toBeTruthy();
+    };
+
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+    expect(
+      renderer.scene.findByProps({
+        name: 'world-building-composition-bounds',
+      })
+    ).toBeTruthy();
+    expectAnchorRetained();
+
+    fireEvent.click(checkbox);
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    await renderer.update(
+      <WorldPlacementGuides bounds={bounds} showCompositionBounds={false} />
+    );
+    expect(
+      renderer.scene.findAllByProps({
+        name: 'world-building-composition-bounds',
+      })
+    ).toHaveLength(0);
+    expectAnchorRetained();
+
+    fireEvent.click(checkbox);
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+    await renderer.update(
+      <WorldPlacementGuides bounds={bounds} showCompositionBounds />
+    );
+    expect(
+      renderer.scene.findByProps({
+        name: 'world-building-composition-bounds',
+      })
+    ).toBeTruthy();
+    expectAnchorRetained();
     expect(JSON.stringify(SCENE)).toBe(before);
 
-    const renderer = await ReactThreeTestRenderer.create(
-      <WorldPlacementGuides bounds={bounds} />
-    );
     for (const name of [
       'world-building-placement-anchor-fill',
       'world-building-placement-anchor-outline',

@@ -352,6 +352,29 @@
   gap: 0.35rem;
 }
 
+.wb-placement-guide-control {
+  position: absolute;
+  top: 2.55rem;
+  left: 0.55rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid rgb(147 170 166 / 45%);
+  border-radius: 4px;
+  background: rgb(7 17 19 / 82%);
+  color: #d8ebe7;
+  font-size: 0.6rem;
+  line-height: 1.25;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.wb-placement-guide-control input {
+  margin: 0;
+}
+
 .wb-placement-guide-swatch {
   width: 0.65rem;
   height: 0.65rem;

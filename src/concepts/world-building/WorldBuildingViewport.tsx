@@ -42,7 +42,10 @@ import {
   resolveWorldSelectionId,
   type WorldBuildingDropTarget,
 } from './worldBuildingPointer';
-import { WorldPlacementGuides } from './WorldPlacementGuides';
+import {
+  WorldPlacementGuideControl,
+  WorldPlacementGuides,
+} from './WorldPlacementGuides';
 
 export interface WorldBuildingViewportProps {
   /** Last committed scene. Transform previews never replace this value. */
@@ -291,7 +294,9 @@ function WorldBuildingCameraControls({ enabled }: { enabled: boolean }) {
   );
 }
 
-function WorldSceneContents(props: WorldBuildingViewportProps) {
+function WorldSceneContents(
+  props: WorldBuildingViewportProps & { showCompositionBounds: boolean }
+) {
   const { scene, previewScene, selectedIds, tool, activeDrag, onSelect } =
     props;
   const displayScene = previewScene ?? scene;
@@ -391,7 +396,10 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
       <lineLoop geometry={boundaryGeometry} raycast={() => null}>
         <lineBasicMaterial color="#5eead4" transparent opacity={0.55} />
       </lineLoop>
-      <WorldPlacementGuides bounds={guideBounds} />
+      <WorldPlacementGuides
+        bounds={guideBounds}
+        showCompositionBounds={props.showCompositionBounds}
+      />
       {displayScene.items.map((item) => (
         <WorldPropVisual
           key={item.id}
@@ -427,6 +435,8 @@ function WorldSceneContents(props: WorldBuildingViewportProps) {
 }
 
 export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
+  const [showCompositionBounds, setShowCompositionBounds] = useState(true);
+
   return (
     <>
       <Canvas
@@ -434,20 +444,23 @@ export function WorldBuildingViewport(props: WorldBuildingViewportProps) {
         dpr={[1, 1.6]}
         shadows
         data-testid="world-building-canvas"
-        aria-label="World building 3D canvas. The gold X0/Z0 hex is the placement anchor; the orange box is the visual composition bounds, not a mechanical footprint. Left click selects; Shift-left adds selection; middle drag orbits; Shift-middle drag pans; wheel zooms; right click cancels a transform."
+        aria-label="World building 3D canvas. The gold X0/Z0 hex is the placement anchor; the optional orange box is the visual composition bounds, not a mechanical footprint. Left click selects; Shift-left adds selection; middle drag orbits; Shift-middle drag pans; wheel zooms; right click cancels a transform."
       >
-        <WorldSceneContents {...props} />
+        <WorldSceneContents
+          {...props}
+          showCompositionBounds={showCompositionBounds}
+        />
       </Canvas>
       <div className="wb-placement-guide-legend" aria-hidden="true">
         <span>
           <i className="wb-placement-guide-swatch wb-placement-guide-swatch--anchor" />
           Placement anchor · X0 / Z0
         </span>
-        <span>
-          <i className="wb-placement-guide-swatch wb-placement-guide-swatch--bounds" />
-          Composition bounds · visual guide only, not a footprint
-        </span>
       </div>
+      <WorldPlacementGuideControl
+        showCompositionBounds={showCompositionBounds}
+        onShowCompositionBoundsChange={setShowCompositionBounds}
+      />
     </>
   );
 }
