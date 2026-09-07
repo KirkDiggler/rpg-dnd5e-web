@@ -5,18 +5,34 @@ import {
   type PropRole,
   type PropVariant,
 } from '@/components/hex-grid/propManifest';
+import {
+  GENERATED_WORLD_ASSETS,
+  type GeneratedWorldAsset,
+} from '@/generated/worldAssetCatalog';
 import { refLabel } from '@/utils/refs';
 
-export interface WorldBuildingCatalogEntry {
+interface WorldBuildingCatalogEntryBase {
   ref: string;
   label: string;
-  role: PropRole;
-  variant: PropVariant;
   thumbnail?: string;
-  /** Provisional authoring hint: this real mesh is useful as a support when
-   * the pointer ray hits an upward-facing surface. */
   supportsDecoration: boolean;
 }
+
+export interface LegacyWorldBuildingCatalogEntry extends WorldBuildingCatalogEntryBase {
+  source: 'legacy';
+  role: PropRole;
+  variant: PropVariant;
+}
+
+export interface GeneratedWorldBuildingCatalogEntry extends WorldBuildingCatalogEntryBase {
+  source: 'generated';
+  category: GeneratedWorldAsset['category'];
+  asset: GeneratedWorldAsset;
+}
+
+export type WorldBuildingCatalogEntry =
+  | LegacyWorldBuildingCatalogEntry
+  | GeneratedWorldBuildingCatalogEntry;
 
 const SUPPORT_REFS = new Set([
   'dnd5e:props:torture-table',
@@ -45,14 +61,13 @@ const labelOf = (ref: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
-export const WORLD_BUILDING_CATALOG: WorldBuildingCatalogEntry[] = Object.keys(
-  PROP_KEYS
-)
+const legacyEntries: LegacyWorldBuildingCatalogEntry[] = Object.keys(PROP_KEYS)
   .flatMap((ref) => {
     const variant = resolvePropVariant(ref);
     return variant
       ? [
           {
+            source: 'legacy' as const,
             ref,
             label: labelOf(ref),
             role: variant.role,
@@ -73,6 +88,29 @@ export const WORLD_BUILDING_CATALOG: WorldBuildingCatalogEntry[] = Object.keys(
     }
     return left.label.localeCompare(right.label);
   });
+
+const legacyRefs = new Set(legacyEntries.map((entry) => entry.ref));
+const generatedEntries: GeneratedWorldBuildingCatalogEntry[] = Object.values(
+  GENERATED_WORLD_ASSETS
+)
+  .filter((asset) => !legacyRefs.has(asset.ref))
+  .map((asset) => ({
+    source: 'generated',
+    ref: asset.ref,
+    label: asset.displayName,
+    category: asset.category,
+    asset,
+    // This is provider-authored data. Do not infer support behavior from a
+    // category, label, tag, or measured dimensions.
+    supportsDecoration: asset.supportsDecoration,
+  }));
+
+/** Legacy ordering stays byte-for-byte stable; generated exact assets append
+ * once in the deterministic order emitted by the generator. */
+export const WORLD_BUILDING_CATALOG: WorldBuildingCatalogEntry[] = [
+  ...legacyEntries,
+  ...generatedEntries,
+];
 
 export const WORLD_BUILDING_CATALOG_BY_REF = new Map(
   WORLD_BUILDING_CATALOG.map((entry) => [entry.ref, entry])

@@ -20,6 +20,7 @@ import { ErrorDisplay } from './components/ui/Feedback';
 import type { CompositionSource } from './compositions/compositionSource';
 import { ConceptsView } from './concepts/ConceptsView';
 import { WorldBuildingConcept } from './concepts/world-building/WorldBuildingConcept';
+import { isAssetReviewRoute } from './dev/asset-review/route';
 import { AttackDieDevRouteSurface } from './dev/AttackDieDevRouteSurface';
 import { selectAttackDieDevRoute } from './dev/attackDiePerfRoute';
 import { isPropCalibrationRoute } from './dev/prop-calibration/route';
@@ -49,6 +50,18 @@ const LazyPropCalibrationLab =
     : lazy(() =>
         import('./dev/prop-calibration/PropCalibrationLab').then(
           ({ PropCalibrationLab }) => ({ default: PropCalibrationLab })
+        )
+      );
+
+// Asset candidates are intentionally absent from the ordinary application
+// graph in production. Test mode retains the boundary so the route refusal and
+// Lab interactions can be exercised without weakening the runtime route gate.
+const LazyAssetReviewLab =
+  import.meta.env.MODE === 'production'
+    ? null
+    : lazy(() =>
+        import('./dev/asset-review/AssetReviewLab').then(
+          ({ AssetReviewLab }) => ({ default: AssetReviewLab })
         )
       );
 
@@ -636,6 +649,21 @@ function App() {
     return (
       <Suspense fallback={<div>Loading prop calibration…</div>}>
         <LazyPropCalibrationLab />
+      </Suspense>
+    );
+  }
+
+  if (
+    isAssetReviewRoute(
+      import.meta.env.MODE,
+      window.location.hostname,
+      window.location.search
+    ) &&
+    LazyAssetReviewLab
+  ) {
+    return (
+      <Suspense fallback={<div>Loading asset review…</div>}>
+        <LazyAssetReviewLab />
       </Suspense>
     );
   }

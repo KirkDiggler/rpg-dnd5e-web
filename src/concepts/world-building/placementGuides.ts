@@ -29,7 +29,7 @@ export function placementAnchorHex(): {
 }
 
 /**
- * Merge only loaded PropModel measurements at their authored transforms.
+ * Merge only loaded model measurements at their authored transforms.
  * This is a visual authoring guide, not a footprint or persisted scene fact.
  */
 export function compositionGuideBounds(
