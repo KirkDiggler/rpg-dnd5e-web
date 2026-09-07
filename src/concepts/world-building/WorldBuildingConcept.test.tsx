@@ -178,6 +178,59 @@ function dragLabelTo(label: string, targetTestId = 'canvas-ground') {
 afterEach(() => vi.restoreAllMocks());
 
 describe('WorldBuildingConcept drag-to-add and gizmo shell', () => {
+  it('searches, places, groups, exports, and reopens a generated exact ref with legacy assets', () => {
+    const storage = new MemoryStorage();
+    const ids = deterministicIds();
+    const mounted = render(
+      <WorldBuildingConcept storage={storage} idFactory={ids} />
+    );
+    fireEvent.change(screen.getByLabelText('Search assets'), {
+      target: { value: 'dnd5e:props:dark-fortress:alchemy_tools_01' },
+    });
+    expect(
+      screen.getAllByLabelText('Drag Alchemy Tools 01 into scene')
+    ).toHaveLength(1);
+    dragLabelTo('Drag Alchemy Tools 01 into scene');
+    expect(scene().items[0]).toMatchObject({
+      assetRef: 'dnd5e:props:dark-fortress:alchemy_tools_01',
+      transform: { x: 0.13, y: 0, z: -0.27, rotationY: 0 },
+    });
+
+    fireEvent.change(screen.getByLabelText('Search assets'), {
+      target: { value: 'books' },
+    });
+    dragLabelTo('Drag Books into scene');
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: /Select dark fortress alchemy tools 01 id-2/i,
+      })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Group selection' }));
+    expect(scene().groups).toHaveLength(1);
+    expect(scene().items.map((item) => item.assetRef)).toEqual([
+      'dnd5e:props:dark-fortress:alchemy_tools_01',
+      'dnd5e:props:books',
+    ]);
+
+    URL.createObjectURL = vi.fn(() => 'blob:world-building');
+    URL.revokeObjectURL = vi.fn();
+    fireEvent.click(screen.getByRole('button', { name: 'Export scene JSON' }));
+    const portable = (
+      screen.getByLabelText('Portable JSON') as HTMLTextAreaElement
+    ).value;
+    expect(JSON.parse(portable).scene.items[0].assetRef).toBe(
+      'dnd5e:props:dark-fortress:alchemy_tools_01'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save now' }));
+    mounted.unmount();
+
+    render(<WorldBuildingConcept storage={storage} idFactory={ids} />);
+    expect(scene().items.map((item) => item.assetRef)).toEqual([
+      'dnd5e:props:dark-fortress:alchemy_tools_01',
+      'dnd5e:props:books',
+    ]);
+  });
+
   it('keeps Select / Move / Rotate visible and never arms placement from ordinary clicks', () => {
     render(
       <WorldBuildingConcept

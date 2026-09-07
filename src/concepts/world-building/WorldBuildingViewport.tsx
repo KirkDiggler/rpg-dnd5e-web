@@ -7,6 +7,7 @@ import {
   PropModel,
   type PropModelBounds,
 } from '@/components/hex-grid/PropModel';
+import { WorldAssetModel } from '@/components/hex-grid/WorldAssetModel';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { OrbitControls } from '@react-three/drei';
@@ -162,23 +163,43 @@ export function WorldPropVisual({
                 : undefined
             }
           >
-            <PropModel
-              variant={entry.variant}
-              position={position}
-              rotationY={item.transform.rotationY}
-              anchor="bounds-floor-center"
-              onBoundsMeasured={(measured) => {
-                setBounds((current) =>
-                  current &&
-                  current.width === measured.width &&
-                  current.height === measured.height &&
-                  current.depth === measured.depth
-                    ? current
-                    : measured
-                );
-                onAssetState(item.id, 'loaded');
-              }}
-            />
+            {entry.source === 'generated' ? (
+              <WorldAssetModel
+                assetRef={entry.ref}
+                position={position}
+                rotationY={item.transform.rotationY}
+                onDiagnostic={() => onAssetState(item.id, 'error')}
+                onBoundsMeasured={(measured) => {
+                  setBounds((current) =>
+                    current &&
+                    current.width === measured.width &&
+                    current.height === measured.height &&
+                    current.depth === measured.depth
+                      ? current
+                      : measured
+                  );
+                  onAssetState(item.id, 'loaded');
+                }}
+              />
+            ) : (
+              <PropModel
+                variant={entry.variant}
+                position={position}
+                rotationY={item.transform.rotationY}
+                anchor="bounds-floor-center"
+                onBoundsMeasured={(measured) => {
+                  setBounds((current) =>
+                    current &&
+                    current.width === measured.width &&
+                    current.height === measured.height &&
+                    current.depth === measured.depth
+                      ? current
+                      : measured
+                  );
+                  onAssetState(item.id, 'loaded');
+                }}
+              />
+            )}
           </group>
         </ErrorBoundary>
       </Suspense>

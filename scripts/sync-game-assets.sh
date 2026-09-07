@@ -15,6 +15,23 @@
 
 set -e
 
+WORLD_ASSETS_ONLY=0
+CHECK_ONLY=0
+for ARG in "$@"; do
+  case "$ARG" in
+    --world-assets) WORLD_ASSETS_ONLY=1 ;;
+    --check) CHECK_ONLY=1 ;;
+    *)
+      echo "ERROR: unknown asset sync argument: $ARG" >&2
+      exit 2
+      ;;
+  esac
+done
+if [ "$CHECK_ONLY" = "1" ] && [ "$WORLD_ASSETS_ONLY" != "1" ]; then
+  echo "ERROR: --check currently requires --world-assets" >&2
+  exit 2
+fi
+
 ASSETS_REPO_URL="git@github.com:KirkDiggler/rpg-game-assets.git"
 ASSETS_REPO_URL_HTTPS="https://github.com/KirkDiggler/rpg-game-assets.git"
 
@@ -69,6 +86,64 @@ if [ -n "$(git -C "$ASSETS_DIR" status --porcelain=v1 --untracked-files=all)" ];
 fi
 echo "Pinned clean rpg-game-assets provider at $ASSETS_HEAD"
 
+sync_runtime_root() {
+  SRC=$1
+  DEST=$2
+  mkdir -p "$DEST"
+  echo "Syncing $SRC/ -> $DEST/"
+  rsync -a --delete --delete-excluded \
+    --exclude='*.blend' \
+    --exclude='evidence/' \
+    --exclude='*/evidence/' \
+    "$SRC/" "$DEST/"
+}
+
+# The generic world-asset mode reuses the same provider selection, exact clean
+# revision gate, and mirror primitive without running/deleting the complete
+# private runtime mirror.
+if [ "$WORLD_ASSETS_ONLY" = "1" ]; then
+  WORLD_GENERATOR=${RPG_WORLD_ASSET_CATALOG_GENERATOR:-$SCRIPT_DIR/generate-world-asset-catalog.mjs}
+  WORLD_RUNNER=${RPG_WORLD_ASSET_CATALOG_RUNNER:-node}
+  WORLD_SRC="$ASSETS_DIR/harness/models/synty/world-assets"
+  SYNTY_DEST="$WEB_ROOT/public/models/synty"
+  WORLD_DEST="$SYNTY_DEST/world-assets"
+  WORLD_OUTPUT="$WEB_ROOT/src/generated/worldAssetCatalog.ts"
+  if [ ! -f "$WORLD_GENERATOR" ] || [ -L "$WORLD_GENERATOR" ]; then
+    echo "ERROR: world asset catalog generator must be a real file: $WORLD_GENERATOR" >&2
+    exit 1
+  fi
+  if [ ! -d "$WORLD_SRC" ] || [ -L "$WORLD_SRC" ]; then
+    echo "ERROR: expected world asset source dir not found: $WORLD_SRC" >&2
+    exit 1
+  fi
+
+  if [ "$CHECK_ONLY" = "1" ]; then
+    "$WORLD_RUNNER" "$WORLD_GENERATOR" \
+      --provider-root "$ASSETS_DIR" \
+      --runtime-root "$SYNTY_DEST" \
+      --output "$WORLD_OUTPUT" \
+      --check
+    echo "Done. synchronized world assets and generated catalog match provider $ASSETS_HEAD."
+    exit 0
+  fi
+
+  mkdir -p "$(dirname "$WORLD_OUTPUT")"
+  WORLD_STAGE=$(mktemp "$WEB_ROOT/src/generated/.world-assets.XXXXXX")
+  trap 'rm -f "$WORLD_STAGE"' EXIT HUP INT TERM
+  "$WORLD_RUNNER" "$WORLD_GENERATOR" \
+    --provider-root "$ASSETS_DIR" \
+    --output "$WORLD_STAGE"
+  sync_runtime_root "$WORLD_SRC" "$WORLD_DEST"
+  "$WORLD_RUNNER" "$WORLD_GENERATOR" \
+    --provider-root "$ASSETS_DIR" \
+    --runtime-root "$SYNTY_DEST" \
+    --output "$WORLD_STAGE"
+  mv -f "$WORLD_STAGE" "$WORLD_OUTPUT"
+  trap - EXIT HUP INT TERM
+  echo "Done. public/models/synty/world-assets and the exact generated catalog are current."
+  exit 0
+fi
+
 CATALOG_GENERATOR=${RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR:-${RPG_DWARF_CATALOG_GENERATOR:-$SCRIPT_DIR/generateCharacterCustomizationCatalog.ts}}
 CATALOG_RUNNER=${RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER:-${RPG_DWARF_CATALOG_RUNNER:-$WEB_ROOT/node_modules/.bin/tsx}}
 if [ ! -f "$CATALOG_GENERATOR" ] || [ -L "$CATALOG_GENERATOR" ]; then
@@ -93,18 +168,6 @@ for SRC in "$SYNTY_SRC" "$CUSTOM_DICE_SRC"; do
     exit 1
   fi
 done
-
-sync_runtime_root() {
-  SRC=$1
-  DEST=$2
-  mkdir -p "$DEST"
-  echo "Syncing $SRC/ -> $DEST/"
-  rsync -a --delete --delete-excluded \
-    --exclude='*.blend' \
-    --exclude='evidence/' \
-    --exclude='*/evidence/' \
-    "$SRC/" "$DEST/"
-}
 
 # Validate and generate against the clean provider before either rsync --delete
 # can mutate a destination. The tracked catalog becomes visible only after both

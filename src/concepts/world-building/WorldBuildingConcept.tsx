@@ -310,7 +310,13 @@ export function WorldBuildingConcept({
     const needle = search.trim().toLowerCase();
     return needle
       ? WORLD_BUILDING_CATALOG.filter((entry) =>
-          `${entry.label} ${entry.role}`.toLowerCase().includes(needle)
+          `${entry.label} ${entry.ref} ${
+            entry.source === 'legacy'
+              ? entry.role
+              : `${entry.category} ${entry.asset.tags.join(' ')}`
+          }`
+            .toLowerCase()
+            .includes(needle)
         )
       : WORLD_BUILDING_CATALOG;
   }, [search]);
@@ -493,7 +499,8 @@ export function WorldBuildingConcept({
                   <span>
                     <strong>{entry.label}</strong>
                     <small>
-                      Drag to add · {entry.role}
+                      Drag to add ·{' '}
+                      {entry.source === 'legacy' ? entry.role : entry.category}
                       {entry.supportsDecoration ? ' · surface' : ''}
                     </small>
                   </span>

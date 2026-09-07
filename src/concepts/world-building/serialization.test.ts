@@ -72,6 +72,22 @@ describe('world-building serialization validation', () => {
     expect(parseSceneJson(stringifyScene(scene))).toEqual(scene);
   });
 
+  it('round trips a generated exact ref and rejects an unsupported exact neighbor without substitution', () => {
+    const scene = addProp(
+      createEmptyScene('generated-scene'),
+      'dnd5e:props:dark-fortress:alchemy_tools_01',
+      { x: 1.25, y: 0, z: -0.75, rotationY: 0.4 },
+      'new-asset'
+    );
+    expect(parseSceneJson(stringifyScene(scene))).toEqual(scene);
+
+    const envelope = JSON.parse(stringifyScene(scene));
+    envelope.scene.items[0].assetRef = 'dnd5e:props:dark-fortress:missing';
+    expect(() => parseSceneJson(JSON.stringify(envelope))).toThrow(
+      /not in the local prop catalog/i
+    );
+  });
+
   it.each<[string, (value: MutableSceneEnvelope) => void]>([
     [
       'unknown catalog ref',
