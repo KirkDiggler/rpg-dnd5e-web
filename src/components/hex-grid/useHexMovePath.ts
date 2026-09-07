@@ -135,7 +135,7 @@ export interface MoveStartResult {
 export function computeMoveStart(
   moveSeq: number | undefined,
   seenSeq: number | undefined,
-  movePath: CubeCoord[] | undefined,
+  movePath: readonly CubeCoord[] | undefined,
   entityPosition: CubeCoord,
   hexSize: number,
   current: WorldPoint
@@ -214,7 +214,7 @@ export function segmentHeading(step: StepState): number | undefined {
 
 export function useHexMovePath(
   entityPosition: CubeCoord,
-  movePath: CubeCoord[] | undefined,
+  movePath: readonly CubeCoord[] | undefined,
   moveSeq: number | undefined,
   hexSize: number,
   yOffset: number,

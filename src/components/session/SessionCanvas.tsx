@@ -75,6 +75,7 @@ import type { AtlasPathIndex } from './atlasPath';
 import type { Scene3D } from './atlasToScene3D';
 import { DungeonEnvironment } from './DungeonEnvironment';
 import { factionColors } from './factionColor';
+import type { Movements } from './moveController';
 import { MoveIndicator } from './MoveIndicator';
 import { SessionExitMarkers } from './SessionExitMarkers';
 import { isSightedDowned, type SightedMember } from './sightingEntities';
@@ -155,15 +156,15 @@ export interface SessionCanvasProps {
    * exactly where it always has. Presentation only: it aims the first
    * frame and gates nothing. */
   startFacing?: string;
-  /** The local player's real hex-by-hex route for the CURRENT `moveSeq`
-   * (`MoveResponse.steps`, already bridged to cube coords) — passed
-   * straight through to `HexEntity.movePath`. `undefined` when no walk
-   * has happened yet this mount. */
-  movePath?: CubeCoord[];
-  /** Bumped once per genuine walk — passed straight through to
-   * `HexEntity.moveSeq`, which is what actually triggers the animation
-   * (see `useHexMovePath.ts`). */
-  moveSeq?: number;
+  /** Every actor's movement-in-progress, keyed by member id
+   * (`moveController.ts`). ONE shape for everyone: the local player's
+   * route arrives whole from their own Move answer, everyone else's a
+   * cell at a time off the stream, and both produce the same object. This
+   * is what actually triggers a walk clip — `useHexMovePath` animates on
+   * a CHANGING sequence, so an actor absent from this map snaps, which is
+   * exactly what every non-local actor used to do always
+   * (rpg-dnd5e-web#961). */
+  movements?: Movements;
   /** Fires when a floor hex is clicked (and it isn't an attack — see this
    * component's own doc comment) — the request-shaping/pathfinding and
    * the `Move` RPC itself live in the caller (`useSessionWalk`), not
@@ -177,20 +178,20 @@ export interface SessionCanvasProps {
    * only (drives the panel's "Attack <name>" hover label); this
    * component makes no affordability judgment of its own. */
   onHoverEntity?: (subject: string | null) => void;
-  /** Fires once the local player's walk ANIMATION finishes painting
-   * `movePath` for the given `moveSeq` — presentation-only, matches
-   * `HexEntity`'s own `onMovementPresentationComplete` contract (entityId
-   * dropped here since this route only ever animates the local player). */
-  onMovementPresentationComplete?: (moveSeq: number) => void;
+  /** Fires once an actor's walk ANIMATION finishes painting its route —
+   * presentation-only, for ANY actor now, not just the local player. The
+   * `reached` count is how many cells were actually painted; today that
+   * is only ever the whole route, and reporting it per cell later is an
+   * extra call rather than a changed shape (`moveController.ts`). */
+  onMovementPainted?: (member: string, seq: number, reached: number) => void;
   /** Every OTHER member the local player currently perceives
    * (`GetView.sightings`, mapped by `sightingsToEntities`). Drawn as a
    * player or monster `HexEntity` per `member.kind` (rpg-dnd5e-web#792 —
-   * see this component's render below for the split), with no
-   * `movePath`/`moveSeq` of their own either way: `useHexMovePath` already
-   * snaps an entity straight to a new `position` when `moveSeq` never
-   * advances, so a `GetView` refetch that moves one of these simply
-   * relocates it on the next render. Undefined/empty draws nothing
-   * extra. */
+   * see this component's render below for the split). Each one now reads
+   * its movement out of `movements` exactly as the local player does, so
+   * a walking peer walks instead of sliding; an actor with no movement in
+   * flight still just relocates on the next `GetView`. Undefined/empty
+   * draws nothing extra. */
   otherMembers?: readonly SightedMember[];
   /** The session roster keyed by member id (`useSessionRoster` —
    * rpg-project#264): the PUBLIC identity each sighted member renders
@@ -263,12 +264,11 @@ export function SessionScene({
   localIsDowned = false,
   myPosition,
   startFacing,
-  movePath,
-  moveSeq,
+  movements,
   onHexClick,
   onEntityClick,
   onHoverEntity,
-  onMovementPresentationComplete,
+  onMovementPainted,
   otherMembers,
   roster,
   doors,
@@ -367,6 +367,11 @@ export function SessionScene({
     () => new Set(attackableTargets ?? []),
     [attackableTargets]
   );
+
+  // ONE lookup for every actor, self included — the whole point of
+  // rpg-dnd5e-web#961. `characterId` is the local player's member id, the
+  // same key the controller stores peers under.
+  const selfMovement = movements?.get(characterId);
 
   const membersBySubject = useMemo(
     () => new Map((otherMembers ?? []).map((m) => [m.subject, m])),
@@ -607,10 +612,14 @@ export function SessionScene({
         isDowned={localIsDowned}
         mainHandPresentation={mainHandPresentation}
         offHandPresentation={offHandPresentation}
-        movePath={movePath}
-        moveSeq={moveSeq}
-        onMovementPresentationComplete={(_entityId, completedMoveSeq) =>
-          onMovementPresentationComplete?.(completedMoveSeq)
+        movePath={selfMovement?.route}
+        moveSeq={selfMovement?.seq}
+        onMovementPresentationComplete={(entityId, completedMoveSeq) =>
+          onMovementPainted?.(
+            entityId,
+            completedMoveSeq,
+            selfMovement?.route.length ?? 0
+          )
         }
       />
       {otherMembers?.map((member) => (
@@ -634,6 +643,15 @@ export function SessionScene({
           entityId={member.subject}
           name={member.name}
           position={member.position}
+          movePath={movements?.get(member.subject)?.route}
+          moveSeq={movements?.get(member.subject)?.seq}
+          onMovementPresentationComplete={(entityId, completedMoveSeq) =>
+            onMovementPainted?.(
+              entityId,
+              completedMoveSeq,
+              movements?.get(entityId)?.route.length ?? 0
+            )
+          }
           type={
             member.kind === MemberKind.PLAYER
               ? 'player'

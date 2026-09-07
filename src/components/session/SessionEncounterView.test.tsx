@@ -1175,7 +1175,9 @@ describe('SessionEncounterView production combat integration', () => {
     await screen.findByText(/actions may be out of date/i);
     expect(hoisted.lastCanvasProps.current?.turnLocked).toBe(true);
     expect(hoisted.lastCanvasProps.current?.attackableTargets).toEqual([]);
-    expect(hoisted.lastCanvasProps.current?.moveSeq).toBe(1);
+    expect(hoisted.lastCanvasProps.current?.movements?.get('char-1')?.seq).toBe(
+      1
+    );
     expect(hoisted.whereResult.refetch).not.toHaveBeenCalled();
     act(() => {
       oldTargetClick?.('skeleton-1');
@@ -1235,13 +1237,15 @@ describe('SessionEncounterView production combat integration', () => {
       hoisted.lastCanvasProps.current?.onHexClick?.({ x: 1, y: -1, z: 0 });
     });
     await waitFor(() =>
-      expect(hoisted.lastCanvasProps.current?.moveSeq).toBe(1)
+      expect(
+        hoisted.lastCanvasProps.current?.movements?.get('char-1')?.seq
+      ).toBe(1)
     );
-    expect(hoisted.lastCanvasProps.current?.movePath).toEqual([
-      { x: 1, y: -1, z: 0 },
-    ]);
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('char-1')?.route
+    ).toEqual([{ x: 1, y: -1, z: 0 }]);
     act(() => {
-      hoisted.lastCanvasProps.current?.onMovementPresentationComplete?.(1);
+      hoisted.lastCanvasProps.current?.onMovementPainted?.('char-1', 1, 1);
     });
     await waitFor(() => expect(hoisted.whereResult.refetch).toHaveBeenCalled());
   });
@@ -4597,5 +4601,63 @@ describe('the camera starts the way the dungeon says (rpg-project#374)', () => {
     return waitFor(() =>
       expect(hoisted.lastCanvasProps.current?.startFacing).toBeUndefined()
     );
+  });
+});
+
+describe('every actor walks, not just you (rpg-dnd5e-web#961)', () => {
+  const movedBeat = (member: string, x: number, y: number, seq: bigint) =>
+    event(
+      EventKind.MOVED,
+      {
+        case: 'moved',
+        value: { member, to: { x, y } },
+      } as SessionEvent['body'],
+      seq
+    );
+
+  it("assembles a peer's arriving steps into one route the canvas can animate", async () => {
+    readyScene();
+    // A four-cell walk reaches a witness as four beats, one per cell.
+    const steps = deferredStream([
+      movedBeat('scout', 1, 0, 601n),
+      movedBeat('scout', 2, 0, 602n),
+      movedBeat('scout', 3, 0, 603n),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(steps.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    steps.release();
+
+    await waitFor(() =>
+      expect(
+        hoisted.lastCanvasProps.current?.movements?.get('scout')?.route
+      ).toHaveLength(3)
+    );
+    const movement = hoisted.lastCanvasProps.current?.movements?.get('scout');
+    // Wire axial (q, r) bridged to cube — the route the walk clip steps along.
+    expect(movement?.route).toEqual([
+      { x: 1, y: -1, z: 0 },
+      { x: 2, y: -2, z: 0 },
+      { x: 3, y: -3, z: 0 },
+    ]);
+    // A sequence that never advances is exactly what used to leave every
+    // non-local actor snapping in its idle pose.
+    expect(movement?.seq).toBeGreaterThan(0);
+  });
+
+  it('does not double-drive the local player, whose route arrives whole from their own Move answer', async () => {
+    readyScene();
+    const mine = deferredStream([movedBeat('char-1', 1, 0, 611n)]);
+    hoisted.streamEventsFn.mockReturnValue(mine.stream);
+
+    renderView();
+    await waitFor(() => expect(hoisted.lastCanvasProps.current).not.toBeNull());
+    mine.release();
+
+    await waitFor(() => expect(hoisted.whereResult.refetch).toHaveBeenCalled());
+    expect(
+      hoisted.lastCanvasProps.current?.movements?.get('char-1')
+    ).toBeUndefined();
   });
 });
