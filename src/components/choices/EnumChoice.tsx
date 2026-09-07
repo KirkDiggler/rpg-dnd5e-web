@@ -29,6 +29,56 @@ export interface EnumChoiceProps<T extends number> {
   onSelectionChange: (choiceId: string, selections: T[]) => void;
 }
 
+/**
+ * The box or dot that says an option can be picked, and whether it is.
+ *
+ * WITHOUT IT A MULTI-PICK LOOKS LIKE A LIST YOU PICK ONE FROM. The rows layout
+ * drew no mark at all — its input is `display: none` and nothing stood in for
+ * it — so ten instruments rendered as ten plain bars directly under a grouped
+ * skills list that DID draw checkboxes. Two controls, the same question, two
+ * different affordances, and the one that looked single-select was the one
+ * asking for three (Kirk's walk, rpg-project#397).
+ *
+ * Square for a pick that ADDS, round for one that REPLACES, which is the same
+ * shape language a checkbox and a radio carry.
+ */
+function SelectionMark({
+  isSelected,
+  replaces,
+}: {
+  isSelected: boolean;
+  replaces: boolean;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: '18px',
+        height: '18px',
+        marginTop: '2px',
+        borderRadius: replaces ? '50%' : '4px',
+        border: `2px solid ${isSelected ? 'white' : 'var(--border-primary)'}`,
+        backgroundColor: isSelected ? 'white' : 'var(--bg-secondary)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+    >
+      {isSelected && (
+        <span
+          style={{
+            width: '10px',
+            height: '10px',
+            borderRadius: replaces ? '50%' : '2px',
+            backgroundColor: 'var(--accent-primary)',
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
 export function EnumChoice<T extends number>({
   choice,
   available,
@@ -159,34 +209,10 @@ export function EnumChoice<T extends number>({
                       }}
                       className="hover:transform hover:-translate-y-0.5 hover:shadow-lg"
                     >
-                      <div
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          borderRadius:
-                            choice.chooseCount === 1 ? '50%' : '4px',
-                          border: `2px solid ${isSelected ? 'white' : 'var(--border-primary)'}`,
-                          backgroundColor: isSelected
-                            ? 'white'
-                            : 'var(--bg-secondary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {isSelected && (
-                          <div
-                            style={{
-                              width: '10px',
-                              height: '10px',
-                              borderRadius:
-                                choice.chooseCount === 1 ? '50%' : '2px',
-                              backgroundColor: 'var(--accent-primary)',
-                            }}
-                          />
-                        )}
-                      </div>
+                      <SelectionMark
+                        isSelected={isSelected}
+                        replaces={replaces}
+                      />
                       <span>{info.name}</span>
                     </button>
                   );
@@ -232,7 +258,8 @@ export function EnumChoice<T extends number>({
               key={item}
               style={{
                 display: 'flex',
-                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: '12px',
                 padding: '12px 16px',
                 borderRadius: '8px',
                 backgroundColor: isSelected
@@ -248,26 +275,31 @@ export function EnumChoice<T extends number>({
               }}
             >
               <input
-                type={choice.chooseCount === 1 ? 'radio' : 'checkbox'}
+                type={replaces ? 'radio' : 'checkbox'}
                 checked={isSelected}
                 onChange={() => !isDisabled && handleToggle(item)}
                 disabled={isDisabled}
                 style={{ display: 'none' }}
               />
-              <span style={{ fontSize: '14px', fontWeight: '600' }}>
-                {info.name}
-              </span>
-              {info.description && (
-                <span
-                  style={{
-                    fontSize: '12px',
-                    marginTop: '4px',
-                    opacity: isSelected ? 0.9 : 0.7,
-                  }}
-                >
-                  {info.description}
+              <SelectionMark isSelected={isSelected} replaces={replaces} />
+              <span
+                style={{ display: 'flex', flexDirection: 'column', flex: 1 }}
+              >
+                <span style={{ fontSize: '14px', fontWeight: '600' }}>
+                  {info.name}
                 </span>
-              )}
+                {info.description && (
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      marginTop: '4px',
+                      opacity: isSelected ? 0.9 : 0.7,
+                    }}
+                  >
+                    {info.description}
+                  </span>
+                )}
+              </span>
             </label>
           );
         })}

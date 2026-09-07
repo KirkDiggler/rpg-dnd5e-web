@@ -168,6 +168,28 @@ describe('ChoiceRenderer - TOOLS by count', () => {
     );
   });
 
+  it('marks every option as pickable, the way the skills above it do', () => {
+    // THE AFFORDANCE IS THE CONTROL. Ten instruments under a skills list that
+    // draws checkboxes, drawn as ten plain bars with none, read as a list you
+    // pick one from — which is how a working multi-pick got reported as a
+    // single-select. The mark is what says otherwise.
+    const { container } = render(
+      <ChoiceRenderer
+        choice={instrumentChoice(3)}
+        currentSelections={[Tool.LUTE]}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    const marks = container.querySelectorAll('span[aria-hidden="true"]');
+    expect(marks).toHaveLength(INSTRUMENTS.length);
+    // Square for a pick that adds; the filled inner dot marks the one held.
+    expect(
+      [...marks].every((m) => m.getAttribute('style')?.includes('4px'))
+    ).toBe(true);
+    expect([...marks].filter((m) => m.children.length === 1)).toHaveLength(1);
+  });
+
   it('adds each pick to the ones already made, up to the count', () => {
     const onSelectionChange = vi.fn();
 
