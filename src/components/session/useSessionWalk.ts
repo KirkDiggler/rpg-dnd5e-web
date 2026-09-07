@@ -1,8 +1,15 @@
 /**
- * useSessionWalk — turns a floor-hex click into a `MoveRequest`, and the
- * server's answer into what `HexEntity`'s existing `useHexMovePath`
- * machinery needs to animate it (`movePath`/`moveSeq`, unchanged from the
- * old `HexGrid` route — see `useHexMovePath.ts`'s own doc comment).
+ * useSessionWalk — turns a floor-hex click into a `MoveRequest`, and hands
+ * the server's answer to the shared move controller.
+ *
+ * This hook owns the COMMAND path only: pathfinding to shape the request,
+ * the RPC, refusal handling, and `busy`. It no longer owns any animation
+ * state. The route and its sequence belong to `moveController.ts`, which
+ * holds one counter for every actor — the local player's route arriving
+ * whole here, everyone else's a cell at a time off the stream
+ * (rpg-dnd5e-web#961). Before that split this hook was the ONLY producer of
+ * `movePath`/`moveSeq`, which is precisely why nobody but the local player
+ * could ever play a walk clip.
  *
  * THE SERVER IS THE AUTHORITY, start to finish. `walkTo` computes a
  * client-side route only to shape the REQUEST (`atlasPath.ts`'s A* over
@@ -44,10 +51,6 @@ export interface UseSessionWalkResult {
   /** Where the local player's entity should currently be drawn resting —
    * `null` until the first `GetWhere` answer arrives. */
   displayPosition: CubeCoord | null;
-  /** The real steps of the most recent move, for `HexEntity.movePath`. */
-  movePath: CubeCoord[] | undefined;
-  /** Bumped once per genuine move, for `HexEntity.moveSeq`. */
-  moveSeq: number | undefined;
   /** True from the moment a click dispatches a `Move` RPC through to the
    * walk animation finishing AND the follow-up `GetWhere` reconciling —
    * callers ignore clicks while this is true (this hook already does,
@@ -57,9 +60,12 @@ export interface UseSessionWalkResult {
   /** Call with a clicked floor hex. No-ops (does not dispatch anything)
    * when already there, unreachable, or a walk is already in flight. */
   walkTo: (target: CubeCoord) => void;
-  /** Wire straight to `HexEntity`'s `onMovementPresentationComplete` (via
-   * a wrapper that drops the entityId argument). */
-  onWalkAnimationComplete: (completedSeq: number) => void;
+  /** Call when the local player's walk animation has finished painting.
+   * Takes no sequence: `busy` already admits exactly one walk at a time,
+   * so a completion arriving while busy IS this walk. The sequence itself
+   * now belongs to `moveController.ts`, which keeps one counter for every
+   * actor rather than one per feed. */
+  onWalkAnimationComplete: () => void;
   /** The most recent non-stale move-RPC failure message, or `null`.
    * FAILED_PRECONDITION selector refusals use the shared declaration recovery
    * callback instead, so raw stale wording never reaches this field. */
@@ -85,17 +91,23 @@ export function useSessionWalk(
   /** Fires synchronously when Move is accepted, before response-step animation
    * state is published. The route uses this boundary to revoke stale command
    * authority and queue Turn/Afford reconciliation. */
-  onMoveAccepted?: () => void
+  onMoveAccepted?: () => void,
+  /** Hands the move's REAL steps to the shared move controller, which owns
+   * the route and its sequence for every actor alike (rpg-dnd5e-web#961).
+   * This hook keeps the command path — the RPC, refusals, `busy` — and no
+   * longer owns any animation state. */
+  onRouteBegan: (route: readonly CubeCoord[]) => void = () => {}
 ): UseSessionWalkResult {
   const [displayPosition, setDisplayPosition] = useState<CubeCoord | null>(
     wherePosition ? positionToCube(wherePosition) : null
   );
-  const [movePath, setMovePath] = useState<CubeCoord[] | undefined>(undefined);
-  const [moveSeq, setMoveSeq] = useState<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [notYourTurn, setNotYourTurn] = useState(false);
-  const nextSeqRef = useRef(0);
+  // Read through a ref so a caller passing an inline closure cannot churn
+  // `walkTo`'s dependency list.
+  const onRouteBeganRef = useRef(onRouteBegan);
+  onRouteBeganRef.current = onRouteBegan;
 
   // GetWhere is the source of truth. While idle, the display position
   // tracks it directly; while a walk is in flight (or its follow-up
@@ -169,10 +181,8 @@ export function useSessionWalk(
             return;
           }
 
-          nextSeqRef.current += 1;
           setDisplayPosition(steps[steps.length - 1]!);
-          setMovePath(steps);
-          setMoveSeq(nextSeqRef.current);
+          onRouteBeganRef.current(steps);
           // busy stays true — released by onWalkAnimationComplete once
           // the presentation finishes AND GetWhere reconciles.
         } catch (err) {
@@ -203,24 +213,19 @@ export function useSessionWalk(
     ]
   );
 
-  const onWalkAnimationComplete = useCallback(
-    (completedSeq: number) => {
-      if (completedSeq !== moveSeq) return;
-      void (async () => {
-        try {
-          await refetchWhere();
-        } finally {
-          setBusy(false);
-        }
-      })();
-    },
-    [moveSeq, refetchWhere]
-  );
+  const onWalkAnimationComplete = useCallback(() => {
+    if (!busy) return;
+    void (async () => {
+      try {
+        await refetchWhere();
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [busy, refetchWhere]);
 
   return {
     displayPosition,
-    movePath,
-    moveSeq,
     busy,
     walkTo,
     onWalkAnimationComplete,

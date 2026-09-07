@@ -60,7 +60,12 @@ import { classLabel } from '../game/encounterDockHelpers';
 import { EquipmentPopover } from '../game/equipment/EquipmentPopover';
 import type { EquipIntent, ItemLike } from '../game/equipment/equipmentTypes';
 import { computeCarried } from '../game/equipment/equipmentTypes';
-import { coordToKey, cubeToWorld, HEX_SIZE } from '../hex-grid/hexMath';
+import {
+  coordToKey,
+  type CubeCoord,
+  cubeToWorld,
+  HEX_SIZE,
+} from '../hex-grid/hexMath';
 import { resolveMainHandPresentation } from '../hex-grid/mainHandWeapons';
 import { resolveOffHandPresentation } from '../hex-grid/offHandEquipment';
 import { Button } from '../ui/Button';
@@ -68,6 +73,7 @@ import type { TrayPlaneProjection } from '../ui/dice/trayPlaneProjection';
 import { ErrorDisplay, LoadingOverlay } from '../ui/Feedback';
 import { applyDropped, applyHeld, heldProp } from './applyHolding';
 import { applyDoorRevealed, applyRegionRevealed } from './applyReveal';
+import { arrivingStep } from './arrivingStep';
 import { type AtlasPathIndex, buildAtlasPathIndex } from './atlasPath';
 import { regionAt } from './atlasRegion';
 import {
@@ -119,6 +125,7 @@ import {
   type SessionRefreshKey,
   useCoalescedSessionRefreshes,
 } from './useCoalescedSessionRefreshes';
+import { useMoveController } from './useMoveController';
 import {
   type SessionEventDeliveryMetadata,
   useSessionEventStream,
@@ -386,10 +393,16 @@ function SessionEncounterScope({
     moveAcceptedRef.current();
   }, []);
 
+  // ONE movement per actor, whoever they are (rpg-dnd5e-web#961). Declared
+  // ahead of the walk hook, which feeds it the local player's route.
+  const moves = useMoveController();
+  const beginLocalRoute = useCallback(
+    (route: readonly CubeCoord[]) => moves.beginRoute(member, route),
+    [moves, member]
+  );
+
   const {
     displayPosition,
-    movePath,
-    moveSeq,
     busy: walking,
     walkTo,
     onWalkAnimationComplete,
@@ -403,13 +416,40 @@ function SessionEncounterScope({
     moveDeclarationId,
     handleStaleMoveRefusal,
     isMoveAuthorityFresh,
-    handleMoveAccepted
+    handleMoveAccepted,
+    beginLocalRoute
   );
 
   const otherMembers = useMemo(
     () => sightingsToEntities(sightings, member),
     [member, sightings]
   );
+
+  // A movement is something the viewer WATCHES happen, so it lives only as
+  // long as they can see the actor. The wire tells us about every roster
+  // member's steps whether or not they are in sight, so without this an
+  // unseen actor banks a route and `useHexMovePath` replays it the moment
+  // they are sighted again — a remembered skeleton walking across the map
+  // instead of simply being at its new cell (rpg-dnd5e-web#961 follow-up).
+  const liveSighted = useMemo(() => {
+    const ids = new Set<string>([member]);
+    for (const sighted of otherMembers) {
+      if (!sighted.remembered) ids.add(sighted.subject);
+    }
+    return ids;
+  }, [otherMembers, member]);
+  // Read through a ref at beat time: the stream handler must not be rebuilt
+  // every time a sighting shifts.
+  const liveSightedRef = useRef(liveSighted);
+  liveSightedRef.current = liveSighted;
+  const { forgetUnsighted: forgetUnsightedMovements } = moves;
+  // Two guards, because they cover different moments. The feed guard below
+  // refuses to bank a step for an actor the viewer cannot see right now; this
+  // one drops an actor who goes out of sight MID-walk, whose route was
+  // legitimately banked while they were still visible.
+  useEffect(() => {
+    forgetUnsightedMovements(liveSighted);
+  }, [liveSighted, forgetUnsightedMovements]);
 
   // The path PREVIEW must route around exactly what the server's own Move
   // already refuses to enter — a live other member's cell, world NPC,
@@ -994,6 +1034,19 @@ function SessionEncounterScope({
       ]);
       acceptStreamEvent(event, metadata);
 
+      // A movement beat now DRAWS. One beat per cell reaches every member of
+      // the roster, the mover included — but the local player's own route
+      // already arrived whole from their Move answer, so feeding their beats
+      // here as well would drive the same walk twice.
+      const step = arrivingStep(event);
+      if (
+        step &&
+        step.member !== member &&
+        liveSightedRef.current.has(step.member)
+      ) {
+        moves.stepArrived(step.member, step.to);
+      }
+
       // A REVEAL PATCHES THE HELD ATLAS IN THE SAME FRAME (design §5.2
       // as amended): the room, its walls and its sealed cells appear now,
       // not a round trip later. `applyReveal.ts` holds the merge rule —
@@ -1088,11 +1141,14 @@ function SessionEncounterScope({
     if (!member) return;
     scheduleRefresh(['afford', 'turn']);
   }, [member, scheduleRefresh]);
-  const handleWalkAnimationComplete = useCallback(
-    (completedSeq: number) => {
-      onWalkAnimationComplete(completedSeq);
+  const handleMovementPainted = useCallback(
+    (paintedMember: string, seq: number, reached: number) => {
+      moves.movementPainted(paintedMember, seq, reached);
+      // Only the local player's walk holds a reconcile open; a peer's walk
+      // is presentation and nothing waits on it.
+      if (paintedMember === member) onWalkAnimationComplete();
     },
-    [onWalkAnimationComplete]
+    [moves, member, onWalkAnimationComplete]
   );
 
   const handleDoorClick = useCallback(
@@ -1631,12 +1687,11 @@ function SessionEncounterScope({
                     runEnded === null ? handleVendorInteract : undefined
                   }
                   myPosition={displayPosition ?? lastGoodPositionRef.current!}
-                  movePath={movePath}
-                  moveSeq={moveSeq}
+                  movements={moves.movements}
                   onHexClick={runEnded === null ? walkTo : undefined}
                   onEntityClick={runEnded === null ? onTargetClick : undefined}
-                  onMovementPresentationComplete={
-                    runEnded === null ? handleWalkAnimationComplete : undefined
+                  onMovementPainted={
+                    runEnded === null ? handleMovementPainted : undefined
                   }
                   otherMembers={revealedMembers}
                   attackableTargets={

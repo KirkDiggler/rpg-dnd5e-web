@@ -164,7 +164,7 @@ export interface HexEntityProps {
    * (`EntityMoved.actualPath`), set only alongside `moveSeq` — see
    * `useEncounterState.ts`'s `mergeEntityPosition` doc comment. Undefined
    * for an entity that has never moved this session. */
-  movePath?: CubeCoord[];
+  movePath?: readonly CubeCoord[];
   /** Monotonic counter bumped only by a genuine move (rpg-dnd5e-web#542) —
    * `useHexMovePath` watches this, not `position` itself, to distinguish a
    * real move from initial placement or a ghost/revive reconciliation. */
