@@ -1014,6 +1014,7 @@ const EXPECTED_OTHER_KIND = {
   deathSaveRolled: EventKind.DEATH_SAVE_ROLLED,
   stanceChanged: EventKind.STANCE_CHANGED,
   arrived: EventKind.ARRIVED,
+  windowOpened: EventKind.WINDOW_OPENED,
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -1036,6 +1037,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.DEATH_SAVE_ROLLED,
   EventKind.STANCE_CHANGED,
   EventKind.ARRIVED,
+  EventKind.WINDOW_OPENED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -1156,6 +1158,39 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
           ? Object.freeze({
               x: event.body.value.cell.x,
               y: event.body.value.cell.y,
+            })
+          : null,
+      });
+    // THE FIGHT PAUSED ON AN ANSWER (rpg-project#316). Both cells are part
+    // of the identity: the same mover can be asked about twice in one turn
+    // from different cells, and two windows that differ only in where the
+    // step starts are different beats, not a conflicting duplicate.
+    //
+    // `to` IS NOT WHERE THE MOVER IS. The step has not happened; nothing
+    // reads this as a position, and the MOVED that follows the answer is
+    // what moves anybody.
+    case 'windowOpened':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        audience: Object.freeze([...event.body.value.audience]),
+        mover: event.body.value.mover,
+        from: event.body.value.from
+          ? Object.freeze({
+              x: event.body.value.from.x,
+              y: event.body.value.from.y,
+            })
+          : null,
+        to: event.body.value.to
+          ? Object.freeze({
+              x: event.body.value.to.x,
+              y: event.body.value.to.y,
+            })
+          : null,
+        reaction: event.body.value.reaction
+          ? Object.freeze({
+              ref: event.body.value.reaction.ref,
+              name: event.body.value.reaction.name,
             })
           : null,
       });
