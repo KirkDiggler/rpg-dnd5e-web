@@ -17,6 +17,7 @@ import {
   RollCalculationSchema,
   RollComponentSchema,
   RollSourceSchema,
+  RollWindowOpenedSchema,
   StanceChangedSchema,
   WindowOpenedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
@@ -717,5 +718,31 @@ describe('the Story log on the hold-out beats (rpg-project#375 §5)', () => {
     expect(entry.headline).toBe(
       'Aldric, unknown-member may strike as Skeleton Guard leaves reach'
     );
+  });
+
+  it('a post-roll window says what stands on the table, not what it did', () => {
+    const [entry] = buildCombatStory(
+      [
+        beat(14n, EventKind.ROLL_WINDOW_OPENED, {
+          case: 'rollWindowOpened',
+          value: create(RollWindowOpenedSchema, {
+            audience: 'aldric',
+            roll: 9,
+            total: 13,
+            offer: create(ReactionRefSchema, {
+              ref: 'dnd5e:conditions:inspired',
+              name: 'Bardic Inspiration',
+            }),
+          }),
+        }),
+      ],
+      context
+    );
+    expect(entry.eyebrow).toBe('Bardic Inspiration');
+    expect(entry.headline).toBe('Aldric rolled 9 for 13');
+    expect(entry.tone).toBe('turn');
+    // NO OUTCOME IS NARRATED. The swing has not landed and the beat that says
+    // whether it did comes after the answer.
+    expect(entry.headline).not.toMatch(/hit|miss/i);
   });
 });

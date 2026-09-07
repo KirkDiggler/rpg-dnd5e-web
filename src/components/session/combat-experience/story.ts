@@ -444,6 +444,24 @@ function buildOtherStory(
         tone: 'turn',
       });
     }
+    // THE DIE IS ROLLED AND THE SWING HAS NOT LANDED (rpg-project#398). No
+    // STRUCK and no MISSED exists for this attack yet, so this line says what
+    // stands on the table and never what it did — the beat that follows the
+    // answer carries the outcome, with a total this one cannot know.
+    //
+    // THE AC IS NOT NARRATED because the wire does not carry it: the audience
+    // decides on the roll, not on whether the roll already beat something.
+    case 'rollWindowOpened': {
+      const window = event.body.value;
+      const audience = memberName(window.audience, context);
+      return Object.freeze({
+        ...base,
+        eyebrow: reactionLabel(window.offer) ?? 'Reaction',
+        headline: `${audience} rolled ${window.roll} for ${window.total}`,
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'turn',
+      });
+    }
     case 'struck':
     case 'missed':
     case 'doorRevealed':

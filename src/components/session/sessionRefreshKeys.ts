@@ -90,6 +90,13 @@ export function refreshKeysFor(
     // itself — though the route refreshes it on every beat anyway.
     case 'windowOpened':
       return ['afford', 'view'];
+    // A POST-ROLL WINDOW OPENED ON THIS MEMBER'S OWN d20 (rpg-project#398).
+    // `afford` for the same reason: the REACT offer and everyone else's
+    // WINDOW_OPEN shortfalls are only in Afford. `view` is NOT here — this
+    // window has no mover and no cells, so nothing on the canvas changed;
+    // pulling the scene would be work for a beat that moved nobody.
+    case 'rollWindowOpened':
+      return ['afford'];
     // A RESERVED PLACEMENT ENTERED THE RUN: patch the one view it lands in
     // (`Arrived`'s own doc comment — a monster re-pulls GetRoster as JOINED
     // does, a prop re-pulls GetAtlas), and the sight it may now be in.
