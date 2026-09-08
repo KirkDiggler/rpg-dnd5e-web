@@ -1,6 +1,9 @@
 import type { StreamResponse, UnaryResponse } from '@connectrpc/connect';
+import { CompositionService } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
+import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loggingInterceptor } from './client';
+import { clearAuth, setAuth } from './auth';
+import { authInterceptor, loggingInterceptor } from './client';
 
 /** Minimal fake req satisfying what loggingInterceptor actually reads
  * (service.typeName, method.name, message) — cast past the rest of
@@ -18,6 +21,55 @@ function makeFakeReq(overrides?: { stream?: boolean }) {
 async function* fromArray<T>(items: T[]): AsyncGenerator<T> {
   for (const item of items) yield item;
 }
+
+function makeAuthReq(service: { typeName: string }) {
+  return {
+    stream: false,
+    service,
+    method: { name: 'TestMethod' },
+    message: {},
+    header: new Headers(),
+  } as unknown as Parameters<ReturnType<typeof authInterceptor>>[0];
+}
+
+describe('authInterceptor', () => {
+  afterEach(() => {
+    clearAuth();
+    vi.unstubAllEnvs();
+  });
+
+  it('adds the guild selector only to Discord CompositionService calls', async () => {
+    setAuth('private-token', 'player-1', '123456789012345678');
+    const compositionReq = makeAuthReq(CompositionService);
+    const characterReq = makeAuthReq(CharacterService);
+    const next = vi.fn(async (req) => req as never);
+
+    await authInterceptor(next)(compositionReq);
+    await authInterceptor(next)(characterReq);
+
+    expect(compositionReq.header.get('authorization')).toBe(
+      'Discord private-token'
+    );
+    expect(compositionReq.header.get('x-rpg-guild-id')).toBe(
+      '123456789012345678'
+    );
+    expect(characterReq.header.get('authorization')).toBe(
+      'Discord private-token'
+    );
+    expect(characterReq.header.has('x-rpg-guild-id')).toBe(false);
+  });
+
+  it('uses the shared Dev decision without a guild selector', async () => {
+    vi.stubEnv('VITE_DEV_PLAYER_ID', 'dev-player');
+    vi.stubEnv('MODE', 'development');
+    const request = makeAuthReq(CompositionService);
+
+    await authInterceptor(async (req) => req as never)(request);
+
+    expect(request.header.get('authorization')).toBe('Dev dev-player');
+    expect(request.header.has('x-rpg-guild-id')).toBe(false);
+  });
+});
 
 describe('loggingInterceptor', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;

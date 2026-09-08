@@ -192,19 +192,22 @@ Gap: `$typeName` and `$unknown` fields must be manually set when
 constructing proto-compatible objects by hand. This is a protobuf-es v2
 constraint, not a design flaw, but it is a foot-gun for new contributors.
 
-### Discord Activity wiring — B-
+### Discord Activity wiring — B+
 
-`DiscordProvider` + `useDiscord` hook is a clean abstraction. The
-`/.proxy` URL detection for Discord Activity is correct. Auth interceptor
-handles both real Discord tokens and dev fallback.
+`DiscordProvider` + `useDiscord` keep credentials out of React consumers while
+an opaque auth epoch owns teardown. A shared non-secret auth decision drives
+both Connect transport and composition-source selection, with Discord winning
+in development. Focused tests cover SDK GuildID use, membership consent without
+an invented prompt enum, missing/cancelled consent, per-service guild headers,
+Discord/Dev source selection, current-versus-stale 401 handling, stale
+palette/resolution results, and same-guild stale-source write fencing.
 
 Gaps:
 
-- `isDevelopment ? 'test-player' : null` fallback (now in `App.tsx`, was
-  in `LobbyView` before its deletion) means a production Discord auth
-  failure silently falls through to `null` rather than surfacing an
-  error.
-- No test of the Discord SDK initialization path.
+- Real Discord consent, membership endpoint behavior, and Activity proxy
+  forwarding require the coordinated deployed walkthrough; local mocks cannot
+  attest those provider boundaries.
+- SDK initialization failure has only indirect provider coverage.
 
 ### vitest / test infrastructure — B-
 
