@@ -4176,7 +4176,11 @@ describe('SessionEncounterView production combat integration', () => {
     );
   });
 
-  it('isolates a run-ended modal above an open equipment panel and focuses only its primary action', async () => {
+  it('announces the ending in a toast that seals nothing off, and leaves the log readable', async () => {
+    // KIRK'S WALL (rpg-dnd5e-web#999). This used to assert the opposite: a
+    // dialog with `aria-modal`, `inert` over the whole scene, and focus
+    // dragged onto Leave. "no chance to look at the log. a toast we won or we
+    // lost is sufficient. if we won maybe we wanna look around."
     readyTurn();
     const ended = deferredStream([
       event(EventKind.ENDED, {
@@ -4188,26 +4192,36 @@ describe('SessionEncounterView production combat integration', () => {
     const onBack = vi.fn();
     renderView({ onBack });
     await screen.findByTestId('session-combat-equipment-button');
-    fireEvent.click(screen.getByTestId('session-combat-equipment-button'));
-    await screen.findByTestId('equipment-popover');
     const underlyingEndTurn = screen.getByRole('button', { name: /end turn/i });
 
     ended.release();
 
-    const dialog = await screen.findByRole('dialog', {
-      name: /tomb is cleared/i,
-    });
-    expect(dialog.getAttribute('aria-modal')).toBe('true');
-    expect(screen.queryByTestId('equipment-popover')).toBeNull();
-    const overlay = screen.getByTestId('run-ended-overlay');
-    expect(Number(overlay.style.zIndex)).toBeGreaterThan(40);
+    const toast = await screen.findByTestId('run-ended-toast');
+    expect(toast.dataset.outcome).toBe('won');
+    expect(toast.textContent).toContain('You won');
+    expect(toast.textContent).toContain('The tomb is cleared.');
+
+    // NOTHING IS SEALED OFF. No overlay, no dialog, no inert, no aria-hidden,
+    // and the scene is still drawn and still reachable.
+    expect(screen.queryByTestId('run-ended-overlay')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     const underlying = screen.getByTestId('session-encounter-content');
-    expect(underlying.hasAttribute('inert')).toBe(true);
-    expect(underlying.getAttribute('aria-hidden')).toBe('true');
+    expect(underlying.hasAttribute('inert')).toBe(false);
+    expect(underlying.getAttribute('aria-hidden')).toBeNull();
+    expect(underlying.style.pointerEvents).toBe('');
     screen.getByTestId('session-canvas');
 
-    const leave = screen.getByRole('button', { name: 'Leave' });
-    await waitFor(() => expect(document.activeElement).toBe(leave));
+    // THE LOG IS STILL THERE AND STILL SWITCHABLE. Reading is not playing.
+    screen.getByTestId('session-combat-log');
+
+    // FOCUS STAYS WHERE THE PLAYER LEFT IT. A status is announced, not seized.
+    await waitFor(() => screen.getByTestId('run-ended-toast'));
+    expect(document.activeElement).not.toBe(
+      screen.getByRole('button', { name: 'Leave' })
+    );
+
+    // The verbs are still refused — visibly, now that the scene is live.
+    expect(underlyingEndTurn.hasAttribute('disabled')).toBe(true);
     fireEvent.click(underlyingEndTurn);
     expect(hoisted.endTurnFn).not.toHaveBeenCalled();
     act(() => {
@@ -4217,8 +4231,55 @@ describe('SessionEncounterView production combat integration', () => {
     expect(hoisted.moveFn).not.toHaveBeenCalled();
     expect(hoisted.openDoorFn).not.toHaveBeenCalled();
 
-    fireEvent.click(leave);
+    // The modal's primary action kept its place and lost its power to gate.
+    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the party fell when the run ended in a wipe, and nothing leaves on its own', async () => {
+    // `party_defeated` had NO case in the old table, so a wipe read "The run
+    // has ended." — the one ending a player most wants named.
+    readyTurn();
+    const ended = deferredStream([
+      event(EventKind.ENDED, {
+        case: 'ended',
+        value: { ending: 'party_defeated' },
+      } as SessionEvent['body']),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(ended.stream);
+    const onBack = vi.fn();
+    renderView({ onBack });
+    await screen.findByTestId('session-combat-equipment-button');
+
+    ended.release();
+
+    const toast = await screen.findByTestId('run-ended-toast');
+    expect(toast.dataset.outcome).toBe('lost');
+    expect(toast.textContent).toContain('You lost');
+    expect(toast.textContent).toContain('The party fell.');
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('lets the player dismiss the toast and keep looking around', async () => {
+    readyTurn();
+    const ended = deferredStream([
+      event(EventKind.ENDED, {
+        case: 'ended',
+        value: { ending: 'boss-down' },
+      } as SessionEvent['body']),
+    ]);
+    hoisted.streamEventsFn.mockReturnValue(ended.stream);
+    renderView();
+    await screen.findByTestId('session-combat-equipment-button');
+
+    ended.release();
+    await screen.findByTestId('run-ended-toast');
+
+    fireEvent.click(screen.getByTestId('run-ended-toast-dismiss'));
+
+    expect(screen.queryByTestId('run-ended-toast')).toBeNull();
+    screen.getByTestId('session-canvas');
+    screen.getByTestId('session-combat-log');
   });
 
   it('synchronously disables declarations and movement preview when an event invalidates authority, then waits for both current snapshots', async () => {

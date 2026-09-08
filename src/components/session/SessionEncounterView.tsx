@@ -117,6 +117,7 @@ import type {
 } from './local-world-die/localWorldDieWitnessPlan';
 import { consumeLocalWorldDieWitnessStream } from './local-world-die/localWorldDieWitnessStream';
 import { resolveName } from './participantNames';
+import { RunEndedToast } from './RunEndedToast';
 import { SEARCH_NOTICE } from './searchNotice';
 import { SessionCanvas } from './SessionCanvas';
 import { refreshKeysFor } from './sessionRefreshKeys';
@@ -140,19 +141,6 @@ export interface SessionEncounterViewProps {
   playerId: string;
   onBack: () => void;
   compositionSource?: CompositionSource;
-}
-
-function endingHeadline(ending: string): string {
-  switch (ending) {
-    case 'boss-down':
-      return 'The tomb is cleared.';
-    case 'withdrawn':
-      return 'The party withdrew.';
-    case 'abandoned':
-      return 'The run was abandoned.';
-    default:
-      return 'The run has ended.';
-  }
 }
 
 function CenteredCard({ children }: { children: React.ReactNode }) {
@@ -295,22 +283,17 @@ function SessionEncounterScope({
   } | null>(null);
   const [vendorNotice, setVendorNotice] = useState<string | null>(null);
   const encounterContentRef = useRef<HTMLDivElement>(null);
-  const leaveRunButtonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    const underlying = encounterContentRef.current;
-    if (runEnded === null) {
-      underlying?.removeAttribute('inert');
-      return;
-    }
-
-    // Native inert removes every underlying canvas/panel control from pointer
-    // and sequential-focus interaction. aria-hidden mirrors that isolation for
-    // assistive technology while focus moves to the modal's one primary action.
-    underlying?.setAttribute('inert', '');
-    leaveRunButtonRef.current?.focus();
-    return () => underlying?.removeAttribute('inert');
-  }, [runEnded]);
+  // THE RUN ENDING NO LONGER TAKES THE SCREEN AWAY (rpg-dnd5e-web#999). What
+  // used to live here — `inert` on the whole scene, `aria-hidden` over it, and
+  // focus dragged onto the modal's one button — is gone. Nothing is sealed off
+  // and nothing is stolen; the ending announces itself in a toast and the
+  // player keeps the log, the story and the camera.
+  //
+  // WHAT STAYS SEALED IS THE VERBS, and each one at its own call site below,
+  // the way doors, hexes, loot and search were already gated. Reading is not
+  // playing: a run that has ended still declares nothing, spends no turn and
+  // opens no door, but it can be looked at for as long as the player likes.
 
   // The searcher's own current region, resolved from data this member's
   // own atlas already carries — never chosen, never guessed (the law: "a
@@ -1628,22 +1611,7 @@ function SessionEncounterScope({
         <div
           ref={encounterContentRef}
           data-testid="session-encounter-content"
-          aria-hidden={runEnded !== null ? true : undefined}
-          onClickCapture={(event) => {
-            if (runEnded === null) return;
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onKeyDownCapture={(event) => {
-            if (runEnded === null) return;
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: runEnded !== null ? 'none' : undefined,
-          }}
+          style={{ position: 'absolute', inset: 0 }}
         >
           <CombatExperience
             layout="fill-parent"
@@ -1662,7 +1630,13 @@ function SessionEncounterScope({
             }
             onRetryPrivateStatus={() => void refetchCharacterData()}
             authorityFresh={authorityFresh}
-            endTurnBlocked={combat.endTurnBlocked}
+            // ENDING A TURN IN A RUN THAT IS OVER IS REFUSED VISIBLY. The
+            // scene-wide `inert` used to swallow this click along with
+            // everything else (#999); with the scene readable again the button
+            // has to say for itself that it is spent, rather than looking live
+            // and quietly doing nothing. Every other verb on this call is
+            // already withheld the same way, by being handed nothing to do.
+            endTurnBlocked={combat.endTurnBlocked || runEnded !== null}
             presentationState={combat.presentationState}
             phase={combat.phase}
             showTurnNotice={combat.showTurnNotice}
@@ -1733,6 +1707,9 @@ function SessionEncounterScope({
             onSelectDeclaration={combat.onSelectDeclaration}
             onTargetClick={combat.onTargetClick}
             onEndTurn={combat.onEndTurn}
+            // The log's own mode switch is deliberately NOT gated on the run
+            // having ended: changing what the log shows is reading, and
+            // reading is the whole point of #999.
             onLogModeChange={combat.onLogModeChange}
             onOpenEquipment={
               visibleCharacterData
@@ -1843,48 +1820,21 @@ function SessionEncounterScope({
         </div>
 
         {runEnded !== null && (
-          <div
-            data-testid="run-ended-overlay"
-            style={{
-              position: 'absolute',
-              zIndex: 1000,
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(0, 0, 0, 0.72)',
-            }}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="run-ended-headline"
-              style={{
-                textAlign: 'center',
-                padding: '32px 48px',
-                borderRadius: 12,
-                background: 'var(--bg-secondary, #1c1c22)',
-              }}
-            >
-              <h2 id="run-ended-headline">{endingHeadline(runEnded)}</h2>
-              {/* Names the carrier when one walked out through an authored
-                  exit holding something, and says nothing about one
-                  otherwise — a run that ended for any other reason had no
-                  carrier, and the overlay must not invent one. */}
-              {carrier ? (
-                <p data-testid="run-ended-carrier">
-                  {`${resolveName(publicMemberNames, carrier.member, member)} carried ${holdingPhrase(
+          <RunEndedToast
+            ending={runEnded}
+            // Names the carrier when one walked out through an authored exit
+            // holding something, and says nothing about one otherwise — a run
+            // that ended for any other reason had no carrier, and the toast
+            // must not invent one.
+            carrierLine={
+              carrier
+                ? `${resolveName(publicMemberNames, carrier.member, member)} carried ${holdingPhrase(
                     carrier.holding
-                  )} out through the ${authoredWords(carrier.exit)}.`}
-                </p>
-              ) : (
-                <p>The encounter is over — the outcome is recorded.</p>
-              )}
-              <Button ref={leaveRunButtonRef} size="sm" onClick={onBack}>
-                Leave
-              </Button>
-            </div>
-          </div>
+                  )} out through the ${authoredWords(carrier.exit)}.`
+                : undefined
+            }
+            onLeave={onBack}
+          />
         )}
       </div>
     );
