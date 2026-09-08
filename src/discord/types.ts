@@ -26,6 +26,9 @@ export interface DiscordContextType {
   // User and authentication
   user: DiscordUser | null;
   isAuthenticated: boolean;
+  grantedScopes: readonly string[];
+  /** Opaque local credential epoch. It never contains token material. */
+  authSessionId: number;
 
   // Party/session info
   participants: DiscordParticipant[];
@@ -36,4 +39,10 @@ export interface DiscordContextType {
   // Actions
   authenticate: () => Promise<void>;
   refreshParticipants: () => Promise<void>;
+  clearAuthentication: (message?: string) => void;
+  clearAuthenticationForSession: (
+    expectedAuthSessionId: number,
+    message?: string
+  ) => void;
+  isAuthenticationSessionCurrent: (expectedAuthSessionId: number) => boolean;
 }

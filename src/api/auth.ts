@@ -1,90 +1,85 @@
 /**
- * Auth store for gRPC authentication.
- *
- * This module bridges React context (Discord auth) with the module-level
- * gRPC client. The interceptor reads from this store to add auth headers.
- *
- * Usage:
- * - DiscordProvider calls setAuth() after Discord authentication
- * - The auth interceptor calls getAuth() for each gRPC request
- * - In local dev, VITE_DEV_PLAYER_ID provides a fallback player ID
+ * In-memory authentication state shared by the Discord provider and Connect
+ * transport. Credentials never leave this module except through the private
+ * transport getter.
  */
-
 interface AuthState {
   discordToken: string | null;
   playerId: string | null;
+  guildId: string | null;
 }
+
+export type AuthDecision =
+  | {
+      readonly kind: 'discord';
+      readonly playerId: string | null;
+      readonly guildId: string | null;
+    }
+  | { readonly kind: 'dev'; readonly playerId: string }
+  | { readonly kind: 'unauthenticated' };
 
 let authState: AuthState = {
   discordToken: null,
   playerId: null,
+  guildId: null,
 };
 
-/**
- * Set the current auth state. Called by DiscordProvider after auth.
- */
-export function setAuth(token: string | null, playerId: string | null): void {
-  authState = { discordToken: token, playerId };
+/** Set Discord auth, or an explicit local Dev player when token is null. */
+export function setAuth(
+  token: string | null,
+  playerId: string | null,
+  guildId: string | null = null
+): void {
+  authState = { discordToken: token, playerId, guildId };
 
   if (import.meta.env.MODE === 'development') {
     console.log('🔐 Auth state updated:', {
-      hasToken: !!token,
+      kind: token ? 'discord' : playerId ? 'dev' : 'none',
       playerId: playerId || '(none)',
+      hasGuild: !!guildId,
     });
   }
 }
 
-/**
- * Get the current Discord token for API authentication.
- * Returns null if not authenticated.
- */
+/** Used only by the Connect interceptor to construct Discord authorization. */
 export function getDiscordToken(): string | null {
   return authState.discordToken;
 }
 
 /**
- * Get the current player ID.
- * Falls back to VITE_DEV_PLAYER_ID in development mode.
+ * Make the single non-secret auth routing decision used by transport and
+ * composition-source selection. Discord always wins, including in Vite dev.
  */
-export function getPlayerId(): string | null {
-  if (authState.playerId) {
-    return authState.playerId;
-  }
-
-  // Development fallback
-  if (import.meta.env.MODE === 'development') {
-    const devPlayerId = import.meta.env.VITE_DEV_PLAYER_ID;
-    if (devPlayerId) {
-      return devPlayerId;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Check if we have valid auth credentials.
- * In production: requires Discord token
- * In development: accepts either token or dev player ID
- */
-export function isAuthenticated(): boolean {
+export function getAuthDecision(mode = import.meta.env.MODE): AuthDecision {
   if (authState.discordToken) {
-    return true;
+    return {
+      kind: 'discord',
+      playerId: authState.playerId,
+      guildId: authState.guildId,
+    };
   }
 
-  // Development mode allows running without Discord
-  if (import.meta.env.MODE === 'development') {
-    return !!import.meta.env.VITE_DEV_PLAYER_ID;
+  if (mode === 'development') {
+    const playerId = authState.playerId || import.meta.env.VITE_DEV_PLAYER_ID;
+    if (playerId) return { kind: 'dev', playerId };
   }
 
-  return false;
+  return { kind: 'unauthenticated' };
 }
 
-/**
- * Clear auth state. Called on logout or auth failure.
- */
+/** Current UI player identity; Dev fallback remains development-only. */
+export function getPlayerId(): string | null {
+  const decision = getAuthDecision();
+  return decision.kind === 'unauthenticated' ? null : decision.playerId;
+}
+
+export function isAuthenticated(): boolean {
+  return getAuthDecision().kind !== 'unauthenticated';
+}
+
+/** Clear credential, player, and selected guild as one transition. */
 export function clearAuth(): void {
-  authState = { discordToken: null, playerId: null };
+  authState = { discordToken: null, playerId: null, guildId: null };
 
   if (import.meta.env.MODE === 'development') {
     console.log('🔐 Auth state cleared');
