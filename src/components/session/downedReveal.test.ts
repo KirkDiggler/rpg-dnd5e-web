@@ -119,6 +119,53 @@ describe('holdDownedReveal', () => {
 });
 
 describe('selectUnresolvedAttackTargets', () => {
+  it('releases a downed monster when a settled post-roll attack receives its later outcome', () => {
+    const paused = createAttackAuthorityFixture({
+      seq: 23n,
+      presentationId: 'inspired-attack',
+      roll: 9,
+      total: 13,
+      against: 0,
+      hit: false,
+      damage: 0,
+    });
+    const outcome = createAttackAuthorityFixture({
+      seq: 24n,
+      presentationId: 'inspired-attack',
+      roll: 9,
+      total: 16,
+      against: 15,
+      hit: true,
+      damage: 8,
+    });
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      paused.responseFact
+    );
+    state = reduceCombatPresentation(state, releaseFact(state));
+    expect(selectUnresolvedAttackTargets(state).has('skeleton-guard')).toBe(
+      true
+    );
+    state = reduceCombatPresentation(state, outcome.streamFact());
+    expect(selectVisibleResult(state)).toMatchObject({ hit: true, total: 16 });
+    const shown = holdDownedReveal(
+      [member('skeleton-guard', Standing.DOWNED)],
+      selectUnresolvedAttackTargets(state)
+    );
+    expect(shown[0]?.standing).toBe(Standing.DOWNED);
+    expect(selectUnresolvedAttackTargets(state).size).toBe(0);
+
+    // Retirement is per presentation, not a permanent exemption for a target.
+    const next = createAttackAuthorityFixture({
+      seq: 25n,
+      presentationId: 'another-attack',
+    });
+    state = reduceCombatPresentation(state, next.responseFact);
+    expect(selectUnresolvedAttackTargets(state).has('skeleton-guard')).toBe(
+      true
+    );
+  });
+
   it("holds the player's own live target until the dice release, then lets go", () => {
     const facts = createAttackAuthorityFixture();
 

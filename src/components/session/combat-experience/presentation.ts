@@ -202,6 +202,8 @@ export interface CombatPresentationRecord {
   readonly authority: AuthoritySnapshot;
   readonly responseAccepted: boolean;
   readonly eventAccepted: boolean;
+  /** Final outcome replaced this provisional response's presentation duties. */
+  readonly supersededByOutcome?: string;
   readonly event?: Event;
   /** Exact typed attack-body identity, including every nested roll fact. */
   readonly eventFacts?: string;
@@ -723,7 +725,7 @@ function diceEventsFor(
   for (const record of [...presentations].sort(
     (left, right) => left.order - right.order
   )) {
-    if (record.conflicted) continue;
+    if (record.conflicted || record.supersededByOutcome) continue;
     if (record.request) events.push(record.request);
     if (record.release) events.push(record.release);
   }
@@ -946,7 +948,18 @@ function addAttackRecord(
       })
     : initial.record;
   const pending = initial.pending && !settledResponse;
-  const presentations = Object.freeze([...state.presentations, record]);
+  // Retain the original response for duplicate/conflict checks, but retire its
+  // provisional presentation duties. It will never get an event at its own
+  // seq: without this transition it hides the target as "unresolved" forever,
+  // even after the final outcome and the monster's downed state have arrived.
+  const presentations = Object.freeze([
+    ...state.presentations.map((prior) =>
+      prior === settledResponse
+        ? Object.freeze({ ...prior, supersededByOutcome: key })
+        : prior
+    ),
+    record,
+  ]);
   return Object.freeze({
     ...state,
     identities: addIdentity(state, key, authority.kind),
@@ -1971,7 +1984,12 @@ export function selectUnresolvedAttackTargets(
 ): ReadonlySet<string> {
   const targets = new Set<string>();
   for (const record of state.presentations) {
-    if (record.conflicted || record.authority.kind !== 'attack') continue;
+    if (
+      record.conflicted ||
+      record.supersededByOutcome ||
+      record.authority.kind !== 'attack'
+    )
+      continue;
     if (isVisible(record)) continue;
     targets.add(record.authority.target);
   }
