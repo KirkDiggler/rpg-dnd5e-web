@@ -198,7 +198,7 @@ describe('answering a post-roll window on your own d20', () => {
 
     const panel = await screen.findByTestId('reaction-window');
     await waitFor(() =>
-      expect(panel.textContent).toContain('You rolled 13 (d20 9 + 4)')
+      expect(panel.textContent).toContain('You rolled d20 9 + 4 = 13')
     );
     expect(panel.getAttribute('data-window-kind')).toBe('roll');
     expect(panel.textContent).toContain('Bardic Inspiration');
@@ -298,7 +298,7 @@ describe('answering a post-roll window on your own d20', () => {
     );
     await waitFor(() =>
       expect(screen.getByTestId('reaction-window').textContent).toContain(
-        'You rolled 13'
+        'You rolled d20 9 + 4 = 13'
       )
     );
 

@@ -1458,7 +1458,16 @@ function acceptOtherEvent(
   fact: CombatStreamFact,
   relevantFacts: RelevantOtherEvent
 ): CombatPresentationState {
-  const key = storyAuthorityKey(fact.event.session, fact.event.seq);
+  // A paused AttackResponse and its RollWindowOpened beat legitimately share
+  // the attacker's recipient-local sequence: the response supplies the die
+  // presentation while the beat supplies the question. Keep the beat in the
+  // same ordered Story lane without treating those complementary facts as two
+  // competing bodies for one identity.
+  const storyKey = storyAuthorityKey(fact.event.session, fact.event.seq);
+  const key =
+    fact.event.body.case === 'rollWindowOpened'
+      ? `roll-window:${storyKey}`
+      : storyKey;
   const factsIdentity = canonicalTypedIdentity(relevantFacts);
   const identity = identityAt(state, key);
   if (identity) {

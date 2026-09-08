@@ -94,9 +94,8 @@ function rollWindowHeadline(
 ): string {
   if (!roll) return 'Your roll is on the table';
   const bonus = roll.total - roll.roll;
-  if (bonus === 0) return `You rolled ${roll.total} (d20 ${roll.roll})`;
-  const sign = bonus > 0 ? '+' : '−';
-  return `You rolled ${roll.total} (d20 ${roll.roll} ${sign} ${Math.abs(bonus)})`;
+  const sign = bonus < 0 ? '−' : '+';
+  return `You rolled d20 ${roll.roll} ${sign} ${Math.abs(bonus)} = ${roll.total}`;
 }
 
 function declarationIcon(declaration: Declaration): string {

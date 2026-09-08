@@ -48,6 +48,25 @@ export interface CombatExperienceStoryExchange {
 }
 
 /** Presentation projection of an already-authoritative typed attack event. */
+export interface CombatExperienceAttackModifierSource {
+  /** Whether this source granted advantage or imposed disadvantage. */
+  kind: 'advantage' | 'disadvantage';
+  /** Exact canonical source ref from the resolved strike. */
+  sourceRef: string;
+  /** Presentation label resolved from the canonical ref. */
+  label: string;
+  /** Exact member id attributed by the rules owner, when present. */
+  sourceMemberId?: string;
+  /** Public-roster name for sourceMemberId, never inferred from the ref. */
+  sourceMemberName?: string;
+  /** The resolved attack's authoritative attacker and target. */
+  attackerId: string;
+  targetId: string;
+  attackerName: string;
+  targetName: string;
+  sourceIsViewer: boolean;
+}
+
 export interface CombatExperienceAttackOutcome {
   attackId: string;
   session?: string;
@@ -68,6 +87,8 @@ export interface CombatExperienceAttackOutcome {
   critical: boolean;
   damage?: number;
   damageType?: string;
+  /** Typed Struck attribution. Missed cannot supply this on the current wire. */
+  modifierSources?: readonly CombatExperienceAttackModifierSource[];
   /** Whether the viewer is the one being hit. Resolved from the raw member
    * id at projection time, never by matching display names — two members may
    * share a name, and "was that me?" must not depend on that. */

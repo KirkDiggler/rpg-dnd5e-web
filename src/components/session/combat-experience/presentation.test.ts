@@ -9,6 +9,7 @@ import {
   DownedSchema,
   EventKind,
   EventSchema,
+  RollWindowOpenedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import { describe, expect, it } from 'vitest';
 import {
@@ -112,6 +113,45 @@ function expectConflictClosed(state: CombatPresentationState) {
 }
 
 describe('combat presentation authority reconciliation', () => {
+  it('keeps the roll-window beat beside its same-sequence paused response without treating them as a conflict', () => {
+    const facts = createAttackAuthorityFixture({ roll: 9, total: 13 });
+    const rollWindow = {
+      type: 'stream-event' as const,
+      event: create(EventSchema, {
+        session: 'crypt-run',
+        seq: 23n,
+        kind: EventKind.ROLL_WINDOW_OPENED,
+        body: {
+          case: 'rollWindowOpened' as const,
+          value: create(RollWindowOpenedSchema, {
+            audience: 'aldric',
+            offer: {
+              ref: 'dnd5e:conditions:inspired',
+              name: 'Bardic Inspiration',
+            },
+            roll: 9,
+            total: 13,
+          }),
+        },
+      }),
+      metadata: { source: 'live' as const },
+    };
+
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      facts.responseFact
+    );
+    state = reduceCombatPresentation(state, rollWindow);
+
+    expect(state.presentations).toHaveLength(1);
+    expect(state.presentations[0]?.conflicted).toBe(false);
+    expect(state.otherStory).toHaveLength(1);
+    expect(selectCurrentDiceEvents(state)).toHaveLength(1);
+    expect(selectVisibleStory(state)[0]?.headline).toBe(
+      'Aldric rolled d20 9 + 4 = 13'
+    );
+  });
+
   it('response first arms once and hides Story, verdict, and live result until release', () => {
     const facts = createAttackAuthorityFixture();
     const armed = reduceCombatPresentation(

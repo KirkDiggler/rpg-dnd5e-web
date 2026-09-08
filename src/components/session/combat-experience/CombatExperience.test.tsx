@@ -422,6 +422,10 @@ describe('CombatExperience responsive and accessibility contract', () => {
     expect(css).toContain('prefers-reduced-motion: reduce');
     expect(css).toContain('height: 768px');
     expect(css).toContain('overflow-x: auto');
+    expect(css).toMatch(
+      /\.localWorldDieControlLayer\s*\{[^}]*bottom:\s*188px;[^}]*left:\s*14px;/s
+    );
+    expect(css).not.toMatch(/\.localWorldDieControlLayer\s*\{[^}]*top:/s);
     expect(css).not.toMatch(/\.combatExperience\s+\.gameFrame\s*\{/);
     expect(css).toMatch(
       /\.combatExperienceFillParent\s+\.gameFrame\s*\{[^}]*height:\s*100%;[^}]*border-radius:\s*0;/s
@@ -459,6 +463,52 @@ describe('damage toasts', () => {
     expect(toasts.textContent).toContain('8 slashing damage');
     expect(toasts.textContent).toContain('Skeleton Guard');
     expect(toasts.textContent).toContain('−8');
+    const log = screen.getByTestId('session-combat-log');
+    expect(log.textContent).toContain('d20 18 + 5 = 23');
+    expect(log.textContent).not.toContain('AC 13');
+  });
+
+  it('shows authoritative modifier source, owner and attack target in the result', () => {
+    render(
+      <CombatExperience
+        {...propsFor(fresh, {
+          result: {
+            attackId: 'atk-true-strike',
+            actor: 'Aldric Vale',
+            target: 'Skeleton Guard',
+            action: 'Longsword',
+            d20: 18,
+            total: 23,
+            against: 13,
+            hit: true,
+            critical: false,
+            damage: 8,
+            damageType: 'slashing',
+            targetIsViewer: false,
+            modifierSources: [
+              {
+                kind: 'advantage',
+                sourceRef: 'dnd5e:conditions:true_strike',
+                label: 'True Strike',
+                sourceMemberId: fresh.viewerMember,
+                sourceMemberName: 'Aldric Vale',
+                attackerId: fresh.viewerMember,
+                targetId: 'skeleton-guard',
+                attackerName: 'Aldric Vale',
+                targetName: 'Skeleton Guard',
+                sourceIsViewer: true,
+              },
+            ],
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText('Your True Strike → Skeleton Guard')).toBeTruthy();
+    expect(
+      screen.getByText('Your True Strike → Skeleton Guard').closest('li')
+        ?.dataset.sourceRef
+    ).toBe('dnd5e:conditions:true_strike');
   });
 
   it('says nothing on a miss', () => {

@@ -1,5 +1,8 @@
+import { getConditionDisplay } from '@/utils/conditionIcons';
+import { refId } from '@/utils/refs';
 import {
   EventKind,
+  type AttackModifierSource,
   type Event,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
 import {
@@ -14,6 +17,7 @@ import { dissolveSentence, formatFactionBeat } from '../factionBeat';
 import { formatHoldingBeat } from '../holdingBeat';
 import { formatDamageRolls, formatRollCalculation } from './rollTrace';
 import type {
+  CombatExperienceAttackModifierSource,
   CombatExperienceAttackOutcome,
   CombatExperienceStoryExchange,
 } from './types';
@@ -198,6 +202,78 @@ function attackTone(
   return 'neutral';
 }
 
+export function formatAttackRollArithmetic(
+  roll: number,
+  total: number
+): string {
+  const modifier = total - roll;
+  const sign = modifier < 0 ? '−' : '+';
+  return `d20 ${roll} ${sign} ${Math.abs(modifier)} = ${total}`;
+}
+
+function attackModifierSources(
+  kind: CombatExperienceAttackModifierSource['kind'],
+  sources: readonly AttackModifierSource[],
+  attackerId: string,
+  targetId: string,
+  context: CombatStoryContext
+): readonly CombatExperienceAttackModifierSource[] {
+  return sources.flatMap((source) => {
+    // Both fields are optional on the wire. Without a source ref there is no
+    // honest label for the influence, so leave that incomplete attribution out
+    // rather than deriving a rule from the source member or attack shape.
+    if (!source.sourceRef) return [];
+    const sourceMemberId = source.sourceId || undefined;
+    return [
+      Object.freeze({
+        kind,
+        sourceRef: source.sourceRef,
+        label: getConditionDisplay(refId(source.sourceRef) ?? source.sourceRef)
+          .label,
+        sourceMemberId,
+        sourceMemberName: sourceMemberId
+          ? context.memberNames?.[sourceMemberId]
+          : undefined,
+        attackerId,
+        targetId,
+        attackerName: memberName(attackerId, context),
+        targetName: memberName(targetId, context),
+        sourceIsViewer: sourceMemberId === context.viewerMember,
+      }),
+    ];
+  });
+}
+
+export function formatAttackModifierSource(
+  source: CombatExperienceAttackModifierSource
+): string {
+  if (source.sourceIsViewer && source.sourceMemberId === source.attackerId) {
+    return `Your ${source.label} → ${source.targetName}`;
+  }
+  const owner = source.sourceIsViewer
+    ? `Your ${source.label}`
+    : `${source.label}${
+        source.sourceMemberId
+          ? ` · source ${source.sourceMemberName ?? source.sourceMemberId}`
+          : ''
+      }`;
+  return `${owner} · ${source.attackerName} → ${source.targetName}`;
+}
+
+function attackModifierDetail(
+  sources: readonly CombatExperienceAttackModifierSource[]
+): string {
+  const groups = (['advantage', 'disadvantage'] as const).flatMap((kind) => {
+    const matching = sources.filter((source) => source.kind === kind);
+    if (matching.length === 0) return [];
+    const heading = kind === 'advantage' ? 'Advantage' : 'Disadvantage';
+    return [
+      `${heading}: ${matching.map(formatAttackModifierSource).join('; ')}`,
+    ];
+  });
+  return groups.length > 0 ? ` · ${groups.join(' · ')}` : '';
+}
+
 function buildAttackStory(
   event: Event,
   context: CombatStoryContext
@@ -212,13 +288,30 @@ function buildAttackStory(
     const damageDetail = rollDetail
       ? `${attackName(struck.attack)} rolled ${rollDetail} = ${damage} damage`
       : `${damage} damage`;
+    const modifierSources = [
+      ...attackModifierSources(
+        'advantage',
+        struck.advantageSources,
+        struck.attacker,
+        struck.target,
+        context
+      ),
+      ...attackModifierSources(
+        'disadvantage',
+        struck.disadvantageSources,
+        struck.attacker,
+        struck.target,
+        context
+      ),
+    ];
     return Object.freeze({
       id: storyId(event),
       eyebrow: attackEyebrow(actor, struck.attack, struck.reaction),
       headline: `${actor} strikes ${target}`,
       detail:
-        `d20 ${struck.roll} · total ${struck.total} against AC ${struck.against} · ` +
-        `${struck.critical ? 'Critical hit' : 'Hit'} · ${damageDetail}`,
+        `${formatAttackRollArithmetic(struck.roll, struck.total)} · ` +
+        `${struck.critical ? 'Critical hit' : 'Hit'} · ${damageDetail}` +
+        attackModifierDetail(modifierSources),
       tone: attackTone(struck.attacker, struck.target, true, context),
       attack: attackSnapshot(struck.attack),
     });
@@ -231,7 +324,7 @@ function buildAttackStory(
       id: storyId(event),
       eyebrow: attackEyebrow(actor, missed.attack, missed.reaction),
       headline: `${target} evades ${actor}`,
-      detail: `d20 ${missed.roll} · total ${missed.total} against AC ${missed.against} · Miss`,
+      detail: `${formatAttackRollArithmetic(missed.roll, missed.total)} · Miss`,
       tone: 'neutral',
       attack: attackSnapshot(missed.attack),
     });
@@ -535,7 +628,7 @@ function buildOtherStory(
       return Object.freeze({
         ...base,
         eyebrow: reactionLabel(window.offer) ?? 'Reaction',
-        headline: `${audience} rolled ${window.roll} for ${window.total}`,
+        headline: `${audience} rolled ${formatAttackRollArithmetic(window.roll, window.total)}`,
         detail: `Story sequence ${event.seq}.`,
         tone: 'turn',
       });
@@ -585,7 +678,7 @@ export function buildCombatStory(
   return Object.freeze(story);
 }
 
-/** No bonus or HP arithmetic: every value comes directly from Struck/Missed. */
+/** Presentation arithmetic uses only the provider's roll and total. */
 export function buildCombatAttackOutcome(
   event: Event,
   context: CombatStoryContext
@@ -593,6 +686,22 @@ export function buildCombatAttackOutcome(
   if (event.body.case === 'struck' && event.kind === EventKind.STRUCK) {
     const struck = event.body.value;
     const word = damageTypeWord(struck.attack?.damageType);
+    const modifierSources = [
+      ...attackModifierSources(
+        'advantage',
+        struck.advantageSources,
+        struck.attacker,
+        struck.target,
+        context
+      ),
+      ...attackModifierSources(
+        'disadvantage',
+        struck.disadvantageSources,
+        struck.attacker,
+        struck.target,
+        context
+      ),
+    ];
     return Object.freeze({
       attackId: storyKey(event),
       session: event.session,
@@ -609,6 +718,8 @@ export function buildCombatAttackOutcome(
       critical: struck.critical,
       damage: struck.damage,
       damageType: word || undefined,
+      modifierSources:
+        modifierSources.length > 0 ? Object.freeze(modifierSources) : undefined,
       targetIsViewer: struck.target === context.viewerMember,
     });
   }

@@ -1,7 +1,7 @@
 ---
 name: production session combat experience
 description: Shared CombatExperience renderer, exact declarations, private character data, event recovery, and presentation gating
-updated: 2026-08-26
+updated: 2026-09-08
 confidence: high — production and concept import the same renderer; focused route/controller/recovery suites pass
 ---
 
@@ -138,9 +138,15 @@ revoke or auto-settle it. The acting player sees no current Story verdict,
 result, or live announcement until the authoritative d20 presentation is
 explicitly released. Other known players, monsters, and catch-up history
 auto-settle. Conflicting facts fail closed; raw payload bytes never become
-Story. Result presentation contains only provider roll, total, against,
-hit/critical, damage/type, and AttackRef facts—never a bonus equation, target
-`hpAfter`, peer exact HP, or client arithmetic.
+Story. Player-facing attack Story/result presentation shows the provider roll,
+the display-only difference between provider roll and total, and provider total
+as `d20 + modifier = total`; it omits target AC while raw Debug retains the
+provider `against` field. A resolved Struck result also labels authoritative
+advantage/disadvantage source refs and source members against the event's exact
+attacker/target relationship. Missing source facts remain absent rather than
+being inferred. Target `hpAfter` and peer exact HP are never shown. The existing
+local die pickup control shares the bottom-left personal-tray position rather
+than floating beside the upper-right Story rail.
 
 Story is always present in production. Raw Debug ingests immediately but is
 rendered only in development or on an explicitly enabled Concepts diagnostic

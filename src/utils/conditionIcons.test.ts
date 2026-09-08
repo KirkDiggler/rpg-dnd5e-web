@@ -55,6 +55,12 @@ describe('conditionIcons', () => {
         const display = getConditionDisplay('hasted');
         expect(display.icon).toBe('⚡');
       });
+
+      it('names True Strike from its canonical condition id', () => {
+        const display = getConditionDisplay('true_strike');
+        expect(display.label).toBe('True Strike');
+        expect(display.icon).not.toBe('❓');
+      });
     });
 
     describe('combat state conditions', () => {
