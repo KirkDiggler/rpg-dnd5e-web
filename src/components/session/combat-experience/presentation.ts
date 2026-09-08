@@ -848,7 +848,21 @@ function initialRecord(
   const localPlayer = isAuthoritativeLocalPlayer(state, authority.attacker);
   const historical =
     options.event !== undefined && options.source === 'catchup';
-  const pending = localPlayer && !historical;
+  // NOBODY ARMS A SAVE, INCLUDING THE SAVER'S OWN CLIENT. Every other roll
+  // attributed to the local player is one they START: an attack arms the tray
+  // from the dock and lands as an `attack-response`, and a death save has its
+  // own dock affordance and its own `death-save-response`. A save has neither.
+  // `kind: 'save'` is minted in exactly one place — the SAVED beat, already
+  // rolled by the server — and no response fact of that shape exists, so a
+  // save marked pending waits on a release that can never arrive: it sits
+  // `armed`, stays invisible, and holds `pendingLocalKeys` open forever.
+  //
+  // Kirk's walk is what this costs when it is wrong. A skeleton hit the bard,
+  // the bard rolled a CON check to hold True Strike, and the story showed the
+  // strike and then the break with NO CHECK BETWEEN — the one card that says
+  // why the spell ended. The saver is a witness to their own save, like every
+  // other recipient, so it settles the way every witnessed roll does.
+  const pending = localPlayer && !historical && authority.kind !== 'save';
   const settlement = historical
     ? ('auto' as const)
     : !roleKnown

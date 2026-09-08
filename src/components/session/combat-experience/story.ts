@@ -28,6 +28,45 @@ export interface CombatStoryFact {
 export interface CombatStoryContext {
   readonly viewerMember: string;
   readonly memberNames?: Readonly<Record<string, string>>;
+  /**
+   * WHAT THIS RUN HAS WATCHED SOMEBODY CAST, accumulated by
+   * `buildCombatStory` as it walks the beats in order. Two cards read
+   * differently once the log knows a spell was cast, and NEITHER FACT IS ON
+   * THE BEAT THAT NEEDS IT:
+   *
+   *   - `Saved` says who rolled, against what DC, and which spell was the
+   *     source — but not whether the saver was RESISTING that spell or
+   *     HOLDING it. A concentration check and a target's save are the same
+   *     six fields on the wire (design rpg-project#407 leaves this to the
+   *     client; the gap is recorded on #997).
+   *   - `ConditionRemoved` says a condition ended and why, but never that
+   *     the condition was a spell's residue rather than a class feature's.
+   *
+   * The discriminator is a fact this client SAW, not a rule it derived: the
+   * saver is the member who cast that spell, and the ending condition shares
+   * its name. Absent the cast — a log window that scrolled past it, a
+   * catch-up that starts later — both cards degrade to the wording they had
+   * before, which is a weaker sentence and never a wrong one.
+   */
+  readonly castSpells?: CastSpellsWitnessed;
+}
+
+export interface CastSpellsWitnessed {
+  /** `${caster}\u0000${spell ref}` for every cast seen so far. */
+  readonly byCaster: ReadonlySet<string>;
+  /** Every spell NAME seen cast, to recognise the conditions it leaves. */
+  readonly names: ReadonlySet<string>;
+}
+
+function castsConcentration(
+  saver: string,
+  spell: SpellRef | undefined,
+  context: CombatStoryContext
+): boolean {
+  if (!spell?.ref) return false;
+  return (
+    context.castSpells?.byCaster.has(`${saver}\u0000${spell.ref}`) ?? false
+  );
 }
 
 function storyKey(event: Event): string {
@@ -190,9 +229,24 @@ function buildActivationResultStory(
     }
     case 'conditionRemoved': {
       const condition = event.body.value.result.value;
+      const target = memberName(condition.target, context);
+      // A SPELL'S RESIDUE LEAVING, SAID AS A SPELL ENDING. The generic
+      // template names the condition as a state the member stopped being —
+      // "staniel is no longer True Strike" — which is the right sentence for
+      // Raging and nonsense for a spell. Only a condition sharing its name
+      // with a spell this run watched somebody cast takes the other wording,
+      // so a class feature's removal reads exactly as it did before.
+      if (condition.name && context.castSpells?.names.has(condition.name)) {
+        return Object.freeze({
+          ...base,
+          headline: `${condition.name} fades from ${target}`,
+          detail: concentrationEndPhrase(condition.reason) ?? condition.reason,
+          tone: 'neutral',
+        });
+      }
       return Object.freeze({
         ...base,
-        headline: `${memberName(condition.target, context)} is no longer ${condition.name}`,
+        headline: `${target} is no longer ${condition.name}`,
         detail: condition.reason,
         tone: 'neutral',
       });
@@ -455,15 +509,32 @@ function buildOtherStory(
       const source = spellName(saved.source);
       const bonus = saved.total - saved.roll;
       const sign = bonus < 0 ? '-' : '+';
+      const detail =
+        `d20 ${saved.roll} ${sign} ${Math.abs(bonus)} = ${saved.total} against ` +
+        `DC ${saved.dc} · ${saved.succeeded ? 'Succeeded' : 'Failed'}`;
+      // THE SAVER IS HOLDING THIS SPELL, NOT RESISTING IT. Same six fields on
+      // the wire either way, so the log reads it off a cast it watched: the
+      // saver is the one who cast this spell. "staniel saves vs True Strike"
+      // is a sentence about somebody being attacked by their own buff, and
+      // Kirk read exactly that on the walk.
+      if (castsConcentration(saved.saver, saved.source, context)) {
+        return Object.freeze({
+          ...base,
+          eyebrow: `${saver} · Concentration check`,
+          headline: saved.succeeded
+            ? `${saver} holds ${source}`
+            : `${saver} loses their grip on ${source}`,
+          detail,
+          tone: saved.succeeded ? 'success' : 'danger',
+        });
+      }
       return Object.freeze({
         ...base,
         eyebrow: source ? `${saver} · ${source}` : `${saver} · Saving throw`,
         headline: source
           ? `${saver} saves vs ${source}`
           : `${saver} makes a saving throw`,
-        detail:
-          `d20 ${saved.roll} ${sign} ${Math.abs(bonus)} = ${saved.total} against ` +
-          `DC ${saved.dc} · ${saved.succeeded ? 'Succeeded' : 'Failed'}`,
+        detail,
         tone: saved.succeeded ? 'success' : 'danger',
       });
     }
@@ -618,15 +689,31 @@ export function buildCombatStory(
 ): readonly CombatExperienceStoryExchange[] {
   const seen = new Set<string>();
   const story: CombatExperienceStoryExchange[] = [];
+  // Accumulated IN ORDER and read by the beats that follow, never by the ones
+  // that came first: a spell cast later in the fight must not retroactively
+  // change how an earlier save was worded. A cast counts even when its own
+  // card is withheld — it happened, whether or not this viewer watched the
+  // die land.
+  const byCaster = new Set<string>();
+  const names = new Set<string>();
+  const castSpells = { byCaster, names };
+  const withCasts: CombatStoryContext = { ...context, castSpells };
   for (const fact of facts) {
     const key = storyKey(fact.event);
     if (seen.has(key)) continue;
     seen.add(key);
-    if (!fact.visible) continue;
-    const entry =
-      buildAttackStory(fact.event, context) ??
-      buildOtherStory(fact.event, context);
-    if (entry) story.push(entry);
+    if (fact.visible) {
+      const entry =
+        buildAttackStory(fact.event, withCasts) ??
+        buildOtherStory(fact.event, withCasts);
+      if (entry) story.push(entry);
+    }
+    const body = fact.event.body;
+    if (body.case === 'cast' && fact.event.kind === EventKind.CAST) {
+      const spell = body.value.spell;
+      if (spell?.ref) byCaster.add(`${body.value.actor}\u0000${spell.ref}`);
+      if (spell?.name) names.add(spell.name);
+    }
   }
   return Object.freeze(story);
 }
