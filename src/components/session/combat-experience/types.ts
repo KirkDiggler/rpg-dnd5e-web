@@ -74,6 +74,24 @@ export interface CombatExperienceAttackOutcome {
   targetIsViewer: boolean;
 }
 
+/**
+ * What `RollWindowOpened` said, kept beside the offer it was said about
+ * (rpg-project#398).
+ *
+ * THE TARGET'S AC IS ABSENT AND STAYS ABSENT. The wire withholds it so the
+ * player decides on the roll rather than on whether the roll already landed;
+ * a field for it here would invite somebody to fill it in.
+ */
+export interface CombatExperienceRollWindow {
+  /** `ReactionRef.ref` from the beat — matched against the open declaration's
+   * own offer so one window's numbers can never be drawn under another's. */
+  offerRef: string;
+  /** The face of the d20, which no answer moves. */
+  roll: number;
+  /** The face plus the attacker's bonuses, and nothing the answer would add. */
+  total: number;
+}
+
 export interface CombatExperienceMapRenderProps {
   attackableTargets: readonly string[];
   onTargetClick: (targetId: string) => void;
@@ -110,6 +128,9 @@ interface CombatExperienceBaseProps {
   story: readonly CombatExperienceStoryExchange[];
   debug: readonly string[];
   result?: CombatExperienceAttackOutcome;
+  /** The roll an open post-roll reaction window is asking about. Null when no
+   * such beat is outstanding; the panel still poses the question without it. */
+  rollWindow?: CombatExperienceRollWindow | null;
   diceEvents: readonly DicePresentationEvent[];
   diceSemanticFallback?: boolean;
   diceRollerName?: string;

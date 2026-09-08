@@ -15,7 +15,9 @@ import {
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
+  reactionWindowAnswers,
   reactionWindowDeclaration,
+  reactionWindowKind,
   reactionWindowMover,
 } from './reactionWindow';
 import {
@@ -23,6 +25,7 @@ import {
   standingActionsBlocked,
   type StandingAction,
 } from './standingActions';
+import type { CombatExperienceRollWindow } from './types';
 
 function CostBadge({ slot }: { slot: Slot }) {
   const label = slotLabel(slot);
@@ -66,6 +69,28 @@ function declarationLabel(declaration: Declaration): string {
     return declaration.reaction?.name || 'Reaction';
   }
   return 'Move';
+}
+
+/**
+ * The post-roll window's own sentence: the total the player is deciding about,
+ * with the face of the d20 and the bonus that got it there shown apart.
+ *
+ * BOTH NUMBERS, NOT ONE. The total is what the decision is about, but the face
+ * is what a natural 1 and a natural 20 are read off, and no answer moves it —
+ * so a panel that showed only the total would hide the one number a d6 can
+ * never rescue.
+ *
+ * The bonus is the difference and is never sent separately: two numbers that
+ * must agree, sent twice, are free to disagree.
+ */
+function rollWindowHeadline(
+  roll: CombatExperienceRollWindow | undefined | null
+): string {
+  if (!roll) return 'Your roll is on the table';
+  const bonus = roll.total - roll.roll;
+  if (bonus === 0) return `You rolled ${roll.total} (d20 ${roll.roll})`;
+  const sign = bonus > 0 ? '+' : '−';
+  return `You rolled ${roll.total} (d20 ${roll.roll} ${sign} ${Math.abs(bonus)})`;
 }
 
 function declarationIcon(declaration: Declaration): string {
@@ -205,6 +230,21 @@ export interface ActionDockProps {
   /** Roster names, for the one place the dock names somebody who is not the
    * viewer: the mover an open reaction window is posed against. */
   memberNames?: ReadonlyMap<string, string>;
+  /**
+   * The d20 an open POST-ROLL window is asking about, and what it stands at.
+   *
+   * IT COMES FROM THE BEAT, not from Afford. The declaration says what may be
+   * spent; only `RollWindowOpened` says what was rolled, because the struck
+   * beat that would otherwise carry the numbers is not written until after the
+   * answer. Absent while the beat has not landed — the panel still poses the
+   * question, because a window nobody can answer is worse than one whose
+   * numbers are a moment late.
+   *
+   * THE TARGET'S AC IS NOT HERE AND MUST NOT BE. A window that leaked it would
+   * tell the player whether the swing lands before they choose, which is the
+   * whole decision (post-roll design R7).
+   */
+  rollWindow?: CombatExperienceRollWindow | null;
   /** `choice` is sent only for a VERB_REACT declaration, whose two answers
    * the verb implies rather than the server listing them as candidates. */
   onSelectDeclaration: (declaration: Declaration, choice?: ReactChoice) => void;
@@ -295,6 +335,7 @@ export function ActionDock({
   endTurnBlocked = false,
   armedDeclarationId,
   memberNames,
+  rollWindow,
   onSelectDeclaration,
   onEndTurn,
   standingActions = [],
@@ -345,17 +386,41 @@ export function ActionDock({
   // would only invite clicks that cannot land.
   const reactionWindow = reactionWindowDeclaration(declarations);
   if (reactionWindow) {
+    const windowKind = reactionWindowKind(reactionWindow);
+    const answers = reactionWindowAnswers(windowKind);
     const moverId = reactionWindowMover(reactionWindow);
     const moverName =
       (moverId && memberNames?.get(moverId)) || moverId || 'Something';
+    // WHAT THE QUESTION IS ABOUT. The movement window names the mover it is
+    // posed against; the post-roll window names the viewer's own d20, and
+    // there is nobody else in it.
+    const headline =
+      windowKind === 'movement'
+        ? `${moverName} is leaving your reach`
+        : rollWindowHeadline(
+            // MATCHED TO THE OFFER, never taken on trust. The beat and the
+            // declaration are two arrivals; one window's numbers drawn under
+            // another's question would be a lie the player acts on.
+            rollWindow && rollWindow.offerRef === reactionWindow.reaction?.ref
+              ? rollWindow
+              : null
+          );
+    const prompt =
+      windowKind === 'movement'
+        ? 'Strike now, or hold your reaction. The fight waits on you.'
+        : 'Spend it, or keep it. The fight waits on you.';
     return (
       <div className={styles.actionRow}>
-        <div className={styles.passiveActionRow} data-testid="reaction-window">
+        <div
+          className={styles.passiveActionRow}
+          data-testid="reaction-window"
+          data-window-kind={windowKind}
+        >
           <span>{declarationLabel(reactionWindow)}</span>
-          <strong>{moverName} is leaving your reach</strong>
+          <strong>{headline}</strong>
           <small>
             {authorityFresh
-              ? 'Strike now, or hold your reaction. The fight waits on you.'
+              ? prompt
               : 'Waiting for current Turn and Afford authority.'}
           </small>
         </div>
@@ -374,7 +439,7 @@ export function ActionDock({
               <span className={styles.actionIcon} aria-hidden="true">
                 {declarationIcon(reactionWindow)}
               </span>
-              <span className={styles.actionLabel}>Strike</span>
+              <span className={styles.actionLabel}>{answers.take}</span>
               <CostBadge slot={reactionWindow.slot} />
             </button>
           </span>
@@ -389,12 +454,12 @@ export function ActionDock({
               }
             >
               <span className={styles.actionIcon} aria-hidden="true">
-                ✋
+                {answers.declineIcon}
               </span>
               {/* HOLDING COSTS NOTHING (plan R1: the reaction is spent when
                   it is taken), so this button carries no cost badge — one
                   here would say the refusal is priced. */}
-              <span className={styles.actionLabel}>Hold</span>
+              <span className={styles.actionLabel}>{answers.decline}</span>
             </button>
           </span>
         </div>

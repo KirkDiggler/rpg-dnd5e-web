@@ -146,6 +146,7 @@ export function CombatExperience({
   story,
   debug,
   result,
+  rollWindow,
   diceEvents,
   diceSemanticFallback,
   diceWitnessRole,
@@ -507,6 +508,7 @@ export function CombatExperience({
               presentationState.armedDeclarationId ?? undefined
             }
             memberNames={memberNames}
+            rollWindow={rollWindow}
             onSelectDeclaration={onSelectDeclaration}
             onEndTurn={onEndTurn}
             standingActions={standingActions}
