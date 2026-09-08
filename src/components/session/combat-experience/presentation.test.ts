@@ -24,6 +24,9 @@ import {
 } from './presentation';
 import { createAttackAuthorityFixture } from './presentation.test-fixtures';
 
+/** Longer than the 128-byte presentation-id cap, so it fails validation. */
+const UNSAFE_PRESENTATION_ID = 'x'.repeat(129);
+
 const config = {
   session: 'crypt-run',
   viewerMember: 'aldric',
@@ -162,7 +165,7 @@ describe('combat presentation authority reconciliation', () => {
 
     expect(requestCount(reconciled)).toBe(1);
     expect(requestOf(reconciled)).toMatchObject({
-      presentationId: 'session:crypt-run:23',
+      presentationId: 'presentation~crypt-run~23',
       roller: { entityId: 'aldric', role: 'player' },
       die: {
         presetId: 'dice.original.carved.d20',
@@ -181,6 +184,36 @@ describe('combat presentation authority reconciliation', () => {
     expect(selectVisibleStory(released)).toHaveLength(1);
     expect(selectVisibleResult(released)?.d20).toBe(12);
     expect(selectLiveAnnouncement(released)).toContain('Aldric');
+  });
+
+  // The attacker and a witness are two different clients holding two different
+  // numbers for one swing — seq is per recipient, and comparing seqs across
+  // recipients is meaningless. They must still name ONE roll, because the
+  // shared physical die is replayed by identity: a witness only plays the
+  // roller's throw when the plan's presentation id equals its own expectation.
+  // Deriving that id from a seq made the two sides permanently unequal.
+  it('the attacker and a witness name one roll, though their own seqs differ', () => {
+    const attackerSide = createAttackAuthorityFixture();
+    const witnessSide = createAttackAuthorityFixture({
+      recipient: 'mira',
+      eventSeq: 7n,
+    });
+
+    const attacker = reduceCombatPresentation(
+      emptyPresentation(config),
+      attackerSide.responseFact
+    );
+    const witness = reduceCombatPresentation(
+      emptyPresentation({ ...config, viewerMember: 'mira' }),
+      witnessSide.streamFact()
+    );
+
+    expect(requestOf(attacker).presentationId).toBe(
+      'presentation~crypt-run~23'
+    );
+    expect(requestOf(witness).presentationId).toBe(
+      requestOf(attacker).presentationId
+    );
   });
 
   it('event first arms the same presentation and waits for release regardless of response timing', () => {
@@ -391,7 +424,7 @@ describe('combat presentation authority reconciliation', () => {
       settlement: 'armed',
     });
     expect(selectCurrentDiceEvents(state)[0]?.presentationId).toBe(
-      'session:crypt-run:23'
+      'presentation~crypt-run~23'
     );
   });
 
@@ -412,7 +445,7 @@ describe('combat presentation authority reconciliation', () => {
       settlement: 'armed',
     });
     expect(selectCurrentDiceEvents(state)[0]?.presentationId).toBe(
-      'session:crypt-run:22'
+      'presentation~crypt-run~22'
     );
   });
 
@@ -617,7 +650,7 @@ describe('combat presentation settlement policy', () => {
     expect(state.pendingLocalKeys).toHaveLength(2);
     expect(selectCurrentPresentation(state)?.seq).toBe(23n);
     expect(selectCurrentDiceEvents(state)[0]?.presentationId).toBe(
-      'session:crypt-run:23'
+      'presentation~crypt-run~23'
     );
     expect(selectVisibleStory(state).map((entry) => entry.id)).toEqual([
       expect.stringContaining(':25'),
@@ -685,7 +718,10 @@ describe('combat presentation settlement policy', () => {
 
   it('creates and preserves an unresolved unsafe-ID fallback once public roster authorizes it', () => {
     const session = `unsafe-${'x'.repeat(140)}`;
-    const facts = createAttackAuthorityFixture({ session });
+    // The id is the provider's opaque token now, so THAT is what has to be
+    // unsafe — a long session no longer leaks into it. Over the 128-byte cap.
+    const presentationId = UNSAFE_PRESENTATION_ID;
+    const facts = createAttackAuthorityFixture({ session, presentationId });
     const noRole = {
       ...config,
       session,
@@ -776,7 +812,10 @@ describe('combat presentation settlement policy', () => {
 
     const unsafeSession = `unsafe-${'x'.repeat(140)}`;
     const unsafeConfig = { ...config, session: unsafeSession };
-    const unsafe = createAttackAuthorityFixture({ session: unsafeSession });
+    const unsafe = createAttackAuthorityFixture({
+      session: unsafeSession,
+      presentationId: UNSAFE_PRESENTATION_ID,
+    });
     let unsafeState = reduceCombatPresentation(
       emptyPresentation(unsafeConfig),
       unsafe.streamFact()
@@ -797,7 +836,10 @@ describe('combat presentation settlement policy', () => {
 
   it('uses a semantic fallback for an unsafe presentation ID without an early actor reveal or a stall', () => {
     const session = `unsafe-${'x'.repeat(140)}`;
-    const facts = createAttackAuthorityFixture({ session });
+    // The id is the provider's opaque token now, so THAT is what has to be
+    // unsafe — a long session no longer leaks into it. Over the 128-byte cap.
+    const presentationId = UNSAFE_PRESENTATION_ID;
+    const facts = createAttackAuthorityFixture({ session, presentationId });
     const responseFirst = reduceCombatPresentation(
       emptyPresentation({ ...config, session }),
       facts.responseFact
@@ -823,7 +865,10 @@ describe('combat presentation settlement policy', () => {
 
   it('consumes a semantic release before its event and makes repeated release intent idempotent', () => {
     const session = `unsafe-${'x'.repeat(140)}`;
-    const facts = createAttackAuthorityFixture({ session });
+    // The id is the provider's opaque token now, so THAT is what has to be
+    // unsafe — a long session no longer leaks into it. Over the 128-byte cap.
+    const presentationId = UNSAFE_PRESENTATION_ID;
+    const facts = createAttackAuthorityFixture({ session, presentationId });
     const armed = reduceCombatPresentation(
       emptyPresentation({ ...config, session }),
       facts.responseFact

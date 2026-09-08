@@ -153,12 +153,15 @@ describe('shared Death Save d20 presentation', () => {
   );
 
   it('settles the intended Death Save witness when an Attack shares its visible token', () => {
+    // Handed to the fixture rather than matched against its default, so this
+    // stays a real collision even if the fixture's default token ever changes.
+    const collidingToken = 'presentation~crypt-run~23';
     const attack = createAttackAuthorityFixture({
       session: 'crypt-run',
       seq: 23n,
       attacker: 'fighter-1',
+      presentationId: collidingToken,
     });
-    const collidingToken = 'session:crypt-run:23';
     const collidingDeathSave = create(EventSchema, {
       session: 'crypt-run',
       seq: 103n,
@@ -179,6 +182,10 @@ describe('shared Death Save d20 presentation', () => {
     const attackBefore = state.presentations.find(
       (record) => record.authority.kind === 'attack'
     );
+    // Guard the premise. Every other assertion here is satisfied trivially by
+    // an attack that never shared the token, so without this the test passes
+    // whether or not the collision it is named for actually happened.
+    expect(attackBefore?.authority.presentationId).toBe(collidingToken);
 
     state = reduceCombatPresentation(state, {
       type: 'witness-settlement',
