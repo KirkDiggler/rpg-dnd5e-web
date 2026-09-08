@@ -179,7 +179,7 @@ describeProvider('aggregate character customization catalog generator', () => {
     });
 
     expect(firstReceipt).toEqual({
-      providerCommit: '91ddbdfd88db1eccc465616671d7f1f427f5056e',
+      providerCommit: '37c13c68b6cfc87ad6684351f934b4ff1fd83515',
       aggregateManifestSha256:
         '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
       outfitManifestSha256:

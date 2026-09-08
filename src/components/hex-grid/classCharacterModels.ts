@@ -37,6 +37,19 @@ const CLASS_CHARACTER_MODELS: Record<string, ClassCharacterModelEntry> = {
   rogue: { model: 'rogue.glb', downed: 'rogue-downed.glb' },
 };
 
+/** Complete standing appearances from private provider PR #184. They are not
+ * customization profiles and have no downed siblings. */
+const BARD_RACE_CLASS_MODELS: Readonly<Record<string, string>> = {
+  dwarf: 'race-class/dwarf-bard.glb',
+  elf: 'race-class/elf-bard.glb',
+  gnome: 'race-class/gnome-bard.glb',
+  'half-elf': 'race-class/half-elf-bard.glb',
+  halfling: 'race-class/halfling-bard.glb',
+  'half-orc': 'race-class/half-orc-bard.glb',
+  human: 'race-class/human-bard.glb',
+  tiefling: 'race-class/tiefling-bard.glb',
+};
+
 function normalizeRefId(refId: string | undefined): string | undefined {
   return refId
     ?.trim()
@@ -133,8 +146,23 @@ export function resolvePlayerCharacterModel(
   if (!normalizedClassRefId) return undefined;
 
   if (!isDowned) {
+    const normalizedRaceRefId = normalizeRefId(raceRefId);
+    if (
+      normalizedClassRefId === 'bard' &&
+      normalizedRaceRefId &&
+      Object.hasOwn(BARD_RACE_CLASS_MODELS, normalizedRaceRefId)
+    ) {
+      return {
+        url:
+          CLASS_CHARACTER_MODEL_BASE +
+          BARD_RACE_CLASS_MODELS[normalizedRaceRefId]!,
+        rigFamily: 'modular-fantasy-hero-v1',
+        source: 'race-class',
+      };
+    }
+
     const raceClassResolution = resolveRaceClassCharacterModelResolution(
-      normalizeRefId(raceRefId),
+      normalizedRaceRefId,
       normalizedClassRefId
     );
     if (raceClassResolution) return raceClassResolution;
