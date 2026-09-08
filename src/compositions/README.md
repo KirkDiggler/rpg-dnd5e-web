@@ -79,3 +79,19 @@ The old JSON verification source remains deliberately separate and opt-in with
 owns `development-world-web951-compositions`, and contains the unchanged
 `decorated-table.scene.json` specimen. Production supplies no source and no
 World Builder path until verified Discord guild-to-world mapping exists.
+
+## Generated-asset ingestion smoke check
+
+For each newly generated catalog batch, use one generated leaf and one existing
+legacy leaf in a disposable mixed composition, then verify this unchanged path:
+
+1. Author and save the composition in World Builder.
+2. Reopen the saved snapshot ID and confirm both models and authored transforms.
+3. Confirm its Dungeon Builder palette thumbnail renders (not initials/error).
+4. Place it and confirm Dungeon Builder 3D preview has both models, no red wire
+   scaffold, and only one floor offset.
+5. Save & Play and confirm the same placement, yaw, leaf transforms, and lights.
+
+Also check that an intentionally unknown ref still fails explicitly rather than
+silently substituting an asset. This is a credential-free ingestion gate, not a
+production-data test; use a disposable local/test-world snapshot.
