@@ -16,6 +16,8 @@
 #   RPG_WEB_ROOT            destination web checkout
 #   RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR test-only generator override
 #   RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER    test-only TypeScript runner override
+#   RPG_BARD_APPEARANCE_CATALOG_GENERATOR         test-only generator override
+#   RPG_BARD_APPEARANCE_CATALOG_RUNNER            test-only TypeScript runner override
 #   ASSETS_SYNC_SKIP_UPDATE skip clone/pull when set to 1
 
 set -e
@@ -242,6 +244,8 @@ fi
 
 CATALOG_GENERATOR=${RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR:-${RPG_DWARF_CATALOG_GENERATOR:-$SCRIPT_DIR/generateCharacterCustomizationCatalog.ts}}
 CATALOG_RUNNER=${RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER:-${RPG_DWARF_CATALOG_RUNNER:-$WEB_ROOT/node_modules/.bin/tsx}}
+BARD_CATALOG_GENERATOR=${RPG_BARD_APPEARANCE_CATALOG_GENERATOR:-$SCRIPT_DIR/generateBardAppearanceCatalog.ts}
+BARD_CATALOG_RUNNER=${RPG_BARD_APPEARANCE_CATALOG_RUNNER:-$WEB_ROOT/node_modules/.bin/tsx}
 if [ ! -f "$CATALOG_GENERATOR" ] || [ -L "$CATALOG_GENERATOR" ]; then
   echo "ERROR: customization catalog generator must be a real file: $CATALOG_GENERATOR" >&2
   exit 1
@@ -250,23 +254,38 @@ if [ ! -x "$CATALOG_RUNNER" ]; then
   echo "ERROR: customization catalog TypeScript runner is unavailable: $CATALOG_RUNNER" >&2
   exit 1
 fi
+if [ ! -f "$BARD_CATALOG_GENERATOR" ] || [ -L "$BARD_CATALOG_GENERATOR" ]; then
+  echo "ERROR: Bard appearance catalog generator must be a real file: $BARD_CATALOG_GENERATOR" >&2
+  exit 1
+fi
+if [ ! -x "$BARD_CATALOG_RUNNER" ]; then
+  echo "ERROR: Bard appearance catalog TypeScript runner is unavailable: $BARD_CATALOG_RUNNER" >&2
+  exit 1
+fi
 
-# Validate and generate against the clean provider before either rsync --delete
-# can mutate a destination. The tracked catalog becomes visible only after both
-# independent runtime mirrors succeed.
+# Validate and generate both independent character authorities against the
+# clean provider before either rsync --delete can mutate a destination. Bard
+# stays outside the four-starter-class customization catalog: its generated
+# module projects only the eight additive basic appearance rows.
 CATALOG_OUTPUT="$WEB_ROOT/src/generated/characterCustomizationCatalog.ts"
+BARD_CATALOG_OUTPUT="$WEB_ROOT/src/generated/bardAppearanceCatalog.ts"
 mkdir -p "$(dirname "$CATALOG_OUTPUT")"
 CATALOG_STAGE=$(mktemp "$WEB_ROOT/src/generated/.character-customization.XXXXXX")
-trap 'rm -f "$CATALOG_STAGE"' EXIT HUP INT TERM
+BARD_CATALOG_STAGE=$(mktemp "$WEB_ROOT/src/generated/.bard-appearances.XXXXXX")
+trap 'rm -f "$CATALOG_STAGE" "$BARD_CATALOG_STAGE"' EXIT HUP INT TERM
 "$CATALOG_RUNNER" "$CATALOG_GENERATOR" \
   --provider-root "$ASSETS_DIR" \
   --output "$CATALOG_STAGE"
+"$BARD_CATALOG_RUNNER" "$BARD_CATALOG_GENERATOR" \
+  --provider-root "$ASSETS_DIR" \
+  --output "$BARD_CATALOG_STAGE"
 
 # Keep these as independent mirrors: neither runtime root is allowed to supply
 # or delete files in the other.
 sync_runtime_root "$SYNTY_SRC" "$SYNTY_DEST"
 sync_runtime_root "$CUSTOM_DICE_SRC" "$CUSTOM_DICE_DEST"
 mv -f "$CATALOG_STAGE" "$CATALOG_OUTPUT"
+mv -f "$BARD_CATALOG_STAGE" "$BARD_CATALOG_OUTPUT"
 trap - EXIT HUP INT TERM
 
-echo "Done. public/models/{synty,custom-dice}/ mirror the approved provider and the aggregate customization catalog is current."
+echo "Done. public/models/{synty,custom-dice}/ mirror the approved provider; customization and Bard appearance catalogs are current."

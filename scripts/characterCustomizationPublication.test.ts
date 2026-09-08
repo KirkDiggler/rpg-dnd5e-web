@@ -54,14 +54,14 @@ function outfitAssets() {
 describe('aggregate production character customization publication', () => {
   it('pins the exact provider snapshot and generated aggregate authority', () => {
     expect(CHARACTER_CUSTOMIZATION_PROVIDER).toEqual({
-      providerCommit: '0fc2cedae39cfdffb684d477089090e32883b151',
+      providerCommit: '37c13c68b6cfc87ad6684351f934b4ff1fd83515',
       aggregateManifestSha256:
         '2457ee61b15cb0ef1ca8cd9b42bc30d84d5286510f91e44d8437a6efbc80efac',
       outfitManifestSha256:
         '12a0656f83de0501d8aaa1c26201fc43e3a3fe999e64eb7bb88f4bf1c94581d2',
     });
     expect(sha256(readFileSync(catalogUrl))).toBe(
-      '0949f4bed94d44bade5820492e862969cecd90e3f8832b39d54482a76c06a2fd'
+      '80328c8b8524301f4b44a73f19267ba02e8d35ecad5775dc37a2501fe8a8cefa'
     );
     expect(CHARACTER_CUSTOMIZATION_CATALOG.profileOrder).toEqual([
       'human',

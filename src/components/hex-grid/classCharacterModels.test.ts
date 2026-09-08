@@ -1,3 +1,4 @@
+import { BARD_APPEARANCE_CATALOG } from '@/generated/bardAppearanceCatalog';
 import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
 import { describe, expect, it } from 'vitest';
 import type { PlayerCharacterModelResolution } from './classCharacterModels';
@@ -85,6 +86,57 @@ describe('resolveIdleClipName', () => {
 });
 
 describe('resolvePlayerCharacterModel', () => {
+  it.each(BARD_APPEARANCE_CATALOG.raceOrder)(
+    'resolves the exact standing %s Bard with its supplied rig and clips',
+    (raceRefId) => {
+      const appearance = BARD_APPEARANCE_CATALOG.appearances[raceRefId];
+
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel(
+          appearance.raceRef,
+          appearance.classRef,
+          false
+        )
+      ).toEqual(
+        asResolution({
+          url: appearance.url,
+          rigFamily: 'modular-fantasy-hero-v1',
+          source: 'race-class',
+          animations: ['Idle_Relaxed', 'Walk_Forward'],
+        })
+      );
+    }
+  );
+
+  it.each(BARD_APPEARANCE_CATALOG.raceOrder)(
+    'keeps a downed/dead %s Bard on the established unresolved fallback without inventing a URL',
+    (raceRefId) => {
+      const resolution = classCharacterModels.resolvePlayerCharacterModel(
+        raceRefId,
+        'bard',
+        true
+      );
+
+      expect(resolution).toBeUndefined();
+    }
+  );
+
+  it('does not infer another race or class model for incomplete/unknown Bard refs', () => {
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel(undefined, 'bard', false)
+    ).toBeUndefined();
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel(
+        'dragonborn',
+        'bard',
+        false
+      )
+    ).toBeUndefined();
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel('human', 'wizard', false)
+    ).toBeUndefined();
+  });
+
   it.each(['barbarian', 'fighter', 'monk', 'rogue'])(
     'resolves the exact standing Elf %s race-class model',
     (classRefId) => {
