@@ -27,13 +27,20 @@ import {
   type Declaration,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { act, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TargetSurface } from './TargetSurface';
+import { selectCombatExperience } from './selection';
 import { useSessionCombatExperience } from './useSessionCombatExperience';
+
+const hoisted = vi.hoisted(() => ({
+  activateFn: vi.fn(),
+  attackFn: vi.fn(),
+}));
 
 vi.mock('@/api/client', () => ({
   sessionClient: {
-    activate: vi.fn(),
-    attack: vi.fn(),
+    activate: hoisted.activateFn,
+    attack: hoisted.attackFn,
   },
 }));
 
@@ -147,6 +154,115 @@ describe('arming an activation that prompts for a member', () => {
     rerender(<Harness declarations={[]} />);
 
     expect(screen.getByTestId('armed').textContent).toBe('none');
+    expect(screen.getByTestId('notice').textContent).toContain(
+      'That option changed'
+    );
+  });
+});
+
+/** The map surface, driven by whatever the hook currently has armed. */
+function Surface({
+  declarations,
+  armedId,
+}: {
+  declarations: readonly Declaration[];
+  armedId: string | null;
+}) {
+  const selection = selectCombatExperience(declarations, {
+    armedDeclarationId: armedId,
+    selectedCandidateMember: null,
+    changedOptionNotice: null,
+  });
+  return (
+    <TargetSurface
+      phase="targeting"
+      selection={selection}
+      isViewerTurn
+      showTurnNotice={false}
+      memberNames={
+        new Map([
+          ['bard-1', 'Lyric'],
+          ['fighter-1', 'Aldric'],
+        ])
+      }
+      location={{ name: 'The Reference Tomb', area: 'Current chamber' }}
+      renderMap={({ attackableTargets }) => (
+        <span data-testid="highlighted">
+          {attackableTargets.length ? attackableTargets.join(',') : 'none'}
+        </span>
+      )}
+      onTargetClick={() => {}}
+    />
+  );
+}
+
+describe('who the map highlights while an offer is armed', () => {
+  it('highlights an ally candidate for a member-targeted activation', () => {
+    const declaration = inspirationDeclaration();
+    render(<Surface declarations={[declaration]} armedId={declaration.id} />);
+
+    // AFFORD'S LIST IS THE TRUTH. The fighter is an ally and is named as the
+    // one candidate, so the map must offer them; reading the verb instead
+    // left the only clickable member unclickable.
+    expect(screen.getByTestId('highlighted').textContent).toBe('fighter-1');
+    expect(screen.getByText('Bardic Inspiration armed')).toBeTruthy();
+    expect(screen.getByText('Choose a target')).toBeTruthy();
+  });
+
+  it('still highlights an attack candidate, named by the weapon', () => {
+    const declaration = attackDeclaration();
+    render(<Surface declarations={[declaration]} armedId={declaration.id} />);
+
+    expect(screen.getByTestId('highlighted').textContent).toBe('fighter-1');
+    expect(screen.getByText('Attack armed')).toBeTruthy();
+  });
+
+  it('highlights nobody when a candidate the server refused is the only one', () => {
+    const declaration = inspirationDeclaration();
+    declaration.candidates[0]!.available = false;
+    render(<Surface declarations={[declaration]} armedId={declaration.id} />);
+
+    expect(screen.getByTestId('highlighted').textContent).toBe('none');
+  });
+});
+
+describe('answering with a candidate the server named', () => {
+  beforeEach(() => {
+    hoisted.activateFn.mockReset();
+    hoisted.activateFn.mockResolvedValue({});
+    hoisted.attackFn.mockReset();
+    hoisted.attackFn.mockResolvedValue({});
+  });
+
+  it('sends Activate for the ally, with the armed selector', async () => {
+    const declaration = inspirationDeclaration();
+    render(<Harness declarations={[declaration]} />);
+
+    act(() => latest.onSelectDeclaration(declaration));
+    await act(async () => {
+      latest.onTargetClick('fighter-1');
+    });
+
+    expect(hoisted.activateFn).toHaveBeenCalledTimes(1);
+    const sent = hoisted.activateFn.mock.calls[0][0];
+    expect(sent.declarationId).toBe(declaration.id);
+    expect(sent.target).toBe('fighter-1');
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
+  });
+
+  it('refuses a member the attack’s own candidate list does not name', async () => {
+    const declaration = attackDeclaration();
+    declaration.candidates = [];
+    render(<Harness declarations={[declaration]} />);
+
+    act(() => latest.onSelectDeclaration(declaration));
+    await act(async () => {
+      latest.onTargetClick('fighter-1');
+    });
+
+    // NO CANDIDATE LIST, NO CLICK. Side is not what decides this — the
+    // absence of the member from Afford's own list is.
+    expect(hoisted.attackFn).not.toHaveBeenCalled();
     expect(screen.getByTestId('notice').textContent).toContain(
       'That option changed'
     );

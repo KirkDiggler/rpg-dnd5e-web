@@ -37,16 +37,28 @@ export function TargetSurface({
   onTargetClick,
 }: TargetSurfaceProps) {
   const declaration = selection?.declaration;
-  const isMemberAttack =
-    declaration?.verb === Verb.ATTACK &&
+  // WHICH SIDE A CANDIDATE IS ON IS NOT A QUESTION ASKED HERE. Afford already
+  // ruled who may be chosen, and it offers allies for Bardic Inspiration and
+  // Help exactly as it offers enemies for an attack. Reading only ATTACK left
+  // an armed activation with no highlighted candidates at all: the ally was
+  // neither ringed on the canvas nor listed here, so the one member the server
+  // named was the one member nobody could click.
+  const isMemberTargeted =
+    (declaration?.verb === Verb.ATTACK ||
+      declaration?.verb === Verb.ACTIVATE) &&
     declaration.targetKind === TargetKind.MEMBER;
   const availableTargets =
-    phase === 'targeting' && isMemberAttack
+    phase === 'targeting' && isMemberTargeted
       ? declaration.candidates
           .filter((candidate) => candidate.available)
           .map((candidate) => candidate.member)
       : [];
-  const attackName = declaration?.attack?.name || 'Attack';
+  // The server authors the label for both verbs; there is no ref-to-name
+  // table here, and "Attack" is only the last resort for an attack.
+  const armedName =
+    declaration?.verb === Verb.ACTIVATE
+      ? declaration.ability?.name || 'Ability'
+      : declaration?.attack?.name || 'Attack';
   const targetName = selection?.candidate
     ? memberNames.get(selection.candidate.member) || selection.candidate.member
     : null;
@@ -80,18 +92,15 @@ export function TargetSurface({
           )}
         </div>
       )}
-      {phase === 'targeting' && isMemberAttack && (
+      {phase === 'targeting' && isMemberTargeted && (
         <div className={styles.contextPrompt} data-phase="targeting">
-          <span className={styles.turnPromptKicker}>{attackName} armed</span>
+          <span className={styles.turnPromptKicker}>{armedName} armed</span>
           <strong>Choose a target</strong>
           <span>
             {availableTargets.length} highlighted target
             {availableTargets.length === 1 ? '' : 's'}
           </span>
-          <ul
-            className={styles.targetList}
-            aria-label={`${attackName} targets`}
-          >
+          <ul className={styles.targetList} aria-label={`${armedName} targets`}>
             {declaration.candidates.map((candidate, index) => {
               const name =
                 memberNames.get(candidate.member) || candidate.member;
@@ -124,7 +133,7 @@ export function TargetSurface({
         <div className={styles.contextPrompt} data-phase="awaiting-roll">
           <span className={styles.turnPromptKicker}>Attack declared</span>
           <strong>
-            {attackName} → {targetName}
+            {armedName} → {targetName}
           </strong>
           <span>Roll the attack die</span>
         </div>

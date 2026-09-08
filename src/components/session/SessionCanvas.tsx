@@ -215,10 +215,14 @@ export interface SessionCanvasProps {
    * is never an attack candidate. The Interact RPC and range/adjacency are
    * entirely the caller's concern; this component only owns the click. */
   onInteractClick?: (subject: string) => void;
-  /** Subject ids the caller currently offers as in-reach, AFFORDABLE
-   * Attack candidates (rpg-project#249) — see this component's own doc
-   * comment on why this is narrower than every in-reach candidate.
-   * Undefined/empty means nothing is attackable right now. */
+  /** Subject ids the caller currently offers as AFFORDABLE candidates for
+   * whatever member-targeted verb is armed (rpg-project#249) — see this
+   * component's own doc comment on why this is narrower than every in-reach
+   * candidate. Undefined/empty means nothing is targetable right now.
+   *
+   * NOT HOSTILE-ONLY, despite the name it kept from when Attack was the only
+   * verb that took a member. Bardic Inspiration and Help name allies here, and
+   * whose side a subject is on is Afford's answer, never this component's. */
   attackableTargets?: string[];
   /** The mover an open reaction window is posed against — ringed while THIS
    * viewer holds the window, and undefined at every other moment. One
