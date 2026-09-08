@@ -88,9 +88,10 @@ function InitiativeEntry({
   const you = participant.member === viewerMember;
   return (
     <div
-      className={`${styles.initiativeEntry} ${participant.active ? styles.initiativeEntryActive : ''} ${participant.standing === Standing.DOWNED ? styles.initiativeEntryDowned : ''}`}
-      title={`${participant.name}${you ? ' (you)' : ''}${participant.standing === Standing.DOWNED ? ' · downed' : ''}`}
+      className={`${styles.initiativeEntry} ${participant.active ? styles.initiativeEntryActive : ''} ${participant.standing === Standing.DOWNED ? styles.initiativeEntryDowned : ''} ${participant.concentrating ? styles.initiativeEntryConcentrating : ''}`}
+      title={`${participant.name}${you ? ' (you)' : ''}${participant.standing === Standing.DOWNED ? ' · downed' : ''}${participant.concentrating ? ' · concentrating' : ''}`}
       data-active={participant.active}
+      data-concentrating={participant.concentrating}
     >
       <span className={styles.initiativePortrait}>
         {portraitOf(participant.name)}

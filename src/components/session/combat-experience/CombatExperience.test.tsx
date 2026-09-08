@@ -1059,3 +1059,62 @@ describe('standingActionsBlocked — free on your turn, refused off it', () => {
     );
   });
 });
+
+describe('the roster’s concentrating marker (design rpg-project#407, R11)', () => {
+  /**
+   * THE ONLY THING OTHER PLAYERS HAVE. The caster reads its own concentrating
+   * condition off its status view, and a blessed member sees whose spell is on
+   * it from that condition's own source. Everyone else has one bool on the
+   * roster row, so if this marker does not render nobody at the table can tell
+   * a spell is still being held.
+   */
+  function rosterOf(concentrating: string[]) {
+    return fresh.participants.map(
+      (participant) =>
+        ({
+          ...participant,
+          concentrating: concentrating.includes(participant.member),
+        }) as unknown as Participant
+    );
+  }
+
+  function entryFor(name: string): HTMLElement {
+    const entry = document
+      .querySelector(`[title^="${name}"]`)
+      ?.closest('[data-concentrating]');
+    if (!entry) throw new Error(`no roster entry for ${name}`);
+    return entry as HTMLElement;
+  }
+
+  it('marks a member who is holding a spell, and leaves the rest alone', () => {
+    const holder = fresh.participants[0]!;
+    const other = fresh.participants.find(
+      (participant) => participant.member !== holder.member
+    )!;
+
+    render(
+      <CombatExperience
+        {...propsFor(fresh, { participants: rosterOf([holder.member]) })}
+      />
+    );
+
+    expect(entryFor(holder.name).dataset.concentrating).toBe('true');
+    expect(entryFor(holder.name).getAttribute('title')).toContain(
+      'concentrating'
+    );
+    expect(entryFor(other.name).dataset.concentrating).toBe('false');
+    expect(entryFor(other.name).getAttribute('title')).not.toContain(
+      'concentrating'
+    );
+  });
+
+  it('marks nobody when nobody is concentrating', () => {
+    render(
+      <CombatExperience {...propsFor(fresh, { participants: rosterOf([]) })} />
+    );
+
+    expect(
+      document.querySelectorAll('[data-concentrating="true"]').length
+    ).toBe(0);
+  });
+});

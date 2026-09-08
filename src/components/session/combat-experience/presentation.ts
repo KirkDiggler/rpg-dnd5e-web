@@ -848,7 +848,21 @@ function initialRecord(
   const localPlayer = isAuthoritativeLocalPlayer(state, authority.attacker);
   const historical =
     options.event !== undefined && options.source === 'catchup';
-  const pending = localPlayer && !historical;
+  // NOBODY ARMS A SAVE, INCLUDING THE SAVER'S OWN CLIENT. Every other roll
+  // attributed to the local player is one they START: an attack arms the tray
+  // from the dock and lands as an `attack-response`, and a death save has its
+  // own dock affordance and its own `death-save-response`. A save has neither.
+  // `kind: 'save'` is minted in exactly one place — the SAVED beat, already
+  // rolled by the server — and no response fact of that shape exists, so a
+  // save marked pending waits on a release that can never arrive: it sits
+  // `armed`, stays invisible, and holds `pendingLocalKeys` open forever.
+  //
+  // Kirk's walk is what this costs when it is wrong. A skeleton hit the bard,
+  // the bard rolled a CON check to hold True Strike, and the story showed the
+  // strike and then the break with NO CHECK BETWEEN — the one card that says
+  // why the spell ended. The saver is a witness to their own save, like every
+  // other recipient, so it settles the way every witnessed roll does.
+  const pending = localPlayer && !historical && authority.kind !== 'save';
   const settlement = historical
     ? ('auto' as const)
     : !roleKnown
@@ -1129,6 +1143,11 @@ const EXPECTED_OTHER_KIND = {
   // A CAST IS TYPED STORY, NOT A ROLL. It carries no die of its own — the
   // save that may follow it is the roll, and that has its own authority.
   cast: EventKind.CAST,
+  // THE HELD SPELL LET GO (design rpg-project#407, R10). It has to be here or
+  // the beat never reaches the log at all: a body with no row is discarded by
+  // `relevantOtherEvent` as a "typed event kind/body mismatch", which is the
+  // exact gap `saved` fell into in slice two.
+  concentrationEnded: EventKind.CONCENTRATION_ENDED,
   // `saved` IS DELIBERATELY ABSENT. It becomes authority in
   // `authorityFromEvent`, so it never reaches the other-story path; listing
   // it here would offer a second, conflicting home for the same beat.
@@ -1158,6 +1177,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.ROLL_WINDOW_OPENED,
   EventKind.CAST,
   EventKind.SAVED,
+  EventKind.CONCENTRATION_ENDED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -1453,6 +1473,24 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     // ("you find a hidden door") is a named follow-up, not this wave's:
     // returning undefined here means the beat is accepted and updates
     // state correctly, just without an otherStory entry of its own.
+    // WHOSE CONCENTRATION ENDED, ON WHAT, AND WHY. Every field the log line
+    // reads, so the identity this beat is deduplicated by covers the whole
+    // sentence rather than the caster alone. The spell is preserved as a
+    // graph presence, like Cast.spell above: absent and present-empty are
+    // different facts.
+    case 'concentrationEnded':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        caster: event.body.value.caster,
+        spell: event.body.value.spell
+          ? Object.freeze({
+              ref: event.body.value.spell.ref,
+              name: event.body.value.spell.name,
+            })
+          : null,
+        reason: event.body.value.reason,
+      });
     case 'doorRevealed':
     case 'regionRevealed':
       return undefined;
