@@ -445,7 +445,16 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   // the rulebook's own reading and no receiver recomputes it.
   if (event.body.case === 'saved' && event.kind === EventKind.SAVED) {
     const saved = event.body.value;
-    const presentationId = combatPresentationId(event.session, event.seq) ?? '';
+    // Saved carries no provider-issued presentation token. Keep its animation
+    // recipient-local until the provider contract deliberately grows one; a
+    // session/seq identity must never be mistaken for cross-recipient truth.
+    const localPresentationId = `session:${event.session}:${event.seq}`;
+    const presentationId =
+      event.session &&
+      event.seq >= 0n &&
+      isDicePresentationIdentifier(localPresentationId)
+        ? localPresentationId
+        : '';
     return freezeRecord({
       kind: 'save' as const,
       session: event.session,
