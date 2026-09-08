@@ -1,17 +1,26 @@
 import type { SpellcastingInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
 import { motion } from 'framer-motion';
-import { BookOpen, Focus, Plus, Sparkles, Zap } from 'lucide-react';
+import { BookOpen, Focus, Sparkles, Zap } from 'lucide-react';
+import { spellRefLabel } from '../../../utils/spellRefs';
 
 interface SpellInfoDisplayProps {
   spellcastingInfo: SpellcastingInfo;
   className?: string;
-  onSelectSpells?: () => void;
+  /**
+   * The cantrips this build has chosen, as `dnd5e:spells:<id>` refs.
+   *
+   * THE PICKER LIVES IN THE CLASS MODAL NOW, so there is no "Select Spells"
+   * button here and no modal of its own: cantrips are a class requirement,
+   * chosen beside the skills and saved in the same UpdateClass call (design
+   * rpg-project#405, §10). This section only reports what was chosen.
+   */
+  knownCantripRefs?: readonly string[];
 }
 
 export function SpellInfoDisplay({
   spellcastingInfo,
   className,
-  onSelectSpells,
+  knownCantripRefs,
 }: SpellInfoDisplayProps) {
   const getAbilityDisplayName = (ability: string) => {
     const abilityMap: Record<string, string> = {
@@ -51,23 +60,6 @@ export function SpellInfoDisplay({
             Spellcasting
           </h4>
         </div>
-        {onSelectSpells &&
-          (spellcastingInfo.cantripsKnown > 0 ||
-            spellcastingInfo.spellsKnown > 0) && (
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={onSelectSpells}
-              className="flex items-center gap-1 px-3 py-1 rounded-lg text-sm font-medium transition-colors"
-              style={{
-                backgroundColor: 'var(--accent-primary)',
-                color: 'white',
-              }}
-            >
-              <Plus className="w-4 h-4" />
-              Select Spells
-            </motion.button>
-          )}
       </div>
 
       {/* Spell Information Grid */}
@@ -181,6 +173,35 @@ export function SpellInfoDisplay({
           </div>
         )}
       </div>
+
+      {/* Cantrips this build knows, by name */}
+      {knownCantripRefs && knownCantripRefs.length > 0 && (
+        <div
+          className="p-3 rounded-lg border"
+          style={{
+            backgroundColor: 'var(--bg-secondary)',
+            borderColor: 'var(--border-primary)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles
+              className="w-4 h-4"
+              style={{ color: 'var(--accent-primary)' }}
+            />
+            <span
+              className="text-sm font-medium"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              Cantrips
+            </span>
+          </div>
+          <ul className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            {knownCantripRefs.map((ref) => (
+              <li key={ref}>{spellRefLabel(ref)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Spell Slots */}
       {spellcastingInfo.spellSlotsLevel1 > 0 && (

@@ -12,6 +12,7 @@ import {
   slotLabel,
   type ActionTooltip,
 } from './actionTooltip';
+import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
@@ -68,6 +69,11 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.REACT) {
     return declaration.reaction?.name || 'Reaction';
   }
+  // The spell names its own row; `castLabel` is the single place that answer
+  // lives, and the only place the pending protos field changes anything.
+  if (declaration.verb === Verb.CAST) {
+    return castLabel(declaration);
+  }
   return 'Move';
 }
 
@@ -98,6 +104,7 @@ function declarationIcon(declaration: Declaration): string {
   if (declaration.verb === Verb.ACTIVATE) return '✦';
   if (declaration.verb === Verb.DEATH_SAVE) return '✚';
   if (declaration.verb === Verb.REACT) return '⚡';
+  if (declaration.verb === Verb.CAST) return '✧';
   return '➜';
 }
 
@@ -509,6 +516,12 @@ export function ActionDock({
       declaration.verb === Verb.ATTACK ||
       declaration.verb === Verb.MOVE ||
       declaration.verb === Verb.ACTIVATE ||
+      // A CAST IS DRAWN LIKE EVERY OTHER OFFER. Afford mints one row per
+      // cantrip this build can actually cast and none for one it cannot
+      // (design rpg-project#405, R9), so a bard with two behaviourless
+      // cantrips — and every fighter — gets no Cast rows without the client
+      // deciding anything.
+      declaration.verb === Verb.CAST ||
       (declaration.verb === Verb.DEATH_SAVE &&
         isDeathSaveExecutableShape(declaration, 'display'))
   );

@@ -118,3 +118,60 @@ describe('character presentation', () => {
     ]);
   });
 });
+
+describe('the cast door’s two conditions (design rpg-project#405)', () => {
+  function conditionRow(id: string, name: string) {
+    return create(ConditionViewSchema, {
+      ref: create(RefSchema, { module: 'dnd5e', type: 'conditions', id }),
+      name,
+      detail: 'Provider-authored detail.',
+    });
+  }
+
+  it('draws each with its own icon, and copies the provider’s words', () => {
+    const data = create(CharacterDataSchema, {
+      conditions: [
+        conditionRow('true_strike', 'True Strike'),
+        conditionRow('vicious_mockery', 'Vicious Mockery'),
+      ],
+    });
+
+    const presented = presentCharacterData(data);
+
+    // TWO ROWS IN ONE TABLE, not two components. The provider authors the
+    // name and detail; this only says which glyph and tone the generic
+    // condition list draws them with.
+    expect(presented.conditions[0]).toMatchObject({
+      name: 'True Strike',
+      detail: 'Provider-authored detail.',
+      tone: 'warm',
+    });
+    expect(presented.conditions[1]).toMatchObject({
+      name: 'Vicious Mockery',
+      tone: 'danger',
+    });
+    expect(presented.conditions[0]!.icon).not.toBe(
+      presented.conditions[1]!.icon
+    );
+    expect(presented.conditions[0]!.icon).not.toBe(
+      GENERIC_CHARACTER_PRESENTATION.icon
+    );
+  });
+
+  it('a grant and a penalty do not read the same', () => {
+    // The distinction a player makes at the table: True Strike helps the
+    // caster's next swing, Vicious Mockery's rider hurts the target's.
+    const data = create(CharacterDataSchema, {
+      conditions: [
+        conditionRow('true_strike', 'True Strike'),
+        conditionRow('vicious_mockery', 'Vicious Mockery'),
+      ],
+    });
+
+    const presented = presentCharacterData(data);
+
+    expect(presented.conditions[0]!.tone).not.toBe(
+      presented.conditions[1]!.tone
+    );
+  });
+});

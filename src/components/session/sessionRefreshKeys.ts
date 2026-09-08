@@ -81,6 +81,19 @@ export function refreshKeysFor(
     // changed; the fight that dissolves because of it has its own row.
     case 'stanceChanged':
       return ['afford', 'view'];
+    // A SPELL WAS CAST, AND WHAT IT FORCED CAME BACK AS A SAVE
+    // (design rpg-project#405). Both refetch what an activation's result
+    // does, and for the same reasons: a cantrip spends the action Afford
+    // priced, its conditions land on somebody's card, and what the caster
+    // may still do this turn is only in Afford.
+    //
+    // `saved` REFETCHES TOO, even though it delivers nothing by itself. The
+    // save decides whether the effects that follow it happen at all, and the
+    // beats that carry them are separate; refetching on the save keeps the
+    // card and the log from disagreeing for the width of that gap.
+    case 'cast':
+    case 'saved':
+      return ['characterData', 'afford', 'view'];
     // A REACTION WINDOW OPENED AND THE SEAM IS FROZEN ON ITS ANSWER
     // (rpg-project#316). `afford` is what the beat is FOR: the audience's
     // new VERB_REACT offer and everyone else's WINDOW_OPEN shortfalls are

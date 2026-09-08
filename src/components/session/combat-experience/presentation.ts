@@ -40,7 +40,59 @@ export const COMBAT_D20_PRESET_ID = 'dice.original.carved.d20';
 
 type RollerRole = 'player' | 'monster';
 type AttackSnapshot = Readonly<Pick<AttackRef, 'ref' | 'name' | 'damageType'>>;
-export type DiceInteractionKind = 'attack' | 'death-save';
+/**
+ * The kinds of roll this layer animates.
+ *
+ * A SAVE IS ITS OWN KIND, not an attack with different words. It has a saver
+ * rather than an attacker, a DC rather than an AC, and no damage of its own —
+ * and, critically, it registers under the same `(session, seq)` key an
+ * attack would, so a save arriving as `'other'` typed Story while a d20
+ * wanted to roll for it is exactly the `dice response conflicts with typed
+ * Story` refusal (design rpg-project#405, folded gap). Giving the save a kind
+ * of its own is what makes the identity and the authority agree.
+ */
+export type DiceInteractionKind = 'attack' | 'death-save' | 'save';
+
+/**
+ * Which die a roll is presented with.
+ *
+ * READ OFF THE FACT RATHER THAN HARD-CODED. Every roll this layer has ever
+ * animated was a d20, so `createRequest` asserted one; a save is also a d20,
+ * but the assertion was a guess that happened to be right rather than a fact
+ * the authority carried. The face range travels with it so the guard refuses
+ * an impossible face for the die actually rolled, and the day a damage die is
+ * animated it is this descriptor that changes and not the request builder.
+ */
+interface DieSnapshot {
+  /**
+   * `d20` ALONE, BECAUSE THE DICE PRESENTATION CONTRACT SAYS SO:
+   * `DicePresentationRequestedEvent.die.kind` is literally `'d20'`
+   * (`dicePresentationEvent.ts`), and every roll the table animates today is
+   * one. Widening this means widening that contract and the runtime behind
+   * it, which is the damage-die slice and not this one — Vicious Mockery's
+   * 1d4 is narrated with its components rather than rolled.
+   */
+  readonly kind: 'd20';
+  readonly presetId: string;
+  readonly minimum: number;
+  readonly maximum: number;
+}
+
+const COMBAT_D20: DieSnapshot = Object.freeze({
+  kind: 'd20',
+  presetId: COMBAT_D20_PRESET_ID,
+  minimum: 1,
+  maximum: 20,
+});
+
+/** What a save was forced by, when a spell forced it. */
+interface SaveSnapshot {
+  readonly ability: string;
+  readonly dc: number;
+  readonly succeeded: boolean;
+  readonly sourceRef: string;
+  readonly sourceName: string;
+}
 
 interface DeathSaveSnapshot {
   readonly outcome: DeathSaveOutcome;
@@ -76,6 +128,9 @@ interface AuthoritySnapshot {
   readonly damage: number;
   readonly attack?: AttackSnapshot;
   readonly deathSave?: DeathSaveSnapshot;
+  readonly save?: SaveSnapshot;
+  /** The die this roll is shown on. Every roll today is the combat d20. */
+  readonly die: DieSnapshot;
 }
 
 export interface CombatPresentationConfigFact {
@@ -134,7 +189,7 @@ export type CombatPresentationFact =
 
 export interface CombatPresentationIdentity {
   readonly key: string;
-  readonly category: 'attack' | 'death-save' | 'other';
+  readonly category: DiceInteractionKind | 'other';
   readonly conflicted: boolean;
   readonly order: number;
 }
@@ -260,6 +315,7 @@ function authorityFromResponse(fact: AttackResponseFact): AuthoritySnapshot {
     critical: response.critical,
     damage: response.damage,
     attack: attackSnapshot(response.attack),
+    die: COMBAT_D20,
   });
 }
 
@@ -300,6 +356,7 @@ function authorityFromDeathSaveResponse(
     critical: false,
     damage: 0,
     deathSave: deathSaveSnapshot(response),
+    die: COMBAT_D20,
   });
 }
 
@@ -323,6 +380,7 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
       critical: struck.critical,
       damage: struck.damage,
       attack: attackSnapshot(struck.attack),
+      die: COMBAT_D20,
     });
   }
   if (event.body.case === 'missed' && event.kind === EventKind.MISSED) {
@@ -344,6 +402,7 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
       critical: false,
       damage: 0,
       attack: attackSnapshot(missed.attack),
+      die: COMBAT_D20,
     });
   }
   if (
@@ -366,6 +425,43 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
       critical: false,
       damage: 0,
       deathSave: deathSaveSnapshot(result),
+      die: COMBAT_D20,
+    });
+  }
+  // A SAVE ROLLS A d20 THE PLAYER MUST SEE, so it becomes authority rather
+  // than typed Story alone (design rpg-project#405, R7). The saver is the
+  // roller: a monster's save settles automatically the way a monster's attack
+  // does, and the bard's own save would arm on their dice.
+  //
+  // `against` CARRIES THE DC. It is the number the total was measured
+  // against, which is what that field means for an attack too; `succeeded` is
+  // the rulebook's own reading and no receiver recomputes it.
+  if (event.body.case === 'saved' && event.kind === EventKind.SAVED) {
+    const saved = event.body.value;
+    const presentationId = combatPresentationId(event.session, event.seq) ?? '';
+    return freezeRecord({
+      kind: 'save' as const,
+      session: event.session,
+      seq: event.seq,
+      authoritySeq: event.seq,
+      presentationId,
+      roller: saved.saver,
+      attacker: saved.saver,
+      target: saved.saver,
+      roll: saved.roll,
+      total: saved.total,
+      against: saved.dc,
+      hit: saved.succeeded,
+      critical: false,
+      damage: 0,
+      save: freezeRecord({
+        ability: saved.ability,
+        dc: saved.dc,
+        succeeded: saved.succeeded,
+        sourceRef: saved.source?.ref ?? '',
+        sourceName: saved.source?.name ?? '',
+      }),
+      die: COMBAT_D20,
     });
   }
   return undefined;
@@ -461,7 +557,8 @@ function attackEventFacts(event: Event): string | undefined {
   if (
     event.body.case !== 'struck' &&
     event.body.case !== 'missed' &&
-    event.body.case !== 'deathSaveRolled'
+    event.body.case !== 'deathSaveRolled' &&
+    event.body.case !== 'saved'
   ) {
     return undefined;
   }
@@ -488,7 +585,9 @@ function sameAuthority(
     Object.is(first.damage, later.damage) &&
     sameAttack(first.attack, later.attack) &&
     canonicalTypedIdentity(first.deathSave) ===
-      canonicalTypedIdentity(later.deathSave)
+      canonicalTypedIdentity(later.deathSave) &&
+    canonicalTypedIdentity(first.save) === canonicalTypedIdentity(later.save) &&
+    canonicalTypedIdentity(first.die) === canonicalTypedIdentity(later.die)
   );
 }
 
@@ -530,13 +629,18 @@ function createRequest(
 ): DicePresentationRequestedEvent | undefined {
   const presentationId = authority.presentationId;
   const role = state.rollerRoles[authority.roller];
+  // THE DIE COMES FROM THE FACT, and so does the range its face must fall in.
+  // A d20's 1..20 used to be written here as a constant; it is now the
+  // descriptor's own bounds, so a face impossible on the die actually rolled
+  // is refused rather than a face impossible on a d20.
+  const die = authority.die;
   if (
     !isDicePresentationIdentifier(presentationId) ||
     !role ||
     !isDicePresentationIdentifier(authority.roller) ||
     !Number.isInteger(authority.roll) ||
-    authority.roll < 1 ||
-    authority.roll > 20
+    authority.roll < die.minimum ||
+    authority.roll > die.maximum
   ) {
     return undefined;
   }
@@ -550,8 +654,8 @@ function createRequest(
       : {}),
     roller: Object.freeze({ entityId: authority.roller, role }),
     die: Object.freeze({
-      kind: 'd20',
-      presetId: COMBAT_D20_PRESET_ID,
+      kind: die.kind,
+      presetId: die.presetId,
       authoritativeResult: authority.roll,
     }),
   });
@@ -1016,6 +1120,12 @@ const EXPECTED_OTHER_KIND = {
   arrived: EventKind.ARRIVED,
   windowOpened: EventKind.WINDOW_OPENED,
   rollWindowOpened: EventKind.ROLL_WINDOW_OPENED,
+  // A CAST IS TYPED STORY, NOT A ROLL. It carries no die of its own — the
+  // save that may follow it is the roll, and that has its own authority.
+  cast: EventKind.CAST,
+  // `saved` IS DELIBERATELY ABSENT. It becomes authority in
+  // `authorityFromEvent`, so it never reaches the other-story path; listing
+  // it here would offer a second, conflicting home for the same beat.
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -1040,6 +1150,8 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.ARRIVED,
   EventKind.WINDOW_OPENED,
   EventKind.ROLL_WINDOW_OPENED,
+  EventKind.CAST,
+  EventKind.SAVED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -1048,7 +1160,11 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     if (TYPED_EVENT_KINDS.has(event.kind)) return undefined;
     return Object.freeze({ kind: event.kind, bodyCase: 'none' });
   }
-  if (bodyCase === 'struck' || bodyCase === 'missed') return undefined;
+  // The bodies that become authority instead: they carry a die, so they are
+  // presentation records rather than other-story rows.
+  if (bodyCase === 'struck' || bodyCase === 'missed' || bodyCase === 'saved') {
+    return undefined;
+  }
   if (event.kind !== EXPECTED_OTHER_KIND[bodyCase]) return undefined;
 
   switch (bodyCase) {
@@ -1248,6 +1364,24 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
         kind: event.kind,
         bodyCase,
         value: event.body.value,
+      });
+    // THE SPELL AND ITS TARGET ARE THE IDENTITY. Two casts of the same
+    // cantrip at two targets in one turn are different beats, not a
+    // conflicting duplicate, and the spell's server-authored name is part of
+    // what was said so a renamed spell reads as a new fact rather than
+    // silently replacing the old one.
+    case 'cast':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        actor: event.body.value.actor,
+        spell: event.body.value.spell
+          ? Object.freeze({
+              ref: event.body.value.spell.ref,
+              name: event.body.value.spell.name,
+            })
+          : null,
+        target: event.body.value.target,
       });
     case 'activationResult': {
       const activation = event.body.value;

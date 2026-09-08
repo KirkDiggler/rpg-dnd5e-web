@@ -31,6 +31,7 @@ import type {
   RaceModalChoices,
 } from '../../types/choices';
 import {
+  convertCantripChoiceToProto,
   convertEquipmentChoiceToProto,
   convertExpertiseChoiceToProto,
   convertFeatureChoiceToProto,
@@ -60,7 +61,6 @@ import { ClassSelectionModal } from './ClassSelectionModal';
 import { SpellInfoDisplay } from './components/SpellInfoDisplay';
 import { RaceSelectionModal } from './RaceSelectionModal';
 import { AbilityScoresSection } from './sections/AbilityScoresSection';
-import { SpellSelectionModal } from './SpellSelectionModal';
 import { useCharacterDraft } from './useCharacterDraft';
 
 interface InteractiveCharacterSheetProps {
@@ -186,10 +186,8 @@ export function InteractiveCharacterSheet({
   const [character, setCharacter] = useState(CharacterContext);
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
-  const [isSpellModalOpen, setIsSpellModalOpen] = useState(false);
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
   const [isAppearanceModalOpen, setIsAppearanceModalOpen] = useState(false);
-  const [selectedSpells, setSelectedSpells] = useState<string[]>([]);
   const [localName, setLocalName] = useState('');
   const draft = useCharacterDraft();
 
@@ -234,6 +232,7 @@ export function InteractiveCharacterSheet({
       features: [],
       expertise: [],
       traits: [],
+      cantrips: [],
       proficiencies: [],
     };
 
@@ -279,6 +278,17 @@ export function InteractiveCharacterSheet({
           });
         }
       } else if (
+        choice.category === ChoiceCategory.CANTRIPS &&
+        choice.selection?.case === 'spells'
+      ) {
+        // REFS ONLY. The deprecated `spells` enum field is never read back,
+        // so a draft saved before the ref swap rehydrates as no selection
+        // rather than as a wrong one.
+        choices.cantrips?.push({
+          choiceId: choice.choiceId,
+          spellRefs: choice.selection.value.spellRefs || [],
+        });
+      } else if (
         choice.category === ChoiceCategory.FIGHTING_STYLE &&
         choice.selection?.case === 'fightingStyle'
       ) {
@@ -293,6 +303,22 @@ export function InteractiveCharacterSheet({
 
     return choices;
   }, [draft.classChoices, draft.classInfo]);
+
+  /**
+   * The cantrips this build has chosen, in the order they were picked.
+   *
+   * READ OFF THE ONE CLASS-CHOICE RECORD, not off a second spell state. The
+   * sheet used to hold `selectedSpells` that nothing ever saved (the modal's
+   * own TODO); the cantrips are a class choice now, so the sheet reads the
+   * same choices it submits.
+   */
+  const knownCantripRefs = useMemo(
+    () =>
+      (structuredClassChoices.cantrips ?? []).flatMap(
+        (choice) => choice.spellRefs
+      ),
+    [structuredClassChoices]
+  );
 
   // Convert draft background choices to modal format
   const structuredBackgroundChoices = useMemo(() => {
@@ -1403,7 +1429,7 @@ export function InteractiveCharacterSheet({
                             spellcastingInfo={
                               character.selectedClass.spellcasting
                             }
-                            onSelectSpells={() => setIsSpellModalOpen(true)}
+                            knownCantripRefs={knownCantripRefs}
                           />
                         </motion.div>
                       )}
@@ -1867,6 +1893,20 @@ export function InteractiveCharacterSheet({
             });
           }
 
+          // Convert cantrip choices if any.
+          //
+          // IN THE SAME UpdateClass CALL AS EVERY OTHER CLASS CHOICE. There is
+          // no second save and no spell modal of its own: the cantrips are a
+          // class requirement like the skills, and one round trip carries the
+          // whole class decision (design rpg-project#405, §10).
+          if (choices.cantrips) {
+            choices.cantrips.forEach((cantripChoice) => {
+              choiceData.push(
+                convertCantripChoiceToProto(cantripChoice, ChoiceSource.CLASS)
+              );
+            });
+          }
+
           // Convert trait choices if any
           if (choices.traits) {
             choices.traits.forEach((traitChoice) => {
@@ -1890,27 +1930,6 @@ export function InteractiveCharacterSheet({
         }}
         onClose={() => setIsClassModalOpen(false)}
       />
-
-      {/* Spell Selection Modal */}
-      {isClassInfo(character.selectedClass) &&
-        character.selectedClass.spellcasting && (
-          <SpellSelectionModal
-            isOpen={isSpellModalOpen}
-            onClose={() => setIsSpellModalOpen(false)}
-            spellcastingInfo={character.selectedClass.spellcasting}
-            className={character.selectedClass.name}
-            level1Features={
-              isClassInfo(character.selectedClass)
-                ? character.selectedClass.level1Features
-                : []
-            }
-            currentSpells={selectedSpells}
-            onSelect={(spells) => {
-              setSelectedSpells(spells);
-              // TODO: Add spell selection to character draft
-            }}
-          />
-        )}
 
       {/* Background Selection Modal */}
       <BackgroundSelectionModal
