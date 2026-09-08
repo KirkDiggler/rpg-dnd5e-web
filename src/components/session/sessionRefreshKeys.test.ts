@@ -5,6 +5,7 @@ import {
   EventSchema,
   JoinedSchema,
   MovedSchema,
+  RollWindowOpenedSchema,
   StanceChangedSchema,
   WindowOpenedSchema,
   type Event as SessionEvent,
@@ -107,5 +108,22 @@ describe('the reaction window row (rpg-project#316)', () => {
     // Their verbs are frozen too — the WINDOW_OPEN shortfall is only in
     // Afford, so everyone re-reads it.
     expect(refreshKeysFor(event, VIEWER)).toEqual(['afford', 'view']);
+  });
+
+  it('ROLL_WINDOW_OPENED re-reads the offer alone, because nobody moved', () => {
+    const event: SessionEvent = create(EventSchema, {
+      kind: EventKind.ROLL_WINDOW_OPENED,
+      body: {
+        case: 'rollWindowOpened',
+        value: create(RollWindowOpenedSchema, {
+          audience: VIEWER,
+          roll: 9,
+          total: 13,
+        }),
+      },
+    });
+    // `view` is deliberately absent: this window has no mover and no cells,
+    // so the scene is exactly what it was.
+    expect(refreshKeysFor(event, VIEWER)).toEqual(['afford']);
   });
 });

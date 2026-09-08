@@ -67,3 +67,41 @@ describe('ClassSelectionModal equipment validation', () => {
     expect(screen.queryByText(/different items/i)).toBeNull();
   });
 });
+
+describe('which classes the modal offers', () => {
+  /** The server returns every class; the modal shows the ones with behaviour
+   * at level 1. */
+  function withClasses() {
+    hoisted.useListClasses.mockReturnValue({
+      data: [
+        create(ClassInfoSchema, { classId: Class.FIGHTER, name: 'Fighter' }),
+        create(ClassInfoSchema, { classId: Class.BARD, name: 'Bard' }),
+        create(ClassInfoSchema, { classId: Class.WIZARD, name: 'Wizard' }),
+      ],
+      loading: false,
+      error: null,
+    });
+  }
+
+  it('offers the bard, and still withholds a class with nothing to do', () => {
+    withClasses();
+    render(<ClassSelectionModal isOpen onClose={vi.fn()} onSelect={vi.fn()} />);
+
+    expect(screen.getByText('Bard')).toBeTruthy();
+    expect(screen.queryByText('Wizard')).toBeNull();
+  });
+
+  it('selects the bard and hands its class id back', () => {
+    withClasses();
+    const onSelect = vi.fn();
+    render(
+      <ClassSelectionModal isOpen onClose={vi.fn()} onSelect={onSelect} />
+    );
+
+    fireEvent.click(screen.getByText('Bard'));
+    fireEvent.click(screen.getByRole('button', { name: /^Select Bard$/ }));
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0].classId).toBe(Class.BARD);
+  });
+});

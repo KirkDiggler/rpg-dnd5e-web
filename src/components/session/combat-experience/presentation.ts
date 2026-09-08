@@ -1015,6 +1015,7 @@ const EXPECTED_OTHER_KIND = {
   stanceChanged: EventKind.STANCE_CHANGED,
   arrived: EventKind.ARRIVED,
   windowOpened: EventKind.WINDOW_OPENED,
+  rollWindowOpened: EventKind.ROLL_WINDOW_OPENED,
 } as const;
 
 const TYPED_EVENT_KINDS = new Set<number>([
@@ -1038,6 +1039,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.STANCE_CHANGED,
   EventKind.ARRIVED,
   EventKind.WINDOW_OPENED,
+  EventKind.ROLL_WINDOW_OPENED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -1191,6 +1193,29 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
           ? Object.freeze({
               ref: event.body.value.reaction.ref,
               name: event.body.value.reaction.name,
+            })
+          : null,
+      });
+    // THE FIGHT PAUSED ON A DIE ALREADY ROLLED (rpg-project#398). Roll and
+    // total are both part of the identity: the same member can be asked about
+    // the same offer twice in one turn on two different swings, and two
+    // windows that differ only in what was rolled are different beats, not a
+    // conflicting duplicate.
+    //
+    // THERE IS NO `against` HERE, and its absence is the design. The window
+    // withholds the target's AC so the player decides on the roll rather than
+    // on whether the roll already landed.
+    case 'rollWindowOpened':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        audience: event.body.value.audience,
+        roll: event.body.value.roll,
+        total: event.body.value.total,
+        offer: event.body.value.offer
+          ? Object.freeze({
+              ref: event.body.value.offer.ref,
+              name: event.body.value.offer.name,
             })
           : null,
       });
