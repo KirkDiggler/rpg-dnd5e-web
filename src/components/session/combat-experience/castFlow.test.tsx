@@ -19,6 +19,7 @@ import {
   MemberKind,
   ParticipantSchema,
   Slot,
+  SpellRefSchema,
   Standing,
   TargetCandidateSchema,
   TargetKind,
@@ -72,6 +73,10 @@ function mockeryDeclaration(): Declaration {
     candidates: [
       create(TargetCandidateSchema, { member: 'skeleton-1', available: true }),
     ],
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:vicious-mockery',
+      name: 'Vicious Mockery',
+    }),
   });
 }
 
@@ -83,6 +88,10 @@ function trueStrikeDeclaration(): Declaration {
     slot: Slot.ACTION,
     available: true,
     targetKind: TargetKind.NONE,
+    spell: create(SpellRefSchema, {
+      ref: 'dnd5e:spells:true-strike',
+      name: 'True Strike',
+    }),
   });
 }
 
@@ -147,13 +156,13 @@ describe('the dock draws a Cast row per castable cantrip', () => {
       <Dock declarations={[mockeryDeclaration(), trueStrikeDeclaration()]} />
     );
 
-    // The label is "Cast" for both today: `Declaration` carries no SpellRef,
-    // so there is no server-authored spell name to draw, and deriving one
-    // from a ref is what the ability row refuses to do. When the field lands
-    // this expectation becomes the two spell names.
-    const rows = screen.getAllByRole('button', { name: /^Cast/ });
-    expect(rows).toHaveLength(2);
-    rows.forEach((row) => expect(row.textContent).toContain('Cast'));
+    // TWO ROWS THAT READ DIFFERENTLY, each named by the spell itself through
+    // `Declaration.spell`. Two rows both saying "Cast" would be an affordance
+    // the player cannot tell apart.
+    expect(
+      screen.getByRole('button', { name: /^Vicious Mockery/ })
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^True Strike/ })).toBeTruthy();
     // Each is priced as the action Afford said it costs.
     expect(screen.getAllByTitle('Action')).toHaveLength(2);
   });
@@ -163,7 +172,9 @@ describe('the dock draws a Cast row per castable cantrip', () => {
 
     // AFFORD DECIDES, NOT THE CLIENT. A build with no castable cantrip is
     // offered no Cast declaration, so there is nothing here to filter out.
-    expect(screen.queryByRole('button', { name: /^Cast/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Vicious Mockery|True Strike/ })
+    ).toBeNull();
   });
 });
 
@@ -207,6 +218,8 @@ describe('arming a cast that names a creature', () => {
     );
 
     expect(screen.getByTestId('highlighted').textContent).toBe('skeleton-1');
+    // The armed prompt names the spell, not the verb.
+    expect(screen.getByText('Vicious Mockery armed')).toBeTruthy();
     expect(screen.getByText('Choose a target')).toBeTruthy();
   });
 });

@@ -15,15 +15,11 @@ import type { Declaration } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/s
  * stale the first time a spell was renamed, which is why the ability row
  * refuses to keep such a table (design rpg-project#405).
  *
- * TODAY IT RETURNS THE VERB, AND THAT IS THE HONEST ANSWER. `Declaration` in
- * the pinned protos has no spell field — it ends at `reaction = 14` — so
- * there is nothing here to name a row with, and a bard's two cantrips read as
- * two rows both saying "Cast". `SpellRef spell = 15` is landing
- * (rpg-api-protos#311); when this repo re-pins to the generated sha, the body
- * below becomes `declaration.spell?.name || declaration.spell?.ref || 'Cast'`
- * and no call site changes.
+ * THE REF IS THE LAST RESORT, NOT A FALLBACK TO PRETTIFY. An unresolvable
+ * ref is shown as itself so it looks unresolved; `'Cast'` covers the case
+ * where the server sent no spell at all, which on a VERB_CAST row would be a
+ * server bug the player should still be able to see and click past.
  */
 export function castLabel(declaration: Declaration): string {
-  void declaration;
-  return 'Cast';
+  return declaration.spell?.name || declaration.spell?.ref || 'Cast';
 }
