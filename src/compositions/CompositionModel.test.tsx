@@ -1,4 +1,5 @@
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
+import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { create } from '@bufbuild/protobuf';
 import {
   CompositionSchema,
@@ -14,6 +15,17 @@ const controlledLeaf = vi.hoisted(() => ({
   rotationY: 0.731,
   suspension: new Promise<void>(() => undefined),
 }));
+const loadedWorldAssetUrls = vi.hoisted(() => [] as string[]);
+
+vi.mock('@react-three/drei', async () => {
+  const THREE = await import('three');
+  return {
+    useGLTF: (url: string) => {
+      loadedWorldAssetUrls.push(url);
+      return { scene: new THREE.Group() };
+    },
+  };
+});
 
 vi.mock('@/components/hex-grid/PropModel', () => ({
   PropModel: ({
@@ -62,6 +74,7 @@ beforeAll(() => {
 
 afterEach(() => {
   controlledLeaf.behavior = 'render';
+  loadedWorldAssetUrls.length = 0;
   vi.restoreAllMocks();
 });
 
@@ -145,6 +158,160 @@ describe('CompositionModel', () => {
     expect(leaves.every((leaf) => leaf.props.userData === undefined)).toBe(
       true
     );
+  });
+
+  it('renders a valid generated exact-ref snapshot instead of the caller error fallback', async () => {
+    const envelope = JSON.parse(decoratedTableJson) as {
+      scene: {
+        items: Array<{
+          id: string;
+          kind: 'prop';
+          assetRef: string;
+          label: string;
+          transform: {
+            x: number;
+            y: number;
+            z: number;
+            rotationY: number;
+          };
+        }>;
+      };
+    };
+    envelope.scene.items = [
+      {
+        id: 'generated-alchemy-tools',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:dark-fortress:alchemy_tools_01',
+        label: 'Alchemy Tools 01',
+        transform: { x: -1.25, y: 0.2, z: 2.5, rotationY: 0.45 },
+      },
+    ];
+    const generated = create(CompositionSchema, {
+      ...composition,
+      id: 'generated-snapshot',
+      json: JSON.stringify(envelope),
+    });
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <BoundedCompositionModel
+        value={generated}
+        instanceId="generated-placement"
+      />
+    );
+
+    expect(
+      renderer.scene.findAllByProps({
+        name: 'composition-error-generated-placement',
+      })
+    ).toHaveLength(0);
+    const leaf = renderer.scene.findByProps({
+      name: 'composition-leaf-generated-alchemy-tools',
+    });
+    expect(leaf.children[0]?.props).toMatchObject({
+      name: 'world-asset-model',
+      position: [-1.25, 0.2 + DUNGEON_SURFACE_Y, 2.5],
+      rotation: [0, 0.45, 0],
+    });
+    expect(loadedWorldAssetUrls).toEqual([
+      '/models/synty/world-assets/props/dark-fortress/alchemy_tools_01.glb',
+    ]);
+  });
+
+  it('renders legacy and generated leaves together with their independent authored transforms', async () => {
+    const envelope = JSON.parse(decoratedTableJson) as {
+      scene: {
+        items: Array<{
+          id: string;
+          kind: 'prop';
+          assetRef: string;
+          label: string;
+          transform: {
+            x: number;
+            y: number;
+            z: number;
+            rotationY: number;
+          };
+        }>;
+      };
+    };
+    envelope.scene.items = [
+      {
+        ...envelope.scene.items[0]!,
+        id: 'legacy-table',
+        transform: { x: 1, y: 0.1, z: -2, rotationY: 0.25 },
+      },
+      {
+        id: 'generated-alchemy-tools',
+        kind: 'prop',
+        assetRef: 'dnd5e:props:dark-fortress:alchemy_tools_01',
+        label: 'Alchemy Tools 01',
+        transform: { x: -3, y: 0.35, z: 4, rotationY: 0.8 },
+      },
+    ];
+    const mixed = create(CompositionSchema, {
+      ...composition,
+      id: 'mixed-snapshot',
+      json: JSON.stringify(envelope),
+    });
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <CompositionModel
+        composition={mixed}
+        instanceId="mixed-placement"
+        transform={{ x: 5, y: 0.4, z: 6, rotationY: 1.1 }}
+      />
+    );
+
+    const root = renderer.scene.findByProps({
+      name: 'composition-placement-mixed-placement',
+    });
+    expect(root.props.position).toEqual([5, 0.4, 6]);
+    expect(root.props.rotation).toEqual([0, 1.1, 0]);
+    const legacy = renderer.scene.findByProps({
+      name: 'composition-leaf-legacy-table',
+    });
+    expect(legacy.children[0]?.props).toMatchObject({
+      position: [1, 0.1, -2],
+      rotation: [0, 0.25, 0],
+      userData: { anchor: 'bounds-floor-center' },
+    });
+    const generated = renderer.scene.findByProps({
+      name: 'composition-leaf-generated-alchemy-tools',
+    });
+    expect(generated.children[0]?.props).toMatchObject({
+      name: 'world-asset-model',
+      position: [-3, 0.35 + DUNGEON_SURFACE_Y, 4],
+      rotation: [0, 0.8, 0],
+    });
+  });
+
+  it('keeps an unknown snapshot ref inside the caller error fallback', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const envelope = JSON.parse(decoratedTableJson) as {
+      scene: { items: Array<{ assetRef: string }> };
+    };
+    envelope.scene.items[0]!.assetRef = 'dnd5e:props:not-in-any-catalog';
+    const unknown = create(CompositionSchema, {
+      ...composition,
+      id: 'unknown-ref-snapshot',
+      json: JSON.stringify(envelope),
+    });
+
+    const renderer = await ReactThreeTestRenderer.create(
+      <BoundedCompositionModel
+        value={unknown}
+        instanceId="unknown-ref-placement"
+      />
+    );
+
+    expect(
+      renderer.scene.findByProps({
+        name: 'composition-error-unknown-ref-placement',
+      })
+    ).toBeDefined();
+    expect(
+      renderer.scene.findAllByProps({ name: 'world-asset-model' })
+    ).toHaveLength(0);
   });
 
   it('renders authored enabled lights through the shared point-light leaf and can defer to a scene owner', async () => {
