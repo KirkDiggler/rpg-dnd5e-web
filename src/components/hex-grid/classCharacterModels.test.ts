@@ -85,6 +85,62 @@ describe('resolveIdleClipName', () => {
 });
 
 describe('resolvePlayerCharacterModel', () => {
+  const bardModels = [
+    ['dwarf', '/models/synty/characters/race-class/dwarf-bard.glb'],
+    ['elf', '/models/synty/characters/race-class/elf-bard.glb'],
+    ['gnome', '/models/synty/characters/race-class/gnome-bard.glb'],
+    ['half-elf', '/models/synty/characters/race-class/half-elf-bard.glb'],
+    ['halfling', '/models/synty/characters/race-class/halfling-bard.glb'],
+    ['half-orc', '/models/synty/characters/race-class/half-orc-bard.glb'],
+    ['human', '/models/synty/characters/race-class/human-bard.glb'],
+    ['tiefling', '/models/synty/characters/race-class/tiefling-bard.glb'],
+  ] as const;
+
+  it.each(bardModels)(
+    'resolves the exact standing %s Bard as a non-customizable modular model',
+    (raceRefId, url) => {
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel(
+          raceRefId,
+          'bard',
+          false
+        )
+      ).toEqual(
+        asResolution({
+          url,
+          rigFamily: 'modular-fantasy-hero-v1',
+          source: 'race-class',
+        })
+      );
+    }
+  );
+
+  it.each(bardModels)(
+    'keeps a downed/dead %s Bard unresolved for the established fallback',
+    (raceRefId) => {
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel(
+          raceRefId,
+          'bard',
+          true
+        )
+      ).toBeUndefined();
+    }
+  );
+
+  it('does not substitute Human for a missing or unknown Bard race', () => {
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel(undefined, 'bard', false)
+    ).toBeUndefined();
+    expect(
+      classCharacterModels.resolvePlayerCharacterModel(
+        'dragonborn',
+        'bard',
+        false
+      )
+    ).toBeUndefined();
+  });
+
   it.each(['barbarian', 'fighter', 'monk', 'rogue'])(
     'resolves the exact standing Elf %s race-class model',
     (classRefId) => {
