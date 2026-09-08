@@ -175,3 +175,36 @@ describe('the cast door’s two conditions (design rpg-project#405)', () => {
     );
   });
 });
+
+describe('the owning condition (design rpg-project#407)', () => {
+  it('gives the caster a badge of its own, with the provider’s words', () => {
+    // ONE ROW, AND THAT IS THE WHOLE CASTER-SIDE CHANGE. The api already
+    // ships this condition through the status view; this only says which
+    // glyph and tone the generic list draws it with, and the spell it names
+    // stays the provider's text.
+    const data = create(CharacterDataSchema, {
+      conditions: [
+        create(ConditionViewSchema, {
+          ref: create(RefSchema, {
+            module: 'dnd5e',
+            type: 'conditions',
+            id: 'concentrating',
+          }),
+          name: 'Concentrating',
+          detail: 'Holding True Strike.',
+        }),
+      ],
+    });
+
+    const presented = presentCharacterData(data);
+
+    expect(presented.conditions[0]).toMatchObject({
+      name: 'Concentrating',
+      detail: 'Holding True Strike.',
+      tone: 'cool',
+    });
+    expect(presented.conditions[0]!.icon).not.toBe(
+      GENERIC_CHARACTER_PRESENTATION.icon
+    );
+  });
+});

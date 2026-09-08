@@ -635,6 +635,17 @@
   text-decoration: line-through;
 }
 
+/*
+ * THE ONLY PLACE OTHER PLAYERS SEE A HELD SPELL (design rpg-project#407, R11).
+ * The caster reads its own concentrating condition off its status view; every
+ * other member has nothing but this roster row, so the marker is a ring on the
+ * portrait plus the tooltip the entry already carries.
+ */
+.initiativeEntryConcentrating .initiativePortrait {
+  border-color: var(--sc-blue);
+  box-shadow: 0 0 12px rgba(106, 183, 217, 0.45);
+}
+
 .storyLog {
   position: absolute;
   z-index: 4;

@@ -2,6 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import {
   ArrivedSchema,
   CastSchema,
+  ConcentrationEndedSchema,
   EventKind,
   EventSchema,
   JoinedSchema,
@@ -170,5 +171,34 @@ describe('the reaction window row (rpg-project#316)', () => {
     // `view` is deliberately absent: this window has no mover and no cells,
     // so the scene is exactly what it was.
     expect(refreshKeysFor(event, VIEWER)).toEqual(['afford']);
+  });
+});
+
+describe('the concentration break’s row (design rpg-project#407, R11)', () => {
+  const broke = create(EventSchema, {
+    kind: EventKind.CONCENTRATION_ENDED,
+    body: {
+      case: 'concentrationEnded',
+      value: create(ConcentrationEndedSchema, {
+        caster: VIEWER,
+        reason: 'damage',
+      }),
+    },
+  });
+
+  it('re-reads the cards the strip emptied and the roster the flag lives on', () => {
+    // `turn`, NOT `roster`. The concentrating bool rides GetTurn's
+    // participants — the roster row the initiative strip draws — so a
+    // refresh of GetRoster would leave the marker standing after the break.
+    expect(refreshKeysFor(broke, VIEWER)).toEqual(['characterData', 'turn']);
+  });
+
+  it('refreshes for a break that is somebody else’s', () => {
+    // The child conditions come off OTHER members' sheets, so a viewer who
+    // is not the caster still has a card to re-read.
+    expect(refreshKeysFor(broke, 'someone-else')).toEqual([
+      'characterData',
+      'turn',
+    ]);
   });
 });

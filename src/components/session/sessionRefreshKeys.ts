@@ -123,6 +123,18 @@ export function refreshKeysFor(
     // fruitful loot would need. What the looter gained arrives as
     // their own DOOR_REVEALED beat, which refetches on its own line
     // above — the same bytes a successful search produces.
+    // CONCENTRATION BROKE, AND THINGS CAME OFF SHEETS (design rpg-project#407).
+    // `characterData` because the caster's own concentrating badge clears and
+    // the child conditions the spell was holding come off whoever was carrying
+    // them — including members other than the caster. `turn` because the
+    // roster row's `concentrating` bool (R11) is read off GetTurn's
+    // participants, not GetRoster's.
+    //
+    // `afford` and `view` are NOT here. Nothing was spent and nobody moved: a
+    // break costs no action and changes no cell, so refetching either would be
+    // work for a beat that changed neither.
+    case 'concentrationEnded':
+      return ['characterData', 'turn'];
     case 'looted':
     case 'activated':
     case 'exited':

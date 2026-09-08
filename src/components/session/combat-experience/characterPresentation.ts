@@ -64,6 +64,16 @@ const PRESENTATION_BY_REF: Readonly<
     icon: '🃏',
     tone: 'danger',
   }),
+  // THE OWNING CONDITION (design rpg-project#407, R11). One more row in the
+  // same table and the whole of the caster's own status: the api already
+  // ships this condition through the status view, and the provider authors
+  // which spell it names. Cool rather than warm — it is a thing being held,
+  // not a bonus in hand, and it is what the player watches to know the spell
+  // is still up.
+  'dnd5e:conditions:concentrating': Object.freeze({
+    icon: '🌀',
+    tone: 'cool',
+  }),
 });
 
 export type PresentedFeature = FeatureView & CharacterPresentationStyle;
