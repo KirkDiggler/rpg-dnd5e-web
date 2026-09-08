@@ -2,6 +2,7 @@ import {
   TargetKind,
   Verb,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
+import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import type { SelectedCombatExperience } from './selection';
 import type {
@@ -63,10 +64,8 @@ export function TargetSurface({
   const armedName =
     declaration?.verb === Verb.ACTIVATE
       ? declaration.ability?.name || 'Ability'
-      : // The declaration carries no spell name to read (see ActionDock's
-        // `declarationLabel`), so the armed prompt says what the verb is.
-        declaration?.verb === Verb.CAST
-        ? 'Cast'
+      : declaration?.verb === Verb.CAST
+        ? castLabel(declaration)
         : declaration?.attack?.name || 'Attack';
   const targetName = selection?.candidate
     ? memberNames.get(selection.candidate.member) || selection.candidate.member

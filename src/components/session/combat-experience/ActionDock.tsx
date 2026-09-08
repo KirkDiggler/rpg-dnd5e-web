@@ -12,6 +12,7 @@ import {
   slotLabel,
   type ActionTooltip,
 } from './actionTooltip';
+import { castLabel } from './castLabel';
 import styles from './CombatExperience.module.css';
 import { isDeathSaveExecutableShape } from './deathSaveDeclaration';
 import {
@@ -68,22 +69,10 @@ function declarationLabel(declaration: Declaration): string {
   if (declaration.verb === Verb.REACT) {
     return declaration.reaction?.name || 'Reaction';
   }
-  // A CAST HAS NO SERVER-AUTHORED NAME TO READ YET, and this is the honest
-  // consequence rather than a client-side spell table.
-  //
-  // `SpellRef` exists and says it "identifies WHICH SPELL a VERB_CAST
-  // declaration casts", and VERB_CAST's own doc says "a level-1 bard knows
-  // two cantrips and reads two rows" — but `Declaration` carries no spell
-  // field beside `attack`, `ability`, `death_save` and `reaction`, so there is
-  // nothing here to name the row with. Deriving "Vicious Mockery" from
-  // `dnd5e:spells:vicious-mockery` is exactly what the ability row refuses to
-  // do and would go stale the first time a spell was renamed.
-  //
-  // Two cantrips therefore read as two "Cast" rows until `Declaration.spell`
-  // lands, at which point this becomes `declaration.spell?.name || 'Cast'`
-  // and nothing else here changes.
+  // The spell names its own row; `castLabel` is the single place that answer
+  // lives, and the only place the pending protos field changes anything.
   if (declaration.verb === Verb.CAST) {
-    return 'Cast';
+    return castLabel(declaration);
   }
   return 'Move';
 }
