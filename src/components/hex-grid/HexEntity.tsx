@@ -553,18 +553,13 @@ export function HexEntity({
       type === 'npc' && !isDead ? resolveDemoNpcModelUrl(entityId) : undefined;
     // Mutually exclusive by type; all retain the same load-error fallback.
     const resolvedModelUrl = classModelUrl ?? monsterModelUrl ?? npcModelUrl;
-    // Only generated customization-profile truth can name an exact complete
-    // body fallback. Basic Bard appearances intentionally have no such profile;
-    // load failure and downed/dead states retain one-step MediumHumanoid
-    // degradation instead of inventing another class/race asset.
+    // Only generated profile truth can name an exact complete class fallback.
+    // Monsters and unsupported profiles retain one-step MediumHumanoid degradation.
     const generatedClassFallbackUrl =
       type === 'player' ? playerModelResolution?.fallbackUrl : undefined;
     const effectiveModelUrl = [resolvedModelUrl, generatedClassFallbackUrl]
       .filter((url): url is string => Boolean(url))
       .find((url) => !failedEntityModelUrls.has(url));
-    // A provider race/class model is not automatically a customizable body.
-    // Bard stays a complete basic appearance: no profile ref means no inferred
-    // hair or outfit treatment, while the four starter classes remain unchanged.
     const isPrimaryCustomizationBody =
       effectiveModelUrl === classModelUrl &&
       playerModelResolution?.customizationProfileRef !== undefined &&

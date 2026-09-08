@@ -6,7 +6,6 @@
  * rather than nesting a second `<Canvas>` inside it.
  */
 import type { AuthoredWallRun } from '@/components/session/atlasWallRuns';
-import { BARD_APPEARANCE_CATALOG } from '@/generated/bardAppearanceCatalog';
 import { __resetDungeonShellProviderForTests } from '@/rendering/dungeonShellProvider';
 import { DUNGEON_SURFACE_Y } from '@/rendering/dungeonSurface';
 import { create } from '@bufbuild/protobuf';
@@ -57,7 +56,6 @@ const gltfMockState = vi.hoisted(() => ({
   failedUrls: new Set<string>(),
   pendingUrls: new Set<string>(),
   requests: [] as string[],
-  animationNameRequests: [] as string[][],
   textureRequests: [] as string[],
   pending: new Promise<never>(() => undefined),
 }));
@@ -81,7 +79,6 @@ afterEach(() => {
   gltfMockState.failedUrls.clear();
   gltfMockState.pendingUrls.clear();
   gltfMockState.requests.length = 0;
-  gltfMockState.animationNameRequests.length = 0;
   gltfMockState.textureRequests.length = 0;
   window.history.replaceState({}, '', '/');
   vi.unstubAllGlobals();
@@ -178,27 +175,17 @@ vi.mock('@react-three/drei', () => {
         throw new Error(`failed to load ${url}`);
       }
       if (gltfMockState.pendingUrls.has(url)) throw gltfMockState.pending;
-      const animations = url.endsWith('-bard.glb')
-        ? [
-            new THREE.AnimationClip('Idle_Relaxed', 1, []),
-            new THREE.AnimationClip('Walk_Forward', 1, []),
-          ]
-        : [];
-      return { scene: make(url), animations };
+      return { scene: make(url), animations: [] };
     },
     useTexture: (url: string) => {
       gltfMockState.textureRequests.push(url);
       return new THREE.Texture();
     },
-    useAnimations: (animations: THREE.AnimationClip[]) => {
-      const names = animations.map((clip) => clip.name);
-      gltfMockState.animationNameRequests.push(names);
-      return {
-        actions: {},
-        names,
-        mixer: new THREE.AnimationMixer(new THREE.Group()),
-      };
-    },
+    useAnimations: () => ({
+      actions: {},
+      names: [],
+      mixer: new THREE.AnimationMixer(new THREE.Group()),
+    }),
     // The exit markers' label (`SessionExitMarkers.tsx`). Billboard is a
     // plain group that re-aims itself each frame, so a group is a faithful
     // stand-in for what this file asserts on — where the marker sits.
@@ -766,69 +753,74 @@ describe('SessionScene', () => {
     }
   );
 
-  it.each(BARD_APPEARANCE_CATALOG.raceOrder)(
-    'mounts the exact %s Bard URL through SessionScene -> HexEntity -> ClassCharacterModel with the supplied clips',
-    async (raceRefId) => {
-      const appearance = BARD_APPEARANCE_CATALOG.appearances[raceRefId];
-      const renderer = await ReactThreeTestRenderer.create(
-        <SessionScene
-          scene={scene()}
-          hexSize={1}
-          characterId="char-1"
-          characterName={`${raceRefId} Bard`}
-          classRefId={appearance.classRef}
-          raceRefId={appearance.raceRef}
-          myPosition={{ x: 0, y: 0, z: 0 }}
-        />
-      );
+  it('mounts a resolved Bard through the real model and modular-rig path', async () => {
+    const bardUrl = '/models/synty/characters/race-class/human-bard.glb';
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        scene={scene()}
+        hexSize={1}
+        characterId="char-1"
+        characterName="Human Bard"
+        classRefId="bard"
+        raceRefId="human"
+        myPosition={{ x: 0, y: 0, z: 0 }}
+        mainHandPresentation={{
+          ref: 'dnd5e:item:longsword',
+          weaponUrl: '/models/synty/weapons/longsword.glb',
+          socket: TOWNFOLK_MAIN_HAND_SOCKET,
+        }}
+      />
+    );
 
-      expect(gltfMockState.requests).toContain(appearance.url);
-      expect(
-        renderer.scene.findAll(
-          (node) =>
-            node.type === 'Mesh' &&
-            (node.instance as THREE.Mesh).name.includes(appearance.url)
-        ).length
-      ).toBeGreaterThan(0);
-      expect(gltfMockState.animationNameRequests).toContainEqual([
-        'Idle_Relaxed',
-        'Walk_Forward',
-      ]);
-      await renderer.unmount();
-    }
-  );
+    expect(gltfMockState.requests).toContain(bardUrl);
+    expect(
+      renderer.scene.findAll(
+        (node) =>
+          node.type === 'Mesh' &&
+          (node.instance as THREE.Mesh).name.includes(bardUrl)
+      ).length
+    ).toBeGreaterThan(0);
 
-  it.each(BARD_APPEARANCE_CATALOG.raceOrder)(
-    'keeps a downed %s Bard visible through MediumHumanoid without requesting a nonexistent Bard downed GLB',
-    async (raceRefId) => {
-      const appearance = BARD_APPEARANCE_CATALOG.appearances[raceRefId];
-      const renderer = await ReactThreeTestRenderer.create(
-        <SessionScene
-          {...({
-            scene: scene(),
-            hexSize: 1,
-            characterId: 'char-1',
-            characterName: `${raceRefId} Bard`,
-            classRefId: appearance.classRef,
-            raceRefId: appearance.raceRef,
-            localIsDowned: true,
-            myPosition: { x: 0, y: 0, z: 0 },
-          } as Parameters<typeof SessionScene>[0] & {
-            localIsDowned: boolean;
-          })}
-        />
-      );
+    const attached = attachedMainHandRoot(renderer);
+    const unitsPerMeter =
+      1 / MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.boneUnitMeters;
+    expectVectorCloseTo(attached.position.toArray(), [
+      MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[0] * unitsPerMeter,
+      MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[1] * unitsPerMeter,
+      MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[2] * unitsPerMeter,
+    ]);
+    expectVectorCloseTo(attached.quaternion.toArray(), [
+      ...MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.rotationQuaternion,
+    ]);
+    await renderer.unmount();
+  });
 
-      expect(mediumHumanoidMarkers(renderer)).toHaveLength(1);
-      expect(gltfMockState.requests).not.toContain(appearance.url);
-      expect(
-        gltfMockState.requests.some(
-          (url) => url.includes('bard') && url.includes('downed')
-        )
-      ).toBe(false);
-      await renderer.unmount();
-    }
-  );
+  it('keeps a downed Bard visible and tilted through MediumHumanoid without requesting a Bard GLB', async () => {
+    const renderer = await ReactThreeTestRenderer.create(
+      <SessionScene
+        {...({
+          scene: scene(),
+          hexSize: 1,
+          characterId: 'char-1',
+          characterName: 'Human Bard',
+          classRefId: 'bard',
+          raceRefId: 'human',
+          localIsDowned: true,
+          myPosition: { x: 0, y: 0, z: 0 },
+        } as Parameters<typeof SessionScene>[0] & {
+          localIsDowned: boolean;
+        })}
+      />
+    );
+
+    const fallback = mediumHumanoidMarkers(renderer);
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0]!.parent?.rotation.z).toBeCloseTo(Math.PI / 3);
+    expect(gltfMockState.requests.some((url) => url.includes('bard'))).toBe(
+      false
+    );
+    await renderer.unmount();
+  });
 
   it('uses the Fighter downed class GLB, not the standing exact Elf Fighter GLB, for an authoritatively downed local player and keeps the Townfolk socket', async () => {
     const renderer = await ReactThreeTestRenderer.create(
@@ -1471,45 +1463,6 @@ describe('SessionScene', () => {
         ...MODULAR_FANTASY_HERO_OFF_HAND_SOCKET.rotationQuaternion,
       ]);
     });
-
-    it.each(BARD_APPEARANCE_CATALOG.raceOrder)(
-      'applies the modular rig-family socket through HexEntity for the exact local %s Bard model',
-      async (raceRefId) => {
-        const appearance = BARD_APPEARANCE_CATALOG.appearances[raceRefId];
-        const renderer = await ReactThreeTestRenderer.create(
-          <SessionScene
-            scene={scene()}
-            hexSize={1}
-            characterId="char-1"
-            characterName={`${raceRefId} Bard`}
-            classRefId={appearance.classRef}
-            raceRefId={appearance.raceRef}
-            myPosition={{ x: 0, y: 0, z: 0 }}
-            mainHandPresentation={{
-              ref: 'dnd5e:item:longsword',
-              weaponUrl: '/models/synty/weapons/longsword.glb',
-              socket: TOWNFOLK_MAIN_HAND_SOCKET,
-            }}
-          />
-        );
-
-        const attached = attachedMainHandRoot(renderer);
-        const unitsPerMeter =
-          1 / MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.boneUnitMeters;
-        expectVectorCloseTo(attached.position.toArray(), [
-          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[0] *
-            unitsPerMeter,
-          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[1] *
-            unitsPerMeter,
-          MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.positionMeters[2] *
-            unitsPerMeter,
-        ]);
-        expectVectorCloseTo(attached.quaternion.toArray(), [
-          ...MODULAR_FANTASY_HERO_MAIN_HAND_SOCKET.rotationQuaternion,
-        ]);
-        await renderer.unmount();
-      }
-    );
 
     it.each([
       'elf',

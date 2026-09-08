@@ -1,8 +1,4 @@
 import {
-  BARD_APPEARANCE_CATALOG,
-  type BardAppearanceRaceRef,
-} from '@/generated/bardAppearanceCatalog';
-import {
   CHARACTER_CUSTOMIZATION_CATALOG,
   type CustomizationRaceRef,
   type CustomizationStarterClass,
@@ -17,11 +13,6 @@ import {
  * manifest-derived constants (see syntyHexWallHelpers.ts's WALL_VARIANTS,
  * SyntyHexWall.tsx's DOOR_FRAME_RAW_WIDTH — both copied from their source
  * manifest/inspection data, not read from JSON at runtime).
- *
- * The eight Bard appearances are deliberately separate from the generated
- * four-starter-class customization profiles. Their generated catalog projects
- * only the additive provider race/class rows: a complete standing body, exact
- * rig/clip contract, and no implied hair/outfit profile or downed sibling.
  */
 
 const CLASS_CHARACTER_MODEL_BASE = '/models/synty/characters/';
@@ -46,23 +37,24 @@ const CLASS_CHARACTER_MODELS: Record<string, ClassCharacterModelEntry> = {
   rogue: { model: 'rogue.glb', downed: 'rogue-downed.glb' },
 };
 
+/** Complete standing appearances from private provider PR #184. They are not
+ * customization profiles and have no downed siblings. */
+const BARD_RACE_CLASS_MODELS: Readonly<Record<string, string>> = {
+  dwarf: 'race-class/dwarf-bard.glb',
+  elf: 'race-class/elf-bard.glb',
+  gnome: 'race-class/gnome-bard.glb',
+  'half-elf': 'race-class/half-elf-bard.glb',
+  halfling: 'race-class/halfling-bard.glb',
+  'half-orc': 'race-class/half-orc-bard.glb',
+  human: 'race-class/human-bard.glb',
+  tiefling: 'race-class/tiefling-bard.glb',
+};
+
 function normalizeRefId(refId: string | undefined): string | undefined {
   return refId
     ?.trim()
     .toLowerCase()
     .replace(/[_\s]+/g, '-');
-}
-
-function normalizeDnd5eRefId(
-  refId: string | undefined,
-  kind: 'classes' | 'races'
-): string | undefined {
-  const normalized = normalizeRefId(refId);
-  if (!normalized) return undefined;
-  const canonicalPrefix = `dnd5e:${kind}:`;
-  return normalized.startsWith(canonicalPrefix)
-    ? normalized.slice(canonicalPrefix.length)
-    : normalized;
 }
 
 function resolveClassCharacterModelResolutionFromNormalizedClassRefId(
@@ -77,30 +69,6 @@ function resolveClassCharacterModelResolutionFromNormalizedClassRefId(
     url: CLASS_CHARACTER_MODEL_BASE + (isDowned ? entry.downed : entry.model),
     rigFamily: 'townfolk-v1',
     source: 'class',
-  };
-}
-
-function resolveBardCharacterModelResolution(
-  normalizedRaceRefId: string | undefined,
-  normalizedClassRefId: string
-): PlayerCharacterModelResolution | undefined {
-  if (normalizedClassRefId !== 'bard' || !normalizedRaceRefId) {
-    return undefined;
-  }
-  if (
-    !Object.hasOwn(BARD_APPEARANCE_CATALOG.appearances, normalizedRaceRefId)
-  ) {
-    return undefined;
-  }
-  const appearance =
-    BARD_APPEARANCE_CATALOG.appearances[
-      normalizedRaceRefId as BardAppearanceRaceRef
-    ];
-  return {
-    url: appearance.url,
-    rigFamily: appearance.rigFamily,
-    source: 'race-class',
-    animations: appearance.animations,
   };
 }
 
@@ -135,7 +103,6 @@ export interface PlayerCharacterModelResolution {
   url: string;
   rigFamily: CharacterRigFamily;
   source: PlayerCharacterModelSource;
-  animations?: readonly ['Idle_Relaxed', 'Walk_Forward'];
   customizationProfileRef?: string;
   fallbackUrl?: string;
   fallbackSha256?: string;
@@ -162,7 +129,7 @@ export function resolveClassCharacterModelUrl(
   classRefId: string | undefined,
   isDowned: boolean
 ): string | undefined {
-  const normalizedClassRefId = normalizeDnd5eRefId(classRefId, 'classes');
+  const normalizedClassRefId = normalizeRefId(classRefId);
   if (!normalizedClassRefId) return undefined;
   return resolveClassCharacterModelResolutionFromNormalizedClassRefId(
     normalizedClassRefId,
@@ -170,28 +137,29 @@ export function resolveClassCharacterModelUrl(
   )?.url;
 }
 
-/**
- * Resolve the exact standing race/class body before the established class or
- * MediumHumanoid fallbacks. Bard is a basic supplied appearance: it resolves
- * only for the eight provider-authorized race pairs while standing and carries
- * no customization profile/fallback URL. A downed Bard therefore returns
- * undefined and HexEntity retains its visible MediumHumanoid corpse fallback.
- */
 export function resolvePlayerCharacterModel(
   raceRefId: string | undefined,
   classRefId: string | undefined,
   isDowned: boolean
 ): PlayerCharacterModelResolution | undefined {
-  const normalizedClassRefId = normalizeDnd5eRefId(classRefId, 'classes');
+  const normalizedClassRefId = normalizeRefId(classRefId);
   if (!normalizedClassRefId) return undefined;
 
   if (!isDowned) {
-    const normalizedRaceRefId = normalizeDnd5eRefId(raceRefId, 'races');
-    const bardResolution = resolveBardCharacterModelResolution(
-      normalizedRaceRefId,
-      normalizedClassRefId
-    );
-    if (bardResolution) return bardResolution;
+    const normalizedRaceRefId = normalizeRefId(raceRefId);
+    if (
+      normalizedClassRefId === 'bard' &&
+      normalizedRaceRefId &&
+      Object.hasOwn(BARD_RACE_CLASS_MODELS, normalizedRaceRefId)
+    ) {
+      return {
+        url:
+          CLASS_CHARACTER_MODEL_BASE +
+          BARD_RACE_CLASS_MODELS[normalizedRaceRefId]!,
+        rigFamily: 'modular-fantasy-hero-v1',
+        source: 'race-class',
+      };
+    }
 
     const raceClassResolution = resolveRaceClassCharacterModelResolution(
       normalizedRaceRefId,

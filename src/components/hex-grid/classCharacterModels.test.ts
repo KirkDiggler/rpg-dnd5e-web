@@ -1,4 +1,3 @@
-import { BARD_APPEARANCE_CATALOG } from '@/generated/bardAppearanceCatalog';
 import { CHARACTER_CUSTOMIZATION_CATALOG } from '@/generated/characterCustomizationCatalog';
 import { describe, expect, it } from 'vitest';
 import type { PlayerCharacterModelResolution } from './classCharacterModels';
@@ -86,42 +85,50 @@ describe('resolveIdleClipName', () => {
 });
 
 describe('resolvePlayerCharacterModel', () => {
-  it.each(BARD_APPEARANCE_CATALOG.raceOrder)(
-    'resolves the exact standing %s Bard with its supplied rig and clips',
-    (raceRefId) => {
-      const appearance = BARD_APPEARANCE_CATALOG.appearances[raceRefId];
+  const bardModels = [
+    ['dwarf', '/models/synty/characters/race-class/dwarf-bard.glb'],
+    ['elf', '/models/synty/characters/race-class/elf-bard.glb'],
+    ['gnome', '/models/synty/characters/race-class/gnome-bard.glb'],
+    ['half-elf', '/models/synty/characters/race-class/half-elf-bard.glb'],
+    ['halfling', '/models/synty/characters/race-class/halfling-bard.glb'],
+    ['half-orc', '/models/synty/characters/race-class/half-orc-bard.glb'],
+    ['human', '/models/synty/characters/race-class/human-bard.glb'],
+    ['tiefling', '/models/synty/characters/race-class/tiefling-bard.glb'],
+  ] as const;
 
+  it.each(bardModels)(
+    'resolves the exact standing %s Bard as a non-customizable modular model',
+    (raceRefId, url) => {
       expect(
         classCharacterModels.resolvePlayerCharacterModel(
-          appearance.raceRef,
-          appearance.classRef,
+          raceRefId,
+          'bard',
           false
         )
       ).toEqual(
         asResolution({
-          url: appearance.url,
+          url,
           rigFamily: 'modular-fantasy-hero-v1',
           source: 'race-class',
-          animations: ['Idle_Relaxed', 'Walk_Forward'],
         })
       );
     }
   );
 
-  it.each(BARD_APPEARANCE_CATALOG.raceOrder)(
-    'keeps a downed/dead %s Bard on the established unresolved fallback without inventing a URL',
+  it.each(bardModels)(
+    'keeps a downed/dead %s Bard unresolved for the established fallback',
     (raceRefId) => {
-      const resolution = classCharacterModels.resolvePlayerCharacterModel(
-        raceRefId,
-        'bard',
-        true
-      );
-
-      expect(resolution).toBeUndefined();
+      expect(
+        classCharacterModels.resolvePlayerCharacterModel(
+          raceRefId,
+          'bard',
+          true
+        )
+      ).toBeUndefined();
     }
   );
 
-  it('does not infer another race or class model for incomplete/unknown Bard refs', () => {
+  it('does not substitute Human for a missing or unknown Bard race', () => {
     expect(
       classCharacterModels.resolvePlayerCharacterModel(undefined, 'bard', false)
     ).toBeUndefined();
@@ -131,9 +138,6 @@ describe('resolvePlayerCharacterModel', () => {
         'bard',
         false
       )
-    ).toBeUndefined();
-    expect(
-      classCharacterModels.resolvePlayerCharacterModel('human', 'wizard', false)
     ).toBeUndefined();
   });
 

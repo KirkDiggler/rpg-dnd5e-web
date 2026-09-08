@@ -136,12 +136,6 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
     'generated',
     'characterCustomizationCatalog.ts'
   );
-  const generatedBardCatalog = join(
-    webRoot,
-    'src',
-    'generated',
-    'bardAppearanceCatalog.ts'
-  );
 
   return {
     assetsRoot,
@@ -152,17 +146,11 @@ writeFileSync(output, JSON.stringify({ providerRoot, copiedFirst, head, phase: P
     customDiceDestination,
     fakeGenerator,
     generatedCatalog,
-    generatedBardCatalog,
     providerHead: providerHead.trim(),
   };
 }
 
-async function runSync(
-  assetsRoot: string,
-  webRoot: string,
-  generator: string,
-  bardGenerator = generator
-) {
+async function runSync(assetsRoot: string, webRoot: string, generator: string) {
   return execFileAsync('sh', [syncScript], {
     cwd: repoRoot,
     env: {
@@ -171,13 +159,6 @@ async function runSync(
       RPG_WEB_ROOT: webRoot,
       RPG_CHARACTER_CUSTOMIZATION_CATALOG_GENERATOR: generator,
       RPG_CHARACTER_CUSTOMIZATION_CATALOG_RUNNER: join(
-        repoRoot,
-        'node_modules',
-        '.bin',
-        'tsx'
-      ),
-      RPG_BARD_APPEARANCE_CATALOG_GENERATOR: bardGenerator,
-      RPG_BARD_APPEARANCE_CATALOG_RUNNER: join(
         repoRoot,
         'node_modules',
         '.bin',
@@ -443,18 +424,14 @@ describe('private game asset sync boundary', () => {
     expect(await exists(join(fixture.webRoot, 'public', 'evidence'))).toBe(
       false
     );
-    const generatedReceipt = {
+    await expect(
+      readFile(fixture.generatedCatalog, 'utf8').then(JSON.parse)
+    ).resolves.toEqual({
       providerRoot: fixture.assetsRoot,
       copiedFirst: false,
       head: fixture.providerHead,
       phase: 'before-sync',
-    };
-    await expect(
-      readFile(fixture.generatedCatalog, 'utf8').then(JSON.parse)
-    ).resolves.toEqual(generatedReceipt);
-    await expect(
-      readFile(fixture.generatedBardCatalog, 'utf8').then(JSON.parse)
-    ).resolves.toEqual(generatedReceipt);
+    });
   });
 
   it.each(['synty', 'custom-dice'])(
@@ -533,43 +510,6 @@ describe('private game asset sync boundary', () => {
     );
   });
 
-  it('runs Bard appearance validation before mutating either runtime destination', async () => {
-    const fixture = await makeFixture();
-    const failingGenerator = join(
-      await temporaryRoot(),
-      'failing-bard-catalog-generator.ts'
-    );
-    await put(
-      failingGenerator,
-      `throw new Error('Bard catalog validation failed');\n`
-    );
-    const syntySentinel = join(fixture.syntyDestination, 'keep-synty.txt');
-    const customSentinel = join(
-      fixture.customDiceDestination,
-      'keep-custom.txt'
-    );
-    await put(syntySentinel, 'do-not-mutate');
-    await put(customSentinel, 'do-not-mutate');
-
-    await expect(
-      runSync(
-        fixture.assetsRoot,
-        fixture.webRoot,
-        fixture.fakeGenerator,
-        failingGenerator
-      )
-    ).rejects.toMatchObject({
-      code: expect.any(Number),
-      stderr: expect.stringContaining('Bard catalog validation failed'),
-    });
-    await expect(readFile(syntySentinel, 'utf8')).resolves.toBe(
-      'do-not-mutate'
-    );
-    await expect(readFile(customSentinel, 'utf8')).resolves.toBe(
-      'do-not-mutate'
-    );
-  });
-
   it('rejects a dirty provider before mutating either runtime destination', async () => {
     const fixture = await makeFixture();
     const syntySentinel = join(fixture.syntyDestination, 'keep-synty.txt');
@@ -594,7 +534,6 @@ describe('private game asset sync boundary', () => {
       'do-not-mutate'
     );
     expect(await exists(fixture.generatedCatalog)).toBe(false);
-    expect(await exists(fixture.generatedBardCatalog)).toBe(false);
   });
 
   it('gitignores both private public runtime roots', async () => {

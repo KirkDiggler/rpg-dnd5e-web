@@ -122,8 +122,6 @@ function syncEnvironment(fixtureValue: Awaited<ReturnType<typeof fixture>>) {
     RPG_GAME_ASSETS_PATH: fixtureValue.assets,
     RPG_DWARF_CATALOG_GENERATOR: fixtureValue.fakeGenerator,
     RPG_DWARF_CATALOG_RUNNER: fixtureValue.fakeRunner,
-    RPG_BARD_APPEARANCE_CATALOG_GENERATOR: fixtureValue.fakeGenerator,
-    RPG_BARD_APPEARANCE_CATALOG_RUNNER: fixtureValue.fakeRunner,
     PATH: `${fixtureValue.bin}:${process.env.PATH}`,
   };
 }

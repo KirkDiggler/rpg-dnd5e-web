@@ -66,19 +66,16 @@ them independently beneath cloned `Hand_R` and `Hand_L` bones. Missing/unknown
 refs, invalid sockets, missing bones, and attachment-local GLB load failures
 preserve the character and the other hand.
 
-Fighter, barbarian, monk, and rogue share the Townfolk profiles; their exact
-race models use the modular customization profiles. The eight complete Bard
-race models use a separate additive basic-appearance catalog on that same
-modular rig without implying hair/outfit customization. The browser contains
-neither item-specific transforms nor a class × weapon correction matrix.
-Provider bytes own Shield/Handaxe/Sickle left-hand normalization. Finger
+Fighter, barbarian, monk, and rogue share the Townfolk profiles; current
+non-Human race models share the modular profiles. The eight complete Bard race
+models use that modular rig without becoming customization profiles. The browser
+contains neither item-specific transforms nor a class × weapon correction
+matrix. Provider bytes own Shield/Handaxe/Sickle left-hand normalization. Finger
 contact, straps, and two-hand posing are not implied by rigid hand presentation.
 The guessed legacy OBJ Shield path is not an authoritative fallback for class
 GLBs.
 
-For the repeatable private-provider sync, additive appearance mapping, explicit
-downed fallback, and release boundaries, see
-[Integrating provider character appearances](../../how-to/integrate-provider-character-appearances.md).
+See the [Bard appearance integration worked example](../../how-to/integrate-provider-character-appearances.md).
 
 ## MediumHumanoid: no error boundary
 
