@@ -20,10 +20,43 @@ const hoisted = vi.hoisted(() => ({
     error: null as Error | null,
   },
   activeLobbyCalls: 0,
+  authDecision: {
+    kind: 'dev' as 'dev' | 'discord' | 'unauthenticated',
+    playerId: 'test-player' as string | null,
+    guildId: null as string | null,
+  },
+  sourceFactoryCalls: [] as unknown[],
+  discord: {
+    user: null as null | { id: string },
+    isDiscord: false,
+    isReady: true,
+    isAuthenticated: false,
+    error: null as string | null,
+    guildId: null as string | null,
+    grantedScopes: [] as string[],
+    authSessionId: 0,
+    authenticate: vi.fn(),
+    clearAuthentication: vi.fn(),
+    clearAuthenticationForSession: vi.fn(),
+    isAuthenticationSessionCurrent: vi.fn((expected: number) => expected >= 0),
+  },
 }));
 
 vi.mock('./api/auth', () => ({
   getPlayerId: () => 'test-player',
+  getAuthDecision: () => {
+    if (hoisted.authDecision.kind === 'discord') {
+      return {
+        kind: 'discord',
+        playerId: hoisted.authDecision.playerId,
+        guildId: hoisted.authDecision.guildId,
+      };
+    }
+    if (hoisted.authDecision.kind === 'dev') {
+      return { kind: 'dev', playerId: hoisted.authDecision.playerId };
+    }
+    return { kind: 'unauthenticated' };
+  },
 }));
 
 vi.mock('./api/hooks', () => ({
@@ -111,11 +144,23 @@ vi.mock('./concepts/world-building/WorldBuildingConcept', () => ({
 }));
 
 vi.mock('./compositions/rpcCompositionSource', () => ({
-  createRpcCompositionSource: () => ({
-    worldId: 'test-world',
-    reader: {},
-    writer: {},
-  }),
+  createRpcCompositionSource: (input: {
+    mode: string;
+    auth: { kind: string; guildId?: string | null };
+  }) => {
+    hoisted.sourceFactoryCalls.push(input);
+    if (input.auth.kind === 'discord' && input.auth.guildId) {
+      return {
+        worldId: input.auth.guildId,
+        reader: {},
+        writer: {},
+      };
+    }
+    if (input.auth.kind === 'dev' && input.mode === 'development') {
+      return { worldId: 'test-world', reader: {}, writer: {} };
+    }
+    return undefined;
+  },
 }));
 
 vi.mock('./dev/AttackDieDevRouteSurface', () => ({
@@ -140,12 +185,7 @@ vi.mock('./dev/asset-review/AssetReviewLab', () => ({
 
 vi.mock('./discord', () => ({
   DiscordDebugPanel: () => <h2>Discord Debug Panel</h2>,
-  useDiscord: () => ({
-    user: null,
-    isDiscord: false,
-    isReady: true,
-    error: null,
-  }),
+  useDiscord: () => hoisted.discord,
 }));
 
 vi.mock('./toolkit-contributor-sandbox/route', () => ({
@@ -160,6 +200,25 @@ beforeEach(() => {
   hoisted.lobbyCharacter.loading = false;
   hoisted.lobbyCharacter.error = null;
   hoisted.activeLobbyCalls = 0;
+  hoisted.authDecision.kind = 'dev';
+  hoisted.authDecision.playerId = 'test-player';
+  hoisted.authDecision.guildId = null;
+  hoisted.sourceFactoryCalls.length = 0;
+  hoisted.discord.user = null;
+  hoisted.discord.isDiscord = false;
+  hoisted.discord.isReady = true;
+  hoisted.discord.isAuthenticated = false;
+  hoisted.discord.error = null;
+  hoisted.discord.guildId = null;
+  hoisted.discord.grantedScopes = [];
+  hoisted.discord.authSessionId = 0;
+  hoisted.discord.authenticate.mockReset();
+  hoisted.discord.clearAuthentication.mockReset();
+  hoisted.discord.clearAuthenticationForSession.mockReset();
+  hoisted.discord.isAuthenticationSessionCurrent.mockReset();
+  hoisted.discord.isAuthenticationSessionCurrent.mockImplementation(
+    (expected: number) => expected === hoisted.discord.authSessionId
+  );
 });
 
 afterEach(() => {
@@ -261,12 +320,86 @@ describe('App main-menu World Builder', () => {
     expect(screen.getByText('Home View')).toBeTruthy();
   });
 
-  it('does not invent a World Builder path in production', () => {
+  it('does not invent a World Builder path for production Dev auth', () => {
     vi.stubEnv('MODE', 'production');
     render(<App />);
     expect(
       screen.queryByRole('button', { name: 'Open World Builder' })
     ).toBeNull();
+  });
+
+  it('creates the production source from Discord auth and the SDK guild', async () => {
+    vi.stubEnv('MODE', 'production');
+    hoisted.authDecision.kind = 'discord';
+    hoisted.authDecision.playerId = 'player-1';
+    hoisted.authDecision.guildId = '123456789012345678';
+    hoisted.discord.user = { id: 'player-1' };
+    hoisted.discord.isDiscord = true;
+    hoisted.discord.isAuthenticated = true;
+    hoisted.discord.guildId = '123456789012345678';
+    hoisted.discord.authSessionId = 9;
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('button', { name: 'Open World Builder' })
+    ).toBeTruthy();
+    expect(hoisted.sourceFactoryCalls).toEqual([
+      expect.objectContaining({
+        mode: 'production',
+        authSessionId: 9,
+        auth: {
+          kind: 'discord',
+          playerId: 'player-1',
+          guildId: '123456789012345678',
+        },
+      }),
+    ]);
+
+    const sourceInput = hoisted.sourceFactoryCalls[0] as {
+      onUnauthenticated(authSessionId: number): void;
+      isAuthSessionCurrent(authSessionId: number): boolean;
+    };
+    sourceInput.onUnauthenticated(9);
+    expect(hoisted.discord.clearAuthenticationForSession).toHaveBeenCalledWith(
+      9,
+      'Your Discord session expired. Please reconnect.'
+    );
+    expect(sourceInput.isAuthSessionCurrent(9)).toBe(true);
+    expect(hoisted.discord.isAuthenticationSessionCurrent).toHaveBeenCalledWith(
+      9
+    );
+  });
+
+  it('shows a disabled server-launch state instead of falling back without an SDK guild', async () => {
+    vi.stubEnv('MODE', 'production');
+    hoisted.authDecision.kind = 'discord';
+    hoisted.authDecision.playerId = 'player-1';
+    hoisted.authDecision.guildId = null;
+    hoisted.discord.user = { id: 'player-1' };
+    hoisted.discord.isDiscord = true;
+    hoisted.discord.isAuthenticated = true;
+    hoisted.discord.guildId = null;
+
+    render(<App />);
+
+    expect(
+      await screen.findByText(
+        'Open this Activity in a server to access its world'
+      )
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Open World Builder',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(hoisted.sourceFactoryCalls).toEqual([
+      expect.objectContaining({
+        auth: expect.objectContaining({ guildId: null }),
+      }),
+    ]);
   });
 });
 

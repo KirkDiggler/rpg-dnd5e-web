@@ -1,5 +1,6 @@
 import { compositionMetadata } from '@/compositions/compositionMetadata';
 import {
+  compositionErrorMessage,
   useCompositionList,
   type CompositionSource,
 } from '@/compositions/compositionSource';
@@ -478,9 +479,7 @@ export function WorldBuildingConcept({
       );
     } catch (error) {
       setNotice(
-        `World save failed; the open scene and local draft were kept. ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `World save failed; the open scene and local draft were kept. ${compositionErrorMessage(error)}`
       );
     } finally {
       setWorldBusy(false);
@@ -504,9 +503,7 @@ export function WorldBuildingConcept({
       );
     } catch (error) {
       setNotice(
-        `Delete failed; “${label}” and all existing data were kept. ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Delete failed; “${label}” and all existing data were kept. ${compositionErrorMessage(error)}`
       );
     } finally {
       setWorldBusy(false);
@@ -558,9 +555,7 @@ export function WorldBuildingConcept({
       setNotice(`Opened “${metadata.name}” from the world library.`);
     } catch (error) {
       setNotice(
-        `Composition ${id} could not be opened; the current scene was kept. ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Composition ${id} could not be opened; the current scene was kept. ${compositionErrorMessage(error)}`
       );
     } finally {
       setWorldBusy(false);

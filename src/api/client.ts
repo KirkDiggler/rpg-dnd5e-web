@@ -11,7 +11,7 @@ import { CharacterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v
 import { CharacterService as CharacterServiceV2 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/character/service_pb';
 import { EncounterService } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha2/encounter/service_pb';
 
-import { getDiscordToken, getPlayerId } from './auth';
+import { getAuthDecision, getDiscordToken } from './auth';
 import { wrapStreamResponseForLogging } from './streamLogging';
 
 // Get API host from environment - handle Discord Activity proxy
@@ -28,17 +28,22 @@ const API_HOST = isDiscordActivity
  * In development mode without Discord auth, uses VITE_DEV_PLAYER_ID
  * with a special "Dev" scheme for local testing.
  */
-const authInterceptor: Interceptor = (next) => async (req) => {
-  const token = getDiscordToken();
-  const playerId = getPlayerId();
+export const authInterceptor: Interceptor = (next) => async (req) => {
+  const decision = getAuthDecision();
 
-  if (token) {
-    // Real Discord authentication
-    req.header.set('authorization', `Discord ${token}`);
-  } else if (playerId && import.meta.env.MODE === 'development') {
-    // Development fallback - pass player ID directly for local testing
-    // The server can recognize this scheme and bypass Discord validation
-    req.header.set('authorization', `Dev ${playerId}`);
+  if (decision.kind === 'discord') {
+    // Credential lookup stays private to the transport. Source selection sees
+    // only the non-secret decision above.
+    const token = getDiscordToken();
+    if (token) req.header.set('authorization', `Discord ${token}`);
+    if (
+      decision.guildId &&
+      req.service.typeName === CompositionService.typeName
+    ) {
+      req.header.set('x-rpg-guild-id', decision.guildId);
+    }
+  } else if (decision.kind === 'dev') {
+    req.header.set('authorization', `Dev ${decision.playerId}`);
   }
 
   return next(req);
@@ -177,9 +182,9 @@ export const sessionPresentationClient = createClient(
 // deleted in slice 3 along with LobbyView, their only caller.
 export const lobbyClient = createClient(LobbyService, transport);
 
-// Create the immutable world-composition client. The API registers this
-// service only in its authenticated local-development mode until a verified
-// Discord guild-to-world mapping exists.
+// Create the immutable world-composition client. Discord calls carry the
+// selected guild only for this service; the API verifies membership and owns
+// the trusted world context.
 export const compositionClient = createClient(CompositionService, transport);
 
 // Create the authoring service client (dnd5e.api.authoring.v1alpha1 —

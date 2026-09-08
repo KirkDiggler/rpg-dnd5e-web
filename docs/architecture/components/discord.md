@@ -1,56 +1,80 @@
 ---
 name: Discord Activity wiring
-description: DiscordProvider, useDiscord hook, auth, sandbox constraints
-updated: 2026-07-12
-confidence: high — verified by reading DiscordProvider.tsx, discord/hooks.ts, discord/sdk.ts, client.ts; the playerId fallback's location was updated for slice 3 (rpg-dnd5e-web#447), other sections unchanged since 2026-05-02
+description: DiscordProvider, guild-scoped composition auth, and sandbox constraints
+updated: 2026-09-08
+confidence: high — provider, auth decision, transport selector, and source epochs have focused tests
 ---
 
 # Discord Activity wiring
 
-`src/discord/` — Discord Embedded App SDK integration.
+`src/discord/` owns Discord Embedded App SDK initialization and the React auth
+context. `src/api/auth.ts` is the small in-memory bridge to the Connect
+transport; bearer credentials are not exposed through React context or source
+objects.
 
-## Files
+## Authentication and consent
 
-| File                    | Purpose                                                |
-| ----------------------- | ------------------------------------------------------ |
-| `sdk.ts`                | SDK initialization, stub for non-Discord environments  |
-| `DiscordProvider.tsx`   | Context provider — initializes SDK, authenticates user |
-| `context.ts`            | React context type definition                          |
-| `hooks.ts`              | `useDiscord()` — consumes the context                  |
-| `types.ts`              | Local TypeScript types for Discord user/auth           |
-| `DiscordDebugPanel.tsx` | Dev-only panel showing auth state                      |
+1. `DiscordProvider` authorizes `identify`, `applications.commands`, and
+   `guilds.members.read`. It omits `prompt`, allowing SDK 2.5 to display the
+   consent modal when the existing grant is insufficient.
+2. The authorization code is exchanged by the API and passed to
+   `sdk.commands.authenticate()`.
+3. Returned scopes are retained only as UI evidence. A cancelled/denied grant,
+   missing membership scope, or other authentication failure clears the prior
+   local auth state and offers reconnect behavior.
+4. The provider reads the selected guild from `DiscordSDK.guildId`, not the
+   URL-derived debug context. The successful token/player/guild tuple is stored
+   in `src/api/auth.ts`.
 
-## Auth flow
+The provider exposes a non-secret, monotonically increasing `authSessionId`.
+Every successful login or clear replaces the credential epoch. A source reports
+`Unauthenticated` with its captured epoch, and the provider clears auth only if
+that epoch still owns the current session. Thus a late failure from source A
+cannot sign out replacement session B.
 
-1. `DiscordProvider` initializes the Discord Embedded App SDK (`@discord/embedded-app-sdk`)
-2. Calls `sdk.commands.authenticate()` to get a user token
-3. Token is stored (via `setDiscordToken` in `auth.ts`) and used by the gRPC auth interceptor
-4. `playerId` is set to `discord.user?.id`
+## Shared auth decision and transport
 
-In development (non-Discord iframe), the SDK stub is used and auth is bypassed. `client.ts` uses the `Dev` authorization scheme with `VITE_DEV_PLAYER_ID` when no Discord token is present.
+`getAuthDecision()` is the single non-secret discriminant used by both the
+Connect auth interceptor and composition source selection:
+
+- Discord credentials win in every build, including Vite development.
+- Actual Dev credentials are accepted only in a development build.
+- Production Dev and missing credentials are unauthenticated.
+
+All Discord RPCs receive `authorization: Discord <token>`. Only
+`CompositionService` Discord calls also receive `x-rpg-guild-id`; global
+character, lobby, session, and other RPCs remain guild-free. Dev composition
+calls send no guild selector.
+
+The composition source uses the canonical SDK GuildID directly as WorldID.
+There is no registry, picker, role check, or `test-world` fallback for Discord.
+Without an SDK guild the World Builder is disabled with a server-launch message.
+The explicit `VITE_DEV_WORLD_ID`/`test-world` path remains development-only.
+
+A source is scoped to `(authSessionId, GuildID, WorldID)`. The adapter checks
+that its epoch is current before dispatch, preventing an old same-guild editor
+from using the global transport's replacement-session credential. Source/list/
+resolution object guards prevent late results and errors from publishing after
+a replacement. Local editor drafts remain independent of the remote source.
+
+## Trust boundary
+
+The browser's GuildID is an untrusted selector. The API verifies membership
+with the same user token and derives trusted WorldID server-side. Returned SDK
+scopes improve error copy but do not authorize data access. Membership proves
+guild membership, not the active Activity instance/channel, and adds no role or
+Discord permission policy.
 
 ## Sandbox constraints
 
-The app runs in a sandboxed Discord iframe at `discordsays.com`:
+The Activity runs in a sandboxed `discordsays.com` iframe:
 
-- All API calls must use the `/.proxy` path (enforced in `client.ts`)
-- External script sources are restricted by Discord's CSP
-- The Discord SDK communicates with the parent frame via `postMessage` — failure to initialize is silent in the iframe
-- `window.location.hostname.includes('discordsays.com')` is the runtime detection for Discord Activity mode
+- API calls use the `/.proxy` path.
+- Discord CSP restricts external script sources.
+- The SDK communicates with the parent frame through `postMessage`.
+- URL environment values remain useful for diagnostics only; GuildID authority
+  is never derived from them.
 
-## Known gap: silent production failure
-
-`App.tsx` (this fallback lived in `LobbyView.tsx` before its deletion in slice 3, rpg-dnd5e-web#447 — same behavior, new home):
-
-```typescript
-const playerId =
-  discord.user?.id ||
-  devPlayerIdOverride ||
-  (isDevelopment ? 'test-player' : null);
-```
-
-If Discord auth fails in production (`discord.user` is undefined), `playerId` becomes `null`. Event guards checking `event.member?.playerId === playerId` will silently produce wrong results. No error is surfaced to the player. The correct behavior would be to render an auth error state and not proceed to the encounter.
-
-## DiscordDebugPanel
-
-`DiscordDebugPanel.tsx` shows the current Discord auth state, user ID, and SDK version. `App.tsx` renders it behind a `showDebugPanel` state variable toggled by a button in the corner — it is hidden by default and can be shown in any environment. Not dev-only.
+Real consent, provider membership, and proxy forwarding still require a
+coordinated deployed Discord walkthrough; unit/render tests do not replace that
+proof.

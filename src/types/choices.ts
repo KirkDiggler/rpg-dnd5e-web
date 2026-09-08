@@ -92,8 +92,6 @@ export interface ClassModalChoices {
 }
 
 export interface BackgroundModalChoices {
-  [choiceId: string]: {
-    category: import('@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb').ChoiceCategory;
-    selected: unknown;
-  };
+  equipment?: EquipmentChoice[];
+  tools?: ToolChoice[];
 }
