@@ -298,7 +298,10 @@ function attackSnapshot(
 
 function authorityFromResponse(fact: AttackResponseFact): AuthoritySnapshot {
   const response = fact.response;
-  const presentationId = combatPresentationId(fact.session, response.seq) ?? '';
+  // The provider's opaque token, NOT anything built from seq. seq is per
+  // recipient, so an id formatted out of it names this roll to this client
+  // alone — see authorityFromEvent, which is the other half of the same swing.
+  const presentationId = response.presentationId;
   return freezeRecord({
     kind: 'attack' as const,
     session: fact.session,
@@ -363,7 +366,10 @@ function authorityFromDeathSaveResponse(
 function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   if (event.body.case === 'struck' && event.kind === EventKind.STRUCK) {
     const struck = event.body.value;
-    const presentationId = combatPresentationId(event.session, event.seq) ?? '';
+    // The same token the attacker received on their AttackResponse. This
+    // client's own event.seq is a different number for the same beat, so it
+    // can identify the roll here and nowhere else.
+    const presentationId = struck.presentationId;
     return freezeRecord({
       kind: 'attack' as const,
       session: event.session,
@@ -385,7 +391,8 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   }
   if (event.body.case === 'missed' && event.kind === EventKind.MISSED) {
     const missed = event.body.value;
-    const presentationId = combatPresentationId(event.session, event.seq) ?? '';
+    // See the struck branch: the shared token, never this client's own seq.
+    const presentationId = missed.presentationId;
     return freezeRecord({
       kind: 'attack' as const,
       session: event.session,
@@ -438,7 +445,16 @@ function authorityFromEvent(event: Event): AuthoritySnapshot | undefined {
   // the rulebook's own reading and no receiver recomputes it.
   if (event.body.case === 'saved' && event.kind === EventKind.SAVED) {
     const saved = event.body.value;
-    const presentationId = combatPresentationId(event.session, event.seq) ?? '';
+    // Saved carries no provider-issued presentation token. Keep its animation
+    // recipient-local until the provider contract deliberately grows one; a
+    // session/seq identity must never be mistaken for cross-recipient truth.
+    const localPresentationId = `session:${event.session}:${event.seq}`;
+    const presentationId =
+      event.session &&
+      event.seq >= 0n &&
+      isDicePresentationIdentifier(localPresentationId)
+        ? localPresentationId
+        : '';
     return freezeRecord({
       kind: 'save' as const,
       session: event.session,
@@ -598,16 +614,6 @@ function hash(value: string): number {
     result = Math.imul(result, 16_777_619);
   }
   return result >>> 0;
-}
-
-/** Exact authoritative identity; unsafe wire strings get no dice identifier. */
-export function combatPresentationId(
-  session: string,
-  seq: bigint
-): string | undefined {
-  if (!session || seq < 0n) return undefined;
-  const id = `session:${session}:${seq}`;
-  return isDicePresentationIdentifier(id) ? id : undefined;
 }
 
 function eventId(kind: 'request' | 'release', presentationId: string): string {

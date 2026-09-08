@@ -539,6 +539,7 @@ const struck = () =>
       total: 20,
       against: 16,
       damage: 7,
+      presentationId: 'presentation_skeleton-strike',
       attack: {
         ref: 'dnd5e:weapons:shortsword',
         name: 'Shortsword',
@@ -1312,6 +1313,7 @@ describe('SessionEncounterView production combat integration', () => {
       critical: false,
       damage: 6,
       attack: attackDeclaration().attack,
+      presentationId: 'presentation_declaration-echo',
     });
     renderView();
     await waitFor(() => screen.getByRole('button', { name: /longsword/i }));
@@ -2141,6 +2143,7 @@ describe('SessionEncounterView production combat integration', () => {
             damage: 6,
             attack: attackDeclaration().attack,
             critical: false,
+            presentationId: 'presentation_actor-strike',
           },
         } as SessionEvent['body'],
         7n
@@ -2156,6 +2159,7 @@ describe('SessionEncounterView production combat integration', () => {
       critical: false,
       damage: 6,
       attack: attackDeclaration().attack,
+      presentationId: 'presentation_actor-strike',
     });
     renderView();
     await screen.findByRole('button', { name: /longsword/i });
@@ -2227,6 +2231,7 @@ describe('SessionEncounterView production combat integration', () => {
       critical: false,
       damage: 6,
       attack: attackDeclaration().attack,
+      presentationId: 'presentation_actor-throw',
     });
     hoisted.publishDiceThrowFn.mockImplementation(async (input) => {
       const draft = input.draft!;
@@ -2297,7 +2302,7 @@ describe('SessionEncounterView production combat integration', () => {
       session: 'enc-1',
       member: 'char-1',
       draft: {
-        presentationId: 'session:enc-1:7',
+        presentationId: 'presentation_actor-throw',
         authoritySeq: 7n,
         attempt: 1,
       },
@@ -2350,6 +2355,7 @@ describe('SessionEncounterView production combat integration', () => {
       critical: false,
       damage: 4,
       attack: attackDeclaration().attack,
+      presentationId: 'presentation_planning-fails',
     });
     vi.spyOn(
       localWorldDiePreSimulation,
@@ -2426,6 +2432,7 @@ describe('SessionEncounterView production combat integration', () => {
             damage: 5,
             attack: attackDeclaration().attack,
             critical: false,
+            presentationId: 'presentation_witness-strike',
           },
         } as SessionEvent['body'],
         42n
@@ -2462,7 +2469,7 @@ describe('SessionEncounterView production combat integration', () => {
       terminalState,
     };
     const draft = localWorldDieDraft({
-      presentationId: 'session:enc-1:42',
+      presentationId: 'presentation_witness-strike',
       authoritySeq: 42n,
       attempt: 1,
       plan: planned,
@@ -2491,7 +2498,7 @@ describe('SessionEncounterView production combat integration', () => {
     );
     const command = currentLocalWorldDieCommand();
     expect(command?.kind === 'witness' && command.plan).toMatchObject({
-      presentationId: 'session:enc-1:42',
+      presentationId: 'presentation_witness-strike',
       roller: 'char-2',
       attempt: 1,
     });
@@ -2509,7 +2516,7 @@ describe('SessionEncounterView production combat integration', () => {
     );
 
     const retryDraft = localWorldDieDraft({
-      presentationId: 'session:enc-1:42',
+      presentationId: 'presentation_witness-strike',
       authoritySeq: 42n,
       attempt: 2,
       plan: { ...planned, kind: 'settled' },
