@@ -18,8 +18,11 @@ describe('formatMoney', () => {
     expect(formatMoney(247)).toBe('2 gp 4 sp 7 cp');
   });
 
-  it('carries platinum and electrum through the same breakdown', () => {
-    expect(formatMoney(1247)).toBe('1 pp 2 gp 4 sp 7 cp');
+  it('folds platinum-range amounts into gold rather than showing pp', () => {
+    expect(formatMoney(1247)).toBe('12 gp 4 sp 7 cp');
+  });
+
+  it('carries electrum through the same breakdown', () => {
     expect(formatMoney(50)).toBe('1 ep');
   });
 });

@@ -1,14 +1,24 @@
 import type { BackgroundInfo } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/character_pb';
-import { Background } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
+import { ChoiceCategory } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
+import {
+  Background,
+  Tool,
+} from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useListBackgrounds } from '../../api/hooks';
+import { ChoiceRenderer } from '../../components/ChoiceRenderer';
 import { CollapsibleSection } from '../../components/CollapsibleSection';
+import type {
+  BackgroundModalChoices,
+  EquipmentChoice,
+} from '../../types/choices';
 import {
   getLanguageDisplay,
   getSkillDisplay,
   getToolProficiencyDisplay,
 } from '../../utils/enumDisplay';
+import { isCompleteEquipmentChoice } from '../../utils/equipmentChoiceSelections';
 import { VisualCarousel } from './components/VisualCarousel';
 
 // Helper to get CSS variable values for portals
@@ -79,7 +89,11 @@ interface BackgroundSelectionModalProps {
   currentBackground?: Background | string;
   existingProficiencies?: Set<string>;
   existingLanguages?: Set<string>;
-  onSelect: (background: BackgroundInfo) => void;
+  existingChoices?: BackgroundModalChoices;
+  onSelect: (
+    background: BackgroundInfo,
+    choices: BackgroundModalChoices
+  ) => void;
   onClose: () => void;
 }
 
@@ -88,12 +102,18 @@ export function BackgroundSelectionModal({
   currentBackground,
   // existingProficiencies, // TODO: Use when implementing proficiency conflict detection
   // existingLanguages, // TODO: Use when implementing language conflict detection
+  existingChoices,
   onSelect,
   onClose,
 }: BackgroundSelectionModalProps) {
   const { data: backgrounds, loading, error } = useListBackgrounds();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string>('');
+
+  // Track choices per background, keyed by background name
+  const [backgroundChoicesMap, setBackgroundChoicesMap] = useState<
+    Record<string, BackgroundModalChoices>
+  >({});
 
   // Set initial selected index based on current background
   useEffect(() => {
@@ -107,7 +127,29 @@ export function BackgroundSelectionModal({
     }
   }, [currentBackground, backgrounds]);
 
+  // Initialize choices for the current background from existingChoices, once
+  useEffect(() => {
+    if (isOpen && currentBackground && existingChoices) {
+      const bg = backgrounds.find(
+        (candidate) => String(candidate.backgroundId) === currentBackground
+      );
+      if (bg) {
+        setBackgroundChoicesMap((prev) => ({
+          ...prev,
+          [bg.name]: existingChoices,
+        }));
+      }
+    }
+    // Only re-run when the modal opens for a given background/choices set
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   const selectedBackground = backgrounds[selectedIndex];
+  const choiceKey = selectedBackground?.name || '';
+  const currentBackgroundChoices = backgroundChoicesMap[choiceKey] || {
+    equipment: [],
+    tools: [],
+  };
 
   const handleConfirm = () => {
     if (!selectedBackground) {
@@ -115,7 +157,42 @@ export function BackgroundSelectionModal({
       return;
     }
 
-    onSelect(selectedBackground);
+    setErrorMessage('');
+
+    const declaredChoices = selectedBackground.choices || [];
+
+    const equipmentChoices = declaredChoices.filter(
+      (choice) => choice.choiceType === ChoiceCategory.EQUIPMENT
+    );
+    for (const choice of equipmentChoices) {
+      const equipmentChoice = currentBackgroundChoices.equipment?.find(
+        (ec) => ec.choiceId === choice.id
+      );
+      if (!isCompleteEquipmentChoice(choice, equipmentChoice)) {
+        setErrorMessage(
+          `Please complete each equipment category: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    const toolChoices = declaredChoices.filter(
+      (choice) => choice.choiceType === ChoiceCategory.TOOLS
+    );
+    for (const choice of toolChoices) {
+      const toolChoice = currentBackgroundChoices.tools?.find(
+        (tc) => tc.choiceId === choice.id
+      );
+      const selected = toolChoice?.tools || [];
+      if (selected.length !== choice.chooseCount) {
+        setErrorMessage(
+          `Please select ${choice.chooseCount} tool${choice.chooseCount > 1 ? 's' : ''}: ${choice.description}`
+        );
+        return;
+      }
+    }
+
+    onSelect(selectedBackground, currentBackgroundChoices);
     onClose();
   };
 
@@ -398,6 +475,208 @@ export function BackgroundSelectionModal({
                               </span>
                             )
                           )}
+                        </div>
+                      </CollapsibleSection>
+                    )}
+
+                  {/* Additional choices - equipment and/or tool proficiency, granted by rulebooks/dnd5e v0.146.0+ */}
+                  {selectedBackground.choices &&
+                    selectedBackground.choices.length > 0 && (
+                      <CollapsibleSection
+                        title="Additional Choices"
+                        defaultOpen={true}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1.25rem',
+                          }}
+                        >
+                          {/* Equipment choices */}
+                          {selectedBackground.choices
+                            .filter(
+                              (choice) =>
+                                choice.choiceType === ChoiceCategory.EQUIPMENT
+                            )
+                            .map((choice) => {
+                              const foundEquipment =
+                                currentBackgroundChoices.equipment?.find(
+                                  (ec) => ec.choiceId === choice.id
+                                );
+                              const equipmentSelections: string[] = [];
+                              if (foundEquipment?.bundleId) {
+                                equipmentSelections.push(
+                                  foundEquipment.bundleId
+                                );
+                                foundEquipment.categorySelections?.forEach(
+                                  (cat) => {
+                                    cat.equipmentIds.forEach((id) => {
+                                      equipmentSelections.push(
+                                        `cat${cat.categoryIndex}:${id}:${id}`
+                                      );
+                                    });
+                                  }
+                                );
+                              }
+                              return (
+                                <div key={choice.id}>
+                                  <h4
+                                    style={{
+                                      fontSize: '0.9375rem',
+                                      fontWeight: 600,
+                                      marginBottom: '0.5rem',
+                                    }}
+                                  >
+                                    Choose Your Equipment{' '}
+                                    <span style={{ color: '#ef4444' }}>*</span>
+                                  </h4>
+                                  <ChoiceRenderer
+                                    choice={choice}
+                                    currentSelections={equipmentSelections}
+                                    hasInvalidPersistedEquipmentSelection={
+                                      foundEquipment?.hasUnconsumedItems ??
+                                      false
+                                    }
+                                    onSelectionChange={(
+                                      _choiceId,
+                                      selections
+                                    ) => {
+                                      setBackgroundChoicesMap((prev) => {
+                                        const current = prev[choiceKey] || {
+                                          equipment: [],
+                                          tools: [],
+                                        };
+                                        const updatedEquipment =
+                                          current.equipment?.filter(
+                                            (ec) => ec.choiceId !== choice.id
+                                          ) || [];
+
+                                        if (selections.length > 0) {
+                                          const firstSel = selections[0];
+                                          const bundleId =
+                                            firstSel.split(':')[0];
+
+                                          const categorySelections: Array<{
+                                            categoryIndex: number;
+                                            equipmentIds: string[];
+                                          }> = [];
+
+                                          selections
+                                            .slice(1)
+                                            .forEach((sel: string) => {
+                                              if (sel.startsWith('cat')) {
+                                                const parts = sel.split(':');
+                                                const catIndex = parseInt(
+                                                  parts[0].replace('cat', '')
+                                                );
+                                                const equipId = parts[1];
+
+                                                let catEntry =
+                                                  categorySelections.find(
+                                                    (c) =>
+                                                      c.categoryIndex ===
+                                                      catIndex
+                                                  );
+                                                if (!catEntry) {
+                                                  catEntry = {
+                                                    categoryIndex: catIndex,
+                                                    equipmentIds: [],
+                                                  };
+                                                  categorySelections.push(
+                                                    catEntry
+                                                  );
+                                                }
+                                                catEntry.equipmentIds.push(
+                                                  equipId
+                                                );
+                                              }
+                                            });
+
+                                          const equipmentChoice: EquipmentChoice =
+                                            {
+                                              choiceId: choice.id,
+                                              bundleId,
+                                              categorySelections,
+                                            };
+                                          updatedEquipment.push(
+                                            equipmentChoice
+                                          );
+                                        }
+
+                                        return {
+                                          ...prev,
+                                          [choiceKey]: {
+                                            ...current,
+                                            equipment: updatedEquipment,
+                                          },
+                                        };
+                                      });
+                                    }}
+                                  />
+                                </div>
+                              );
+                            })}
+
+                          {/* Tool proficiency choices */}
+                          {selectedBackground.choices
+                            .filter(
+                              (choice) =>
+                                choice.choiceType === ChoiceCategory.TOOLS
+                            )
+                            .map((choice) => (
+                              <div key={choice.id}>
+                                <h4
+                                  style={{
+                                    fontSize: '0.9375rem',
+                                    fontWeight: 600,
+                                    marginBottom: '0.5rem',
+                                  }}
+                                >
+                                  Choose Your Tool Proficiencies{' '}
+                                  <span style={{ color: '#ef4444' }}>*</span>
+                                </h4>
+                                <ChoiceRenderer
+                                  choice={choice}
+                                  currentSelections={
+                                    currentBackgroundChoices.tools?.find(
+                                      (tc) => tc.choiceId === choice.id
+                                    )?.tools || []
+                                  }
+                                  onSelectionChange={(
+                                    _choiceId,
+                                    selections
+                                  ) => {
+                                    const toolEnums = selections as Tool[];
+                                    setBackgroundChoicesMap((prev) => {
+                                      const current = prev[choiceKey] || {
+                                        equipment: [],
+                                        tools: [],
+                                      };
+                                      const updatedTools =
+                                        current.tools?.filter(
+                                          (tc) => tc.choiceId !== choice.id
+                                        ) || [];
+
+                                      if (toolEnums.length > 0) {
+                                        updatedTools.push({
+                                          choiceId: choice.id,
+                                          tools: toolEnums,
+                                        });
+                                      }
+
+                                      return {
+                                        ...prev,
+                                        [choiceKey]: {
+                                          ...current,
+                                          tools: updatedTools,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                />
+                              </div>
+                            ))}
                         </div>
                       </CollapsibleSection>
                     )}

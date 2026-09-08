@@ -1,5 +1,6 @@
 import { useSessionActivate } from '@/api/useSessionActivate';
 import { useSessionAttack } from '@/api/useSessionAttack';
+import { useSessionCast } from '@/api/useSessionCast';
 import { useSessionDeathSave } from '@/api/useSessionDeathSave';
 import { useSessionEndTurn } from '@/api/useSessionEndTurn';
 import { useSessionReact } from '@/api/useSessionReact';
@@ -32,6 +33,7 @@ import type {
   CombatExperienceLogMode,
   CombatExperiencePhase,
   CombatExperiencePresentationState,
+  CombatExperienceRollWindow,
   CombatExperienceStoryExchange,
 } from './types';
 import {
@@ -77,6 +79,9 @@ export interface UseSessionCombatExperienceResult {
   story: readonly CombatExperienceStoryExchange[];
   debug: readonly string[];
   result?: CombatExperienceAttackOutcome;
+  /** The roll an open post-roll window is asking about, and the offer it was
+   * recorded against. Null when no such beat is outstanding. */
+  rollWindow: CombatExperienceRollWindow | null;
   /** Accepted provider result retained for the release/continuation layer. */
   pendingDeathSaveResponse?: DeathSaveResponse;
   /** Explicit presentation authority for current-state Death Save concealment. */
@@ -178,6 +183,23 @@ export function useSessionCombatExperience({
     useState<CombatExperiencePresentationState>(EMPTY_INTERACTION);
   const [targeting, setTargeting] = useState(false);
   const [logMode, setLogMode] = useState<CombatExperienceLogMode>('story');
+  /**
+   * The d20 the open post-roll window is asking about (rpg-project#398).
+   *
+   * KEPT HERE AND NOT READ OFF AFFORD, because Afford does not carry it: the
+   * declaration says what may be spent, and only `RollWindowOpened` says what
+   * was rolled — the struck beat that would otherwise carry the numbers is not
+   * written until after the answer.
+   *
+   * IT IS NOT CLEARED WHEN THE DECLARATION VANISHES, on purpose. The beat
+   * arrives BEFORE the Afford refetch it schedules, so a rule that dropped the
+   * numbers whenever no window was currently posed would wipe them in the gap
+   * between the two. It is cleared when the answer is sent, which is the exact
+   * moment the window closes, and it is matched to the offer it was recorded
+   * for so a second window's panel can never borrow the first's numbers.
+   */
+  const [rollWindow, setRollWindow] =
+    useState<CombatExperienceRollWindow | null>(null);
   const [showTurnNotice, setShowTurnNotice] = useState(false);
   const [pendingDeathSaveResponse, setPendingDeathSaveResponse] =
     useState<DeathSaveResponse>();
@@ -188,6 +210,7 @@ export function useSessionCombatExperience({
   const automaticEndTurnRef = useRef(false);
   const manualEndTurnBlockedRef = useRef(false);
   const activateInFlightRef = useRef(false);
+  const castInFlightRef = useRef(false);
   const reactInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const declarationsRef = useRef(declarations);
@@ -229,6 +252,7 @@ export function useSessionCombatExperience({
   const { attack } = useSessionAttack();
   const { deathSave } = useSessionDeathSave();
   const { activate } = useSessionActivate();
+  const { cast } = useSessionCast();
   const { endTurn } = useSessionEndTurn();
   const { react } = useSessionReact();
 
@@ -305,12 +329,22 @@ export function useSessionCombatExperience({
         : declarations.filter(
             (declaration) => declaration.id === interaction.armedDeclarationId
           );
+    // EVERY VERB THAT PROMPTS FOR A MEMBER, not Attack alone. Arming is the
+    // same for all of them — hold an offer, wait for a candidate the server
+    // ruled — and `onTargetClick` already accepts both (`targetTakingVerb`).
+    // Pinned to ATTACK here, arming Bardic Inspiration or Help was judged
+    // incoherent one render later and torn down as "that option changed",
+    // with no RPC sent and nothing for the player to review: the offer was
+    // unchanged, and two reads of Afford return it byte for byte.
+    const armedVerb = armedMatches[0]?.verb;
     const current =
       authorityFresh &&
       clock === ClockKind.TURN &&
       active === member &&
       armedMatches.length === 1 &&
-      armedMatches[0]?.verb === Verb.ATTACK &&
+      (armedVerb === Verb.ATTACK ||
+        armedVerb === Verb.ACTIVATE ||
+        armedVerb === Verb.CAST) &&
       armedMatches[0]?.targetKind === TargetKind.MEMBER &&
       armedMatches[0]?.available;
     return {
@@ -379,11 +413,16 @@ export function useSessionCombatExperience({
         // answers or nothing at all; guessing here would swing a reaction
         // the player never chose.
         if (choice === undefined || choice === ReactChoice.UNSPECIFIED) return;
+        // THE WINDOW'S OWN TARGET KIND, not a constant. A movement window is
+        // posed with the mover as its single member candidate; a post-roll
+        // window is about the viewer's own d20 and names nobody, so Afford
+        // poses it with TARGET_KIND_NONE. Pinning MEMBER here would silently
+        // drop every answer to the second kind.
         const current = uniqueCurrentDeclaration(
           declarationsRef.current,
           candidate,
           Verb.REACT,
-          TargetKind.MEMBER
+          candidate.targetKind
         );
         if (!current || reactInFlightRef.current) return;
         reactInFlightRef.current = true;
@@ -398,6 +437,10 @@ export function useSessionCombatExperience({
               choice,
             });
             if (!mountedRef.current) return;
+            // The window is answered and its numbers are spent with it. The
+            // next one brings its own beat; a leftover roll shown under a
+            // later question would be a number from a die already resolved.
+            setRollWindow(null);
             invalidateAuthority();
             scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
           } catch (error) {
@@ -533,6 +576,31 @@ export function useSessionCombatExperience({
           return;
         }
         runActivateRef.current(candidate);
+        return;
+      }
+
+      // A CAST ARMS OR FIRES BY ITS TARGET KIND, exactly as an activation
+      // does. Vicious Mockery names a creature, so it arms and waits for a
+      // candidate the server ruled; True Strike is cast on the caster, so
+      // there is nothing to wait for and it fires on the click.
+      if (candidate.verb === Verb.CAST) {
+        if (candidate.targetKind === TargetKind.MEMBER) {
+          const current = uniqueCurrentDeclaration(
+            declarationsRef.current,
+            candidate,
+            Verb.CAST,
+            TargetKind.MEMBER
+          );
+          if (!current) return;
+          setInteraction({
+            armedDeclarationId: current.id,
+            selectedCandidateMember: null,
+            changedOptionNotice: null,
+          });
+          setTargeting(true);
+          return;
+        }
+        runCastRef.current(candidate);
       }
     },
     [
@@ -554,6 +622,7 @@ export function useSessionCombatExperience({
         !mountedRef.current ||
         attackInFlightRef.current ||
         activateInFlightRef.current ||
+        castInFlightRef.current ||
         !authorityRef.current.fresh ||
         authorityRef.current.clock !== ClockKind.TURN ||
         authorityRef.current.active !== member
@@ -574,7 +643,8 @@ export function useSessionCombatExperience({
       // ruled, echo the selector back. Only the RPC differs.
       const targetTakingVerb =
         selected?.declaration?.verb === Verb.ATTACK ||
-        selected?.declaration?.verb === Verb.ACTIVATE;
+        selected?.declaration?.verb === Verb.ACTIVATE ||
+        selected?.declaration?.verb === Verb.CAST;
       if (
         !selected?.declaration ||
         !targetTakingVerb ||
@@ -594,6 +664,39 @@ export function useSessionCombatExperience({
       const exactTarget = selected.candidate.member;
       setInteraction(currentState);
       setTargeting(false);
+
+      if (declaration.verb === Verb.CAST) {
+        castInFlightRef.current = true;
+        void (async () => {
+          try {
+            await cast({
+              session,
+              member,
+              declarationId: declaration.id,
+              target: exactTarget,
+            });
+            if (!mountedRef.current) return;
+            invalidateAuthority();
+            scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+          } catch (error) {
+            if (!mountedRef.current) return;
+            if (isStaleDeclarationRefusal(error)) {
+              recoverStaleDeclaration(declaration.id, Verb.CAST, exactTarget);
+            } else {
+              const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+              invalidateAuthority();
+              setInteraction({
+                ...EMPTY_INTERACTION,
+                changedOptionNotice: notice,
+              });
+              scheduleRefresh(['characterData', 'turn', 'afford', 'view']);
+            }
+          } finally {
+            castInFlightRef.current = false;
+          }
+        })();
+        return;
+      }
 
       if (declaration.verb === Verb.ACTIVATE) {
         activateInFlightRef.current = true;
@@ -677,6 +780,7 @@ export function useSessionCombatExperience({
     [
       activate,
       attack,
+      cast,
       invalidateAuthority,
       member,
       presentation,
@@ -760,6 +864,87 @@ export function useSessionCombatExperience({
   );
 
   runActivateRef.current = onActivate;
+
+  // runCast is held in a ref for the same reason runActivate is: it and
+  // onSelectDeclaration are mutually recursive through the dock's single
+  // onSelect handler.
+  const runCastRef = useRef<(candidate: Declaration) => void>(() => {});
+
+  /**
+   * A cast that names nobody — True Strike on the caster's own next swing.
+   *
+   * BY ID, NEVER BY VERB, the law Activate established the moment one verb
+   * compiled more than one offer. A bard reads one Cast row per castable
+   * cantrip, so "the current declaration for CAST" has no answer;
+   * `uniqueCurrentDeclaration` matches the selector, which is the unique
+   * thing.
+   *
+   * NO TARGET IS SENT. `CastRequest.target` on a TARGET_KIND_NONE declaration
+   * is INVALID_ARGUMENT rather than a value quietly ignored, so a self cast
+   * must leave it unset.
+   */
+  const onCast = useCallback(
+    (candidate: Declaration) => {
+      if (
+        !mountedRef.current ||
+        castInFlightRef.current ||
+        !authorityRef.current.fresh ||
+        authorityRef.current.clock !== ClockKind.TURN ||
+        authorityRef.current.active !== member
+      ) {
+        return;
+      }
+      const current = uniqueCurrentDeclaration(
+        declarationsRef.current,
+        candidate,
+        Verb.CAST,
+        TargetKind.NONE
+      );
+      if (!current) return;
+
+      castInFlightRef.current = true;
+      void (async () => {
+        try {
+          await cast({
+            session,
+            member,
+            declarationId: current.id,
+          });
+          if (!mountedRef.current) return;
+          invalidateAuthority();
+          scheduleRefresh(['characterData', 'turn', 'afford']);
+        } catch (error) {
+          if (!mountedRef.current) return;
+          if (isStaleDeclarationRefusal(error)) {
+            recoverStaleDeclaration(current.id, Verb.CAST);
+          } else {
+            // Ambiguous about whether the cast committed — the ack is thin by
+            // design. Fail closed, preserve the message, reconcile, never
+            // retry.
+            const notice = `Cast failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+            invalidateAuthority();
+            setInteraction({
+              ...EMPTY_INTERACTION,
+              changedOptionNotice: notice,
+            });
+            scheduleRefresh(['characterData', 'turn', 'afford']);
+          }
+        } finally {
+          castInFlightRef.current = false;
+        }
+      })();
+    },
+    [
+      cast,
+      invalidateAuthority,
+      member,
+      recoverStaleDeclaration,
+      scheduleRefresh,
+      session,
+    ]
+  );
+
+  runCastRef.current = onCast;
 
   const onEndTurn = useCallback(
     (candidate: Declaration) => {
@@ -878,8 +1063,22 @@ export function useSessionCombatExperience({
       if (!mountedRef.current) return;
       presentation.acceptStreamEvent(event, metadata);
       pacing.acceptEvent(event, metadata);
+      // THE ONLY PLACE THE ROLL IS TOLD. Recorded for this viewer alone: the
+      // window's audience is exactly one member, and a beat naming somebody
+      // else is a fact about their decision, not this dock's panel.
+      if (
+        event.body.case === 'rollWindowOpened' &&
+        event.body.value.audience === member
+      ) {
+        const opened = event.body.value;
+        setRollWindow({
+          offerRef: opened.offer?.ref ?? '',
+          roll: opened.roll,
+          total: opened.total,
+        });
+      }
     },
-    [pacing, presentation]
+    [member, pacing, presentation]
   );
 
   const phase = targeting ? 'targeting' : presentation.phase;
@@ -893,6 +1092,7 @@ export function useSessionCombatExperience({
       story: pacing.story,
       debug: presentation.debug,
       result: pacing.result,
+      rollWindow,
       pendingDeathSaveResponse,
       concealsDeathSaveTruth: presentation.concealsDeathSaveTruth,
       concealedDeathSavePresentationKey:
@@ -941,6 +1141,7 @@ export function useSessionCombatExperience({
       presentation.unresolvedAttackTargets,
       presentationState,
       recoverStaleDeclaration,
+      rollWindow,
       showTurnNotice,
     ]
   );

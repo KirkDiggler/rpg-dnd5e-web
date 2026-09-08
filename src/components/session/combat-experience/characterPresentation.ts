@@ -39,6 +39,31 @@ const PRESENTATION_BY_REF: Readonly<
     icon: '◈',
     tone: 'cool',
   }),
+  // The held Bardic Inspiration die (rpg-project#397). A ROW IN THE SAME
+  // TABLE, not a component of its own: the recipient's name and detail come
+  // from the provider like every other condition's, and this only says which
+  // glyph the generic list draws it with.
+  'dnd5e:conditions:inspired': Object.freeze({
+    icon: '🎵',
+    tone: 'warm',
+  }),
+  // THE TWO HALVES OF THE CAST DOOR (design rpg-project#405, R5 and R2).
+  // Both are ordinary rows in this table, not components of their own: the
+  // provider authors the name, the detail and who holds it, and this only
+  // says which glyph and tone the generic condition list draws them with.
+  //
+  // A GRANT AND A PENALTY READ DIFFERENTLY. True Strike sits on the caster and
+  // helps their next swing, so it is warm like the inspiration die; Vicious
+  // Mockery's rider sits on the target and hurts its next attack, so it is
+  // the danger tone — the same distinction a player would make at the table.
+  'dnd5e:conditions:true_strike': Object.freeze({
+    icon: '🎯',
+    tone: 'warm',
+  }),
+  'dnd5e:conditions:vicious_mockery': Object.freeze({
+    icon: '🃏',
+    tone: 'danger',
+  }),
 });
 
 export type PresentedFeature = FeatureView & CharacterPresentationStyle;

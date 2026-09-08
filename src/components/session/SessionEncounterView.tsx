@@ -498,6 +498,10 @@ function SessionEncounterScope({
   // window has nothing to answer and sees no ring, which is the same rule
   // the dock's panel follows. Undefined at every other moment.
   const reactionWindow = reactionWindowDeclaration(coherentDeclarations);
+  // A POST-ROLL WINDOW RINGS NOBODY, and that falls out rather than being
+  // special-cased: it is posed about the viewer's own d20, with no mover and
+  // no candidates, so the reader answers undefined and the canvas stays as it
+  // was (rpg-project#398).
   const reactionMover = reactionWindow
     ? reactionWindowMover(reactionWindow)
     : undefined;
@@ -1667,6 +1671,7 @@ function SessionEncounterScope({
             story={combat.story}
             debug={combat.debug}
             result={combat.result}
+            rollWindow={combat.rollWindow}
             diceEvents={combat.diceEvents}
             diceSemanticFallback={combat.diceSemanticFallback}
             diceRollerName={combat.diceRollerName}

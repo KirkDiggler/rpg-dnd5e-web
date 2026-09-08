@@ -1,10 +1,13 @@
 import { create } from '@bufbuild/protobuf';
 import {
   ArrivedSchema,
+  CastSchema,
   EventKind,
   EventSchema,
   JoinedSchema,
   MovedSchema,
+  RollWindowOpenedSchema,
+  SavedSchema,
   StanceChangedSchema,
   WindowOpenedSchema,
   type Event as SessionEvent,
@@ -32,6 +35,49 @@ describe('the refresh table (lifted from SessionEncounterView)', () => {
       body: { case: 'joined', value: create(JoinedSchema, { member: 'p2' }) },
     });
     expect(refreshKeysFor(joined, VIEWER)).toEqual(['roster']);
+  });
+});
+
+describe('the cast door’s two rows (design rpg-project#405)', () => {
+  it('CAST refreshes the card, what is still declarable, and the scene', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.CAST,
+      body: {
+        case: 'cast',
+        value: create(CastSchema, { actor: VIEWER, target: 'skeleton-1' }),
+      },
+    });
+    // The same three an activation's result refreshes: a cantrip spends the
+    // action Afford priced and its effects land on somebody's card.
+    expect(refreshKeysFor(event, VIEWER)).toEqual([
+      'characterData',
+      'afford',
+      'view',
+    ]);
+  });
+
+  it('SAVED refreshes too, even though the save delivers nothing itself', () => {
+    const event = create(EventSchema, {
+      kind: EventKind.SAVED,
+      body: {
+        case: 'saved',
+        value: create(SavedSchema, {
+          saver: 'skeleton-1',
+          ability: 'wis',
+          roll: 7,
+          total: 9,
+          dc: 13,
+          succeeded: false,
+        }),
+      },
+    });
+    // The beats that carry what the save cost arrive separately; refreshing
+    // here keeps the card and the log from disagreeing across that gap.
+    expect(refreshKeysFor(event, VIEWER)).toEqual([
+      'characterData',
+      'afford',
+      'view',
+    ]);
   });
 });
 
@@ -107,5 +153,22 @@ describe('the reaction window row (rpg-project#316)', () => {
     // Their verbs are frozen too — the WINDOW_OPEN shortfall is only in
     // Afford, so everyone re-reads it.
     expect(refreshKeysFor(event, VIEWER)).toEqual(['afford', 'view']);
+  });
+
+  it('ROLL_WINDOW_OPENED re-reads the offer alone, because nobody moved', () => {
+    const event: SessionEvent = create(EventSchema, {
+      kind: EventKind.ROLL_WINDOW_OPENED,
+      body: {
+        case: 'rollWindowOpened',
+        value: create(RollWindowOpenedSchema, {
+          audience: VIEWER,
+          roll: 9,
+          total: 13,
+        }),
+      },
+    });
+    // `view` is deliberately absent: this window has no mover and no cells,
+    // so the scene is exactly what it was.
+    expect(refreshKeysFor(event, VIEWER)).toEqual(['afford']);
   });
 });

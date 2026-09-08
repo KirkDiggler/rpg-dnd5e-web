@@ -1,21 +1,22 @@
 /**
- * Money display formatting — mirrors the toolkit's
- * `currency.Money.Breakdown` exactly (rpg-toolkit#1534): copper is the
- * wire's one denomination, and a display splits it greedily into
- * platinum/gold/electrum/silver/copper, largest first, each remainder
- * carried down the chain (1000/100/50/10/1 copper respectively) so the
- * amount reads the way a coin purse actually would.
+ * Money display formatting. The toolkit's wire format is copper-only
+ * (rpg-toolkit#1534's `currency.Money.Breakdown` would go on to split
+ * platinum/gold/electrum/silver/copper), but web deliberately stops at
+ * gold as the top denomination for now rather than mirroring that all
+ * the way through — platinum reads as an unfamiliar unit to most players
+ * and folding it into gold keeps the display simpler. Each remainder is
+ * carried down the chain (100/50/10/1 copper respectively) so the amount
+ * still reads the way a coin purse actually would.
  */
 
 const DENOMINATIONS: Array<{ label: string; copperPer: number }> = [
-  { label: 'pp', copperPer: 1000 },
   { label: 'gp', copperPer: 100 },
   { label: 'ep', copperPer: 50 },
   { label: 'sp', copperPer: 10 },
   { label: 'cp', copperPer: 1 },
 ];
 
-/** "15 gp", "1 pp 2 gp 4 sp 7 cp", "0 cp" for a zero amount. */
+/** "15 gp", "12 gp 4 sp 7 cp", "0 cp" for a zero amount. */
 export function formatMoney(copper: number): string {
   let remaining = copper;
   const parts: string[] = [];

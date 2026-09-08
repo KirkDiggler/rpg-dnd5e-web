@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { getPlayerId } from './api/auth';
+import { getAuthDecision, getPlayerId } from './api/auth';
 import { useListCharacters, useListDrafts } from './api/hooks';
 import { useDevPlayerIdAuth } from './api/useDevPlayerIdAuth';
 import { useLobbyCharacterId } from './api/useLobbyCharacterId';
@@ -76,13 +76,46 @@ const hasConceptDeepLink = (): boolean =>
   new URLSearchParams(window.location.search).has('concept');
 
 function AppContent() {
-  const [compositionSource, setCompositionSource] = useState<
-    CompositionSource | undefined
-  >();
+  const discord = useDiscord();
+  const authDecision = getAuthDecision();
+  const authKind = authDecision.kind;
+  const authPlayerId =
+    authDecision.kind === 'unauthenticated' ? null : authDecision.playerId;
+  const authGuildId =
+    authDecision.kind === 'discord' ? authDecision.guildId : null;
+  const {
+    authSessionId,
+    clearAuthenticationForSession,
+    isAuthenticationSessionCurrent,
+  } = discord;
+  const compositionIdentity = `${authSessionId}:${authKind}:${authGuildId ?? ''}`;
+  const [compositionState, setCompositionState] = useState<{
+    identity: string;
+    source: CompositionSource | undefined;
+  }>({ identity: compositionIdentity, source: undefined });
+  // A changed credential epoch cannot render the previous source even for the
+  // single paint before the replacement effect runs.
+  const compositionSource =
+    compositionState.identity === compositionIdentity
+      ? compositionState.source
+      : undefined;
+
   useEffect(() => {
-    if (import.meta.env.MODE !== 'development') return;
     let current = true;
+    setCompositionState({ identity: compositionIdentity, source: undefined });
+    const effectAuthDecision =
+      authKind === 'discord'
+        ? {
+            kind: 'discord' as const,
+            playerId: authPlayerId,
+            guildId: authGuildId,
+          }
+        : authKind === 'dev' && authPlayerId
+          ? { kind: 'dev' as const, playerId: authPlayerId }
+          : { kind: 'unauthenticated' as const };
     const fixedFixture =
+      authKind === 'dev' &&
+      import.meta.env.MODE === 'development' &&
       import.meta.env.VITE_ENABLE_DEVELOPMENT_COMPOSITIONS === '1';
     const load = fixedFixture
       ? import('./compositions/developmentCompositionSource').then(
@@ -90,20 +123,45 @@ function AppContent() {
             createDevelopmentCompositionSource()
         )
       : import('./compositions/rpcCompositionSource').then(
-          ({ createRpcCompositionSource }) => createRpcCompositionSource()
+          ({ createRpcCompositionSource }) =>
+            createRpcCompositionSource({
+              mode: import.meta.env.MODE,
+              devWorldId: import.meta.env.VITE_DEV_WORLD_ID,
+              authSessionId,
+              auth: effectAuthDecision,
+              onUnauthenticated: (expiredSessionId) =>
+                clearAuthenticationForSession(
+                  expiredSessionId,
+                  'Your Discord session expired. Please reconnect.'
+                ),
+              isAuthSessionCurrent: isAuthenticationSessionCurrent,
+            })
         );
     void load.then((source) => {
-      if (current) setCompositionSource(source);
+      if (current) {
+        setCompositionState({ identity: compositionIdentity, source });
+      }
     });
     return () => {
       current = false;
     };
-  }, []);
+  }, [
+    compositionIdentity,
+    authSessionId,
+    clearAuthenticationForSession,
+    isAuthenticationSessionCurrent,
+    authKind,
+    authPlayerId,
+    authGuildId,
+  ]);
   const invalidateCompositionResolutions = useCallback(() => {
     // Existing composition resolution caches reset on source identity. Keep
     // invalidation at that small seam so a deleted snapshot cannot retain
     // stale models or lights after the next relevant render/navigation.
-    setCompositionSource((current) => (current ? { ...current } : current));
+    setCompositionState((current) => ({
+      ...current,
+      source: current.source ? { ...current.source } : undefined,
+    }));
   }, []);
   // Stable gate: dev encounterId URLs select the real GameView perf surface or the ordinary PlaytestHarness.
   // Computed once on mount via useState initializer so route doesn't flicker.
@@ -142,7 +200,6 @@ function AppContent() {
   );
   const [resumeLobbyId, setResumeLobbyId] = useState<string | null>(null);
 
-  const discord = useDiscord();
   const draft = useCharacterDraft();
 
   // In production, require Discord auth. In dev, allow test player
@@ -435,6 +492,7 @@ function AppContent() {
           <ConceptsView onBack={handleBackToHome} />
         ) : currentView === 'world-builder' && compositionSource ? (
           <WorldBuildingConcept
+            key={compositionIdentity}
             onBack={handleBackToHome}
             compositionSource={compositionSource}
             onCompositionDeleted={invalidateCompositionResolutions}
@@ -482,6 +540,11 @@ function AppContent() {
             onOpenAuthor={handleOpenAuthor}
             onOpenWorldBuilder={handleOpenWorldBuilder}
             worldBuilderAvailable={compositionSource !== undefined}
+            worldBuilderUnavailableMessage={
+              authDecision.kind === 'discord' && !authDecision.guildId
+                ? 'Open this Activity in a server to access its world'
+                : undefined
+            }
           />
         ) : currentView === 'character-sheet' && currentCharacterId ? (
           <CharacterSheet
@@ -558,6 +621,7 @@ interface HomeViewProps {
   onOpenAuthor: () => void;
   onOpenWorldBuilder: () => void;
   worldBuilderAvailable: boolean;
+  worldBuilderUnavailableMessage?: string;
 }
 
 function HomeView({
@@ -575,6 +639,7 @@ function HomeView({
   onOpenAuthor,
   onOpenWorldBuilder,
   worldBuilderAvailable,
+  worldBuilderUnavailableMessage,
 }: HomeViewProps) {
   // Fetch characters and drafts to find selected item data
   const { data: characters } = useListCharacters({ playerId, sessionId });
@@ -597,20 +662,27 @@ function HomeView({
           source (development today; no fabricated production world). */}
       <div className="flex justify-center gap-3">
         <DungeonBuilderHomeButton onOpen={onOpenAuthor} />
-        {worldBuilderAvailable && (
-          <button
-            onClick={onOpenWorldBuilder}
-            aria-label="Open World Builder"
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              backgroundColor: 'var(--accent-primary)',
-              color: 'white',
-              border: '1px solid var(--accent-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            🌍 World Builder
-          </button>
+        {(worldBuilderAvailable || worldBuilderUnavailableMessage) && (
+          <div className="flex flex-col items-center gap-1">
+            <button
+              onClick={onOpenWorldBuilder}
+              aria-label="Open World Builder"
+              disabled={!worldBuilderAvailable}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--accent-primary)',
+                color: 'white',
+                border: '1px solid var(--accent-primary)',
+              }}
+            >
+              🌍 World Builder
+            </button>
+            {worldBuilderUnavailableMessage && (
+              <p className="max-w-xs text-center text-xs text-gray-400">
+                {worldBuilderUnavailableMessage}
+              </p>
+            )}
+          </div>
         )}
       </div>
 

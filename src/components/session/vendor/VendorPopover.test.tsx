@@ -98,7 +98,7 @@ describe('VendorPopover', () => {
       '1 left'
     );
     expect(screen.getByTestId('vendor-stock-longsword').textContent).toContain(
-      '1 pp 5 gp'
+      '15 gp'
     );
     expect(screen.getByTestId('vendor-stock-arrows').textContent).toContain(
       'Arrows'
@@ -201,7 +201,7 @@ describe('VendorPopover', () => {
       expect(onBuy).not.toHaveBeenCalled();
       expect(
         screen.getByTestId('vendor-buy-confirm-longsword').textContent
-      ).toContain('Buy Longsword for 1 pp 5 gp?');
+      ).toContain('Buy Longsword for 15 gp?');
     });
 
     it('Confirm calls onBuy with the exact row entry and clears the pending state', () => {
@@ -262,7 +262,7 @@ describe('VendorPopover', () => {
       expect(screen.queryByTestId('vendor-buy-confirm-longsword')).toBeNull();
       expect(
         screen.getByTestId('vendor-buy-confirm-longbow').textContent
-      ).toContain('Buy Longbow for 5 pp?');
+      ).toContain('Buy Longbow for 50 gp?');
     });
 
     it('disables Buy for a LIMITED row that has hit zero', () => {

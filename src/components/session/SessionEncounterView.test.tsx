@@ -3175,14 +3175,14 @@ describe('SessionEncounterView production combat integration', () => {
       expect(popover.textContent).toContain('Demo Merchant');
       expect(popover.textContent).toContain('Longsword');
       expect(popover.textContent).toContain('1 left');
-      expect(popover.textContent).toContain('1 pp 5 gp');
+      expect(popover.textContent).toContain('15 gp');
       expect(popover.textContent).toContain('Arrows');
       expect(popover.textContent).toContain('Always in stock');
       // The player's own wallet (privateCharacterData()'s default) reaches
       // the vendor popover header, sourced from the same characterData
       // this view already fetches — not a second RPC.
       expect(screen.getByTestId('vendor-wallet').textContent).toContain(
-        '4 pp 5 gp 2 sp 3 cp'
+        '45 gp 2 sp 3 cp'
       );
     });
 

@@ -10,10 +10,12 @@ import {
   FightingStyleSelectionSchema,
   LanguageSelectionSchema,
   SkillSelectionSchema,
+  SpellSelectionSchema,
   ToolSelectionSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/choices_pb';
 import { Skill } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/v1alpha1/enums_pb';
 import type {
+  CantripChoice,
   EquipmentChoice,
   FeatureChoice,
   LanguageChoice,
@@ -72,6 +74,31 @@ export function convertToolChoiceToProto(
       case: 'tools',
       value: create(ToolSelectionSchema, {
         tools: choice.tools,
+      }),
+    },
+  });
+}
+
+/**
+ * A cantrip choice on the wire.
+ *
+ * WRITES `spell_refs` AND NEVER THE DEPRECATED `spells` ENUM FIELD. The two
+ * are not read side by side (design rpg-project#405, R8): a ref string and an
+ * enum value naming one spell are two names free to disagree, with every
+ * reader left to learn which wins. Producers write the refs alone.
+ */
+export function convertCantripChoiceToProto(
+  choice: CantripChoice,
+  source: ChoiceSource
+): ChoiceData {
+  return create(ChoiceDataSchema, {
+    choiceId: choice.choiceId,
+    category: ChoiceCategory.CANTRIPS,
+    source,
+    selection: {
+      case: 'spells',
+      value: create(SpellSelectionSchema, {
+        spellRefs: choice.spellRefs,
       }),
     },
   });
@@ -189,6 +216,17 @@ export function convertProtoToLanguageChoice(
   return {
     choiceId: data.choiceId,
     languages: data.selection.value.languages || [],
+  };
+}
+
+export function convertProtoToCantripChoice(
+  data: ChoiceData
+): CantripChoice | null {
+  if (data.selection?.case !== 'spells') return null;
+
+  return {
+    choiceId: data.choiceId,
+    spellRefs: data.selection.value.spellRefs || [],
   };
 }
 

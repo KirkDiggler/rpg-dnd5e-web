@@ -7,6 +7,7 @@ import {
   DoorState,
   type AttackRef,
   type ReactionRef,
+  type SpellRef,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/types_pb';
 import { damageTypeWord } from '../combatBeat';
 import { dissolveSentence, formatFactionBeat } from '../factionBeat';
@@ -54,6 +55,20 @@ function attackSnapshot(
 
 function attackName(attack: AttackRef | undefined): string {
   return attack?.name || attack?.ref || 'Attack';
+}
+
+/**
+ * What a spell calls itself, on a beat that carries a `SpellRef`.
+ *
+ * THE NAME IS THE SERVER'S, NEVER DERIVED FROM THE REF. `SpellRef` carries a
+ * display name authored by the spell itself for exactly this, and the ref is
+ * the last resort so an unresolvable one shows as itself rather than as a
+ * plausible invention. `source` is unset when something other than a spell
+ * forced a save — a trap, a monster trait — and the save then narrates alone.
+ */
+function spellName(spell: SpellRef | undefined): string | undefined {
+  if (!spell) return undefined;
+  return spell.name || spell.ref || undefined;
 }
 
 /**
@@ -115,6 +130,28 @@ function buildActivationResultStory(
           `${source}${arithmetic ? ` rolled ${arithmetic}` : ''}; ` +
           `${healing.amount} applied (${healing.hpBefore} → ${healing.hpAfter} HP).`,
         tone: 'success',
+      });
+    }
+    // WHAT A CAST COST SOMEBODY, through the arm the activation result gained
+    // for it (design rpg-project#405, R7). The 1d4 face reaches the player
+    // because `calculation` carries the rulebook's own components; `amount` is
+    // the post-clamp fact and is never recomputed from them.
+    case 'damageApplied': {
+      const damage = event.body.value.result.value;
+      const word = damageTypeWord(damage.damageType);
+      const arithmetic = damage.calculation
+        ? formatRollCalculation(damage.calculation)
+        : undefined;
+      const source = damage.sourceName || damage.sourceRef || 'Damage';
+      return Object.freeze({
+        ...base,
+        headline: `${memberName(damage.target, context)} takes ${damage.amount}${
+          word ? ` ${word}` : ''
+        } damage`,
+        detail:
+          `${source}${arithmetic ? ` rolled ${arithmetic}` : ''}; ` +
+          `${damage.amount} applied (${damage.hpBefore} → ${damage.hpAfter} HP).`,
+        tone: damage.target === context.viewerMember ? 'danger' : 'neutral',
       });
     }
     case 'conditionApplied': {
@@ -364,6 +401,47 @@ function buildOtherStory(
         tone: 'neutral',
       });
     }
+    // A SPELL LEFT THE CASTER'S HANDS. Its own beat rather than an activation,
+    // because a cast is its own verb all the way down (design rpg-project#405,
+    // R1) — and the name is the spell's, copied from the server-authored
+    // declaration.
+    case 'cast': {
+      if (event.kind !== EventKind.CAST) return undefined;
+      const cast = event.body.value;
+      const actor = memberName(cast.actor, context);
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Spell',
+        headline: `${actor} casts ${spellName(cast.spell) ?? 'a spell'}`,
+        detail: cast.target
+          ? `${memberName(cast.target, context)} is the target.`
+          : `Story sequence ${event.seq}.`,
+        tone: 'neutral',
+      });
+    }
+    // ONE CREATURE'S SAVING THROW, WHOLE. Every number the player needs to
+    // believe the outcome is on the beat, and `succeeded` is the rulebook's
+    // own reading: the client shows both numbers and never compares them
+    // itself, the law DeathSaveRolled.outcome already keeps.
+    case 'saved': {
+      if (event.kind !== EventKind.SAVED) return undefined;
+      const saved = event.body.value;
+      const saver = memberName(saved.saver, context);
+      const source = spellName(saved.source);
+      const bonus = saved.total - saved.roll;
+      const sign = bonus < 0 ? '-' : '+';
+      return Object.freeze({
+        ...base,
+        eyebrow: source ? `${saver} · ${source}` : `${saver} · Saving throw`,
+        headline: source
+          ? `${saver} saves vs ${source}`
+          : `${saver} makes a saving throw`,
+        detail:
+          `d20 ${saved.roll} ${sign} ${Math.abs(bonus)} = ${saved.total} against ` +
+          `DC ${saved.dc} · ${saved.succeeded ? 'Succeeded' : 'Failed'}`,
+        tone: saved.succeeded ? 'success' : 'danger',
+      });
+    }
     case 'activationResult':
       return buildActivationResultStory(event, context);
     case 'deathSaveRolled': {
@@ -440,6 +518,24 @@ function buildOtherStory(
         headline: audience
           ? `${audience} may strike as ${mover} leaves reach`
           : `${mover} leaves reach`,
+        detail: `Story sequence ${event.seq}.`,
+        tone: 'turn',
+      });
+    }
+    // THE DIE IS ROLLED AND THE SWING HAS NOT LANDED (rpg-project#398). No
+    // STRUCK and no MISSED exists for this attack yet, so this line says what
+    // stands on the table and never what it did — the beat that follows the
+    // answer carries the outcome, with a total this one cannot know.
+    //
+    // THE AC IS NOT NARRATED because the wire does not carry it: the audience
+    // decides on the roll, not on whether the roll already beat something.
+    case 'rollWindowOpened': {
+      const window = event.body.value;
+      const audience = memberName(window.audience, context);
+      return Object.freeze({
+        ...base,
+        eyebrow: reactionLabel(window.offer) ?? 'Reaction',
+        headline: `${audience} rolled ${window.roll} for ${window.total}`,
         detail: `Story sequence ${event.seq}.`,
         tone: 'turn',
       });
