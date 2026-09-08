@@ -3,11 +3,7 @@ import {
   HEX_SIZE,
   hexCorners,
 } from '@/components/hex-grid/hexMath';
-import {
-  PropModel,
-  type PropModelBounds,
-} from '@/components/hex-grid/PropModel';
-import { WorldAssetModel } from '@/components/hex-grid/WorldAssetModel';
+import type { PropModelBounds } from '@/components/hex-grid/PropModel';
 import { ErrorBoundary } from '@/components/ui/Feedback/ErrorBoundary';
 import { projectCompositionPointLights } from '@/compositions/compositionLightSources';
 import { DUNGEON_POINT_LIGHT_BUDGET } from '@/rendering/dungeonLighting';
@@ -50,6 +46,7 @@ import {
   WorldPlacementGuideControl,
   WorldPlacementGuides,
 } from './WorldPlacementGuides';
+import { WorldPropModel } from './WorldPropModel';
 
 export interface WorldBuildingViewportProps {
   /** Last committed scene. Transform previews never replace this value. */
@@ -198,23 +195,13 @@ export function WorldPropVisual({
                 : undefined
             }
           >
-            {entry.source === 'generated' ? (
-              <WorldAssetModel
-                assetRef={entry.ref}
-                position={position}
-                rotationY={item.transform.rotationY}
-                onDiagnostic={() => onAssetState(item.id, 'error')}
-                onBoundsMeasured={recordBounds}
-              />
-            ) : (
-              <PropModel
-                variant={entry.variant}
-                position={position}
-                rotationY={item.transform.rotationY}
-                anchor="bounds-floor-center"
-                onBoundsMeasured={recordBounds}
-              />
-            )}
+            <WorldPropModel
+              entry={entry}
+              position={position}
+              rotationY={item.transform.rotationY}
+              onGeneratedDiagnostic={() => onAssetState(item.id, 'error')}
+              onBoundsMeasured={recordBounds}
+            />
           </group>
         </ErrorBoundary>
       </Suspense>

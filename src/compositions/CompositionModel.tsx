@@ -1,9 +1,9 @@
-import { PropModel } from '@/components/hex-grid/PropModel';
-import { resolvePropVariant } from '@/components/hex-grid/propManifest';
+import { WORLD_BUILDING_CATALOG_BY_REF } from '@/concepts/world-building/catalog';
 import type { WorldTransform } from '@/concepts/world-building/types';
+import { WorldPropModel } from '@/concepts/world-building/WorldPropModel';
 import { DUNGEON_POINT_LIGHT_BUDGET } from '@/rendering/dungeonLighting';
-import { selectBoundedVisualPointLights } from '@/rendering/visualPointLightSelection';
 import { VisualPointLights } from '@/rendering/visualPointLights';
+import { selectBoundedVisualPointLights } from '@/rendering/visualPointLightSelection';
 import type { Composition } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { useMemo } from 'react';
 import { projectCompositionPointLights } from './compositionLightSources';
@@ -57,11 +57,11 @@ export function CompositionModel({
   const leaves = useMemo(
     () =>
       scene.items.map((item) => {
-        const variant = resolvePropVariant(item.assetRef);
-        if (!variant) {
+        const entry = WORLD_BUILDING_CATALOG_BY_REF.get(item.assetRef);
+        if (!entry) {
           throw new Error(`Composition prop has no model: ${item.assetRef}`);
         }
-        return { item, variant };
+        return { item, entry };
       }),
     [scene]
   );
@@ -77,13 +77,12 @@ export function CompositionModel({
         compositionInstanceId: instanceId,
       }}
     >
-      {leaves.map(({ item, variant }) => (
+      {leaves.map(({ item, entry }) => (
         <group key={item.id} name={`composition-leaf-${item.id}`}>
-          <PropModel
-            variant={variant}
+          <WorldPropModel
+            entry={entry}
             position={[item.transform.x, item.transform.y, item.transform.z]}
             rotationY={item.transform.rotationY}
-            anchor="bounds-floor-center"
           />
         </group>
       ))}
