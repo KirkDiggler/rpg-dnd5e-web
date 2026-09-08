@@ -24,12 +24,19 @@ import {
 import { isCompleteEquipmentChoice } from '../../utils/equipmentChoiceSelections';
 import { VisualCarousel } from './components/VisualCarousel';
 
-// Only show these classes in the selection (pre-alpha simplification)
+// Only show these classes in the selection (pre-alpha simplification).
+//
+// A CLASS IS ADDED HERE WHEN IT HAS BEHAVIOUR, not when it has data. Every
+// class is data-complete in the toolkit and reaches this modal through
+// ListClasses; this set is what has something to DO at level 1. The bard joins
+// with Bardic Inspiration (rpg-project#397) — a granted die and a post-roll
+// window — and with no spells on the sheet, which is that slice's own ruling.
 const ALLOWED_CLASSES = new Set([
   Class.FIGHTER,
   Class.MONK,
   Class.ROGUE,
   Class.BARBARIAN,
+  Class.BARD,
 ]);
 
 // Helper to get CSS variable values for portals

@@ -39,6 +39,14 @@ const PRESENTATION_BY_REF: Readonly<
     icon: '◈',
     tone: 'cool',
   }),
+  // The held Bardic Inspiration die (rpg-project#397). A ROW IN THE SAME
+  // TABLE, not a component of its own: the recipient's name and detail come
+  // from the provider like every other condition's, and this only says which
+  // glyph the generic list draws it with.
+  'dnd5e:conditions:inspired': Object.freeze({
+    icon: '🎵',
+    tone: 'warm',
+  }),
 });
 
 export type PresentedFeature = FeatureView & CharacterPresentationStyle;
