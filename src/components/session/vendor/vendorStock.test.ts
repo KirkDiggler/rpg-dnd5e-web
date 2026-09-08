@@ -101,7 +101,7 @@ describe('vendorStockPurchasable', () => {
 describe('vendorStockPriceLabel', () => {
   it('formats a priced entry via formatMoney', () => {
     expect(vendorStockPriceLabel(entry({ price: { copper: 1500 } }))).toBe(
-      '1 pp 5 gp'
+      '15 gp'
     );
   });
 
