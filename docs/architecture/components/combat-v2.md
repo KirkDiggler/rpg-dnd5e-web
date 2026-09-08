@@ -178,6 +178,6 @@ session/member/authenticated-player. Selection, presentation, Story/Debug,
 equipment-open state, private data,
 timers, and callbacks therefore reset synchronously. Controller and query
 generations fence late completions and stale map callbacks. ENDED closes
-Equipment immediately, marks the preserved game surface inert and hidden,
-layers the correctly labelled `aria-modal` dialog above every panel, and focuses
-its Leave action so underlying pointer/keyboard actions cannot fire.
+Equipment immediately and announces the ending through `RunEndedToast` (#1001).
+The camera and Story/Debug stay readable; gameplay verbs are blocked at their
+own call sites rather than making the whole game surface inert.

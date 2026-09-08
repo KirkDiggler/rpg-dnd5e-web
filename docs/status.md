@@ -71,9 +71,9 @@ let it rot.
   source ref/member and attacker/target facts, with absent facts left absent.
   Story is always available; raw Debug renders only in development/explicit
   Concepts diagnostics and has no live region.
-  Run-ended presentation closes equipment immediately, places an inert/hidden
-  game surface beneath the focused `aria-modal` action, and layers the modal
-  above every panel. A transient private refresh error keeps the last confirmed
+  Run-ended presentation closes equipment immediately and shows a toast
+  (#1001), preserving camera and log access while disabling gameplay verbs.
+  A transient private refresh error keeps the last confirmed
   CharacterData and cannot freeze newer door/path state. Typed
   Activated/ActivationResult events render one ordered Story entry per event:
   provider names drive abilities and conditions, healing reports the applied HP
