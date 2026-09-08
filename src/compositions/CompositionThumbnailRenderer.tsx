@@ -110,7 +110,7 @@ function ResetCaptureCamera() {
 }
 
 interface ThumbnailCaptureRequestProps {
-  composition: Composition;
+  children: ReactNode;
   requestKey: string;
   onComplete: (requestKey: string, image: string) => void;
   onError: (requestKey: string, message: string) => void;
@@ -118,7 +118,7 @@ interface ThumbnailCaptureRequestProps {
 
 /** Keyed per request while the surrounding Canvas is reused for the batch. */
 function ThumbnailCaptureRequest({
-  composition,
+  children,
   requestKey,
   onComplete,
   onError,
@@ -157,11 +157,9 @@ function ThumbnailCaptureRequest({
       <Suspense fallback={null}>
         <ResetCaptureCamera />
         <Bounds fit clip margin={1.35} maxDuration={0}>
-          <CompositionModel
-            composition={composition}
-            instanceId={`thumbnail-${composition.id}`}
-            transform={{ x: 0, y: 0, z: 0, rotationY: 0 }}
-          />
+          {/* GLTF loader caches are shared with placed models. Prevent this
+              temporary root from disposing their shared resources. */}
+          <group dispose={null}>{children}</group>
         </Bounds>
         <CaptureFrame onCapture={complete} onError={fail} />
       </Suspense>
@@ -289,8 +287,8 @@ function ThumbnailRootLifecycle({ children, onError }: ThumbnailRootProps) {
   );
 }
 
-export interface CompositionThumbnailRendererProps {
-  composition: Composition;
+export interface ThumbnailRendererProps {
+  children: ReactNode;
   requestKey: string;
   onComplete: (requestKey: string, image: string) => void;
   onError: (requestKey: string, message: string) => void;
@@ -298,18 +296,18 @@ export interface CompositionThumbnailRendererProps {
 }
 
 /**
- * One temporary, reusable WebGL surface for the palette's serial thumbnail
- * batch. It renders the real CompositionModel, auto-frames all of its leaves,
- * captures a data URL, and is replaced by the next requested immutable
- * snapshot. No canvas remains mounted once the batch is complete.
+ * One temporary, reusable WebGL surface for a palette's serial thumbnail
+ * batch. It auto-frames one real model subtree, captures a data URL, and is
+ * replaced by the next immutable request without replacing the canvas. No
+ * canvas remains mounted once the caller's queue is complete.
  */
-export function CompositionThumbnailRenderer({
-  composition,
+export function ThumbnailRenderer({
+  children,
   requestKey,
   onComplete,
   onError,
   onRootError,
-}: CompositionThumbnailRendererProps) {
+}: ThumbnailRendererProps) {
   const reportRootError = useCallback(
     (error: unknown) =>
       onRootError(error instanceof Error ? error.message : String(error)),
@@ -335,12 +333,37 @@ export function CompositionThumbnailRenderer({
         <directionalLight position={[-4, 2, -3]} intensity={0.5} />
         <ThumbnailCaptureRequest
           key={requestKey}
-          composition={composition}
           requestKey={requestKey}
           onComplete={onComplete}
           onError={onError}
-        />
+        >
+          {children}
+        </ThumbnailCaptureRequest>
       </ThumbnailRoot>
     </div>
+  );
+}
+
+export interface CompositionThumbnailRendererProps extends Omit<
+  ThumbnailRendererProps,
+  'children'
+> {
+  composition: Composition;
+}
+
+/** Composition behavior remains a thin specialization over the shared capture
+ * surface and lifecycle. */
+export function CompositionThumbnailRenderer({
+  composition,
+  ...captureProps
+}: CompositionThumbnailRendererProps) {
+  return (
+    <ThumbnailRenderer {...captureProps}>
+      <CompositionModel
+        composition={composition}
+        instanceId={`thumbnail-${composition.id}`}
+        transform={{ x: 0, y: 0, z: 0, rotationY: 0 }}
+      />
+    </ThumbnailRenderer>
   );
 }

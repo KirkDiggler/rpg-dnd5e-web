@@ -4,7 +4,7 @@ import {
   type Composition,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/api/composition/v1alpha1/service_pb';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { StrictMode, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fiber = vi.hoisted(() => {
@@ -190,6 +190,30 @@ describe('composition thumbnail capture lifecycle', () => {
     expect(
       screen.getAllByRole('button')[1].getAttribute('data-thumbnail-state')
     ).toBe('loading');
+    expect(fiber.createRoot).toHaveBeenCalledTimes(1);
+    expect(fiber.root.configure).toHaveBeenCalledTimes(1);
+    expect(fiber.root.configure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dpr: 1,
+        frameloop: 'demand',
+        size: { width: 128, height: 128, top: 0, left: 0 },
+      })
+    );
     sceneView.unmount();
+  });
+
+  it('reuses its canvas through the StrictMode probe and disposes it on the real cleanup', async () => {
+    const view = render(
+      <StrictMode>{tiles([composition('strict-model')], 'select')}</StrictMode>
+    );
+
+    await act(async () => undefined);
+    expect(fiber.createRoot).toHaveBeenCalledTimes(1);
+    expect(document.querySelectorAll('canvas')).toHaveLength(1);
+
+    view.unmount();
+    await act(async () => undefined);
+    expect(fiber.root.unmount).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('canvas')).toBeNull();
   });
 });

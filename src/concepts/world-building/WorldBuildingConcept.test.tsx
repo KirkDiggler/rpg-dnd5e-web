@@ -15,6 +15,10 @@ import { WorldBuildingConcept } from './WorldBuildingConcept';
 
 const DRAG_MIME = 'application/x-rpg-world-building-item+json';
 
+vi.mock('@/compositions/CompositionThumbnailRenderer', () => ({
+  ThumbnailRenderer: () => null,
+}));
+
 vi.mock('./WorldBuildingViewport', () => ({
   WorldBuildingViewport: (props: {
     scene: WorldScene;
