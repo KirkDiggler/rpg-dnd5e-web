@@ -68,6 +68,41 @@ export interface UseDiceSettleGateResult {
   onDiceTelemetry: (telemetry: AttackDieTelemetry) => void;
 }
 
+export interface DiceChoiceSettlementGate {
+  /** A caught-up/recovered window has no local physical die to await. */
+  awaitsDiceSettlement: boolean;
+  /** The window's paired provider presentation token, absent event-first. */
+  presentationId?: string;
+  /** The presentation currently mounted in the local world-die path. */
+  activePresentationId?: string;
+  /** The exact presentation whose visible terminal was observed. */
+  settledPresentationId?: string;
+  /** False when animation is explicitly unavailable for this presentation. */
+  physicalPresentationAvailable: boolean;
+  /** Existing truthful no-WebGL/unsafe-identity fallback. */
+  semanticFallback: boolean;
+}
+
+/**
+ * Opens the post-roll choice without a timer. A healthy local throw must reach
+ * the visible terminal of its exact provider presentation token. Catch-up,
+ * reconnect, semantic fallback, and explicitly non-physical presentations
+ * pass through because there is no local animation to wait for.
+ */
+export function isDiceChoiceSettlementReady({
+  awaitsDiceSettlement,
+  presentationId,
+  activePresentationId,
+  settledPresentationId,
+  physicalPresentationAvailable,
+  semanticFallback,
+}: DiceChoiceSettlementGate): boolean {
+  if (!awaitsDiceSettlement || semanticFallback) return true;
+  if (!presentationId || activePresentationId !== presentationId) return false;
+  if (!physicalPresentationAvailable) return true;
+  return settledPresentationId === presentationId;
+}
+
 export function useDiceSettleGate({
   result,
   diePresented,

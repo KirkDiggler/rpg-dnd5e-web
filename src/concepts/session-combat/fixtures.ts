@@ -220,7 +220,7 @@ const story = Object.freeze([
     round: 1,
     eyebrow: 'Skeleton Guard · Longsword',
     headline: 'Aldric turns the blow aside',
-    detail: 'd20 9 · total 13 against AC 18 · Miss',
+    detail: 'd20 9 + 4 = 13 · Miss',
     tone: 'neutral' as const,
   },
   {

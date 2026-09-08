@@ -111,6 +111,12 @@ export interface CombatExperienceRollWindow {
   roll: number;
   /** The face plus the attacker's bonuses, and nothing the answer would add. */
   total: number;
+  /** Exact Story entry to conceal alongside the pending choice. */
+  storyId?: string;
+  /** Provider token from the paired local AttackResponse; never built from seq. */
+  presentationId?: string;
+  /** True only while this live locally initiated attack has a die to settle. */
+  awaitsDiceSettlement?: boolean;
 }
 
 export interface CombatExperienceMapRenderProps {
@@ -159,6 +165,8 @@ interface CombatExperienceBaseProps {
   localWorldDieControl?: ReactNode;
   /** The actor-only world die has already reached its visible terminal. */
   localWorldDieSettled?: boolean;
+  /** Provider token for that terminal; prevents stale release of a new window. */
+  localWorldDieSettledPresentationId?: string;
   location: { name: string; area: string };
   /** Presentation-only readable pacing notice; authority is already ingested. */
   pacingNotice?: string | null;

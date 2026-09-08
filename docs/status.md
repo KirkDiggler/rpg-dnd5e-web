@@ -62,7 +62,10 @@ let it rot.
   likewise retains an in-flight invalidation for a trailing owner snapshot.
   Query generations fence reversed/key-stale completions and disposed refresh
   schedulers are inert. Actor Story/dice remain concealed until release;
-  witnesses/history auto-settle. Player-facing attack lines show
+  witnesses/history auto-settle. Post-roll Spend/Keep waits without a timer for
+  the exact provider-tokened local d20 terminal, handles either arrival order,
+  and passes through reconnect/catch-up or explicit no-animation paths.
+  Player-facing attack lines show
   `d20 + modifier = total` and omit target AC; raw Debug retains the provider
   `against` field. Resolved Struck advantage/disadvantage sources use only typed
   source ref/member and attacker/target facts, with absent facts left absent.

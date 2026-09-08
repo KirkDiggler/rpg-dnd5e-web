@@ -128,17 +128,27 @@ also fences reversed responses and key changes like Afford.
 
 ## Story, dice, and diagnostics
 
-The presentation reducer keys authority by `(session, seq)` and reconciles
-AttackResponse with typed Struck/Missed events. Stable public-roster roles and
+The presentation reducer reconciles each recipient's AttackResponse and typed
+Struck/Missed event in its local `(session, seq)` lane while the provider's
+opaque `presentation_id` names the shared attack d20 across recipients. A
+same-sequence RollWindowOpened beat occupies its own typed identity beside the
+paused response rather than conflicting with it. Stable public-roster roles and
 names are the only dice/Story identity authority; Turn participants never
 supply or overwrite identity. Unknown roles remain unresolved with no inferred
 ownership, and late roster facts may authorize them. Once a local player roll
 is armed, FightEnded or a transient empty participant/roster snapshot cannot
 revoke or auto-settle it. The acting player sees no current Story verdict,
 result, or live announcement until the authoritative d20 presentation is
-explicitly released. Other known players, monsters, and catch-up history
-auto-settle. Conflicting facts fail closed; raw payload bytes never become
-Story. Player-facing attack Story/result presentation shows the provider roll,
+explicitly released. A local live RollWindowOpened choice is paired to that
+response and stays on a no-timer gate until the same `presentation_id` reaches
+its visible terminal; stale terminals cannot open it. The same gate conceals
+that window's Story entry and its tail via the existing Story suffix helper,
+so the log cannot reveal the roll before the choice does. Event-first and
+response-first arrivals converge, while catch-up/reconnect, semantic fallback,
+explicitly non-physical presentation, and a lost response do not wedge the
+provider's answerable window. Other known players, monsters, and catch-up
+history auto-settle. Conflicting facts fail closed; raw payload bytes never
+become Story. Player-facing attack Story/result presentation shows the provider roll,
 the display-only difference between provider roll and total, and provider total
 as `d20 + modifier = total`; it omits target AC while raw Debug retains the
 provider `against` field. A resolved Struck result also labels authoritative
@@ -147,6 +157,14 @@ attacker/target relationship. Missing source facts remain absent rather than
 being inferred. Target `hpAfter` and peer exact HP are never shown. The existing
 local die pickup control shares the bottom-left personal-tray position rather
 than floating beside the upper-right Story rail.
+
+Remaining #996 scope: no persistent pre-attack True Strike target marker or
+advantage/disadvantage preview is provided here. The pinned active
+`ConditionView` has ref/name/detail/source member but no affected-target field;
+a historical Cast target alone does not establish current eligibility. Resolved
+Struck attribution is not a substitute for this marker, and Missed currently
+has no modifier-source arrays. Do not infer live eligibility from display prose
+or duplicate the toolkit's condition rules in the client.
 
 Story is always present in production. Raw Debug ingests immediately but is
 rendered only in development or on an explicitly enabled Concepts diagnostic

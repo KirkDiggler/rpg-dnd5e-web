@@ -38,7 +38,7 @@ function storyKey(event: Event): string {
   return `${event.session.length}:${event.session}:${event.seq}`;
 }
 
-function storyId(event: Event): string {
+export function storyId(event: Event): string {
   return storyKey(event);
 }
 

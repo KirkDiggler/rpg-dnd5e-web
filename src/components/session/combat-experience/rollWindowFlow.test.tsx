@@ -17,8 +17,11 @@ import {
   EventSchema,
   RollWindowOpenedSchema,
 } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/events_pb';
+import { AttackResponseSchema } from '@kirkdiggler/rpg-api-protos/gen/ts/dnd5e/api/session/v1alpha1/service_pb';
 import {
+  AttackRefSchema,
   ClockKind,
+  DamageType,
   DeclarationSchema,
   MemberKind,
   ParticipantSchema,
@@ -38,11 +41,13 @@ import { ActionDock } from './ActionDock';
 import { useSessionCombatExperience } from './useSessionCombatExperience';
 
 const hoisted = vi.hoisted(() => ({
+  attackFn: vi.fn(),
   reactFn: vi.fn(),
 }));
 
 vi.mock('@/api/client', () => ({
   sessionClient: {
+    attack: hoisted.attackFn,
     react: hoisted.reactFn,
   },
 }));
@@ -69,8 +74,47 @@ const memberNames = new Map([
   ['fighter-1', 'Aldric'],
   ['skeleton-1', 'Skeleton Guard'],
 ]);
+const memberRoles = new Map<string, 'player' | 'monster'>([
+  ['fighter-1', 'player'],
+  ['skeleton-1', 'monster'],
+]);
 
 const INSPIRATION_REF = 'dnd5e:conditions:inspired';
+
+function attackDeclaration(): Declaration {
+  return create(DeclarationSchema, {
+    id: 'selector.attack.1',
+    verb: Verb.ATTACK,
+    slot: Slot.ACTION,
+    available: true,
+    targetKind: TargetKind.MEMBER,
+    attack: create(AttackRefSchema, {
+      ref: 'dnd5e:weapons:longsword',
+      name: 'Longsword',
+      damageType: DamageType.SLASHING,
+    }),
+    candidates: [
+      create(TargetCandidateSchema, {
+        member: 'skeleton-1',
+        available: true,
+      }),
+    ],
+  });
+}
+
+function pausedAttackResponse() {
+  return create(AttackResponseSchema, {
+    roll: 9,
+    total: 13,
+    seq: 7n,
+    attack: create(AttackRefSchema, {
+      ref: 'dnd5e:weapons:longsword',
+      name: 'Longsword',
+      damageType: DamageType.SLASHING,
+    }),
+    presentationId: 'provider~attack-window-1',
+  });
+}
 
 /** Afford's row for the post-roll window: no slot to spend, no target, no
  * candidates — the question is about a die already rolled. */
@@ -108,6 +152,8 @@ function movementWindowDeclaration(): Declaration {
 
 function rollWindowBeat(audience: string, roll: number, total: number) {
   return create(EventSchema, {
+    session: 'crypt-run',
+    recipient: audience,
     kind: EventKind.ROLL_WINDOW_OPENED,
     seq: 7n,
     body: {
@@ -129,12 +175,18 @@ interface HarnessProps {
   declarations: readonly Declaration[];
   /** Delivered once on mount, exactly as the stream would. */
   beat?: ReturnType<typeof rollWindowBeat>;
+  source?: 'live' | 'catchup';
   viewer?: string;
 }
 
 /** The live wiring: the real hook driving the real dock, as `CombatExperience`
  * mounts them, with the stream's own entry point used for the beat. */
-function Harness({ declarations, beat, viewer = 'fighter-1' }: HarnessProps) {
+function Harness({
+  declarations,
+  beat,
+  source = 'live',
+  viewer = 'fighter-1',
+}: HarnessProps) {
   const combat = useSessionCombatExperience({
     session: 'crypt-run',
     member: viewer,
@@ -142,15 +194,31 @@ function Harness({ declarations, beat, viewer = 'fighter-1' }: HarnessProps) {
     active: 'fighter-1',
     authorityFresh: true,
     memberNames,
+    memberRoles,
     participants: [fighter, skeleton],
     declarations,
     invalidateAuthoritySnapshots: () => {},
     scheduleRefresh: () => {},
   });
-  const delivered = useDeliverOnce(combat.acceptStreamEvent, beat);
+  const delivered = useDeliverOnce(combat.acceptStreamEvent, beat, source);
+  const request = combat.diceEvents.find(
+    (event) => event.type === 'dice-presentation-requested'
+  );
   return (
     <>
       <span data-testid="delivered">{delivered ? 'yes' : 'no'}</span>
+      <span data-testid="roll-window-presentation-id">
+        {combat.rollWindow?.presentationId ?? ''}
+      </span>
+      <span data-testid="active-dice-presentation-id">
+        {request?.presentationId ?? ''}
+      </span>
+      <span data-testid="roll-window-awaits-dice">
+        {combat.rollWindow?.awaitsDiceSettlement ? 'yes' : 'no'}
+      </span>
+      <button type="button" onClick={() => combat.onTargetClick('skeleton-1')}>
+        Choose Skeleton
+      </button>
       <ActionDock
         clock={ClockKind.TURN}
         viewerMember={viewer}
@@ -171,21 +239,127 @@ function useDeliverOnce(
     event: ReturnType<typeof rollWindowBeat>,
     metadata: { source: 'live' | 'catchup' }
   ) => void,
-  beat?: ReturnType<typeof rollWindowBeat>
+  beat: ReturnType<typeof rollWindowBeat> | undefined,
+  source: 'live' | 'catchup'
 ): boolean {
   const [delivered, setDelivered] = useState(false);
   useEffect(() => {
     if (!beat || delivered) return;
-    accept(beat, { source: 'live' });
+    accept(beat, { source });
     setDelivered(true);
-  }, [accept, beat, delivered]);
+  }, [accept, beat, delivered, source]);
   return delivered;
 }
 
 describe('answering a post-roll window on your own d20', () => {
   beforeEach(() => {
+    hoisted.attackFn.mockReset();
     hoisted.reactFn.mockReset();
     hoisted.reactFn.mockResolvedValue({ saved: true });
+  });
+
+  it('pairs response-first and event-later through the provider presentation token', async () => {
+    hoisted.attackFn.mockResolvedValue(pausedAttackResponse());
+    const view = render(<Harness declarations={[attackDeclaration()]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Longsword/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Skeleton' }));
+    await waitFor(() => expect(hoisted.attackFn).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('active-dice-presentation-id').textContent
+      ).toBe('provider~attack-window-1')
+    );
+
+    view.rerender(
+      <Harness
+        declarations={[rollWindowDeclaration()]}
+        beat={rollWindowBeat('fighter-1', 9, 13)}
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('roll-window-presentation-id').textContent
+      ).toBe('provider~attack-window-1')
+    );
+    expect(screen.getByTestId('roll-window-awaits-dice').textContent).toBe(
+      'yes'
+    );
+  });
+
+  it('keeps event-first closed, then pairs it when the attack response arrives', async () => {
+    let resolveAttack!: (
+      value: ReturnType<typeof pausedAttackResponse>
+    ) => void;
+    hoisted.attackFn.mockReturnValue(
+      new Promise<ReturnType<typeof pausedAttackResponse>>((resolve) => {
+        resolveAttack = resolve;
+      })
+    );
+    const view = render(<Harness declarations={[attackDeclaration()]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Longsword/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Skeleton' }));
+    await waitFor(() => expect(hoisted.attackFn).toHaveBeenCalledOnce());
+
+    view.rerender(
+      <Harness
+        declarations={[rollWindowDeclaration()]}
+        beat={rollWindowBeat('fighter-1', 9, 13)}
+      />
+    );
+    await screen.findByText('yes', {
+      selector: '[data-testid="delivered"]',
+    });
+    expect(screen.getByTestId('roll-window-presentation-id').textContent).toBe(
+      ''
+    );
+    expect(screen.getByTestId('roll-window-awaits-dice').textContent).toBe(
+      'yes'
+    );
+
+    resolveAttack(pausedAttackResponse());
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('roll-window-presentation-id').textContent
+      ).toBe('provider~attack-window-1')
+    );
+    expect(screen.getByTestId('active-dice-presentation-id').textContent).toBe(
+      'provider~attack-window-1'
+    );
+  });
+
+  it('leaves an event-first window answerable when its Attack response is lost', async () => {
+    let rejectAttack!: (reason: Error) => void;
+    hoisted.attackFn.mockReturnValue(
+      new Promise<ReturnType<typeof pausedAttackResponse>>((_, reject) => {
+        rejectAttack = reject;
+      })
+    );
+    const view = render(<Harness declarations={[attackDeclaration()]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Longsword/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Skeleton' }));
+    await waitFor(() => expect(hoisted.attackFn).toHaveBeenCalledOnce());
+    view.rerender(
+      <Harness
+        declarations={[rollWindowDeclaration()]}
+        beat={rollWindowBeat('fighter-1', 9, 13)}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('roll-window-awaits-dice').textContent).toBe(
+        'yes'
+      )
+    );
+
+    rejectAttack(new Error('response lost'));
+    await waitFor(() =>
+      expect(screen.getByTestId('roll-window-awaits-dice').textContent).toBe(
+        'no'
+      )
+    );
   });
 
   it('draws the roll, the total and the die on offer, with Spend and Keep', async () => {
@@ -211,6 +385,27 @@ describe('answering a post-roll window on your own d20', () => {
     // here invents it: the decision is about the roll, not about whether the
     // roll already landed.
     expect(panel.textContent).not.toContain('AC');
+    // There was no local Attack response on this mounted client. Treat the
+    // live beat like reconnect recovery: it has no local physical die to wait
+    // for and must leave the provider window answerable.
+    expect(screen.getByTestId('roll-window-awaits-dice').textContent).toBe(
+      'no'
+    );
+  });
+
+  it('marks catch-up windows as immediately answerable', async () => {
+    render(
+      <Harness
+        declarations={[rollWindowDeclaration()]}
+        beat={rollWindowBeat('fighter-1', 9, 13)}
+        source="catchup"
+      />
+    );
+
+    await screen.findByTestId('reaction-window');
+    expect(screen.getByTestId('roll-window-awaits-dice').textContent).toBe(
+      'no'
+    );
   });
 
   it('sends Strike with the window’s own selector, past the target-kind gate', async () => {
