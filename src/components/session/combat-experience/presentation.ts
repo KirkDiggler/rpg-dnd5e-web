@@ -910,7 +910,42 @@ function addAttackRecord(
   }
 ): CombatPresentationState {
   const key = authorityKey(authority);
-  const { record, pending } = initialRecord(state, authority, options);
+  const initial = initialRecord(state, authority, options);
+  // A post-roll choice has two Story beats but only one physical throw. The
+  // paused response's seq names its window; the eventual Struck/Missed has a
+  // later seq and may include an inspiration bonus. Its provider token still
+  // names the d20 the actor already settled, not a second throw to enqueue.
+  const settledResponse =
+    options.event &&
+    authority.kind === 'attack' &&
+    isDicePresentationIdentifier(authority.presentationId)
+      ? state.presentations.find(
+          (prior) =>
+            !prior.conflicted &&
+            prior.responseAccepted &&
+            !prior.eventAccepted &&
+            prior.localPlayerOwned &&
+            prior.settlement === 'released' &&
+            prior.authority.kind === 'attack' &&
+            prior.session === authority.session &&
+            prior.presentationId === authority.presentationId &&
+            prior.authority.attacker === authority.attacker &&
+            prior.authority.target === authority.target &&
+            prior.authority.roll === authority.roll &&
+            prior.authority.attack?.ref === authority.attack?.ref
+        )
+      : undefined;
+  const record = settledResponse
+    ? Object.freeze({
+        ...initial.record,
+        request: settledResponse.request,
+        release: settledResponse.release,
+        settlement: 'released' as const,
+        semanticFallback: settledResponse.semanticFallback,
+        locallyArmedResponse: false,
+      })
+    : initial.record;
+  const pending = initial.pending && !settledResponse;
   const presentations = Object.freeze([...state.presentations, record]);
   return Object.freeze({
     ...state,

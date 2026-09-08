@@ -116,6 +116,45 @@ function expectConflictClosed(state: CombatPresentationState) {
 }
 
 describe('combat presentation authority reconciliation', () => {
+  it('does not re-arm a settled post-roll d20 when its outcome arrives at a later sequence', () => {
+    const paused = createAttackAuthorityFixture({
+      seq: 23n,
+      roll: 9,
+      total: 13,
+      against: 0,
+      hit: false,
+      damage: 0,
+      presentationId: 'paused-swing',
+    });
+    const outcome = createAttackAuthorityFixture({
+      seq: 24n,
+      roll: 9,
+      total: 16,
+      against: 15,
+      hit: true,
+      damage: 5,
+      presentationId: 'paused-swing',
+    });
+    let state = reduceCombatPresentation(
+      emptyPresentation(config),
+      paused.responseFact
+    );
+    state = reduceCombatPresentation(state, releaseFact(state));
+    state = reduceCombatPresentation(state, outcome.streamFact());
+    expect(selectCurrentPresentation(state)?.settlement).toBe('released');
+    expect(selectVisibleResult(state)).toMatchObject({ total: 16, hit: true });
+
+    const next = createAttackAuthorityFixture({
+      seq: 25n,
+      presentationId: 'next-swing',
+    });
+    state = reduceCombatPresentation(state, next.responseFact);
+    expect(selectCurrentPresentation(state)?.presentationId).toBe('next-swing');
+    expect(selectCurrentDiceEvents(state)[0]?.presentationId).toBe(
+      'next-swing'
+    );
+  });
+
   it('keeps the roll-window beat beside its same-sequence paused response without treating them as a conflict', () => {
     const facts = createAttackAuthorityFixture({ roll: 9, total: 13 });
     const rollWindow = {
