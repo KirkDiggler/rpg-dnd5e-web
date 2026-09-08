@@ -1129,6 +1129,11 @@ const EXPECTED_OTHER_KIND = {
   // A CAST IS TYPED STORY, NOT A ROLL. It carries no die of its own — the
   // save that may follow it is the roll, and that has its own authority.
   cast: EventKind.CAST,
+  // THE HELD SPELL LET GO (design rpg-project#407, R10). It has to be here or
+  // the beat never reaches the log at all: a body with no row is discarded by
+  // `relevantOtherEvent` as a "typed event kind/body mismatch", which is the
+  // exact gap `saved` fell into in slice two.
+  concentrationEnded: EventKind.CONCENTRATION_ENDED,
   // `saved` IS DELIBERATELY ABSENT. It becomes authority in
   // `authorityFromEvent`, so it never reaches the other-story path; listing
   // it here would offer a second, conflicting home for the same beat.
@@ -1158,6 +1163,7 @@ const TYPED_EVENT_KINDS = new Set<number>([
   EventKind.ROLL_WINDOW_OPENED,
   EventKind.CAST,
   EventKind.SAVED,
+  EventKind.CONCENTRATION_ENDED,
 ]);
 
 function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
@@ -1453,6 +1459,24 @@ function relevantOtherEvent(event: Event): RelevantOtherEvent | undefined {
     // ("you find a hidden door") is a named follow-up, not this wave's:
     // returning undefined here means the beat is accepted and updates
     // state correctly, just without an otherStory entry of its own.
+    // WHOSE CONCENTRATION ENDED, ON WHAT, AND WHY. Every field the log line
+    // reads, so the identity this beat is deduplicated by covers the whole
+    // sentence rather than the caster alone. The spell is preserved as a
+    // graph presence, like Cast.spell above: absent and present-empty are
+    // different facts.
+    case 'concentrationEnded':
+      return Object.freeze({
+        kind: event.kind,
+        bodyCase,
+        caster: event.body.value.caster,
+        spell: event.body.value.spell
+          ? Object.freeze({
+              ref: event.body.value.spell.ref,
+              name: event.body.value.spell.name,
+            })
+          : null,
+        reason: event.body.value.reason,
+      });
     case 'doorRevealed':
     case 'regionRevealed':
       return undefined;

@@ -72,6 +72,31 @@ function spellName(spell: SpellRef | undefined): string | undefined {
 }
 
 /**
+ * WHY THE CONCENTRATION BROKE, IN WORDS A VIEWER ALREADY KNOWS.
+ *
+ * `ConcentrationEnded.reason` is an OPEN STRING in the rulebook's own
+ * vocabulary, not a wire contract (design rpg-project#407, R10). So this is a
+ * presentation table and nothing else: the client never branches on the reason
+ * for a rule, and a reason nobody has phrased yet still reaches the log —
+ * underscores turned into spaces — rather than vanishing behind a default.
+ */
+const CONCENTRATION_END_PHRASES: Readonly<Record<string, string>> =
+  Object.freeze({
+    damage: 'the hit broke it',
+    recast: 'another concentration spell took its place',
+    duration: 'it ran out',
+    combat_end: 'the fight ended',
+    spell_ended: 'the spell was already spent',
+    caster_down: 'the caster went down',
+    'long rest': 'a long rest',
+  });
+
+function concentrationEndPhrase(reason: string): string | undefined {
+  if (!reason) return undefined;
+  return CONCENTRATION_END_PHRASES[reason] ?? reason.replace(/_/g, ' ');
+}
+
+/**
  * A strike taken as a reaction is named by the reacting rule itself
  * (`ReactionRef.name` on Struck/Missed), so an opportunity attack during a
  * monster's turn stops reading as a bug. The name is used verbatim and never
@@ -440,6 +465,27 @@ function buildOtherStory(
           `d20 ${saved.roll} ${sign} ${Math.abs(bonus)} = ${saved.total} against ` +
           `DC ${saved.dc} · ${saved.succeeded ? 'Succeeded' : 'Failed'}`,
         tone: saved.succeeded ? 'success' : 'danger',
+      });
+    }
+    // A SPELL THE CASTER WAS HOLDING LET GO (design rpg-project#407, R10).
+    // Its own beat, because it is the only thing in the record that says the
+    // spell ended AND why: what it took off the board arrives separately as
+    // condition removals. The spell's name is the server-authored one, copied
+    // like Cast.spell, and the reason is phrased rather than interpreted.
+    case 'concentrationEnded': {
+      if (event.kind !== EventKind.CONCENTRATION_ENDED) return undefined;
+      const ended = event.body.value;
+      const caster = memberName(ended.caster, context);
+      const spell = spellName(ended.spell);
+      const why = concentrationEndPhrase(ended.reason);
+      return Object.freeze({
+        ...base,
+        eyebrow: 'Concentration',
+        headline: spell
+          ? `${caster} loses concentration on ${spell}`
+          : `${caster} loses concentration`,
+        detail: why ? `${why}.` : `Story sequence ${event.seq}.`,
+        tone: 'danger',
       });
     }
     case 'activationResult':
