@@ -25,19 +25,19 @@ import {
   type CombatPresentationState,
 } from './presentation';
 
-function configured(): CombatPresentationState {
+function configured(session = 'crypt-run'): CombatPresentationState {
   return reduceCombatPresentation(emptyPresentation(), {
     type: 'configure',
-    session: 'crypt-run',
+    session,
     viewerMember: 'bard-1',
     memberNames: { 'bard-1': 'Lyric', 'skeleton-1': 'Skeleton' },
     rollerRoles: { 'bard-1': 'player', 'skeleton-1': 'monster' },
   });
 }
 
-function savedEvent(seq = 41n) {
+function savedEvent(seq = 41n, session = 'crypt-run') {
   return create(EventSchema, {
-    session: 'crypt-run',
+    session,
     seq,
     at: 11n,
     recipient: 'bard-1',
@@ -73,17 +73,27 @@ function accept(
 }
 
 describe('a saving throw on the table', () => {
-  it('rolls a d20 with the authoritative face', () => {
+  it('rolls a d20 with a recipient-local session and sequence identity', () => {
     const state = accept(configured(), savedEvent());
 
     const [request] = selectCurrentDiceEvents(state);
-    expect(request?.type).toBe('dice-presentation-requested');
-    expect(request && 'die' in request ? request.die.kind : undefined).toBe(
-      'd20'
-    );
-    expect(
-      request && 'die' in request ? request.die.authoritativeResult : undefined
-    ).toBe(7);
+    expect(request).toMatchObject({
+      type: 'dice-presentation-requested',
+      presentationId: 'session:crypt-run:41',
+      authoritySeq: 41n,
+      die: { kind: 'd20', authoritativeResult: 7 },
+    });
+  });
+
+  it.each([
+    ['empty session', '', 41n],
+    ['overlong identifier', `unsafe-${'x'.repeat(140)}`, 41n],
+  ])('keeps an %s off the physical dice path', (_, session, seq) => {
+    const state = accept(configured(session), savedEvent(seq, session));
+
+    expect(selectCurrentDiceEvents(state)).toEqual([]);
+    expect(state.presentations[0]?.authority.presentationId).toBe('');
+    expect(state.presentations[0]?.semanticFallback).toBe(true);
   });
 
   it('records no diagnostic, and never marks the beat conflicted', () => {
